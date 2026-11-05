@@ -79,6 +79,22 @@ bool gHeadlessClient = false;
 bool gNonInteractive = false;
 bool gGLActive = false;
 
+namespace
+{
+    bool issue_opengl_state() noexcept
+    {
+        if (!gGLManager.mInited)
+        {
+            return false;
+        }
+#if LL_DARWIN
+        return !gGL.isMetalUITextureCaptureAuthoritative();
+#else
+        return true;
+#endif
+    }
+}
+
 
 llofstream gFailLog;
 
@@ -3605,11 +3621,17 @@ void LLGLState::initClass()
 
     //make sure multisample defaults to disabled
     sStateMap[GL_MULTISAMPLE] = GL_FALSE;
-    glDisable(GL_MULTISAMPLE);
+    if (gGLManager.mInited)
+    {
+        glDisable(GL_MULTISAMPLE);
+    }
 
     // Ensure SRGB framebuffer is disabled by default
     sStateMap[GL_FRAMEBUFFER_SRGB] = GL_FALSE;
-    glDisable(GL_FRAMEBUFFER_SRGB);
+    if (gGLManager.mInited)
+    {
+        glDisable(GL_FRAMEBUFFER_SRGB);
+    }
 }
 
 //static
@@ -3647,7 +3669,7 @@ void LLGLState::dumpStates()
 
 void LLGLState::checkStates(GLboolean writeAlpha)
 {
-    if (!gDebugGL)
+    if (!gDebugGL || !issue_opengl_state())
     {
         return;
     }
@@ -3711,9 +3733,7 @@ void LLGLState::setEnabled(S32 enabled)
     else if (enabled == ENABLED_STATE && sStateMap[mState] != GL_TRUE)
     {
         gGL.flush();
-#if LL_DARWIN
-        if (!gGL.isMetalUITextureCaptureAuthoritative())
-#endif
+        if (issue_opengl_state())
         {
             glEnable(mState);
         }
@@ -3722,9 +3742,7 @@ void LLGLState::setEnabled(S32 enabled)
     else if (enabled == DISABLED_STATE && sStateMap[mState] != GL_FALSE)
     {
         gGL.flush();
-#if LL_DARWIN
-        if (!gGL.isMetalUITextureCaptureAuthoritative())
-#endif
+        if (issue_opengl_state())
         {
             glDisable(mState);
         }
@@ -3738,11 +3756,7 @@ LLGLState::~LLGLState()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     if (mState)
     {
-        if (gDebugGL
-#if LL_DARWIN
-            && !gGL.isMetalUITextureCaptureAuthoritative()
-#endif
-            )
+        if (gDebugGL && issue_opengl_state())
         {
             if (!gDebugSession)
             {
@@ -3762,9 +3776,7 @@ LLGLState::~LLGLState()
             gGL.flush();
             if (mWasEnabled)
             {
-#if LL_DARWIN
-                if (!gGL.isMetalUITextureCaptureAuthoritative())
-#endif
+                if (issue_opengl_state())
                 {
                     glEnable(mState);
                 }
@@ -3772,9 +3784,7 @@ LLGLState::~LLGLState()
             }
             else
             {
-#if LL_DARWIN
-                if (!gGL.isMetalUITextureCaptureAuthoritative())
-#endif
+                if (issue_opengl_state())
                 {
                     glDisable(mState);
                 }
@@ -4015,7 +4025,10 @@ void LLGLDepthTest::initClass()
     sDepthEnabled = GL_FALSE;
     sDepthFunc = GL_LESS;
     sWriteEnabled = GL_TRUE;
-    glDepthFunc(remap(sDepthFunc));
+    if (gGLManager.mInited)
+    {
+        glDepthFunc(remap(sDepthFunc));
+    }
 }
 
 void LLGLDepthTest::rebase()
@@ -4023,24 +4036,23 @@ void LLGLDepthTest::rebase()
     // Force the physical depth func to agree with the current translation of the tracked
     // (semantic) func. Used by the reverse-Z latch after LLRender::sReverseZ toggles.
     gGL.flush();
-    glDepthFunc(remap(sDepthFunc));
-    stop_glerror();
+    if (issue_opengl_state())
+    {
+        glDepthFunc(remap(sDepthFunc));
+        stop_glerror();
+    }
 }
 
 LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, GLenum depth_func)
 : mPrevDepthEnabled(sDepthEnabled), mPrevDepthFunc(sDepthFunc), mPrevWriteEnabled(sWriteEnabled)
 {
-#if LL_DARWIN
-    const bool native_capture = gGL.isMetalUITextureCaptureAuthoritative();
-#else
-    constexpr bool native_capture = false;
-#endif
-    if (!native_capture)
+    const bool issue_gl = issue_opengl_state();
+    if (issue_gl)
     {
         stop_glerror();
     }
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    if (!native_capture)
+    if (issue_gl)
     {
         checkState();
     }
@@ -4055,7 +4067,7 @@ LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, G
     if (depth_enabled != sDepthEnabled)
     {
         gGL.flush();
-        if (!native_capture)
+        if (issue_gl)
         {
             if (depth_enabled) glEnable(GL_DEPTH_TEST);
             else glDisable(GL_DEPTH_TEST);
@@ -4065,7 +4077,7 @@ LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, G
     if (depth_func != sDepthFunc)
     {
         gGL.flush();
-        if (!native_capture)
+        if (issue_gl)
         {
             glDepthFunc(remap(depth_func));
         }
@@ -4074,7 +4086,7 @@ LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, G
     if (write_enabled != sWriteEnabled)
     {
         gGL.flush();
-        if (!native_capture)
+        if (issue_gl)
         {
             glDepthMask(write_enabled);
         }
@@ -4085,19 +4097,15 @@ LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, G
 LLGLDepthTest::~LLGLDepthTest()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-#if LL_DARWIN
-    const bool native_capture = gGL.isMetalUITextureCaptureAuthoritative();
-#else
-    constexpr bool native_capture = false;
-#endif
-    if (!native_capture)
+    const bool issue_gl = issue_opengl_state();
+    if (issue_gl)
     {
         checkState();
     }
     if (sDepthEnabled != mPrevDepthEnabled )
     {
         gGL.flush();
-        if (!native_capture)
+        if (issue_gl)
         {
             if (mPrevDepthEnabled) glEnable(GL_DEPTH_TEST);
             else glDisable(GL_DEPTH_TEST);
@@ -4107,7 +4115,7 @@ LLGLDepthTest::~LLGLDepthTest()
     if (sDepthFunc != mPrevDepthFunc)
     {
         gGL.flush();
-        if (!native_capture)
+        if (issue_gl)
         {
             glDepthFunc(remap(mPrevDepthFunc));
         }
@@ -4116,7 +4124,7 @@ LLGLDepthTest::~LLGLDepthTest()
     if (sWriteEnabled != mPrevWriteEnabled )
     {
         gGL.flush();
-        if (!native_capture)
+        if (issue_gl)
         {
             glDepthMask(mPrevWriteEnabled);
         }
@@ -4126,7 +4134,7 @@ LLGLDepthTest::~LLGLDepthTest()
 
 void LLGLDepthTest::checkState()
 {
-    if (gDebugGL)
+    if (gDebugGL && issue_opengl_state())
     {
         GLint func = 0;
         GLboolean mask = GL_FALSE;

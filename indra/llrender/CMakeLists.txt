@@ -174,6 +174,7 @@ if(AL_BUILD_TESTS)
       tests/alfontshaping_test.cpp
       tests/alpacingslack_test.cpp
       tests/alrendercapabilities_test.cpp
+      tests/alrenderstate_test.cpp
       tests/alrendertargetdesc_test.cpp
       tests/llfontbitmapcache_test.cpp
       tests/llfontfreetype_test.cpp
