@@ -52,8 +52,6 @@ struct ALRenderResourceInputs
     U32  mSpotShadowMaxResolution = 2048; ///< AlchemyRenderSpotShadowMaxResolution: the spot shadows' largest edge, 0 none
     bool mShadowDepth32F = false; ///< AlchemyRenderShadowDepth32F
     bool mSSAO = true;            ///< RenderDeferredSSAO
-    bool mSSAOBlurDispatched = true; ///< SSAO's blur reaches no further than a dispatch holds (ALLightMapBlur::apron of
-                                     ///< RenderShadowBlurSize's kernel): a wider one is the fragment passes'
     bool mSSR = false;            ///< RenderScreenSpaceReflections
 
     bool mProbes = true;          ///< RenderReflectionsEnabled, where the feature table allows it

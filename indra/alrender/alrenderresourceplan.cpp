@@ -48,13 +48,13 @@ namespace
 
     // Each pack's slot names under its own prefix, laid out as Id lays the packs out.
     constexpr std::string_view PACK_NAMES[(size_t)Pack::COUNT][(size_t)Slot::COUNT] = {
-        { "main.gbuffer", "main.screen", "main.light", "main.post.ping", "main.post.pong", "main.shadow.sun0",
+        { "main.gbuffer", "main.screen", "main.post.ping", "main.post.pong", "main.shadow.sun0",
           "main.shadow.sun1", "main.shadow.sun2", "main.shadow.sun3", "main.bloom.mip0", "main.bloom.mip1",
           "main.bloom.mip2", "main.bloom.mip3", "main.bloom.mip4", "main.bloom.mip5", "main.bloom.mip6" },
-        { "probe.gbuffer", "probe.screen", "probe.light", "probe.post.ping", "probe.post.pong", "probe.shadow.sun0",
+        { "probe.gbuffer", "probe.screen", "probe.post.ping", "probe.post.pong", "probe.shadow.sun0",
           "probe.shadow.sun1", "probe.shadow.sun2", "probe.shadow.sun3", "probe.bloom.mip0", "probe.bloom.mip1",
           "probe.bloom.mip2", "probe.bloom.mip3", "probe.bloom.mip4", "probe.bloom.mip5", "probe.bloom.mip6" },
-        { "hero.gbuffer", "hero.screen", "hero.light", "hero.post.ping", "hero.post.pong", "hero.shadow.sun0",
+        { "hero.gbuffer", "hero.screen", "hero.post.ping", "hero.post.pong", "hero.shadow.sun0",
           "hero.shadow.sun1", "hero.shadow.sun2", "hero.shadow.sun3", "hero.bloom.mip0", "hero.bloom.mip1",
           "hero.bloom.mip2", "hero.bloom.mip3", "hero.bloom.mip4", "hero.bloom.mip5", "hero.bloom.mip6" },
     };
@@ -63,7 +63,7 @@ namespace
 
     // Everything after the packs, in Id order.
     constexpr std::string_view OWN_NAMES[Plan::ID_COUNT - PACK_IDS] = {
-        "shadow.spot0", "shadow.spot1", "smaa.edges", "smaa.blend", "ssr.scene", "main.light.blurred",
+        "shadow.spot0", "shadow.spot1", "smaa.edges", "smaa.blend", "ssr.scene",
         "glow0", "glow1", "glow2", "downres", "preview", "bake", "exposure.meter", "exposure.histogram",
         "exposure", "exposure.last", "lens.flare.a", "lens.flare.b", "noise", "noise.true", "smaa.area", "smaa.search",
         "smaa.sample",
@@ -118,7 +118,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         U32  shadow_width;
         U32  shadow_height;
         U32  sun_cascades;
-        bool light;
         bool post;
     };
 
@@ -134,16 +133,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         plan.at(inPack(pack, Slot::Screen)) = {
             ALRenderTargetDesc{ .width = shape.width, .height = shape.height, .color = { GL_RGBA16F } }, gbuffer
         };
-        // The light map shares the scene's depth for the far-plane test that keeps its passes off the sky. Its four
-        // channels are the sun's shadow, the occlusion and the spot lights' two shadows, each a factor its writers clamp
-        // to [0, 1], so 8 bits a channel whatever HDR says.
-        if (shape.light)
-        {
-            plan.at(inPack(pack, Slot::Light)) = {
-                ALRenderTargetDesc{ .width = shape.width, .height = shape.height, .color = { GL_RGBA8 } }, gbuffer
-            };
-        }
-
         if (shape.post)
         {
             const ALRenderTargetDesc post{ .width = shape.width, .height = shape.height, .color = { post_format } };
@@ -179,22 +168,15 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         }
     };
 
-    // The main view, at the render size: its light map for shadows or SSAO, its shadows scaled by
-    // RenderShadowResolutionScale.
+    // The main view, at the render size, with shadows scaled by RenderShadowResolutionScale.
     U32 width  = 0;
     U32 height = 0;
     in.renderSize(width, height);
     width  = std::max(width, 1u);
     height = std::max(height, 1u);
     const F32 shadow_scale = std::max(0.f, in.mShadowScale);
-    const bool light = in.mShadowDetail > 0 || in.mSSAO;
     plan_pack(Pack::Main, { width, height, blur_happy_size(width, shadow_scale), blur_happy_size(height, shadow_scale),
-                            SUN_CASCADES, light, true });
-
-    // A capture's light map is written by its sun pass, which runs for shadows alone: SSAO is the main view's, and a
-    // capture's soften pass reads the light map whatever it holds (renderDeferredLighting), so without shadows it reads
-    // the white a missing map binds.
-    const bool capture_light = in.mShadowDetail > 0;
+                            SUN_CASCADES, true });
 
     // A probe face renders at the probe resolution times its supersample, which the manager downsamples to its probe,
     // and its shadow maps at the size the full supersample of four gave them: a coarser capture is no reason for coarser
@@ -202,16 +184,15 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     // asks (generateSunShadow), and has maps for those alone. Its post targets and bloom are the GLTF material preview's,
     // which the probes' captures never read, so they are there only while a retained preview fallback needs them. The
     // pack is there while probes are on or a retained preview is demanded, and the manager's own resources while probes
-    // are. Its sun shadows, light
-    // map is the captures' alone: a preview draws without the sun's shadows and draws no water
-    // (LLGLTFPreviewTexture::render). The native water transaction owns no resource in this GL plan.
+    // are. A preview draws without sun shadows or water (LLGLTFPreviewTexture::render). The native water and light-map
+    // transactions own no resource in this retained GL plan.
     if (in.mProbes || in.mMaterialPreview)
     {
         const U32 probe_size     = in.mProbeResolution * in.mProbeSuperSample;
         const U32 probe_shadow   = blur_happy_size(in.mProbeResolution * 4, 1.f);
         const U32 probe_cascades = !in.mProbes ? 0 : in.mProbeAllCascades ? SUN_CASCADES : CAPTURE_SUN_CASCADES;
-        plan_pack(Pack::Probe, { probe_size, probe_size, probe_shadow, probe_shadow, probe_cascades,
-                                 capture_light && in.mProbes, in.mMaterialPreview });
+        plan_pack(Pack::Probe,
+                  { probe_size, probe_size, probe_shadow, probe_shadow, probe_cascades, in.mMaterialPreview });
     }
     if (in.mProbes)
     {
@@ -228,7 +209,7 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         const U32 hero_size   = std::max(in.mHeroResolution, 1u);
         const U32 hero_shadow = blur_happy_size(hero_size, 1.f);
         plan_pack(Pack::Hero,
-                  { hero_size, hero_size, hero_shadow, hero_shadow, CAPTURE_SUN_CASCADES, capture_light, false });
+                  { hero_size, hero_size, hero_shadow, hero_shadow, CAPTURE_SUN_CASCADES, false });
         plan.mHeroProbes = ProbeManager{ .mResolution = hero_size, .mSuperSample = 1, .mHDR = hdr };
     }
 
@@ -265,15 +246,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
                                    in.mSMAAStencil ? std::optional<Id>(Id::SMAAEdges) : std::nullopt };
     }
 #endif
-
-    // Where the session computes, and SSAO's kernel reaches no further than a dispatch holds, SSAO's blur writes the
-    // sun's shadow and the blurred occlusion here, which the soften pass reads in place of the light map
-    // (ALLightMapBlur): it takes no scratch, and no depth, as a dispatch's destination. The light map's 8 bits a
-    // channel, the compact format the native light-map blur consumes.
-    if (in.mSSAO && in.mCompute && in.mSSAOBlurDispatched)
-    {
-        plan.at(Id::MainLightBlurred).mDesc = ALRenderTargetDesc{ .width = width, .height = height, .color = { GL_RG8 } };
-    }
 
     // The reflections' source: last frame's scene, without the alpha the reflections drop, so R11F_G11F_B10F under HDR
     // (unsigned, which the lit scene is), and the scene's depth without its stencil, in its format. They trace it
@@ -401,7 +373,6 @@ bool ALRenderResourcePlan::followsRenderSize(Id id)
         case Id::SMAAEdges:
         case Id::SMAABlend:
         case Id::SSRScene:
-        case Id::MainLightBlurred:
             return true;
         default:
             return false;
@@ -442,10 +413,10 @@ bool ALRenderResourcePlan::isTransient(Id id)
     if (packOf(id))
     {
         const Slot slot = slotOf(id);
-        return slot == Slot::Light || slot == Slot::PostPing || slot == Slot::PostPong || slot >= Slot::Bloom0;
+        return slot == Slot::PostPing || slot == Slot::PostPong || slot >= Slot::Bloom0;
     }
     return id == Id::SMAAEdges || id == Id::SMAABlend || id == Id::Glow0 || id == Id::Glow1 || id == Id::Glow2 ||
-           id == Id::MainLightBlurred || id == Id::Preview || id == Id::Bake;
+           id == Id::Preview || id == Id::Bake;
 }
 
 // static

@@ -268,24 +268,18 @@ namespace
               [](const Plan& before)
               {
                   return wanted(before, sun_shadows({ Pack::Main, Pack::Probe, Pack::Hero })) |
-                         of({ Id::SpotShadow0, Id::SpotShadow1, Id::ProbeLight, Id::HeroLight });
+                         of({ Id::SpotShadow0, Id::SpotShadow1 });
               } },
             { "RenderDeferredSSAO with shadows", no_change, [](Inputs& in) { in.mSSAO = false; },
-              [](const Plan&) { return of({ Id::MainLightBlurred }); } },
+              nothing },
             { "RenderDeferredSSAO without shadows", [](Inputs& in) { in.mShadowDetail = 0; },
-              [](Inputs& in) { in.mSSAO = false; },
-              [](const Plan&) { return of({ Id::MainLight, Id::MainLightBlurred }); } },
+              [](Inputs& in) { in.mSSAO = false; }, nothing },
             { "RenderDeferredSSAO without compute", [](Inputs& in) { in.mCompute = false; },
               [](Inputs& in) { in.mSSAO = false; }, nothing },
             { "AlchemyRenderDisableCompute", no_change, [](Inputs& in) { in.mCompute = false; },
-              [](const Plan&) { return of({ Id::MainLightBlurred }); } },
+              nothing },
             { "AlchemyRenderDisableCompute without SSAO", [](Inputs& in) { in.mSSAO = false; },
               [](Inputs& in) { in.mCompute = false; }, nothing },
-            { "RenderShadowBlurSize past a dispatch's reach", no_change,
-              [](Inputs& in) { in.mSSAOBlurDispatched = false; },
-              [](const Plan&) { return of({ Id::MainLightBlurred }); } },
-            { "RenderShadowBlurSize past a dispatch's reach without compute", [](Inputs& in) { in.mCompute = false; },
-              [](Inputs& in) { in.mSSAOBlurDispatched = false; }, nothing },
             { "RenderShadowResolutionScale", no_change, [](Inputs& in) { in.mShadowScale = 0.5f; },
               [](const Plan&) { return sun_shadows({ Pack::Main }) | of({ Id::SpotShadow0, Id::SpotShadow1 }); } },
             { "AlchemyRenderShadowDepth32F under reverse-Z", no_change, [](Inputs& in) { in.mShadowDepth32F = true; },
@@ -806,8 +800,8 @@ namespace
             INFO(Plan::name(id));
             CHECK(plan.wants(id));
         }
-        UNSCOPED_INFO("a preview draws without the sun's shadows or water, so the pack has no light map or sun shadows");
-        CHECK(names(wanted(plan, sun_shadows({ Pack::Probe }) | of({ Id::ProbeLight }))) == "nothing");
+        UNSCOPED_INFO("a preview draws without the sun's shadows or water");
+        CHECK(names(wanted(plan, sun_shadows({ Pack::Probe }))) == "nothing");
         CHECK(!plan.reflectionProbes());
         CHECK(names(wanted(plan, Plan::idsOf(Pack::Hero))) == "nothing");
 
@@ -882,88 +876,8 @@ namespace
         }
     }
 
-    TEST_CASE("alrenderresourceplan: every light map is 8 bits a channel, whatever HDR says", "[alrenderresourceplan]")
-    {
-        // Its four channels are factors the sun pass, the blur and the probes' sun pass clamp to [0, 1].
-        for (bool hdr : { true, false })
-        {
-            INFO("HDR " << hdr);
-            Inputs in          = defaults();
-            in.mHDR            = hdr;
-            in.mGBufferNormHDR = hdr;
-            const Plan plan    = Plan::make(in);
-            for (Id id : { Id::MainLight, Id::ProbeLight, Id::HeroLight })
-            {
-                INFO(Plan::name(id));
-                REQUIRE(plan.wants(id));
-                CHECK(plan.desc(id)->colorCount() == 1);
-                CHECK(plan.desc(id)->color[0] == (U32)GL_RGBA8);
-            }
-        }
-    }
-
-    TEST_CASE("alrenderresourceplan: a capture pack has a light map exactly when shadows are on", "[alrenderresourceplan]")
-    {
-        // The probe captures' sun pass writes the light map only for shadows, and their soften pass reads it whatever
-        // it holds; SSAO is the main view's alone.
-        for (S32 shadow_detail : { 0, 1, 2 })
-        {
-            for (bool ssao : { false, true })
-            {
-                INFO("shadow detail " << shadow_detail << ", SSAO " << ssao);
-                Inputs in        = defaults();
-                in.mShadowDetail = shadow_detail;
-                in.mSSAO         = ssao;
-                const Plan plan  = Plan::make(in);
-
-                CHECK(plan.wants(Id::ProbeLight) == (shadow_detail > 0));
-                CHECK(plan.wants(Id::HeroLight) == (shadow_detail > 0));
-                CHECK(plan.wants(Id::MainLight) == (shadow_detail > 0 || ssao));
-            }
-        }
-    }
-
-    TEST_CASE("alrenderresourceplan: the blurred light map is the main view's, with SSAO where the session computes",
+    TEST_CASE("alrenderresourceplan: SSAO is private to the Metal transaction and changes no retained resource",
               "[alrenderresourceplan]")
-    {
-        // The dispatch blurs into it in place of a scratch of the light map's description; the fragment passes need
-        // the scratch instead, as they do for a kernel wider than a dispatch holds, and nothing blurs without SSAO.
-        for (S32 shadow_detail : { 0, 2 })
-        {
-            for (bool ssao : { false, true })
-            {
-                for (bool compute : { false, true })
-                {
-                    for (bool dispatched : { false, true })
-                    {
-                        INFO("shadow detail " << shadow_detail << ", SSAO " << ssao << ", compute " << compute
-                                              << ", dispatched " << dispatched);
-                        Inputs in              = defaults();
-                        in.mShadowDetail       = shadow_detail;
-                        in.mSSAO               = ssao;
-                        in.mCompute            = compute;
-                        in.mSSAOBlurDispatched = dispatched;
-                        const Plan plan        = Plan::make(in);
-                        REQUIRE(plan.wants(Id::MainLightBlurred) == (ssao && compute && dispatched));
-                        if (plan.wants(Id::MainLightBlurred))
-                        {
-                            // The light map's size, its 8 bits in two channels, no depth: an image a dispatch stores
-                            // to.
-                            const ALRenderTargetDesc& blurred = *plan.desc(Id::MainLightBlurred);
-                            CHECK(blurred.width == plan.desc(Id::MainLight)->width);
-                            CHECK(blurred.height == plan.desc(Id::MainLight)->height);
-                            CHECK(blurred.colorCount() == 1);
-                            CHECK(blurred.color[0] == (U32)GL_RG8);
-                            CHECK(blurred.depth == Depth::None);
-                            CHECK(!plan[Id::MainLightBlurred].mDepthFrom);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    TEST_CASE("alrenderresourceplan: SSAO alone never touches a capture pack", "[alrenderresourceplan]")
     {
         for (S32 shadow_detail : { 0, 1, 2 })
         {
@@ -973,7 +887,7 @@ namespace
             Inputs to          = from;
             to.mSSAO           = !from.mSSAO;
             const IdSet changed = Plan::changed(Plan::make(from), Plan::make(to));
-            CHECK(names(changed & (Plan::idsOf(Pack::Probe) | Plan::idsOf(Pack::Hero))) == "nothing");
+            CHECK(names(changed) == "nothing");
         }
     }
 
@@ -1119,14 +1033,13 @@ namespace
         // The fixed-size targets, the capture packs and the textures never do, nor do the shadow maps: halving the
         // view would not make room for a square spot map sized from its width, nor for one with no size.
         for (Id id : { Id::Preview, Id::DownRes, Id::Bake, Id::Exposure, Id::Glow0, Id::ProbeGBuffer,
-                       Id::ProbeSun0, Id::HeroGBuffer, Id::HeroLight, Id::Noise, Id::SMAAArea, Id::MainSun0, Id::MainSun3,
+                       Id::ProbeSun0, Id::HeroGBuffer, Id::Noise, Id::SMAAArea, Id::MainSun0, Id::MainSun3,
                        Id::SpotShadow0, Id::SpotShadow1 })
         {
             INFO(Plan::name(id));
             CHECK(!Plan::drivesRenderSize(id));
         }
-        for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::MainLight, Id::MainPostPing, Id::SMAABlend,
-                       Id::SSRScene, Id::MainLightBlurred })
+        for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::MainPostPing, Id::SMAABlend, Id::SSRScene })
         {
             INFO(Plan::name(id));
             CHECK(Plan::drivesRenderSize(id));
@@ -1147,10 +1060,10 @@ namespace
     TEST_CASE("alrenderresourceplan: the passes acquire what lives for one phase of a frame from the pool", "[alrenderresourceplan]")
     {
         const IdSet transient = in_packs({ Pack::Main, Pack::Probe, Pack::Hero },
-                                         { Slot::Light, Slot::PostPing, Slot::PostPong }) |
+                                         { Slot::PostPing, Slot::PostPong }) |
                                 bloom({ Pack::Main, Pack::Probe, Pack::Hero }) |
                                 of({ Id::SMAAEdges, Id::SMAABlend, Id::Glow0, Id::Glow1, Id::Glow2,
-                                     Id::MainLightBlurred, Id::Preview, Id::Bake });
+                                     Id::Preview, Id::Bake });
         CHECK(names(Plan::idsWhere(Plan::isTransient)) == names(transient));
 
         // What holds anything across frames, or between the phases of one, is built to keep.
@@ -1212,7 +1125,6 @@ namespace
         U64 mOneEach    = 0; ///< the same resources, each a target of its own
         U32 mTargets    = 0;
         U32 mLastMisses = 0; ///< acquisitions the last frame had to build for
-        bool mDefocusedIsLight = false; ///< depth of field's defocused scene took a target the lighting used
     };
 
     // CameraDoFResScale's default, the fraction of the screen depth of field's blur covers each way.
@@ -1223,7 +1135,7 @@ namespace
         const Plan plan = Plan::make(in);
         CountingBacking       backing;
         ALTransientTargetPool pool(backing);
-        LLRenderTarget        gbuffer; // stands in for main.gbuffer, whose depth the light map and the screen's description share
+        LLRenderTarget        gbuffer; // stands in for main.gbuffer, whose depth the screen's description shares
 
         const auto acquire = [&](ALTransientTargets& scope, Id id, std::string_view name = {}) -> LLRenderTarget*
         {
@@ -1237,24 +1149,6 @@ namespace
         for (int frame = 0; frame < 2; ++frame)
         {
             pool.beginFrame();
-
-            LLRenderTarget* light   = nullptr;
-            LLRenderTarget* scratch = nullptr;
-            {
-                // renderDeferredLighting: the light map, and SSAO's blur, by one dispatch into the blurred light map
-                // the soften pass reads, or without compute through a scratch of the light map's description.
-                ALTransientTargets lighting(pool);
-                light = plan.wants(Id::MainLight) ? acquire(lighting, Id::MainLight) : nullptr;
-                if (light && plan.wants(Id::MainLightBlurred))
-                {
-                    acquire(lighting, Id::MainLightBlurred);
-                }
-                else if (light && in.mSSAO)
-                {
-                    scratch = acquire(lighting, Id::MainLight, "main.light.scratch");
-                    lighting.release(scratch);
-                }
-            }
 
             // renderFinalize: depth of field's defocused scene, in the screen's description, and its blur at
             // CameraDoFResScale in bloom level 0's format (the post chain's without HDR), given back before the bloom
@@ -1288,7 +1182,6 @@ namespace
                 }
             }
 
-            set.mDefocusedIsLight = defocused && (defocused == light || defocused == scratch);
             set.mLastMisses       = pool.stats().mMisses;
         }
 
@@ -1296,7 +1189,7 @@ namespace
         set.mTargets = pool.stats().mTargets;
         set.mPersistent = LLRenderTarget::bytesFor(*plan.desc(Id::MainGBuffer)) + LLRenderTarget::bytesFor(*plan.desc(Id::MainScreen));
         set.mOneEach    = set.mPersistent;
-        for (Id id : { Id::MainLight, Id::MainLightBlurred, Id::MainPostPing, Id::MainPostPong })
+        for (Id id : { Id::MainPostPing, Id::MainPostPong })
         {
             set.mOneEach += plan.wants(id) ? LLRenderTarget::bytesFor(*plan.desc(id)) : 0;
         }
@@ -1320,50 +1213,32 @@ namespace
         UNSCOPED_INFO("a frame finds what it needs where the last one left it");
         CHECK(set.mLastMisses == 0);
 
-        // The light map, SSAO's blurred light map, bloom mips 0 and 2 to 4, mip 1 with the sky behind, and the post
-        // chain's first: 4 + 2 + 4 + 1 + 0.33 + 4 B/px.
-        CHECK(set.mTargets == 8);
-        CHECK(set.mPooled == 56505600);
-        // Each planned GL resource with its own target: 55.3 B/px, 194.5 MiB.
-        CHECK(set.mOneEach == 203961600);
-        CHECK(set.mPersistent + set.mPooled == 189216000); // 180.5 MiB
-
-        // Without compute, the fragment passes blur through a scratch of the light map's description: two of it
-        // through the lighting, 8 B/px where the dispatch takes 6.
-        Inputs fragment  = defaults();
-        fragment.mCompute = false;
-        const WorkingSet passes = main_view_frame(fragment);
-        CHECK(passes.mTargets == 8);
-        CHECK(passes.mOneEach == 196588800); // 187.5 MiB
-        CHECK(passes.mPersistent + passes.mPooled == 196588800); // 187.5 MiB
-
-        // Without SSAO the lighting needs one target of the light map's description, and no blurred one.
-        Inputs no_ssao = defaults();
-        no_ssao.mSSAO  = false;
-        const WorkingSet without = main_view_frame(no_ssao);
-        CHECK(without.mOneEach == 196588800);
-        CHECK(without.mPersistent + without.mPooled == 181843200); // 173.4 MiB
+        // Bloom mips 0 and 2 to 4, mip 1 with the sky behind, and the post chain's first: 4 + 1 + 0.33 + 4 B/px.
+        CHECK(set.mTargets == 6);
+        CHECK(set.mPooled == 34387200);
+        // Each planned retained GL resource with its own target: 49.3 B/px, 173.4 MiB.
+        CHECK(set.mOneEach == 181843200);
+        CHECK(set.mPersistent + set.mPooled == 167097600); // 159.4 MiB
 
         // With antialiasing the post chain's other target is drawn into, and pooled beside the first: 4 B/px more.
         Inputs fxaa    = defaults();
         fxaa.mFSAAType = 1;
         const WorkingSet antialiased = main_view_frame(fxaa);
-        CHECK(antialiased.mTargets == 9);
+        CHECK(antialiased.mTargets == set.mTargets + 1);
         CHECK(antialiased.mPooled - set.mPooled == 4 * PIXELS);
     }
 
     // Depth of field adds two targets to what the frame holds: its defocused scene, in the screen's description, which
-    // no other target of the frame's has, the light map being 8 bits a channel, and its blur, of its own size.
+    // no other target of the frame's has, and its blur, of its own size.
     TEST_CASE("alrenderresourceplan: the main view's working set with depth of field", "[alrenderresourceplan]")
     {
         const WorkingSet off = main_view_frame(defaults());
         const WorkingSet on  = main_view_frame(defaults(), true);
-        CHECK_FALSE(on.mDefocusedIsLight);
         CHECK(on.mLastMisses == 0);
         CHECK(on.mTargets == off.mTargets + 2);
         // 2560x1440 of RGBA16F, and 1792x1008 of R11F_G11F_B10F.
         CHECK(on.mPooled - off.mPooled == 29491200 + 7225344);
-        CHECK(on.mPersistent + on.mPooled == 225932544); // 215.5 MiB
+        CHECK(on.mPersistent + on.mPooled == 203814144); // 194.4 MiB
     }
 
     TEST_CASE("alrenderresourceplan: every resource has its own debugger label", "[alrenderresourceplan]")

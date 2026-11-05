@@ -59,7 +59,6 @@ public:
     {
         GBuffer,
         Screen,
-        Light,
         PostPing,
         PostPong,
         Sun0,
@@ -93,15 +92,15 @@ public:
     /// Every resource, each pack's in Slot order first. The names are the debugger labels (name()).
     enum class Id : U8
     {
-        MainGBuffer, MainScreen, MainLight, MainPostPing, MainPostPong,
+        MainGBuffer, MainScreen, MainPostPing, MainPostPong,
         MainSun0, MainSun1, MainSun2, MainSun3,
         MainBloom0, MainBloom1, MainBloom2, MainBloom3, MainBloom4, MainBloom5, MainBloom6,
 
-        ProbeGBuffer, ProbeScreen, ProbeLight, ProbePostPing, ProbePostPong,
+        ProbeGBuffer, ProbeScreen, ProbePostPing, ProbePostPong,
         ProbeSun0, ProbeSun1, ProbeSun2, ProbeSun3,
         ProbeBloom0, ProbeBloom1, ProbeBloom2, ProbeBloom3, ProbeBloom4, ProbeBloom5, ProbeBloom6,
 
-        HeroGBuffer, HeroScreen, HeroLight, HeroPostPing, HeroPostPong,
+        HeroGBuffer, HeroScreen, HeroPostPing, HeroPostPong,
         HeroSun0, HeroSun1, HeroSun2, HeroSun3,
         HeroBloom0, HeroBloom1, HeroBloom2, HeroBloom3, HeroBloom4, HeroBloom5, HeroBloom6,
 
@@ -109,7 +108,6 @@ public:
         SpotShadow0, SpotShadow1,
         SMAAEdges, SMAABlend,
         SSRScene,
-        MainLightBlurred,
 
         // Fixed in size.
         Glow0, Glow1, Glow2,
@@ -218,8 +216,7 @@ public:
     static bool isTexture(Id id);
     /// Whether the passes that use it acquire it from the transient pool for as long as they need it, rather than the
     /// reconcile building it to keep: a target that lives for one phase of a frame, and holds nothing across frames. A
-    /// pack's light map is one, the main view's blurred light map, the bloom pyramid,
-    /// the post chain, SMAA's edges and blend weights, the legacy glow, and the targets the UI previews and the
+    /// pack's bloom pyramid and post chain are, as are SMAA's edges and blend weights, the legacy glow, and the targets the UI previews and the
     /// appearance bakes draw into.
     static bool isTransient(Id id);
     /// Whether the reconcile readies it in the pool for the next frame to find: every transient resource but the
