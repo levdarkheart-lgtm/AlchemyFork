@@ -92,8 +92,6 @@ public:
     /*virtual*/ void        requestStopMotion(LLMotion* motion);
     /*virtual*/ LLJoint*    getJoint(std::string_view name);
 
-    /*virtual*/ void renderJoints();
-
     /*virtual*/ bool setVisualParamWeight(const LLVisualParam *which_param, F32 weight);
     /*virtual*/ bool setVisualParamWeight(const char* param_name, F32 weight);
     /*virtual*/ bool setVisualParamWeight(S32 index, F32 weight);

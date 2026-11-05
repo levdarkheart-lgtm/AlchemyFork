@@ -744,13 +744,6 @@ LLJoint* LLVOAvatarSelf::getJoint(std::string_view name)
 }
 
 
-//virtual
-void LLVOAvatarSelf::renderJoints()
-{
-    std::lock_guard lock(mJointMapMutex);
-    LLVOAvatar::renderJoints();
-}
-
 // virtual
 bool LLVOAvatarSelf::setVisualParamWeight(const LLVisualParam *which_param, F32 weight)
 {

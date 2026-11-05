@@ -576,7 +576,6 @@ public:
     void        captureMetalDeferredImpostor();
     void        captureMetalCollisionVolumes();
     void        renderBones(const std::string &selected_joint = std::string());
-    virtual void renderJoints();
     static void deleteCachedImages(bool clearAll=true);
     static void destroyGL();
     S32         mSpecialRenderMode; // special lighting
