@@ -24359,6 +24359,30 @@ void LLPipeline::setupHWLights()
     mLightMask = 0;
 }
 
+void LLPipeline::updateNativeDirectionalLightDirections(
+    const LLMatrix4a& modelview)
+{
+    LLEnvironment& environment = LLEnvironment::instance();
+    mSunDir.setVec(LLVector4(environment.getSunDirection(), 0.f));
+    mMoonDir.setVec(LLVector4(environment.getMoonDirection(), 0.f));
+    if (!environment.getIsSunUp() && !environment.getIsMoonUp())
+    {
+        // Match setupHWLights' underlighting guard without publishing any
+        // legacy GL light state for the native deferred-light owners.
+        mSunDir.setVec(LLVector4(0.f, 1.f, 0.f, 0.f));
+        mMoonDir.setVec(LLVector4(0.f, 1.f, 0.f, 0.f));
+    }
+
+    LLVector4a direction;
+    LLVector4a transformed;
+    direction.loadua(mSunDir.mV);
+    modelview.transform4(direction, transformed);
+    mTransformedSunDir.set(transformed.getF32ptr());
+    direction.loadua(mMoonDir.mV);
+    modelview.transform4(direction, transformed);
+    mTransformedMoonDir.set(transformed.getF32ptr());
+}
+
 void LLPipeline::enableLights(U32 mask)
 {
     assertInitialized();
@@ -29128,24 +29152,8 @@ void LLPipeline::renderDeferredLighting()
         // target or fullscreen pass. Publish the CPU lighting inputs directly
         // and run the established Metal owners in their dependency order.
         LLViewerCamera* camera = LLViewerCamera::getInstance();
-        LLEnvironment& environment = LLEnvironment::instance();
-        mSunDir.setVec(LLVector4(environment.getSunDirection(), 0.f));
-        mMoonDir.setVec(LLVector4(environment.getMoonDirection(), 0.f));
-        if (!environment.getIsSunUp() && !environment.getIsMoonUp())
-        {
-            mSunDir.setVec(LLVector4(0.f, 1.f, 0.f, 0.f));
-            mMoonDir.setVec(LLVector4(0.f, 1.f, 0.f, 0.f));
-        }
-
         const LLMatrix4a& modelview = camera->getModelview();
-        LLVector4a direction;
-        LLVector4a transformed;
-        direction.loadua(mSunDir.mV);
-        modelview.transform4(direction, transformed);
-        mTransformedSunDir.set(transformed.getF32ptr());
-        direction.loadua(mMoonDir.mV);
-        modelview.transform4(direction, transformed);
-        mTransformedMoonDir.set(transformed.getF32ptr());
+        updateNativeDirectionalLightDirections(modelview);
         packDeferredConstants();
         calcNearbyLights(*camera);
 
@@ -29224,26 +29232,8 @@ void LLPipeline::renderDeferredLighting()
             gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_HUD);
         }
 
-        gGL.setColorMask(true, true);
-
-        // draw a cube around every light
-        LLVertexBuffer::unbind();
-
-        LLGLEnable cull(GL_CULL_FACE);
-        LLGLEnable blend(GL_BLEND);
-
         const LLMatrix4a& mat = LLViewerCamera::getCurrent().getModelview();
-
-        setupHWLights();  // to set mSun/MoonDir;
-
-        LLVector4a dir, tc;
-        dir.loadua(mSunDir.mV);
-        mat.transform4(dir, tc);
-        mTransformedSunDir.set(tc.getF32ptr());
-
-        dir.loadua(mMoonDir.mV);
-        mat.transform4(dir, tc);
-        mTransformedMoonDir.set(tc.getF32ptr());
+        updateNativeDirectionalLightDirections(mat);
 
         // Repack native shadow state plus the retained GL SSAO/specular block once for this
         // deferred pass. The latter remains only for deferred debug/local-light consumers.
@@ -29282,6 +29272,7 @@ void LLPipeline::renderDeferredLighting()
 #endif
         screen_target->bindTarget();
         // clear color buffer here - zeroing alpha (glow) is important or it will accumulate against sky
+        gGL.setColorMask(true, true);
         gGL.setClearColor(LLColor4::transparent);
         screen_target->clear(GL_COLOR_BUFFER_BIT);
 
@@ -29340,7 +29331,6 @@ void LLPipeline::renderDeferredLighting()
         // ownership stack.
         llassert(LLRenderTarget::getCurrentBoundTarget() == screen_target);
 #endif
-        gGL.setColorMask(true, true);
     }
 
     {  // render non-deferred geometry (alpha, fullbright, glow)

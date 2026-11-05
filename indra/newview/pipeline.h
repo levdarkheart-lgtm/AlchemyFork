@@ -1334,6 +1334,7 @@ public:
     S32  getLightCount() const { return static_cast<S32>(mLights.size()); }
 
     void calcNearbyLights(LLCamera& camera);
+    void updateNativeDirectionalLightDirections(const LLMatrix4a& modelview);
     void setupHWLights();
     void setupAvatarLights(bool for_edit = false);
     void enableLights(U32 mask);
