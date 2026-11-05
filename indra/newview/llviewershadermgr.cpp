@@ -142,8 +142,6 @@ LLGLSLShader            gLensDirtGenProgram;
 // Deferred rendering shaders
 LLGLSLShader            gDeferredImpostorProgram;
 LLGLSLShader            gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
-LLGLSLShader            gDeferredBumpProgram;
-LLGLSLShader            gDeferredBumpAlphaMaskProgram;
 LLGLSLShader            gDeferredTerrainProgram;
 LLGLSLShader            gDeferredTreeShadowProgram;
 LLGLSLShader            gDeferredAvatarProgram;
@@ -1294,8 +1292,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
     {
         gDeferredTreeShadowProgram.unload();
         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.unload();
-        gDeferredBumpProgram.unload();
-        gDeferredBumpAlphaMaskProgram.unload();
         gDeferredImpostorProgram.unload();
         gDeferredTerrainProgram.unload();
         gDeferredLightProgram.unload();
@@ -1412,25 +1408,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         add_common_permutations(&gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram);
         built(gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.createShader(mirror_variant()), gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram);
-    }
-
-    // The bump pass draws the faces whose texture can fall below their cutoff with the program that discards, and the
-    // rest with one that cannot (LLDrawPoolBump::renderDeferred).
-    for (LLGLSLShader* shader : { &gDeferredBumpProgram, &gDeferredBumpAlphaMaskProgram })
-    {
-        const bool alpha_mask = shader == &gDeferredBumpAlphaMaskProgram;
-        shader->mName = alpha_mask ? "Deferred Bump Alpha Mask Shader" : "Deferred Bump Shader";
-        shader->mShaderFiles.clear();
-        shader->mShaderFiles.push_back(make_pair("deferred/bumpV.glsl", GL_VERTEX_SHADER));
-        shader->mShaderFiles.push_back(make_pair("deferred/bumpF.glsl", GL_FRAGMENT_SHADER));
-        shader->mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        add_common_permutations(shader);
-        shader->addPermutation("LINEAR_DIFFUSE", "1");
-        if (alpha_mask)
-        {
-            shader->addPermutation("HAS_ALPHA_MASK", "1");
-        }
-        built(shader->createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant()), *shader);
     }
 
     // Main-world legacy material G-buffer passes are native Metal. Retain only

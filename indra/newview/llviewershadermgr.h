@@ -198,8 +198,6 @@ extern LLGLSLShader         gImpostorProgram;
 // Deferred rendering shaders
 extern LLGLSLShader         gDeferredImpostorProgram;
 extern LLGLSLShader         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
-extern LLGLSLShader         gDeferredBumpProgram;
-extern LLGLSLShader         gDeferredBumpAlphaMaskProgram; // the bump faces that can discard
 extern LLGLSLShader         gDeferredTerrainProgram;
 extern LLGLSLShader         gDeferredTreeShadowProgram;
 extern LLGLSLShader         gDeferredLightProgram;

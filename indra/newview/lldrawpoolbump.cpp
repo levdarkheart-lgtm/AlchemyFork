@@ -565,126 +565,75 @@ bool LLDrawPoolBump::bumpCanDiscard(const LLDrawInfo& params)
 void LLDrawPoolBump::renderDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    (void)pass;
 
-    // The program's LINEAR_DIFFUSE makes pushBumpBatch decode the diffuse on the sampler;
-    // the hoisted GL_FRAMEBUFFER_SRGB (renderGeomDeferred) re-encodes on store.
-
+#if LL_DARWIN
     shiny = true;
     for (int i = 0; i < 2; ++i)
     {
-        bool rigged = i == 1;
+        const bool rigged = i == 1;
 
-        U32 type = rigged ? LLRenderPass::PASS_BUMP_RIGGED : LLRenderPass::PASS_BUMP;
-        LLCullResult::drawinfo_iterator begin = gPipeline.beginRenderMap(type);
-        LLCullResult::drawinfo_iterator end = gPipeline.endRenderMap(type);
+        const U32 type = rigged
+            ? LLRenderPass::PASS_BUMP_RIGGED
+            : LLRenderPass::PASS_BUMP;
+        auto* begin = gPipeline.beginRenderMap(type);
+        auto* end = gPipeline.endRenderMap(type);
         if (begin == end)
-        {   // no bump geometry in this pass -- skip the shader bind and texture setup
+        {
             continue;
         }
 
-        // The faces that cannot be discarded first, under the program without the test, so their depth is written
-        // ahead of shading; the rest are set aside as the list is walked, once, and drawn after under the one with it.
-        // A program with no faces to draw is never bound.
+        // Preserve the retained pool's opaque-first then alpha-mask order,
+        // but enumerate both sets directly into the Metal G-buffer.
         static std::vector<LLDrawInfo*> masked;
         masked.clear();
         for (bool alpha_mask : { false, true })
         {
-            LLGLSLShader* shader = nullptr;
-
-            const LLVOAvatar* lastAvatar = nullptr;
-            U64 lastMeshId = 0;
-            bool skipLastSkin = false;
-
-            // Faces are sorted by bumpmap then texture, so the alpha-mask cutoff and the
-            // bump-image bind (an image lookup + texture bind) repeat across runs of faces.
-            // Skip them when unchanged. (bindBumpMap's only side effect, addTextureStats, is
-            // max-based on the source texture, so skipping a repeat is a no-op there too.)
             U8 lastBump = 255;
             LLViewerTexture* lastBumpTex = nullptr;
             LLViewerTexture* lastBumpMap = nullptr;
-            F32 lastAlpha = -1.f;
 
-#if LL_DARWIN
             gPipeline.beginMetalWorldGBufferPass(rigged, alpha_mask);
-#endif
-
-            const auto draw = [&](LLDrawInfo& params)
+            const auto capture = [&](LLDrawInfo& params)
             {
-                if (!shader)
-                {
-                    LLGLSLShader& program = alpha_mask ? gDeferredBumpAlphaMaskProgram : gDeferredBumpProgram;
-                    program.selectVariant()->bind(rigged);
-                    shader = LLGLSLShader::sCurBoundShaderPtr;
-                    diffuse_channel = shader->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-                    bump_channel = shader->enableTexture(LLViewerShaderMgr::BUMP_MAP);
-                    gGL.getTextureSlot(diffuse_channel)->unbind();
-                    gGL.getTextureSlot(bump_channel)->unbind();
-                }
-
-                if (alpha_mask && params.mAlphaMaskCutoff != lastAlpha)
-                {
-                    lastAlpha = params.mAlphaMaskCutoff;
-                    shader->setMinimumAlpha(lastAlpha);
-                }
-
                 if (params.mBump != lastBump || params.mTexture.get() != lastBumpTex)
                 {
                     lastBump = params.mBump;
                     lastBumpTex = params.mTexture.get();
-                    LLDrawPoolBump::bindBumpMap(
-                        params, bump_channel, &lastBumpMap);
+                    lastBumpMap = LLDrawPoolBump::resolveBumpMap(params);
                 }
-
-                if (rigged)
-                {
-                    if (uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
-                    {
-                        pushBumpBatch(params, true, false, lastBumpMap);
-                    }
-                }
-                else
-                {
-                    pushBumpBatch(params, true, false, lastBumpMap);
-                }
+                gPipeline.captureMetalWorldBumpBatch(params, lastBumpMap);
             };
 
             if (!alpha_mask)
             {
-                for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+                for (auto* at = begin; at != end; )
                 {
-                    LLDrawInfo& params = **i;
-
-                    LLCullResult::increment_iterator(i, end);
+                    LLDrawInfo& params = **at;
+                    LLCullResult::increment_iterator(at, end);
 
                     if (bumpCanDiscard(params))
                     {
                         masked.push_back(&params);
                         continue;
                     }
-                    draw(params);
+                    capture(params);
                 }
             }
             else
             {
                 for (LLDrawInfo* params : masked)
                 {
-                    draw(*params);
+                    capture(*params);
                 }
             }
 
-            if (shader)
-            {
-                shader->disableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-                shader->disableTexture(LLViewerShaderMgr::BUMP_MAP);
-                shader->unbind();
-            }
-#if LL_DARWIN
             gPipeline.endMetalWorldGBufferPass();
-#endif
         }
     }
 
     shiny = false;
+#endif
 }
 
 
