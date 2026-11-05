@@ -92,15 +92,6 @@ public:
     /// The waves' patches drawn this frame: PATCHES_PER_CELL squared for each cell within the reach; 0 without waves.
     S32 patchCount() const;
 
-    /// Sets what the water's own draws need for the waves on `shader`, bound and bound to the field: where this view
-    /// draws them (`drawn`, never without wavesDrawn), the cells the patches cover, which a flat draw then leaves out,
-    /// and for the waves' program (`patches`), their tessellation, cull, order and heights, the maps bound as the
-    /// current (`a`) and next (`b`) map giving those. Where it does not, no cell is left out.
-    void bindWaves(LLGLSLShader& shader, bool drawn, bool patches, const LLViewerTexture* a, const LLViewerTexture* b) const;
-
-    /// Draws the waves' patches with the waves' program, bound and bound to the field and the waves (bindWaves).
-    void drawPatches(LLGLSLShader& shader) const;
-
     /// Whether `camera`'s frustum meets the cells the patches cover: their rectangle, from the lowest water to the
     /// highest and A past each. False without waves.
     bool patchesInView(LLCamera& camera) const;
@@ -147,8 +138,7 @@ public:
     };
     static WaveSettings waveSettings();
 
-    /// Whether the programs were loaded for the waves (AlchemyRenderWaterWaves). The waves' programs, and the heights
-    /// they read, exist only then.
+    /// Whether native tessellated waves are enabled by the active renderer inputs.
     static bool wavesWanted();
 
     const ALWaterField::Layout& getLayout() const { return mLayout; }

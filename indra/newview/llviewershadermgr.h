@@ -69,8 +69,6 @@ public:
     // name of a file error happened at, otherwise
     // returns an empty string
     std::string loadBasicShaders();
-    // The objects only the water waves' programs attach, compiled with the global defines while the waves are wanted.
-    void loadWaterWaveObjects();
     void loadShadersEffects();
     void loadShadersDeferred();
     void loadShadersObject();
@@ -105,8 +103,6 @@ private:
     bool built(bool linked, const LLGLSLShader& shader);
 
     ALShaderInputs mInputs;
-    // Whether the water waves' objects are compiled among the shared objects.
-    bool mWaterWaveObjects = false;
     // The programs the load running could not build, by name.
     std::vector<std::string> mFailedPrograms;
 }; //LLViewerShaderMgr
@@ -144,16 +140,6 @@ extern LLGLSLShader        gPhysicsPreviewProgram;
 extern LLGLSLShader     gObjectAlphaMaskNoColorProgram;
 
 //environment shaders
-extern LLGLSLShader         gWaterProgram;
-extern LLGLSLShader         gUnderWaterProgram;
-// The flat field without TRANSPARENT_WATER, for the views whose water does not refract while the main view's does
-// (ALRenderResourcePlan::refractsWater); built while RenderTransparentWater is on.
-extern LLGLSLShader         gWaterOpaqueProgram;
-extern LLGLSLShader         gUnderWaterOpaqueProgram;
-// The patches within the tessellation reach, displaced by the waves; built while they are wanted (ALWaterSurface::wavesWanted).
-extern LLGLSLShader         gWaterWavesProgram;
-extern LLGLSLShader         gUnderWaterWavesProgram;
-extern LLGLSLShader         gWaterExclusionProgram;
 extern LLGLSLShader         gWaterFieldProgram;
 // One level of ALDepthPyramid; built where the session computes.
 extern LLGLSLShader         gDepthPyramidProgram;

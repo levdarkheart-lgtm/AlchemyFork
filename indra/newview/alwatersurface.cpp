@@ -109,7 +109,7 @@ void ALWaterSurface::update()
     // The maps the pool binds this frame, followed before anything is drawn, so the waves' bound is the bound maps'.
     // Their means are read only by the tiled reads.
     const S32 hextile = gPipeline.shaderInputs().mGlobal.mWaterHextile;
-    const bool waves = wavesWanted() && gWaterWavesProgram.mProgramObject != 0;
+    const bool waves = wavesWanted();
     if (LLDrawPoolWater* pool = static_cast<LLDrawPoolWater*>(gPipeline.findPool(LLDrawPool::POOL_WATER)))
     {
         trackMaps(pool->getNormalMap(0), pool->getNormalMap(1), hextile >= 1, waves);
@@ -737,73 +737,6 @@ void ALWaterSurface::addExtents(LLVector3& min, LLVector3& max) const
     max.mV[VZ] = llmax(max.mV[VZ], mHighest + maxDisplacement());
 }
 
-void ALWaterSurface::bindWaves(LLGLSLShader& shader, bool drawn, bool patches, const LLViewerTexture* a, const LLViewerTexture* b) const
-{
-    drawn = drawn && mWavesDrawn;
-    // The patch rectangle in the cell map's cells, its max past the end; all 0, empty, without waves.
-    const ALWaterField::PatchRect rect = drawn ? ALWaterField::patchRect(mLayout) : ALWaterField::PatchRect();
-    const S32 rect_uniform[4] = { rect.mMinX, rect.mMinY, rect.mEndX, rect.mEndY };
-    shader.uniform4iv(LLShaderMgr::WATER_PATCH_RECT, 1, rect_uniform);
-    if (!patches || !drawn)
-    {
-        return;
-    }
-
-    const WaveSettings settings = waveSettings();
-    shader.uniform1f(LLShaderMgr::WATER_TESS_DENSITY, settings.mDensity);
-    shader.uniform1f(LLShaderMgr::WATER_MAX_DISPLACEMENT, mMaxDisplacement);
-    shader.uniform2f(LLShaderMgr::WATER_WAVE_REACH, (F32)mLayout.mReach, mMaxDisplacement);
-    shader.uniform3fv(LLShaderMgr::WATER_WAVE_EYE, 1, mEye.mV);
-
-    // The view's planes but the far one: the patches lie within the reach, which the draw distance does not bound.
-    // Read at bind, from whichever camera this view is drawn from.
-    LLViewerCamera* camera = LLViewerCamera::getInstance();
-    constexpr S32 CULL_PLANES = 5;
-    const S32 planes[CULL_PLANES] = { LLCamera::AGENT_PLANE_LEFT, LLCamera::AGENT_PLANE_RIGHT, LLCamera::AGENT_PLANE_NEAR,
-                                 LLCamera::AGENT_PLANE_BOTTOM, LLCamera::AGENT_PLANE_TOP };
-    F32 cull[CULL_PLANES * 4];
-    for (S32 i = 0; i < CULL_PLANES; ++i)
-    {
-        const LLPlane& plane = camera->getAgentPlane(planes[i]);
-        for (S32 c = 0; c < 4; ++c)
-        {
-            cull[i * 4 + c] = plane[c];
-        }
-    }
-    shader.uniform4fv(LLShaderMgr::WATER_CULL_PLANES, CULL_PLANES, cull);
-
-    // The patches front to back, as nearly as rows of them allow. The water shades only what the depth test lets
-    // through, so a crest drawn first spares the troughs it hides behind it.
-    const LLVector3 at = camera->getAtAxis();
-    const ALWaterField::PatchOrder order = ALWaterField::patchOrder(at.mV[VX], at.mV[VY]);
-    shader.uniform4iv(LLShaderMgr::WATER_PATCH_ORDER, 1, order.mOrder);
-
-    // Each map's heights on their own trilinear sampler, whatever RenderWaterMipNormal puts the normal maps on, and
-    // its wave height; a map not baked has none, and its sampler reads black rather than whatever the unit held.
-    F32 amp[2] = { 0.f, 0.f };
-    const U32 units[2] = { LLShaderMgr::WATER_HEIGHT_MAP, LLShaderMgr::WATER_HEIGHT_MAP2 };
-    const LLViewerTexture* maps[2] = { a, b };
-    for (S32 i = 0; i < 2; ++i)
-    {
-        const Heights heights = mapHeights(maps[i]);
-        const S32 channel = shader.enableTexture(units[i]);
-        if (channel < 0)
-        {
-            continue;
-        }
-        if (heights.mTexture)
-        {
-            gGL.getTextureSlot(channel)->bindSampled(heights.mTexture, ALSamplers::TrilinearWrap);
-            amp[i] = settings.mHeight * heights.mRise;
-        }
-        else if (LLViewerTexture::sBlackImagep.notNull() && LLViewerTexture::sBlackImagep->getGLTexture())
-        {
-            gGL.getTextureSlot(channel)->bindSampled(LLViewerTexture::sBlackImagep->getGLTexture(), ALSamplers::PointWrap);
-        }
-    }
-    shader.uniform2f(LLShaderMgr::WATER_WAVE_AMP, amp[0], amp[1]);
-}
-
 S32 ALWaterSurface::patchCount() const
 {
     if (!mWavesDrawn)
@@ -812,17 +745,6 @@ S32 ALWaterSurface::patchCount() const
     }
     const S32 cells = (mLayout.mPatchMaxX - mLayout.mPatchMinX + 1) * (mLayout.mPatchMaxY - mLayout.mPatchMinY + 1);
     return cells * ALWaterField::PATCHES_PER_CELL * ALWaterField::PATCHES_PER_CELL;
-}
-
-void ALWaterSurface::drawPatches(LLGLSLShader& shader) const
-{
-    if (!mWavesDrawn || mCellMap.isNull())
-    {
-        return;
-    }
-    gGL.setPatchVertices(4);
-    gGL.drawArraysInstanced(LLRender::PATCHES, 0, 4, (U32)patchCount());
-    gPipeline.mWaterDraws += 1;
 }
 
 void ALWaterSurface::trackMaps(LLViewerTexture* current, LLViewerTexture* next, bool means, bool heights)

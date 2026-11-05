@@ -29,10 +29,6 @@
 
 #include "lldrawpoolwaterexclusion.h"
 
-#include "alwaterstencil.h"
-#include "llglstates.h"
-#include "llviewercamera.h"
-#include "llviewershadermgr.h"
 #include "pipeline.h"
 
 LLDrawPoolWaterExclusion::LLDrawPoolWaterExclusion() : LLRenderPass(LLDrawPool::POOL_WATEREXCLUSION)
@@ -41,40 +37,26 @@ LLDrawPoolWaterExclusion::LLDrawPoolWaterExclusion() : LLRenderPass(LLDrawPool::
 }
 
 
-// The PASS_INVISIBLE prims into the bound screen target's stencil: the exclude bit wherever one lies in front of the
-// scene and on the camera's side of the water surface (waterExclusionF.glsl). No colour and no depth.
+// The PASS_INVISIBLE prims into the native screen target's stencil: the
+// exclude bit wherever one lies in front of the scene and on the camera's
+// side of the procedural water surface. No colour and no depth.
 void LLDrawPoolWaterExclusion::render(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-
-    LLGLSLShader& shader = gWaterExclusionProgram;
-    if (!shader.isComplete())
-    {
-        return;
-    }
-
-    shader.bind();
-    gPipeline.mWaterSurface.bind(shader);
-
-    // The camera the batches are drawn from, whose view the modelview starts at.
-    const LLCamera& camera = LLViewerCamera::getCurrent();
-    LLMatrix4a eye_to_agent;
-    eye_to_agent.setAffineInverse(camera.getModelview());
-    shader.uniformMatrix4fv(LLShaderMgr::INVERSE_MODELVIEW_MATRIX, eye_to_agent);
-    shader.uniform3fv(LLShaderMgr::WL_CAMPOSLOCAL, 1, camera.getOrigin().mV);
-
+    (void)pass;
 #if LL_DARWIN
     gPipeline.beginMetalWorldWaterExclusionPass();
-#endif
+    auto* at = gPipeline.beginRenderMap(LLRenderPass::PASS_INVISIBLE);
+    auto* end = gPipeline.endRenderMap(LLRenderPass::PASS_INVISIBLE);
+    while (at != end)
     {
-        LLGLDepthTest depth(GL_TRUE, GL_FALSE);
-        LLGLSColorMask no_color(false, false);
-        ALWaterStencil::Exclude stencil;
-        pushBatches(LLRenderPass::PASS_INVISIBLE, false, false);
+        LLDrawInfo* info = *at;
+        LLCullResult::increment_iterator(at, end);
+        if (info)
+        {
+            gPipeline.captureMetalWorldGBufferBatch(*info, false);
+        }
     }
-#if LL_DARWIN
     gPipeline.endMetalWorldGBufferPass();
 #endif
-
-    shader.unbind();
 }

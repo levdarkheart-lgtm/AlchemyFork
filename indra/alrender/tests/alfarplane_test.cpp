@@ -53,6 +53,14 @@ namespace
         return buf.str();
     }
 
+    static std::string metal_shader_source()
+    {
+        std::ifstream in(AL_TEST_METAL_SHADER);
+        std::stringstream buf;
+        buf << in.rdbuf();
+        return buf.str();
+    }
+
     // The number that follows `key` in `text`, or -1 when the key is missing.
     static F32 literal_after(const std::string& text, const std::string& key)
     {
@@ -302,16 +310,21 @@ namespace
         UNSCOPED_INFO("no literal wave clamp");
         REQUIRE(surface.find("2560.0") == std::string::npos);
         // The waves follow the phases the CPU takes, the camera and the scroll folded in, which sets no wave direction
-        // or time; both water programs work them per fragment through the one function.
+        // or time; both native water fragments work them through the one function.
         for (const char* phase : { "+ waterBigPhase;", "+ waterLittlePhase.xy;", "+ waterLittlePhase.zw;" })
         {
             UNSCOPED_INFO("waves take " << phase);
             REQUIRE(surface.find(phase) != std::string::npos);
         }
-        for (const char* path : { "class3/environment/waterF.glsl", "class3/environment/underWaterF.glsl" })
+        const std::string metal = metal_shader_source();
+        for (const char* entry : { "fragment float4 almetal_world_above_water_fragment(",
+                                   "fragment float4 almetal_world_underwater_fragment(" })
         {
-            UNSCOPED_INFO(path << " works the waves per fragment");
-            REQUIRE(shader_source(path).find("water_wave_normals(bumpMap, bumpMap2, view.xy, wave1, wave2, wave3);") != std::string::npos);
+            const size_t fragment = metal.find(entry);
+            UNSCOPED_INFO(entry << " exists in the production MSL library");
+            REQUIRE(fragment != std::string::npos);
+            UNSCOPED_INFO(entry << " works the waves per fragment");
+            REQUIRE(metal.find("almetal_world_water_wave_normals(", fragment) != std::string::npos);
         }
         UNSCOPED_INFO("the wave reads work the coordinates");
         REQUIRE(surface.find("water_wave_coords(r, big_uv, little_uv);") != std::string::npos);

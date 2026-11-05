@@ -427,14 +427,14 @@ namespace
     };
 
     // On Apple a profile counts no primitives generated for a program with a tessellation stage, whatever its features
-    // say -- the water's waves set none of terrain's -- and still counts its samples.
+    // say, and still counts its samples.
     TEST_CASE_METHOD(altessellation_data, "ALTessellation: a profile on Apple counts no primitives of a tessellated program", "[ALTessellation]")
     {
         REQUIRE(mLinked);
         setLevels(3, 3, 3, 3, 3, 3);
         AppleFlag apple(true);
         LLGLSLShader profile;
-        profile.mShaderFiles.emplace_back("waterTC.glsl", GL_TESS_CONTROL_SHADER);
+        profile.mShaderFiles.emplace_back("terrainTC.glsl", GL_TESS_CONTROL_SHADER);
         profile.clearStats();
         LLGLSLShader::initProfile(true);
         profile.placeProfileQuery();

@@ -957,9 +957,9 @@ struct ALMetalWorldLightingCompositionScene
     bool hdr = false;
 };
 
-// The water-exclusion fragment needs the same live height field and
-// eye-to-agent transform as waterExclusionF.glsl. The cell map is the
-// persistent Metal mirror of ALWaterSurface's RG32F height/flag texture.
+// The native water-exclusion fragment needs the live height field and
+// eye-to-agent transform. The cell map is the persistent Metal mirror of
+// ALWaterSurface's RG32F height/flag texture.
 struct ALMetalWorldWaterExclusionSurface
 {
     const ALMetalTexture* cell_map = nullptr;

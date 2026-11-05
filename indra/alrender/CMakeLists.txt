@@ -64,7 +64,10 @@ target_precompile_headers(alrender REUSE_FROM llprecompiled)
 
 if(AL_BUILD_TESTS)
   # The viewer's own shader files, read from the source tree.
-  set(alrender_shader_dir "AL_TEST_SHADER_DIR=\"${INDRA_SOURCE_DIR}/newview/app_settings/shaders\"")
+  set(alrender_shader_dir
+    "AL_TEST_SHADER_DIR=\"${INDRA_SOURCE_DIR}/newview/app_settings/shaders\""
+    "AL_TEST_METAL_SHADER=\"${INDRA_SOURCE_DIR}/almetal/shaders/almetal_builtin.metal\""
+  )
 
   # The suites that need no GL: the render resources' plan and the changes
   # that ask for it again, the transient target pool's policy, what the programs are built from, the far plane
@@ -90,10 +93,7 @@ if(AL_BUILD_TESTS)
     DEFINES ${alrender_shader_dir}
   )
 
-  # The window's depth under the HUD, the water surface's draws over the
-  # cells the field lays out, with the cull and the depth pyramid it reads
-  # and the waves displaced by heights the bake integrates from a normal map,
-  # a spot shadow draw's geometry from a real vertex buffer,
+  # The window's depth under the HUD, a spot shadow draw's geometry from a real vertex buffer,
   # the light map's blur by one dispatch against its two fragment passes,
   # FXAA on an RGB10_A2 source, the reflection probes' taps in one pass over
   # them against their list, the transient target pool's GL objects,
@@ -108,13 +108,11 @@ if(AL_BUILD_TESTS)
       tests/alondemandtarget_gl_test.cpp
       tests/alspotshadowcache_gl_test.cpp
       tests/altransienttargetpool_gl_test.cpp
-      tests/alwatersurface_gl_test.cpp
       tests/fxaa_gl_test.cpp
       tests/reflectionprobe_gl_test.cpp
     BENCH_SOURCES
       tests/alcompute_gl_bench.cpp
       tests/alondemandtarget_bench.cpp
-      tests/alwatertargets_bench.cpp
       tests/reflectionprobe_gl_bench.cpp
     LIBRARIES alrender
     SUPPORT llrender_test_checks llcommon_test_checks
