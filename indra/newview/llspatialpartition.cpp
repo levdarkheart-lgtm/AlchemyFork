@@ -2787,31 +2787,20 @@ void renderTexturePriority(LLDrawable* drawable)
 
 void renderPoints(LLDrawable* drawablep)
 {
-    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
     if (drawablep->getNumFaces())
     {
-        gGL.begin(LLRender::POINTS);
-        gGL.diffuseColor3f(1,1,1);
-#if LL_DARWIN
         gPipeline.beginMetalDebugPointBatch(drawablep->getNumFaces());
         std::size_t native_point_count = 0;
-#endif
         for (S32 i = 0; i < drawablep->getNumFaces(); i++)
         {
             LLFace * face = drawablep->getFace(i);
             if (face)
             {
-#if LL_DARWIN
                 gPipeline.captureMetalDebugPoint(face->mCenterLocal);
                 ++native_point_count;
-#endif
-                gGL.vertex3fv(face->mCenterLocal.mV);
             }
         }
-#if LL_DARWIN
         gPipeline.endMetalDebugPointBatch(native_point_count);
-#endif
-        gGL.end();
     }
 }
 

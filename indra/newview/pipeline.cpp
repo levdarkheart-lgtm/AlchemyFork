@@ -4882,8 +4882,6 @@ void LLPipeline::beginMetalDebugPointBatch(std::size_t face_capacity)
         return;
     }
 
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
     if (!capture.complete || capture.debug_point_batch_active ||
         face_capacity == 0 ||
         face_capacity > std::numeric_limits<std::uint32_t>::max() ||
@@ -4891,11 +4889,7 @@ void LLPipeline::beginMetalDebugPointBatch(std::size_t face_capacity)
             std::numeric_limits<std::size_t>::max() -
                 capture.debug_points.size() ||
         capture.render_debug_order ==
-            std::numeric_limits<U64>::max() ||
-        LLGLDepthTest::depthEnabled() ||
-        LLGLDepthTest::depthWriteEnabled() ||
-        !LLGLState::isEnabled(GL_BLEND) || gGL.getPointSize() != 1.f ||
-        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+            std::numeric_limits<U64>::max())
     {
         capture.markIncomplete(__LINE__);
         capture.debug_points.clear();
