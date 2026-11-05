@@ -86,11 +86,8 @@ private:
     // setup by beginFooPass, [0] is static variant, [1] is rigged variant
     LLGLSLShader* simple_shader = nullptr;
     LLGLSLShader* fullbright_shader = nullptr;
-    LLGLSLShader* emissive_shader = nullptr;
-    LLGLSLShader* pbr_emissive_shader = nullptr;
     LLGLSLShader* pbr_shader = nullptr;
 
-    void drawEmissive(LLDrawInfo* draw);
     void renderEmissives(std::vector<LLDrawInfo*>& emissives,
                          bool particle_or_hud_particle);
     void renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives,

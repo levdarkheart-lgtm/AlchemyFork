@@ -195,13 +195,6 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // prepare shaders
     llassert(LLPipeline::sRenderDeferred);
 
-    emissive_shader = &gDeferredEmissiveProgram;
-    prepare_alpha_shader(emissive_shader, false, water_sign);
-
-    pbr_emissive_shader = &gPBRGlowProgram;
-    prepare_alpha_shader(pbr_emissive_shader, false, water_sign);
-
-
     fullbright_shader   =
         (LLPipeline::sImpostorRender) ? &gDeferredFullbrightAlphaMaskProgram :
         (LLPipeline::sRenderingHUDs) ? &gHUDFullbrightAlphaMaskAlphaProgram :
@@ -754,111 +747,64 @@ void LLDrawPoolAlpha::popTextureMatrix(bool tex_setup)
     }
 }
 
-void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
-{
-    LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::EMISSIVE_BRIGHTNESS, 1.f);
-    draw->mVertexBuffer->setBuffer();
-    draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
-}
-
-
 void LLDrawPoolAlpha::renderEmissives(
     std::vector<LLDrawInfo*>& emissives, bool particle_or_hud_particle)
 {
-    emissive_shader->bind();
-    emissive_shader->uniform1f(LLShaderMgr::EMISSIVE_BRIGHTNESS, 1.f);
-
+#if LL_DARWIN
     for (LLDrawInfo* draw : emissives)
     {
-#if LL_DARWIN
         gPipeline.captureMetalWorldPostWaterLegacyGlowBatch(
             *draw, particle_or_hud_particle);
-#endif
-        bool tex_setup = TexSetup(draw, false, emissive_shader);
-        drawEmissive(draw);
-        popTextureMatrix(tex_setup);
     }
+#else
+    (void)emissives;
+    (void)particle_or_hud_particle;
+#endif
 }
 
 void LLDrawPoolAlpha::renderPbrEmissives(
     std::vector<LLDrawInfo*>& emissives, bool particle_or_hud_particle)
 {
-    pbr_emissive_shader->bind();
-
+#if LL_DARWIN
     for (LLDrawInfo* draw : emissives)
     {
-#if LL_DARWIN
         gPipeline.captureMetalWorldPostWaterPBRGlowBatch(
             *draw, particle_or_hud_particle);
-#endif
-        llassert(draw->mGLTFMaterial);
-        LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
-        draw->mGLTFMaterial->bind(draw->mTexture);
-        setup_texture_matrix(*draw);
-        draw->mVertexBuffer->setBuffer();
-        draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
-        teardown_texture_matrix(*draw);
     }
+#else
+    (void)emissives;
+    (void)particle_or_hud_particle;
+#endif
 }
 
 void LLDrawPoolAlpha::renderRiggedEmissives(
     std::vector<LLDrawInfo*>& emissives, bool particle_or_hud_particle)
 {
-    LLGLDepthTest depth(GL_TRUE, GL_FALSE); //disable depth writes since "emissive" is additive so sorting doesn't matter
-    LLGLSLShader* shader = emissive_shader->riggedVariant();
-    shader->bind();
-    shader->uniform1f(LLShaderMgr::EMISSIVE_BRIGHTNESS, 1.f);
-
-    const LLVOAvatar* lastAvatar = nullptr;
-    U64 lastMeshId = 0;
-    bool skipLastSkin = false;
-
+#if LL_DARWIN
     for (LLDrawInfo* draw : emissives)
     {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("Emissives");
-
-        if (uploadMatrixPalette(draw->mAvatar, draw->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
-        {
-#if LL_DARWIN
-            gPipeline.captureMetalWorldPostWaterLegacyGlowBatch(
-                *draw, particle_or_hud_particle);
-#endif
-            bool tex_setup = TexSetup(draw, false, shader);
-            drawEmissive(draw);
-            popTextureMatrix(tex_setup);
-        }
+        gPipeline.captureMetalWorldPostWaterLegacyGlowBatch(
+            *draw, particle_or_hud_particle);
     }
+#else
+    (void)emissives;
+    (void)particle_or_hud_particle;
+#endif
 }
 
 void LLDrawPoolAlpha::renderRiggedPbrEmissives(
     std::vector<LLDrawInfo*>& emissives, bool particle_or_hud_particle)
 {
-    LLGLDepthTest depth(GL_TRUE, GL_FALSE); //disable depth writes since "emissive" is additive so sorting doesn't matter
-    pbr_emissive_shader->bind(true);
-
-    const LLVOAvatar* lastAvatar = nullptr;
-    U64 lastMeshId = 0;
-    bool skipLastSkin = false;
-
+#if LL_DARWIN
     for (LLDrawInfo* draw : emissives)
     {
-        if (!uploadMatrixPalette(draw->mAvatar, draw->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
-        { // failed to upload matrix palette, skip rendering
-            continue;
-        }
-
-#if LL_DARWIN
         gPipeline.captureMetalWorldPostWaterPBRGlowBatch(
             *draw, particle_or_hud_particle);
-#endif
-
-        LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
-        draw->mGLTFMaterial->bind(draw->mTexture);
-        setup_texture_matrix(*draw);
-        draw->mVertexBuffer->setBuffer();
-        draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
-        teardown_texture_matrix(*draw);
     }
+#else
+    (void)emissives;
+    (void)particle_or_hud_particle;
+#endif
 }
 
 void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
@@ -866,11 +812,6 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     bool initialized_lighting = false;
     bool light_enabled = true;
-
-    // The last shader bound through bindDeferredShaderFast. Used to decide whether restoring
-    // after the emissive excursion needs the deferred path (which re-binds the shadow maps)
-    // or a plain bind().
-    LLGLSLShader* deferred_bound_shader = nullptr;
 
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
@@ -984,7 +925,6 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     if (current_shader != target_shader)
                     {
                         gPipeline.bindDeferredShaderFast(*target_shader);
-                        deferred_bound_shader = target_shader;
                     }
 
                     params.mGLTFMaterial->bind(params.mTexture);
@@ -1078,7 +1018,6 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     {// If we need shaders, and we're not ALREADY using the proper shader, then bind it
                     // (this way we won't rebind shaders unnecessarily).
                         gPipeline.bindDeferredShaderFast(*target_shader);
-                        deferred_bound_shader = target_shader;
 
                         if (params.mFullbright)
                         { // make sure the bind the exposure map for fullbright shaders so they can cancel out exposure
@@ -1185,81 +1124,33 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                 popTextureMatrix(tex_setup);
             }
 
-            // render emissive faces into alpha channel for bloom effects
-            //
-            // Skipped in an impostor bake and a cutout frame. These batches write ONLY alpha
-            // (their blend mode leaves colour untouched), and in both that channel is
-            // coverage -- glow accumulated into it would read back as extra opacity. Nothing
-            // is lost in a bake: the coverage stamp overwrote this glow before the impostor
-            // was ever sampled, so it has never reached the screen. It also saves the whole
-            // excursion, including the shader rebind that follows it.
+            // Append the group-local emissive replay to the native Metal
+            // post-water transaction. Skipped in an impostor bake and a
+            // cutout frame because alpha carries coverage in those owners.
             if (!depth_only && !LLPipeline::alphaWritesCoverage())
             {
-                gPipeline.enableLightsDynamic();
-
-                // install glow-accumulating blend mode
-                // don't touch color, add to alpha (glow)
-                gGL.blendFunc(LLRender::BF_ZERO, LLRender::BF_ONE, LLRender::BF_ONE, LLRender::BF_ONE);
-
-                bool rebind = false;
-                LLGLSLShader* lastShader = current_shader;
-
-                // The emissive programs declare the indexed-texture array (tex0..tex20) as
-                // plain sampler2D, and that range covers the units the alpha shader's shadow
-                // maps sit on -- 8..13 in practice. No explicit release is needed for the
-                // excursion: LLGLSLShader::bind() drops the compare-sampler units when it
-                // binds any program that declares no shadow samplers, emissives included.
-                // The restore below still has to come back through the deferred path.
-
                 if (!emissives.empty())
                 {
-                    light_enabled = true;
                     renderEmissives(emissives, is_particle_or_hud_particle);
-                    rebind = true;
                 }
 
                 if (!pbr_emissives.empty())
                 {
-                    light_enabled = true;
                     renderPbrEmissives(
                         pbr_emissives, is_particle_or_hud_particle);
-                    rebind = true;
                 }
 
                 if (!rigged_emissives.empty())
                 {
-                    light_enabled = true;
                     renderRiggedEmissives(
                         rigged_emissives, is_particle_or_hud_particle);
-                    rebind = true;
                 }
 
                 if (!pbr_rigged_emissives.empty())
                 {
-                    light_enabled = true;
                     renderRiggedPbrEmissives(
                         pbr_rigged_emissives,
                         is_particle_or_hud_particle);
-                    rebind = true;
-                }
-
-                // restore our alpha blend mode
-                gGL.blendFunc(mColorSFactor, mColorDFactor, mAlphaSFactor, mAlphaDFactor);
-
-                if (lastShader && rebind)
-                {
-                    // Restore through the deferred path when that is how this shader was
-                    // bound, so the shadow maps released above come back. A plain bind()
-                    // would leave them unbound and silently drop shadowing on every alpha
-                    // draw after the first emissive batch.
-                    if (lastShader == deferred_bound_shader)
-                    {
-                        gPipeline.bindDeferredShaderFast(*lastShader);
-                    }
-                    else
-                    {
-                        lastShader->bind();
-                    }
                 }
             }
         }
@@ -1273,8 +1164,8 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
     //
     // Deliberately NOT unbindDeferredShader: that unbinds by a single shader's channel
     // layout and asserts each unit still holds the type that shader expects. By the time the
-    // pass ends the bound shader may be a different one -- an emissive variant, or a restored
-    // earlier shader -- so the units reflect somebody else's layout and the check trips.
+    // pass ends the bound shader may be a different alpha variant, so the
+    // units can reflect somebody else's layout and the check trips.
     // unbindShadowMaps tracks units directly and needs no such assumption.
     gPipeline.unbindShadowMaps();
 

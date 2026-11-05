@@ -183,7 +183,6 @@ LLGLSLShader            gDeferredFullbrightAlphaMaskProgram;
 LLGLSLShader            gHUDFullbrightAlphaMaskProgram;
 LLGLSLShader            gDeferredFullbrightAlphaMaskAlphaProgram;
 LLGLSLShader            gHUDFullbrightAlphaMaskAlphaProgram;
-LLGLSLShader            gDeferredEmissiveProgram;
 #if !LL_DARWIN
 LLGLSLShader            gDeferredPostProgram;
 LLGLSLShader            gDeferredPostProgramNoNear;
@@ -235,7 +234,6 @@ LLGLSLShader            gRlvSphereProgram;
 // Deferred materials shaders
 LLGLSLShader            gDeferredMaterialProgram[LLMaterial::SHADER_COUNT];
 LLGLSLShader            gHUDPBROpaqueProgram;
-LLGLSLShader            gPBRGlowProgram;
 LLGLSLShader            gHUDPBRAlphaProgram;
 LLGLSLShader            gDeferredPBRAlphaProgram;
 LLGLSLShader            gDeferredPBRAlphaImpostorProgram;
@@ -1334,7 +1332,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gHUDFullbrightAlphaMaskProgram.unload();
         gDeferredFullbrightAlphaMaskAlphaProgram.unload();
         gHUDFullbrightAlphaMaskAlphaProgram.unload();
-        gDeferredEmissiveProgram.unload();
 #if !LL_DARWIN
         gDeferredPostProgram.unload();
         gDeferredPostProgramNoNear.unload();
@@ -1382,7 +1379,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         LLGLSLShader::sIndexedLegacyMaterials = false;
 
         gHUDPBROpaqueProgram.unload();
-        gPBRGlowProgram.unload();
         gDeferredPBRAlphaProgram.unload();
         gDeferredPBRAlphaImpostorProgram.unload();
         for (U32 paint_type = 0; paint_type < TERRAIN_PAINT_TYPE_COUNT; ++paint_type)
@@ -1499,22 +1495,9 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
     // Native G-buffer capture accepts indexed legacy batches directly. Keep
     // formation enabled when the shared slot width exists; retained indexed
-    // glow and shadow programs validate their own GL consumers below.
+    // shadow programs validate their own GL consumers below.
     LLGLSLShader::sIndexedLegacyMaterials =
         LLGLSLShader::sIndexedGLTFChannels >= 2;
-
-    {
-        gPBRGlowProgram.mName = " PBR Glow Shader";
-        gPBRGlowProgram.mFeatures.hasSrgb = true;
-        gPBRGlowProgram.mShaderFiles.clear();
-        gPBRGlowProgram.mShaderFiles.push_back(make_pair("deferred/pbrglowV.glsl", GL_VERTEX_SHADER));
-        gPBRGlowProgram.mShaderFiles.push_back(make_pair("deferred/pbrglowF.glsl", GL_FRAGMENT_SHADER));
-        gPBRGlowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gPBRGlowProgram);
-
-        built(gPBRGlowProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gPBRGlowProgram);
-    }
 
     {
         gHUDPBROpaqueProgram.mName = "HUD PBR Opaque Shader";
@@ -2152,22 +2135,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gHUDFullbrightShinyProgram);
 
         built(gHUDFullbrightShinyProgram.createShader(LLGLSLShader::VARIANT_CLASSIC), gHUDFullbrightShinyProgram);
-    }
-
-    {
-        gDeferredEmissiveProgram.mName = "Deferred Emissive Shader";
-        gDeferredEmissiveProgram.mFeatures.calculatesAtmospherics = true;
-        gDeferredEmissiveProgram.mFeatures.hasGamma = true;
-        gDeferredEmissiveProgram.mFeatures.hasAtmospherics = true;
-        gDeferredEmissiveProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gDeferredEmissiveProgram.mShaderFiles.clear();
-        gDeferredEmissiveProgram.mShaderFiles.push_back(make_pair("deferred/emissiveV.glsl", GL_VERTEX_SHADER));
-        gDeferredEmissiveProgram.mShaderFiles.push_back(make_pair("deferred/emissiveF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredEmissiveProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredEmissiveProgram);
-
-        built(gDeferredEmissiveProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDeferredEmissiveProgram);
     }
 
     {
