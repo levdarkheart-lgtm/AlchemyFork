@@ -569,10 +569,11 @@ public:
     U32         renderRigid();
     U32         renderSkinned();
     U32         renderTransparent(bool first_pass);
-    void        captureMetalReflectionProbeRigid();
-    void        captureMetalReflectionProbeOpaque();
-    void        captureMetalReflectionProbeTransparent();
-    void        captureMetalReflectionProbeImpostor();
+    void        captureMetalDeferredRigid();
+    void        captureMetalDeferredOpaque();
+    void        captureMetalDeferredTransparentMask();
+    void        captureMetalPostDeferredTransparent();
+    void        captureMetalDeferredImpostor();
     void        renderCollisionVolumes();
     void        renderBones(const std::string &selected_joint = std::string());
     virtual void renderJoints();

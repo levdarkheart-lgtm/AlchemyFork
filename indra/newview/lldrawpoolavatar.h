@@ -85,12 +85,10 @@ typedef enum
     /*virtual*/ void endDeferredPass(S32 pass);
     /*virtual*/ void renderDeferred(S32 pass);
 
-    /// Publish one deferred reflection-probe avatar pass from CPU-owned
-    /// avatar/joint state before the retained GL pool executes.
-    void captureMetalReflectionProbe(S32 pass);
-    /// Publish transparent hair/skirt at the ordered post-deferred boundary
-    /// without making the retained GL draw the native producer.
-    void captureMetalReflectionProbeTransparent();
+    /// Publish one deferred avatar pass from CPU-owned avatar/joint state.
+    void captureMetalDeferred(S32 pass);
+    /// Publish transparent hair/skirt at the ordered post-deferred boundary.
+    void captureMetalPostDeferred();
 
     /*virtual*/ S32 getNumPostDeferredPasses();
     /*virtual*/ void beginPostDeferredPass(S32 pass);
@@ -111,19 +109,11 @@ typedef enum
     void endImpostor();
     void endSkinned();
 
-    void beginDeferredRigid();
-    void beginDeferredImpostor();
-    void beginDeferredSkinned();
-
-    void endDeferredRigid();
-    void endDeferredImpostor();
-    void endDeferredSkinned();
-
     /*virtual*/ LLViewerTexture *getDebugTexture();
     /*virtual*/ LLColor3 getDebugColor() const; // For AGP debug display
 
     void renderAvatars(LLVOAvatar *single_avatar, S32 pass = -1); // renders only one avatar if single_avatar is not null.
-    LLVOAvatar* getMetalReflectionProbeAvatar(S32 pass) const;
+    LLVOAvatar* getMetalAvatar(S32 pass) const;
 
     // Which body meshes the pass drawing now draws. The opaque shadow pass casts a body through the depth-only
     // program, and SHADOW_PASS_AVATAR_OPAQUE_CUT the bodies whose bakes the deferred pass cuts out (sMinimumAlpha)

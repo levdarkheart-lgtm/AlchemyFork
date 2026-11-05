@@ -1021,7 +1021,8 @@ public:
                                    const F32* wind = nullptr,
                                    const F32* sin_wave = nullptr,
                                    const F32* gravity = nullptr,
-                                   const F32* cloth_depth = nullptr);
+                                   const F32* cloth_depth = nullptr,
+                                   bool direct_alpha = false);
     void beginMetalWorldImpostorPass();
     void beginMetalImpostorBakeCapture(
         const LLUUID& avatar_id, U32 width, U32 height);

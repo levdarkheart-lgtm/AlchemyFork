@@ -179,7 +179,6 @@ extern LLGLSLShader         gAvatarProgram;
 extern LLGLSLShader         gImpostorProgram;
 
 // Deferred rendering shaders
-extern LLGLSLShader         gDeferredImpostorProgram;
 extern LLGLSLShader         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 extern LLGLSLShader         gDeferredTerrainProgram;
 extern LLGLSLShader         gDeferredTreeShadowProgram;
@@ -191,7 +190,6 @@ extern LLGLSLShader         gDeferredSunProgram;
 extern LLGLSLShader         gDeferredSunProbeProgram;
 extern LLGLSLShader         gDeferredBlurLightProgram;
 extern LLGLSLShader         gDeferredBlurLightComputeProgram;
-extern LLGLSLShader         gDeferredAvatarProgram;
 extern LLGLSLShader         gDeferredSoftenProgram;
 extern LLGLSLShader         gDeferredSoftenSkyProgram;
 extern LLGLSLShader         gDeferredShadowProgram;
@@ -231,7 +229,6 @@ extern LLGLSLShader         gDeferredAvatarShadowProgram;
 extern LLGLSLShader         gDeferredAvatarCutShadowProgram;
 extern LLGLSLShader         gDeferredAvatarAlphaShadowProgram;
 extern LLGLSLShader         gDeferredAvatarAlphaMaskShadowProgram;
-extern LLGLSLShader         gDeferredAvatarAlphaProgram;
 extern LLGLSLShader         gDeferredBufferVisualProgram;
 extern LLGLSLShader         gBlitWithEffectsProgram;
 #if !LL_DARWIN

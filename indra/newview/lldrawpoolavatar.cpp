@@ -155,9 +155,6 @@ S32 AVATAR_VERTEX_BYTES = 48;
 
 bool gAvatarEmbossBumpMap = false;
 static bool sRenderingSkinned = false;
-S32 normal_channel = -1;
-S32 specular_channel = -1;
-S32 emissive_channel = -1;
 S32 cube_channel = -1;
 
 LLDrawPoolAvatar::LLDrawPoolAvatar(U32 type) :
@@ -223,64 +220,28 @@ void LLDrawPoolAvatar::beginDeferredPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
+    const S32 effective_pass = pass +
+        (LLPipeline::sImpostorRender ? 1 : 0);
+    if (effective_pass == 0)
+    {
+        LLVOAvatar::sNumVisibleAvatars = 0;
+    }
     sSkipTransparent = true;
     is_deferred_render = true;
-
-    if (LLPipeline::sImpostorRender)
-    { //impostor pass does not have impostor rendering
-        ++pass;
-    }
-
-    switch (pass)
-    {
-    case 0:
-        beginDeferredImpostor();
-        break;
-    case 1:
-        beginDeferredRigid();
-        break;
-    case 2:
-        beginDeferredSkinned();
-        break;
-    }
 }
 
 void LLDrawPoolAvatar::endDeferredPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
+    (void)pass;
     sSkipTransparent = false;
     is_deferred_render = false;
-
-    if (LLPipeline::sImpostorRender)
-    {
-        ++pass;
-    }
-
-    switch (pass)
-    {
-    case 0:
-        endDeferredImpostor();
-        break;
-    case 1:
-        endDeferredRigid();
-        break;
-    case 2:
-        endDeferredSkinned();
-        break;
-    }
 }
 
 void LLDrawPoolAvatar::renderDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-
-    // The deferred pass enables GL_FRAMEBUFFER_SRGB once (renderGeomDeferred), which is what
-    // the linear-shading skin writer wants. The impostor billboard and rigid passes write
-    // sRGB directly, so they opt back OUT -- gated on the same flag that turns the sampler
-    // decode on (see the avatar diffuse binds in llviewerjointmesh).
-    // beginDeferredPass has already bound sVertexProgram for this pass.
-    LLGLDisable srgb((sVertexProgram && sVertexProgram->mLinearDiffuse) ? 0 : GL_FRAMEBUFFER_SRGB);
 
     if (LLPipeline::sImpostorRender)
     {
@@ -289,14 +250,15 @@ void LLDrawPoolAvatar::renderDeferred(S32 pass)
         {
             return;
         }
-        renderAvatars(NULL, pass);
-        return;
     }
-
-    renderAvatars(NULL, pass); // render all avatars
+#if LL_DARWIN
+    captureMetalDeferred(pass);
+#else
+    (void)pass;
+#endif
 }
 
-LLVOAvatar* LLDrawPoolAvatar::getMetalReflectionProbeAvatar(S32 pass) const
+LLVOAvatar* LLDrawPoolAvatar::getMetalAvatar(S32 pass) const
 {
     if (mDrawFace.empty())
     {
@@ -354,14 +316,14 @@ LLVOAvatar* LLDrawPoolAvatar::getMetalReflectionProbeAvatar(S32 pass) const
     return avatar;
 }
 
-void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
+void LLDrawPoolAvatar::captureMetalDeferred(S32 pass)
 {
 #if LL_DARWIN
     if (pass < 0 || pass >= getNumDeferredPasses())
     {
         return;
     }
-    LLVOAvatar* avatar = getMetalReflectionProbeAvatar(pass);
+    LLVOAvatar* avatar = getMetalAvatar(pass);
     if (!avatar)
     {
         return;
@@ -374,6 +336,7 @@ void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
 
     if (pass == 0)
     {
+        ++LLVOAvatar::sNumVisibleAvatars;
         if (!impostor && LLPipeline::sUnderWaterRender)
         {
             return;
@@ -382,7 +345,7 @@ void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
             avatar->mImpostor.isComplete())
         {
             gPipeline.beginMetalWorldImpostorPass();
-            avatar->captureMetalReflectionProbeImpostor();
+            avatar->captureMetalDeferredImpostor();
             gPipeline.endMetalWorldGBufferPass();
         }
         return;
@@ -391,7 +354,7 @@ void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
     if (pass == 1)
     {
         gPipeline.beginMetalWorldAvatarPass(false, false);
-        avatar->captureMetalReflectionProbeRigid();
+        avatar->captureMetalDeferredRigid();
         gPipeline.endMetalWorldGBufferPass();
         return;
     }
@@ -409,17 +372,24 @@ void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
         avatar_cloth ? cloth_uniforms.sin_wave.mV : nullptr,
         avatar_cloth ? cloth_uniforms.gravity.mV : nullptr,
         avatar_cloth ? cloth_uniforms.depth.mV : nullptr);
-    avatar->captureMetalReflectionProbeOpaque();
+    avatar->captureMetalDeferredOpaque();
+    if (LLPipeline::sImpostorRender)
+    {
+        // Impostor G-buffer baking has no later avatar-alpha pool. Hair,
+        // eyelashes and skirts therefore use the same alpha-mask writer as
+        // the retained deferred pass, but are enumerated directly once.
+        avatar->captureMetalDeferredTransparentMask();
+    }
     gPipeline.endMetalWorldGBufferPass();
 #else
     (void)pass;
 #endif
 }
 
-void LLDrawPoolAvatar::captureMetalReflectionProbeTransparent()
+void LLDrawPoolAvatar::captureMetalPostDeferred()
 {
 #if LL_DARWIN
-    LLVOAvatar* avatar = getMetalReflectionProbeAvatar(2);
+    LLVOAvatar* avatar = getMetalAvatar(2);
     if (!avatar)
     {
         return;
@@ -436,8 +406,9 @@ void LLDrawPoolAvatar::captureMetalReflectionProbeTransparent()
         avatar_cloth ? cloth_uniforms.wind.mV : nullptr,
         avatar_cloth ? cloth_uniforms.sin_wave.mV : nullptr,
         avatar_cloth ? cloth_uniforms.gravity.mV : nullptr,
-        avatar_cloth ? cloth_uniforms.depth.mV : nullptr);
-    avatar->captureMetalReflectionProbeTransparent();
+        avatar_cloth ? cloth_uniforms.depth.mV : nullptr,
+        true);
+    avatar->captureMetalPostDeferredTransparent();
     gPipeline.endMetalWorldGBufferPass();
 #endif
 }
@@ -448,14 +419,10 @@ S32 LLDrawPoolAvatar::getNumPostDeferredPasses()
     {
         // Nothing left for this pass to do in a bake, and what it did was wrong.
         //
-        // With sImpostorRender the ++pass hack resolved render(0) to renderRigid() -- the
-        // eyeballs -- which the DEFERRED rigid pass has already written into the impostor's
-        // G-buffer. Drawing them a second time through gDeferredAvatarAlphaProgram composited
-        // a fully lit copy on top of the albedo capture, so they were lit at bake and again
-        // at composite, and shaded with the main camera's sun direction and shadow matrices
-        // rather than the bake camera's. The avatar's transparent parts do not need this pass
-        // either: LLVOAvatar::renderSkinned forces renderTransparent on for impostors, so
-        // hair and skirts are captured by the deferred pass too.
+        // The rigid pass already wrote the eyes into the impostor G-buffer.
+        // Hair and skirts are enumerated explicitly by captureMetalDeferred()
+        // in that same G-buffer transaction, so no later avatar-alpha pass is
+        // required for an impostor bake.
         //
         // Returning zero skips begin/render/end entirely, including the deferred shader bind.
         return 0;
@@ -468,27 +435,19 @@ void LLDrawPoolAvatar::beginPostDeferredPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
+    (void)pass;
     sSkipOpaque = true;
     sShaderLevel = mShaderLevel;
-    sVertexProgram = gDeferredAvatarAlphaProgram.selectVariant();
     sRenderingSkinned = true;
-
-    gPipeline.bindDeferredShader(*sVertexProgram);
-
-    sVertexProgram->setMinimumAlpha(LLDrawPoolAvatar::sMinimumAlpha);
-
-    sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
 }
 
 void LLDrawPoolAvatar::endPostDeferredPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-    // if we're in software-blending, remember to set the fence _after_ we draw so we wait till this rendering is done
+
+    (void)pass;
     sRenderingSkinned = false;
     sSkipOpaque = false;
-
-    gPipeline.unbindDeferredShader(*sVertexProgram);
-    sDiffuseChannel = 0;
     sShaderLevel = mShaderLevel;
 }
 
@@ -496,15 +455,11 @@ void LLDrawPoolAvatar::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
+    (void)pass;
     is_post_deferred_render = true;
-    if (LLPipeline::sImpostorRender)
-    { //HACK for impostors so actual pass ends up being proper pass
-        render(0);
-    }
-    else
-    {
-        render(2);
-    }
+#if LL_DARWIN
+    captureMetalPostDeferred();
+#endif
     is_post_deferred_render = false;
 }
 
@@ -789,7 +744,7 @@ void LLDrawPoolAvatar::captureMetalDirectionalShadow()
         {
             sSkipTransparent = true;
             sShadowCutBakeLeft = false;
-            avatar->captureMetalReflectionProbeOpaque();
+            avatar->captureMetalDeferredOpaque();
             mShadowCutBakes = sShadowCutBakeLeft;
             sSkipTransparent = false;
         }
@@ -798,15 +753,14 @@ void LLDrawPoolAvatar::captureMetalDirectionalShadow()
             if (mShadowCutBakes)
             {
                 sSkipTransparent = true;
-                avatar->captureMetalReflectionProbeOpaque();
-                avatar->captureMetalReflectionProbeOpaque();
+                avatar->captureMetalDeferredOpaque();
                 sSkipTransparent = false;
             }
         }
         else
         {
             sSkipOpaque = true;
-            avatar->captureMetalReflectionProbeTransparent();
+            avatar->captureMetalDeferredTransparentMask();
             sSkipOpaque = false;
         }
         gPipeline.endMetalSpotShadowAvatarPass();
@@ -970,63 +924,6 @@ void LLDrawPoolAvatar::endRigid()
     }
 }
 
-void LLDrawPoolAvatar::beginDeferredImpostor()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-
-    LLVOAvatar::sNumVisibleAvatars = 0;
-
-    // The mirror pass's corner clips behind the mirror's plane (impostorF's mirrorClip).
-    sVertexProgram = gDeferredImpostorProgram.selectVariant();
-    specular_channel = sVertexProgram->enableTexture(LLViewerShaderMgr::SPECULAR_MAP);
-    normal_channel = sVertexProgram->enableTexture(LLViewerShaderMgr::NORMAL_MAP);
-    // -1 when the program has no emissive sampler (RenderEnableEmissiveBuffer off), which is
-    // also exactly when the impostor target has no attachment 3 to bind.
-    emissive_channel = sVertexProgram->enableTexture(LLViewerShaderMgr::EMISSIVE_MAP);
-    sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-    sVertexProgram->bind();
-    sVertexProgram->setMinimumAlpha(0.01f);
-#if LL_DARWIN
-    gPipeline.beginMetalWorldImpostorPass();
-#endif
-}
-
-void LLDrawPoolAvatar::endDeferredImpostor()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
-#endif
-    sShaderLevel = mShaderLevel;
-    sVertexProgram->disableTexture(LLViewerShaderMgr::NORMAL_MAP);
-    sVertexProgram->disableTexture(LLViewerShaderMgr::SPECULAR_MAP);
-    sVertexProgram->disableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-    gPipeline.unbindDeferredShader(*sVertexProgram);
-   sVertexProgram = NULL;
-   sDiffuseChannel = 0;
-}
-
-void LLDrawPoolAvatar::beginDeferredRigid()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-
-    sVertexProgram = gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.selectVariant();
-    sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-    sVertexProgram->bind();
-    sVertexProgram->setMinimumAlpha(LLDrawPoolAvatar::sMinimumAlpha);
-}
-
-void LLDrawPoolAvatar::endDeferredRigid()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-
-    sShaderLevel = mShaderLevel;
-    sVertexProgram->disableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-    sVertexProgram->unbind();
-}
-
-
 void LLDrawPoolAvatar::beginSkinned()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
@@ -1064,33 +961,6 @@ void LLDrawPoolAvatar::endSkinned()
     sVertexProgram->disableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
     sVertexProgram->disableTexture(LLViewerShaderMgr::BUMP_MAP);
     sVertexProgram->unbind();
-    sShaderLevel = mShaderLevel;
-
-}
-
-void LLDrawPoolAvatar::beginDeferredSkinned()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-
-    sShaderLevel = mShaderLevel;
-    sVertexProgram = gDeferredAvatarProgram.selectVariant();
-    sRenderingSkinned = true;
-
-    sVertexProgram->bind();
-    sVertexProgram->setMinimumAlpha(LLDrawPoolAvatar::sMinimumAlpha);
-    sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-}
-
-void LLDrawPoolAvatar::endDeferredSkinned()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-
-    // if we're in software-blending, remember to set the fence _after_ we draw so we wait till this rendering is done
-    sRenderingSkinned = false;
-    sVertexProgram->unbind();
-
-    sVertexProgram->disableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-
     sShaderLevel = mShaderLevel;
 
 }
@@ -1204,21 +1074,6 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
 //      if (impostor || (LLVOAvatar::AV_DO_NOT_RENDER == avatarp->getVisualMuteSettings() && !avatarp->needsImpostorUpdate()))
         if (impostor || (LLVOAvatar::AOA_NORMAL != avatarp->getOverallAppearance() && !avatarp->needsImpostorUpdate()))
         {
-            if (LLPipeline::sRenderDeferred && avatarp->mImpostor.isComplete())
-            {
-                if (normal_channel > -1)
-                {
-                    avatarp->mImpostor.bindTexture(2, normal_channel);
-                }
-                if (specular_channel > -1)
-                {
-                    avatarp->mImpostor.bindTexture(1, specular_channel);
-                }
-                if (emissive_channel > -1)
-                {
-                    avatarp->mImpostor.bindTexture(3, emissive_channel);
-                }
-            }
             avatarp->renderImpostor(avatarp->getMutedAVColor(), sDiffuseChannel);
         }
         return;

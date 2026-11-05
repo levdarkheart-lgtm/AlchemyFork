@@ -63,6 +63,7 @@ public:
     // Traverse the same active LOD branch as render(), but publish avatar
     // geometry to the native world producer without binding or drawing GL.
     void captureMetalWorldAvatar(F32 pixel_area, bool is_dummy = false);
+    void captureMetalWorldAvatarTransparentMask(F32 pixel_area);
     void captureMetalWorldAvatarTransparent(F32 pixel_area,
                                             bool is_dummy = false);
     virtual void captureMetalWorldAvatarShape(bool is_dummy) {}

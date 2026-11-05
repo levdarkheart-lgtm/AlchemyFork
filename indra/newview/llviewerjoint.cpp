@@ -210,6 +210,43 @@ void LLViewerJoint::captureMetalWorldAvatar(F32 pixel_area, bool is_dummy)
 #endif
 }
 
+void LLViewerJoint::captureMetalWorldAvatarTransparentMask(F32 pixel_area)
+{
+#if LL_DARWIN
+    if (mValid && isTransparent())
+    {
+        captureMetalWorldAvatarShape(false);
+    }
+
+    for (LLJoint* child : mChildren)
+    {
+        LLAvatarJoint* avatar_joint = static_cast<LLAvatarJoint*>(child);
+        const F32 joint_lod = avatar_joint->getLOD();
+        if (pixel_area >= joint_lod || sDisableLOD)
+        {
+            LLViewerJoint* viewer_joint =
+                dynamic_cast<LLViewerJoint*>(avatar_joint);
+            llassert(viewer_joint);
+            if (viewer_joint)
+            {
+                viewer_joint->captureMetalWorldAvatarTransparentMask(
+                    pixel_area);
+            }
+            else
+            {
+                gPipeline.invalidateMetalReflectionProbeScene();
+            }
+            if (joint_lod != DEFAULT_AVATAR_JOINT_LOD)
+            {
+                break;
+            }
+        }
+    }
+#else
+    (void)pixel_area;
+#endif
+}
+
 void LLViewerJoint::captureMetalWorldAvatarTransparent(
     F32 pixel_area, bool is_dummy)
 {

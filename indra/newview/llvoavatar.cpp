@@ -5902,7 +5902,7 @@ U32 LLVOAvatar::renderSkinned()
     return num_indices;
 }
 
-void LLVOAvatar::captureMetalReflectionProbeOpaque()
+void LLVOAvatar::captureMetalDeferredOpaque()
 {
 #if LL_DARWIN
     if (!mIsBuilt || mDrawable.isNull())
@@ -6007,7 +6007,49 @@ void LLVOAvatar::captureMetalReflectionProbeOpaque()
 #endif
 }
 
-void LLVOAvatar::captureMetalReflectionProbeTransparent()
+void LLVOAvatar::captureMetalDeferredTransparentMask()
+{
+#if LL_DARWIN
+    if (!mIsBuilt || (isSelf() && !gAgent.needsRenderAvatar()))
+    {
+        return;
+    }
+
+    if (isWearingWearableType(LLWearableType::WT_SKIRT) &&
+        (isUIAvatar() || isTextureVisible(TEX_SKIRT_BAKED)))
+    {
+        if (LLViewerJoint* skirt = getViewerJoint(MESH_ID_SKIRT))
+        {
+            skirt->captureMetalWorldAvatarTransparentMask(
+                mAdjustedPixelArea);
+        }
+    }
+
+    if (!isSelf() || gAgent.needsRenderHead() || LLPipeline::sShadowRender)
+    {
+        if (isTextureVisible(TEX_HEAD_BAKED))
+        {
+            if (LLViewerJoint* eyelashes =
+                    getViewerJoint(MESH_ID_EYELASH))
+            {
+                eyelashes->captureMetalWorldAvatarTransparentMask(
+                    mAdjustedPixelArea);
+            }
+        }
+        if (isTextureVisible(TEX_HAIR_BAKED) &&
+            getOverallAppearance() != AOA_JELLYDOLL)
+        {
+            if (LLViewerJoint* hair = getViewerJoint(MESH_ID_HAIR))
+            {
+                hair->captureMetalWorldAvatarTransparentMask(
+                    mAdjustedPixelArea);
+            }
+        }
+    }
+#endif
+}
+
+void LLVOAvatar::captureMetalPostDeferredTransparent()
 {
 #if LL_DARWIN
     if (!mIsBuilt || (isSelf() && !gAgent.needsRenderAvatar()))
@@ -6132,7 +6174,7 @@ U32 LLVOAvatar::renderRigid()
     return num_indices;
 }
 
-void LLVOAvatar::captureMetalReflectionProbeRigid()
+void LLVOAvatar::captureMetalDeferredRigid()
 {
 #if LL_DARWIN
     if (!mIsBuilt ||
@@ -6183,7 +6225,7 @@ void LLVOAvatar::getImpostorRenderGeometry(
     normal_rotation.setMul(bake_view, main_view);
 }
 
-void LLVOAvatar::captureMetalReflectionProbeImpostor()
+void LLVOAvatar::captureMetalDeferredImpostor()
 {
 #if LL_DARWIN
     LLVector3 position;

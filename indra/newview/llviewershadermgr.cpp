@@ -131,12 +131,9 @@ LLGLSLShader            gCrossFilterProgram;
 LLGLSLShader            gLensDirtGenProgram;
 
 // Deferred rendering shaders
-LLGLSLShader            gDeferredImpostorProgram;
 LLGLSLShader            gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 LLGLSLShader            gDeferredTerrainProgram;
 LLGLSLShader            gDeferredTreeShadowProgram;
-LLGLSLShader            gDeferredAvatarProgram;
-LLGLSLShader            gDeferredAvatarAlphaProgram;
 LLGLSLShader            gDeferredLightProgram;
 LLGLSLShader            gDeferredMultiLightProgram[16];
 LLGLSLShader            gDeferredSpotLightProgram;
@@ -1097,7 +1094,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
     {
         gDeferredTreeShadowProgram.unload();
         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.unload();
-        gDeferredImpostorProgram.unload();
         gDeferredTerrainProgram.unload();
         gDeferredLightProgram.unload();
         for (U32 i = 0; i < LL_DEFERRED_MULTI_LIGHT_COUNT; ++i)
@@ -1123,8 +1119,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredAvatarCutShadowProgram.unload();
         gDeferredAvatarAlphaShadowProgram.unload();
         gDeferredAvatarAlphaMaskShadowProgram.unload();
-        gDeferredAvatarProgram.unload();
-        gDeferredAvatarAlphaProgram.unload();
 #if !LL_DARWIN
         gDeferredPostProgram.unload();
         gDeferredPostProgramNoNear.unload();
@@ -1282,19 +1276,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredTreeShadowProgram.mShaderFiles.push_back(make_pair("deferred/treeShadowF.glsl", GL_FRAGMENT_SHADER));
         gDeferredTreeShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         built(gDeferredTreeShadowProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDeferredTreeShadowProgram);
-    }
-
-    {
-        gDeferredImpostorProgram.mName = "Deferred Impostor Shader";
-        gDeferredImpostorProgram.mFeatures.hasSrgb = true;
-        gDeferredImpostorProgram.mShaderFiles.clear();
-        gDeferredImpostorProgram.mShaderFiles.push_back(make_pair("deferred/impostorV.glsl", GL_VERTEX_SHADER));
-        gDeferredImpostorProgram.mShaderFiles.push_back(make_pair("deferred/impostorF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredImpostorProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredImpostorProgram);
-
-        built(gDeferredImpostorProgram.createShader(mirror_variant()), gDeferredImpostorProgram);
     }
 
     {
@@ -1645,7 +1626,7 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredAvatarShadowProgram.mShaderFiles.push_back(make_pair("deferred/avatarShadowV.glsl", GL_VERTEX_SHADER));
         gDeferredAvatarShadowProgram.mShaderFiles.push_back(make_pair("deferred/avatarShadowF.glsl", GL_FRAGMENT_SHADER));
         gDeferredAvatarShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        // The body casts the cloth gDeferredAvatarProgram draws
+        // The body casts the cloth drawn by the native avatar pass.
         gDeferredAvatarShadowProgram.clearPermutations();
         if (mInputs.mLocal.mAvatarCloth)
         {
@@ -1725,65 +1706,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         gDeferredTerrainProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         built(gDeferredTerrainProgram.createShader(mirror_variant()), gDeferredTerrainProgram);
-    }
-
-    {
-        gDeferredAvatarProgram.mName = "Deferred Avatar Shader";
-        gDeferredAvatarProgram.mFeatures.hasSkinning = true;
-        gDeferredAvatarProgram.mShaderFiles.clear();
-        gDeferredAvatarProgram.mShaderFiles.push_back(make_pair("deferred/avatarV.glsl", GL_VERTEX_SHADER));
-        gDeferredAvatarProgram.mShaderFiles.push_back(make_pair("deferred/avatarF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredAvatarProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredAvatarProgram.clearPermutations();
-
-        // Skin composite is decoded on the sampler and the gbuffer write re-encodes; see the
-        // avatar diffuse binds in llviewerjointmesh and the hoisted FRAMEBUFFER_SRGB.
-        gDeferredAvatarProgram.addPermutation("LINEAR_DIFFUSE", "1");
-
-        add_common_permutations(&gDeferredAvatarProgram);
-        if (mInputs.mLocal.mAvatarCloth)
-        {
-            gDeferredAvatarProgram.addPermutation("AVATAR_CLOTH", "1");
-        }
-
-        built(gDeferredAvatarProgram.createShader(mirror_variant()), gDeferredAvatarProgram);
-    }
-
-    {
-        gDeferredAvatarAlphaProgram.mName = "Deferred Avatar Alpha Shader";
-        gDeferredAvatarAlphaProgram.mFeatures.hasSkinning = true;
-        gDeferredAvatarAlphaProgram.mFeatures.calculatesLighting = false;
-        gDeferredAvatarAlphaProgram.mFeatures.hasLighting = false;
-        gDeferredAvatarAlphaProgram.mFeatures.isAlphaLighting = true;
-        gDeferredAvatarAlphaProgram.mFeatures.hasSrgb = true;
-        gDeferredAvatarAlphaProgram.mFeatures.calculatesAtmospherics = true;
-        gDeferredAvatarAlphaProgram.mFeatures.hasAtmospherics = true;
-        gDeferredAvatarAlphaProgram.mFeatures.hasGamma = true;
-        gDeferredAvatarAlphaProgram.mFeatures.isDeferred = true;
-        gDeferredAvatarAlphaProgram.mFeatures.hasShadows = true;
-        gDeferredAvatarAlphaProgram.mFeatures.hasReflectionProbes = true;
-
-        gDeferredAvatarAlphaProgram.mShaderFiles.clear();
-        gDeferredAvatarAlphaProgram.mShaderFiles.push_back(make_pair("deferred/alphaV.glsl", GL_VERTEX_SHADER));
-        gDeferredAvatarAlphaProgram.mShaderFiles.push_back(make_pair("deferred/alphaF.glsl", GL_FRAGMENT_SHADER));
-
-        gDeferredAvatarAlphaProgram.clearPermutations();
-        gDeferredAvatarAlphaProgram.addPermutation("LINEAR_DIFFUSE", "1");
-        gDeferredAvatarAlphaProgram.addPermutation("USE_DIFFUSE_TEX", "1");
-        gDeferredAvatarAlphaProgram.addPermutation("IS_AVATAR_SKIN", "1");
-        if (use_sun_shadow)
-        {
-            gDeferredAvatarAlphaProgram.addPermutation("HAS_SUN_SHADOW", "1");
-        }
-
-        gDeferredAvatarAlphaProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredAvatarAlphaProgram);
-
-        built(gDeferredAvatarAlphaProgram.createShader(LLGLSLShader::VARIANT_CLASSIC | mirror_variant()), gDeferredAvatarAlphaProgram);
-
-        gDeferredAvatarAlphaProgram.mFeatures.calculatesLighting = true;
-        gDeferredAvatarAlphaProgram.mFeatures.hasLighting = true;
     }
 
     {

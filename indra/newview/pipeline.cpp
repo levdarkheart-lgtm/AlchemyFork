@@ -579,11 +579,12 @@ struct LLPipeline::MetalWorldSimpleCapture
         direct_probe_avatar_alpha_meshes;
     std::unordered_set<const LLVOAvatar*>
         direct_probe_impostors;
-    bool direct_probe_avatar_alpha_state_active = false;
-    ALMetalCullMode direct_probe_avatar_alpha_cull_mode =
+    bool direct_avatar_alpha = false;
+    bool direct_avatar_alpha_state_active = false;
+    ALMetalCullMode direct_avatar_alpha_cull_mode =
         ALMetalCullMode::back;
-    bool direct_probe_avatar_alpha_depth_write = true;
-    bool direct_probe_avatar_alpha_color_write = true;
+    bool direct_avatar_alpha_depth_write = true;
+    bool direct_avatar_alpha_color_write = true;
     bool direct_probe_water_surface = false;
     bool direct_probe_scene_active = false;
     std::vector<ALMetalWorldHighlightBatch> highlight_batches;
@@ -2372,7 +2373,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.direct_probe_avatar_meshes.clear();
     capture.direct_probe_avatar_alpha_meshes.clear();
     capture.direct_probe_impostors.clear();
-    capture.direct_probe_avatar_alpha_state_active = false;
+    capture.direct_avatar_alpha = false;
+    capture.direct_avatar_alpha_state_active = false;
     capture.direct_probe_water_surface = false;
     capture.direct_probe_scene_active = false;
     capture.sky_behind_target.reset();
@@ -3662,7 +3664,7 @@ void LLPipeline::beginMetalWorldPBRPass(bool rigged, bool alpha_mask)
 
 void LLPipeline::beginMetalWorldAvatarPass(
     bool skinned, bool cloth, const F32* wind, const F32* sin_wave,
-    const F32* gravity, const F32* cloth_depth)
+    const F32* gravity, const F32* cloth_depth, bool direct_alpha)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active)
@@ -3680,6 +3682,13 @@ void LLPipeline::beginMetalWorldAvatarPass(
     }
     const bool avatar_alpha = capture.world_post_deferred_active &&
         !capture.world_post_deferred_phase;
+    if (direct_alpha && !avatar_alpha)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.batches.clear();
+        capture.avatar_palettes.clear();
+        return;
+    }
     if (avatar_alpha)
     {
         if ((!capture.alpha_environment_valid &&
@@ -3694,10 +3703,10 @@ void LLPipeline::beginMetalWorldAvatarPass(
         }
         capture.alpha_environment_valid = true;
         capture.world_alpha_lighting_valid = true;
-        LLGLSLShader* avatar_shader =
-            gDeferredAvatarAlphaProgram.selectVariant();
-        const bool uses_shadows = avatar_shader &&
-            avatar_shader->mFeatures.hasShadows;
+        const bool uses_shadows =
+            LLViewerShaderMgr::instance()->getShaderLevel(
+                LLViewerShaderMgr::SHADER_DEFERRED) > 1 &&
+            shaderInputs().mGlobal.mShadowDetail > 0;
         if (uses_shadows && !fillMetalImpostorDirectionalShadows())
         {
             capture.markIncomplete(__LINE__);
@@ -3724,6 +3733,8 @@ void LLPipeline::beginMetalWorldAvatarPass(
     capture.impostor_emboss = false;
     capture.avatar_skinned = skinned;
     capture.avatar_cloth = cloth;
+    capture.direct_avatar_alpha = direct_alpha;
+    capture.direct_avatar_alpha_state_active = false;
     std::memset(capture.avatar_wind, 0, sizeof(capture.avatar_wind));
     std::memset(capture.avatar_sin_wave, 0,
                 sizeof(capture.avatar_sin_wave));
@@ -3754,7 +3765,7 @@ void LLPipeline::setMetalWorldAvatarAlphaState(
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.frame_active || !capture.pass_active || !capture.avatar ||
-        !capture.direct_probe_scene_active ||
+        !capture.direct_avatar_alpha ||
         !capture.world_post_deferred_active ||
         capture.world_post_deferred_phase)
     {
@@ -3763,12 +3774,12 @@ void LLPipeline::setMetalWorldAvatarAlphaState(
         capture.avatar_palettes.clear();
         return;
     }
-    capture.direct_probe_avatar_alpha_cull_mode = !cull
+    capture.direct_avatar_alpha_cull_mode = !cull
         ? ALMetalCullMode::none
         : (front ? ALMetalCullMode::front : ALMetalCullMode::back);
-    capture.direct_probe_avatar_alpha_depth_write = depth_write;
-    capture.direct_probe_avatar_alpha_color_write = color_write;
-    capture.direct_probe_avatar_alpha_state_active = true;
+    capture.direct_avatar_alpha_depth_write = depth_write;
+    capture.direct_avatar_alpha_color_write = color_write;
+    capture.direct_avatar_alpha_state_active = true;
 }
 
 void LLPipeline::beginMetalWorldTerrainPass()
@@ -4205,7 +4216,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.reflection_probe_volume_valid = false;
     capture.avatar_palettes.clear();
     capture.direct_probe_avatar_alpha_meshes.clear();
-    capture.direct_probe_avatar_alpha_state_active = false;
+    capture.direct_avatar_alpha = false;
+    capture.direct_avatar_alpha_state_active = false;
     capture.resetCompleteness();
     capture.frame_active = true;
     capture.pass_active = false;
@@ -11457,7 +11469,8 @@ void LLPipeline::invalidateMetalReflectionProbeScene()
     capture.markIncomplete(__LINE__);
     capture.batches.clear();
     capture.avatar_palettes.clear();
-    capture.direct_probe_avatar_alpha_state_active = false;
+    capture.direct_avatar_alpha = false;
+    capture.direct_avatar_alpha_state_active = false;
 }
 
 void LLPipeline::captureMetalReflectionProbeScene()
@@ -11785,7 +11798,7 @@ void LLPipeline::captureMetalReflectionProbeScene()
                     continue;
                 }
                 static_cast<LLDrawPoolAvatar*>(pool)
-                    ->captureMetalReflectionProbe(pass);
+                    ->captureMetalDeferred(pass);
                 if (!capture.complete)
                 {
                     break;
@@ -11827,7 +11840,8 @@ void LLPipeline::captureMetalReflectionProbeAvatarAlpha(U32 pool_type)
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     const bool prior_direct_scene = capture.direct_probe_scene_active;
     capture.direct_probe_scene_active = true;
-    capture.direct_probe_avatar_alpha_state_active = false;
+    capture.direct_avatar_alpha = false;
+    capture.direct_avatar_alpha_state_active = false;
     for (LLDrawPool* pool : mPools)
     {
         if (pool->getType() != pool_type || pool->getSkipRenderFlag())
@@ -11835,13 +11849,14 @@ void LLPipeline::captureMetalReflectionProbeAvatarAlpha(U32 pool_type)
             continue;
         }
         static_cast<LLDrawPoolAvatar*>(pool)
-            ->captureMetalReflectionProbeTransparent();
+            ->captureMetalPostDeferred();
         if (!capture.complete)
         {
             break;
         }
     }
-    capture.direct_probe_avatar_alpha_state_active = false;
+    capture.direct_avatar_alpha = false;
+    capture.direct_avatar_alpha_state_active = false;
     capture.direct_probe_scene_active = prior_direct_scene;
     capture.pass_active = false;
 }
@@ -15172,9 +15187,9 @@ void LLPipeline::captureMetalWorldAvatarBatch(
         capture.avatar_palettes.clear();
     };
     const bool direct_avatar_alpha = avatar_alpha &&
-        capture.direct_probe_scene_active;
+        capture.direct_avatar_alpha;
     if (direct_avatar_alpha &&
-        !capture.direct_probe_avatar_alpha_state_active)
+        !capture.direct_avatar_alpha_state_active)
     {
         fail();
         return;
@@ -15240,11 +15255,11 @@ void LLPipeline::captureMetalWorldAvatarBatch(
         if (direct_avatar_alpha)
         {
             batch.avatar_cull_mode =
-                capture.direct_probe_avatar_alpha_cull_mode;
+                capture.direct_avatar_alpha_cull_mode;
             batch.avatar_depth_write =
-                capture.direct_probe_avatar_alpha_depth_write;
+                capture.direct_avatar_alpha_depth_write;
             batch.avatar_color_write =
-                capture.direct_probe_avatar_alpha_color_write;
+                capture.direct_avatar_alpha_color_write;
             batch.pre_water_alpha_writes_coverage = false;
         }
         else
@@ -15355,7 +15370,7 @@ void LLPipeline::captureMetalWorldAvatarBatch(
         if (avatar_alpha)
         {
             capture.direct_probe_avatar_alpha_meshes.insert(&mesh);
-            capture.direct_probe_avatar_alpha_state_active = false;
+            capture.direct_avatar_alpha_state_active = false;
         }
         else
         {
@@ -16202,7 +16217,8 @@ void LLPipeline::endMetalWorldGBufferPass()
     mMetalWorldSimpleCapture->water_exclusion = false;
     mMetalWorldSimpleCapture->legacy_glow = false;
     mMetalWorldSimpleCapture->pbr_glow = false;
-    mMetalWorldSimpleCapture->direct_probe_avatar_alpha_state_active = false;
+    mMetalWorldSimpleCapture->direct_avatar_alpha = false;
+    mMetalWorldSimpleCapture->direct_avatar_alpha_state_active = false;
 }
 
 void LLPipeline::endMetalWorldGBufferCapture()
