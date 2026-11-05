@@ -526,7 +526,13 @@ public:
     //helper to conditionally bind mRiggedVariant instead of this
     void bind(bool rigged);
 
+    // A complete GLSL program owns a live GL name. Native Metal setup keeps
+    // the same objects only as semantic pass identities for the retained
+    // traversal, so keep that state separate: callers must not mistake a
+    // configured native pass for a linked OpenGL program.
     bool isComplete() const { return mProgramObject != 0; }
+    bool isNativeConfigured() const { return mNativeConfigured; }
+    bool isAvailable() const { return isComplete() || isNativeConfigured(); }
 
     LLUUID hash();
 
@@ -694,6 +700,10 @@ private:
 
     // createShader's build: compiled, attached, linked, its hook run and its variants built.
     bool linkProgram(U32 variants);
+    // Metal keeps the loader-authored pass/variant graph without compiling
+    // the GLSL files named by that graph. Native renderers own the actual MSL
+    // functions, pipeline reflection and binding layout.
+    bool configureNative(U32 variants);
 
     // Bound in place of this program, or its skinned variant, where it did not build; warned of once a link.
     void bindStandIn();
@@ -705,6 +715,7 @@ private:
     U32    mLinkedVariants = 0;
     S32    mLinkedLevel    = 0;
     U32    mLinkCount      = 0;
+    bool   mNativeConfigured = false;
 
     // The stage objects createShader compiled of mShaderFiles, which this program owns: deleted once it links, or at
     // unload where it never did. The shared objects attachShaderFeatures attaches by name are LLShaderMgr's.

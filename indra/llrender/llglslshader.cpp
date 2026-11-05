@@ -29,6 +29,7 @@
 #include "llglslshader.h"
 
 #include "algpubuffer.h"
+#include "alrendercapabilities.h"
 #include "llshadermgr.h"
 #include "llfile.h"
 #include "alsamplerstate.h"
@@ -893,6 +894,7 @@ void LLGLSLShader::unloadInternal()
     mStorage.clear();
     mActiveImageUnits = 0;
     mIsCompute = false;
+    mNativeConfigured = false;
     for (U32& size : mComputeLocalSize)
     {
         size = 0;
@@ -915,7 +917,13 @@ void LLGLSLShader::unloadInternal()
         // matching both would be checked against this one's samplers.
         forget_program_samplers(mProgramObject);
 
-        glDeleteProgram(mProgramObject);
+        // A context may already have been released during the one-way Metal
+        // cutover. Its GL objects died with it; issuing a delete now would be
+        // an invalid contextless GL call.
+        if (gGLManager.mInited)
+        {
+            glDeleteProgram(mProgramObject);
+        }
 
         mProgramObject = 0;
     }
@@ -927,7 +935,7 @@ void LLGLSLShader::unloadInternal()
 
 void LLGLSLShader::releaseObjects()
 {
-    if (mProgramObject)
+    if (mProgramObject && gGLManager.mInited)
     {
         GLuint obj[1024];
         GLsizei count = 0;
@@ -942,6 +950,8 @@ void LLGLSLShader::releaseObjects()
     // name.
     for (GLuint object : mOwnObjects)
     {
+        // deleteShaderObject also owns the live-object accounting and itself
+        // suppresses the GL delete once the context has gone away.
         LLShaderMgr::deleteShaderObject(object);
     }
     mOwnObjects.clear();
@@ -954,10 +964,13 @@ bool LLGLSLShader::createShader(U32 variants)
     sConfigured.insert(this);
     mLoadGeneration = sLoadGeneration;
 
-    // Linked as configured, its variants with it: nothing to build. The level is the one it linked at, which a
-    // fallback may have taken below the one asked for.
+    const bool native = !gGLManager.mInited && gRenderCapabilities.isMetal();
+
+    // Configured for this backend, its variants with it: nothing to build.
+    // The level is the one the loader selected (or a GL fallback lowered).
     const LLUUID configured = hash();
-    if (mProgramObject != 0 && configured == mLinkedHash && variants == mLinkedVariants)
+    if ((native ? mNativeConfigured : mProgramObject != 0) &&
+        configured == mLinkedHash && variants == mLinkedVariants)
     {
         mShaderLevel       = mLinkedLevel;
         mPermutationsAdded = false;
@@ -965,13 +978,76 @@ bool LLGLSLShader::createShader(U32 variants)
         return true;
     }
 
-    if (!linkProgram(variants))
+    // Never enter the GL compiler without a live context. On Metal the
+    // loader graph remains useful pass metadata, while the real executable
+    // shaders come from the native metallib.
+    if (!(native ? configureNative(variants)
+                 : gGLManager.mInited && linkProgram(variants)))
     {
         return false;
     }
     mLinkedHash     = configured;
     mLinkedVariants = variants;
     return true;
+}
+
+bool LLGLSLShader::configureNative(U32 variants)
+{
+    freeOwnedVariants();
+    unloadInternal();
+
+    sInstances.insert(this);
+    mLightHash = 0xFFFFFFFF;
+    mLinearDiffuse = mDefines.contains("LINEAR_DIFFUSE");
+
+    // A loader entry without a pass definition is incomplete on either
+    // backend. The paths are retained as semantic source provenance only;
+    // no GLSL file is opened or compiled here.
+    if (mShaderFiles.empty())
+    {
+        unloadInternal();
+        return false;
+    }
+
+    mIsCompute = std::any_of(
+        mShaderFiles.begin(), mShaderFiles.end(),
+        [](const auto& file) { return file.second == GL_COMPUTE_SHADER; });
+    if (mIsCompute && !std::all_of(
+            mShaderFiles.begin(), mShaderFiles.end(),
+            [](const auto& file) { return file.second == GL_COMPUTE_SHADER; }))
+    {
+        unloadInternal();
+        return false;
+    }
+
+    mShaderHash = hash();
+    mPermutationsAdded = false;
+    mNativeConfigured = true;
+    mLinkedLevel = mShaderLevel;
+    mStandInWarned = false;
+    ++mLinkCount;
+    ++sLinked;
+
+    // Preserve the exact loader-authored variant graph. Native encoders use
+    // these objects as pass identities even though none owns a GL name.
+    if (mFeatures.hasObjectSkinning)
+    {
+        mRiggedVariant = this;
+    }
+    bool success = true;
+    for (EVariant axis : { VARIANT_RIGGED, VARIANT_CLASSIC, VARIANT_MIRROR })
+    {
+        if (success && (variants & axis))
+        {
+            success = createVariant(axis);
+        }
+    }
+    if (!success)
+    {
+        freeOwnedVariants();
+        unloadInternal();
+    }
+    return success;
 }
 
 bool LLGLSLShader::linkProgram(U32 variants)
@@ -3008,9 +3084,11 @@ LLUUID LLGLSLShader::hash()
     // The shared objects every program links against, which sGlobalDefines alone need not describe.
     hash_obj.update(sSharedObjectsKey.mData, UUID_BYTES);
     hash_obj.update(&mFeatures, sizeof(LLShaderFeatures));
-    // Not the raw renderer: radeonsi's carries the kernel release, and a kernel update would
-    // orphan every binary.
-    hash_obj.update(gGLManager.mGLIdentity);
+    // A GL binary is driver-specific. A contextless native configuration has
+    // no GL identity; fold the selected Metal device into its semantic cache
+    // key instead so it cannot alias a former GL configuration.
+    hash_obj.update(gGLManager.mInited ? gGLManager.mGLIdentity
+                                      : gRenderCapabilities.identity());
     return hash_obj.digest();
 }
 

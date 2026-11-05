@@ -32,6 +32,7 @@
 
 #include <boost/lexical_cast.hpp>
 
+#include "alrendercapabilities.h"
 #include "aluniformbuffer.h"
 #include "hbxxh.h"
 #include "llfeaturemanager.h"
@@ -390,7 +391,9 @@ bool LLViewerShaderMgr::setShaders(const ALShaderInputs& inputs, const ALRenderA
         return false;
     }
 
-    if (!gGLManager.mHasRequirements)
+    const bool native_metal =
+        gRenderCapabilities.isMetal() && !gGLManager.mInited;
+    if (!native_metal && !gGLManager.mHasRequirements)
     {
         // The window refused the context and told the user why
         LL_INFOS("ShaderLoading") << "Not supported hardware/software" << LL_ENDL;
@@ -416,6 +419,23 @@ bool LLViewerShaderMgr::setShaders(const ALShaderInputs& inputs, const ALRenderA
     // The same for compute: the shared objects compiled for its stage and every program built on it follow the switch
     // as it stands for this load.
     LLRender::sCompute = mInputs.mLocal.mCompute;
+
+    // The texture ladder still forms viewer draw batches on Metal, but its
+    // width comes from the native layout rather than a GL fragment-unit
+    // query. These values are consumed by draw-pool formation and native
+    // capture even though no GLSL program exists.
+    LLGLSLShader::sIndexedTextureChannels =
+        mInputs.mGlobal.mIndexedTextureChannels;
+    LLGLSLShader::sIndexedGLTFChannels =
+        mInputs.mLocal.mIndexedGLTFChannels;
+
+    if (native_metal)
+    {
+        reentrance = true;
+        const bool configured = setMetalShaders(application);
+        reentrance = false;
+        return configured;
+    }
 
     {
         static LLCachedControl<bool> shader_cache_enabled(gSavedSettings, "RenderShaderCacheEnabled", true);
@@ -443,8 +463,6 @@ bool LLViewerShaderMgr::setShaders(const ALShaderInputs& inputs, const ALRenderA
     // The texture units an indexed draw spreads its textures over, and the indexed material programs' slots, which the
     // loaders below lower where a program cannot be built. Zero slots, as on GLOn12, is the state a failed load leaves,
     // and the pools fall back to their scalar paths.
-    LLGLSLShader::sIndexedTextureChannels = mInputs.mGlobal.mIndexedTextureChannels;
-    LLGLSLShader::sIndexedGLTFChannels    = mInputs.mLocal.mIndexedGLTFChannels;
     if (gGLManager.mIsD3D12)
     {
         LL_INFOS("ShaderLoading") << "Indexed material batching disabled on GLOn12." << LL_ENDL;
@@ -616,6 +634,130 @@ bool LLViewerShaderMgr::setShaders(const ALShaderInputs& inputs, const ALRenderA
 
     reentrance = false;
     return true;
+}
+
+bool LLViewerShaderMgr::setMetalShaders(
+    const ALRenderApplication& application)
+{
+    const LLTimer timer;
+    LLGLSLShader::sLinked = 0;
+    LLGLSLShader::sKept = 0;
+    mFailedPrograms.clear();
+    ++LLGLSLShader::sLoadGeneration;
+
+    initAttribsAndUniforms();
+
+    const bool rebuild =
+        application.mPrograms == ALRenderApplication::Programs::Rebuilt;
+    if (rebuild)
+    {
+        unloadShaders();
+    }
+    else
+    {
+        for (LLGLSLShader* shader : LLGLSLShader::sConfigured)
+        {
+            if (!shader->mOwnedVariant)
+            {
+                shader->clearConfiguration();
+            }
+        }
+        if (application.mSharedObjects)
+        {
+            // A context released during migration owns any old GL names;
+            // clearShaderObjects now only retires the CPU-side registry.
+            clearShaderObjects();
+        }
+    }
+
+    LLPipeline::sRenderGlow = gSavedSettings.getBOOL("RenderGlow");
+    if (gViewerWindow)
+    {
+        gViewerWindow->setCursor(UI_CURSOR_WAIT);
+    }
+
+    std::fill(mShaderLevel.begin(), mShaderLevel.end(), 0);
+    mMaxAvatarShaderLevel = 0;
+    mShaderLevel[SHADER_LIGHTING] = 3;
+    mShaderLevel[SHADER_INTERFACE] = 2;
+    mShaderLevel[SHADER_ENVIRONMENT] = 2;
+    mShaderLevel[SHADER_WATER] = 3;
+    mShaderLevel[SHADER_OBJECT] = 2;
+    mShaderLevel[SHADER_EFFECT] = 2;
+    mShaderLevel[SHADER_WINDLIGHT] = 2;
+    mShaderLevel[SHADER_DEFERRED] = 3;
+    mMaxAvatarShaderLevel = 3;
+    mShaderLevel[SHADER_AVATAR] = 1;
+
+    // Native MSL modules own their compile constants and bindings. Keep only
+    // the latched input digest in the semantic configuration key; do not
+    // enumerate, hash, load or compile the app_settings GLSL tree.
+    LLGLSLShader::sGlobalDefines.clear();
+    LLGLSLShader::sSharedObjectsKey = mInputs.mGlobal.digest();
+
+    LL_INFOS("ShaderLoading")
+        << "Configuring native Metal render-pass identities without GLSL"
+        << LL_ENDL;
+
+    loadShadersEffects();
+    loadShadersInterface();
+    loadShadersObject();
+    loadShadersAvatar();
+    loadShadersDeferred();
+
+    std::vector<LLGLSLShader*> unasked;
+    for (LLGLSLShader* shader : LLGLSLShader::sInstances)
+    {
+        if (!shader->mOwnedVariant &&
+            shader->mLoadGeneration != LLGLSLShader::sLoadGeneration)
+        {
+            unasked.push_back(shader);
+        }
+    }
+    for (LLGLSLShader* shader : unasked)
+    {
+        shader->unload();
+    }
+
+    gPipeline.mShadersLoaded = mFailedPrograms.empty();
+    if (gPipeline.mShadersLoaded && gSky.mVOSkyp.notNull())
+    {
+        gSky.mVOSkyp->forceSkyUpdate();
+    }
+
+    if (!mFailedPrograms.empty())
+    {
+        std::string names;
+        for (const std::string& name : mFailedPrograms)
+        {
+            names += names.empty() ? name : ", " + name;
+        }
+        LL_WARNS("ShaderLoading")
+            << mFailedPrograms.size()
+            << " native pass identities could not be configured: " << names
+            << LL_ENDL;
+    }
+
+    if (gViewerWindow)
+    {
+        gViewerWindow->setCursor(UI_CURSOR_ARROW);
+    }
+    finalizeShaderList();
+
+    LL_INFOS("ShaderLoading")
+        << "Native Metal pass identities "
+        << (rebuild ? "rebuilt" : "reloaded") << ": "
+        << LLGLSLShader::sLinked << " configured, "
+        << LLGLSLShader::sKept << " kept, " << unasked.size()
+        << " retired; no GLSL source or cache touched, in "
+        << fmt::format("{:.1f}",
+                       timer.getElapsedTimeF64().value() * 1000.0)
+        << " ms" << LL_ENDL;
+    LL_PROFILE_PLOT("native passes configured",
+                    static_cast<int64_t>(LLGLSLShader::sLinked));
+    LL_PROFILE_PLOT("native passes kept",
+                    static_cast<int64_t>(LLGLSLShader::sKept));
+    return gPipeline.mShadersLoaded;
 }
 
 void LLViewerShaderMgr::unloadShaders()

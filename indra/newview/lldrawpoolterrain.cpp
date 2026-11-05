@@ -327,7 +327,7 @@ void LLDrawPoolTerrain::drawLoop()
     // A patch is drawn through the bound program's tessellation stages. A terrain program that did not build binds the
     // stand-in, which has none, and a patch drawn through that is a GL error rather than a draw of nothing.
     const LLGLSLShader* program = LLGLSLShader::sCurBoundShaderPtr;
-    if (!program || !program->isComplete())
+    if (!program || !program->isAvailable())
     {
         return;
     }

@@ -15,10 +15,15 @@
 
 #include "catch2/catch_test_macros.hpp"
 
+#include "alrendercapabilities.h"
 #include "llgl.h"
 #include "llglslshader.h"
 #include "llglstates.h"
 #include "llrender.h"
+
+#if LL_DARWIN
+#include "almetaldevice.h"
+#endif
 
 TEST_CASE("Renderer state remains semantic without an OpenGL context",
           "[alrenderstate][metal-cutover]")
@@ -160,3 +165,51 @@ TEST_CASE("Shader binding remains logical without an OpenGL context",
     CHECK(LLGLSLShader::sCurBoundShader == 0);
     CHECK(LLGLSLShader::sCurBoundShaderPtr == nullptr);
 }
+
+#if LL_DARWIN
+TEST_CASE("Metal shader configuration retains pass variants without compiling GLSL",
+          "[alrenderstate][metal-cutover]")
+{
+    REQUIRE_FALSE(gGLManager.mInited);
+
+    struct CapabilitiesReset
+    {
+        ~CapabilitiesReset() { gRenderCapabilities.reset(); }
+    } reset;
+    ALMetalDeviceInfo info;
+    info.name = "Test Apple GPU";
+    info.registry_id = 7;
+    info.highest_apple_family = 8;
+    info.highest_mac_family = 2;
+    gRenderCapabilities.initializeMetal(info);
+
+    LLGLSLShader shader;
+    shader.mName = "Native semantic pass";
+    shader.mShaderFiles.emplace_back("not-opened-nativeV.glsl", GL_VERTEX_SHADER);
+    shader.mShaderFiles.emplace_back("not-opened-nativeF.glsl", GL_FRAGMENT_SHADER);
+    shader.mShaderLevel = 3;
+
+    REQUIRE(shader.createShader(LLGLSLShader::VARIANT_RIGGED |
+                                LLGLSLShader::VARIANT_MIRROR));
+    CHECK_FALSE(shader.isComplete());
+    CHECK(shader.isNativeConfigured());
+    CHECK(shader.isAvailable());
+    CHECK(shader.mProgramObject == 0);
+
+    U32 variants = 0;
+    shader.forEachVariant([&variants](LLGLSLShader& configured)
+    {
+        ++variants;
+        CHECK(configured.isNativeConfigured());
+        CHECK_FALSE(configured.isComplete());
+        CHECK(configured.mProgramObject == 0);
+    });
+    CHECK(variants == 4);
+
+    shader.bind();
+    CHECK(LLGLSLShader::sCurBoundShaderPtr == &shader);
+    LLGLSLShader::unbind();
+    shader.unload();
+    CHECK_FALSE(shader.isAvailable());
+}
+#endif

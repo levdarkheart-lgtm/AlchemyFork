@@ -66,6 +66,7 @@
 #include "aldepthbounds.h"
 #include "allightmapblur.h"
 #include "alrenderisolation.h"
+#include "alrendercapabilities.h"
 #include "alsamplerstate.h"
 #include "aluniformbuffer.h"
 #include "alwhitebalancesolver.h"
@@ -10519,7 +10520,7 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
         color.width != depth->descriptor().width ||
         color.height != depth->descriptor().height ||
         color.width != capture.width || color.height != capture.height ||
-        !gAlphaMaskProgram.isComplete())
+        !gAlphaMaskProgram.isAvailable())
     {
         return false;
     }
@@ -17704,12 +17705,29 @@ ALShaderInputs LLPipeline::shaderInputsFromSettings()
     static_assert(ALShaderInputs::MAX_INDEXED_GLTF_CHANNELS == LLGLSLShader::MAX_INDEXED_GLTF_CHANNELS);
 
     ALShaderSettings s;
-    const S32 glsl = gGLManager.mGLSLVersionMajor * 100 + gGLManager.mGLSLVersionMinor;
-    s.mTextureImageUnits = gGLManager.mNumTextureImageUnits;
-    s.mHasClipControl    = gGLManager.mHasClipControl;
-    // Intel's legacy drivers are held back from compute (LLGLManager::isIntelLegacy).
-    s.mHasCompute = gGLManager.mHasCompute && glsl >= 430 && !gGLManager.isIntelLegacy();
-    s.mIsD3D12    = gGLManager.mIsD3D12;
+    if (gRenderCapabilities.isMetal() && !gGLManager.mInited)
+    {
+        // The native world/HUD layouts carry 32 diffuse slots and eight PBR
+        // material slots. Metal supports reverse-Z and compute on every
+        // Apple Silicon target; none of these choices may inherit zeroed GL
+        // capability fields after the context is removed.
+        s.mTextureImageUnits = LLGLSLShader::MAX_BATCH_TEXTURE_COUNT;
+        s.mHasClipControl = true;
+        s.mHasCompute = true;
+        s.mIsD3D12 = false;
+    }
+    else
+    {
+        const S32 glsl = gGLManager.mGLSLVersionMajor * 100 +
+                         gGLManager.mGLSLVersionMinor;
+        s.mTextureImageUnits = gGLManager.mNumTextureImageUnits;
+        s.mHasClipControl = gGLManager.mHasClipControl;
+        // Intel's legacy drivers are held back from compute
+        // (LLGLManager::isIntelLegacy).
+        s.mHasCompute = gGLManager.mHasCompute && glsl >= 430 &&
+                        !gGLManager.isIntelLegacy();
+        s.mIsD3D12 = gGLManager.mIsD3D12;
+    }
 
     s.mReverseZ                 = gSavedSettings.getBOOL("AlchemyRenderReverseZ");
     s.mHDR                      = gSavedSettings.getBOOL("RenderHDREnabled");
@@ -17747,8 +17765,8 @@ ALShaderInputs LLPipeline::shaderInputsFromSettings()
     {
         LL_INFOS_ONCE("ShaderLoading") << "RenderTerrainPBRDetail " << s.mTerrainPBRDetail << " clamped to "
                                        << in.mGlobal.mTerrainPBRDetail
-                                       << ": full detail needs more fragment texture units than the "
-                                       << s.mTextureImageUnits << " this GL implementation provides." << LL_ENDL;
+                                       << ": full detail needs more fragment texture slots than the "
+                                       << s.mTextureImageUnits << " this renderer provides." << LL_ENDL;
     }
     return in;
 }

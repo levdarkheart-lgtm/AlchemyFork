@@ -95,6 +95,10 @@ public:
     void updateShaderUniforms(LLGLSLShader * shader) override;
 
 private:
+    // Configure the retained traversal's semantic pass/variant graph for the
+    // native Metal pipeline without compiling or caching GLSL.
+    bool setMetalShaders(const ALRenderApplication& application);
+
     // A program a loader asked for, recorded where it did not build; whether it built. The loader goes on to the next
     // either way, and a program that did not build draws nothing (LLGLSLShader::bind).
     bool built(bool linked, const LLGLSLShader& shader);

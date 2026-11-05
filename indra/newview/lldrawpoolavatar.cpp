@@ -729,7 +729,7 @@ void LLDrawPoolAvatar::beginSkinned()
 
     // Used for preview only, like LLVisualParamHint
     // Uses deprecated logic!!!
-    if (!gAvatarProgram.isComplete())
+    if (!gAvatarProgram.isAvailable())
     {
         llassert(false); // Avatar shader shouldn't have failed if deferred shader loaded
         sVertexProgram = nullptr;

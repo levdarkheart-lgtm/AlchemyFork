@@ -157,6 +157,13 @@ void LLShaderMgr::deleteShaderObject(GLuint object)
     }
     llassert(sLiveObjects > 0);
     sLiveObjects -= sLiveObjects > 0 ? 1 : 0;
+    if (!gGLManager.mInited)
+    {
+        // The one-way Metal cutover may release the context before the
+        // loader graph is torn down. GL owns and destroys these names with
+        // that context; only the process bookkeeping remains here.
+        return;
+    }
     glDeleteShader(object);
 #if LL_DARWIN
     // Apple's GL 4.1 core driver spuriously raises GL_INVALID_OPERATION on glDeleteShader of a
