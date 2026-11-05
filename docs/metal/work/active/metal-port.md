@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `7732ab92bb`.
+**Renderer checkpoint:** Commit `1f453941fb`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,16 +13,16 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,701 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,676 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; converted startup/local/HDRI/fetched resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot has no GL scratch/reconcile path. Selection effects plus HUD fullbright/shiny/emboss/transparent output are native-only; visual review remains queued. |
-| M-007 | World scene and material correctness | doing | Probe scenes plus ordinary fullbright, transparent alpha, water surface/exclusion, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR static/rigged batches are directly enumerated into Metal. Grass, trees and shadows are native; broad parity remains open. |
-| M-008 | Advanced views/effects and compute | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation are implemented in Metal. Alpha-pool, water, impostor, DoF-depth and debug-highlight production are native-only. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (2,701 findings), linked/runtime no-GL and visual review remain open. |
+| M-007 | World scene and material correctness | doing | Probe scenes plus ordinary fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR static/rigged batches are directly enumerated into Metal. Grass, trees and shadows are native; broad parity remains open. |
+| M-008 | Advanced views/effects and compute | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation are implemented in Metal. Alpha-pool, water, atmosphere, impostor, DoF-depth and debug-highlight production are native-only. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (2,676 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump/fullbright/transparent/water geometry, water exclusion, world/HUD shiny/emboss, glow, impostor/DoF/debug alpha, trees nor converted debug effects. Superseded owners are deleted. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump/fullbright/transparent/water geometry, water exclusion/haze, atmospheric haze/sky-behind, world/HUD shiny/emboss, glow, impostor/DoF/debug alpha, trees nor converted debug effects. Superseded owners are deleted. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
@@ -110,6 +110,13 @@ and the obsolete GL test; its physical case passes 4,732 assertions.
 Commits `95619cb3e5` through `d0da9cae1a` remove duplicate GL far-plane, wind,
 self-agent crosshair and light-debug draws/state checks; `624441a65e` cuts trees; `79fbf30233` cuts base deferred geometry; `15d7a3b77c` cuts opaque/masked PBR G-buffer GL; `8bd478c19f` cuts opaque PBR glow; `a143d2789e` cuts legacy materials; `189908fc41`/`eab6bd61b3` cut main/alpha-pool glow; `35f43b29e0` cuts legacy bump; `dbff358ab5`/`9d8f96ac6b` cut world/HUD shiny/emboss; `1d0bc66fd5` cuts fullbright; `87546357a2` cuts transparent alpha/impostor/DoF/debug; `7732ab92bb` cuts water surface/exclusion draws, scratch targets, seven GL programs, ten GLSL stages and obsolete GL water tests. Visual parity is queued.
 
+`12e19499ed` removes the obsolete GL water-refraction target and ordinary
+fallback depth-copy allocation. `1f453941fb` removes the retained GL
+atmospheric-haze, water-haze, water-field-query and sky-behind owners, four GL
+programs and six exclusive GLSL stages. The corresponding Metal atmosphere,
+sky-behind and above-/below-water haze implementations remain mandatory. Their
+owner-attended visual review is queued and did not block the source cutover.
+
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
 resources avoid GL names; dual backing remains only where retained GL consumers
@@ -120,20 +127,15 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- Release `26.4.0.68285` builds and packages warnings-as-errors. Viewer SHA-256
-  is `c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`.
-- `verify_app.sh`: 349/349 ARM64 Mach-O slices; deep strict signing passes.
-- Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
-  UI 56/1. Shared baseline retains 5 known Apple GL failures/4 cases.
-- `21562a1991`: Ninja/Xcode, SH oracle, benchmark 49/8, renderer 557,301/136,
-  tools 31/31 and harness pass. App verification accepts 349/349 ARM64 slices;
-  deep signing passes; executable SHA-256 is
-  `569b38ec1133b687c7408b9e8fd8f95e1dc13a36a8f3f4ba63c001f30f92ab79`.
-- `ffe4e79dc3`: Ninja/Xcode, native selection GPU 4,732/1, benchmark 49/8,
-  renderer 557,301/136 and tools 31/31 pass. App verification accepts 349/349
-  ARM64 slices; deep signing passes; executable SHA-256 is
-  `9d8f6b1313ef0c1bf7cae936a30152b3b1c5ab60728d126809fa3ea0bb8f284f`.
 - `7732ab92bb`: source-exact Release 68351; physical world/water 8,022/1 and wave occlusion 250/1; CPU water field 166,400/21, height bake 386,067/8, far-plane/MSL 336/9 and tessellation 47/8 pass; 349/349 ARM64/deep signing pass; executable SHA-256 `2191fa5788cdc6778aeff1b8dd20a0d6146ecfe4cd1e247c933dda31c4fb1040`; strict inventory 2,701 exits 1. Runtime/visual parity remains open.
+- `1f453941fb`: focused resource/far-plane tests pass 3,340/43; the physical
+  retained-world case passes 8,022/1 under Metal API, GPU, shader and
+  load/store validation. Ninja/Xcode Release 68354 passes warnings-as-errors,
+  349/349 ARM64 inspection and deep strict signing. Executable SHA-256 is
+  `7c1ff31183ad3024be17229a84eec6c6bb76693baa37198dbb3c2eb3faa069bd`;
+  packaged metallib SHA-256 is
+  `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
+  Strict inventory is 2,676 and exits 1 as expected; no audit rule changed.
 
 ## Owner-attended visual review cadence
 
@@ -159,11 +161,9 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Remove the dormant GL water color-plan slot, then convert the retained
-sky-behind/water-haze GL owners. Do not wait for
-Snapshot, exposure, mirror or direct-probe visual review: native paths
-intentionally expose failures instead of reverting to GL. Never restore
-publication or presentation fallbacks.
+Audit the retained main-path WindLight sky/cloud GL draws against the native
+capture and remove the next proven duplicate owner. Do not wait for queued
+visual review, and never restore publication or presentation fallbacks.
 Keep visual cases queued and do not launch viewers autonomously.
 
 ## Non-negotiable open gates
