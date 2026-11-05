@@ -2671,36 +2671,10 @@ void renderTextureAnim(LLDrawInfo* params)
 
 void renderBatchSize(LLDrawInfo* params)
 {
-    LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
-    gGL.setPolygonOffset(-1.f, 1.f);
-    LLGLSLShader* old_shader = LLGLSLShader::sCurBoundShaderPtr;
-    bool bind = false;
-    if (params->mAvatar)
-    {
-        gGL.pushMatrix();
-        gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-        bind = true;
-        old_shader->riggedVariant()->bind();
-        LLRenderPass::uploadMatrixPalette(*params);
-    }
-
-
     const LLColor4U debug_color = params->getDebugColor();
-    gGL.diffuseColor4ubv(debug_color.mV);
-    LLRenderPass::applyModelMatrix(*params);
 #if LL_DARWIN
     gPipeline.captureMetalBatchSizeBatch(*params, debug_color);
 #endif
-    params->mVertexBuffer->setBuffer();
-    params->mVertexBuffer->drawRange(
-        LLRender::TRIANGLES, params->mStart, params->mEnd,
-        params->mCount, params->mOffset);
-
-    if (bind)
-    {
-        gGL.popMatrix();
-        old_shader->bind();
-    }
 }
 
 void renderTexelDensity(LLDrawable* drawable)

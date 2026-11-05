@@ -5269,17 +5269,6 @@ void LLPipeline::captureMetalBatchSizeBatch(
 
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     const bool rigged = params.mAvatar != nullptr;
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    LLRender::eBlendFactor color_source;
-    LLRender::eBlendFactor color_destination;
-    LLRender::eBlendFactor alpha_source;
-    LLRender::eBlendFactor alpha_destination;
-    gGL.getBlendFunc(color_source, color_destination,
-                     alpha_source, alpha_destination);
-    U32 rgb_equation = 0;
-    U32 alpha_equation = 0;
-    gGL.getBlendEquation(rgb_equation, alpha_equation);
     if (!buffer || params.mCount == 0 || params.mCount % 3 != 0 ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->getMetalVertexBuffer() ||
@@ -5289,22 +5278,7 @@ void LLPipeline::captureMetalBatchSizeBatch(
         (rigged &&
          (!params.mSkinInfo ||
           !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))) ||
-        color.mV[3] != 200 ||
-        !LLGLState::isEnabled(GL_POLYGON_OFFSET_FILL) ||
-        gGL.getPolygonOffsetFactor() != -1.f ||
-        gGL.getPolygonOffsetUnits() != 1.f ||
-        !LLGLState::isEnabled(GL_BLEND) ||
-        LLGLState::isEnabled(GL_CULL_FACE) ||
-        !LLGLDepthTest::depthEnabled() ||
-        !LLGLDepthTest::depthWriteEnabled() ||
-        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
-        color_source != LLRender::BF_SOURCE_ALPHA ||
-        color_destination != LLRender::BF_ONE_MINUS_SOURCE_ALPHA ||
-        alpha_source != LLRender::BF_SOURCE_ALPHA ||
-        alpha_destination != LLRender::BF_ONE_MINUS_SOURCE_ALPHA ||
-        rgb_equation != GL_FUNC_ADD || alpha_equation != GL_FUNC_ADD ||
-        !color_mask[0] || !color_mask[1] || !color_mask[2] ||
-        color_mask[3])
+        color.mV[3] != 200)
     {
         fail("Batch Size geometry or render state is incomplete");
         return;
@@ -5333,9 +5307,17 @@ void LLPipeline::captureMetalBatchSizeBatch(
             LLVertexBuffer::TYPE_WEIGHT4);
     }
 
+    LLMatrix4a modelview =
+        LLViewerCamera::getCurrent().getModelview();
+    if (params.mModelMatrix)
+    {
+        modelview.setMul(*params.mModelMatrix, modelview);
+    }
+    const LLMatrix4a& projection = hud_capture
+        ? gGL.getProjectionMatrix()
+        : LLViewerCamera::getCurrent().getProjection();
     LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    modelview_projection.setMul(modelview, projection);
     const std::size_t index_offset =
         static_cast<std::size_t>(params.mOffset) *
         buffer->getIndexStride();
