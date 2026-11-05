@@ -1935,9 +1935,6 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("sun_up_factor");
     mReservedUniforms.push_back("moonlight_color");
 
-    mReservedUniforms.push_back("debug_normal_draw_length");
-    llassert(mReservedUniforms.size() == LLShaderMgr::DEBUG_NORMAL_DRAW_LENGTH + 1);
-
     // Pathfinding Debug
     mReservedUniforms.push_back("tint");
     mReservedUniforms.push_back("ambiance");

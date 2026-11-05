@@ -360,8 +360,6 @@ public:
         SUN_UP_FACTOR,                      //  "sun_up_factor"
         MOONLIGHT_COLOR,                    //  "moonlight_color"
 
-        DEBUG_NORMAL_DRAW_LENGTH,           //  "debug_normal_draw_length"
-
         TINT,                               //  "tint"
         AMBIANCE,                           //  "ambiance"
         ALPHA_SCALE,                        //  "alpha_scale"

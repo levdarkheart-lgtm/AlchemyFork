@@ -88,7 +88,6 @@ LLGLSLShader    gGlowCombineProgram;
 LLGLSLShader    gTwoTextureCompareProgram;
 LLGLSLShader    gOneTextureFilterProgram;
 LLGLSLShader    gDebugProgram;
-LLGLSLShader    gNormalDebugProgram[NORMAL_DEBUG_SHADER_COUNT];
 LLGLSLShader    gClipProgram;
 LLGLSLShader    gAlphaMaskProgram;
 LLGLSLShader    gBenchmarkProgram;
@@ -1964,32 +1963,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gDebugProgram.mShaderFiles.push_back(make_pair("interface/debugF.glsl", GL_FRAGMENT_SHADER));
         gDebugProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         built(gDebugProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDebugProgram);
-    }
-
-    {
-        for (S32 variant = 0; variant < NORMAL_DEBUG_SHADER_COUNT; ++variant)
-        {
-            LLGLSLShader& shader = gNormalDebugProgram[variant];
-            // Distinct per variant: both entries are live at once, and each also has a
-            // "Skinned <name>" pair, so a shared name collides twice over.
-            shader.mName = llformat("Normal Debug Shader%s",
-                                    variant == NORMAL_DEBUG_SHADER_WITH_TANGENTS ? " (Tangents)" : "");
-            shader.mShaderFiles.clear();
-            shader.mShaderFiles.push_back(make_pair("interface/normaldebugV.glsl", GL_VERTEX_SHADER));
-            // *NOTE: Geometry shaders have a reputation for being slow.
-            // Consider using compute shaders instead, which have a reputation
-            // for being fast. This geometry shader in particular seems to run
-            // fine on my machine, but I won't vouch for this in
-            // performance-critical areas.  -Cosmic,2023-09-28
-            shader.mShaderFiles.push_back(make_pair("interface/normaldebugG.glsl", GL_GEOMETRY_SHADER));
-            shader.mShaderFiles.push_back(make_pair("interface/normaldebugF.glsl", GL_FRAGMENT_SHADER));
-            shader.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-            if (variant == NORMAL_DEBUG_SHADER_WITH_TANGENTS)
-            {
-                shader.addPermutation("HAS_ATTRIBUTE_TANGENT", "1");
-            }
-            built(shader.createShader(LLGLSLShader::VARIANT_RIGGED), shader);
-        }
     }
 
     {

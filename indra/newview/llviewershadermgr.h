@@ -111,13 +111,6 @@ extern LLGLSLShader         gOcclusionProgram;
 extern LLGLSLShader         gOcclusionCubeProgram;
 extern LLGLSLShader         gGlowCombineProgram;
 extern LLGLSLShader         gDebugProgram;
-enum NormalDebugShaderVariant : S32
-{
-    NORMAL_DEBUG_SHADER_DEFAULT,
-    NORMAL_DEBUG_SHADER_WITH_TANGENTS,
-    NORMAL_DEBUG_SHADER_COUNT
-};
-extern LLGLSLShader         gNormalDebugProgram[NORMAL_DEBUG_SHADER_COUNT];
 extern LLGLSLShader         gClipProgram;
 extern LLGLSLShader         gBenchmarkProgram;
 extern LLGLSLShader         gCopyProgram;

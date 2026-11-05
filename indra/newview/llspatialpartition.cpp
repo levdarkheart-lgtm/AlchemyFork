@@ -2053,16 +2053,11 @@ void renderNormals(LLDrawable *drawablep)
     if (!drawablep->isVisible())
         return;
 
-    LLVertexBuffer::unbind();
-
     LLViewerObject* obj = drawablep->getVObj();
     LLVOVolume *vol = drawablep->getVOVolume();
 
     if (obj)
     {
-        LLGLEnable blend(GL_BLEND);
-        LLGLDepthTest gl_depth(GL_TRUE, GL_FALSE);
-
         // Drawable's normals & tangents are stored in model space, i.e. before any scaling is applied.
         //
         // SL-13490, using pos + normal to compute the 2nd vertex of a normal line segment doesn't
@@ -2097,8 +2092,6 @@ void renderNormals(LLDrawable *drawablep)
             gGL.multMatrix((F32 *) vol->getRelativeXform().mMatrix);
         }
 
-        gGL.getTextureSlot(0)->unbind();
-
         // Normals &tangent line segments get scaled along with the object. Divide by scale length
         // to keep the as-viewed lengths (relatively) constant with the debug setting length
         float draw_length = gSavedSettings.getF32("RenderDebugNormalScale") / scale_len;
@@ -2121,59 +2114,23 @@ void renderNormals(LLDrawable *drawablep)
             {
                 const LLVolumeFace& face = *it;
 
-                gGL.flush();
-                gGL.diffuseColor4f(1, 1, 0, 1);
 #if LL_DARWIN
                 gPipeline.captureMetalNormalVolumeFace(
                     face, inv_scale, draw_length, false);
 #endif
-                gGL.begin(LLRender::LINES);
-                for (S32 j = 0; j < face.mNumVertices; ++j)
-                {
-                    LLVector4a n, p;
-
-                    n = face.mNormals[j];
-                    n.mul(inv_scale);  // Pre-scale normal, so it's left with an inverse-transpose xform after MVP
-                    n.normalize3fast();
-                    n.mul(draw_length);
-                    p.setAdd(face.mPositions[j], n);
-
-                    gGL.vertex3fv(face.mPositions[j].getF32ptr());
-                    gGL.vertex3fv(p.getF32ptr());
-                }
-                gGL.end();
 
                 // Tangents are simple vectors and do not require reorientation via pre-scaling
                 if (face.mTangents)
                 {
-                    gGL.flush();
-                    gGL.diffuseColor4f(0, 1, 1, 1);
 #if LL_DARWIN
                     gPipeline.captureMetalNormalVolumeFace(
                         face, inv_scale, draw_length, true);
 #endif
-                    gGL.begin(LLRender::LINES);
-                    for (S32 j = 0; j < face.mNumVertices; ++j)
-                    {
-                        LLVector4a t, p;
-
-                        t = face.mTangents[j];
-                        t.normalize3fast();
-                        t.mul(draw_length);
-                        p.setAdd(face.mPositions[j], t);
-
-                        gGL.vertex3fv(face.mPositions[j].getF32ptr());
-                        gGL.vertex3fv(p.getF32ptr());
-                    }
-                    gGL.end();
                 }
             }
         }
         else if (drawable_faces)
         {
-            // *HACK: Prepare to restore previous shader as other debug code depends on a simpler shader being present
-            llassert(LLGLSLShader::sCurBoundShaderPtr == &gDebugProgram);
-            LLGLSLShader* prev_shader = LLGLSLShader::sCurBoundShaderPtr;
             for (auto it = drawable_faces->begin(); it != drawable_faces->end(); ++it)
             {
                 LLFace* facep = *it;
@@ -2187,32 +2144,13 @@ void renderNormals(LLDrawable *drawablep)
                     (buf->getTypeMask() &
                      LLVertexBuffer::TYPE_TANGENT) ==
                     LLVertexBuffer::TYPE_TANGENT;
-                LLGLSLShader* shader;
-                if (!with_tangents)
-                {
-                    shader = &gNormalDebugProgram[NORMAL_DEBUG_SHADER_DEFAULT];
-                }
-                else
-                {
-                    shader = &gNormalDebugProgram[NORMAL_DEBUG_SHADER_WITH_TANGENTS];
-                }
-                shader->bind();
-
-                shader->uniform1f(LLShaderMgr::DEBUG_NORMAL_DRAW_LENGTH, draw_length);
 
                 LLRenderPass::applyModelMatrix(&facep->getDrawable()->getRegion()->mRenderMatrix);
 
-                buf->setBuffer();
 #if LL_DARWIN
                 gPipeline.captureMetalNormalBufferFace(
                     face, draw_length, with_tangents);
 #endif
-                // *NOTE: The render type in the vertex shader is TRIANGLES, but gets converted to LINES in the geometry shader
-                buf->drawRange(LLRender::TRIANGLES, face.getGeomIndex(), face.getGeomIndex() + face.getGeomCount()-1, face.getIndicesCount(), face.getIndicesStart());
-            }
-            if (prev_shader)
-            {
-                prev_shader->bind();
             }
         }
 

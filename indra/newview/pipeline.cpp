@@ -6335,34 +6335,6 @@ void LLPipeline::endMetalPhysicsShapeCapture()
     }
 }
 
-static bool metalNormalStateIsExact()
-{
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    LLRender::eBlendFactor color_source;
-    LLRender::eBlendFactor color_destination;
-    LLRender::eBlendFactor alpha_source;
-    LLRender::eBlendFactor alpha_destination;
-    gGL.getBlendFunc(color_source, color_destination,
-                     alpha_source, alpha_destination);
-    U32 rgb_equation = 0;
-    U32 alpha_equation = 0;
-    gGL.getBlendEquation(rgb_equation, alpha_equation);
-    return LLGLState::isEnabled(GL_BLEND) &&
-        !LLGLState::isEnabled(GL_CULL_FACE) &&
-        LLGLDepthTest::depthEnabled() &&
-        !LLGLDepthTest::depthWriteEnabled() &&
-        LLGLDepthTest::depthFunction() == GL_LEQUAL &&
-        color_source == LLRender::BF_SOURCE_ALPHA &&
-        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        alpha_source == LLRender::BF_SOURCE_ALPHA &&
-        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
-        color_mask[0] && color_mask[1] && color_mask[2] &&
-        !color_mask[3] && gGL.getLineWidth() == 1.f &&
-        gGL.getPolygonMode() == GL_FILL;
-}
-
 void LLPipeline::beginMetalNormalCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -6401,19 +6373,15 @@ void LLPipeline::captureMetalNormalVolumeFace(
         return;
     }
 
-    const LLColor4& color = gGL.getDiffuseColor();
-    const bool color_valid = tangent
-        ? color.mV[0] == 0.f && color.mV[1] == 1.f &&
-              color.mV[2] == 1.f && color.mV[3] == 1.f
-        : color.mV[0] == 1.f && color.mV[1] == 1.f &&
-              color.mV[2] == 0.f && color.mV[3] == 1.f;
+    const LLColor4 color = tangent
+        ? LLColor4(0.f, 1.f, 1.f, 1.f)
+        : LLColor4(1.f, 1.f, 0.f, 1.f);
     const LLVector4a* directions = tangent
         ? face.mTangents : face.mNormals;
     const std::size_t vertex_count =
         static_cast<std::size_t>(face.mNumVertices) * 2u;
     if (!capture.complete || !face.mPositions || !directions ||
         !inverse_scale.isFinite3() || !std::isfinite(draw_length) ||
-        !color_valid || !metalNormalStateIsExact() ||
         vertex_count > std::numeric_limits<U32>::max() ||
         capture.normal_vertices.size() >
             std::numeric_limits<U32>::max() - vertex_count ||
@@ -6485,9 +6453,9 @@ void LLPipeline::captureMetalNormalBufferFace(
     const LLFace& face, F32 draw_length, bool with_tangents)
 {
     // All current HUD-partition normal owners are LLVOVolumes and therefore
-    // use the immediate line path already mirrored by LLRender. If a future
-    // non-volume HUD drawable reaches this shader path, retain GL rather than
-    // silently omitting it from the ordered native UI transaction.
+    // use the explicit native line path. If a future non-volume HUD drawable
+    // reaches this path, fail the ordered native UI transaction rather than
+    // silently omitting it.
     if (sRenderingHUDs && gGL.hasMetalUITextureCapture())
     {
         gGL.invalidateMetalUITextureCapture(
@@ -6527,7 +6495,7 @@ void LLPipeline::captureMetalNormalBufferFace(
         !buffer->getMetalIndexBuffer() ||
         (buffer->getIndexStride() != sizeof(U16) &&
          buffer->getIndexStride() != sizeof(U32)) ||
-        !std::isfinite(draw_length) || !metalNormalStateIsExact() ||
+        !std::isfinite(draw_length) ||
         capture.render_debug_order == std::numeric_limits<U64>::max())
     {
         capture.markIncomplete(__LINE__);
