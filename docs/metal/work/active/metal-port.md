@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `cbdecfd337`.
+**Renderer checkpoint:** Commit `fa746d4cb8`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,23 +13,23 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,398 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,387 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; dead GL light-map plan resources are deleted; converted resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot has no GL scratch/reconcile path. Selection effects plus HUD fullbright/shiny/emboss/transparent output are native-only; visual review remains queued. |
 | M-007 | World scene and material correctness | doing | Probe scenes plus ordinary sky/cloud/body, avatars/impostors, fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR batches are directly enumerated into Metal. Grass, trees and all main/probe directional/projector shadow generation are native; broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation are implemented in Metal. Alpha-pool, water, atmosphere, sky, impostor, DoF-depth and debug-highlight production are native-only. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (2,398 findings), linked/runtime no-GL and visual review remain open. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (2,387 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump/fullbright/transparent/water geometry, deferred sun/SSAO/base/local/projector lighting, water exclusion/haze, atmospheric haze/sky-behind, main sky/cloud/body/avatar/impostor layers, main/probe shadow generation/storage/sampler/receiver state, shiny/emboss, glow, DoF/debug alpha, trees nor converted debug effects. Superseded owners are deleted. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, probe publication, terrain bake, selection/edit highlights, base deferred/PBR/legacy-material/legacy-bump/fullbright/transparent/water geometry, deferred sun/SSAO/base/local/projector lighting, water exclusion/haze, atmospheric haze/sky-behind, main sky/cloud/body/avatar/impostor layers, main/probe shadow generation/storage/sampler/receiver state, shiny/emboss, glow, DoF/debug alpha, trees nor converted debug effects. Superseded owners are deleted. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — deferred lighting Metal-only; drawless GL state removed
+## Active checkpoint — deferred lighting and selection highlights Metal-only
 
 ### Retained owner evidence and native presentation boundary
 
@@ -117,7 +117,7 @@ sun, SSAO blur and base-light draws, six programs, nine GLSL stages and obsolete
 `1f3cfeefb6` preserves CPU visible-light/projector-shadow selection and removes duplicate GL point/projector lighting. `3e975c4b28` then deletes the three dead
 pack light-map slots, blurred scratch target and dispatch-reach input. Metal retains private light-map/blur ownership; the default 1440p plan sheds 21.1 MiB.
 `cbdecfd337` replaces the first deferred `setupHWLights()` mutation with CPU-only native direction preparation and deletes the now-drawless GL
-vertex/cull/blend/color-mask state prologue. Retained post-deferred pools still own the bound screen target and are the next cutover census.
+vertex/cull/blend/color-mask state prologue. `fa746d4cb8` makes the existing direct Metal face capture the sole Darwin edit/touch-highlight producer and deletes four GL programs plus five exclusive GLSL stages. Other retained post-deferred output still owns the bound target and remains the next census.
 Visual cases 51/52 remain queued.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
@@ -130,14 +130,14 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- `cbdecfd337`: Ninja and prescribed Xcode Release 68376 pass
-  warnings-as-errors; physical validated Metal shadow 119/1 and retained-world
-  8,022/1 pass. Release inspection is 349/349 ARM64 and deep signing passes.
+- `fa746d4cb8`: Ninja and prescribed Xcode Release 68378 pass
+  warnings-as-errors; physical validated Metal retained-world 8,022/1 and selection
+  4,732/1 pass. Release inspection is 349/349 ARM64 and deep signing passes.
   Executable SHA-256 is
-  `9b7a761e0c23b191697068b253b0abb08e6f8c942a4271c1199cbe199650a411`;
+  `9dd03d623e3d6be3b13388214e9ca75c6f57cc84bb2142e0efa9176faac5d692`;
   metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
   All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. Host doctor passes on the M1 Max acceptance host.
-  Strict inventory is 2,398 and exits 1; harness validation and all 31 tool tests pass.
+  Strict inventory is 2,387 and exits 1; harness validation and all 31 tool tests pass.
 
 ## Owner-attended visual review cadence
 
@@ -163,8 +163,8 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Census the retained post-deferred screen-target bind/clear/flush boundary, separate native-capture prerequisites from remaining GL pool output, and remove
-the next proven-obsolete owner. Do not wait for visual review, restore fallbacks or launch viewers.
+Continue the retained post-deferred target census at pathfinding/debug output; implement the next live feature owner in Metal before deleting its GL producer.
+Do not wait for visual review, restore fallbacks or launch viewers.
 
 ## Non-negotiable open gates
 
