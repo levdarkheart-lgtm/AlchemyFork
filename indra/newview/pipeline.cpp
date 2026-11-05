@@ -7710,19 +7710,11 @@ void LLPipeline::beginMetalCompositionDebugCapture(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
     if (!capture.complete || capture.composition_debug_capture_active ||
         !capture.composition_debug_heights.empty() ||
         point_count != AL_METAL_COMPOSITION_DEBUG_POINT_COUNT ||
         point_count > std::numeric_limits<std::uint32_t>::max() ||
-        point_count > std::numeric_limits<std::size_t>::max() / sizeof(F32) ||
-        !LLGLState::isEnabled(GL_BLEND) ||
-        !LLGLDepthTest::depthEnabled() ||
-        !LLGLDepthTest::depthWriteEnabled() ||
-        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
-        gGL.getPointSize() != 1.f ||
-        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+        point_count > std::numeric_limits<std::size_t>::max() / sizeof(F32))
     {
         capture.markIncomplete(__LINE__);
         return;
@@ -22766,58 +22758,25 @@ void LLPipeline::renderDebug()
         gAgent.getRegion()->mWind.renderVectors();
     }
 
-    if (mRenderDebugMask & RENDER_DEBUG_COMPOSITION)
+    if ((mRenderDebugMask & RENDER_DEBUG_COMPOSITION) &&
+        !hud_only && gAgent.getRegion())
     {
-        // Debug composition layers
-        F32 x, y;
-
-        gGL.getTextureSlot(0)->unbind();
-
-        if (gAgent.getRegion())
+        beginMetalCompositionDebugCapture(
+            AL_METAL_COMPOSITION_DEBUG_POINT_COUNT);
+        // Retain the current region's live heights. Metal derives the fixed
+        // grid coordinates and its blue-interior/red-border classification.
+        for (S32 x = 0; x <= 260; ++x)
         {
-#if LL_DARWIN
-            const bool capture_composition_debug = !hud_only;
-            if (capture_composition_debug)
+            for (S32 y = 0; y <= 260; ++y)
             {
-                beginMetalCompositionDebugCapture(
-                    AL_METAL_COMPOSITION_DEBUG_POINT_COUNT);
+                F32 z = gAgent.getRegion()->getCompositionXY(x, y);
+                z *= 5.f;
+                z += 50.f;
+                captureMetalCompositionDebugHeight(z);
             }
-#endif
-            gGL.begin(LLRender::POINTS);
-            // Draw the composition layer for the region that I'm in.
-            for (x = 0; x <= 260; x++)
-            {
-                for (y = 0; y <= 260; y++)
-                {
-                    if ((x > 255) || (y > 255))
-                    {
-                        gGL.color4f(1.f, 0.f, 0.f, 1.f);
-                    }
-                    else
-                    {
-                        gGL.color4f(0.f, 0.f, 1.f, 1.f);
-                    }
-                    F32 z = gAgent.getRegion()->getCompositionXY((S32)x, (S32)y);
-                    z *= 5.f;
-                    z += 50.f;
-#if LL_DARWIN
-                    if (capture_composition_debug)
-                    {
-                        captureMetalCompositionDebugHeight(z);
-                    }
-#endif
-                    gGL.vertex3f(x, y, z);
-                }
-            }
-            gGL.end();
-#if LL_DARWIN
-            if (capture_composition_debug)
-            {
-                endMetalCompositionDebugCapture(
-                    AL_METAL_COMPOSITION_DEBUG_POINT_COUNT);
-            }
-#endif
         }
+        endMetalCompositionDebugCapture(
+            AL_METAL_COMPOSITION_DEBUG_POINT_COUNT);
     }
 
     gGL.flush();
