@@ -26,18 +26,12 @@
 
 out vec4 frag_color;
 
-//class 2 -- shadows and SSAO
+//class 2 -- retained SSAO, with Metal-only shadows
 
 // Inputs
 in vec2 vary_fragcoord;
 
 vec4 getPosition(vec2 pos_screen);
-vec4 getNorm(vec2 pos_screen);
-
-// The sun pass's entry points (shadowUtil.glsl): they skip the filter where no reader of the
-// light map uses it, and take the receiver's slope only along the surface geo_norm faces.
-float sampleDirectionalShadowFacing(vec3 pos, vec3 norm, vec3 geo_norm, vec2 pos_screen);
-float sampleSpotShadowInFrustum(vec3 pos, vec3 norm, vec3 geo_norm, int index, vec2 pos_screen);
 float calcAmbientOcclusion(vec4 pos, vec3 norm, vec2 pos_screen);
 vec3 getGeoNorm(vec2 pos_screen);
 
@@ -45,18 +39,12 @@ void main()
 {
     vec2 pos_screen = vary_fragcoord.xy;
     vec4 pos  = getPosition(pos_screen);
-    vec4 norm = getNorm(pos_screen);
     // Geometric normal, not the shading one. The occlusion test compares neighbouring depths
-    // against this plane, and the shadows take the receiver's slope along it; depth knows nothing
-    // about normal-mapped detail -- testing against a perturbed normal makes a flat wall occlude
-    // itself wherever its map has texture.
+    // against this plane; depth knows nothing about normal-mapped detail.
     vec3 geo_norm = getGeoNorm(pos_screen);
 
-    vec4 col;
-    col.r = sampleDirectionalShadowFacing(pos.xyz, norm.xyz, geo_norm, pos_screen);
+    vec4 col = vec4(1.0);
     col.g = calcAmbientOcclusion(pos, geo_norm, pos_screen);
-    col.b = sampleSpotShadowInFrustum(pos.xyz, norm.xyz, geo_norm, 0, pos_screen);
-    col.a = sampleSpotShadowInFrustum(pos.xyz, norm.xyz, geo_norm, 1, pos_screen);
 
     frag_color = clamp(col, vec4(0), vec4(1));
 }

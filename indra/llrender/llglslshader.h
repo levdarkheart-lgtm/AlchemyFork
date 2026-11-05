@@ -56,7 +56,7 @@ public:
     bool mGLTF = false;
     bool hasAtmospherics = false;
     bool hasGamma = false;
-    bool hasShadows = false;
+    bool mHashLayoutByte = false; // explicit initialized byte; prevents tail padding in the byte-hashed record
     bool hasAmbientOcclusion = false;
     bool hasSrgb = false;
     bool isDeferred = false;

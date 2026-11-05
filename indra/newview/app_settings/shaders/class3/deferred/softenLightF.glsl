@@ -31,7 +31,7 @@ out vec4 frag_color;
 
 const float M_PI = 3.14159265;
 
-#if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
+#if defined(HAS_SSAO)
 uniform sampler2D lightMap;
 #endif
 
@@ -43,7 +43,7 @@ uniform float ssao_irradiance_max;
 // Inputs
 uniform vec4 clipPlane;
 uniform mat3 env_mat;
-// Shared shadow/SSAO constants, spliced from class1/deferred/deferredBlock.glsl and
+// Shared deferred/SSAO constants, spliced from class1/deferred/deferredBlock.glsl and
 // bound at UB_DEFERRED. Members are read by bare name.
 //[ENGINE_BLOCK Deferred]
 uniform vec3 sun_dir;
@@ -205,15 +205,11 @@ void main()
     vec4 baseColor     = gb.albedo;
     vec4 spec        = gb.specular; // NOTE: PBR linear Emissive
 
-#if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
+#if defined(HAS_SSAO)
     vec2 scol_ambocc = texture(lightMap, vary_fragcoord.xy).rg;
 #endif
 
-#if defined(HAS_SUN_SHADOW)
-    float scol       = max(scol_ambocc.r, baseColor.a);
-#else
     float scol = 1.0;
-#endif
 #if defined(HAS_SSAO)
     float ambocc     = scol_ambocc.g;
 #else

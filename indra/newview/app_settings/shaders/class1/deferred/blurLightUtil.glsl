@@ -141,10 +141,8 @@ ivec2 blurLightTap(BlurLightPixel p, int i)
 // Tap `i`'s weight, at texel `texel` of view depth `view_depth`: 0 at the sky, and where the texel's centre lies off
 // the pixel's plane.
 //
-// AO uses the y weight of the kernel. The shadow term, which used the x weight, is no longer blurred: it is a
-// Gaussian-weighted PCF (deferred/shadowUtil.glsl) that is smooth at the source, so a second screen-space blur only
-// widened its penumbra and let the bilateral tolerance bleed it across depth edges the PCF had already resolved. AO is
-// still stochastic per pixel and wants the denoise, so it keeps it.
+// AO uses the y weight of the kernel. Shadows are Metal-only and no longer occupy the retained GL light map; AO is
+// still stochastic per pixel and wants the denoise, so it keeps this bilateral pass.
 float blurLightWeight(BlurLightPixel p, int i, ivec2 texel, float view_depth)
 {
     int step = i < 6 ? i + 1 : i - 5;

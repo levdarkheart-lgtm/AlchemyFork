@@ -1265,10 +1265,6 @@ public:
     void endMetalWorldGBufferCapture();
 #endif
 
-    // Retained GL receivers never bind shadow maps: native Metal owns all shadow production and consumption. Mark all
-    // six maps unavailable on the retained shader so its hidden traversal cannot sample stale targets.
-    void bindShadowMaps(LLGLSLShader& shader);
-
     // Rebuild the shared shadow/SSAO constant block from current state (CPU only). Called once
     // per deferred pass; every value in it is fixed for the whole pass.
     void packDeferredUBO();

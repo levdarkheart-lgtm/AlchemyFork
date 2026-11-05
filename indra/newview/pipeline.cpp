@@ -28797,14 +28797,6 @@ void LLPipeline::renderFinalize()
     recordTrianglesDrawn();
 }
 
-void LLPipeline::bindShadowMaps(LLGLSLShader& shader)
-{
-    // Application-owned shadow generation and consumption are Metal-only. Retained GL receivers must never interpret
-    // native slice validity as permission to sample a GL depth target: none exists. Native lighting consumes the
-    // Metal texture arrays directly through fillMetal*Shadows().
-    shader.uniform1i(LLShaderMgr::UNBUILT_SHADOW_MAPS, 0x3f);
-}
-
 void LLPipeline::packDeferredUBO()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -28890,13 +28882,9 @@ void LLPipeline::bindDeferredShaderFast(LLGLSLShader& shader)
     if (shader.mCanBindFast)
     { // was previously fully bound, use fast path
         shader.bind();
-        // Not carried over from the full bind: a program fully bound outside a capture and fast
-        // bound inside one would still read the main view's. shadowUtil.glsl selects its filter
-        // tier and the cascades it reads on these, so a stale value is a pass rendering at the
-        // wrong tier, or reading maps its pack never rendered, rather than a missing update.
+        // Not carried over from the full bind: cube captures need their own mode even when the
+        // program's ordinary deferred textures remain valid for the fast path.
         shader.uniform1i(LLShaderMgr::CUBE_SNAPSHOT, gCubeSnapshot ? 1 : 0);
-        shader.uniform1i(LLShaderMgr::SUN_SHADOW_CASCADES, (S32)sunCascades());
-        bindShadowMaps(shader);
         bindReflectionProbes(shader);
         bindDeferredUBO();
     }
@@ -29004,10 +28992,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
 
     stop_glerror();
 
-    bindShadowMaps(shader);
-
-    stop_glerror();
-
     if (!LLPipeline::sReflectionProbesEnabled)
     {
         channel = shader.enableTexture(LLShaderMgr::ENVIRONMENT_MAP);
@@ -29050,7 +29034,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
     shader.uniformMatrix4fv(LLShaderMgr::INVERSE_MODELVIEW_DELTA_MATRIX, LLViewerCamera::getInstance()->getInverseDeltaModelview());
 
     shader.uniform1i(LLShaderMgr::CUBE_SNAPSHOT, gCubeSnapshot ? 1 : 0);
-    shader.uniform1i(LLShaderMgr::SUN_SHADOW_CASCADES, (S32)sunCascades());
 
     if (shader.hasUniform(LLShaderMgr::DEFERRED_NORM_MATRIX))
     {
@@ -29268,12 +29251,6 @@ void LLPipeline::renderDeferredLighting()
                 sun_shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
                                               (GLfloat)deferred_light_target->getWidth(),
                                               (GLfloat)deferred_light_target->getHeight());
-
-                // A spot shadow channel only a shadowing spot light reads (setupSpotLight's
-                // proj_shadow_idx): the program leaves the other's filter out.
-                sun_shader.uniform2f(LLShaderMgr::DEFERRED_SPOT_SHADOW_LIVE,
-                                     mShadowSpotLight[0].notNull() ? 1.f : 0.f,
-                                     mShadowSpotLight[1].notNull() ? 1.f : 0.f);
 
                 {
                     // The triangle lies on the far plane (sunLightV.glsl) and the target shares the scene's
@@ -30044,27 +30021,6 @@ void LLPipeline::setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep)
     shader.uniform3fv(LLShaderMgr::PROJECTOR_ORIGIN, 1, screen_origin.getF32ptr());
     shader.uniform1f(LLShaderMgr::PROJECTOR_RANGE, proj_range);
     shader.uniform1f(LLShaderMgr::PROJECTOR_AMBIANCE, params.mV[2]);
-    S32 s_idx = -1;
-
-    for (U32 i = 0; i < 2; i++)
-    {
-        if (mShadowSpotLight[i] == drawablep)
-        {
-            s_idx = i;
-        }
-    }
-
-    shader.uniform1i(LLShaderMgr::PROJECTOR_SHADOW_INDEX, s_idx);
-
-    if (s_idx >= 0)
-    {
-        shader.uniform1f(LLShaderMgr::PROJECTOR_SHADOW_FADE, 1.f-mSpotLightFade[s_idx]);
-    }
-    else
-    {
-        shader.uniform1f(LLShaderMgr::PROJECTOR_SHADOW_FADE, 1.f);
-    }
-
     // make sure we're not already targeting the same spot light with both shadow maps
     llassert(mTargetShadowSpotLight[0] != mTargetShadowSpotLight[1] || mTargetShadowSpotLight[0].isNull());
 
@@ -30140,12 +30096,6 @@ void LLPipeline::unbindDeferredShader(LLGLSLShader &shader)
     shader.disableTexture(LLShaderMgr::DEFERRED_LIGHT, ALTextureSlot::TT_TEXTURE);
     shader.disableTexture(LLShaderMgr::DIFFUSE_MAP);
 
-    // Retained GL receivers cannot sample native Metal shadow storage. Clear the six shader
-    // bindings they still declare; bindShadowMaps marks every slice unavailable.
-    for (U32 i = 0; i < 6; i++)
-    {
-        shader.disableTexture(LLShaderMgr::DEFERRED_SHADOW0+i);
-    }
     shader.disableTexture(LLShaderMgr::DEFERRED_NOISE);
 
     if (!LLPipeline::sReflectionProbesEnabled)
@@ -30957,8 +30907,8 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         if (cascades < ALRenderResourcePlan::SUN_CASCADES)
         {
             // Two cascades rather than four, so the shadow ends with cascade 1, which reaches the last split: twice the
-            // depth of what the capture sees, at least 16 m and at most its draw distance. Past it the shadow fades to lit over a fifth
-            // of that distance, where clip.z and clip.w place the fade (sampleDirectionalShadow), and is lit beyond,
+            // depth of what the capture sees, at least 16 m and at most its draw distance. Past it the native receiver fades to lit over a fifth
+            // of that distance, where clip.z and clip.w place the fade, and is lit beyond,
             // all inside cascade 1's map, which covers a quarter past its split.
             const F32 last = mSunClipPlanes.mV[3];
             mSunClipPlanes.mV[1] = last;

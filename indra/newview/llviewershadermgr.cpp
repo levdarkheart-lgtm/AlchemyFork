@@ -721,34 +721,6 @@ std::string LLViewerShaderMgr::loadBasicShaders()
 
     const S32 probe_level = in.mProbeLevel;
 
-    const S32 shadow_detail = in.mShadowDetail;
-
-    if (shadow_detail >= 1)
-    {
-        attribs["SUN_SHADOW"] = "1";
-
-        if (shadow_detail >= 2)
-        {
-            attribs["SPOT_SHADOW"] = "1";
-        }
-
-        // PCF filter kernel width (texels) from the quality tier, overriding the shader's own
-        // default (deferred/shadowUtil.glsl SHADOW_PCF_KERNEL == 4). Even values only: the
-        // gather path tiles the kernel in 2x2 blocks, so K/2 gather-compare fetches per axis.
-        static const S32 pcf_kernel[] = { 2, 4, 6, 4 }; // Low / Medium / High / Ultra(PCSS)
-        const S32 quality = in.mShadowFilterQuality;
-        attribs["SHADOW_PCF_KERNEL"] = std::to_string(pcf_kernel[quality]);
-
-        if (quality >= 3)
-        {
-            // Ultra: contact-hardening PCSS. This ALSO switches the shadow maps from
-            // depth-compare samplers to plain sampler2D reads (a blocker search needs the
-            // raw depth), so LLPipeline::bindShadowMaps must bind a matching non-compare
-            // sampler -- it reads this same input. Keep the two in step.
-            attribs["SHADOW_PCSS"] = "1";
-        }
-    }
-
     if (ssr)
     {
         attribs["SSR"] = "1";
@@ -843,7 +815,6 @@ std::string LLViewerShaderMgr::loadBasicShaders()
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/deferredUtil.glsl",                    1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/gbufferUtil.glsl",                    1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/globalF.glsl",                          1));
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/shadowUtil.glsl",                      1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/aoUtil.glsl",                          1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/terrainSurface.glsl",                  1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "environment/waterSurface.glsl",                 1) );
@@ -1040,8 +1011,6 @@ void LLViewerShaderMgr::loadShadersEffects()
 void LLViewerShaderMgr::loadShadersDeferred()
 {
     LL_PROFILE_ZONE_SCOPED;
-    bool use_sun_shadow = mShaderLevel[SHADER_DEFERRED] > 1 && mInputs.mGlobal.mShadowDetail > 0;
-
     if (mShaderLevel[SHADER_DEFERRED] == 0)
     {
         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.unload();
@@ -1211,7 +1180,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredLightProgram.mName = "Deferred Light Shader";
         gDeferredLightProgram.mFeatures.isDeferred = true;
         gDeferredLightProgram.mFeatures.hasFullGBuffer = true;
-        gDeferredLightProgram.mFeatures.hasShadows = true;
         gDeferredLightProgram.mFeatures.hasSrgb = true;
 
         gDeferredLightProgram.mShaderFiles.clear();
@@ -1231,7 +1199,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredMultiLightProgram[i].mName = llformat("Deferred MultiLight Shader %d", i);
         gDeferredMultiLightProgram[i].mFeatures.isDeferred = true;
         gDeferredMultiLightProgram[i].mFeatures.hasFullGBuffer = true;
-        gDeferredMultiLightProgram[i].mFeatures.hasShadows = true;
         gDeferredMultiLightProgram[i].mFeatures.hasSrgb = true;
 
         gDeferredMultiLightProgram[i].clearPermutations();
@@ -1252,7 +1219,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSpotLightProgram.mFeatures.hasSrgb = true;
         gDeferredSpotLightProgram.mFeatures.isDeferred = true;
         gDeferredSpotLightProgram.mFeatures.hasFullGBuffer = true;
-        gDeferredSpotLightProgram.mFeatures.hasShadows = true;
 
         gDeferredSpotLightProgram.clearPermutations();
         gDeferredSpotLightProgram.mShaderFiles.push_back(make_pair("deferred/pointLightV.glsl", GL_VERTEX_SHADER));
@@ -1269,7 +1235,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredMultiSpotLightProgram.mFeatures.hasSrgb = true;
         gDeferredMultiSpotLightProgram.mFeatures.isDeferred = true;
         gDeferredMultiSpotLightProgram.mFeatures.hasFullGBuffer = true;
-        gDeferredMultiSpotLightProgram.mFeatures.hasShadows = true;
 
         gDeferredMultiSpotLightProgram.clearPermutations();
         gDeferredMultiSpotLightProgram.addPermutation("MULTI_SPOTLIGHT", "1");
@@ -1297,7 +1262,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         gDeferredSunProgram.mName = "Deferred Sun Shader";
         gDeferredSunProgram.mFeatures.isDeferred    = true;
-        gDeferredSunProgram.mFeatures.hasShadows    = true;
         gDeferredSunProgram.mFeatures.hasAmbientOcclusion = use_ao;
 
         gDeferredSunProgram.mShaderFiles.clear();
@@ -1313,7 +1277,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
     {
         gDeferredSunProbeProgram.mName = "Deferred Sun Probe Shader";
         gDeferredSunProbeProgram.mFeatures.isDeferred = true;
-        gDeferredSunProbeProgram.mFeatures.hasShadows = true;
 
         gDeferredSunProbeProgram.mShaderFiles.clear();
         gDeferredSunProbeProgram.mShaderFiles.push_back(make_pair("deferred/sunLightV.glsl", GL_VERTEX_SHADER));
@@ -1373,7 +1336,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
             shader.mFeatures.hasGamma = true;
             shader.mFeatures.isDeferred = true;
             shader.mFeatures.hasFullGBuffer = true;
-            shader.mFeatures.hasShadows = use_sun_shadow;
             shader.mFeatures.hasReflectionProbes = mShaderLevel[SHADER_DEFERRED] > 2;
 
             shader.clearPermutations();
@@ -1383,13 +1345,8 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
             shader.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
 
-            if (use_sun_shadow)
-            {
-                shader.addPermutation("HAS_SUN_SHADOW", "1");
-            }
-
             if (mInputs.mLocal.mSSAO)
-            { //if using SSAO, take screen space light map into account as if shadows are enabled
+            { // If using SSAO, read its retained screen-space light-map channel.
                 shader.mShaderLevel = llmax(shader.mShaderLevel, 2);
                 shader.addPermutation("HAS_SSAO", "1");
             }

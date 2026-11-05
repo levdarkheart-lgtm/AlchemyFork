@@ -79,10 +79,6 @@ vec3 linear_to_srgb(vec3 c);
 vec4 applySkyAndWaterFog(vec3 pos, vec3 additive, vec3 atten, vec4 color);
 void calcAtmosphericVarsLinear(vec3 inPositionEye, vec3 norm, vec3 light_dir, out vec3 sunlit, out vec3 amblit, out vec3 atten, out vec3 additive);
 
-#ifdef HAS_SUN_SHADOW
-float sampleDirectionalShadowGrad(vec3 pos, vec3 norm, vec2 pos_screen, vec3 dpos_dx, vec3 dpos_dy);
-#endif
-
 float getAmbientClamp();
 
 void mirrorClip(vec3 pos);
@@ -100,12 +96,6 @@ vec3 calcLegacyPointLightDiffuse(vec3 diffuse,
 
 void main()
 {
-#ifdef HAS_SUN_SHADOW
-    // Before every discard below, for the shadow's receiver-plane bias.
-    vec3 dpos_dx = dFdx(vary_position);
-    vec3 dpos_dy = dFdy(vary_position);
-#endif
-
     mirrorClip(vary_position);
 
     vec2 frag = vary_fragcoord.xy/vary_fragcoord.z*0.5+0.5;
@@ -197,14 +187,6 @@ void main()
 #endif
 #endif // USE_VERTEX_COLOR
 
-    // Below the discards, as pbralphaF samples it, so a fragment they drop filters no shadow.
-    // The impostor branch above is unlit and takes none.
-    float shadow = 1.0f;
-
-#ifdef HAS_SUN_SHADOW
-    shadow = sampleDirectionalShadowGrad(pos.xyz, norm.xyz, frag, dpos_dx, dpos_dy);
-#endif
-
     vec3 sunlit;
     vec3 amblit;
     vec3 additive;
@@ -236,14 +218,14 @@ void main()
     if (classic_mode > 0)
     {
         final_da = pow(final_da,1.2);
-        vec3 sun_contrib = vec3(min(final_da, shadow));
+        vec3 sun_contrib = vec3(final_da);
 
         color.rgb = srgb_to_linear(color.rgb * 0.9 + linear_to_srgb(sun_contrib) * sunlit_linear * 0.7);
         sunlit_linear = srgb_to_linear(sunlit_linear);
     }
     else
     {
-        vec3 sun_contrib = min(final_da, shadow) * sunlit_linear;
+        vec3 sun_contrib = final_da * sunlit_linear;
         color.rgb += sun_contrib;
     }
 

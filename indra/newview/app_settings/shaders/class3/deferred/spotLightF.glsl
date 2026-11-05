@@ -43,8 +43,6 @@ uniform float near_clip;
 uniform float far_clip;
 
 uniform vec3 proj_origin; //origin of projection to be used for angular attenuation
-uniform int proj_shadow_idx;
-uniform float shadow_fade;
 // Classic (legacy pre-PBR) sky lighting is a per-program compile-time variant, not a runtime
 // uniform: the two paths differ by whole blocks of maths and a probe sample, and only one of
 // them is ever live for a given sky. A macro rather than a const global -- these sources are
@@ -147,16 +145,6 @@ void main()
         }
     }
 
-    float shadow = 1.0;
-
-    if (proj_shadow_idx >= 0)
-    {
-        vec4 shd = texture(lightMap, tc);
-        shadow = (proj_shadow_idx==0)?shd.b:shd.a;
-        shadow += shadow_fade;
-        shadow = clamp(shadow, 0.0, 1.0);
-    }
-
     GBufferInfo gb = getGBuffer(tc);
 
     vec3 n = gb.normal;
@@ -212,7 +200,7 @@ void main()
 
                 dlit = getProjectedLightDiffuseColor( l_dist, proj_tc.xy );
 
-                vec3 intensity = dist_atten * dlit * PUNCTUAL_LIGHT_SCALE * shadow; // see deferredUtil.glsl -- must match every other site
+                vec3 intensity = dist_atten * dlit * PUNCTUAL_LIGHT_SCALE; // see deferredUtil.glsl -- must match every other site
 
                 pbrPunctual(diffuseColor, specularColor, perceptualRoughness, metallic, n.xyz, v, lv, nl, diffPunc, specPunc);
 
@@ -259,10 +247,9 @@ void main()
 
                 dlit = getProjectedLightDiffuseColor( l_dist, proj_tc.xy );
 
-                final_color = dlit*lit*diffuse*shadow;
+                final_color = dlit*lit*diffuse;
 
-                // unshadowed for consistency between forward and deferred?
-                amb_da += (nl*0.5+0.5) /* * (1.0-shadow) */ * proj_ambiance;
+                amb_da += (nl*0.5+0.5) * proj_ambiance;
             }
 
             amb_rgb = getProjectedLightAmbiance( amb_da, dist_atten, lit, nl, 1.0, proj_tc.xy );
@@ -281,7 +268,7 @@ void main()
             if (nh > 0.0)
             {
                 float scol = fres*blinnPhongLobe(nh, spec.a)*gt/(nh*nl);
-                vec3 speccol = dlit*scol*spec.rgb*shadow;
+                vec3 speccol = dlit*scol*spec.rgb;
                 speccol = clamp(speccol, vec3(0), vec3(1));
                 final_color += speccol;
             }
@@ -310,7 +297,7 @@ void main()
                         stc.x > 0.0 &&
                         stc.y > 0.0)
                     {
-                        final_color += color.rgb * texture2DLodSpecular(stc.xy, (1 - spec.a) * (proj_lod * 0.6)).rgb * shadow * envIntensity;
+                        final_color += color.rgb * texture2DLodSpecular(stc.xy, (1 - spec.a) * (proj_lod * 0.6)).rgb * envIntensity;
                     }
                 }
             }

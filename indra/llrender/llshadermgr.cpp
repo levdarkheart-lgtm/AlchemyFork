@@ -412,14 +412,6 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
         }
     }
 
-    if (features->hasShadows)
-    {
-        if (!shader->attachFragmentObject("deferred/shadowUtil.glsl"))
-        {
-            return false;
-        }
-    }
-
     if (features->hasReflectionProbes)
     {
         if (!shader->attachFragmentObject(variantObjectKey("deferred/reflectionProbeF.glsl", OBJ_AXIS_CLASSIC, shader, GL_FRAGMENT_SHADER)))
@@ -1659,8 +1651,6 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("proj_origin");
     mReservedUniforms.push_back("proj_range");
     mReservedUniforms.push_back("proj_ambiance");
-    mReservedUniforms.push_back("proj_shadow_idx");
-    mReservedUniforms.push_back("shadow_fade");
     mReservedUniforms.push_back("proj_focus");
     mReservedUniforms.push_back("proj_lod");
     mReservedUniforms.push_back("proj_ambient_lod");
@@ -1754,9 +1744,7 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("vertex_alpha_coverage");
 
     // Deferred
-    mReservedUniforms.push_back("shadow_matrix");
     mReservedUniforms.push_back("env_mat");
-    mReservedUniforms.push_back("shadow_clip");
     mReservedUniforms.push_back("ssao_radius");
     mReservedUniforms.push_back("ssao_max_radius");
     mReservedUniforms.push_back("ssao_factor");
@@ -1766,21 +1754,11 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("ssao_irradiance_max");
     mReservedUniforms.push_back("screen_res");
     mReservedUniforms.push_back("near_clip");
-    mReservedUniforms.push_back("shadow_offset");
-    mReservedUniforms.push_back("shadow_bias");
-    mReservedUniforms.push_back("spot_shadow_bias");
-    mReservedUniforms.push_back("spot_shadow_offset");
     mReservedUniforms.push_back("sun_dir");
     mReservedUniforms.push_back("moon_dir");
-    mReservedUniforms.push_back("shadow_res");
-    mReservedUniforms.push_back("proj_shadow_res");
     mReservedUniforms.push_back("depth_cutoff");
     mReservedUniforms.push_back("norm_cutoff");
-    mReservedUniforms.push_back("shadow_target_width");
-    mReservedUniforms.push_back("shadow_stipple");
-    mReservedUniforms.push_back("spot_shadow_live");
-
-    llassert(mReservedUniforms.size() == LLShaderMgr::DEFERRED_SPOT_SHADOW_LIVE + 1);
+    llassert(mReservedUniforms.size() == LLShaderMgr::DEFERRED_NORM_CUTOFF + 1);
 
     mReservedUniforms.push_back("iterationCount");
     mReservedUniforms.push_back("rayStep");
@@ -1793,8 +1771,6 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("modelview_delta");
     mReservedUniforms.push_back("inv_modelview_delta");
     mReservedUniforms.push_back("cube_snapshot");
-    mReservedUniforms.push_back("sun_shadow_cascades");
-    mReservedUniforms.push_back("unbuilt_shadow_maps");
 
     mReservedUniforms.push_back("tc_scale");
     mReservedUniforms.push_back("rcp_screen_res");
@@ -1812,14 +1788,7 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("dof_uv_scale");
 
     mReservedUniforms.push_back("depthMap");
-    mReservedUniforms.push_back("shadowMap0");
-    mReservedUniforms.push_back("shadowMap1");
-    mReservedUniforms.push_back("shadowMap2");
-    mReservedUniforms.push_back("shadowMap3");
-    mReservedUniforms.push_back("shadowMap4");
-    mReservedUniforms.push_back("shadowMap5");
-
-    llassert(mReservedUniforms.size() == LLShaderMgr::DEFERRED_SHADOW5+1);
+    llassert(mReservedUniforms.size() == LLShaderMgr::DEFERRED_DEPTH+1);
 
     mReservedUniforms.push_back("diffuseRect");
     mReservedUniforms.push_back("specularRect");
