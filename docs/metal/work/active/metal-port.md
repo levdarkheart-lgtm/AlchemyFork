@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `68ea32d323`.
+**Renderer checkpoint:** Commit `ad53dfe567`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,65 +13,32 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,593 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,585 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; converted startup/local/HDRI/fetched resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot has no GL scratch/reconcile path. Selection effects plus HUD fullbright/shiny/emboss/transparent output are native-only; visual review remains queued. |
-| M-007 | World scene and material correctness | doing | Probe scenes plus ordinary sky/cloud/body, fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR batches are directly enumerated into Metal. Grass, trees and shadows are native; broad parity remains open. |
+| M-007 | World scene and material correctness | doing | Probe scenes plus ordinary sky/cloud/body, avatars/impostors, fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR batches are directly enumerated into Metal. Grass, trees and direct shadows are native; broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation are implemented in Metal. Alpha-pool, water, atmosphere, sky, impostor, DoF-depth and debug-highlight production are native-only. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (2,593 findings), linked/runtime no-GL and visual review remain open. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (2,585 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump/fullbright/transparent/water geometry, water exclusion/haze, atmospheric haze/sky-behind, main sky/cloud/body layers, shiny/emboss, glow, impostor/DoF/debug alpha, trees nor converted debug effects. Superseded owners are deleted. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump/fullbright/transparent/water geometry, water exclusion/haze, atmospheric haze/sky-behind, main sky/cloud/body/avatar/impostor layers, shiny/emboss, glow, DoF/debug alpha, trees nor converted debug effects. Superseded owners are deleted. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — remove visible GL fallback and selection stack
+## Active checkpoint — main avatar family Metal-only
 
-### Owner-verified transition UI and native atlas ownership
+### Retained owner evidence and native presentation boundary
 
-Owner-attended run `font-cache-replay-fix-20261104-01` logged in but was rejected:
-menu, location-bar and toolbar text were absent, and the changing FPS field
-flashed glyph rectangles. The rejected executable SHA-256 is
-`49d5cf47f17e9e740dab38aaee48ef76ec5dd540afb7b9bc83f26522b62695e6`;
-its owner-supplied rejection image is retained in the run directory.
-
-The follow-up run `font-metal-overlay-20261104-01` is also rejected. It encoded
-509,986 production Metal UI batches with zero eligible fallback batches but no
-viewer UI appeared over the GL world. This isolates the failure to transparent
-child-layer composition above SDL's OpenGL drawable rather than Metal glyph or
-batch coverage. Its retained owner image SHA-256 is
-`423d3a34cb43ab9b1f264f04d176b96fa738a6cb5d46299e9b260650b7009c30`.
-
-Commit `68d8792028` removes visible GL fallback. After startup the native layer
-stays opaque, world/login GL swaps are suppressed and incomplete native work
-retains the previous Metal drawable for a retry. Presentation telemetry now
-distinguishes this native-only failure from historical GL fallback. This does
-not remove legacy GL traversal, resource side effects or the live context.
-
-Commit `2836849036` removes Snapshot's GL scratch target, GL clear and GL size
-limit, performs fail-closed Metal readback and permits one identical-size retry
-for resized temporal resources. Hero mirrors participate in normal native
-presentation without a hidden validation setting. Owner revalidation of
-Snapshot and mirrors remains queued.
-
-Commit `cf6a821548` removes the remaining Snapshot-size call into
-`rebuildGLBuffers`. The Darwin override validates both requested and scaled
-dimensions against the native device and feeds the exact Metal capture size
-directly; unsupported platforms decline rather than fall back. The visual row
-stays open because source/build success does not establish floater behavior.
-
-The rebuilt `26.4.0.68285` Release viewer is pinned at
-`c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`;
-349/349 inspected Mach-O slices are ARM64 and deep strict code-sign verification
-passes. Metal-validation runs pass 3,684/110 for
-`llrender_gl_fresh_tests`, 36/2 for the dual-atlas cases and 56/1 for the
-real-FreeType native UI path. Owner-attended run
-`font-dual-recovery-20261104-01` accepted readable menu, location, toolbar and
-stable numeric FPS text. Broader font-atlas validation remains queued.
+Owner-attended run `font-dual-recovery-20261104-01` accepted readable menu,
+location, toolbar and stable FPS text after two rejected candidates; exact
+artifacts remain in the archive and visual queue. Commits through `68d8792028`
+make Metal the sole post-startup presentation owner while incomplete native
+work retains the preceding drawable. Commits `2836849036` and `cf6a821548`
+remove Snapshot's GL scratch/reconcile path; visual revalidation remains open.
 
 Commits `7a9878949d` and `51425778e1` remove the GL image registry as the
 Metal-device authority. `10e08508eb` makes scheduled and realtime probe
@@ -123,6 +90,14 @@ GLSL stages. Explicit CPU matrices feed the existing mandatory Metal scene
 transactions; probe/hero faces retain their direct native path. Visual case 48
 is queued and did not block the source-proven cutover.
 
+`ad53dfe567` removes the retained ordinary deferred avatar, avatar-alpha and
+impostor draws, three GL programs and four exclusive GLSL stages. Direct Metal
+capture now owns rigid/skinned avatars, impostors, hair/eyelash/skirt masks and
+post-deferred transparency; the impostor bake includes transparent masks and
+native shadow capture no longer double-submits the opaque-cut body. Preview
+avatars and the retained main shadow traversal are separate open owners.
+Visual case 49 is queued; neither viewer was launched.
+
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
 resources avoid GL names; dual backing remains only where retained GL consumers
@@ -133,9 +108,11 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- `68ea32d323`: Ninja/Xcode Release 68356, physical validated Metal 8,022/1,
-  349/349 ARM64 and deep signing pass; executable SHA-256 is `dcf87d02d73f3f7f4d8603587ed7142101bc4a0399725c11ab7adec8e8d47ac1`, metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-  Strict inventory is 2,593 and exits 1 as expected; no audit rule changed.
+- `ad53dfe567`: Ninja/Xcode Release 68358 and physical validated Metal 8,022/1
+  pass. Release inspection is 349/349 ARM64 and deep signing passes. Executable
+  SHA-256 is `1433444a1e5f12ebf0416858c5f629f63d8dcc835d08c6fcb50e9542fbd420ee`;
+  metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
+  Strict inventory is 2,585 and exits 1 as expected; no audit rule changed.
 
 ## Owner-attended visual review cadence
 
@@ -161,10 +138,9 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Audit retained avatar and shadow GL draws against direct native capture and
-remove the next proven duplicate owner. Do not wait for queued
-visual review, and never restore publication or presentation fallbacks.
-Keep visual cases queued and do not launch viewers autonomously.
+Audit the retained main directional/projector shadow traversal against direct
+native capture and remove the next proven GL owner. Do not wait for queued
+visual review, restore fallbacks or launch viewers autonomously.
 
 ## Non-negotiable open gates
 
