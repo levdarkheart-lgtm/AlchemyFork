@@ -222,7 +222,8 @@ private:
     static ALShaderInputs         shaderInputsFromSettings();
     static ALRenderResourceInputs resourceInputsFromSettings(const ALShaderInputs& shaders);
 
-    // The render target, or the GL texture name, that each of the plan's resources is.
+    // The retained render target, or the GL texture name, that each of the plan's resources is. Metal-only shadow
+    // resources deliberately have neither: their descriptions feed native allocation directly.
     LLRenderTarget* resourceTarget(ALRenderResourcePlan::Id id);
     U32*            resourceTexture(ALRenderResourcePlan::Id id);
 
@@ -1264,19 +1265,11 @@ public:
     void endMetalWorldGBufferCapture();
 #endif
 
-    // bind shadow maps
-    // if setup is true, wil lset texture compare mode function and filtering options
+    // Retained GL receivers never bind shadow maps: native Metal owns all shadow production and consumption. Mark all
+    // six maps unavailable on the retained shader so its hidden traversal cannot sample stale targets.
     void bindShadowMaps(LLGLSLShader& shader);
 
-    // Unbind the shadow maps from whichever units bindShadowMaps last put them on. Detaches
-    // only -- the render targets themselves are owned elsewhere and outlive this (contrast
-    // releaseShadowBuffers, which frees them).
-    //
-    // Programs do not agree on where DEFERRED_SHADOW0..5 live -- one deferred shader may map
-    // them to units 6-11 and another to 26-31 -- so unbinding "this shader's" shadow channels
-    // leaves the previous layout's units still holding depth textures under the compare
-    // sampler. The next program to use those low units for ordinary material maps then reads
-    // a depth texture through a non-shadow sampler, which is undefined behaviour.
+    // Release any compare-sampler state retained from a pre-cutover program or context.
     void unbindShadowMaps();
 
     // Rebuild the shared shadow/SSAO constant block from current state (CPU only). Called once
@@ -1323,12 +1316,9 @@ public:
     ALRenderResourcePlan::Pack renderPack() const;
     // The sun cascades the pack being rendered through renders and has maps for (ALRenderResourcePlan::sunCascades).
     U32 sunCascades() const;
-    // The shadow maps the pass being rendered has none of, a bit each: sun cascades 0 to 3, then the spot pair. A cascade
-    // past those its pack renders, or a map that could not be built, which reconcileResources leaves unbuilt: no pass
-    // draws into it, and the shader reads its shadows lit (unbuilt_shadow_maps).
+    // The native shadow slices the pass being rendered has none of, a bit each: sun cascades 0 to 3, then the spot
+    // pair. A cascade past those its pack renders, or a Metal slice not produced successfully, reads lit.
     U32 unbuiltShadowMaps() const;
-    LLRenderTarget* getSunShadowTarget(U32 i);
-    LLRenderTarget* getSpotShadowTarget(U32 i);
 
     void renderHighlight(const LLViewerObject* obj, F32 fade);
 
@@ -1770,9 +1760,6 @@ public:
         LLRenderTarget          screen;
         LLRenderTarget          deferredScreen;
 
-        //sun shadow map
-        LLRenderTarget          shadow[4];
-
         // How deep the HDR bloom pyramid generateBloomHDR acquires is: the
         // levels the plan describes, from the first, that the pool can build.
         U32                         bloomMipCount = 0;
@@ -1807,7 +1794,6 @@ public:
     // none; null outside that lighting, where a program reading it reads white.
     LLRenderTarget* mLightMap = nullptr;
 
-    LLRenderTarget          mSpotShadow[2];
     // What each spot map holds, so that one whose light and casters are as they were is not drawn again.
 
     // copy of the color/depth buffer just before gamma correction
@@ -1957,11 +1943,6 @@ public:
     //noise map
     U32                 mNoiseMap;
     U32                 mTrueNoiseMap;
-    // The units the shadow maps are bound to live in LLGLSLShader::sCompareSamplerUnits --
-    // published there because LLGLSLShader::bind() is what releases them ahead of
-    // non-declaring programs; see bindShadowMaps.
-
-
     //smaa
     U32                 mSMAAAreaMap = 0;
     U32                 mSMAASearchMap = 0;

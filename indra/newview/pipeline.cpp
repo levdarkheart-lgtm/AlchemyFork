@@ -17886,15 +17886,12 @@ LLRenderTarget* LLPipeline::resourceTarget(ALRenderResourcePlan::Id id)
             case Slot::GBuffer:  return &rt.deferredScreen;
             case Slot::Screen:   return &rt.screen;
             default:
-                break;
+                return nullptr;
         }
-        return &rt.shadow[(U32)slot - (U32)Slot::Sun0];
     }
 
     switch (id)
     {
-        case Id::SpotShadow0:       return &mSpotShadow[0];
-        case Id::SpotShadow1:       return &mSpotShadow[1];
         case Id::SSRScene:          return &mSceneMap;
         case Id::DownRes:           return &mDownResMap;
         case Id::ExposureMeter:     return &mLuminanceMap;
@@ -17938,6 +17935,13 @@ void LLPipeline::ensureResources(const ALRenderResourcePlan& plan, const ALRende
             const Id              id       = (Id)i;
             const Plan::Resource& resource = plan[id];
             if (!ids.test(i) || resource.mDepthFrom.has_value() != sharers || Plan::isTransient(id))
+            {
+                continue;
+            }
+
+            // Shadow descriptions are the Metal allocator's size/format contract. No retained GL target exists for
+            // them, and a native allocation failure is recorded by slice validity when the transaction is attempted.
+            if (Plan::isShadowMap(id))
             {
                 continue;
             }
@@ -18704,13 +18708,6 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
     mGLResourcesLive   = true;
     mResourcesFullSize = changes.mFullSize;
 
-    // A spot map built again, or not there, holds nothing its last draw left in it.
-    ALRenderResourcePlan::IdSet spot_maps;
-    spot_maps.set((size_t)ALRenderResourcePlan::Id::SpotShadow0).set((size_t)ALRenderResourcePlan::Id::SpotShadow1);
-    const bool spot_maps_lost = first_resources || ((changes.mBuilt | changes.mFreed | changes.mFailed) & spot_maps).any();
-    if (spot_maps_lost)
-    {
-    }
     // Which resource each pooled target serves over the next whole frame, for the log; not for a resize that built what
     // it asked, which is logged at debug level alone and comes every frame of a window's drag.
     if (!resized_as_asked(cause, changes))
@@ -18780,11 +18777,6 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
             add(invalidated, "depth pyramid, water surface maps, selection outline, far-plane overlay");
         }
 
-        if (spot_maps_lost)
-        {
-            add(invalidated, "spot shadows");
-        }
-
         // An impostor is G-buffer channels and depth in the main G-buffer's formats (generateImpostor), so those
         // are what make one stale; its size is its own.
         if (changes.mGBufferFormats || changes.mDepthFormat)
@@ -18850,15 +18842,6 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
     else
     {
         LL_INFOS("RenderResources") << line.str() << LL_ENDL;
-    }
-
-    // A shadow map that cannot be built leaves its shadows undrawn rather than the view smaller.
-    const ALRenderResourcePlan::IdSet shadows_failed =
-        changes.mFailed & ALRenderResourcePlan::idsWhere(ALRenderResourcePlan::isShadowMap);
-    if (shadows_failed.any())
-    {
-        LL_WARNS("RenderResources") << "Shadow maps not built, their shadows not drawn: " << resource_names(shadows_failed)
-                                    << LL_ENDL;
     }
 
     return changes.mFullSize;
@@ -28824,109 +28807,16 @@ void LLPipeline::renderFinalize()
 
 void LLPipeline::bindShadowMaps(LLGLSLShader& shader)
 {
-#if LL_DARWIN
-    // Application-owned shadow generation is Metal-only on macOS.  The
-    // retained deferred GL traversal must never reinterpret native slice
-    // validity as permission to sample the old GL depth targets: those
-    // targets are deliberately no longer rendered.  Tell every retained GL
-    // receiver that all six maps are absent and release any compare samplers
-    // left by an earlier program.  Native lighting consumes the retained
+    // Application-owned shadow generation and consumption are Metal-only. Retained GL receivers must never interpret
+    // native slice validity as permission to sample a GL depth target: none exists. Native lighting consumes the
     // Metal texture arrays directly through fillMetal*Shadows().
     shader.uniform1i(LLShaderMgr::UNBUILT_SHADOW_MAPS, 0x3f);
     unbindShadowMaps();
-    return;
-#else
-    // Depth comparison is a sampler property, not a texture one. Every shader samples these
-    // as sampler2DShadow (deferred/shadowUtil.glsl), so the compare sampler is the only way
-    // they are ever read -- allocateShadowBuffer no longer writes GL_TEXTURE_COMPARE_MODE
-    // onto the texture objects.
-    //
-    // Bilinear + clamp: the LINEAR filter is what gives a depth-compare tap its hardware 2x2
-    // PCF; a gather-compare (the default filter path in shadowUtil.glsl) ignores the filter
-    // and fetches the four texels directly. The depth targets are single-level, so anisotropy
-    // had nothing to act on -- see ALSamplers::ShadowCompare.
-    //
-    // The Ultra tier (PCSS) is the exception: a blocker search needs the RAW depth, which a
-    // compare sampler can never return, so shadowUtil.glsl declares the maps as plain
-    // sampler2D there and does the compare in-shader. The sampler has to match the declared
-    // type -- reading a depth texture through a compare sampler as sampler2D (or the reverse)
-    // is undefined -- so this selects on the SAME input that injects SHADOW_PCSS in
-    // LLViewerShaderMgr::loadBasicShaders(), as the programs were loaded with it. Point filtering
-    // because that path filters manually; textureGather ignores the filter regardless.
-    //
-    // NOTHING ELSE MAY ENTER THIS EXPRESSION. The declared type is fixed when the shader is
-    // compiled, so any runtime term here -- render pass, quality override, gCubeSnapshot --
-    // can only make the sampler disagree with a declaration that cannot follow it. Probe
-    // captures do run at the lowest tier, but they get there by taking a shorter path over this
-    // same sampler (shadowUtil.glsl, filterShadow's cube_snapshot branch), which is the only
-    // form that choice can take without a separate program.
-    const bool pcss = shaderInputs().mGlobal.mShadowFilterQuality >= 3;
-    const U32 shadow_sampler = gGL.getSampler(pcss ? ALSamplers::PointClamp : ALSamplers::ShadowCompare);
-
-    const U32 sampler_binds_before = ALTextureSlot::sSamplerBinds;
-    U32 bound_units = 0;
-
-    // A map the pass has none of -- a cascade past a capture's two, or a map that could not be built -- the shader reads
-    // lit without sampling (unbuilt_shadow_maps), and its unit takes one the pass has, so each shadow sampler still sits
-    // on a depth texture under the sampler it was declared for while any was built.
-    const U32 unbuilt = unbuiltShadowMaps();
-    const auto shadow_map = [this](U32 i) { return i < 4 ? getSunShadowTarget(i) : getSpotShadowTarget(i - 4); };
-    LLRenderTarget* stand_in = nullptr;
-    for (U32 i = 0; i < 6 && !stand_in; i++)
-    {
-        if (!(unbuilt & (1u << i)))
-        {
-            stand_in = shadow_map(i);
-        }
-    }
-
-    for (U32 i = 0; i < 6; i++)
-    {
-        LLRenderTarget* shadow_target = (unbuilt & (1u << i)) ? stand_in : shadow_map(i);
-        S32 channel = shader.enableTexture(LLShaderMgr::DEFERRED_SHADOW0 + i);
-        if (shadow_target && channel > -1)
-        {
-            gGL.getTextureSlot(channel)->bind(shadow_target, true, shadow_sampler);
-            bound_units |= 1u << channel;
-        }
-    }
-
-    shader.uniform1i(LLShaderMgr::UNBUILT_SHADOW_MAPS, (S32)unbuilt);
-
-    // Drop any unit the PREVIOUS program had a shadow map on that this one does not reuse.
-    // Those units are about to be handed to a program that maps them to ordinary material
-    // samplers, and a depth texture left under the compare sampler there is undefined
-    // behaviour. Only fires when the layout actually changes, so the common case of
-    // rebinding the same channels costs nothing.
-    //
-    // The published mask is also what LLGLSLShader::bind() consults to release these units
-    // before a program that declares no shadow samplers runs -- this relayout only handles
-    // declaring programs, whose bind() deliberately leaves the units to us.
-    U32 stale = LLGLSLShader::sCompareSamplerUnits & ~bound_units;
-    for (S32 unit = 0; stale != 0; ++unit, stale >>= 1)
-    {
-        if (stale & 1u)
-        {
-            gGL.getTextureSlot(unit)->unbind();
-            // And the compare sampler with it. unbind() leaves the sampler alone by design --
-            // the next bind names its own, so a leftover is normally unreachable. A COMPARE
-            // sampler is the exception: unbind puts the white placeholder on the unit, which
-            // IS sampleable, and reading it through depth comparison is undefined. So the
-            // release has to be explicit here, where the compare sampler was selected.
-            gGL.getTextureSlot(unit)->bindSampler(0);
-        }
-    }
-
-    LLGLSLShader::sCompareSamplerUnits = bound_units;
-    ALTextureSlot::sSamplerBindsShadowCycle += ALTextureSlot::sSamplerBinds - sampler_binds_before;
-#endif
 }
 
 void LLPipeline::unbindShadowMaps()
 {
-    // See bindShadowMaps: the compare sampler goes with the texture, or it survives onto
-    // the white placeholder unbind() leaves behind and the next program to map the unit to
-    // an ordinary sampler2D reads it through depth comparison.
+    // Defensive context-migration cleanup. No current application-owned path publishes compare-sampler units.
     LLGLSLShader::releaseCompareSamplerUnits();
 }
 
@@ -28958,47 +28848,16 @@ void LLPipeline::packDeferredUBO()
 
     memcpy(d.shadow_clip, mSunClipPlanes.mV, sizeof(d.shadow_clip));
 
-    // A pack's cascades share one size, and the spot pair another. Each is read from a map that was built: one that was
-    // not has no size, and the filters over the maps that were divide by it.
-#if LL_DARWIN
-    {
-        // Native lighting consumes only Metal shadow packs. The resource plan
-        // is their size contract even when no retained GL shadow target was
-        // built; the unbuilt mask prevents missing slices from being sampled.
-        const std::optional<ALRenderTargetDesc>& sun_desc =
-            mResourcePlan.desc(ALRenderResourcePlan::sunShadow(
-                renderPack(), 0));
-        const std::optional<ALRenderTargetDesc>& spot_desc =
-            mResourcePlan.desc(ALRenderResourcePlan::Id::SpotShadow0);
-        d.shadow_res[0] = static_cast<F32>(
-            sun_desc ? std::max(sun_desc->width, 1u) : 1u);
-        d.shadow_res[1] = static_cast<F32>(
-            sun_desc ? std::max(sun_desc->height, 1u) : 1u);
-        d.proj_shadow_res[0] = static_cast<F32>(
-            spot_desc ? std::max(spot_desc->width, 1u) : 1u);
-        d.proj_shadow_res[1] = static_cast<F32>(
-            spot_desc ? std::max(spot_desc->height, 1u) : 1u);
-    }
-#else
-    {
-        const U32 unbuilt = unbuiltShadowMaps();
-        const LLRenderTarget* sun_map  = &mRT->shadow[0];
-        const LLRenderTarget* spot_map =
-            &mSpotShadow[(unbuilt & (1u << 4)) ? 1 : 0];
-        for (U32 i = 0; i < 4; ++i)
-        {
-            if (!(unbuilt & (1u << i)))
-            {
-                sun_map = &mRT->shadow[i];
-                break;
-            }
-        }
-        d.shadow_res[0]      = (F32)sun_map->getWidth();
-        d.shadow_res[1]      = (F32)sun_map->getHeight();
-        d.proj_shadow_res[0] = (F32)spot_map->getWidth();
-        d.proj_shadow_res[1] = (F32)spot_map->getHeight();
-    }
-#endif
+    // Metal lighting allocates from the backend-neutral plan. A missing description falls back to one texel so CPU
+    // uniform packing stays finite; the unbuilt mask prevents the corresponding slice from being sampled.
+    const std::optional<ALRenderTargetDesc>& sun_desc =
+        mResourcePlan.desc(ALRenderResourcePlan::sunShadow(renderPack(), 0));
+    const std::optional<ALRenderTargetDesc>& spot_desc =
+        mResourcePlan.desc(ALRenderResourcePlan::Id::SpotShadow0);
+    d.shadow_res[0] = static_cast<F32>(sun_desc ? std::max(sun_desc->width, 1u) : 1u);
+    d.shadow_res[1] = static_cast<F32>(sun_desc ? std::max(sun_desc->height, 1u) : 1u);
+    d.proj_shadow_res[0] = static_cast<F32>(spot_desc ? std::max(spot_desc->width, 1u) : 1u);
+    d.proj_shadow_res[1] = static_cast<F32>(spot_desc ? std::max(spot_desc->height, 1u) : 1u);
 
     // Reverse-Z shadow maps store reversed depth and sample with GEQUAL, so the receiver
     // reference is pushed the other way: negate the bias at this single assembly site.
@@ -30783,49 +30642,27 @@ U32 LLPipeline::unbuiltShadowMaps() const
 {
     const U32 cascades = sunCascades();
     U32 unbuilt = 0;
-#if LL_DARWIN
+    const MetalWorldSimpleCapture* capture = mMetalWorldSimpleCapture.get();
+    for (U32 i = 0; i < 4; ++i)
     {
-        const MetalWorldSimpleCapture* capture =
-            mMetalWorldSimpleCapture.get();
-        for (U32 i = 0; i < 4; ++i)
+        const std::optional<ALRenderTargetDesc>& planned =
+            mResourcePlan.desc(ALRenderResourcePlan::sunShadow(renderPack(), i));
+        if (i >= cascades || !planned || planned->width == 0 || planned->height == 0 || !capture ||
+            !capture->direct_directional_shadow_valid[i])
         {
-            const std::optional<ALRenderTargetDesc>& planned =
-                mResourcePlan.desc(ALRenderResourcePlan::sunShadow(
-                    renderPack(), i));
-            if (i >= cascades || !planned || planned->width == 0 ||
-                planned->height == 0 || !capture ||
-                !capture->direct_directional_shadow_valid[i])
-            {
-                unbuilt |= 1u << i;
-            }
+            unbuilt |= 1u << i;
         }
-        for (U32 i = 0; i < 2; ++i)
-        {
-            if (!mResourcePlan.wants(
-                    i == 0 ? ALRenderResourcePlan::Id::SpotShadow0
-                           : ALRenderResourcePlan::Id::SpotShadow1) ||
-                !capture || !capture->direct_projector_shadow_valid[i])
-            {
-                unbuilt |= 1u << (4 + i);
-            }
-        }
-        return unbuilt;
     }
-#endif
-    (void)cascades;
-    return 0x3fu;
-}
-
-LLRenderTarget* LLPipeline::getSunShadowTarget(U32 i)
-{
-    llassert(i < 4);
-    return &mRT->shadow[i];
-}
-
-LLRenderTarget* LLPipeline::getSpotShadowTarget(U32 i)
-{
-    llassert(i < 2);
-    return &mSpotShadow[i];
+    for (U32 i = 0; i < 2; ++i)
+    {
+        if (!mResourcePlan.wants(i == 0 ? ALRenderResourcePlan::Id::SpotShadow0
+                                       : ALRenderResourcePlan::Id::SpotShadow1) ||
+            !capture || !capture->direct_projector_shadow_valid[i])
+        {
+            unbuilt |= 1u << (4 + i);
+        }
+    }
+    return unbuilt;
 }
 
 // Re-bucket a shared sun-shadow cull (produced by a single union octree walk) down to one

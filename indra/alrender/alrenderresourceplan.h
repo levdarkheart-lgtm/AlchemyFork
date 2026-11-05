@@ -34,8 +34,9 @@
 
 /// What each of the pipeline's render resources is for a set of inputs: a description where the resource is wanted,
 /// nothing where it is not, and for a target that takes its depth from another, which. A pure function of the inputs;
-/// LLPipeline::reconcileResources makes the GL objects what the plan says, but for the transient ones (isTransient),
-/// which the passes acquire by their descriptions from a pool of targets shared by lifetime (ALTransientTargetPool).
+/// LLPipeline::reconcileResources makes persistent retained targets what the plan says, but for Metal-only shadow maps
+/// and the transient ones (isTransient). Native shadow generation consumes the descriptions directly; transient
+/// passes acquire targets by description from a pool shared by lifetime (ALTransientTargetPool).
 ///
 /// Three packs of targets render a view each (LLPipeline::RenderTargetPack): Main, the world view at the render size;
 /// Probe, a reflection probe's face at the probe resolution times its supersample; Hero, a mirror's face at the hero

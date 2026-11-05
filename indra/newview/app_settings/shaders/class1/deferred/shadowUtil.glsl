@@ -724,8 +724,8 @@ float sampleSpotShadow(vec3 pos, vec3 norm, int index, vec2 pos_screen)
 // each takes its derivatives as the shared samplers do, but only along the surface the pixel
 // shows (surfaceDerivatives), then leaves out the filter where no reader of the map uses what it
 // would give. The forward passes read the directional shadow's raw value
-// (sampleDirectionalShadowGrad, or sampleDirectionalShadow on the water) and keep it; no pass
-// reads sampleSpotShadow's now, which shadowutil_gl_test checks.
+// (sampleDirectionalShadowGrad, or sampleDirectionalShadow on the water) and keep it; no retained pass binds a GL
+// shadow target in this Metal-only viewer.
 
 // Set by the sun pass: 1 for each spot shadow map a shadowing spot light (mShadowSpotLight) owns.
 // No spot light reads the other's channel.

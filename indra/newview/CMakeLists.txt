@@ -2729,18 +2729,15 @@ if(AL_BUILD_TESTS)
       "AL_LSL_DEFINITIONS_DIR=\"${LSL_DEFINITIONS_DIR}\""
   )
 
-  # The shadow samplers over a map the pass has none of, and the retained post
-  # chain's passes held against what they replaced: the viewer's own shader
-  # files read from the source tree, on llrender's shared hidden window. The
-  # post chain's passes are timed there too, by the GPU's own clock. Native
-  # selection effects are covered by almetal_tests.
+  # The retained post chain's passes held against what they replaced: the
+  # viewer's own shader files read from the source tree, on llrender's shared
+  # hidden window. The passes are timed there too, by the GPU's own clock.
   al_add_test_binary(
     newview_gl_tests
     PROJECT ${test_project}
     SOURCES
       tests/alcasfold_gl_test.cpp
       tests/aldof_gl_test.cpp
-      tests/shadowutil_gl_test.cpp
     BENCH_SOURCES tests/alcasfold_bench.cpp tests/aldof_bench.cpp tests/alssrhistory_bench.cpp
     LIBRARIES llrender
     SUPPORT llrender_test_checks llcommon_test_checks
