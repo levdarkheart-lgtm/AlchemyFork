@@ -195,14 +195,14 @@ namespace
 
         return {
             { "RenderTransparentWater", no_change, [](Inputs& in) { in.mTransparentWater = false; },
-              [](const Plan&) { return in_packs({ Pack::Main, Pack::Hero }, { Slot::Water, Slot::DepthCopy }); } },
-            // Without a texture barrier the haze passes read the depth copy, so opaque water keeps it.
+              nothing },
+            // Without a texture barrier the haze passes read the depth copy independently of water refraction.
             { "RenderTransparentWater without a texture barrier", [](Inputs& in) { in.mTextureBarrier = false; },
               [](Inputs& in) { in.mTransparentWater = false; },
-              [](const Plan&) { return in_packs({ Pack::Main, Pack::Hero }, { Slot::Water }); } },
-            // A probe's water refracts nothing, so its pack takes the copy only for the haze.
+              nothing },
+            // Every pack that draws retained haze takes the copy when the context has no texture barrier.
             { "a context without a texture barrier", no_change, [](Inputs& in) { in.mTextureBarrier = false; },
-              [](const Plan&) { return of({ Id::ProbeDepthCopy }); } },
+              [](const Plan&) { return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::DepthCopy }); } },
             { "a context without a texture barrier under opaque water", [](Inputs& in) { in.mTransparentWater = false; },
               [](Inputs& in) { in.mTextureBarrier = false; },
               [](const Plan&) { return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::DepthCopy }); } },
@@ -243,7 +243,6 @@ namespace
               [](const Plan& before)
               {
                   return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::GBuffer }) |
-                         in_packs({ Pack::Main, Pack::Hero }, { Slot::Water }) |
                          in_packs({ Pack::Main }, { Slot::PostPing, Slot::PostPong }) |
                          wanted(before, bloom({ Pack::Main })) |
                          of({ Id::SkyBehind, Id::Glow0, Id::Glow1, Id::Glow2 });
@@ -252,7 +251,6 @@ namespace
               [](const Plan& before)
               {
                   return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::GBuffer }) |
-                         in_packs({ Pack::Main, Pack::Hero }, { Slot::Water }) |
                          in_packs({ Pack::Main, Pack::Probe }, { Slot::PostPing, Slot::PostPong }) |
                          wanted(before, bloom({ Pack::Main, Pack::Probe })) |
                          of({ Id::SkyBehind, Id::Glow0, Id::Glow1, Id::Glow2 });
@@ -267,15 +265,14 @@ namespace
               [](const Plan& before)
               {
                   return of({ Id::MainGBuffer, Id::ProbeGBuffer, Id::HeroGBuffer, Id::SpotShadow0, Id::SpotShadow1,
-                              Id::MainDepthCopy, Id::HeroDepthCopy, Id::Preview }) |
+                              Id::Preview }) |
                          wanted(before, sun_shadows({ Pack::Main, Pack::Probe, Pack::Hero }));
               } },
             { "AlchemyRenderReverseZ over 32-bit shadows", [](Inputs& in) { in.mShadowDepth32F = true; },
               [](Inputs& in) { in.mReverseZ = false; },
               [](const Plan&)
               {
-                  return of({ Id::MainGBuffer, Id::ProbeGBuffer, Id::HeroGBuffer, Id::MainDepthCopy, Id::HeroDepthCopy,
-                              Id::Preview });
+                  return of({ Id::MainGBuffer, Id::ProbeGBuffer, Id::HeroGBuffer, Id::Preview });
               } },
             { "RenderShadowDetail 2 to 1", no_change, [](Inputs& in) { in.mShadowDetail = 1; },
               [](const Plan&) { return of({ Id::SpotShadow0, Id::SpotShadow1 }); } },
@@ -821,9 +818,9 @@ namespace
             INFO(Plan::name(id));
             CHECK(plan.wants(id));
         }
-        UNSCOPED_INFO("a preview draws without the sun's shadows and draws no water, so the pack has no light map, sun "
-                      "shadows or water copies for it");
-        CHECK(names(wanted(plan, sun_shadows({ Pack::Probe }) | of({ Id::ProbeLight, Id::ProbeWater, Id::ProbeDepthCopy }))) ==
+        UNSCOPED_INFO("a preview draws without the sun's shadows, water or haze, so the pack has no light map, sun "
+                      "shadows or haze depth copy for it");
+        CHECK(names(wanted(plan, sun_shadows({ Pack::Probe }) | of({ Id::ProbeLight, Id::ProbeDepthCopy }))) ==
               "nothing");
         CHECK(!plan.reflectionProbes());
         CHECK(names(wanted(plan, Plan::idsOf(Pack::Hero))) == "nothing");
@@ -885,38 +882,31 @@ namespace
         }
     }
 
-    TEST_CASE("alrenderresourceplan: a mirror's water copies the scene at its own pack's size", "[alrenderresourceplan]")
+    TEST_CASE("alrenderresourceplan: a mirror's retained haze depth copy has its pack's size", "[alrenderresourceplan]")
     {
         Inputs in          = defaults();
         in.mHeroResolution = 512;
+        in.mTextureBarrier = false;
         const Plan plan    = Plan::make(in);
         for (Pack pack : { Pack::Main, Pack::Hero })
         {
             INFO("pack " << (U32)pack);
             const Plan::Resource& gbuffer = plan[Plan::inPack(pack, Slot::GBuffer)];
-            const Plan::Resource& water   = plan[Plan::inPack(pack, Slot::Water)];
             const Plan::Resource& depth   = plan[Plan::inPack(pack, Slot::DepthCopy)];
             REQUIRE(gbuffer.mDesc);
-            REQUIRE(water.mDesc);
             REQUIRE(depth.mDesc);
-            CHECK(water.mDesc->width == gbuffer.mDesc->width);
-            CHECK(water.mDesc->height == gbuffer.mDesc->height);
             CHECK(depth.mDesc->width == gbuffer.mDesc->width);
             CHECK(depth.mDesc->depth == gbuffer.mDesc->depth);
             CHECK(depth.mDesc->colorCount() == 0);
             CHECK_FALSE(depth.mDesc->stencil);
-            UNSCOPED_INFO("the colour alone, with no depth: a blit's destination, its alpha read by nothing");
-            CHECK(water.mDesc->colorCount() == 1);
-            CHECK(water.mDesc->color[0] == (U32)GL_R11F_G11F_B10F);
-            CHECK(water.mDesc->depth == Depth::None);
-            CHECK(!water.mDepthFrom);
         }
-        CHECK(plan.desc(Id::HeroWater)->width == 512);
+        CHECK(plan.desc(Id::HeroDepthCopy)->width == 512);
     }
 
-    // A probe's face clips the scene at the water (LLPipeline::isWaterClip), so its water draws opaque and copies
-    // nothing; the main view and a mirror's face refract where the setting asks.
-    TEST_CASE("alrenderresourceplan: only the packs whose water refracts have the water's copies", "[alrenderresourceplan]")
+    // A probe's face clips the scene at the water (LLPipeline::isWaterClip), so its water draws opaque; the main view
+    // and a mirror's face refract where the setting asks. The retained GL haze depth copy is independent of that
+    // native-water policy and exists only without a texture barrier.
+    TEST_CASE("alrenderresourceplan: water refraction policy is independent of retained haze depth", "[alrenderresourceplan]")
     {
         for (bool transparent : { true, false })
         {
@@ -938,11 +928,9 @@ namespace
                     for (Pack pack : { Pack::Main, Pack::Probe, Pack::Hero })
                     {
                         INFO("pack " << (U32)pack);
-                        const bool refracts = Plan::refractsWater(pack, transparent);
                         REQUIRE(plan.wants(Plan::inPack(pack, Slot::GBuffer)));
-                        CHECK(plan.wants(Plan::inPack(pack, Slot::Water)) == refracts);
                         UNSCOPED_INFO("without a barrier every pack that draws the water copies the depth for its haze");
-                        CHECK(plan.wants(Plan::inPack(pack, Slot::DepthCopy)) == (refracts || !barrier));
+                        CHECK(plan.wants(Plan::inPack(pack, Slot::DepthCopy)) == !barrier);
                     }
                 }
             }
@@ -955,22 +943,7 @@ namespace
         preview.mTextureBarrier  = false;
         const Plan plan          = Plan::make(preview);
         REQUIRE(plan.wants(Id::ProbeGBuffer));
-        CHECK(names(wanted(plan, of({ Id::ProbeWater, Id::ProbeDepthCopy }))) == "nothing");
-    }
-
-    // The water's copy of the screen takes another pass's target: bloom level 0's under HDR, at full scale without
-    // halation, and the post chain's without HDR, both drawn after the water's pass.
-    TEST_CASE("alrenderresourceplan: the water's copy of the screen is a later pass's description", "[alrenderresourceplan]")
-    {
-        const Plan hdr = Plan::make(defaults());
-        CHECK(hdr[Id::MainWater] == hdr[Plan::bloomMip(Pack::Main, 0)]);
-
-        Inputs ldr          = defaults();
-        ldr.mHDR            = false;
-        ldr.mGBufferNormHDR = false;
-        const Plan plain    = Plan::make(ldr);
-        CHECK(plain.desc(Id::MainWater)->color[0] == (U32)GL_RGBA8);
-        CHECK(plain[Id::MainWater] == plain[Id::MainPostPing]);
+        CHECK(names(wanted(plan, of({ Id::ProbeDepthCopy }))) == "nothing");
     }
 
     TEST_CASE("alrenderresourceplan: every light map is 8 bits a channel, whatever HDR says", "[alrenderresourceplan]")
@@ -1217,7 +1190,7 @@ namespace
             CHECK(!Plan::drivesRenderSize(id));
         }
         for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::MainLight, Id::MainPostPing, Id::SMAABlend,
-                       Id::MainWater, Id::MainDepthCopy, Id::SkyBehind, Id::SSRScene, Id::MainLightBlurred })
+                       Id::MainDepthCopy, Id::SkyBehind, Id::SSRScene, Id::MainLightBlurred })
         {
             INFO(Plan::name(id));
             CHECK(Plan::drivesRenderSize(id));
@@ -1238,7 +1211,7 @@ namespace
     TEST_CASE("alrenderresourceplan: the passes acquire what lives for one phase of a frame from the pool", "[alrenderresourceplan]")
     {
         const IdSet transient = in_packs({ Pack::Main, Pack::Probe, Pack::Hero },
-                                         { Slot::Light, Slot::PostPing, Slot::PostPong, Slot::Water, Slot::DepthCopy }) |
+                                         { Slot::Light, Slot::PostPing, Slot::PostPong, Slot::DepthCopy }) |
                                 bloom({ Pack::Main, Pack::Probe, Pack::Hero }) |
                                 of({ Id::SMAAEdges, Id::SMAABlend, Id::Glow0, Id::Glow1, Id::Glow2, Id::SkyBehind,
                                      Id::MainLightBlurred, Id::Preview, Id::Bake });
@@ -1303,7 +1276,6 @@ namespace
         U64 mOneEach    = 0; ///< the same resources, each a target of its own
         U32 mTargets    = 0;
         U32 mLastMisses = 0; ///< acquisitions the last frame had to build for
-        bool mWaterIsBloom     = false;
         bool mSkyBehindIsBloom = false;
         bool mDefocusedIsLight = false; ///< depth of field's defocused scene took a target the lighting used
     };
@@ -1353,13 +1325,14 @@ namespace
                 }
             }
 
-            // renderGeomPostDeferred: the water pool's pass with its two copies. The haze passes either side of it read
-            // the scene's depth in place.
-            LLRenderTarget* water = nullptr;
+            // renderGeomPostDeferred: the retained GL haze pass reads the scene's depth copy in place. The native
+            // Metal water transaction owns its private scene-colour input outside this GL resource plan.
             {
                 ALTransientTargets pass(pool);
-                water = acquire(pass, Id::MainWater);
-                acquire(pass, Id::MainDepthCopy);
+                if (plan.wants(Id::MainDepthCopy))
+                {
+                    acquire(pass, Id::MainDepthCopy);
+                }
             }
             sky.releaseAll();
 
@@ -1397,7 +1370,6 @@ namespace
                 }
             }
 
-            set.mWaterIsBloom     = water && water == bloom0;
             set.mSkyBehindIsBloom = sky_behind && sky_behind == bloom1;
             set.mDefocusedIsLight = defocused && (defocused == light || defocused == scratch);
             set.mLastMisses       = pool.stats().mMisses;
@@ -1407,7 +1379,7 @@ namespace
         set.mTargets = pool.stats().mTargets;
         set.mPersistent = LLRenderTarget::bytesFor(*plan.desc(Id::MainGBuffer)) + LLRenderTarget::bytesFor(*plan.desc(Id::MainScreen));
         set.mOneEach    = set.mPersistent;
-        for (Id id : { Id::MainLight, Id::MainLightBlurred, Id::MainWater, Id::MainDepthCopy, Id::MainPostPing,
+        for (Id id : { Id::MainLight, Id::MainLightBlurred, Id::MainDepthCopy, Id::MainPostPing,
                        Id::MainPostPong, Id::SkyBehind })
         {
             set.mOneEach += plan.wants(id) ? LLRenderTarget::bytesFor(*plan.desc(id)) : 0;
@@ -1429,45 +1401,42 @@ namespace
         const WorkingSet set = main_view_frame(defaults());
         CHECK(set.mPersistent == 36 * PIXELS);
 
-        UNSCOPED_INFO("exact-description reuse finds the plan's two matches by itself");
-        CHECK(set.mWaterIsBloom);
+        UNSCOPED_INFO("exact-description reuse finds the sky-behind match by itself");
         CHECK(set.mSkyBehindIsBloom);
         UNSCOPED_INFO("a frame finds what it needs where the last one left it");
         CHECK(set.mLastMisses == 0);
 
-        // The light map, SSAO's blurred light map, the depth copy, bloom mip 0 with the water's copy and mips 2 to
-        // 4, mip 1 with the sky behind, and the post chain's first: 4 + 2 + 4 + 4 + 1 + 0.33 + 4 B/px.
-        CHECK(set.mTargets == 9);
-        CHECK(set.mPooled == 71251200);
-        // Each its own target, as each was: 64.3 B/px, 226.2 MiB.
-        CHECK(set.mOneEach == 237139200);
-        CHECK(set.mPersistent + set.mPooled == 203961600); // 194.5 MiB
+        // The light map, SSAO's blurred light map, bloom mips 0 and 2 to 4, mip 1 with the sky behind, and the post
+        // chain's first: 4 + 2 + 4 + 1 + 0.33 + 4 B/px.
+        CHECK(set.mTargets == 8);
+        CHECK(set.mPooled == 56505600);
+        // Each planned resource with its own target: 56.3 B/px, 198 MiB.
+        CHECK(set.mOneEach == 207648000);
+        CHECK(set.mPersistent + set.mPooled == 189216000); // 180.5 MiB
 
         // Without compute, the fragment passes blur through a scratch of the light map's description: two of it
         // through the lighting, 8 B/px where the dispatch takes 6.
         Inputs fragment  = defaults();
         fragment.mCompute = false;
         const WorkingSet passes = main_view_frame(fragment);
-        CHECK(passes.mWaterIsBloom);
         CHECK(passes.mSkyBehindIsBloom);
-        CHECK(passes.mTargets == 9);
-        CHECK(passes.mOneEach == 229766400); // 219.1 MiB
-        CHECK(passes.mPersistent + passes.mPooled == 211334400); // 201.5 MiB
+        CHECK(passes.mTargets == 8);
+        CHECK(passes.mOneEach == 200275200); // 191 MiB
+        CHECK(passes.mPersistent + passes.mPooled == 196588800); // 187.5 MiB
 
         // Without SSAO the lighting needs one target of the light map's description, and no blurred one.
         Inputs no_ssao = defaults();
         no_ssao.mSSAO  = false;
         const WorkingSet without = main_view_frame(no_ssao);
-        CHECK(without.mWaterIsBloom);
         CHECK(without.mSkyBehindIsBloom);
-        CHECK(without.mOneEach == 229766400);
-        CHECK(without.mPersistent + without.mPooled == 196588800); // 187.5 MiB
+        CHECK(without.mOneEach == 200275200);
+        CHECK(without.mPersistent + without.mPooled == 181843200); // 173.4 MiB
 
         // With antialiasing the post chain's other target is drawn into, and pooled beside the first: 4 B/px more.
         Inputs fxaa    = defaults();
         fxaa.mFSAAType = 1;
         const WorkingSet antialiased = main_view_frame(fxaa);
-        CHECK(antialiased.mTargets == 10);
+        CHECK(antialiased.mTargets == 9);
         CHECK(antialiased.mPooled - set.mPooled == 4 * PIXELS);
     }
 
@@ -1482,7 +1451,7 @@ namespace
         CHECK(on.mTargets == off.mTargets + 2);
         // 2560x1440 of RGBA16F, and 1792x1008 of R11F_G11F_B10F.
         CHECK(on.mPooled - off.mPooled == 29491200 + 7225344);
-        CHECK(on.mPersistent + on.mPooled == 240678144); // 229.5 MiB
+        CHECK(on.mPersistent + on.mPooled == 225932544); // 215.5 MiB
     }
 
     TEST_CASE("alrenderresourceplan: every resource has its own debugger label", "[alrenderresourceplan]")

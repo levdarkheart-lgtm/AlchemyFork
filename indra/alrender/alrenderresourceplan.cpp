@@ -48,16 +48,16 @@ namespace
 
     // Each pack's slot names under its own prefix, laid out as Id lays the packs out.
     constexpr std::string_view PACK_NAMES[(size_t)Pack::COUNT][(size_t)Slot::COUNT] = {
-        { "main.gbuffer", "main.screen", "main.light", "main.post.ping", "main.post.pong", "main.water.refraction",
-          "main.depth.copy", "main.shadow.sun0",
+        { "main.gbuffer", "main.screen", "main.light", "main.post.ping", "main.post.pong", "main.depth.copy",
+          "main.shadow.sun0",
           "main.shadow.sun1", "main.shadow.sun2", "main.shadow.sun3", "main.bloom.mip0", "main.bloom.mip1",
           "main.bloom.mip2", "main.bloom.mip3", "main.bloom.mip4", "main.bloom.mip5", "main.bloom.mip6" },
-        { "probe.gbuffer", "probe.screen", "probe.light", "probe.post.ping", "probe.post.pong", "probe.water.refraction",
-          "probe.depth.copy", "probe.shadow.sun0",
+        { "probe.gbuffer", "probe.screen", "probe.light", "probe.post.ping", "probe.post.pong", "probe.depth.copy",
+          "probe.shadow.sun0",
           "probe.shadow.sun1", "probe.shadow.sun2", "probe.shadow.sun3", "probe.bloom.mip0", "probe.bloom.mip1",
           "probe.bloom.mip2", "probe.bloom.mip3", "probe.bloom.mip4", "probe.bloom.mip5", "probe.bloom.mip6" },
-        { "hero.gbuffer", "hero.screen", "hero.light", "hero.post.ping", "hero.post.pong", "hero.water.refraction",
-          "hero.depth.copy", "hero.shadow.sun0",
+        { "hero.gbuffer", "hero.screen", "hero.light", "hero.post.ping", "hero.post.pong", "hero.depth.copy",
+          "hero.shadow.sun0",
           "hero.shadow.sun1", "hero.shadow.sun2", "hero.shadow.sun3", "hero.bloom.mip0", "hero.bloom.mip1",
           "hero.bloom.mip2", "hero.bloom.mip3", "hero.bloom.mip4", "hero.bloom.mip5", "hero.bloom.mip6" },
     };
@@ -148,24 +148,12 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
             };
         }
 
-        // The scene as it stood before the water, which the water reads under its surface: the screen's colour,
-        // copied where the water is transparent over the part of the screen the surface can read it at, and the
-        // scene's depth, whole, which the surface writes over while it reads it. The colour is a blit's destination
-        // and nothing reads its alpha (waterF.glsl and underWaterF.glsl take the colour alone), so under HDR it is
-        // R11F_G11F_B10F, half the screen's bandwidth, and with no depth of its own or the scene's: bloom level 0's
-        // description at full scale without halation, whose target the pool hands it, bloom's pass coming after the
-        // water's. Without HDR 8 bits, the post chain's description. Water that does not refract reads neither.
-        const bool refracts = shape.water && refractsWater(pack, in.mTransparentWater);
-        if (refracts)
-        {
-            plan.at(inPack(pack, Slot::Water)).mDesc = ALRenderTargetDesc{
-                .width = shape.width, .height = shape.height, .color = { hdr ? (U32)GL_R11F_G11F_B10F : screen_format }
-            };
-        }
-        // The depth copy serves the haze passes too where the context has no texture barrier, whether the water
-        // refracts or not: each copies the scene's depth before it reads it (LLPipeline::hazeDepth), the draws before it
-        // in its binding having written the scene's own.
-        if (refracts || (shape.water && !in.mTextureBarrier))
+        // The native Metal water transaction owns its private scene-colour and depth inputs. The retained GL haze pass
+        // still reads a depth copy where the context has no texture barrier.
+        // The depth copy serves the retained haze passes where the context has no texture barrier: each copies the
+        // scene's depth before it reads it (LLPipeline::hazeDepth), the draws before it in its binding having written
+        // the scene's own.
+        if (shape.water && !in.mTextureBarrier)
         {
             plan.at(inPack(pack, Slot::DepthCopy)).mDesc =
                 ALRenderTargetDesc{ .width = shape.width, .height = shape.height, .depth = main_depth };
@@ -231,8 +219,8 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     // pack is there while probes are on or a retained preview is demanded, and the manager's own resources while probes
     // are. Its sun shadows, light
     // map and depth copy are the captures' alone: a preview draws without the sun's shadows and draws no water
-    // (LLGLTFPreviewTexture::render). A capture's water does not refract (refractsWater), so the copy is the haze's,
-    // without a texture barrier, and the pack has no copy of the screen.
+    // (LLGLTFPreviewTexture::render). The retained haze owns the copy only without a texture barrier; the native water
+    // transaction owns no resource in this GL plan.
     if (in.mProbes || in.mMaterialPreview)
     {
         const U32 probe_size     = in.mProbeResolution * in.mProbeSuperSample;
@@ -478,8 +466,8 @@ bool ALRenderResourcePlan::isTransient(Id id)
     if (packOf(id))
     {
         const Slot slot = slotOf(id);
-        return slot == Slot::Light || slot == Slot::PostPing || slot == Slot::PostPong || slot == Slot::Water ||
-               slot == Slot::DepthCopy || slot >= Slot::Bloom0;
+        return slot == Slot::Light || slot == Slot::PostPing || slot == Slot::PostPong || slot == Slot::DepthCopy ||
+               slot >= Slot::Bloom0;
     }
     return id == Id::SMAAEdges || id == Id::SMAABlend || id == Id::Glow0 || id == Id::Glow1 || id == Id::Glow2 ||
            id == Id::SkyBehind || id == Id::MainLightBlurred || id == Id::Preview || id == Id::Bake;

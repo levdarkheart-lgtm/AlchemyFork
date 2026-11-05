@@ -61,7 +61,6 @@ public:
         Light,
         PostPing,
         PostPong,
-        Water,
         DepthCopy,
         Sun0,
         Sun1,
@@ -94,15 +93,15 @@ public:
     /// Every resource, each pack's in Slot order first. The names are the debugger labels (name()).
     enum class Id : U8
     {
-        MainGBuffer, MainScreen, MainLight, MainPostPing, MainPostPong, MainWater, MainDepthCopy,
+        MainGBuffer, MainScreen, MainLight, MainPostPing, MainPostPong, MainDepthCopy,
         MainSun0, MainSun1, MainSun2, MainSun3,
         MainBloom0, MainBloom1, MainBloom2, MainBloom3, MainBloom4, MainBloom5, MainBloom6,
 
-        ProbeGBuffer, ProbeScreen, ProbeLight, ProbePostPing, ProbePostPong, ProbeWater, ProbeDepthCopy,
+        ProbeGBuffer, ProbeScreen, ProbeLight, ProbePostPing, ProbePostPong, ProbeDepthCopy,
         ProbeSun0, ProbeSun1, ProbeSun2, ProbeSun3,
         ProbeBloom0, ProbeBloom1, ProbeBloom2, ProbeBloom3, ProbeBloom4, ProbeBloom5, ProbeBloom6,
 
-        HeroGBuffer, HeroScreen, HeroLight, HeroPostPing, HeroPostPong, HeroWater, HeroDepthCopy,
+        HeroGBuffer, HeroScreen, HeroLight, HeroPostPing, HeroPostPong, HeroDepthCopy,
         HeroSun0, HeroSun1, HeroSun2, HeroSun3,
         HeroBloom0, HeroBloom1, HeroBloom2, HeroBloom3, HeroBloom4, HeroBloom5, HeroBloom6,
 
@@ -175,11 +174,10 @@ public:
         return cascades;
     }
 
-    /// Whether the water drawn into @a pack refracts the scene beneath its surface through the copies its pass makes of
-    /// the screen and the depth (Slot::Water, Slot::DepthCopy), drawn with the TRANSPARENT_WATER programs: where
-    /// RenderTransparentWater asks for it, in the main view and a mirror's face. A probe's face clips the scene at the
-    /// water and culls what lies beyond it (LLPipeline::isWaterClip), so a copy would hold nothing under the surface:
-    /// its water is opaque, the fog of the water behind the surface, as everywhere with the setting off.
+    /// Whether the water drawn into @a pack refracts the scene beneath its surface. The native Metal water transaction
+    /// owns its private scene-color input; the retained depth-copy slot exists only for the GL haze pass until that pass
+    /// is cut over. A probe's face clips the scene at the water and culls what lies beyond it (LLPipeline::isWaterClip),
+    /// so its water is opaque: the fog of the water behind the surface, as everywhere with the setting off.
     static constexpr bool refractsWater(Pack pack, bool transparent_water)
     {
         return transparent_water && pack != Pack::Probe;
@@ -221,7 +219,7 @@ public:
     static bool isTexture(Id id);
     /// Whether the passes that use it acquire it from the transient pool for as long as they need it, rather than the
     /// reconcile building it to keep: a target that lives for one phase of a frame, and holds nothing across frames. A
-    /// pack's light map is one, the main view's blurred light map, the water's copies of the scene, the bloom pyramid,
+    /// pack's light map is one, the main view's blurred light map, the retained haze depth copy, the bloom pyramid,
     /// the post chain, SMAA's edges and blend weights, the legacy glow, the sky behind the water, and the targets the
     /// UI previews and the appearance bakes draw into.
     static bool isTransient(Id id);

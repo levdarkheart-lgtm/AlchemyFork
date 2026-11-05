@@ -57,7 +57,7 @@ struct ALRenderResourceInputs
     bool mSSAOBlurDispatched = true; ///< SSAO's blur reaches no further than a dispatch holds (ALLightMapBlur::apron of
                                      ///< RenderShadowBlurSize's kernel): a wider one is the fragment passes'
     bool mSSR = false;            ///< RenderScreenSpaceReflections
-    bool mTransparentWater = true; ///< RenderTransparentWater: the water's copies of the scene are for it alone
+    bool mTransparentWater = true; ///< RenderTransparentWater: whether the native water transaction refracts the scene
 
     bool mProbes = true;          ///< RenderReflectionsEnabled, where the feature table allows it
     U32  mProbeResolution = 128;  ///< a probe's face edge, as probeResolution() takes RenderReflectionProbeResolution
