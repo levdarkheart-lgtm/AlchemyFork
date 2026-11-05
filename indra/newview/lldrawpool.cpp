@@ -940,15 +940,6 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     }
 
 #if LL_DARWIN
-    if (LLPipeline::sRenderingHUDs &&
-        (bound == &gHUDFullbrightProgram ||
-         bound == &gHUDFullbrightAlphaMaskProgram))
-    {
-        captureMetalHUDBatch(
-            params, batch_textures,
-            bound == &gHUDFullbrightAlphaMaskProgram,
-            false, false, 0.f);
-    }
     gPipeline.captureMetalSpotShadowTexturedBatch(
         params, batch_textures);
     gPipeline.captureMetalWorldGBufferBatch(params, batch_textures);

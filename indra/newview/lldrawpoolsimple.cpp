@@ -113,6 +113,48 @@ static void capture_metal_gbuffer_batches(
     }
     gPipeline.endMetalWorldGBufferPass();
 }
+
+static void capture_metal_fullbright_batches(
+    U32 type, bool rigged, bool alpha_mask,
+    bool skip_indexed_materials = false)
+{
+    gPipeline.beginMetalImpostorFullbrightPass(rigged, alpha_mask);
+    auto* at = gPipeline.beginRenderMap(type);
+    auto* end = gPipeline.endRenderMap(type);
+    while (at != end)
+    {
+        LLDrawInfo* info = *at;
+        LLCullResult::increment_iterator(at, end);
+        if (!info ||
+            (skip_indexed_materials &&
+             info->mMaterialSlotList.size() > 1))
+        {
+            continue;
+        }
+        gPipeline.captureMetalWorldGBufferBatch(*info, true);
+    }
+    gPipeline.endMetalWorldGBufferPass();
+}
+
+static void capture_metal_hud_fullbright_batches(
+    U32 type, bool alpha_mask)
+{
+    auto* at = gPipeline.beginRenderMap(type);
+    auto* end = gPipeline.endRenderMap(type);
+    while (at != end)
+    {
+        LLDrawInfo* info = *at;
+        LLCullResult::increment_iterator(at, end);
+        if (!info ||
+            (alpha_mask && info->mMaterialSlotList.size() > 1))
+        {
+            continue;
+        }
+        LLRenderPass::applyModelMatrix(*info);
+        LLRenderPass::captureMetalHUDBatch(
+            *info, true, alpha_mask, false, false, 0.f);
+    }
+}
 #endif
 
 //===============================
@@ -172,85 +214,50 @@ LLDrawPoolFullbright::LLDrawPoolFullbright() :
 void LLDrawPoolFullbright::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-
-    LLGLSLShader* shader = nullptr;
+#if LL_DARWIN
+    (void)pass;
     if (LLPipeline::sRenderingHUDs)
     {
-        shader = &gHUDFullbrightProgram;
-    }
-    else
-    {
-        shader = gDeferredFullbrightProgram.selectVariant();
+        if (!gGL.isMetalUITextureCaptureAuthoritative())
+        {
+            return;
+        }
+        gGL.setSceneBlendType(LLRender::BT_ALPHA);
+        capture_metal_hud_fullbright_batches(
+            LLRenderPass::PASS_FULLBRIGHT, false);
+        return;
     }
 
-    gGL.setSceneBlendType(LLRender::BT_ALPHA);
-
-    // render static
-    shader->bind();
-#if LL_DARWIN
-    gPipeline.beginMetalImpostorFullbrightPass(false, false);
+    capture_metal_fullbright_batches(
+        LLRenderPass::PASS_FULLBRIGHT, false, false);
+    capture_metal_fullbright_batches(
+        LLRenderPass::PASS_FULLBRIGHT_RIGGED, true, false);
 #endif
-    pushBatches(LLRenderPass::PASS_FULLBRIGHT, true, true);
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
-#endif
-
-    if (!LLPipeline::sRenderingHUDs)
-    {
-        // render rigged
-        shader->bind(true);
-#if LL_DARWIN
-        gPipeline.beginMetalImpostorFullbrightPass(true, false);
-#endif
-        pushRiggedBatches(LLRenderPass::PASS_FULLBRIGHT_RIGGED, true, true);
-#if LL_DARWIN
-        gPipeline.endMetalWorldGBufferPass();
-#endif
-    }
 }
 
 void LLDrawPoolFullbrightAlphaMask::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-
-    LLGLSLShader* shader = nullptr;
+#if LL_DARWIN
+    (void)pass;
     if (LLPipeline::sRenderingHUDs)
     {
-        shader = &gHUDFullbrightAlphaMaskProgram;
+        if (!gGL.isMetalUITextureCaptureAuthoritative())
+        {
+            return;
+        }
+        LLGLDisable blend(GL_BLEND);
+        capture_metal_hud_fullbright_batches(
+            LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, true);
+        return;
     }
-    else
-    {
-        shader = gDeferredFullbrightAlphaMaskProgram.selectVariant();
-    }
 
-    LLGLDisable blend(GL_BLEND);
-
-    // Outside the alpha pool LLFace stores shininess in the vertex alpha, which the mask must not
-    // test (fullbrightF.glsl); the alpha pool, drawing with the same program, sets it back.
-
-    // render static
-    shader->bind();
-    shader->uniform1f(LLShaderMgr::VERTEX_ALPHA_COVERAGE, 0.f);
-#if LL_DARWIN
-    gPipeline.beginMetalImpostorFullbrightPass(false, true);
+    capture_metal_fullbright_batches(
+        LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK,
+        false, true, true);
+    capture_metal_fullbright_batches(
+        LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED,
+        true, true, true);
 #endif
-    pushMaskBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, true, true);
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
-#endif
-
-    if (!LLPipeline::sRenderingHUDs)
-    {
-        // render rigged
-        shader->bind(true);
-        LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::VERTEX_ALPHA_COVERAGE, 0.f);
-#if LL_DARWIN
-        gPipeline.beginMetalImpostorFullbrightPass(true, true);
-#endif
-        pushRiggedMaskBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED, true, true);
-#if LL_DARWIN
-        gPipeline.endMetalWorldGBufferPass();
-#endif
-    }
 }
 

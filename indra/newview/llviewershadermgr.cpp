@@ -174,10 +174,7 @@ LLGLSLShader            gDeferredAvatarAlphaMaskShadowProgram;
 LLGLSLShader            gDeferredAlphaProgram;
 LLGLSLShader            gHUDAlphaProgram;
 LLGLSLShader            gDeferredAlphaImpostorProgram;
-LLGLSLShader            gDeferredFullbrightProgram;
-LLGLSLShader            gHUDFullbrightProgram;
 LLGLSLShader            gDeferredFullbrightAlphaMaskProgram;
-LLGLSLShader            gHUDFullbrightAlphaMaskProgram;
 LLGLSLShader            gDeferredFullbrightAlphaMaskAlphaProgram;
 LLGLSLShader            gHUDFullbrightAlphaMaskAlphaProgram;
 #if !LL_DARWIN
@@ -1319,10 +1316,7 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredAvatarAlphaProgram.unload();
         gDeferredAlphaProgram.unload();
         gHUDAlphaProgram.unload();
-        gDeferredFullbrightProgram.unload();
-        gHUDFullbrightProgram.unload();
         gDeferredFullbrightAlphaMaskProgram.unload();
-        gHUDFullbrightAlphaMaskProgram.unload();
         gDeferredFullbrightAlphaMaskAlphaProgram.unload();
         gHUDFullbrightAlphaMaskAlphaProgram.unload();
 #if !LL_DARWIN
@@ -1949,43 +1943,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
     }
 
     {
-        gDeferredFullbrightProgram.mName = "Deferred Fullbright Shader";
-        gDeferredFullbrightProgram.mFeatures.calculatesAtmospherics = true;
-        gDeferredFullbrightProgram.mFeatures.hasGamma = true;
-        gDeferredFullbrightProgram.mFeatures.hasAtmospherics = true;
-        gDeferredFullbrightProgram.mFeatures.hasSrgb = true;
-        gDeferredFullbrightProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gDeferredFullbrightProgram.mShaderFiles.clear();
-        gDeferredFullbrightProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightV.glsl", GL_VERTEX_SHADER));
-        gDeferredFullbrightProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredFullbrightProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredFullbrightProgram);
-
-        gDeferredFullbrightProgram.addPermutation("LINEAR_DIFFUSE", "1");
-        built(gDeferredFullbrightProgram.createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant()), gDeferredFullbrightProgram);
-    }
-
-    {
-        gHUDFullbrightProgram.mName = "HUD Fullbright Shader";
-        gHUDFullbrightProgram.mFeatures.calculatesAtmospherics = true;
-        gHUDFullbrightProgram.mFeatures.hasGamma = true;
-        gHUDFullbrightProgram.mFeatures.hasAtmospherics = true;
-        gHUDFullbrightProgram.mFeatures.hasSrgb = true;
-        gHUDFullbrightProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gHUDFullbrightProgram.mShaderFiles.clear();
-        gHUDFullbrightProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightV.glsl", GL_VERTEX_SHADER));
-        gHUDFullbrightProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightF.glsl", GL_FRAGMENT_SHADER));
-        gHUDFullbrightProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gHUDFullbrightProgram.clearPermutations();
-        gHUDFullbrightProgram.addPermutation("IS_HUD", "1");
-
-        add_common_permutations(&gHUDFullbrightProgram);
-
-        built(gHUDFullbrightProgram.createShader(), gHUDFullbrightProgram);
-    }
-
-    {
         gDeferredFullbrightAlphaMaskProgram.mName = "Deferred Fullbright Alpha Masking Shader";
         gDeferredFullbrightAlphaMaskProgram.mFeatures.calculatesAtmospherics = true;
         gDeferredFullbrightAlphaMaskProgram.mFeatures.hasGamma = true;
@@ -2003,26 +1960,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         gDeferredFullbrightAlphaMaskProgram.addPermutation("LINEAR_DIFFUSE", "1");
         built(gDeferredFullbrightAlphaMaskProgram.createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant()), gDeferredFullbrightAlphaMaskProgram);
-    }
-
-    {
-        gHUDFullbrightAlphaMaskProgram.mName = "HUD Fullbright Alpha Masking Shader";
-        gHUDFullbrightAlphaMaskProgram.mFeatures.calculatesAtmospherics = true;
-        gHUDFullbrightAlphaMaskProgram.mFeatures.hasGamma = true;
-        gHUDFullbrightAlphaMaskProgram.mFeatures.hasAtmospherics = true;
-        gHUDFullbrightAlphaMaskProgram.mFeatures.hasSrgb = true;
-        gHUDFullbrightAlphaMaskProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gHUDFullbrightAlphaMaskProgram.mShaderFiles.clear();
-        gHUDFullbrightAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightV.glsl", GL_VERTEX_SHADER));
-        gHUDFullbrightAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightF.glsl", GL_FRAGMENT_SHADER));
-        gHUDFullbrightAlphaMaskProgram.clearPermutations();
-        gHUDFullbrightAlphaMaskProgram.addPermutation("HAS_ALPHA_MASK", "1");
-        gHUDFullbrightAlphaMaskProgram.addPermutation("IS_HUD", "1");
-
-        add_common_permutations(&gHUDFullbrightAlphaMaskProgram);
-
-        gHUDFullbrightAlphaMaskProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gHUDFullbrightAlphaMaskProgram.createShader(), gHUDFullbrightAlphaMaskProgram);
     }
 
     {
