@@ -470,13 +470,6 @@ public:
     // shadow program is bound.
     void pushMaskBatchesIndexed(U32 type, bool rigged);
 
-    // Emissive/glow indexed split. Multi-material (indexed) glow batches coexist
-    // with scalar/plain ones in PASS_GLOW, distinguished by mMaterialSlotList.size()
-    // > 1. The scalar sweep skips multi-material infos (they would render the whole
-    // range with slot 0's diffuse); the indexed sweep binds each slot's diffuse to
-    // unit s and draws under the indexed emissive program.
-    void pushEmissiveBatchesScalar(U32 type, bool rigged);
-    void pushEmissiveBatchesIndexed(U32 type, bool rigged);
     void pushBatch(LLDrawInfo& params, bool texture, bool batch_textures = false);
     void pushUntexturedBatch(LLDrawInfo& params);
     void pushBumpBatch(LLDrawInfo& params, bool texture,

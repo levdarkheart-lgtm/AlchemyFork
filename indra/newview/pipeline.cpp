@@ -12165,8 +12165,7 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
         return;
     }
     // Legacy glow has a deliberately smaller vertex contract and is captured
-    // explicitly by captureMetalWorldLegacyGlowBatch before pushBatch reaches
-    // this generic hook.
+    // directly by its native draw-pool enumerator.
     if (capture.legacy_glow)
     {
         return;
@@ -12871,6 +12870,11 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        capture.direct_probe_draw_infos.contains(&params))
+    {
+        return;
+    }
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     const bool indexed_textures = !indexed_materials &&
         params.mTextureList.size() > 1;
@@ -12948,13 +12952,13 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
             texture = LLViewerFetchedTexture::sWhiteImagep.get();
         }
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-        if (image && !image->getTexName())
+        if (image && !image->getMetalTexture())
         {
             LLViewerTexture* fallback =
                 LLViewerFetchedTexture::sDefaultImagep.get();
             LLImageGL* fallback_image = fallback
                 ? fallback->getGLTexture() : nullptr;
-            if (fallback_image && fallback_image->getTexName())
+            if (fallback_image && fallback_image->getMetalTexture())
             {
                 image = fallback_image;
             }

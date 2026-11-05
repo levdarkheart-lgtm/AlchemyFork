@@ -184,7 +184,6 @@ LLGLSLShader            gHUDFullbrightAlphaMaskProgram;
 LLGLSLShader            gDeferredFullbrightAlphaMaskAlphaProgram;
 LLGLSLShader            gHUDFullbrightAlphaMaskAlphaProgram;
 LLGLSLShader            gDeferredEmissiveProgram;
-LLGLSLShader            gDeferredEmissiveIndexedProgram; // multi-material indexed legacy glow
 #if !LL_DARWIN
 LLGLSLShader            gDeferredPostProgram;
 LLGLSLShader            gDeferredPostProgramNoNear;
@@ -1336,7 +1335,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredFullbrightAlphaMaskAlphaProgram.unload();
         gHUDFullbrightAlphaMaskAlphaProgram.unload();
         gDeferredEmissiveProgram.unload();
-        gDeferredEmissiveIndexedProgram.unload();
 #if !LL_DARWIN
         gDeferredPostProgram.unload();
         gDeferredPostProgramNoNear.unload();
@@ -2170,30 +2168,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gDeferredEmissiveProgram);
 
         built(gDeferredEmissiveProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDeferredEmissiveProgram);
-    }
-
-    if (LLGLSLShader::sIndexedLegacyMaterials)
-    {
-        // Indexed (multi-material) legacy glow, parallel to gDeferredEmissiveProgram.
-        // Selects each slot's diffuse map (bound to unit s) for the glow alpha mask.
-        // Only enabled when legacy material batching is active; failure leaves the
-        // program incomplete and the pool falls back to scalar glow.
-        gDeferredEmissiveIndexedProgram.mName = "Deferred Emissive Indexed Shader";
-        gDeferredEmissiveIndexedProgram.mShaderFiles.clear();
-        gDeferredEmissiveIndexedProgram.mShaderFiles.push_back(make_pair("deferred/emissiveIndexedV.glsl", GL_VERTEX_SHADER));
-        gDeferredEmissiveIndexedProgram.mShaderFiles.push_back(make_pair("deferred/emissiveIndexedF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredEmissiveIndexedProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredEmissiveIndexedProgram.clearPermutations();
-        gDeferredEmissiveIndexedProgram.addPermutation("GLTF_INDEXED_CHANNELS", llformat("%d", LLGLSLShader::sIndexedGLTFChannels));
-        add_common_permutations(&gDeferredEmissiveIndexedProgram);
-        const S32 n = LLGLSLShader::sIndexedGLTFChannels;
-        gDeferredEmissiveIndexedProgram.mOnLink = [n](LLGLSLShader& s) { setup_material_indexed_samplers(s, n, false, false); };
-
-        if (!gDeferredEmissiveIndexedProgram.createShader(LLGLSLShader::VARIANT_RIGGED))
-        {
-            LL_WARNS("ShaderLoading") << "Indexed legacy glow shader failed to load; multi-material glow falls back to scalar." << LL_ENDL;
-            gDeferredEmissiveIndexedProgram.unload();
-        }
     }
 
     {

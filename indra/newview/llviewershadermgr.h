@@ -263,7 +263,6 @@ extern LLGLSLShader         gHUDFullbrightAlphaMaskProgram;
 extern LLGLSLShader         gDeferredFullbrightAlphaMaskAlphaProgram;
 extern LLGLSLShader         gHUDFullbrightAlphaMaskAlphaProgram;
 extern LLGLSLShader         gDeferredEmissiveProgram;
-extern LLGLSLShader         gDeferredEmissiveIndexedProgram; // multi-material indexed legacy glow
 extern LLGLSLShader         gDeferredAvatarAlphaProgram;
 extern LLGLSLShader         gEnvironmentMapProgram;
 extern LLGLSLShader         gDeferredWLSkyProgram;

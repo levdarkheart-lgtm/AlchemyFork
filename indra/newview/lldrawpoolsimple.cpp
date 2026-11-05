@@ -52,86 +52,28 @@ void LLDrawPoolGlow::renderPostDeferred(S32 pass)
     {
         return;
     }
-    LLGLSLShader* shader = &gDeferredEmissiveProgram;
-
-    LLGLEnable blend(GL_BLEND);
-    gGL.flush();
-    /// Get rid of z-fighting with non-glow pass.
-    LLGLEnable polyOffset(GL_POLYGON_OFFSET_FILL);
-    gGL.setPolygonOffset(-1.0f, -1.0f);
-    gGL.setSceneBlendType(LLRender::BT_ADD);
-
-    LLGLDepthTest depth(GL_TRUE, GL_FALSE);
-    gGL.setColorMask(false, true);
-
-    // Multi-material (indexed) legacy glow batches carry a per-slot diffuse list and
-    // must be drawn with the indexed program; the scalar sweep skips them. Require
-    // both the static and rigged indexed glow programs to be complete; otherwise fall
-    // back to scalar for everything (slot-0 diffuse alpha, the pre-batching behavior).
-    bool glow_indexed = LLGLSLShader::sIndexedLegacyMaterials &&
-                        gDeferredEmissiveIndexedProgram.isComplete() &&
-                        gDeferredEmissiveIndexedProgram.mRiggedVariant &&
-                        gDeferredEmissiveIndexedProgram.mRiggedVariant->isComplete();
-
-    //first pass -- static objects
-    shader->bind();
 #if LL_DARWIN
-    gPipeline.beginMetalWorldLegacyGlowPass(false);
-#endif
-    if (glow_indexed)
+    for (bool rigged : { false, true })
     {
-        pushEmissiveBatchesScalar(LLRenderPass::PASS_GLOW, false);
-    }
-    else
-    {
-        pushBatches(LLRenderPass::PASS_GLOW, true, true);
-    }
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
-#endif
-
-    // second pass -- rigged objects
-    shader = shader->riggedVariant();
-    shader->bind();
-#if LL_DARWIN
-    gPipeline.beginMetalWorldLegacyGlowPass(true);
-#endif
-    if (glow_indexed)
-    {
-        pushEmissiveBatchesScalar(LLRenderPass::PASS_GLOW_RIGGED, true);
-    }
-    else
-    {
-        pushRiggedBatches(LLRenderPass::PASS_GLOW_RIGGED, true, true);
-    }
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
-#endif
-
-    // indexed (multi-material) passes
-    if (glow_indexed)
-    {
-        gDeferredEmissiveIndexedProgram.bind();
-#if LL_DARWIN
-        gPipeline.beginMetalWorldLegacyGlowPass(false);
-#endif
-        pushEmissiveBatchesIndexed(LLRenderPass::PASS_GLOW, false);
-#if LL_DARWIN
+        const U32 type = rigged
+            ? LLRenderPass::PASS_GLOW_RIGGED
+            : LLRenderPass::PASS_GLOW;
+        gPipeline.beginMetalWorldLegacyGlowPass(rigged);
+        auto* at = gPipeline.beginRenderMap(type);
+        auto* end = gPipeline.endRenderMap(type);
+        while (at != end)
+        {
+            LLDrawInfo* info = *at;
+            LLCullResult::increment_iterator(at, end);
+            if (info)
+            {
+                gPipeline.captureMetalWorldLegacyGlowBatch(
+                    *info, info->mMaterialSlotList.size() > 1);
+            }
+        }
         gPipeline.endMetalWorldGBufferPass();
-#endif
-
-        gDeferredEmissiveIndexedProgram.bind(true); // rigged variant
-#if LL_DARWIN
-        gPipeline.beginMetalWorldLegacyGlowPass(true);
-#endif
-        pushEmissiveBatchesIndexed(LLRenderPass::PASS_GLOW_RIGGED, true);
-#if LL_DARWIN
-        gPipeline.endMetalWorldGBufferPass();
-#endif
     }
-
-    gGL.setColorMask(true, false);
-    gGL.setSceneBlendType(LLRender::BT_ALPHA);
+#endif
 }
 
 LLDrawPoolSimple::LLDrawPoolSimple() :

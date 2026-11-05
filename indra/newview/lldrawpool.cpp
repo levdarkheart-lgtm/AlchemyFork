@@ -646,89 +646,6 @@ void LLRenderPass::pushMaskBatchesIndexed(U32 type, bool rigged)
     }
 }
 
-void LLRenderPass::pushEmissiveBatchesScalar(U32 type, bool rigged)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    const LLVOAvatar* lastAvatar = nullptr;
-    U64 lastMeshId = 0;
-    bool skipLastSkin = false;
-
-    auto* begin = gPipeline.beginRenderMap(type);
-    auto* end = gPipeline.endRenderMap(type);
-    for (LLCullResult::drawinfo_iterator i = begin; i != end; )
-    {
-        LLDrawInfo* pparams = *i;
-        LLCullResult::increment_iterator(i, end);
-
-        if (pparams->mMaterialSlotList.size() > 1)
-        { // multi-material glow batch -- drawn by pushEmissiveBatchesIndexed
-            continue;
-        }
-
-        if (rigged)
-        {
-            if (!uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
-            {
-                continue;
-            }
-        }
-
-        pushBatch(*pparams, true, true);
-    }
-}
-
-void LLRenderPass::pushEmissiveBatchesIndexed(U32 type, bool rigged)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    const LLVOAvatar* lastAvatar = nullptr;
-    U64 lastMeshId = 0;
-    bool skipLastSkin = false;
-
-    auto* begin = gPipeline.beginRenderMap(type);
-    auto* end = gPipeline.endRenderMap(type);
-    for (LLCullResult::drawinfo_iterator i = begin; i != end; )
-    {
-        LLDrawInfo& params = **i;
-        LLCullResult::increment_iterator(i, end);
-
-        if (params.mMaterialSlotList.size() < 2)
-        {
-            continue;
-        }
-
-        if (rigged)
-        {
-            if (!uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
-            {
-                continue;
-            }
-        }
-
-        // Slot count is capped at N (<= 8) by genDrawInfo; clamp defensively so a
-        // stale/over-long list can never bind past the N diffuse sampler units.
-        const S32 N = LLGLSLShader::sIndexedGLTFChannels;
-        llassert((S32)params.mMaterialSlotList.size() <= N);
-        const S32 n = llmin((S32)params.mMaterialSlotList.size(), N);
-        LL_PROFILE_ZONE_NUM(n);
-
-        for (S32 s = 0; s < n; ++s)
-        {
-            const LLDrawInfo::MaterialSlot& slot = params.mMaterialSlotList[s];
-            LLViewerTexture* diffuse = slot.mDiffuse.notNull() ? slot.mDiffuse.get() : LLViewerFetchedTexture::sWhiteImagep.get();
-            gGL.getTextureSlot(s)->bindFast(diffuse, ALSamplers::AnisoWrap);
-        }
-
-        applyModelMatrix(params);
-
-#if LL_DARWIN
-        gPipeline.captureMetalWorldLegacyGlowBatch(params, true);
-#endif
-
-        params.mVertexBuffer->setBuffer();
-        params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-    }
-}
-
 void LLRenderPass::applyModelMatrix(const LLDrawInfo& params)
 {
     applyModelMatrix(params.mModelMatrix);
@@ -962,7 +879,6 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     }
     gPipeline.captureMetalSpotShadowTexturedBatch(
         params, batch_textures);
-    gPipeline.captureMetalWorldLegacyGlowBatch(params, false);
     gPipeline.captureMetalWorldGBufferBatch(params, batch_textures);
 #endif
 
