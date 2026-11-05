@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `1a27604157`
+**Renderer code checkpoint:** `a25b8861e5`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -31,7 +31,7 @@ Commits `2836849036` and `cf6a821548` remove Snapshot's GL scratch/reconcile
 path. Fail-closed Metal readback owns the validated size; visual case 30 remains
 open.
 
-The source-exact Xcode Release package is `26.4.0.68412`; its viewer executable SHA-256 is `2c8e87fd781697d747aaca5322c720af5a3d7b6fe534708eb3f74015a5307eec`.
+The source-exact Xcode Release package is `26.4.0.68414`; its viewer executable SHA-256 is `5986bac6ffe2d8fa88e5a4565c87437d51a04bf324c9d5f5f1bbbb8c56d332a0`.
 `tools/metal/verify_app.sh` accepted all 349 inspected Mach-O slices as ARM64
 and deep strict code-sign verification passed. `git diff --check` passes.
 
@@ -97,7 +97,7 @@ state and the 792-line utility; `629cd38c8a` separates native shadow constants.
 owners, nine GLSL stages and three obsolete tests/benchmarks. Visual case 51 is queued.
 `1f3cfeefb6` deletes duplicate GL point/projector lighting; `3e975c4b28` then deletes the three dead pack light-map slots, blurred scratch target and obsolete input.
 Metal retains its private light-map/blur implementation; the default 1440p plan sheds 21.1 MiB. Visual cases 51/52 remain queued.
-`cbdecfd337` removes the drawless deferred-light state prologue; `fa746d4cb8` makes direct Metal edit/touch highlights sole owner. `5d1bf5a394`/`497759ebb4` remove unreachable GL pathing rendering/gate. `bbc4be43d9` removes GL object-update blips, `c965068e2f` removes the GL probe-volume draw/program/shaders, `06c4da2bb8` removes GL particle-raycast lines, `1950b5c562` removes GL shadow-frusta geometry, `f65bf7118b` removes the GL terrain-composition grid, `90a9967202` removes GL probe links, `e154478468` removes both GL Occlusion owners, `d625610b62` removes duplicate GL drawable face-center points, and `74847d912b` removes the live Develop > Bounding Boxes GL outlines while retaining explicit semantic colors, per-face/drawable/group bounds, bridge transforms, traversal order and the active-object 1–5 px pulse in Metal. `5c2a4ec7e7` removes duplicate GL raycast branch outlines, hidden/visible triangle edges and selected-prim axis/bounds geometry; explicit Metal inputs retain the orange/lime branch semantics, cyan hidden/visible depth conventions, one-/three-pixel widths, red/green/blue axes, transforms and ordering. `d37e51ea07` makes the shared selected-avatar/Collision Skeleton volume owner Metal-only while retaining ordinary/control-avatar colors, white center dots, per-volume transforms, both sphere scales, traversal order and the visible/occluded depth split. `b766e89361` makes the live Develop > Joints skeleton owner Metal-only while retaining selected/override/rigged/ordinary colors, endpoint spheres, per-joint transforms, yellow joint-space and cyan world-space rigged bounds, ordering and the visible/occluded depth split. `6fa8f57688` deletes the separate magenta-octahedron base/self GL utility after repository-wide reachability proof found no caller or registration. `d45778cade` likewise deletes the uncalled intersecting-bounds method and its sole octree traveler while retaining the separately live bounding-box renderer. `1a27604157` makes live Develop > Normals Metal-only: CPU inverse-scale volume construction and indexed Metal expansion retain yellow normals, cyan tangents, transforms, draw length, ordering and read-only depth while the duplicate immediate lines, geometry-shader draw, program, reserved uniform and three exclusive GLSL stages are deleted. Visual cases 53–65 are queued. No viewer was launched.
+`cbdecfd337` removes the drawless deferred-light state prologue; `fa746d4cb8` makes direct Metal edit/touch highlights sole owner. `5d1bf5a394`/`497759ebb4` remove unreachable GL pathing rendering/gate. `bbc4be43d9` removes GL object-update blips, `c965068e2f` removes the GL probe-volume draw/program/shaders, `06c4da2bb8` removes GL particle-raycast lines, `1950b5c562` removes GL shadow-frusta geometry, `f65bf7118b` removes the GL terrain-composition grid, `90a9967202` removes GL probe links, `e154478468` removes both GL Occlusion owners, `d625610b62` removes duplicate GL drawable face-center points, and `74847d912b` removes the live Develop > Bounding Boxes GL outlines while retaining explicit semantic colors, per-face/drawable/group bounds, bridge transforms, traversal order and the active-object 1–5 px pulse in Metal. `5c2a4ec7e7` removes duplicate GL raycast branch outlines, hidden/visible triangle edges and selected-prim axis/bounds geometry; explicit Metal inputs retain the orange/lime branch semantics, cyan hidden/visible depth conventions, one-/three-pixel widths, red/green/blue axes, transforms and ordering. `d37e51ea07` makes the shared selected-avatar/Collision Skeleton volume owner Metal-only while retaining ordinary/control-avatar colors, white center dots, per-volume transforms, both sphere scales, traversal order and the visible/occluded depth split. `b766e89361` makes the live Develop > Joints skeleton owner Metal-only while retaining selected/override/rigged/ordinary colors, endpoint spheres, per-joint transforms, yellow joint-space and cyan world-space rigged bounds, ordering and the visible/occluded depth split. `6fa8f57688` deletes the separate magenta-octahedron base/self GL utility after repository-wide reachability proof found no caller or registration. `d45778cade` likewise deletes the uncalled intersecting-bounds method and its sole octree traveler while retaining the separately live bounding-box renderer. `1a27604157` makes live Develop > Normals Metal-only: CPU inverse-scale volume construction and indexed Metal expansion retain yellow normals, cyan tangents, transforms, draw length, ordering and read-only depth while the duplicate immediate lines, geometry-shader draw, program, reserved uniform and three exclusive GLSL stages are deleted. `a25b8861e5` makes Develop > Physics Shapes Metal-only: explicit native colors and CPU geometry retain mesh/decomposition, convex, box, sphere, cylinder and fallback shapes; all fetch/build side effects, transforms and the depth-fill/color-fill/offset-wire order remain while duplicate GL geometry and pass state are removed. Visual cases 53–66 are queued. No viewer was launched.
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
 resources avoid GL names; dual backing remains only where retained GL consumers
@@ -119,14 +119,14 @@ until the owner-attended review records that result.
 
 ## Build and test evidence
 
-- At `1a27604157`, Ninja and prescribed Xcode Release 68412 pass warnings-as-errors; the
+- At `a25b8861e5`, Ninja and prescribed Xcode Release 68414 pass warnings-as-errors; the
   physical retained-world case passes 8,022/1 under Metal
   API, GPU, shader and load/store validation. Release verification passes 349/349 ARM64 slices and
   deep strict signing. Executable SHA-256 is
-  `2c8e87fd781697d747aaca5322c720af5a3d7b6fe534708eb3f74015a5307eec`;
+  `5986bac6ffe2d8fa88e5a4565c87437d51a04bf324c9d5f5f1bbbb8c56d332a0`;
   metallib SHA-256 remains `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
   All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. M1 Max host doctor passes.
-  Strict inventory is 2,321 and exits 1 as expected; no audit rule changed. Harness validation and 31/31 tool tests pass.
+  Strict inventory is 2,316 and exits 1 as expected; no audit rule changed. Harness validation and 31/31 tool tests pass.
 
 ## Milestone snapshot
 
@@ -135,7 +135,7 @@ until the owner-attended review records that result.
 | M-003..M-006 platform/resources/UI | doing | Native producers use the window-owned Metal device rather than the GL image registry. Dead GL light-map plan resources are deleted. Metal solely presents; Snapshot has no GL capture target; selection plus HUD fullbright/shiny/emboss/transparent alpha use native targets only. Live GL traversal/context remain. |
 | M-007 world/material | doing | Probe scenes plus ordinary sky/cloud/body, avatars/impostors, fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR batches are directly enumerated into Metal. Grass, trees and all main/probe directional/projector shadow generation are native; broad parity remains open. |
 | M-008 advanced views/effects | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation have Metal implementations. Alpha-pool, water, atmosphere, sky, impostor, DoF-depth and debug-highlight production are native-only. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 2,332 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 2,316 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
 | M-011 GL authority removal | doing | Probe publication and volume display, terrain bake, selection/edit highlights, base deferred/PBR/legacy/fullbright/transparent/water geometry, deferred lighting, atmosphere/sky/avatar layers, shadows, shiny/emboss, glow, DoF/debug alpha, trees and converted debug effects have direct Metal owners. Superseded GL owners, drawless deferred-light state and unreachable OSS pathing render code are deleted. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
@@ -155,6 +155,6 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Make live Develop > Physics Shapes Metal-only while retaining all three passes, cost/fallback colors, generated CPU geometry, decomposition fetch/build side effects, transforms, outlines and depth/order semantics.
+1. Make live Develop > Octree Metal-only while retaining rebuild-flash decay, semantic update/move/shrink-wrap colors, static/rigged geometry, bounds, transforms and additive/depth/order semantics.
 2. Re-run strict source/link/runtime gates after each owner cut.
 3. Keep visual failures queued; do not launch either viewer autonomously.
