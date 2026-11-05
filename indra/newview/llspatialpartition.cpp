@@ -2180,7 +2180,8 @@ S32 get_physics_detail(const LLVolumeParams& volume_params, const LLVector3& sca
 }
 
 #if LL_DARWIN
-void captureMetalPhysicsVolume(const LLVolume& volume)
+void captureMetalPhysicsVolume(
+    const LLVolume& volume, const LLColor4& color)
 {
     for (S32 face_index = 0;
          face_index < volume.getNumVolumeFaces(); ++face_index)
@@ -2193,13 +2194,13 @@ void captureMetalPhysicsVolume(const LLVolume& volume)
                 face.mPositions,
                 static_cast<std::size_t>(face.mNumVertices),
                 face.mIndices,
-                static_cast<std::size_t>(face.mNumIndices));
+                static_cast<std::size_t>(face.mNumIndices), color);
         }
     }
 }
 #endif
 
-void renderMeshBaseHull(LLVOVolume* volume, U32 data_mask, LLColor4& color)
+void renderMeshBaseHull(LLVOVolume* volume, const LLColor4& color)
 {
     LLUUID mesh_id = volume->getVolume()->getParams().getSculptID();
     LLModel::Decomposition* decomp = gMeshRepo.getDecomposition(mesh_id);
@@ -2211,46 +2212,40 @@ void renderMeshBaseHull(LLVOVolume* volume, U32 data_mask, LLColor4& color)
     {
         if (!decomp->mBaseHullMesh.empty())
         {
-            gGL.diffuseColor4fv(color.mV);
 #if LL_DARWIN
             gPipeline.captureMetalPhysicsShapeTriangles(
                 decomp->mBaseHullMesh.mPositions.data(),
-                decomp->mBaseHullMesh.mPositions.size());
+                decomp->mBaseHullMesh.mPositions.size(), color);
 #endif
-            LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mBaseHullMesh.mPositions);
         }
         else
         {
             gMeshRepo.buildPhysicsMesh(*decomp);
-            gGL.diffuseColor4f(0,1,1,1);
 #if LL_DARWIN
-            gPipeline.captureMetalPhysicsShapeBox(center, size, true);
+            gPipeline.captureMetalPhysicsShapeBox(
+                center, size, true, LLColor4::cyan);
 #endif
-            drawBoxOutline(center, size);
         }
 
     }
     else
     {
-        gGL.diffuseColor3f(1,0,1);
 #if LL_DARWIN
-        gPipeline.captureMetalPhysicsShapeBox(center, size, true);
+        gPipeline.captureMetalPhysicsShapeBox(
+            center, size, true, LLColor4::magenta);
 #endif
-        drawBoxOutline(center, size);
     }
 }
 
 void render_hull(LLModel::PhysicsMesh& mesh, const LLColor4& color)
 {
-    gGL.diffuseColor4fv(color.mV);
 #if LL_DARWIN
     gPipeline.captureMetalPhysicsShapeTriangles(
-        mesh.mPositions.data(), mesh.mPositions.size());
+        mesh.mPositions.data(), mesh.mPositions.size(), color);
 #endif
-    LLVertexBuffer::drawArrays(LLRender::TRIANGLES, mesh.mPositions);
 }
 
-void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe)
+void renderPhysicsShape(LLVOVolume* volume, bool wireframe)
 {
     U8 physics_type = volume->getPhysicsShapeType();
 
@@ -2285,8 +2280,6 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
         color = color * 0.5f;
     }
 
-    U32 data_mask = LLVertexBuffer::MAP_VERTEX;
-
     LLVolumeParams volume_params = volume->getVolume()->getParams();
 
     LLPhysicsVolumeParams physics_params(volume_params,
@@ -2311,8 +2304,6 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
         if (decomp)
         { //render a physics based mesh
 
-            gGL.getTextureSlot(0)->unbind();
-
             if (!decomp->mHull.empty())
             { //decomposition exists, use that
 
@@ -2329,18 +2320,15 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
             else if (!decomp->mPhysicsShapeMesh.empty())
             {
                 //decomp has physics mesh, render that mesh
-                gGL.diffuseColor4fv(color.mV);
-
 #if LL_DARWIN
                 gPipeline.captureMetalPhysicsShapeTriangles(
                     decomp->mPhysicsShapeMesh.mPositions.data(),
-                    decomp->mPhysicsShapeMesh.mPositions.size());
+                    decomp->mPhysicsShapeMesh.mPositions.size(), color);
 #endif
-                LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mPhysicsShapeMesh.mPositions);
             }
             else
             { //no mesh or decomposition, render base hull
-                renderMeshBaseHull(volume, data_mask, color);
+                renderMeshBaseHull(volume, color);
 
                 if (decomp->mPhysicsShapeMesh.empty())
                 {
@@ -2351,11 +2339,10 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
         }
         else
         {
-            gGL.diffuseColor3f(1,1,0);
 #if LL_DARWIN
-            gPipeline.captureMetalPhysicsShapeBox(center, size, true);
+            gPipeline.captureMetalPhysicsShapeBox(
+                center, size, true, LLColor4::yellow);
 #endif
-            drawBoxOutline(center, size);
         }
     }
     else if (type == LLPhysicsShapeBuilderUtil::PhysicsShapeSpecification::USER_CONVEX ||
@@ -2363,7 +2350,7 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
     {
         if (volume->isMesh())
         {
-            renderMeshBaseHull(volume, data_mask, color);
+            renderMeshBaseHull(volume, color);
         }
         else
         {
@@ -2459,9 +2446,6 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
             if (phys_volume->mHullPoints)
             {
                 //render hull
-                gGL.diffuseColor4fv(color.mV);
-
-                LLVertexBuffer::unbind();
 #if LL_DARWIN
                 gPipeline.captureMetalPhysicsShapeIndexedTriangles(
                     phys_volume->mHullPoints,
@@ -2469,18 +2453,15 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
                         phys_volume->mNumHullPoints),
                     phys_volume->mHullIndices,
                     static_cast<std::size_t>(
-                        phys_volume->mNumHullIndices));
+                        phys_volume->mNumHullIndices), color);
 #endif
-                LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, NULL, phys_volume->mNumHullIndices, phys_volume->mHullIndices);
             }
             else
             {
-                gGL.diffuseColor4f(1,0,1,1);
 #if LL_DARWIN
                 gPipeline.captureMetalPhysicsShapeBox(
-                    center, size, true);
+                    center, size, true, LLColor4::magenta);
 #endif
-                drawBoxOutline(center, size);
             }
 
             LLPrimitive::sVolumeManager->unrefVolume(phys_volume);
@@ -2495,12 +2476,10 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
             LLVector3 vscale = volume->getScale() * 2.f;
             scale.set(scale[0] / vscale[0], scale[1] / vscale[1], scale[2] / vscale[2]);
 
-            gGL.diffuseColor4fv(color.mV);
 #if LL_DARWIN
             gPipeline.captureMetalPhysicsShapeBox(
-                center, scale, false);
+                center, scale, false, color);
 #endif
-            drawBox(center, scale);
         }
     }
     else if (type == LLPhysicsShapeBuilderUtil::PhysicsShapeSpecification::SPHERE)
@@ -2515,11 +2494,9 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
             volume_params.setShear(0, 0);
             LLVolume* sphere = LLPrimitive::sVolumeManager->refVolume(volume_params, 3);
 
-            gGL.diffuseColor4fv(color.mV);
 #if LL_DARWIN
-            captureMetalPhysicsVolume(*sphere);
+            captureMetalPhysicsVolume(*sphere, color);
 #endif
-            pushVerts(sphere);
             LLPrimitive::sVolumeManager->unrefVolume(sphere);
         }
     }
@@ -2535,11 +2512,9 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
             volume_params.setShear(0, 0);
             LLVolume* cylinder = LLPrimitive::sVolumeManager->refVolume(volume_params, 3);
 
-            gGL.diffuseColor4fv(color.mV);
 #if LL_DARWIN
-            captureMetalPhysicsVolume(*cylinder);
+            captureMetalPhysicsVolume(*cylinder, color);
 #endif
-            pushVerts(cylinder);
             LLPrimitive::sVolumeManager->unrefVolume(cylinder);
         }
     }
@@ -2550,11 +2525,9 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
 
         LLVolume* phys_volume = LLPrimitive::sVolumeManager->refVolume(volume_params, detail);
 
-        gGL.diffuseColor4fv(color.mV);
 #if LL_DARWIN
-        captureMetalPhysicsVolume(*phys_volume);
+        captureMetalPhysicsVolume(*phys_volume, color);
 #endif
-        pushVerts(phys_volume);
 
         LLPrimitive::sVolumeManager->unrefVolume(phys_volume);
     }
@@ -2567,29 +2540,21 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
 
         if (phys_volume->mHullPoints && phys_volume->mHullIndices)
         {
-
-            llassert(LLGLSLShader::sCurBoundShader != 0);
-            LLVertexBuffer::unbind();
-
-            gGL.diffuseColor4fv(color.mV);
-            gGL.syncMatrices();
-
 #if LL_DARWIN
             gPipeline.captureMetalPhysicsShapeIndexedTriangles(
                 phys_volume->mHullPoints,
                 static_cast<std::size_t>(phys_volume->mNumHullPoints),
                 phys_volume->mHullIndices,
-                static_cast<std::size_t>(phys_volume->mNumHullIndices));
+                static_cast<std::size_t>(phys_volume->mNumHullIndices),
+                color);
 #endif
-            LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, nullptr, phys_volume->mNumHullIndices, phys_volume->mHullIndices);
         }
         else
         {
-            gGL.diffuseColor3f(1,0,1);
 #if LL_DARWIN
-            gPipeline.captureMetalPhysicsShapeBox(center, size, true);
+            gPipeline.captureMetalPhysicsShapeBox(
+                center, size, true, LLColor4::magenta);
 #endif
-            drawBoxOutline(center, size);
             gMeshRepo.buildHull(volume_params, detail);
         }
         LLPrimitive::sVolumeManager->unrefVolume(phys_volume);
@@ -2638,12 +2603,12 @@ void renderPhysicsShapes(LLSpatialGroup* group, bool wireframe)
                     gGL.pushMatrix();
                     LLVector3 trans = drawable->getRegion()->getOriginAgent();
                     gGL.translatef(trans.mV[0], trans.mV[1], trans.mV[2]);
-                    renderPhysicsShape(drawable, volume, wireframe);
+                    renderPhysicsShape(volume, wireframe);
                     gGL.popMatrix();
                 }
                 else
                 {
-                    renderPhysicsShape(drawable, volume, wireframe);
+                    renderPhysicsShape(volume, wireframe);
                 }
             }
             else
@@ -3490,12 +3455,10 @@ public:
         if (!mCamera || mCamera->AABBInFrustumNoFarClip(bounds[0], bounds[1]))
         {
             node->accept(this);
-            stop_glerror();
 
             for (U32 i = 0; i < node->getChildCount(); i++)
             {
                 traverse(node->getChild(i));
-                stop_glerror();
             }
 
             group->rebuildGeom();
@@ -3594,11 +3557,8 @@ void LLSpatialPartition::renderPhysicsShapes(bool wireframe)
         camera = NULL;
     }
 
-    gGL.flush();
-    gGL.getTextureSlot(0)->unbind();
     LLOctreeRenderPhysicsShapes render_physics(camera, wireframe);
     render_physics.traverse(mOctree);
-    gGL.flush();
 }
 
 void LLSpatialPartition::renderDebug()

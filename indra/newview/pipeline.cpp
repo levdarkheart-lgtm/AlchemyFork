@@ -5926,44 +5926,6 @@ void LLPipeline::endMetalOctreeCapture()
     }
 }
 
-static bool metalPhysicsShapePassStateIsExact(U32 pass)
-{
-    if (pass > 2)
-    {
-        return false;
-    }
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    LLRender::eBlendFactor color_source;
-    LLRender::eBlendFactor color_destination;
-    LLRender::eBlendFactor alpha_source;
-    LLRender::eBlendFactor alpha_destination;
-    gGL.getBlendFunc(color_source, color_destination,
-                     alpha_source, alpha_destination);
-    U32 rgb_equation = 0;
-    U32 alpha_equation = 0;
-    gGL.getBlendEquation(rgb_equation, alpha_equation);
-    const bool color_writes = pass != 0;
-    return LLGLState::isEnabled(GL_BLEND) &&
-        LLGLState::isEnabled(GL_CULL_FACE) &&
-        LLGLState::isEnabled(GL_POLYGON_OFFSET_LINE) &&
-        LLGLDepthTest::depthEnabled() &&
-        LLGLDepthTest::depthWriteEnabled() == (pass == 0) &&
-        LLGLDepthTest::depthFunction() == GL_LEQUAL &&
-        color_source == LLRender::BF_SOURCE_ALPHA &&
-        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        alpha_source == LLRender::BF_SOURCE_ALPHA &&
-        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
-        color_mask[0] == color_writes &&
-        color_mask[1] == color_writes &&
-        color_mask[2] == color_writes && !color_mask[3] &&
-        gGL.getLineWidth() == 3.f &&
-        gGL.getPolygonOffsetFactor() == -3.f &&
-        gGL.getPolygonOffsetUnits() == -3.f &&
-        gGL.getPolygonMode() == (pass == 2 ? GL_LINE : GL_FILL);
-}
-
 void LLPipeline::beginMetalPhysicsShapeCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -5997,8 +5959,7 @@ void LLPipeline::beginMetalPhysicsShapePass(U32 pass)
         return;
     }
     if (!capture.complete || capture.physics_shape_pass_active ||
-        pass > 2 || pass != capture.physics_shape_pass ||
-        !metalPhysicsShapePassStateIsExact(pass))
+        pass > 2 || pass != capture.physics_shape_pass)
     {
         capture.markIncomplete(__LINE__);
         capture.physics_shape_vertices.clear();
@@ -6038,7 +5999,7 @@ static bool beginMetalPhysicsShapeBatch(
     Capture& capture,
     ALMetalWorldPhysicsShapeBatch& batch, bool wide_lines,
     bool triangle_wire, bool polygon_offset,
-    std::size_t appended_vertex_count)
+    std::size_t appended_vertex_count, const LLColor4& color)
 {
     if (appended_vertex_count == 0 ||
         appended_vertex_count > std::numeric_limits<U32>::max() ||
@@ -6049,7 +6010,6 @@ static bool beginMetalPhysicsShapeBatch(
     {
         return false;
     }
-    const LLColor4& color = gGL.getDiffuseColor();
     if (!std::all_of(
             std::begin(color.mV), std::end(color.mV),
             [](F32 value) { return std::isfinite(value); }))
@@ -6067,7 +6027,7 @@ static bool beginMetalPhysicsShapeBatch(
     batch.wide_lines = wide_lines;
     batch.triangle_wire = triangle_wire;
     batch.polygon_offset = polygon_offset;
-    batch.cull_back = LLGLState::isEnabled(GL_CULL_FACE);
+    batch.cull_back = true;
     batch.order = capture.render_debug_order++;
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
@@ -6077,7 +6037,8 @@ static bool beginMetalPhysicsShapeBatch(
 }
 
 void LLPipeline::captureMetalPhysicsShapeTriangles(
-    const LLVector3* vertices, std::size_t vertex_count)
+    const LLVector3* vertices, std::size_t vertex_count,
+    const LLColor4& color)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -6120,7 +6081,7 @@ void LLPipeline::captureMetalPhysicsShapeTriangles(
         ALMetalWorldPhysicsShapeBatch batch;
         if (!beginMetalPhysicsShapeBatch(
                 capture, batch, false, triangle_wire,
-                triangle_wire, output_count))
+                triangle_wire, output_count, color))
         {
             capture.physics_shape_vertices.resize(first);
             clearMetalPhysicsShapeCapture(capture, __LINE__);
@@ -6136,7 +6097,8 @@ void LLPipeline::captureMetalPhysicsShapeTriangles(
 
 void LLPipeline::captureMetalPhysicsShapeIndexedTriangles(
     const LLVector4a* vertices, std::size_t vertex_count,
-    const U16* indices, std::size_t index_count)
+    const U16* indices, std::size_t index_count,
+    const LLColor4& color)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -6189,7 +6151,7 @@ void LLPipeline::captureMetalPhysicsShapeIndexedTriangles(
         ALMetalWorldPhysicsShapeBatch batch;
         if (!beginMetalPhysicsShapeBatch(
                 capture, batch, false, triangle_wire,
-                triangle_wire, output_count))
+                triangle_wire, output_count, color))
         {
             capture.physics_shape_vertices.resize(first);
             clearMetalPhysicsShapeCapture(capture, __LINE__);
@@ -6205,7 +6167,7 @@ void LLPipeline::captureMetalPhysicsShapeIndexedTriangles(
 
 void LLPipeline::captureMetalPhysicsShapeBox(
     const LLVector3& center, const LLVector3& half_extent,
-    bool outline)
+    bool outline, const LLColor4& color)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -6263,7 +6225,7 @@ void LLPipeline::captureMetalPhysicsShapeBox(
             ALMetalWorldPhysicsShapeBatch batch;
             if (!beginMetalPhysicsShapeBatch(
                     capture, batch, true, false, false,
-                    std::size(lines)))
+                    std::size(lines), color))
             {
                 capture.physics_shape_vertices.resize(first);
                 clearMetalPhysicsShapeCapture(capture, __LINE__);
@@ -6286,7 +6248,7 @@ void LLPipeline::captureMetalPhysicsShapeBox(
         ppp,npp,pnp, pnp,npp,nnp,
     };
     captureMetalPhysicsShapeTriangles(
-        triangles, std::size(triangles));
+        triangles, std::size(triangles), color);
 }
 
 void LLPipeline::endMetalPhysicsShapePass(U32 pass)
@@ -6301,8 +6263,7 @@ void LLPipeline::endMetalPhysicsShapePass(U32 pass)
         return;
     }
     if (!capture.physics_shape_pass_active ||
-        pass != capture.physics_shape_pass ||
-        !metalPhysicsShapePassStateIsExact(pass))
+        pass != capture.physics_shape_pass)
     {
         clearMetalPhysicsShapeCapture(capture, __LINE__);
         return;
@@ -22215,20 +22176,11 @@ void LLPipeline::renderPhysicsDisplay()
         return;
     }
 
-    gGL.flush();
-    gDebugProgram.bind();
-
-    // The passes below set their own masks; this hands the caller's back.
-    LLGLSColorMask color_mask(true, false);
-
-    // Toward the camera: pass 0 lays the shapes' own depth down unoffset, and an outline
-    // pushed behind it fails the depth test everywhere the fill covers. setPolygonOffset
-    // flips the sign under reverse-Z itself.
-    LLGLEnable polygon_offset_line(GL_POLYGON_OFFSET_LINE);
-    gGL.setPolygonOffset(-3.f, -3.f);
-    gGL.setLineWidth(3.f);
-    LLGLEnable blend(GL_BLEND);
-    gGL.setSceneBlendType(LLRender::BT_ALPHA);
+    // Retain LLRender's CPU matrix stack until capture matrices have a
+    // backend-neutral transform owner. No GL draw or state mutation occurs.
+    gGL.pushMatrix();
+    gGLLastMatrix = nullptr;
+    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
 
 #if LL_DARWIN
     beginMetalPhysicsShapeCapture();
@@ -22239,15 +22191,7 @@ void LLPipeline::renderPhysicsDisplay()
         // pass 0 - depth write enabled, color write disabled, fill
         // pass 1 - depth write disabled, color write enabled, fill
         // pass 2 - depth write disabled, color write enabled, wireframe
-        gGL.setColorMask(pass >= 1, false);
-        LLGLDepthTest depth(GL_TRUE, pass == 0);
-
         bool wireframe = (pass == 2);
-
-        if (wireframe)
-        {
-            gGL.setPolygonMode(GL_LINE);
-        }
 
 #if LL_DARWIN
         beginMetalPhysicsShapePass(static_cast<U32>(pass));
@@ -22269,22 +22213,15 @@ void LLPipeline::renderPhysicsDisplay()
                 }
             }
         }
-        gGL.flush();
-
 #if LL_DARWIN
         endMetalPhysicsShapePass(static_cast<U32>(pass));
 #endif
-
-        if (wireframe)
-        {
-            gGL.setPolygonMode(GL_FILL);
-        }
     }
 #if LL_DARWIN
     endMetalPhysicsShapeCapture();
 #endif
-    gGL.setLineWidth(1.f);
-    gDebugProgram.unbind();
+    gGLLastMatrix = nullptr;
+    gGL.popMatrix();
 
 }
 

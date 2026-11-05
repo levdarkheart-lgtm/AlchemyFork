@@ -482,13 +482,15 @@ public:
     void beginMetalPhysicsShapeCapture();
     void beginMetalPhysicsShapePass(U32 pass);
     void captureMetalPhysicsShapeTriangles(
-        const LLVector3* vertices, std::size_t vertex_count);
+        const LLVector3* vertices, std::size_t vertex_count,
+        const LLColor4& color);
     void captureMetalPhysicsShapeIndexedTriangles(
         const LLVector4a* vertices, std::size_t vertex_count,
-        const U16* indices, std::size_t index_count);
+        const U16* indices, std::size_t index_count,
+        const LLColor4& color);
     void captureMetalPhysicsShapeBox(
         const LLVector3& center, const LLVector3& half_extent,
-        bool outline);
+        bool outline, const LLColor4& color);
     void endMetalPhysicsShapePass(U32 pass);
     void endMetalPhysicsShapeCapture();
     // Retain Develop > Normals across the complete world spatial traversal.
