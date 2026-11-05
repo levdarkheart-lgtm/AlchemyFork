@@ -95,10 +95,6 @@
 #include "rlvcommon.h"
 // [/RLVa:KB]
 
-#if LL_DARWIN && LL_SDL_WINDOW
-#include "llwindowsdl.h"
-#endif
-
 // Third party library includes
 #include <boost/algorithm/string.hpp>
 
@@ -641,19 +637,6 @@ static bool handleReflectionProbeSettingsChanged(const LLSD& newvalue)
     return true;
 }
 
-#if LL_DARWIN
-static bool handleAppleUseMultGLChanged(const LLSD& newvalue)
-{
-    if (gGLManager.mInited)
-    {
-#if LL_SDL_WINDOW
-        LLWindowSDL::setUseMultGL(newvalue.asBoolean());
-#endif
-    }
-    return true;
-}
-#endif
-
 static bool handleRenderDebugPipelineChanged(const LLSD& newvalue)
 {
     gDebugPipeline = newvalue.asBoolean();
@@ -1037,9 +1020,6 @@ void settings_setup_listeners()
     // Sizes the probe pack and the manager's scratch target, both planned from it; no program reads it.
     setting_setup_signal_listener(gSavedSettings, "ALProbeSuperSample", handleRenderInputChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderReflectionsEnabled", handleReflectionProbesChanged);
-#if LL_DARWIN
-    setting_setup_signal_listener(gSavedSettings, "RenderAppleUseMultGL", handleAppleUseMultGLChanged);
-#endif
     // The screen-space reflections' programs and the scene copy they march through; the probes are not theirs.
     setting_setup_signal_listener(gSavedSettings, "RenderScreenSpaceReflections", handleRenderInputChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderMirrors", handleMirrorsChanged);

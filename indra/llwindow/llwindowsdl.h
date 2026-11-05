@@ -247,13 +247,6 @@ public:
     // so it must skip BackgroundYieldTime while one is open or it turns laggy.
     static bool dialogOpen();
 
-#if LL_DARWIN
-    static U64 getVramSize();
-    static void setUseMultGL(bool use_mult_gl);
-
-    static bool sUseMultGL;
-#endif
-
 #if LL_WINDOWS
     // DirectInput8 access for llviewerjoystick / SpaceNavigator — same
     // contract as LLWindowWin32 (DI8 needs only the module handle, not the

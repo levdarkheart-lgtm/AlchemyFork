@@ -63,14 +63,12 @@ extern "C" {
 #endif // LL_LINUX
 
 #if LL_DARWIN
-#include <OpenGL/OpenGL.h>
 #include <Carbon/Carbon.h>
 #include <CoreServices/CoreServices.h>
 #include <CoreGraphics/CGDisplayConfiguration.h>
 #include <SDL3_image/SDL_image.h>
 #include "llsdl_macos.h"
 
-bool LLWindowSDL::sUseMultGL = false;
 #endif
 
 #if LL_WINDOWS
@@ -603,10 +601,13 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     toggleVSync(enable_vsync);
 
 #if LL_DARWIN
-    setUseMultGL(sUseMultGL);
-
-    // Get vram via CGL on macos
-    gGLManager.mVRAM = getVramSize();
+    // Apple Silicon uses unified memory. Use the selected Metal device's
+    // recommended working-set budget instead of asking the temporary migration
+    // renderer for a nominal video-memory figure.
+    const U64 metal_budget_bytes = mMetalDevice->info().recommended_working_set_size;
+    gGLManager.mVRAM = static_cast<U32>(metal_budget_bytes >> 20);
+    LL_INFOS("Metal") << "Recommended renderer working set: "
+                       << gGLManager.mVRAM << " MiB" << LL_ENDL;
 #endif
 
 #if LL_LINUX
@@ -4591,63 +4592,4 @@ F32 LLWindowSDL::getSystemUISize()
     }
     return 1.f;
 }
-
-#if LL_DARWIN
-// static
-U64 LLWindowSDL::getVramSize()
-{
-    CGLRendererInfoObj info = 0;
-    GLint vram_megabytes = 0;
-    int num_renderers = 0;
-    CGLError the_err = CGLQueryRendererInfo (CGDisplayIDToOpenGLDisplayMask(kCGDirectMainDisplay), &info, &num_renderers);
-    if(0 == the_err)
-    {
-        // The name, uses, and other platform definitions of gGLManager.mVRAM suggest that this is supposed to be total vram in MB,
-        // rather than, say, just the texture memory. The two exceptions are:
-        // 1. LLAppViewer::getViewerInfo() puts the value in a field labeled "TEXTURE_MEMORY"
-        // 2. For years, this present function used kCGLRPTextureMemoryMegabytes
-        // Now we use kCGLRPVideoMemoryMegabytes to bring it in line with everything else (except thatone label).
-        CGLDescribeRenderer (info, 0, kCGLRPVideoMemoryMegabytes, &vram_megabytes);
-        CGLDestroyRendererInfo (info);
-    }
-    else
-    {
-        vram_megabytes = 256;
-    }
-
-    return (U64)vram_megabytes; // return value is in megabytes.
-}
-
-//static
-void LLWindowSDL::setUseMultGL(bool use_mult_gl)
-{
-    bool was_enabled = sUseMultGL;
-
-    sUseMultGL = use_mult_gl;
-
-    if (gGLManager.mInited)
-    {
-        CGLContextObj ctx = CGLGetCurrentContext();
-        //enable multi-threaded OpenGL (whether or not sUseMultGL actually changed)
-        if (sUseMultGL)
-        {
-            CGLError cgl_err =  CGLEnable( ctx, kCGLCEMPEngine);
-            if (cgl_err != kCGLNoError )
-            {
-                LL_INFOS("GLInit") << "Multi-threaded OpenGL not available." << LL_ENDL;
-                sUseMultGL = false;
-            }
-            else
-            {
-                LL_INFOS("GLInit") << "Multi-threaded OpenGL enabled." << LL_ENDL;
-            }
-        }
-        else if (was_enabled)
-        {
-            CGLDisable( ctx, kCGLCEMPEngine);
-            LL_INFOS("GLInit") << "Multi-threaded OpenGL disabled." << LL_ENDL;
-        }
-    }
-}
-#endif
 

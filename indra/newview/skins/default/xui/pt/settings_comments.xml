@@ -1737,8 +1737,6 @@
   <string>Animar o surgimento (rez) de prims.</string>
   <key>RenderAnisotropic</key>
   <string>Renderizar texturas usando filtragem anisotrópica.</string>
-  <key>RenderAppleUseMultGL</key>
-  <string>Se queremos usar OpenGL multithread em hardware Apple (requer reinício do SL).</string>
   <key>RenderAttachedLights</key>
   <string>Renderizar prims com luz que estão anexados a avatares.</string>
   <key>RenderAttachedParticles</key>
