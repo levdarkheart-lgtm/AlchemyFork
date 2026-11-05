@@ -1919,25 +1919,28 @@ void renderUpdateType(LLDrawable* drawablep)
 
 void renderBoundingBox(LLDrawable* drawable, bool set_color = true)
 {
-    // The colour is a uniform, so the last drawable's outlines go out under their own colour
-    // before it changes.
-    gGL.flush();
-
-    if (set_color)
+    LLColor4 color = LLColor4::red;
+    if (!set_color)
+    {
+        // Retain the separate intersecting-bounds utility until it has a
+        // native caller/owner; Develop > Bounding Boxes never takes this path.
+        gGL.flush();
+    }
+    else
     {
         if (drawable->isSpatialBridge())
         {
-            gGL.diffuseColor4f(1,0.5f,0,1); // orange
+            color.set(1.f, 0.5f, 0.f, 1.f); // orange
         }
         else if (drawable->getVOVolume())
         {
             if (drawable->isRoot())
             {
-                gGL.diffuseColor4f(1,1,0,1); // yellow
+                color.set(1.f, 1.f, 0.f, 1.f); // yellow
             }
             else
             {
-                gGL.diffuseColor4f(0,1,0,1); // green
+                color.set(0.f, 1.f, 0.f, 1.f); // green
             }
         }
         else if (drawable->getVObj())
@@ -1945,17 +1948,17 @@ void renderBoundingBox(LLDrawable* drawable, bool set_color = true)
             switch (drawable->getVObj()->getPCode())
             {
                 case LLViewerObject::LL_VO_SURFACE_PATCH:
-                        gGL.diffuseColor4f(0,1,1,1); // cyan
+                        color.set(0.f, 1.f, 1.f, 1.f); // cyan
                         break;
                 case LLViewerObject::LL_VO_CLOUDS:
                         // no longer used
                         break;
                 case LLViewerObject::LL_VO_PART_GROUP:
                 case LLViewerObject::LL_VO_HUD_PART_GROUP:
-                        gGL.diffuseColor4f(0,0,1,1); // blue
+                        color.set(0.f, 0.f, 1.f, 1.f); // blue
                         break;
                 case LL_PCODE_LEGACY_TREE:
-                        gGL.diffuseColor4f(0,0.5f,0,1); // dark green
+                        color.set(0.f, 0.5f, 0.f, 1.f); // dark green
                         break;
                 default:
                         LLControlAvatar *cav = dynamic_cast<LLControlAvatar*>(drawable->getVObj()->asAvatar());
@@ -1965,23 +1968,23 @@ void renderBoundingBox(LLDrawable* drawable, bool set_color = true)
                             bool has_scale_constraint = (cav->mScaleConstraintFixup != 1.0f);
                             if (has_pos_constraint || has_scale_constraint)
                             {
-                                gGL.diffuseColor4f(1,0,0,1);
+                                color.set(1.f, 0.f, 0.f, 1.f);
                             }
                             else
                             {
-                                gGL.diffuseColor4f(0,1,0.5,1);
+                                color.set(0.f, 1.f, 0.5f, 1.f);
                             }
                         }
                         else
                         {
-                            gGL.diffuseColor4f(1,0,1,1); // magenta
+                            color.set(1.f, 0.f, 1.f, 1.f); // magenta
                         }
                         break;
             }
         }
         else
         {
-            gGL.diffuseColor4f(1,0,0,1);
+            color.set(1.f, 0.f, 0.f, 1.f);
         }
     }
 
@@ -2003,10 +2006,14 @@ void renderBoundingBox(LLDrawable* drawable, bool set_color = true)
                 size.setSub(ext[1], ext[0]);
                 size.mul(0.5f);
 
-#if LL_DARWIN
-                gPipeline.captureMetalBoundingBox(pos, size);
-#endif
-                drawBoxOutline(pos,size);
+                if (set_color)
+                {
+                    gPipeline.captureMetalBoundingBox(pos, size, color, 1.f);
+                }
+                else
+                {
+                    drawBoxOutline(pos, size);
+                }
             }
         }
     }
@@ -2020,23 +2027,20 @@ void renderBoundingBox(LLDrawable* drawable, bool set_color = true)
     size.mul(0.5f);
 
     LLViewerObject* vobj = drawable->getVObj();
-    if (vobj && vobj->onActiveList())
+    const F32 line_width = vobj && vobj->onActiveList()
+        ? llmax(4.f * sinf(static_cast<F32>(fmod(
+                    gFrameTimeSeconds.value() * 2.0,
+                    static_cast<F64>(F_TWO_PI)))) + 1.f, 1.f)
+        : 1.f;
+    if (set_color)
     {
-        gGL.setLineWidth(llmax(4.f*sinf((F32)fmod(gFrameTimeSeconds.value()*2.0, (F64)F_TWO_PI))+1.f, 1.f));
-        //gGL.setLineWidth(4.f*(sinf(gFrameTimeSeconds*2.f)*0.25f+0.75f));
-        stop_glerror();
-#if LL_DARWIN
-        gPipeline.captureMetalBoundingBox(pos, size);
-#endif
-        drawBoxOutline(pos,size);
-        gGL.setLineWidth(1.f);
+        gPipeline.captureMetalBoundingBox(pos, size, color, line_width);
     }
     else
     {
-#if LL_DARWIN
-        gPipeline.captureMetalBoundingBox(pos, size);
-#endif
-        drawBoxOutline(pos,size);
+        gGL.setLineWidth(line_width);
+        drawBoxOutline(pos, size);
+        gGL.setLineWidth(1.f);
     }
 }
 // *TODO: LLDrawables which are not part of LLVOVolumes fall into a different
@@ -3428,13 +3432,9 @@ public:
         {
             if (!group->isEmpty())
             {
-                gGL.diffuseColor3f(0,0,1);
                 const LLVector4a* obj_bounds = group->getObjectBounds();
-#if LL_DARWIN
                 gPipeline.captureMetalBoundingBox(
-                    obj_bounds[0], obj_bounds[1]);
-#endif
-                drawBoxOutline(obj_bounds[0], obj_bounds[1]);
+                    obj_bounds[0], obj_bounds[1], LLColor4::blue, 1.f);
             }
         }
 

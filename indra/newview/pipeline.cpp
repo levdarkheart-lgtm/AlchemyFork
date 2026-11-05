@@ -5468,34 +5468,6 @@ void LLPipeline::captureMetalBatchSizeBatch(
     }
 }
 
-static bool metalLightDebugStateIsExact(bool depth_test_enabled,
-                                        bool require_unit_line)
-{
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    LLRender::eBlendFactor color_source;
-    LLRender::eBlendFactor color_destination;
-    LLRender::eBlendFactor alpha_source;
-    LLRender::eBlendFactor alpha_destination;
-    gGL.getBlendFunc(color_source, color_destination,
-                     alpha_source, alpha_destination);
-    U32 rgb_equation = 0;
-    U32 alpha_equation = 0;
-    gGL.getBlendEquation(rgb_equation, alpha_equation);
-    return LLGLState::isEnabled(GL_BLEND) &&
-        !LLGLState::isEnabled(GL_CULL_FACE) &&
-        LLGLDepthTest::depthEnabled() == depth_test_enabled &&
-        LLGLDepthTest::depthWriteEnabled() &&
-        LLGLDepthTest::depthFunction() == GL_LEQUAL &&
-        color_source == LLRender::BF_SOURCE_ALPHA &&
-        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        alpha_source == LLRender::BF_SOURCE_ALPHA &&
-        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
-        color_mask[0] && color_mask[1] && color_mask[2] &&
-        !color_mask[3] && (!require_unit_line || gGL.getLineWidth() == 1.f);
-}
-
 void LLPipeline::beginMetalBoundingBoxCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -5516,7 +5488,8 @@ void LLPipeline::beginMetalBoundingBoxCapture()
 }
 
 void LLPipeline::captureMetalBoundingBox(
-    const LLVector4a& center, const LLVector4a& half_extent)
+    const LLVector4a& center, const LLVector4a& half_extent,
+    const LLColor4& color, F32 line_width)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -5533,15 +5506,12 @@ void LLPipeline::captureMetalBoundingBox(
         return;
     }
 
-    const LLColor4& color = gGL.getDiffuseColor();
-    const F32 line_width = gGL.getLineWidth();
     if (!capture.complete ||
         capture.render_debug_order == std::numeric_limits<U64>::max() ||
         !std::isfinite(color.mV[0]) || !std::isfinite(color.mV[1]) ||
         !std::isfinite(color.mV[2]) || !std::isfinite(color.mV[3]) ||
         color.mV[3] != 1.f ||
-        !std::isfinite(line_width) || line_width < 1.f || line_width > 5.f ||
-        !metalLightDebugStateIsExact(true, false))
+        !std::isfinite(line_width) || line_width < 1.f || line_width > 5.f)
     {
         capture.markIncomplete(__LINE__);
         capture.bounding_box_batches.clear();

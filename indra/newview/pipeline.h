@@ -434,7 +434,8 @@ public:
     // solid color, extents and active-object line width.
     void beginMetalBoundingBoxCapture();
     void captureMetalBoundingBox(const LLVector4a& center,
-                                 const LLVector4a& half_extent);
+                                 const LLVector4a& half_extent,
+                                 const LLColor4& color, F32 line_width);
     void endMetalBoundingBoxCapture();
     // Retain Develop > Raycast across the complete world spatial traversal.
     // Branch outlines and immediate triangles preserve the live cursor-ray
