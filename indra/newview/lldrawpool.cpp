@@ -1220,9 +1220,9 @@ void LLRenderPass::pushGLTFBatchesScalar(U32 type)
     }
 }
 
-// Renders only the multi-material (indexed) draw infos. Assumes the indexed PBR
-// shader is bound. maps selects which material maps to bind (see eGLTFIndexedMaps).
-void LLRenderPass::pushGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps)
+// Renders only the multi-material draw infos for the retained indexed PBR
+// shadow shader.
+void LLRenderPass::pushGLTFBatchesIndexed(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     auto* begin = gPipeline.beginRenderMap(type);
@@ -1237,22 +1237,17 @@ void LLRenderPass::pushGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps)
             continue;
         }
 
-        pushGLTFBatchIndexed(params, maps);
+        pushGLTFBatchIndexed(params);
     }
 }
 
 // static
-// Bind one draw call's worth of indexed materials and emit it. Each material slot
-// s binds its maps to texture units [s, N+s, 2N+s, 3N+s] (N == shader's
-// sIndexedGLTFChannels) and contributes one element to the per-slot scalar/transform
-// uniform arrays. Mirrors LLFetchedGLTFMaterial::bind for the default-texture and
-// factor handling. GLTF_MAPS_BASE_COLOR (shadow alpha-mask) binds only base color;
-// GLTF_MAPS_GLOW adds emissive for the remaining glow pass.
-void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps maps)
+// Bind one draw call's indexed base-color materials and emit it. Slot s binds
+// texture unit s and contributes alpha coverage plus base-color transform state.
+// Only the retained shadow alpha-mask owner reaches this GL helper.
+void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-
-    const bool want_emissive = maps == GLTF_MAPS_GLOW;
 
     const S32 N = LLGLSLShader::sIndexedGLTFChannels; // shader sampler-array stride
     // Slot count is capped at N (<= MAX_INDEXED_GLTF_CHANNELS) by genDrawInfo; clamp
@@ -1270,10 +1265,7 @@ void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps map
     constexpr S32 kSlots = LLGLSLShader::MAX_INDEXED_GLTF_CHANNELS;
     constexpr S32 kXf    = (S32)LLGLTFMaterial::TextureTransform::PACK_SIZE;
     F32 min_alpha[kSlots] = { 0.f };
-    F32 base_alpha[kSlots] = { 0.f };
-    F32 emissive[3 * kSlots] = { 0.f };
     F32 bc_xform[kSlots * kXf] = { 0.f }; // kXf floats (2 vec4) per slot
-    F32 em_xform[kSlots * kXf] = { 0.f };
 
     bool double_sided = false;
 
@@ -1299,41 +1291,10 @@ void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps map
         LLGLTFMaterial::TextureTransform::Pack packed;
         mat->mTextureTransform[LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(packed);
         memcpy(&bc_xform[kXf * s], packed, sizeof(packed));
-
-        if (!want_emissive)
-        { // shadow alpha-mask samples only base color
-            continue;
-        }
-
-        // Emissive map/color/transform for the glow pass.
-        LLViewerTexture* em = mat->mEmissiveTexture.notNull() ? mat->mEmissiveTexture.get() : LLViewerFetchedTexture::sWhiteImagep.get();
-        gGL.getTextureSlot(3 * N + s)->bindFast(em, ALSamplers::AnisoWrapSRGB);
-
-        emissive[3 * s + 0] = mat->mEmissiveColor.mV[0];
-        emissive[3 * s + 1] = mat->mEmissiveColor.mV[1];
-        emissive[3 * s + 2] = mat->mEmissiveColor.mV[2];
-
-        // the glow program reads the emissive stream where the base colour's alpha would be
-        base_alpha[s] = mat->getStreamedBaseAlpha();
-
-        mat->mTextureTransform[LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE].getPacked(packed);
-        memcpy(&em_xform[kXf * s], packed, sizeof(packed));
-
     }
 
     shader->uniform1fv(LLShaderMgr::GLTF_MINIMUM_ALPHA, n, min_alpha);
     shader->uniform4fv(LLShaderMgr::GLTF_BASECOLOR_TRANSFORM, 2 * n, bc_xform);
-
-    if (want_emissive)
-    {
-        shader->uniform3fv(LLShaderMgr::GLTF_EMISSIVE_COLOR, n, emissive);
-        shader->uniform4fv(LLShaderMgr::GLTF_EMISSIVE_TRANSFORM, 2 * n, em_xform);
-    }
-
-    if (maps == GLTF_MAPS_GLOW)
-    {
-        shader->uniform1fv(LLShaderMgr::GLTF_BASE_COLOR_ALPHA, n, base_alpha);
-    }
 
     LLGLDisable cull_face(double_sided ? GL_CULL_FACE : 0);
 
@@ -1501,7 +1462,7 @@ void LLRenderPass::pushRiggedGLTFBatchesScalar(U32 type)
 
 // rigged counterpart of pushGLTFBatchesIndexed -- only multi-material infos.
 // Assumes the rigged indexed program is bound.
-void LLRenderPass::pushRiggedGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps)
+void LLRenderPass::pushRiggedGLTFBatchesIndexed(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     const LLVOAvatar* lastAvatar = nullptr;
@@ -1520,16 +1481,16 @@ void LLRenderPass::pushRiggedGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps)
             continue;
         }
 
-        pushRiggedGLTFBatchIndexed(params, lastAvatar, lastMeshId, skipLastSkin, maps);
+        pushRiggedGLTFBatchIndexed(params, lastAvatar, lastMeshId, skipLastSkin);
     }
 }
 
 // static
-void LLRenderPass::pushRiggedGLTFBatchIndexed(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin, eGLTFIndexedMaps maps)
+void LLRenderPass::pushRiggedGLTFBatchIndexed(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin)
 {
     if (uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
     {
-        pushGLTFBatchIndexed(params, maps);
+        pushGLTFBatchIndexed(params);
     }
 }
 

@@ -238,7 +238,6 @@ LLGLSLShader            gDeferredMaterialProgram[LLMaterial::SHADER_COUNT];
 LLGLSLShader            gDeferredMaterialIndexedProgram[LLMaterial::SHADER_COUNT]; // multi-material indexed (GBuffer masks only)
 LLGLSLShader            gHUDPBROpaqueProgram;
 LLGLSLShader            gPBRGlowProgram;
-LLGLSLShader            gPBRGlowIndexedProgram; // multi-material indexed PBR glow
 LLGLSLShader            gHUDPBRAlphaProgram;
 LLGLSLShader            gDeferredPBRAlphaProgram;
 LLGLSLShader            gDeferredPBRAlphaImpostorProgram;
@@ -383,19 +382,15 @@ static void add_terrain_tess_permutations(LLGLSLShader* shader, bool pinned)
     }
 }
 
-// Map the remaining indexed GLTF shadow/glow samplers to texture units. Slot s
-// uses base color unit s and glow additionally uses emissive unit 3N+s. Inactive
-// samplers resolve to -1 and are skipped. Safe on a rigged variant too.
-static void setup_gltf_indexed_samplers(LLGLSLShader& shader, S32 n, bool emissive)
+// Map the remaining indexed GLTF shadow sampler to texture units. Slot s uses
+// base color unit s. Inactive samplers resolve to -1 and are skipped. Safe on a
+// rigged variant too.
+static void setup_gltf_indexed_samplers(LLGLSLShader& shader, S32 n)
 {
     shader.bind();
     for (S32 s = 0; s < n; ++s)
     {
         shader.uniform1i(LLStaticHashedString(llformat("basecolor%d", s)), s);
-        if (emissive)
-        {
-            shader.uniform1i(LLStaticHashedString(llformat("emissivemap%d", s)), 3 * n + s);
-        }
     }
     shader.unbind();
 }
@@ -1392,7 +1387,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         gHUDPBROpaqueProgram.unload();
         gPBRGlowProgram.unload();
-        gPBRGlowIndexedProgram.unload();
         gDeferredPBRAlphaProgram.unload();
         gDeferredPBRAlphaImpostorProgram.unload();
         for (U32 paint_type = 0; paint_type < TERRAIN_PAINT_TYPE_COUNT; ++paint_type)
@@ -1589,30 +1583,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gPBRGlowProgram);
 
         built(gPBRGlowProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gPBRGlowProgram);
-    }
-
-    if (LLGLSLShader::sIndexedGLTFChannels >= 2)
-    {
-        // Indexed (multi-material) PBR glow, parallel to gPBRGlowProgram. Base
-        // colour uses unit s and emissive uses 3N+s. Optional: failure leaves the
-        // program incomplete and the pool falls back to scalar glow.
-        gPBRGlowIndexedProgram.mName = "PBR Glow Indexed Shader";
-        gPBRGlowIndexedProgram.mFeatures.hasSrgb = true;
-        gPBRGlowIndexedProgram.mShaderFiles.clear();
-        gPBRGlowIndexedProgram.mShaderFiles.push_back(make_pair("deferred/pbrglowIndexedV.glsl", GL_VERTEX_SHADER));
-        gPBRGlowIndexedProgram.mShaderFiles.push_back(make_pair("deferred/pbrglowIndexedF.glsl", GL_FRAGMENT_SHADER));
-        gPBRGlowIndexedProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gPBRGlowIndexedProgram.clearPermutations();
-        gPBRGlowIndexedProgram.addPermutation("GLTF_INDEXED_CHANNELS", llformat("%d", LLGLSLShader::sIndexedGLTFChannels));
-        add_common_permutations(&gPBRGlowIndexedProgram);
-        const S32 n = LLGLSLShader::sIndexedGLTFChannels;
-        gPBRGlowIndexedProgram.mOnLink = [n](LLGLSLShader& s) { setup_gltf_indexed_samplers(s, n, true); };
-
-        if (!gPBRGlowIndexedProgram.createShader(LLGLSLShader::VARIANT_RIGGED))
-        {
-            LL_WARNS("ShaderLoading") << "Indexed PBR glow shader failed to load; multi-material glow falls back to scalar." << LL_ENDL;
-            gPBRGlowIndexedProgram.unload();
-        }
     }
 
     {
@@ -2490,7 +2460,7 @@ void LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gDeferredShadowGLTFAlphaMaskIndexedProgram);
         // only base color is sampled for the shadow alpha test
         const S32 n = LLGLSLShader::sIndexedGLTFChannels;
-        gDeferredShadowGLTFAlphaMaskIndexedProgram.mOnLink = [n](LLGLSLShader& s) { setup_gltf_indexed_samplers(s, n, false); };
+        gDeferredShadowGLTFAlphaMaskIndexedProgram.mOnLink = [n](LLGLSLShader& s) { setup_gltf_indexed_samplers(s, n); };
 
         if (!gDeferredShadowGLTFAlphaMaskIndexedProgram.createShader(LLGLSLShader::VARIANT_RIGGED))
         {

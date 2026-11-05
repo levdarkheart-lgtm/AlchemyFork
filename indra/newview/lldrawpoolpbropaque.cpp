@@ -68,6 +68,24 @@ static void capture_metal_pbr_batches(
     }
     gPipeline.endMetalWorldGBufferPass();
 }
+
+static void capture_metal_pbr_glow_batches(U32 type, bool rigged)
+{
+    gPipeline.beginMetalWorldPBRGlowPass(rigged);
+    auto* at = gPipeline.beginRenderMap(type);
+    auto* end = gPipeline.endRenderMap(type);
+    while (at != end)
+    {
+        LLDrawInfo* info = *at;
+        LLCullResult::increment_iterator(at, end);
+        if (info)
+        {
+            gPipeline.captureMetalWorldPBRBatch(
+                *info, info->mGLTFMaterialList.size() > 1);
+        }
+    }
+    gPipeline.endMetalWorldGBufferPass();
+}
 #endif
 
 void LLDrawPoolGLTFPBR::renderDeferred(S32)
@@ -85,82 +103,22 @@ S32 LLDrawPoolGLTFPBR::getNumPostDeferredPasses()
     return 1;
 }
 
-void LLDrawPoolGLTFPBR::renderPostDeferred(S32 pass)
+void LLDrawPoolGLTFPBR::renderPostDeferred(S32)
 {
     if (LLPipeline::sRenderingHUDs)
     {
         gHUDPBROpaqueProgram.bind();
         pushGLTFBatches(mRenderType);
     }
-    // HACK -- don't render glow except for the non-alpha masked implementation. RenderGlow off is
-    // decided here, as in LLDrawPoolGlow, rather than at registration.
+    // Alpha-masked PBR does not contribute the opaque emissive replay.
     else if (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR && LLPipeline::sRenderGlow)
     {
-        gGL.setColorMask(false, true);
-
-        // Multi-material (indexed) glow batches render with the indexed program; the
-        // scalar sweep skips them. Require both the static and rigged indexed glow
-        // programs to be complete; otherwise fall back to scalar for everything
-        // (slot-0 glow, the pre-batching behavior).
-        bool glow_indexed = LLGLSLShader::sIndexedGLTFChannels >= 2 &&
-                            gPBRGlowIndexedProgram.isComplete() &&
-                            gPBRGlowIndexedProgram.mRiggedVariant &&
-                            gPBRGlowIndexedProgram.mRiggedVariant->isComplete();
-
-        gPBRGlowProgram.bind();
 #if LL_DARWIN
-        gPipeline.beginMetalWorldPBRGlowPass(false);
+        capture_metal_pbr_glow_batches(
+            LLRenderPass::PASS_GLTF_GLOW, false);
+        capture_metal_pbr_glow_batches(
+            LLRenderPass::PASS_GLTF_GLOW_RIGGED, true);
 #endif
-        if (glow_indexed)
-        {
-            pushGLTFBatchesScalar(LLRenderPass::PASS_GLTF_GLOW);
-        }
-        else
-        {
-            pushGLTFBatches(LLRenderPass::PASS_GLTF_GLOW);
-        }
-#if LL_DARWIN
-        gPipeline.endMetalWorldGBufferPass();
-#endif
-
-        gPBRGlowProgram.bind(true);
-#if LL_DARWIN
-        gPipeline.beginMetalWorldPBRGlowPass(true);
-#endif
-        if (glow_indexed)
-        {
-            pushRiggedGLTFBatchesScalar(LLRenderPass::PASS_GLTF_GLOW_RIGGED);
-        }
-        else
-        {
-            pushRiggedGLTFBatches(LLRenderPass::PASS_GLTF_GLOW_RIGGED);
-        }
-#if LL_DARWIN
-        gPipeline.endMetalWorldGBufferPass();
-#endif
-
-        if (glow_indexed)
-        {
-            gPBRGlowIndexedProgram.bind();
-#if LL_DARWIN
-            gPipeline.beginMetalWorldPBRGlowPass(false);
-#endif
-            pushGLTFBatchesIndexed(LLRenderPass::PASS_GLTF_GLOW, GLTF_MAPS_GLOW);
-#if LL_DARWIN
-            gPipeline.endMetalWorldGBufferPass();
-#endif
-
-            gPBRGlowIndexedProgram.bind(true); // rigged variant
-#if LL_DARWIN
-            gPipeline.beginMetalWorldPBRGlowPass(true);
-#endif
-            pushRiggedGLTFBatchesIndexed(LLRenderPass::PASS_GLTF_GLOW_RIGGED, GLTF_MAPS_GLOW);
-#if LL_DARWIN
-            gPipeline.endMetalWorldGBufferPass();
-#endif
-        }
-
-        gGL.setColorMask(true, false);
     }
 }
 

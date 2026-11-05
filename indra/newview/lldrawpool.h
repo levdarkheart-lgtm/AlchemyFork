@@ -427,22 +427,14 @@ public:
     // assumes draw infos of given type have valid GLTF materials
     void pushGLTFBatches(U32 type);
 
-    // The remaining GL indexed helpers serve only shadow alpha coverage and
-    // emissive glow. Main-world opaque/masked G-buffer writes are native Metal.
-    enum eGLTFIndexedMaps
-    {
-        GLTF_MAPS_BASE_COLOR,  // base color only (shadow alpha-mask discard)
-        GLTF_MAPS_GLOW,        // base color + emissive (glow/emissive pass)
-    };
-
-    // Indexed (multi-material) GLTF PBR helpers. Indexed and scalar draw infos
-    // coexist in the same render map and are distinguished by
-    // mGLTFMaterialList.size() > 1. Remaining GL shadow/glow passes split them:
+    // Indexed (multi-material) GLTF PBR shadow helpers. Indexed and scalar draw
+    // infos coexist in the same render map and are distinguished by
+    // mGLTFMaterialList.size() > 1:
     //   pushGLTFBatchesScalar  -- renders only single-material infos
     //   pushGLTFBatchesIndexed -- renders only multi-material infos (indexed program bound)
     void pushGLTFBatchesScalar(U32 type);
-    void pushGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps);
-    static void pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps maps);
+    void pushGLTFBatchesIndexed(U32 type);
+    static void pushGLTFBatchIndexed(LLDrawInfo& params);
 
     // like pushGLTFBatches, but will not bind textures or set up texture transforms
     void pushUntexturedGLTFBatches(U32 type);
@@ -460,8 +452,8 @@ public:
     // is one avatar+skin (the accumulation breaks on skin change), so the matrix
     // palette is uploaded per draw info as usual.
     void pushRiggedGLTFBatchesScalar(U32 type);
-    void pushRiggedGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps);
-    static void pushRiggedGLTFBatchIndexed(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin, eGLTFIndexedMaps maps);
+    void pushRiggedGLTFBatchesIndexed(U32 type);
+    static void pushRiggedGLTFBatchIndexed(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);
 
     // push a single GLTF draw call
     // lastMat/lastTex track the most recently bound material+media texture so
