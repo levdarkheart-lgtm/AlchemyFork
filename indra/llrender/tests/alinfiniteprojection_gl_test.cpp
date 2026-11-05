@@ -50,7 +50,7 @@ namespace
 
         // A triangle covering the viewport at view distance `dist`, placed in eye space so the projection
         // under test is what puts it on screen; on the reverse-Z far plane instead when `far_plane` is set, as
-        // skyV.glsl puts the sky.
+        // the production native sky contract puts the sky.
         const char* kVertex =
             "#version 400\n"
             "uniform mat4 proj;\n"
@@ -332,7 +332,7 @@ namespace
     }
 
     // The sky draws last, on the far plane, writing no depth, and the depth test spares it every pixel the world
-    // covered (skyV.glsl). Under the infinite projection the far plane is the cleared depth exactly and geometry as
+    // covered. Under the infinite projection the far plane is the cleared depth exactly and geometry as
     // far out as reconstruction reaches still stores more, so the sky passes where nothing was drawn and nowhere else.
     TEST_CASE_METHOD(alinfiniteprojection_data, "alinfiniteprojection_gl: the sky on the far plane passes only where nothing was drawn", "[alinfiniteprojection_gl]")
     {

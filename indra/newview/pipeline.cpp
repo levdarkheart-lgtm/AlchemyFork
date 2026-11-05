@@ -2522,14 +2522,6 @@ void LLPipeline::beginMetalWorldHDRISky(
     capture.hdri_sky_active = true;
 }
 
-void LLPipeline::captureMetalWorldHDRISkyBatch(LLVertexBuffer* buffer)
-{
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
-    captureMetalWorldHDRISkyBatch(buffer, modelview_projection);
-}
-
 void LLPipeline::captureMetalWorldHDRISkyBatch(
     LLVertexBuffer* buffer,
     const LLMatrix4a& modelview_projection)
@@ -2723,14 +2715,6 @@ void LLPipeline::beginMetalWorldSplitSky(
     capture.split_sky_active = true;
 }
 
-void LLPipeline::captureMetalWorldSplitSkyBatch(LLVertexBuffer* buffer)
-{
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
-    captureMetalWorldSplitSkyBatch(buffer, modelview_projection);
-}
-
 void LLPipeline::captureMetalWorldSplitSkyBatch(
     LLVertexBuffer* buffer,
     const LLMatrix4a& modelview_projection)
@@ -2891,15 +2875,6 @@ void LLPipeline::beginMetalWorldWindLightSky(
 }
 
 void LLPipeline::captureMetalWorldWindLightSkyBatch(
-    LLVertexBuffer* buffer)
-{
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
-    captureMetalWorldWindLightSkyBatch(buffer, modelview_projection);
-}
-
-void LLPipeline::captureMetalWorldWindLightSkyBatch(
     LLVertexBuffer* buffer,
     const LLMatrix4a& modelview_projection)
 {
@@ -3040,7 +3015,8 @@ void LLPipeline::beginMetalWorldWindLightStars(
 }
 
 void LLPipeline::captureMetalWorldWindLightStarBatch(
-    LLVertexBuffer* buffer)
+    LLVertexBuffer* buffer,
+    const LLMatrix4a& modelview_projection)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->windlight_stars_active)
@@ -3060,9 +3036,6 @@ void LLPipeline::captureMetalWorldWindLightStarBatch(
         return;
     }
 
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
     ALMetalWorldStarBatch& batch = capture.windlight_star_batch;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset =
@@ -3115,19 +3088,6 @@ void LLPipeline::beginMetalWorldWindLightHeavenlyBodies()
         (!capture.windlight_stars_expected ||
          capture.windlight_stars_complete);
     capture.windlight_heavenly_bodies_native_available = false;
-}
-
-void LLPipeline::captureMetalWorldWindLightHeavenlyBody(
-    LLFace* face, LLViewerTexture* texture_a,
-    LLViewerTexture* texture_b, F32 parameter,
-    F32 moon_direction_z, bool moon)
-{
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
-    captureMetalWorldWindLightHeavenlyBody(
-        face, texture_a, texture_b, parameter, moon_direction_z, moon,
-        modelview_projection);
 }
 
 void LLPipeline::captureMetalWorldWindLightHeavenlyBody(
@@ -3268,7 +3228,8 @@ void LLPipeline::beginMetalWorldWindLightMeteors(F32 width_pixels)
 }
 
 void LLPipeline::captureMetalWorldWindLightMeteorBatch(
-    LLVertexBuffer* buffer)
+    LLVertexBuffer* buffer,
+    const LLMatrix4a& modelview_projection)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->windlight_meteors_active)
@@ -3291,9 +3252,6 @@ void LLPipeline::captureMetalWorldWindLightMeteorBatch(
         return;
     }
 
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
     ALMetalWorldMeteorBatch& batch = capture.windlight_meteor_batch;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset =
@@ -3364,15 +3322,6 @@ void LLPipeline::beginMetalWorldWindLightAurora(
         std::isfinite(intensity) && intensity > 0.001f &&
         std::isfinite(time) && std::isfinite(camera_height_local);
     capture.windlight_aurora_native_available = false;
-}
-
-void LLPipeline::captureMetalWorldWindLightAuroraBatch(
-    LLVertexBuffer* buffer)
-{
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
-    captureMetalWorldWindLightAuroraBatch(buffer, modelview_projection);
 }
 
 void LLPipeline::captureMetalWorldWindLightAuroraBatch(
@@ -3546,15 +3495,6 @@ void LLPipeline::beginMetalWorldWindLightClouds(
     constants.parameters[3] = sun_moon_glow_factor;
     capture.windlight_cloud_noise = metal_noise;
     capture.windlight_cloud_noise_next = metal_next_noise;
-}
-
-void LLPipeline::captureMetalWorldWindLightCloudBatch(
-    LLVertexBuffer* buffer)
-{
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
-    captureMetalWorldWindLightCloudBatch(buffer, modelview_projection);
 }
 
 void LLPipeline::captureMetalWorldWindLightCloudBatch(

@@ -1684,9 +1684,8 @@ struct ALMetalWorldHDRISkyBatch
     float modelview_projection[16]{};
 };
 
-// The exact full-screen HDRI branch of skyF.glsl. Split-screen HDRI is not a
-// valid instance of this scene because its other half is the WindLight haze
-// family; callers must retain GL until that producer is native too.
+// The native full-screen HDRI contract. Split-screen HDRI is a distinct scene
+// because its other half is the WindLight haze family.
 struct ALMetalWorldHDRISkyScene
 {
     const ALMetalWorldHDRISkyBatch* batches = nullptr;
@@ -1713,7 +1712,7 @@ struct ALMetalWorldHDRISkyScene
 };
 
 // The CPU-packed subset of EnvironmentUBOData and loose sky uniforms needed
-// by skyF.glsl's non-HDRI atmospheric branch. Every vec3 is padded to a
+// by the non-HDRI WindLight atmospheric branch. Every vec3 is padded to a
 // float4 so the structure can be copied directly into the Metal constant
 // buffer without inventing a second packing convention.
 struct alignas(16) ALMetalWorldWindLightSkyConstants
@@ -1882,7 +1881,7 @@ struct ALMetalWorldCloudBatch
     float modelview_projection[16]{};
 };
 
-// CPU-packed cloudsF.glsl inputs. Every vec3 is padded into a float4 so the
+// CPU-packed native cloud inputs. Every vec3 is padded into a float4 so the
 // structure is also the Metal constant-buffer ABI.
 struct alignas(16) ALMetalWorldCloudConstants
 {
@@ -2303,7 +2302,7 @@ public:
         const ALMetalWorldHDRISkyScene& scene,
         std::string* error = nullptr);
 
-    // Fill clear-depth pixels with skyF.glsl's exact non-HDRI atmospheric
+    // Fill clear-depth pixels with the exact non-HDRI atmospheric
     // branch. HDR output retains its display-encoded emissive convention;
     // vintage output round-trips the same bytes through an sRGB attachment.
     bool compositeWindLightSky(

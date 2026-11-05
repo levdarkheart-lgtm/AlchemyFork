@@ -768,7 +768,7 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     // Keep in Sync!
     // * indra\newview\llsettingsvo.cpp
     // * indra\newview\app_settings\shaders\class2\windlight\cloudsV.glsl
-    // * indra\newview\app_settings\shaders\class1\deferred\cloudsV.glsl
+    // * indra\almetal\shaders\almetal_builtin.metal
     cloud_scroll[0] = -cloud_scroll[0];
     vect_c_p_d1 += cloud_scroll;
     shader->uniform3fv(LLShaderMgr::CLOUD_POS_DENSITY1, LLVector3(vect_c_p_d1.mV));
@@ -862,7 +862,7 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
 
     // The WindLight haze's terms that take nothing per pixel, worked here once rather than at every
     // pixel of every lit pass, in the arithmetic the shaders did them in. Keep in step with
-    // calcAtmosphericVars (windlight/atmosphericsFuncs.glsl), skyF.glsl and cloudsF.glsl.
+    // calcAtmosphericVars (windlight/atmosphericsFuncs.glsl) and the native Metal sky/cloud contracts.
     {
         const F32 haze_density = getHazeDensity();
 

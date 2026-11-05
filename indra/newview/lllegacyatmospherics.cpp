@@ -258,8 +258,7 @@ LLColor4 LLAtmospherics::calcSkyColorInDir(const LLSettingsSky::ptr_t &psky, Atm
 }
 
 // NOTE: Keep these in sync!
-//       indra\newview\app_settings\shaders\class1\deferred\skyV.glsl
-//       indra\newview\app_settings\shaders\class1\deferred\cloudsV.glsl
+//       indra\almetal\shaders\almetal_builtin.metal
 //       indra\newview\lllegacyatmospherics.cpp
 void LLAtmospherics::calcSkyColorWLVert(const LLSettingsSky::ptr_t &psky, LLVector3 & Pn, AtmosphericsVars& vars)
 {

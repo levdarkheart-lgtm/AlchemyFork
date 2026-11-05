@@ -836,7 +836,7 @@ vertex ALMetalWorldHDRISkyVaryings almetal_world_hdri_sky_vertex(
     float4 clip_position = constants.modelview_projection *
                            float4(local_position, 1.0);
     clip_position.y = -clip_position.y;
-    // Match skyV.glsl: every dome vertex is on the far plane and depth is
+    // Match the native sky contract: every dome vertex is on the far plane and depth is
     // read-only, so only pixels left clear by opaque geometry are writable.
     clip_position.z = constants.config.x != 0u ? 0.0 : clip_position.w;
 
@@ -920,7 +920,7 @@ static float3 almetal_world_windlight_sky_color(
     texture2d<float> halo_map,
     sampler optics_sampler)
 {
-    // Match skyF.glsl's sky-frame ray and its asymmetric altitude clamp.
+    // Match the WindLight sky-frame ray and its asymmetric altitude clamp.
     float3 relative_position = local_position -
         constants.camera_local.xyz + float3(0.0, 50.0, 0.0);
     if (relative_position.y > 0.0)

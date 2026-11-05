@@ -53,18 +53,15 @@ public:
 #if LL_DARWIN
     bool hasStars() const;
     void captureMetalDome(const LLMatrix4a& modelview_projection);
+    void captureMetalStars(const LLMatrix4a& modelview_projection);
+    void captureMetalMeteors(const LLMatrix4a& modelview_projection);
 #endif
-    void drawStars(void);
-    void drawDome(void);
-    void drawFsSky(void); // fullscreen sky for advanced atmo
     void resetVertexBuffers(void);
 
     // Meteors: CPU-side simulation of short-lived streaks. Tick once per
-    // frame, then updateMeteorGeometry to push state into the dynamic VB,
-    // then drawMeteors in a dedicated deferred pass.
+    // frame, then updateMeteorGeometry to push state into the dynamic VB.
     void tickMeteors(F32 dt_seconds);
     void updateMeteorGeometry();
-    void drawMeteors();
 
 private:
 
@@ -87,7 +84,6 @@ private:
     bool updateStarGeometry(LLDrawable *drawable);
 
 private:
-    LLPointer<LLVertexBuffer>                   mFsSkyVerts;
     std::vector< LLPointer<LLVertexBuffer> >    mStripsVerts;
     LLPointer<LLVertexBuffer>                   mStarsVerts;
     LLPointer<LLVertexBuffer>                   mMeteorVerts;

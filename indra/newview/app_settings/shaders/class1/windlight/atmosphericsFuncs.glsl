@@ -53,7 +53,7 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
     vec3 rel_pos = eyeToSky * inPositionEye;
     light_dir = eyeToSky * light_dir;
 
-    //(TERRAIN) limit altitude. The haze lies max_y deep above the camera, as the sky dome's does (skyF.glsl): a ray
+    //(TERRAIN) limit altitude. The haze lies max_y deep above the camera, as the native sky dome does: a ray
     // rising h = y / max_y layers is hazed over about 1/h of its length, and a far point over max_y / sin(elevation),
     // the dome's own path. A ray falling below the camera stays in the haze, as the dome's do, and keeps its whole
     // length. Eased, (1 + h^8)^(-1/8), where a hard limit creased the haze along the contour max_y up (and, when it

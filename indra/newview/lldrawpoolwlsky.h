@@ -32,8 +32,6 @@
 
 #include "lldrawpool.h"
 
-class LLGLSLShader;
-
 class LLDrawPoolWLSky : public LLDrawPool {
 public:
 
@@ -44,8 +42,6 @@ public:
     static const U32 METEOR_VERTEX_DATA_MASK =  LLVertexBuffer::MAP_VERTEX |
         LLVertexBuffer::MAP_NORMAL | LLVertexBuffer::MAP_COLOR |
         LLVertexBuffer::MAP_TEXCOORD0;
-    static const U32 ADV_ATMO_SKY_VERTEX_DATA_MASK = LLVertexBuffer::MAP_VERTEX
-                                                   | LLVertexBuffer::MAP_TEXCOORD0;
     LLDrawPoolWLSky(void);
     /*virtual*/ ~LLDrawPoolWLSky();
 
@@ -58,8 +54,7 @@ public:
 
 #if LL_DARWIN
     // Enumerate the reflection-probe sky directly into the native Metal
-    // owner. The retained GL pool still draws fail-closed output, but it is
-    // no longer the producer of the native sky batches.
+    // owner without a retained GL draw owner.
     void captureMetalReflectionProbe();
 #endif
 
@@ -75,10 +70,8 @@ public:
     /*virtual*/ void resetDrawOrders();
 
 private:
-    void renderDome(const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader * shader) const;
-
     void renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 camHeightLocal) const;
-    void renderSkyCloudsDeferred(const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader* cloudshader) const;
+    void renderSkyCloudsDeferred(const LLVector3& camPosLocal, F32 camHeightLocal) const;
 
     void renderStarsDeferred(const LLVector3& camPosLocal) const;
     void renderMeteorsDeferred(const LLVector3& camPosLocal) const;

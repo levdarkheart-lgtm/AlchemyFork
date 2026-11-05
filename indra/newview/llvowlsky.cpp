@@ -302,7 +302,6 @@ void LLVOWLSky::resetVertexBuffers()
 {
     mStripsVerts.clear();
     mStarsVerts = nullptr;
-    mFsSkyVerts = nullptr;
     mMeteorVerts = nullptr;
 
     gPipeline.markRebuild(mDrawable, LLDrawable::REBUILD_ALL);
@@ -314,44 +313,6 @@ bool LLVOWLSky::updateGeometry(LLDrawable * drawable)
     LLStrider<LLVector3>    vertices;
     LLStrider<LLVector2>    texCoords;
     LLStrider<U16>          indices;
-
-    if (mFsSkyVerts.isNull())
-    {
-        mFsSkyVerts = new LLVertexBuffer(LLDrawPoolWLSky::ADV_ATMO_SKY_VERTEX_DATA_MASK);
-
-        if (!mFsSkyVerts->allocateBuffer(4, 6))
-        {
-            LL_WARNS() << "Failed to allocate Vertex Buffer on full screen sky update" << LL_ENDL;
-        }
-
-        bool success = mFsSkyVerts->getVertexStrider(vertices)
-                    && mFsSkyVerts->getTexCoord0Strider(texCoords)
-                    && mFsSkyVerts->getIndexStrider(indices);
-
-        if(!success)
-        {
-            LL_ERRS() << "Failed updating WindLight fullscreen sky geometry." << LL_ENDL;
-        }
-
-        *vertices++ = LLVector3(-1.0f, -1.0f, 0.0f);
-        *vertices++ = LLVector3( 1.0f, -1.0f, 0.0f);
-        *vertices++ = LLVector3(-1.0f,  1.0f, 0.0f);
-        *vertices++ = LLVector3( 1.0f,  1.0f, 0.0f);
-
-        *texCoords++ = LLVector2(0.0f, 0.0f);
-        *texCoords++ = LLVector2(1.0f, 0.0f);
-        *texCoords++ = LLVector2(0.0f, 1.0f);
-        *texCoords++ = LLVector2(1.0f, 1.0f);
-
-        *indices++ = 0;
-        *indices++ = 1;
-        *indices++ = 2;
-        *indices++ = 1;
-        *indices++ = 3;
-        *indices++ = 2;
-
-        mFsSkyVerts->unmapBuffer();
-    }
 
     {
         const F32 dome_radius = LLEnvironment::instance().getCurrentSky()->getDomeRadius();
@@ -476,69 +437,17 @@ void LLVOWLSky::captureMetalDome(
             strips_segment, modelview_projection);
     }
 }
-#endif
 
-void LLVOWLSky::drawStars(void)
+void LLVOWLSky::captureMetalStars(
+    const LLMatrix4a& modelview_projection)
 {
-    //  render the stars as a sphere centered at viewer camera
     if (mStarsVerts.notNull())
     {
-#if LL_DARWIN
-        gPipeline.captureMetalWorldWindLightStarBatch(mStarsVerts);
+        gPipeline.captureMetalWorldWindLightStarBatch(
+            mStarsVerts, modelview_projection);
+    }
+}
 #endif
-        mStarsVerts->setBuffer();
-        mStarsVerts->drawArrays(LLRender::TRIANGLES, 0, (S32)(getStarsNumVerts() * 6));
-    }
-}
-
-void LLVOWLSky::drawFsSky(void)
-{
-    if (mFsSkyVerts.isNull())
-    {
-        updateGeometry(mDrawable);
-    }
-
-    LLGLDisable disable_blend(GL_BLEND);
-
-    mFsSkyVerts->setBuffer();
-    mFsSkyVerts->drawRange(LLRender::TRIANGLES, 0, mFsSkyVerts->getNumVerts() - 1, mFsSkyVerts->getNumIndices(), 0);
-    gPipeline.addTrianglesDrawn(mFsSkyVerts->getNumIndices());
-    LLVertexBuffer::unbind();
-}
-
-void LLVOWLSky::drawDome(void)
-{
-    if (mStripsVerts.empty())
-    {
-        updateGeometry(mDrawable);
-    }
-
-    LLGLDepthTest gls_depth(GL_TRUE, GL_FALSE);
-
-    std::vector< LLPointer<LLVertexBuffer> >::const_iterator strips_vbo_iter, end_strips;
-    end_strips = mStripsVerts.end();
-    for(strips_vbo_iter = mStripsVerts.begin(); strips_vbo_iter != end_strips; ++strips_vbo_iter)
-    {
-        LLVertexBuffer * strips_segment = strips_vbo_iter->get();
-
-#if LL_DARWIN
-        gPipeline.captureMetalWorldHDRISkyBatch(strips_segment);
-        gPipeline.captureMetalWorldSplitSkyBatch(strips_segment);
-        gPipeline.captureMetalWorldWindLightSkyBatch(strips_segment);
-        gPipeline.captureMetalWorldWindLightAuroraBatch(strips_segment);
-        gPipeline.captureMetalWorldWindLightCloudBatch(strips_segment);
-#endif
-        strips_segment->setBuffer();
-
-        strips_segment->drawRange(
-            LLRender::TRIANGLE_STRIP,
-            0, strips_segment->getNumVerts()-1, strips_segment->getNumIndices(),
-            0);
-        gPipeline.addTrianglesDrawn(strips_segment->getNumIndices());
-    }
-
-    LLVertexBuffer::unbind();
-}
 
 void LLVOWLSky::initStars()
 {
@@ -695,7 +604,7 @@ bool LLVOWLSky::updateStarGeometry(LLDrawable *drawable)
     const U32 num_verts = num_stars * 6;
 
     // RenderStarCount = 0 disables stars entirely. Leave mStarsVerts null so
-    // drawStars short-circuits.
+    // Native star capture short-circuits.
     if (num_verts == 0)
     {
         return true;
@@ -986,14 +895,14 @@ void LLVOWLSky::updateMeteorGeometry()
     mMeteorVerts->unmapBuffer();
 }
 
-void LLVOWLSky::drawMeteors()
+#if LL_DARWIN
+void LLVOWLSky::captureMetalMeteors(
+    const LLMatrix4a& modelview_projection)
 {
     if (mMeteorVerts.isNull()) return;
-    if (mMeteors.empty()) return;   // skip the GL call entirely when nothing's active
+    if (mMeteors.empty()) return;
 
-#if LL_DARWIN
-    gPipeline.captureMetalWorldWindLightMeteorBatch(mMeteorVerts);
-#endif
-    mMeteorVerts->setBuffer();
-    mMeteorVerts->drawArrays(LLRender::TRIANGLES, 0, (S32)(kMeteorHardMax * kMeteorVertsPerQuad));
+    gPipeline.captureMetalWorldWindLightMeteorBatch(
+        mMeteorVerts, modelview_projection);
 }
+#endif

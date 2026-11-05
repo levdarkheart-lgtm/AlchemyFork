@@ -232,14 +232,6 @@ extern LLGLSLShader         gDeferredAvatarCutShadowProgram;
 extern LLGLSLShader         gDeferredAvatarAlphaShadowProgram;
 extern LLGLSLShader         gDeferredAvatarAlphaMaskShadowProgram;
 extern LLGLSLShader         gDeferredAvatarAlphaProgram;
-extern LLGLSLShader         gEnvironmentMapProgram;
-extern LLGLSLShader         gDeferredWLSkyProgram;
-extern LLGLSLShader         gDeferredWLCloudProgram;
-extern LLGLSLShader         gDeferredWLSunProgram;
-extern LLGLSLShader         gDeferredWLMoonProgram;
-extern LLGLSLShader         gDeferredStarProgram;
-extern LLGLSLShader         gDeferredMeteorProgram;
-extern LLGLSLShader         gDeferredAuroraProgram;
 extern LLGLSLShader         gDeferredBufferVisualProgram;
 extern LLGLSLShader         gBlitWithEffectsProgram;
 #if !LL_DARWIN

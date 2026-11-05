@@ -18389,7 +18389,7 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightSky(
         // GL binds both fetched optics maps with AnisoWrap, not the colour
         // AnisoWrapSRGB variant.  Fetched RGBA assets still have sRGB Metal
         // storage, so sample the compatible raw-storage views to preserve the
-        // bytes consumed by skyF.glsl before its explicit pow/additive math.
+        // bytes consumed by the native sky contract before its explicit pow/additive math.
         encoder->setFragmentTextureLinear(
             0, scene.rainbow_texture, error) &&
         encoder->setFragmentTextureLinear(
@@ -19349,7 +19349,7 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightClouds(
             error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setPipeline(*pipeline, error) &&
-        // cloudsF.glsl binds both fetched noise maps with raw AnisoWrap.
+        // The native cloud contract binds both fetched noise maps with raw AnisoWrap.
         // Their viewer texture mirrors are sRGB-backed, so use compatible
         // linear views before density/self-shadow arithmetic just as GL's
         // GL_SKIP_DECODE_EXT sampler does.

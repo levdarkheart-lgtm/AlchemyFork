@@ -1197,7 +1197,6 @@ public:
     void beginMetalWorldHDRISky(
         LLImageGL* environment, F32 exposure_scale,
         const LLMatrix3& environment_rotation, F32 camera_height_local);
-    void captureMetalWorldHDRISkyBatch(LLVertexBuffer* buffer);
     void captureMetalWorldHDRISkyBatch(
         LLVertexBuffer* buffer,
         const LLMatrix4a& modelview_projection);
@@ -1210,7 +1209,6 @@ public:
         F32 droplet_radius, F32 ice_level,
         F32 sun_moon_glow_factor, F32 density_multiplier,
         F32 sky_hdr_scale);
-    void captureMetalWorldSplitSkyBatch(LLVertexBuffer* buffer);
     void captureMetalWorldSplitSkyBatch(
         LLVertexBuffer* buffer,
         const LLMatrix4a& modelview_projection);
@@ -1221,7 +1219,6 @@ public:
         F32 droplet_radius, F32 ice_level,
         F32 sun_moon_glow_factor, F32 density_multiplier,
         F32 sky_hdr_scale);
-    void captureMetalWorldWindLightSkyBatch(LLVertexBuffer* buffer);
     void captureMetalWorldWindLightSkyBatch(
         LLVertexBuffer* buffer,
         const LLMatrix4a& modelview_projection);
@@ -1233,13 +1230,11 @@ public:
         const LLVector3& moon_quad_u,
         const LLVector3& moon_quad_v,
         LLViewerTexture* moon_texture, bool moon_mask);
-    void captureMetalWorldWindLightStarBatch(LLVertexBuffer* buffer);
+    void captureMetalWorldWindLightStarBatch(
+        LLVertexBuffer* buffer,
+        const LLMatrix4a& modelview_projection);
     void endMetalWorldWindLightStars();
     void beginMetalWorldWindLightHeavenlyBodies();
-    void captureMetalWorldWindLightHeavenlyBody(
-        LLFace* face, LLViewerTexture* texture_a,
-        LLViewerTexture* texture_b, F32 parameter,
-        F32 moon_direction_z, bool moon);
     void captureMetalWorldWindLightHeavenlyBody(
         LLFace* face, LLViewerTexture* texture_a,
         LLViewerTexture* texture_b, F32 parameter,
@@ -1247,11 +1242,12 @@ public:
         const LLMatrix4a& modelview_projection);
     void endMetalWorldWindLightHeavenlyBodies();
     void beginMetalWorldWindLightMeteors(F32 width_pixels);
-    void captureMetalWorldWindLightMeteorBatch(LLVertexBuffer* buffer);
+    void captureMetalWorldWindLightMeteorBatch(
+        LLVertexBuffer* buffer,
+        const LLMatrix4a& modelview_projection);
     void endMetalWorldWindLightMeteors();
     void beginMetalWorldWindLightAurora(
         F32 intensity, F32 time, F32 camera_height_local);
-    void captureMetalWorldWindLightAuroraBatch(LLVertexBuffer* buffer);
     void captureMetalWorldWindLightAuroraBatch(
         LLVertexBuffer* buffer,
         const LLMatrix4a& modelview_projection);
@@ -1262,7 +1258,6 @@ public:
         F32 camera_height_local, F32 cloud_variance,
         F32 blend_factor, F32 sun_moon_glow_factor,
         F32 density_multiplier);
-    void captureMetalWorldWindLightCloudBatch(LLVertexBuffer* buffer);
     void captureMetalWorldWindLightCloudBatch(
         LLVertexBuffer* buffer,
         const LLMatrix4a& modelview_projection);

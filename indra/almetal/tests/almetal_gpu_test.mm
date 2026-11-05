@@ -16777,7 +16777,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(error == "Metal world HDRI sky scene is incomplete");
         error.clear();
 
-        // Replace the same clear-depth pixels with skyF.glsl's non-HDRI
+        // Replace the same clear-depth pixels with the non-HDRI WindLight
         // WindLight branch. Zero optic maps isolate the atmospheric terms;
         // the family-specific all-zero normal marker distinguishes this
         // display-encoded transfer from the linear HDRI transaction.
@@ -17932,7 +17932,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
 
         // Partial HDRI is one fail-closed transaction: WindLight first owns
         // every clear-depth pixel, then HDRI overwrites exactly the left-hand
-        // pixel centers selected by skyF.glsl's split inequality.
+        // pixel centers selected by the native split-sky inequality.
         auto split_gbuffer = renderer->render(gbuffer_scene, &error);
         INFO(error);
         REQUIRE(split_gbuffer);
