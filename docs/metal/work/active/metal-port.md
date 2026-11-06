@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
 **Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `b971465ca7`.
+**Renderer checkpoint:** Commit `f77024a20a`.
 
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
@@ -10,14 +10,14 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
-| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68486 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,867 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
+| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68490 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,854 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
 | M-004 | Metal resources, transfers, readback and sync | doing | Geometry, ordinary texture publication/residency/lifecycle, fonts, buffers, samplers, image slots, targets and reflection arrays are native. Copy/readback consumers follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
 | M-006 | UI, fonts, HUD and media ingress | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only. Snapshot state/thumbnail/save source path is repaired; runtime proof remains owner-attended. |
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners; broad parity remains open. |
-| M-008 | Advanced views/effects and compute | doing | Native glow and SMAA have focused GPU proof; Debug/Develop-only tails remain behind the usable-core context cut. |
+| M-008 | Advanced views/effects and compute | doing | Native glow, SMAA and lens dirt have focused GPU proof; Debug/Develop-only tails remain behind the usable-core context cut. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, UI replay and retained glow/SMAA require no GL. Render tails remain. |
@@ -128,17 +128,17 @@ GL ownership modes; `b86b1e4c53` repairs Snapshot state; `1081614942` removes
 legacy GL queries; `2e255de87c` makes ordinary texture residency, invalidation,
 cache identity, preview/save, terrain/map/avatar/bump and projectors native.
 
-`6e5047e50b` deletes retained UI/text geometry's raw texture/sampler identities and GL replay fallback. `b971465ca7` deletes the superseded retained GL glow/SMAA implementations and unreachable CAS selector after focused native replacement proof. Package 68486 remains the bounded owner-attended startup/login/world-load candidate, not a parity, stability or GL-zero claim.
+`6e5047e50b` deletes retained UI/text geometry's raw texture/sampler identities and GL replay fallback. `b971465ca7` deletes superseded retained GL glow/SMAA. `f77024a20a` makes lens-dirt generation Metal-authoritative and deletes its GL target, shader and presentation dependency. Package 68490 is the bounded owner-attended startup/login/world-load candidate, not a parity, stability or GL-zero claim.
 
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
-- Source-exact Xcode Release warnings-as-errors build/stage passes at `6e5047e50b` as package `26.4.0.68486`; current `b971465ca7` Ninja RelWithDebInfo rebuild/stage passes and verifies 349/349 ARM64 slices.
+- Source-exact Xcode Release warnings-as-errors build/stage passes at `f77024a20a` as package `26.4.0.68490`; the same checkpoint's Ninja RelWithDebInfo rebuild/stage passes.
 - `tools/metal/verify_app.sh`: 349/349 inspected slices are ARM64.
-- Executable SHA-256: `81ce65c17b76feb59bd389d474fa96343cacdf853972972694dbdf41f58e1737`.
+- Executable SHA-256: `86c9e79a6a5d657a4e4f4d7dcf896af2fd60982bf1f64c504879c7b17e03d360`.
 - Metallib SHA-256: `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer passes 220 assertions / 11 cases; query fail-closed proof passes 35 assertions; llrender passes 1,856/1,856 and Metal passes 52,681/52,681 assertions.
-- Native glow extract/blur/combine and all SMAA stages pass 19,815 assertions/four focused GPU cases; native font atlas upload/readback/release passes 28 assertions/five cases.
+- Native glow/SMAA pass 19,815 assertions/four GPU cases; native lens-dirt/display-post ownership pass 3,019 assertions/two cases; native font atlas upload/readback/release passes 28 assertions/five cases.
 - Native transient pool passes 943 assertions / 14 cases; full alrender passes 556,617/556,617 assertions across 132 cases.
 - Full harness passes 517/517 tests in 1,204.60 seconds; six Darwin GL-only migration suites remain intentionally omitted.
 - Fresh shared renderer tests: 3,698 assertions / 111 cases pass.
@@ -147,7 +147,7 @@ cache identity, preview/save, terrain/map/avatar/bump and projectors native.
 - Broad shared tests reproduce baseline host/driver failures: four assertions
   in three frame-fence timing cases and one render-target depth-format assertion.
 - Focused alrender/llrender suites pass 28/28; harness structure passes 32/32 required files; tool tests pass 31/31.
-- Strict inventory: 1,867/2,403 files (`gl_function` 396, `gl_shader` 1,473, `sdl_gl` 0), expected exit 1; report SHA-256 is `2fc73ab9a0455634364b27d19ed74f67f50e47693f06c0cce013ae79c14b89b9`; 261 below 2,128 and 434 below 2,301 with unchanged rules.
+- Strict inventory: 1,854/2,403 files (`gl_function` 396, `gl_shader` 1,460, `sdl_gl` 0), expected exit 1; report SHA-256 is `1f22ecd71dfd84e4ed3b9f8292d49abb4841560c75e137a0e097f731125119cc`; 274 below 2,128 and 447 below 2,301 with unchanged rules.
 
 ## Owner-attended visual cadence
 
@@ -165,7 +165,7 @@ Do not autonomously launch either viewer, navigate login/world UI, or capture a 
 
 ## Immediate executable action
 
-1. Run the bounded owner-attended startup/login/world-load smoke test on package 68486 and record the first failure without a reference-viewer comparison.
+1. Run the bounded owner-attended startup/login/world-load smoke test on package 68490 and record the first failure without a reference-viewer comparison.
 2. Finish remaining essential texture copy/readback ownership and raw manual identities.
 3. Treat Snapshot source repair as ready for owner-led execution proof later.
 4. Continue ordinary UI/world GL removal before optional tails and continue strict source/link audits.
