@@ -135,11 +135,30 @@ TEST_CASE("Sampler intent remains available without an OpenGL context",
     CHECK(linear != 0);
     CHECK(point != linear);
 
+    ALSamplerDesc point_desc;
+    REQUIRE(gGL.describeSampler(point, point_desc));
+    CHECK(point_desc.mMinFilter == ALSamplerFilter::nearest);
+    CHECK(point_desc.mMagFilter == ALSamplerFilter::nearest);
+    CHECK(point_desc.mMipFilter == ALSamplerMipFilter::nearest);
+    CHECK(point_desc.mWrapS == ALSamplerAddressMode::clamp_to_edge);
+    CHECK_FALSE(point_desc.mSRGBDecode);
+
+    const ALSamplerDesc srgb =
+        ALSamplerCache::makeDesc(ALSamplers::AnisoWrapSRGB);
+    CHECK(srgb.mMinFilter == ALSamplerFilter::linear);
+    CHECK(srgb.mMagFilter == ALSamplerFilter::linear);
+    CHECK(srgb.mMipFilter == ALSamplerMipFilter::linear);
+    CHECK(srgb.mWrapS == ALSamplerAddressMode::repeat);
+    CHECK(srgb.mSRGBDecode);
+
     ALSamplerDesc custom = ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
-    custom.mMagFilter = GL_NEAREST;
+    custom.mMagFilter = ALSamplerFilter::nearest;
     const U32 custom_name = gGL.getSampler(custom);
     CHECK(custom_name != 0);
     CHECK(custom_name != linear);
+    ALSamplerDesc described_custom;
+    REQUIRE(gGL.describeSampler(custom_name, described_custom));
+    CHECK(described_custom == custom);
 
     ALTextureSlot* slot = gGL.getTextureSlot(31);
     ALTextureSlot::sSamplerBinds = 0;

@@ -27,18 +27,17 @@
 #include "alsamplerstate.h"
 
 #include "alrendercapabilities.h"
-#include "llgl.h"     // gGLManager
 #include "llrender.h" // LLRender::sAnisotropicFilteringLevel
 
 namespace
 {
     // Indexed by the addressing field, already shifted down. The enum's numbering is chosen
     // to index this directly -- see ALSampler::Wrap/Mirror/Clamp.
-    constexpr U32 sGLAddressMode[] =
+    constexpr ALSamplerAddressMode sAddressMode[] =
     {
-        GL_REPEAT,
-        GL_MIRRORED_REPEAT,
-        GL_CLAMP_TO_EDGE
+        ALSamplerAddressMode::repeat,
+        ALSamplerAddressMode::mirror_repeat,
+        ALSamplerAddressMode::clamp_to_edge,
     };
 
     // A contextless native renderer still needs stable sampler identities in
@@ -69,7 +68,8 @@ ALSamplerDesc ALSamplerCache::makeDesc(ALSampler key)
 
     ALSamplerDesc desc;
 
-    desc.mMagFilter = (filter == static_cast<U16>(ALSampler::Point)) ? GL_NEAREST : GL_LINEAR;
+    desc.mMagFilter = filter == static_cast<U16>(ALSampler::Point)
+        ? ALSamplerFilter::nearest : ALSamplerFilter::linear;
 
     // Trilinear and above get a linear mip filter, Bilinear a nearest one, Point stays nearest
     // in both. The asymmetry at Bilinear is deliberate and long-standing.
@@ -81,25 +81,26 @@ ALSamplerDesc ALSamplerCache::makeDesc(ALSampler key)
     // reconciling -- see the note where ALSampler::HasMips used to be.
     if (filter >= static_cast<U16>(ALSampler::Trilinear))
     {
-        desc.mMinFilter = GL_LINEAR_MIPMAP_LINEAR;
+        desc.mMinFilter = ALSamplerFilter::linear;
+        desc.mMipFilter = ALSamplerMipFilter::linear;
     }
     else if (filter >= static_cast<U16>(ALSampler::Bilinear))
     {
-        desc.mMinFilter = GL_LINEAR_MIPMAP_NEAREST;
+        desc.mMinFilter = ALSamplerFilter::linear;
+        desc.mMipFilter = ALSamplerMipFilter::nearest;
     }
     else
     {
-        desc.mMinFilter = GL_NEAREST_MIPMAP_NEAREST;
+        desc.mMinFilter = ALSamplerFilter::nearest;
+        desc.mMipFilter = ALSamplerMipFilter::nearest;
     }
 
-    desc.mWrapS = desc.mWrapT = desc.mWrapR = sGLAddressMode[address];
+    desc.mWrapS = desc.mWrapT = desc.mWrapR = sAddressMode[address];
 
-    const bool has_anisotropy = gRenderCapabilities.isInitialized()
-        ? gRenderCapabilities.hasAnisotropicFiltering()
-        : gGLManager.mHasAnisotropic;
+    const bool has_anisotropy = gRenderCapabilities.isInitialized() &&
+        gRenderCapabilities.hasAnisotropicFiltering();
     const F32 max_anisotropy = gRenderCapabilities.isInitialized()
-        ? gRenderCapabilities.maxAnisotropy()
-        : gGLManager.mMaxAnisotropy;
+        ? gRenderCapabilities.maxAnisotropy() : 1.f;
     if (has_anisotropy && filter == static_cast<U16>(ALSampler::Anisotropic)
         && LLRender::sAnisotropicFilteringLevel > 1.f)
     {
@@ -107,61 +108,14 @@ ALSamplerDesc ALSamplerCache::makeDesc(ALSampler key)
                                       max_anisotropy);
     }
 
-    desc.mSRGBDecode = decode ? GL_DECODE_EXT : GL_SKIP_DECODE_EXT;
+    desc.mSRGBDecode = decode;
 
     return desc;
 }
 
-// static
-U32 ALSamplerCache::create(const ALSamplerDesc& desc)
-{
-    U32 name = 0;
-
-    // glSamplerParameter* already takes the object by name, so sampler objects need no
-    // bind-to-edit even without DSA. glCreateSamplers only buys the guarantee that the
-    // object exists in its default state before the first parameter call, which
-    // glGenSamplers leaves until first use.
-    if (gGLManager.mHasDirectStateAccess)
-    {
-        glCreateSamplers(1, &name);
-    }
-    else
-    {
-        glGenSamplers(1, &name);
-    }
-
-    if (!name)
-    {
-        return 0;
-    }
-
-    glSamplerParameteri(name, GL_TEXTURE_MIN_FILTER, desc.mMinFilter);
-    glSamplerParameteri(name, GL_TEXTURE_MAG_FILTER, desc.mMagFilter);
-    glSamplerParameteri(name, GL_TEXTURE_WRAP_S, desc.mWrapS);
-    glSamplerParameteri(name, GL_TEXTURE_WRAP_T, desc.mWrapT);
-    glSamplerParameteri(name, GL_TEXTURE_WRAP_R, desc.mWrapR);
-
-    if (gGLManager.mHasAnisotropic)
-    {
-        glSamplerParameterf(name, GL_TEXTURE_MAX_ANISOTROPY, desc.mMaxAnisotropy);
-    }
-
-    // Written unconditionally, including where it matches GL's default, so a sampler's
-    // behaviour is fully described by its descriptor rather than partly inherited.
-    glSamplerParameteri(name, GL_TEXTURE_SRGB_DECODE_EXT, desc.mSRGBDecode);
-
-    stop_glerror();
-
-    return name;
-}
-
 U32 ALSamplerCache::createSlot(ALSampler key)
 {
-    if (!gGLManager.mInited)
-    {
-        return logical_sampler(static_cast<U16>(key) & KEY_MASK);
-    }
-    return create(makeDesc(key));
+    return logical_sampler(static_cast<U16>(key) & KEY_MASK);
 }
 
 U32 ALSamplerCache::get(const ALSamplerDesc& desc)
@@ -174,10 +128,8 @@ U32 ALSamplerCache::get(const ALSamplerDesc& desc)
         }
     }
 
-    const U32 name = gGLManager.mInited
-        ? create(desc)
-        : (LOGICAL_CUSTOM_BASE |
-           (static_cast<U32>(mCustomSamplers.size()) + 1u));
+    const U32 name = LOGICAL_CUSTOM_BASE |
+        (static_cast<U32>(mCustomSamplers.size()) + 1u);
     if (name)
     {
         mCustomSamplers.emplace_back(desc, name);
@@ -232,40 +184,7 @@ void ALSamplerCache::warmup()
 
 void ALSamplerCache::clear()
 {
-    // Only touch GL while a context is actually current. LLRender::shutdown() reaches here
-    // with one current on both threads that have a gGL, but ~LLRender calls shutdown()
-    // again during thread_local destruction -- after the context is gone. Normally the
-    // explicit gGL.shutdown() left every slot zeroed by then, so there is nothing to do;
-    // on an abnormal exit that skipped it, glDeleteSamplers with no current context faults
-    // inside the driver rather than failing gracefully.
-    //
-    // The names are dropped either way: they die with the context, so declining to delete
-    // them leaks nothing that outlives the process.
-    const bool gl_alive = gGLManager.mInited;
-
-    for (U32& name : mSamplers)
-    {
-        if (name)
-        {
-            if (gl_alive)
-            {
-                // Deleting a bound sampler unbinds it from every unit it was bound to, so
-                // no explicit unbind is needed here -- but the per-unit cache still
-                // believes it is bound, and GL may hand the same name back for the next
-                // one created.
-                glDeleteSamplers(1, &name);
-            }
-            name = 0;
-        }
-    }
-
-    for (auto& entry : mCustomSamplers)
-    {
-        if (entry.second && gl_alive)
-        {
-            glDeleteSamplers(1, &entry.second);
-        }
-    }
+    mSamplers.fill(0);
     mCustomSamplers.clear();
 
     // Invalidate every cached resolution of a name from this cache. Skipping 0 keeps it

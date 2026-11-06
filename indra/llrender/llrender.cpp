@@ -315,52 +315,42 @@ namespace
         }
     }
 
-    ALMetalSamplerFilter metal_sampler_filter(U32 filter)
+    ALMetalSamplerFilter metal_sampler_filter(ALSamplerFilter filter)
     {
-        return filter == GL_NEAREST ? ALMetalSamplerFilter::nearest
-                                    : ALMetalSamplerFilter::linear;
+        return filter == ALSamplerFilter::nearest
+            ? ALMetalSamplerFilter::nearest : ALMetalSamplerFilter::linear;
     }
 
-    ALMetalSamplerAddressMode metal_sampler_address(U32 address)
+    ALMetalSamplerAddressMode metal_sampler_address(ALSamplerAddressMode address)
     {
         switch (address)
         {
-            case GL_MIRRORED_REPEAT: return ALMetalSamplerAddressMode::mirror_repeat;
-            case GL_CLAMP_TO_BORDER: return ALMetalSamplerAddressMode::clamp_to_zero;
-            case GL_CLAMP_TO_EDGE:   return ALMetalSamplerAddressMode::clamp_to_edge;
-            case GL_REPEAT:
-            default:                 return ALMetalSamplerAddressMode::repeat;
+            case ALSamplerAddressMode::mirror_repeat:
+                return ALMetalSamplerAddressMode::mirror_repeat;
+            case ALSamplerAddressMode::clamp_to_zero:
+                return ALMetalSamplerAddressMode::clamp_to_zero;
+            case ALSamplerAddressMode::clamp_to_edge:
+                return ALMetalSamplerAddressMode::clamp_to_edge;
+            case ALSamplerAddressMode::repeat:
+            default:
+                return ALMetalSamplerAddressMode::repeat;
         }
     }
 
     ALMetalSamplerDescriptor metal_sampler_descriptor(const ALSamplerDesc& source)
     {
         ALMetalSamplerDescriptor result;
-        switch (source.mMinFilter)
+        result.min_filter = metal_sampler_filter(source.mMinFilter);
+        switch (source.mMipFilter)
         {
-            case GL_NEAREST:
-                result.min_filter = ALMetalSamplerFilter::nearest;
+            case ALSamplerMipFilter::none:
                 result.mip_filter = ALMetalSamplerMipFilter::none;
                 break;
-            case GL_LINEAR:
-                result.min_filter = ALMetalSamplerFilter::linear;
-                result.mip_filter = ALMetalSamplerMipFilter::none;
-                break;
-            case GL_NEAREST_MIPMAP_NEAREST:
-                result.min_filter = ALMetalSamplerFilter::nearest;
+            case ALSamplerMipFilter::nearest:
                 result.mip_filter = ALMetalSamplerMipFilter::nearest;
                 break;
-            case GL_LINEAR_MIPMAP_NEAREST:
-                result.min_filter = ALMetalSamplerFilter::linear;
-                result.mip_filter = ALMetalSamplerMipFilter::nearest;
-                break;
-            case GL_NEAREST_MIPMAP_LINEAR:
-                result.min_filter = ALMetalSamplerFilter::nearest;
-                result.mip_filter = ALMetalSamplerMipFilter::linear;
-                break;
-            case GL_LINEAR_MIPMAP_LINEAR:
+            case ALSamplerMipFilter::linear:
             default:
-                result.min_filter = ALMetalSamplerFilter::linear;
                 result.mip_filter = ALMetalSamplerMipFilter::linear;
                 break;
         }
@@ -3273,8 +3263,7 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         }
     }
     batch.texture = metal_texture;
-    batch.sample_linear_storage =
-        sampler.mSRGBDecode == GL_SKIP_DECODE_EXT;
+    batch.sample_linear_storage = !sampler.mSRGBDecode;
     batch.sampler = metal_sampler_descriptor(sampler);
     batch.shader = metal_shader;
     batch.primitive = primitive;

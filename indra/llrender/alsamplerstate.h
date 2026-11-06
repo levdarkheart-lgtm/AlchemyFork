@@ -24,17 +24,7 @@
 
 #pragma once
 
-// llglheaders.h, NOT llgl.h: this header is included by llrender.h, and llgl.h pulls in
-// llglstates.h -> llimagegl.h -> llrender.h, which re-enters a half-parsed llrender.h and
-// leaves llimagegl.h looking at an undefined slot class. Only the GL enum constants are
-// needed here; gGLManager is used from the .cpp.
-//
-// Nothing else. This header used to include lltexunit.h for the filter/address enums it
-// encoded against -- which made the sampler description depend on the binding slot, exactly
-// backwards, and forced that header to be split out of llrender.h to break the resulting
-// cycle. ALSampler owns its encoding outright now, so this file stands alone and the slot
-// header (altextureslot.h) includes IT.
-#include "llglheaders.h"
+#include "stdtypes.h"
 
 #include <array>
 #include <utility>
@@ -162,26 +152,39 @@ constexpr bool alSamplerHas(ALSampler key, ALSampler bit)
 // -- immutable, shared, selected at bind -- and they are the only model D3D11 has
 // (ID3D11SamplerState is separate from the SRV).
 //
-// Mirrors D3D11_SAMPLER_DESC deliberately, so the eventual backend maps field-for-field.
-//
-// NOT covered here, and deliberately left on the texture object, because GL sampler
-// objects don't carry them and neither does D3D11's sampler state:
-//   - GL_TEXTURE_SWIZZLE_RGBA
-//   - GL_TEXTURE_BASE_LEVEL / GL_TEXTURE_MAX_LEVEL
-//   - GL_DEPTH_STENCIL_TEXTURE_MODE
+enum class ALSamplerFilter : U8
+{
+    nearest,
+    linear,
+};
+
+enum class ALSamplerMipFilter : U8
+{
+    none,
+    nearest,
+    linear,
+};
+
+enum class ALSamplerAddressMode : U8
+{
+    repeat,
+    mirror_repeat,
+    clamp_to_edge,
+    clamp_to_zero,
+};
+
+// Backend-neutral sampler description consumed directly by the native Metal
+// encoder. Texture swizzles and mip extents remain resource properties.
 struct ALSamplerDesc
 {
-    U32 mMinFilter     = GL_LINEAR;
-    U32 mMagFilter     = GL_LINEAR;
-    U32 mWrapS         = GL_REPEAT;
-    U32 mWrapT         = GL_REPEAT;
-    U32 mWrapR         = GL_REPEAT;
+    ALSamplerFilter      mMinFilter = ALSamplerFilter::linear;
+    ALSamplerFilter      mMagFilter = ALSamplerFilter::linear;
+    ALSamplerMipFilter   mMipFilter = ALSamplerMipFilter::none;
+    ALSamplerAddressMode mWrapS     = ALSamplerAddressMode::repeat;
+    ALSamplerAddressMode mWrapT     = ALSamplerAddressMode::repeat;
+    ALSamplerAddressMode mWrapR     = ALSamplerAddressMode::repeat;
     F32 mMaxAnisotropy = 1.f;
-    // GL_SKIP_DECODE_EXT or GL_DECODE_EXT. Defaults to SKIP, which is the opposite of GL's
-    // own default -- see ALSampler::SRGBDecode. No D3D11_SAMPLER_DESC equivalent: there the
-    // SRV's format decides (DXGI_FORMAT_*_UNORM vs _UNORM_SRGB), which is the same choice
-    // expressed at a different bind point.
-    U32 mSRGBDecode = GL_SKIP_DECODE_EXT;
+    bool mSRGBDecode = false;
 
     bool operator==(const ALSamplerDesc& rhs) const = default;
 };
@@ -223,26 +226,14 @@ namespace ALSamplers
     inline constexpr ALSampler TargetDefault = static_cast<ALSampler>((3u << 2) | (1u << 15));
 }
 
-// Owns the sampler objects belonging to one GL context.
+// Owns stable logical sampler identities and their native descriptions.
 //
 // The descriptor space the renderer actually uses is small and enumerable -- filter x
 // address mode x srgb-decode -- so the common path is a flat array index rather
 // than a hash lookup, which matters because it runs per bind. That table is built up front
-// by warmup(), NOT lazily -- the enum get() below only indexes it -- and lives until the
-// context goes away. The objects are immutable, so sharing one between unrelated call sites
-// is safe by construction. Anything that calls clear() owes a matching warmup() before the
-// next bind; see LLRender::clearSamplers().
-//
-// ONE INSTANCE PER GL CONTEXT, owned by LLRender (which is itself thread_local -- the
-// viewer runs a second shared context on the texture upload thread). That is not an
-// optimisation, it is the correctness boundary. Shared process-wide storage here means the
-// upload thread's gGL.shutdown() deletes the samplers the main thread is still rendering
-// with: the contexts share a namespace and the worker's context is still current at that
-// point, so the deletes succeed silently and the render thread is left binding freed names.
-//
-// Keeping the objects at the same scope as the bindings that reference them (ALTextureSlot::
-// mCurrSampler, also per-LLRender) is what makes the lifetime work out. Reach it through
-// LLRender::getSampler() / clearSamplers() rather than constructing one.
+// by warmup(), NOT lazily -- the enum get() below only indexes it. The descriptions are
+// immutable, so sharing one between unrelated call sites is safe. The cache remains per
+// LLRender because the binding slots that reference its identities are per LLRender too.
 class ALSamplerCache
 {
 public:
@@ -251,7 +242,7 @@ public:
     // The mask is the slot, so there is no arithmetic here at all: a constexpr key at the
     // call site -- which is nearly all of them -- makes this one load and one predictable
     // branch. Everything that can fail (entry-point checks, descriptor construction,
-    // glCreateSamplers) lives in createSlot(), which only warmup() reaches.
+    // descriptor construction) lives in createSlot(), which only warmup() reaches.
     //
     // Returns 0 if sampler objects are unavailable, so callers never need to branch.
     U32 get(ALSampler key) const
@@ -266,9 +257,8 @@ public:
         return name;
     }
 
-    // Drop this thread's sampler objects. Call while the owning context is still current:
-    // from LLRender::shutdown(), or when a global feeding the descriptors changes
-    // (currently only LLRender::sAnisotropicFilteringLevel, from graphics preferences).
+    // Drop this renderer's logical identities when a global feeding the descriptions
+    // changes (currently only anisotropic filtering level).
     void clear();
 
     // Resolve an arbitrary descriptor, for sampling modes eTextureFilterOptions cannot
@@ -304,11 +294,8 @@ public:
     static ALSamplerDesc makeDesc(ALSampler key);
 
 private:
-    // Builds the descriptor and the GL object for one slot. Returns 0 if sampler objects are
-    // unavailable at all, which only happens on a driver that cannot do them.
+    // Builds the stable logical identity for one descriptor slot.
     U32 createSlot(ALSampler key);
-
-    static U32 create(const ALSamplerDesc& desc);
 
     // Five bits: filter(2) + address(2) + srgb-decode(1). Eight of the 32 slots are
     // unreachable (address only uses 3 of its 4 values) and stay 0 -- 32 U32s is 128
@@ -317,7 +304,7 @@ private:
     static constexpr U32 KEY_MASK    = (1u << KEY_BITS) - 1u;
     static constexpr U32 NUM_SAMPLERS = 1u << KEY_BITS;
 
-    // 0 means "not created yet". GL never hands out 0 as a sampler name.
+    // 0 means "not created yet"; logical sampler identities are always non-zero.
     std::array<U32, NUM_SAMPLERS> mSamplers = {};
 
     // Descriptors outside what a mask can express -- notably a mixed min/mag pair such as the

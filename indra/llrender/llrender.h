@@ -772,39 +772,25 @@ public:
 
     U32 getCurrentTexUnitIndex(void) const { return mCurrTextureUnitIndex; }
 
-    // Resolve a sampler object belonging to THIS context. See ALSamplerCache -- the cache
-    // is a member rather than a static precisely so it cannot outlive, or be torn down by,
-    // a context other than its own.
-    // Sampling INTENT only -- see ALSampler. Compose with |, or use one of the named
-    // compositions in namespace ALSamplers.
+    // Resolve a stable sampler identity belonging to this renderer. Sampling intent only --
+    // see ALSampler. Compose with |, or use a named composition in ALSamplers.
     U32 getSampler(ALSampler key) { return mSamplerCache.get(key); }
 
     // For sampling modes a mask cannot express; see ALSamplerCache::get(desc).
     U32 getSampler(const ALSamplerDesc& desc) { return mSamplerCache.get(desc); }
+    bool describeSampler(U32 identity, ALSamplerDesc& desc) const
+    {
+        return mSamplerCache.describe(identity, desc);
+    }
 
-    // Generation of this context's sampler cache; changes whenever the objects are dropped.
-    // Lets a hot path cache a resolved name and revalidate it with one compare.
+    // Changes whenever logical identities are invalidated, allowing hot paths to cache one.
     U32 getSamplerGeneration() const { return mSamplerCache.getGeneration(); }
 
-    // Delete this context's sampler objects and forget the per-unit bindings that pointed
-    // at them. Both halves belong together: GL unbinds a deleted sampler automatically, but
-    // ALTextureSlot::mCurrSampler would still claim it is bound, and GL may hand the same name
-    // back for the next sampler created -- at which point bindSampler's redundancy check
-    // would skip a bind that is needed.
-    // Drop this context's sampler objects. DROPS ONLY -- it does not rebuild, because one of
-    // its callers is shutdown. ~LLRender runs during thread_local destruction, after the
-    // context is gone, and reaches this a second time; it is safe there precisely because the
-    // first pass left the table empty and the second finds nothing to do. Rebuilding here
-    // would hand that second pass a full table to delete on a dead context, which faults
-    // inside the driver rather than failing. (gGLManager.mInited does not save you: it says
-    // GL is up somewhere, not that THIS thread has a current context.)
-    //
-    // A caller that wants the objects back -- the anisotropy change in graphics preferences --
-    // calls warmupSamplers() itself, where the context is known to be live.
+    // Invalidate identities and matching slot caches. The anisotropy preference caller warms
+    // them again after changing the descriptor inputs; shutdown leaves them empty.
     void clearSamplers();
 
-    // Build every sampler object this context can hand out. get() has no lazy path, so this
-    // must run before anything binds; LLRender::init() does it.
+    // Build every logical sampler identity. get() has no lazy path.
     void warmupSamplers();
 
     bool verifyTexUnitActive(U32 unitToVerify);
