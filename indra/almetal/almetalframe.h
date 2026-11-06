@@ -79,6 +79,19 @@ public:
     // Presentation, when required, must already have been encoded on it.
     bool submit(ALMetalFrame& frame, std::string* error = nullptr);
 
+    // Monotonic submission timeline for resources whose storage may be reused
+    // only after every command already committed to this scheduler has
+    // finished. Serial 0 represents no submitted work and is always complete.
+    // A failed command is complete for lifetime purposes (the GPU no longer
+    // owns its resources); command failure remains visible through stats() and
+    // lastError().
+    std::uint64_t lastSubmittedSerial() const noexcept;
+    bool isSubmissionComplete(std::uint64_t serial) const noexcept;
+    bool waitForSubmission(
+        std::uint64_t serial,
+        std::uint64_t timeout_nanoseconds = UINT64_MAX,
+        std::string* error = nullptr) const;
+
     bool waitUntilIdle(std::uint32_t timeout_milliseconds = UINT32_MAX,
                        std::string* error = nullptr) const;
     ALMetalFrameStats stats() const noexcept;

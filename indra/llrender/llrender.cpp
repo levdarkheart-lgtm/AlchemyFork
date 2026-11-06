@@ -981,6 +981,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
         cached.reset();
     }
     mMetalUIRenderer.reset();
+    mFrameFences.setMetalScheduler(nullptr);
     mMetalDevice = nullptr;
     mMetalFrames = nullptr;
     mMetalUISurface = nullptr;
@@ -1003,6 +1004,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
 
     mMetalDevice = device;
     mMetalFrames = scheduler;
+    mFrameFences.setMetalScheduler(scheduler);
     // Hidden windows intentionally have no presentation surface. Publishing
     // their device and scheduler is still sufficient for texture captures.
     if (!surface)
@@ -1948,10 +1950,15 @@ void LLRender::endFrame(U32 frames_ahead)
     if (gGLManager.mInited)
     {
         mQueries.endFrame();
-        mFrameFences.endFrame(frames_ahead);
         mQueries.retire();
         mQueries.makeRoom();
     }
+#if LL_DARWIN
+    if (mMetalFrames)
+    {
+        mFrameFences.endFrame(frames_ahead);
+    }
+#endif
     LLImageGL::pollUploads();
     ALUniformBuffer::endFrame();
 }

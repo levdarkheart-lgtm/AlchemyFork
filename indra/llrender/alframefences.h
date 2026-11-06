@@ -27,35 +27,29 @@
 #include "alpacingslack.h"
 #include "stdtypes.h"
 
-/// One fence a frame, laid by endFrame() after the frame's last command, and the frames it shows finished: a frame is
-/// complete once every command issued in it has finished on the GPU. What reuses memory the GPU reads or writes notes
-/// the frame it last used it in and reuses it once that frame is complete, laying no fence of its own: the query pool's
-/// batches, the uniform buffer rings' segments and ALGPUStream's regions.
+class ALMetalFrameScheduler;
+
+/// Logical viewer frames mapped to the Metal scheduler's ordered submission
+/// timeline. A frame is complete once every command buffer submitted before
+/// its end has completed. Resource rings record the logical frame that last
+/// used a region and can reuse it once this timeline reports completion.
 ///
-/// The fences are polled once a frame, by endFrame(), straight after the swap, on every driver, and nowhere else but a
-/// wait. A threaded driver answers a fence laid or polled only once its own thread has caught up with it. Mesa's glthread
-/// runs every call that returns a value so, and has caught up at the swap, since Mesa finishes glthread before it
-/// flushes the frame. NVIDIA's threaded optimization answers a poll of a fence not yet signalled in order on its thread,
-/// which a GPU-bound frame holds in the previous frame's present, so that a poll before the cull waits there for most
-/// of a frame. Straight after the swap that wait is the swap's own.
-///
-/// The frame's end may also pace the CPU, waiting every frame for the frame a given number before the one it ends. A
-/// poll waits only when it happens on a fence not yet signalled while the driver's thread is held in a present: on
-/// NVIDIA's threaded driver, a GPU-bound CPU runs frames ahead until one frame's poll sheds the whole lead at once, two
-/// frames quick and one slow. A wait every frame holds the lead to that number and spreads the wait over every frame.
-/// GPU-bound, that wait is time the CPU could have spent on work: the frames' ends keep what it was (slack()), for the
-/// work before the next one's to take a share of.
-///
-/// All operations require the GL context the fences were laid in to be current. Non-copyable.
+/// The scheduler already bounds frames in flight. Optional frames-ahead pacing
+/// retains the viewer's explicit latency/slack accounting without creating a
+/// second GPU fence object or a fallback graphics context. Non-copyable.
 class ALFrameFences
 {
 public:
-    /// The frames whose fences may be pending at once: endFrame() waits for the oldest past that.
+    /// The logical frames whose submission serials may be pending at once.
     static constexpr U32 FRAMES = 8;
 
     ALFrameFences() = default;
     ALFrameFences(const ALFrameFences&) = delete;
     ALFrameFences& operator=(const ALFrameFences&) = delete;
+
+    /// Install the window-owned scheduler. Changing or detaching a live
+    /// scheduler drains the submissions already recorded against it.
+    void setMetalScheduler(ALMetalFrameScheduler* scheduler);
 
     /// The open frame: a command issued now completes with it.
     U32 frame() const { return mFrame; }
@@ -64,10 +58,9 @@ public:
     /// 0, and every frame up to a release(), is complete.
     bool isComplete(U32 frame) const { return frame <= mComplete; }
 
-    /// Waits up to `timeout_ns` for `frame` to complete, polling first: whether it has. For the open frame it lays a
-    /// fence now and waits for every command issued so far. `stalled`, where given, says whether it had to wait. For a
-    /// user that cannot go on without the frame, and for teardown and tests: in the middle of a frame a poll is the wait
-    /// endFrame() keeps out of it.
+    /// Waits up to `timeout_ns` for an ended frame to complete, polling first.
+    /// Waiting on the still-open frame is invalid: its Metal command buffer has
+    /// not been committed and must not be treated as reusable storage.
     bool wait(U32 frame, U64 timeout_ns, bool* stalled = nullptr);
 
     /// Waits for `frame` to complete however long the GPU takes, for a user that must reuse what the frame used: a slow
@@ -78,10 +71,9 @@ public:
     /// How long waitFinished() waits before it logs that it is waiting.
     static constexpr U32 LONG_WAIT_SECONDS = 10;
 
-    /// Lays the open frame's fence; with `frames_ahead` above 0 waits for the frame that many before it to complete;
-    /// then polls the fences of the frames ended before, oldest first, up to the first that has not signalled, and opens
-    /// the next frame. Once a frame, after its last command: the viewer's is the swap. The frame it ends is shown
-    /// finished by the next one's end at the earliest.
+    /// Records the scheduler's latest committed submission for the open frame;
+    /// with `frames_ahead` above 0 waits for the frame that many before it to
+    /// complete; then polls earlier frames and opens the next frame.
     ///
     /// `frames_ahead` is how many frames the GPU may still be working on when the CPU begins the next: with 1, the frame
     /// before the one ending has finished. That wait paces the CPU and is no stall: it has a zone and a count of its
@@ -89,8 +81,8 @@ public:
     /// fence must make room. Either way the frame's end is noted in slack().
     void endFrame(U32 frames_ahead = 0);
 
-    /// Deletes every fence, while the context is current. Every frame so far, the open one too, is complete, and the
-    /// slack of the frames before is forgotten.
+    /// Drains recorded submissions and forgets the logical timeline. Every
+    /// frame so far, including the open one, is complete afterwards.
     void release();
 
     /// How long the paced frames' ends have waited for the GPU, and what work before the next one's wait may have of it.
@@ -101,26 +93,25 @@ public:
     U32 getStalls() const { return mStalls; }
     /// The frames' ends whose pacing wait had to wait for the GPU.
     U32 getPacingWaits() const { return mPacingWaits; }
-    /// The fences laid and polls made, each a call that returns a value.
+    /// Scheduler completion queries and waits made.
     U32 getCalls() const { return mCalls; }
 
 private:
-    // Polls the ended frames not yet shown complete, oldest first, up to the first that has not signalled.
+    // Poll ended frames oldest first, stopping at the first pending submission.
     void poll();
-    // Waits for the ended `frame` as a frame's end paces the CPU, however long the GPU takes: on that frame's fence
-    // alone, with no poll first, so that what the wait costs is the pacing zone's. The seconds it took; `behind` says
-    // whether the GPU was still drawing it.
+    // Wait for an ended frame as the frame end paces the CPU. The seconds it
+    // took; `behind` says whether the GPU was still processing it.
     F64 pace(U32 frame, bool& behind);
-    // Every frame up to `frame` is complete: their fences go.
+    // Every frame up to `frame` is complete: forget their serials.
     void completeThrough(U32 frame);
 
-    void* mFences[FRAMES] = {};  // the GLsync laid at the end of each frame not yet shown complete, by frame % FRAMES
-    bool  mFlushed[FRAMES] = {}; // its fence has been flushed toward the GPU
+    ALMetalFrameScheduler* mScheduler = nullptr;
+    U64   mSubmissions[FRAMES] = {}; // latest committed serial at each logical frame end
     U32   mFrame    = 1;         // the open frame
     U32   mComplete = 0;         // the newest frame shown complete, with every one before it
     U32   mStalls   = 0;
     U32   mPacingWaits = 0;
     U32   mCalls    = 0;
-    U32   mFrameCalls = 0;       // calls since the last endFrame(), for the profiler
+    U32   mFrameCalls = 0;       // timeline queries since the last endFrame()
     ALPacingSlack mSlack;
 };

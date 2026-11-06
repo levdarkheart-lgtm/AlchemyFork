@@ -14,7 +14,10 @@
 #import <Metal/Metal.h>
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <mutex>
+#include <set>
 #include <utility>
 
 namespace
@@ -65,6 +68,15 @@ namespace
         std::atomic<std::uint32_t> in_flight{0};
         std::mutex slot_mutex;
         std::uint32_t available_slots = 0;
+        // Submission serials are assigned while this mutex is held across the
+        // actual commit, so their order is the command queue's commit order.
+        std::mutex submission_mutex;
+        std::uint64_t next_submission_serial = 1;
+        std::atomic<std::uint64_t> last_submitted_serial{0};
+        mutable std::mutex completion_mutex;
+        std::condition_variable completion_changed;
+        std::uint64_t completed_through = 0;
+        std::set<std::uint64_t> completed_out_of_order;
         mutable std::mutex error_mutex;
         std::string last_error;
     };
@@ -76,6 +88,36 @@ namespace
             state->available_slots |= (1u << slot);
         }
         dispatch_semaphore_signal(state->available);
+    }
+
+    void completeSubmission(const std::shared_ptr<FrameState>& state,
+                            std::uint64_t serial)
+    {
+        {
+            std::lock_guard<std::mutex> lock(state->completion_mutex);
+            if (serial == state->completed_through + 1)
+            {
+                state->completed_through = serial;
+                while (!state->completed_out_of_order.empty() &&
+                       *state->completed_out_of_order.begin() ==
+                           state->completed_through + 1)
+                {
+                    state->completed_through =
+                        *state->completed_out_of_order.begin();
+                    state->completed_out_of_order.erase(
+                        state->completed_out_of_order.begin());
+                }
+            }
+            else if (serial > state->completed_through + 1)
+            {
+                // Metal command buffers on one queue complete in order, but
+                // completion handlers need not be delivered by the runtime on
+                // the same callback thread. Keep the timeline correct even if
+                // callback delivery is observed out of order.
+                state->completed_out_of_order.insert(serial);
+            }
+        }
+        state->completion_changed.notify_all();
     }
 }
 
@@ -254,6 +296,12 @@ bool ALMetalFrameScheduler::submit(ALMetalFrame& frame, std::string* error)
         return false;
     }
 
+    // Keep serial assignment and commit ordered together. beginFrame() may be
+    // called ahead of another frame, or an encoder may abandon its slot; only
+    // successful submission order is a safe GPU-lifetime timeline.
+    std::unique_lock<std::mutex> submission_lock(state->submission_mutex);
+    const std::uint64_t submission_serial =
+        state->next_submission_serial++;
     dispatch_group_enter(state->active);
     state->in_flight.fetch_add(1);
     [native_command addCompletedHandler:^(id<MTLCommandBuffer> completed_command) {
@@ -267,6 +315,7 @@ bool ALMetalFrameScheduler::submit(ALMetalFrame& frame, std::string* error)
             std::lock_guard<std::mutex> lock(state->error_mutex);
             state->last_error = describeError(completed_command.error);
         }
+        completeSubmission(state, submission_serial);
         state->in_flight.fetch_sub(1);
         releaseSlot(state, slot);
         dispatch_group_leave(state->active);
@@ -278,12 +327,83 @@ bool ALMetalFrameScheduler::submit(ALMetalFrame& frame, std::string* error)
         dispatch_group_leave(state->active);
         releaseSlot(state, slot);
         frame.mImpl->owns_slot = false;
+        completeSubmission(state, submission_serial);
         return false;
     }
 
     frame.mImpl->submitted = true;
     frame.mImpl->owns_slot = false;
     state->submitted.fetch_add(1);
+    state->last_submitted_serial.store(
+        submission_serial, std::memory_order_release);
+    return true;
+}
+
+std::uint64_t ALMetalFrameScheduler::lastSubmittedSerial() const noexcept
+{
+    return mImpl && mImpl->state
+        ? mImpl->state->last_submitted_serial.load(std::memory_order_acquire)
+        : 0;
+}
+
+bool ALMetalFrameScheduler::isSubmissionComplete(
+    std::uint64_t serial) const noexcept
+{
+    if (serial == 0)
+    {
+        return true;
+    }
+    if (!mImpl || !mImpl->state ||
+        serial > mImpl->state->last_submitted_serial.load(
+            std::memory_order_acquire))
+    {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(mImpl->state->completion_mutex);
+    return serial <= mImpl->state->completed_through;
+}
+
+bool ALMetalFrameScheduler::waitForSubmission(
+    std::uint64_t serial,
+    std::uint64_t timeout_nanoseconds,
+    std::string* error) const
+{
+    if (serial == 0)
+    {
+        return true;
+    }
+    if (!mImpl || !mImpl->state)
+    {
+        setError(error, "Metal frame scheduler is unavailable");
+        return false;
+    }
+    const std::uint64_t submitted =
+        mImpl->state->last_submitted_serial.load(std::memory_order_acquire);
+    if (serial > submitted)
+    {
+        setError(error, "Metal submission serial has not been committed");
+        return false;
+    }
+
+    std::unique_lock<std::mutex> lock(mImpl->state->completion_mutex);
+    const auto complete = [&]() {
+        return serial <= mImpl->state->completed_through;
+    };
+    if (complete())
+    {
+        return true;
+    }
+    if (timeout_nanoseconds == UINT64_MAX)
+    {
+        mImpl->state->completion_changed.wait(lock, complete);
+        return true;
+    }
+    if (!mImpl->state->completion_changed.wait_for(
+            lock, std::chrono::nanoseconds(timeout_nanoseconds), complete))
+    {
+        setError(error, "Timed out waiting for Metal submission completion");
+        return false;
+    }
     return true;
 }
 

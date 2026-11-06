@@ -27931,6 +27931,8 @@ TEST_CASE("almetal: frame scheduler bounds work and recovers abandoned slots", "
         auto scheduler = ALMetalFrameScheduler::create(*device, 2, &error);
         INFO(error);
         REQUIRE(scheduler);
+        CHECK(scheduler->lastSubmittedSerial() == 0);
+        CHECK(scheduler->isSubmissionComplete(0));
 
         auto first = scheduler->beginFrame("Alchemy scheduled frame one", 100, &error);
         auto abandoned = scheduler->beginFrame("Alchemy abandoned frame", 100, &error);
@@ -27945,9 +27947,23 @@ TEST_CASE("almetal: frame scheduler bounds work and recovers abandoned slots", "
         REQUIRE(second);
         CHECK(first->slot() != second->slot());
         REQUIRE(scheduler->submit(*first, &error));
+        const std::uint64_t first_submission =
+            scheduler->lastSubmittedSerial();
+        CHECK(first_submission != 0);
         REQUIRE(scheduler->submit(*second, &error));
-        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        const std::uint64_t second_submission =
+            scheduler->lastSubmittedSerial();
+        CHECK(second_submission == first_submission + 1);
+        REQUIRE(scheduler->waitForSubmission(
+            second_submission, 1'000'000'000ull, &error));
         INFO(error);
+        CHECK(scheduler->isSubmissionComplete(first_submission));
+        CHECK(scheduler->isSubmissionComplete(second_submission));
+        CHECK_FALSE(scheduler->waitForSubmission(
+            second_submission + 1, 0, &error));
+        CHECK(error == "Metal submission serial has not been committed");
+        error.clear();
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
 
         const ALMetalFrameStats stats = scheduler->stats();
         CHECK(stats.maximum_in_flight == 2);
@@ -32370,7 +32386,7 @@ TEST_CASE("almetal: selection contour consumes ids and resumes the ordered UI ta
     }
 }
 
-TEST_CASE("almetal: a CAMetalLayer overlay coexists with an SDL OpenGL window", "[almetal]")
+TEST_CASE("almetal: a CAMetalLayer surface owns a plain SDL Cocoa window", "[almetal]")
 {
     @autoreleasepool
     {
@@ -32385,20 +32401,20 @@ TEST_CASE("almetal: a CAMetalLayer overlay coexists with an SDL OpenGL window", 
         SDL_SetStringProperty(properties, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "Alchemy Metal surface test");
         SDL_SetNumberProperty(properties, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, 64);
         SDL_SetNumberProperty(properties, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, 48);
-        SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN, true);
+        SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_HIGH_PIXEL_DENSITY_BOOLEAN, true);
         SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, true);
         std::unique_ptr<SDL_Window, SDLWindowDeleter> window(SDL_CreateWindowWithProperties(properties));
         SDL_DestroyProperties(properties);
         INFO(SDL_GetError());
         REQUIRE(window);
-        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_OPENGL) != 0);
-        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_METAL) == 0);
+        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_OPENGL) == 0);
+        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_METAL) != 0);
 
         auto surface = ALMetalSurface::create(window.get(), *device, {}, &error);
         INFO(error);
         REQUIRE(surface);
-        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_OPENGL) != 0);
-        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_METAL) == 0);
+        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_OPENGL) == 0);
+        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_METAL) != 0);
         CHECK(surface->nativeLayer() != nullptr);
         CHECK(surface->info().width >= 64);
         CHECK(surface->info().height >= 48);
@@ -32454,8 +32470,8 @@ TEST_CASE("almetal: a CAMetalLayer overlay coexists with an SDL OpenGL window", 
         INFO(error);
 
         // A viewer frame without UI batches must still replace the previous
-        // overlay with a transparent drawable; otherwise hiding all UI would
-        // leave the last presented controls frozen above the GL world.
+        // surface with a transparent drawable; otherwise hiding all UI would
+        // leave the last presented controls frozen above the retained world.
         auto scheduler = ALMetalFrameScheduler::create(*device, 3, &error);
         INFO(error);
         REQUIRE(scheduler);

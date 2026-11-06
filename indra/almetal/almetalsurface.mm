@@ -19,12 +19,11 @@
 #include <algorithm>
 #include <utility>
 
-// SDL deliberately treats a window as owning only one graphics API: asking
-// SDL_Metal_CreateView() on an OpenGL window clears its OpenGL flag and unloads
-// the GL library. During the incremental port we need the native UI above the
-// still-GL world, so this non-interactive child view owns the CAMetalLayer
-// without changing SDL's window backend. It can disappear with this class once
-// the final world pass removes the migration GL context.
+// The product keeps SDL responsible for window/input lifecycle while this
+// non-interactive Cocoa child view owns the sole drawable CAMetalLayer. Using
+// the explicit view keeps layer format, opacity, drawable count and resize
+// semantics under the native renderer without asking SDL to create a second
+// graphics backend.
 @interface ALMetalOverlayView : NSView
 @end
 
