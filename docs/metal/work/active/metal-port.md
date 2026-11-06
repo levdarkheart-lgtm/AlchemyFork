@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
 **Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `f77024a20a`.
+**Renderer checkpoint:** Commit `1bfe631627`.
 
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
@@ -10,8 +10,8 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
-| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68490 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,854 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
+| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68492 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,797 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
 | M-004 | Metal resources, transfers, readback and sync | doing | Geometry, ordinary texture publication/residency/lifecycle, fonts, buffers, samplers, image slots, targets and reflection arrays are native. Copy/readback consumers follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
@@ -128,14 +128,14 @@ GL ownership modes; `b86b1e4c53` repairs Snapshot state; `1081614942` removes
 legacy GL queries; `2e255de87c` makes ordinary texture residency, invalidation,
 cache identity, preview/save, terrain/map/avatar/bump and projectors native.
 
-`6e5047e50b` deletes retained UI/text geometry's raw texture/sampler identities and GL replay fallback. `b971465ca7` deletes superseded retained GL glow/SMAA. `f77024a20a` makes lens-dirt generation Metal-authoritative and deletes its GL target, shader and presentation dependency. Package 68490 is the bounded owner-attended startup/login/world-load candidate, not a parity, stability or GL-zero claim.
+`6e5047e50b` deletes retained UI/text geometry's raw texture/sampler identities and GL replay fallback. `b971465ca7` deletes superseded retained GL glow/SMAA. `f77024a20a` makes lens-dirt generation Metal-authoritative. `1bfe631627` removes `LLRender`'s dormant GL driver-state, clear, draw and compute authority while retaining semantic raster/blend/depth/viewport/scissor state for native pipeline descriptions; unsupported instanced/indirect/compute endpoints fail closed. Package 68492 is the bounded owner-attended startup/login/world-load candidate, not a parity, stability or GL-zero claim.
 
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
-- Source-exact Xcode Release warnings-as-errors build/stage passes at `f77024a20a` as package `26.4.0.68490`; the same checkpoint's Ninja RelWithDebInfo rebuild/stage passes.
+- Source-exact Xcode Release warnings-as-errors build/stage passes at `1bfe631627` as package `26.4.0.68492`; the same checkpoint's Ninja RelWithDebInfo rebuild/stage and focused llrender test pass.
 - `tools/metal/verify_app.sh`: 349/349 inspected slices are ARM64.
-- Executable SHA-256: `86c9e79a6a5d657a4e4f4d7dcf896af2fd60982bf1f64c504879c7b17e03d360`.
+- Executable SHA-256: `8c752d22881b2113ebf2be2b44ab09a9610e9e3e2e7066a516fea7ac005eabf4`.
 - Metallib SHA-256: `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer passes 220 assertions / 11 cases; query fail-closed proof passes 35 assertions; llrender passes 1,856/1,856 and Metal passes 52,681/52,681 assertions.
 - Native glow/SMAA pass 19,815 assertions/four GPU cases; native lens-dirt/display-post ownership pass 3,019 assertions/two cases; native font atlas upload/readback/release passes 28 assertions/five cases.
@@ -147,7 +147,7 @@ cache identity, preview/save, terrain/map/avatar/bump and projectors native.
 - Broad shared tests reproduce baseline host/driver failures: four assertions
   in three frame-fence timing cases and one render-target depth-format assertion.
 - Focused alrender/llrender suites pass 28/28; harness structure passes 32/32 required files; tool tests pass 31/31.
-- Strict inventory: 1,854/2,403 files (`gl_function` 396, `gl_shader` 1,460, `sdl_gl` 0), expected exit 1; report SHA-256 is `1f22ecd71dfd84e4ed3b9f8292d49abb4841560c75e137a0e097f731125119cc`; 274 below 2,128 and 447 below 2,301 with unchanged rules.
+- Strict inventory: 1,797/2,403 files (`gl_function` 340, `gl_shader` 1,457, `sdl_gl` 0), expected exit 1; report SHA-256 is `219eb943960b124745e171a8d420e9ab983e74c04de50ad52f19a2ce47fee74d`; 331 below 2,128 and 504 below 2,301 with unchanged rules.
 
 ## Owner-attended visual cadence
 
@@ -165,7 +165,7 @@ Do not autonomously launch either viewer, navigate login/world UI, or capture a 
 
 ## Immediate executable action
 
-1. Run the bounded owner-attended startup/login/world-load smoke test on package 68490 and record the first failure without a reference-viewer comparison.
+1. In the separate owner session, run the bounded startup/login/world-load smoke test on package 68492 and record the first failure without a reference-viewer comparison.
 2. Finish remaining essential texture copy/readback ownership and raw manual identities.
 3. Treat Snapshot source repair as ready for owner-led execution proof later.
 4. Continue ordinary UI/world GL removal before optional tails and continue strict source/link audits.

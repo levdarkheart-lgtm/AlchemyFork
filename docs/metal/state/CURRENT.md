@@ -3,7 +3,7 @@
 **Observed:** 2026-11-06 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `f77024a20a`
+**Renderer code checkpoint:** `1bfe631627`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -74,7 +74,7 @@ The latest essential sequence is:
 - `60e350e29a` removes orphan cube-array/framebuffer-copy GL owners; `c62977bd49` makes ordinary texture publication Metal-only; `8a00656289` removes uncalled
   GL ownership modes; `b86b1e4c53` repairs Snapshot state; `1081614942` removes legacy GL queries; `2e255de87c` makes ordinary texture residency, invalidation,
   cache identity, preview/save, terrain/map/avatar/bump and projector availability native.
-- `6e5047e50b` removes retained UI/text geometry's raw texture/sampler names and GL replay fallback; `b971465ca7` deletes superseded retained GL glow/SMAA; `f77024a20a` makes lens-dirt generation Metal-authoritative and removes its GL target, shader and presentation dependency.
+- `6e5047e50b` removes retained UI/text geometry's raw texture/sampler names and GL replay fallback; `b971465ca7` deletes superseded retained GL glow/SMAA; `f77024a20a` makes lens-dirt generation Metal-authoritative; `1bfe631627` removes `LLRender`'s dormant GL driver-state, clear, draw and compute authority while retaining semantic state for Metal encoders. Unsupported instanced/indirect/compute entry points fail closed pending native owners.
 
 `LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot source state is repaired; execution remains owner-attended. The source-exact Release artifact is now a bounded owner-attended startup/login/world-load smoke-test candidate, not a parity or GL-zero claim.
 
@@ -84,11 +84,11 @@ The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or 
 
 - `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max, 64 GiB
   unified memory and Xcode 26.6; Metal reports Apple family 7 and 62,277,025,792 bytes.
-- Source-exact Xcode Release warnings-as-errors build/stage passes at `f77024a20a`; package `Alchemy Metal Development 26.4.0.68490`. The same checkpoint's Ninja RelWithDebInfo viewer also rebuilds and stages cleanly.
+- Source-exact Xcode Release warnings-as-errors build/stage passes at `1bfe631627`; package `Alchemy Metal Development 26.4.0.68492`. The same checkpoint's Ninja RelWithDebInfo viewer and focused llrender test also rebuild and pass.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
   the product, renderer-test and appearance-utility executables have no
   OpenGL/Vulkan dependency or unresolved GL-family symbol.
-- Viewer executable SHA-256: `86c9e79a6a5d657a4e4f4d7dcf896af2fd60982bf1f64c504879c7b17e03d360`.
+- Viewer executable SHA-256: `8c752d22881b2113ebf2be2b44ab09a9610e9e3e2e7066a516fea7ac005eabf4`.
 - Packaged `almetal_builtin.metallib` SHA-256: `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer proof passes 220 assertions/11 cases including native texture lifecycle/residency; query fail-closed proof passes 35 assertions;
   full llrender passes 1,856/1,856 and Metal passes 52,681/52,681 assertions.
@@ -112,9 +112,9 @@ The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or 
 
 ## OpenGL elimination gate
 
-Strict source inventory intentionally still fails: 1,854 findings in 2,403 viewer-owned files (`gl_function` 396, `gl_shader` 1,460, `sdl_gl` 0).
-Report SHA-256 is `1f22ecd71dfd84e4ed3b9f8292d49abb4841560c75e137a0e097f731125119cc`.
-No audit rule or suppression changed; this is 274 below 2,128 and 447 below the
+Strict source inventory intentionally still fails: 1,797 findings in 2,403 viewer-owned files (`gl_function` 340, `gl_shader` 1,457, `sdl_gl` 0).
+Report SHA-256 is `219eb943960b124745e171a8d420e9ab983e74c04de50ad52f19a2ce47fee74d`.
+No audit rule or suppression changed; this is 331 below 2,128 and 504 below the
 owner's 2,301 reference. The gate remains zero; runtime proof remains queued.
 
 ## Visual review cadence
@@ -154,7 +154,7 @@ completion or release readiness.
 
 ## Exact next actions
 
-1. Run the bounded owner-attended startup/login/world-load smoke test against package 68490; record the first failure without doing a reference comparison.
+1. In the separate owner session, run the bounded startup/login/world-load smoke test against package 68492; record the first failure without a reference comparison.
 2. Finish remaining essential texture copy/readback ownership and raw manual identities.
 3. Treat Snapshot source repair as ready for later owner-attended execution proof.
 4. Continue ordinary UI/world GL removal before optional tails and rerun strict source/link gates.
