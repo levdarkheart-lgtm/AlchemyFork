@@ -3,7 +3,7 @@
 **Observed:** 2026-11-06 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `6ec5884b85`
+**Renderer code checkpoint:** `e607b19e27`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -61,31 +61,31 @@ The latest essential sequence is:
 - `6ec5884b85` publishes actual Metal texture identities through ordinary slots,
   makes native cube maps bindable, and removes the white-GL-texture detour from
   native-only image sampling while retaining dimension and sampler semantics.
+- `e607b19e27` removes the slot's remaining driver texture/sampler/unit calls;
+  unresolved integer render-target names fail closed pending native attachments.
 
 `LLGLSLShader::isComplete()` remains strictly a linked-GL-program predicate;
-native availability cannot disguise a native identity as a GL object. GL-backed
-occlusion remains fail-closed until a native query owner replaces it.
+native availability cannot disguise a native identity as a GL object; GL-backed occlusion remains fail-closed until a native query owner replaces it.
 
 The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or
 unresolved GL-family import; SDL's unselected generic stubs do not enter the
-product. No viewer was launched, so startup/login remains queued. The next
-boundary is the essential ordinary-frame tail, not optional paths.
+product. No viewer was launched, so startup/login remains queued; the next boundary is the essential ordinary-frame tail, not optional paths.
 
 ## Build and validation evidence
 
 - `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max,
   64 GiB unified memory and Xcode 26.6; Metal reports Apple family 7 and a
   62,277,025,792-byte recommended working set.
-- Source-exact Ninja warnings-as-errors build/stage passes at `6ec5884b85`;
-  package `Alchemy Metal Development 26.4.0.68455`.
+- Source-exact Ninja warnings-as-errors build/stage passes at `e607b19e27`;
+  package `Alchemy Metal Development 26.4.0.68457`.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
   the product, renderer-test and appearance-utility executables have no
   OpenGL/Vulkan dependency or unresolved GL-family symbol.
 - Viewer executable SHA-256:
-  `24367e4d1c0ffa78bc156aac814f6a6c3d374ab411dbd862afa6a40788f3630f`.
+  `539a9d8f564958f1043b9b7503bbf0d21243882f7115ba4d39d1b25ae882bfc0`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-- `llrender_tests`: 1,734 assertions pass across 218 cases, with the expected
+- `llrender_tests`: 1,737 assertions pass across 218 cases, with the expected
   unavailable-font skip.
 - Focused native Metal/render CTest registration passes 16/16, including the
   GPU- and uniform-buffer cases; 517 tests remain registered after omitting
@@ -106,12 +106,12 @@ boundary is the essential ordinary-frame tail, not optional paths.
 
 ## OpenGL elimination gate
 
-Strict source inventory intentionally still fails: 2,147 findings in 2,409
-viewer-owned files (`gl_function` 555, `gl_shader` 1,594, `sdl_gl` 0).
+Strict source inventory intentionally still fails: 2,128 findings in 2,409
+viewer-owned files (`gl_function` 539, `gl_shader` 1,591, `sdl_gl` 0).
 Report SHA-256 is
-`9b60347885234b892bd0fd42a53ee12719ad3e7ef7e5c6fa046eef0519eefda1`.
-No audit rule or suppression changed; the inventory is four below the prior
-2,151 checkpoint and 154 below the owner's earlier 2,301 reference. The gate remains zero;
+`e3c0557f2493801091deadb811ca20e2962cf2c47ba097858a5c4e5389d7c2ee`.
+No audit rule or suppression changed; the inventory is 19 below the prior
+2,147 checkpoint and 173 below the owner's earlier 2,301 reference. The gate remains zero;
 linked proof passes while runtime image/module proof remains open pending
 owner-attended execution.
 
@@ -127,14 +127,14 @@ is a parity pass without explicit owner evidence.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
-| M-004 resources/readback | doing | Ordinary geometry, textures/fonts, async uploads, GPU/uniform buffers, samplers and texture-slot identities are native; worker contexts and Snapshot GL scratch are gone. |
+| M-004 resources/readback | doing | Ordinary geometry, textures/fonts, async uploads, GPU/uniform buffers, samplers and texture slots are native; unresolved render-target attachments fail closed. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
 | M-006 UI/media | doing | UI/font capture is native; owner accepted readable text previously; Snapshot UI remains visually open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; parity remains open. |
 | M-008 effects/advanced views | doing | Core effects and many diagnostics are native; remaining optional paths follow the usable-core cut. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
 | M-010 measured performance | deferred | No quality-equivalent paired M1 Max claim yet. |
-| M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, GPU/uniform buffers, samplers and native texture slots require no GL context/library; render tails remain. |
+| M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, GPU/uniform buffers, samplers and texture slots require no GL context/library/calls; render tails remain. |
 | M-012 Computer Use bridge | complete | Semantic bridge verified; visual driving is owner-attended. |
 | M-013 RLVa strict parity | deferred | Nonessential ordering only; final no-GL behavior is still required. |
 
