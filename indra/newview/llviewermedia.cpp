@@ -1778,11 +1778,9 @@ void LLViewerMediaImpl::destroyMediaSource()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_MEDIA;
     mNeedsNewTexture = true;
-    // The plugin's shared texture is going away; tear the interop down fully and
-    // force a fresh bind when the next media source delivers a handle (even if the
-    // value is reused). Keeping the old interop alive would let a stray accelerated
-    // dirty event blit stale/invalid content from the previous source.
-    mAccelBoundHandle = 0;
+    // The plugin's shared texture is going away; tear the interop down fully.
+    // Keeping the old import alive would let a stray accelerated dirty event
+    // blit stale/invalid content from the previous source.
     if (mAccelInterop)
     {
         mAccelInterop->shutdown();
@@ -3329,9 +3327,8 @@ void LLViewerMediaImpl::updateImagesMediaStreams()
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-// Zero-copy paint consumer. Bring the plugin's GPU shared texture straight into
-// the platform media texture with no CPU round-trip. Darwin publishes only the
-// native Metal destination; Windows/Linux still update their GL destination.
+// Zero-copy paint consumer. Bring the plugin's IOSurface straight into the
+// native Metal media texture with no CPU round-trip.
 bool LLViewerMediaImpl::updateAcceleratedTexture()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_MEDIA;
@@ -3350,12 +3347,10 @@ bool LLViewerMediaImpl::updateAcceleratedTexture()
     }
 
     mMediaSource->clearAcceleratedPaintDirty();
-#if LL_DARWIN
-    // macOS: CEF's IOSurface is shared via a mach port (no cross-process global
-    // id), so the surface arrives out-of-band through the mach receiver, demuxed
-    // by this media's accel id. Drain the newest and (re)bind it; the interop
-    // takes ownership of the +1-retained IOSurfaceRef (and releases it on a
-    // failed bind). If no new surface this frame, keep the current binding.
+    // CEF's IOSurface is shared via a mach port (no cross-process global id), so
+    // it arrives out-of-band through the mach receiver, demuxed by this media's
+    // accel id. Drain the newest and (re)bind it; the interop takes ownership of
+    // the +1-retained IOSurfaceRef. With no new surface, retain the last import.
     void* surf = LLCEFSurfaceReceiver::instance().takeLatest(mMediaSource->getAccelId());
     if (surf)
     {
@@ -3368,56 +3363,6 @@ bool LLViewerMediaImpl::updateAcceleratedTexture()
             return false;   // import failed; don't blit a stale/invalid binding
         }
     }
-#elif LL_WINDOWS
-    // The handle is persistent (re)sent only on (re)create. (Re)bind the interop
-    // when it differs from what we have bound; only advance mAccelBoundHandle on a
-    // successful bind so a transient failure is retried with the same handle.
-    unsigned long long handle = mMediaSource->getAcceleratedPaintHandle();
-    if (handle != 0 && handle != mAccelBoundHandle)
-    {
-        if (mAccelInterop->setStableTexture(handle,
-                                            mMediaSource->getAcceleratedPaintWidth(),
-                                            mMediaSource->getAcceleratedPaintHeight(),
-                                            mMediaSource->getAcceleratedPaintFormat()))
-        {
-            mAccelBoundHandle = handle;
-        }
-        else
-        {
-            return false;
-        }
-    }
-#else  // LL_LINUX
-    // CEF's dma-buf fds arrive out-of-band via the SCM_RIGHTS side channel (a
-    // dma-buf fd cannot cross the process boundary through the LLSD/TCP channel,
-    // nor be reopened via /proc), demuxed by this media's accel id. Take the
-    // newest frame, import its planes directly (the fds are open in this process),
-    // then close them. Keep the current binding if no new frame arrived this tick.
-    LLCEFSurfaceReceiver::DmabufFrame frame;
-    if (LLCEFSurfaceReceiver::instance().takeLatestDmabuf(mMediaSource->getAccelId(), frame))
-    {
-        unsigned long long plane_fds[4]     = {};
-        unsigned int       plane_strides[4] = {};
-        unsigned long long plane_offsets[4] = {};
-        for (int i = 0; i < frame.plane_count && i < 4; ++i)
-        {
-            plane_fds[i]     = (unsigned long long)frame.fd[i];
-            plane_strides[i] = frame.stride[i];
-            plane_offsets[i] = frame.offset[i];
-        }
-        // The interop imports the fds directly (no /proc); we own them and close
-        // them right after - EGL keeps its own reference once the image is made.
-        bool imported = mAccelInterop->setStableTexture(plane_fds[0],
-                                        frame.width, frame.height, frame.format,
-                                        plane_strides[0], plane_offsets[0], frame.modifier,
-                                        0, frame.plane_count, plane_fds, plane_strides, plane_offsets);
-        frame.closeFds();
-        if (!imported)
-        {
-            return false;   // import failed; don't blit a stale/invalid binding
-        }
-    }
-#endif
 
     LLViewerMediaTexture* media_tex = updateMediaImage();
     if (!media_tex || !media_tex->getGLTexture())
@@ -3426,7 +3371,6 @@ bool LLViewerMediaImpl::updateAcceleratedTexture()
     }
 
     LLImageGL* media_image = media_tex->getGLTexture();
-#if LL_DARWIN
     // The IOSurface was imported directly into Metal above. Flip it into the
     // render-target-capable media mirror and publish playing state only after
     // that write succeeds; there is deliberately no parallel GL import/copy.
@@ -3467,21 +3411,6 @@ bool LLViewerMediaImpl::updateAcceleratedTexture()
     {
         media_image->markMetalRenderTextureUpdated();
     }
-#else
-    U32 tex_name = media_image->getTexName();
-    if (!tex_name)
-    {
-        return false;
-    }
-
-    // The interop blit reads the shared texture through a framebuffer, which
-    // both samples it in the correct channel order and flips it to bottom-up, so
-    // no swizzle / coord fix-up is needed here.
-    if (!mAccelInterop->blitTo(tex_name, media_tex->getWidth(), media_tex->getHeight()))
-    {
-        return false;
-    }
-#endif
 
     // Only switch the prim face onto the media texture once it actually holds a
     // blitted frame. The CPU path waits on textureValid() for the same reason;

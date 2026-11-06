@@ -494,11 +494,8 @@ private:
     bool mDaemonRecoveryPending = false;
     LLTimer mDaemonRecoveryTimer;
     // Zero-copy paint consumer (created lazily on the first accelerated frame);
-    // owns the D3D/GL interop that aliases the plugin's shared texture.
+    // owns the native IOSurface/Metal import and copy state.
     LLCEFAccelInterop* mAccelInterop = nullptr;
-    // The stable-texture handle currently bound into the interop; re-bind only
-    // when the plugin's persistent handle differs from this.
-    unsigned long long mAccelBoundHandle = 0;
     F32 mRequestedVolume;
     F32 mPreviousVolume;
     bool mIsMuted;

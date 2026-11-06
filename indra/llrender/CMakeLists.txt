@@ -12,7 +12,6 @@ set(
   alquerypool.cpp
   alrendercapabilities.cpp
   alsamplerstate.cpp
-  altextureblit.cpp
   altextureslot.cpp
   alfontcolrv1.cpp
   alfontface.cpp
@@ -55,7 +54,6 @@ set(
   alrendercapabilities.h
   alrendertargetdesc.h
   alsamplerstate.h
-  altextureblit.h
   altextureslot.h
   alfontcolrv1.h
   alfontface.h
@@ -234,8 +232,7 @@ if(AL_BUILD_TESTS)
   #   integer attachments cleared and drawn, targets kept, built again and
   #   re-pointed at a shared depth by their descriptions, and their labels;
   # - LLRender's cached clear colour, scissor box, viewport and raster state,
-  #   LLGLSScissor and ALGLStencil, and a copy from one texture into another
-  #   (ALTextureBlit);
+  #   LLGLSScissor and ALGLStencil;
   # - LLGLSLShader's cache key, its uniform value cache, the compute path
   #   (programs built through the shader manager, their images, storage
   #   blocks and dispatches), integer textures through reserved samplers,
@@ -276,7 +273,6 @@ if(AL_BUILD_TESTS)
       tests/alquerypool_gl_test.cpp
       tests/alrenderstate_gl_test.cpp
       tests/altessellation_gl_test.cpp
-      tests/altextureblit_gl_test.cpp
       tests/aluniformbuffer_gl_test.cpp
       tests/alwindowsdlheadless_test.cpp
       tests/llfontgl_test.cpp

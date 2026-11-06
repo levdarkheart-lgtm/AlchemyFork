@@ -39,9 +39,7 @@
 // media plugin(s) over a side channel separate from the (TCP) LLSD message pipe.
 // The rendezvous name is derived from this (viewer) process id, which the plugin
 // already learns from the "init" message's host_pid, so no extra handshake field
-// is needed. macOS uses a mach port carrying an IOSurface; Linux uses an AF_UNIX
-// datagram socket carrying the dma-buf fds as SCM_RIGHTS ancillary data (a TCP
-// socket cannot carry fds, and a dma-buf fd cannot be reopened via /proc).
+// is needed. The native macOS endpoint carries an IOSurface mach port.
 class LLCEFSurfaceReceiver
 {
 public:
@@ -50,7 +48,7 @@ public:
     // Register the receive endpoint if not already (idempotent). MUST be called
     // independently of frame delivery: the plugin only starts producing once the
     // endpoint exists, so waiting for the first frame to register would deadlock
-    // (no endpoint -> no frames -> never registered). No-op on non-mac/non-Linux.
+    // (no endpoint -> no frames -> never registered).
     void ensureStarted();
 
     // macOS: drain all pending surface messages (non-blocking), keep only the
@@ -58,29 +56,6 @@ public:
     // Returns a +1-retained IOSurfaceRef (opaque pointer; caller takes ownership
     // and must CFRelease / hand to code that does) or nullptr if no new frame.
     void* takeLatest(int accel_id);
-
-    // Linux: a dma-buf frame received via SCM_RIGHTS. The fds are open in THIS
-    // (viewer) process and owned by whoever takes the frame, which must close them
-    // (closeFds()) once imported. Pure data so it can cross to the interop without
-    // pulling unistd.h into this header.
-    struct DmabufFrame
-    {
-        int                plane_count = 0;
-        int                fd[4]       = { -1, -1, -1, -1 };
-        unsigned int       stride[4]   = { 0, 0, 0, 0 };
-        unsigned long long offset[4]   = { 0, 0, 0, 0 };
-        unsigned long long modifier    = 0;
-        int                width       = 0;
-        int                height      = 0;
-        int                format      = 0;
-        void closeFds();   // defined in the .cpp (Linux closes; elsewhere a no-op)
-    };
-
-    // Linux: drain pending dma-buf frames (non-blocking), keep only the newest per
-    // accel id, then hand off the newest for `accel_id`. Returns true and fills
-    // `out` (caller owns out.fd[] and must closeFds()), or false if no new frame.
-    // Always false on non-Linux.
-    bool takeLatestDmabuf(int accel_id, DmabufFrame& out);
 
 private:
     LLCEFSurfaceReceiver() = default;

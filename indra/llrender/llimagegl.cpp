@@ -34,7 +34,6 @@
 
 #include "llimagegl.h"
 
-#include "altextureblit.h"
 #include "llerror.h"
 #include "llimage.h"
 
@@ -5282,188 +5281,59 @@ bool LLImageGL::scaleDown(S32 desired_discard)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
     if (mTarget != GL_TEXTURE_2D
-        || mFormatInternal == -1 // not initialized
-        || isCompressed()        // neither path can attach block-compressed storage
-                                 // to a framebuffer
-        || isIntegerFormat(mFormatInternal) // nor on integers: the filtering path cannot
-                                            // filter them, and the exact-copy path has no
-                                            // mip level because GL never built one
-        )
+        || mFormatInternal == -1
+        || isCompressed()
+        || isIntegerFormat(mFormatInternal))
     {
         return false;
     }
 
-    // Not while the LLImageGL thread is building this image's next texture. It is writing
-    // the members this reads and replaces (the discard level, the storage state), and its
-    // syncTexName would then install its own texture under the discard level set here.
-    // Asked again next frame if it still applies.
+    // The image worker may be replacing the resource and discard metadata.
+    // Retry on a later frame instead of publishing over that transaction.
     if (mUploadInFlight)
     {
         return false;
     }
 
     desired_discard = llmin(desired_discard, mMaxDiscardLevel);
-
     if (desired_discard <= mCurrentDiscardLevel)
     {
         return false;
     }
 
-    S32 mip = desired_discard - mCurrentDiscardLevel;
-
-    S32 desired_width = getWidth(desired_discard);
-    S32 desired_height = getHeight(desired_discard);
-
-#if LL_DARWIN
-    // A native-authoritative image has deliberately retired its GL name. Keep
-    // that ownership boundary intact: scale the existing Metal resource
-    // directly instead of manufacturing a temporary GL texture merely to
-    // satisfy the legacy lifecycle. preserveMetalScaleDown() is transactional
-    // -- it publishes the destination only after allocation, encoding and
-    // command-buffer submission have all succeeded, so a failure leaves the
-    // current resource and discard metadata untouched.
-    if (mTexName == 0 && mMetalTexture)
-    {
-        if (!preserveMetalScaleDown(static_cast<U32>(mip),
-                                    static_cast<U32>(desired_width),
-                                    static_cast<U32>(desired_height)))
-        {
-            return false;
-        }
-
-        mPendingMetalTexture.reset();
-        mCurrentDiscardLevel = desired_discard;
-        mMipLevels = static_cast<S32>(
-            mMetalTexture->descriptor().mipmap_level_count);
-        mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
-        updateMetalTextureAccounting();
-        mLastBindTime = sLastFrameTime;
-        llassert(!getHasGLTexture());
-        return true;
-    }
-#endif
-
-    // A deprecated source format is held under a swizzle, and the filtering path cannot carry
-    // one: it samples the old texture THROUGH the swizzle and copies the result back by
-    // position, so luminance-alpha's alpha comes back as luminance and alpha-only loses
-    // its alpha entirely. The exact framebuffer blit copies the stored channels as they are.
-    //
-    // The FBO path also draws into the target the caller bound -- the texture list's
-    // 1024x1024 scratch -- and copies back out of it, so a result larger than that target
-    // copies undefined pixels from outside the framebuffer. Such a texture takes the exact
-    // blit path, which copies a level of the texture's own mip chain; without one there is
-    // nothing it can copy, however it came to that path, so the downscale is refused.
-    const bool fits_target = desired_width <= (S32)LLRenderTarget::sCurResX
-                          && desired_height <= (S32)LLRenderTarget::sCurResY;
-    const bool use_fbo = gGLManager.mDownScaleMethod == 0 && mDeprecatedSourceFormat == 0 && fits_target;
-    if (!use_fbo && !mHasMipMaps)
+#if !LL_DARWIN
+    return false;
+#else
+    // This fork has no GL texture-copy fallback. A scale-down is valid only
+    // for the authoritative native texture and is published transactionally
+    // after the Metal copy/resample command has committed.
+    if (!mMetalTexture || mTexName != 0)
     {
         return false;
     }
 
-    // Downscale into a NEW texture object rather than reallocating this one in place.
-    // glTexImage2D on the live name is illegal once the texture has immutable storage
-    // (GL_INVALID_OPERATION, silently leaving it at the old size), and it has no D3D11
-    // equivalent either -- there a resource's dimensions are fixed at creation. Both
-    // paths below therefore build the smaller texture separately and swap it in.
-    const LLGLuint old_texname = mTexName;
-    LLGLuint new_texname = 0;
-    generateTextures(1, &new_texname);
-    if (new_texname == 0)
-    {
-        LL_WARNS_ONCE("LLImageGL") << "Failed to allocate a texture name for downscaling." << LL_ENDL;
-        return false;
-    }
-
-    if (use_fbo)
-    { // use an FBO to downscale the texture
-        gGL.setViewport(0, 0, desired_width, desired_height);
-
-        // draw a full screen triangle, sampling the old (larger) texture
-        if (gGL.getTextureSlot(0)->bind(this, true, true))
-        {
-            // bind() leaves the slot's sampler alone, so the downscale draw would sample
-            // through whatever the last draw bound. That used to only wobble the filter;
-            // with sRGB storage a stray decode sampler would render LINEAR values into the
-            // copy, which then reads back as sRGB. Pin it: trilinear to pull from the
-            // source's own mip chain, clamp, and no decode.
-            gGL.getTextureSlot(0)->bindSampler(gGL.getSampler(ALSamplers::TrilinearClamp));
-            glDrawArrays(GL_TRIANGLES, 0, 3);
-
-            // Bind the new name and give it storage, then copy the rendered result out
-            // of the framebuffer into it. glCopyTexSubImage2D is a sub-image write, so
-            // it is legal on immutable storage. Sampler 0, NOT mHasMipMaps -- the third
-            // parameter selects a sampler object now, and glGenerateMipmap below must run
-            // under the texture's own SKIP_DECODE state, not a leftover sampler's.
-            gGL.getTextureSlot(0)->bindManual(mBindTarget, new_texname);
-            allocateTextureStorage(desired_width, desired_height, mHasMipMaps);
-            glCopyTexSubImage2D(mTarget, 0, 0, 0, 0, 0, desired_width, desired_height);
-
-            if (mHasMipMaps)
-            { // generate mipmaps if needed
-                LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("scaleDown - glGenerateMipmap");
-                generateMipmaps(mTarget);
-            }
-
-            gGL.getTextureSlot(0)->unbind();
-        }
-        else
-        {
-            LL_WARNS_ONCE("LLImageGL") << "Failed to bind texture for downscaling." << LL_ENDL;
-            deleteTextures(1, &new_texname);
-            return false;
-        }
-    }
-    else
-    { // copy an existing source mip into the smaller texture entirely on the GPU
-        // Sampler 0, NOT mHasMipMaps -- the third parameter selects a sampler object now,
-        // and glGenerateMipmap below must run under the texture's own SKIP_DECODE state,
-        // not a leftover sampler's.
-        gGL.getTextureSlot(0)->bindManual(mBindTarget, new_texname);
-        allocateTextureStorage(desired_width, desired_height, mHasMipMaps);
-        // Texture-object state, so the new name starts without it.
-        applySwizzleForDeprecatedFormat(mBindTarget, mDeprecatedSourceFormat);
-        gGL.getTextureSlot(0)->unbind();
-
-        ALTextureBlit blit;
-        blit.blit(mTarget, old_texname, new_texname, desired_width,
-                  desired_height, false, mip);
-
-        if (mHasMipMaps)
-        {
-            gGL.getTextureSlot(0)->bindManual(mBindTarget, new_texname);
-            LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("scaleDown - glGenerateMipmap");
-            generateMipmaps(mTarget);
-            gGL.getTextureSlot(0)->unbind();
-        }
-    }
-
-    // Retire the old texture and publish the new one. Accounting for the new allocation
-    // is done by allocateTextureStorage.
-    free_tex_image(old_texname);
-    deleteTextures(1, &old_texname);
-    mTexName = new_texname;
-
-#if LL_DARWIN
-    // A mip-backed image copies the selected native level and regenerates its
-    // tail. A no-mip image uses the cached native bilinear pass in parallel
-    // with the temporary GL FBO path above. Neither requires a CPU round-trip.
-    if (!preserveMetalScaleDown(static_cast<U32>(mip),
+    const S32 source_mip = desired_discard - mCurrentDiscardLevel;
+    const S32 desired_width = getWidth(desired_discard);
+    const S32 desired_height = getHeight(desired_discard);
+    if (!preserveMetalScaleDown(static_cast<U32>(source_mip),
                                 static_cast<U32>(desired_width),
                                 static_cast<U32>(desired_height)))
     {
-        mMetalTexture.reset();
+        return false;
     }
+
     mPendingMetalTexture.reset();
-#endif
-
     mCurrentDiscardLevel = desired_discard;
-
+    mMipLevels = static_cast<S32>(
+        mMetalTexture->descriptor().mipmap_level_count);
+    mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
+    updateMetalTextureAccounting();
+    mLastBindTime = sLastFrameTime;
+    llassert(!getHasGLTexture());
     return true;
+#endif
 }
 
-
-//----------------------------------------------------------------------------
 #if LL_IMAGEGL_THREAD_CHECK
 void LLImageGL::checkActiveThread()
 {
