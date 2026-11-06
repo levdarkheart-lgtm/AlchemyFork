@@ -267,9 +267,7 @@ public:
     bool init(bool needs_vertex_buffer);
 #if LL_DARWIN
     // Initialize the native renderer's logical state and immediate buffer
-    // without issuing an OpenGL call. During migration init(false) may still
-    // prepare the temporary GL context first; the no-context cut deletes that
-    // separate call without changing Metal resource initialization.
+    // without issuing an OpenGL call or preparing a fallback context.
     bool initMetal(bool needs_vertex_buffer);
 #endif
     void initVertexBuffer();
@@ -586,38 +584,36 @@ public:
     void setAmbientLightColor(const LLColor4& color);
 
     void setLineWidth(F32 width);
-    // The width setLineWidth() left GL with, which only it sets.
+    // The semantic width consumed by native pipeline descriptions.
     F32  getLineWidth() const { return mLineWidth; }
 
-    // Depth offset applied to polygons while GL_POLYGON_OFFSET_FILL/LINE is enabled.
-    // Stated in the forward/semantic convention: a negative factor/units pulls a fragment
-    // toward the viewer. Under reverse-Z both terms are negated on the way to GL so that
-    // intent survives the flipped depth mapping -- the cache holds what the caller asked
-    // for, not what was issued. Redundant sets are dropped without a flush.
+    // Depth offset in the forward/semantic convention: a negative factor or
+    // unit pulls a fragment toward the viewer. Native pipeline construction
+    // translates it for the active depth convention. Redundant sets are
+    // dropped without a flush.
     void setPolygonOffset(F32 factor, F32 units);
     F32 getPolygonOffsetFactor() const { return mPolygonOffsetFactor; }
     F32 getPolygonOffsetUnits() const { return mPolygonOffsetUnits; }
-    // Re-issue the physical offset for the current convention. Call after LLRender::sReverseZ
-    // changes: the cached semantic values are unchanged, but the translation they were issued
-    // under is not. Mirrors LLGLDepthTest::rebase().
+    // End work encoded under the previous depth convention after sReverseZ
+    // changes. The cached semantic values remain unchanged.
     void rebasePolygonOffset();
 
     // Control points per PATCHES primitive, read by the tessellation control stage.
     // Redundant sets are dropped without a flush.
     void setPatchVertices(U32 count);
 
-    // How polygons rasterize, front and back alike, the only face a core context takes: GL_FILL, GL_LINE or
-    // GL_POINT. A change flushes what is batched under the old mode; redundant sets are dropped without one.
+    // How polygons rasterize, using the retained GL_FILL/GL_LINE/GL_POINT
+    // numeric vocabulary. Native pipeline creation maps the value.
     void setPolygonMode(U32 mode);
     U32  getPolygonMode() const { return mPolygonMode; }
 
-    // The faces GL_CULL_FACE (an LLGLState) culls: GL_BACK, GL_FRONT or GL_FRONT_AND_BACK. A change flushes what is
-    // batched; redundant sets are dropped without one.
+    // Faces culled, using the retained GL_BACK/GL_FRONT/GL_FRONT_AND_BACK
+    // numeric vocabulary. A change flushes queued geometry.
     void setCullFace(U32 face);
     U32  getCullFace() const { return mCullFace; }
 
-    // The diameter in pixels points rasterize at while the program writes no gl_PointSize. A change flushes what is
-    // batched; redundant sets are dropped without one.
+    // Point diameter in pixels. A change flushes queued geometry; redundant
+    // sets are dropped without one.
     void setPointSize(F32 size);
     F32  getPointSize() const { return mPointSize; }
 
@@ -653,8 +649,8 @@ public:
     // The viewport, in pixels of the bound framebuffer. Every writer goes through here, LLRenderTarget's binds
     // included; a change flushes what is batched under the old viewport, and redundant sets are dropped without one.
     void setViewport(S32 x, S32 y, S32 width, S32 height);
-    // The viewport in force: x, y, width, height. Width is negative until one is set in this context, which GL starts
-    // at the size of the window it was made for.
+    // The viewport in force: x, y, width, height. Width is negative until a
+    // native pass owner sets it.
     void getViewport(S32 (&box)[4]) const
     {
         box[0] = mViewport[0];
@@ -663,9 +659,8 @@ public:
         box[3] = mViewport[3];
     }
 
-    // Issue the clip control and the depth clear value sReverseZ calls for: zero-to-one clip depth cleared to 0
-    // under reverse-Z, minus-one-to-one cleared to 1 otherwise, clip control only where the context has it
-    // (gGLManager.mHasClipControl). Both are issued whether or not they changed.
+    // Compatibility boundary after sReverseZ changes. Native render-pass
+    // descriptors and projection helpers consume sReverseZ directly.
     static void applyDepthConvention();
 
     // The colour glClear fills colour buffers with. Every writer in the tree goes through
@@ -674,26 +669,20 @@ public:
     void setClearColor(const LLColor4& color);
     const LLColor4& getClearColor() const { return mClearColor; }
 
-    // Clears the bound framebuffer's buffers named in mask (GL_COLOR_BUFFER_BIT and the rest)
-    // through the write masks, scissor box and clear values in force, after what is batched
-    // has been drawn.
+    // Compatibility boundary for retained call sites. It drains queued work;
+    // native target owners encode attachment clears in their pass descriptors.
     void clear(U32 mask);
 
-    // Draws `instances` copies of `count` vertices from `first` with no vertex arrays: the bound program builds every
-    // position from gl_VertexID and gl_InstanceID and declares no inputs, so binding it enabled none. What is batched
-    // is drawn first, and the matrices are synced as LLVertexBuffer's draws sync them.
+    // Retained instanced-draw entry point. Until its native encoder owner is
+    // supplied, it drains queued work and fails closed with a diagnostic.
     void drawArraysInstanced(eGeomModes mode, U32 first, U32 count, U32 instances);
 
-    // Draws from the ALDrawArraysIndirectCommand at `offset` in `buffer` (a multiple of 4), with no vertex arrays, as
-    // drawArraysInstanced does: the command's count and instances are whatever wrote them, the GPU's own compaction
-    // most often. GL 4.0, so it needs no compute -- but a command a shader wrote is read only past BARRIER_COMMAND.
+    // Retained indirect-draw entry point. The command is validated, then the
+    // operation fails closed until a native encoder owner is supplied.
     void drawArraysIndirect(eGeomModes mode, const ALGPUBuffer& buffer, size_t offset);
 
-    // Makes the draws after it read what the draws before it wrote into a texture the bound framebuffer has attached,
-    // as binding another framebuffer would: a pass that samples an attachment its target's earlier draws wrote reads it
-    // only past one. Without it a driver may answer from caches the writes have not reached, as radeonsi answers a
-    // depth from the tile metadata it held before them. Needs gGLManager.mHasTextureBarrier (glTextureBarrier). What is
-    // batched is drawn first.
+    // End queued work at a texture dependency boundary. Native encoder/pass
+    // ownership expresses the resource dependency itself.
     void textureBarrier();
 
     // ---- Compute ---------------------------------------------------------------------------------------------------
@@ -703,21 +692,17 @@ public:
     // buffers, images and atomics are not ordered against anything else. What is batched is drawn first.
     void memoryBarrier(U32 barriers);
 
-    // Runs the bound compute program over groups_x * groups_y * groups_z work groups. What is batched is drawn first
-    // and the matrices are synced, as for a draw. Zero groups dispatch nothing, and a count past the context's limit
-    // warns once and dispatches nothing. LLGLSLShader::dispatch and dispatchThreads are the usual way here.
+    // Retained compute entry point. Zero groups do nothing; non-zero work
+    // fails closed until a native compute encoder owner is supplied.
     void dispatchCompute(U32 groups_x, U32 groups_y, U32 groups_z);
 
-    // As dispatchCompute, the group counts read from the ALDispatchIndirectCommand at `offset` in `buffer` (a multiple
-    // of 4) -- written on the GPU, so a pass sizes the next without a read back. A command a shader wrote is read only
-    // past BARRIER_COMMAND.
+    // Retained indirect-compute entry point. The command is validated, then
+    // the operation fails closed until a native compute owner is supplied.
     void dispatchComputeIndirect(const ALGPUBuffer& buffer, size_t offset);
 
-    // Attach `buffer`, whole or [offset, offset + bytes), to shader storage binding point `binding`, below
-    // AL_NUM_STORAGE_BINDINGS. The points are kept as the texture and image units are: a bind of what a point holds
-    // issues nothing, refreshState re-issues them, and deleting a buffer forgets it. A reserved block's point is the
-    // same in every program (LLShaderMgr::getStorageBlockBinding), so a buffer bound there serves each in turn.
-    // `offset` is a multiple of gGLManager.mShaderStorageBufferOffsetAlignment (asserted).
+    // Cache `buffer`, whole or [offset, offset + bytes), at semantic shader
+    // storage binding point `binding`. Native compute encoders consume this
+    // description; deleting a buffer forgets it.
     void bindStorageBuffer(U32 binding, const ALGPUBuffer& buffer);
     void bindStorageBuffer(U32 binding, const ALGPUBuffer& buffer, size_t offset, size_t bytes);
     // Leave nothing at `binding`.
@@ -741,12 +726,10 @@ public:
     // scheduler timeline.
     void endFrame(U32 frames_ahead = 0);
 
-    // The scissor box, in pixels of the bound framebuffer, that GL_SCISSOR_TEST (an
-    // LLGLState) cuts to. Every writer goes through here; a change flushes what is batched
-    // under the old box, and redundant sets are dropped without one. See LLGLSScissor.
+    // Native scissor box in target pixels. Every writer goes through here; a
+    // change flushes work queued under the old box.
     void setScissor(S32 x, S32 y, S32 width, S32 height);
-    // The box in force: x, y, width, height. Width is negative until a box is set in this
-    // context, which GL starts at the size of the window it was made for.
+    // The box in force: x, y, width, height. Width is negative until set.
     void getScissor(S32 (&box)[4]) const
     {
         box[0] = mScissor[0];
@@ -766,8 +749,8 @@ public:
     // and skip the bind.
     void forgetTextures(S32 count, const U32* names);
 
-    // The same for a buffer name about to be deleted, which the indirect draw and dispatch bindings and the storage
-    // binding points cache. ALGPUBuffer::release calls it.
+    // Forget a buffer identity cached at a semantic storage binding point.
+    // ALGPUBuffer::release calls it.
     void forgetBuffer(U32 name);
 
     U32 getCurrentTexUnitIndex(void) const { return mCurrTextureUnitIndex; }
@@ -912,14 +895,14 @@ private:
     U32             mCurrTextureUnitIndex;
     bool            mCurrColorMask[4];
     F32             mLineWidth = 1.f;
-    // Semantic (forward-convention) polygon offset; GL's own defaults are 0, 0.
+    // Semantic (forward-convention) polygon offset.
     F32             mPolygonOffsetFactor = 0.f;
     F32             mPolygonOffsetUnits = 0.f;
-    U32             mPatchVertices = 3; // GL's initial GL_PATCH_VERTICES
-    LLColor4        mClearColor = LLColor4(0.f, 0.f, 0.f, 0.f); // GL's initial GL_COLOR_CLEAR_VALUE
+    U32             mPatchVertices = 3;
+    LLColor4        mClearColor = LLColor4(0.f, 0.f, 0.f, 0.f);
     S32             mScissor[4] = { 0, 0, -1, -1 };              // unknown until set (see getScissor)
     S32             mViewport[4] = { 0, 0, -1, -1 };             // unknown until set (see getViewport)
-    // The rest at GL's initial values, which init() issues.
+    // Established semantic defaults consumed by native pipeline descriptions.
     U32             mPolygonMode = GL_FILL;
     U32             mCullFace = GL_BACK;
     F32             mPointSize = 1.f;
@@ -933,15 +916,10 @@ private:
     U32             mBlendEquationRGB = GL_FUNC_ADD;
     U32             mBlendEquationAlpha = GL_FUNC_ADD;
 
-    // Issue the polygon mode, cull face, point size, stencil state and blend equation this holds, as init() and
-    // refreshState() do.
-    void issueRasterState() const;
-
     LLPointer<LLVertexBuffer>   mBuffer;
     LLStrider<LLVector4a>       mVerticesp;
     LLStrider<LLVector2>        mTexcoordsp;
     LLStrider<LLColor4U>        mColorsp;
-    U32                         mDummyVAO = 0;
     std::array<ALTextureSlot, AL_NUM_TEXTURE_SLOTS> mTextureSlots;
     // This context's sampler objects. Sits beside mTextureSlots deliberately: the units hold
     // the bindings, this holds the objects those bindings name, and the two have to be
@@ -952,15 +930,8 @@ private:
     ALImageSlot             mDummyImageSlot;
     std::array<LLLightState, LL_NUM_LIGHT_UNITS> mLightState;
 
-    // The buffers bound at GL_DRAW_INDIRECT_BUFFER and GL_DISPATCH_INDIRECT_BUFFER, so a run of draws or dispatches
-    // from one buffer binds it once. UNKNOWN_BUFFER after refreshState: the next use binds whatever it wants.
-    static constexpr U32 UNKNOWN_BUFFER = 0xFFFFFFFFu;
-    U32 mDrawIndirectBuffer     = 0;
-    U32 mDispatchIndirectBuffer = 0;
-    // Bind `name` at `target`, which `bound` caches, unless it is there already.
-    static void bindIndirectBuffer(U32 target, U32& bound, U32 name);
-
-    // What each shader storage binding point holds: a buffer, and the range of it bound, mBytes 0 for the whole.
+    // What each native shader storage binding point holds: a buffer, and the
+    // range of it bound, mBytes 0 for the whole.
     struct StorageBinding
     {
         U32    mName   = 0;
@@ -969,8 +940,6 @@ private:
     };
     std::array<StorageBinding, AL_NUM_STORAGE_BINDINGS> mStorageBindings;
     void setStorageBinding(U32 binding, const StorageBinding& wanted);
-    // Issue what `binding` holds to GL.
-    void issueStorageBinding(U32 binding) const;
 
     eBlendFactor mCurrBlendColorSFactor;
     eBlendFactor mCurrBlendColorDFactor;

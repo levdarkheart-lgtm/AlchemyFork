@@ -52,44 +52,7 @@
 #include <algorithm>
 #include <cstdint>
 
-#if GL_ARB_debug_output
-#ifndef APIENTRY
-#define APIENTRY
-#endif
-
-extern void APIENTRY gl_debug_callback(GLenum source,
-                                GLenum type,
-                                GLuint id,
-                                GLenum severity,
-                                GLsizei length,
-                                const GLchar* message,
-                                GLvoid* userParam)
-;
-#endif
-
 thread_local LLRender gGL;
-
-namespace
-{
-    // GL state remains a useful semantic vocabulary while the renderer is
-    // being cut over: native encoders snapshot the cached values below. Only
-    // issue those values to GL when this thread really owns a live context.
-    // An authoritative Metal capture is also deliberately isolated from the
-    // retained context even while that migration context still exists.
-    bool issue_opengl(const LLRender& render) noexcept
-    {
-        if (!gGLManager.mInited)
-        {
-            return false;
-        }
-#if LL_DARWIN
-        return !render.isMetalUITextureCaptureAuthoritative();
-#else
-        (void)render;
-        return true;
-#endif
-    }
-}
 
 #if LL_DARWIN
 U64 LLRender::metalCommandBuffersCommitted()
@@ -382,23 +345,6 @@ namespace
 }
 #endif
 
-static const GLenum sGLBlendFactor[] =
-{
-    GL_ONE,
-    GL_ZERO,
-    GL_DST_COLOR,
-    GL_SRC_COLOR,
-    GL_ONE_MINUS_DST_COLOR,
-    GL_ONE_MINUS_SRC_COLOR,
-    GL_DST_ALPHA,
-    GL_SRC_ALPHA,
-    GL_ONE_MINUS_DST_ALPHA,
-    GL_ONE_MINUS_SRC_ALPHA,
-
-    GL_ZERO // 'BF_UNDEF'
-};
-
-
 LLLightState::LLLightState(S32 index)
 : mIndex(index),
   mEnabled(false),
@@ -624,55 +570,17 @@ LLRender::~LLRender()
 
 bool LLRender::init(bool needs_vertex_buffer)
 {
-    // LLGLState's map describes the main context. A worker thread's shared context keeps its
-    // own caps, and the map is not the worker's to write.
-    const bool main_context = on_main_thread();
-
-#if GL_ARB_debug_output && !LL_DARWIN
-    if (gGLManager.mHasDebugOutput && gDebugGL)
-    { //setup debug output callback
-        //glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_LOW_ARB, 0, NULL, GL_TRUE);
-        glDebugMessageCallback((GLDEBUGPROC) gl_debug_callback, NULL);
-        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-    }
-    if (main_context && gGLManager.mHasDebugOutput)
-    {
-        // Both caps are set raw: above, by a debug context's default, or by whoever made the
-        // context before this ran. They are read back rather than assumed.
-        LLGLState::seedState(GL_DEBUG_OUTPUT, glIsEnabled(GL_DEBUG_OUTPUT));
-        LLGLState::seedState(GL_DEBUG_OUTPUT_SYNCHRONOUS, glIsEnabled(GL_DEBUG_OUTPUT_SYNCHRONOUS));
-    }
-#endif
-
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
+    // Compatibility entry point for renderer-unit fixtures. The product calls
+    // initMetal(), but both paths now establish only backend-neutral semantic
+    // state; there is no hidden driver initialization or fallback context.
     resetCachedState();
-
-    // A window may have cleared to a colour of its own before this ran, so
-    // issue the cached default rather than assuming it.
-    glClearColor(0.f, 0.f, 0.f, 0.f);
-
-    // Issue the remaining GL defaults described by resetCachedState().
-    issueRasterState();
-
-    // Build this context's sampler objects before anything can ask for one.
+    LLGLState::initClass();
     mSamplerCache.warmup();
-
-    gGL.setSceneBlendType(LLRender::BT_ALPHA);
-    gGL.setAmbientLightColor(LLColor4::black);
-
-    // necessary for reflection maps
-    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-    if (main_context)
-    {
-        LLGLState::seedState(GL_TEXTURE_CUBE_MAP_SEAMLESS, GL_TRUE);
-    }
-
-    { //bind a dummy vertex array object so we're core profile compliant
-        glGenVertexArrays(1, &mDummyVAO);
-        glBindVertexArray(mDummyVAO);
-    }
+    mCurrBlendColorSFactor = BF_SOURCE_ALPHA;
+    mCurrBlendAlphaSFactor = BF_SOURCE_ALPHA;
+    mCurrBlendColorDFactor = BF_ONE_MINUS_SOURCE_ALPHA;
+    mCurrBlendAlphaDFactor = BF_ONE_MINUS_SOURCE_ALPHA;
+    setAmbientLightColor(LLColor4::black);
 
     if (needs_vertex_buffer)
     {
@@ -683,15 +591,12 @@ bool LLRender::init(bool needs_vertex_buffer)
 
 void LLRender::resetCachedState()
 {
-    // Fresh context: nothing is bound at UB_LIGHTS/UB_MATRICES yet, whatever a previous one had.
+    // A fresh native renderer owns no live light or matrix binding.
     mLightsUBOBound   = false;
     mMatricesUBOBound = false;
 
-    // Nor on any texture unit, and unit 0 is the active one. gGL is thread_local and outlives
-    // a context -- the GL tests make one per test -- and a fresh context hands out the same
-    // first texture names as the last one did, so a slot still caching its namesake would
-    // take the new texture for bound already and skip the bind; an active-unit index left at
-    // 3 would skip the glActiveTexture a slot-3 bind needs, and bind on unit 0 instead.
+    // Logical slot identities are renderer-local and must not survive a
+    // backend restart. Unit zero remains the default semantic active slot.
     for (ALTextureSlot& slot : mTextureSlots)
     {
         slot.mCurrTexture = 0;
@@ -702,19 +607,15 @@ void LLRender::resetCachedState()
     }
     mCurrTextureUnitIndex = 0;
 
-    // The same for the image units and the indirect and storage buffer bindings, which a fresh context holds at 0.
+    // The same for image units and semantic storage-buffer bindings.
     for (ALImageSlot& slot : mImageSlots)
     {
         slot.reset();
     }
-    mDrawIndirectBuffer     = 0;
-    mDispatchIndirectBuffer = 0;
     mStorageBindings.fill(StorageBinding());
 
-    // Nor is the last context's blending or colour mask: GL starts every context writing all
-    // four channels and blending ONE, ZERO. The mask cache takes that default. The blend
-    // factors go to unknown, so the BT_ALPHA below is issued rather than skipped for
-    // matching what the previous context was left with.
+    // Start with all channels writable. Blend factors are marked unknown so
+    // initialization establishes the requested alpha contract explicitly.
     for (bool& write : mCurrColorMask)
     {
         write = true;
@@ -724,16 +625,15 @@ void LLRender::resetCachedState()
     mCurrBlendColorDFactor = BF_UNDEF;
     mCurrBlendAlphaDFactor = BF_UNDEF;
 
-    // The same for the rest of what the setters cache, at GL's initial values: a line
-    // width of 1, no polygon offset, three vertices a patch.
+    // Established renderer defaults: unit line width, no polygon offset and
+    // three control points per patch.
     mLineWidth           = 1.f;
     mPolygonOffsetFactor = 0.f;
     mPolygonOffsetUnits  = 0.f;
     mPatchVertices       = 3;
 
-    // The scissor box GL starts at is the size of the window the context was
-    // made for, which nothing here knows, so it stays unknown until set. The
-    // same unknown values are correct before the first native frame.
+    // Target dimensions are unknown until the first native pass establishes
+    // its viewport and scissor.
     mClearColor = LLColor4(0.f, 0.f, 0.f, 0.f);
     mScissor[0] = 0;
     mScissor[1] = 0;
@@ -744,9 +644,8 @@ void LLRender::resetCachedState()
     mViewport[2] = -1;
     mViewport[3] = -1;
 
-    // The rest uses GL's initial numeric values as the backend-neutral
-    // logical defaults. init() issues them to GL; initMetal() consumes them
-    // without touching GL.
+    // Retain the established numeric vocabulary while native encoders consume
+    // these values as explicit pipeline descriptions.
     mPolygonMode        = GL_FILL;
     mCullFace           = GL_BACK;
     mPointSize          = 1.f;
@@ -777,16 +676,9 @@ bool LLRender::initMetal(bool needs_vertex_buffer)
         return false;
     }
 
-    // Once the temporary GL init call is removed this owns the complete
-    // logical-state reset. During migration the just-initialized GL context
-    // already established the same cache values, so do not desynchronize its
-    // physical state by resetting them a second time.
-    if (!gGLManager.mInited)
-    {
-        resetCachedState();
-        LLGLState::initClass();
-        mSamplerCache.warmup();
-    }
+    resetCachedState();
+    LLGLState::initClass();
+    mSamplerCache.warmup();
 
     mCurrBlendColorSFactor = BF_SOURCE_ALPHA;
     mCurrBlendAlphaSFactor = BF_SOURCE_ALPHA;
@@ -808,13 +700,11 @@ bool LLRender::initMetal(bool needs_vertex_buffer)
 void LLRender::initVertexBuffer()
 {
     llassert_always(mBuffer.isNull());
-    stop_glerror();
     mBuffer = new LLVertexBuffer(immediate_mask);
     mBuffer->allocateBuffer(4096, 0);
     mBuffer->getVertexStrider(mVerticesp);
     mBuffer->getTexCoord0Strider(mTexcoordsp);
     mBuffer->getColorStrider(mColorsp);
-    stop_glerror();
 }
 
 void LLRender::resetVertexBuffer()
@@ -826,11 +716,8 @@ void LLRender::resetVertexBuffer()
 
 void LLRender::shutdown()
 {
-    // NOTE: gGL is thread_local, so this runs once per thread that ever touched it --
-    // including the texture upload thread, which owns a second shared context. Everything
-    // released here must therefore belong to THIS thread's context and no other. That is
-    // why mSamplerCache is a member: a static one would have the upload thread deleting
-    // the render thread's samplers. mDummyVAO and mLightsUBO stay zero on worker threads.
+    // gGL is thread_local, so this runs once per thread that touched it. Native
+    // caches and buffers are therefore members rather than process statics.
 #if LL_DARWIN
     if (mMetalUICaptureRenderer)
     {
@@ -911,22 +798,6 @@ void LLRender::shutdown()
     clearSamplers();
 
     resetVertexBuffer();
-    if (mDummyVAO)
-    {
-        // ~LLRender calls shutdown() again during thread_local destruction, after the
-        // context is gone. Normally the explicit gGL.shutdown() during teardown got here
-        // first and zeroed this, but an abnormal exit skips it and leaves a live handle
-        // with a dead context -- deleting the VAO then faults inside the driver. The name
-        // dies with the context regardless, so skipping the delete costs nothing.
-        //
-        // Same gate LLUniformBuffer::release() and LLVertexBuffer already use.
-        if (gGLManager.mInited)
-        {
-            glBindVertexArray(0);
-            glDeleteVertexArrays(1, &mDummyVAO);
-        }
-        mDummyVAO = 0;
-    }
 
     // Drop the shared light block with the context that owns it. Forcing a re-pack (rather
     // than just clearing mLightsUBOBound) means a restarted context can never rebind a
@@ -1978,74 +1849,11 @@ void LLRender::warmupSamplers()
 
 void LLRender::refreshState(void)
 {
+    // Native render passes snapshot complete explicit state at their encoding
+    // boundary. There is no ambient driver state to rediscover or reissue;
+    // only drain geometry queued under the prior semantic snapshot.
     mDirty = true;
-
-    // Metal render passes materialize their complete state explicitly. With
-    // no GL context there is no hidden driver state to refresh, and every
-    // cached value below must remain available to the native encoders.
-    if (!issue_opengl(*this))
-    {
-        mDirty = false;
-        return;
-    }
-
-    // Called when legacy state may have been changed behind our back, so re-assert the shared
-    // blocks' bindings along with the state the setters cache. Texture slots are logical
-    // native identities and have no ambient driver state to restore.
-    mLightsUBOBound   = false;
-    mMatricesUBOBound = false;
-
-    for (ALImageSlot& slot : mImageSlots)
-    {
-        slot.refreshState();
-    }
-
-    // Whatever is bound there now is not known; the next indirect draw or dispatch binds its own buffer.
-    mDrawIndirectBuffer     = UNKNOWN_BUFFER;
-    mDispatchIndirectBuffer = UNKNOWN_BUFFER;
-
-    // A storage point is bound once for the programs after it, so what each held goes back.
-    for (U32 binding = 0; binding < AL_NUM_STORAGE_BINDINGS; ++binding)
-    {
-        issueStorageBinding(binding);
-    }
-
-    // The cached state below is issued straight to GL: each setter would see its cache
-    // agreeing with the value asked for and skip the call.
-    glColorMask(mCurrColorMask[0] ? GL_TRUE : GL_FALSE,
-                mCurrColorMask[1] ? GL_TRUE : GL_FALSE,
-                mCurrColorMask[2] ? GL_TRUE : GL_FALSE,
-                mCurrColorMask[3] ? GL_TRUE : GL_FALSE);
-
-    // Blend factors still unknown since init have nothing to put back.
-    if (mCurrBlendColorSFactor != BF_UNDEF && mCurrBlendColorDFactor != BF_UNDEF &&
-        mCurrBlendAlphaSFactor != BF_UNDEF && mCurrBlendAlphaDFactor != BF_UNDEF)
-    {
-        glBlendFuncSeparate(sGLBlendFactor[mCurrBlendColorSFactor], sGLBlendFactor[mCurrBlendColorDFactor],
-                            sGLBlendFactor[mCurrBlendAlphaSFactor], sGLBlendFactor[mCurrBlendAlphaDFactor]);
-    }
-
-    glLineWidth(mLineWidth);
-
-    glPatchParameteri(GL_PATCH_VERTICES, mPatchVertices);
-
-    rebasePolygonOffset();
-
-    // The same for the clear colour and a scissor box and viewport that were ever set.
-    glClearColor(mClearColor.mV[VRED], mClearColor.mV[VGREEN], mClearColor.mV[VBLUE], mClearColor.mV[VALPHA]);
-    if (mScissor[2] >= 0)
-    {
-        glScissor(mScissor[0], mScissor[1], mScissor[2], mScissor[3]);
-    }
-    if (mViewport[2] >= 0)
-    {
-        glViewport(mViewport[0], mViewport[1], mViewport[2], mViewport[3]);
-    }
-
-    issueRasterState();
-
     flush();
-
     mDirty = false;
 }
 
@@ -2503,13 +2311,6 @@ void LLRender::setColorMask(bool writeColorR, bool writeColorG, bool writeColorB
         mCurrColorMask[2] = writeColorB;
         mCurrColorMask[3] = writeAlpha;
 
-        if (issue_opengl(*this))
-        {
-            glColorMask(writeColorR ? GL_TRUE : GL_FALSE,
-                        writeColorG ? GL_TRUE : GL_FALSE,
-                        writeColorB ? GL_TRUE : GL_FALSE,
-                        writeAlpha ? GL_TRUE : GL_FALSE);
-        }
     }
 }
 
@@ -2556,10 +2357,6 @@ void LLRender::blendFunc(eBlendFactor sfactor, eBlendFactor dfactor)
         mCurrBlendColorDFactor = dfactor;
         mCurrBlendAlphaDFactor = dfactor;
         flush();
-        if (issue_opengl(*this))
-        {
-            glBlendFunc(sGLBlendFactor[sfactor], sGLBlendFactor[dfactor]);
-        }
     }
 }
 
@@ -2580,11 +2377,6 @@ void LLRender::blendFunc(eBlendFactor color_sfactor, eBlendFactor color_dfactor,
         mCurrBlendAlphaDFactor = alpha_dfactor;
         flush();
 
-        if (issue_opengl(*this))
-        {
-            glBlendFuncSeparate(sGLBlendFactor[color_sfactor], sGLBlendFactor[color_dfactor],
-                               sGLBlendFactor[alpha_sfactor], sGLBlendFactor[alpha_dfactor]);
-        }
     }
 }
 
@@ -2633,15 +2425,6 @@ void LLRender::forgetBuffer(U32 name)
     {
         return;
     }
-    // Deleting a bound buffer returns the binding to 0.
-    if (mDrawIndirectBuffer == name)
-    {
-        mDrawIndirectBuffer = 0;
-    }
-    if (mDispatchIndirectBuffer == name)
-    {
-        mDispatchIndirectBuffer = 0;
-    }
     for (StorageBinding& binding : mStorageBindings)
     {
         if (binding.mName == name)
@@ -2683,7 +2466,7 @@ void LLRender::setStorageBinding(U32 binding, const StorageBinding& wanted)
 {
     llassert(sCompute);
     llassert(binding < AL_NUM_STORAGE_BINDINGS);
-    if (binding >= AL_NUM_STORAGE_BINDINGS || !gGLManager.mHasCompute)
+    if (binding >= AL_NUM_STORAGE_BINDINGS)
     {
         return;
     }
@@ -2695,35 +2478,6 @@ void LLRender::setStorageBinding(U32 binding, const StorageBinding& wanted)
     // What is batched was meant to see the point as it was.
     flush();
     held = wanted;
-    issueStorageBinding(binding);
-}
-
-void LLRender::issueStorageBinding(U32 binding) const
-{
-    if (!gGLManager.mHasCompute || !issue_opengl(*this))
-    {
-        return;
-    }
-    const StorageBinding& held = mStorageBindings[binding];
-    if (held.mBytes != 0)
-    {
-        glBindBufferRange(GL_SHADER_STORAGE_BUFFER, binding, held.mName, (GLintptr)held.mOffset,
-                          (GLsizeiptr)held.mBytes);
-    }
-    else
-    {
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, held.mName);
-    }
-}
-
-// static
-void LLRender::bindIndirectBuffer(U32 target, U32& bound, U32 name)
-{
-    if (gGLManager.mInited && bound != name)
-    {
-        glBindBuffer(target, name);
-        bound = name;
-    }
 }
 
 LLLightState* LLRender::getLight(U32 index)
@@ -2761,14 +2515,8 @@ bool LLRender::verifyTexUnitActive(U32 unitToVerify)
 
 void LLRender::clearErrors()
 {
-    if (!gGLManager.mInited)
-    {
-        return;
-    }
-    while (glGetError())
-    {
-        //loop until no more error flags left
-    }
+    // Metal errors belong to command-buffer completion and are reported by
+    // the owning encoder/scheduler. There is no thread-global error queue.
 }
 
 void LLRender::beginList(std::list<LLVertexBufferData> *list)
@@ -3667,19 +3415,10 @@ void LLRender::setUITextShadowMode(U32 mode)
 void LLRender::setLineWidth(F32 width)
 {
     llassert(width > 0.f);
-    if (gGLManager.mInited)
-    {
-        width = llclamp(width, gGLManager.mAliasedLineRange[0],
-                        gGLManager.mAliasedLineRange[1]);
-    }
     if(mLineWidth != width)
     {
         flush();
         mLineWidth = width;
-        if (issue_opengl(*this))
-        {
-            glLineWidth(width);
-        }
     }
 }
 
@@ -3691,11 +3430,6 @@ void LLRender::setPolygonOffset(F32 factor, F32 units)
         mPolygonOffsetUnits = units;
         flush();
 
-        if (issue_opengl(*this))
-        {
-            const F32 sign = sReverseZ ? -1.f : 1.f;
-            glPolygonOffset(sign * factor, sign * units);
-        }
     }
 }
 
@@ -3705,10 +3439,6 @@ void LLRender::setPatchVertices(U32 count)
     {
         mPatchVertices = count;
         flush();
-        if (issue_opengl(*this))
-        {
-            glPatchParameteri(GL_PATCH_VERTICES, count);
-        }
     }
 }
 
@@ -3717,21 +3447,13 @@ void LLRender::setClearColor(const LLColor4& color)
     if (mClearColor != color)
     {
         mClearColor = color;
-        if (issue_opengl(*this))
-        {
-            glClearColor(color.mV[VRED], color.mV[VGREEN], color.mV[VBLUE],
-                         color.mV[VALPHA]);
-        }
     }
 }
 
 void LLRender::clear(U32 mask)
 {
+    (void)mask;
     flush();
-    if (issue_opengl(*this))
-    {
-        glClear(mask);
-    }
 }
 
 void LLRender::setPolygonMode(U32 mode)
@@ -3741,10 +3463,6 @@ void LLRender::setPolygonMode(U32 mode)
     {
         flush();
         mPolygonMode = mode;
-        if (issue_opengl(*this))
-        {
-            glPolygonMode(GL_FRONT_AND_BACK, mode);
-        }
     }
 }
 
@@ -3755,10 +3473,6 @@ void LLRender::setCullFace(U32 face)
     {
         flush();
         mCullFace = face;
-        if (issue_opengl(*this))
-        {
-            glCullFace(face);
-        }
     }
 }
 
@@ -3769,10 +3483,6 @@ void LLRender::setPointSize(F32 size)
     {
         flush();
         mPointSize = size;
-        if (issue_opengl(*this))
-        {
-            glPointSize(size);
-        }
     }
 }
 
@@ -3784,10 +3494,6 @@ void LLRender::setStencilFunc(U32 func, S32 ref, U32 mask)
         mStencilFunc     = func;
         mStencilRef      = ref;
         mStencilReadMask = mask;
-        if (issue_opengl(*this))
-        {
-            glStencilFunc(func, ref, mask);
-        }
     }
 }
 
@@ -3799,10 +3505,6 @@ void LLRender::setStencilOp(U32 stencil_fail, U32 depth_fail, U32 pass)
         mStencilFail      = stencil_fail;
         mStencilDepthFail = depth_fail;
         mStencilPass      = pass;
-        if (issue_opengl(*this))
-        {
-            glStencilOp(stencil_fail, depth_fail, pass);
-        }
     }
 }
 
@@ -3812,10 +3514,6 @@ void LLRender::setStencilMask(U32 mask)
     {
         flush();
         mStencilWriteMask = mask;
-        if (issue_opengl(*this))
-        {
-            glStencilMask(mask);
-        }
     }
 }
 
@@ -3826,10 +3524,6 @@ void LLRender::setBlendEquation(U32 rgb, U32 alpha)
         flush();
         mBlendEquationRGB   = rgb;
         mBlendEquationAlpha = alpha;
-        if (issue_opengl(*this))
-        {
-            glBlendEquationSeparate(rgb, alpha);
-        }
     }
 }
 
@@ -3843,40 +3537,14 @@ void LLRender::setViewport(S32 x, S32 y, S32 width, S32 height)
         mViewport[1] = y;
         mViewport[2] = width;
         mViewport[3] = height;
-        if (issue_opengl(*this))
-        {
-            glViewport(x, y, width, height);
-        }
     }
-}
-
-void LLRender::issueRasterState() const
-{
-    if (!issue_opengl(*this))
-    {
-        return;
-    }
-    glPolygonMode(GL_FRONT_AND_BACK, mPolygonMode);
-    glCullFace(mCullFace);
-    glPointSize(mPointSize);
-    glStencilFunc(mStencilFunc, mStencilRef, mStencilReadMask);
-    glStencilOp(mStencilFail, mStencilDepthFail, mStencilPass);
-    glStencilMask(mStencilWriteMask);
-    glBlendEquationSeparate(mBlendEquationRGB, mBlendEquationAlpha);
 }
 
 // static
 void LLRender::applyDepthConvention()
 {
-    if (!gGLManager.mInited)
-    {
-        return;
-    }
-    if (gGLManager.mHasClipControl)
-    {
-        glClipControl(GL_LOWER_LEFT, sReverseZ ? GL_ZERO_TO_ONE : GL_NEGATIVE_ONE_TO_ONE);
-    }
-    glClearDepth(sReverseZ ? 0.0 : 1.0);
+    // Native render-pass descriptors and projection helpers consume sReverseZ
+    // directly. There is no ambient driver convention to mutate.
 }
 
 void LLRender::drawArraysInstanced(eGeomModes mode, U32 first, U32 count, U32 instances)
@@ -3884,22 +3552,13 @@ void LLRender::drawArraysInstanced(eGeomModes mode, U32 first, U32 count, U32 in
     // An input left in the program would read whatever buffer the last vertex buffer left on its array.
     llassert(LLGLSLShader::sCurBoundShaderPtr && LLGLSLShader::sCurBoundShaderPtr->mAttributeMask == 0);
     flush();
-    if (!issue_opengl(*this))
-    {
 #if LL_DARWIN
-        invalidateMetalUITextureCapture("an unsupported instanced GL draw");
+    invalidateMetalUITextureCapture("an unsupported instanced draw");
 #endif
-        LL_WARNS_ONCE("Metal")
-            << "Skipped an instanced draw with no native encoder" << LL_ENDL;
-        return;
-    }
-    syncMatrices();
-    llassert(validate_bound_samplers());
-    STOP_GLERROR;
-    glDrawArraysInstanced(LLVertexBuffer::sGLMode[mode], first, count, instances);
-    STOP_GLERROR;
-    ++sDrawCalls;
-    sDrawElements += (U64)count * instances;
+    LL_WARNS_ONCE("Metal")
+        << "Skipped an instanced draw with no native encoder (mode "
+        << mode << ", first " << first << ", count " << count
+        << ", instances " << instances << ')' << LL_ENDL;
 }
 
 void LLRender::drawArraysIndirect(eGeomModes mode, const ALGPUBuffer& buffer, size_t offset)
@@ -3914,104 +3573,48 @@ void LLRender::drawArraysIndirect(eGeomModes mode, const ALGPUBuffer& buffer, si
         return;
     }
     flush();
-    if (!issue_opengl(*this))
-    {
 #if LL_DARWIN
-        invalidateMetalUITextureCapture("an unsupported indirect GL draw");
+    invalidateMetalUITextureCapture("an unsupported indirect draw");
 #endif
-        LL_WARNS_ONCE("Metal")
-            << "Skipped an indirect draw with no native encoder" << LL_ENDL;
-        return;
-    }
-    syncMatrices();
-    llassert(validate_bound_samplers());
-    STOP_GLERROR;
-    bindIndirectBuffer(GL_DRAW_INDIRECT_BUFFER, mDrawIndirectBuffer, buffer.getGLName());
-    glDrawArraysIndirect(LLVertexBuffer::sGLMode[mode], reinterpret_cast<const void*>(offset));
-    STOP_GLERROR;
-    ++sDrawCalls; // its count is the GPU's to know
+    LL_WARNS_ONCE("Metal")
+        << "Skipped an indirect draw with no native encoder (mode "
+        << mode << ", offset " << offset << ')' << LL_ENDL;
 }
 
 void LLRender::textureBarrier()
 {
-    llassert(gGLManager.mHasTextureBarrier);
-    if (!gGLManager.mHasTextureBarrier)
-    {
-        return;
-    }
-    // The barrier orders what was issued before it, which includes what is batched.
+    // Native pass boundaries and encoder ownership provide texture ordering.
+    // Draining queued geometry preserves the public ordering contract.
     flush();
-    if (issue_opengl(*this))
-    {
-        glTextureBarrier();
-    }
 }
 
 void LLRender::memoryBarrier(U32 barriers)
 {
     llassert(sCompute);
-    if (barriers == 0 || !gGLManager.mHasCompute)
+    if (barriers == 0)
     {
         return;
     }
-    // The barrier orders what was issued before it, which includes what is batched.
+    // Native compute owners encode resource dependencies explicitly. Drain
+    // queued geometry so callers retain their ordering boundary.
     flush();
-    if (issue_opengl(*this))
-    {
-        glMemoryBarrier(barriers);
-    }
 }
 
 void LLRender::dispatchCompute(U32 groups_x, U32 groups_y, U32 groups_z)
 {
     llassert(sCompute);
     llassert(LLGLSLShader::sCurBoundShaderPtr && LLGLSLShader::sCurBoundShaderPtr->isCompute());
-    if (!gGLManager.mHasCompute)
-    {
-        return;
-    }
-    flush();
-    if (!issue_opengl(*this))
-    {
-#if LL_DARWIN
-        invalidateMetalUITextureCapture("an unsupported GL compute dispatch");
-#endif
-        LL_WARNS_ONCE("Metal")
-            << "Skipped a compute dispatch with no native encoder" << LL_ENDL;
-        return;
-    }
-    syncMatrices();
-
     if (groups_x == 0 || groups_y == 0 || groups_z == 0)
     {
         return;
     }
-
-    // GL drops a dispatch past the limit with an error and nothing run. Said here, once, with the counts that did it,
-    // rather than left to a GL error log.
-    const U32 groups[3] = { groups_x, groups_y, groups_z };
-    for (U32 i = 0; i < 3; ++i)
-    {
-        if (groups[i] > (U32)gGLManager.mMaxComputeWorkGroupCount[i])
-        {
-            static bool s_warned = false;
-            if (!s_warned)
-            {
-                s_warned = true;
-                LL_WARNS("Shader") << "Compute dispatch of " << groups_x << "x" << groups_y << "x" << groups_z
-                                   << " groups from " << LLGLSLShader::sCurBoundShaderPtr->mName
-                                   << " exceeds the context's " << gGLManager.mMaxComputeWorkGroupCount[0] << "x"
-                                   << gGLManager.mMaxComputeWorkGroupCount[1] << "x"
-                                   << gGLManager.mMaxComputeWorkGroupCount[2] << "; nothing dispatched" << LL_ENDL;
-            }
-            return;
-        }
-    }
-
-    llassert(validate_bound_samplers());
-    STOP_GLERROR;
-    glDispatchCompute(groups_x, groups_y, groups_z);
-    STOP_GLERROR;
+    flush();
+#if LL_DARWIN
+    invalidateMetalUITextureCapture("an unsupported compute dispatch");
+#endif
+    LL_WARNS_ONCE("Metal")
+        << "Skipped a compute dispatch with no native encoder ("
+        << groups_x << 'x' << groups_y << 'x' << groups_z << ')' << LL_ENDL;
 }
 
 void LLRender::dispatchComputeIndirect(const ALGPUBuffer& buffer, size_t offset)
@@ -4019,33 +3622,18 @@ void LLRender::dispatchComputeIndirect(const ALGPUBuffer& buffer, size_t offset)
     llassert(sCompute);
     llassert(LLGLSLShader::sCurBoundShaderPtr && LLGLSLShader::sCurBoundShaderPtr->isCompute());
     llassert(offset % sizeof(U32) == 0);
-    if (!gGLManager.mHasCompute)
-    {
-        return;
-    }
     if (!buffer.isAllocated() || offset + sizeof(ALDispatchIndirectCommand) > buffer.size())
     {
         llassert(false);
         return;
     }
     flush();
-    if (!issue_opengl(*this))
-    {
 #if LL_DARWIN
-        invalidateMetalUITextureCapture(
-            "an unsupported indirect GL compute dispatch");
+    invalidateMetalUITextureCapture("an unsupported indirect compute dispatch");
 #endif
-        LL_WARNS_ONCE("Metal")
-            << "Skipped an indirect compute dispatch with no native encoder"
-            << LL_ENDL;
-        return;
-    }
-    syncMatrices();
-    llassert(validate_bound_samplers());
-    STOP_GLERROR;
-    bindIndirectBuffer(GL_DISPATCH_INDIRECT_BUFFER, mDispatchIndirectBuffer, buffer.getGLName());
-    glDispatchComputeIndirect(static_cast<GLintptr>(offset));
-    STOP_GLERROR;
+    LL_WARNS_ONCE("Metal")
+        << "Skipped an indirect compute dispatch with no native encoder (offset "
+        << offset << ')' << LL_ENDL;
 }
 
 void LLRender::setScissor(S32 x, S32 y, S32 width, S32 height)
@@ -4058,23 +3646,12 @@ void LLRender::setScissor(S32 x, S32 y, S32 width, S32 height)
         mScissor[1] = y;
         mScissor[2] = width;
         mScissor[3] = height;
-        if (issue_opengl(*this))
-        {
-            glScissor(x, y, width, height);
-        }
     }
 }
 
 void LLRender::rebasePolygonOffset()
 {
     flush();
-
-    if (issue_opengl(*this))
-    {
-        const F32 sign = sReverseZ ? -1.f : 1.f;
-        glPolygonOffset(sign * mPolygonOffsetFactor,
-                        sign * mPolygonOffsetUnits);
-    }
 }
 
 void LLRender::debugTexUnits(void)
