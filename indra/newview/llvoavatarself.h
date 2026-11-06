@@ -250,16 +250,6 @@ public:
     const LLUUID&       grabBakedTexture(LLAvatarAppearanceDefines::EBakedTextureIndex baked_index) const;
     bool                canGrabBakedTexture(LLAvatarAppearanceDefines::EBakedTextureIndex baked_index) const;
 
-
-    //--------------------------------------------------------------------
-    // Scratch textures (used for compositing)
-    //--------------------------------------------------------------------
-public:
-    static void     deleteScratchTextures();
-private:
-    static S32Bytes sScratchTexBytes;
-    static std::map< LLGLenum, LLGLuint*> sScratchTexNames;
-
 /**                    Textures
  **                                                                            **
  *******************************************************************************/
@@ -362,7 +352,6 @@ private:
 public:
     static void     dumpTotalLocalTextureByteCount();
     void            dumpLocalTextures() const;
-    static void     dumpScratchTextureByteCount();
     void            dumpWearableInfo(LLFile& outfile);
 
     //--------------------------------------------------------------------

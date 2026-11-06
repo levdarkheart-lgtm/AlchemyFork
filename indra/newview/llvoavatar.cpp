@@ -1286,7 +1286,6 @@ void LLVOAvatar::deleteCachedImages(bool clearAll)
         }
         LLViewerTexLayerSet::sHasCaches = false;
     }
-    LLVOAvatarSelf::deleteScratchTextures();
     LLTexLayerStaticImageList::getInstance()->deleteCachedImages();
 }
 

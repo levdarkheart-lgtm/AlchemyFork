@@ -116,7 +116,6 @@ public:
 
     LLViewerTexture(bool usemipmaps = true);
     LLViewerTexture(const LLUUID& id, bool usemipmaps) ;
-    LLViewerTexture(const LLImageRaw* raw, bool usemipmaps) ;
     LLViewerTexture(const U32 width, const U32 height, const U8 components, bool usemipmaps) ;
 
     virtual S8 getType() const;
@@ -265,7 +264,6 @@ protected:
     /*virtual*/ ~LLViewerFetchedTexture();
 public:
     LLViewerFetchedTexture(const LLUUID& id, FTType f_type, const LLHost& host = LLHost(), bool usemipmaps = true);
-    LLViewerFetchedTexture(const LLImageRaw* raw, FTType f_type, bool usemipmaps);
     LLViewerFetchedTexture(const std::string& url, FTType f_type, const LLUUID& id, bool usemipmaps = true);
 
 public:

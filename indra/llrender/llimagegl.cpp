@@ -928,17 +928,10 @@ bool LLImageGL::create(LLPointer<LLImageGL>& dest, U32 width, U32 height, U8 com
     return true;
 }
 
-//for server side use only.
-bool LLImageGL::create(LLPointer<LLImageGL>& dest, const LLImageRaw* imageraw, bool usemipmaps)
-{
-    dest = new LLImageGL(imageraw, usemipmaps);
-    return true;
-}
-
 //----------------------------------------------------------------------------
 
 LLImageGL::LLImageGL(bool usemipmaps/* = true*/)
-:   mSaveData(0), mExternalTexture(false)
+:   mSaveData(0)
 {
     init(usemipmaps);
     setSize(0, 0, 0);
@@ -947,7 +940,7 @@ LLImageGL::LLImageGL(bool usemipmaps/* = true*/)
 }
 
 LLImageGL::LLImageGL(U32 width, U32 height, U8 components, bool usemipmaps/* = true*/)
-:   mSaveData(0), mExternalTexture(false)
+:   mSaveData(0)
 {
     llassert( components <= 4 );
     init(usemipmaps);
@@ -957,7 +950,7 @@ LLImageGL::LLImageGL(U32 width, U32 height, U8 components, bool usemipmaps/* = t
 }
 
 LLImageGL::LLImageGL(const LLImageRaw* imageraw, bool usemipmaps/* = true*/)
-:   mSaveData(0), mExternalTexture(false)
+:   mSaveData(0)
 {
     init(usemipmaps);
     setSize(0, 0, 0);
@@ -971,47 +964,18 @@ LLImageGL::LLImageGL(const LLImageRaw* imageraw, bool usemipmaps/* = true*/)
     }
 }
 
-LLImageGL::LLImageGL(
-    LLGLuint texName,
-    U32 components,
-    LLGLenum target,
-    LLGLint  formatInternal,
-    LLGLenum formatPrimary,
-    LLGLenum formatType)
-:   mExternalTexture(true)  // ctor previously left this uninitialized,
-                            // making the dtor's `!mExternalTexture && ...`
-                            // gate read indeterminate memory — could go
-                            // either way on any given run, in the wrong
-                            // direction either calling glDeleteTextures on
-                            // a texture we don't own or skipping the
-                            // sImageList.erase / sCount-- the other ctors
-                            // would do (sCount drifts negative over time).
-{
-    init(false);
-    mTexName = texName;
-    mTarget = target;
-    mComponents = components;
-    mFormatType = formatType;
-    mFormatInternal = formatInternal;
-    mFormatPrimary = formatPrimary;
-}
-
-
 LLImageGL::~LLImageGL()
 {
-    if (!mExternalTexture)
-    {
-        // Always run the C++ bookkeeping (sImageList/sCount/freePickMask)
-        // even if GL is gone. The previous gate on gGLManager.mInited left
-        // stale `this` pointers in sImageList when an LLImageGL outlived GL
-        // teardown — a later iteration (e.g. dirtyTexOptions) would UAF.
-        // cleanup() is C++-safe on its own: destroyGLTexture is gated on
-        // mIsDisabled, and deleteTextures no-ops when mInited is false.
-        cleanup();
-        sImageList.erase(this);
-        freePickMask();
-        sCount--;
-    }
+    // Always run the C++ bookkeeping (sImageList/sCount/freePickMask)
+    // even if GL is gone. The previous gate on gGLManager.mInited left
+    // stale `this` pointers in sImageList when an LLImageGL outlived GL
+    // teardown — a later iteration (e.g. dirtyTexOptions) would UAF.
+    // cleanup() is C++-safe on its own: destroyGLTexture is gated on
+    // mIsDisabled, and deleteTextures no-ops when mInited is false.
+    cleanup();
+    sImageList.erase(this);
+    freePickMask();
+    sCount--;
 }
 
 void LLImageGL::init(bool usemipmaps)
@@ -1251,7 +1215,7 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const LLImageRaw* image,
     const bool valid_upload_thread =
         on_main_thread() || (sOnImageGLThread && mUploadInFlight);
     if (!valid_upload_thread || !image || image->isBufferInvalid() || !sImageMetalDevice ||
-        mExternalTexture || mTarget != GL_TEXTURE_2D)
+        mTarget != GL_TEXTURE_2D)
     {
         return false;
     }
@@ -1287,7 +1251,7 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
 
     const bool valid_upload_thread =
         on_main_thread() || (sOnImageGLThread && mUploadInFlight);
-    if (!valid_upload_thread || !data || !sImageMetalDevice || mExternalTexture ||
+    if (!valid_upload_thread || !data || !sImageMetalDevice ||
         mTarget != GL_TEXTURE_2D || mWidth <= 0 || mHeight <= 0 ||
         mComponents <= 0)
     {
@@ -1394,7 +1358,7 @@ bool LLImageGL::createMetalTexture(
     checkActiveThread();
     checkUploadBegun();
 
-    if (!on_main_thread() || !sImageMetalDevice || mExternalTexture ||
+    if (!on_main_thread() || !sImageMetalDevice ||
         mTarget != GL_TEXTURE_2D || !mUseMipMaps || mWidth <= 0 ||
         mHeight <= 0 || mComponents <= 0 || mip_levels.empty())
     {
@@ -1528,7 +1492,7 @@ bool LLImageGL::uploadMetalSubImage(const U8* data, S32 data_width,
         return true;
     }
     if (!on_main_thread() || !data || !sImageMetalDevice ||
-        !metalTextureForUpload() || mExternalTexture ||
+        !metalTextureForUpload() ||
         mTarget != GL_TEXTURE_2D || mUseMipMaps ||
         mCurrentDiscardLevel < 0 || data_width <= 0 || data_height <= 0 ||
         x < 0 || y < 0 || width < 0 || height < 0 ||
@@ -1575,7 +1539,7 @@ bool LLImageGL::uploadMetalImage(const LLImageRaw* image)
     checkUploadBegun();
 
     if (!image || image->isBufferInvalid() || !sImageMetalDevice ||
-        mExternalTexture || mTarget != GL_TEXTURE_2D || mUseMipMaps ||
+        mTarget != GL_TEXTURE_2D || mUseMipMaps ||
         image->getWidth() <= 0 || image->getHeight() <= 0 ||
         image->getWidth() > liveWidth(mCurrentDiscardLevel) ||
         image->getHeight() > liveHeight(mCurrentDiscardLevel) ||
@@ -1892,7 +1856,7 @@ namespace
 
 bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
 {
-    if (!sImageMetalDevice || !texture || mExternalTexture ||
+    if (!sImageMetalDevice || !texture ||
         mTarget != GL_TEXTURE_2D || mUploadInFlight)
     {
         return false;
@@ -1992,7 +1956,7 @@ bool LLImageGL::adoptMetalRenderTextureAuthoritative(
 std::unique_ptr<ALMetalTexture> LLImageGL::createMetalRenderTexture(
     std::string* error) const
 {
-    if (!sImageMetalDevice || mExternalTexture || mTarget != GL_TEXTURE_2D ||
+    if (!sImageMetalDevice || mTarget != GL_TEXTURE_2D ||
         mUploadInFlight)
     {
         if (error)
@@ -2131,7 +2095,7 @@ bool LLImageGL::prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& comma
                                     ALMetalCommandBuffer*& command_buffer,
                                     bool will_upload_pixels)
 {
-    if (!sImageMetalDevice || mExternalTexture || mTarget != GL_TEXTURE_2D)
+    if (!sImageMetalDevice || mTarget != GL_TEXTURE_2D)
     {
         return true;
     }
@@ -2924,11 +2888,8 @@ void LLImageGL::publishMetalTextureAuthoritative()
     // leaves the previously visible generation intact.
     if (mTexName != 0)
     {
-        if (!mExternalTexture)
-        {
-            free_tex_image(mTexName);
-            LLImageGL::deleteTextures(1, &mTexName);
-        }
+        free_tex_image(mTexName);
+        LLImageGL::deleteTextures(1, &mTexName);
         mTexName = 0;
     }
     mStorageAllocated = false;
@@ -3479,18 +3440,6 @@ void LLImageGL::destroyGLTexture()
 
     if (mTexName != 0)
     {
-        if (mExternalTexture)
-        {
-            // Caller owns this texture (constructed via the wrap-an-existing-
-            // GL-name ctor). We must not glDeleteTextures it. Just forget our
-            // reference so callers using destroyGLTexture as a "detach" still
-            // see mTexName == 0 afterwards.
-            mTexName = 0;
-            mCurrentDiscardLevel = -1;
-            mGLTextureCreated = false;
-            return;
-        }
-
         if(mTextureMemory != S64Bytes(0))
         {
             mTextureMemory = (S64Bytes)0;

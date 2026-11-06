@@ -163,16 +163,11 @@ public:
     // so include for compatability
     static bool create(LLPointer<LLImageGL>& dest, bool usemipmaps = true);
     static bool create(LLPointer<LLImageGL>& dest, U32 width, U32 height, U8 components, bool usemipmaps = true);
-    static bool create(LLPointer<LLImageGL>& dest, const LLImageRaw* imageraw, bool usemipmaps = true);
 
 public:
     LLImageGL(bool usemipmaps = true);
     LLImageGL(U32 width, U32 height, U8 components, bool usemipmaps = true);
     LLImageGL(const LLImageRaw* imageraw, bool usemipmaps = true);
-
-    // Wrap a texture object this LLImageGL does not own, created via GL elsewhere. Use
-    // with caution: nothing here deletes it.
-    LLImageGL(LLGLuint mTexName, U32 components, LLGLenum target, LLGLint  formatInternal, LLGLenum formatPrimary, LLGLenum formatType);
 
     // What analyzeAlphaData finds in a level's alpha.
     struct AlphaAnalysis
@@ -596,8 +591,6 @@ protected:
     // to apply the corresponding GL_TEXTURE_SWIZZLE_RGBA mask via
     // applySwizzleForDeprecatedFormat. 0 = no rewrite happened.
     LLGLenum mDeprecatedSourceFormat;
-
-    bool mExternalTexture;
 
     // STATICS
 public:

@@ -712,15 +712,6 @@ LLViewerTexture::LLViewerTexture(const U32 width, const U32 height, const U8 com
     sImageCount++;
 }
 
-LLViewerTexture::LLViewerTexture(const LLImageRaw* raw, bool usemipmaps) :
-    LLGLTexture(raw, usemipmaps)
-{
-    init(true);
-
-    mID.generate();
-    sImageCount++;
-}
-
 LLViewerTexture::~LLViewerTexture()
 {
     // LL_DEBUGS("Avatar") << mID << LL_ENDL;
@@ -1100,13 +1091,6 @@ LLViewerFetchedTexture::LLViewerFetchedTexture(const LLUUID& id, FTType f_type, 
         LL_WARNS() << "Unsupported fetch type " << mFTType << LL_ENDL;
     }
     generateGLTexture();
-}
-
-LLViewerFetchedTexture::LLViewerFetchedTexture(const LLImageRaw* raw, FTType f_type, bool usemipmaps)
-    : LLViewerTexture(raw, usemipmaps)
-{
-    init(true);
-    mFTType = f_type;
 }
 
 LLViewerFetchedTexture::LLViewerFetchedTexture(const std::string& url, FTType f_type, const LLUUID& id, bool usemipmaps)
