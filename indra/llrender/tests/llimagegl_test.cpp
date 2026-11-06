@@ -1648,6 +1648,15 @@ namespace
         CHECK(texture->descriptor().height == resolution);
         CHECK(texture->descriptor().mipmap_level_count == 1);
 
+        ALTextureSlot* slot = gGL.getTextureSlot(7);
+        REQUIRE(slot->bind(cube.get(), ALSamplers::AnisoClamp));
+        CHECK(slot->getCurrType() == ALTextureSlot::TT_CUBE_MAP);
+        CHECK(slot->getCurrTexture() != 0);
+        CHECK(slot->getCurrImage() == nullptr);
+        CHECK(slot->getCurrMetalTexture() == texture);
+        slot->unbind();
+        CHECK(slot->getCurrMetalTexture() == nullptr);
+
         ALMetalDevice* device = LLImageGL::getMetalDevice();
         REQUIRE(device);
         std::string error;
@@ -2260,12 +2269,13 @@ namespace
         ALTextureSlot* slot = gGL.getTextureSlot(0);
         REQUIRE(slot->bindSampled(native.get(), ALSamplers::BilinearClamp));
         CHECK(slot->getCurrImage() == native.get());
-        CHECK(slot->getCurrTexture() == white->getTexName());
+        CHECK(slot->getCurrMetalTexture() == native->getMetalTexture());
+        CHECK(slot->getCurrTexture() == 1u);
         CHECK(slot->getCurrType() == ALTextureSlot::TT_TEXTURE);
 
         GLint bound = 0;
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
-        CHECK(static_cast<U32>(bound) == white->getTexName());
+        CHECK(static_cast<U32>(bound) != slot->getCurrTexture());
     }
 
     TEST_CASE_METHOD(llimagegl_data, "ALTextureSlot: wrapped native-only images cross slow and fast sampled binds", "[LLImageGL][almetal]")
@@ -2305,11 +2315,13 @@ namespace
         ALTextureSlot* slot = gGL.getTextureSlot(0);
         REQUIRE(slot->bindSampled(texture.get(), ALSamplers::BilinearClamp));
         CHECK(slot->getCurrImage() == native);
-        CHECK(slot->getCurrTexture() == white->getTexName());
+        CHECK(slot->getCurrMetalTexture() == native->getMetalTexture());
+        CHECK(slot->getCurrTexture() == 1u);
 
         slot->bindFast(texture.get(), ALSamplers::PointClamp);
         CHECK(slot->getCurrImage() == native);
-        CHECK(slot->getCurrTexture() == white->getTexName());
+        CHECK(slot->getCurrMetalTexture() == native->getMetalTexture());
+        CHECK(slot->getCurrTexture() == 1u);
         CHECK(slot->getCurrType() == ALTextureSlot::TT_TEXTURE);
     }
 

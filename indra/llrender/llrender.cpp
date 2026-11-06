@@ -698,6 +698,7 @@ void LLRender::resetCachedState()
         slot.mCurrTexType = ALTextureSlot::TT_NONE;
         slot.mCurrSampler = 0;
         slot.mCurrImage = nullptr;
+        slot.mCurrNativeTexture = nullptr;
     }
     mCurrTextureUnitIndex = 0;
 
@@ -1112,6 +1113,7 @@ bool LLRender::beginMetalUITextureCapture(
         saved.texture = slot.mCurrTexture;
         saved.texture_type = slot.mCurrTexType;
         saved.image = slot.mCurrImage;
+        saved.native_texture = slot.mCurrNativeTexture;
         saved.sampler = slot.mCurrSampler;
         saved.blend_color_source = mCurrBlendColorSFactor;
         saved.blend_color_destination = mCurrBlendColorDFactor;
@@ -1159,6 +1161,7 @@ bool LLRender::bindMetalUITextureCapture(
     slot.mCurrTexture = 1; // logical native binding; never handed to GL
     slot.mCurrTexType = ALTextureSlot::TT_TEXTURE;
     slot.mCurrImage = image;
+    slot.mCurrNativeTexture = nullptr;
     mMetalUICaptureSampler = ALSamplerCache::makeDesc(sampler);
     mMetalUICaptureTextureBound = true;
     return image->getMetalTexture() != nullptr;
@@ -1177,6 +1180,7 @@ bool LLRender::unbindMetalUITextureCapture(S32 slot_index)
     slot.mCurrTexture = 0;
     slot.mCurrTexType = ALTextureSlot::TT_NONE;
     slot.mCurrImage = nullptr;
+    slot.mCurrNativeTexture = nullptr;
     mMetalUICaptureTextureBound = false;
     return true;
 }
@@ -1825,6 +1829,7 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
         slot.mCurrTexture = saved.texture;
         slot.mCurrTexType = saved.texture_type;
         slot.mCurrImage = saved.image;
+        slot.mCurrNativeTexture = saved.native_texture;
         slot.mCurrSampler = saved.sampler;
         mCurrBlendColorSFactor = saved.blend_color_source;
         mCurrBlendColorDFactor = saved.blend_color_destination;

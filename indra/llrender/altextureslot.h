@@ -46,6 +46,7 @@
 #include "llglheaders.h"
 
 class LLCubeMap;
+class ALMetalTexture;
 class LLImageGL;
 class LLRender;
 class LLRenderTarget;
@@ -150,6 +151,13 @@ public:
     // Binds a cubemap to this slot
     bool bind(LLCubeMap* cubeMap, ALSampler key);
 
+    // Bind an already-owned native resource. The caller retains its lifetime;
+    // the slot records only the identity, dimension and sampler required by a
+    // Metal encoder. This is the cutover path for resources which have no
+    // LLImageGL wrapper, such as the legacy sky cube.
+    bool bindNative(ALMetalTexture* texture, eTextureType type, ALSampler key,
+                    bool forceBind = false);
+
     // Binds a render target to this slot
     // sampler is an ALSamplerCache name, or 0 for the target's own per-attachment default.
     bool bind(LLRenderTarget * renderTarget, bool bindDepth = false, U32 sampler = 0);
@@ -203,6 +211,12 @@ public:
 
     LLImageGL* getCurrImage(void) const { return mCurrImage; }
 
+    // The native resource represented by this binding. Image bindings resolve
+    // through LLImageGL so a republished Metal allocation is never hidden by a
+    // stale cached pointer; resources without an LLImageGL owner (currently
+    // cube maps) retain their explicit non-owning identity here.
+    ALMetalTexture* getCurrMetalTexture(void) const;
+
     eTextureType getCurrType(void) const { return mCurrTexType; }
 
 protected:
@@ -215,6 +229,7 @@ protected:
     // targets and cube maps clear it because they have no LLImageGL mirror to
     // hand a native backend. Captured batches retain their own LLPointer.
     LLImageGL*          mCurrImage = nullptr;
+    ALMetalTexture*     mCurrNativeTexture = nullptr;
     // The sampler object currently bound to this slot, so a redundant selection can be
     // skipped. Reset by clearSamplers() when the objects behind the names are dropped.
     U32                 mCurrSampler = 0;
@@ -236,6 +251,11 @@ protected:
     void debugTextureUnit(void);
 
     void bindFastImpl(LLTexture* texture, LLImageGL* gl_tex, U32 sampler);
+
+    // Record a sampler beside a native resource without issuing legacy API
+    // state. Native binding changes are already ordered by their resource
+    // flush, so this never splits the batch a second time.
+    void bindNativeSampler(U32 sampler);
 
     bool bindImpl(LLTexture* texture, bool forceBind, ALSampler key);
 #if LL_DARWIN

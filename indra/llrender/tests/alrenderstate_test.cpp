@@ -23,6 +23,7 @@
 
 #if LL_DARWIN
 #include "almetaldevice.h"
+#include "almetalresource.h"
 #endif
 
 TEST_CASE("Renderer state remains semantic without an OpenGL context",
@@ -169,6 +170,54 @@ TEST_CASE("Sampler intent remains available without an OpenGL context",
     CHECK(ALTextureSlot::sSamplerSkips == 1);
     slot->bindSampler(0);
 }
+
+#if LL_DARWIN
+TEST_CASE("Texture slots retain native resource identity without OpenGL",
+          "[alrenderstate][metal-cutover]")
+{
+    REQUIRE_FALSE(gGLManager.mInited);
+
+    std::string error;
+    auto device = ALMetalDevice::create(&error);
+    INFO(error);
+    REQUIRE(device);
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.type = ALMetalTextureType::texture_cube;
+    descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+    descriptor.width = 4;
+    descriptor.height = 4;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = "Texture slot native identity test";
+    auto texture = ALMetalTexture::create(*device, descriptor, &error);
+    INFO(error);
+    REQUIRE(texture);
+
+    struct SamplerReset
+    {
+        ~SamplerReset() { gGL.clearSamplers(); }
+    } reset;
+    gGL.clearSamplers();
+    gGL.warmupSamplers();
+
+    ALTextureSlot slot(7);
+    REQUIRE(slot.bindNative(texture.get(), ALTextureSlot::TT_CUBE_MAP,
+                            ALSamplers::AnisoClamp));
+    CHECK(slot.getCurrTexture() != 0);
+    CHECK(slot.getCurrType() == ALTextureSlot::TT_CUBE_MAP);
+    CHECK(slot.getCurrImage() == nullptr);
+    CHECK(slot.getCurrMetalTexture() == texture.get());
+
+    CHECK_FALSE(slot.bindNative(texture.get(), ALTextureSlot::TT_TEXTURE,
+                                ALSamplers::AnisoClamp));
+    CHECK(slot.getCurrMetalTexture() == texture.get());
+
+    slot.unbind();
+    CHECK(slot.getCurrTexture() == 0);
+    CHECK(slot.getCurrType() == ALTextureSlot::TT_NONE);
+    CHECK(slot.getCurrMetalTexture() == nullptr);
+}
+#endif
 
 TEST_CASE("Shader binding remains logical without an OpenGL context",
           "[alrenderstate][metal-cutover]")

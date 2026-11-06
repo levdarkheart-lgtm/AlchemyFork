@@ -1023,6 +1023,7 @@ private:
         U32 texture = 0;
         ALTextureSlot::eTextureType texture_type = ALTextureSlot::TT_NONE;
         LLImageGL* image = nullptr;
+        ALMetalTexture* native_texture = nullptr;
         U32 sampler = 0;
         eBlendFactor blend_color_source = BF_UNDEF;
         eBlendFactor blend_color_destination = BF_UNDEF;

@@ -38,6 +38,9 @@
 #include "llrender.h"
 #include "llrendertarget.h"
 #include "lltexture.h"
+#if LL_DARWIN
+#include "almetalresource.h"
+#endif
 
 static const GLenum sGLTextureType[] =
 {
@@ -63,19 +66,30 @@ namespace
         return true;
 #endif
     }
-}
 
 #if LL_DARWIN
-static U32 native_sample_fallback()
-{
-    U32 fallback = ALTextureSlot::sWhiteTexture.load();
-    if (!fallback && LLImageGL::sDefaultGLTexture)
+    bool matches_native_type(const ALMetalTexture& texture,
+                             ALTextureSlot::eTextureType type) noexcept
     {
-        fallback = LLImageGL::sDefaultGLTexture->getTexName();
+        switch (type)
+        {
+            case ALTextureSlot::TT_TEXTURE:
+            case ALTextureSlot::TT_RECT_TEXTURE:
+                return texture.descriptor().type == ALMetalTextureType::texture_2d;
+            case ALTextureSlot::TT_CUBE_MAP:
+                return texture.descriptor().type == ALMetalTextureType::texture_cube;
+            case ALTextureSlot::TT_CUBE_MAP_ARRAY:
+                return texture.descriptor().type == ALMetalTextureType::texture_cube_array;
+            case ALTextureSlot::TT_MULTISAMPLE_TEXTURE:
+                return texture.descriptor().type == ALMetalTextureType::texture_2d_multisample;
+            case ALTextureSlot::TT_TEXTURE_3D:
+            case ALTextureSlot::TT_NONE:
+                return false;
+        }
+        return false;
     }
-    return fallback;
-}
 #endif
+}
 
 thread_local U32 ALTextureSlot::sSamplerBinds  = 0;
 thread_local U32 ALTextureSlot::sSamplerSkips  = 0;
@@ -98,6 +112,15 @@ void ALTextureSlot::setWhiteImage(LLImageGL* image)
     sWhiteTexture = image ? image->getTexName() : 0;
 }
 
+ALMetalTexture* ALTextureSlot::getCurrMetalTexture() const
+{
+#if LL_DARWIN
+    return mCurrImage ? mCurrImage->getMetalTexture() : mCurrNativeTexture;
+#else
+    return nullptr;
+#endif
+}
+
 //static
 U32 ALTextureSlot::getInternalType(eTextureType type)
 {
@@ -110,6 +133,18 @@ void ALTextureSlot::refreshState(void)
     // and we reset the cached slot state
 
     gGL.flush();
+
+#if LL_DARWIN
+    // A logical native token is deliberately not a GL object name. Context
+    // refresh must never reinterpret it as one.
+    if (mCurrNativeTexture ||
+        (mCurrImage && !mCurrImage->getTexName() &&
+         mCurrImage->getMetalTexture()))
+    {
+        mCurrSampler = 0;
+        return;
+    }
+#endif
 
     if (!issue_opengl_texture())
     {
@@ -127,10 +162,9 @@ void ALTextureSlot::refreshState(void)
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    // The sampler binding is per-slot context state like the texture binding, so it has
-    // to be re-asserted here too. Drop to the texture object's own state and let the next
-    // bind re-select; mCurrSampler is cleared so that re-selection isn't cached away.
-    glBindSampler(mIndex, 0);
+    // Samplers are logical Metal descriptors now. A context refresh has no
+    // native sampler object to re-assert, but clearing the identity ensures the
+    // next sampled bind republishes the descriptor selected by its caller.
     mCurrSampler = 0;
 }
 
@@ -169,6 +203,17 @@ void ALTextureSlot::bindSampler(U32 sampler)
     {
         glBindSampler(mIndex, sampler);
     }
+    mCurrSampler = sampler;
+}
+
+void ALTextureSlot::bindNativeSampler(U32 sampler)
+{
+    if (mCurrSampler == sampler)
+    {
+        ++sSamplerSkips;
+        return;
+    }
+    ++sSamplerBinds;
     mCurrSampler = sampler;
 }
 
@@ -249,10 +294,17 @@ void ALTextureSlot::bindFastImpl(LLTexture* texture, LLImageGL* gl_tex, U32 samp
     const bool native_only = !texname && gl_tex->getMetalTexture();
     if (native_only)
     {
-        // A non-zero logical token keeps the existing slot-state checks
-        // meaningful without ever becoming a GL texture name.
-        texname = issue_gl ? native_sample_fallback() : 1u;
-        target = TT_TEXTURE;
+        // Native-only resources never cross back through a white GL
+        // placeholder. Publish the real Metal identity and sampler to the
+        // logical slot; retained GL traversal must not reinterpret token 1 as
+        // an object name.
+        mCurrTexture = 1u;
+        mCurrTexType = TT_TEXTURE;
+        mCurrImage = gl_tex;
+        mCurrNativeTexture = nullptr;
+        bindNativeSampler(sampler);
+        gl_tex->forceUpdateBindStats();
+        return;
     }
 #endif
     if (issue_gl)
@@ -262,6 +314,7 @@ void ALTextureSlot::bindFastImpl(LLTexture* texture, LLImageGL* gl_tex, U32 samp
     gGL.mCurrTextureUnitIndex = mIndex;
     mCurrTexture = texname;
     mCurrImage = gl_tex;
+    mCurrNativeTexture = nullptr;
     if (!mCurrTexture)
     {
         LL_PROFILE_ZONE_NAMED("MISSING TEXTURE");
@@ -394,9 +447,9 @@ bool ALTextureSlot::bindImpl(LLTexture* texture, bool forceBind, ALSampler key)
             const bool native_only = !texname && gl_tex->getMetalTexture();
             if (native_only)
             {
-                texname = issue_opengl_texture()
-                    ? native_sample_fallback() : 1u;
-                target = TT_TEXTURE;
+                texture->setActive();
+                return bindNativeSampled(
+                    gl_tex, gGL.getSampler(key), forceBind);
             }
 #endif
             if (texname)
@@ -423,6 +476,7 @@ bool ALTextureSlot::bindImpl(LLTexture* texture, bool forceBind, ALSampler key)
                 // logical resource is what native capture needs, independent of the GL
                 // placeholder actually bound above.
                 mCurrImage = gl_tex;
+                mCurrNativeTexture = nullptr;
 #if LL_DARWIN
                 if (native_only)
                 {
@@ -465,60 +519,24 @@ bool ALTextureSlot::bindImpl(LLTexture* texture, bool forceBind, ALSampler key)
 #if LL_DARWIN
 bool ALTextureSlot::bindNativeSampled(LLImageGL* image, U32 sampler, bool forceBind)
 {
-    if (mIndex < 0 || !image || image->getTexName() || !image->getMetalTexture() ||
+    if (mIndex < 0 || !image || !image->getMetalTexture() ||
         image->getTarget() != TT_TEXTURE)
     {
         return false;
     }
 
-    if (!issue_opengl_texture())
-    {
-        const bool changed = mCurrImage != image ||
-                             mCurrTexType != TT_TEXTURE || forceBind;
-        if (changed)
-        {
-            gGL.flush();
-        }
-        mCurrTexture = 1u;
-        mCurrTexType = TT_TEXTURE;
-        mCurrImage = image;
-        bindSampler(sampler);
-        image->forceUpdateBindStats();
-        return true;
-    }
-
-    const U32 fallback = native_sample_fallback();
-    if (!fallback)
-    {
-        return false;
-    }
-
-    const bool physical_change = mCurrTexture != fallback ||
-                                 mCurrTexType != TT_TEXTURE || forceBind;
-    if (mCurrImage != image || physical_change)
+    const bool changed = mCurrImage != image ||
+                         mCurrTexType != TT_TEXTURE ||
+                         mCurrSampler != sampler || forceBind;
+    if (changed)
     {
         gGL.flush();
     }
-    if (physical_change)
-    {
-        LLImageGL* white = sWhiteImage.load();
-        if (white && white->getTexName() == fallback)
-        {
-            if (!bind(white, false, forceBind))
-            {
-                return false;
-            }
-        }
-        else if (!bindManual(TT_TEXTURE, fallback))
-        {
-            return false;
-        }
-    }
-
-    // Physical fallback binds record the white/default image. Replace that bookkeeping only
-    // after the prior batch is drained so native capture sees this image for subsequent work.
+    mCurrTexture = 1u;
+    mCurrTexType = TT_TEXTURE;
     mCurrImage = image;
-    bindSampler(sampler);
+    mCurrNativeTexture = nullptr;
+    bindNativeSampler(sampler);
     image->forceUpdateBindStats();
     return true;
 }
@@ -533,6 +551,23 @@ bool ALTextureSlot::bind(LLImageGL* texture, bool for_rendering, bool forceBind,
         LL_DEBUGS() << "NULL ALTextureSlot::bind texture" << LL_ENDL;
         return false;
     }
+
+#if LL_DARWIN
+    if (!usename && !texture->getTexName() && texture->getMetalTexture())
+    {
+        if (mCurrImage != texture || mCurrTexType != texture->getTarget() ||
+            forceBind)
+        {
+            gGL.flush();
+        }
+        mCurrTexture = 1u;
+        mCurrTexType = texture->getTarget();
+        mCurrImage = texture;
+        mCurrNativeTexture = nullptr;
+        texture->updateBindStats();
+        return true;
+    }
+#endif
 
     if (!issue_opengl_texture())
     {
@@ -549,6 +584,7 @@ bool ALTextureSlot::bind(LLImageGL* texture, bool for_rendering, bool forceBind,
         mCurrTexture = 1u;
         mCurrTexType = texture->getTarget();
         mCurrImage = texture;
+        mCurrNativeTexture = nullptr;
         texture->updateBindStats();
         return true;
 #else
@@ -584,6 +620,7 @@ bool ALTextureSlot::bind(LLImageGL* texture, bool for_rendering, bool forceBind,
     {
         gGL.flush();
         mCurrImage = next_image;
+        mCurrNativeTexture = nullptr;
     }
 
     if ((mCurrTexture != texname) || forceBind)
@@ -621,12 +658,40 @@ bool ALTextureSlot::bind(LLImageGL* texture, bool for_rendering, bool forceBind,
     return true;
 }
 
-bool ALTextureSlot::bind(LLCubeMap* cubeMap, ALSampler)
+bool ALTextureSlot::bindNative(ALMetalTexture* texture, eTextureType type,
+                               ALSampler key, bool forceBind)
+{
+#if LL_DARWIN
+    if (mIndex < 0 || !texture || !matches_native_type(*texture, type))
+    {
+        return false;
+    }
+
+    const U32 sampler = type == TT_MULTISAMPLE_TEXTURE
+        ? 0 : gGL.getSampler(key);
+    if (mCurrNativeTexture != texture || mCurrImage ||
+        mCurrTexType != type || mCurrSampler != sampler || forceBind)
+    {
+        gGL.flush();
+    }
+    mCurrTexture = 1u; // logical native binding; never handed to OpenGL
+    mCurrTexType = type;
+    mCurrImage = nullptr;
+    mCurrNativeTexture = texture;
+    bindNativeSampler(sampler);
+    return true;
+#else
+    (void)texture;
+    (void)type;
+    (void)key;
+    (void)forceBind;
+    return false;
+#endif
+}
+
+bool ALTextureSlot::bind(LLCubeMap* cubeMap, ALSampler key)
 {
     if (mIndex < 0) return false;
-
-    gGL.flush();
-    mCurrImage = nullptr;
 
     if (cubeMap == NULL)
     {
@@ -634,11 +699,11 @@ bool ALTextureSlot::bind(LLCubeMap* cubeMap, ALSampler)
         return false;
     }
 
-    // LLCubeMap is native Metal storage now. A legacy texture slot cannot bind
-    // it; clear any older cube binding so retained traversal cannot sample
-    // stale storage while the native world owner consumes getMetalTexture().
-    unbind();
+#if LL_DARWIN
+    return bindNative(cubeMap->getMetalTexture(), TT_CUBE_MAP, key);
+#else
     return false;
+#endif
 }
 
 // LLRenderTarget is unavailible on the mapserver since it uses FBOs.
@@ -689,7 +754,8 @@ bool ALTextureSlot::bindManual(eTextureType type, U32 texture, U32 sampler)
         mCurrTexture = 1u;
         mCurrTexType = TT_TEXTURE;
         mCurrImage = next_image;
-        bindSampler(sampler);
+        mCurrNativeTexture = nullptr;
+        bindNativeSampler(sampler);
         return true;
 #else
         return false;
@@ -699,6 +765,7 @@ bool ALTextureSlot::bindManual(eTextureType type, U32 texture, U32 sampler)
     {
         gGL.flush();
         mCurrImage = next_image;
+        mCurrNativeTexture = nullptr;
     }
 
     if(mCurrTexture != texture)
@@ -735,7 +802,9 @@ void ALTextureSlot::unbind()
 #endif
     if (mIndex < 0) return;
 
-    const bool issue_gl = issue_opengl_texture();
+    const bool native_binding = getCurrMetalTexture() &&
+        (mCurrNativeTexture || !mCurrImage || !mCurrImage->getTexName());
+    const bool issue_gl = issue_opengl_texture() && !native_binding;
     if (issue_gl)
     {
         stop_glerror();
@@ -744,12 +813,16 @@ void ALTextureSlot::unbind()
     //always flush and activate for consistency
     //   some code paths assume unbind always flushes and sets the active texture
     gGL.flush();
-    activate();
+    if (issue_gl)
+    {
+        activate();
+    }
 
     if (mCurrTexType != TT_NONE)
     {
         mCurrTexture = 0;
         mCurrImage = (mCurrTexType == TT_TEXTURE) ? sWhiteImage.load() : nullptr;
+        mCurrNativeTexture = nullptr;
 
         if (issue_gl && mCurrTexType == TT_TEXTURE)
         {
@@ -786,14 +859,20 @@ void ALTextureSlot::unbindFast()
         return;
     }
 #endif
-    activate();
+    const bool native_binding = getCurrMetalTexture() &&
+        (mCurrNativeTexture || !mCurrImage || !mCurrImage->getTexName());
+    if (!native_binding)
+    {
+        activate();
+    }
 
     if (mCurrTexType != TT_NONE)
     {
         mCurrTexture = 0;
         mCurrImage = (mCurrTexType == TT_TEXTURE) ? sWhiteImage.load() : nullptr;
+        mCurrNativeTexture = nullptr;
 
-        const bool issue_gl = issue_opengl_texture();
+        const bool issue_gl = issue_opengl_texture() && !native_binding;
         if (issue_gl && mCurrTexType == TT_TEXTURE)
         {
             glBindTexture(sGLTextureType[mCurrTexType], sWhiteTexture);
