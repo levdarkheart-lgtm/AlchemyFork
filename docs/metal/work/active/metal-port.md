@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `9c74277821`.
+**Renderer checkpoint:** Commit `60e350e29a`.
 
 This ledger contains current decisions and executable work. Prior checkpoint
 detail belongs in the indexed archive.
@@ -12,10 +12,10 @@ detail belongs in the indexed archive.
 
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
-| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68472 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,983 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains open. |
+| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68474 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,975 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains open. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
-| M-004 | Metal resources, transfers, readback and sync | doing | Geometry, fonts/textures, uploads, completion, buffers, samplers, image slots, targets, scale-down, CEF media and pipeline noise/SMAA lifecycle are native. Other copy/readback consumers follow. |
+| M-004 | Metal resources, transfers, readback and sync | doing | Geometry, fonts/textures, uploads, completion, buffers, samplers, image slots, targets and reflection arrays are native; orphan framebuffer copy ownership is gone. Other copy/readback consumers follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font atlas allocation/publication/release and UI capture are native with no GL fallback. Snapshot source rejection is repaired; controls/preview remain owner-attended and visually open. |
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners; broad parity remains open. |
@@ -125,12 +125,14 @@ dormant GL depth-pyramid owner/GLSL are removed; production water hierarchy and 
 lifecycle native; `9c74277821` makes font atlas allocation, glyph publication
 and release Metal-only with no GL fallback and exact native readback proof.
 
+`60e350e29a` deletes the unreferenced product cube-array GL owner and uncalled framebuffer-copy API; historical GL tests retain local fixtures and production reflection arrays remain native.
+
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
-- Source-exact Ninja Release warnings-as-errors build/stage passes at `9c74277821`; package `26.4.0.68472`.
+- Source-exact Ninja Release warnings-as-errors build/stage passes at `60e350e29a`; package `26.4.0.68474`.
 - `tools/metal/verify_app.sh`: 349/349 inspected slices are ARM64.
-- Executable SHA-256: `9ecf3f25d8b8b15c446226b9421880495062d4d96d8492884f8a74e90650bf75`.
+- Executable SHA-256: `5c0b5677b0b3e35af88acd1485c121e19f4431f298fe8d765e334c743d065045`.
 - Metallib SHA-256: `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer passes 156 assertions / eight cases; llrender passes 1,792/1,792 and Metal passes 52,681/52,681 assertions.
 - Current focused Metal GPU/alrender/llrender/benchmark tests pass 4/4; native font atlas upload/readback/release passes 28 assertions/five cases.
@@ -142,9 +144,8 @@ and release Metal-only with no GL fallback and exact native readback proof.
   hardware skips.
 - Broad shared tests reproduce baseline host/driver failures: four assertions
   in three frame-fence timing cases and one render-target depth-format assertion.
-- Harness structure passes 32/32 required files; tool tests pass 31/31.
-- Strict inventory: 1,983/2,405 files (`gl_function` 442, `gl_shader` 1,543, `sdl_gl` 0), expected exit 1; report SHA-256 is `75e4f35c25132bfba816b15110f0b5be4927d7d526d832071d435892aff1c7d1`.
-  This is 145 below 2,128 and 318 below 2,301; audit rules are unchanged.
+- Focused alrender/llrender suites pass 28/28; harness structure passes 32/32 required files; tool tests pass 31/31.
+- Strict inventory: 1,975/2,403 files (`gl_function` 439, `gl_shader` 1,538, `sdl_gl` 0), expected exit 1; report SHA-256 is `cc8a0a4ce7f95834f2f4ce6fd0a2a967a7b89700578b7cf8df04082528a2e049`; 153 below 2,128 and 326 below 2,301 with unchanged rules.
 
 ## Owner-attended visual cadence
 

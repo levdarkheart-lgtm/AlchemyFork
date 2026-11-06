@@ -3,7 +3,7 @@
 **Observed:** 2026-11-06 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `9c74277821`
+**Renderer code checkpoint:** `60e350e29a`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -71,6 +71,7 @@ The latest essential sequence is:
   GL depth-pyramid owner/GLSL while retaining native water hierarchy/cull compute.
 - `e8eaa3701b` replaces transient-target GL side effects/poison clears with explicit Metal attachment clears while preserving shared depth; `768250a2fc` makes Metal exposure/lens-flare history native-owned.
 - `ecf223cf4c` removes scale-down/CEF GL tails; `a3067b1aac` makes noise/SMAA lifecycle native; `9c74277821` makes font atlas allocation, glyph publication and release Metal-only with no runtime GL fallback.
+- `60e350e29a` removes the orphan product cube-map-array GL owner and uncalled framebuffer-to-image GL copy API; historical GL tests own their fixtures and production reflection arrays remain native.
 
 `LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot preview/refresh/save execution remains owner-attended.
 
@@ -81,11 +82,11 @@ The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or 
 - `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max,
   64 GiB unified memory and Xcode 26.6; Metal reports Apple family 7 and a
   62,277,025,792-byte recommended working set.
-- Source-exact Ninja Release warnings-as-errors build/stage passes at `9c74277821`; package `Alchemy Metal Development 26.4.0.68472`.
+- Source-exact Ninja Release warnings-as-errors build/stage passes at `60e350e29a`; package `Alchemy Metal Development 26.4.0.68474`.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
   the product, renderer-test and appearance-utility executables have no
   OpenGL/Vulkan dependency or unresolved GL-family symbol.
-- Viewer executable SHA-256: `9ecf3f25d8b8b15c446226b9421880495062d4d96d8492884f8a74e90650bf75`.
+- Viewer executable SHA-256: `5c0b5677b0b3e35af88acd1485c121e19f4431f298fe8d765e334c743d065045`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer proof passes 156 assertions/eight cases including writable native image subresources; full llrender passes 1,792/1,792 and Metal
@@ -106,14 +107,13 @@ The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or 
   binary; changed files do not own those components.
 - `python3 tools/metal/validate_harness.py` passes all 32 required files;
   `python3 -m unittest discover -s tools/metal/tests -v` passes 31/31.
-- `git diff --check` passes.
+- Focused alrender/llrender suites pass 28/28; `git diff --check` passes.
 
 ## OpenGL elimination gate
 
-Strict source inventory intentionally still fails: 1,983 findings in 2,405
-viewer-owned files (`gl_function` 442, `gl_shader` 1,543, `sdl_gl` 0).
-Report SHA-256 is `75e4f35c25132bfba816b15110f0b5be4927d7d526d832071d435892aff1c7d1`.
-No audit rule or suppression changed; this is 145 below 2,128 and 318 below the
+Strict source inventory intentionally still fails: 1,975 findings in 2,403 viewer-owned files (`gl_function` 439, `gl_shader` 1,538, `sdl_gl` 0).
+Report SHA-256 is `cc8a0a4ce7f95834f2f4ce6fd0a2a967a7b89700578b7cf8df04082528a2e049`.
+No audit rule or suppression changed; this is 153 below 2,128 and 326 below the
 owner's 2,301 reference. The gate remains zero; runtime proof remains queued.
 
 ## Visual review cadence
@@ -129,7 +129,7 @@ is a parity pass without explicit owner evidence.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
-| M-004 resources/readback | doing | Geometry, textures/fonts, uploads, buffers, samplers, image slots, targets, transient clears, scale-down, CEF media and pipeline noise/SMAA lifecycle are native; other copy/readback consumers remain. |
+| M-004 resources/readback | doing | Geometry, textures/fonts, uploads, buffers, samplers, image slots, targets and reflection arrays are native; orphan framebuffer copy ownership is gone; other copy/readback consumers remain. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
 | M-006 UI/media | doing | UI/font capture and atlas publication/release are native with no GL fallback; Snapshot source path is repaired but its UI behavior remains owner-attended and open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; parity remains open. |
