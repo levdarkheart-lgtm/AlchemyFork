@@ -3,7 +3,7 @@
 **Observed:** 2026-11-06 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `e8eaa3701b`
+**Renderer code checkpoint:** `768250a2fc`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -70,26 +70,28 @@ The latest essential sequence is:
 - `029694fedb` gives image slots typed Metal read/write attachments, validates subresources/access and rejects raw integer identities. It removes the dormant
   GL depth-pyramid owner/GLSL while retaining native water hierarchy/cull compute.
 - `e8eaa3701b` replaces transient-target GL side effects/poison clears with explicit Metal attachment clears while preserving shared depth.
+- `768250a2fc` makes Metal exposure/lens-flare history native-owned; missed native frames no longer let GL permanently reject presentation or Snapshot.
 
 `LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native availability cannot disguise a native identity as GL; GL occlusion fails closed.
+Snapshot preview/refresh/save share that native path; the logged pre-render rejection is removed, but owner-attended execution is required before claiming behavior.
 
-The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected generic stubs do not enter the
-product. No viewer was launched; startup/login remains queued while work continues on the essential ordinary-frame tail, not optional paths.
+The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. No viewer was launched; startup/login remains queued.
 
 ## Build and validation evidence
 
 - `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max,
   64 GiB unified memory and Xcode 26.6; Metal reports Apple family 7 and a
   62,277,025,792-byte recommended working set.
-- Source-exact Ninja warnings-as-errors build/stage passes at `e8eaa3701b`; package `Alchemy Metal Development 26.4.0.68463`.
+- Source-exact Xcode Release warnings-as-errors build/stage passes at `768250a2fc`; package `Alchemy Metal Development 26.4.0.68465`.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
   the product, renderer-test and appearance-utility executables have no
   OpenGL/Vulkan dependency or unresolved GL-family symbol.
-- Viewer executable SHA-256: `88bf87124c5ff9354a3240c652595b4f5592032bb6b7b096bcf6acfebe93dcde`.
+- Viewer executable SHA-256: `f78bf99226e8bb55d060a369c55ac28792b7de61d3430c7fcca29722147d4791`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer proof passes 156 assertions/eight cases including writable native image subresources; full llrender passes 1,792/1,792 and Metal
   passes 52,681/52,681 assertions.
+- The current focused `almetal_gpu`, combined `alrender` and newview Metal benchmark tests pass 3/3.
 - Native transient-pool proof passes 943 assertions/14 cases; full alrender passes 556,617/556,617 assertions across 132 cases.
 - `tools/metal/build.sh test` passes all 517 registered tests in 1,204.60 seconds;
   six Darwin GL-only migration suites remain intentionally omitted.
@@ -111,8 +113,7 @@ product. No viewer was launched; startup/login remains queued while work continu
 
 Strict source inventory intentionally still fails: 2,023 findings in 2,407
 viewer-owned files (`gl_function` 461, `gl_shader` 1,564, `sdl_gl` 0).
-Report SHA-256 is
-`5994fac4605993d057ee2dcf24add61e09d5ac31904f50c4786af9349d0fb649`.
+Report SHA-256 is `6946aaa6b89a08029499e1134e5d38b88b6e7d0412ccca8476143b70b7bb1a48`.
 No audit rule or suppression changed; this is 105 below 2,128 and 278 below the
 owner's 2,301 reference. The gate remains zero; runtime proof remains queued.
 
@@ -128,9 +129,9 @@ is a parity pass without explicit owner evidence.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
-| M-004 resources/readback | doing | Geometry, textures/fonts, async uploads, buffers, samplers, texture/image slots, offscreen targets and transient clears are native; copy/readback consumers remain. |
+| M-004 resources/readback | doing | Geometry, textures/fonts, uploads, buffers, samplers, image slots, targets and transient clears are native; Snapshot admission/readback no longer depends on GL temporal history; other copy/readback consumers remain. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
-| M-006 UI/media | doing | UI/font capture is native; owner accepted readable text previously; Snapshot UI remains visually open. |
+| M-006 UI/media | doing | UI/font capture is native; owner accepted readable text previously; Snapshot source path is repaired but its UI behavior remains owner-attended and open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; parity remains open. |
 | M-008 effects/advanced views | doing | Core effects and many diagnostics are native; remaining optional paths follow the usable-core cut. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
@@ -153,7 +154,7 @@ completion or release readiness.
 ## Exact next actions
 
 1. Replace reachable texture blits and retained-window copies with Metal resources.
-2. Convert essential readback and Snapshot preview/save consumers.
+2. Audit remaining essential readback/Snapshot source blockers; keep execution proof owner-attended.
 3. Continue ordinary UI/world GL removal before optional tails.
 4. Rerun strict source, link and runtime gates after every coherent cut.
 5. Keep startup/login queued; do not launch either viewer autonomously.
