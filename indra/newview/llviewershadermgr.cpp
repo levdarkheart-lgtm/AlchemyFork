@@ -101,9 +101,6 @@ LLGLSLShader        gObjectPreviewProgram;
 LLGLSLShader        gPhysicsPreviewProgram;
 LLGLSLShader        gObjectAlphaMaskNoColorProgram;
 
-//environment shaders
-LLGLSLShader        gDepthPyramidProgram;
-
 //avatar shader handles
 LLGLSLShader        gAvatarProgram;
 LLGLSLShader        gImpostorProgram;
@@ -1159,7 +1156,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         }
         gCASProgram.unload();
 #endif
-        gDepthPyramidProgram.unload();
         gDeferredBufferVisualProgram.unload();
 
         LLGLSLShader::sIndexedLegacyMaterials = false;
@@ -1605,22 +1601,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoDoFF.glsl", GL_FRAGMENT_SHADER));
         gDeferredPostNoDoFProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         built(gDeferredPostNoDoFProgram.createShader(), gDeferredPostNoDoFProgram);
-    }
-
-    // The depth pyramid's levels, where the session computes and the water's waves, its reader, are wanted. Optional,
-    // like them: its failing leaves the cull off (ALDepthPyramid::build), not the shaders after it.
-    if (mInputs.mLocal.mCompute && mInputs.mLocal.mWaterWaves)
-    {
-        gDepthPyramidProgram.mName = "Depth Pyramid Shader";
-        gDepthPyramidProgram.mShaderFiles.clear();
-        gDepthPyramidProgram.mShaderFiles.push_back(make_pair("deferred/depthPyramidC.glsl", GL_COMPUTE_SHADER));
-        gDepthPyramidProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDepthPyramidProgram.clearPermutations();
-        if (!gDepthPyramidProgram.createShader())
-        {
-            LL_WARNS("Shader") << "The depth pyramid's program did not build; the water's patches are not culled by depth" << LL_ENDL;
-            gDepthPyramidProgram.unload();
-        }
     }
 
     {

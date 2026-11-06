@@ -28,18 +28,19 @@
 
 class LLImageGL;
 class LLRenderTarget;
+class ALMetalTexture;
 
 // GL 4.2's minimum GL_MAX_IMAGE_UNITS, so every unit here exists on every context that has images at all.
 constexpr U32 AL_NUM_IMAGE_SLOTS = 8;
 
-// One image unit (glBindImageTexture): a single level of a texture, or every layer of it, that a shader reads and
-// writes texel by texel with imageLoad / imageStore, as a format and an access. D3D11's unordered access view at an
-// index, which is what ALTextureSlot's shader resource view is to it.
+// One native compute-image binding: a single mip level of a texture, or every
+// layer of it, that a shader reads and writes texel by texel. This is the
+// writable counterpart of ALTextureSlot's sampled resource binding.
 //
-// LLRender owns one per unit (getImageSlot) and keeps them as it keeps the texture slots: a bind that matches what
-// the unit holds issues nothing, refreshState() re-issues what each holds, and forgetTextures() drops a deleted name.
-// A program's image uniforms are given their units at link, in reserved-uniform order, so a caller binds through
-// LLGLSLShader::bindImage rather than naming a unit.
+// LLRender owns one per index (getImageSlot) and keeps typed Metal resource
+// identity plus subresource and access intent. A redundant bind changes
+// nothing. Metal compute encoders consume the recorded resource explicitly;
+// there is no ambient driver image-unit state to restore.
 //
 // Shader writes through a unit reach later reads only past the barrier for that kind of read: LLRender::memoryBarrier.
 class ALImageSlot
@@ -53,7 +54,7 @@ public:
         READ_WRITE,
     };
 
-    // glBindImageTexture calls issued, for checking that a redundant bind issues none.
+    // Logical native binding changes, for checking redundant-bind suppression.
     static U32 sImageBinds;
 
     ALImageSlot(S32 index = -1);
@@ -62,30 +63,42 @@ public:
     // depth, compressed) warns and binds nothing (returns false). `level` is the mip level the shader addresses.
     bool bind(LLRenderTarget* target, U32 attachment, eAccess access, U32 level = 0);
     bool bind(LLImageGL* image, eAccess access, U32 level = 0);
-    // A texture by name. `layered` binds every layer of an array, cube or volume; otherwise `layer` picks one.
+    // Bind an already-owned native resource. The owner must outlive the use of
+    // this slot. `layered` selects every array/cube layer; otherwise `layer`
+    // selects one. `format` is the legacy sized-format contract, when known.
+    bool bindNative(const ALMetalTexture* texture, U32 level, bool layered, S32 layer,
+                    eAccess access, U32 format = 0);
+    // Integer texture identities have no native owner and fail closed. Kept
+    // temporarily so remaining callers cannot silently fall back to GL.
     bool bindManual(U32 texture, U32 level, bool layered, S32 layer, eAccess access, U32 format);
 
-    // Unit back to texture 0.
+    // Release the recorded native resource.
     void unbind();
 
-    // Re-issue what this unit holds, after GL state was changed behind LLRender's back.
+    // Metal has no ambient image-unit state; retained for state-refresh callers.
     void refreshState();
 
     S32 getIndex() const { return mIndex; }
     U32 getCurrTexture() const { return mCurrTexture; }
+    const ALMetalTexture* getCurrMetalTexture() const { return mCurrMetalTexture; }
     U32 getCurrLevel() const { return mCurrLevel; }
     U32 getCurrFormat() const { return mCurrFormat; }
     eAccess getCurrAccess() const { return mCurrAccess; }
+    S32 getCurrLayer() const { return mCurrLayer; }
+    bool getCurrLayered() const { return mCurrLayered; }
 
     // A sized internal format image load/store takes: GL's table of image unit formats.
     static bool isImageFormat(U32 format);
 
 private:
-    // What a fresh context's unit holds: texture 0, at GL's initial level, layer, access and format.
+    // What an empty native binding holds.
     void reset();
 
     S32     mIndex;
+    // Compatibility truthiness only: 1 means a typed native resource is held;
+    // the actual identity is mCurrMetalTexture and is never handed to GL.
     U32     mCurrTexture = 0;
+    const ALMetalTexture* mCurrMetalTexture = nullptr;
     U32     mCurrLevel   = 0;
     S32     mCurrLayer   = 0;
     U32     mCurrFormat;

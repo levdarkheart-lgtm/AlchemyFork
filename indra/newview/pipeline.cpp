@@ -18251,7 +18251,6 @@ void LLPipeline::releaseRenderTargets()
 void LLPipeline::releaseDepthDependents()
 {
     mWaterSurface.release();
-    mDepthPyramid.release();
 
     if (ALSelectionOutline::instanceExists())
     {

@@ -329,12 +329,6 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
 
     if (features->hasWaterWaves)
     {
-        // The waves' control stage culls the patches the scene's depth hides, through the depth pyramid.
-        if (!shader->attachStageObject(GL_TESS_CONTROL_SHADER, "deferred/depthPyramidUtil.glsl"))
-        {
-            return false;
-        }
-
         // The waves' evaluation stage displaces the surface by heights read through the lattice the fragment stage
         // reads the normals through. atmosphericsVarsV declares the outputs the fragment side's atmosphericsVarsF
         // expects to find in the stage before it, which with tessellation is this one, as for the terrain.
@@ -2242,20 +2236,11 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("waterRaise");
     mReservedUniforms.push_back("waterGroundFade");
 
-    // The depth pyramid
-    mReservedUniforms.push_back("depthPyramid");
-    mReservedUniforms.push_back("depthPyramidSource");
-    mReservedUniforms.push_back("depthPyramidTarget");
-    mReservedUniforms.push_back("depthPyramidLevel");
-    mReservedUniforms.push_back("depthPyramidSize");
-    mReservedUniforms.push_back("depthPyramidCount");
-
     // The light map's ambient occlusion blur in one dispatch
     mReservedUniforms.push_back("blur_light_apron");
     mReservedUniforms.push_back("blurLightTarget");
 
     // The waves' patches
-    mReservedUniforms.push_back("waterOcclusion");
     mReservedUniforms.push_back("waterPatchOrder");
 
     // Settings the programs read as uniforms

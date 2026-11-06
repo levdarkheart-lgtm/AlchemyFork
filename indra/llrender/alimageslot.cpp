@@ -31,28 +31,89 @@
 #include "llimagegl.h"
 #include "llrender.h"
 #include "llrendertarget.h"
+#if LL_DARWIN
+#include "almetalresource.h"
+#endif
 
 U32 ALImageSlot::sImageBinds = 0;
 
 namespace
 {
-    GLenum to_gl_access(ALImageSlot::eAccess access)
+#if LL_DARWIN
+    bool is_native_image_format(ALMetalPixelFormat format)
     {
-        switch (access)
+        switch (format)
         {
-        case ALImageSlot::WRITE_ONLY: return GL_WRITE_ONLY;
-        case ALImageSlot::READ_WRITE: return GL_READ_WRITE;
-        case ALImageSlot::READ_ONLY:
-        default:                      return GL_READ_ONLY;
+        case ALMetalPixelFormat::r8_unorm:
+        case ALMetalPixelFormat::r8_sint:
+        case ALMetalPixelFormat::r8_uint:
+        case ALMetalPixelFormat::rg8_unorm:
+        case ALMetalPixelFormat::rg8_sint:
+        case ALMetalPixelFormat::rg8_uint:
+        case ALMetalPixelFormat::rgba8_unorm:
+        case ALMetalPixelFormat::rgba8_sint:
+        case ALMetalPixelFormat::rgba8_uint:
+        case ALMetalPixelFormat::bgra8_unorm:
+        case ALMetalPixelFormat::r16_unorm:
+        case ALMetalPixelFormat::r16_float:
+        case ALMetalPixelFormat::r16_sint:
+        case ALMetalPixelFormat::r16_uint:
+        case ALMetalPixelFormat::rg16_float:
+        case ALMetalPixelFormat::rg16_sint:
+        case ALMetalPixelFormat::rg16_uint:
+        case ALMetalPixelFormat::rgba16_unorm:
+        case ALMetalPixelFormat::rgba16_float:
+        case ALMetalPixelFormat::rgba16_sint:
+        case ALMetalPixelFormat::rgba16_uint:
+        case ALMetalPixelFormat::r32_float:
+        case ALMetalPixelFormat::r32_sint:
+        case ALMetalPixelFormat::r32_uint:
+        case ALMetalPixelFormat::rg32_float:
+        case ALMetalPixelFormat::rg32_sint:
+        case ALMetalPixelFormat::rg32_uint:
+        case ALMetalPixelFormat::rgba32_float:
+        case ALMetalPixelFormat::rgba32_sint:
+        case ALMetalPixelFormat::rgba32_uint:
+        case ALMetalPixelFormat::rgb10a2_unorm:
+        case ALMetalPixelFormat::rgb10a2_uint:
+        case ALMetalPixelFormat::rg11b10_float:
+            return true;
+        default:
+            return false;
         }
     }
 
-    // A texture with more than one layer: the image binds all of them unless one is picked.
-    bool is_layered(ALTextureSlot::eTextureType type)
+    U32 layer_count(const ALMetalTextureDescriptor& descriptor)
     {
-        return type == ALTextureSlot::TT_CUBE_MAP || type == ALTextureSlot::TT_CUBE_MAP_ARRAY
-            || type == ALTextureSlot::TT_TEXTURE_3D;
+        switch (descriptor.type)
+        {
+        case ALMetalTextureType::texture_2d_array:
+            return descriptor.array_length;
+        case ALMetalTextureType::texture_cube:
+            return 6;
+        case ALMetalTextureType::texture_cube_array:
+            return descriptor.array_length * 6;
+        default:
+            return 1;
+        }
     }
+
+    bool supports_access(const ALMetalTextureDescriptor& descriptor,
+                         ALImageSlot::eAccess access)
+    {
+        const bool readable = alMetalHasUsage(
+            descriptor.usage, ALMetalTextureUsage::shader_read);
+        const bool writable = alMetalHasUsage(
+            descriptor.usage, ALMetalTextureUsage::shader_write);
+        switch (access)
+        {
+        case ALImageSlot::READ_ONLY:  return readable;
+        case ALImageSlot::WRITE_ONLY: return writable;
+        case ALImageSlot::READ_WRITE: return readable && writable;
+        }
+        return false;
+    }
+#endif
 }
 
 ALImageSlot::ALImageSlot(S32 index)
@@ -65,6 +126,7 @@ ALImageSlot::ALImageSlot(S32 index)
 void ALImageSlot::reset()
 {
     mCurrTexture = 0;
+    mCurrMetalTexture = nullptr;
     mCurrLevel   = 0;
     mCurrLayer   = 0;
     mCurrFormat  = GL_R8;
@@ -131,39 +193,61 @@ bool ALImageSlot::bind(LLRenderTarget* target, U32 attachment, eAccess access, U
         llassert(false);
         return false;
     }
-    return bindManual(target->getTexture(attachment), level, false, 0, access, target->getInternalFormat(attachment));
+    return bindNative(target->getMetalColorTexture(attachment), level, false, 0,
+                      access, target->getInternalFormat(attachment));
 }
 
 bool ALImageSlot::bind(LLImageGL* image, eAccess access, U32 level)
 {
-    if (!image || !image->getTexName())
+#if LL_DARWIN
+    if (!image || !image->getMetalTexture())
     {
-        LL_WARNS("ImageSlot") << "Image slot " << mIndex << ": no texture to bind" << LL_ENDL;
+        LL_WARNS("ImageSlot") << "Image slot " << mIndex
+                              << ": no native texture to bind" << LL_ENDL;
         llassert(false);
         return false;
     }
-    return bindManual(image->getTexName(), level, is_layered(image->getTarget()), 0, access,
-                      (U32)image->getStorageInternalFormat());
+    const ALMetalTextureType type = image->getMetalTexture()->descriptor().type;
+    const bool layered = type == ALMetalTextureType::texture_2d_array ||
+                         type == ALMetalTextureType::texture_cube ||
+                         type == ALMetalTextureType::texture_cube_array;
+    return bindNative(image->getMetalTexture(), level, layered, 0, access,
+                      static_cast<U32>(image->getStorageInternalFormat()));
+#else
+    (void)image;
+    (void)access;
+    (void)level;
+    return false;
+#endif
 }
 
-bool ALImageSlot::bindManual(U32 texture, U32 level, bool layered, S32 layer, eAccess access, U32 format)
+bool ALImageSlot::bindNative(const ALMetalTexture* texture, U32 level, bool layered,
+                             S32 layer, eAccess access, U32 format)
 {
-    if (mIndex < 0 || !gGLManager.mInited || !gGLManager.mHasCompute)
+#if LL_DARWIN
+    if (mIndex < 0 || !texture)
     {
         return false;
     }
-    llassert(LLRender::sCompute);
-
-    // An image reads and writes the texel's bits as `format` lays them out. sRGB would need a conversion on every
-    // access, depth has no texel bits to give, and a compressed block is not a texel: GL takes none of them.
-    if (!isImageFormat(format))
+    const ALMetalTextureDescriptor& descriptor = texture->descriptor();
+    const U32 layers = layer_count(descriptor);
+    const bool layered_type = descriptor.type == ALMetalTextureType::texture_2d_array ||
+                              descriptor.type == ALMetalTextureType::texture_cube ||
+                              descriptor.type == ALMetalTextureType::texture_cube_array;
+    if (!is_native_image_format(descriptor.format) ||
+        (format && !isImageFormat(format)) ||
+        level >= descriptor.mipmap_level_count ||
+        descriptor.type == ALMetalTextureType::texture_2d_multisample ||
+        (layered && !layered_type) || (!layered && (layer < 0 || static_cast<U32>(layer) >= layers)) ||
+        !supports_access(descriptor, access))
     {
-        LL_WARNS_ONCE("ImageSlot") << "Image slot " << mIndex << ": format 0x" << std::hex << format << std::dec
-                                   << " cannot be bound as an image" << LL_ENDL;
+        LL_WARNS_ONCE("ImageSlot") << "Image slot " << mIndex
+                                   << ": native texture is incompatible with level/layer/access or format 0x"
+                                   << std::hex << format << std::dec << LL_ENDL;
         return false;
     }
 
-    if (mCurrTexture == texture && mCurrLevel == level && mCurrLayered == layered && mCurrLayer == layer
+    if (mCurrMetalTexture == texture && mCurrLevel == level && mCurrLayered == layered && mCurrLayer == layer
         && mCurrAccess == access && mCurrFormat == format)
     {
         return true;
@@ -172,44 +256,56 @@ bool ALImageSlot::bindManual(U32 texture, U32 level, bool layered, S32 layer, eA
     // What is batched was meant to see the unit as it was.
     gGL.flush();
 
-    glBindImageTexture(mIndex, texture, level, layered ? GL_TRUE : GL_FALSE, layer, to_gl_access(access), format);
     ++sImageBinds;
 
-    mCurrTexture = texture;
+    mCurrTexture = 1u;
+    mCurrMetalTexture = texture;
     mCurrLevel   = level;
     mCurrLayered = layered;
     mCurrLayer   = layer;
     mCurrAccess  = access;
     mCurrFormat  = format;
     return true;
+#else
+    (void)texture;
+    (void)level;
+    (void)layered;
+    (void)layer;
+    (void)access;
+    (void)format;
+    return false;
+#endif
+}
+
+bool ALImageSlot::bindManual(U32 texture, U32 level, bool layered, S32 layer,
+                             eAccess access, U32 format)
+{
+    (void)texture;
+    (void)level;
+    (void)layered;
+    (void)layer;
+    (void)access;
+    (void)format;
+    LL_WARNS_ONCE("ImageSlot") << "Integer image identities have no Metal resource owner"
+                               << LL_ENDL;
+    return false;
 }
 
 void ALImageSlot::unbind()
 {
-    if (mIndex < 0 || mCurrTexture == 0 || !gGLManager.mInited ||
-        !gGLManager.mHasCompute)
+    if (mIndex < 0 || !mCurrMetalTexture)
     {
         return;
     }
 
     gGL.flush();
 
-    glBindImageTexture(mIndex, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8);
     ++sImageBinds;
     reset();
 }
 
 void ALImageSlot::refreshState()
 {
-    // Image units exist only where compute does; a 4.1 context has nothing here to restore.
-    if (mIndex < 0 || !gGLManager.mInited || !gGLManager.mHasCompute)
-    {
-        return;
-    }
-
-    gGL.flush();
-
-    glBindImageTexture(mIndex, mCurrTexture, mCurrLevel, mCurrLayered ? GL_TRUE : GL_FALSE, mCurrLayer,
-                       to_gl_access(mCurrAccess), mCurrFormat);
-    ++sImageBinds;
+    // Metal encoders bind every resource explicitly. There is no driver image
+    // unit to re-issue after unrelated native or legacy state changes.
 }

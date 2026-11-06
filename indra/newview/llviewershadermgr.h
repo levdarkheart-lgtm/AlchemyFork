@@ -133,8 +133,6 @@ extern LLGLSLShader        gPhysicsPreviewProgram;
 extern LLGLSLShader     gObjectAlphaMaskNoColorProgram;
 
 //environment shaders
-// One level of ALDepthPyramid; built where the session computes.
-extern LLGLSLShader         gDepthPyramidProgram;
 extern LLGLSLShader         gGlowProgram;
 extern LLGLSLShader         gGlowExtractProgram;
 extern LLGLSLShader         gBloomExtractProgram;

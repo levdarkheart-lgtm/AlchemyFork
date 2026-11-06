@@ -20,14 +20,14 @@ This document is an **engineering hypothesis grounded in upstream source**, not 
 | `indra/llrender/llglslshader.cpp`, `llshadermgr.*` | GLSL variants, uniforms, `LLGLSLShader` | MSL shader libraries, pipeline state cache, argument/buffer/texture/sampler binding, variant and error diagnostics |
 | `indra/newview/llviewershadermgr.cpp` and `app_settings/shaders/` | GLSL program assembly, shared snippets | Native `.metal` implementations plus deterministic variant/binding metadata; preserve algorithms, validate output |
 | `indra/newview/pipeline.cpp`, `lldrawpool*.cpp`, `llviewerdisplay.cpp` | GL pass graph, render state, material/avatar draw calls | Direct Metal rendering and compute passes, PBR, avatar, transparent objects, probes, shadows, HDR and presentation |
-| `indra/alrender/` | Partly pure planning; partly GL (`ALDepthPyramid`, blur, render target pool) | Retain pure resource policies; rewrite actual GPU allocation/commands and synchronization |
+| `indra/alrender/` | Pure planning plus remaining GL blur/transient-target helpers; the duplicate GL depth-pyramid owner is removed | Retain pure resource policies; rewrite actual GPU allocation/commands and synchronization |
 | `indra/llrender/llfontgl.cpp`, `indra/llui/` render call sites | Glyph/UI drawing using GL-style interfaces | Native Metal text/2D/widget/selection rendering without replacing widget logic |
 | media texture and snapshot/picking paths | GL texture upload/readback | Metal texture ingress, CPU-GPU readback, color/alpha and synchronization correctness |
 
 ## Verified upstream observations (2026-10-24)
 - `llwindowsdl.cpp` sets macOS SDL GL version 4.1 and `SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN`.
 - `LLPipeline::shaderInputsFromSettings` gates GL compute behind GLSL >= 4.30.
-- `ALDepthPyramid::build` dispatches GL compute when present and is disabled without it.
+- Water depth-pyramid build/cull is owned by `ALMetalWorldRenderer`; the dormant duplicate GL compute owner has been removed.
 - `ALRenderResourcePlan` describes Main, Probe and Hero target packs. It is largely pure policy and may survive the backend replacement.
 - `llvertexbuffer.cpp` has `LLAppleVBOPool` specifically for Apple OpenGL buffer handling; it is not a Metal resource manager.
 - `pipeline.cpp` is large and GL-coupled; owning `LLRenderTarget` semantics or keeping method signatures is not proof a line-by-line substitution is valid.

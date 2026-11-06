@@ -1507,13 +1507,6 @@ namespace
     {
         const std::pair<S32, const char*> names[] =
         {
-            { LLShaderMgr::DEPTH_PYRAMID,        "depthPyramid" },
-            { LLShaderMgr::DEPTH_PYRAMID_SOURCE, "depthPyramidSource" },
-            { LLShaderMgr::DEPTH_PYRAMID_TARGET, "depthPyramidTarget" },
-            { LLShaderMgr::DEPTH_PYRAMID_LEVEL,  "depthPyramidLevel" },
-            { LLShaderMgr::DEPTH_PYRAMID_SIZE,   "depthPyramidSize" },
-            { LLShaderMgr::DEPTH_PYRAMID_COUNT,  "depthPyramidCount" },
-            { LLShaderMgr::WATER_OCCLUSION,      "waterOcclusion" },
             { LLShaderMgr::WATER_PATCH_ORDER,    "waterPatchOrder" },
         };
         for (const auto& entry : names)

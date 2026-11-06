@@ -2623,14 +2623,8 @@ void LLRender::forgetTextures(S32 count, const U32* names)
         }
     }
 
-    // Deleting a texture an image unit holds rebinds the unit to texture 0, which is what reset() records.
-    for (ALImageSlot& slot : mImageSlots)
-    {
-        if (slot.mCurrTexture != 0 && std::find(names, end, slot.mCurrTexture) != end)
-        {
-            slot.reset();
-        }
-    }
+    // Native image slots hold typed Metal resources, never GL names. Deleting
+    // an unrelated compatibility name must not displace their bindings.
 }
 
 void LLRender::forgetBuffer(U32 name)

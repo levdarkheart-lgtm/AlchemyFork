@@ -2501,7 +2501,7 @@
         <key>AlchemyRenderWaterOcclusionCull</key>
         <map>
             <key>Comment</key>
-            <string>Cull the water's wave patches the scene hides, against a depth pyramid of the main view built with compute, so they are never tessellated. Needs compute (OpenGL 4.3).</string>
+            <string>Cull water wave patches hidden by the main view's native Metal depth pyramid before tessellation.</string>
             <key>Persist</key>
             <integer>1</integer>
             <key>Type</key>
