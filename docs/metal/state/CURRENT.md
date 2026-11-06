@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `def3811797`
+**Renderer code checkpoint:** `1a76b76a6d`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -49,6 +49,10 @@ The latest essential sequence is:
   implementation, initializes the appearance utility through the native Metal
   device/scheduler path, removes the product `llrender` OpenGL dependency and
   builds SDL with its Darwin GL/Vulkan platform backends disabled.
+- `1a76b76a6d` removes the hidden backend's remaining cross-platform GL
+  implementation and the texture/vertex workers' shared-context fallback.
+  Async uploads retain Metal batching and fail closed without authoritative
+  Metal textures. Darwin no longer builds six legacy GL-only test executables.
 
 `LLGLSLShader::isComplete()` remains strictly a linked-GL-program predicate;
 `isNativeConfigured()`/`isAvailable()` cannot disguise a native identity as a
@@ -70,17 +74,23 @@ source tail, not optional Debug/Develop/RLVa paths.
   62,277,025,792-byte recommended working set.
 - `tools/metal/build.sh` completed the canonical Xcode Release build with
   warnings-as-errors and ended `BUILD SUCCEEDED`.
-- Staged package: `Alchemy Metal Development 26.4.0.68442`.
+- Source-exact Ninja staging build: `Alchemy Metal Development 26.4.0.68443`.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
-  `codesign --verify --deep --strict` passes.
+  the product, renderer-test and appearance-utility executables have no
+  OpenGL/Vulkan dependency or unresolved GL-family symbol.
 - Viewer executable SHA-256:
-  `9daf87d570fe90ac6d285983a0a441e95f98742312c3a3f378bc08c61b24a22c`.
+  `cd5e9035700edcf001cf01362829965179b3426826508ce7d58ecd111d429a24`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - `llrender_tests`: 1,605 assertions pass across 209 cases, with the expected
   unavailable-font skip.
 - Focused CTest registration passes 14/14, including the combined renderer
   executable, against the no-context cutover build.
+- Focused native Metal/render registration passes 14/14; the configuration
+  registers 515 tests after omitting six Darwin GL-only migration suites.
+- The appearance utility compiles and links through the Metal-only hidden
+  backend; params and joint-offset modes exit 0. Its texture fixture exits 5
+  before window creation on invalid J2C, so it is not backend evidence.
 - Fresh shared renderer suite: 3,698 assertions pass across 111 cases.
 - Focused shared GLSL suite: 1,353 assertions pass across 25 cases, with 13
   hardware-dependent skips.
@@ -94,12 +104,12 @@ source tail, not optional Debug/Develop/RLVa paths.
 
 ## OpenGL elimination gate
 
-Strict source inventory intentionally still fails: 2,315 findings in 2,409
-viewer-owned files (`gl_function` 651, `gl_shader` 1,597, `sdl_gl` 69).
+Strict source inventory intentionally still fails: 2,288 findings in 2,409
+viewer-owned files (`gl_function` 650, `gl_shader` 1,597, `sdl_gl` 43).
 Report SHA-256 is
-`ea3e9358541641189dd3884534ee0b64a5157d6388a3daadb12472ceba4d7efe`.
-No audit rule or suppression changed. This cut removes nine findings from the
-immediately prior 2,324 checkpoint. The earlier 2,301 baseline is not directly
+`a5feff22634e530ca81cafefe16f1b5b79b16f5ff7e4a9c3b91d7f7f97aa90f5`.
+No audit rule or suppression changed. This cut removes 27 findings from the
+immediately prior 2,315 checkpoint. The earlier 2,301 baseline is not directly
 comparable because later semantic-bridge source expanded the conservative
 textual shader inventory. The release gate remains zero; linked proof now
 passes for the product executable, while runtime image/module proof remains
@@ -117,14 +127,14 @@ is a parity pass without explicit owner evidence.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003 platform/presentation | doing | Darwin creates a plain SDL/Cocoa window and sole opaque Metal surface; owner-attended startup/login validation remains. |
-| M-004 resources/readback | doing | Ordinary geometry, textures/fonts and async uploads are native; Snapshot GL scratch is gone. |
+| M-004 resources/readback | doing | Ordinary geometry, textures/fonts and async uploads are native; worker contexts and Snapshot GL scratch are gone. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass identities no longer require GLSL/program names. |
 | M-006 UI/media | doing | UI/font capture is native; owner accepted readable text previously; Snapshot UI remains visually open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; parity remains open. |
 | M-008 effects/advanced views | doing | Core effects and many diagnostics are native; remaining optional paths follow the usable-core cut. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
 | M-010 measured performance | deferred | No quality-equivalent paired M1 Max claim yet. |
-| M-011 GL authority removal | doing | Visible/hidden startup, utilities and product linkage require no GL context/library; reachable source tail remains. |
+| M-011 GL authority removal | doing | Startup, utilities, workers and product linkage require no GL context/library; visible-window migration source and reachable rendering tail remain. |
 | M-012 Computer Use bridge | complete | Semantic bridge verified; visual driving is owner-attended. |
 | M-013 RLVa strict parity | deferred | Nonessential ordering only; final no-GL behavior is still required. |
 
@@ -142,8 +152,7 @@ completion or release readiness.
 
 ## Exact next actions
 
-1. Audit the essential startup/login and ordinary-frame call graph for GL
-   source now exposed by the absent context; replace each owner with Metal.
+1. Remove the 43 remaining SDL/GL findings from visible-window migration while preserving Metal presentation, input and fullscreen.
 2. Prioritize normal UI/text, world/avatar/material, streaming, presentation
    and Snapshot/readback paths before Debug/Develop/RLVa-only tails.
 3. Rerun strict source, Mach-O link and runtime gates after every coherent cut.

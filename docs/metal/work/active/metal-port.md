@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `def3811797`.
+**Renderer checkpoint:** Commit `1a76b76a6d`.
 
 This ledger contains current decisions and executable work. Prior checkpoint
 detail belongs in the indexed archive.
@@ -13,16 +13,16 @@ detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68442 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 2,315 and exits 1; product executable link audit is clean; runtime audit remains open. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 2,288 and exits 1; product executable link audit is clean; runtime audit remains open. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Darwin now creates a plain SDL/Cocoa window and sole opaque Metal surface with no GL context; owner-attended startup/login validation remains. |
-| M-004 | Metal resources, transfers, readback and sync | doing | Ordinary geometry, fonts/textures and async uploads are native-only; Snapshot has no GL scratch path. Remaining GL resource owners follow no-context exposure. |
+| M-004 | Metal resources, transfers, readback and sync | doing | Ordinary geometry, fonts/textures and async uploads are native-only; worker contexts and Snapshot GL scratch are gone. Remaining GL resource owners follow no-context exposure. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant identities configure without GLSL or GL program names. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font/UI resources are native; prior owner check accepted readable UI text. Snapshot controls/preview remain visually open. |
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners; broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Core effects and many diagnostics are native. Debug/Develop-only tails remain behind the usable-core context cut. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Visible/hidden startup, utilities and product linkage require no GL context/library. Reachable source tail remains. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Startup, utilities, workers and product linkage require no GL context/library. Visible-window migration source and reachable rendering tail remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
 
@@ -85,29 +85,37 @@ and appearance-utility executables have no OpenGL/Vulkan dynamic dependency or
 unresolved GL/CGL/SDL_GL/Vulkan imports. Generic unselected SDL archive stubs
 do not enter the product executable.
 
+`1a76b76a6d` deletes the hidden backend's remaining cross-platform GL context
+implementation and both texture/vertex worker shared-context fallbacks. The
+texture worker retains asynchronous Metal upload batching and fail-closed
+authority checks. Darwin omits six legacy GL-only migration suites rather than
+linking a test-only fallback runtime.
+
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
-- `tools/metal/build.sh`: canonical Xcode Release warnings-as-errors,
-  `BUILD SUCCEEDED`; package `26.4.0.68442`.
+- Source-exact Ninja warnings-as-errors build and staging pass; package
+  `26.4.0.68443`.
 - `tools/metal/verify_app.sh`: 349/349 inspected slices ARM64; deep strict
   codesign passes.
 - Executable SHA-256:
-  `9daf87d570fe90ac6d285983a0a441e95f98742312c3a3f378bc08c61b24a22c`.
+  `cd5e9035700edcf001cf01362829965179b3426826508ce7d58ecd111d429a24`.
 - Metallib SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - `llrender_tests`: 1,605 assertions / 209 cases pass plus expected font skip.
 - No-context cutover CTest registration: 14/14 renderer tests pass.
+- Native Metal/render CTest registration: 14/14 pass; 515 total tests remain
+  after six Darwin GL-only suites are omitted.
 - Fresh shared renderer tests: 3,698 assertions / 111 cases pass.
 - Focused shared shader tests: 1,353 assertions / 25 cases pass plus 13
   hardware skips.
 - Broad shared tests reproduce baseline host/driver failures: four assertions
   in three frame-fence timing cases and one render-target depth-format assertion.
 - Harness structure passes 32/32 required files; tool tests pass 31/31.
-- Strict inventory: 2,315 findings in 2,409 files (`gl_function` 651,
-  `gl_shader` 1,597, `sdl_gl` 69), expected exit 1. Report SHA-256:
-  `ea3e9358541641189dd3884534ee0b64a5157d6388a3daadb12472ceba4d7efe`.
-  This is nine below the immediately prior 2,324 checkpoint. The earlier 2,301
+- Strict inventory: 2,288 findings in 2,409 files (`gl_function` 650,
+  `gl_shader` 1,597, `sdl_gl` 43), expected exit 1. Report SHA-256:
+  `a5feff22634e530ca81cafefe16f1b5b79b16f5ff7e4a9c3b91d7f7f97aa90f5`.
+  This is 27 below the immediately prior 2,315 checkpoint. The earlier 2,301
   baseline predates later conservative shader-bridge inventory expansion.
 
 ## Owner-attended visual cadence
@@ -129,8 +137,8 @@ evidence and does not stop safe GL authority removal.
 
 ## Immediate executable action
 
-1. Audit essential startup/login and ordinary-frame reachability for calls
-   exposed by the absent context; replace owners rather than restoring GL.
+1. Remove the 43 remaining SDL/GL findings from visible-window migration
+   source while preserving Metal presentation, input and fullscreen.
 2. Convert normal UI/text, world/avatar/material, streaming, presentation and
    Snapshot/readback paths before optional Debug/Develop/RLVa-only tails.
 3. Continue strict source and Mach-O link audits; collect runtime image/module
