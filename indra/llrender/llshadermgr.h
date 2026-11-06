@@ -670,7 +670,8 @@ public:
         WATER_PATCH_ORDER,                  //  "waterPatchOrder"  ivec4, the order the patches are drawn in
 
         // Settings the programs read as uniforms, so that changing one reloads nothing, each set by the pass that binds
-        // its readers: the terrain's in LLDrawPoolTerrain::bindSurface, SMAA's in LLPipeline::generateSMAABuffers
+        // its readers: the terrain's in LLDrawPoolTerrain::bindSurface. The retained SMAA declarations stay reserved
+        // while shader loading remains shared; the native Metal display transaction reads the controls directly.
         TERRAIN_TRIPLANAR_BLEND,            //  "terrainTriplanarBlend"  the triplanar weights' sharpness (RenderTerrainPBRTriplanarBlendFactor)
         SMAA_PREDICATION_THRESHOLD,         //  "smaaPredicationThreshold"  the predication buffer's edge threshold (RenderSMAAPredicationThreshold)
         SMAA_PREDICATION_SCALE,             //  "smaaPredicationScale"  how much predication scales the edge threshold, 1 to 5

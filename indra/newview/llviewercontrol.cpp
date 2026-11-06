@@ -294,9 +294,10 @@ static bool handleRenderPerfTestChanged(const LLSD& newvalue)
 
 static bool handleRenderGlowChanged(const LLSD& newvalue)
 {
-    // The glow programs load whatever this says, and glowing faces register for the glow passes
-    // whatever it says, so a toggle reloads, allocates and rebuilds nothing. It is the latch the glow
-    // passes and generateGlow read, set as setShaders sets it.
+    // The glow programs load whatever this says, and glowing faces register for
+    // the native capture passes whatever it says, so a toggle reloads,
+    // allocates and rebuilds nothing. It is the latch the draw/capture passes
+    // and Metal display transaction read, set as setShaders sets it.
     LLPipeline::sRenderGlow = newvalue.asBoolean() && gGlowProgram.isComplete() && gGlowExtractProgram.isComplete();
     return true;
 }

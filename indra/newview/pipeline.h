@@ -728,9 +728,6 @@ public:
     ColorGradeConfig colorGradeConfig(bool apply_color_grade) const;
     void colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool tonemap, bool colorgrade,
                       const Bloom* bloom = nullptr);
-    // The legacy glow extracted from @a src and blurred, held by @a scope until combineGlow has added it; null where
-    // there is none to draw, glow being off or its blur running no iterations, or none could be had.
-    LLRenderTarget* generateGlow(LLRenderTarget* src, ALTransientTargets& scope);
     // Whether generateBloomHDR can run: the pyramid is deep enough and every
     // shader it needs built. It makes none at zero bloom and halation strength.
     bool bloomHDRReady() const;
@@ -740,15 +737,14 @@ public:
     // returns false where it has nothing to draw with, so the caller goes on reading @a src.
     bool applyCAS(LLRenderTarget* src, LLRenderTarget* dst);
     bool applyFXAA(LLRenderTarget* src, LLRenderTarget* dst);
-    // SMAA's edges and blend weights for one frame, held by the scope generateSMAABuffers was given; neither where it
-    // drew none.
+    // Optional retained handles for the debug visualization selector. The
+    // native display transaction owns SMAA and does not publish transitional
+    // GL edge/weight targets into this post chain.
     struct SMAATargets
     {
         LLRenderTarget* mEdges = nullptr;
         LLRenderTarget* mBlend = nullptr;
     };
-    SMAATargets generateSMAABuffers(LLRenderTarget* src, ALTransientTargets& scope);
-    bool applySMAA(LLRenderTarget* src, LLRenderTarget* dst, const SMAATargets& smaa);
     // Depth of field from mRT->screen into a target of the screen's description
     // from @a scope, which the post chain reads in the screen's place; null where
     // it does not run. The screen keeps the sharp scene.
@@ -798,7 +794,6 @@ public:
     std::optional<ALRenderTargetDesc> mDoFBlurDesc;
 #endif
     DepthOfFieldFocus mDepthOfFieldFocus;
-    void combineGlow(LLRenderTarget* src, LLRenderTarget* dst, LLRenderTarget* glow);
     void visualizeBuffers(LLRenderTarget* src, LLRenderTarget* dst, U32 bufferIndex);
 
     /// Take a point-sampled copy of the presented frame for the scopes floater

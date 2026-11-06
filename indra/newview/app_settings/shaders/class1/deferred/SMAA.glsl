@@ -461,8 +461,9 @@ uniform vec4 SMAA_RT_METRICS;
 #endif
 
 /**
- * With predication, the three settings below are uniforms, set from RenderSMAAPredicationThreshold, Scale and
- * Strength on the edge detection program, the one that reads them (LLPipeline::generateSMAABuffers).
+ * With predication, the retained shader declarations below mirror the three
+ * RenderSMAAPredication controls. The product display path reads those controls
+ * directly when it builds the native Metal SMAA transaction.
  */
 #if SMAA_PREDICATION
 uniform float smaaPredicationThreshold;
