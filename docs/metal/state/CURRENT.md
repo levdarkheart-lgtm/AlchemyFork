@@ -3,7 +3,7 @@
 **Observed:** 2026-11-06 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `ecf223cf4c`
+**Renderer code checkpoint:** `a3067b1aac`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -70,7 +70,7 @@ The latest essential sequence is:
 - `029694fedb` gives image slots typed Metal read/write attachments, validates subresources/access and rejects raw integer identities. It removes the dormant
   GL depth-pyramid owner/GLSL while retaining native water hierarchy/cull compute.
 - `e8eaa3701b` replaces transient-target GL side effects/poison clears with explicit Metal attachment clears while preserving shared depth; `768250a2fc` makes Metal exposure/lens-flare history native-owned.
-- `ecf223cf4c` removes the GL texture blitter, makes image scale-down a transactional Metal copy/resample, and reduces CEF media to its native IOSurface-to-Metal owner without Windows/Linux GL tails.
+- `ecf223cf4c` removes the GL texture blitter and native scale-down/CEF GL tails; `a3067b1aac` makes native Noise/TrueNoise publications authoritative and removes duplicate GL noise/SMAA lookup lifecycle while retaining SSAO/glow/SMAA behavior.
 
 `LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot preview/refresh/save execution remains owner-attended.
 
@@ -81,11 +81,11 @@ The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or 
 - `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max,
   64 GiB unified memory and Xcode 26.6; Metal reports Apple family 7 and a
   62,277,025,792-byte recommended working set.
-- Source-exact Xcode Release warnings-as-errors build/stage passes at `ecf223cf4c`; package `Alchemy Metal Development 26.4.0.68468`.
+- Source-exact Ninja Release warnings-as-errors build/stage passes at `a3067b1aac`; package `Alchemy Metal Development 26.4.0.68470`.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
   the product, renderer-test and appearance-utility executables have no
   OpenGL/Vulkan dependency or unresolved GL-family symbol.
-- Viewer executable SHA-256: `9d82022723a8dd2a9f558ea1d577eae0a69bc20c870f36f0282ce5ea1cd935b6`.
+- Viewer executable SHA-256: `5b82ce86eaa416056eb88c8061c09ba88c22cbda0ef0b6a6b20bf1f85834ddf7`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer proof passes 156 assertions/eight cases including writable native image subresources; full llrender passes 1,792/1,792 and Metal
@@ -110,16 +110,17 @@ The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or 
 
 ## OpenGL elimination gate
 
-Strict source inventory intentionally still fails: 1,998 findings in 2,405
-viewer-owned files (`gl_function` 442, `gl_shader` 1,558, `sdl_gl` 0).
-Report SHA-256 is `3d91fdb40fa6f7a23b4633693d9586a3db8f3c285fb1e01f79219a4344c78818`.
-No audit rule or suppression changed; this is 130 below 2,128 and 303 below the
+Strict source inventory intentionally still fails: 1,985 findings in 2,405
+viewer-owned files (`gl_function` 442, `gl_shader` 1,545, `sdl_gl` 0).
+Report SHA-256 is `f0954a082c36cb72474b5e95624379aa6baa939599110a9217ee9eb814f0c4dd`.
+No audit rule or suppression changed; this is 143 below 2,128 and 316 below the
 owner's 2,301 reference. The gate remains zero; runtime proof remains queued.
 
 ## Visual review cadence
 
-Codex does not autonomously launch, drive or capture either viewer. Existing
-font, exposure/mirror and Snapshot observations plus new checks accumulate in
+Codex does not autonomously launch, drive or capture either viewer. Runtime
+proof, visual evaluation and stability/profiling are reserved for the owner-led
+phase after engineering items 1-3. Existing observations and new checks accumulate in
 the [owner-attended queue](../work/active/visual-review-queue.md). No queued row
 is a parity pass without explicit owner evidence.
 
@@ -128,7 +129,7 @@ is a parity pass without explicit owner evidence.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
-| M-004 resources/readback | doing | Geometry, textures/fonts, uploads, buffers, samplers, image slots, targets, transient clears, scale-down and CEF media copies are native; other copy/readback consumers remain. |
+| M-004 resources/readback | doing | Geometry, textures/fonts, uploads, buffers, samplers, image slots, targets, transient clears, scale-down, CEF media and pipeline noise/SMAA lifecycle are native; other copy/readback consumers remain. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
 | M-006 UI/media | doing | UI/font capture is native; owner accepted readable text previously; Snapshot source path is repaired but its UI behavior remains owner-attended and open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; parity remains open. |

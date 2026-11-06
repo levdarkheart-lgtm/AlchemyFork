@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `ecf223cf4c`.
+**Renderer checkpoint:** Commit `a3067b1aac`.
 
 This ledger contains current decisions and executable work. Prior checkpoint
 detail belongs in the indexed archive.
@@ -12,10 +12,10 @@ detail belongs in the indexed archive.
 
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
-| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68468 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,998 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains open. |
+| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68470 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,985 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains open. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
-| M-004 | Metal resources, transfers, readback and sync | doing | Geometry, fonts/textures, uploads, completion, buffers, samplers, image slots, targets, scale-down and CEF media copies are native. Other copy/readback consumers follow. |
+| M-004 | Metal resources, transfers, readback and sync | doing | Geometry, fonts/textures, uploads, completion, buffers, samplers, image slots, targets, scale-down, CEF media and pipeline noise/SMAA lifecycle are native. Other copy/readback consumers follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font/UI resources are native; prior owner check accepted readable UI text. Snapshot source rejection is repaired; controls/preview remain owner-attended and visually open. |
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners; broad parity remains open. |
@@ -121,16 +121,17 @@ dormant GL depth-pyramid owner/GLSL are removed; production water hierarchy and 
 
 `768250a2fc` removes GL-frame synchronization from native exposure/lens-flare history; fixed EV 0/black bootstraps and retained native history prevent the logged Snapshot preflight rejection. Runtime UI/save proof remains owner-attended.
 
-`ecf223cf4c` deletes `ALTextureBlit` and its GL test, makes image scale-down a
-transactional Metal copy/resample, and reduces CEF accelerated media and its
-surface receiver to the macOS IOSurface-to-Metal owner.
+`ecf223cf4c` deletes the GL blitter and scale-down/CEF GL tails. `a3067b1aac`
+makes native Noise/TrueNoise publications authoritative, invalidates uploads on
+refill/release and removes duplicate GL noise/SMAA lookup lifecycle without
+removing native behavior.
 
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
-- Source-exact Xcode Release warnings-as-errors build/stage passes at `ecf223cf4c`; package `26.4.0.68468`.
+- Source-exact Ninja Release warnings-as-errors build/stage passes at `a3067b1aac`; package `26.4.0.68470`.
 - `tools/metal/verify_app.sh`: 349/349 inspected slices are ARM64.
-- Executable SHA-256: `9d82022723a8dd2a9f558ea1d577eae0a69bc20c870f36f0282ce5ea1cd935b6`.
+- Executable SHA-256: `5b82ce86eaa416056eb88c8061c09ba88c22cbda0ef0b6a6b20bf1f85834ddf7`.
 - Metallib SHA-256: `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer passes 156 assertions / eight cases; llrender passes 1,792/1,792 and Metal passes 52,681/52,681 assertions.
 - Current focused Metal GPU, combined alrender/llrender and newview Metal benchmark tests pass 4/4.
@@ -143,12 +144,12 @@ surface receiver to the macOS IOSurface-to-Metal owner.
 - Broad shared tests reproduce baseline host/driver failures: four assertions
   in three frame-fence timing cases and one render-target depth-format assertion.
 - Harness structure passes 32/32 required files; tool tests pass 31/31.
-- Strict inventory: 1,998/2,405 files (`gl_function` 442, `gl_shader` 1,558, `sdl_gl` 0), expected exit 1; report SHA-256 is `3d91fdb40fa6f7a23b4633693d9586a3db8f3c285fb1e01f79219a4344c78818`.
-  This is 130 below 2,128 and 303 below 2,301; audit rules are unchanged.
+- Strict inventory: 1,985/2,405 files (`gl_function` 442, `gl_shader` 1,545, `sdl_gl` 0), expected exit 1; report SHA-256 is `f0954a082c36cb72474b5e95624379aa6baa939599110a9217ee9eb814f0c4dd`.
+  This is 143 below 2,128 and 316 below 2,301; audit rules are unchanged.
 
 ## Owner-attended visual cadence
 
-Do not autonomously launch either viewer, navigate login/world UI, or capture a comparison. Add bounded questions and prerequisites to the [daily visual queue](visual-review-queue.md). An unreviewed row is not parity evidence and does not stop safe GL authority removal.
+Do not autonomously launch either viewer, navigate login/world UI, or capture a comparison. Runtime proof, visual evaluation and stability/profiling (items 4-6) are reserved for the owner-led phase after engineering items 1-3. Add bounded questions and prerequisites to the [daily visual queue](visual-review-queue.md).
 
 ## Complete-product checkpoint gate
 
