@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "alrendercapabilities.h"
+
 #include "llviewerstats.h"
 #include "llviewerthrottle.h"
 
@@ -726,20 +728,35 @@ void send_viewer_stats(bool include_preferences)
                                             MACAddress[3],MACAddress[4],MACAddress[5]);
     system["mac_address"] = macAddressString;
     system["serial_number"] = LLAppViewer::instance()->getSerialNumber();
-    std::string gpu_desc = llformat(
+#if LL_DARWIN
+    const std::string gpu_desc = gRenderCapabilities.identity();
+    const std::string gpu_vendor = gRenderCapabilities.vendor();
+    const std::string gpu_version = gRenderCapabilities.version();
+#else
+    const std::string gpu_desc = llformat(
         "%-6s Class %d ",
         gGLManager.mGLVendorShort.substr(0,6).c_str(),
         (S32)LLFeatureManager::getInstance()->getGPUClass())
         + gGLManager.getRawGLString();
+    const std::string gpu_vendor = gGLManager.mGLVendorShort;
+    const std::string gpu_version = gGLManager.mDriverVersionVendorString;
+#endif
 
     system["gpu"] = gpu_desc;
     system["gpu_class"] = (S32)LLFeatureManager::getInstance()->getGPUClass();
     system["gpu_memory_bandwidth"] = LLFeatureManager::getInstance()->getGPUMemoryBandwidth();
-    system["gpu_vendor"] = gGLManager.mGLVendorShort;
-    system["gpu_version"] = gGLManager.mDriverVersionVendorString;
+    system["gpu_vendor"] = gpu_vendor;
+    system["gpu_version"] = gpu_version;
+#if LL_DARWIN
+    system["renderer_backend"] = "Metal";
+    system["opengl_version"] = "not present";
+    system["gpu_vram_mb"] = (S32)gRenderCapabilities.memoryBudgetMB();
+    system["glsl_version"] = "not present";
+#else
     system["opengl_version"] = gGLManager.mGLVersionString;
     system["gpu_vram_mb"] = (S32)gGLManager.mVRAM;
     system["glsl_version"] = llformat("%d.%d", gGLManager.mGLSLVersionMajor, gGLManager.mGLSLVersionMinor);
+#endif
 
     // Resource usage
     // getAvailableMemKB might be a bit stale, but that's fine, this is statistics,

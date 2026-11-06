@@ -2356,10 +2356,9 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     LL_INFOS("RenderInit") << "LLVertexBuffer initialization done." << LL_ENDL ;
     bool render_initialized = false;
 #if LL_DARWIN
-    // Keep temporary GL-context state separate from native resources. The
-    // former call is removed at the no-context cut; the Metal initialization
-    // and its authoritative immediate buffer remain unchanged.
-    render_initialized = gGL.init(false) && gGL.initMetal(true);
+    // Darwin has no GL context. Initialize only the authoritative native
+    // immediate renderer and its Metal resource state.
+    render_initialized = gGL.initMetal(true);
 #else
     render_initialized = gGL.init(true);
 #endif

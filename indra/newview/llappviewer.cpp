@@ -95,6 +95,7 @@
 #include "llurldispatcher.h"
 #include "llurlhistory.h"
 #include "llrender.h"
+#include "alrendercapabilities.h"
 #include "llteleporthistory.h"
 #include "lltoast.h"
 #include "llsdutil_math.h"
@@ -1110,9 +1111,22 @@ bool LLAppViewer::init()
 
     LLFolderViewItem::initClass(); // SJB: Needs to happen after initWindow(), not sure why but related to fonts
 
+#if LL_DARWIN
+    if (!gRenderCapabilities.isMetal())
+    {
+        LL_WARNS("InitInfo") << "Native Metal renderer capabilities are unavailable." << LL_ENDL;
+        LL_PROFILER_FRAME_END;
+        return false;
+    }
+    ALCrashReporter::setTag("renderer_backend", "Metal");
+    ALCrashReporter::setTag("renderer_vendor", gRenderCapabilities.vendor());
+    ALCrashReporter::setTag("renderer", gRenderCapabilities.renderer());
+    ALCrashReporter::setTag("renderer_version", gRenderCapabilities.version());
+    ALCrashReporter::setTag("gpu_driver", gRenderCapabilities.identity());
+    ALCrashReporter::setTag("vram_mb", std::to_string(gRenderCapabilities.memoryBudgetMB()));
+#else
     gGLManager.getGLInfo(gDebugInfo);
     gGLManager.printGLInfoString();
-
     ALCrashReporter::setTag("gl_vendor", gGLManager.mGLVendor);
     ALCrashReporter::setTag("gl_renderer", gGLManager.mGLRenderer);
     ALCrashReporter::setTag("gl_version", gGLManager.mGLVersionString);
@@ -1129,6 +1143,7 @@ bool LLAppViewer::init()
         LL_PROFILER_FRAME_END;
         return false;
     }
+#endif
 
 #if defined(LL_X86) || defined(LL_X86_64)
     // Without SSE2 support we will crash almost immediately, warn here.
@@ -3885,7 +3900,12 @@ LLSD LLAppViewer::getViewerInfo() const
 // [RLVa:KB] - Checked: 2010-04-18 (RLVa-1.2.0)
     info["RLV_VERSION"] = (rlv_handler_t::isEnabled()) ? RlvStrings::getVersionAbout() : "(disabled)";
 // [/RLVa:KB]
+#if LL_DARWIN
+    info["RENDERER_BACKEND"] = "Metal";
+    info["OPENGL_VERSION"] = "not present";
+#else
     info["OPENGL_VERSION"] = gGLManager.mGLVersionString;
+#endif
 
     // Settings
 
@@ -3898,7 +3918,12 @@ LLSD LLAppViewer::getViewerInfo() const
     info["NET_BANDWITH"] = LLViewerThrottle::getMaxBandwidthKbps();
     info["LOD_FACTOR"] = gSavedSettings.getF32("RenderVolumeLODFactor");
     info["RENDER_QUALITY"] = (F32)gSavedSettings.getU32("RenderQualityPerformance");
-    info["TEXTURE_MEMORY"] = LLSD::Integer(gGLManager.mVRAM);
+    info["TEXTURE_MEMORY"] = LLSD::Integer(
+#if LL_DARWIN
+        gRenderCapabilities.memoryBudgetMB());
+#else
+        gGLManager.mVRAM);
+#endif
 
 #if LL_DARWIN || LL_SDL_WINDOW
     info["HIDPI"] = gHiDPISupport;
