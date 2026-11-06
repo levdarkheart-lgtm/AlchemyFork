@@ -33,6 +33,13 @@ This document is an **engineering hypothesis grounded in upstream source**, not 
 - `pipeline.cpp` is large and GL-coupled; owning `LLRenderTarget` semantics or keeping method signatures is not proof a line-by-line substitution is valid.
 - Upstream uses SDL3; **do not rewrite the entire UI in SwiftUI** unless a narrow integration specifically requires it.
 
+## Current fork observation (2026-11-06)
+- At `22def49efb`, Darwin creates a plain high-DPI SDL/Cocoa window, attaches
+  the sole opaque `CAMetalLayer`, initializes only the native renderer and has
+  no compiled window-object import for SDL/GL context APIs. The application
+  still links OpenGL through other owned renderer objects; this is a completed
+  lifecycle boundary, not the final no-OpenGL gate.
+
 ## Key semantic traps
 - GL state caches are global/implicit; Metal pipeline state and command buffers are explicit. Implement actual pass/state semantics, not a superficial GL-call shim.
 - Framebuffer binds ≠ Metal render pass begin/end. Coordinate attachment lifetimes, load/store actions, memoryless attachments and barriers.

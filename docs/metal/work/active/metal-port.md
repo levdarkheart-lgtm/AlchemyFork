@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `3087308155`.
+**Renderer checkpoint:** Commit `22def49efb`.
 
 This ledger contains current decisions and executable work. Prior checkpoint
 detail belongs in the indexed archive.
@@ -12,9 +12,9 @@ detail belongs in the indexed archive.
 
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
-| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68437 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
+| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68439 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 2,324 and exits 1; no rule/suppression changed. Linked/runtime audits remain open. |
-| M-003 | Native drawable, presentation and lifecycle | doing | Metal owns device, queue, visible drawable, resize and vsync. Darwin still creates a primary GL context; remove it next. |
+| M-003 | Native drawable, presentation and lifecycle | doing | Darwin now creates a plain SDL/Cocoa window and sole opaque Metal surface with no GL context; owner-attended startup/login validation remains. |
 | M-004 | Metal resources, transfers, readback and sync | doing | Ordinary geometry, fonts/textures and async uploads are native-only; Snapshot has no GL scratch path. Remaining GL resource owners follow no-context exposure. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant identities configure without GLSL or GL program names. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font/UI resources are native; prior owner check accepted readable UI text. Snapshot controls/preview remain visually open. |
@@ -22,7 +22,7 @@ detail belongs in the indexed archive.
 | M-008 | Advanced views/effects and compute | doing | Core effects and many diagnostics are native. Debug/Develop-only tails remain behind the usable-core context cut. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Presentation/resources/capabilities/init/state/binding/pass identities have native authority. Primary context and reachable GL tail remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Presentation/resources/capabilities/init/state/binding/pass identities and Darwin window lifecycle require no GL context. Reachable tail/link remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
 
@@ -69,24 +69,27 @@ The essential initialization sequence now advances through:
 separate `isNativeConfigured()`/`isAvailable()` contract. GL-backed occlusion
 continues to fail closed; it is not falsely enabled through a semantic identity.
 
-The remaining immediate ownership boundary is explicit in
-`indra/llwindow/llwindowsdl.cpp`: Darwin still sets SDL GL attributes and the
-OpenGL-window property, creates/makes current `mContext`, calls
-`gGLManager.initGL()`, and later destroys the context. Metal surface creation,
-display metrics, input, fullscreen, resize and vsync are already independent.
+`22def49efb` removes the Darwin OpenGL-window property, GL attributes,
+context/current/shared-context lifecycle, `gGLManager` startup/shutdown and GL
+renderer initialization. The compiled Release `llwindowsdl.o` has no undefined
+`SDL_GL_*`, `gl*` or `LLGLManager` imports. Metal device/scheduler/surface,
+display metrics, input, fullscreen, resize, vsync and telemetry remain. The
+viewer was not launched under the owner-attended policy, so the exact
+startup/login check is queued and not claimed from build success.
 
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
-- `tools/metal/build.sh`: Release warnings-as-errors, 1,059 cacheable tasks,
-  `BUILD SUCCEEDED`; package `26.4.0.68437`.
+- `tools/metal/build.sh`: Release warnings-as-errors, `BUILD SUCCEEDED`;
+  package `26.4.0.68439`.
 - `tools/metal/verify_app.sh`: 349/349 inspected slices ARM64; deep strict
   codesign passes.
 - Executable SHA-256:
-  `3a812d9b9cdbf4f051bb6214d51d2396b7686a272cd3ef0a6eebae862c72edc2`.
+  `0410602f4ca0cc4c12a2b31674eb0e7e838604341ae29de0d497852881b99deb`.
 - Metallib SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - `llrender_tests`: 1,605 assertions / 209 cases pass plus expected font skip.
+- No-context cutover CTest registration: 14/14 renderer tests pass.
 - Fresh shared renderer tests: 3,698 assertions / 111 cases pass.
 - Focused shared shader tests: 1,353 assertions / 25 cases pass plus 13
   hardware skips.
@@ -95,7 +98,7 @@ display metrics, input, fullscreen, resize and vsync are already independent.
 - Harness structure passes 32/32 required files; tool tests pass 31/31.
 - Strict inventory: 2,324 findings in 2,409 files (`gl_function` 657,
   `gl_shader` 1,597, `sdl_gl` 72), expected exit 1. Report SHA-256:
-  `7e911a9e1793938bf2153bf85df22ba5901cb8efe35efa8d7e42980f67fb8330`.
+  `539b00bba1babb3e06151a2532f4204c8022c10e76a52ae1c7aeeda21de1df5f`.
   The aggregate rise from 2,301 is conservative textual matching of the native
   bridge in `LLGLSLShader`-named code; direct GL-function findings fell by six.
 
@@ -110,22 +113,20 @@ evidence and does not stop safe GL authority removal.
 
 1. **Product advancement:** native renderer startup semantics no longer require
    GL capability, state, binding or program ownership.
-2. **Replacement boundary:** the Darwin primary GL context, reachable GL tail
-   and OpenGL link remain and must be removed without losing essential paths.
+2. **Replacement boundary:** the primary context is gone; the reachable GL
+   tail and OpenGL link remain and must be removed without losing essentials.
 3. **Open release gates:** strict/link/runtime no-GL, feature and visual parity,
    prolonged stability, independent review and measured performance.
 
 ## Immediate executable action
 
-1. Split Darwin `createContext()` into a Metal SDL-window path with no OpenGL
-   property, GL attributes, context creation or current-context operation.
-2. Skip `gGLManager.initGL()`/shutdown on Darwin; preserve Metal device/surface,
-   cursor/input, display metrics, fullscreen/resize and working-set behavior.
-3. Add no-context window/lifecycle coverage and build under warnings-as-errors.
-4. Repair essential startup/resource consumers exposed by the cut; never
-   restore a GL fallback.
-5. Remove the OpenGL link after source reachability permits it, then run strict
+1. Audit essential startup/login and ordinary-frame reachability for calls
+   exposed by the absent context; replace owners rather than restoring GL.
+2. Delete dormant SDL/shared-context GL source from the macOS-only fork.
+3. Remove the OpenGL link after source reachability permits it, then run strict
    source, Mach-O link and runtime image/module gates.
+4. Keep the no-context startup/login check owner-attended and queued while
+   source/test-proven authority removal continues.
 
 ## Non-negotiable open gates
 
