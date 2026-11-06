@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `22def49efb`
+**Renderer code checkpoint:** `def3811797`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -45,32 +45,36 @@ The latest essential sequence is:
   renderer bootstrap. The opaque `CAMetalLayer`, native device/scheduler,
   Metal-only `LLRender` initialization, display/input/fullscreen lifecycle and
   renderer telemetry remain.
+- `def3811797` removes the hidden Darwin GL backend and CGL shared-context
+  implementation, initializes the appearance utility through the native Metal
+  device/scheduler path, removes the product `llrender` OpenGL dependency and
+  builds SDL with its Darwin GL/Vulkan platform backends disabled.
 
 `LLGLSLShader::isComplete()` remains strictly a linked-GL-program predicate;
 `isNativeConfigured()`/`isAvailable()` cannot disguise a native identity as a
 GL object. GL-backed occlusion remains fail-closed until a native query owner
 replaces it.
 
-The compiled Darwin window object has no undefined `SDL_GL_*`, `gl*` or
-`LLGLManager` imports, and the disabled GL worker queue cannot request a shared
-context. No viewer was launched under the owner-attended visual policy, so
-startup/login behavior remains queued rather than inferred. The main viewer
-still links OpenGL because other application-owned objects retain GL symbols;
-the next boundary is the reachable essential startup/frame tail, not optional
-Debug/Develop/RLVa paths.
+The Release viewer, renderer tests and appearance utility have no OpenGL or
+Vulkan dynamic dependency and no unresolved CGL, NSOpenGL, GL, SDL_GL or Vulkan
+imports. SDL's static archive can retain unselected generic API stubs, but the
+product linker selects none of them. No viewer was launched under the
+owner-attended visual policy, so startup/login behavior remains queued rather
+than inferred. The next boundary is the reachable essential ordinary-frame
+source tail, not optional Debug/Develop/RLVa paths.
 
 ## Build and validation evidence
 
 - `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max,
   64 GiB unified memory and Xcode 26.6; Metal reports Apple family 7 and a
   62,277,025,792-byte recommended working set.
-- `tools/metal/build.sh` completed the Release build with warnings-as-errors
-  and ended `BUILD SUCCEEDED`.
-- Staged package: `Alchemy Metal Development 26.4.0.68439`.
+- `tools/metal/build.sh` completed the canonical Xcode Release build with
+  warnings-as-errors and ended `BUILD SUCCEEDED`.
+- Staged package: `Alchemy Metal Development 26.4.0.68442`.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
   `codesign --verify --deep --strict` passes.
 - Viewer executable SHA-256:
-  `0410602f4ca0cc4c12a2b31674eb0e7e838604341ae29de0d497852881b99deb`.
+  `9daf87d570fe90ac6d285983a0a441e95f98742312c3a3f378bc08c61b24a22c`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - `llrender_tests`: 1,605 assertions pass across 209 cases, with the expected
@@ -90,15 +94,16 @@ Debug/Develop/RLVa paths.
 
 ## OpenGL elimination gate
 
-Strict source inventory intentionally still fails: 2,324 findings in 2,409
-viewer-owned files (`gl_function` 657, `gl_shader` 1,597, `sdl_gl` 72).
+Strict source inventory intentionally still fails: 2,315 findings in 2,409
+viewer-owned files (`gl_function` 651, `gl_shader` 1,597, `sdl_gl` 69).
 Report SHA-256 is
-`539b00bba1babb3e06151a2532f4204c8022c10e76a52ae1c7aeeda21de1df5f`.
-No audit rule or suppression changed. Relative to the earlier 2,301 checkpoint,
-direct GL-function findings fell by six; the aggregate rose because the native
-semantic bridge still resides in `LLGLSLShader`-named source, which the textual
-shader inventory conservatively counts. The release gate remains zero and
-binary/runtime no-OpenGL proof remains open.
+`ea3e9358541641189dd3884534ee0b64a5157d6388a3daadb12472ceba4d7efe`.
+No audit rule or suppression changed. This cut removes nine findings from the
+immediately prior 2,324 checkpoint. The earlier 2,301 baseline is not directly
+comparable because later semantic-bridge source expanded the conservative
+textual shader inventory. The release gate remains zero; linked proof now
+passes for the product executable, while runtime image/module proof remains
+open pending owner-attended execution.
 
 ## Visual review cadence
 
@@ -117,9 +122,9 @@ is a parity pass without explicit owner evidence.
 | M-006 UI/media | doing | UI/font capture is native; owner accepted readable text previously; Snapshot UI remains visually open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; parity remains open. |
 | M-008 effects/advanced views | doing | Core effects and many diagnostics are native; remaining optional paths follow the usable-core cut. |
-| M-009 parity/stability/no-GL | doing | Strict, linked, runtime, visual and stability gates remain open. |
+| M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
 | M-010 measured performance | deferred | No quality-equivalent paired M1 Max claim yet. |
-| M-011 GL authority removal | doing | Capability/init/state/binding/pass setup and Darwin window lifecycle require no context; reachable GL tail/link remain. |
+| M-011 GL authority removal | doing | Visible/hidden startup, utilities and product linkage require no GL context/library; reachable source tail remains. |
 | M-012 Computer Use bridge | complete | Semantic bridge verified; visual driving is owner-attended. |
 | M-013 RLVa strict parity | deferred | Nonessential ordering only; final no-GL behavior is still required. |
 
@@ -129,8 +134,8 @@ is a parity pass without explicit owner evidence.
 binding and pass configuration now remain valid without a GL context, while
 required rendering behavior retains native owners instead of being deleted.
 
-**Still incomplete:** the OpenGL link and reachable source tail remain, the
-strict no-GL gate fails, and no-context startup/login, full visual parity,
+**Still incomplete:** the reachable source tail remains, the strict no-GL gate
+fails, and no-context startup/login, runtime module proof, full visual parity,
 prolonged stability, performance and independent review remain open. This
 checkpoint still lacks independent build/review evidence and is not product
 completion or release readiness.
@@ -138,9 +143,9 @@ completion or release readiness.
 ## Exact next actions
 
 1. Audit the essential startup/login and ordinary-frame call graph for GL
-   symbols now exposed by the absent context; replace each owner with Metal.
-2. Remove dormant SDL/shared-context GL source, then remove the OpenGL link as
-   soon as no reachable application-owned symbol requires it.
+   source now exposed by the absent context; replace each owner with Metal.
+2. Prioritize normal UI/text, world/avatar/material, streaming, presentation
+   and Snapshot/readback paths before Debug/Develop/RLVa-only tails.
 3. Rerun strict source, Mach-O link and runtime gates after every coherent cut.
 4. Keep the no-context startup/login check queued; do not launch either viewer
    autonomously.
