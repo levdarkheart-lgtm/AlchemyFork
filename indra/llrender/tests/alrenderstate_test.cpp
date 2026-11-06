@@ -19,7 +19,9 @@
 #include "llgl.h"
 #include "llglslshader.h"
 #include "llglstates.h"
+#include "llimagegl.h"
 #include "llrender.h"
+#include "llrendertarget.h"
 
 #if LL_DARWIN
 #include "almetaldevice.h"
@@ -222,6 +224,91 @@ TEST_CASE("Texture slots retain native resource identity without OpenGL",
     CHECK(slot.getCurrTexture() == 0);
     CHECK(slot.getCurrType() == ALTextureSlot::TT_NONE);
     CHECK(slot.getCurrMetalTexture() == nullptr);
+}
+
+TEST_CASE("Render targets own, clear, mip and share native Metal attachments",
+          "[alrenderstate][metal-cutover]")
+{
+    REQUIRE_FALSE(gGLManager.mInited);
+
+    std::string error;
+    auto device = ALMetalDevice::create(&error);
+    INFO(error);
+    REQUIRE(device);
+
+    struct NativeStateReset
+    {
+        ~NativeStateReset()
+        {
+            while (LLRenderTarget::getCurrentBoundTarget())
+            {
+                LLRenderTarget::getCurrentBoundTarget()->flush();
+            }
+            gGL.clearSamplers();
+            LLImageGL::setMetalDevice(nullptr);
+        }
+    } reset;
+    LLImageGL::setMetalDevice(device.get());
+    gGL.clearSamplers();
+    gGL.warmupSamplers();
+
+    const U32 bytes_before = LLRenderTarget::sBytesAllocated;
+    LLRenderTarget owner;
+    owner.setLabel("Native LLRenderTarget test owner");
+    REQUIRE(owner.allocate(4, 4, GL_RGBA8, true, true,
+                           ALTextureSlot::TT_TEXTURE,
+                           LLRenderTarget::MIPS_AUTO,
+                           LLRenderTarget::DEPTH_FMT_32F));
+    REQUIRE(owner.addColorAttachment(GL_R32F));
+    CHECK(owner.isComplete());
+    CHECK(owner.getTexture(0) == 0);
+    CHECK(owner.getDepth() == 0);
+    CHECK(owner.getNumTextures() == 2);
+    CHECK(owner.ownsDepthAttachment());
+    REQUIRE(owner.getMetalColorTexture(0));
+    REQUIRE(owner.getMetalColorTexture(1));
+    REQUIRE(owner.getMetalDepthTexture());
+    CHECK(owner.getMetalColorTexture(0)->descriptor().mipmap_level_count == 3);
+    CHECK(owner.getMetalColorTexture(1)->descriptor().mipmap_level_count == 3);
+
+    gGL.setClearColor(LLColor4(0.25f, 0.5f, 0.75f, 1.f));
+    owner.bindTarget();
+    owner.clear();
+    owner.flush();
+
+    std::array<U8, 4 * 4 * 4> pixels{};
+    REQUIRE(owner.getMetalColorTexture(0)->readback(
+        *device, 0, 0, {}, pixels.data(), 4 * 4, &error));
+    INFO(error);
+    CHECK(pixels[0] == 64);
+    CHECK(pixels[1] == 128);
+    CHECK(pixels[2] == 191);
+    CHECK(pixels[3] == 255);
+
+    std::array<U8, 4> last_mip{};
+    REQUIRE(owner.getMetalColorTexture(0)->readback(
+        *device, 2, 0, {}, last_mip.data(), 4, &error));
+    INFO(error);
+    CHECK(last_mip == std::array<U8, 4>{64, 128, 191, 255});
+
+    LLRenderTarget borrower;
+    borrower.setLabel("Native LLRenderTarget test borrower");
+    REQUIRE(borrower.allocate(4, 4, GL_RGBA8));
+    owner.shareDepthBuffer(borrower);
+    CHECK(borrower.isComplete());
+    CHECK(borrower.sharesDepth());
+    CHECK_FALSE(borrower.ownsDepthAttachment());
+    CHECK(borrower.getMetalDepthTexture() == owner.getMetalDepthTexture());
+
+    ALTextureSlot slot(7);
+    REQUIRE(slot.bind(&owner));
+    CHECK(slot.getCurrMetalTexture() == owner.getMetalColorTexture(0));
+    REQUIRE(slot.bind(&borrower, true));
+    CHECK(slot.getCurrMetalTexture() == owner.getMetalDepthTexture());
+
+    borrower.release();
+    owner.release();
+    CHECK(LLRenderTarget::sBytesAllocated == bytes_before);
 }
 #endif
 

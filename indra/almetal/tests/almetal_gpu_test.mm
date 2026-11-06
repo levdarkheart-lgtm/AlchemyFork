@@ -1127,6 +1127,126 @@ TEST_CASE("almetal: a blit command copies shared storage and reports completion"
     }
 }
 
+TEST_CASE("almetal: render targets own mip chains and borrow validated attachments", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        ALMetalRenderTargetDescriptor owner_descriptor;
+        owner_descriptor.width = 4;
+        owner_descriptor.height = 4;
+        owner_descriptor.mipmap_level_count = 3;
+        owner_descriptor.color_attachment_count = 1;
+        owner_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        owner_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float;
+        owner_descriptor.depth_stencil_shader_read = true;
+        owner_descriptor.label = "Alchemy mip/shared attachment owner";
+        auto owner = ALMetalRenderTarget::create(
+            *device, owner_descriptor, &error);
+        INFO(error);
+        REQUIRE(owner);
+        REQUIRE(owner->colorTexture(0));
+        REQUIRE(owner->depthStencilTexture());
+        CHECK(owner->colorTexture(0)->descriptor().mipmap_level_count == 3);
+
+        auto command = device->makeCommandBuffer(
+            "Alchemy mip/shared attachment seed", &error);
+        INFO(error);
+        REQUIRE(command);
+        ALMetalRenderPassConfig seed_config;
+        seed_config.colors[0].clear = {1.0, 0.0, 0.0, 1.0};
+        seed_config.depth_store = ALMetalStoreAction::store;
+        seed_config.clear_depth = 0.25;
+        auto seed_pass = owner->makeRenderPass(seed_config, &error);
+        INFO(error);
+        REQUIRE(seed_pass);
+        auto seed_encoder = ALMetalRenderEncoder::begin(
+            *command, *seed_pass,
+            "Alchemy mip/shared attachment seed encoder", &error);
+        INFO(error);
+        REQUIRE(seed_encoder);
+        REQUIRE(seed_encoder->end(&error));
+        REQUIRE(const_cast<ALMetalTexture*>(owner->colorTexture(0))
+                    ->generateMipmaps(*command, &error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 4> final_mip{};
+        REQUIRE(owner->colorTexture(0)->readback(
+            *device, 2, 0, {}, final_mip.data(), final_mip.size(), &error));
+        INFO(error);
+        constexpr std::array<std::uint8_t, 4> expected_final_mip{
+            255, 0, 0, 255};
+        CHECK(final_mip == expected_final_mip);
+
+        ALMetalRenderTargetDescriptor borrower_descriptor = owner_descriptor;
+        borrower_descriptor.colors[0].texture = owner->colorTexture(0);
+        borrower_descriptor.depth_stencil_texture =
+            owner->depthStencilTexture();
+        borrower_descriptor.label = "Alchemy borrowed attachment target";
+        auto borrower = ALMetalRenderTarget::create(
+            *device, borrower_descriptor, &error);
+        INFO(error);
+        REQUIRE(borrower);
+        CHECK(borrower->colorTexture(0) == owner->colorTexture(0));
+        CHECK(borrower->depthStencilTexture() == owner->depthStencilTexture());
+        CHECK_FALSE(borrower->takeColorTexture(0));
+
+        command = device->makeCommandBuffer(
+            "Alchemy borrowed attachment clear", &error);
+        INFO(error);
+        REQUIRE(command);
+        ALMetalRenderPassConfig borrowed_config;
+        borrowed_config.colors[0].clear = {0.0, 1.0, 0.0, 1.0};
+        borrowed_config.depth_store = ALMetalStoreAction::store;
+        borrowed_config.clear_depth = 0.75;
+        auto borrowed_pass = borrower->makeRenderPass(
+            borrowed_config, &error);
+        INFO(error);
+        REQUIRE(borrowed_pass);
+        auto borrowed_encoder = ALMetalRenderEncoder::begin(
+            *command, *borrowed_pass,
+            "Alchemy borrowed attachment clear encoder", &error);
+        INFO(error);
+        REQUIRE(borrowed_encoder);
+        REQUIRE(borrowed_encoder->end(&error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 4 * 4 * 4> color{};
+        REQUIRE(owner->colorTexture(0)->readback(
+            *device, 0, 0, {}, color.data(), 4 * 4, &error));
+        INFO(error);
+        for (std::size_t pixel = 0; pixel < 16; ++pixel)
+        {
+            CHECK(color[pixel * 4 + 0] == 0);
+            CHECK(color[pixel * 4 + 1] == 255);
+            CHECK(color[pixel * 4 + 2] == 0);
+            CHECK(color[pixel * 4 + 3] == 255);
+        }
+
+        std::array<float, 4 * 4> depth{};
+        REQUIRE(owner->depthStencilTexture()->readback(
+            *device, 0, 0, {}, depth.data(), 4 * sizeof(float), &error));
+        INFO(error);
+        for (float value : depth)
+        {
+            CHECK(std::abs(value - 0.75f) < 1e-6f);
+        }
+
+        ALMetalRenderTargetDescriptor mismatch = borrower_descriptor;
+        mismatch.width = 3;
+        CHECK_FALSE(ALMetalRenderTarget::create(*device, mismatch, &error));
+        CHECK(error.find("Borrowed Metal color attachment") !=
+              std::string::npos);
+    }
+}
+
 TEST_CASE("almetal: a render pass clears a texture and CPU readback observes it", "[almetal]")
 {
     @autoreleasepool

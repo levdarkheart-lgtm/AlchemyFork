@@ -1,6 +1,6 @@
 /**
  * @file llrendertarget.h
- * @brief Off screen render target abstraction.  Loose wrapper for GL_EXT_framebuffer_objects.
+ * @brief Native offscreen Metal render-target ownership and legacy call-site semantics.
  *
  * $LicenseInfo:firstyear=2001&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -34,11 +34,18 @@
 #include "llrender.h"
 
 #include <array>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
+
+class ALMetalRenderTarget;
+class ALMetalTexture;
+class LLImageGL;
 
 /*
- Wrapper around OpenGL framebuffer objects for use in render-to-texture
+ Native render-to-texture ownership retained behind Alchemy's established
+ target call sites while those callers are converted subsystem by subsystem.
 
  SAMPLE USAGE:
 
@@ -144,14 +151,15 @@ public:
     EnsureResult ensure(const ALRenderTargetDesc& desc, const LLRenderTarget& depth_from);
 
     // Whether the depth attachment is another target's, attached by shareDepthBuffer or ensure.
-    bool sharesDepth() const { return mUseDepth && !mDepth; }
+    bool sharesDepth() const { return mUseDepth && !mOwnDepth; }
 
     // Which build of its own depth this target holds, unique for the process: a target sharing it can tell the depth
     // it attached from one built since in its place. 0 for none.
     U64 getDepthSerial() const { return mDepthSerial; }
 
-    // What sBytesAllocated counts for a target built from `desc`: each colour attachment's first level and the depth
-    // of its own, not a depth it shares.
+    // What sBytesAllocated counts for a target built from `desc`: every
+    // allocated colour mip and the physical depth of its own, not borrowed
+    // colour/depth storage.
     static U64 bytesFor(const ALRenderTargetDesc& desc);
 
     // The name debuggers and the GL debug output show for this target: its framebuffer is labelled `label`, the
@@ -251,7 +259,14 @@ public:
     // setColorAttachment lent it; 0 for no such attachment.
     U32 getInternalFormat(U32 attachment = 0) const;
 
-    U32 getDepth(void) const { return mDepth; }
+    // Legacy integer-name access remains source-compatible but has no native
+    // resource to return. New code must use the typed Metal accessors below.
+    U32 getDepth(void) const { return 0; }
+    bool hasDepthAttachment() const;
+    bool ownsDepthAttachment() const { return mOwnDepth && hasDepthAttachment(); }
+    const ALMetalTexture* getMetalColorTexture(U32 attachment = 0) const;
+    const ALMetalTexture* getMetalDepthTexture() const;
+    const ALMetalRenderTarget* getMetalRenderTarget() const { return mMetalTarget.get(); }
     bool hasStencil() const { return mStencil; }
     eDepthFormat getDepthFormat() const { return mDepthFormat; }
 
@@ -327,20 +342,22 @@ public:
 protected:
     U32 mResX;
     U32 mResY;
-    std::vector<U32> mTex;
     std::vector<U32> mInternalFormat;
     // The format of the texture setColorAttachment attached, which this target does not own and so keeps out of
     // mInternalFormat; 0 otherwise.
     U32 mExternalFormat = 0;
-    U32 mFBO;
+    ALMetalTexture* mExternalColor = nullptr;
+    std::unique_ptr<ALMetalRenderTarget> mMetalTarget;
+    const LLRenderTarget* mSharedDepthOwner = nullptr;
+    U64 mAllocatedBytes = 0;
     LLRenderTarget* mPreviousRT = nullptr;
 
-    U32 mDepth;
     // Which build of the depth attachment mDepth is, unique for the process; 0 for none.
     U64 mDepthSerial = 0;
     // The serial of the depth attached from another target; 0 for none.
     U64 mSharedDepthSerial = 0;
     bool mUseDepth;
+    bool mOwnDepth = false;
     bool mStencil;
     eDepthFormat mDepthFormat;
     eMipGeneration mGenerateMipMaps = MIPS_NONE;
@@ -352,19 +369,17 @@ protected:
     // last set them: the buffers clearColorBuffers clears, one at a time.
     std::array<S8, 4> mDrawBuffers = { -1, -1, -1, -1 };
 
-    // Clear each colour draw buffer to the clear colour by the call its attachment's kind takes, float or integer.
-    void clearColorBuffers();
-
     // Release what the target holds and allocate what `desc` describes, depth included. False leaves it released.
     bool build(const ALRenderTargetDesc& desc);
 
+    // Replace the native target from the current description without ever
+    // creating a parallel GL texture or framebuffer.
+    bool rebuildMetalTarget();
+    U64 allocatedBytes() const;
+    bool encodeClear(U32 mask, const LLColor4& color, F64 depth, U32 stencil);
+
     // Attach `owner`'s depth, in place of any depth this target shared before.
     void attachSharedDepth(const LLRenderTarget& owner);
-
-    // Give the framebuffer and the depth this target allocated their labels.
-    void labelFramebuffer() const;
-    // Give the colour attachment this target allocated at `attachment` its label.
-    void labelColor(U32 attachment) const;
 
     std::string mLabel;
 

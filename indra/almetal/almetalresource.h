@@ -440,6 +440,11 @@ struct ALMetalRenderTargetColorDescriptor
     ALMetalPixelFormat format = ALMetalPixelFormat::rgba16_float;
     bool shader_read = true;
     bool shader_write = false;
+    // Optional externally-owned resolved attachment. The texture must outlive
+    // the render target and match its device, dimensions, format, mip count,
+    // and render-target usage. This is the native equivalent of lending an
+    // image to an offscreen target; no second texture is allocated.
+    const ALMetalTexture* texture = nullptr;
     std::string label;
 };
 
@@ -450,10 +455,15 @@ struct ALMetalRenderTargetDescriptor
     std::uint32_t width = 1;
     std::uint32_t height = 1;
     std::uint32_t sample_count = 1;
+    std::uint32_t mipmap_level_count = 1;
     std::uint32_t color_attachment_count = 1;
     std::array<ALMetalRenderTargetColorDescriptor, AL_METAL_MAX_COLOR_ATTACHMENTS> colors{};
     ALMetalPixelFormat depth_stencil_format = ALMetalPixelFormat::invalid;
     bool depth_stencil_shader_read = false;
+    // Optional externally-owned depth/stencil attachment. The texture must
+    // outlive the target. This makes shared-depth target graphs explicit and
+    // keeps one physical Metal depth texture as their sole authority.
+    const ALMetalTexture* depth_stencil_texture = nullptr;
     bool memoryless_multisample = true;
     bool memoryless_depth_stencil = false;
     std::string label;
@@ -461,6 +471,10 @@ struct ALMetalRenderTargetDescriptor
 
 struct ALMetalRenderPassColorConfig
 {
+    // Keep the owned attachment out of this pass. Metal permits gaps in the
+    // color attachment table, which is required for clear/draw-buffer
+    // selection without manufacturing temporary targets.
+    bool bind = true;
     ALMetalLoadAction load = ALMetalLoadAction::clear;
     ALMetalStoreAction store = ALMetalStoreAction::store;
     ALMetalClearColor clear{};

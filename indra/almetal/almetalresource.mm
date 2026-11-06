@@ -1916,8 +1916,10 @@ void* ALMetalRenderPass::nativeHandle() const noexcept
 struct ALMetalRenderTarget::Impl
 {
     std::array<std::unique_ptr<ALMetalTexture>, AL_METAL_MAX_COLOR_ATTACHMENTS> colors;
+    std::array<const ALMetalTexture*, AL_METAL_MAX_COLOR_ATTACHMENTS> borrowed_colors{};
     std::array<std::unique_ptr<ALMetalTexture>, AL_METAL_MAX_COLOR_ATTACHMENTS> multisample_colors;
     std::unique_ptr<ALMetalTexture> depth_stencil;
+    const ALMetalTexture* borrowed_depth_stencil = nullptr;
 };
 
 ALMetalRenderTarget::ALMetalRenderTarget(
@@ -1936,6 +1938,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
     std::string* error)
 {
     if (descriptor.width == 0 || descriptor.height == 0 ||
+        descriptor.mipmap_level_count == 0 ||
         descriptor.color_attachment_count > AL_METAL_MAX_COLOR_ATTACHMENTS ||
         (descriptor.color_attachment_count == 0 && descriptor.depth_stencil_format == ALMetalPixelFormat::invalid))
     {
@@ -1947,6 +1950,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
          descriptor.sample_count != 4 && descriptor.sample_count != 8))
     {
         setError(error, "Metal render target sample count must be 1, 2, 4 or 8");
+        return nullptr;
+    }
+    if (descriptor.sample_count > 1 && descriptor.mipmap_level_count != 1)
+    {
+        setError(error, "A multisample Metal render target cannot carry a mip chain");
         return nullptr;
     }
     if (descriptor.depth_stencil_format != ALMetalPixelFormat::invalid &&
@@ -1963,6 +1971,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
     }
 
     auto impl = std::make_unique<Impl>();
+    id<MTLDevice> native_device = (__bridge id<MTLDevice>)device.nativeHandle();
     for (std::uint32_t index = 0; index < descriptor.color_attachment_count; ++index)
     {
         const auto& color = descriptor.colors[index];
@@ -1978,6 +1987,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
         resolved.format = color.format;
         resolved.width = descriptor.width;
         resolved.height = descriptor.height;
+        resolved.mipmap_level_count = descriptor.mipmap_level_count;
         resolved.storage = ALMetalStorageMode::private_gpu;
         resolved.usage = ALMetalTextureUsage::render_target;
         if (color.shader_read)
@@ -1991,10 +2001,34 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
         resolved.label = color.label.empty()
             ? descriptor.label + " color " + std::to_string(index)
             : color.label;
-        impl->colors[index] = ALMetalTexture::create(device, resolved, error);
-        if (!impl->colors[index])
+        if (color.texture)
         {
-            return nullptr;
+            const ALMetalTextureDescriptor& external = color.texture->descriptor();
+            id<MTLTexture> native_texture =
+                (__bridge id<MTLTexture>)color.texture->nativeHandle();
+            if (!native_texture || native_texture.device != native_device ||
+                external.type != ALMetalTextureType::texture_2d ||
+                external.format != resolved.format ||
+                external.width != resolved.width ||
+                external.height != resolved.height ||
+                external.mipmap_level_count != resolved.mipmap_level_count ||
+                external.sample_count != 1 ||
+                !alMetalHasUsage(external.usage,
+                                 ALMetalTextureUsage::render_target))
+            {
+                setError(error,
+                         "Borrowed Metal color attachment does not match its render target");
+                return nullptr;
+            }
+            impl->borrowed_colors[index] = color.texture;
+        }
+        else
+        {
+            impl->colors[index] = ALMetalTexture::create(device, resolved, error);
+            if (!impl->colors[index])
+            {
+                return nullptr;
+            }
         }
 
         if (descriptor.sample_count > 1)
@@ -2031,10 +2065,38 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
             depth.usage = depth.usage | ALMetalTextureUsage::shader_read;
         }
         depth.label = descriptor.label + " depth-stencil";
-        impl->depth_stencil = ALMetalTexture::create(device, depth, error);
-        if (!impl->depth_stencil)
+        if (descriptor.depth_stencil_texture)
         {
-            return nullptr;
+            const ALMetalTextureDescriptor& external =
+                descriptor.depth_stencil_texture->descriptor();
+            id<MTLTexture> native_texture = (__bridge id<MTLTexture>)
+                descriptor.depth_stencil_texture->nativeHandle();
+            const ALMetalTextureType expected_type = descriptor.sample_count > 1
+                ? ALMetalTextureType::texture_2d_multisample
+                : ALMetalTextureType::texture_2d;
+            if (!native_texture || native_texture.device != native_device ||
+                external.type != expected_type ||
+                external.format != depth.format ||
+                external.width != depth.width ||
+                external.height != depth.height ||
+                external.sample_count != depth.sample_count ||
+                !alMetalHasUsage(external.usage,
+                                 ALMetalTextureUsage::render_target))
+            {
+                setError(error,
+                         "Borrowed Metal depth attachment does not match its render target");
+                return nullptr;
+            }
+            impl->borrowed_depth_stencil =
+                descriptor.depth_stencil_texture;
+        }
+        else
+        {
+            impl->depth_stencil = ALMetalTexture::create(device, depth, error);
+            if (!impl->depth_stencil)
+            {
+                return nullptr;
+            }
         }
     }
 
@@ -2049,13 +2111,17 @@ const ALMetalRenderTargetDescriptor& ALMetalRenderTarget::descriptor() const noe
 
 const ALMetalTexture* ALMetalRenderTarget::colorTexture(std::uint32_t index) const noexcept
 {
-    return mImpl && index < mDescriptor.color_attachment_count ? mImpl->colors[index].get() : nullptr;
+    return mImpl && index < mDescriptor.color_attachment_count
+        ? (mImpl->colors[index] ? mImpl->colors[index].get()
+                                : mImpl->borrowed_colors[index])
+        : nullptr;
 }
 
 std::unique_ptr<ALMetalTexture> ALMetalRenderTarget::takeColorTexture(
     std::uint32_t index) noexcept
 {
-    return mImpl && index < mDescriptor.color_attachment_count
+    return mImpl && index < mDescriptor.color_attachment_count &&
+            !mImpl->borrowed_colors[index]
         ? std::move(mImpl->colors[index]) : nullptr;
 }
 
@@ -2067,7 +2133,9 @@ const ALMetalTexture* ALMetalRenderTarget::multisampleColorTexture(std::uint32_t
 
 const ALMetalTexture* ALMetalRenderTarget::depthStencilTexture() const noexcept
 {
-    return mImpl ? mImpl->depth_stencil.get() : nullptr;
+    return mImpl ? (mImpl->depth_stencil ? mImpl->depth_stencil.get()
+                                         : mImpl->borrowed_depth_stencil)
+                 : nullptr;
 }
 
 bool ALMetalRenderTarget::copyColorFrom(
@@ -2078,12 +2146,12 @@ bool ALMetalRenderTarget::copyColorFrom(
     std::string* error)
 {
     if (!mImpl || destination_index >= mDescriptor.color_attachment_count ||
-        !mImpl->colors[destination_index])
+        !colorTexture(destination_index))
     {
         setError(error, "Metal render-target color copy destination is unavailable");
         return false;
     }
-    return mImpl->colors[destination_index]->copyFrom(
+    return const_cast<ALMetalTexture*>(colorTexture(destination_index))->copyFrom(
         command_buffer, source, copy, error);
 }
 
@@ -2093,12 +2161,12 @@ bool ALMetalRenderTarget::copyDepthStencilFrom(
     ALMetalTextureCopy copy,
     std::string* error)
 {
-    if (!mImpl || !mImpl->depth_stencil)
+    if (!mImpl || !depthStencilTexture())
     {
         setError(error, "Metal render-target depth copy destination is unavailable");
         return false;
     }
-    return mImpl->depth_stencil->copyFrom(
+    return const_cast<ALMetalTexture*>(depthStencilTexture())->copyFrom(
         command_buffer, source, copy, error);
 }
 
@@ -2117,6 +2185,10 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
         for (std::uint32_t index = 0; index < mDescriptor.color_attachment_count; ++index)
         {
             const auto& pass_config = config.colors[index];
+            if (!pass_config.bind)
+            {
+                continue;
+            }
             const bool multisample = mDescriptor.sample_count > 1;
             const ALMetalPixelFormat attachment_format =
                 mDescriptor.colors[index].format;
@@ -2143,11 +2215,12 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
             }
 
             MTLRenderPassColorAttachmentDescriptor* attachment = descriptor.colorAttachments[index];
+            const ALMetalTexture* resolved_color = colorTexture(index);
             void* color_handle = multisample
                 ? mImpl->multisample_colors[index]->nativeHandle()
                 : pass_config.linear_storage_view
-                    ? mImpl->colors[index]->nativeLinearHandle()
-                    : mImpl->colors[index]->nativeHandle();
+                    ? resolved_color->nativeLinearHandle()
+                    : resolved_color->nativeHandle();
             if (!color_handle)
             {
                 setError(error,
@@ -2156,7 +2229,7 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
             }
             attachment.texture = (__bridge id<MTLTexture>)color_handle;
             attachment.resolveTexture = multisample
-                ? (__bridge id<MTLTexture>)mImpl->colors[index]->nativeHandle() : nil;
+                ? (__bridge id<MTLTexture>)resolved_color->nativeHandle() : nil;
             attachment.loadAction = loadAction(pass_config.load);
             attachment.storeAction = storeAction(pass_config.store);
             attachment.clearColor = MTLClearColorMake(pass_config.clear.red,
@@ -2165,7 +2238,7 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
                                                        pass_config.clear.alpha);
         }
 
-        if (mImpl->depth_stencil && config.bind_depth_stencil)
+        if (depthStencilTexture() && config.bind_depth_stencil)
         {
             const bool memoryless = mDescriptor.memoryless_depth_stencil;
             if ((memoryless && (config.depth_load == ALMetalLoadAction::load ||
@@ -2175,7 +2248,8 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
                 setError(error, "Metal depth load/store actions are incompatible with this attachment");
                 return nullptr;
             }
-            id<MTLTexture> depth_texture = (__bridge id<MTLTexture>)mImpl->depth_stencil->nativeHandle();
+            id<MTLTexture> depth_texture = (__bridge id<MTLTexture>)
+                depthStencilTexture()->nativeHandle();
             descriptor.depthAttachment.texture = depth_texture;
             descriptor.depthAttachment.loadAction = loadAction(config.depth_load);
             descriptor.depthAttachment.storeAction = storeAction(config.depth_store);

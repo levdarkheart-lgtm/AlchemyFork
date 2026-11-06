@@ -406,23 +406,37 @@ bool ALTextureSlot::bind(LLCubeMap* cubeMap, ALSampler key)
 #endif
 }
 
-// LLRenderTarget still exposes only integer legacy attachment names. Refuse
-// those honestly until the target owns ALMetalTexture attachments; callers
-// must not mistake a non-zero legacy name for a native resource.
+// Render targets publish typed native attachments. Keep the historical
+// sampler-name argument because several shader helpers already resolve their
+// ALSampler key before arriving here, but never manufacture an integer
+// texture identity for the resource itself.
 bool ALTextureSlot::bind(LLRenderTarget* renderTarget, bool bindDepth, U32 sampler)
 {
     if (mIndex < 0 || !renderTarget) return false;
 
-    if (bindDepth)
+    ALMetalTexture* texture = const_cast<ALMetalTexture*>(bindDepth
+        ? renderTarget->getMetalDepthTexture()
+        : renderTarget->getMetalColorTexture(0));
+    if (!texture || !matches_native_type(*texture, renderTarget->getUsage()))
     {
-        llassert(renderTarget->getDepth()); // target MUST have a depth buffer attachment
-        return bindManual(
-            renderTarget->getUsage(), renderTarget->getDepth(),
-            sampler ? sampler : renderTarget->getDefaultDepthSampler());
+        llassert(!bindDepth || renderTarget->hasDepthAttachment());
+        return false;
     }
-    return bindManual(
-        renderTarget->getUsage(), renderTarget->getTexture(),
-        sampler ? sampler : renderTarget->getDefaultColorSampler(0));
+
+    sampler = sampler ? sampler : (bindDepth
+        ? renderTarget->getDefaultDepthSampler()
+        : renderTarget->getDefaultColorSampler(0));
+    if (mCurrNativeTexture != texture || mCurrImage ||
+        mCurrTexType != renderTarget->getUsage() || mCurrSampler != sampler)
+    {
+        gGL.flush();
+    }
+    mCurrTexture = 1u;
+    mCurrTexType = renderTarget->getUsage();
+    mCurrImage = nullptr;
+    mCurrNativeTexture = texture;
+    bindNativeSampler(sampler);
+    return true;
 }
 
 bool ALTextureSlot::bindManual(eTextureType type, U32 texture, U32 sampler)

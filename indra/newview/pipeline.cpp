@@ -17696,7 +17696,8 @@ LLRenderTarget* LLPipeline::acquireResource(ALTransientTargets& scope, ALRenderR
     // Nothing over an owner left unbuilt, as a render size that fits nothing leaves the G-buffer.
     LLRenderTarget* owner = ALRenderResourcePlan::isTransient(*resource.mDepthFrom) ? depth_from
                                                                                      : resourceTarget(*resource.mDepthFrom);
-    return owner && owner->getDepth() ? scope.acquire(*resource.mDesc, *owner, name) : nullptr;
+    return owner && owner->hasDepthAttachment()
+        ? scope.acquire(*resource.mDesc, *owner, name) : nullptr;
 }
 
 // static
