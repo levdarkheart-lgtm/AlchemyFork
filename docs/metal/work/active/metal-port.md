@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `8a00656289`.
+**Renderer checkpoint:** Commit `b86b1e4c53`.
 
 This ledger contains current decisions and executable work. Prior checkpoint
 detail belongs in the indexed archive.
@@ -12,12 +12,12 @@ detail belongs in the indexed archive.
 
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
-| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68477 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
+| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68480 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,919 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
 | M-004 | Metal resources, transfers, readback and sync | doing | Geometry, ordinary texture producers/publication, fonts, buffers, samplers, image slots, targets and reflection arrays are native. Raw-name/copy/readback consumers follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
-| M-006 | UI, fonts, HUD and media ingress | doing | UI/font and media CPU texture publication are Metal-only. Snapshot source rejection is repaired; controls/preview remain owner-attended and visually open. |
+| M-006 | UI, fonts, HUD and media ingress | doing | UI/font and media CPU texture publication are Metal-only. Snapshot state/thumbnail/save source path is repaired; runtime proof remains owner-attended. |
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners; broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Core effects and many diagnostics are native. Debug/Develop-only tails remain behind the usable-core context cut. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
@@ -127,14 +127,14 @@ and release Metal-only with no GL fallback and exact native readback proof.
 
 `60e350e29a` removes orphan cube-array/framebuffer-copy GL owners; `c62977bd49`
 makes ordinary texture publication Metal-only; `8a00656289` removes uncalled
-external-name/raw-constructor/avatar scratch-GL ownership modes.
+GL ownership modes; `b86b1e4c53` makes Snapshot failure/save/refresh/preview state explicit.
 
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
-- Source-exact Xcode Release warnings-as-errors build/stage passes at `8a00656289`; package `26.4.0.68477`.
+- Source-exact Xcode Release warnings-as-errors build/stage passes at `b86b1e4c53`; package `26.4.0.68480`.
 - `tools/metal/verify_app.sh`: 349/349 inspected slices are ARM64.
-- Executable SHA-256: `cf5069164ebc88ad21421937e15b0d3e4e9c7b1e32b3b23a7683a15cd7967d80`.
+- Executable SHA-256: `e075cad2487430ff0095a9b1b129dceac04bab449d68f6eb994785f6a7c91882`.
 - Metallib SHA-256: `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer passes 156 assertions / eight cases; llrender passes 1,792/1,792 and Metal passes 52,681/52,681 assertions.
 - Current focused Metal GPU/alrender/llrender/benchmark tests pass 4/4; native font atlas upload/readback/release passes 28 assertions/five cases.
@@ -146,7 +146,7 @@ external-name/raw-constructor/avatar scratch-GL ownership modes.
 - Broad shared tests reproduce baseline host/driver failures: four assertions
   in three frame-fence timing cases and one render-target depth-format assertion.
 - Focused alrender/llrender suites pass 28/28; harness structure passes 32/32 required files; tool tests pass 31/31.
-- Strict inventory: 1,919/2,403 files (`gl_function` 414, `gl_shader` 1,507, `sdl_gl` 0), expected exit 1; report SHA-256 is `45a5153046865374c692dda6bc81b9693e101426918e3430fd57a3e7862a4d12`; 209 below 2,128 and 382 below 2,301 with unchanged rules.
+- Strict inventory: 1,919/2,403 files (`gl_function` 414, `gl_shader` 1,507, `sdl_gl` 0), expected exit 1; report SHA-256 is `45fb9de5dc07a48fdd71015df25afc13913323c7eef64cdd672649b390c66907`; 209 below 2,128 and 382 below 2,301 with unchanged rules.
 
 ## Owner-attended visual cadence
 
@@ -165,7 +165,7 @@ Do not autonomously launch either viewer, navigate login/world UI, or capture a 
 ## Immediate executable action
 
 1. Finish remaining essential texture lifetime, copy and readback ownership.
-2. Finish Snapshot implementation blockers; reserve proof for the owner-led phase.
+2. Treat Snapshot source repair as ready for owner-led execution proof later.
 3. Continue ordinary UI/world GL removal before optional tails.
 4. Continue strict source/link audits; keep runtime/startup/login owner-attended.
 

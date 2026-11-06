@@ -3,7 +3,7 @@
 **Observed:** 2026-11-06 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `8a00656289`
+**Renderer code checkpoint:** `b86b1e4c53`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -73,9 +73,9 @@ The latest essential sequence is:
 - `ecf223cf4c` removes scale-down/CEF GL tails; `a3067b1aac` makes noise/SMAA lifecycle native; `9c74277821` makes font atlas allocation, glyph publication and release Metal-only with no runtime GL fallback.
 - `60e350e29a` removes orphan cube-array/framebuffer-copy GL owners; `c62977bd49`
   makes ordinary texture publication Metal-only; `8a00656289` removes uncalled
-  external-name/raw-constructor/avatar scratch-GL ownership modes.
+  GL ownership modes; `b86b1e4c53` makes Snapshot fail closed and reuse its capture.
 
-`LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot preview/refresh/save execution remains owner-attended.
+`LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot source state is repaired; execution remains owner-attended.
 
 The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. No viewer was launched; startup/login remains queued.
 
@@ -83,11 +83,11 @@ The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or 
 
 - `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max, 64 GiB
   unified memory and Xcode 26.6; Metal reports Apple family 7 and 62,277,025,792 bytes.
-- Source-exact Xcode Release warnings-as-errors build/stage passes at `8a00656289`; package `Alchemy Metal Development 26.4.0.68477`.
+- Source-exact Xcode Release warnings-as-errors build/stage passes at `b86b1e4c53`; package `Alchemy Metal Development 26.4.0.68480`.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
   the product, renderer-test and appearance-utility executables have no
   OpenGL/Vulkan dependency or unresolved GL-family symbol.
-- Viewer executable SHA-256: `cf5069164ebc88ad21421937e15b0d3e4e9c7b1e32b3b23a7683a15cd7967d80`.
+- Viewer executable SHA-256: `e075cad2487430ff0095a9b1b129dceac04bab449d68f6eb994785f6a7c91882`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer proof passes 156 assertions/eight cases including writable native image subresources; full llrender passes 1,792/1,792 and Metal
@@ -113,7 +113,7 @@ The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or 
 ## OpenGL elimination gate
 
 Strict source inventory intentionally still fails: 1,919 findings in 2,403 viewer-owned files (`gl_function` 414, `gl_shader` 1,507, `sdl_gl` 0).
-Report SHA-256 is `45a5153046865374c692dda6bc81b9693e101426918e3430fd57a3e7862a4d12`.
+Report SHA-256 is `45fb9de5dc07a48fdd71015df25afc13913323c7eef64cdd672649b390c66907`.
 No audit rule or suppression changed; this is 209 below 2,128 and 382 below the
 owner's 2,301 reference. The gate remains zero; runtime proof remains queued.
 
@@ -132,7 +132,7 @@ is a parity pass without explicit owner evidence.
 | M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
 | M-004 resources/readback | doing | Geometry, ordinary texture producers/publication, fonts, buffers, samplers, image slots, targets and reflection arrays are native; remaining raw-name/copy/readback consumers follow. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
-| M-006 UI/media | doing | UI/font and media CPU texture publication are Metal-only; Snapshot source path is repaired but its UI behavior remains owner-attended and open. |
+| M-006 UI/media | doing | UI/font and media CPU texture publication are Metal-only; Snapshot state/thumbnail/save source path is repaired but runtime behavior remains owner-attended. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; parity remains open. |
 | M-008 effects/advanced views | doing | Core effects and many diagnostics are native; remaining optional paths follow the usable-core cut. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
@@ -155,6 +155,6 @@ completion or release readiness.
 ## Exact next actions
 
 1. Finish remaining essential texture lifetime, copy and readback ownership.
-2. Finish Snapshot implementation blockers; keep execution proof owner-attended.
+2. Treat Snapshot source repair as ready for later owner-attended execution proof.
 3. Continue ordinary UI/world GL removal before optional tails.
 4. Rerun strict source/link gates; keep runtime and startup/login owner-attended.
