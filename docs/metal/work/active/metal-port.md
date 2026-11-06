@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `b86b1e4c53`.
+**Renderer checkpoint:** Commit `1081614942`.
 
 This ledger contains current decisions and executable work. Prior checkpoint
 detail belongs in the indexed archive.
@@ -12,8 +12,8 @@ detail belongs in the indexed archive.
 
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
-| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68480 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,919 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
+| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68482 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,901 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
 | M-004 | Metal resources, transfers, readback and sync | doing | Geometry, ordinary texture producers/publication, fonts, buffers, samplers, image slots, targets and reflection arrays are native. Raw-name/copy/readback consumers follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
@@ -22,7 +22,7 @@ detail belongs in the indexed archive.
 | M-008 | Advanced views/effects and compute | doing | Core effects and many diagnostics are native. Debug/Develop-only tails remain behind the usable-core context cut. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets and transient clears require no GL. Render tails remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, transient clears and legacy queries require no GL. Render tails remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
 
@@ -125,18 +125,19 @@ dormant GL depth-pyramid owner/GLSL are removed; production water hierarchy and 
 lifecycle native; `9c74277821` makes font atlas allocation, glyph publication
 and release Metal-only with no GL fallback and exact native readback proof.
 
-`60e350e29a` removes orphan cube-array/framebuffer-copy GL owners; `c62977bd49`
-makes ordinary texture publication Metal-only; `8a00656289` removes uncalled
-GL ownership modes; `b86b1e4c53` makes Snapshot failure/save/refresh/preview state explicit.
+`60e350e29a` removes orphan cube-array/framebuffer-copy GL owners; `c62977bd49` makes ordinary texture publication Metal-only; `8a00656289` removes uncalled
+GL ownership modes; `b86b1e4c53` makes Snapshot failure/save/refresh/preview
+state explicit; `1081614942` removes legacy GL query execution and fails world
+visibility open pending native Metal visibility/counter-sample optimization.
 
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
-- Source-exact Xcode Release warnings-as-errors build/stage passes at `b86b1e4c53`; package `26.4.0.68480`.
+- Source-exact Xcode Release warnings-as-errors build/stage passes at `1081614942`; package `26.4.0.68482`.
 - `tools/metal/verify_app.sh`: 349/349 inspected slices are ARM64.
-- Executable SHA-256: `e075cad2487430ff0095a9b1b129dceac04bab449d68f6eb994785f6a7c91882`.
+- Executable SHA-256: `1fba2ce9a6f7a58ff6b2cca9dde31cb8f03d7977f99668b68e84cb00e1c30f73`.
 - Metallib SHA-256: `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-- Focused no-context renderer passes 156 assertions / eight cases; llrender passes 1,792/1,792 and Metal passes 52,681/52,681 assertions.
+- Focused no-context renderer passes 156 assertions / eight cases; query fail-closed proof passes 35 assertions; llrender passes 1,839/1,839 and Metal passes 52,681/52,681 assertions.
 - Current focused Metal GPU/alrender/llrender/benchmark tests pass 4/4; native font atlas upload/readback/release passes 28 assertions/five cases.
 - Native transient pool passes 943 assertions / 14 cases; full alrender passes 556,617/556,617 assertions across 132 cases.
 - Full harness passes 517/517 tests in 1,204.60 seconds; six Darwin GL-only migration suites remain intentionally omitted.
@@ -146,7 +147,7 @@ GL ownership modes; `b86b1e4c53` makes Snapshot failure/save/refresh/preview sta
 - Broad shared tests reproduce baseline host/driver failures: four assertions
   in three frame-fence timing cases and one render-target depth-format assertion.
 - Focused alrender/llrender suites pass 28/28; harness structure passes 32/32 required files; tool tests pass 31/31.
-- Strict inventory: 1,919/2,403 files (`gl_function` 414, `gl_shader` 1,507, `sdl_gl` 0), expected exit 1; report SHA-256 is `45fb9de5dc07a48fdd71015df25afc13913323c7eef64cdd672649b390c66907`; 209 below 2,128 and 382 below 2,301 with unchanged rules.
+- Strict inventory: 1,901/2,403 files (`gl_function` 396, `gl_shader` 1,507, `sdl_gl` 0), expected exit 1; report SHA-256 is `00e3ecebc4fbb6d79ab79ba482cf30461e395d3adf7e14116a2473e3d989ce51`; 227 below 2,128 and 400 below 2,301 with unchanged rules.
 
 ## Owner-attended visual cadence
 

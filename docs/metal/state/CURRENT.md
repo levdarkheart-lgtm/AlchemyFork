@@ -3,7 +3,7 @@
 **Observed:** 2026-11-06 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `b86b1e4c53`
+**Renderer code checkpoint:** `1081614942`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -71,27 +71,27 @@ The latest essential sequence is:
   GL depth-pyramid owner/GLSL while retaining native water hierarchy/cull compute.
 - `e8eaa3701b` replaces transient-target GL side effects/poison clears with explicit Metal attachment clears while preserving shared depth; `768250a2fc` makes Metal exposure/lens-flare history native-owned.
 - `ecf223cf4c` removes scale-down/CEF GL tails; `a3067b1aac` makes noise/SMAA lifecycle native; `9c74277821` makes font atlas allocation, glyph publication and release Metal-only with no runtime GL fallback.
-- `60e350e29a` removes orphan cube-array/framebuffer-copy GL owners; `c62977bd49`
-  makes ordinary texture publication Metal-only; `8a00656289` removes uncalled
-  GL ownership modes; `b86b1e4c53` makes Snapshot fail closed and reuse its capture.
+- `60e350e29a` removes orphan cube-array/framebuffer-copy GL owners; `c62977bd49` makes ordinary texture publication Metal-only; `8a00656289` removes uncalled
+  GL ownership modes; `b86b1e4c53` makes Snapshot fail closed and reuse its capture; `1081614942` removes legacy GL query execution while keeping world
+  visibility fail-open until native Metal visibility/counter samples replace it.
 
 `LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot source state is repaired; execution remains owner-attended.
 
-The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. No viewer was launched; startup/login remains queued.
+The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. No viewer was launched; startup/login remains queued. Query culling remains a native-performance replacement task, not a parity claim.
 
 ## Build and validation evidence
 
 - `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max, 64 GiB
   unified memory and Xcode 26.6; Metal reports Apple family 7 and 62,277,025,792 bytes.
-- Source-exact Xcode Release warnings-as-errors build/stage passes at `b86b1e4c53`; package `Alchemy Metal Development 26.4.0.68480`.
+- Source-exact Xcode Release warnings-as-errors build/stage passes at `1081614942`; package `Alchemy Metal Development 26.4.0.68482`.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
   the product, renderer-test and appearance-utility executables have no
   OpenGL/Vulkan dependency or unresolved GL-family symbol.
-- Viewer executable SHA-256: `e075cad2487430ff0095a9b1b129dceac04bab449d68f6eb994785f6a7c91882`.
+- Viewer executable SHA-256: `1fba2ce9a6f7a58ff6b2cca9dde31cb8f03d7977f99668b68e84cb00e1c30f73`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-- Focused no-context renderer proof passes 156 assertions/eight cases including writable native image subresources; full llrender passes 1,792/1,792 and Metal
-  passes 52,681/52,681 assertions.
+- Focused no-context renderer proof passes 156 assertions/eight cases including writable native image subresources; query fail-closed proof passes 35 assertions;
+  full llrender passes 1,839/1,839 and Metal passes 52,681/52,681 assertions.
 - Current focused Metal GPU/alrender/llrender/benchmark tests pass 4/4; native font atlas upload/readback/release passes 28 assertions/five cases.
 - Native transient-pool proof passes 943 assertions/14 cases; full alrender passes 556,617/556,617 assertions across 132 cases.
 - `tools/metal/build.sh test` passes all 517 registered tests in 1,204.60 seconds;
@@ -112,9 +112,9 @@ The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or 
 
 ## OpenGL elimination gate
 
-Strict source inventory intentionally still fails: 1,919 findings in 2,403 viewer-owned files (`gl_function` 414, `gl_shader` 1,507, `sdl_gl` 0).
-Report SHA-256 is `45fb9de5dc07a48fdd71015df25afc13913323c7eef64cdd672649b390c66907`.
-No audit rule or suppression changed; this is 209 below 2,128 and 382 below the
+Strict source inventory intentionally still fails: 1,901 findings in 2,403 viewer-owned files (`gl_function` 396, `gl_shader` 1,507, `sdl_gl` 0).
+Report SHA-256 is `00e3ecebc4fbb6d79ab79ba482cf30461e395d3adf7e14116a2473e3d989ce51`.
+No audit rule or suppression changed; this is 227 below 2,128 and 400 below the
 owner's 2,301 reference. The gate remains zero; runtime proof remains queued.
 
 ## Visual review cadence
@@ -137,7 +137,7 @@ is a parity pass without explicit owner evidence.
 | M-008 effects/advanced views | doing | Core effects and many diagnostics are native; remaining optional paths follow the usable-core cut. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
 | M-010 measured performance | deferred | No quality-equivalent paired M1 Max claim yet. |
-| M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, resources, targets and transient clears require no GL; render tails remain. |
+| M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, resources, targets, transient clears and legacy queries require no GL; render tails remain. |
 | M-012 Computer Use bridge | complete | Semantic bridge verified; visual driving is owner-attended. |
 | M-013 RLVa strict parity | deferred | Nonessential ordering only; final no-GL behavior is still required. |
 
