@@ -223,6 +223,12 @@ public:
     // 32-bit integer of the attachment's sign can hold: a negative one clears an unsigned attachment to 0.
     void clear(U32 mask = 0xFFFFFFFF);
 
+    // Clear every owned attachment named by `mask` through an explicit Metal
+    // render pass, independent of current draw-buffer, viewport, mask and
+    // scissor state. Borrowed depth is cleared only when the caller includes
+    // depth/stencil, so resource owners can preserve it deliberately.
+    bool clearAttachments(U32 mask, const LLColor4& color, F64 depth, U32 stencil);
+
     //get applied viewport
     void getViewport(S32* viewport);
 
@@ -376,7 +382,8 @@ protected:
     // creating a parallel GL texture or framebuffer.
     bool rebuildMetalTarget();
     U64 allocatedBytes() const;
-    bool encodeClear(U32 mask, const LLColor4& color, F64 depth, U32 stencil);
+    bool encodeClear(U32 mask, const LLColor4& color, F64 depth, U32 stencil,
+                     bool all_colors = false);
 
     // Attach `owner`'s depth, in place of any depth this target shared before.
     void attachSharedDepth(const LLRenderTarget& owner);

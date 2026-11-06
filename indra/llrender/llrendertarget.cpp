@@ -729,7 +729,7 @@ void LLRenderTarget::bindTarget()
 }
 
 bool LLRenderTarget::encodeClear(U32 mask, const LLColor4& color,
-                                 F64 depth, U32 stencil)
+                                 F64 depth, U32 stencil, bool all_colors)
 {
     ALMetalDevice* device = LLImageGL::getMetalDevice();
     if (!device || !mMetalTarget || !mask)
@@ -743,18 +743,33 @@ bool LLRenderTarget::encodeClear(U32 mask, const LLColor4& color,
     }
     if (mask & GL_COLOR_BUFFER_BIT)
     {
-        for (S8 attachment : mDrawBuffers)
+        if (all_colors)
         {
-            if (attachment < 0 || attachment >= static_cast<S8>(getNumTextures()))
+            for (U32 attachment = 0; attachment < getNumTextures(); ++attachment)
             {
-                continue;
+                auto& selected = config.colors[attachment];
+                selected.bind = true;
+                selected.load = ALMetalLoadAction::clear;
+                selected.store = ALMetalStoreAction::store;
+                selected.clear = {color.mV[0], color.mV[1],
+                                  color.mV[2], color.mV[3]};
             }
-            auto& selected = config.colors[static_cast<U32>(attachment)];
-            selected.bind = true;
-            selected.load = ALMetalLoadAction::clear;
-            selected.store = ALMetalStoreAction::store;
-            selected.clear = {color.mV[0], color.mV[1],
-                              color.mV[2], color.mV[3]};
+        }
+        else
+        {
+            for (S8 attachment : mDrawBuffers)
+            {
+                if (attachment < 0 || attachment >= static_cast<S8>(getNumTextures()))
+                {
+                    continue;
+                }
+                auto& selected = config.colors[static_cast<U32>(attachment)];
+                selected.bind = true;
+                selected.load = ALMetalLoadAction::clear;
+                selected.store = ALMetalStoreAction::store;
+                selected.clear = {color.mV[0], color.mV[1],
+                                  color.mV[2], color.mV[3]};
+            }
         }
     }
     config.bind_depth_stencil = mUseDepth &&
@@ -792,6 +807,23 @@ void LLRenderTarget::clear(U32 mask_in)
     if (mStencil) mask |= GL_STENCIL_BUFFER_BIT;
     mask &= mask_in;
     encodeClear(mask, gGL.getClearColor(), LLRender::sReverseZ ? 0.0 : 1.0, 0);
+}
+
+bool LLRenderTarget::clearAttachments(U32 mask, const LLColor4& color,
+                                      F64 depth, U32 stencil)
+{
+    LL_PROFILE_GPU_ZONE("clear attachments");
+    gGL.flush();
+    U32 available = getNumTextures() ? GL_COLOR_BUFFER_BIT : 0;
+    if (mUseDepth)
+    {
+        available |= GL_DEPTH_BUFFER_BIT;
+        if (mStencil)
+        {
+            available |= GL_STENCIL_BUFFER_BIT;
+        }
+    }
+    return encodeClear(mask & available, color, depth, stencil, true);
 }
 
 U32 LLRenderTarget::getTexture(U32 attachment) const

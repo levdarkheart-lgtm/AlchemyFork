@@ -86,7 +86,7 @@ if(AL_BUILD_TESTS)
       tests/altransienttargetpool_test.cpp
       tests/alwaterfield_test.cpp
       tests/alwaterheightbake_test.cpp
-    LIBRARIES alrender
+    LIBRARIES alrender almetal
     SUPPORT llrender_test_checks llcommon_test_checks
     DEFINES ${alrender_shader_dir}
   )

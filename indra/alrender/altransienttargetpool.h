@@ -39,13 +39,11 @@
 /// time, without anyone saying which. Passes take them through ALTransientTargets scopes.
 ///
 /// A free target is handed out only for exactly the description it was built from, sharing exactly the depth it was
-/// built against, so acquiring one never builds its storage or attaches a depth again: it is the same GL objects. What
+/// built against, so acquiring one never builds its storage or attaches a depth again: it is the same Metal resources. What
 /// it holds is undefined: every user clears it or writes all of it before reading it.
 ///
-/// Nothing here waits on the GPU. GL carries out commands in the order they are issued, so a target one pass releases
-/// can go to the next pass in the same frame: the GPU has finished the first pass's reads of it before it runs the
-/// second's writes. A backend whose commands are not ordered so keeps a released target from reuse until the frame that
-/// last used it has retired.
+/// Nothing here waits on the GPU. The ordered Metal scheduler preserves a pass's reads before the next pass's writes,
+/// so a target released by one phase can be reused by the next in the same frame.
 ///
 /// A target no one has acquired for TRIM_FRAMES frames, or for as many as an acquisition of it asked, is freed, and
 /// every target when the main view changes size, which sizes nearly all of them.
@@ -74,8 +72,8 @@ public:
         friend bool operator==(const Key&, const Key&) = default;
     };
 
-    /// What building, poisoning and freeing a target is. LLRenderTarget's own GL work by default; a test's records
-    /// stand in for it so that the policy runs without GL.
+    /// What building, poisoning and freeing a target is. LLRenderTarget's native Metal work by default; a test's
+    /// records stand in for it so the policy can be exercised without a device.
     class Backing
     {
     public:

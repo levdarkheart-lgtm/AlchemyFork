@@ -26,11 +26,6 @@
 
 #include "altransienttargetpool.h"
 
-#include "llglheaders.h"
-#include "llglstates.h"
-#include "llimagegl.h"
-#include "llrender.h"
-
 #include <fmt/format.h>
 
 #include <algorithm>
@@ -41,8 +36,8 @@ namespace
     using Pool = ALTransientTargetPool;
     const LLColor4 POISON_COLOUR(Pool::POISON_COLOUR);
 
-    // LLRenderTarget's own GL work.
-    class GLBacking final : public ALTransientTargetPool::Backing
+    // LLRenderTarget's native resource work.
+    class NativeBacking final : public ALTransientTargetPool::Backing
     {
     public:
         bool build(LLRenderTarget& target, const ALTransientTargetPool::Key& key, std::string_view name) override
@@ -50,8 +45,6 @@ namespace
             target.setLabel(name);
             const LLRenderTarget::EnsureResult result =
                 key.mDepthFrom ? target.ensure(key.mDesc, *key.mDepthFrom) : target.ensure(key.mDesc);
-            // Building binds each new texture to unit 0 to allocate it.
-            gGL.getTextureSlot(0)->unbind();
             return result == LLRenderTarget::EnsureResult::Built;
         }
 
@@ -59,61 +52,26 @@ namespace
 
         void poison(LLRenderTarget& target, const ALTransientTargetPool::Key& key) override
         {
-            const ALRenderTargetDesc& desc  = key.mDesc;
-            const bool                depth = desc.depth != ALRenderTargetDesc::Depth::None;
-
-            // A texture cleared as a texture, where GL 4.4 can: whatever framebuffer, masks and scissor are in force.
-            if (glClearTexImage)
+            const ALRenderTargetDesc& desc = key.mDesc;
+            U32 mask = desc.colorCount() ? GL_COLOR_BUFFER_BIT : 0;
+            // A shared depth is the owner's to keep: its description has no
+            // depth of its own, even though the target exposes the attachment.
+            if (desc.depth != ALRenderTargetDesc::Depth::None)
             {
-                for (U32 attachment = 0; attachment < desc.colorCount(); ++attachment)
+                mask |= GL_DEPTH_BUFFER_BIT;
+                if (desc.stencil)
                 {
-                    if (!LLImageGL::isIntegerFormat(desc.color[attachment]))
-                    {
-                        glClearTexImage(target.getTexture(attachment), 0, GL_RGBA, GL_FLOAT, POISON_COLOUR.mV);
-                    }
+                    mask |= GL_STENCIL_BUFFER_BIT;
                 }
-                if (depth && !desc.stencil)
-                {
-                    glClearTexImage(target.getDepth(), 0, GL_DEPTH_COMPONENT, GL_FLOAT, &Pool::POISON_DEPTH);
-                }
-                else if (depth)
-                {
-                    // Given as a float depth and a stencil byte for D24S8 as for D32F_S8: AMD's driver writes the
-                    // 24-bit integer of GL_UNSIGNED_INT_24_8 into the depth without normalising it, and drops the
-                    // stencil.
-                    const struct
-                    {
-                        F32 depth;
-                        U32 stencil;
-                    } value{ Pool::POISON_DEPTH, Pool::POISON_STENCIL };
-                    glClearTexImage(target.getDepth(), 0, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, &value);
-                }
-                return;
             }
-
-            // Otherwise through its framebuffer, every mask open and the scissor off, and the state put back.
-            LLGLDisable    no_scissor(GL_SCISSOR_TEST);
-            LLGLSColorMask colour_mask(true, true);
-            LLGLDepthTest  depth_mask(GL_TRUE, GL_TRUE, GL_ALWAYS);
-            GLint          clear_stencil = 0;
-            GLfloat        clear_depth   = 1.f;
-            glGetIntegerv(GL_STENCIL_CLEAR_VALUE, &clear_stencil);
-            glGetFloatv(GL_DEPTH_CLEAR_VALUE, &clear_depth);
-            const LLColor4 clear_colour = gGL.getClearColor();
-            const U32      stencil_mask = gGL.getStencilMask();
-
-            gGL.setStencilMask(0xff);
-            glClearDepth(Pool::POISON_DEPTH);
-            glClearStencil(Pool::POISON_STENCIL);
-            gGL.setClearColor(POISON_COLOUR);
-            target.bindTarget();
-            // A shared depth is the owner's to keep.
-            target.clear(depth ? 0xffffffff : GL_COLOR_BUFFER_BIT);
-            target.flush();
-            gGL.setClearColor(clear_colour);
-            glClearStencil(clear_stencil);
-            glClearDepth(clear_depth);
-            gGL.setStencilMask(stencil_mask);
+            if (!target.clearAttachments(mask, POISON_COLOUR,
+                                         Pool::POISON_DEPTH,
+                                         Pool::POISON_STENCIL))
+            {
+                LL_WARNS("RenderResources")
+                    << "Could not poison native transient target '"
+                    << target.getLabel() << "'" << LL_ENDL;
+            }
         }
 
         void free(LLRenderTarget& target) override { target.release(); }
@@ -121,14 +79,14 @@ namespace
         U64 depthSerial(const LLRenderTarget& owner) const override { return owner.getDepthSerial(); }
     };
 
-    GLBacking& gl_backing()
+    NativeBacking& native_backing()
     {
-        static GLBacking backing;
+        static NativeBacking backing;
         return backing;
     }
 }
 
-ALTransientTargetPool::ALTransientTargetPool() : ALTransientTargetPool(gl_backing())
+ALTransientTargetPool::ALTransientTargetPool() : ALTransientTargetPool(native_backing())
 {
 }
 

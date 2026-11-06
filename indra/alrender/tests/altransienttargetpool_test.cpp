@@ -1,6 +1,6 @@
 /**
  * @file altransienttargetpool_test.cpp
- * @brief The transient target pool's policy, over a backing that records what GL would be asked: reuse by exact
+ * @brief The transient target pool's policy, over a backing that records what the resource owner would be asked: reuse by exact
  *        description, scopes, the trim, the drop on a size change and the counts.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
@@ -29,10 +29,16 @@
 #include "../altransienttargets.h"
 
 #include "llglheaders.h"
+#if LL_DARWIN
+#include "almetaldevice.h"
+#include "almetalresource.h"
+#include "llimagegl.h"
+#endif
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <string>
 #include <vector>
@@ -49,7 +55,7 @@ namespace
     constexpr ALRenderTargetDesc OWN_STENCIL{ .width = 64, .height = 32, .color = { GL_RGBA8 }, .depth = Depth::D24,
                                               .stencil = true };
 
-    // What GL would have been asked: each build, rename, poison and free, by the target it was asked of.
+    // What the resource owner would have been asked: each build, rename, poison and free, by target.
     struct Recorder final : Pool::Backing
     {
         bool build(LLRenderTarget& target, const Pool::Key& key, std::string_view name) override
@@ -87,6 +93,85 @@ namespace
         LLRenderTarget gbuffer;
         LLRenderTarget other_gbuffer;
     };
+
+#if LL_DARWIN
+    TEST_CASE("altransienttargetpool: native validation poisons owned attachments without OpenGL",
+              "[altransienttargetpool][metal-cutover]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct NativeStateReset
+        {
+            ~NativeStateReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        LLRenderTarget depth_owner;
+        Pool pool;
+        pool.setValidation(true);
+        constexpr ALRenderTargetDesc NATIVE{
+            .width = 4,
+            .height = 4,
+            .color = { GL_RGBA8 },
+            .depth = Depth::D32F,
+        };
+        LLRenderTarget* target = pool.acquire(NATIVE, "native.poison");
+        REQUIRE(target);
+        REQUIRE(target->getMetalColorTexture(0));
+        REQUIRE(target->getMetalDepthTexture());
+        REQUIRE(pool.release(target));
+
+        std::array<U8, 4 * 4 * 4> pixels{};
+        REQUIRE(target->getMetalColorTexture(0)->readback(
+            *device, 0, 0, {}, pixels.data(), 4 * 4, &error));
+        INFO(error);
+        for (std::size_t offset = 0; offset < pixels.size(); offset += 4)
+        {
+            CHECK(pixels[offset + 0] == 255);
+            CHECK(pixels[offset + 1] == 0);
+            CHECK(pixels[offset + 2] == 255);
+            CHECK(pixels[offset + 3] == 255);
+        }
+
+        std::array<F32, 4 * 4> depth{};
+        REQUIRE(target->getMetalDepthTexture()->readback(
+            *device, 0, 0, {}, depth.data(), 4 * sizeof(F32), &error));
+        INFO(error);
+        for (F32 value : depth)
+        {
+            CHECK(value == Pool::POISON_DEPTH);
+        }
+
+        REQUIRE(depth_owner.allocate(
+            4, 4, 0, true, false, ALTextureSlot::TT_TEXTURE,
+            LLRenderTarget::MIPS_NONE, LLRenderTarget::DEPTH_FMT_32F));
+        REQUIRE(depth_owner.clearAttachments(
+            GL_DEPTH_BUFFER_BIT, LLColor4(), 0.25, 0));
+        constexpr ALRenderTargetDesc SHARED{
+            .width = 4,
+            .height = 4,
+            .color = { GL_RGBA8 },
+        };
+        LLRenderTarget* borrower = pool.acquire(
+            SHARED, depth_owner, "native.shared-depth.poison");
+        REQUIRE(borrower);
+        CHECK(borrower->getMetalDepthTexture() ==
+              depth_owner.getMetalDepthTexture());
+        REQUIRE(pool.release(borrower));
+
+        depth.fill(0.f);
+        REQUIRE(depth_owner.getMetalDepthTexture()->readback(
+            *device, 0, 0, {}, depth.data(), 4 * sizeof(F32), &error));
+        INFO(error);
+        for (F32 value : depth)
+        {
+            CHECK(value == 0.25f);
+        }
+    }
+#endif
 
     TEST_CASE_METHOD(pool_data, "altransienttargetpool: a released target goes to the next acquisition of its exact description",
                      "[altransienttargetpool]")
