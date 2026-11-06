@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `1a76b76a6d`.
+**Renderer checkpoint:** Commit `f7ecf74e84`.
 
 This ledger contains current decisions and executable work. Prior checkpoint
 detail belongs in the indexed archive.
@@ -13,8 +13,8 @@ detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68442 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 2,288 and exits 1; product executable link audit is clean; runtime audit remains open. |
-| M-003 | Native drawable, presentation and lifecycle | doing | Darwin now creates a plain SDL/Cocoa window and sole opaque Metal surface with no GL context; owner-attended startup/login validation remains. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 2,243 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains open. |
+| M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
 | M-004 | Metal resources, transfers, readback and sync | doing | Ordinary geometry, fonts/textures and async uploads are native-only; worker contexts and Snapshot GL scratch are gone. Remaining GL resource owners follow no-context exposure. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant identities configure without GLSL or GL program names. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font/UI resources are native; prior owner check accepted readable UI text. Snapshot controls/preview remain visually open. |
@@ -22,7 +22,7 @@ detail belongs in the indexed archive.
 | M-008 | Advanced views/effects and compute | doing | Core effects and many diagnostics are native. Debug/Develop-only tails remain behind the usable-core context cut. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Startup, utilities, workers and product linkage require no GL context/library. Visible-window migration source and reachable rendering tail remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Startup, visible/hidden windows, utilities, workers and product linkage require no GL context/library. Ordinary-frame resource/render tail remains. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
 
@@ -91,15 +91,20 @@ texture worker retains asynchronous Metal upload batching and fail-closed
 authority checks. Darwin omits six legacy GL-only migration suites rather than
 linking a test-only fallback runtime.
 
+`f7ecf74e84` deletes visible-window GL attributes, context creation/currentness,
+shared contexts, swap, teardown and reset polling while retaining the plain
+SDL/Cocoa lifecycle, native Metal surface, VSync, input, resize and fullscreen.
+Darwin GL procedure lookup now fails closed; the `sdl_gl` audit class is zero.
+
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
 - Source-exact Ninja warnings-as-errors build and staging pass; package
-  `26.4.0.68443`.
+  `26.4.0.68445`.
 - `tools/metal/verify_app.sh`: 349/349 inspected slices ARM64; deep strict
   codesign passes.
 - Executable SHA-256:
-  `cd5e9035700edcf001cf01362829965179b3426826508ce7d58ecd111d429a24`.
+  `72655b7b9691a39b403e731225d5bc6a82df91f4741384727dbc711c284d583e`.
 - Metallib SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - `llrender_tests`: 1,605 assertions / 209 cases pass plus expected font skip.
@@ -112,10 +117,10 @@ linking a test-only fallback runtime.
 - Broad shared tests reproduce baseline host/driver failures: four assertions
   in three frame-fence timing cases and one render-target depth-format assertion.
 - Harness structure passes 32/32 required files; tool tests pass 31/31.
-- Strict inventory: 2,288 findings in 2,409 files (`gl_function` 650,
-  `gl_shader` 1,597, `sdl_gl` 43), expected exit 1. Report SHA-256:
-  `a5feff22634e530ca81cafefe16f1b5b79b16f5ff7e4a9c3b91d7f7f97aa90f5`.
-  This is 27 below the immediately prior 2,315 checkpoint. The earlier 2,301
+- Strict inventory: 2,243 findings in 2,409 files (`gl_function` 648,
+  `gl_shader` 1,597, `sdl_gl` 0), expected exit 1. Report SHA-256:
+  `7559b6b9b349269cd7b96db40d8dacf73584308451347df2d65598a7b26b1d80`.
+  This is 45 below the immediately prior 2,288 checkpoint. The earlier 2,301
   baseline predates later conservative shader-bridge inventory expansion.
 
 ## Owner-attended visual cadence
@@ -137,10 +142,10 @@ evidence and does not stop safe GL authority removal.
 
 ## Immediate executable action
 
-1. Remove the 43 remaining SDL/GL findings from visible-window migration
-   source while preserving Metal presentation, input and fullscreen.
-2. Convert normal UI/text, world/avatar/material, streaming, presentation and
-   Snapshot/readback paths before optional Debug/Develop/RLVa-only tails.
+1. Replace ordinary-frame synchronization and GPU resource owners with direct
+   Metal storage/command-completion semantics, then delete their GL paths.
+2. Continue normal UI/text, world/avatar/material, streaming, presentation and
+   Snapshot/readback before optional Debug/Develop/RLVa-only tails.
 3. Continue strict source and Mach-O link audits; collect runtime image/module
    proof during the next owner-attended viewer execution.
 4. Keep the no-context startup/login check owner-attended and queued while
