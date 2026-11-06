@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `c865c15220`
+**Renderer code checkpoint:** `8bd5ff1bfd`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -57,16 +57,16 @@ The latest essential sequence is:
 - `c865c15220` replaces ordinary-frame `GLsync` creation, polling, waiting and
   deletion with an ordered Metal command-submission timeline. Frame pacing,
   safe resource reuse and teardown draining remain explicit native behavior.
+- `8bd5ff1bfd` replaces `ALGPUBuffer` GL storage/transfers with private/shared
+  `MTLBuffer` and ordered blits; stream rings fail closed on open-frame reuse.
 
 `LLGLSLShader::isComplete()` remains strictly a linked-GL-program predicate;
-`isNativeConfigured()`/`isAvailable()` cannot disguise a native identity as a
-GL object. GL-backed occlusion remains fail-closed until a native query owner
-replaces it.
+native availability cannot disguise a native identity as a GL object. GL-backed
+occlusion remains fail-closed until a native query owner replaces it.
 
-The Release viewer, renderer tests and appearance utility have no OpenGL or
-Vulkan dynamic dependency and no unresolved CGL, NSOpenGL, GL, SDL_GL or Vulkan
-imports. SDL's static archive can retain unselected generic API stubs, but the
-product linker selects none of them. No viewer was launched under the
+The Release viewer, renderer tests and appearance utility have no OpenGL/Vulkan
+dependency or unresolved GL-family import. SDL's static archive can retain
+unselected generic API stubs, but the product linker selects none. No viewer was launched under the
 owner-attended visual policy, so startup/login behavior remains queued rather
 than inferred. The next boundary is the reachable essential ordinary-frame
 source tail, not optional Debug/Develop/RLVa paths.
@@ -78,15 +78,15 @@ source tail, not optional Debug/Develop/RLVa paths.
   62,277,025,792-byte recommended working set.
 - `tools/metal/build.sh` completed the canonical Xcode Release build with
   warnings-as-errors and ended `BUILD SUCCEEDED`.
-- Source-exact Ninja staging build: `Alchemy Metal Development 26.4.0.68448`.
+- Source-exact Ninja staging build: `Alchemy Metal Development 26.4.0.68450`.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
   the product, renderer-test and appearance-utility executables have no
   OpenGL/Vulkan dependency or unresolved GL-family symbol.
 - Viewer executable SHA-256:
-  `5e14550271ff1fbe5f02ef659423ce8ea314a43e9b3cf9d4ca4ca5ad1a31e6f5`.
+  `cf4f951ff214ef45d5949673c657d6ae4431d3feea0c667b944879d4d5695bae`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-- `llrender_tests`: 1,605 assertions pass across 209 cases, with the expected
+- `llrender_tests`: 1,655 assertions pass across 213 cases, with the expected
   unavailable-font skip.
 - Focused native Metal/render CTest registration passes 14/14, including the
   scheduler timeline assertions; 515 tests remain registered after omitting
@@ -107,12 +107,12 @@ source tail, not optional Debug/Develop/RLVa paths.
 
 ## OpenGL elimination gate
 
-Strict source inventory intentionally still fails: 2,233 findings in 2,409
-viewer-owned files (`gl_function` 638, `gl_shader` 1,597, `sdl_gl` 0).
+Strict source inventory intentionally still fails: 2,194 findings in 2,409
+viewer-owned files (`gl_function` 599, `gl_shader` 1,597, `sdl_gl` 0).
 Report SHA-256 is
-`0ea674c6c5fe0ccd545e97bc1cf58158c5c411d634519c29a5f54f7e5a7fd4ee`.
-No audit rule or suppression changed; native frame completion removes ten
-findings from the immediately prior 2,243 checkpoint. The release gate remains
+`dd8b7b0fc8e71b1f7a0c048da244ddd608b12dd0a92317eea767fc3c90fea744`.
+No audit rule or suppression changed; native GPU-buffer storage removes 39
+findings from the immediately prior 2,233 checkpoint. The release gate remains
 zero; linked proof passes while runtime image/module proof remains open pending
 owner-attended execution.
 
@@ -128,21 +128,21 @@ is a parity pass without explicit owner evidence.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
-| M-004 resources/readback | doing | Ordinary geometry, textures/fonts and async uploads are native; worker contexts and Snapshot GL scratch are gone. |
+| M-004 resources/readback | doing | Ordinary geometry, textures/fonts, async uploads and general GPU-buffer storage/transfers are native; worker contexts and Snapshot GL scratch are gone. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass identities no longer require GLSL/program names. |
 | M-006 UI/media | doing | UI/font capture is native; owner accepted readable text previously; Snapshot UI remains visually open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; parity remains open. |
 | M-008 effects/advanced views | doing | Core effects and many diagnostics are native; remaining optional paths follow the usable-core cut. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
 | M-010 measured performance | deferred | No quality-equivalent paired M1 Max claim yet. |
-| M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage and frame completion require no GL context/library; ordinary-frame resource/render tail remains. |
+| M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion and GPU-buffer stores require no GL context/library; uniform/binding and render tails remain. |
 | M-012 Computer Use bridge | complete | Semantic bridge verified; visual driving is owner-attended. |
 | M-013 RLVa strict parity | deferred | Nonessential ordering only; final no-GL behavior is still required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Core setup, state, pass configuration
-and frame completion remain valid without a GL context, while required
+**Advances the complete product:** yes. Core setup, state, pass configuration,
+frame completion and GPU-buffer transfers remain valid without a GL context; required
 rendering behavior retains native owners instead of being deleted.
 
 **Still incomplete:** the reachable source tail remains, the strict no-GL gate
@@ -153,7 +153,7 @@ completion or release readiness.
 
 ## Exact next actions
 
-1. Port `ALGPUBuffer` storage/update/copy/readback to `ALMetalBuffer`, remove its GL operations, then migrate uniform-buffer rings.
+1. Migrate uniform-buffer rings and their ordinary shader binding consumers onto the native `ALGPUBuffer` store.
 2. Continue normal UI/text, world/avatar/material, streaming, presentation and
    Snapshot/readback before Debug/Develop/RLVa-only tails.
 3. Rerun strict source, Mach-O link and runtime gates after every coherent cut.
