@@ -3,7 +3,7 @@
 **Observed:** 2026-11-06 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `029694fedb`
+**Renderer code checkpoint:** `e8eaa3701b`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -69,6 +69,7 @@ The latest essential sequence is:
   Metal presentation texture; no GL driver call remains in this owner.
 - `029694fedb` gives image slots typed Metal read/write attachments, validates subresources/access and rejects raw integer identities. It removes the dormant
   GL depth-pyramid owner/GLSL while retaining native water hierarchy/cull compute.
+- `e8eaa3701b` replaces transient-target GL side effects/poison clears with explicit Metal attachment clears while preserving shared depth.
 
 `LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native availability cannot disguise a native identity as GL; GL occlusion fails closed.
 
@@ -80,17 +81,16 @@ product. No viewer was launched; startup/login remains queued while work continu
 - `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max,
   64 GiB unified memory and Xcode 26.6; Metal reports Apple family 7 and a
   62,277,025,792-byte recommended working set.
-- Source-exact Ninja warnings-as-errors build/stage passes at `029694fedb`;
-  package `Alchemy Metal Development 26.4.0.68461`.
+- Source-exact Ninja warnings-as-errors build/stage passes at `e8eaa3701b`; package `Alchemy Metal Development 26.4.0.68463`.
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64;
   the product, renderer-test and appearance-utility executables have no
   OpenGL/Vulkan dependency or unresolved GL-family symbol.
-- Viewer executable SHA-256:
-  `e986d61f0031269505fe9b5f3b31d1ca2a8bc384942bfe9545800ef204bf21f9`.
+- Viewer executable SHA-256: `88bf87124c5ff9354a3240c652595b4f5592032bb6b7b096bcf6acfebe93dcde`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer proof passes 156 assertions/eight cases including writable native image subresources; full llrender passes 1,792/1,792 and Metal
   passes 52,681/52,681 assertions.
+- Native transient-pool proof passes 943 assertions/14 cases; full alrender passes 556,617/556,617 assertions across 132 cases.
 - `tools/metal/build.sh test` passes all 517 registered tests in 1,204.60 seconds;
   six Darwin GL-only migration suites remain intentionally omitted.
 - The appearance utility compiles and links through the Metal-only hidden
@@ -109,11 +109,11 @@ product. No viewer was launched; startup/login remains queued while work continu
 
 ## OpenGL elimination gate
 
-Strict source inventory intentionally still fails: 2,033 findings in 2,407
-viewer-owned files (`gl_function` 470, `gl_shader` 1,565, `sdl_gl` 0).
+Strict source inventory intentionally still fails: 2,023 findings in 2,407
+viewer-owned files (`gl_function` 461, `gl_shader` 1,564, `sdl_gl` 0).
 Report SHA-256 is
-`783d855a26bc6e818dcf776b34b44e29982dc4ad39b6fbfb4a37ebe7cc4653ad`.
-No audit rule or suppression changed; this is 95 below 2,128 and 268 below the
+`5994fac4605993d057ee2dcf24add61e09d5ac31904f50c4786af9349d0fb649`.
+No audit rule or suppression changed; this is 105 below 2,128 and 278 below the
 owner's 2,301 reference. The gate remains zero; runtime proof remains queued.
 
 ## Visual review cadence
@@ -128,14 +128,14 @@ is a parity pass without explicit owner evidence.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
-| M-004 resources/readback | doing | Ordinary geometry, textures/fonts, async uploads, GPU/uniform buffers, samplers, texture/image slots and legacy offscreen targets are native; default-window consumers remain. |
+| M-004 resources/readback | doing | Geometry, textures/fonts, async uploads, buffers, samplers, texture/image slots, offscreen targets and transient clears are native; copy/readback consumers remain. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
 | M-006 UI/media | doing | UI/font capture is native; owner accepted readable text previously; Snapshot UI remains visually open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; parity remains open. |
 | M-008 effects/advanced views | doing | Core effects and many diagnostics are native; remaining optional paths follow the usable-core cut. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
 | M-010 measured performance | deferred | No quality-equivalent paired M1 Max claim yet. |
-| M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, buffers, samplers, texture/image slots and offscreen target ownership require no GL; render tails remain. |
+| M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, resources, targets and transient clears require no GL; render tails remain. |
 | M-012 Computer Use bridge | complete | Semantic bridge verified; visual driving is owner-attended. |
 | M-013 RLVa strict parity | deferred | Nonessential ordering only; final no-GL behavior is still required. |
 
@@ -152,8 +152,8 @@ completion or release readiness.
 
 ## Exact next actions
 
-1. Move default-window copies and transient-target clears to retained Metal textures.
-2. Convert remaining essential presentation/readback and Snapshot consumers.
-3. Continue normal rendering before Debug/Develop/RLVa-only tails.
+1. Replace reachable texture blits and retained-window copies with Metal resources.
+2. Convert essential readback and Snapshot preview/save consumers.
+3. Continue ordinary UI/world GL removal before optional tails.
 4. Rerun strict source, link and runtime gates after every coherent cut.
 5. Keep startup/login queued; do not launch either viewer autonomously.
