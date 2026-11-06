@@ -1,6 +1,6 @@
 /**
  * @file alwindowsdlheadless.h
- * @brief A window never shown, with the platform GL context on it
+ * @brief A window never shown, with an offscreen rendering backend
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -25,12 +25,13 @@
 #pragma once
 
 #include "llwindowheadless.h"
-#include "llmutex.h"
-
 #include "SDL3/SDL.h"
 
 #include <memory>
+#if !LL_DARWIN
+#include "llmutex.h"
 #include <set>
+#endif
 
 #if LL_DARWIN
 class ALMetalDevice;
@@ -38,12 +39,11 @@ class ALMetalFrameScheduler;
 class ALMetalSurface;
 #endif
 
-// The headless backend for anything that renders: the appearance utility, the
-// GL-backed tests, a viewer with no desktop. An SDL window is created hidden
-// and never shown, and the GL context on it is the one the platform gives --
-// WGL on Windows, CGL on macOS, EGL on Linux -- the same GL the viewer runs
-// on. Where Linux has no display at all, SDL's offscreen driver supplies an
-// EGL context with no surface; init_sdl arranges that.
+// The headless backend for anything that renders: the appearance utility, a
+// viewer with no desktop and renderer tests. An SDL window is created hidden
+// and never shown. Darwin owns only an offscreen Metal device and frame
+// scheduler; it deliberately creates no GL window or context. Other platforms
+// retain their migration GL context until their platform cutover.
 //
 // Everything a window does besides own a context is LLWindowHeadless's
 // virtual state: size, position, cursor, visibility. Input never arrives, so
@@ -61,13 +61,13 @@ public:
     bool isValid() override
     {
 #if LL_DARWIN
-        return mContext && mMetalDevice && mMetalFrames;
+        return mWindow && mMetalDevice && mMetalFrames;
 #else
         return mContext != nullptr;
 #endif
     }
 
-    // Tears the context and the window down; LLWindowManager::destroyWindow
+    // Tears the rendering backend and window down; LLWindowManager::destroyWindow
     // calls it before it quits SDL. The destructor finishes anything left.
     void close() override;
 
@@ -80,21 +80,22 @@ public:
     ALMetalSurface* getMetalSurface() const noexcept override { return nullptr; }
 #endif
 
-    // Worker-thread contexts, through the same platform path LLWindowSDL uses.
+    // Worker-thread GL contexts remain available only on non-Darwin migration
+    // builds. Metal uploads share the device/queue without a graphics context.
     void* createSharedContext() override;
     void makeContextCurrent(void* context) override;
     void destroySharedContext(void* context) override;
 
 private:
-    SDL_Window*   mWindow = nullptr;
-    SDL_GLContext mContext = nullptr;
+    SDL_Window* mWindow = nullptr;
 #if LL_DARWIN
     std::unique_ptr<ALMetalDevice> mMetalDevice;
     std::unique_ptr<ALMetalFrameScheduler> mMetalFrames;
-#endif
-
+#else
+    SDL_GLContext mContext = nullptr;
     // Live shared-context handles, so any a worker failed to release can be
     // reclaimed before the main context goes.
     LLMutex mSharedCtxMutex;
     std::set<void*> mSharedContexts;
+#endif
 };

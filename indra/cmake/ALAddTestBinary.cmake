@@ -281,6 +281,12 @@ function(al_add_test_binary name)
   endif()
   if(arg_GL)
     list(APPEND labels gl)
+    # Darwin's product libraries no longer publish or link OpenGL. Keep the
+    # legacy migration suites linkable as explicit test-only consumers while
+    # their assertions are replaced with native Metal coverage.
+    if(DARWIN)
+      target_link_libraries(${target} PRIVATE ll::opengl)
+    endif()
     if(NOT AL_ENABLE_GL_TESTS)
       set(disabled TRUE)
     endif()

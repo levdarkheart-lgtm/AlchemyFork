@@ -1,6 +1,6 @@
 /**
  * @file alwindowsdlheadless.cpp
- * @brief A window never shown, with the platform GL context on it
+ * @brief A window never shown, with an offscreen rendering backend
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -26,13 +26,14 @@
 
 #include "alwindowsdlheadless.h"
 
-#include "llgl.h"
 #include "llrender.h"
-#include "llsdl.h"
 
 #if LL_DARWIN
 #include "almetaldevice.h"
 #include "almetalframe.h"
+#else
+#include "llgl.h"
+#include "llsdl.h"
 #endif
 
 ALWindowSDLHeadless::ALWindowSDLHeadless(LLWindowCallbacks* callbacks,
@@ -45,6 +46,7 @@ ALWindowSDLHeadless::ALWindowSDLHeadless(LLWindowCallbacks* callbacks,
 {
     setFSAASamples(fsaa_samples);
 
+#if !LL_DARWIN
     // The same request LLWindowSDL makes, less the fullscreen and density
     // properties a window nobody sees has no use for.
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
@@ -68,34 +70,35 @@ ALWindowSDLHeadless::ALWindowSDLHeadless(LLWindowCallbacks* callbacks,
     // Always a core profile, as LLWindowSDL makes.
     SDL_GLContextFlag context_flags{};
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-#if LL_DARWIN
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-    context_flags |= SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG;
-#else
     // A core profile needs an explicit version of 3.2 or better, or the
     // driver hands back a compatibility context. Ask for the highest the
     // viewer targets and step down below, to the floor of 4.1, if the
     // driver caps lower.
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-#endif
     if (gDebugGL)
     {
         context_flags |= SDL_GL_CONTEXT_DEBUG_FLAG;
     }
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, context_flags);
     SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
+#endif
 
-    mWindow = SDL_CreateWindow(title.c_str(), width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    mWindow = SDL_CreateWindow(
+        title.c_str(), width, height,
+#if LL_DARWIN
+        SDL_WINDOW_HIDDEN);
+#else
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+#endif
     if (!mWindow)
     {
         LL_WARNS("Window") << "Hidden window creation failed: " << SDL_GetError() << LL_ENDL;
         return;
     }
 
-    mContext = SDL_GL_CreateContext(mWindow);
 #if !LL_DARWIN
+    mContext = SDL_GL_CreateContext(mWindow);
     for (S32 minor = 5; !mContext && minor >= 1; --minor)
     {
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor);
@@ -105,7 +108,6 @@ ALWindowSDLHeadless::ALWindowSDLHeadless(LLWindowCallbacks* callbacks,
             LL_INFOS("Window") << "Created GL core context at fallback version 4." << minor << LL_ENDL;
         }
     }
-#endif
     if (!mContext)
     {
         LL_WARNS("Window") << "Hidden window GL context creation failed: " << SDL_GetError() << LL_ENDL;
@@ -113,7 +115,6 @@ ALWindowSDLHeadless::ALWindowSDLHeadless(LLWindowCallbacks* callbacks,
         mWindow = nullptr;
         return;
     }
-
     if (!SDL_GL_MakeCurrent(mWindow, mContext))
     {
         LL_WARNS("Window") << "Hidden window GL context could not be made current: " << SDL_GetError() << LL_ENDL;
@@ -136,6 +137,7 @@ ALWindowSDLHeadless::ALWindowSDLHeadless(LLWindowCallbacks* callbacks,
         mWindow = nullptr;
         return;
     }
+#endif
 
 #if LL_DARWIN
     // The hidden backend is also the headless appearance-baking backend. It
@@ -194,8 +196,7 @@ void ALWindowSDLHeadless::close()
     }
     mMetalFrames.reset();
     mMetalDevice.reset();
-#endif
-
+#else
     {
         // Normal shutdown joins the GL worker threads first, so anything still
         // here is a context a worker failed to release.
@@ -218,6 +219,7 @@ void ALWindowSDLHeadless::close()
         SDL_GL_DestroyContext(mContext);
         mContext = nullptr;
     }
+#endif
     if (mWindow)
     {
         SDL_DestroyWindow(mWindow);
@@ -227,14 +229,21 @@ void ALWindowSDLHeadless::close()
 
 void ALWindowSDLHeadless::swapBuffers()
 {
+#if !LL_DARWIN
     if (mWindow)
     {
         SDL_GL_SwapWindow(mWindow);
     }
+#endif
 }
 
 void* ALWindowSDLHeadless::createSharedContext()
 {
+#if LL_DARWIN
+    // The native upload path shares a Metal device and command queue rather
+    // than creating per-thread graphics contexts.
+    return nullptr;
+#else
     if (!SDL_GL_MakeCurrent(mWindow, mContext))
     {
         LL_WARNS("Window") << "SDL_GL_MakeCurrent(main) failed in createSharedContext: "
@@ -248,19 +257,28 @@ void* ALWindowSDLHeadless::createSharedContext()
         mSharedContexts.insert(shared);
     }
     return shared;
+#endif
 }
 
 void ALWindowSDLHeadless::makeContextCurrent(void* context)
 {
+#if LL_DARWIN
+    llassert(context == nullptr);
+#else
     sdl_make_shared_context_current(context);
+#endif
 }
 
 void ALWindowSDLHeadless::destroySharedContext(void* context)
 {
+#if LL_DARWIN
+    llassert(context == nullptr);
+#else
     if (!context) return;
     {
         LLMutexLock lk(&mSharedCtxMutex);
         mSharedContexts.erase(context);
     }
     sdl_destroy_shared_context(context);
+#endif
 }

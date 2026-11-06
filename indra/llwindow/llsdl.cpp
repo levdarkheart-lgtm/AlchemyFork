@@ -36,10 +36,6 @@
 #include "llrender.h"
 #include "llwindow.h"
 
-#if LL_DARWIN
-#include <OpenGL/OpenGL.h>
-#endif
-
 // The EGL entry points are resolved at runtime through SDL_EGL_GetProcAddress
 // (the viewer does not link libEGL directly under SDL), so only the tokens
 // are wanted here.
@@ -286,8 +282,9 @@ void quit_sdl()
     }
 }
 
-// The handle behind sdl_create_shared_context: whatever the platform GL API
-// needs to bind and tear the context down.
+// The handle behind sdl_create_shared_context: whatever a non-Darwin platform
+// GL API needs to bind and tear the context down. Darwin is Metal-only and
+// returns no shared graphics context.
 namespace
 {
     struct LLSDLSharedContext
@@ -296,7 +293,8 @@ namespace
         HGLRC rc = nullptr;
         HDC   dc = nullptr;        // the DC the sibling context binds to
 #elif LL_DARWIN
-        CGLContextObj ctx = nullptr;
+        // Deliberately empty: retained so the cross-platform helper has one
+        // opaque type, but no Darwin GL API or framework dependency.
 #else // LL_LINUX
         // EGL, as void* so the EGL types stay out of the header
         void* egl_dpy = nullptr;   // EGLDisplay
@@ -382,9 +380,8 @@ void* sdl_create_shared_context()
 {
     // A version request derived from the live main context, clamped to the
     // range the viewer supports. WGL/EGL need this explicitly (mirroring
-    // LLWindowWin32::createSharedContext); CGL inherits it from the share
-    // context, hence the guard against an unused-variable warning there. The
-    // profile is core, as the main context's always is on SDL.
+    // LLWindowWin32::createSharedContext). The profile is core, as the main
+    // context's always is on SDL.
 #if LL_WINDOWS || LL_LINUX
     const F32 gl_ver = llclamp(gGLManager.mGLVersion, 4.1f, 4.6f);
     const S32 ver_major = (S32)gl_ver;
@@ -430,22 +427,8 @@ void* sdl_create_shared_context()
         LL_WARNS() << "No current WGL context, or wglCreateContextAttribsARB not loaded (initWGL), for shared context" << LL_ENDL;
     }
 #elif LL_DARWIN
-    CGLContextObj share = CGLGetCurrentContext();
-    if (share)
-    {
-        CGLPixelFormatObj pf = CGLGetPixelFormat(share);
-        CGLContextObj ctx = nullptr;
-        CGLError err = CGLCreateContext(pf, share, &ctx);
-        if (err == kCGLNoError && ctx)
-        {
-            shared->ctx = ctx;
-            ok = true;
-        }
-        else
-        {
-            LL_WARNS() << "CGLCreateContext (shared) failed: " << CGLErrorString(err) << LL_ENDL;
-        }
-    }
+    // Darwin uploads are Metal-native. Returning null makes any accidental
+    // legacy worker fail closed instead of restoring a hidden CGL context.
 #else // LL_LINUX
     {
         // EGL: a surfaceless context (EGL_NO_SURFACE) avoids needing a
@@ -525,7 +508,8 @@ void sdl_make_shared_context_current(void* handle)
         LL_WARNS("Window") << "wglMakeCurrent(shared) failed: " << GetLastError() << LL_ENDL;
     }
 #elif LL_DARWIN
-    CGLSetCurrentContext(s->ctx);
+    (void)s;
+    llassert(false && "Darwin has no shared GL context");
 #else // LL_LINUX
     if (s->egl_ctx)
     {
@@ -555,10 +539,8 @@ void sdl_destroy_shared_context(void* handle)
         LL_WARNS("Window") << "wglDeleteContext(shared) failed: " << GetLastError() << LL_ENDL;
     }
 #elif LL_DARWIN
-    if (s->ctx)
-    {
-        CGLDestroyContext(s->ctx);
-    }
+    (void)s;
+    llassert(false && "Darwin has no shared GL context");
 #else // LL_LINUX
     if (s->egl_ctx)
     {

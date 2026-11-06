@@ -21,6 +21,19 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   set(CMAKE_TOOLCHAIN_FILE ${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake CACHE STRING "")
 endif()
 
+# Repository-owned port customizations are part of the product build. The SDL
+# overlay removes graphics APIs the Darwin viewer does not use; its recipe is
+# otherwise kept in sync with the version selected by the manifest registry.
+set(al_vcpkg_repository_overlay "${CMAKE_SOURCE_DIR}/cmake/ports")
+list(FIND VCPKG_OVERLAY_PORTS "${al_vcpkg_repository_overlay}" al_vcpkg_overlay_index)
+if(al_vcpkg_overlay_index EQUAL -1)
+  list(APPEND VCPKG_OVERLAY_PORTS "${al_vcpkg_repository_overlay}")
+  set(
+    VCPKG_OVERLAY_PORTS "${VCPKG_OVERLAY_PORTS}"
+    CACHE STRING "vcpkg overlay ports, including repository customizations" FORCE
+  )
+endif()
+
 # The vcpkg tool beside the toolchain file: <root>/scripts/buildsystems/vcpkg.cmake.
 get_filename_component(VCPKG_ROOT "${CMAKE_TOOLCHAIN_FILE}" DIRECTORY)
 get_filename_component(VCPKG_ROOT "${VCPKG_ROOT}/../.." ABSOLUTE)
@@ -288,6 +301,10 @@ if(AL_VCPKG_INSTALL)
     "${CMAKE_SOURCE_DIR}/cmake/triplets/*.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/toolchains/*.cmake"
   )
+  file(
+    GLOB_RECURSE al_vcpkg_overlay_port_files
+    "${CMAKE_SOURCE_DIR}/cmake/ports/*"
+  )
   set(al_vcpkg_install_key "")
   foreach(
     input
@@ -297,6 +314,7 @@ if(AL_VCPKG_INSTALL)
       "${CMAKE_SOURCE_DIR}/vcpkg-configuration.json"
       "${CMAKE_CURRENT_LIST_DIR}/AlchemyTarget.cmake"
       ${al_vcpkg_triplet_files}
+      ${al_vcpkg_overlay_port_files}
   )
     file(SHA256 "${input}" input_hash)
     string(APPEND al_vcpkg_install_key "${input}=${input_hash};")

@@ -74,17 +74,28 @@ LLBakingWindow::LLBakingWindow(S32 width, S32 height, ALWindowBackend backend)
     }
 #endif
 
-    LLVertexBuffer::initClass(mWindow);
-
-    gGL.init(true);
-
 #if LL_DARWIN
     LLVertexBuffer::setMetalDevice(mWindow->getMetalDevice());
+    LLVertexBuffer::setMetalBufferAuthority(true);
     LLImageGL::setMetalDevice(mWindow->getMetalDevice());
+    LLImageGL::setMetalTextureAuthority(true);
     gGL.setMetalBackend(
         mWindow->getMetalDevice(),
         mWindow->getMetalFrameScheduler(),
         mWindow->getMetalSurface());
+#endif
+
+    LLVertexBuffer::initClass(mWindow);
+
+#if LL_DARWIN
+    if (!gGL.initMetal(true))
+    {
+        throw LLAppException(
+            RV_UNABLE_TO_INIT_GL,
+            " Native Metal renderer initialization failed.");
+    }
+#else
+    gGL.init(true);
 #endif
 
     if (!LLBakingShaderMgr::sInitialized)
@@ -105,7 +116,9 @@ LLBakingWindow::~LLBakingWindow()
 {
 #if LL_DARWIN
     gGL.setMetalBackend(nullptr, nullptr, nullptr);
+    LLImageGL::setMetalTextureAuthority(false);
     LLImageGL::setMetalDevice(nullptr);
+    LLVertexBuffer::setMetalBufferAuthority(false);
     LLVertexBuffer::setMetalDevice(nullptr);
 #endif
     if (mWindow)

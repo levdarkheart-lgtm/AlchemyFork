@@ -1,9 +1,9 @@
 # -*- cmake -*-
 include_guard()
 
-# SDL's video and GL bring-up on its own, with none of the window backend's
-# other appetites. The GL-backed llrender tests want a context and nothing else,
-# and they want it on platforms where AL_USE_SDL_WINDOW is off -- so this half is
+# SDL's core video/input support on its own, with none of the window backend's
+# other appetites. Non-Darwin migration tests can still ask it for a GL context;
+# the Darwin overlay compiles the GL/Vulkan platform backends out. This half is
 # always available, and the window backend below builds on it.
 add_library(ll::SDL3core INTERFACE IMPORTED)
 find_package(SDL3 CONFIG REQUIRED)

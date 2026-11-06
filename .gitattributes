@@ -1,5 +1,8 @@
 * text eol=lf
 
+# Unified diffs require a one-space prefix on blank context lines.
+*.patch -whitespace
+
 # Images
 *.bmp binary
 *.BMP binary

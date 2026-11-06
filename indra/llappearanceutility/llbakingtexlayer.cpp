@@ -64,7 +64,7 @@ LLBakingTexLayerSetBuffer::~LLBakingTexLayerSetBuffer()
         mMetalCaptureActive = false;
     }
 #endif
-    destroyGLTexture();
+    destroyGPUTexture();
 }
 
 bool LLBakingTexLayerSetBuffer::render()

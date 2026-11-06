@@ -60,7 +60,6 @@
 
 #if LL_DARWIN
 #include "almetaldevice.h"
-#include "llwindowsdl.h"
 #endif
 
 #include "stringize.h"
@@ -2320,19 +2319,25 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     // initial glyph atlases, and those first uploads must create their Metal
     // mirrors rather than leaving every early text batch on the GL fallback.
 #if LL_DARWIN
-    if (auto* sdl_window = dynamic_cast<LLWindowSDL*>(mWindow))
+    ALMetalDevice* metal_device = mWindow->getMetalDevice();
+    ALMetalFrameScheduler* metal_frames = mWindow->getMetalFrameScheduler();
+    if (metal_device && metal_frames)
     {
-        LLVertexBuffer::setMetalDevice(sdl_window->getMetalDevice());
+        LLVertexBuffer::setMetalDevice(metal_device);
         LLVertexBuffer::setMetalBufferAuthority(true);
-        LLImageGL::setMetalDevice(sdl_window->getMetalDevice());
+        LLImageGL::setMetalDevice(metal_device);
         // The Darwin product renderer is Metal-native. This is deliberately
         // separate from gGLManager.mIsDisabled: the viewer remains fully
         // operational while ordinary texture and font producers stop creating
         // parallel GL resources.
         LLImageGL::setMetalTextureAuthority(true);
-        gGL.setMetalBackend(sdl_window->getMetalDevice(),
-                            sdl_window->getMetalFrameScheduler(),
-                            sdl_window->getMetalSurface());
+        gGL.setMetalBackend(metal_device, metal_frames,
+                            mWindow->getMetalSurface());
+    }
+    else
+    {
+        LL_ERRS("Metal") << "Darwin window did not publish its native Metal backend"
+                           << LL_ENDL;
     }
 #endif
 

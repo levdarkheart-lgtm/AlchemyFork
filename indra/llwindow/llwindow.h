@@ -369,7 +369,7 @@ constexpr S32 OSBTN_CANCEL = 3;
 enum class ALWindowBackend
 {
     Native,     // the platform's window: LLWindowWin32 or LLWindowSDL
-    Hidden,     // ALWindowSDLHeadless: never shown; migration GL plus native offscreen Metal
+    Hidden,     // ALWindowSDLHeadless: never shown; native offscreen Metal on Darwin
     None,       // LLWindowHeadless: no window and no GL
 };
 

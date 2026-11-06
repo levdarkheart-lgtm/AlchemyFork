@@ -35,7 +35,9 @@
 
 #include "alteststateguard.h"
 
+#if !LL_DARWIN
 #include "SDL3/SDL_video.h"
+#endif
 
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <catch2/reporters/catch_reporter_registrars.hpp>
@@ -64,17 +66,24 @@ namespace ll_test
 
 namespace
 {
-    // The context current on this thread: its handle, or none. The hidden
-    // window's context is SDL's, on every platform.
+    // The context current on this thread: its handle, or none. Darwin's
+    // product and hidden backends intentionally have no GL context.
     std::string currentContext()
     {
+#if LL_DARWIN
+        return "not present";
+#else
         SDL_GLContext context = SDL_GL_GetCurrentContext();
         return context ? llformat("%p", static_cast<void*>(context)) : std::string("none");
+#endif
     }
 
     // The errors GL holds for the next glGetError, which reading clears.
     std::string unreadErrors()
     {
+#if LL_DARWIN
+        return "not applicable";
+#else
         if (!SDL_GL_GetCurrentContext())
         {
             return "no context";
@@ -91,6 +100,7 @@ namespace
             text += llformat("%s0x%04x", text.empty() ? "" : ", ", error);
         }
         return text.empty() ? std::string("none") : text;
+#endif
     }
 
     class LLRenderChecks : public Catch::EventListenerBase
@@ -131,8 +141,12 @@ namespace
             // the font atlas pages it rasterizes into do.
             ll_test::StateGuard::add("GL images outliving their context", []
             {
+#if LL_DARWIN
+                return std::to_string(LLImageGL::sImageList.size());
+#else
                 return SDL_GL_GetCurrentContext() ? std::string("a context is current")
                                                   : std::to_string(LLImageGL::sImageList.size());
+#endif
             });
             ll_test::StateGuard::add("the font manager",
                                      [] { return std::string(gFontManagerp ? "live" : "none"); });
