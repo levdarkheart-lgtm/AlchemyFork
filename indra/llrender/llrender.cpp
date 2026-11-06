@@ -1989,19 +1989,11 @@ void LLRender::refreshState(void)
         return;
     }
 
-    // Called when GL state may have been changed behind our back, so re-assert the shared
-    // blocks' bindings along with the texture units and the state the setters cache.
+    // Called when legacy state may have been changed behind our back, so re-assert the shared
+    // blocks' bindings along with the state the setters cache. Texture slots are logical
+    // native identities and have no ambient driver state to restore.
     mLightsUBOBound   = false;
     mMatricesUBOBound = false;
-
-    U32 active_unit = mCurrTextureUnitIndex;
-
-    for (U32 i = 0; i < mTextureSlots.size(); i++)
-    {
-        mTextureSlots[i].refreshState();
-    }
-
-    mTextureSlots[active_unit].activate();
 
     for (ALImageSlot& slot : mImageSlots)
     {

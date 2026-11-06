@@ -212,6 +212,12 @@ TEST_CASE("Texture slots retain native resource identity without OpenGL",
                                 ALSamplers::AnisoClamp));
     CHECK(slot.getCurrMetalTexture() == texture.get());
 
+    // An arbitrary integer attachment name has no native owner and must not
+    // displace a valid Metal binding or report a fallback success.
+    CHECK_FALSE(slot.bindManual(ALTextureSlot::TT_TEXTURE, 0x1234u));
+    CHECK(slot.getCurrType() == ALTextureSlot::TT_CUBE_MAP);
+    CHECK(slot.getCurrMetalTexture() == texture.get());
+
     slot.unbind();
     CHECK(slot.getCurrTexture() == 0);
     CHECK(slot.getCurrType() == ALTextureSlot::TT_NONE);

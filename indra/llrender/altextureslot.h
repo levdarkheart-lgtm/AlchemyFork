@@ -5,13 +5,12 @@
  * One texture binding point: what resource it holds, what target that resource has, and
  * which sampler object it is read through. Nothing else.
  *
- * This was LLTexUnit, and the rename is the point. A GL "texture unit" was a bundle of state
+ * This was LLTexUnit, and the rename is the point. A legacy "texture unit" was a bundle of state
  * -- an enable bit per target, a texenv combiner, filtering and wrap parameters -- that a
  * fixed-function pipeline configured and then drew through. None of that survives: filtering
  * and wrapping moved to sampler objects (alsamplerstate.h), the combiners went with the
  * fragment shader, and the enable bits went with them. What is left is a slot, which is also
- * what D3D11 and Vulkan model -- a resource view bound at an index, plus a sampler bound at
- * the same index.
+ * what Metal models -- a resource bound at an index, plus a sampler bound at the same index.
  *
  * $LicenseInfo:firstyear=2001&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -58,29 +57,28 @@ class ALTextureSlot
 {
     friend class LLRender;
 public:
-    // The white texture's name, which every context shares: set on the main thread, read
-    // where a slot is unbound on any thread with a context.
+    // Compatibility identity for the viewer's white image. New code binds sWhiteImage's
+    // native resource; the integer survives only to resolve old manual-white call sites.
     static std::atomic<U32> sWhiteTexture;
     static std::atomic<LLImageGL*> sWhiteImage;
 
-    // Publish the viewer's white image as one logical resource for both the
-    // temporary GL binding and the native Metal mirror. The raw pointer is
+    // Publish the viewer's white image as one logical native resource. The raw pointer is
     // safe here because the viewer owns this singleton until texture teardown.
     static void setWhiteImage(LLImageGL* image);
 
     // --- sampler traffic, per frame ---------------------------------------------------
     //
-    // Sampler objects cost a glBindSampler that baked texture state did not: the mode used to
-    // ride along with the texture. Whether that matters depends entirely on how often the
-    // sampler actually CHANGES, which is what these measure. Reset in LLImageGL::updateStats.
+    // Sampler changes may split immediate geometry batches. Whether that matters depends
+    // entirely on how often the sampler actually CHANGES, which is what these measure.
+    // Reset in LLImageGL::updateStats.
     //
     // sSamplerBinds / sTextureBinds is the number to look at. Near zero means the redundancy
     // check is doing its job and samplers are close to free; near one means nearly every
     // texture bind drags a sampler bind with it.
     //
-    // Each thread counts its own binds, as each has its own gGL: the frame's are the main
+    // Each thread counts its own selections, as each has its own gGL: the frame's are the main
     // thread's, and a thread that makes textures neither races them nor adds to them.
-    static thread_local U32 sSamplerBinds;   // glBindSampler calls ISSUED
+    static thread_local U32 sSamplerBinds;   // sampler identity changes issued
     static thread_local U32 sSamplerSkips;   // suppressed by the mCurrSampler check
     static thread_local U32 sTextureBinds;   // texture binds through bindFast/bindImpl, for the ratio
 
@@ -97,9 +95,8 @@ public:
     // suspect, since scene geometry draws from VBOs with nothing queued in gGL.
     static thread_local U32 sSamplerBindsSplitBatch;
 
-    // What KIND of resource a slot holds. A property of the resource, not of the slot -- this
-    // is D3D11's SRV dimension, and it lives here only because the slot has to name a target
-    // to issue a classic glBindTexture.
+    // What KIND of resource a slot holds. A property of the resource, not of the slot; it
+    // lives here because native texture dimensions must match the encoder binding.
     //
     // The four other enums that used to sit alongside it are gone: eTextureBlendType,
     // eTextureBlendOp and eTextureBlendSrc described the fixed-function texture combiner and
@@ -121,17 +118,12 @@ public:
 
     ALTextureSlot(S32 index = -1);
 
-    // Refreshes renderer state of the slot to the cached values
-    // Needed when the render context has changed and invalidated the current state
-    void refreshState(void);
-
     // returns the index of this slot
     S32 getIndex(void) const { return mIndex; }
 
-    // Binds the LLImageGL to this slot WITHOUT selecting a sampler -- the slot keeps whatever
-    // sampler the previous bind left. For bind-to-edit (allocation, upload, glGenerateMipmap),
-    // where nothing samples through the slot; a bind that will be sampled goes through
-    // bindSampled/bindFast so the caller names how.
+    // Binds the native texture owned by an LLImageGL WITHOUT selecting a sampler -- the slot
+    // keeps whatever sampler the previous bind left. Sampled binds should normally use
+    // bindSampled/bindFast so the caller names the complete sampling mode.
     bool bind(LLImageGL* texture, bool for_rendering = false, bool forceBind = false, S32 usename = 0);
 
     // Bind AND select the sampler in one step. The caller names the whole sampling mode;
@@ -143,7 +135,7 @@ public:
     // makes the following assumptions:
     //  - No need for gGL.flush()
     //  - texture is not null
-    //  - the image has either a GL name or a native Metal texture
+    //  - the image has a native Metal texture or can synchronously publish one
     //  - This texture is not being bound redundantly
     // The CALLER names how it wants to sample; the resource contributes nothing.
     void bindFast(LLTexture* texture, ALSampler key);
@@ -162,9 +154,10 @@ public:
     // sampler is an ALSamplerCache name, or 0 for the target's own per-attachment default.
     bool bind(LLRenderTarget * renderTarget, bool bindDepth = false, U32 sampler = 0);
 
-    // Manually binds a texture to the slot
-    // sampler is an ALSamplerCache name, or 0 to sample through the texture object's own
-    // state. Applied even when the texture binding is unchanged -- see bindSampler.
+    // Compatibility resolver for an old integer resource identity. Only the published white
+    // image can currently be resolved to an owned Metal texture; every other name fails
+    // closed until its owner publishes a native resource. The sampler is an ALSamplerCache
+    // identity, or 0 when the native encoder supplies its default.
     bool bindManual(eTextureType type, U32 texture, U32 sampler = 0);
 
     // Release whatever this slot holds.
@@ -182,13 +175,13 @@ public:
     // NO setTextureFilteringOption / setTextureAddressMode here.
     //
     // Filtering and addressing are properties of a SAMPLER, not of a texture and not of a
-    // slot, which is the model D3D11/12 and Vulkan have and the one this renderer now uses
+    // slot, which is the model Metal has and the one this renderer now uses
     // throughout. Write the sampler to the bind call. There is no way to put sampling state
     // on a texture at all -- LLImageGL stopped carrying any, which is what makes that
     // impossible rather than merely discouraged.
     //
-    // The removed pair wrote glTexParameteri onto whatever texture object was bound, and a
-    // bound sampler object overrides that state wholesale -- so the call did nothing and
+    // The removed pair wrote mutable sampling state onto whatever texture object was bound,
+    // while an explicit sampler overrode that state wholesale -- so the call did nothing and
     // reported nothing. That silence already cost the RLV sphere effect its point filter
     // (402770506d). They also read almost identically to the LLImageGL setters that ARE
     // correct, which made reaching for the wrong one easy. Reintroducing either means
@@ -196,10 +189,8 @@ public:
 
     // Select the sampler object this slot samples through, from ALSamplerCache.
     //
-    // Pass 0 to fall back to the bound texture object's own filter/wrap/compare state.
-    // A sampler object OVERRIDES that state wholesale while bound, so a leftover
-    // glTexParameteri on a slot with a non-zero sampler is a silent no-op -- when
-    // converting a bind path, convert every filtering call that follows it.
+    // Pass 0 when the native encoder supplies the resource's default sampling state. When
+    // converting a bind path, convert every filtering choice that follows it.
     //
     // Never selects a sampler for TT_MULTISAMPLE_TEXTURE: sampling a multisample
     // texture through a sampler object is an error at draw time.
@@ -225,30 +216,14 @@ protected:
     S32                 mIndex;
     U32                 mCurrTexture;
     eTextureType        mCurrTexType;
-    // Non-owning identity of a real image bind. Manual GL names, render
-    // targets and cube maps clear it because they have no LLImageGL mirror to
-    // hand a native backend. Captured batches retain their own LLPointer.
+    // Non-owning identity of a real image bind. Explicit native resources without an
+    // LLImageGL owner use mCurrNativeTexture instead. Captured batches retain their own
+    // LLPointer.
     LLImageGL*          mCurrImage = nullptr;
     ALMetalTexture*     mCurrNativeTexture = nullptr;
     // The sampler object currently bound to this slot, so a redundant selection can be
     // skipped. Reset by clearSamplers() when the objects behind the names are dropped.
     U32                 mCurrSampler = 0;
-
-    // Make this the active GL texture unit, so the classic glBindTexture calls below land on
-    // it. Internal only: it is a consequence of not using glBindTextureUnit, not something a
-    // caller has a reason to ask for.
-    //
-    // It was public for a long time and had 54 external callers, none of which needed it --
-    // every bind and unbind path here activates for itself, and the rest were guarding
-    // gGL.matrixMode(MM_TEXTURE0) back when MM_TEXTURE resolved through the active unit. It
-    // stopped doing that (see LLRender::eMatrixMode) and the guards became ceremony.
-    void activate(void);
-
-    // Record the target this slot's binds will use, activating it first. Called by the bind
-    // paths; not an "enable" in any sense GL still has.
-    void setTarget(eTextureType type);
-
-    void debugTextureUnit(void);
 
     void bindFastImpl(LLTexture* texture, LLImageGL* gl_tex, U32 sampler);
 
@@ -259,8 +234,7 @@ protected:
 
     bool bindImpl(LLTexture* texture, bool forceBind, ALSampler key);
 #if LL_DARWIN
-    // Retained GL traversal samples the white placeholder while native capture retains the
-    // real Metal-only image identity.
+    // Publish the real image identity consumed by the Metal encoder.
     bool bindNativeSampled(LLImageGL* image, U32 sampler, bool forceBind);
 #endif
 };
