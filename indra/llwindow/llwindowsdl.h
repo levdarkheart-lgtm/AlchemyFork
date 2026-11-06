@@ -31,10 +31,8 @@
 
 #include "llwindow.h"
 #include "lltimer.h"
-#include "llmutex.h"
 
 #include <memory>
-#include <set>
 
 #include "SDL3/SDL.h"
 #include "SDL3/SDL_endian.h"
@@ -229,10 +227,8 @@ public:
 
     static std::vector<std::string> getDisplaysResolutionList();
 
-    // Accessor for the main viewer SDL_Window used by the singleton viewer instance.
-    // Code outside llwindowsdl (e.g. file pickers) should prefer this over
-    // SDL_GL_GetCurrentWindow() so the parent window is correct even when a
-    // worker thread has its own GL context current.
+    // Accessor for the main viewer SDL_Window used by the singleton viewer
+    // instance, including as the parent for native file pickers.
     static SDL_Window* getMainSDLWindow();
 
     // Bracket an async OS dialog. SDL3's file picker resolves on a later frame,
@@ -282,7 +278,7 @@ protected:
     // Platform specific methods
     //
 
-    // create or re-create the GL context/window.  Called from the constructor and switchContext().
+    // Create or recreate the native window and Metal surface.
     bool createContext(int x, int y, int width, int height, int bits, bool fullscreen, bool enable_vsync);
     void destroyContext();
 
@@ -305,23 +301,12 @@ protected:
     // or density can change (resize / DPI / monitor).
     void refreshPixelMetrics();
 
-#if LL_LINUX
-    // GPU reset detection, on NVIDIA's EGL: armGraphicsResetCheck once GL is
-    // loaded, to poll when createContext got a context that reports a reset,
-    // then checkGraphicsReset each frame from swapBuffers. A reset found is
-    // said once and the viewer quits, as nothing the GPU held survives it.
-    void armGraphicsResetCheck();
-    void checkGraphicsReset();
-    bool mGraphicsResetSeen = false;
-#endif
-
     //
     // Platform specific variables
     //
     U32 mGrabbyKeyFlags = 0;
     S32 mReallyCapturedCount = 0;
     SDL_Window *mWindow = nullptr;
-    SDL_GLContext mContext = nullptr;
 #if LL_DARWIN
     std::unique_ptr<ALMetalDevice> mMetalDevice;
     std::unique_ptr<ALMetalFrameScheduler> mMetalFrames;
@@ -458,13 +443,6 @@ private:
     // defaults to window center in that case.
     LLCoordWindow mDeferredCursorWarp;
     bool mHasDeferredCursorWarp = false;
-
-    // Shared GL contexts for worker threads, made and bound by the
-    // sdl_*_shared_context functions in llsdl.h. mSharedContexts tracks the
-    // live handles ONLY so destroyContext can warn about and reclaim any a
-    // worker failed to release; it is touched only under mSharedCtxMutex.
-    LLMutex mSharedCtxMutex;
-    std::set<void*> mSharedContexts;
 
     // Files and text accumulated between SDL_EVENT_DROP_BEGIN and
     // SDL_EVENT_DROP_COMPLETE. Each SDL_EVENT_DROP_FILE only carries one path

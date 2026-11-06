@@ -98,18 +98,6 @@ const S32 DEFAULT_REFRESH_RATE = 60;
 // be only one object of this class at any time.  Currently this is true.
 static LLWindowSDL *gWindowImplementation = nullptr;
 
-#if LL_LINUX
-// What glGetGraphicsResetStatus returns for a context lost to a purge of video
-// memory, with EGL_NV_robustness_video_memory_purge (see llsdl.cpp).
-#ifndef GL_PURGED_CONTEXT_RESET_NV
-#define GL_PURGED_CONTEXT_RESET_NV 0x92BB
-#endif
-
-// glGetGraphicsResetStatus while the main context reports a GPU reset, which
-// checkGraphicsReset polls each frame; null otherwise.
-static PFNGLGETGRAPHICSRESETSTATUSPROC sGetGraphicsResetStatus = nullptr;
-#endif
-
 LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
                          const std::string& title, const std::string& name, S32 x, S32 y, S32 width,
                          S32 height, U32 flags,
@@ -119,16 +107,6 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
         : LLWindow(callbacks, fullscreen, flags),
         mGamma(1.0f), mFlashing(false)
 {
-#if !LL_DARWIN
-    if (!SDL_GL_LoadLibrary(nullptr))
-    {
-        // SDL3 returns bool; on failure GL functions won't be available.
-        // The caller will hit a setupFailure when context creation fails,
-        // but log the underlying cause here so the chain is visible.
-        LL_WARNS() << "SDL_GL_LoadLibrary failed: " << SDL_GetError() << LL_ENDL;
-    }
-#endif
-
     // Initialize the keyboard
     // One keyboard for the process, a window made after another replacing
     // the one before, which nothing else holds.
@@ -213,47 +191,13 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
 #endif
 
     // Create the platform window and its renderer surface.
-    if(createContext(x, y, width, height, 32, fullscreen, enable_vsync))
+    if (createContext(x, y, width, height, 32, fullscreen, enable_vsync))
     {
-#if LL_DARWIN
-        // Metal capability and surface creation above are the complete Darwin
-        // renderer bootstrap. There is deliberately no migration GL context.
+        // Metal capability and surface creation above are the complete
+        // renderer bootstrap.
         initCursors();
         setCursor(UI_CURSOR_ARROW);
-#else
-        gGLManager.initWGL();
-        if (!gGLManager.initGL())
-        {
-            // Closes the window, which leaves it invalid, so the viewer does not start.
-            setupFailure(glInitFailureMessage(), "Error", OSMB_OK);
-        }
-        else
-        {
-#if LL_WINDOWS
-            // GL didn't always report a VRAM budget (notably Intel iGPUs); ask DXGI.
-            LLDXHardware::updateVRAMBudgetFromDXGI();
-#endif
-#if !LL_DARWIN
-            gRenderCapabilities.initializeOpenGL(gGLManager);
-#endif
-
-            // Tracy's GPU context makes GL calls, so it waits for initGL to load
-            // the entry points, as on Win32.
-            {
-                LL_PROFILER_GPU_CONTEXT;
-            }
-#if LL_LINUX
-            armGraphicsResetCheck();
-#endif
-
-            //start with arrow cursor
-            initCursors();
-            setCursor( UI_CURSOR_ARROW );
-        }
-#endif
     }
-
-    stop_glerror();
 }
 
 #if LL_LINUX
@@ -326,64 +270,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
 
     mFullscreen = fullscreen;
 
-#if !LL_DARWIN
-    // Setup default backing colors. RenderGLContext10bitSDR asks for a 10-bit
-    // back buffer, which the final blit then dithers for. Its two bits of
-    // alpha don't make the window translucent: SDL presents a Wayland surface
-    // opaque (EGL_EXT_present_opaque), and on X11 the config takes a
-    // depth-30 visual, which has no alpha.
-    const GLint channelBits = LLRender::s10bitBackBuffer ? 10 : 8;
-    GLint redBits{channelBits}, greenBits{channelBits}, blueBits{channelBits};
-    GLint alphaBits{LLRender::s10bitBackBuffer ? 2 : 8};
-    GLint depthBits{ 24 };
-
-    SDL_GL_SetAttribute(SDL_GL_RED_SIZE,   redBits);
-    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, greenBits);
-    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE,  blueBits);
-    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, alphaBits);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depthBits);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-
-    // Multi-sample anti-aliasing. Driver may quietly downgrade to 0/2/4/8
-    // if the requested sample count isn't supported.
-    if (mFSAASamples > 0)
-    {
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, mFSAASamples);
-    }
-    else
-    {
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
-    }
-
-    // Always a core profile: only the native Win32 window makes a compatibility one.
-    SDL_GLContextFlag context_flags{};
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-#if LL_DARWIN
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-    context_flags |= SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG;
-#else
-    // EGL only honors the core profile mask when the requested version
-    // is >= 3.2; without an explicit version SDL defaults to 2.1 and the
-    // driver silently returns a compatibility context (Mesa hands back 4.6
-    // Compatibility). Request the highest version the viewer targets; the
-    // create-context loop below steps this down to the floor, 4.1, if the
-    // driver caps lower.
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-#endif
-
-    if (gDebugGL)
-    {
-        context_flags |= SDL_GL_CONTEXT_DEBUG_FLAG;
-    }
-
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, context_flags);
-    SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
-#endif
-
     SDL_PropertiesID props = SDL_CreateProperties();
     SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, mWindowTitle.c_str());
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, x);
@@ -391,15 +277,8 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, width);
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, height);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true);
-    // Darwin presents exclusively through the attached CAMetalLayer. Asking
-    // SDL for OpenGL here would allocate a second renderer surface and make a
-    // context a hidden startup requirement.
-    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN,
-#if LL_DARWIN
-                           false);
-#else
-                           true);
-#endif
+    // Do not set any SDL graphics-API property. Their default is false and the
+    // attached CAMetalLayer below is the sole renderer surface.
     // Fullscreen is SDL's borderless desktop fullscreen, at the desktop's own
     // mode, as on Windows. width/height are the windowed size, not a
     // resolution anyone chose: an exclusive mode picked from them would
@@ -409,19 +288,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_HIGH_PIXEL_DENSITY_BOOLEAN, gHiDPISupport);
 
     mWindow = SDL_CreateWindowWithProperties(props);
-#if !LL_DARWIN
-    if (mWindow == nullptr && LLRender::s10bitBackBuffer)
-    {
-        // EGL chooses the window's config as the window is made, so a 10-bit
-        // back buffer that can't be had fails here: an X server at depth 24
-        // has no visual for one. Make it again at 8 bits, as Win32 does.
-        LL_WARNS() << "No window with a 10-bit back buffer, falling back to 8 bits. SDL: "
-                   << SDL_GetError() << LL_ENDL;
-        SDL_DestroyProperties(props);
-        LLRender::s10bitBackBuffer = false;
-        return createContext(x, y, width, height, bits, fullscreen, enable_vsync);
-    }
-#endif
     if (mWindow == nullptr)
     {
         LL_WARNS() << "Window creation failure. SDL: " << SDL_GetError() << LL_ENDL;
@@ -430,77 +296,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
         return false;
     }
     SDL_DestroyProperties(props); // Free properties once window is created
-
-#if !LL_DARWIN
-    // Create the context. A core profile requires an explicit >= 3.2 version
-    // (set above); the exact 4.6 request fails on drivers that cap lower, so
-    // step the requested version down to 4.1 until creation succeeds,
-    // mirroring the WGL path in createSharedContext(). initGL refuses less.
-    auto create_context = [this]() -> SDL_GLContext
-    {
-#if LL_LINUX
-        // At each version, first a context that reports a GPU reset (see
-        // checkGraphicsReset), which only NVIDIA's EGL is asked for. Should
-        // the driver refuse it, the context is asked for again without.
-        sdl_set_gl_reset_notification(true);
-        SDL_GLContext context = SDL_GL_CreateContext(mWindow);
-        if (context || !sdl_gl_reset_notification())
-        {
-            return context;
-        }
-        sdl_set_gl_reset_notification(false);
-#endif
-        return SDL_GL_CreateContext(mWindow);
-    };
-    mContext = create_context();
-#if !LL_DARWIN
-    for (S32 minor = 5; !mContext && minor >= 1; --minor)
-    {
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor);
-        mContext = create_context();
-        if (mContext)
-        {
-            LL_INFOS() << "Created GL core context at fallback version 4." << minor << LL_ENDL;
-        }
-    }
-#endif
-    if (!mContext && LLRender::s10bitBackBuffer)
-    {
-        LL_WARNS() << "No GL context on a 10-bit back buffer, falling back to 8 bits. SDL: "
-                   << SDL_GetError() << LL_ENDL;
-        SDL_DestroyWindow(mWindow);
-        mWindow = nullptr;
-        LLRender::s10bitBackBuffer = false;
-        return createContext(x, y, width, height, bits, fullscreen, enable_vsync);
-    }
-    if (!mContext)
-    {
-        // A driver that offers no 4.1 core context. The context it makes by default is what tells the
-        // user which version they have: initGL refuses it, naming the floor and the version
-        // (MBGLVersionErr), where failing here could only say no context was made. SDL's own
-        // defaults: no profile, GL 2.1, and none of the flags above but debug.
-        LL_WARNS() << "No OpenGL 4.1 core context; making the driver's default one for initGL to judge. SDL: "
-                   << SDL_GetError() << LL_ENDL;
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, 0);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, gDebugGL ? SDL_GL_CONTEXT_DEBUG_FLAG : 0);
-        mContext = create_context();
-    }
-    if(!mContext)
-    {
-        LL_WARNS() << "Cannot create GL context " << SDL_GetError() << LL_ENDL;
-        setupFailure("GL Context creation error", "Error", OSMB_OK);
-        return false;
-    }
-
-    if (!SDL_GL_MakeCurrent(mWindow, mContext))
-    {
-        LL_WARNS() << "Failed to make context current. SDL: " << SDL_GetError() << LL_ENDL;
-        setupFailure("GL Context failed to set current failure", "Error", OSMB_OK);
-        return false;
-    }
-#endif
 
     const SDL_DisplayMode* displayMode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(mWindow));
     if(displayMode)
@@ -537,7 +332,7 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     }
 
     /* Latch the display server. Only a few input quirks depend on it (see
-       showCursor) and the CEF plugin's Ozone platform; GL is EGL on both. */
+       showCursor) and the CEF plugin's Ozone platform. */
 #if LL_LINUX
     if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "x11") == 0)
     {
@@ -557,45 +352,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
         // LLPluginClassMedia::setDisplayServer(), which forwards it to
         // dullahan as the forced Ozone platform - routing CEF onto native
         // Wayland without mutating any shared environment.
-    }
-
-    gGLManager.initEGL();
-#endif
-
-#if !LL_DARWIN
-    SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &redBits);
-    SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &greenBits);
-    SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE, &blueBits);
-    SDL_GL_GetAttribute(SDL_GL_ALPHA_SIZE, &alphaBits);
-    SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthBits);
-
-    LL_INFOS() << "GL buffer:" << LL_ENDL;
-    LL_INFOS() << "  Red Bits " << S32(redBits) << LL_ENDL;
-    LL_INFOS() << "  Green Bits " << S32(greenBits) << LL_ENDL;
-    LL_INFOS() << "  Blue Bits " << S32(blueBits) << LL_ENDL;
-    LL_INFOS() << "  Alpha Bits " << S32(alphaBits) << LL_ENDL;
-    LL_INFOS() << "  Depth Bits " << S32(depthBits) << LL_ENDL;
-
-    // The final blit dithers for the depth asked for, so a back buffer
-    // granted shallower than that would band.
-    if (LLRender::s10bitBackBuffer && (redBits < 10 || greenBits < 10 || blueBits < 10))
-    {
-        LL_INFOS() << "Asked for a 10-bit back buffer and was given less; dithering for 8 bits." << LL_ENDL;
-        LLRender::s10bitBackBuffer = false;
-    }
-
-    GLint colorBits = redBits + greenBits + blueBits + alphaBits;
-    if (colorBits < 32)
-    {
-        setupFailure(
-                "Alchemy Viewer requires True Color (32-bit) to run in a window.\n"
-                "Please go to Control Panels -> Display -> Settings and\n"
-                "set the screen to 32-bit color.\n"
-                "Alternately, if you choose to run fullscreen, Alchemy Viewer\n"
-                "will automatically adjust the screen each time it runs.",
-                "Error",
-                OSMB_OK);
-        return false;
     }
 #endif
 
@@ -629,8 +385,7 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
 
 #if LL_DARWIN
     // Apple Silicon uses unified memory. Renderer capabilities already own
-    // this value; do not mirror native identity into LLGLManager now that no
-    // GL context exists.
+    // this value; keep native identity in the Metal capability owner.
     LL_INFOS("Metal") << "Recommended renderer working set: "
                        << gRenderCapabilities.memoryBudgetMB()
                        << " MiB" << LL_ENDL;
@@ -697,68 +452,25 @@ void LLWindowSDL::refreshMinSizePixelShadow()
     mMinWindowHeightPx = (U32)(mMinWindowHeight * mCachedPixelDensity);
 }
 
-// The context itself is made by sdl_create_shared_context against the
-// current context, so the main one is bound first. Runs on the main thread,
-// the one that constructs the GL worker pool.
 void* LLWindowSDL::createSharedContext()
 {
-#if LL_DARWIN
-    // Native uploads use the window-owned Metal device/queue. A shared GL
-    // context would reintroduce the backend this product is removing.
+    // Native uploads use the window-owned Metal device and command queues.
     return nullptr;
-#else
-    if (!SDL_GL_MakeCurrent(mWindow, mContext))
-    {
-        LL_WARNS() << "SDL_GL_MakeCurrent(main) failed in createSharedContext: "
-                   << SDL_GetError() << LL_ENDL;
-    }
-
-    void* shared = sdl_create_shared_context();
-    if (shared)
-    {
-        LLMutexLock lk(&mSharedCtxMutex);
-        mSharedContexts.insert(shared);
-    }
-    return shared;
-#endif
 }
 
 void LLWindowSDL::makeContextCurrent(void* contextPtr)
 {
-#if !LL_DARWIN
-    sdl_make_shared_context_current(contextPtr);
-#else
     llassert(contextPtr == nullptr);
-#endif
 }
 
 void LLWindowSDL::destroySharedContext(void* contextPtr)
 {
-#if LL_DARWIN
     llassert(contextPtr == nullptr);
-    return;
-#else
-    if (!contextPtr) return;
-    {
-        LLMutexLock lk(&mSharedCtxMutex);
-        mSharedContexts.erase(contextPtr);
-    }
-    sdl_destroy_shared_context(contextPtr);
-#endif
 }
 
 void LLWindowSDL::toggleVSync(bool enable_vsync)
 {
     LL_INFOS("Window") << (enable_vsync ? "Enabling" : "Disabling") << " vertical sync" << LL_ENDL;
-#if !LL_DARWIN
-    const int interval = enable_vsync ? 1 : 0;
-    if (!SDL_GL_SetSwapInterval(interval))
-    {
-        // Some compositors (notably Wayland) refuse interval=0; the driver may also reject it.
-        LL_WARNS("Window") << "SDL_GL_SetSwapInterval(" << interval << ") failed: "
-                           << SDL_GetError() << LL_ENDL;
-    }
-#else
     if (mMetalSurface)
     {
         std::string error;
@@ -768,7 +480,6 @@ void LLWindowSDL::toggleVSync(bool enable_vsync)
                                << error << LL_ENDL;
         }
     }
-#endif
 }
 
 // changing fullscreen resolution, or switching between windowed and fullscreen mode.
@@ -778,37 +489,19 @@ bool LLWindowSDL::switchContext(bool fullscreen, const LLCoordScreen &size, bool
     bool result = true;
 
     LL_INFOS() << "switchContext, fullscreen=" << fullscreen << LL_ENDL;
-    stop_glerror();
     if(needsRebuild)
     {
         destroyContext();
         result = createContext(0, 0, size.mX, size.mY, 32, fullscreen, enable_vsync);
         if (result)
         {
-#if LL_DARWIN
             gGL.setMetalBackend(mMetalDevice.get(), mMetalFrames.get(), mMetalSurface.get());
-#else
-            gGLManager.initWGL();
-            gGLManager.initGL();
-#if LL_WINDOWS
-            LLDXHardware::updateVRAMBudgetFromDXGI();
-#endif
-            gRenderCapabilities.initializeOpenGL(gGLManager);
-            {
-                LL_PROFILER_GPU_CONTEXT;
-            }
-#if LL_LINUX
-            armGraphicsResetCheck();
-#endif
-#endif
 
             //start with arrow cursor
             initCursors();
             setCursor( UI_CURSOR_ARROW );
         }
     }
-
-    stop_glerror();
 
     return result;
 }
@@ -834,31 +527,6 @@ void LLWindowSDL::destroyContext()
     mMetalSurface.reset();
 #endif
 
-#if !LL_DARWIN
-    {
-        // Reclaim any shared GL contexts a worker thread failed to release.
-        // Normal shutdown joins the GL worker threads before destroyContext, so
-        // this is defensive — a leftover here means a worker didn't call
-        // destroySharedContext(). The native contexts can be torn down from the
-        // main thread (unlike the old carrier-window path, no deferral needed).
-        LLMutexLock lk(&mSharedCtxMutex);
-        if (!mSharedContexts.empty())
-        {
-            LL_WARNS() << "destroyContext: " << mSharedContexts.size()
-                       << " shared GL context(s) still alive at shutdown — releasing." << LL_ENDL;
-            for (void* handle : mSharedContexts)
-            {
-                sdl_destroy_shared_context(handle);
-            }
-            mSharedContexts.clear();
-        }
-    }
-#else
-    // Darwin never creates shared GL contexts. Keep the invariant explicit so
-    // a future caller cannot silently reintroduce one behind the Metal owner.
-    llassert(mSharedContexts.empty());
-#endif
-
 #if LL_WINDOWS
     // Unhook WM_COPYDATA before SDL tears the HWND down.
     removeWin32Subclass();
@@ -880,32 +548,8 @@ void LLWindowSDL::destroyContext()
     // the screensaver inhibit doesn't outlive the viewer's window.
     SDL_EnableScreenSaver();
 
-#if LL_LINUX
-    // The reset check calls into the context going away.
-    sGetGraphicsResetStatus = nullptr;
-#endif
-
-#if !LL_DARWIN
-    // Clean up remaining GL state before blowing away window.
-    LL_INFOS() << "shutdownGL begins" << LL_ENDL;
-    gGLManager.shutdownGL();
-#endif
-
     LL_INFOS() << "Destroying SDL cursors" << LL_ENDL;
     quitCursors();
-
-#if !LL_DARWIN
-    if (mContext)
-    {
-        LL_INFOS() << "Destroying SDL GL Context" << LL_ENDL;
-        SDL_GL_DestroyContext(mContext);
-        mContext = nullptr;
-    }
-    else
-    {
-        LL_INFOS() << "SDL GL Context already destroyed" << LL_ENDL;
-    }
-#endif
 
     if (mWindow)
     {
@@ -1018,7 +662,7 @@ void LLWindowSDL::close()
 
 bool LLWindowSDL::isValid()
 {
-    return mWindow != nullptr;
+    return mWindow != nullptr && mMetalDevice && mMetalFrames && mMetalSurface;
 }
 
 bool LLWindowSDL::getVisible()
@@ -1170,86 +814,8 @@ bool LLWindowSDL::setSizeImpl(const LLCoordWindow size)
 
 void LLWindowSDL::swapBuffers()
 {
-#if !LL_DARWIN
-    if (mWindow)
-    {
-        SDL_GL_SwapWindow(mWindow);
-    }
-#endif
     LL_PROFILER_GPU_COLLECT;
-#if LL_LINUX
-    checkGraphicsReset();
-#endif
 }
-
-#if LL_LINUX
-// Once initGL has loaded GL: poll for a GPU reset if createContext got a
-// context that reports one, which only NVIDIA's EGL is asked for; elsewhere
-// nothing is polled. Below GL 4.5 without KHR_robustness, which initGL
-// loads the call for, ARB_robustness names it with a suffix.
-void LLWindowSDL::armGraphicsResetCheck()
-{
-    sGetGraphicsResetStatus = nullptr;
-    mGraphicsResetSeen = false;
-    if (sdl_gl_reset_notification())
-    {
-        GLint strategy = 0;
-        glGetIntegerv(GL_RESET_NOTIFICATION_STRATEGY, &strategy);
-        if (strategy == GL_LOSE_CONTEXT_ON_RESET)
-        {
-            sGetGraphicsResetStatus = glGetGraphicsResetStatus
-                ? glGetGraphicsResetStatus
-                : (PFNGLGETGRAPHICSRESETSTATUSPROC)SDL_GL_GetProcAddress("glGetGraphicsResetStatusARB");
-        }
-    }
-    LL_INFOS("Window") << "GL context " << (sGetGraphicsResetStatus ? "reports" : "does not report")
-                       << " GPU resets" << LL_ENDL;
-}
-
-// Once a frame, on the main thread, where the context reports a reset. SDL's
-// renderer device-lost events come only from its D3D and Vulkan renderers,
-// never for a GL window, so this is how the viewer learns of NVIDIA purging
-// video memory over a suspend, or of a GPU reset there.
-void LLWindowSDL::checkGraphicsReset()
-{
-    if (!sGetGraphicsResetStatus || mGraphicsResetSeen)
-    {
-        return;
-    }
-    const GLenum status = sGetGraphicsResetStatus();
-    if (status == GL_NO_ERROR)
-    {
-        return;
-    }
-    mGraphicsResetSeen = true;
-
-    // The context is lost, and with it every texture, buffer, shader and
-    // framebuffer; GL calls on it now do nothing. Rebuilding them all is a
-    // job across LLPipeline, LLViewerTextureList, the reflection probes, the
-    // shaders and the UI, and isn't attempted: rather than draw garbage or
-    // nothing, the viewer says why and exits.
-    const char* cause = (status == GL_GUILTY_CONTEXT_RESET)    ? "the viewer's own rendering"
-                      : (status == GL_INNOCENT_CONTEXT_RESET)  ? "another program's rendering"
-                      : (status == GL_PURGED_CONTEXT_RESET_NV) ? "a purge of video memory"
-                                                               : "an unknown cause";
-    LL_WARNS("Window") << "GL context lost (reset status 0x" << std::hex << status << std::dec
-                       << ", " << cause << ")" << LL_ENDL;
-
-    OSMessageBoxSDL(
-        "The graphics driver reports that the viewer's OpenGL context was "
-        "lost, as happens when the GPU is reset. Alchemy can't continue "
-        "rendering and will now exit.\n\n"
-        "This usually follows sleep/wake or hibernation, or a GPU driver crash "
-        "or restart. Please relaunch the viewer to resume.",
-        "OpenGL context lost",
-        OSMB_OK);
-
-    if (mCallbacks)
-    {
-        mCallbacks->handleQuit(this);
-    }
-}
-#endif
 
 U32 LLWindowSDL::getFSAASamples()
 {
@@ -2040,9 +1606,8 @@ U32 LLWindowSDL::SDLCheckGrabbyKeys(U32 keysym, bool gain)
 // virtual
 void LLWindowSDL::processMiscNativeEvents()
 {
-    // Native shared GL contexts (createSharedContext) are torn down directly by
-    // the worker thread in destroySharedContext() — there is no deferred
-    // main-thread window-destruction queue to drain here anymore.
+    // SDL delivers native events through gatherInput(); there is no deferred
+    // platform queue to drain here.
 }
 
 void LLWindowSDL::gatherInput()
@@ -3800,11 +3365,8 @@ void LLSplashScreenSDL::showImpl()
         return;
     }
 
-    // Use a software renderer that draws into the window's surface rather than
-    // an accelerated one. SDL's accelerated renderer would create its own
-    // GL/D3D device on the splash window, which can collide with the main
-    // window's OpenGL context initialisation that follows — keep the splash
-    // entirely off the GPU.
+    // Use a software renderer that draws into the window's surface. The splash
+    // must not allocate a second GPU device before the Metal viewer window.
     SDL_PropertiesID render_props = SDL_CreateProperties();
     SDL_SetStringProperty(render_props, SDL_PROP_RENDERER_CREATE_NAME_STRING, "software");
     SDL_SetPointerProperty(render_props, SDL_PROP_RENDERER_CREATE_WINDOW_POINTER, mWindow);

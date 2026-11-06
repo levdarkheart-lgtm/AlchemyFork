@@ -52,10 +52,8 @@
 #include <fmt/format.h>
 
 
-#if LL_SDL_WINDOW
-#  include "llwindowsdl.h"
-#  include "SDL3/SDL.h"
-#  define LL_GET_PROC_ADDRESS(func) SDL_GL_GetProcAddress(func)
+#if LL_DARWIN
+#  define LL_GET_PROC_ADDRESS(func) nullptr
 #elif LL_WINDOWS
 #  include "llwindowwin32.h"
 #  define LL_GET_PROC_ADDRESS(func) LLWindowWin32::getProcAddress(func)
