@@ -1,6 +1,6 @@
 /**
  * @file alquerypool.cpp
- * @brief GL queries from one pool, each frame's read together once the GPU has finished the frame.
+ * @brief Fail-closed renderer query contract for the native Metal viewer.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -26,780 +26,113 @@
 
 #include "alquerypool.h"
 
-#include "alframefences.h"
-#include "llgl.h"
-#include "llglheaders.h"
-#include "llrender.h"
+// Metal visibility-result and counter-sample buffers must be attached while
+// their owning render pass is encoded. The legacy immediate query API has no
+// such encoder boundary yet. Advertising support here used to enter removed
+// GL calls from ordinary world culling after the GL context was gone. Until a
+// native encoder adapter owns those scopes, every acquisition is invalid and
+// every result expires. Visibility users consequently render (fail open)
+// rather than incorrectly cull, while profiling users receive no fabricated
+// measurements.
 
-#include <algorithm>
-#include <cstdint>
-#include <cstring>
-
-namespace
+// static
+bool ALQueryPool::supports(ALQueryKind)
 {
-    // The targets one query at a time may hold, by ALQueryPool::targetOf().
-    enum : S32
-    {
-        TARGET_OCCLUSION,
-        TARGET_PRIMITIVES,
-        TARGET_STATISTICS,
-        TARGET_ELAPSED,
-    };
-
-    [[maybe_unused]] const char* const TARGET_NAMES[] = { "occlusion", "primitives", "pipeline statistics", "elapsed" };
-
-    // The GL target of each pipeline statistic, by ALStatistic.
-    constexpr GLenum STATISTIC_TARGETS[] = { GL_FRAGMENT_SHADER_INVOCATIONS, GL_CLIPPING_INPUT_PRIMITIVES };
-    static_assert(sizeof(STATISTIC_TARGETS) / sizeof(STATISTIC_TARGETS[0]) == U32(ALStatistic::Count));
-
-    // Slots are made this many at a time.
-    constexpr U32 SLOTS_AT_ONCE = 32;
-
-    // A kind's busiest frame fades by 1/PEAK_FADE a frame, so a batch's names follow what frames have used of late.
-    constexpr U32 PEAK_FADE = 256;
-
-    // The query buffer writes name their buffer where the context has direct state access. Through the binding they
-    // pass a pointer, which Mesa's glthread cannot queue: it runs each such call only once it has caught up.
-    bool writes_named()
-    {
-        return gGLManager.mHasDirectStateAccess && glGetQueryBufferObjectui64v;
-    }
-
-    // The GPU writes the result of query `name` at `offset` in `buffer`, once it is in. Through the binding, `buffer`
-    // is the one bound to GL_QUERY_BUFFER.
-    void write_result(U32 name, U32 buffer, size_t offset)
-    {
-        if (writes_named())
-        {
-            glGetQueryBufferObjectui64v(name, buffer, GL_QUERY_RESULT, GLintptr(offset));
-        }
-        else
-        {
-            glGetQueryObjectui64v(name, GL_QUERY_RESULT, reinterpret_cast<GLuint64*>(static_cast<uintptr_t>(offset)));
-        }
-    }
-
-    // Binds the buffer the results are written into, where the writes go through the binding.
-    void bind_results(U32 buffer)
-    {
-        if (!writes_named())
-        {
-            glBindBuffer(GL_QUERY_BUFFER, buffer);
-        }
-    }
+    return false;
 }
 
-//static
-U32 ALQueryPool::glTarget(U32 kind)
+bool ALQueryPool::canBegin(ALQueryKind) const
 {
-    switch (kind)
-    {
-    case U32(ALQueryKind::Occlusion):
-        return gGLManager.mHasConservativeOcclusion ? GL_ANY_SAMPLES_PASSED_CONSERVATIVE : GL_ANY_SAMPLES_PASSED;
-    case U32(ALQueryKind::OcclusionExact):
-        return GL_ANY_SAMPLES_PASSED;
-    case U32(ALQueryKind::Samples):
-        return GL_SAMPLES_PASSED;
-    case U32(ALQueryKind::Primitives):
-        return GL_PRIMITIVES_GENERATED;
-    case KIND_ELAPSED:
-        return GL_TIME_ELAPSED;
-    case KIND_TIMESTAMP:
-        return GL_TIMESTAMP;
-    default:
-        return GL_NONE;
-    }
+    return false;
 }
 
-//static
-bool ALQueryPool::supports(ALQueryKind kind)
+ALQueryTicket ALQueryPool::begin(ALQueryKind)
 {
-    return kind < ALQueryKind::Count && countable(U32(kind));
+    return {};
 }
 
-//static
-bool ALQueryPool::countable(U32 kind)
+void ALQueryPool::end(const ALQueryTicket&)
 {
-    switch (kind)
-    {
-    case U32(ALQueryKind::Statistics):
-        return gGLManager.mHasPipelineStatistics;
-    case KIND_TIMESTAMP:
-        return gGLManager.mHasTimestampQuery;
-    default:
-        return kind < KINDS;
-    }
-}
-
-//static
-S32 ALQueryPool::targetOf(U32 kind)
-{
-    switch (kind)
-    {
-    case U32(ALQueryKind::Occlusion):
-    case U32(ALQueryKind::OcclusionExact):
-    case U32(ALQueryKind::Samples):
-        return TARGET_OCCLUSION;
-    case U32(ALQueryKind::Primitives):
-        return TARGET_PRIMITIVES;
-    case U32(ALQueryKind::Statistics):
-        return TARGET_STATISTICS;
-    case KIND_ELAPSED:
-        return TARGET_ELAPSED;
-    default:
-        return -1;
-    }
-}
-
-bool ALQueryPool::isFree(U32 kind) const
-{
-    const S32 target = targetOf(kind);
-    return target >= 0 && countable(kind) && !mOpen[target].isValid() && !mReserved[target];
-}
-
-bool ALQueryPool::canBegin(ALQueryKind kind) const
-{
-    return kind < ALQueryKind::Count && isFree(U32(kind));
-}
-
-ALQueryTicket ALQueryPool::begin(ALQueryKind kind)
-{
-    if (!canBegin(kind))
-    {
-        return {};
-    }
-    return open(U32(kind));
-}
-
-ALQueryTicket ALQueryPool::beginReserved(ALQueryKind kind)
-{
-    const S32 target = kind < ALQueryKind::Count ? targetOf(U32(kind)) : -1;
-    if (target < 0 || !countable(U32(kind)) || mOpen[target].isValid())
-    {
-        return {};
-    }
-    return open(U32(kind));
-}
-
-void ALQueryPool::reserve(ALQueryKind kind, bool reserved)
-{
-    const S32 target = kind < ALQueryKind::Count ? targetOf(U32(kind)) : -1;
-    if (target >= 0)
-    {
-        mReserved[target] = reserved;
-    }
-}
-
-ALQueryTicket ALQueryPool::open(U32 kind)
-{
-    const ALQueryTicket ticket = take(kind);
-    // Draws still batched in gGL were issued before the query.
-    gGL.flush();
-    beginGL(kind, &batch(ticket.mSerial).mNames[kind][ticket.mSlot * namesPer(kind)]);
-    mOpen[targetOf(kind)] = ticket;
-    return ticket;
-}
-
-//static
-void ALQueryPool::beginGL(U32 kind, const U32* names)
-{
-    if (kind == U32(ALQueryKind::Statistics))
-    {
-        for (U32 i = 0; i < STATISTICS; ++i)
-        {
-            glBeginQuery(STATISTIC_TARGETS[i], names[i]);
-        }
-    }
-    else
-    {
-        glBeginQuery(glTarget(kind), names[0]);
-    }
-}
-
-//static
-void ALQueryPool::endGL(U32 kind)
-{
-    if (kind == U32(ALQueryKind::Statistics))
-    {
-        for (U32 i = 0; i < STATISTICS; ++i)
-        {
-            glEndQuery(STATISTIC_TARGETS[i]);
-        }
-    }
-    else
-    {
-        glEndQuery(glTarget(kind));
-    }
-}
-
-void ALQueryPool::end(const ALQueryTicket& ticket)
-{
-    // None, or one whose query went with release().
-    if (!ticket.isValid() || ticket.mSerial < mFirstSerial)
-    {
-        return;
-    }
-    const S32  target = targetOf(ticket.mKind);
-    const bool open   = target >= 0 && mOpen[target] == ticket;
-    llassert_msg(open, "a query ended that is not open");
-    if (!open)
-    {
-        return;
-    }
-    gGL.flush();
-    endGL(ticket.mKind);
-    mOpen[target] = {};
-
-    // A query begun in a frame since closed ends in a later frame, which the batch then waits for, so that reading it
-    // still follows every command of the batch and never waits. Its results were not written with the batch's, and are
-    // written now, ahead of this frame's fence.
-    Batch& begun = batch(ticket.mSerial);
-    if (ticket.mSerial != mSerial && begun.mSerial == ticket.mSerial && begun.mClosed && !begun.mRead)
-    {
-        writeLate(begun, ticket);
-        begun.mFrame = mFrames.frame();
-    }
-}
-
-ALQueryTicket ALQueryPool::timestamp()
-{
-    const ALQueryTicket ticket = take(KIND_TIMESTAMP);
-    // The time the draws still batched in gGL finish at, as well.
-    gGL.flush();
-    glQueryCounter(batch(ticket.mSerial).mNames[KIND_TIMESTAMP][ticket.mSlot], GL_TIMESTAMP);
-    return ticket;
 }
 
 ALQuerySpan ALQueryPool::beginSpan()
 {
-    ALQuerySpan span;
-    if (countable(KIND_TIMESTAMP))
-    {
-        span.mBegin = timestamp();
-    }
-    else if (isFree(KIND_ELAPSED))
-    {
-        span.mBegin = open(KIND_ELAPSED);
-    }
-    return span;
+    return {};
 }
 
-void ALQueryPool::endSpan(ALQuerySpan& span)
+void ALQueryPool::endSpan(ALQuerySpan&)
 {
-    if (!span.mBegin.isValid() || span.mEnd.isValid())
-    {
-        return;
-    }
-    if (span.mBegin.mKind == KIND_ELAPSED)
-    {
-        end(span.mBegin);
-    }
-    else
-    {
-        span.mEnd = timestamp();
-    }
 }
 
-ALQueryTicket ALQueryPool::take(U32 kind)
+ALQueryPool::Status ALQueryPool::result(const ALQueryTicket&, U64& value) const
 {
-    Batch& open = batch(mSerial);
-    // The first batch, and the first after release(), are opened by their first query.
-    open.mSerial = mSerial;
-    if ((open.mUsed[kind] + 1) * namesPer(kind) > open.mNames[kind].size())
-    {
-        // Past the room the batch opened with (endFrame()): doubled, so that a frame climbing far past the busiest one
-        // before it makes names a few times, not every SLOTS_AT_ONCE queries.
-        makeSlots(open, kind, std::max(open.mUsed[kind] * 2, open.mUsed[kind] + SLOTS_AT_ONCE));
-    }
-    ALQueryTicket ticket;
-    ticket.mSerial = mSerial;
-    ticket.mSlot   = open.mUsed[kind]++;
-    ticket.mKind   = kind;
-    return ticket;
+    value = 0;
+    return Status::Expired;
 }
 
-void ALQueryPool::makeSlots(Batch& batch, U32 kind, U32 slots)
+ALQueryPool::Status ALQueryPool::result(const ALQueryTicket&, ALStatistics& statistics) const
 {
-    slots = (slots + SLOTS_AT_ONCE - 1) / SLOTS_AT_ONCE * SLOTS_AT_ONCE;
-    std::vector<U32>& names = batch.mNames[kind];
-    const size_t had = names.size();
-    const size_t want = size_t(slots) * namesPer(kind);
-    if (want <= had)
-    {
-        return;
-    }
-    names.resize(want);
-    glGenQueries(GLsizei(want - had), names.data() + had);
+    statistics = {};
+    return Status::Expired;
 }
 
-void ALQueryPool::makeRoom()
+ALQueryPool::Status ALQueryPool::result(const ALQuerySpan&, U64& nanoseconds) const
 {
-    Batch& open = batch(mSerial);
-    for (U32 k = 0; k < KINDS; ++k)
-    {
-        if (open.mUsed[k] != 0)
-        {
-            continue;
-        }
-        const U32 room = mPeak[k] + mPeak[k] / 2;
-        if (room > 0)
-        {
-            makeSlots(open, k, room);
-        }
-        // Names past twice the room go, as frames have needed none of them for a while. The batch was read before it
-        // opened, so none of them is in flight.
-        const U32 slots = std::max(2 * room, SLOTS_AT_ONCE);
-        const size_t keep = size_t((slots + SLOTS_AT_ONCE - 1) / SLOTS_AT_ONCE * SLOTS_AT_ONCE) * namesPer(k);
-        std::vector<U32>& names = open.mNames[k];
-        if (names.size() > keep)
-        {
-            glDeleteQueries(GLsizei(names.size() - keep), names.data() + keep);
-            names.resize(keep);
-        }
-    }
+    nanoseconds = 0;
+    return Status::Expired;
 }
 
-const ALQueryPool::Batch* ALQueryPool::find(const ALQueryTicket& ticket) const
+bool ALQueryPool::wait(const ALQueryTicket&, U64& value)
 {
-    if (!ticket.isValid() || ticket.mKind >= KINDS)
-    {
-        return nullptr;
-    }
-    const Batch& found = mBatches[ticket.mSerial % FRAMES];
-    if (found.mSerial != ticket.mSerial || ticket.mSlot >= found.mUsed[ticket.mKind])
-    {
-        return nullptr;
-    }
-    return &found;
+    value = 0;
+    return false;
 }
 
-const U64* ALQueryPool::kept(const ALQueryTicket& ticket) const
+bool ALQueryPool::wait(const ALQueryTicket&, ALStatistics& statistics)
 {
-    if (!ticket.isValid() || ticket.mKind >= KINDS)
-    {
-        return nullptr;
-    }
-    const Results& frame = mResults[ticket.mSerial % RESULT_FRAMES];
-    const U32      per   = namesPer(ticket.mKind);
-    const size_t   first = size_t(ticket.mSlot) * per;
-    if (frame.mSerial != ticket.mSerial || first + per > frame.mValues[ticket.mKind].size())
-    {
-        return nullptr;
-    }
-    return &frame.mValues[ticket.mKind][first];
+    statistics = {};
+    return false;
 }
 
-ALQueryPool::Status ALQueryPool::results(const ALQueryTicket& ticket, U64* values, U32 count) const
+bool ALQueryPool::wait(const ALQuerySpan&, U64& nanoseconds)
 {
-    if (const U64* read = kept(ticket))
-    {
-        std::copy(read, read + count, values);
-        return Status::Ready;
-    }
-    const Batch* found = find(ticket);
-    return found && !found->mRead ? Status::Pending : Status::Expired;
+    nanoseconds = 0;
+    return false;
 }
 
-ALQueryPool::Status ALQueryPool::result(const ALQueryTicket& ticket, U64& value) const
+void ALQueryPool::reserve(ALQueryKind, bool)
 {
-    llassert(ticket.mKind != U32(ALQueryKind::Statistics));
-    return results(ticket, &value, 1);
 }
 
-ALQueryPool::Status ALQueryPool::result(const ALQueryTicket& ticket, ALStatistics& statistics) const
+ALQueryTicket ALQueryPool::beginReserved(ALQueryKind)
 {
-    llassert(!ticket.isValid() || ticket.mKind == U32(ALQueryKind::Statistics));
-    if (ticket.mKind != U32(ALQueryKind::Statistics))
-    {
-        return Status::Expired;
-    }
-    return results(ticket, statistics.mCounts, STATISTICS);
+    return {};
 }
 
-ALQueryPool::Status ALQueryPool::result(const ALQuerySpan& span, U64& nanoseconds) const
+void ALQueryPool::beginConditional(const ALQueryTicket&)
 {
-    if (span.mBegin.mKind == KIND_ELAPSED)
-    {
-        return results(span.mBegin, &nanoseconds, 1);
-    }
-    U64 began = 0;
-    const Status first = results(span.mBegin, &began, 1);
-    if (first == Status::Expired)
-    {
-        return Status::Expired;
-    }
-    if (!span.mEnd.isValid())
-    {
-        // Still open.
-        return Status::Pending;
-    }
-    U64 ended = 0;
-    const Status second = results(span.mEnd, &ended, 1);
-    if (second != Status::Ready || first != Status::Ready)
-    {
-        return second == Status::Expired ? Status::Expired : Status::Pending;
-    }
-    nanoseconds = ended > began ? ended - began : 0;
-    return Status::Ready;
-}
-
-bool ALQueryPool::waitFor(const ALQueryTicket& ticket, U64* values, U32 count)
-{
-    if (const U64* read = kept(ticket))
-    {
-        std::copy(read, read + count, values);
-        return true;
-    }
-    const Batch* found = find(ticket);
-    if (!found || found->mRead)
-    {
-        return false;
-    }
-    const S32 target = targetOf(ticket.mKind);
-    if (target >= 0 && mOpen[target] == ticket)
-    {
-        return false;
-    }
-    const U32* names = &found->mNames[ticket.mKind][ticket.mSlot * namesPer(ticket.mKind)];
-    for (U32 i = 0; i < count; ++i)
-    {
-        GLuint64 counted = 0;
-        glGetQueryObjectui64v(names[i], GL_QUERY_RESULT, &counted);
-        values[i] = counted;
-    }
-    return true;
-}
-
-bool ALQueryPool::wait(const ALQueryTicket& ticket, U64& value)
-{
-    llassert(ticket.mKind != U32(ALQueryKind::Statistics));
-    return waitFor(ticket, &value, 1);
-}
-
-bool ALQueryPool::wait(const ALQueryTicket& ticket, ALStatistics& statistics)
-{
-    llassert(!ticket.isValid() || ticket.mKind == U32(ALQueryKind::Statistics));
-    return ticket.mKind == U32(ALQueryKind::Statistics) && waitFor(ticket, statistics.mCounts, STATISTICS);
-}
-
-bool ALQueryPool::wait(const ALQuerySpan& span, U64& nanoseconds)
-{
-    if (span.mBegin.mKind == KIND_ELAPSED)
-    {
-        return waitFor(span.mBegin, &nanoseconds, 1);
-    }
-    U64 began = 0;
-    U64 ended = 0;
-    if (!span.mEnd.isValid() || !waitFor(span.mBegin, &began, 1) || !waitFor(span.mEnd, &ended, 1))
-    {
-        return false;
-    }
-    nanoseconds = ended > began ? ended - began : 0;
-    return true;
-}
-
-void ALQueryPool::beginConditional(const ALQueryTicket& ticket)
-{
-    llassert(!mConditional);
-    // Of this frame: the names of an earlier frame's batch may be counting again.
-    llassert(!ticket.isValid() || ticket.mSerial == mSerial);
-    const Batch* found = targetOf(ticket.mKind) == TARGET_OCCLUSION ? find(ticket) : nullptr;
-    const bool   open  = mOpen[TARGET_OCCLUSION] == ticket;
-    llassert(!found || !open);
-    if (found && !open)
-    {
-        gGL.flush();
-        glBeginConditionalRender(found->mNames[ticket.mKind][ticket.mSlot], GL_QUERY_WAIT);
-        mConditional = true;
-    }
 }
 
 void ALQueryPool::endConditional()
 {
-    if (mConditional)
-    {
-        gGL.flush();
-        glEndConditionalRender();
-        mConditional = false;
-    }
 }
 
 void ALQueryPool::checkPassBoundary() const
 {
-#ifdef SHOW_ASSERT
-    for (S32 target = 0; target < S32(TARGETS); ++target)
-    {
-        if (target != TARGET_ELAPSED && mOpen[target].isValid())
-        {
-            LL_WARNS_ONCE("Queries") << "A " << TARGET_NAMES[target] << " query is open across a render pass" << LL_ENDL;
-        }
-    }
-#endif
-}
-
-bool ALQueryPool::isOpenIn(U32 serial) const
-{
-    for (const ALQueryTicket& open : mOpen)
-    {
-        if (open.isValid() && open.mSerial == serial)
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-void ALQueryPool::write(Batch& batch)
-{
-    batch.mWritten = false;
-    if (!gGLManager.mWritesQueryResults || mWriteFailed)
-    {
-        return;
-    }
-    U32 names = 0;
-    U32 made  = 0;
-    for (U32 k = 0; k < KINDS; ++k)
-    {
-        batch.mFirst[k] = names;
-        names += batch.mUsed[k] * namesPer(k);
-        made += U32(batch.mNames[k].size());
-    }
-    // Sized for every name the batch has made, so that it is made again only when they grow. The batch was read before
-    // it was opened again, so nothing in the store it replaces is still wanted.
-    if (batch.mResults.size() < names * sizeof(U64))
-    {
-        if (!batch.mResults.allocate(made * sizeof(U64), ALGPUBuffer::READBACK, nullptr, "Query results")
-            || !batch.mResults.getMapped())
-        {
-            LL_WARNS("Queries") << "No mapped buffer for query results; reading them from GL instead" << LL_ENDL;
-            batch.mResults.release();
-            mWriteFailed = true;
-            return;
-        }
-    }
-
-    const U32 buffer = batch.mResults.getGLName();
-    bind_results(buffer);
-    for (U32 k = 0; k < KINDS; ++k)
-    {
-        // A query still open is written when it ends: GL refuses to write one that counts.
-        const S32  target    = targetOf(k);
-        const bool open      = target >= 0 && mOpen[target].mSerial == batch.mSerial && mOpen[target].mKind == k;
-        const U32  open_slot = open ? U32(mOpen[target].mSlot) : U32_MAX;
-        const U32  per       = namesPer(k);
-        for (U32 slot = 0; slot < batch.mUsed[k]; ++slot)
-        {
-            if (slot == open_slot)
-            {
-                continue;
-            }
-            for (U32 i = slot * per; i < (slot + 1) * per; ++i)
-            {
-                write_result(batch.mNames[k][i], buffer, (batch.mFirst[k] + i) * sizeof(U64));
-            }
-        }
-    }
-    bind_results(0);
-    batch.mWritten = true;
-}
-
-void ALQueryPool::writeLate(Batch& batch, const ALQueryTicket& ticket)
-{
-    if (!batch.mWritten)
-    {
-        return;
-    }
-    const U32 per    = namesPer(ticket.mKind);
-    const U32 buffer = batch.mResults.getGLName();
-    bind_results(buffer);
-    for (U32 i = ticket.mSlot * per; i < (ticket.mSlot + 1) * per; ++i)
-    {
-        write_result(batch.mNames[ticket.mKind][i], buffer, (batch.mFirst[ticket.mKind] + i) * sizeof(U64));
-    }
-    bind_results(0);
-}
-
-void ALQueryPool::read(Batch& batch)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-    // Its frame has finished, and with it every command of the batch, so every result is in and reading it does not
-    // wait on the GPU.
-    Results& frame = mResults[batch.mSerial % RESULT_FRAMES];
-    frame.mSerial = batch.mSerial;
-    if (batch.mWritten)
-    {
-        // The GPU's writes came before the frame's fence, and the map is coherent.
-        const U64* written = reinterpret_cast<const U64*>(batch.mResults.getMapped());
-        for (U32 k = 0; k < KINDS; ++k)
-        {
-            const U32 names = batch.mUsed[k] * namesPer(k);
-            frame.mValues[k].resize(names);
-            if (names > 0)
-            {
-                std::memcpy(frame.mValues[k].data(), written + batch.mFirst[k], names * sizeof(U64));
-            }
-        }
-    }
-    else
-    {
-        ++mAskedReads;
-        for (U32 k = 0; k < KINDS; ++k)
-        {
-            const U32 names = batch.mUsed[k] * namesPer(k);
-            frame.mValues[k].resize(names);
-            for (U32 i = 0; i < names; ++i)
-            {
-                GLuint64 counted = 0;
-                glGetQueryObjectui64v(batch.mNames[k][i], GL_QUERY_RESULT, &counted);
-                frame.mValues[k][i] = counted;
-            }
-        }
-    }
-    batch.mRead = true;
 }
 
 void ALQueryPool::retire()
 {
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-    for (U32 back = FRAMES - 1; back > 0; --back)
-    {
-        if (mSerial <= back)
-        {
-            continue;
-        }
-        Batch& closed = batch(mSerial - back);
-        if (closed.mSerial != mSerial - back || !closed.mClosed || closed.mRead)
-        {
-            continue;
-        }
-        // A query still open in it is ended in a later frame; the batch waits for it.
-        if (isOpenIn(closed.mSerial) || !mFrames.isComplete(closed.mFrame))
-        {
-            break;
-        }
-        read(closed);
-    }
+}
+
+void ALQueryPool::makeRoom()
+{
 }
 
 void ALQueryPool::endFrame()
 {
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-    Batch& closing = batch(mSerial);
-    closing.mSerial = mSerial;
-    closing.mClosed = true;
-    U32 used = 0;
-    for (U32 k = 0; k < KINDS; ++k)
-    {
-        used += closing.mUsed[k];
-        // The busiest frame of late: a peak fades by 1/PEAK_FADE a frame, and by one at the least, unless a frame meets
-        // it.
-        const U32 fade = std::max(1u, mPeak[k] / PEAK_FADE);
-        mPeak[k] = std::max(closing.mUsed[k], mPeak[k] > fade ? mPeak[k] - fade : 0u);
-    }
-    if (used > 0)
-    {
-        write(closing);
-        closing.mFrame = mFrames.frame();
-    }
-    else
-    {
-        closing.mRead = true;
-    }
-
-    ++mSerial;
-    Batch& reused = batch(mSerial);
-    // A query left open for FRAMES frames would have its name begun again under it.
-    llassert(reused.mSerial == 0 || !isOpenIn(reused.mSerial));
-    bool stalled = false;
-    if (reused.mSerial != 0 && reused.mClosed && !reused.mRead && !isOpenIn(reused.mSerial))
-    {
-        mFrames.waitFinished(reused.mFrame, &stalled);
-        if (stalled)
-        {
-            ++mStalls;
-        }
-        read(reused);
-    }
-    reused.mSerial  = mSerial;
-    reused.mFrame   = 0;
-    reused.mClosed  = false;
-    reused.mRead    = false;
-    reused.mWritten = false;
-    for (U32 k = 0; k < KINDS; ++k)
-    {
-        reused.mUsed[k] = 0;
-    }
-
-    LL_PROFILE_PLOT("GL queries", (int64_t)used);
-    LL_PROFILE_PLOT("GL query stalls", (int64_t)(stalled ? 1 : 0));
-    LL_PROFILE_PLOT("GL query names", (int64_t)getNameCount());
-}
-
-U32 ALQueryPool::getNameCount() const
-{
-    size_t names = 0;
-    for (const Batch& each : mBatches)
-    {
-        for (const std::vector<U32>& kind : each.mNames)
-        {
-            names += kind.size();
-        }
-    }
-    return U32(names);
 }
 
 void ALQueryPool::release()
 {
-    // Not after the context has gone: the names went with it.
-    const bool current = gGLManager.mInited;
-    if (current && mConditional)
-    {
-        glEndConditionalRender();
-    }
-    mConditional = false;
-    // GL keeps a query deleted while it counts until its target is ended, which would refuse the next begin.
-    for (const ALQueryTicket& open : mOpen)
-    {
-        if (current && open.isValid())
-        {
-            endGL(open.mKind);
-        }
-    }
-    for (Batch& each : mBatches)
-    {
-        for (U32 k = 0; k < KINDS; ++k)
-        {
-            if (current && !each.mNames[k].empty())
-            {
-                glDeleteQueries(GLsizei(each.mNames[k].size()), each.mNames[k].data());
-            }
-            each.mNames[k].clear();
-            each.mUsed[k] = 0;
-        }
-        each.mResults.release();
-        each.mSerial  = 0;
-        each.mFrame   = 0;
-        each.mClosed  = false;
-        each.mRead    = false;
-        each.mWritten = false;
-    }
-    for (Results& frame : mResults)
-    {
-        frame.mSerial = 0;
-        for (std::vector<U64>& values : frame.mValues)
-        {
-            values.clear();
-        }
-    }
-    for (U32 t = 0; t < TARGETS; ++t)
-    {
-        mOpen[t]     = {};
-        mReserved[t] = false;
-    }
-    // The next context may map what this one could not, and needs no names for this one's busiest frame.
-    mWriteFailed = false;
-    std::fill(std::begin(mPeak), std::end(mPeak), 0u);
-    // Tickets taken before stay expired.
-    ++mSerial;
-    mFirstSerial = mSerial;
 }

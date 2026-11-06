@@ -167,6 +167,7 @@ if(AL_BUILD_TESTS)
   if(DARWIN)
     list(APPEND llrender_native_test_sources
       tests/algpubuffer_test.cpp
+      tests/alquerypool_test.cpp
       tests/aluniformbuffer_test.cpp
     )
   endif()
