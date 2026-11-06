@@ -167,6 +167,13 @@ if(AL_BUILD_TESTS)
   # clip-plane classes; the GL floor's version test), the font tables and
   # shaping, and render target descriptions. alfontshaping holds both Unicode tables against each other, so
   # this binary links ICU, which llrender itself has no need of.
+  set(llrender_native_test_sources)
+  if(DARWIN)
+    list(APPEND llrender_native_test_sources
+      tests/algpubuffer_test.cpp
+      tests/aluniformbuffer_test.cpp
+    )
+  endif()
   al_add_test_binary(
     llrender_tests
     PROJECT llrender
@@ -183,12 +190,12 @@ if(AL_BUILD_TESTS)
       tests/llglfloor_test.cpp
       tests/llrendermatrix_test.cpp
       tests/lluitransform_test.cpp
+      ${llrender_native_test_sources}
     LIBRARIES llrender ll::icu
     SUPPORT llrender_test_checks llcommon_test_checks
     DEFINES ${font_defines}
   )
   if(DARWIN)
-    target_sources(llrender_tests PRIVATE tests/algpubuffer_test.cpp)
     target_link_libraries(llrender_tests PRIVATE almetal)
   endif()
 
