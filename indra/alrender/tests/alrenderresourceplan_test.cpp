@@ -116,13 +116,8 @@ namespace
 
     IdSet smaa_lookups(bool sample)
     {
-#if LL_DARWIN
         (void)sample;
         return {};
-#else
-        (void)sample;
-        return of({ Id::SMAAArea, Id::SMAASearch, Id::SMAASample });
-#endif
     }
 
     IdSet smaa_intermediates()
@@ -891,7 +886,7 @@ namespace
         }
     }
 
-    TEST_CASE("alrenderresourceplan: retained GL SMAA resources exist only where that transaction owns them",
+    TEST_CASE("alrenderresourceplan: native SMAA owns no standalone lookup resources",
               "[alrenderresourceplan]")
     {
         for (U32 fsaa : { 0u, 1u, 2u })

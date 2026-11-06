@@ -117,7 +117,10 @@ public:
         ExposureMeter, ExposureHistogram, Exposure, ExposureLast,
         LensFlareA, LensFlareB,
 
-        // GL textures of the pipeline's own rather than render targets.
+        // Standalone textures of the pipeline's own rather than render targets.
+        // Noise and TrueNoise are native Metal publications. SMAA keeps these
+        // identities only as plan vocabulary; its lookup textures are private
+        // native-renderer resources.
         Noise,
         TrueNoise,
         SMAAArea,
@@ -142,8 +145,8 @@ public:
 
     struct Resource
     {
-        /// What the resource is, or nothing where it is not wanted and is freed. A texture's (isTexture()) names only
-        /// its format: its size is its contents'.
+        /// What the resource is, or nothing where it is not wanted and is freed. A standalone texture's
+        /// (isTexture()) description names only its format: its size is its contents'.
         std::optional<ALRenderTargetDesc> mDesc;
         /// The resource whose depth this one's framebuffer shares; its own description then has no depth.
         std::optional<Id> mDepthFrom;
@@ -212,7 +215,7 @@ public:
     static bool drivesRenderSize(Id id);
     /// Whether it is a shadow map: a pack's sun cascade or one of the spot lights' pair.
     static bool isShadowMap(Id id);
-    /// Whether it is a GL texture of the pipeline's own rather than a render target.
+    /// Whether it is a standalone texture of the pipeline's own rather than a render target.
     static bool isTexture(Id id);
     /// Whether the passes that use it acquire it from the transient pool for as long as they need it, rather than the
     /// reconcile building it to keep: a target that lives for one phase of a frame, and holds nothing across frames. A

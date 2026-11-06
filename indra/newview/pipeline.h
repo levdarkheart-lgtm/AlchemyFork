@@ -221,10 +221,13 @@ private:
     static ALShaderInputs         shaderInputsFromSettings();
     static ALRenderResourceInputs resourceInputsFromSettings(const ALShaderInputs& shaders);
 
-    // The retained render target, or the GL texture name, that each of the plan's resources is. Metal-only shadow
-    // resources deliberately have neither: their descriptions feed native allocation directly.
+    // The retained render target that each of the plan's target resources is. Metal-only shadow resources
+    // deliberately have none: their descriptions feed native allocation directly. Standalone texture readiness is
+    // separate because Darwin owns Noise and TrueNoise as native CPU publications, never as sentinel or duplicate GL
+    // names.
     LLRenderTarget* resourceTarget(ALRenderResourcePlan::Id id);
-    U32*            resourceTexture(ALRenderResourcePlan::Id id);
+    bool            resourceTextureReady(ALRenderResourcePlan::Id id);
+    void            releaseResourceTexture(ALRenderResourcePlan::Id id);
 
     // Builds, keeps or frees each of @a ids as @a plan says, depth owners first, and records which in @a changes. The
     // transient resources are the pool's, which prewarmTransients readies.
@@ -236,7 +239,8 @@ private:
     // as a persistent target's does and the next frame finds them. Records which in @a changes.
     void prewarmTransients(const ALRenderResourcePlan& plan, const ALRenderResourcePlan::IdSet& ids,
                            ResourceChanges& changes);
-    // One of the pipeline's own GL textures, with its contents.
+    // One of the pipeline's standalone textures, with its contents. The fork publishes the noise resources for
+    // Metal; legacy GL identities intentionally remain unbuilt.
     void createResourceTexture(ALRenderResourcePlan::Id id);
 #if LL_DARWIN
     // Keep the optional SMAA edge-detection image as a device-local Metal
@@ -274,11 +278,11 @@ private:
         mMetalProbeWorldSimpleCapture;
     bool mMetalProjectorShadowReported = false;
     bool mMetalDirectionalShadowReported = false;
-    // The first two channels of mNoiseMap at its RGB16F storage precision.
-    // createResourceTexture fills this beside the GL authority so the native
-    // light-map owner never has to read the static noise back from GL.
+    // The first two channels of the SSAO noise at its RGB16F storage precision.
+    // This is the authoritative Darwin publication; the native light-map
+    // owner uploads it without creating or reading a GL texture.
     std::vector<U16> mMetalNoiseMapRG16;
-    // The four-channel half-float publication of mTrueNoiseMap. Metal has no
+    // The four-channel half-float publication of the legacy glow noise. Metal has no
     // RGB16F texture format, so alpha remains zero while RGB preserves the
     // exact CPU-generated legacy glow-noise values.
     std::vector<U16> mMetalTrueNoiseMapRGBA16;
@@ -1919,7 +1923,7 @@ public:
     static constexpr U32 MAX_PREVIEW_WIDTH = ALRenderResourcePlan::PREVIEW_SIZE;
 
 
-    //noise map
+    // Legacy GL noise names remain zero on Darwin. Native readiness is the exact size of the publications above.
     U32                 mNoiseMap;
     U32                 mTrueNoiseMap;
     //smaa

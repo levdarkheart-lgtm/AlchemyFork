@@ -292,18 +292,9 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     plan.at(Id::Noise).mDesc     = ALRenderTargetDesc{ .color = { GL_RGB16F } };
     plan.at(Id::TrueNoise).mDesc = ALRenderTargetDesc{ .color = { GL_RGB16F } };
 
-    // SMAA's area and search tables, and the debug image it can blend. Darwin's
-    // native transaction owns private Metal area/search tables and publishes
-    // SamplePath independently, so it never creates these GL names. Other
-    // platforms retain the original GL resources whenever SMAA is selected.
-    if (in.mFSAAType == 2)
-    {
-#if !LL_DARWIN
-        plan.at(Id::SMAAArea).mDesc   = ALRenderTargetDesc{ .color = { GL_RG8 } };
-        plan.at(Id::SMAASearch).mDesc = ALRenderTargetDesc{ .color = { GL_R8 } };
-        plan.at(Id::SMAASample).mDesc = ALRenderTargetDesc{ .color = { GL_RGB8 } };
-#endif
-    }
+    // SMAA's native transaction owns private area/search tables and publishes
+    // SamplePath independently, so these legacy standalone identities remain
+    // unplanned.
 
     return plan;
 }

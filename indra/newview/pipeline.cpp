@@ -170,8 +170,6 @@
 #include "llenvironment.h"
 #include "llsettingsvo.h"
 
-#include "SMAAAreaTex.h"
-#include "SMAASearchTex.h"
 #include "llerror.h"
 
 #if LL_CLANG
@@ -17427,19 +17425,73 @@ LLRenderTarget* LLPipeline::resourceTarget(ALRenderResourcePlan::Id id)
     }
 }
 
-U32* LLPipeline::resourceTexture(ALRenderResourcePlan::Id id)
+bool LLPipeline::resourceTextureReady(ALRenderResourcePlan::Id id)
 {
     using Id = ALRenderResourcePlan::Id;
+#if LL_DARWIN
+    constexpr std::size_t noise_texels =
+        static_cast<std::size_t>(ALRenderResourcePlan::NOISE_SIZE) *
+        ALRenderResourcePlan::NOISE_SIZE;
     switch (id)
     {
-        case Id::Noise:      return &mNoiseMap;
-        case Id::TrueNoise:  return &mTrueNoiseMap;
-        case Id::SMAAArea:   return &mSMAAAreaMap;
-        case Id::SMAASearch: return &mSMAASearchMap;
-        case Id::SMAASample: return &mSMAASampleMap;
+        case Id::Noise:
+            return mMetalNoiseMapRG16.size() == noise_texels * 2;
+        case Id::TrueNoise:
+            return mMetalTrueNoiseMapRGBA16.size() == noise_texels * 4;
         default:
-            return nullptr;
+            // Darwin does not plan the legacy SMAA GL textures. Keep the
+            // fallback explicit for plan invariants and future additions.
+            break;
     }
+#endif
+    return false;
+}
+
+void LLPipeline::releaseResourceTexture(ALRenderResourcePlan::Id id)
+{
+    using Id = ALRenderResourcePlan::Id;
+#if LL_DARWIN
+    switch (id)
+    {
+        case Id::Noise:
+            mMetalNoiseMapRG16.clear();
+            for (const auto* capture_owner :
+                 { &mMetalWorldSimpleCapture,
+                   &mMetalProbeWorldSimpleCapture })
+            {
+                if (*capture_owner)
+                {
+                    (*capture_owner)->base_noise_texture.reset();
+                }
+            }
+            mNoiseMap = 0;
+            return;
+        case Id::TrueNoise:
+            mMetalTrueNoiseMapRGBA16.clear();
+            for (const auto* capture_owner :
+                 { &mMetalWorldSimpleCapture,
+                   &mMetalProbeWorldSimpleCapture })
+            {
+                if (*capture_owner)
+                {
+                    (*capture_owner)->legacy_glow_noise_texture.reset();
+                }
+            }
+            mTrueNoiseMap = 0;
+            return;
+        case Id::SMAAArea:
+            mSMAAAreaMap = 0;
+            return;
+        case Id::SMAASearch:
+            mSMAASearchMap = 0;
+            return;
+        case Id::SMAASample:
+            mSMAASampleMap = 0;
+            return;
+        default:
+            return;
+    }
+#endif
 }
 
 void LLPipeline::ensureResources(const ALRenderResourcePlan& plan, const ALRenderResourcePlan::IdSet& ids,
@@ -17468,40 +17520,25 @@ void LLPipeline::ensureResources(const ALRenderResourcePlan& plan, const ALRende
                 continue;
             }
 
-            if (U32* texture = resourceTexture(id))
+            if (Plan::isTexture(id))
             {
-                if (resource.mDesc && !*texture)
+                const bool ready = resourceTextureReady(id);
+                if (resource.mDesc && !ready)
                 {
                     // A texture whose contents have no source (the SMAA sample image, without a SamplePath) is left
                     // unmade without failing anything.
                     createResourceTexture(id);
-                    if (*texture)
+                    if (resourceTextureReady(id))
                     {
                         changes.mBuilt.set(i);
                     }
                 }
-                else if (!resource.mDesc && *texture)
+                else if (!resource.mDesc && ready)
                 {
-                    LLImageGL::deleteTextures(1, texture);
-                    *texture = 0;
-#if LL_DARWIN
-                    if (id == Id::Noise)
-                    {
-                        mMetalNoiseMapRG16.clear();
-                    }
-                    else if (id == Id::TrueNoise)
-                    {
-                        mMetalTrueNoiseMapRGBA16.clear();
-                        if (mMetalWorldSimpleCapture)
-                        {
-                            mMetalWorldSimpleCapture->
-                                legacy_glow_noise_texture.reset();
-                        }
-                    }
-#endif
+                    releaseResourceTexture(id);
                     changes.mFreed.set(i);
                 }
-                else if (*texture)
+                else if (ready)
                 {
                     changes.mKept.set(i);
                 }
@@ -17537,7 +17574,6 @@ void LLPipeline::ensureResources(const ALRenderResourcePlan& plan, const ALRende
         }
     }
 
-    gGL.getTextureSlot(0)->unbind();
 }
 
 void LLPipeline::prewarmTransients(const ALRenderResourcePlan& plan, const ALRenderResourcePlan::IdSet& ids,
@@ -17773,20 +17809,15 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
     const IdSet refill = Plan::refilled(mResourceInputs, inputs) & changes.mKept;
     for (size_t i = 0; i < Plan::ID_COUNT; ++i)
     {
-        if (U32* texture = refill.test(i) ? resourceTexture((Id)i) : nullptr)
+        const Id id = (Id)i;
+        if (refill.test(i) && Plan::isTexture(id))
         {
-            LLImageGL::deleteTextures(1, texture);
-            *texture = 0;
-            createResourceTexture((Id)i);
+            releaseResourceTexture(id);
+            createResourceTexture(id);
             changes.mKept.reset(i);
-            changes.mBuilt.set(i, *texture != 0);
+            changes.mBuilt.set(i, resourceTextureReady(id));
         }
     }
-    if (refill.any())
-    {
-        gGL.getTextureSlot(0)->unbind();
-    }
-
     // A target the render size sizes that cannot be built at it halves the size, the height first and then the width,
     // until they can be or there is no size left: any but a bloom level or a shadow map, which are left unbuilt. Only
     // the targets the size sizes are freed and built again at each size: the rest neither drive the size nor follow it.
@@ -18128,10 +18159,9 @@ void LLPipeline::releaseRenderTargets()
         {
             target->release();
         }
-        else if (U32* texture = resourceTexture(id); texture && *texture)
+        else if (Plan::isTexture(id))
         {
-            LLImageGL::deleteTextures(1, texture);
-            *texture = 0;
+            releaseResourceTexture(id);
         }
     }
 
@@ -18146,12 +18176,6 @@ void LLPipeline::releaseRenderTargets()
     mToneCurveLutLoaded  = false;
 #if LL_DARWIN
     mMetalToneCurveLut.reset();
-    mMetalNoiseMapRG16.clear();
-    mMetalTrueNoiseMapRGBA16.clear();
-    if (mMetalWorldSimpleCapture)
-    {
-        mMetalWorldSimpleCapture->legacy_glow_noise_texture.reset();
-    }
     ++mMetalLensFlareHistoryEpoch;
     if (mMetalLensFlareHistoryEpoch == 0)
     {
@@ -18419,11 +18443,6 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
                 }
             }
 #endif
-
-            LLImageGL::generateTextures(1, &mNoiseMap);
-            gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mNoiseMap);
-            LLImageGL::allocateTexture2D(ALTextureSlot::getInternalType(ALTextureSlot::TT_TEXTURE), GL_RGB16F, noise_res,
-                                         noise_res, GL_RGB, GL_FLOAT, noise.data());
             break;
         }
 
@@ -18449,92 +18468,23 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
                 }
                 mMetalTrueNoiseMapRGBA16[texel * 4 + 3] = 0;
             }
-            if (mMetalWorldSimpleCapture)
+            for (const auto* capture_owner :
+                 { &mMetalWorldSimpleCapture,
+                   &mMetalProbeWorldSimpleCapture })
             {
-                mMetalWorldSimpleCapture->legacy_glow_noise_texture.reset();
+                if (*capture_owner)
+                {
+                    (*capture_owner)->legacy_glow_noise_texture.reset();
+                }
             }
 #endif
-
-            LLImageGL::generateTextures(1, &mTrueNoiseMap);
-            gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mTrueNoiseMap);
-            LLImageGL::allocateTexture2D(ALTextureSlot::getInternalType(ALTextureSlot::TT_TEXTURE), GL_RGB16F, noise_res,
-                                         noise_res, GL_RGB, GL_FLOAT, noise.data());
             break;
         }
 
         case Id::SMAAArea:
-        {
-#if !LL_DARWIN
-            std::vector<U8> tempBuffer(AREATEX_SIZE);
-            for (U32 y = 0; y < AREATEX_HEIGHT; y++)
-            {
-                U32 srcY = AREATEX_HEIGHT - 1 - y;
-                // unsigned int srcY = y;
-                memcpy(&tempBuffer[y * AREATEX_PITCH], areaTexBytes + srcY * AREATEX_PITCH, AREATEX_PITCH);
-            }
-
-            LLImageGL::generateTextures(1, &mSMAAAreaMap);
-            gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mSMAAAreaMap);
-            LLImageGL::allocateTexture2D(ALTextureSlot::getInternalType(ALTextureSlot::TT_TEXTURE), GL_RG8, AREATEX_WIDTH,
-                                         AREATEX_HEIGHT, GL_RG, GL_UNSIGNED_BYTE, tempBuffer.data());
-#endif
-            break;
-        }
-
         case Id::SMAASearch:
-        {
-#if !LL_DARWIN
-            std::vector<U8> tempBuffer(SEARCHTEX_SIZE);
-            for (U32 y = 0; y < SEARCHTEX_HEIGHT; y++)
-            {
-                U32 srcY = SEARCHTEX_HEIGHT - 1 - y;
-                // unsigned int srcY = y;
-                memcpy(&tempBuffer[y * SEARCHTEX_PITCH], searchTexBytes + srcY * SEARCHTEX_PITCH, SEARCHTEX_PITCH);
-            }
-
-            LLImageGL::generateTextures(1, &mSMAASearchMap);
-            gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mSMAASearchMap);
-            LLImageGL::allocateTexture2D(ALTextureSlot::getInternalType(ALTextureSlot::TT_TEXTURE), GL_R8, SEARCHTEX_WIDTH,
-                                         SEARCHTEX_HEIGHT, GL_RED, GL_UNSIGNED_BYTE, tempBuffer.data());
-#endif
-            break;
-        }
-
         case Id::SMAASample:
-        {
-#if !LL_DARWIN
-            LLPointer<LLImageRaw>               raw_image = new LLImageRaw;
-            LLPointer<LLImagePNG>               png_image = new LLImagePNG;
-            static LLCachedControl<std::string> sample_path(gSavedSettings, "SamplePath", "");
-            if (gDirUtilp->fileExists(sample_path()) && png_image->load(sample_path()) && png_image->decode(raw_image, 0.0f))
-            {
-                U32 format = 0;
-                switch (raw_image->getComponents())
-                {
-                case 1:
-                    format = GL_RED;
-                    break;
-                case 2:
-                    format = GL_RG;
-                    break;
-                case 3:
-                    format = GL_RGB;
-                    break;
-                case 4:
-                    format = GL_RGBA;
-                    break;
-                default:
-                    return;
-                };
-                LLImageGL::generateTextures(1, &mSMAASampleMap);
-                gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mSMAASampleMap);
-                LLImageGL::allocateTexture2D(ALTextureSlot::getInternalType(ALTextureSlot::TT_TEXTURE), GL_RGB8, raw_image->getWidth(),
-                    raw_image->getHeight(), format, GL_UNSIGNED_BYTE, raw_image->getData());
-                stop_glerror();
-            }
-#endif
             break;
-        }
 
         default:
             break;
