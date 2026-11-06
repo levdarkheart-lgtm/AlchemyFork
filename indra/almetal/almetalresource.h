@@ -83,6 +83,21 @@ public:
                 std::size_t length,
                 std::string* error = nullptr);
 
+    // Encode ordered GPU-side buffer operations on the supplied command.
+    // fillWords writes one 32-bit pattern throughout a four-byte-aligned range;
+    // copyFrom permits a same-buffer copy only when the ranges do not overlap.
+    bool fillWords(ALMetalCommandBuffer& command_buffer,
+                   std::size_t offset,
+                   std::size_t length,
+                   std::uint32_t value,
+                   std::string* error = nullptr);
+    bool copyFrom(ALMetalCommandBuffer& command_buffer,
+                  const ALMetalBuffer& source,
+                  std::size_t source_offset,
+                  std::size_t destination_offset,
+                  std::size_t length,
+                  std::string* error = nullptr);
+
     // Explicitly synchronous and intended for screenshots, picking, tests and
     // other exceptional readback paths rather than the steady-state frame.
     bool readback(const ALMetalDevice& device,

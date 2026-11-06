@@ -188,6 +188,7 @@ if(AL_BUILD_TESTS)
     DEFINES ${font_defines}
   )
   if(DARWIN)
+    target_sources(llrender_tests PRIVATE tests/algpubuffer_test.cpp)
     target_link_libraries(llrender_tests PRIVATE almetal)
   endif()
 

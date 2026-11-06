@@ -982,6 +982,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     }
     mMetalUIRenderer.reset();
     mFrameFences.setMetalScheduler(nullptr);
+    ALGPUBuffer::setMetalDevice(nullptr);
     mMetalDevice = nullptr;
     mMetalFrames = nullptr;
     mMetalUISurface = nullptr;
@@ -1004,6 +1005,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
 
     mMetalDevice = device;
     mMetalFrames = scheduler;
+    ALGPUBuffer::setMetalDevice(device);
     mFrameFences.setMetalScheduler(scheduler);
     // Hidden windows intentionally have no presentation surface. Publishing
     // their device and scheduler is still sufficient for texture captures.

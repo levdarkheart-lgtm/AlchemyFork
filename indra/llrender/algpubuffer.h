@@ -1,7 +1,7 @@
 /**
  * @file algpubuffer.h
- * @brief RAII wrapper around a GL buffer object the GPU reads and writes: shader storage, indirect commands, readback,
- *        and the rings that read results back and stream data in without waiting on the GPU.
+ * @brief Native Metal buffer storage for shader data, indirect commands,
+ *        readback and streaming rings.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -28,17 +28,18 @@
 #include "stdtypes.h"
 
 #include <cstddef>
+#include <memory>
 #include <vector>
 
 class ALFrameFences;
+class ALMetalBuffer;
+class ALMetalDevice;
 
-// GL 4.3's minimum GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS, so every point here exists on every context that has
-// compute. LLRender keeps what each holds; the reserved storage blocks' fixed points all fall below it.
+// Stable storage-binding vocabulary retained by the renderer; native pipeline
+// layouts reserve these first eight points.
 constexpr U32 AL_NUM_STORAGE_BINDINGS = 8;
 
-// What glDrawArraysIndirect reads: GL's DrawArraysIndirectCommand, word for word. A shader that writes one declares
-// the same four uints at the head of its storage block. mBaseInstance offsets only instanced vertex attributes, which a
-// draw with no vertex arrays has none of; below GL 4.2 the word is reserved and must be 0.
+// Same four-word layout as MTLDrawPrimitivesIndirectArguments.
 struct ALDrawArraysIndirectCommand
 {
     U32 mCount         = 0;
@@ -46,84 +47,72 @@ struct ALDrawArraysIndirectCommand
     U32 mFirst         = 0;
     U32 mBaseInstance  = 0;
 };
-static_assert(sizeof(ALDrawArraysIndirectCommand) == 16, "GL's DrawArraysIndirectCommand is four uints");
+static_assert(sizeof(ALDrawArraysIndirectCommand) == 16, "Metal indirect draw arguments are four uints");
 
-// What glDispatchComputeIndirect reads: the work group counts, x, y, z.
+// Same three-word layout as MTLDispatchThreadgroupsIndirectArguments.
 struct ALDispatchIndirectCommand
 {
     U32 mGroupsX = 0;
     U32 mGroupsY = 0;
     U32 mGroupsZ = 0;
 };
-static_assert(sizeof(ALDispatchIndirectCommand) == 12, "GL's DispatchIndirectCommand is three uints");
+static_assert(sizeof(ALDispatchIndirectCommand) == 12, "Metal indirect dispatch arguments are three uints");
 
-// A GL buffer object the GPU reads and writes: a shader storage block's store, the commands an indirect draw or
-// dispatch reads, a place to read results back from. Where ALUniformBuffer streams constants the CPU rewrites every
-// frame, this holds data that lives on the GPU: allocated once at a size, then written by shaders, cleared and copied
-// GPU-side, and uploaded to only where it was allocated DYNAMIC or STREAM.
-//
-// The store is immutable (glBufferStorage) where that resolved and mutable (glBufferData) elsewhere; either way it is
-// replaced only by allocate(). Calls are DSA (glNamed*) where gGLManager.mHasDirectStateAccess says so; the path
-// without binds only GL_COPY_WRITE_BUFFER and GL_COPY_READ_BUFFER, which nothing else in the renderer caches, so no
-// other binding cache -- LLVertexBuffer's, LLRender's indirect and storage ones -- can go stale behind it. Binding it
-// for a shader or a draw is LLRender's: bindStorageBuffer, drawArraysIndirect, dispatchComputeIndirect.
-//
-// Shader writes reach what reads the buffer next only past the barrier for that kind of read: LLRender::memoryBarrier
-// with BARRIER_STORAGE for a later shader, BARRIER_COMMAND for an indirect draw or dispatch, BARRIER_BUFFER_UPDATE for
-// upload, clear and copy. read() makes its own.
-//
-// All operations require a current GL context. Non-copyable (owns a GL name); movable.
+// A native Metal buffer the GPU reads and writes. STREAM and READBACK stores use
+// coherent shared Apple Silicon memory; other stores use private GPU memory and
+// ordered blit commands for upload, fill, copy and synchronous exceptional
+// readback. The device is installed with the renderer backend, so allocation
+// fails closed before native initialization or after teardown. Non-copyable;
+// movable.
 class ALGPUBuffer
 {
 public:
     enum EFlags : U32
     {
-        DYNAMIC        = 1 << 0,  // upload() may rewrite it (GL_DYNAMIC_STORAGE_BIT)
-        READBACK       = 1 << 1,  // the CPU reads it: mapped for reading for as long as it lives, where persistent
-                                  // maps resolved (GL 4.4), and kept in memory the CPU reads quickly
-        STREAM         = 1 << 2,  // the CPU writes it often: mapped for writing for as long as it lives, where
-                                  // persistent maps resolved, and upload() copies into the map; elsewhere upload() is
-                                  // DYNAMIC's
-        FLUSH_EXPLICIT = 1 << 3,  // with STREAM, and not READBACK (asserted): the write map is not coherent, and what
-                                  // the CPU writes there reaches the GPU only once flushMapped() publishes its range
-                                  // (GL_MAP_FLUSH_EXPLICIT_BIT). For drivers that put a coherent map in uncached or
-                                  // write-combined memory, which the CPU writes slowly
+        DYNAMIC        = 1 << 0,  // upload() may rewrite private storage
+        READBACK       = 1 << 1,  // coherent shared storage mapped for CPU reads
+        STREAM         = 1 << 2,  // write-combined shared storage mapped for CPU writes
+        FLUSH_EXPLICIT = 1 << 3,  // retained ring intent; a validated no-op on coherent Apple memory
     };
 
-    ALGPUBuffer() = default;
+    ALGPUBuffer();
     ~ALGPUBuffer();
 
     ALGPUBuffer(const ALGPUBuffer&) = delete;
     ALGPUBuffer& operator=(const ALGPUBuffer&) = delete;
 
-    // Moving transfers the GL name and the mapping; the source is left empty.
+    // Moving transfers the native store and mapping; the source is left empty.
     ALGPUBuffer(ALGPUBuffer&& other) noexcept;
     ALGPUBuffer& operator=(ALGPUBuffer&& other) noexcept;
 
-    // Replaces any store this held. `data` may be null (contents undefined until written or cleared).
-    // `label` names it for debug output (glObjectLabel under debug GL, gDebugGL, where the context keeps labels). False,
-    // and empty, if GL could not make the store.
+    static void setMetalDevice(ALMetalDevice* device) noexcept;
+    static ALMetalDevice* getMetalDevice() noexcept;
+
+    // Replaces any store this held. `data` may be null (contents undefined
+    // until written or cleared). `label` names it in Metal diagnostics.
     bool allocate(size_t bytes, U32 flags = 0, const void* data = nullptr, const char* label = nullptr);
 
-    // Delete the GL object, if any. Call from an explicit teardown that still has a live GL context rather than
-    // relying on destruction order at shutdown; the destructor calls it as a backstop, and issues no GL once the
-    // context is gone.
+    // Release native storage. Destruction is also safe after backend teardown.
     void release();
 
-    bool   isAllocated() const { return mName != 0; }
+    bool   isAllocated() const { return mBuffer != nullptr; }
     size_t size() const { return mSize; }
-    U32    getGLName() const { return mName; }
+    // Temporary compile boundary for legacy consumers that are unreachable in
+    // the Metal product. A native allocation never has a GL object name.
+    U32    getGLName() const { return 0; }
+    ALMetalBuffer* getMetalBuffer() { return mBuffer.get(); }
+    const ALMetalBuffer* getMetalBuffer() const { return mBuffer.get(); }
     U32    getFlags() const { return mFlags; }
 
-    // The persistent map of a READBACK or STREAM store, coherent both ways unless FLUSH_EXPLICIT; null where persistent
-    // maps did not resolve and for any other store. The CPU sees what the GPU wrote once a fence after the write has
-    // signalled, and the GPU sees what the CPU wrote in any command issued after the write -- for FLUSH_EXPLICIT, after
-    // the flushMapped() that published it.
+    // The persistent map of a READBACK or STREAM shared store; null for private
+    // storage. The CPU sees GPU writes after their frame has completed, and the
+    // GPU sees CPU writes in commands submitted after the write. FLUSH_EXPLICIT
+    // is retained as ring intent but is a range-validated no-op on coherent
+    // Apple Silicon shared memory.
     U8* getMapped() const { return mMapped; }
 
-    // Publish [offset, offset + bytes) of a FLUSH_EXPLICIT store's map to the GPU, which sees those bytes in any
-    // command issued after this. Nothing to do for a coherent map or a store with none, so a caller need not ask which
-    // it has.
+    // Apple Silicon shared storage is coherent; retained as an explicit
+    // publication point for ring callers and validated as a range.
     void flushMapped(size_t offset, size_t bytes);
 
     // Write `bytes` from `data` at `offset`. DYNAMIC and STREAM buffers only (asserted). A mapped STREAM store takes
@@ -133,13 +122,12 @@ public:
     // Set every 4-byte word to `value`.
     void clear(U32 value = 0);
 
-    // Set every 4-byte word of [offset, offset + bytes) to `value`; both multiples of 4. GPU-side
-    // (glClearBufferSubData) where it resolved; elsewhere an upload of the pattern, which needs DYNAMIC or STREAM
-    // (asserted).
+    // Set every 4-byte word of [offset, offset + bytes) to `value`; both
+    // multiples of 4. Encoded as an ordered Metal blit operation.
     void clearRange(size_t offset, size_t bytes, U32 value = 0);
 
-    // Copy `bytes` of `src` from `src_offset` to `dst_offset` here, GPU-side. `src` may be this buffer, if the two
-    // ranges do not overlap.
+    // Copy `bytes` of `src` from `src_offset` to `dst_offset` here on the GPU.
+    // `src` may be this buffer if the ranges do not overlap.
     void copyFrom(const ALGPUBuffer& src, size_t src_offset, size_t dst_offset, size_t bytes);
 
     // Read `bytes` at `offset` into `out`. Synchronous: waits for the GPU. Tests and debugging only.
@@ -149,7 +137,8 @@ public:
     static U64 sBytesAllocated;
 
 private:
-    U32    mName   = 0;  // GL buffer name (0 == unallocated)
+    std::unique_ptr<ALMetalBuffer> mBuffer;
+    ALMetalDevice* mDevice = nullptr;
     size_t mSize   = 0;
     U32    mFlags  = 0;
     U8*    mMapped = nullptr;
@@ -166,7 +155,8 @@ private:
 // published for later frames does: the region stays as published until the ring comes round to it, `regions` maps on.
 // Neither call lays or polls a fence while the GPU keeps up.
 //
-// All operations require the GL context of the frame fences to be current: gGL's, unless others are given. Non-copyable.
+// Frame completion comes from the renderer's Metal scheduler (gGL's frame
+// timeline unless another is provided). Non-copyable.
 class ALGPUStream
 {
 public:
@@ -189,7 +179,7 @@ public:
     U8* map();
 
     // Hand the GPU the `bytes` written since map(). Returns where they start in getBuffer(): a multiple of
-    // gGLManager.mShaderStorageBufferOffsetAlignment, so a storage range can start there.
+    // the native 256-byte storage/constant slice alignment.
     size_t publish(size_t bytes);
 
     // The region publish() placed at `offset` is read again in this frame, after a later map(): the ring writes it

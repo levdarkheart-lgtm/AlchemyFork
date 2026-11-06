@@ -1,7 +1,6 @@
 /**
  * @file algpubuffer.cpp
- * @brief RAII wrapper around a GL buffer object the GPU reads and writes: shader storage, indirect commands, readback,
- *        and the rings that read results back and stream data in without waiting on the GPU.
+ * @brief Native Metal buffer storage and rings for GPU/CPU data exchange.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -28,24 +27,20 @@
 #include "algpubuffer.h"
 
 #include "alframefences.h"
-#include "llgl.h"
-#include "llglheaders.h"
+#include "almetaldevice.h"
+#include "almetalresource.h"
 #include "llrender.h"
 
-#include <cstdint>
 #include <cstring>
-#include <vector>
+#include <string>
+#include <utility>
 
 U64 ALGPUBuffer::sBytesAllocated = 0;
 
 namespace
 {
-    // The named forms of everything below but the clear, which has its own check. mHasDirectStateAccess vouches for
-    // the creation, upload and flush calls; the copy and the read are resolved beside them but not checked with them.
-    bool use_dsa()
-    {
-        return gGLManager.mHasDirectStateAccess && glCopyNamedBufferSubData && glGetNamedBufferSubData;
-    }
+    ALMetalDevice* sMetalDevice = nullptr;
+    constexpr size_t METAL_BUFFER_OFFSET_ALIGNMENT = 256;
 
     // Whether [offset, offset + bytes) lies in a store of `size` bytes, without the sum wrapping.
     bool in_range(size_t offset, size_t bytes, size_t size)
@@ -58,52 +53,17 @@ namespace
         return (value + multiple - 1) / multiple * multiple;
     }
 
-    // A store that stays mapped: GL 4.4's immutable storage, and a map of it, by name where DSA makes the store.
-    bool can_map_persistent(bool dsa)
+    void warn_failure(const char* operation, const char* label,
+                      const std::string& error)
     {
-        return glBufferStorage && (!dsa || (glNamedBufferStorage && glMapNamedBufferRange));
-    }
-
-    // Make a store of `size` bytes in buffer `name`, mapped persistently with `map_flags` unless they are 0. Returns the
-    // map, or null where none was asked for or GL gave none.
-    U8* make_store(GLuint name, bool dsa, GLsizeiptr size, const void* data, GLbitfield storage_flags,
-                   GLbitfield map_flags, GLenum usage)
-    {
-        void* mapped = nullptr;
-        if (glBufferStorage)
-        {
-            if (dsa && glNamedBufferStorage)
-            {
-                glNamedBufferStorage(name, size, data, storage_flags);
-                if (map_flags)
-                {
-                    mapped = glMapNamedBufferRange(name, 0, size, map_flags);
-                }
-            }
-            else
-            {
-                glBindBuffer(GL_COPY_WRITE_BUFFER, name);
-                glBufferStorage(GL_COPY_WRITE_BUFFER, size, data, storage_flags);
-                if (map_flags)
-                {
-                    mapped = glMapBufferRange(GL_COPY_WRITE_BUFFER, 0, size, map_flags);
-                }
-                glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
-            }
-        }
-        else if (dsa)
-        {
-            glNamedBufferData(name, size, data, usage);
-        }
-        else
-        {
-            glBindBuffer(GL_COPY_WRITE_BUFFER, name);
-            glBufferData(GL_COPY_WRITE_BUFFER, size, data, usage);
-            glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
-        }
-        return static_cast<U8*>(mapped);
+        LL_WARNS("GPUBuffer") << operation << " failed for "
+                              << (label ? label : "a native GPU buffer")
+                              << (error.empty() ? "" : ": ") << error
+                              << LL_ENDL;
     }
 }
+
+ALGPUBuffer::ALGPUBuffer() = default;
 
 ALGPUBuffer::~ALGPUBuffer()
 {
@@ -111,12 +71,13 @@ ALGPUBuffer::~ALGPUBuffer()
 }
 
 ALGPUBuffer::ALGPUBuffer(ALGPUBuffer&& other) noexcept
-    : mName(other.mName)
+    : mBuffer(std::move(other.mBuffer))
+    , mDevice(other.mDevice)
     , mSize(other.mSize)
     , mFlags(other.mFlags)
     , mMapped(other.mMapped)
 {
-    other.mName   = 0;
+    other.mDevice = nullptr;
     other.mSize   = 0;
     other.mFlags  = 0;
     other.mMapped = nullptr;
@@ -127,16 +88,27 @@ ALGPUBuffer& ALGPUBuffer::operator=(ALGPUBuffer&& other) noexcept
     if (this != &other)
     {
         release();
-        mName   = other.mName;
+        mBuffer = std::move(other.mBuffer);
+        mDevice = other.mDevice;
         mSize   = other.mSize;
         mFlags  = other.mFlags;
         mMapped = other.mMapped;
-        other.mName   = 0;
+        other.mDevice = nullptr;
         other.mSize   = 0;
         other.mFlags  = 0;
         other.mMapped = nullptr;
     }
     return *this;
+}
+
+void ALGPUBuffer::setMetalDevice(ALMetalDevice* device) noexcept
+{
+    sMetalDevice = device;
+}
+
+ALMetalDevice* ALGPUBuffer::getMetalDevice() noexcept
+{
+    return sMetalDevice;
 }
 
 bool ALGPUBuffer::allocate(size_t bytes, U32 flags, const void* data, const char* label)
@@ -153,28 +125,12 @@ bool ALGPUBuffer::allocate(size_t bytes, U32 flags, const void* data, const char
         return false;
     }
 
-    // Whatever was pending is not this allocation's to report.
-    clear_glerror();
-
-    const bool dsa = use_dsa();
-    auto create_name = [dsa]()
+    ALMetalDevice* device = sMetalDevice;
+    if (!device)
     {
-        GLuint name = 0;
-        if (dsa)
-        {
-            glCreateBuffers(1, &name);
-        }
-        else
-        {
-            glGenBuffers(1, &name);
-        }
-        return name;
-    };
-
-    GLuint name = create_name();
-    if (name == 0)
-    {
-        LL_WARNS("GPUBuffer") << "No buffer name for " << (label ? label : "a GPU buffer") << LL_ENDL;
+        LL_WARNS("GPUBuffer") << "Cannot allocate "
+                              << (label ? label : "a native GPU buffer")
+                              << " without the Metal device" << LL_ENDL;
         return false;
     }
 
@@ -185,66 +141,53 @@ bool ALGPUBuffer::allocate(size_t bytes, U32 flags, const void* data, const char
         flags &= ~FLUSH_EXPLICIT;
     }
 
-    // Immutable where it resolved: the driver knows the store never moves, and a store only allocate() replaces is
-    // all this class offers anyway. A STREAM store that is not mapped is uploaded to, as a DYNAMIC one is. The mutable
-    // fallback's hint says who reads it: the CPU for READBACK, the GPU, from the CPU's writes or its own, otherwise.
-    const GLsizeiptr size     = (GLsizeiptr)bytes;
-    const bool       readback = (flags & READBACK) != 0;
-    const bool       stream   = (flags & STREAM) != 0;
-    const GLenum     usage    = readback ? GL_STREAM_READ
-                              : stream   ? GL_STREAM_DRAW
-                              : (flags & DYNAMIC) ? GL_DYNAMIC_DRAW : GL_DYNAMIC_COPY;
-    const GLbitfield dynamic  = (flags & DYNAMIC) ? GL_DYNAMIC_STORAGE_BIT : 0;
+    const bool cpu_visible = (flags & (READBACK | STREAM)) != 0;
+    ALMetalBufferDescriptor descriptor;
+    descriptor.length = bytes;
+    descriptor.storage = cpu_visible
+        ? ALMetalStorageMode::shared
+        : ALMetalStorageMode::private_gpu;
+    descriptor.cpu_cache = ((flags & STREAM) && !(flags & READBACK))
+        ? ALMetalCpuCacheMode::write_combined
+        : ALMetalCpuCacheMode::default_cache;
+    descriptor.label = label ? label : "Alchemy GPU buffer";
 
-    U8* mapped = nullptr;
-    if ((readback || stream) && can_map_persistent(dsa))
+    std::string error;
+    auto buffer = ALMetalBuffer::create(*device, descriptor, &error);
+    if (!buffer)
     {
-        // Coherent both ways, so neither side flushes ranges or issues client barriers: the frame fences the rings wait
-        // on are all the ordering they need. FLUSH_EXPLICIT gives that up on the write side, where flushMapped()
-        // publishes instead; the storage takes no flush bit, only the map. A readback store asks for memory the CPU
-        // reads quickly.
-        const GLbitfield coherency = (flags & FLUSH_EXPLICIT) ? GL_MAP_FLUSH_EXPLICIT_BIT : GL_MAP_COHERENT_BIT;
-        const GLbitfield map_flags = GL_MAP_PERSISTENT_BIT | coherency
-                                   | (readback ? GL_MAP_READ_BIT : 0) | (stream ? GL_MAP_WRITE_BIT : 0);
-        const GLbitfield storage_flags = (map_flags & ~GL_MAP_FLUSH_EXPLICIT_BIT) | dynamic
-                                       | (readback ? GL_CLIENT_STORAGE_BIT : 0);
-        mapped = make_store(name, dsa, size, data, storage_flags, map_flags, usage);
-        if (!mapped)
+        warn_failure("Allocation", label, error);
+        return false;
+    }
+
+    if (data)
+    {
+        if (cpu_visible)
         {
-            // An immutable store cannot be given another, so a map that failed starts over unmapped.
-            LL_WARNS("GPUBuffer") << "Could not map " << (label ? label : "a GPU buffer") << "; using it unmapped"
-                                  << LL_ENDL;
-            glDeleteBuffers(1, &name);
-            clear_glerror();
-            name = create_name();
-            if (name == 0)
+            if (!buffer->write(0, data, bytes, &error))
             {
+                warn_failure("Initial upload", label, error);
+                return false;
+            }
+        }
+        else
+        {
+            auto command = device->makeCommandBuffer(
+                "Alchemy GPU buffer initial upload", &error);
+            if (!command || !buffer->upload(*command, 0, data, bytes, &error) ||
+                !command->commit(&error))
+            {
+                warn_failure("Initial upload", label, error);
                 return false;
             }
         }
     }
-    if (!mapped)
-    {
-        make_store(name, dsa, size, data, dynamic | (stream ? GL_DYNAMIC_STORAGE_BIT : 0), 0, usage);
-    }
 
-    if (const GLenum error = glGetError(); error != GL_NO_ERROR)
-    {
-        LL_WARNS("GPUBuffer") << "Could not allocate " << bytes << " bytes for " << (label ? label : "a GPU buffer")
-                              << " (GL error 0x" << std::hex << error << std::dec << ")" << LL_ENDL;
-        glDeleteBuffers(1, &name);
-        return false;
-    }
-
-    if (label && gDebugGL && gGLManager.mHasDebugOutput && glObjectLabel)
-    {
-        glObjectLabel(GL_BUFFER, name, -1, label);
-    }
-
-    mName   = name;
+    mMapped = static_cast<U8*>(buffer->mappedBytes());
+    mBuffer = std::move(buffer);
+    mDevice = device;
     mSize   = bytes;
     mFlags  = flags;
-    mMapped = mapped;
     sBytesAllocated += bytes;
     LL_PROFILE_PLOT("GPU buffer bytes", (int64_t)sBytesAllocated);
     return true;
@@ -252,20 +195,13 @@ bool ALGPUBuffer::allocate(size_t bytes, U32 flags, const void* data, const char
 
 void ALGPUBuffer::release()
 {
-    if (mName != 0)
+    if (mBuffer)
     {
-        // Only issue GL while the context is alive: the destructor can run during shutdown after GL teardown, when
-        // the name is already gone with the context. The same gate as ALUniformBuffer::release. Deleting a mapped
-        // store unmaps it.
-        if (gGLManager.mInited)
-        {
-            gGL.forgetBuffer(mName);
-            glDeleteBuffers(1, &mName);
-        }
         sBytesAllocated -= mSize;
         LL_PROFILE_PLOT("GPU buffer bytes", (int64_t)sBytesAllocated);
-        mName = 0;
+        mBuffer.reset();
     }
+    mDevice = nullptr;
     mSize   = 0;
     mFlags  = 0;
     mMapped = nullptr;
@@ -274,7 +210,8 @@ void ALGPUBuffer::release()
 void ALGPUBuffer::upload(size_t offset, const void* data, size_t bytes)
 {
     llassert(mFlags & (DYNAMIC | STREAM));
-    if (!mName || !data || !in_range(offset, bytes, mSize))
+    if (!mBuffer || !mDevice || mDevice != sMetalDevice || !data ||
+        !in_range(offset, bytes, mSize))
     {
         llassert(false);
         return;
@@ -284,20 +221,22 @@ void ALGPUBuffer::upload(size_t offset, const void* data, size_t bytes)
         return;
     }
 
-    if (mMapped && (mFlags & STREAM))
+    std::string error;
+    if (mMapped)
     {
-        memcpy(mMapped + offset, data, bytes);
+        std::memcpy(mMapped + offset, data, bytes);
         flushMapped(offset, bytes);
-    }
-    else if (use_dsa())
-    {
-        glNamedBufferSubData(mName, (GLintptr)offset, (GLsizeiptr)bytes, data);
     }
     else
     {
-        glBindBuffer(GL_COPY_WRITE_BUFFER, mName);
-        glBufferSubData(GL_COPY_WRITE_BUFFER, (GLintptr)offset, (GLsizeiptr)bytes, data);
-        glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+        auto command = mDevice->makeCommandBuffer(
+            "Alchemy GPU buffer upload", &error);
+        if (!command || !mBuffer->upload(*command, offset, data, bytes, &error) ||
+            !command->commit(&error))
+        {
+            warn_failure("Upload", nullptr, error);
+            llassert(false);
+        }
     }
 }
 
@@ -313,17 +252,8 @@ void ALGPUBuffer::flushMapped(size_t offset, size_t bytes)
         return;
     }
 
-    // The flush is the mapping's, however the map was made.
-    if (use_dsa())
-    {
-        glFlushMappedNamedBufferRange(mName, (GLintptr)offset, (GLsizeiptr)bytes);
-    }
-    else
-    {
-        glBindBuffer(GL_COPY_WRITE_BUFFER, mName);
-        glFlushMappedBufferRange(GL_COPY_WRITE_BUFFER, (GLintptr)offset, (GLsizeiptr)bytes);
-        glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
-    }
+    // Shared storage is coherent on supported Apple Silicon. Submission order
+    // publishes CPU writes; no API cache-flush operation is required.
 }
 
 void ALGPUBuffer::clear(U32 value)
@@ -334,7 +264,8 @@ void ALGPUBuffer::clear(U32 value)
 void ALGPUBuffer::clearRange(size_t offset, size_t bytes, U32 value)
 {
     llassert(offset % sizeof(U32) == 0 && bytes % sizeof(U32) == 0);
-    if (!mName || !in_range(offset, bytes, mSize))
+    if (!mBuffer || !mDevice || mDevice != sMetalDevice ||
+        !in_range(offset, bytes, mSize))
     {
         llassert(false);
         return;
@@ -344,60 +275,48 @@ void ALGPUBuffer::clearRange(size_t offset, size_t bytes, U32 value)
         return;
     }
 
-    // Each word R32UI, filled from one GL_RED_INTEGER uint: the value's bits as they are, whatever the store holds.
-    if (gGLManager.mHasDirectStateAccess && glClearNamedBufferSubData)
+    std::string error;
+    auto command = mDevice->makeCommandBuffer("Alchemy GPU buffer fill", &error);
+    if (!command || !mBuffer->fillWords(*command, offset, bytes, value, &error) ||
+        !command->commit(&error))
     {
-        glClearNamedBufferSubData(mName, GL_R32UI, (GLintptr)offset, (GLsizeiptr)bytes, GL_RED_INTEGER,
-                                  GL_UNSIGNED_INT, &value);
-    }
-    else if (glClearBufferSubData)
-    {
-        glBindBuffer(GL_COPY_WRITE_BUFFER, mName);
-        glClearBufferSubData(GL_COPY_WRITE_BUFFER, GL_R32UI, (GLintptr)offset, (GLsizeiptr)bytes, GL_RED_INTEGER,
-                             GL_UNSIGNED_INT, &value);
-        glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
-    }
-    else
-    {
-        // Below 4.3 the pattern goes up from here, which an immutable store takes only as DYNAMIC or STREAM.
-        llassert(mFlags & (DYNAMIC | STREAM));
-        const std::vector<U32> pattern(bytes / sizeof(U32), value);
-        upload(offset, pattern.data(), bytes);
+        warn_failure("Fill", nullptr, error);
+        llassert(false);
     }
 }
 
 void ALGPUBuffer::copyFrom(const ALGPUBuffer& src, size_t src_offset, size_t dst_offset, size_t bytes)
 {
-    if (!mName || !src.mName || !in_range(src_offset, bytes, src.mSize) || !in_range(dst_offset, bytes, mSize))
+    if (!mBuffer || !mDevice || mDevice != sMetalDevice || !src.mBuffer ||
+        src.mDevice != mDevice ||
+        !in_range(src_offset, bytes, src.mSize) ||
+        !in_range(dst_offset, bytes, mSize))
     {
         llassert(false);
         return;
     }
-    // GL refuses a copy within one buffer whose ranges overlap.
     llassert(&src != this || src_offset + bytes <= dst_offset || dst_offset + bytes <= src_offset);
     if (bytes == 0)
     {
         return;
     }
 
-    if (use_dsa())
+    std::string error;
+    auto command = mDevice->makeCommandBuffer("Alchemy GPU buffer copy", &error);
+    if (!command ||
+        !mBuffer->copyFrom(*command, *src.mBuffer, src_offset, dst_offset,
+                           bytes, &error) ||
+        !command->commit(&error))
     {
-        glCopyNamedBufferSubData(src.mName, mName, (GLintptr)src_offset, (GLintptr)dst_offset, (GLsizeiptr)bytes);
-    }
-    else
-    {
-        glBindBuffer(GL_COPY_READ_BUFFER, src.mName);
-        glBindBuffer(GL_COPY_WRITE_BUFFER, mName);
-        glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, (GLintptr)src_offset, (GLintptr)dst_offset,
-                            (GLsizeiptr)bytes);
-        glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
-        glBindBuffer(GL_COPY_READ_BUFFER, 0);
+        warn_failure("Copy", nullptr, error);
+        llassert(false);
     }
 }
 
 bool ALGPUBuffer::read(size_t offset, void* out, size_t bytes) const
 {
-    if (!mName || !out || !in_range(offset, bytes, mSize))
+    if (!mBuffer || !mDevice || mDevice != sMetalDevice || !out ||
+        !in_range(offset, bytes, mSize))
     {
         llassert(false);
         return false;
@@ -407,23 +326,11 @@ bool ALGPUBuffer::read(size_t offset, void* out, size_t bytes) const
         return true;
     }
 
-    // A shader's writes reach a read back only past this barrier, and compute in use is the only way a shader can
-    // have written here.
-    if (LLRender::sCompute)
+    std::string error;
+    if (!mBuffer->readback(*mDevice, offset, out, bytes, &error))
     {
-        gGL.memoryBarrier(LLRender::BARRIER_BUFFER_UPDATE);
-    }
-
-    // glGetBufferSubData takes a persistently mapped store too, and waits for the GPU where a read of the map would not.
-    if (use_dsa())
-    {
-        glGetNamedBufferSubData(mName, (GLintptr)offset, (GLsizeiptr)bytes, out);
-    }
-    else
-    {
-        glBindBuffer(GL_COPY_READ_BUFFER, mName);
-        glGetBufferSubData(GL_COPY_READ_BUFFER, (GLintptr)offset, (GLsizeiptr)bytes, out);
-        glBindBuffer(GL_COPY_READ_BUFFER, 0);
+        warn_failure("Readback", nullptr, error);
+        return false;
     }
     return true;
 }
@@ -446,12 +353,10 @@ bool ALGPUStream::allocate(size_t bytes, U32 regions, const char* label)
         return false;
     }
 
-    // Each region starts where a storage range may: the context's alignment, or 256 -- the most any context asks --
-    // where it has given none.
-    const size_t alignment = gGLManager.mShaderStorageBufferOffsetAlignment > 0
-                           ? (size_t)gGLManager.mShaderStorageBufferOffsetAlignment
-                           : 256;
-    const size_t stride = round_up(round_up(bytes, sizeof(U32)), alignment);
+    // Metal buffer offsets used for constant/storage slices are kept at the
+    // conservative 256-byte alignment shared by supported Apple GPUs.
+    const size_t stride = round_up(round_up(bytes, sizeof(U32)),
+                                   METAL_BUFFER_OFFSET_ALIGNMENT);
     if (!mStore.allocate(stride * regions, ALGPUBuffer::STREAM, nullptr, label))
     {
         return false;
@@ -504,17 +409,22 @@ U8* ALGPUStream::map()
         }
 
         const U32 region = mNext;
-        mNext = (mNext + 1) % (U32)mReadIn.size();
         // Finished already, unless the GPU is as many frames behind as there are regions, or the ring came round
-        // within the frame: then the wait, which polls first, waits for every command of that frame.
+        // within the frame. An ended frame is safe to wait out however long the
+        // GPU takes. A still-open frame cannot be waited on because its command
+        // buffer is not committed; fail closed and let the caller retry after
+        // the frame boundary rather than overwrite storage the GPU will read.
         if (!fences.isComplete(mReadIn[region]))
         {
-            bool stalled = false;
-            if (!fences.wait(mReadIn[region], 1000000000ull /* 1s */, &stalled))
+            if (mReadIn[region] >= fences.frame())
             {
-                LL_WARNS_ONCE("GPUBuffer") << "A stream region was still in use after a second; writing it anyway"
-                                           << LL_ENDL;
+                LL_WARNS_ONCE("GPUBuffer")
+                    << "A stream ring exhausted its regions within one Metal frame; refusing to overwrite an in-use region"
+                    << LL_ENDL;
+                return nullptr;
             }
+            bool stalled = false;
+            fences.waitFinished(mReadIn[region], &stalled);
             if (stalled)
             {
                 ++mStalls;
@@ -522,6 +432,7 @@ U8* ALGPUStream::map()
         }
         mReadIn[region] = 0;
         mWriting = (S32)region;
+        mNext = (mNext + 1) % (U32)mReadIn.size();
     }
 
     return mStore.getMapped() ? mStore.getMapped() + (size_t)mWriting * mRegionStride : mStaging.data();

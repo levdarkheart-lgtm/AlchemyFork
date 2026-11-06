@@ -596,6 +596,126 @@ bool ALMetalBuffer::upload(ALMetalCommandBuffer& command_buffer,
     }
 }
 
+bool ALMetalBuffer::fillWords(ALMetalCommandBuffer& command_buffer,
+                              std::size_t offset,
+                              std::size_t length,
+                              std::uint32_t value,
+                              std::string* error)
+{
+    if ((offset % sizeof(value)) != 0 || (length % sizeof(value)) != 0)
+    {
+        setError(error, "Metal word fill range is not four-byte aligned");
+        return false;
+    }
+    if (!checkedRange(mDescriptor.length, offset, length, error))
+    {
+        return false;
+    }
+    if (command_buffer.isCommitted())
+    {
+        setError(error, "Cannot fill with an already committed Metal command buffer");
+        return false;
+    }
+    if (command_buffer.nativeDevice() != (__bridge void*)mImpl->device)
+    {
+        setError(error, "Metal buffer and command buffer use different devices");
+        return false;
+    }
+
+    @autoreleasepool
+    {
+        id<MTLCommandBuffer> command =
+            (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+        id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
+        if (!encoder)
+        {
+            setError(error, "Metal could not create a buffer fill blit encoder");
+            return false;
+        }
+
+        const std::uint8_t byte = static_cast<std::uint8_t>(value);
+        if (value == static_cast<std::uint32_t>(byte) * 0x01010101u)
+        {
+            [encoder fillBuffer:mImpl->buffer
+                          range:NSMakeRange(offset, length)
+                          value:byte];
+        }
+        else
+        {
+            const std::vector<std::uint32_t> pattern(length / sizeof(value), value);
+            id<MTLBuffer> staging = [mImpl->device
+                newBufferWithBytes:pattern.data()
+                          length:length
+                         options:MTLResourceStorageModeShared |
+                                 MTLResourceCPUCacheModeWriteCombined];
+            if (!staging)
+            {
+                [encoder endEncoding];
+                setError(error, "Metal could not allocate buffer-fill staging storage");
+                return false;
+            }
+            [encoder copyFromBuffer:staging
+                       sourceOffset:0
+                           toBuffer:mImpl->buffer
+                  destinationOffset:offset
+                               size:length];
+        }
+        [encoder endEncoding];
+        return true;
+    }
+}
+
+bool ALMetalBuffer::copyFrom(ALMetalCommandBuffer& command_buffer,
+                             const ALMetalBuffer& source,
+                             std::size_t source_offset,
+                             std::size_t destination_offset,
+                             std::size_t length,
+                             std::string* error)
+{
+    if (!checkedRange(source.mDescriptor.length, source_offset, length, error) ||
+        !checkedRange(mDescriptor.length, destination_offset, length, error))
+    {
+        return false;
+    }
+    if (&source == this &&
+        !(source_offset + length <= destination_offset ||
+          destination_offset + length <= source_offset))
+    {
+        setError(error, "Metal same-buffer copy ranges overlap");
+        return false;
+    }
+    if (command_buffer.isCommitted())
+    {
+        setError(error, "Cannot copy with an already committed Metal command buffer");
+        return false;
+    }
+    if (source.mImpl->device != mImpl->device ||
+        command_buffer.nativeDevice() != (__bridge void*)mImpl->device)
+    {
+        setError(error, "Metal buffer copy resources use different devices");
+        return false;
+    }
+
+    @autoreleasepool
+    {
+        id<MTLCommandBuffer> command =
+            (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+        id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
+        if (!encoder)
+        {
+            setError(error, "Metal could not create a buffer copy blit encoder");
+            return false;
+        }
+        [encoder copyFromBuffer:source.mImpl->buffer
+                   sourceOffset:source_offset
+                       toBuffer:mImpl->buffer
+              destinationOffset:destination_offset
+                           size:length];
+        [encoder endEncoding];
+        return true;
+    }
+}
+
 bool ALMetalBuffer::readback(const ALMetalDevice& device,
                              std::size_t offset,
                              void* bytes,
@@ -616,13 +736,22 @@ bool ALMetalBuffer::readback(const ALMetalDevice& device,
         setError(error, "Metal buffer and readback device do not match");
         return false;
     }
-    if (mDescriptor.storage == ALMetalStorageMode::shared)
-    {
-        return read(offset, bytes, length, error);
-    }
-
     @autoreleasepool
     {
+        if (mDescriptor.storage == ALMetalStorageMode::shared)
+        {
+            // A command committed after the buffer's producers establishes an
+            // explicit completion point on the device's ordered queue before
+            // coherent shared memory is read by the CPU.
+            auto completion = device.makeCommandBuffer(
+                "Alchemy shared buffer readback completion", error);
+            if (!completion || !completion->commitAndWait(error))
+            {
+                return false;
+            }
+            return read(offset, bytes, length, error);
+        }
+
         id<MTLBuffer> staging = [mImpl->device newBufferWithLength:length
                                                           options:MTLResourceStorageModeShared];
         if (!staging)
