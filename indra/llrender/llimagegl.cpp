@@ -5477,31 +5477,23 @@ void LLImageGL::checkActiveThread()
 LLImageGLThread::LLImageGLThread(LLWindow* window)
     // We want exactly one thread.
     : LL::ThreadPool("LLImageGL", 1)
-    , mWindow(window)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    (void)window;
 
-#if LL_DARWIN
-    if (LLImageGL::isMetalTextureAuthority())
+    if (!LLImageGL::isMetalTextureAuthority())
     {
-        // Native image uploads need the worker queue, not a shared GL context.
-        // Retaining the queue preserves asynchronous decode/upload and Metal
-        // command batching while removing this runtime OpenGL dependency.
-        LL::ThreadPool::start();
-        return;
-    }
-#endif
-
-    mContext = mWindow->createSharedContext();
-    if (!mContext)
-    {
-        // Nothing to upload on, so the thread never starts and textures and media keep to the main thread.
-        LL_WARNS("LLImageGL") << "No GL context shared with the window's; uploading on the main thread" << LL_ENDL;
+        LL_WARNS("LLImageGL")
+            << "Native image worker requires authoritative Metal textures; "
+               "asynchronous texture and media uploads are disabled"
+            << LL_ENDL;
         sEnabledTextures = false;
         sEnabledMedia = false;
         return;
     }
-    mUsesGLContext = true;
+
+    // Native image uploads need the worker queue, not a per-thread graphics
+    // context. Preserve asynchronous decode/upload and Metal command batching.
     LL::ThreadPool::start();
 }
 
@@ -5513,31 +5505,14 @@ LLImageGLThread::~LLImageGLThread()
 void LLImageGLThread::run()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-    // We must perform setup on this thread before actually servicing our
-    // WorkQueue, likewise cleanup afterwards.
-#if LL_DARWIN
     sOnImageGLThread = true;
-#endif
-    if (mUsesGLContext)
-    {
-        mWindow->makeContextCurrent(mContext);
-        gGL.init(false);
-    }
     LL::ThreadPool::run();
-#if LL_DARWIN
+
     // The queue may have been closed while an upload task was executing, preventing its
-    // commit barrier from being posted. Complete that last native batch before the shared
-    // context and its pending publications are torn down.
+    // commit barrier from being posted. Complete that last native batch before
+    // the worker and its pending publications are torn down.
     sWorkerMetalUploadBatch.mFlushQueued = false;
     flush_worker_metal_upload_batch();
-#endif
-    if (mUsesGLContext)
-    {
-        gGL.shutdown();
-        mWindow->destroySharedContext(mContext);
-    }
-#if LL_DARWIN
     sOnImageGLThread = false;
-#endif
 }
 

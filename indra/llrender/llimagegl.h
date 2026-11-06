@@ -809,8 +809,7 @@ public:
     static bool sEnabledMedia;
 
     LLImageGLThread(LLWindow* window);
-    // Joins the thread first: run() uses the window and context after the
-    // queue closes.
+    // Joins the worker before its final native upload batch is flushed.
     ~LLImageGLThread() override;
 
     // Finish the uploads posted and stop the thread, as the destructor does.
@@ -824,11 +823,6 @@ public:
     }
 
     void run() override;
-
-private:
-    LLWindow* mWindow;
-    void* mContext = nullptr;
-    bool mUsesGLContext = false;
 };
 
 #endif // LL_LLIMAGEGL_H

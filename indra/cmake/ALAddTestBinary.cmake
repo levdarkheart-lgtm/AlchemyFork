@@ -166,6 +166,13 @@ function(al_add_test_binary name)
       "al_add_test_binary(${name}): unexpected arguments: ${arg_UNPARSED_ARGUMENTS}"
     )
   endif()
+  # The Apple Silicon product has no OpenGL context or linked GL runtime.
+  # Legacy GL suites are migration coverage for other platforms and must not
+  # keep a test-only fallback backend alive in a Darwin build.
+  if(arg_GL AND DARWIN)
+    message(STATUS "Skipping legacy GL test target ${name} for Metal-only Darwin")
+    return()
+  endif()
   if(arg_RERUN_SOURCES AND NOT arg_RERUN)
     message(FATAL_ERROR "al_add_test_binary(${name}): RERUN_SOURCES needs RERUN to name the run")
   endif()
@@ -281,12 +288,6 @@ function(al_add_test_binary name)
   endif()
   if(arg_GL)
     list(APPEND labels gl)
-    # Darwin's product libraries no longer publish or link OpenGL. Keep the
-    # legacy migration suites linkable as explicit test-only consumers while
-    # their assertions are replaced with native Metal coverage.
-    if(DARWIN)
-      target_link_libraries(${target} PRIVATE ll::opengl)
-    endif()
     if(NOT AL_ENABLE_GL_TESTS)
       set(disabled TRUE)
     endif()
