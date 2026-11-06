@@ -1030,8 +1030,7 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
         sCutoutRender && mMetalWorldSnapshotRequested;
     const LensDirtConfig dirt = lensDirtConfig(true);
     const bool native_lens_dirt = !hdr || snapshot_cutout || !dirt.enabled ||
-        (mLensDirtMap.isComplete() && mLensDirtParams == dirt.plate &&
-         mMetalWorldSimpleCapture &&
+        (mMetalWorldSimpleCapture &&
          mMetalWorldSimpleCapture->lens_dirt_target &&
          mMetalWorldSimpleCapture->lens_dirt_params == dirt.plate);
     const bool wants_legacy_glow = !hdr && !snapshot_cutout &&
@@ -1184,7 +1183,6 @@ void LLPipeline::init()
             target->setLabel(ALRenderResourcePlan::name((ALRenderResourcePlan::Id)i));
         }
     }
-    mLensDirtMap.setLabel("lens.dirt");
     mReferenceStill.setLabel("reference.still");
 
     gOctreeMaxCapacity = gSavedSettings.getU32("OctreeMaxNodeCapacity");
@@ -2049,8 +2047,18 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     const bool refresh_lens_flare = lensFlareConfig(true).enabled &&
         isMainWorldPass() && mRT == &mMainRT;
     const LensDirtConfig native_dirt = lensDirtConfig(true);
+    if (!native_dirt.requested &&
+        (capture.lens_dirt_target ||
+         capture.lens_dirt_params != LensDirtPlateParams()))
+    {
+        capture.lens_dirt_target.reset();
+        capture.lens_dirt_params = LensDirtPlateParams();
+    }
+    const bool lens_dirt_drag_held =
+        mLensDirtSliderHeld && gFocusMgr.getMouseCapture() != nullptr;
     const bool refresh_lens_dirt = native_dirt.enabled &&
         capture.lens_dirt_params != native_dirt.plate &&
+        !lens_dirt_drag_held &&
         isMainWorldPass() && mRT == &mMainRT;
 
     // Count a prior mandatory native transaction that did not reach the
@@ -2282,10 +2290,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
 
     if (isMainWorldPass() && mRT == &mMainRT &&
         native_dirt.requested &&
-        capture.lens_dirt_params != native_dirt.plate)
+        capture.lens_dirt_params != native_dirt.plate &&
+        !lens_dirt_drag_held)
     {
-        // Record the attempted parameters before encoding, matching the GL
-        // owner's retry-on-change behavior rather than warning every frame
+        // Record the attempted parameters before encoding. A failed plate is
+        // retried when its description changes rather than warning every frame
         // while allocation remains unavailable.
         capture.lens_dirt_params = native_dirt.plate;
         ALMetalWorldLensDirtScene dirt;
@@ -2305,7 +2314,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         if (!capture.lens_dirt_target)
         {
             LL_WARNS("Metal")
-                << "Native world lens-dirt plate retained GL: "
+                << "Native world lens-dirt plate failed closed: "
                 << dirt_error << LL_ENDL;
         }
     }
@@ -8978,9 +8987,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const LensDirtConfig dirt = lensDirtConfig(true);
             const bool exact_lens_dirt = !capture.hdr ||
                 cutout_snapshot || !dirt.enabled ||
-                (mLensDirtMap.isComplete() &&
-                 mLensDirtParams == dirt.plate &&
-                 capture.lens_dirt_target &&
+                (capture.lens_dirt_target &&
                  capture.lens_dirt_params == dirt.plate);
             const bool exact_base =
                 canCaptureMetalWorldPresentation() && sky &&
@@ -18107,12 +18114,6 @@ void LLPipeline::releaseAllRenderResources()
     mReflectionMapManager.freeResources();
     mHeroProbeManager.cleanup();
 
-    // Clearing the recorded parameters matters as much as the release: they are
-    // what generateLensDirt compares against, so leaving them set would make it
-    // decide nothing had changed and skip rebuilding the plate it no longer has.
-    mLensDirtMap.release();
-    mLensDirtParams = LensDirtPlateParams();
-
     mColorGradeLutLoaded = false;
     mCGLutSize = LLVector4();
 #if LL_DARWIN
@@ -18314,12 +18315,16 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
             add(invalidated, "exposure and flare history");
         }
 
-        // generateLensDirt rebuilds the plate itself when the frame's size or the plate's parameters move, and
-        // captureReferenceStill drops a still of another size; the scopes resize their sample without losing it.
-        if (changes.mMainSize && mLensDirtMap.isComplete())
+        // The native lens-dirt owner rebuilds when its plate description
+        // changes; captureReferenceStill drops a still of another size and
+        // the scopes resize their sample without losing it.
+#if LL_DARWIN
+        if (changes.mMainSize && mMetalWorldSimpleCapture &&
+            mMetalWorldSimpleCapture->lens_dirt_target)
         {
             add(invalidated, "lens dirt (next frame)");
         }
+#endif
         if (changes.mMainSize && mReferenceStill.isComplete())
         {
             add(invalidated, "reference still (next frame)");
@@ -18562,8 +18567,7 @@ LLPipeline::LensDirtConfig LLPipeline::lensDirtConfig(
     config.strength = llclamp(strength_setting(), 0.f, 2.f);
     config.bloom_response = llclamp(bloom_setting(), 0.f, 2.f);
     config.flare_response = llclamp(flare_setting(), 0.f, 2.f);
-    config.requested = config.strength > 0.f &&
-        gLensDirtGenProgram.isComplete();
+    config.requested = config.strength > 0.f;
     config.enabled = config.requested && world_frame &&
         !suppressesLensAndPrintEffects();
     config.plate.width = mRT
@@ -18581,140 +18585,6 @@ LLPipeline::LensDirtConfig LLPipeline::lensDirtConfig(
     config.plate.toe = llclamp(toe_setting(), 0.6f, 4.f);
     config.plate.gain = llclamp(gain_setting(), 0.5f, 2.5f);
     return config;
-}
-
-// Lens dirt plate generator.
-//
-// Generated rather than loaded from a bundled image: a plate built at the
-// frame's own aspect keeps a mote round on an ultrawide with no cover-fit, and
-// puts the grime itself on sliders instead of shipping fixed looks and hoping
-// one fits the shot.
-//
-// This is not a per-frame pass. It runs when a parameter moves or the window
-// resizes, and that budget is what lets the shader afford four cellular layers,
-// two fBm fields and up to LENS_DIRT_MAX_LINES segment distance fields per
-// pixel. The per-frame cost of the effect is still the one texture fetch in
-// colorCorrect.
-void LLPipeline::generateLensDirt()
-{
-    const LensDirtConfig config = lensDirtConfig(true);
-
-    // Deliberately not gated on gSnapshotNoPost. That flag is true for the one
-    // frame a no-post snapshot is taken, so releasing the plate for it would
-    // buy a full regeneration on the very next frame -- a hitch every time
-    // someone takes one. colorCorrect already forces the strength uniform to 0
-    // under a clean plate, which is the gate that actually matters.
-    const bool dirt_on = config.requested;
-
-    if (!dirt_on)
-    {
-        // Release rather than merely skip, the same way the cross filter does:
-        // allocating lazily is only worth anything if switching the effect off
-        // gives the memory back. Doing it here rather than from a commit signal
-        // keeps one teardown path, inside the render loop where the target is
-        // owned, and lets the strength control stay a live slider -- wiring a
-        // slider to a reallocation handler would fire on every mouse-move.
-        if (mLensDirtMap.isComplete() ||
-            mLensDirtParams != LensDirtPlateParams())
-        {
-            mLensDirtMap.release();
-            mLensDirtParams = LensDirtPlateParams();
-        }
-#if LL_DARWIN
-        if (mMetalWorldSimpleCapture)
-        {
-            mMetalWorldSimpleCapture->lens_dirt_target.reset();
-            mMetalWorldSimpleCapture->lens_dirt_params =
-                LensDirtPlateParams();
-        }
-#endif
-        return;
-    }
-
-    // The frame's own resolution. There is no fitting to do when the plate is
-    // made at the shape it will be read at, and at GL_R8 even a 4K plate is
-    // about 8 MB -- cheap for something only allocated while the effect is on.
-    //
-    // Generating at full resolution is only affordable because the rebuild is
-    // debounced below. Capping the plate instead would bound the cost of one
-    // rebuild but not the number of them, which is the part that hurts.
-    const LensDirtPlateParams& want = config.plate;
-    const U32 gen_w = want.width;
-    const U32 gen_h = want.height;
-
-    // Compared before the target is inspected, so a plate that failed to
-    // allocate is not retried -- and this warning not repeated -- every frame
-    // while VRAM stays exhausted. The next attempt happens when something
-    // actually moves, and the bind site keeps the effect off through
-    // isComplete() until one succeeds.
-    if (want == mLensDirtParams)
-    {
-        return;
-    }
-
-    // Hold off while a generation slider is being dragged. A drag changes a
-    // parameter every frame, and at full resolution rebuilding on each one is a
-    // stutter rather than a preview -- the slower the machine, the more of the
-    // drag it stutters through, which is backwards. The rebuild instead lands
-    // once, on release, which is where the result is being looked for anyway.
-    //
-    // Only a drag is held off, which is the whole reason this is a UI signal
-    // rather than a settle timer: a typed value, a reset button, applying a
-    // Look, undo, and a window resize all arrive here with no slider down and
-    // rebuild on the spot, where a timer would have made every one of them wait
-    // for no reason. The first plate is never held off either -- until one
-    // exists the effect is simply absent, and a pause reads as a bug.
-    //
-    // The capture test is a failsafe rather than part of the logic. LLSlider
-    // raises the flag from handleMouseDown and lowers it from handleMouseUp,
-    // but it implements no onMouseCaptureLost, so a capture stolen mid-drag
-    // would otherwise leave the flag stuck and the plate frozen until something
-    // else moved. No captor means no drag, whatever the flag says.
-    if (mLensDirtSliderHeld && gFocusMgr.getMouseCapture() != nullptr)
-    {
-        return;
-    }
-
-    mLensDirtParams = want;
-
-    // Everything above is a comparison; the zone starts where the work does.
-    LL_PROFILE_GPU_ZONE("lens dirt generate");
-
-    if (mLensDirtMap.getWidth() != gen_w || mLensDirtMap.getHeight() != gen_h)
-    {
-        mLensDirtMap.release();
-        if (!mLensDirtMap.allocate(gen_w, gen_h, GL_R8))
-        {
-            LL_WARNS() << "Could not allocate the lens dirt plate; effect disabled until the parameters change" << LL_ENDL;
-            return;
-        }
-        LL_DEBUGS("Pipeline") << "Lens dirt plate at " << gen_w << "x" << gen_h << LL_ENDL;
-    }
-
-    gLensDirtGenProgram.bind();
-
-    gLensDirtGenProgram.uniform2f(LLShaderMgr::LENS_DIRT_RESOLUTION, (F32)gen_w, (F32)gen_h);
-    gLensDirtGenProgram.uniform1f(LLShaderMgr::LENS_DIRT_SEED, want.seed);
-    gLensDirtGenProgram.uniform1f(LLShaderMgr::LENS_DIRT_GRIME, want.grime);
-    gLensDirtGenProgram.uniform1f(LLShaderMgr::LENS_DIRT_MOTE_SCALE, want.mote_scale);
-    gLensDirtGenProgram.uniform1f(LLShaderMgr::LENS_DIRT_SMUDGE, want.smudge);
-    gLensDirtGenProgram.uniform1i(LLShaderMgr::LENS_DIRT_SCRATCHES, want.scratches);
-    gLensDirtGenProgram.uniform1f(LLShaderMgr::LENS_DIRT_TOE, want.toe);
-    gLensDirtGenProgram.uniform1f(LLShaderMgr::LENS_DIRT_GAIN, want.gain);
-
-    // No clear: the fullscreen triangle writes every texel with blending off,
-    // so clearing first would be pure redundant fill.
-    {
-        LLGLDisable blend(GL_BLEND);
-
-        mLensDirtMap.bindTarget();
-        mScreenTriangleVB->setBuffer();
-        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-        mLensDirtMap.flush();
-    }
-
-    gLensDirtGenProgram.unbind();
-    stop_glerror();
 }
 
 #if LL_DARWIN
@@ -25551,35 +25421,10 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
             }
         }
 
-        // Lens dirt
-        //
-        // Forced off whenever there is no plate -- generateLensDirt allocates
-        // only while the effect is on, and gives the memory back when it is
-        // not -- so the shader's early-out fires and the sampler is never read
-        // unbound, the same guard the grading LUT and the reference still use.
-        // Also off under a clean plate: dirt is a look, not a quantisation aid.
-        // And only on the world frame, like the flare: the plate is made at
-        // the screen's shape, and the material preview is not that shape.
-        S32 dirt_channel = -1;
-        {
-            const LensDirtConfig dirt = lensDirtConfig(world_frame);
-            const F32 dirt_strength = dirt.enabled &&
-                    mLensDirtMap.isComplete()
-                ? dirt.strength : 0.f;
-
-            shader->uniform1f(LLShaderMgr::LENS_DIRT_STRENGTH, dirt_strength);
-            shader->uniform1f(LLShaderMgr::LENS_DIRT_BLOOM_RESPONSE,
-                              dirt.bloom_response);
-            shader->uniform1f(LLShaderMgr::LENS_DIRT_FLARE_RESPONSE,
-                              dirt.flare_response);
-
-            if (dirt_strength > 0.f)
-            {
-                dirt_channel = shader->bindTexture(LLShaderMgr::LENS_DIRT_MAP,
-                                                   &mLensDirtMap,
-                                                   ALSamplers::BilinearClamp);
-            }
-        }
+        // Lens dirt belongs to the native display transaction. The retained
+        // post shader stays neutral until its remaining callers are removed;
+        // it neither owns nor samples a second plate.
+        shader->uniform1f(LLShaderMgr::LENS_DIRT_STRENGTH, 0.f);
 
         if (apply_tonemap)
         {
@@ -25759,10 +25604,6 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
 
-        if (dirt_channel > -1)
-        {
-            gGL.getTextureSlot(dirt_channel)->unbind();
-        }
         if (exposure_channel > -1)
         {
             gGL.getTextureSlot(exposure_channel)->unbind();
@@ -26842,10 +26683,6 @@ void LLPipeline::renderFinalize()
     // Handles tonemap, colorgrading, and gamma correction in one pass. In the HDR
     // path, this also applies eye adaptation and bloom. In the non-HDR path, this
     // is just a linear copy with color correction.
-    // Ahead of colorCorrect, which samples the plate, and outside the bloom
-    // block above because the dirt is lit by the lens flare as well as by bloom.
-    generateLensDirt();
-
     // The post chain's first target, from the pool until the frame is presented, which colorCorrect writes whole.
     // Without it, the frame goes out as the scene stands rather than not at all.
     LLRenderTarget* const post_ping = acquireResource(post, ALRenderResourcePlan::Id::MainPostPing);

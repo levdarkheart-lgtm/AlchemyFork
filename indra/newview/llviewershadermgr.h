@@ -150,11 +150,8 @@ constexpr S32               CROSS_FILTER_TAPS = 4;
 // between "is it on" and "how bright".
 constexpr F32               CROSS_FILTER_MAX_STRENGTH = 32.f;
 extern LLGLSLShader         gCrossFilterProgram;
-// Upper bound on the generator's segment loops. Injected into lensDirtGenF as
-// DIRT_MAX_LINES and used by pipeline.cpp to clamp the scratch count, so the
-// loop bound and the CPU clamp cannot drift apart.
+// Upper bound on the native generator's segment loop and the CPU control.
 constexpr S32               LENS_DIRT_MAX_LINES = 32;
-extern LLGLSLShader         gLensDirtGenProgram;
 
 // avatar shader handles
 extern LLGLSLShader         gAvatarProgram;

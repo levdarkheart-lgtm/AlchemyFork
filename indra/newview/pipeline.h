@@ -190,7 +190,6 @@ public:
     /// The auto-exposure's adapted state and the lens flare's history, as a first frame finds them.
     void resetExposureHistory();
     void setupGradingLUT();
-    void generateLensDirt();
     /// Re-bake the native tone-curve lookup row from the four
     /// RenderColorGradeCurve* settings. Runs before native world capture when
     /// possible, with colorCorrect ensuring publication on other frames: once
@@ -1925,19 +1924,6 @@ public:
     U32                 mSMAAAreaMap = 0;
     U32                 mSMAASearchMap = 0;
     U32                 mSMAASampleMap = 0;
-
-    // Lens dirt plate, generated rather than loaded -- see generateLensDirt.
-    // Nothing is allocated until the effect is switched on, and the memory goes
-    // back when it is switched off, so an incomplete target is also the signal
-    // to force the strength uniform to 0 and leave the sampler unread.
-    LLRenderTarget      mLensDirtMap;
-
-    // What the current plate was generated from. Comparing the whole set each
-    // frame is what triggers a rebuild, which covers parameter edits and window
-    // resizes through one test and needs no commit-signal plumbing. It also
-    // records a *failed* attempt, so a plate that could not be allocated is
-    // retried when something changes rather than on every frame.
-    LensDirtPlateParams mLensDirtParams;
 
     // The lens distortion auto-fit scale, and what it was solved for. The
     // solve walks the frame edge and an interior grid, and its inputs move

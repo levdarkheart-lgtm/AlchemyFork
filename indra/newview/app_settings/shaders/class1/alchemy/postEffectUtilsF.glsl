@@ -868,8 +868,8 @@ vec2 applyLensDistortion(vec2 uv)
 // per-program define can reach it. The strength is forced to 0 by the CPU
 // whenever no plate exists, so the sampler is never read unbound.
 //
-// The plate is a single channel: dirt is a scalar mask, and the generator
-// (lensDirtGenF.glsl) writes one into an R8 target.
+// The plate is a single channel: dirt is a scalar mask. The product path
+// generates it directly in the native Metal display transaction.
 
 uniform sampler2D uLensDirtMap;
 uniform float     uLensDirtStrength;   // 0 disables

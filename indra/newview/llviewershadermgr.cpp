@@ -114,7 +114,6 @@ LLGLSLShader            gBloomDownsampleFirstProgram;
 LLGLSLShader            gBloomUpsampleProgram;
 LLGLSLShader            gBloomCompositeProgram;
 LLGLSLShader            gCrossFilterProgram;
-LLGLSLShader            gLensDirtGenProgram;
 
 // Deferred rendering shaders
 LLGLSLShader            gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
@@ -1009,7 +1008,6 @@ void LLViewerShaderMgr::loadShadersEffects()
         gBloomUpsampleProgram.unload();
         gBloomCompositeProgram.unload();
         gCrossFilterProgram.unload();
-        gLensDirtGenProgram.unload();
         return;
     }
 
@@ -1098,17 +1096,6 @@ void LLViewerShaderMgr::loadShadersEffects()
         gCrossFilterProgram.clearPermutations();
         gCrossFilterProgram.addPermutation("CROSS_TAPS", std::to_string(CROSS_FILTER_TAPS));
         built(gCrossFilterProgram.createShader(), gCrossFilterProgram);
-    }
-
-    {
-        gLensDirtGenProgram.mName = "Lens Dirt Generator";
-        gLensDirtGenProgram.mShaderFiles.clear();
-        gLensDirtGenProgram.mShaderFiles.push_back(make_pair("effects/glowExtractV.glsl", GL_VERTEX_SHADER));
-        gLensDirtGenProgram.mShaderFiles.push_back(make_pair("effects/lensDirtGenF.glsl", GL_FRAGMENT_SHADER));
-        gLensDirtGenProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
-        gLensDirtGenProgram.clearPermutations();
-        gLensDirtGenProgram.addPermutation("DIRT_MAX_LINES", std::to_string(LENS_DIRT_MAX_LINES));
-        built(gLensDirtGenProgram.createShader(), gLensDirtGenProgram);
     }
 
     {

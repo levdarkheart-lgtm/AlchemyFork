@@ -2100,8 +2100,7 @@ public:
         const ALMetalWorldLensFlareStateScene& scene,
         std::string* error = nullptr);
 
-    // Generate the same full-resolution scalar dirt plate as
-    // lensDirtGenF.glsl without GL readback.
+    // Generate the full-resolution scalar dirt plate directly on Metal.
     std::unique_ptr<ALMetalRenderTarget> renderLensDirt(
         const ALMetalWorldLensDirtScene& scene,
         std::string* error = nullptr);
