@@ -133,7 +133,12 @@ namespace
         gGL.setViewport(0, 0, item.mWidth, item.mHeight);
         gGL.clear(GL_DEPTH_BUFFER_BIT);
         draw(target);
-        REQUIRE(item.mImage->setSubImageFromFrameBuffer(0, 0, 0, 0, item.mWidth, item.mHeight));
+        REQUIRE(gGL.getTextureSlot(0)->bind(item.mImage));
+        glCopyTexSubImage2D(
+            GL_TEXTURE_2D, 0, 0, 0, 0, 0,
+            item.mWidth, item.mHeight);
+        gGL.getTextureSlot(0)->unbind();
+        REQUIRE(glGetError() == GL_NO_ERROR);
     }
 
     U32 draw_framebuffer()

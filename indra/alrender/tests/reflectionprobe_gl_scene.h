@@ -29,7 +29,6 @@
 #pragma once
 
 #include "aluniformbuffer.h"
-#include "llcubemaparray.h"
 #include "llfile.h"
 #include "llgl.h"
 #include "llglheaders.h"
@@ -813,7 +812,11 @@ void main()
             mTarget.release();
             mSH.release();
             mScene.release();
-            mCube = nullptr;
+            if (mCube)
+            {
+                glDeleteTextures(1, &mCube);
+                mCube = 0;
+            }
             mTriangle = nullptr;
             gGL.matrixMode(LLRender::MM_PROJECTION);
             gGL.loadIdentity();
@@ -940,9 +943,15 @@ void main()
 
             // Each probe's cube: every face, mip and layer its own smooth colours, so a tap's direction, mip and
             // layer all show.
-            mCube = new LLCubeMapArray();
-            mCube->allocate(CUBE, 4, PROBES, true, true);
-            mCube->bind(0);
+            glGenTextures(1, &mCube);
+            REQUIRE(mCube != 0);
+            gGL.getTextureSlot(0)->bindManual(
+                ALTextureSlot::TT_CUBE_MAP_ARRAY, mCube,
+                gGL.getSampler(ALSamplers::AnisoClamp));
+            const S32 levels = LLImageGL::calcMipLevelCount(CUBE, CUBE);
+            glTexStorage3D(
+                GL_TEXTURE_CUBE_MAP_ARRAY, levels, GL_RGBA16F,
+                CUBE, CUBE, PROBES * 6);
             for (U32 level = 0, res = CUBE; res > 0; ++level, res >>= 1)
             {
                 std::vector<F32> texels(size_t(res) * res * PROBES * 6 * 4);
@@ -1219,7 +1228,9 @@ void main()
             mUBO.bind(LLGLSLShader::UB_REFLECTION_PROBES);
             S32 channel = program.enableTexture(LLShaderMgr::REFLECTION_PROBES);
             REQUIRE(channel > -1);
-            mCube->bind(channel);
+            gGL.getTextureSlot(channel)->bindManual(
+                ALTextureSlot::TT_CUBE_MAP_ARRAY, mCube,
+                gGL.getSampler(ALSamplers::AnisoClamp));
             // The classic sky takes no irradiance from the probes, so no coefficients.
             channel = program.enableTexture(LLShaderMgr::SH_COEFFS);
             if (channel > -1)
@@ -1232,7 +1243,9 @@ void main()
             channel = program.enableTexture(LLShaderMgr::HERO_PROBE);
             if (channel > -1)
             {
-                mCube->bind(channel);
+                gGL.getTextureSlot(channel)->bindManual(
+                    ALTextureSlot::TT_CUBE_MAP_ARRAY, mCube,
+                    gGL.getSampler(ALSamplers::AnisoClamp));
             }
             const LLMatrix4a identity = LLMatrix4a::identity();
             program.uniformMatrix4fv(LLShaderMgr::MODELVIEW_DELTA_MATRIX, identity);
@@ -1289,7 +1302,7 @@ void main()
         LLRenderTarget            mTarget;
         LLRenderTarget            mSH;
         LLRenderTarget            mScene; ///< what the screen-space reflections march: a colour and its depth
-        LLPointer<LLCubeMapArray> mCube;
+        GLuint                    mCube = 0;
         ALUniformBuffer           mUBO;
         LLPointer<LLVertexBuffer> mTriangle;
         S32                       mW = 0;

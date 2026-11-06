@@ -6505,7 +6505,7 @@ bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, S32 face,
 
     mWorldViewRectRaw.set(0, res, res, 0);
 
-    // these are the 6 directions we will point the camera, see LLCubeMapArray::sTargets
+    // These are the six canonical cube-face directions in layer order.
     LLVector3 look_dirs[6] = {
         LLVector3(1, 0, 0),
         LLVector3(-1, 0, 0),

@@ -716,15 +716,12 @@ static bool isSizedInternalFormat(S32 intformat)
 // cannot be expressed in D3D11/12 or Vulkan either, so there is nothing to fall back to.
 static void assertStorageAllocatable(U32 target, S32 intformat)
 {
-    // A non-2D target needs its own glTexStorage variant, called ONCE for the whole object
-    // -- six cube faces are one allocation, not six -- after which the members write
-    // sub-images. LLCubeMapArray does that itself and calls
-    // markStorageAllocated(), so it never arrives here.
+    // A non-2D target needs its own storage owner and must not arrive at the
+    // generic 2D allocator.
     if (target != GL_TEXTURE_2D)
     {
         LL_WARNS_ONCE("RenderInit") << "Non-2D target 0x" << std::hex << target << std::dec
-                                    << " reached the 2D allocator. Allocate it once for the "
-                                    << "whole object, then call markStorageAllocated()."
+                                    << " reached the 2D allocator."
                                     << LL_ENDL;
         llassert(false);
     }
@@ -1314,10 +1311,9 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
     // glTexStorage2D must be called exactly once for the object and needs the level count
     // before any pixels exist, which is why this cannot live inside the per-level loops.
     //
-    // Skipped when storage already exists: either allocated here on an earlier pass (the
-    // early re-upload path, where createGLTexture writes into the live mTexName because the
-    // size has not changed), or by the owner of a shared texture object -- see
-    // markStorageAllocated, which is how cube maps work. Reallocating is illegal either way.
+    // Skipped when storage was allocated here on an earlier pass (the early
+    // re-upload path, where createGLTexture writes into the live mTexName
+    // because the size has not changed). Reallocating is illegal.
     // Live members, not the getters: during an off-thread createGLTexture the getters
     // answer for the still-published texture (mUploadInFlight), and storage sized from
     // that would build the new texture at the old texture's dimensions.
@@ -3193,30 +3189,6 @@ bool LLImageGL::setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S3
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     return setSubImage(imageraw->getData(), imageraw->getWidth(), imageraw->getHeight(), x_pos, y_pos, width, height, force_fast_update, use_name, skip_unbind);
-}
-
-// Copy sub image from frame buffer
-bool LLImageGL::setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_pos, S32 width, S32 height)
-{
-    if (gGL.getTextureSlot(0)->bind(this, false, true))
-    {
-        touchContents();
-        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, x_pos, y_pos, fb_x, fb_y, width, height);
-#if LL_DARWIN
-        // The source framebuffer is still GL-owned. Until render targets are native Metal,
-        // there is no correct source texture to blit from, so make the mirror unavailable
-        // rather than leaving native draws to sample stale pixels.
-        mMetalTexture.reset();
-        mPendingMetalTexture.reset();
-#endif
-        mGLTextureCreated = true;
-        stop_glerror();
-        return true;
-    }
-    else
-    {
-        return false;
-    }
 }
 
 // static
@@ -5252,8 +5224,7 @@ void LLImageGL::allocateTextureStorage(S32 width, S32 height, bool has_mips)
 
 bool LLImageGL::storageFits(S32 width, S32 height) const
 {
-    // Nothing allocated yet: setImage allocates it at this size. Allocated by the owner of
-    // a shared texture object (markStorageAllocated, no description): sized by that owner.
+    // Nothing allocated yet: setImage allocates it at this size.
     if (!mStorageAllocated || mStorage.mLevels == 0)
     {
         return true;

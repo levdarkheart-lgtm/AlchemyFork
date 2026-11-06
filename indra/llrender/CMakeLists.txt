@@ -18,7 +18,6 @@ set(
   alfontshaping.cpp
   aluniformbuffer.cpp
   llcubemap.cpp
-  llcubemaparray.cpp
   llfontbitmapcache.cpp
   llfontfreetype.cpp
   llfontgl.cpp
@@ -60,7 +59,6 @@ set(
   alfontshaping.h
   aluniformbuffer.h
   llcubemap.h
-  llcubemaparray.h
   llfontgl.h
   llfonttextcache.h
   llfontfreetype.h

@@ -271,7 +271,6 @@ public:
     // updates do not work on compressed textures.
     bool setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false, LLGLuint use_name = 0, bool skip_unbind = false);
     bool setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false, LLGLuint use_name = 0, bool skip_unbind = false);
-    bool setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_pos, S32 width, S32 height);
 
     // Off the main thread: fence this thread's upload of new_tex_name and hand it to the main
     // thread, which publishes it in place of mTexName once the fence has signalled (see
@@ -585,12 +584,10 @@ private:
     // Whether mTexName has had its storage allocated yet. Storage is always immutable
     // (glTexStorage2D), so it can be allocated exactly once: every upload afterwards is a
     // sub-image write, and any size or format change has to build a new texture object.
-    // Set either by allocateTextureStorage or by markStorageAllocated when the owner of a
-    // shared texture object allocated on this instance's behalf. Reset whenever a fresh
-    // name is bound.
+    // Set by allocateTextureStorage and reset whenever a fresh name is bound.
     bool     mStorageAllocated = false;
     // What allocateTextureStorage gave it, so a later upload can tell whether it still
-    // fits. All zero when the owner of a shared object allocated it.
+    // fits.
     struct StorageDesc
     {
         S32 mWidth  = 0;
@@ -760,14 +757,6 @@ public:
 
     void setTexName(GLuint texName) { mTexName = texName; }
 
-    // Declare that this image's texture object already has immutable storage, allocated
-    // by whoever owns it. LLCubeMapArray uses one object for every cube face/layer and
-    // allocates all of that storage with one glTexStorage3D call before uploads.
-    void markStorageAllocated()
-    {
-        mStorageAllocated = true;
-        mStorage = StorageDesc();
-    }
     // Publish texname in place of mTexName, deleting the old one, along with what the
     // upload that built it staged (the pick mask), then end the upload. Main thread.
     void syncTexName(LLGLuint texname);
