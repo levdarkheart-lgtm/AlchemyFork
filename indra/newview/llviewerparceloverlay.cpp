@@ -439,9 +439,9 @@ void LLViewerParcelOverlay::updateOverlayTexture()
     // Publish the completed CPU image to renderer-owned texture storage.
     if (i >= COUNT)
     {
-#if LL_DARWIN
         bool uploaded = false;
-        if (!mOverlayTextureNative || mTexture->hasGLTexture())
+        if (!mOverlayTextureNative ||
+            !mTexture->getGLTexture()->getMetalTexture())
         {
             uploaded = mTexture->createMetalTexture(
                 0, mImageRaw.get(), LLGLTexture::LOCAL);
@@ -469,14 +469,6 @@ void LLViewerParcelOverlay::updateOverlayTexture()
             LL_WARNS("Parcel") << "Could not publish the parcel overlay to native texture storage"
                                << LL_ENDL;
         }
-#else
-        if (!mTexture->hasGLTexture())
-        {
-            mTexture->createGLTexture(0, mImageRaw);
-        }
-        mTexture->setSubImage(mImageRaw, 0, 0, mParcelGridsPerEdge, mParcelGridsPerEdge);
-        mOverlayTextureIdx = -1;
-#endif
     }
     else
     {

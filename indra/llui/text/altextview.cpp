@@ -280,7 +280,13 @@ namespace
                 texel[3] = static_cast<U8>(llround(cover * 255.f));
             }
         }
-        texture = new LLImageGL(raw, false);
+        texture = new LLImageGL(width, height, 4, false);
+        if (!texture->createMetalTexture(0, raw.get()))
+        {
+            LL_WARNS("Text") << "Could not publish the spellcheck squiggle texture"
+                             << LL_ENDL;
+            texture = nullptr;
+        }
         made_at = scale;
         return texture;
     }

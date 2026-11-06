@@ -106,8 +106,7 @@ bool publish_minimap_image(LLViewerTexture* texture, const LLImageRaw* raw,
 
     texture->setExplicitFormat(GL_RGBA8, GL_RGBA);
     auto* native_image = texture->getGLTexture();
-    const bool uploaded = native_image->getMetalTexture() &&
-                          !native_image->getHasGLTexture()
+    const bool uploaded = native_image->getMetalTexture()
         ? native_image->uploadMetalSubImage(
             raw->getData(), raw->getWidth(), raw->getHeight(),
             0, 0, raw->getWidth(), raw->getHeight())
@@ -425,7 +424,6 @@ void LLNetMap::draw()
                     // Draw objects
                     gObjectList.renderObjectsForMap(*this);
 
-#if LL_DARWIN
                     if (publish_minimap_image(
                             mObjectImagep, mObjectRawImagep, "object-map"))
                     {
@@ -439,11 +437,6 @@ void LLNetMap::draw()
                         mObjectImageCenterGlobal = previous_center;
                         mUpdateObjectImage = true;
                     }
-#else
-                    mObjectImagep->setSubImage(mObjectRawImagep, 0, 0, mObjectImagep->getWidth(), mObjectImagep->getHeight());
-                    mUpdateObjectImage = false;
-                    map_timer.reset();
-#endif
                 }
 
                 LLVector3 map_center_agent = gAgent.getPosAgentFromGlobal(mObjectImageCenterGlobal);
@@ -476,9 +469,7 @@ void LLNetMap::draw()
             {
                 if (mUpdateParcelImage || dist_vec_squared2D(mParcelImageCenterGlobal, pos_center_global) > 9.0f)
                 {
-#if LL_DARWIN
                     const LLVector3d previous_center = mParcelImageCenterGlobal;
-#endif
                     mParcelImageCenterGlobal = pos_center_global;
 
                     // Create the base texture.
@@ -495,7 +486,6 @@ void LLNetMap::draw()
                         renderPropertyLinesForRegion(region, overlay_color);
                     }
 
-#if LL_DARWIN
                     if (publish_minimap_image(
                             mParcelImagep, mParcelRawImagep, "parcel-map"))
                     {
@@ -508,10 +498,6 @@ void LLNetMap::draw()
                         mParcelImageCenterGlobal = previous_center;
                         mUpdateParcelImage = true;
                     }
-#else
-                    mParcelImagep->setSubImage(mParcelRawImagep, 0, 0, mParcelImagep->getWidth(), mParcelImagep->getHeight());
-                    mUpdateParcelImage = false;
-#endif
                 }
 
                 LLVector3 map_center_agent = gAgent.getPosAgentFromGlobal(mParcelImageCenterGlobal);

@@ -71,8 +71,8 @@ namespace LLImageGLMemory
 }
 
 //============================================================================
-// NOTE: thread-safe refcount rather than plain LLRefCount because syncToMainThread()
-// takes a reference on the LLImageGL thread which is released on the main thread.
+// NOTE: thread-safe refcount rather than plain LLRefCount because native upload
+// publication takes a worker reference which is released on the main thread.
 // Refcount traffic here is per-texture-lifetime (LLImageGL lives in member slots like
 // LLGLTexture::mGLTexturep, it isn't copied through hot loops), so the atomic is not on
 // any measured path.
@@ -84,23 +84,16 @@ public:
     // call once per frame
     static void updateClass();
 
-    // Main thread: publish every off-thread upload whose GL fence has signalled or whose
-    // native-only Metal batch has committed (syncTexName/native mirror, then afterPublish
-    // callbacks). Returns how many still wait. With `poll` it polls GL fences no frame's
-    // end has seen signalled; without, it asks GL nothing and publishes what pollUploads
-    // saw plus committed native-only uploads. updateClass publishes without polling.
-    static U32 publishUploads(bool poll = true);
+    // Main thread: publish every off-thread native upload whose Metal batch has committed.
+    // Returns how many still wait.
+    static U32 publishUploads();
 
-    // Main thread, at the frame's end (LLRender::endFrame): poll the fences of the uploads
-    // handed over, oldest first, for updateClass to publish the signalled ones. A poll is a
-    // call that returns a value, which a threaded driver answers only once its own thread has
-    // caught up: in the middle of a frame that is most of the frame, where at its end the
-    // frame fences' calls have just caught it up.
+    // Main thread, at frame end: retained publication hook. Metal completion tokens need
+    // no active poll; publishUploads observes them at the next publication point.
     static void pollUploads();
 
-    // Main thread, as the viewer shuts down: wait for the GPU on every upload handed over, a
-    // second at most in all, and publish them, since nothing will poll again. What has not
-    // signalled by then goes unpublished with the rest in cleanupClass.
+    // Main thread at shutdown: allow up to one second for native batches to commit and
+    // publish; cleanup discards anything still pending.
     static void finishUploads();
 
     // Get an estimate of how many bytes have been allocated in vram for
@@ -204,14 +197,14 @@ protected:
     // Rewrite mFormatPrimary/mFormatInternal from deprecated forms
     // (GL_LUMINANCE / GL_ALPHA / GL_LUMINANCE_ALPHA) to their core-profile-
     // valid equivalents (GL_RED + R8 with a {R,R,R,1} swizzle, etc.). Records
-    // the swizzle mask so the next createGLTexture can apply it once. No-op
-    // for non-deprecated formats.
+    // the source semantics so native descriptors and remaining legacy raw-name
+    // producers can apply the matching swizzle. No-op for non-deprecated formats.
     //
     // Must run AFTER calcAlphaChannelOffsetAndStride: the alpha layout
     // calc keys on the deprecated names (GL_LUMINANCE_ALPHA stride=2 etc).
     // After rewrite, mAlphaStride/mAlphaOffset are still correct for the
     // physical data layout (1 byte per channel either way), and subsequent
-    // setSubImage / readBackRaw / scaleDown read the live format names.
+    // native uploads / readBackRaw / scaleDown read the live format names.
     void resolveDeprecatedFormat();
 
 public:
@@ -251,40 +244,19 @@ public:
     // outside llrender don't need to know the GL_RED/GL_GREEN/GL_ZERO/GL_ONE
     // mask layout (or even that GL_TEXTURE_SWIZZLE_RGBA exists).
     //
-    // For LLImageGL instances, createGLTexture calls this internally based
-    // on the format resolved by setExplicitFormat / the auto-format switch;
-    // callers uploading into a raw GL texture name (e.g. llvoavatar's
-    // morph-mask upload) call this themselves before/after binding.
+    // Legacy raw-name producers use this to express deprecated source formats.
     static void applySwizzleForDeprecatedFormat(ALTextureSlot::eTextureType type, U32 original_format);
 
-    bool createGLTexture() ;
-    bool createGLTexture(S32 discard_level, const LLImageRaw* imageraw, S32 usename = 0, bool to_create = true,
-        S32 category = sMaxCategories-1, bool defer_copy = false, LLGLuint* tex_name = nullptr);
     // Publish decoded-image geometry, format and discard state without creating
     // GPU storage. Any obsolete GL or Metal backing is released.
     bool setImageMetadata(S32 discard_level, const LLImageRaw* imageraw);
-    bool createGLTexture(S32 discard_level, const U8* data, bool data_hasmips = false, S32 usename = 0, bool defer_copy = false, LLGLuint* tex_name = nullptr);
-    void setImage(const LLImageRaw* imageraw);
-    bool setImage(const U8* data_in, bool data_hasmips = false, S32 usename = 0);
-    // *TODO: This function may not work on block-compressed textures (i.e. those
-    // uploaded already compressed, where isCompressed() is true). Partial image
-    // updates do not work on compressed textures.
-    bool setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false, LLGLuint use_name = 0, bool skip_unbind = false);
-    bool setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false, LLGLuint use_name = 0, bool skip_unbind = false);
 
-    // Off the main thread: fence this thread's upload of new_tex_name and hand it to the main
-    // thread, which publishes it in place of mTexName once the fence has signalled (see
-    // publishUploads). Does not wait for the GPU.
-    void syncToMainThread(LLGLuint new_tex_name);
-
-    // Main thread: run fn once the upload handed over by syncToMainThread has published, or
+    // Main thread: run fn once the native worker upload has published, or
     // now if none is waiting. A caller finishing an off-thread upload goes through this, so
     // what it does next -- ending the snapshot, letting another upload start -- follows the
     // texture onto the screen rather than racing it.
     void afterPublish(std::function<void()> fn);
-    // As above, with whether every queued native mirror committed successfully. A GL
-    // upload can still publish when its companion native batch fails; native-only callers
-    // use this result to keep their prior frame authoritative.
+    // As above, with whether every queued native generation committed successfully.
     void afterPublish(std::function<void(bool)> fn);
 
     // Read back a raw image for this discard level, if it exists
@@ -510,24 +482,22 @@ private:
     };
     PendingAlpha mPendingAlpha;
 
-    // Off-thread uploads of this image handed to the main thread and not yet published, and
-    // what is to run once none are. Main thread only; see syncToMainThread / afterPublish.
+    // Off-thread native uploads handed to the main thread and not yet published.
     using UploadCompletion = std::shared_ptr<std::atomic<U8>>;
-    void queuePublish(LLGLuint name, GLsync fence, UploadCompletion metal_completion = {});
-    void finishPublish(LLGLuint name, bool metal_upload_succeeded = true);
+    void queuePublish(UploadCompletion metal_completion = {});
+    void finishPublish(bool metal_upload_succeeded = true);
     U32 mPublishesPending = 0;
     bool mPublishesSucceeded = true;
     std::vector<std::function<void(bool)>> mOnPublished;
 
-    // Geometry of the texture mTexName currently names, captured when an off-thread
+    // Geometry of the currently published texture, captured when an off-thread
     // upload begins overwriting the members with the *next* texture's geometry.
     //
-    // createGLTexture runs on the LLImageGL thread and writes mWidth/mHeight/mComponents
-    // (via setSize) and mCurrentDiscardLevel long before syncTexName publishes the new
-    // mTexName on the main thread. Without this the image advertises the new texture's
-    // dimensions while still naming the old one for the whole upload, and anything
-    // pairing the two -- sculpt reading back from GL at the advertised size -- gets
-    // garbage. Only consulted while mUploadInFlight; the members are the truth otherwise.
+    // createMetalTexture runs on the LLImageGL thread and writes
+    // mWidth/mHeight/mComponents (via setSize) and mCurrentDiscardLevel before
+    // syncTexName publishes the new native generation on the main thread. Without this,
+    // the image advertises the next generation's dimensions while consumers still sample
+    // the old one. Only consulted while mUploadInFlight; the members are the truth otherwise.
     // Both are written on the main thread only; see beginUpload.
     struct PublishedGeom
     {
@@ -536,7 +506,7 @@ private:
         S8  mComponents = 0;
         S8  mCurrentDiscardLevel = -1;
         S8  mMaxDiscardLevel = 0;
-        // The format, which createGLTexture works out again from mComponents for every
+        // The format, which createMetalTexture works out again from mComponents for every
         // upload of an image without an explicit one.
         LLGLenum mFormatPrimary = 0;
         LLGLenum mDeprecatedSourceFormat = 0;
@@ -557,10 +527,9 @@ private:
     PublishedGeom mPublished;
     bool     mUploadInFlight = false;
 
-    // Live geometry for the UPLOAD path. setImage runs while mUploadInFlight is set (the
-    // off-thread createGLTexture), and it describes the texture being BUILT -- the getters
-    // above keep answering for the texture mTexName still names, so sizing storage or the
-    // per-level writes through them would build the new texture at the old texture's size.
+    // Live geometry for the upload path. createMetalTexture runs while mUploadInFlight is
+    // set and describes the texture being built. The getters above keep answering for the
+    // published generation, so upload sizing must read these live members directly.
     S32 liveWidth(S32 discard_level) const
     {
         return llmax(mWidth >> llmax(discard_level, 0), 1);
@@ -669,11 +638,9 @@ public:
         U32 mHeight = 0;
     };
 
-    // On the main thread, create and populate a native-only 2D image. This establishes the
-    // same geometry/format/accounting metadata as createGLTexture, generates a complete
-    // native mip chain when this image was constructed with usemipmaps, and deliberately
-    // leaves mTexName at zero so a Metal-owned producer does not allocate a parallel GL
-    // resource.
+    // Create and populate a native-only 2D image. This establishes complete
+    // geometry/format/accounting metadata, generates a native mip chain when this image
+    // was constructed with usemipmaps, and leaves mTexName at zero.
     bool createMetalTexture(S32 discard_level, const LLImageRaw* image,
                             S32 category = sMaxCategories - 1);
     // As above, for typed source data whose byte size is described by the
@@ -699,8 +666,8 @@ public:
     // main thread the committed write updates the live mirror.
     bool uploadMetalImage(const LLImageRaw* image);
 
-    // Main-thread, native-only counterpart of the same-coordinate setSubImage
-    // contract: (x, y, width, height) selects both the source rectangle in the
+    // Main-thread native subimage contract: (x, y, width, height) selects both
+    // the source rectangle in the
     // full data_width x data_height image and its destination in this image.
     // No GL name is required or modified.
     bool uploadMetalSubImage(const U8* data, S32 data_width, S32 data_height,

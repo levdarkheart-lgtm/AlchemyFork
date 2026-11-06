@@ -170,31 +170,17 @@ bool ALTerrainSurfaceMaps::upload(LLPointer<LLImageGL>& image, S32 internal_form
 {
     const U8* bytes = reinterpret_cast<const U8*>(data.data());
     bool needs_image = image.isNull() || image->getWidth() != mSize;
-#if LL_DARWIN
     needs_image = needs_image || (image.notNull() &&
-        (image->getHasGLTexture() || !image->getMetalTexture()));
-#else
-    needs_image = needs_image || (image.notNull() && !image->getHasGLTexture());
-#endif
+        !image->getMetalTexture());
     if (needs_image)
     {
         image = new LLImageGL(mSize, mSize, components, /*usemipmaps=*/false);
         image->setExplicitFormat(internal_format, primary_format, GL_FLOAT);
-#if LL_DARWIN
         return image->createMetalTexture(0, bytes);
-#else
-        return image->createGLTexture(0, bytes);
-#endif
     }
     else if (whole)
     {
-#if LL_DARWIN
         return image->uploadMetalSubImage(bytes, mSize, mSize, 0, 0, mSize, mSize);
-#else
-        const bool uploaded = image->setImage(bytes);
-        gGL.getTextureSlot(0)->unbind();
-        return uploaded;
-#endif
     }
     else
     {
@@ -203,11 +189,6 @@ bool ALTerrainSurfaceMaps::upload(LLPointer<LLImageGL>& image, S32 internal_form
         const S32 y = rect.y0 + APRON;
         const S32 width = rect.x1 - rect.x0 + 1;
         const S32 height = rect.y1 - rect.y0 + 1;
-#if LL_DARWIN
         return image->uploadMetalSubImage(bytes, mSize, mSize, x, y, width, height);
-#else
-        return image->setSubImage(bytes, mSize, mSize, x, y, width, height,
-                                  /*force_fast_update=*/true);
-#endif
     }
 }

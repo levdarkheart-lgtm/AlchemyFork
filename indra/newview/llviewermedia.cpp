@@ -3142,8 +3142,8 @@ void LLViewerMediaImpl::update()
 #if LL_IMAGEGL_THREAD_CHECK
                     media_tex->getGLTexture()->mActiveThread = LLThread::currentID();
 #endif
-                    // The frame publishes once the worker's upload has reached its GL
-                    // fence or Metal submission boundary; the next update starts after it.
+                    // The frame publishes once the worker's Metal batch has committed;
+                    // the next update starts after it.
                     gl_image->afterPublish([=, this](bool publication_succeeded)
                     {
                         if (upload_succeeded->load(std::memory_order_acquire) &&
@@ -3236,8 +3236,7 @@ bool LLViewerMediaImpl::doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* da
     LL_PROFILE_ZONE_SCOPED_CATEGORY_MEDIA;
     LLCoros::LockType lock(mLock); // don't allow media source tear-down during update
 
-    // wrap "data" in an LLImageRaw but do NOT make a copy
-#if LL_DARWIN
+    // Wrap "data" in an LLImageRaw but do not make a copy.
     LLPointer<LLImageRaw> raw = new LLImageRaw(
         data, data_width, data_height, media_tex->getComponents(), true);
 
@@ -3268,52 +3267,6 @@ bool LLViewerMediaImpl::doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* da
             LL_WARNS("Media") << "Failed to queue native media publication" << LL_ENDL;
         }
     }
-#else
-    LLPointer<LLImageRaw> raw = new LLImageRaw(
-        data, media_tex->getWidth(), media_tex->getHeight(),
-        media_tex->getComponents(), true);
-
-    // *NOTE: Recreating the GL texture each media update may seem wasteful
-    // (note the texture creation in preMediaTexUpdate), however, it apparently
-    // prevents GL calls from blocking, due to poor bookkeeping of state of
-    // updated textures by the OpenGL implementation. (Windows 10/Nvidia)
-    // -Cosmic,2023-04-04
-    // Allocate GL texture based on LLImageRaw but do NOT copy to GL
-    LLGLuint tex_name = 0;
-    bool uploaded = false;
-    {
-        // Phase 0 baseline: this GL allocate + CPU->GPU upload is exactly the
-        // per-surface cost the accelerated-paint (shared-texture) path removes,
-        // so isolate it under its own zone for before/after comparison.
-        LL_PROFILE_ZONE_NAMED_CATEGORY_MEDIA("media texUpload");
-        if (!media_tex->createGLTexture(0, raw, 0, true, LLGLTexture::OTHER, true, &tex_name))
-        {
-            LL_WARNS("Media") << "Failed to create media texture" << LL_ENDL;
-        }
-        else
-        {
-            // copy just the subimage covered by the image raw to GL
-            uploaded = media_tex->setSubImage(
-                data, data_width, data_height, x_pos, y_pos,
-                width, height, false, tex_name);
-        }
-    }
-
-    // With no new texture there is nothing to upload into or publish. Given a tex_name of
-    // 0, setSubImage writes the texture on screen instead -- from the worker, while the
-    // main thread may be sampling it.
-    if (uploaded && tex_name != 0)
-    {
-        if (sync)
-        {
-            media_tex->getGLTexture()->syncToMainThread(tex_name);
-        }
-        else
-        {
-            media_tex->getGLTexture()->syncTexName(tex_name);
-        }
-    }
-#endif
 
     // release the data pointer before freeing raw so LLImageRaw destructor doesn't
     // free memory at data pointer
@@ -3451,12 +3404,7 @@ LLViewerMediaTexture* LLViewerMediaImpl::updateMediaImage()
         int texture_height = mMediaSource->getTextureHeight();
         int texture_depth = mMediaSource->getTextureDepth();
 
-        // MEDIAOPT: check to see if size actually changed before doing work. Darwin's
-        // native creation retires any prior fallback itself; other platforms retain the
-        // explicit GL recreation behavior.
-#if !LL_DARWIN
-        media_tex->destroyGPUTexture();
-#endif
+        // Native creation retires the prior generation transactionally.
 
         // MEDIAOPT: seems insane that we actually have to make an imageraw then
         // immediately discard it
@@ -3472,17 +3420,10 @@ LLViewerMediaTexture* LLViewerMediaImpl::updateMediaImage()
             mMediaSource->getTextureFormatSwapBytes());
 
         int discard_level = 0;
-#if LL_DARWIN
         if (!media_tex->createMetalTexture(discard_level, raw, LLGLTexture::MEDIA))
         {
             LL_WARNS("Media") << "Failed to create native media texture" << LL_ENDL;
         }
-#else
-        if (!media_tex->createGLTexture(discard_level, raw))
-        {
-            LL_WARNS("Media") << "Failed to create media texture" << LL_ENDL;
-        }
-#endif
 
         // MEDIAOPT: set this dynamically on play/stop
         // FIXME

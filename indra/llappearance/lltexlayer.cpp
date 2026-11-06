@@ -1968,14 +1968,8 @@ LLGLTexture* LLTexLayerStaticImageList::getTexture(const std::string& file_name,
 
                 image_raw->copyUnscaledAlphaMask(alpha_image_raw, LLColor4U::black);
             }
-#if LL_DARWIN
             const bool created =
                 tex->createMetalTexture(0, image_raw, LLGLTexture::LOCAL);
-#else
-            const bool created =
-                tex->createGLTexture(
-                    0, image_raw, 0, true, LLGLTexture::LOCAL);
-#endif
             if (!created)
             {
                 LL_WARNS() << "Failed to create appearance texture for image: "

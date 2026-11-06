@@ -335,19 +335,12 @@ bool LLTexLayerParamAlpha::render(S32 x, S32 y, S32 width, S32 height)
         {
             {
                 // Materialize the processed alpha once and retain it for later
-                // composites. Darwin publishes native-only Metal backing;
-                // other platforms retain the established GL upload.
+                // composites in native Metal storage.
                 if (mNeedsCreateTexture)
                 {
-#if LL_DARWIN
                     const bool created =
                         mCachedProcessedTexture->createMetalTexture(
                             0, mStaticImageRaw, LLGLTexture::LOCAL);
-#else
-                    const bool created =
-                        mCachedProcessedTexture->createGLTexture(
-                            0, mStaticImageRaw);
-#endif
                     if (!created)
                     {
                         LL_WARNS() << "Failed to create appearance alpha texture for image: "

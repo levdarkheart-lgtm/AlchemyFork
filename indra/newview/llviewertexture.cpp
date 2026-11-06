@@ -267,24 +267,13 @@ LLPointer<LLViewerTexture> LLViewerTextureManager::getLocalTexture(const LLUUID&
 }
 LLPointer<LLViewerTexture> LLViewerTextureManager::getLocalTexture(const LLImageRaw* raw, bool usemipmaps)
 {
-#if LL_DARWIN
-    // Constructing LLViewerTexture from LLImageRaw calls the legacy upload
-    // constructor immediately, so select the production Metal owner before
-    // constructing the backing object.
-    if (LLImageGL::isMetalTextureAuthority())
+    LLPointer<LLViewerTexture> tex = new LLViewerTexture(
+        raw->getWidth(), raw->getHeight(), raw->getComponents(), usemipmaps);
+    if (!tex->createMetalTexture(0, raw, LLGLTexture::LOCAL))
     {
-        LLPointer<LLViewerTexture> tex = new LLViewerTexture(
-            raw->getWidth(), raw->getHeight(), raw->getComponents(), usemipmaps);
-        if (!tex->createMetalTexture(0, raw, LLGLTexture::LOCAL))
-        {
-            LL_WARNS("Metal") << "Failed to publish a local texture natively"
-                              << LL_ENDL;
-        }
-        return tex;
+        LL_WARNS("Metal") << "Failed to publish a local texture natively"
+                          << LL_ENDL;
     }
-#endif
-    LLPointer<LLViewerTexture> tex = new LLViewerTexture(raw, usemipmaps);
-    tex->setCategory(LLGLTexture::LOCAL);
     return tex;
 }
 LLPointer<LLViewerTexture> LLViewerTextureManager::getLocalTexture(const U32 width, const U32 height, const U8 components, bool usemipmaps, bool generate_gl_tex)
@@ -301,29 +290,16 @@ LLPointer<LLViewerTexture> LLViewerTextureManager::getLocalTexture(const U32 wid
 LLViewerFetchedTexture* LLViewerTextureManager::getFetchedTexture(const LLImageRaw* raw, FTType type, bool usemipmaps)
 {
     LLImageDataSharedLock lock(raw);
-#if LL_DARWIN
-    LLViewerFetchedTexture* ret = nullptr;
-    if (LLImageGL::isMetalTextureAuthority())
+    LLUUID id;
+    id.generate();
+    LLViewerFetchedTexture* ret =
+        new LLViewerFetchedTexture(id, type, LLHost(), usemipmaps);
+    if (!ret->createMetalTexture(0, raw, LLGLTexture::OTHER))
     {
-        LLUUID id;
-        id.generate();
-        ret = new LLViewerFetchedTexture(id, type, LLHost(), usemipmaps);
-        if (!ret->createMetalTexture(0, raw, LLGLTexture::OTHER))
-        {
-            LL_WARNS("Metal")
-                << "Failed to publish an in-memory fetched texture natively"
-                << LL_ENDL;
-        }
+        LL_WARNS("Metal")
+            << "Failed to publish an in-memory fetched texture natively"
+            << LL_ENDL;
     }
-    else
-    {
-        // The raw-image constructor retains exact GL recovery pixels while the
-        // transitional renderer is active and creates the paired Metal mirror.
-        ret = new LLViewerFetchedTexture(raw, type, usemipmaps);
-    }
-#else
-    LLViewerFetchedTexture* ret = new LLViewerFetchedTexture(raw, type, usemipmaps);
-#endif
     gTextureList.addImage(ret, TEX_LIST_STANDARD);
     return ret;
 }
@@ -445,13 +421,8 @@ void LLViewerTextureManager::init()
             }
         }
     }
-#if LL_DARWIN
-    const bool default_created = LLImageGL::isMetalTextureAuthority()
-        ? imagep->createMetalTexture(0, image_raw, LLGLTexture::OTHER)
-        : imagep->createGLTexture(0, image_raw);
-#else
-    const bool default_created = imagep->createGLTexture(0, image_raw);
-#endif
+    const bool default_created =
+        imagep->createMetalTexture(0, image_raw, LLGLTexture::OTHER);
     if (!default_created)
     {
         LL_WARNS() << "Failed to create default texture " << IMG_DEFAULT << LL_ENDL;
@@ -1616,46 +1587,37 @@ bool LLViewerFetchedTexture::createTexture(S32 usename, S32 category)
         return false;
     }
 
-#if LL_DARWIN
     // Build a staged native generation, then retire any older backing only
     // after Metal has committed. The same path runs on the image worker without
     // requiring a shared GL context.
-    if (LLImageGL::isMetalTextureAuthority())
+    if (usename != 0)
     {
-        if (usename != 0)
-        {
-            return false;
-        }
+        return false;
+    }
 
-        const bool main_thread = on_main_thread();
+    const bool main_thread = on_main_thread();
+    if (main_thread)
+    {
+        mGLTexturep->beginUpload(mRawImage->getComponents());
+    }
+    const bool created = mGLTexturep->createMetalTexture(
+        mRawDiscardLevel, mRawImage, category);
+    if (created)
+    {
         if (main_thread)
         {
-            mGLTexturep->beginUpload(mRawImage->getComponents());
+            mGLTexturep->publishMetalTextureAuthoritative();
         }
-        const bool created = mGLTexturep->createMetalTexture(
-            mRawDiscardLevel, mRawImage, category);
-        if (created)
+        else
         {
-            if (main_thread)
-            {
-                mGLTexturep->publishMetalTextureAuthoritative();
-            }
-            else
-            {
-                return mGLTexturep->syncMetalToMainThread();
-            }
+            return mGLTexturep->syncMetalToMainThread();
         }
-        else if (main_thread)
-        {
-            mGLTexturep->cancelUpload();
-        }
-        return created;
     }
-#endif
-
-    bool res = mGLTexturep->createGLTexture(mRawDiscardLevel, mRawImage, usename, true, category);
-
-    return res;
+    else if (main_thread)
+    {
+        mGLTexturep->cancelUpload();
+    }
+    return created;
 }
 
 void LLViewerFetchedTexture::postCreateTexture()
@@ -1761,10 +1723,10 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
                         [this, gl_image]()
                         {
 #endif
-                        // The worker is done, but its texture publishes only once the GPU
-                        // has finished with it, which nothing waits for. Finish then: ending
-                        // the snapshot, or clearing mNeedsCreateTexture and so letting the
-                        // next upload start, must not run ahead of it.
+                        // The worker is done, but its texture publishes only after the
+                        // shared Metal command batch commits. Finish then: ending the
+                        // snapshot, or clearing mNeedsCreateTexture and letting the next
+                        // upload start, must not run ahead of publication.
                         gl_image->afterPublish([this, gl_image]()
                         {
                             // A no-op when syncTexName published the new texture.

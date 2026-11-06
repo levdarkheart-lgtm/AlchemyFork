@@ -198,19 +198,14 @@ void LLSkyTex::create()
 bool LLSkyTex::createImage(S32 which)
 {
     mTexture[which]->setExplicitFormat(GL_RGBA8, GL_RGBA);
-#if LL_DARWIN
     LLImageGL* image = mTexture[which]->getGLTexture();
-    const bool uploaded = image->getMetalTexture() && !image->getHasGLTexture()
+    const bool uploaded = image->getMetalTexture()
         ? image->uploadMetalSubImage(
             mImageRaw[which]->getData(), SKYTEX_RESOLUTION,
             SKYTEX_RESOLUTION, 0, 0, SKYTEX_RESOLUTION,
             SKYTEX_RESOLUTION)
         : mTexture[which]->createMetalTexture(
             0, mImageRaw[which].get(), LLGLTexture::LOCAL);
-#else
-    const bool uploaded = mTexture[which]->createGLTexture(
-        0, mImageRaw[which], 0, true, LLGLTexture::LOCAL);
-#endif
     if (!uploaded)
     {
         LL_WARNS("Sky") << "Could not publish CPU-generated sky face "

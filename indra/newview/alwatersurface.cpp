@@ -184,12 +184,8 @@ void ALWaterSurface::update()
     mScratch.mCentreY = mLayout.mCentreY;
     mScratch.mCells = mLayout.mCells;
     mScratch.mDefaultHeight = mDefaultHeight;
-#if LL_DARWIN
     const bool cell_map_ready = mCellMap.notNull() &&
-        !mCellMap->getHasGLTexture() && mCellMap->getMetalTexture();
-#else
-    const bool cell_map_ready = mCellMap.notNull();
-#endif
+        mCellMap->getMetalTexture();
     if (cell_map_ready && mScratch == mKey)
     {
         return;
@@ -198,7 +194,6 @@ void ALWaterSurface::update()
     ALWaterField::fillCells(mLayout, mScratch.mRegions,
                             mScratch.mDefaultHeight, mTexels);
     const U8* bytes = reinterpret_cast<const U8*>(mTexels.data());
-#if LL_DARWIN
     bool uploaded = false;
     if (!cell_map_ready)
     {
@@ -219,23 +214,6 @@ void ALWaterSurface::update()
             bytes, ALWaterField::MAP_SIZE, ALWaterField::MAP_SIZE,
             0, 0, ALWaterField::MAP_SIZE, ALWaterField::MAP_SIZE);
     }
-#else
-    bool uploaded = false;
-    if (mCellMap.isNull())
-    {
-        mCellMap = new LLImageGL(ALWaterField::MAP_SIZE,
-                                 ALWaterField::MAP_SIZE, 2,
-                                 /*usemipmaps=*/false);
-        mCellMap->setNeedsAlphaAndPickMask(false);
-        mCellMap->setExplicitFormat(GL_RG32F, GL_RG, GL_FLOAT);
-        uploaded = mCellMap->createGLTexture(0, bytes);
-    }
-    else
-    {
-        uploaded = mCellMap->setImage(bytes);
-        gGL.getTextureSlot(0)->unbind();
-    }
-#endif
     if (!uploaded)
     {
         LL_WARNS("Water") << "The procedural water cell map did not upload"
@@ -938,13 +916,8 @@ void ALWaterSurface::uploadHeights(MapStats& stats)
     LLPointer<LLImageGL> texture = new LLImageGL(stats.mTexelsWidth, stats.mTexelsHeight, 2, true);
     texture->setNeedsAlphaAndPickMask(false);
     texture->setExplicitFormat(GL_RG16F, GL_RG, GL_HALF_FLOAT);
-#if LL_DARWIN
     const bool uploaded = texture->createMetalTexture(
         0, reinterpret_cast<const U8*>(stats.mTexels->data()));
-#else
-    const bool uploaded = texture->createGLTexture(
-        0, reinterpret_cast<const U8*>(stats.mTexels->data()));
-#endif
     if (!uploaded)
     {
         LL_WARNS("Water") << "The wave heights of " << stats.mID << " did not upload" << LL_ENDL;

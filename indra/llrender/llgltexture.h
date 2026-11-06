@@ -119,17 +119,6 @@ public:
     bool       hasGLTexture() const ;
     bool       hasGPUTexture() const ;
     LLGLuint   getTexName() const ;
-    bool       createGLTexture() ;
-
-    // Create a GL Texture from an image raw
-    // discard_level - mip level, 0 for highest resultion mip
-    // imageraw - the image to copy from
-    // usename - explicit GL name override
-    // to_create - set to false to force gl texture to not be created
-    // category - LLGLTexture category for this LLGLTexture
-    // defer_copy - set to true to allocate GL texture but NOT initialize with imageraw data
-    // tex_name - if not null, will be set to the GL name of the texture created
-    bool       createGLTexture(S32 discard_level, const LLImageRaw* imageraw, S32 usename = 0, bool to_create = true, S32 category = LLGLTexture::OTHER, bool defer_copy = false, LLGLuint* tex_name = nullptr);
     // Update logical decoded-image state and release any obsolete GPU backing;
     // this never allocates a GL or Metal texture.
     bool       setImageMetadata(S32 discard_level, const LLImageRaw* imageraw);
@@ -140,8 +129,6 @@ public:
 #endif
 
     void       setExplicitFormat(LLGLint internal_format, LLGLenum primary_format, LLGLenum type_format = 0, bool swap_bytes = false);
-    bool       setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S32 width, S32 height, LLGLuint use_name = 0);
-    bool       setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, LLGLuint use_name = 0);
     void       setGLTextureCreated (bool initialized);
     void       setCategory(S32 category) ;
     void       setTexName(LLGLuint); // for forcing w/ externally created textures only
