@@ -5301,9 +5301,10 @@ bool LLViewerWindow::mousePointOnLandGlobal(const S32 x, const S32 y, LLVector3d
 // Saves an image to the harddrive as "SnapshotX" where X >= 1.
 void LLViewerWindow::saveImageNumbered(LLImageFormatted *image, bool force_picker, const snapshot_saved_signal_t::slot_type& success_cb, const snapshot_saved_signal_t::slot_type& failure_cb)
 {
-    if (!image)
+    if (!image || image->getDataSize() <= 0)
     {
-        LL_WARNS() << "No image to save" << LL_ENDL;
+        LL_WARNS() << "No encoded image to save" << LL_ENDL;
+        failure_cb();
         return;
     }
     std::string extension("." + image->getExtension());
@@ -5345,6 +5346,11 @@ void LLViewerWindow::saveImageNumbered(LLImageFormatted *image, bool force_picke
 
 void LLViewerWindow::onDirectorySelected(const std::vector<std::string>& filenames, LLImageFormatted *image, const snapshot_saved_signal_t::slot_type& success_cb, const snapshot_saved_signal_t::slot_type& failure_cb)
 {
+    if (filenames.empty())
+    {
+        failure_cb();
+        return;
+    }
     // Copy the directory + file name
     std::string filepath = filenames[0];
 
@@ -5406,8 +5412,7 @@ void LLViewerWindow::saveImageLocal(LLImageFormatted *image, const snapshot_save
         LLNotificationsUtil::add("SnapshotToComputerFailed", args);
 
         failure_cb();
-
-        // Shouldn't there be a return here?
+        return;
     }
 
     static LLCachedControl<std::string> sSnapshotBaseName(LLCachedControl<std::string>(gSavedPerAccountSettings, "SnapshotBaseName", "Snapshot"));

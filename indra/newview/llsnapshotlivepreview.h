@@ -184,6 +184,10 @@ private:
     LLSnapshotModel::ESnapshotType              mSnapshotType;
     LLSnapshotModel::ESnapshotFormat    mSnapshotFormat;
     bool                        mSnapshotUpToDate;
+    // Distinguishes a requested capture from a failed, still-invalid image.
+    // Without this latch a failed native transaction retries every idle frame
+    // and the floater incorrectly reports the empty image as updated.
+    bool                        mSnapshotCapturePending;
     LLFrameTimer                mFallAnimTimer;
     LLVector3                   mCameraPos;
     LLQuaternion                mCameraRot;

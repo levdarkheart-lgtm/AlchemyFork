@@ -1636,6 +1636,19 @@ S32 LLFloaterSnapshotBase::notify(const LLSD& info)
         return 1;
     }
 
+    if (info.has("snapshot-failed"))
+    {
+        // Keep every save/send action disabled and expose an explicit retry.
+        // The preview remains invalid until that retry actually succeeds.
+        impl->updateControls(this);
+        impl->setNeedRefresh(true);
+        if (mRefreshBtn)
+        {
+            mRefreshBtn->setVisible(true);
+        }
+        return 1;
+    }
+
     return 0;
 }
 

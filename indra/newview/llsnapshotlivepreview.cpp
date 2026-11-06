@@ -93,6 +93,7 @@ LLSnapshotLivePreview::LLSnapshotLivePreview (const LLSnapshotLivePreview::Param
     mSnapshotType(LLSnapshotModel::SNAPSHOT_POSTCARD),
     mSnapshotFormat(LLSnapshotModel::ESnapshotFormat(gSavedSettings.getS32("SnapshotFormat"))),
     mSnapshotUpToDate(false),
+    mSnapshotCapturePending(false),
     mCameraPos(LLViewerCamera::getInstance()->getOrigin()),
     mCameraRot(LLViewerCamera::getInstance()->getQuaternion()),
     mSnapshotActive(false),
@@ -218,6 +219,7 @@ void LLSnapshotLivePreview::updateSnapshot(bool new_snapshot, bool new_thumbnail
             mFallAnimTimer.start();
         }
         mSnapshotUpToDate = false;
+        mSnapshotCapturePending = true;
         // A new snapshot is a render, unless setCutout says after this that
         // only the fill or the format changed.
         mCutoutRelayOnly = false;
@@ -592,14 +594,13 @@ bool LLSnapshotLivePreview::setThumbnailImageSize()
 
 bool LLSnapshotLivePreview::thumbnailScaledFromPreview() const
 {
-    // A cutout's thumbnail is the cutout made smaller, not a render of its
-    // own: that would reallocate every screen buffer a second time for the
-    // same frame. Its shape is the cutout's, then, not the window's -- a
-    // square texture's preview drawn to the window's shape is stretched.
-    // Not before a cutout has been drawn, though: a preview made but never
-    // filled, by a cutout that failed, is 0x0 and has no shape to take.
-    return mThumbnailSubsampled
-        || (mCutout && mPreviewImage.notNull() && mPreviewImage->getWidth() > 0 && mPreviewImage->getHeight() > 0);
+    // A completed snapshot is already the exact frame the thumbnail must
+    // preview. Scaling it avoids a second world render/readback transaction
+    // whose failure used to leave the floater blank even after the full-size
+    // capture succeeded. Never scale an allocated-but-unfilled failed image.
+    return mPreviewImage.notNull() && !mPreviewImage->isBufferInvalid() &&
+        mPreviewImage->getWidth() > 0 && mPreviewImage->getHeight() > 0 &&
+        (mThumbnailSubsampled || mSnapshotUpToDate || mCutout);
 }
 
 void LLSnapshotLivePreview::generateThumbnailImage(bool force_update)
@@ -703,6 +704,11 @@ LLViewerTexture* LLSnapshotLivePreview::getBigThumbnailImage()
     {
         return mBigThumbnailImage;
     }
+    if (!mSnapshotUpToDate || mPreviewImage.isNull() ||
+        mPreviewImage->isBufferInvalid())
+    {
+        return NULL;
+    }
 
     LLPointer<LLImageRaw> raw = new LLImageRaw;
 
@@ -800,9 +806,19 @@ bool LLSnapshotLivePreview::onIdle( void* snapshot_preview )
         return false;
     }
 
-    // time to produce a snapshot
-    if(!previewp->getSnapshotUpToDate())
+    // A failed capture remains invalid but is not an implicit request to spin
+    // another complete world render on every idle frame. Refresh/auto-snapshot
+    // calls updateSnapshot(), which rearms this latch explicitly.
+    if (!previewp->getSnapshotUpToDate() &&
+        !previewp->mSnapshotCapturePending)
     {
+        return false;
+    }
+
+    // time to produce a snapshot
+    if (!previewp->getSnapshotUpToDate())
+    {
+        previewp->mSnapshotCapturePending = false;
         LL_DEBUGS("Snapshot") << "producing snapshot" << LL_ENDL;
         if (!previewp->mPreviewImage)
         {
@@ -882,9 +898,28 @@ bool LLSnapshotLivePreview::onIdle( void* snapshot_preview )
             previewp->setThumbnailImageSize();
             previewp->generateThumbnailImage(true) ;
         }
-        previewp->setVisible(use_freeze_frame && previewp->mAllowFullScreenPreview); // only show fullscreen preview when in freeze frame mode
+        previewp->setVisible(produced && use_freeze_frame &&
+                             previewp->mAllowFullScreenPreview);
         previewp->mSnapshotActive = false;
         LL_DEBUGS("Snapshot") << "done creating snapshot" << LL_ENDL;
+
+        if (!produced)
+        {
+            previewp->mDataSize = 0;
+            previewp->mThumbnailUpToDate = false;
+            previewp->mBigThumbnailUpToDate = false;
+            previewp->resetThumbnailImage();
+            if (previewp->mViewContainer)
+            {
+                previewp->mViewContainer->notify(
+                    LLSD().with("snapshot-failed", true));
+            }
+            LL_WARNS("Snapshot")
+                << "Snapshot preview capture failed; waiting for an explicit "
+                   "refresh instead of publishing or retrying an empty image"
+                << LL_ENDL;
+            return false;
+        }
     }
 
     if (!previewp->getThumbnailUpToDate())
@@ -904,7 +939,10 @@ bool LLSnapshotLivePreview::onIdle( void* snapshot_preview )
 void LLSnapshotLivePreview::prepareFreezeFrame()
 {
     // Get the decoded version of the formatted image
-    getEncodedImage();
+    if (getEncodedImage().isNull())
+    {
+        return;
+    }
 
     LLImageDataSharedLock lock(mPreviewImageEncoded);
 
@@ -968,6 +1006,11 @@ S32 LLSnapshotLivePreview::getEncodedImageHeight() const
 
 LLPointer<LLImageRaw> LLSnapshotLivePreview::getEncodedImage()
 {
+    if (!mSnapshotUpToDate || mPreviewImage.isNull() ||
+        mPreviewImage->isBufferInvalid())
+    {
+        return nullptr;
+    }
     if (!mPreviewImageEncoded)
     {
         LLImageDataSharedLock lock(mPreviewImage);
@@ -1032,6 +1075,11 @@ bool LLSnapshotLivePreview::createUploadFile(const std::string &out_filename, co
 // Note : whenever formatted image is computed, mDataSize will be updated to reflect the true size
 void LLSnapshotLivePreview::estimateDataSize()
 {
+    if (mPreviewImage.isNull() || mPreviewImage->isBufferInvalid())
+    {
+        mDataSize = 0;
+        return;
+    }
     // Compression ratio
     F32 ratio = 1.0;
 
@@ -1070,6 +1118,11 @@ void LLSnapshotLivePreview::estimateDataSize()
 
 LLPointer<LLImageFormatted> LLSnapshotLivePreview::getFormattedImage()
 {
+    if (!mSnapshotUpToDate || mPreviewImage.isNull() ||
+        mPreviewImage->isBufferInvalid())
+    {
+        return nullptr;
+    }
     if (!mFormattedImage)
     {
         // Apply the filter to mPreviewImage
@@ -1091,11 +1144,20 @@ LLPointer<LLImageFormatted> LLSnapshotLivePreview::getFormattedImage()
         LLSnapshotModel::ESnapshotFormat format = getSnapshotFormat();
         LL_DEBUGS("Snapshot") << "Encoding new image of format " << format << LL_ENDL;
 
-        mFormattedImage = createFormattedImage(format, mSnapshotQuality);
-        if (mFormattedImage->encode(mPreviewImage, 0))
+        LLPointer<LLImageFormatted> formatted =
+            createFormattedImage(format, mSnapshotQuality);
+        if (formatted && formatted->encode(mPreviewImage, 0))
         {
+            mFormattedImage = formatted;
             // We can update the data size precisely at that point
             mDataSize = mFormattedImage->getDataSize();
+        }
+        else
+        {
+            mFormattedImage = nullptr;
+            mDataSize = 0;
+            LL_WARNS("Snapshot") << "Could not encode snapshot preview"
+                                 << LL_ENDL;
         }
     }
     return mFormattedImage;
@@ -1125,6 +1187,14 @@ void LLSnapshotLivePreview::getSize(S32& w, S32& h) const
 
 void LLSnapshotLivePreview::saveTexture(bool outfit_snapshot, std::string name)
 {
+    if (!mSnapshotUpToDate || mPreviewImage.isNull() ||
+        mPreviewImage->isBufferInvalid())
+    {
+        LLNotificationsUtil::add("ErrorEncodingSnapshot");
+        LL_WARNS("Snapshot")
+            << "Refusing to upload an unavailable snapshot" << LL_ENDL;
+        return;
+    }
     LLImageDataSharedLock lock(mPreviewImage);
 
     LL_DEBUGS("Snapshot") << "saving texture: " << mPreviewImage->getWidth() << "x" << mPreviewImage->getHeight() << LL_ENDL;
@@ -1195,10 +1265,18 @@ void LLSnapshotLivePreview::saveTexture(bool outfit_snapshot, std::string name)
 void LLSnapshotLivePreview::saveLocal(const snapshot_saved_signal_t::slot_type& success_cb, const snapshot_saved_signal_t::slot_type& failure_cb)
 {
     // Update mFormattedImage if necessary
-    getFormattedImage();
+    LLPointer<LLImageFormatted> image = getFormattedImage();
+    if (image.isNull() || image->getDataSize() <= 0)
+    {
+        LL_WARNS("Snapshot")
+            << "Refusing to save an unavailable or unencoded snapshot"
+            << LL_ENDL;
+        failure_cb();
+        return;
+    }
 
     // Save the formatted image
-    saveLocal(mFormattedImage, success_cb, failure_cb);
+    saveLocal(image, success_cb, failure_cb);
 }
 
 // static
