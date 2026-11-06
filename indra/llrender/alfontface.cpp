@@ -358,7 +358,7 @@ void ALFontFace::destroyGL()
     // name 0), every bind() falls through to sDefaultGLTexture, and text
     // renders as solid colored rectangles.
     if (mFontBitmapCachep)
-        mFontBitmapCachep->destroyGL();
+        mFontBitmapCachep->destroyTextures();
     resetBitmapCache();
 }
 

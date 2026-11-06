@@ -3,10 +3,8 @@
  * @brief Unit tests for LLFontBitmapCache — atlas allocator, row/sheet
  *        packing, generation counter, sheet release/eviction.
  *
- * Pure-CPU tests cover the bookkeeping surface (construction, generation
- * counter, init/reset). nextOpenPos and releaseSheet, which call into gGL
- * and LLImageGL::destroyGLTexture and so need a real GL context, are in
- * llfontbitmapcache_gl_test.cpp.
+ * Pure-CPU tests cover bookkeeping. On Darwin a no-context Metal case also
+ * proves exact atlas publication/readback and native release.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -31,8 +29,15 @@
 #include "linden_common.h"
 
 #include "../llfontbitmapcache.h"
+#include "llimage.h"
 
 #include <catch2/catch_test_macros.hpp>
+
+#if LL_DARWIN
+#include "almetaldevice.h"
+#include "almetalresource.h"
+#include <vector>
+#endif
 
 namespace
 {
@@ -95,4 +100,72 @@ namespace
         UNSCOPED_INFO("a slot that does not exist is not released");
         CHECK_FALSE(c.isSheetReleased(EFontGlyphType::Grayscale, 0));
     }
+
+#if LL_DARWIN
+    TEST_CASE("LLFontBitmapCache: glyph pages publish and release through Metal without GL", "[LLFontBitmapCache][metal-cutover]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        REQUIRE(device);
+        INFO(error);
+
+        ALMetalDevice* previous_device = LLImageGL::getMetalDevice();
+        const bool previous_metal = LLFontBitmapCache::usesMetal();
+        struct StateRestore
+        {
+            ALMetalDevice* device;
+            bool metal;
+            ~StateRestore()
+            {
+                LLFontBitmapCache::setTextureBackend(false, metal);
+                LLImageGL::setMetalDevice(device);
+            }
+        } restore{previous_device, previous_metal};
+        LLImageGL::setMetalDevice(device.get());
+        LLFontBitmapCache::setTextureBackend(false, true);
+
+        LLFontBitmapCache cache;
+        cache.init(2, 2);
+        S32 x = 0;
+        S32 y = 0;
+        U32 sheet = 0;
+        REQUIRE(cache.nextOpenPos(3, 2, x, y,
+                                  EFontGlyphType::Grayscale, sheet));
+
+        LLImageRaw* raw = cache.getImageRaw(EFontGlyphType::Grayscale, sheet);
+        LLImageGL* page = cache.getImageGL(EFontGlyphType::Grayscale, sheet);
+        REQUIRE(raw);
+        REQUIRE(page);
+        CHECK_FALSE(page->getHasGLTexture());
+        REQUIRE(page->getMetalTexture());
+
+        for (S32 row = y; row < y + 2; ++row)
+        {
+            for (S32 column = x; column < x + 3; ++column)
+            {
+                const std::size_t offset =
+                    (static_cast<std::size_t>(row) * raw->getWidth() + column) * 2;
+                raw->getData()[offset] = 0x91;
+                raw->getData()[offset + 1] = 0x62;
+            }
+        }
+        REQUIRE(cache.publishGlyph(EFontGlyphType::Grayscale, sheet,
+                                   x, y, 3, 2));
+
+        const std::size_t byte_count =
+            static_cast<std::size_t>(raw->getWidth()) * raw->getHeight() * 2;
+        std::vector<U8> actual(byte_count);
+        REQUIRE(page->getMetalTexture()->readback(
+            *device, 0, 0, {}, actual.data(), raw->getWidth() * 2, &error));
+        INFO(error);
+        const std::size_t glyph_offset =
+            (static_cast<std::size_t>(y) * raw->getWidth() + x) * 2;
+        CHECK(actual[glyph_offset] == 0x91);
+        CHECK(actual[glyph_offset + 1] == 0x62);
+
+        cache.releaseSheet(EFontGlyphType::Grayscale, sheet);
+        CHECK(cache.isSheetReleased(EFontGlyphType::Grayscale, sheet));
+        CHECK(cache.getImageGL(EFontGlyphType::Grayscale, sheet) == nullptr);
+    }
+#endif
 }

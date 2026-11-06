@@ -299,10 +299,11 @@ void LLFontDescriptor::addFontFile(const std::string& file_name, EFontHinting hi
 
 LLFontRegistry::LLFontRegistry(bool create_gl_textures,
                                bool create_metal_textures)
-:   mCreateGPUTextures(create_gl_textures || create_metal_textures)
+:   mCreateGPUTextures(create_metal_textures)
 {
-    // The atlas owns the renderer resource, so it receives the explicit
-    // backend once for this process's registry.
+    // The atlas owns the renderer resource. The Apple Silicon viewer has no
+    // font-texture fallback; CPU-only registries remain valid for layout tools.
+    llassert(!create_gl_textures);
     LLFontBitmapCache::setTextureBackend(create_gl_textures,
                                          create_metal_textures);
 

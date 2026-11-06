@@ -70,7 +70,7 @@ public:
     // (rows would be hundreds of px too tall).
     bool nextOpenPos(S32 width, S32 height, S32& posX, S32& posY, EFontGlyphType bitmapType, U32& bitmapNum);
 
-    void destroyGL();
+    void destroyTextures();
 
     LLImageRaw* getImageRaw(EFontGlyphType bitmapType, U32 bitmapNum) const;
     LLImageGL* getImageGL(EFontGlyphType bitmapType, U32 bitmapNum) const;
@@ -118,20 +118,19 @@ public:
     // for index stability but holds no images.
     bool isSheetReleased(EFontGlyphType bitmap_type, U32 bitmap_num) const;
 
-    // Select the atlas publication backends for the process's one font
-    // registry. During the world-renderer transition Darwin deliberately uses
-    // both: GL remains the visible fail-closed owner until a complete fused
-    // Metal world/UI frame can publish, while the synchronized Metal mirror is
-    // consumed by native UI capture. Native-only tests can still name Metal
-    // alone, and headless layout tests name neither so glyphs stay CPU-only.
+    // Select atlas publication for the process's one font registry. The viewer
+    // accepts Metal or CPU-only layout; requesting the retired GL backend is a
+    // contract violation. The first argument remains temporarily for call-site
+    // compatibility while the broader font API sheds backend-era naming.
     static void setTextureBackend(bool uses_gl, bool uses_metal)
     {
-        sUsesGL = uses_gl;
+        llassert(!uses_gl);
+        (void)uses_gl;
         sUsesMetal = uses_metal;
     }
-    static bool usesGL() { return sUsesGL; }
+    static bool usesGL() { return false; }
     static bool usesMetal() { return sUsesMetal; }
-    static bool usesGPU() { return sUsesGL || sUsesMetal; }
+    static bool usesGPU() { return sUsesMetal; }
 
 protected:
     static U32 getNumComponents(EFontGlyphType bitmap_type);
@@ -178,7 +177,6 @@ private:
     // keep rendering with stale atlas UVs from the previous font.
     S32 mGeneration;
     static S32 sNextGeneration;
-    static bool sUsesGL;
     static bool sUsesMetal;
     std::vector<LLPointer<LLImageRaw>> mImageRawVec[static_cast<U32>(EFontGlyphType::Count)];
     std::vector<LLPointer<LLImageGL>> mImageGLVec[static_cast<U32>(EFontGlyphType::Count)];

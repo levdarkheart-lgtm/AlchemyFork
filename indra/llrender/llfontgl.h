@@ -282,7 +282,7 @@ public:
     static void initClass(F32 screen_dpi, F32 x_scale, F32 y_scale,
                           const std::string& app_dir,
                           const LLSD& font_overrides,
-                          bool create_gl_textures = true,
+                          bool create_gl_textures = false,
                           bool create_metal_textures = false);
 
     // Variant of initClass that loads fonts.xml from `fonts_xml_path`
@@ -293,7 +293,7 @@ public:
                           const std::string& app_dir,
                           const std::string& fonts_xml_path,
                           const LLSD& font_overrides,
-                          bool create_gl_textures = true,
+                          bool create_gl_textures = false,
                           bool create_metal_textures = false);
 
            void dumpTextures();

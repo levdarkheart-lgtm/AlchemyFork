@@ -6912,12 +6912,9 @@ void LLViewerWindow::initFonts(F32 zoom_factor)
     // the start.
     LLFontGL::sForceMonochromeEmoji = gSavedSettings.getBOOL("AlchemyForceMonochromeEmoji");
 
-#if LL_DARWIN
-    const bool create_gl_font_textures =
-        !LLImageGL::isMetalTextureAuthority();
-#else
-    constexpr bool create_gl_font_textures = true;
-#endif
+    // The Apple Silicon product has one font-atlas GPU owner: Metal. There is
+    // no runtime fallback to a GL atlas if native allocation fails.
+    constexpr bool create_gl_font_textures = false;
     LLFontGL::initClass( gSavedSettings.getF32("FontScreenDPI"),
                                 mDisplayScale.mV[VX] * zoom_factor,
                                 mDisplayScale.mV[VY] * zoom_factor,
