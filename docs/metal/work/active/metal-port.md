@@ -1,23 +1,21 @@
 # Active execution plan — full native Alchemy Metal conversion
 
-**Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
-demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
-`docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `2e255de87c`.
+**Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
+**Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
+**Renderer checkpoint:** Commit `6e5047e50b`.
 
-This ledger contains current decisions and executable work. Prior checkpoint
-detail belongs in the indexed archive.
+This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
 ## Work board
 
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
-| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68484 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
+| M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68486 builds, stages, signs and verifies 349/349 ARM64 slices; controlled performance baseline remains open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,901 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
 | M-004 | Metal resources, transfers, readback and sync | doing | Geometry, ordinary texture publication/residency/lifecycle, fonts, buffers, samplers, image slots, targets and reflection arrays are native. Copy/readback consumers follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
-| M-006 | UI, fonts, HUD and media ingress | doing | UI/font and media CPU texture publication are Metal-only. Snapshot state/thumbnail/save source path is repaired; runtime proof remains owner-attended. |
+| M-006 | UI, fonts, HUD and media ingress | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only. Snapshot state/thumbnail/save source path is repaired; runtime proof remains owner-attended. |
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners; broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Core effects and many diagnostics are native. Debug/Develop-only tails remain behind the usable-core context cut. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
@@ -130,12 +128,14 @@ GL ownership modes; `b86b1e4c53` repairs Snapshot state; `1081614942` removes
 legacy GL queries; `2e255de87c` makes ordinary texture residency, invalidation,
 cache identity, preview/save, terrain/map/avatar/bump and projectors native.
 
+`6e5047e50b` deletes retained UI/text geometry's raw texture/sampler identities and GL replay fallback. Retained/immediate UI uses the Metal encoder or fails closed; Darwin skips duplicate legacy glow because the Metal display transaction owns glow/noise/combine. Package 68486 is ready for a bounded owner-attended startup/login/world-load smoke test, not a parity, stability or GL-zero claim.
+
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
-- Source-exact Xcode Release warnings-as-errors build/stage passes at `2e255de87c`; package `26.4.0.68484`.
+- Source-exact Xcode Release warnings-as-errors build/stage passes at `6e5047e50b`; package `26.4.0.68486`.
 - `tools/metal/verify_app.sh`: 349/349 inspected slices are ARM64.
-- Executable SHA-256: `8fb28b8628a1da84d95ccf013d49b8ddb815660cc56d1dfcd4e8a7d7e2ce7674`.
+- Executable SHA-256: `81ce65c17b76feb59bd389d474fa96343cacdf853972972694dbdf41f58e1737`.
 - Metallib SHA-256: `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
 - Focused no-context renderer passes 220 assertions / 11 cases; query fail-closed proof passes 35 assertions; llrender passes 1,856/1,856 and Metal passes 52,681/52,681 assertions.
 - Current focused Metal GPU/alrender/llrender/benchmark tests pass 4/4; native font atlas upload/readback/release passes 28 assertions/five cases.
@@ -147,7 +147,7 @@ cache identity, preview/save, terrain/map/avatar/bump and projectors native.
 - Broad shared tests reproduce baseline host/driver failures: four assertions
   in three frame-fence timing cases and one render-target depth-format assertion.
 - Focused alrender/llrender suites pass 28/28; harness structure passes 32/32 required files; tool tests pass 31/31.
-- Strict inventory: 1,901/2,403 files (`gl_function` 396, `gl_shader` 1,507, `sdl_gl` 0), expected exit 1; report SHA-256 is `3b0635b1bd8131b428fcff1ba12f2f924e765689f68dbc027dcdf772a37dfa85`; 227 below 2,128 and 400 below 2,301 with unchanged rules.
+- Strict inventory: 1,901/2,403 files (`gl_function` 396, `gl_shader` 1,507, `sdl_gl` 0), expected exit 1; report SHA-256 is `730d975b61837be8a3a97c3c6b928cf8c55d245d0641ef17606798a2af39b85a`; 227 below 2,128 and 400 below 2,301 with unchanged rules.
 
 ## Owner-attended visual cadence
 
@@ -165,10 +165,10 @@ Do not autonomously launch either viewer, navigate login/world UI, or capture a 
 
 ## Immediate executable action
 
-1. Finish remaining essential texture copy/readback ownership and raw manual identities.
-2. Treat Snapshot source repair as ready for owner-led execution proof later.
-3. Continue ordinary UI/world GL removal before optional tails.
-4. Continue strict source/link audits; keep runtime/startup/login owner-attended.
+1. Run the bounded owner-attended startup/login/world-load smoke test on package 68486 and record the first failure without a reference-viewer comparison.
+2. Finish remaining essential texture copy/readback ownership and raw manual identities.
+3. Treat Snapshot source repair as ready for owner-led execution proof later.
+4. Continue ordinary UI/world GL removal before optional tails and continue strict source/link audits.
 
 ## Non-negotiable open gates
 
