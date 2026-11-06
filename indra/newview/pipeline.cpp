@@ -27250,7 +27250,14 @@ void LLPipeline::renderFinalize()
 
     // Legacy glow for non-HDR path.  In the HDR path, glow is extracted as part of the
     // bloom process and composited back in after tonemapping.
-    LLRenderTarget* glow = !hdr && !cutout && chain ? generateGlow(post_ping, post) : nullptr;
+    LLRenderTarget* glow = nullptr;
+#if !LL_DARWIN
+    glow = !hdr && !cutout && chain ? generateGlow(post_ping, post) : nullptr;
+#else
+    // The exact Metal display transaction already owns legacy non-HDR glow,
+    // including its noise resource and combine. Do not enter the duplicate
+    // raw-name/GL pass on the product platform.
+#endif
 
     // The chain's other target, from the pool once a pass after colorCorrect draws, each such pass writing it whole
     // before the two swap. A pass with no target to draw into is left out.

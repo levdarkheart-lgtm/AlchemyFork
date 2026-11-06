@@ -66,8 +66,7 @@ class LLVertexBufferData
 public:
     LLVertexBufferData();
     LLVertexBufferData(LLVertexBuffer* buffer, U8 mode, U32 count,
-                       U32 tex_name, U32 tex_sampler, LLImageGL* tex_image,
-                       bool texture_bound,
+                       LLImageGL* tex_image, bool texture_bound,
                        const ALSamplerDesc& sampler_desc,
                        const LLMatrix4a& model_view, const LLMatrix4a& projection,
                        const LLMatrix4a& texture0);
@@ -76,14 +75,9 @@ public:
     LLPointer<LLVertexBuffer> mVB;
     U8 mMode;
     U32 mCount;
-    U32 mTexName;
-    // The sampler bound with mTexName when the draw was recorded. Textures carry no
-    // sampling state of their own any more, so replaying the bind without the sampler
-    // would read the atlas through GL defaults instead of what the live draw used.
-    U32 mTexSampler;
-    // The GL name is enough only for GL replay. Retain the logical image and
-    // immutable sampling descriptor so native replay survives texture and
-    // sampler-cache lifetime changes without reverse-looking up API handles.
+    // Retain the logical image and immutable sampling descriptor so native
+    // replay survives texture and sampler-cache lifetime changes without
+    // reverse-looking up API handles.
     LLPointer<LLThreadSafeRefCount> mTexImageOwner;
     LLImageGL* mTexImage = nullptr;
     // Native-only images have no physical GL name. Keep the logical sampled

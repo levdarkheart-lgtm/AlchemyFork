@@ -2896,8 +2896,6 @@ void LLRender::flush()
                         native_buffer,
                         mMode,
                         count,
-                        texture_slot->mCurrTexture,
-                        texture_slot->mCurrSampler,
                         texture_slot->mCurrImage,
                         mMetalUICaptureTextureBound,
                         mMetalUICaptureSampler,
@@ -2920,8 +2918,6 @@ void LLRender::flush()
                         vb,
                         mMode,
                         count,
-                        texture_slot->mCurrTexture,
-                        texture_slot->mCurrSampler,
                         texture_slot->mCurrImage,
                         texture_slot->mCurrTexture != 0,
                         sampler_desc,
@@ -3050,12 +3046,9 @@ LLVertexBuffer* LLRender::genBuffer(U32 attribute_mask, S32 count)
         vb->setColorData(mColorsp.get());
     }
 
-#if LL_DARWIN
-    // unmapBuffer creates the GL buffer, uploads, and leaves it bound;
-    // drawBuffer's later setBuffer() then runs setupVertexBuffer against
-    // a valid VBO.
+    // The authoritative Darwin upload writes the Metal buffer. No parallel
+    // GL VBO is created for a later replay.
     vb->unmapBuffer();
-#endif
     vb->unbind();
 
     return vb;
@@ -3063,7 +3056,6 @@ LLVertexBuffer* LLRender::genBuffer(U32 attribute_mask, S32 count)
 
 void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
 {
-#if LL_DARWIN
     ALTextureSlot* texture_slot = getTextureSlot(0);
     ALSamplerDesc sampler = mMetalUICaptureAuthoritative
         ? mMetalUICaptureSampler
@@ -3072,18 +3064,15 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
     {
         mSamplerCache.describe(texture_slot->mCurrSampler, sampler);
     }
-    if (drawMetalUIBuffer(vb, mode, count,
-                          texture_slot ? texture_slot->mCurrImage : nullptr,
-                          sampler,
-                          mMetalUICaptureAuthoritative
-                              ? mMetalUICaptureTextureBound
-                              : texture_slot && texture_slot->mCurrTexture != 0))
-    {
-        return;
-    }
-#endif
-    vb->setBuffer();
-    vb->drawArrays(mode, 0, count);
+    // Metal is the only product renderer. A failed batch is accounted by the
+    // native renderer and fails closed; the production buffer deliberately
+    // has no GL storage to replay from.
+    drawMetalUIBuffer(vb, mode, count,
+                      texture_slot ? texture_slot->mCurrImage : nullptr,
+                      sampler,
+                      mMetalUICaptureAuthoritative
+                          ? mMetalUICaptureTextureBound
+                          : texture_slot && texture_slot->mCurrTexture != 0);
 }
 
 #if LL_DARWIN

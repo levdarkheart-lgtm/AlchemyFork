@@ -517,8 +517,6 @@ LLVertexBufferData::LLVertexBufferData()
     : mVB(nullptr),
       mMode(0),
       mCount(0),
-      mTexName(0),
-      mTexSampler(0),
       mTexImageOwner(nullptr),
       mTexImage(nullptr),
       mTextureBound(false),
@@ -530,16 +528,13 @@ LLVertexBufferData::LLVertexBufferData()
 
 LLVertexBufferData::LLVertexBufferData(
     LLVertexBuffer* buffer, U8 mode, U32 count,
-    U32 tex_name, U32 tex_sampler, LLImageGL* tex_image,
-    bool texture_bound,
+    LLImageGL* tex_image, bool texture_bound,
     const ALSamplerDesc& sampler_desc,
     const LLMatrix4a& model_view, const LLMatrix4a& projection,
     const LLMatrix4a& texture0)
     : mVB(buffer),
       mMode(mode),
       mCount(count),
-      mTexName(tex_name),
-      mTexSampler(tex_sampler),
       mTexImageOwner(static_cast<LLThreadSafeRefCount*>(tex_image)),
       mTexImage(tex_image),
       mTextureBound(texture_bound),
@@ -559,22 +554,6 @@ void LLVertexBufferData::drawWithMatrix()
         return;
     }
 
-    const bool native_only_image =
-#if LL_DARWIN
-        mTexImage && mTexImage->getMetalTexture() &&
-        !mTexImage->getHasGLTexture();
-#else
-        false;
-#endif
-    if (!native_only_image && mTexName)
-    {
-        gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mTexName, mTexSampler);
-    }
-    else if (!native_only_image)
-    {
-        gGL.getTextureSlot(0)->unbind();
-    }
-
     gGL.matrixMode(LLRender::MM_MODELVIEW);
     gGL.pushMatrix();
     gGL.loadMatrix(mModelView);
@@ -585,28 +564,11 @@ void LLVertexBufferData::drawWithMatrix()
     gGL.pushMatrix();
     gGL.loadMatrix(mTexture0);
 
-#if LL_DARWIN
-    if (!gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc,
-                               mTextureBound))
-#endif
-    {
-#if LL_DARWIN
-        if (native_only_image)
-        {
-            // A Metal-only atlas has no valid GL sampling fallback. Failure
-            // is already counted by drawMetalUIBuffer; do not paint a white
-            // placeholder quad over the requested glyph.
-            gGL.popMatrix();
-            gGL.matrixMode(LLRender::MM_PROJECTION);
-            gGL.popMatrix();
-            gGL.matrixMode(LLRender::MM_MODELVIEW);
-            gGL.popMatrix();
-            return;
-        }
-#endif
-        mVB->setBuffer();
-        mVB->drawArrays(mMode, 0, mCount);
-    }
+    // Retained UI is Metal-authoritative on the product platform. The
+    // renderer records the exact failure reason and withholds an incomplete
+    // native transaction; there is no raw-name/GL replay behind it.
+    gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc,
+                          mTextureBound);
 
     gGL.popMatrix();
     gGL.matrixMode(LLRender::MM_PROJECTION);
@@ -624,36 +586,10 @@ void LLVertexBufferData::draw()
         return;
     }
 
-    const bool native_only_image =
-#if LL_DARWIN
-        mTexImage && mTexImage->getMetalTexture() &&
-        !mTexImage->getHasGLTexture();
-#else
-        false;
-#endif
-    if (!native_only_image && mTexName)
-    {
-        gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mTexName, mTexSampler);
-    }
-    else if (!native_only_image)
-    {
-        gGL.getTextureSlot(0)->unbind();
-    }
-
-#if LL_DARWIN
-    if (!gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc,
-                               mTextureBound))
-#endif
-    {
-#if LL_DARWIN
-        if (native_only_image)
-        {
-            return;
-        }
-#endif
-        mVB->setBuffer();
-        mVB->drawArrays(mMode, 0, mCount);
-    }
+    // See drawWithMatrix(): a missing native mirror is a visible native
+    // defect, never permission to issue a legacy draw.
+    gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc,
+                          mTextureBound);
 }
 
 //============================================================================
