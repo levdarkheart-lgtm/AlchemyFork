@@ -290,21 +290,14 @@ private:
     S64 mMetalSMAASampleModifiedNanoseconds = -1;
     U32 mMetalSMAASampleLastAttempt = std::numeric_limits<U32>::max();
     bool mMetalSMAASampleFailureReported = false;
-    // Dynamic exposure is accepted only while the native 1x1 history has
-    // advanced on every GL exposure frame since the same reset boundary.
+    // Dynamic exposure owns a native 1x1 temporal history. Missing native
+    // frames retain that history and the next complete Metal transaction
+    // advances it; GL's independently traversed history is never an
+    // authority or a prerequisite for native presentation/readback.
     U64 mMetalExposureHistoryEpoch = 1;
-    U32 mMetalExposureGLFrame = std::numeric_limits<U32>::max();
-    bool mMetalExposureLastWasFixed = true;
     bool mMetalExposureHistoryReady = false;
-    // Renderer warm-up can complete while another GL target is bound. Mark
-    // the known-EV reset immediately for native eligibility, then clear the
-    // GL ping-pong target at generateExposure's established safe boundary.
-    bool mMetalExposureClearPending = false;
-    // The native 2x1 flare state is accepted only while it has advanced beside
-    // every GL update since the same exact-black reset boundary.
+    // The native 2x1 flare state follows the same native-only temporal rule.
     U64 mMetalLensFlareHistoryEpoch = 1;
-    U32 mMetalLensFlareGLFrame = std::numeric_limits<U32>::max();
-    bool mMetalLensFlareLastWasZero = true;
     bool mMetalLensFlareHistoryReady = false;
     bool mMetalHeroWorldCaptureActive = false;
     bool mMetalReflectionWorldCaptureActive = false;
