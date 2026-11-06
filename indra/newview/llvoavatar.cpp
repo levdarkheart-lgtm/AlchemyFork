@@ -1047,7 +1047,7 @@ bool LLVOAvatar::isFullyTextured() const
             {
                 continue; // nonexistent mesh OK
             }
-            if (mesh->hasGLTexture())
+            if (mesh->hasGPUTexture())
             {
                 continue; // Mesh exists and has a baked texture.
             }

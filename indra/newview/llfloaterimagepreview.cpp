@@ -373,16 +373,16 @@ void LLFloaterImagePreview::draw()
 
             if(mImagep.notNull())
             {
-                gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mImagep->getTexName(),
-                                              gGL.getSampler(ALSamplers::BilinearClamp));
+                gGL.getTextureSlot(0)->bindSampled(mImagep.get(),
+                                                   ALSamplers::BilinearClamp);
             }
             else
             {
                 mImagep = LLViewerTextureManager::getLocalTexture(mRawImagep.get(), false) ;
 
                 gGL.getTextureSlot(0)->unbind() ;
-                gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mImagep->getTexName(),
-                                              gGL.getSampler(ALSamplers::BilinearClamp));
+                gGL.getTextureSlot(0)->bindSampled(mImagep.get(),
+                                                   ALSamplers::BilinearClamp);
                 stop_glerror();
                 if (mAvatarPreview)
                 {

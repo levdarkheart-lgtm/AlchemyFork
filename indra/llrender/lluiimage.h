@@ -135,14 +135,16 @@ protected:
         uint64_t color_flags; // RGBA color (8 bits each) + solid_color flag (1 bit)
         uint64_t dimensions;  // width and height (32 bits each)
         uint64_t scale;       // UI scale (32 bits each for X and Y)
-        uint64_t tex_name;    // OpenGL texture name (low 32 bits) + sampler generation (high 32 bits)
+        uint64_t texture_state; // content generation of the image being recorded
+        uint64_t sampler_state; // sampler-cache generation used by the recording
 
         constexpr bool operator==(const PackedKey& other) const
         {
             return color_flags == other.color_flags &&
                 dimensions == other.dimensions &&
                 scale == other.scale &&
-                tex_name == other.tex_name;
+                texture_state == other.texture_state &&
+                sampler_state == other.sampler_state;
         }
 
         struct Hash
@@ -152,7 +154,8 @@ protected:
                 // Mixed rather than xored: the fields are small integers in the
                 // same bit positions, and xor alone folds them onto each other.
                 uint64_t h = key.color_flags;
-                for (uint64_t field : { key.dimensions, key.scale, key.tex_name })
+                for (uint64_t field : { key.dimensions, key.scale,
+                                        key.texture_state, key.sampler_state })
                 {
                     h = (h ^ field) * 0x9E3779B97F4A7C15ull;
                     h ^= h >> 29;
@@ -164,7 +167,7 @@ protected:
         static constexpr PackedKey create(S32 width, S32 height,
                                          const LLColor4& color, bool solid_color,
                                          const LLVector3& scale,
-                                         LLGLuint texture_name,
+                                         U64 texture_state,
                                          U32 sampler_generation)
         {
             auto float_to_u8 = [](F32 f) -> uint8_t {
@@ -192,13 +195,11 @@ protected:
             uint64_t scl = (static_cast<uint64_t>(float_to_bits(scale.mV[VX])) << 32) |
                 static_cast<uint64_t>(float_to_bits(scale.mV[VY]));
 
-            // A recording keeps the sampler's GL name, and rebuilding the samplers (an
-            // anisotropy change, a depth convention flip) deletes every name, so a recording
-            // made under an older generation would bind a dead or reused one.
-            uint64_t tex = (static_cast<uint64_t>(sampler_generation) << 32) |
-                static_cast<uint64_t>(texture_name);
-
-            return PackedKey{ col, dim, scl, tex };
+            // A recording retains the resource and sampler selected while it was built.
+            // A texture publication advances its content stamp; rebuilding the sampler
+            // cache advances its generation. Either event must create a new recording.
+            return PackedKey{ col, dim, scl, texture_state,
+                              static_cast<uint64_t>(sampler_generation) };
         }
     };
 

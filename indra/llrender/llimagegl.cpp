@@ -1149,7 +1149,7 @@ void LLImageGL::forceUpdateBindStats(void) const
 
 bool LLImageGL::updateBindStats() const
 {
-    if (mTexName != 0)
+    if (getHasGPUTexture())
     {
 #ifdef DEBUG_MISS
         mMissed = ! getIsResident(true);
@@ -3465,7 +3465,7 @@ void LLImageGL::destroyGLTexture()
 void LLImageGL::forceToInvalidateGLTexture()
 {
     checkActiveThread();
-    if (mTexName != 0)
+    if (getHasGPUTexture())
     {
         destroyGLTexture();
     }
@@ -3481,14 +3481,7 @@ bool LLImageGL::getIsResident(bool test_now)
 {
     if (test_now)
     {
-        if (mTexName != 0)
-        {
-            mIsResident = true;
-        }
-        else
-        {
-            mIsResident = false;
-        }
+        mIsResident = getHasGPUTexture();
     }
 
     return mIsResident;

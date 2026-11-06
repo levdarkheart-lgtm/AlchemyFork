@@ -526,11 +526,7 @@ void LLBumpImageList::updateImages()
 
     const auto has_backing = [](LLViewerTexture* image)
     {
-#if LL_DARWIN
-        return image->getGLTexture()->getMetalTexture() != nullptr;
-#else
-        return image->hasGLTexture();
-#endif
+        return image && image->hasGPUTexture();
     };
 
     for (bump_image_map_t::iterator iter = mBrightnessEntries.begin(); iter != mBrightnessEntries.end(); )

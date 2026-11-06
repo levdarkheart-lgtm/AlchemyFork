@@ -16561,17 +16561,17 @@ void LLPipeline::renderMetalWorldProjectorLights(
             cookie = LLViewerFetchedTexture::sWhiteImagep.get();
         }
         LLImageGL* cookie_image = cookie ? cookie->getGLTexture() : nullptr;
-        if (!cookie_image || !cookie_image->getTexName())
+        if (!cookie_image || !cookie_image->getMetalTexture())
         {
-            // LLTextureUnit::bindImpl substitutes the viewer default image
-            // when a fetched projector cookie has not published a GL object
+            // The ordinary texture path substitutes the viewer default image
+            // when a fetched projector cookie has not published GPU storage
             // yet. Use that same durable image for the native replay so an
             // unavailable cookie does not stall the whole world transaction.
             LLViewerFetchedTexture* fallback =
                 LLViewerFetchedTexture::sDefaultImagep.get();
             LLImageGL* fallback_image = fallback
                 ? fallback->getGLTexture() : nullptr;
-            if (fallback_image && fallback_image->getTexName())
+            if (fallback_image && fallback_image->getMetalTexture())
             {
                 cookie_image = fallback_image;
             }

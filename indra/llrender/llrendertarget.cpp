@@ -556,14 +556,13 @@ U64 LLRenderTarget::allocatedBytes() const
     return bytesFor(desc());
 }
 
-void LLRenderTarget::setColorAttachment(LLImageGL* image, LLGLuint use_name)
+void LLRenderTarget::setColorAttachment(LLImageGL* image)
 {
     LL_PROFILE_ZONE_SCOPED;
     llassert(image);
     llassert(!isBoundInStack());
     release();
-    if (!image || !image->getMetalTexture() ||
-        (use_name && use_name != image->getTexName()))
+    if (!image || !image->getMetalTexture())
     {
         LL_WARNS("RenderTarget")
             << "External render attachment requires the LLImageGL's real Metal texture"

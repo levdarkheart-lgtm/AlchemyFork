@@ -107,7 +107,7 @@ private:
 public:
     // Global list of instances for gathering statistics
     static void             dumpCacheByteCount();
-    static void             getCacheByteCount( S32* gl_bytes );
+    static void             getCacheByteCount(S32* gpu_bytes);
 
     typedef std::list< LLTexLayerParamAlpha* > param_alpha_ptr_list_t;
     static param_alpha_ptr_list_t sInstances;

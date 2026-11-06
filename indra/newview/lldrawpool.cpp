@@ -971,8 +971,7 @@ void add_shadow_texture(ALSpotShadowCache::Casters& casters, ALSpotShadowCache::
     draw.add(image);
     if (image)
     {
-        draw.add((U64)image->getTexName())
-            .add(image->getContentStamp())
+        draw.add(image->getContentStamp())
             .add((U64)(U32)image->getDiscardLevel())
             .add((U64)(U32)image->getCurrentWidth())
             .add((U64)(U32)image->getCurrentHeight());

@@ -91,7 +91,7 @@ public:
     // Sets the shape texture
     void setTexture( LLGLTexture *texture );
 
-    bool hasGLTexture() const;
+    bool hasGPUTexture() const;
 
     void setTestTexture( U32 name ) { mTestImageName = name; }
 

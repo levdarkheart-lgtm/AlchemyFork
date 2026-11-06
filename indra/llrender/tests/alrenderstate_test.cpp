@@ -28,6 +28,8 @@
 #include "almetalresource.h"
 #endif
 
+#include <cstring>
+
 TEST_CASE("Renderer state remains semantic without an OpenGL context",
           "[alrenderstate][metal-cutover]")
 {
@@ -224,6 +226,62 @@ TEST_CASE("Texture slots retain native resource identity without OpenGL",
     CHECK(slot.getCurrTexture() == 0);
     CHECK(slot.getCurrType() == ALTextureSlot::TT_NONE);
     CHECK(slot.getCurrMetalTexture() == nullptr);
+}
+
+TEST_CASE("Native image residency drives lifecycle without an OpenGL name",
+          "[alrenderstate][metal-cutover][texture-lifecycle]")
+{
+    REQUIRE_FALSE(gGLManager.mInited);
+
+    std::string error;
+    auto device = ALMetalDevice::create(&error);
+    INFO(error);
+    REQUIRE(device);
+
+    struct StateReset
+    {
+        ~StateReset()
+        {
+            ALTextureSlot::setWhiteImage(nullptr);
+            LLImageGL::setMetalDevice(nullptr);
+        }
+    } reset;
+    LLImageGL::setMetalDevice(device.get());
+
+    constexpr U32 width = 4;
+    constexpr U32 height = 4;
+    constexpr U8 components = 4;
+    LLPointer<LLImageRaw> pixels =
+        new LLImageRaw(width, height, components);
+    std::memset(pixels->getData(), 0x7f,
+                static_cast<std::size_t>(width) * height * components);
+
+    const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
+    LLPointer<LLImageGL> image = new LLImageGL(/*usemipmaps=*/false);
+    REQUIRE(image->createMetalTexture(0, pixels.get()));
+    REQUIRE(image->getMetalTexture());
+    CHECK(image->getTexName() == 0);
+    CHECK(image->getHasGPUTexture());
+    CHECK(LLImageGL::getTextureBytesAllocated() ==
+          baseline_bytes + width * height * components);
+
+    LLImageGL::updateStats(42.0);
+    CHECK(image->updateBindStats());
+    CHECK(image->getIsResident(/*test_now=*/true));
+
+    ALTextureSlot::setWhiteImage(image.get());
+    const U32 white_identity = ALTextureSlot::sWhiteTexture.load();
+    CHECK(white_identity != 0);
+    ALTextureSlot slot(5);
+    REQUIRE(slot.bindManual(ALTextureSlot::TT_TEXTURE, white_identity));
+    CHECK(slot.getCurrImage() == image.get());
+    CHECK(slot.getCurrMetalTexture() == image->getMetalTexture());
+
+    image->forceToInvalidateGLTexture();
+    CHECK_FALSE(image->getHasGPUTexture());
+    CHECK_FALSE(image->getIsResident(/*test_now=*/true));
+    CHECK(image->getDiscardLevel() == -1);
+    CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
 }
 
 TEST_CASE("Render targets own, clear, mip and share native Metal attachments",

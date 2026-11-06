@@ -1852,9 +1852,9 @@ S32 LLVOAvatarSelf::getLocalDiscardLevel(ETextureIndex type, U32 wearable_index)
 
 // virtual
 // Counts the memory footprint of local textures.
-void LLVOAvatarSelf::getLocalTextureByteCount(S32* gl_bytes) const
+void LLVOAvatarSelf::getLocalTextureByteCount(S32* gpu_bytes) const
 {
-    *gl_bytes = 0;
+    *gpu_bytes = 0;
     for (S32 type = 0; type < TEX_NUM_INDICES; type++)
     {
         if (!isIndexLocalTexture((ETextureIndex)type)) continue;
@@ -1869,9 +1869,9 @@ void LLVOAvatarSelf::getLocalTextureByteCount(S32* gl_bytes) const
                 {
                     S32 bytes = (S32)image_gl->getWidth() * image_gl->getHeight() * image_gl->getComponents();
 
-                    if (image_gl->hasGLTexture())
+                    if (image_gl->hasGPUTexture())
                     {
-                        *gl_bytes += bytes;
+                        *gpu_bytes += bytes;
                     }
                 }
             }
@@ -2076,9 +2076,9 @@ void LLVOAvatarSelf::onLocalTextureLoaded(bool success, LLViewerFetchedTexture *
 // static
 void LLVOAvatarSelf::dumpTotalLocalTextureByteCount()
 {
-    S32 gl_bytes = 0;
-    gAgentAvatarp->getLocalTextureByteCount(&gl_bytes);
-    LL_INFOS() << "Total Avatar LocTex GL:" << (gl_bytes/1024) << "KB" << LL_ENDL;
+    S32 gpu_bytes = 0;
+    gAgentAvatarp->getLocalTextureByteCount(&gpu_bytes);
+    LL_INFOS() << "Total Avatar LocTex GPU:" << (gpu_bytes/1024) << "KB" << LL_ENDL;
 }
 
 bool LLVOAvatarSelf::getHasMissingParts() const
@@ -2154,7 +2154,7 @@ bool LLVOAvatarSelf::getHasMissingParts() const
 
             // Check for the case that texture is defined but not sufficiently loaded to display anything.
             const LLViewerTexture* baked_img = getImage( texture_data.mTextureIndex, 0 );
-            if (!baked_img || !baked_img->hasGLTexture())
+            if (!baked_img || !baked_img->hasGPUTexture())
             {
                 if (do_warn)
                 {

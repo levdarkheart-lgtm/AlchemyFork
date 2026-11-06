@@ -92,15 +92,15 @@ LLTexLayerParamAlpha::param_alpha_ptr_list_t LLTexLayerParamAlpha::sInstances;
 // static
 void LLTexLayerParamAlpha::dumpCacheByteCount()
 {
-    S32 gl_bytes = 0;
-    getCacheByteCount( &gl_bytes);
-    LL_INFOS() << "Processed Alpha Texture Cache GL:" << (gl_bytes/1024) << "KB" << LL_ENDL;
+    S32 gpu_bytes = 0;
+    getCacheByteCount(&gpu_bytes);
+    LL_INFOS() << "Processed Alpha Texture Cache GPU:" << (gpu_bytes/1024) << "KB" << LL_ENDL;
 }
 
 // static
-void LLTexLayerParamAlpha::getCacheByteCount(S32* gl_bytes)
+void LLTexLayerParamAlpha::getCacheByteCount(S32* gpu_bytes)
 {
-    *gl_bytes = 0;
+    *gpu_bytes = 0;
 
     for (LLTexLayerParamAlpha* instance : sInstances)
     {
@@ -109,9 +109,9 @@ void LLTexLayerParamAlpha::getCacheByteCount(S32* gl_bytes)
         {
             S32 bytes = (S32)tex->getWidth() * tex->getHeight() * tex->getComponents();
 
-            if (tex->hasGLTexture())
+            if (tex->hasGPUTexture())
             {
-                *gl_bytes += bytes;
+                *gpu_bytes += bytes;
             }
         }
     }

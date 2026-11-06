@@ -491,7 +491,7 @@ void LLWorldMapView::draw()
                 S32 draw_size = ll_round(mMapScale);
                 overlayimage->setKnownDrawSize(ll_round(draw_size * LLUI::getScaleFactor().mV[VX]), ll_round(draw_size * LLUI::getScaleFactor().mV[VY]));
                 // Draw something whenever we have enough info
-                if (overlayimage->hasGLTexture())
+                if (overlayimage->hasGPUTexture())
                 {
                     gGL.getTextureSlot(0)->bindSampled(overlayimage, ALSamplers::AnisoClamp);
                     gGL.color4f(1.f, 1.f, 1.f, 1.f);
@@ -764,7 +764,7 @@ bool LLWorldMapView::drawMipmapLevel(S32 width, S32 height, S32 level, bool load
             if (simimage)
             {
                 // Checks that the image has a valid texture
-                if (simimage->hasGLTexture())
+                if (simimage->hasGPUTexture())
                 {
                     // Increment the number of completly fetched tiles
                     completed_tiles++;

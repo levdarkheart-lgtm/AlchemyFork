@@ -96,7 +96,9 @@ ALTextureSlot::ALTextureSlot(S32 index)
 void ALTextureSlot::setWhiteImage(LLImageGL* image)
 {
     sWhiteImage = image;
-    sWhiteTexture = image ? image->getTexName() : 0;
+    // A native texture deliberately has no GL name. Keep a non-zero logical token for
+    // the few retained manual-white call sites so zero never aliases a missing resource.
+    sWhiteTexture = image ? 1u : 0u;
 }
 
 ALMetalTexture* ALTextureSlot::getCurrMetalTexture() const

@@ -455,7 +455,7 @@ void LLPreviewTexture::onFileLoadedForSave(bool success,
                 << " Discard: " << src_vi->getDiscardLevel()
                 << " Raw discard: " << discard_level
                 << " Size: " << src_vi->getWidth() << "x" << src_vi->getHeight()
-                << " Has GL texture: " << (src_vi->hasGLTexture() ? "true" : "false")
+                << " Has GPU texture: " << (src_vi->hasGPUTexture() ? "true" : "false")
                 << " Has saved raw image: " << (src_vi->hasSavedRawImage() ? "true" : "false") << LL_ENDL;
         }
     }

@@ -2997,7 +2997,7 @@ void LLViewerFetchedTexture::readbackRawImage()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
     // readback the raw image from vram if the current raw image is null or smaller than the texture
-    if (mGLTexturep.notNull() && mGLTexturep->getTexName() != 0 &&
+    if (mGLTexturep.notNull() && mGLTexturep->getHasGPUTexture() &&
         (mRawImage.isNull() || mRawImage->getWidth() < mGLTexturep->getWidth() || mRawImage->getHeight() < mGLTexturep->getHeight() ))
     {
         if (mRawImage.isNull())

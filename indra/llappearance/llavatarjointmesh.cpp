@@ -247,9 +247,9 @@ void LLAvatarJointMesh::setTexture( LLGLTexture *texture )
 }
 
 
-bool LLAvatarJointMesh::hasGLTexture() const
+bool LLAvatarJointMesh::hasGPUTexture() const
 {
-    return mTexture.notNull() && mTexture->hasGLTexture();
+    return mTexture.notNull() && mTexture->hasGPUTexture();
 }
 
 //--------------------------------------------------------------------

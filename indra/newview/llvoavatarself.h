@@ -205,7 +205,7 @@ public:
 protected:
     /*virtual*/ void    setBakedReady(LLAvatarAppearanceDefines::ETextureIndex type, bool baked_version_exists, U32 index);
     void                localTextureLoaded(bool succcess, LLViewerFetchedTexture *src_vi, LLImageRaw* src, LLImageRaw* aux_src, S32 discard_level, bool final, void* userdata);
-    void                getLocalTextureByteCount(S32* gl_byte_count) const;
+    void                getLocalTextureByteCount(S32* gpu_byte_count) const;
     /*virtual*/ void    addLocalTextureStats(LLAvatarAppearanceDefines::ETextureIndex i, LLViewerFetchedTexture* imagep, F32 texel_area_ratio, bool rendered, bool covered_by_baked);
     LLLocalTextureObject* getLocalTextureObject(LLAvatarAppearanceDefines::ETextureIndex i, U32 index) const;
 

@@ -263,9 +263,9 @@ public:
     void setComponents(S8 ncomponents) { mComponents = ncomponents; }
 
     // While an off-thread upload is in flight the members below describe the texture
-    // being built, not the one mTexName still names. Consumers pair these getters with
-    // getTexName() -- LLVOVolume::sculpt reads back from GL at getWidth() -- so they must
-    // report what mTexName actually holds until both flip together in syncTexName.
+    // being built, not the published GPU generation. Consumers pair these getters with
+    // readBackRaw()/getHasGPUTexture(), so they must report the generation that remains
+    // visible until publication completes.
     S32  getDiscardLevel() const        { return mUploadInFlight ? mPublished.mCurrentDiscardLevel : mCurrentDiscardLevel; }
     S32  getMaxDiscardLevel() const     { return mUploadInFlight ? mPublished.mMaxDiscardLevel : mMaxDiscardLevel; }
 

@@ -178,7 +178,7 @@ void LLSurface::create(const S32 grids_per_edge,
 
 LLViewerTexture* LLSurface::getSTexture()
 {
-    if (mSTexturep.notNull() && !mSTexturep->hasGLTexture())
+    if (mSTexturep.notNull() && !mSTexturep->hasGPUTexture())
     {
         createSTexture();
     }
@@ -191,7 +191,7 @@ void LLSurface::createSTexture()
     {
         mTimer.setTimerExpirySec(MIN_TEXTURE_REQUEST_INTERVAL);
     }
-    else if (mSTexturep->hasGLTexture())
+    else if (mSTexturep->hasGPUTexture())
     {
         // Unexpected: createSTexture() called when a valid texture already exists.
         // This may indicate a logic error in the caller, as textures should not be recreated unnecessarily.

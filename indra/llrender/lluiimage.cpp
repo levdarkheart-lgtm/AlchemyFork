@@ -99,11 +99,12 @@ void LLUIImage::drawCached(S32 x, S32 y, S32 width, S32 height, const LLColor4& 
         return;
     }
 
-    // The GL name stands for the texture's current state: a discard change or a
-    // recreation renames it, and recordings made against the old name lapse. The sampler
-    // generation does the same for the sampler name the recording keeps.
+    // The content stamp stands for the published native texture generation: a discard
+    // change, replacement or in-place update advances it, and recordings made against the
+    // old pixels lapse. The sampler generation does the same for sampling state.
     const LLVector3 ui_scale = gGL.getUIScale();
-    const PackedKey key = PackedKey::create(width, height, color, solid_color, ui_scale, gl_image->getTexName(),
+    const PackedKey key = PackedKey::create(width, height, color, solid_color, ui_scale,
+                                            gl_image->getContentStamp(),
                                             gGL.getSamplerGeneration());
 
     // Where the image sits on screen, in the units the recording's vertices are
