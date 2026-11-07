@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
 **Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `1bfe631627`.
+**Renderer checkpoint:** Commit `ab98aae4a9`.
 
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
@@ -13,11 +13,11 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Release 68493 builds, stages, signs and verifies 349/349 ARM64 slices from the mixed attended-runtime checkpoint; controlled performance baseline remains open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,797 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended Mid login/world load passes, while broader lifecycle/stability coverage remains. |
-| M-004 | Metal resources, transfers, readback and sync | doing | Geometry, ordinary texture publication/residency/lifecycle, fonts, buffers, samplers, image slots, targets and reflection arrays are native. Copy/readback consumers follow. |
+| M-004 | Metal resources, transfers, readback and sync | doing | Exact-descriptor Metal target pooling retains owned attachments under a byte bound; streamed images use a separate containment capacity while original override/controller semantics remain. Copy/readback consumers and multi-scene policy validation follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
-| M-006 | UI, fonts, HUD and media ingress | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only. Snapshot state/thumbnail/save source path is repaired; runtime proof remains owner-attended. |
+| M-006 | UI, fonts, HUD and media ingress | doing | Reusable native world/UI output and copied depth eliminate per-frame target recreation. Conversations currently does not open; original-reference dispatch/floater tracing is next. |
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners; the Mid tessellated-water capture-count failure is corrected and visually stable in the bounded attended run; broad parity remains open. |
-| M-008 | Advanced views/effects and compute | doing | Native glow, SMAA and lens dirt have focused GPU proof; Debug/Develop-only tails remain behind the usable-core context cut. |
+| M-008 | Advanced views/effects and compute | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse; the mirror preference currently cannot be toggled off and needs state/resource-latch correction. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, UI replay and retained glow/SMAA require no GL. Render tails remain. |
@@ -123,10 +123,7 @@ dormant GL depth-pyramid owner/GLSL are removed; production water hierarchy and 
 lifecycle native; `9c74277821` makes font atlas allocation, glyph publication
 and release Metal-only with no GL fallback and exact native readback proof.
 
-`60e350e29a` removes orphan cube-array/framebuffer-copy GL owners; `c62977bd49` makes ordinary texture publication Metal-only; `8a00656289` removes uncalled
-GL ownership modes; `b86b1e4c53` repairs Snapshot state; `1081614942` removes
-legacy GL queries; `2e255de87c` makes ordinary texture residency, invalidation,
-cache identity, preview/save, terrain/map/avatar/bump and projectors native.
+`60e350e29a` removes orphan cube-array/framebuffer-copy GL owners; `c62977bd49` makes ordinary texture publication Metal-only; `8a00656289` removes uncalled GL ownership modes; `b86b1e4c53` repairs Snapshot state; `1081614942` removes legacy GL queries; `2e255de87c` makes ordinary texture residency, invalidation, cache identity, preview/save, terrain/map/avatar/bump and projectors native.
 
 `6e5047e50b` deletes retained UI/text geometry's raw texture/sampler identities and GL replay fallback. `b971465ca7` deletes superseded retained GL glow/SMAA. `f77024a20a` makes lens-dirt generation Metal-authoritative. `1bfe631627` removes `LLRender`'s dormant GL driver-state, clear, draw and compute authority while retaining semantic raster/blend/depth/viewport/scissor state for native pipeline descriptions; unsupported instanced/indirect/compute endpoints fail closed. Package 68492 is the bounded owner-attended startup/login/world-load candidate, not a parity, stability or GL-zero claim.
 
@@ -135,6 +132,9 @@ cache identity, preview/save, terrain/map/avatar/bump and projectors native.
 The original OpenGL path was traced before correcting the Low-to-Mid black screen: it draws one tessellated wave patch plus three surrounding flat-water groups. Metal emitted four groups, but `captureMetalWorldWaterSurface()` accepted only the non-wave count of three and invalidated each affected post-deferred transaction.
 Commit `2e2ac6e1c9` centralizes `ALMetalWaterSurface::expectedFieldDrawCount()` for capture and renderer validation and adds a four-group GPU assertion. Release `26.4.0.68493` (built from the mixed working checkpoint containing that correction at 2026-11-07 01:08:12 GMT; executable SHA-256 `dfd02973a45085b790c334f1c47574549ce632b6b9e6f6a377946574f972ffd0`) verifies 349/349 ARM64 slices.
 An attended direct login to persisted Mid with HDR rendered for 500+ complete native world/UI publications; `first_incomplete_line=8073` and Metal validation/GPU errors did not recur in `/tmp/alchemy-metal-68493-water-wave-release-20261107.log`. This is bounded Mid evidence, not a High/Ultra or broad parity pass.
+
+### Mirror/resource lifecycle correction — 2026-11-07
+Commit `ab98aae4a9` and its original-reference mapping, tests, attended reuse evidence and limits are recorded in the [archived checkpoint](../../state/archive/CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md).
 
 ## Validation checkpoint
 
@@ -152,8 +152,8 @@ An attended direct login to persisted Mid with HDR rendered for 500+ complete na
 - Broad shared tests reproduce baseline host/driver failures: four assertions in three frame-fence timing cases and one render-target depth-format assertion.
 - Focused alrender/llrender suites pass 28/28; harness structure passes 32/32 required files; tool tests pass 31/31.
 - Release 68493 verifies 349/349 ARM64 slices; attended Mid/HDR remains stable through 500+ native world/UI publications without the prior water-count rejection.
+- Commit `ab98aae4a9`: Metal passes 52,765/52,765 assertions and llrender passes 1,867/1,867; exact packaged Release verification follows the UI corrections.
 - Strict inventory: 1,797/2,403 files (`gl_function` 340, `gl_shader` 1,457, `sdl_gl` 0), expected exit 1; report SHA-256 is `219eb943960b124745e171a8d420e9ab983e74c04de50ad52f19a2ce47fee74d`; 331 below 2,128 and 504 below 2,301 with unchanged rules.
-
 ## Owner-attended visual cadence
 
 Launch/login/capture only at the owner's explicit request and control; add bounded checks to the [daily visual queue](visual-review-queue.md).
@@ -166,10 +166,10 @@ Launch/login/capture only at the owner's explicit request and control; add bound
 
 ## Immediate executable action
 
-1. Keep Mid as the normalized troubleshooting baseline; use Low only to isolate/bootstrap broken feature boundaries.
-2. Test High and Ultra incrementally from stable Mid in owner-attended runs, changing one graphics-feature boundary at a time and tracing the corresponding original-viewer behavior before implementing any fix.
-3. Finish remaining essential texture copy/readback ownership and raw manual identities.
-4. Continue ordinary UI/world GL removal before optional tails and continue strict source/link audits.
+1. Trace Conversations dispatch/floater state against `upstream/develop`; correct and verify the earliest divergence.
+2. Trace `RenderMirrors` preference commit/latching/cleanup; restore reliable off/on transitions.
+3. Build/verify the exact Release, then run the owner-attended mirror toggle/sit/stand sequence.
+4. Classify texture churn and run all four scenarios before tuning capacity.
 
 ## Non-negotiable open gates
 

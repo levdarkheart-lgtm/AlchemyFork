@@ -136,6 +136,7 @@ reload the chronological history.
 | Direct native reflection-probe water enumeration with surface, environment and ordering semantics retained, source-exact build 68280, 2026-11-04 | [CURRENT-direct-probe-water-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-water-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Direct native reflection-probe deferred-avatar/impostor enumeration with selection, LOD, skinning, cloth and failure semantics retained, source-exact build 68282, 2026-11-04 | [CURRENT-direct-probe-deferred-avatar-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-deferred-avatar-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Direct native reflection-probe transparent avatar hair/skirt enumeration with exact high-/low-detail multipass state, source-exact build 68284, 2026-11-04 | [CURRENT-direct-probe-transparent-avatar-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-transparent-avatar-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| Native mirror/resource lifecycle, target reuse and bounded texture-stream containment, 2026-11-07 | [CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md](CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
