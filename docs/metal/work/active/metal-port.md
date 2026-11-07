@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
 **Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `af65f062a1` (`Fix native directional shadow capture fallbacks`).
+**Renderer checkpoint:** Commit `8a201381e2` (`Fix High quality Metal SSAO noise format`).
 
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
@@ -16,7 +16,7 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-004 | Metal resources, transfers, readback and sync | doing | Exact-descriptor Metal target pooling retains owned attachments under a byte bound; streamed images use a separate containment capacity while original override/controller semantics remain. Copy/readback consumers and multi-scene policy validation follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Reusable native world/UI output and copied depth eliminate per-frame target recreation. Empty UI clips now preserve original no-op semantics; Conversations visibly opens/closes/reopens in attended 68497 evidence. |
-| M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners. Attended `68502` shows four populated main directional cascades and stable moving avatar/object shadows; exact-build matched owner captures now exist and the corrected QA profile dry-runs cleanly, while parity awaits fresh live-gated runs and an explicit review decision. |
+| M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners. Mid water and the High SSAO transition are stable; attended `68502` shows four populated main directional cascades and moving avatar/object shadows, while broader parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse. Attended 68499 toggle-off and mirrors-off login pass with synchronous hero retirement; visual parity and the separate shadow freeze remain open. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
@@ -44,14 +44,11 @@ Metal is the only visible post-startup presenter. Production geometry, textures/
 
 The essential initialization sequence now advances through:
 
-- `9e90be44e1`: renderer capability truth comes from the Metal device rather
-  than `gGLManager`.
+- `9e90be44e1`: renderer capability truth comes from the Metal device rather than `gGLManager`.
 - `70eca3a0c9`: native renderer initialization is separate from GL init.
 - `e3ec32d3b2`: render-state transitions remain semantic without a context.
 - `349c0278c3`: texture/shader binding bookkeeping is contextless.
-- `3087308155`: loader-authored pass and rigged/classic/mirror variant graphs
-  configure as native identities without opening/compiling/caching GLSL or
-  creating program/shader names. MSL/Metal owners remain executable authority.
+- `3087308155`: loader-authored pass and rigged/classic/mirror variant graphs configure as native identities without opening/compiling/caching GLSL or creating program/shader names. MSL/Metal owners remain executable authority.
 
 `isComplete()` still means a live linked GL program; native consumers use the separate native availability contract and GL-backed occlusion fails closed.
 
@@ -71,11 +68,7 @@ and appearance-utility executables have no OpenGL/Vulkan dynamic dependency or
 unresolved GL/CGL/SDL_GL/Vulkan imports. Generic unselected SDL archive stubs
 do not enter the product executable.
 
-`1a76b76a6d` deletes the hidden backend's remaining cross-platform GL context
-implementation and both texture/vertex worker shared-context fallbacks. The
-texture worker retains asynchronous Metal upload batching and fail-closed
-authority checks. Darwin omits six legacy GL-only migration suites rather than
-linking a test-only fallback runtime.
+`1a76b76a6d` deletes the hidden backend's remaining cross-platform GL context implementation and both texture/vertex worker shared-context fallbacks. The texture worker retains asynchronous Metal upload batching and fail-closed authority checks. Darwin omits six legacy GL-only migration suites rather than linking a test-only fallback runtime.
 
 `f7ecf74e84` deletes visible-window GL attributes, context creation/currentness,
 shared contexts, swap, teardown and reset polling while retaining the plain
@@ -133,6 +126,10 @@ Commits `ab98aae4a9` and `abde32f46e` record bounded mirror resources and origin
 Original tracing showed sparse null GLTF-material slots are fragmented batch gaps and streaming textures use the default image; Metal had rejected a whole cascade for either condition. Commit `af65f062a1` preserves sparse slots with inert material data, applies the default native texture to streaming legacy/PBR/tree/covered-avatar casters and keeps null avatar images fail-closed. In attended `26.4.0.68502`, four populated `3472x1920` cascades, moving caster shadows and streaming stability pass; one separate hero-probe terrain attempt recovered on retry. Release/349-slice verification and 52,774 assertions/57 cases pass.
 The owner-attended exploratory pair used `/Applications/Alchemy Beta.app` (`7.1.9.2516`, executable SHA-256 `a361437f58866d9f41b029b21048cebc6dee635ee8678e41d40dfa5a20daa75a`) rather than the QA reference, so its darker/softer Metal result is not an acceptance decision. External validation HEAD `734afd3179` (exact renderer base `1eb44bbd1b` plus three instrumentation-only commits) now produces a complete, deeply signed, 349/349 ARM64 `67607` reference with executable SHA-256 `de8fc8f817c0afb2063f641e9c24cbd58054c32c3053f4d0e863232498bb1797`. The owner subsequently captured that exact reference and Xcode Release `68502` candidate at `3456x1916`; image SHA-256 values are `c73ed75207b9aa115cd193a9f5280fdbaf05fb8e1b44406c0316c7b4d6247b4c` and `39a08453dfe77ca732c9bb6440d05a097d8a153397aac84dc7a19912d3e792e1`. Pre-save screenshots and owner confirmation establish matched exposure `1.0`, Mid, `Preset123`, Midday/Lightbox, 128 m, Sun/Moon + Projector, mirrors 512/every third frame, ACES and zero sharpening. The old run manifests prevent a formal gate decision: the local QA profile is now corrected, the unsupported diagnostic key removed and both exact-path dry runs pass with identical expectations, but fresh live-gated runs remain required.
 
+### High-quality SSAO correction — 2026-11-07
+
+Original `1eb44bbd1b` tracing shows High enables SSAO and supplies its tiled noise as `GL_RGB16F`. The Metal producer already preserves those first two channels as `rg16_float`, but the light-map consumer still rejected everything except the earlier `rg32_float` GL-readback mirror; every High frame then failed and retained the prior drawable. Commit `8a201381e2` makes the consumer and GPU fixture require the production `rg16_float` contract. In owner-attended `68505`, LEAP confirmed High (`RenderQualityPerformance=4`, SSAO on) and then High plus manually re-enabled mirrors; publication advanced past 1,300 frames with zero G-buffer incompatibility messages. The High feature list setting `RenderMirrors=0` matches the original preset and is intentionally unchanged.
+
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
@@ -151,6 +148,7 @@ The owner-attended exploratory pair used `/Applications/Alchemy Beta.app` (`7.1.
 - Release 68493 verifies 349/349 ARM64 slices; attended Mid/HDR remains stable through 500+ native world/UI publications without the prior water-count rejection.
 - Commit `dbe1215cea`: diagnostics-free Xcode Release 68499 builds and verifies 349/349 ARM64 slices; the separate Ninja Metal suite passes 52,772 assertions/57 cases. Release `ctest` has no registrations because its preset has tests disabled; attended toggle-off and mirrors-off startup/login both pass.
 - Commit `af65f062a1`: Xcode Release 68502 builds and verifies 349/349 ARM64 slices; the focused Metal suite passes 52,774 assertions/57 cases; attended diagnostics show four populated main directional cascades and stable moving avatar/object shadows.
+- Commit `8a201381e2`: source-exact Xcode Release 68506 builds and verifies 349/349 ARM64 slices; executable SHA-256 is `871f5c88dbd94d2e231edb1eadb343255b2e9a6fbad50d4bc33bf8fb5875531a`. The production-format GPU case passes 8,048 assertions and the full Metal suite passes 52,774 assertions/57 cases; Release-tree `ctest` correctly has no registrations.
 - External exact-base OpenGL validation HEAD `734afd3179`: configure and full Release build/stage exit 0; the `26.4.0.67607` app contains 8,111 files including `settings_files.xml`, passes deep strict signing and 349/349 ARM64 verification, and its executable SHA-256 is `de8fc8f817c0afb2063f641e9c24cbd58054c32c3053f4d0e863232498bb1797`. Corrected local QA graphics/Looks preset SHA-256 values are `8b5f56aaa26eed855ab4a671534d8a5beca8388b21d47a096789f87932eaef56` and `5108dd19f9c53aea37211b4cb08e84cce7b340cfc00c91a8a6b186b3bb58d4e6`; reference and candidate dry runs both exit 0 with identical 19-control expectations.
 - Strict inventory: 1,797/2,403 files (`gl_function` 340, `gl_shader` 1,457, `sdl_gl` 0), expected exit 1; report SHA-256 is `219eb943960b124745e171a8d420e9ab983e74c04de50ad52f19a2ce47fee74d`; 331 below 2,128 and 504 below 2,301 with unchanged rules.
 ## Owner-attended visual cadence
@@ -165,7 +163,7 @@ Launch/login/capture only at the owner's explicit request and control; add bound
 
 ## Immediate executable action
 
-1. Relaunch the rebuilt `67607` reference and `68502` candidate sequentially under the corrected QA profile, pass fresh live gates before capture, and make the explicit shadow-parity decision; trace only a confirmed direct-light/shadow-filter difference.
+1. Confirm source-exact `68506` at High on the next owner-attended launch; identical code in attended `68505` already passes the reported High transition with mirrors manually restored.
 2. Refine and recheck the transient hero-probe terrain shadow rejection while preserving fail-closed publication.
 3. Revalidate mirror reflection content/avatar/clipping separately from the passing setting lifecycle.
 4. Classify texture churn and run all four scenarios before tuning capacity.
