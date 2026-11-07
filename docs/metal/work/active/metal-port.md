@@ -17,7 +17,7 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Reusable native world/UI output and copied depth eliminate per-frame target recreation. Empty UI clips now preserve original no-op semantics; Conversations visibly opens/closes/reopens in attended 68497 evidence. |
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners; the Mid tessellated-water capture-count failure is corrected and visually stable in the bounded attended run; broad parity remains open. |
-| M-008 | Advanced views/effects and compute | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse. Mirrors-off now unpublishes and retires hero-only Metal state synchronously; attended toggle/pre-login proof, visual parity and the separate shadow freeze remain open. |
+| M-008 | Advanced views/effects and compute | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse. Attended 68499 toggle-off and mirrors-off login pass with synchronous hero retirement; visual parity and the separate shadow freeze remain open. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, UI replay and retained glow/SMAA require no GL. Render tails remain. |
@@ -134,7 +134,7 @@ Commit `2e2ac6e1c9` centralizes `ALMetalWaterSurface::expectedFieldDrawCount()` 
 An attended direct login to persisted Mid with HDR rendered for 500+ complete native world/UI publications; `first_incomplete_line=8073` and Metal validation/GPU errors did not recur in `/tmp/alchemy-metal-68493-water-wave-release-20261107.log`. This is bounded Mid evidence, not a High/Ultra or broad parity pass.
 
 ### Resource/UI corrections — 2026-11-07
-Commits `ab98aae4a9` and `abde32f46e` record bounded mirror resources and original-compatible empty UI clips/visible Conversations; archived evidence is in the [mirror](../../state/archive/CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md) and [UI](../../state/archive/CURRENT-empty-ui-clip-checkpoint-2026-11-07.md) checkpoints. `dbe1215cea` applies the original count-zero/no-mirror contract before early return, gates direct Metal consumers on the live mirror plan and retires only hero source/radiance/binding state when mirrors are disabled. Runtime toggle proof is still owner-attended; the reported pre-login world-load failure is explicitly an unverified hypothesis.
+Commits `ab98aae4a9` and `abde32f46e` record bounded mirror resources and original-compatible empty UI clips/visible Conversations; archived evidence is in the [mirror](../../state/archive/CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md) and [UI](../../state/archive/CURRENT-empty-ui-clip-checkpoint-2026-11-07.md) checkpoints. `dbe1215cea` applies the original count-zero/no-mirror contract before early return, gates direct Metal consumers on the live mirror plan and retires only hero source/radiance/binding state when mirrors are disabled. In attended 68499, live toggle-off visibly worked and logged retirement; the separate mirrors-off-before-login run visibly loaded and logged successful login plus continuous world/UI publication, disproving the prior hypothesis for this build.
 
 ## Validation checkpoint
 
@@ -152,7 +152,7 @@ Commits `ab98aae4a9` and `abde32f46e` record bounded mirror resources and origin
 - Broad shared tests reproduce baseline host/driver failures: four assertions in three frame-fence timing cases and one render-target depth-format assertion.
 - Focused alrender/llrender suites pass 28/28; harness structure passes 32/32 required files; tool tests pass 31/31.
 - Release 68493 verifies 349/349 ARM64 slices; attended Mid/HDR remains stable through 500+ native world/UI publications without the prior water-count rejection.
-- Commit `dbe1215cea`: diagnostics-free Xcode Release 68499 builds and verifies 349/349 ARM64 slices; the separate Ninja Metal suite passes 52,772 assertions/57 cases. Release `ctest` has no registrations because its preset has tests disabled; runtime toggle-off proof remains open.
+- Commit `dbe1215cea`: diagnostics-free Xcode Release 68499 builds and verifies 349/349 ARM64 slices; the separate Ninja Metal suite passes 52,772 assertions/57 cases. Release `ctest` has no registrations because its preset has tests disabled; attended toggle-off and mirrors-off startup/login both pass.
 - Strict inventory: 1,797/2,403 files (`gl_function` 340, `gl_shader` 1,457, `sdl_gl` 0), expected exit 1; report SHA-256 is `219eb943960b124745e171a8d420e9ab983e74c04de50ad52f19a2ce47fee74d`; 331 below 2,128 and 504 below 2,301 with unchanged rules.
 ## Owner-attended visual cadence
 
@@ -166,10 +166,10 @@ Launch/login/capture only at the owner's explicit request and control; add bound
 
 ## Immediate executable action
 
-1. In 68499, validate enabled-at-login then toggle-off after stable world load, including checkbox state and transition logs.
-2. Separately validate, rather than assume, whether disabling mirrors before login prevents world load.
-3. Isolate the persisted-shadow enable freeze from mirrors against the original viewer.
-4. Classify texture churn and run all four scenarios before tuning capacity.
+1. Isolate the persisted-shadow enable freeze from mirrors against the original viewer.
+2. Revalidate mirror reflection content/avatar/clipping separately from the passing setting lifecycle.
+3. Classify texture churn and run all four scenarios before tuning capacity.
+4. Continue the highest-value unblocked native-ownership cut.
 
 ## Non-negotiable open gates
 
