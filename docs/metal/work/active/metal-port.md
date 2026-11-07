@@ -19,7 +19,7 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners. Mid water, High SSAO and Ultra shadows pass; the owner accepts broad Ultra lighting/shadow/sky/color similarity in the bounded source-exact pair. |
 | M-008 | Advanced views/effects and compute | doing | Native mirror/probe lifecycle and an Ultra-plus-mirrors transition pass, but the matched pair shows a blue-gray Metal versus green-terrain OpenGL reflected background; trace content/clipping before any fix. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
-| M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
+| M-010 | M1 Max profiling and optimization | doing | Ultra profiling isolates mirror shadow/probe submission granularity as a primary Metal cost; qualifying paired 300-frame measurements remain open. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, UI replay and retained glow/SMAA require no GL. Render tails remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
@@ -130,6 +130,8 @@ The owner-attended exploratory pair used `/Applications/Alchemy Beta.app` (`7.1.
 
 Original `1eb44bbd1b` tracing shows High enables SSAO and supplies tiled noise as `GL_RGB16F`; commit `8a201381e2` therefore makes the light-map consumer and GPU fixture accept the producer's source-correct `rg16_float` resource. Owner-attended `68505` advanced past 1,300 High-plus-manually-restored-mirror publications with zero G-buffer incompatibility messages; High setting `RenderMirrors=0` is original preset behavior. Ultra plus Mirrors exposed a separate repeated fail-closed loop: Metal compared actual shadow depth to a stale planned resolution and demanded positive PCSS scale although the original cube-snapshot path takes a raw single tap before PCSS. Commit `921aed5ca9` reads resolution from the retained Metal texture and exempts only probe-single-tap from that scale. Source-exact `68508` and exact-base OpenGL `67607` owner captures at `3456x2168` have image SHA-256 values `30e90493ffea570c74f71c8f2e1a26c5044731b398151dee678ffc9dc1c5ef2c` and `082c610acb4d00963dc4a450a6abf5f7533b6bdd8aa75609b2e85a99bb72997f`; fresh LEAP samples match all 17 compared Ultra controls and exact world position. The owner accepts broad lighting, directional shadows, sky and color as similar enough to move on; mirror reflected-background content remains open. Both runs changed Mid to Ultra after launch, so this is bounded evidence rather than a formal gate artifact. Instantaneous 5 FPS Metal versus 7 FPS OpenGL is exploratory only.
 
+Bounded source-exact `68508` profiling records 4.9 versus 8.1 FPS and 66.60 versus 28.19 command buffers/present with Mirrors on versus off, 40.4% enabled GPU activity and Nominal thermals. Original `1eb44bbd1b` schedules all six hero faces at update rate 1, so trace resource/synchronization ownership before coalescing Metal shadow slices or removing their second retained-array copy. The [archived diagnosis](../../state/archive/CURRENT-ultra-mirror-performance-diagnosis-2026-11-07.md) preserves settings, local trace provenance, hashes and the compiled-out Release collector limitation; this is optimization evidence, not the qualifying 300-frame paired claim.
+
 ## Validation checkpoint
 
 - M1 Max host doctor passes (macOS 26.5.2, 64 GiB, Xcode 26.6, Apple family 7).
@@ -165,7 +167,7 @@ Launch/login/capture only at the owner's explicit request and control; add bound
 
 1. Save a dedicated Ultra profile and repeat source-exact `68508` versus exact-base `67607` from launch so the fail-closed gate, rather than a manual transition, owns the manifests.
 2. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.
-3. Replace the exploratory instantaneous 5 FPS Metal versus 7 FPS OpenGL reading with repeated, quality-equivalent 300-frame measurements only after parity is established.
+3. Build performance-instrumented Release candidates or use matched external captures, then run the quality-equivalent 300-frame Metal/OpenGL protocol; trace original shadow resource/command-buffer ownership before batching Metal shadow slices or removing their retained-array copy.
 4. Classify texture churn and run all four scenarios before tuning capacity.
 5. Continue the highest-value unblocked native-ownership cut.
 

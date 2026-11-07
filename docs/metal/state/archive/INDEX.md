@@ -138,6 +138,7 @@ reload the chronological history.
 | Direct native reflection-probe transparent avatar hair/skirt enumeration with exact high-/low-detail multipass state, source-exact build 68284, 2026-11-04 | [CURRENT-direct-probe-transparent-avatar-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-transparent-avatar-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Native mirror/resource lifecycle, target reuse and bounded texture-stream containment, 2026-11-07 | [CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md](CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md) | `docs/metal/state/CURRENT.md` |
 | Original-compatible empty UI clip semantics and visible Conversations floater, 2026-11-07 | [CURRENT-empty-ui-clip-checkpoint-2026-11-07.md](CURRENT-empty-ui-clip-checkpoint-2026-11-07.md) | `docs/metal/state/CURRENT.md` |
+| Bounded Ultra mirror performance diagnosis and Metal submission-cost evidence, 2026-11-07 | [CURRENT-ultra-mirror-performance-diagnosis-2026-11-07.md](CURRENT-ultra-mirror-performance-diagnosis-2026-11-07.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
