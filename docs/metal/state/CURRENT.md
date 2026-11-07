@@ -3,7 +3,7 @@
 **Observed:** 2026-11-07 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `ab98aae4a9`
+**Renderer code checkpoint:** `abde32f46e`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -86,8 +86,8 @@ Package `26.4.0.68493` was tested after tracing its Mid black screen against the
 Commit `2e2ac6e1c9` gives `ALMetalWaterSurface` one shared `expectedFieldDrawCount()` invariant (`4` with waves, otherwise `3`) for capture and renderer validation, plus a focused GPU assertion.
 An attended login directly into persisted Mid (`RenderQualityPerformance=2`) rendered continuously for 500+ complete native world/UI publications. `first_incomplete_line=8073` and Metal validation/GPU errors did not recur; this proves the bounded Mid correction, not broad parity, High/Ultra stability or release readiness.
 
-### Mirror and resource-lifecycle checkpoint `ab98aae4a9`
-Original-reference mapping, native ownership, tests, attended reuse evidence and explicit scene/performance limits are archived in the [checkpoint](archive/CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md).
+### Resource and UI checkpoints through `abde32f46e`
+Mirror lifecycle evidence is [archived](archive/CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md); original-compatible empty-clip handling and attended Conversations evidence are in the [UI checkpoint](archive/CURRENT-empty-ui-clip-checkpoint-2026-11-07.md).
 
 ## Build and validation evidence
 
@@ -116,8 +116,8 @@ Original-reference mapping, native ownership, tests, attended reuse evidence and
   `python3 -m unittest discover -s tools/metal/tests -v` passes 31/31.
 - Focused alrender/llrender suites pass 28/28; `git diff --check` passes.
 - Release `26.4.0.68493`, built from the mixed working checkpoint containing the now-committed correction at 2026-11-07 01:08:12 GMT, has executable SHA-256 `dfd02973a45085b790c334f1c47574549ce632b6b9e6f6a377946574f972ffd0`; `verify_app.sh` passes 349/349 ARM64 slices and attended Mid/HDR evidence is `/tmp/alchemy-metal-68493-water-wave-release-20261107.log`.
-- At `ab98aae4a9`, Metal passes 52,765/52,765 assertions and llrender passes
-  1,867/1,867; exact packaged Release verification remains open.
+- At `abde32f46e`, focused UI passes 600/600 and Metal passes 52,772/52,772 assertions; diagnostics-free Release `68497` verifies 349/349 ARM64 slices.
+  Its executable is `c98702736c0b61589a1c2c04cc2c56e9bff4b4aeefb815d65bb376afd7a85921`; attended exact-package rerun remains open.
 
 ## OpenGL elimination gate
 
@@ -137,9 +137,9 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 | M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended Mid login/world load now passes, while broader lifecycle and stability validation remain. |
 | M-004 resources/readback | doing | Native targets now reuse exact owned attachment sets under a byte bound; streamed images use a separate containment capacity while the original override/controller semantics remain. Remaining copy/readback consumers and multi-scene policy validation follow. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
-| M-006 UI/media | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only; reusable world/UI color and copied depth remain native-owned. Conversations currently fails to open and is the next original-reference regression trace. |
+| M-006 UI/media | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only. Original-compatible empty clips no-op before Metal encoding; Conversations visibly opens/closes/reopens in attended `68497` evidence. Broader UI parity remains open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; Mid tessellated-water capture now accepts its correct four draw groups and is visually stable in the bounded attended test; broader parity remains open. |
-| M-008 effects/advanced views | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse; mirror preference cannot currently be toggled off and requires an original-reference UI/state trace. |
+| M-008 effects/advanced views | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse. Instrumented off/on mirror-setting transitions succeeded; mirror visual parity and persisted-shadow stability remain open. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
 | M-010 measured performance | deferred | No quality-equivalent paired M1 Max claim yet. |
 | M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, resources, targets, UI replay and retained glow/SMAA require no GL; render tails remain. |
@@ -154,7 +154,7 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 
 ## Exact next actions
 
-1. Trace Conversations dispatch/floater state against `upstream/develop` and fix the earliest divergence.
-2. Trace `RenderMirrors` preference commit/latching/cleanup and restore reliable off/on transitions.
-3. Build/verify the exact Release, then run the owner-attended mirror toggle/sit/stand sequence.
+1. Re-run the diagnostics-free `68497` package for source-exact Conversations and mirror off/on confirmation.
+2. Isolate the persisted-shadow enable freeze from mirrors and trace its earliest native failure against the original viewer.
+3. Run the owner-attended mirror toggle/sit/stand sequence without shadows, then repeat with the diagnosed shadow path.
 4. Classify texture churn and run all four scenarios before changing automatic texture capacity.
