@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdlib>
 #include <limits>
 #include <new>
 #include <sstream>
@@ -537,6 +538,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool spot_shadow_capture_active = false;
     bool spot_shadow_capture_directional = false;
     bool spot_shadow_capture_complete = false;
+    U32 spot_shadow_first_incomplete_source_line = 0;
     bool spot_shadow_avatar_pass_active = false;
     bool spot_shadow_avatar_cloth = false;
     F32 spot_shadow_avatar_wind[4]{};
@@ -8149,15 +8151,21 @@ void LLPipeline::captureMetalWorldWaterSurface(
             capture.world_alpha_lighting_valid = true;
         }
         if (surface.uses_shadows &&
-            (!fillMetalImpostorDirectionalShadows() ||
-             !capture.impostor_directional_shadows.depth_texture))
+            !fillMetalImpostorDirectionalShadows())
         {
             capture.markIncomplete(__LINE__);
             capture.batches.clear();
             return;
         }
+        // Match bindShadowMaps(): a view with every cascade marked unbuilt is
+        // still complete and shades fully lit without sampling a shadow map.
+        // Keep the water shader's shadow-enabled contract below, but publish a
+        // live pack to the shared alpha scene only when one actually exists;
+        // the Metal renderer supplies its all-unbuilt stand-in otherwise.
+        const bool water_has_shadow_pack = surface.uses_shadows &&
+            capture.impostor_directional_shadows.depth_texture != nullptr;
         capture.world_alpha_uses_shadows =
-            capture.world_alpha_uses_shadows || surface.uses_shadows;
+            capture.world_alpha_uses_shadows || water_has_shadow_pack;
     }
 
     capture.water_surface = surface;
@@ -13789,6 +13797,7 @@ void LLPipeline::beginMetalSpotShadowCapture(
     capture.spot_shadow_coverage =
         ALMetalWorldSpotShadowCoverage::opaque;
     capture.spot_shadow_capture_complete = complete;
+    capture.spot_shadow_first_incomplete_source_line = 0;
     capture.spot_shadow_capture_directional = false;
     capture.spot_shadow_avatar_pass_active = false;
     capture.spot_shadow_avatar_cloth = false;
@@ -13827,6 +13836,7 @@ void LLPipeline::beginMetalDirectionalShadowCapture(
     capture.spot_shadow_coverage =
         ALMetalWorldSpotShadowCoverage::opaque;
     capture.spot_shadow_capture_complete = complete;
+    capture.spot_shadow_first_incomplete_source_line = 0;
     capture.spot_shadow_capture_directional = true;
     capture.spot_shadow_avatar_pass_active = false;
     capture.spot_shadow_avatar_cloth = false;
@@ -13876,6 +13886,7 @@ void LLPipeline::beginMetalSpotShadowAvatarPass(
     if (capture.spot_shadow_avatar_pass_active ||
         (cloth && (!wind || !sin_wave || !gravity || !cloth_depth)))
     {
+        capture.spot_shadow_first_incomplete_source_line = __LINE__;
         capture.spot_shadow_capture_complete = false;
         capture.spot_shadow_batches.clear();
         capture.spot_shadow_avatar_palettes.clear();
@@ -13906,6 +13917,7 @@ void LLPipeline::endMetalSpotShadowAvatarPass()
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.spot_shadow_avatar_pass_active)
     {
+        capture.spot_shadow_first_incomplete_source_line = __LINE__;
         capture.spot_shadow_capture_complete = false;
         capture.spot_shadow_batches.clear();
         capture.spot_shadow_avatar_palettes.clear();
@@ -13943,6 +13955,7 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
     {
+        capture.spot_shadow_first_incomplete_source_line = __LINE__;
         capture.spot_shadow_capture_complete = false;
         capture.spot_shadow_batches.clear();
         return;
@@ -13972,6 +13985,7 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
         if (!params.mAvatar || !params.mSkinInfo ||
             !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
         {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
             capture.spot_shadow_capture_complete = false;
             capture.spot_shadow_batches.clear();
             return;
@@ -13983,6 +13997,7 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
         if (joint_count == 0 || palette.mGLMp.size() !=
                 4 + static_cast<std::size_t>(joint_count) * 12)
         {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
             capture.spot_shadow_capture_complete = false;
             capture.spot_shadow_batches.clear();
             return;
@@ -14025,6 +14040,7 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
          !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX)) ||
         !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
     {
+        capture.spot_shadow_first_incomplete_source_line = __LINE__;
         capture.spot_shadow_capture_complete = false;
         capture.spot_shadow_batches.clear();
         return;
@@ -14064,7 +14080,20 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
         -> ALMetalTexture*
     {
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-        return image ? image->getMetalTexture() : nullptr;
+        ALMetalTexture* native = image ? image->getMetalTexture() : nullptr;
+        if (!native)
+        {
+            // The original texture-slot bind substitutes the viewer default
+            // while a streamed image is not GPU-ready. A transient upload
+            // must not invalidate the complete shadow map.
+            LLViewerFetchedTexture* fallback =
+                LLViewerFetchedTexture::sDefaultImagep.get();
+            LLImageGL* fallback_image = fallback
+                ? fallback->getGLTexture() : nullptr;
+            native = fallback_image
+                ? fallback_image->getMetalTexture() : nullptr;
+        }
+        return native;
     };
     for (std::size_t slot = 0; slot < texture_count; ++slot)
     {
@@ -14096,6 +14125,7 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
         batch.textures[slot] = metal_texture(texture);
         if (!batch.textures[slot])
         {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
             capture.spot_shadow_capture_complete = false;
             capture.spot_shadow_batches.clear();
             return;
@@ -14113,6 +14143,7 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
         if (!params.mAvatar || !params.mSkinInfo ||
             !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
         {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
             capture.spot_shadow_capture_complete = false;
             capture.spot_shadow_batches.clear();
             return;
@@ -14124,6 +14155,7 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
         if (joint_count == 0 || palette.mGLMp.size() !=
                 4 + static_cast<std::size_t>(joint_count) * 12)
         {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
             capture.spot_shadow_capture_complete = false;
             capture.spot_shadow_batches.clear();
             return;
@@ -14169,6 +14201,7 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
         !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer() ||
         (!indexed_materials && params.mGLTFMaterial.isNull()))
     {
+        capture.spot_shadow_first_incomplete_source_line = __LINE__;
         capture.spot_shadow_capture_complete = false;
         capture.spot_shadow_batches.clear();
         return;
@@ -14207,7 +14240,18 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
         -> ALMetalTexture*
     {
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-        return image ? image->getMetalTexture() : nullptr;
+        ALMetalTexture* native = image ? image->getMetalTexture() : nullptr;
+        if (!native)
+        {
+            // Match LLFetchedGLTFMaterial/texture-slot streaming fallback.
+            LLViewerFetchedTexture* fallback =
+                LLViewerFetchedTexture::sDefaultImagep.get();
+            LLImageGL* fallback_image = fallback
+                ? fallback->getGLTexture() : nullptr;
+            native = fallback_image
+                ? fallback_image->getMetalTexture() : nullptr;
+        }
+        return native;
     };
     for (std::size_t slot = 0; slot < texture_count; ++slot)
     {
@@ -14216,9 +14260,25 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
             : params.mGLTFMaterial.get();
         if (!material)
         {
-            capture.spot_shadow_capture_complete = false;
-            capture.spot_shadow_batches.clear();
-            return;
+            // Match the original indexed GL shadow owner: a null entry is a
+            // fragmented-batch gap and no vertex in this draw references the
+            // slot. Keep the slot numbering intact (the per-vertex material
+            // index depends on it) and bind an inert white fallback rather
+            // than invalidating every caster already captured for the map.
+            LLViewerTexture* texture =
+                LLViewerFetchedTexture::sWhiteImagep.get();
+            batch.textures[slot] = metal_texture(texture);
+            batch.alpha_cutoffs[slot] = 0.f;
+            batch.pbr_base_color_transforms[slot][0][0] = 1.f;
+            batch.pbr_base_color_transforms[slot][0][1] = 1.f;
+            if (!batch.textures[slot])
+            {
+                capture.spot_shadow_first_incomplete_source_line = __LINE__;
+                capture.spot_shadow_capture_complete = false;
+                capture.spot_shadow_batches.clear();
+                return;
+            }
+            continue;
         }
         LLViewerTexture* texture = !indexed_materials
             ? params.mTexture.get() : nullptr;
@@ -14240,6 +14300,7 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
         batch.double_sided = batch.double_sided || material->mDoubleSided;
         if (!batch.textures[slot])
         {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
             capture.spot_shadow_capture_complete = false;
             capture.spot_shadow_batches.clear();
             return;
@@ -14251,6 +14312,7 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
         if (!params.mAvatar || !params.mSkinInfo ||
             !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
         {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
             capture.spot_shadow_capture_complete = false;
             capture.spot_shadow_batches.clear();
             return;
@@ -14262,6 +14324,7 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
         if (joint_count == 0 || palette.mGLMp.size() !=
                 4 + static_cast<std::size_t>(joint_count) * 12)
         {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
             capture.spot_shadow_capture_complete = false;
             capture.spot_shadow_batches.clear();
             return;
@@ -14288,15 +14351,27 @@ void LLPipeline::captureMetalSpotShadowTreeBatch(
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+    ALMetalTexture* native_texture = image
+        ? image->getMetalTexture() : nullptr;
+    if (image && !native_texture)
+    {
+        LLViewerFetchedTexture* fallback =
+            LLViewerFetchedTexture::sDefaultImagep.get();
+        LLImageGL* fallback_image = fallback
+            ? fallback->getGLTexture() : nullptr;
+        native_texture = fallback_image
+            ? fallback_image->getMetalTexture() : nullptr;
+    }
     if (!buffer || !image ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
         !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() || !image->getMetalTexture() ||
+        !buffer->getMetalIndexBuffer() || !native_texture ||
         buffer->getNumVerts() == 0 || buffer->getNumIndices() == 0 ||
         (buffer->getIndexStride() != 2 && buffer->getIndexStride() != 4))
     {
+        capture.spot_shadow_first_incomplete_source_line = __LINE__;
         capture.spot_shadow_capture_complete = false;
         capture.spot_shadow_batches.clear();
         return;
@@ -14313,7 +14388,7 @@ void LLPipeline::captureMetalSpotShadowTreeBatch(
     batch.index_type = buffer->getIndexStride() == 4
         ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
     batch.index_count = buffer->getNumIndices();
-    batch.textures[0] = image->getMetalTexture();
+    batch.textures[0] = native_texture;
     batch.texture_count = 1;
     batch.alpha_cutoffs[0] = 0.5f;
     batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
@@ -14341,6 +14416,7 @@ void LLPipeline::captureMetalSpotShadowTerrainBatch(
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     const auto fail = [&capture]()
     {
+        capture.spot_shadow_first_incomplete_source_line = __LINE__;
         capture.spot_shadow_capture_complete = false;
         capture.spot_shadow_batches.clear();
     };
@@ -14522,8 +14598,12 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
     }
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    const auto fail = [&capture]()
+    const auto fail = [&capture](U32 source_line)
     {
+        if (capture.spot_shadow_first_incomplete_source_line == 0)
+        {
+            capture.spot_shadow_first_incomplete_source_line = source_line;
+        }
         capture.spot_shadow_capture_complete = false;
         capture.spot_shadow_batches.clear();
         capture.spot_shadow_avatar_palettes.clear();
@@ -14531,7 +14611,7 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
     if (capture.spot_shadow_expected_batches ==
         std::numeric_limits<std::size_t>::max())
     {
-        fail();
+        fail(__LINE__);
         return;
     }
     // Count every authoritative avatar batch before validating its native
@@ -14553,32 +14633,43 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
             coverage = ALMetalWorldSpotShadowCoverage::avatar_blend;
             break;
         default:
-            fail();
+            fail(__LINE__);
             return;
     }
 
     const bool covered = coverage !=
         ALMetalWorldSpotShadowCoverage::opaque;
     LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+    ALMetalTexture* native_texture = image
+        ? image->getMetalTexture() : nullptr;
+    if (covered && image && !native_texture)
+    {
+        LLViewerFetchedTexture* fallback =
+            LLViewerFetchedTexture::sDefaultImagep.get();
+        LLImageGL* fallback_image = fallback
+            ? fallback->getGLTexture() : nullptr;
+        native_texture = fallback_image
+            ? fallback_image->getMetalTexture() : nullptr;
+    }
     if (!capture.spot_shadow_capture_complete || !buffer || count == 0 ||
         start > end || end >= buffer->getNumVerts() ||
         !std::isfinite(draw_alpha) || draw_alpha < 0.f || draw_alpha > 1.f ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
         !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer() ||
-        (covered && (!image || !image->getMetalTexture())) ||
+        (covered && (!image || !native_texture)) ||
         (skinned && !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT)) ||
         (capture.spot_shadow_avatar_cloth &&
          (!skinned || !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
           !buffer->hasDataType(LLVertexBuffer::TYPE_CLOTHWEIGHT))))
     {
-        fail();
+        fail(__LINE__);
         return;
     }
     const std::size_t index_stride = buffer->getIndexStride();
     if (index_stride != 2 && index_stride != 4)
     {
-        fail();
+        fail(__LINE__);
         return;
     }
     const std::size_t index_offset =
@@ -14588,7 +14679,7 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
         index_offset + static_cast<std::size_t>(count) * index_stride >
             buffer->getMetalIndexBuffer()->length())
     {
-        fail();
+        fail(__LINE__);
         return;
     }
 
@@ -14609,7 +14700,7 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
     batch.avatar_draw_alpha = draw_alpha;
     if (covered)
     {
-        batch.textures[0] = image->getMetalTexture();
+        batch.textures[0] = native_texture;
         batch.texture_count = 1;
         batch.alpha_cutoffs[0] = LLDrawPoolAvatar::sMinimumAlpha;
     }
@@ -14621,7 +14712,7 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
         if (!mesh.buildJointMatrixPalette(
                 palette->data(), palette->size()))
         {
-            fail();
+            fail(__LINE__);
             return;
         }
         batch.weight_offset = buffer->getOffset(
@@ -14684,6 +14775,7 @@ void LLPipeline::endMetalSpotShadowCapture()
     capture.spot_shadow_capture_active = false;
     if (capture.spot_shadow_avatar_pass_active)
     {
+        capture.spot_shadow_first_incomplete_source_line = __LINE__;
         capture.spot_shadow_capture_complete = false;
     }
     capture.spot_shadow_avatar_pass_active = false;
@@ -14691,10 +14783,39 @@ void LLPipeline::endMetalSpotShadowCapture()
     const U32 map = capture.spot_shadow_map;
     const bool directional = capture.spot_shadow_capture_directional;
     capture.spot_shadow_capture_directional = false;
+    static const bool shadow_diagnostics = []
+    {
+        const char* value = std::getenv("ALCHEMY_METAL_SHADOW_DIAGNOSTICS");
+        return value && value[0] != '\0' && value[0] != '0';
+    }();
+    const std::size_t pack_index =
+        static_cast<std::size_t>(renderPack());
+    const U32 map_bit = 1u << map;
     const bool complete = capture.spot_shadow_capture_complete &&
         capture.renderer && capture.device &&
         capture.spot_shadow_batches.size() ==
             capture.spot_shadow_expected_batches;
+    static std::array<U32,
+        static_cast<std::size_t>(ALRenderResourcePlan::Pack::COUNT)>
+        diagnosed_incomplete_directional_slices{};
+    if (shadow_diagnostics && directional && !complete &&
+        pack_index < diagnosed_incomplete_directional_slices.size() &&
+        (diagnosed_incomplete_directional_slices[pack_index] & map_bit) == 0)
+    {
+        diagnosed_incomplete_directional_slices[pack_index] |= map_bit;
+        LL_WARNS("Metal")
+            << "Directional-shadow capture incomplete: pack="
+            << pack_index << ", slice=" << map
+            << ", capture_complete="
+            << capture.spot_shadow_capture_complete
+            << ", first_incomplete_line="
+            << capture.spot_shadow_first_incomplete_source_line
+            << ", batches=" << capture.spot_shadow_batches.size()
+            << ", expected=" << capture.spot_shadow_expected_batches
+            << ", renderer=" << static_cast<bool>(capture.renderer)
+            << ", device=" << static_cast<bool>(capture.device)
+            << LL_ENDL;
+    }
     capture.spot_shadow_capture_complete = false;
     if (!complete)
     {
@@ -14711,11 +14832,12 @@ void LLPipeline::endMetalSpotShadowCapture()
     scene.reverse_z = capture.reverse_z;
     scene.depth_clamp = directional;
     std::string error;
+    const std::size_t rendered_batches = capture.spot_shadow_batches.size();
     auto slice = capture.renderer->renderSpotShadow(scene, &error);
-    capture.spot_shadow_batches.clear();
-    capture.spot_shadow_avatar_palettes.clear();
     if (!slice)
     {
+        capture.spot_shadow_batches.clear();
+        capture.spot_shadow_avatar_palettes.clear();
         LL_WARNS("Metal")
             << "Could not render direct Metal "
             << (directional ? "directional" : "spot")
@@ -14723,6 +14845,190 @@ void LLPipeline::endMetalSpotShadowCapture()
             << ": " << error << LL_ENDL;
         return;
     }
+
+    // A live shadow defect can otherwise collapse three distinct states into
+    // the same "retained" milestone: a populated slice, an intentional
+    // all-far slice, or caster geometry transformed outside the map. Keep the
+    // synchronous readback strictly opt-in and one-shot per pack/slice; it is
+    // diagnostic evidence, never part of ordinary rendering or correctness.
+    static std::array<U32,
+        static_cast<std::size_t>(ALRenderResourcePlan::Pack::COUNT)>
+        diagnosed_directional_slices{};
+    if (shadow_diagnostics && directional &&
+        pack_index < diagnosed_directional_slices.size() &&
+        (diagnosed_directional_slices[pack_index] & map_bit) == 0)
+    {
+        diagnosed_directional_slices[pack_index] |= map_bit;
+        std::vector<F32> depths(
+            static_cast<std::size_t>(scene.width) * scene.height);
+        std::string diagnostic_error;
+        const bool read = slice->colorTexture(0)->readback(
+            *capture.device, 0, 0, {}, depths.data(),
+            static_cast<std::size_t>(scene.width) * sizeof(F32),
+            &diagnostic_error);
+        if (read)
+        {
+            const F32 far_depth = scene.reverse_z ? 0.f : 1.f;
+            F32 minimum = std::numeric_limits<F32>::infinity();
+            F32 maximum = -std::numeric_limits<F32>::infinity();
+            std::size_t finite = 0;
+            std::size_t non_far = 0;
+            for (F32 depth : depths)
+            {
+                if (!std::isfinite(depth))
+                {
+                    continue;
+                }
+                ++finite;
+                minimum = std::min(minimum, depth);
+                maximum = std::max(maximum, depth);
+                non_far += std::abs(depth - far_depth) > 0.000001f;
+            }
+            LL_INFOS("Metal")
+                << "Directional-shadow diagnostic: pack=" << pack_index
+                << ", slice=" << map
+                << ", size=" << scene.width << "x" << scene.height
+                << ", batches=" << rendered_batches
+                << ", expected=" << capture.spot_shadow_expected_batches
+                << ", reverse_z=" << scene.reverse_z
+                << ", finite=" << finite
+                << ", non_far=" << non_far
+                << ", min=" << minimum
+                << ", max=" << maximum
+                << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS("Metal")
+                << "Directional-shadow diagnostic readback failed: pack="
+                << pack_index << ", slice=" << map << ": "
+                << diagnostic_error << LL_ENDL;
+        }
+
+        std::array<F32, 3> ndc_min{
+            std::numeric_limits<F32>::infinity(),
+            std::numeric_limits<F32>::infinity(),
+            std::numeric_limits<F32>::infinity()};
+        std::array<F32, 3> ndc_max{
+            -std::numeric_limits<F32>::infinity(),
+            -std::numeric_limits<F32>::infinity(),
+            -std::numeric_limits<F32>::infinity()};
+        std::size_t sampled_batches = 0;
+        std::size_t samples_inside_xy = 0;
+        std::size_t samples_inside_z = 0;
+        std::size_t samples_inside = 0;
+        for (std::size_t batch_index = 0;
+             batch_index < capture.spot_shadow_batches.size();
+             ++batch_index)
+        {
+            const ALMetalWorldSpotShadowBatch& batch =
+                capture.spot_shadow_batches[batch_index];
+            if (batch.terrain || batch.avatar || batch.skin_palette ||
+                !batch.vertices || !batch.indices ||
+                batch.index_count == 0)
+            {
+                continue;
+            }
+
+            U32 vertex_index = 0;
+            std::string vertex_error;
+            bool vertex_read = false;
+            if (batch.index_type == ALMetalIndexType::uint32)
+            {
+                vertex_read = batch.indices->readback(
+                    *capture.device, batch.index_offset, &vertex_index,
+                    sizeof(vertex_index), &vertex_error);
+            }
+            else
+            {
+                U16 short_index = 0;
+                vertex_read = batch.indices->readback(
+                    *capture.device, batch.index_offset, &short_index,
+                    sizeof(short_index), &vertex_error);
+                vertex_index = short_index;
+            }
+
+            LLVector4a object_position;
+            if (vertex_read && vertex_index < batch.vertex_count)
+            {
+                vertex_read = batch.vertices->readback(
+                    *capture.device,
+                    batch.position_offset +
+                        static_cast<std::size_t>(vertex_index) *
+                            sizeof(LLVector4a),
+                    object_position.getF32ptr(), sizeof(LLVector4a),
+                    &vertex_error);
+            }
+            if (!vertex_read)
+            {
+                LL_WARNS("Metal")
+                    << "Directional-shadow caster diagnostic readback "
+                       "failed: batch=" << batch_index << ": "
+                    << vertex_error << LL_ENDL;
+                continue;
+            }
+
+            LLMatrix4a matrix;
+            std::memcpy(matrix.getF32ptr(), batch.modelview_projection,
+                        sizeof(batch.modelview_projection));
+            const LLVector4a shader_position(
+                object_position[VX], object_position[VY],
+                object_position[VZ], 1.f);
+            LLVector4a clip_position;
+            matrix.transform4(shader_position, clip_position);
+            const F32 inverse_w = clip_position[VW] != 0.f
+                ? 1.f / clip_position[VW] : 0.f;
+            const LLVector4a ndc(
+                clip_position[VX] * inverse_w,
+                clip_position[VY] * inverse_w,
+                clip_position[VZ] * inverse_w, 1.f);
+            ++sampled_batches;
+            for (U32 axis = 0; axis < 3; ++axis)
+            {
+                ndc_min[axis] = std::min(ndc_min[axis], ndc[axis]);
+                ndc_max[axis] = std::max(ndc_max[axis], ndc[axis]);
+            }
+            const bool inside_xy = std::abs(ndc[VX]) <= 1.f &&
+                std::abs(ndc[VY]) <= 1.f;
+            const bool inside_z = ndc[VZ] >= 0.f && ndc[VZ] <= 1.f;
+            samples_inside_xy += inside_xy;
+            samples_inside_z += inside_z;
+            samples_inside += inside_xy && inside_z;
+            if (sampled_batches == 1)
+            {
+                LL_INFOS("Metal")
+                    << "Directional-shadow caster diagnostic: batch="
+                    << batch_index << ", vertex=" << vertex_index
+                    << ", object=(" << object_position[VX] << ","
+                    << object_position[VY] << "," << object_position[VZ]
+                    << "," << object_position[VW] << ")"
+                    << ", clip=(" << clip_position[VX] << ","
+                    << clip_position[VY] << "," << clip_position[VZ]
+                    << "," << clip_position[VW] << ")"
+                    << ", ndc=(" << ndc[VX] << "," << ndc[VY]
+                    << "," << ndc[VZ] << ")"
+                    << LL_ENDL;
+            }
+        }
+        if (sampled_batches != 0)
+        {
+            LL_INFOS("Metal")
+                << "Directional-shadow caster sample summary: pack="
+                << pack_index << ", slice=" << map
+                << ", sampled=" << sampled_batches
+                << ", inside_xy=" << samples_inside_xy
+                << ", inside_z=" << samples_inside_z
+                << ", inside=" << samples_inside
+                << ", ndc_min=(" << ndc_min[VX] << ","
+                << ndc_min[VY] << "," << ndc_min[VZ] << ")"
+                << ", ndc_max=(" << ndc_max[VX] << ","
+                << ndc_max[VY] << "," << ndc_max[VZ] << ")"
+                << LL_ENDL;
+        }
+    }
+
+    capture.spot_shadow_batches.clear();
+    capture.spot_shadow_avatar_palettes.clear();
 
     ALMetalTextureDescriptor descriptor;
     descriptor.type = ALMetalTextureType::texture_2d_array;
@@ -28695,6 +29001,43 @@ static void bucketShadowCull(LLCullResult& src, LLCamera& cam, LLCullResult& dst
 
 void LLPipeline::generateSunShadow(LLCamera& camera)
 {
+#if LL_DARWIN
+    static const bool shadow_diagnostics = []
+    {
+        const char* value = std::getenv(
+            "ALCHEMY_METAL_SHADOW_DIAGNOSTICS");
+        return value && value[0] != '\0' && value[0] != '0';
+    }();
+    static std::array<bool,
+        static_cast<std::size_t>(ALRenderResourcePlan::Pack::COUNT)>
+        diagnosed_shadow_invocations{};
+    const std::size_t diagnostic_pack =
+        static_cast<std::size_t>(renderPack());
+    if (shadow_diagnostics &&
+        diagnostic_pack < diagnosed_shadow_invocations.size() &&
+        !diagnosed_shadow_invocations[diagnostic_pack])
+    {
+        diagnosed_shadow_invocations[diagnostic_pack] = true;
+        const MetalWorldSimpleCapture* capture =
+            mMetalWorldSimpleCapture.get();
+        LL_INFOS("Metal")
+            << "Directional-shadow invocation diagnostic: pack="
+            << diagnostic_pack
+            << ", deferred=" << sRenderDeferred
+            << ", cascades=" << sunCascades()
+            << ", main_world=" << isMainWorldPass()
+            << ", cube_snapshot=" << gCubeSnapshot
+            << ", camera=" << LLViewerCamera::sCurCameraID
+            << ", capture=" << static_cast<bool>(capture)
+            << ", renderer="
+            << (capture && static_cast<bool>(capture->renderer))
+            << ", device="
+            << (capture && static_cast<bool>(capture->device))
+            << ", active="
+            << (capture && capture->spot_shadow_capture_active)
+            << LL_ENDL;
+    }
+#endif
     if (!sRenderDeferred || sunCascades() == 0)
     {
         return;

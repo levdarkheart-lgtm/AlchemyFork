@@ -14184,12 +14184,20 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(saw_above_wave_depth);
         opaque_forward_scene.water_surface = &above_water_surface;
 
-        // A requested live cascade is mandatory. Once supplied, the same
-        // shader executes both built and explicitly unbuilt shadow states.
+        // The original viewer keeps rendering when every requested cascade is
+        // unbuilt: its mask returns fully lit without sampling. The native
+        // owner must do the same before a live pack arrives, then consume the
+        // pack once any cascade becomes available.
         above_water_surface.uses_shadows = true;
-        CHECK_FALSE(renderer->renderOpaquePostDeferred(
-            opaque_forward_scene, &error));
-        CHECK(error == "Metal world pre-water alpha shadows are invalid");
+        auto fallback_above_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(fallback_above_water);
+        REQUIRE(fallback_above_water->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        const float fallback_water_red = half_to_float(
+            pre_water_pixels[above_water_pixel]);
         opaque_forward_scene.alpha_directional_shadows =
             &directional_shadows;
         directional_shadows.constants.config[1] = 0xeu;
@@ -14203,6 +14211,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             &error));
         const float shadowed_water_red = half_to_float(
             pre_water_pixels[above_water_pixel]);
+        CHECK(fallback_water_red > shadowed_water_red);
         directional_shadows.constants.config[1] = 0xfu;
         auto unbuilt_above_water = renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error);
@@ -14211,8 +14220,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         REQUIRE(unbuilt_above_water->colorTexture(0)->readback(
             *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
             &error));
-        CHECK(half_to_float(pre_water_pixels[above_water_pixel]) >
-              shadowed_water_red);
+        const float unbuilt_water_red = half_to_float(
+            pre_water_pixels[above_water_pixel]);
+        CHECK(unbuilt_water_red > shadowed_water_red);
+        CHECK(std::abs(unbuilt_water_red - fallback_water_red) < 0.002f);
 
         above_water_surface.uses_shadows = false;
         opaque_forward_scene.alpha_directional_shadows = nullptr;

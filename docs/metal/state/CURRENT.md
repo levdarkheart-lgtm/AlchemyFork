@@ -3,21 +3,14 @@
 **Observed:** 2026-11-07 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `dbe1215cea`
+**Renderer code checkpoint:** `887004cf891a` plus the uncommitted attended-shadow correction described below.
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
 
-The owner-directed essential-first OpenGL cutover makes startup, normal UI/text,
-world/avatar/material rendering, streaming, presentation and readback usable
-without GL before Debug/Develop/RLVa-only paths. This changes order, not scope:
-required features must be replaced rather than deleted.
+The owner-directed essential-first OpenGL cutover makes startup, normal UI/text, world/avatar/material rendering, streaming, presentation and readback usable without GL before Debug/Develop/RLVa-only paths. This changes order, not scope: required features must be replaced rather than deleted.
 
-Metal is the sole post-startup presenter. Production geometry, textures/fonts
-and async uploads are Metal-authoritative with no parallel GL names; Snapshot
-has no GL scratch/reconcile path. Direct Metal owners cover normal world,
-material, avatar, shadow, sky, water, atmosphere, selection and converted
-effects. Visual questions remain queued without blocking proven cutovers.
+Metal is the sole post-startup presenter. Production geometry, textures/fonts and async uploads are Metal-authoritative with no parallel GL names; Snapshot has no GL scratch/reconcile path. Direct Metal owners cover normal world, material, avatar, shadow, sky, water, atmosphere, selection and converted effects. Visual questions remain queued without blocking proven cutovers.
 
 The latest essential sequence is:
 
@@ -89,6 +82,11 @@ An attended login directly into persisted Mid (`RenderQualityPerformance=2`) ren
 ### Resource and UI checkpoints through `dbe1215cea`
 Archived checkpoints cover [mirror resources](archive/CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md) and [UI clips/Conversations](archive/CURRENT-empty-ui-clip-checkpoint-2026-11-07.md). The latest fix clears the hero publication count before the mirrors-off return, retires only native hero source/radiance/binding state when the resource plan drops mirrors, and gates every direct Metal consumer on the live mirror plan. In attended `68499`, enabled-at-login then toggle-off visibly worked and logged count/resource retirement; a separate mirrors-off-before-login run logged successful login and continuous world/UI publication and visibly loaded normally.
 
+### Attended directional-shadow correction — 2026-11-07
+
+Release `26.4.0.68502` initially retained the Shadows preference but produced no visible world shadows. Original-path tracing showed null indexed GLTF-material slots are fragmented batch gaps and streaming textures bind the default image; Metal had invalidated a whole cascade for either condition. The pending correction preserves sparse slots with inert material data, uses the default native texture for streaming legacy/PBR/tree/covered-avatar casters and keeps null avatar images fail-closed. Diagnostics show four populated `3472x1920` cascades, moving caster shadows and no repeated main-cascade invalidation; one separate hero-probe terrain attempt recovered on retry. Release/349-slice verification and 52,774 assertions/57 cases pass.
+An exploratory `Preset123`/Midday/128 m/Mid/Sun-Moon+Projector/ACES 1.0/no-sharpening `3456x2168` pair inadvertently used `/Applications/Alchemy Beta.app` (`7.1.9.2516`, executable SHA-256 `a361437f58866d9f41b029b21048cebc6dee635ee8678e41d40dfa5a20daa75a`) rather than the pinned QA reference. It suggests Metal is darker with softer/lower-contrast shadows, but is not acceptance evidence. The parity rerun remains open against pinned reference `67607` at `/tmp/alchemy-reference-1eb44bb/build-Darwin-ninja-os-arm64/newview/Release/Alchemy Metal Development.app` (executable SHA-256 `fac5225435df2c096d10b856f6e0f186b37e41446576398ee8f4842b884ef28d`).
+
 ## Build and validation evidence
 
 - `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max, 64 GiB unified memory and Xcode 26.6; Metal reports Apple family 7 and 62,277,025,792 bytes.
@@ -117,6 +115,7 @@ Archived checkpoints cover [mirror resources](archive/CURRENT-mirror-resource-li
 - Focused alrender/llrender suites pass 28/28; `git diff --check` passes.
 - Release `26.4.0.68493`, built from the mixed working checkpoint containing the now-committed correction at 2026-11-07 01:08:12 GMT, has executable SHA-256 `dfd02973a45085b790c334f1c47574549ce632b6b9e6f6a377946574f972ffd0`; `verify_app.sh` passes 349/349 ARM64 slices and attended Mid/HDR evidence is `/tmp/alchemy-metal-68493-water-wave-release-20261107.log`.
 - At `dbe1215cea`, Xcode Release `68499` builds warnings-as-errors and verifies 349/349 ARM64 slices; the direct Metal suite passes 52,772 assertions across 57 cases. Release-tree `ctest` correctly reports no registered tests because that preset has `AL_BUILD_TESTS=OFF`; the separate Ninja test preset supplied the passing suite. Owner-attended mirror toggle-off and mirrors-off startup/login both pass; raw account/location logs remain local.
+- From base `887004cf891a` with the pending shadow correction, Xcode Release `68502` builds and verifies 349/349 ARM64 slices; the direct Metal suite passes 52,774 assertions across 57 cases. Opt-in runtime diagnostics and owner evidence show four populated main-world directional cascades and stable moving avatar/object shadows. Comparison against the pinned `67607` reference remains open.
 
 ## OpenGL elimination gate
 
@@ -137,7 +136,7 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 | M-004 resources/readback | doing | Native targets now reuse exact owned attachment sets under a byte bound; streamed images use a separate containment capacity while the original override/controller semantics remain. Remaining copy/readback consumers and multi-scene policy validation follow. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
 | M-006 UI/media | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only. Original-compatible empty clips no-op before Metal encoding; Conversations visibly opens/closes/reopens in attended `68497` evidence. Broader UI parity remains open. |
-| M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; Mid tessellated-water capture now accepts its correct four draw groups and is visually stable in the bounded attended test; broader parity remains open. |
+| M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; Mid water is stable and attended `68502` shows populated directional cascades plus moving avatar/object shadows through texture streaming. Shadow parity remains open against pinned reference `67607`; the prior exploratory pair used the wrong reference executable. |
 | M-008 effects/advanced views | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse. Mirrors-off synchronously unpublishes/retires hero-only state; attended toggle-off and mirrors-off login now pass. Mirror visual parity and persisted-shadow stability remain open. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
 | M-010 measured performance | deferred | No quality-equivalent paired M1 Max claim yet. |
@@ -153,7 +152,8 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 
 ## Exact next actions
 
-1. Isolate the persisted-shadow enable freeze from mirrors and trace its earliest native failure against the original viewer.
-2. Revalidate mirror reflection content/avatar/clipping independently of the now-passing settings lifecycle.
-3. Classify texture churn and run all four scenarios before changing automatic texture capacity.
-4. Continue the highest-value unblocked native-ownership cut while attended visual questions remain queued.
+1. Rerun the controlled shadow pair against pinned OpenGL reference `67607`, then trace any confirmed direct-light/shadow-filter difference while preserving passing caster coverage and streaming behavior.
+2. Refine and recheck the one transient hero-probe terrain capture rejection without weakening fail-closed publication.
+3. Revalidate mirror reflection content/avatar/clipping independently of the now-passing settings lifecycle.
+4. Classify texture churn and run all four scenarios before changing automatic texture capacity.
+5. Continue the highest-value unblocked native-ownership cut while attended visual questions remain queued.

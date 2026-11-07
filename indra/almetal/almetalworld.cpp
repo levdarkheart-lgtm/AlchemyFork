@@ -14155,9 +14155,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                  "Metal world pre-water alpha lighting is invalid");
         return nullptr;
     }
-    if ((has_pre_water_shadows || water_uses_shadows) !=
-            (scene.alpha_directional_shadows != nullptr) ||
-        ((has_pre_water_shadows || water_uses_shadows) &&
+    const bool has_alpha_shadow_pack =
+        scene.alpha_directional_shadows != nullptr;
+    if ((has_pre_water_shadows && !has_alpha_shadow_pack) ||
+        (has_alpha_shadow_pack &&
+         !(has_pre_water_shadows || water_uses_shadows)) ||
+        (has_alpha_shadow_pack &&
          !validDirectionalShadows(scene.alpha_directional_shadows)))
     {
         setError(error,
@@ -15635,12 +15638,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
 
             if (encoded && !water.underwater)
             {
+                const bool has_live_directional_shadows =
+                    water.uses_shadows &&
+                    scene.alpha_directional_shadows != nullptr;
                 const ALMetalTexture* directional_depth =
-                    water.uses_shadows
+                    has_live_directional_shadows
                         ? scene.alpha_directional_shadows->depth_texture
                         : mImpl->unshadowed_depth.get();
                 const ALMetalWorldDirectionalShadowConstants&
-                    directional_constants = water.uses_shadows
+                    directional_constants = has_live_directional_shadows
                         ? scene.alpha_directional_shadows->constants
                         : mImpl->unshadowed_constants;
                 const ALMetalTexture* hero_texture = scene.hero_probe
