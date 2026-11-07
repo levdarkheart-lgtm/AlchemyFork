@@ -3,7 +3,7 @@
 **Observed:** 2026-11-07 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `abde32f46e`
+**Renderer code checkpoint:** `dbe1215cea`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -86,8 +86,8 @@ Package `26.4.0.68493` was tested after tracing its Mid black screen against the
 Commit `2e2ac6e1c9` gives `ALMetalWaterSurface` one shared `expectedFieldDrawCount()` invariant (`4` with waves, otherwise `3`) for capture and renderer validation, plus a focused GPU assertion.
 An attended login directly into persisted Mid (`RenderQualityPerformance=2`) rendered continuously for 500+ complete native world/UI publications. `first_incomplete_line=8073` and Metal validation/GPU errors did not recur; this proves the bounded Mid correction, not broad parity, High/Ultra stability or release readiness.
 
-### Resource and UI checkpoints through `abde32f46e`
-Mirror lifecycle evidence is [archived](archive/CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md); original-compatible empty-clip handling and attended Conversations evidence are in the [UI checkpoint](archive/CURRENT-empty-ui-clip-checkpoint-2026-11-07.md).
+### Resource and UI checkpoints through `dbe1215cea`
+Archived checkpoints cover [mirror resources](archive/CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md) and [UI clips/Conversations](archive/CURRENT-empty-ui-clip-checkpoint-2026-11-07.md). The latest fix clears the hero publication count before the mirrors-off return, retires only native hero source/radiance/binding state when the resource plan drops mirrors, and gates every direct Metal consumer on the live mirror plan. This follows the original count-zero/no-mirror contract; attended toggle-off evidence remains open.
 
 ## Build and validation evidence
 
@@ -116,8 +116,7 @@ Mirror lifecycle evidence is [archived](archive/CURRENT-mirror-resource-lifecycl
   `python3 -m unittest discover -s tools/metal/tests -v` passes 31/31.
 - Focused alrender/llrender suites pass 28/28; `git diff --check` passes.
 - Release `26.4.0.68493`, built from the mixed working checkpoint containing the now-committed correction at 2026-11-07 01:08:12 GMT, has executable SHA-256 `dfd02973a45085b790c334f1c47574549ce632b6b9e6f6a377946574f972ffd0`; `verify_app.sh` passes 349/349 ARM64 slices and attended Mid/HDR evidence is `/tmp/alchemy-metal-68493-water-wave-release-20261107.log`.
-- At `abde32f46e`, focused UI passes 600/600 and Metal passes 52,772/52,772 assertions; diagnostics-free Release `68497` verifies 349/349 ARM64 slices.
-  Its executable is `c98702736c0b61589a1c2c04cc2c56e9bff4b4aeefb815d65bb376afd7a85921`; attended exact-package rerun remains open.
+- At `dbe1215cea`, Xcode Release `68499` builds warnings-as-errors and verifies 349/349 ARM64 slices; the direct Metal suite passes 52,772 assertions across 57 cases. Release-tree `ctest` correctly reports no registered tests because that preset has `AL_BUILD_TESTS=OFF`; the separate Ninja test preset supplied the passing suite. Runtime mirror toggle-off remains owner-attended.
 
 ## OpenGL elimination gate
 
@@ -139,7 +138,7 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
 | M-006 UI/media | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only. Original-compatible empty clips no-op before Metal encoding; Conversations visibly opens/closes/reopens in attended `68497` evidence. Broader UI parity remains open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; Mid tessellated-water capture now accepts its correct four draw groups and is visually stable in the bounded attended test; broader parity remains open. |
-| M-008 effects/advanced views | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse. Instrumented off/on mirror-setting transitions succeeded; mirror visual parity and persisted-shadow stability remain open. |
+| M-008 effects/advanced views | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse. Mirrors-off now synchronously unpublishes and retires hero-only Metal state; exact toggle and pre-login behavior still require attended validation, while mirror visual parity and persisted-shadow stability remain open. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
 | M-010 measured performance | deferred | No quality-equivalent paired M1 Max claim yet. |
 | M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, resources, targets, UI replay and retained glow/SMAA require no GL; render tails remain. |
@@ -154,7 +153,7 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 
 ## Exact next actions
 
-1. Re-run the diagnostics-free `68497` package for source-exact Conversations and mirror off/on confirmation.
-2. Isolate the persisted-shadow enable freeze from mirrors and trace its earliest native failure against the original viewer.
-3. Run the owner-attended mirror toggle/sit/stand sequence without shadows, then repeat with the diagnosed shadow path.
+1. In `68499`, log in with mirrors enabled, wait for stable world publication, then disable mirrors and verify the checkbox, world and `RenderSettings`/retirement log transition.
+2. In a separate relaunch, test the owner's unverified hypothesis: disable mirrors before login, then determine whether world load actually fails.
+3. Isolate the persisted-shadow enable freeze from mirrors and trace its earliest native failure against the original viewer.
 4. Classify texture churn and run all four scenarios before changing automatic texture capacity.
