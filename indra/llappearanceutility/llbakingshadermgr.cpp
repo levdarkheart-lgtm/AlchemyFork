@@ -209,6 +209,10 @@ bool LLBakingShaderMgr::loadShadersInterface()
     gAlphaMaskProgram.mShaderFiles.push_back(make_pair("interface/alphamaskV.glsl", GL_VERTEX_SHADER));
     gAlphaMaskProgram.mShaderFiles.push_back(make_pair("interface/alphamaskF.glsl", GL_FRAGMENT_SHADER));
     gAlphaMaskProgram.mShaderLevel = mVertexShaderLevel[SHADER_INTERFACE];
+    gAlphaMaskProgram.setNativeAttributeMask(
+        LLVertexBuffer::MAP_VERTEX |
+        LLVertexBuffer::MAP_TEXCOORD0 |
+        LLVertexBuffer::MAP_COLOR);
 
     if( !gAlphaMaskProgram.createShader() )
     {

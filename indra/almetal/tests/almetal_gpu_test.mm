@@ -1247,6 +1247,91 @@ TEST_CASE("almetal: render targets own mip chains and borrow validated attachmen
     }
 }
 
+TEST_CASE("almetal: render-target pool retains exact descriptors within its byte bound", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        auto pool = ALMetalRenderTargetPool::create(
+            *device, 1024 * 1024);
+        REQUIRE(pool);
+
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = 16;
+        descriptor.height = 16;
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        descriptor.colors[0].label = "Alchemy pooled color";
+        descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float;
+        descriptor.label = "Alchemy pooled target";
+
+        const ALMetalResourceAllocationStats before =
+            alMetalResourceAllocationStats();
+        auto first = pool->acquire(descriptor, &error);
+        INFO(error);
+        REQUIRE(first);
+        const ALMetalTexture* first_color = first->colorTexture(0);
+        const ALMetalTexture* first_depth = first->depthStencilTexture();
+        REQUIRE(first_color);
+        REQUIRE(first_depth);
+        const ALMetalResourceAllocationStats after_first =
+            alMetalResourceAllocationStats();
+        CHECK(after_first.textures_created ==
+              before.textures_created + 2);
+
+        first.reset();
+        CHECK(pool->cachedTargetCount() == 1);
+        CHECK(pool->cachedBytes() >= 16 * 16 * 8);
+        const ALMetalResourceAllocationStats after_recycle =
+            alMetalResourceAllocationStats();
+        CHECK(after_recycle.textures_destroyed ==
+              before.textures_destroyed);
+
+        auto reused = pool->acquire(descriptor, &error);
+        INFO(error);
+        REQUIRE(reused);
+        CHECK(reused->colorTexture(0) == first_color);
+        CHECK(reused->depthStencilTexture() == first_depth);
+        CHECK(pool->cachedTargetCount() == 0);
+        CHECK(alMetalResourceAllocationStats().textures_created ==
+              after_first.textures_created);
+
+        reused.reset();
+        ALMetalRenderTargetDescriptor distinct = descriptor;
+        distinct.label = "Alchemy distinct pooled target";
+        auto second = pool->acquire(distinct, &error);
+        INFO(error);
+        REQUIRE(second);
+        CHECK(alMetalResourceAllocationStats().textures_created ==
+              after_first.textures_created + 2);
+        CHECK(pool->cachedTargetCount() == 1);
+
+        second.reset();
+        CHECK(pool->cachedTargetCount() == 2);
+        pool->purge();
+        CHECK(pool->cachedTargetCount() == 0);
+        CHECK(pool->cachedBytes() == 0);
+        CHECK(alMetalResourceAllocationStats().textures_destroyed ==
+              before.textures_destroyed + 4);
+
+        auto tiny_pool = ALMetalRenderTargetPool::create(*device, 1);
+        REQUIRE(tiny_pool);
+        auto uncached = tiny_pool->acquire(descriptor, &error);
+        INFO(error);
+        REQUIRE(uncached);
+        const auto destroyed_before =
+            alMetalResourceAllocationStats().textures_destroyed;
+        uncached.reset();
+        CHECK(tiny_pool->cachedTargetCount() == 0);
+        CHECK(alMetalResourceAllocationStats().textures_destroyed ==
+              destroyed_before + 2);
+    }
+}
+
 TEST_CASE("almetal: a render pass clears a texture and CPU readback observes it", "[almetal]")
 {
     @autoreleasepool
@@ -3530,6 +3615,26 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         scene.normal_hdr = true;
         scene.hdr = true;
 
+        // Reflection-probe cube faces that see only sky still need a valid
+        // cleared G-buffer so ordered sky/post-deferred publication can
+        // advance to the next face.  Zero batches is therefore a coherent
+        // render scene; a non-zero count without storage remains invalid.
+        scene.batches = nullptr;
+        scene.batch_count = 0;
+        auto clear_only = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(clear_only);
+        std::array<std::uint8_t, 32 * 32 * 4> clear_only_albedo{};
+        REQUIRE(clear_only->colorTexture(0)->readback(
+            *device, 0, 0, {}, clear_only_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(clear_only_albedo[0] == 255u);
+        CHECK(clear_only_albedo[1] == 0u);
+        CHECK(clear_only_albedo[2] == 255u);
+        CHECK(clear_only_albedo[3] == 255u);
+        scene.batches = &batch;
+        scene.batch_count = 1;
+
         batch.color_offset = vertex_bytes.size();
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error ==
@@ -3682,6 +3787,31 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *device, 0, 0, {}, batched_depth.data(), 32 * sizeof(float),
             &error));
         CHECK(std::abs(batched_depth[16 * 32 + 16] - 0.625f) < 0.0001f);
+
+        // Mirror-camera motion can submit cube faces faster than the GPU
+        // retires their dependent render targets. Exercise more than the
+        // two-batch in-flight budget without a CPU readback between faces;
+        // the third submission must make forward progress through bounded
+        // backpressure rather than growing an unbounded resource graph.
+        std::vector<std::unique_ptr<ALMetalRenderTarget>> bounded_results;
+        for (std::uint32_t face = 0; face < 5; ++face)
+        {
+            error.clear();
+            REQUIRE(renderer->beginCommandBatch(
+                "Alchemy bounded world command-batch regression", &error));
+            auto bounded_result = renderer->render(scene, &error);
+            INFO(error);
+            REQUIRE(bounded_result);
+            REQUIRE(renderer->commitCommandBatch(&error));
+            INFO(error);
+            bounded_results.push_back(std::move(bounded_result));
+        }
+        std::array<float, 32 * 32> bounded_depth{};
+        REQUIRE(bounded_results.back()->depthStencilTexture()->readback(
+            *device, 0, 0, {}, bounded_depth.data(), 32 * sizeof(float),
+            &error));
+        CHECK(std::abs(bounded_depth[16 * 32 + 16] - 0.625f) < 0.0001f);
+
         error.clear();
         REQUIRE(renderer->beginCommandBatch(
             "Alchemy cancelled command-batch regression", &error));
@@ -18641,6 +18771,78 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(base_pixels[outside + 1] == 0);
         CHECK(base_pixels[outside + 2] == 0);
 
+        // The original GL viewer does not stop presenting while the first
+        // default reflection probe is warming. refmapCount is zero, the
+        // reserved default slot contributes black/zero, and direct plus
+        // atmospheric ambient lighting remain visible. Prove the Metal
+        // owner accepts and renders that exact state instead of failing the
+        // entire frame closed.
+        ALMetalTextureDescriptor warming_radiance_descriptor =
+            radiance_descriptor;
+        warming_radiance_descriptor.width = 4;
+        warming_radiance_descriptor.height = 4;
+        warming_radiance_descriptor.mipmap_level_count = 3;
+        warming_radiance_descriptor.label =
+            "Alchemy base-light warming probe radiance";
+        auto warming_radiance = ALMetalTexture::create(
+            *device, warming_radiance_descriptor, &error);
+        INFO(error);
+        REQUIRE(warming_radiance);
+        ALMetalTextureDescriptor warming_irradiance_descriptor =
+            irradiance_descriptor;
+        warming_irradiance_descriptor.label =
+            "Alchemy base-light warming probe SH";
+        auto warming_irradiance = ALMetalTexture::create(
+            *device, warming_irradiance_descriptor, &error);
+        INFO(error);
+        REQUIRE(warming_irradiance);
+        const std::array<std::uint8_t, 4 * 4 * 4> black_radiance{};
+        const std::array<std::uint32_t, 16> zero_sh{};
+        auto warming_upload = device->makeCommandBuffer(
+            "Alchemy base-light warming probe upload", &error);
+        INFO(error);
+        REQUIRE(warming_upload);
+        for (std::uint32_t mip = 0; mip < 3; ++mip)
+        {
+            const std::uint32_t width = std::max(1u, 4u >> mip);
+            for (std::uint32_t face = 0; face < 6; ++face)
+            {
+                REQUIRE(warming_radiance->upload(
+                    *warming_upload, mip, face, {},
+                    black_radiance.data(), width * 4u, &error));
+            }
+        }
+        REQUIRE(warming_irradiance->upload(
+            *warming_upload, 0, 0, {}, zero_sh.data(), sizeof(zero_sh),
+            &error));
+        REQUIRE(warming_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldReflectionProbes warming_probes;
+        warming_probes.radiance_texture = warming_radiance.get();
+        warming_probes.irradiance_texture = warming_irradiance.get();
+        warming_probes.constants.env_matrix[0][0] = 1.f;
+        warming_probes.constants.env_matrix[1][1] = 1.f;
+        warming_probes.constants.env_matrix[2][2] = 1.f;
+        warming_probes.constants.config[0] = 0.f;
+        warming_probes.constants.config[1] = 2.f;
+        ALMetalWorldBaseLightingScene warming_scene = base_scene;
+        warming_scene.reflection_probes = &warming_probes;
+        auto warming_lit = renderer->renderBaseLighting(
+            warming_scene, &error);
+        INFO(error);
+        REQUIRE(warming_lit);
+        std::array<std::uint8_t, 32 * 32 * 4> warming_pixels{};
+        REQUIRE(warming_lit->colorTexture(0)->readback(
+            *device, 0, 0, {}, warming_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(warming_pixels[center + 0] > 0);
+        CHECK(warming_pixels[center + 1] > 0);
+        CHECK(warming_pixels[center + 2] > 0);
+        CHECK(warming_pixels[outside + 0] == 0);
+        CHECK(warming_pixels[outside + 1] == 0);
+        CHECK(warming_pixels[outside + 2] == 0);
+
         // Reflection probes are an optional viewer setting. Their disabled
         // GL variant samples the sharp legacy sky cube and uses the authored
         // ambiance blend instead of requiring a probe-array/SH pair. Prove
@@ -21435,6 +21637,17 @@ TEST_CASE("almetal: world legacy glow owns non-HDR extract blur and combine", "[
         REQUIRE(clean_glow->colorTexture(0)->readback(
             *device, 0, 0, {}, clean_pixels.data(), 512 * 4, &error));
         INFO(error);
+        // The legacy extractor used SOURCE_ALPHA, ONE blending into a clear
+        // target.  RGB outside the authored glow-alpha stripe therefore
+        // contributes nothing even though the source has non-zero color.
+        CHECK(clean_pixels[0] == 0u);
+        CHECK(clean_pixels[1] == 0u);
+        CHECK(clean_pixels[2] == 0u);
+        const std::size_t glow_center =
+            ((height / 2u) * 512u + 256u) * 4u;
+        CHECK((clean_pixels[glow_center] > 0u ||
+               clean_pixels[glow_center + 1u] > 0u ||
+               clean_pixels[glow_center + 2u] > 0u));
 
         scene.noise = true;
         auto noisy_glow = renderer->renderLegacyGlow(scene, &error);

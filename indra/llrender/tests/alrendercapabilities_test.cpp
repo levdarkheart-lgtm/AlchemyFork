@@ -55,6 +55,7 @@ TEST_CASE("ALRenderCapabilities publishes Metal identity without claiming GL ini
     CHECK(caps.isApple());
     CHECK_FALSE(caps.isAMD());
     CHECK(caps.memoryBudgetMB() == 6 * 1024);
+    CHECK(caps.textureMemoryBudgetMB() == 2 * 1024);
     CHECK(caps.maxTextureDimension() == 16'384);
     CHECK(caps.hasAnisotropicFiltering());
     CHECK(caps.maxAnisotropy() == 16.f);
@@ -63,5 +64,29 @@ TEST_CASE("ALRenderCapabilities publishes Metal identity without claiming GL ini
     caps.reset();
     CHECK_FALSE(caps.isInitialized());
     CHECK(caps.identity().empty());
+}
+
+TEST_CASE("ALRenderCapabilities bounds Metal streamed texture capacity",
+          "[alrendercapabilities][almetal]")
+{
+    ALMetalDeviceInfo info;
+    info.name = "Test Apple GPU";
+
+    ALRenderCapabilities caps;
+
+    info.recommended_working_set_size = 512ull << 20;
+    caps.initializeMetal(info);
+    CHECK(caps.memoryBudgetMB() == 512);
+    CHECK(caps.textureMemoryBudgetMB() == 512);
+
+    info.recommended_working_set_size = 64ull << 30;
+    caps.initializeMetal(info);
+    CHECK(caps.memoryBudgetMB() == 64 * 1024);
+    CHECK(caps.textureMemoryBudgetMB() == 4 * 1024);
+
+    info.recommended_working_set_size = 256ull << 30;
+    caps.initializeMetal(info);
+    CHECK(caps.memoryBudgetMB() == 256 * 1024);
+    CHECK(caps.textureMemoryBudgetMB() == 8 * 1024);
 }
 #endif

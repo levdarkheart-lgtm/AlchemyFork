@@ -17,6 +17,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <deque>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -883,7 +884,11 @@ namespace
             return false;
         }
         const float count_value = probes->constants.config[0];
-        if (count_value < 1.f ||
+        // refmapCount == 0 is the defined probe warm-up state.  The retained
+        // shader still taps reserved default slot zero, whose explicitly
+        // cleared resources contribute no reflection while preserving the
+        // direct and atmospheric ambient terms.
+        if (count_value < 0.f ||
             count_value > static_cast<float>(
                 ALMetalWorldReflectionProbeConstants::max_probe_count) ||
             std::floor(count_value) != count_value)
@@ -1237,11 +1242,24 @@ struct ALMetalWorldGBufferRenderer::Impl
     };
 
     const ALMetalDevice* device = nullptr;
+    std::shared_ptr<ALMetalRenderTargetPool> render_target_pool;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalCommandBuffer> command_batch;
+    std::deque<std::unique_ptr<ALMetalCommandBuffer>>
+        pending_command_batches;
     bool command_batch_valid = true;
     std::string command_batch_failure;
     bool command_batch_generates_brdf_lut = false;
+
+    std::unique_ptr<ALMetalRenderTarget> makeRenderTarget(
+        const ALMetalDevice&,
+        const ALMetalRenderTargetDescriptor& descriptor,
+        std::string* error)
+    {
+        return render_target_pool
+            ? render_target_pool->acquire(descriptor, error)
+            : nullptr;
+    }
 
     ALMetalCommandBuffer* acquireCommandBuffer(
         const std::string& label,
@@ -1283,6 +1301,51 @@ struct ALMetalWorldGBufferRenderer::Impl
             }
         }
         return encoded;
+    }
+
+    bool makeCommandBatchSlot(std::string* error)
+    {
+        // These batches retain a complete full-resolution world/post graph,
+        // not merely a drawable. Double buffering preserves CPU/GPU overlap
+        // while preventing a third graph from consuming several more GB of
+        // unified memory on a Retina window.
+        constexpr std::size_t max_pending_command_batches = 2;
+        while (!pending_command_batches.empty())
+        {
+            ALMetalCommandBuffer& oldest =
+                *pending_command_batches.front();
+            const ALMetalCommandStatus status = oldest.status();
+            if (status == ALMetalCommandStatus::completed)
+            {
+                pending_command_batches.pop_front();
+                continue;
+            }
+            if (status == ALMetalCommandStatus::error)
+            {
+                const std::string description = oldest.errorDescription();
+                pending_command_batches.pop_front();
+                setError(error, description.empty()
+                    ? "A pending Metal world command batch failed"
+                    : description);
+                return false;
+            }
+            break;
+        }
+
+        if (pending_command_batches.size() <
+            max_pending_command_batches)
+        {
+            return true;
+        }
+
+        ALMetalCommandBuffer& oldest = *pending_command_batches.front();
+        if (!oldest.waitUntilCompleted(error))
+        {
+            pending_command_batches.pop_front();
+            return false;
+        }
+        pending_command_batches.pop_front();
+        return true;
     }
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_pipelines;
@@ -1654,6 +1717,10 @@ bool ALMetalWorldGBufferRenderer::beginCommandBatch(
         setError(error, "Metal world command batch is already active");
         return false;
     }
+    if (!mImpl->makeCommandBatchSlot(error))
+    {
+        return false;
+    }
     mImpl->command_batch = mImpl->device->makeCommandBuffer(label, error);
     mImpl->command_batch_valid = static_cast<bool>(mImpl->command_batch);
     mImpl->command_batch_failure.clear();
@@ -1688,6 +1755,10 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
     {
         mImpl->brdf_lut_ready = true;
     }
+    if (committed)
+    {
+        mImpl->pending_command_batches.push_back(std::move(command));
+    }
     return committed;
 }
 
@@ -1707,14 +1778,23 @@ bool ALMetalWorldGBufferRenderer::commandBatchActive() const
     return mImpl && static_cast<bool>(mImpl->command_batch);
 }
 
+ALMetalRenderTargetPoolStats
+ALMetalWorldGBufferRenderer::renderTargetPoolStats() const noexcept
+{
+    return mImpl && mImpl->render_target_pool
+        ? mImpl->render_target_pool->stats()
+        : ALMetalRenderTargetPoolStats{};
+}
+
 std::unique_ptr<ALMetalWorldGBufferRenderer>
 ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                                     std::string* error)
 {
     auto impl = std::make_unique<Impl>();
     impl->device = &device;
+    impl->render_target_pool = ALMetalRenderTargetPool::create(device);
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
-    if (!impl->library ||
+    if (!impl->render_target_pool || !impl->library ||
         !impl->library->hasFunction("almetal_resample_vertex") ||
         !impl->library->hasFunction("almetal_resample_fragment") ||
         !impl->library->hasFunction(
@@ -5620,7 +5700,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
     target_descriptor.depth_stencil_format =
         ALMetalPixelFormat::depth32_float;
     target_descriptor.label = "Alchemy direct spot-shadow slice";
-    auto target = ALMetalRenderTarget::create(
+    auto target = mImpl->makeRenderTarget(
         *mImpl->device, target_descriptor, error);
     if (!target)
     {
@@ -5854,7 +5934,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     const ALMetalWorldGBufferScene& scene,
     std::string* error)
 {
-    if (!mImpl || !mImpl->device || !scene.batches || scene.batch_count == 0 ||
+    if (!mImpl || !mImpl->device ||
+        (scene.batch_count != 0 && !scene.batches) ||
         scene.width == 0 || scene.height == 0)
     {
         setError(error, "Metal world G-buffer scene is incomplete");
@@ -6361,7 +6442,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         ALMetalPixelFormat::depth32_float_stencil8;
     target_descriptor.depth_stencil_shader_read = true;
     target_descriptor.label = "Alchemy native world G-buffer bootstrap";
-    auto target = ALMetalRenderTarget::create(
+    auto target = mImpl->makeRenderTarget(
         *mImpl->device, target_descriptor, error);
     if (!target)
     {
@@ -7104,7 +7185,7 @@ ALMetalWorldGBufferRenderer::renderLocalLightsInternal(
             "Alchemy world local-point-light accumulation";
         output_descriptor.label =
             "Alchemy native world local-point-light target";
-        standalone_target = ALMetalRenderTarget::create(
+        standalone_target = mImpl->makeRenderTarget(
             *mImpl->device, output_descriptor, error);
         output = standalone_target.get();
         if (!output)
@@ -7391,7 +7472,7 @@ ALMetalWorldGBufferRenderer::renderProjectorLightsInternal(
             "Alchemy world projector-light accumulation";
         output_descriptor.label =
             "Alchemy native world projector-light target";
-        standalone_target = ALMetalRenderTarget::create(
+        standalone_target = mImpl->makeRenderTarget(
             *mImpl->device, output_descriptor, error);
         output = standalone_target.get();
         if (!output)
@@ -7608,7 +7689,7 @@ ALMetalWorldGBufferRenderer::composeLighting(
     }
     output_descriptor.label =
         "Alchemy native world deferred-light composition target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -7765,7 +7846,7 @@ ALMetalWorldGBufferRenderer::renderBloom(
         descriptor.colors[0].label =
             "Alchemy native world bloom color";
         descriptor.label = "Alchemy native world bloom target";
-        auto target = ALMetalRenderTarget::create(
+    auto target = mImpl->makeRenderTarget(
             *mImpl->device, descriptor, error);
         if (!target)
         {
@@ -7878,7 +7959,7 @@ ALMetalWorldGBufferRenderer::renderBloom(
         descriptor.label = "Alchemy native world cross-filter target";
         for (auto& target : cross_targets)
         {
-            target = ALMetalRenderTarget::create(
+            target = mImpl->makeRenderTarget(
                 *mImpl->device, descriptor, error);
             if (!target)
             {
@@ -8040,7 +8121,7 @@ ALMetalWorldGBufferRenderer::renderLegacyGlow(
         descriptor.colors[0].shader_read = true;
         descriptor.colors[0].label = label;
         descriptor.label = label;
-        return ALMetalRenderTarget::create(
+        return mImpl->makeRenderTarget(
             *mImpl->device, descriptor, error);
     };
     auto extract = make_target("Alchemy native legacy glow extract");
@@ -8194,7 +8275,7 @@ ALMetalWorldGBufferRenderer::combineLegacyGlow(
         "Alchemy non-HDR world combined glow color";
     output_descriptor.label =
         "Alchemy native non-HDR world combined glow target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -8315,7 +8396,7 @@ ALMetalWorldGBufferRenderer::renderExposure(
     meter_descriptor.colors[0].label =
         "Alchemy native world exposure meter color";
     meter_descriptor.label = "Alchemy native world exposure meter";
-    auto meter = ALMetalRenderTarget::create(
+    auto meter = mImpl->makeRenderTarget(
         *mImpl->device, meter_descriptor, error);
     if (!meter)
     {
@@ -8330,7 +8411,7 @@ ALMetalWorldGBufferRenderer::renderExposure(
     output_descriptor.colors[0].label =
         "Alchemy native world exposure color";
     output_descriptor.label = "Alchemy native world exposure";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -8500,7 +8581,7 @@ ALMetalWorldGBufferRenderer::renderLensFlareState(
     descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
     descriptor.colors[0].label = "Alchemy world lens-flare state";
     descriptor.label = "Alchemy native world lens-flare state target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, descriptor, error);
     if (!output)
     {
@@ -8591,7 +8672,7 @@ ALMetalWorldGBufferRenderer::renderLensDirt(
     descriptor.colors[0].format = ALMetalPixelFormat::r8_unorm;
     descriptor.colors[0].label = "Alchemy world lens-dirt plate";
     descriptor.label = "Alchemy native world lens-dirt target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, descriptor, error);
     if (!output)
     {
@@ -8904,7 +8985,7 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         : (scene.hdr
             ? "Alchemy native HDR world display-post target"
             : "Alchemy native world display-post target");
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -9162,7 +9243,7 @@ ALMetalWorldGBufferRenderer::renderRlvSphere(
         descriptor.colors[0].shader_read = true;
         descriptor.colors[0].label = label;
         descriptor.label = label;
-        return ALMetalRenderTarget::create(
+        return mImpl->makeRenderTarget(
             *mImpl->device, descriptor, error);
     };
 
@@ -9297,7 +9378,7 @@ ALMetalWorldGBufferRenderer::capturePresentationReference(
     descriptor.colors[0].label =
         "Alchemy native final-presentation reference color";
     descriptor.label = "Alchemy native final-presentation reference target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, descriptor, error);
     if (!output)
     {
@@ -9505,7 +9586,7 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
         "Alchemy final BGRA8 presentation color";
     output_descriptor.label =
         "Alchemy native world final-presentation target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -9663,7 +9744,7 @@ ALMetalWorldGBufferRenderer::renderDepthOfField(
         "Alchemy native world depth-of-field blur color";
     blur_descriptor.label =
         "Alchemy native world depth-of-field blur target";
-    auto blur = ALMetalRenderTarget::create(
+    auto blur = mImpl->makeRenderTarget(
         *mImpl->device, blur_descriptor, error);
     if (!blur)
     {
@@ -9679,7 +9760,7 @@ ALMetalWorldGBufferRenderer::renderDepthOfField(
         "Alchemy native world defocused HDR color";
     output_descriptor.label =
         "Alchemy native world depth-of-field target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -9853,7 +9934,7 @@ ALMetalWorldGBufferRenderer::renderCAS(
     output_descriptor.label = format == ALMetalPixelFormat::rgb10a2_unorm
         ? "Alchemy native HDR world CAS target"
         : "Alchemy native non-HDR world CAS target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -9951,7 +10032,7 @@ ALMetalWorldGBufferRenderer::renderFXAA(
     output_descriptor.label = format == ALMetalPixelFormat::rgb10a2_unorm
         ? "Alchemy native HDR world FXAA target"
         : "Alchemy native non-HDR world FXAA target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -10087,7 +10168,7 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
     output_descriptor.colors[0].label =
         "Alchemy world SMAA RGBA8 edges";
     output_descriptor.label = "Alchemy native world SMAA edge target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -10192,7 +10273,7 @@ ALMetalWorldGBufferRenderer::renderSMAABlendWeights(
     output_descriptor.colors[0].label =
         "Alchemy world SMAA RGBA8 blending weights";
     output_descriptor.label = "Alchemy native world SMAA weight target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -10300,7 +10381,7 @@ ALMetalWorldGBufferRenderer::renderSMAANeighborhood(
         source_format == ALMetalPixelFormat::rgb10a2_unorm
         ? "Alchemy native HDR world SMAA neighborhood target"
         : "Alchemy native non-HDR world SMAA neighborhood target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -10427,7 +10508,7 @@ ALMetalWorldGBufferRenderer::renderDisplaySample(
         "Alchemy world RGBA8 display sample";
     output_descriptor.label =
         "Alchemy native world display-sample target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {
@@ -10602,7 +10683,7 @@ bool ALMetalWorldGBufferRenderer::updateScreenSpaceReflectionHistory(
     ALMetalRenderTarget* destination = history.get();
     if (!matches(history))
     {
-        replacement = ALMetalRenderTarget::create(
+        replacement = mImpl->makeRenderTarget(
             *mImpl->device, descriptor, error);
         destination = replacement.get();
     }
@@ -10712,13 +10793,15 @@ bool ALMetalWorldGBufferRenderer::updateHeroProbeFace(
         return false;
     }
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native hero-probe face publication", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native hero-probe face publication",
+        owned_command, error);
     ALMetalTextureCopy copy;
     copy.destination_slice = face;
-    if (!command || !destination->copyFrom(
-            *command, *source.colorTexture(0), copy, error) ||
-        !command->commit(error))
+    const bool encoded = command && destination->copyFrom(
+        *command, *source.colorTexture(0), copy, error);
+    if (!mImpl->finishCommandBuffer(owned_command, encoded, error))
     {
         return false;
     }
@@ -10811,8 +10894,10 @@ bool ALMetalWorldGBufferRenderer::updateReflectionProbeFace(
     };
 
     const ALMetalTexture* prepared = input_texture;
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native reflection-probe face publication", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native reflection-probe face publication",
+        owned_command, error);
     if (!command)
     {
         return false;
@@ -10832,6 +10917,7 @@ bool ALMetalWorldGBufferRenderer::updateReflectionProbeFace(
                 probe_resolution, probe_resolution,
                 "Alchemy reflection-probe downsample"))
         {
+            mImpl->finishCommandBuffer(owned_command, false, error);
             return false;
         }
 
@@ -10858,6 +10944,7 @@ bool ALMetalWorldGBufferRenderer::updateReflectionProbeFace(
                 input.width, input.height, 1, 8, 8, 1, error) ||
             !horizontal_encoder->end(error))
         {
+            mImpl->finishCommandBuffer(owned_command, false, error);
             return false;
         }
 
@@ -10880,6 +10967,7 @@ bool ALMetalWorldGBufferRenderer::updateReflectionProbeFace(
                 input.width, input.height, 1, 8, 8, 1, error) ||
             !vertical_encoder->end(error))
         {
+            mImpl->finishCommandBuffer(owned_command, false, error);
             return false;
         }
 
@@ -10897,6 +10985,7 @@ bool ALMetalWorldGBufferRenderer::updateReflectionProbeFace(
                 8, 8, 1, error) ||
             !downsample_encoder->end(error))
         {
+            mImpl->finishCommandBuffer(owned_command, false, error);
             return false;
         }
         prepared = mImpl->probe_downsample.get();
@@ -10929,9 +11018,9 @@ bool ALMetalWorldGBufferRenderer::updateReflectionProbeFace(
     }
     ALMetalTextureCopy copy;
     copy.destination_slice = face;
-    if (!destination ||
-        !destination->copyFrom(*command, *prepared, copy, error) ||
-        !command->commit(error))
+    const bool encoded = destination &&
+        destination->copyFrom(*command, *prepared, copy, error);
+    if (!mImpl->finishCommandBuffer(owned_command, encoded, error))
     {
         return false;
     }
@@ -14651,7 +14740,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             needs_shader_read_depth;
         output_descriptor.label =
             "Alchemy native world opaque post-deferred target";
-        output = ALMetalRenderTarget::create(
+        output = mImpl->makeRenderTarget(
             *mImpl->device, output_descriptor, error);
     }
     if (!output)
@@ -14674,7 +14763,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             ALMetalPixelFormat::depth32_float_stencil8;
         overlay_descriptor.label =
             "Alchemy far-plane projection overlay target";
-        mImpl->far_plane_overlay_target = ALMetalRenderTarget::create(
+        mImpl->far_plane_overlay_target = mImpl->makeRenderTarget(
             *mImpl->device, overlay_descriptor, error);
         if (!mImpl->far_plane_overlay_target)
         {
@@ -14693,7 +14782,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         haze_depth_descriptor.depth_stencil_shader_read = true;
         haze_depth_descriptor.label =
             "Alchemy native world water-haze depth snapshot";
-        haze_depth_snapshot = ALMetalRenderTarget::create(
+        haze_depth_snapshot = mImpl->makeRenderTarget(
             *mImpl->device, haze_depth_descriptor, error);
         if (!haze_depth_snapshot)
         {
@@ -14712,7 +14801,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         depth_descriptor.depth_stencil_shader_read = true;
         depth_descriptor.label =
             "Alchemy native world atmospheric-haze depth snapshot";
-        atmospheric_depth_snapshot = ALMetalRenderTarget::create(
+        atmospheric_depth_snapshot = mImpl->makeRenderTarget(
             *mImpl->device, depth_descriptor, error);
         if (!atmospheric_depth_snapshot)
         {
@@ -14731,7 +14820,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             "Alchemy water refraction color";
         water_color_descriptor.label =
             "Alchemy native water refraction snapshot";
-        water_color_snapshot = ALMetalRenderTarget::create(
+        water_color_snapshot = mImpl->makeRenderTarget(
             *mImpl->device, water_color_descriptor, error);
         if (!water_color_snapshot)
         {
@@ -14748,7 +14837,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             water_depth_descriptor.depth_stencil_shader_read = true;
             water_depth_descriptor.label =
                 "Alchemy native water refraction depth snapshot";
-            water_depth_snapshot = ALMetalRenderTarget::create(
+            water_depth_snapshot = mImpl->makeRenderTarget(
                 *mImpl->device, water_depth_descriptor, error);
             if (!water_depth_snapshot)
             {
@@ -17954,7 +18043,7 @@ ALMetalWorldGBufferRenderer::renderLightMap(
     output_descriptor.colors[0].label =
         "Alchemy world directional-shadow and SSAO light map";
     output_descriptor.label = "Alchemy native world light-map target";
-    auto raw = ALMetalRenderTarget::create(
+    auto raw = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!raw)
     {
@@ -18029,9 +18118,9 @@ ALMetalWorldGBufferRenderer::renderLightMap(
             ? std::move(raw) : nullptr;
     }
 
-    auto scratch = ALMetalRenderTarget::create(
+    auto scratch = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!scratch || !output)
     {
@@ -18509,7 +18598,7 @@ ALMetalWorldGBufferRenderer::renderWindLightSkyBehind(
         "Alchemy WindLight sky-behind color";
     target_descriptor.label =
         "Alchemy native WindLight sky-behind target";
-    auto target = ALMetalRenderTarget::create(
+    auto target = mImpl->makeRenderTarget(
         *mImpl->device, target_descriptor, error);
     if (!target)
     {
@@ -19506,7 +19595,7 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
             scene.depth_stencil_shader_read;
     }
     output_descriptor.label = "Alchemy native world base-light target";
-    auto output = ALMetalRenderTarget::create(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
     {

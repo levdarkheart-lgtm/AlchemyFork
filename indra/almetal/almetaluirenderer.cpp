@@ -241,6 +241,8 @@ struct ALMetalUIRenderer::Impl
     std::unique_ptr<ALMetalTexture> selection_palette;
     std::vector<std::unique_ptr<ALMetalBuffer>> selection_frame_palettes;
     std::unique_ptr<ALMetalRenderTarget> target;
+    std::unique_ptr<ALMetalTexture> output_owner;
+    std::unique_ptr<ALMetalTexture> depth_owner;
     std::unique_ptr<ALMetalDrawable> drawable;
     std::unique_ptr<ALMetalRenderPass> pass;
     std::unique_ptr<ALMetalFrame> frame;
@@ -1341,15 +1343,110 @@ struct ALMetalUIRenderer::Impl
                  target->descriptor().depth_stencil_format !=
                      frameDepthFormat())
         {
+            target.reset();
+            const auto compatible_output = [&]
+            {
+                if (!output_owner)
+                {
+                    return false;
+                }
+                const ALMetalTextureDescriptor& candidate =
+                    output_owner->descriptor();
+                return candidate.type == ALMetalTextureType::texture_2d &&
+                    candidate.format == output_format &&
+                    candidate.width == width &&
+                    candidate.height == height &&
+                    candidate.array_length == 1 &&
+                    candidate.mipmap_level_count == 1 &&
+                    candidate.sample_count == 1 &&
+                    alMetalHasUsage(
+                        candidate.usage,
+                        ALMetalTextureUsage::render_target) &&
+                    alMetalHasUsage(
+                        candidate.usage,
+                        ALMetalTextureUsage::shader_read);
+            };
+            if (!compatible_output())
+            {
+                ALMetalTextureDescriptor output_descriptor;
+                output_descriptor.format = output_format;
+                output_descriptor.width = width;
+                output_descriptor.height = height;
+                output_descriptor.storage =
+                    ALMetalStorageMode::private_gpu;
+                output_descriptor.usage =
+                    ALMetalTextureUsage::render_target |
+                    ALMetalTextureUsage::shader_read;
+                output_descriptor.label =
+                    "Alchemy production UI color";
+                output_owner = ALMetalTexture::create(
+                    *device, output_descriptor, error);
+                if (!output_owner)
+                {
+                    return false;
+                }
+            }
+
+            const ALMetalPixelFormat depth_format = frameDepthFormat();
+            const auto compatible_depth = [&]
+            {
+                if (!depth_owner ||
+                    depth_format == ALMetalPixelFormat::invalid)
+                {
+                    return false;
+                }
+                const ALMetalTextureDescriptor& candidate =
+                    depth_owner->descriptor();
+                return candidate.type == ALMetalTextureType::texture_2d &&
+                    candidate.format == depth_format &&
+                    candidate.width == width &&
+                    candidate.height == height &&
+                    candidate.array_length == 1 &&
+                    candidate.mipmap_level_count == 1 &&
+                    candidate.sample_count == 1 &&
+                    alMetalHasUsage(
+                        candidate.usage,
+                        ALMetalTextureUsage::render_target) &&
+                    alMetalHasUsage(
+                        candidate.usage,
+                        ALMetalTextureUsage::shader_read);
+            };
+            if (depth_format == ALMetalPixelFormat::invalid)
+            {
+                depth_owner.reset();
+            }
+            else if (!compatible_depth())
+            {
+                ALMetalTextureDescriptor depth_descriptor;
+                depth_descriptor.format = depth_format;
+                depth_descriptor.width = width;
+                depth_descriptor.height = height;
+                depth_descriptor.storage =
+                    ALMetalStorageMode::private_gpu;
+                depth_descriptor.usage =
+                    ALMetalTextureUsage::render_target |
+                    ALMetalTextureUsage::shader_read;
+                depth_descriptor.label =
+                    "Alchemy production UI retained depth";
+                depth_owner = ALMetalTexture::create(
+                    *device, depth_descriptor, error);
+                if (!depth_owner)
+                {
+                    return false;
+                }
+            }
+
             ALMetalRenderTargetDescriptor descriptor;
             descriptor.width = width;
             descriptor.height = height;
             descriptor.color_attachment_count = 1;
             descriptor.colors[0].format = output_format;
             descriptor.colors[0].shader_read = true;
+            descriptor.colors[0].texture = output_owner.get();
             descriptor.colors[0].label = "Alchemy production UI color";
             descriptor.depth_stencil_format = frameDepthFormat();
             descriptor.depth_stencil_shader_read = frame_depth != nullptr;
+            descriptor.depth_stencil_texture = depth_owner.get();
             descriptor.label = "Alchemy production UI target";
             target = ALMetalRenderTarget::create(*device, descriptor, error);
             if (!target)
@@ -1639,6 +1736,25 @@ bool ALMetalUIRenderer::setFrameDepth(
         return false;
     }
     mImpl->frame_depth = depth;
+    return true;
+}
+
+bool ALMetalUIRenderer::setReusableOutputTexture(
+    std::unique_ptr<ALMetalTexture>& output,
+    std::string* error)
+{
+    if (!mImpl || mImpl->surface || mImpl->frame)
+    {
+        setError(
+            error,
+            "Metal UI reusable output requires an idle offscreen renderer");
+        return false;
+    }
+    if (output)
+    {
+        mImpl->target.reset();
+        mImpl->output_owner = std::move(output);
+    }
     return true;
 }
 
@@ -3254,9 +3370,8 @@ std::unique_ptr<ALMetalTexture> ALMetalUIRenderer::takeOutputTexture() noexcept
     {
         return nullptr;
     }
-    auto output = mImpl->target->takeColorTexture(0);
     mImpl->target.reset();
-    return output;
+    return std::move(mImpl->output_owner);
 }
 
 ALMetalUIRendererStats ALMetalUIRenderer::stats() const noexcept

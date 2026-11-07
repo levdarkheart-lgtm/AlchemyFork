@@ -336,7 +336,8 @@ public:
         LLGLSLShader* uniform_color_shader = nullptr,
         EMetalUICaptureMode mode = EMetalUICaptureMode::GL_MIRROR,
         EMetalUICaptureStorage storage =
-            EMetalUICaptureStorage::FORMAT_NATIVE);
+            EMetalUICaptureStorage::FORMAT_NATIVE,
+        std::unique_ptr<ALMetalTexture>* reusable_output = nullptr);
     bool isMetalUITextureCaptureAuthoritative() const noexcept
     {
         return mMetalUICaptureAuthoritative;

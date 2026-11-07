@@ -103,6 +103,10 @@ public:
     static std::unique_ptr<ALMetalDevice> create(std::string* error = nullptr);
 
     const ALMetalDeviceInfo& info() const noexcept;
+    // Live driver-accounted bytes owned by this Metal device. Unlike the
+    // creation-time value in info(), this is sampled at the call site and is
+    // intended for resource-lifetime diagnostics and benchmark evidence.
+    std::uint64_t currentAllocatedSize() const noexcept;
     void* nativeHandle() const noexcept;
     void* nativeCommandQueue() const noexcept;
 

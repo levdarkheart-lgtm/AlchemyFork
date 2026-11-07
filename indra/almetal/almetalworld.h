@@ -2005,6 +2005,7 @@ public:
     bool commitCommandBatch(std::string* error = nullptr);
     void cancelCommandBatch();
     bool commandBatchActive() const;
+    ALMetalRenderTargetPoolStats renderTargetPoolStats() const noexcept;
 
     std::unique_ptr<ALMetalRenderTarget> render(
         const ALMetalWorldGBufferScene& scene,

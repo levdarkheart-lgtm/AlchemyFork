@@ -15,6 +15,7 @@
 #import <Metal/Metal.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -23,6 +24,15 @@
 
 namespace
 {
+    std::atomic<std::uint64_t> buffers_created{0};
+    std::atomic<std::uint64_t> buffers_destroyed{0};
+    std::atomic<std::uint64_t> buffer_bytes_live{0};
+    std::atomic<std::uint64_t> textures_created{0};
+    std::atomic<std::uint64_t> textures_destroyed{0};
+    std::atomic<std::uint64_t> texture_bytes_live{0};
+    std::atomic<std::uint64_t> image_textures_live{0};
+    std::atomic<std::uint64_t> image_texture_bytes_live{0};
+
     void setError(std::string* destination, const std::string& message)
     {
         if (destination)
@@ -384,6 +394,72 @@ namespace
         return true;
     }
 
+    std::uint64_t textureAllocationBytes(
+        const ALMetalTextureDescriptor& descriptor) noexcept
+    {
+        const std::uint64_t bytes_per_block =
+            formatBytesPerBlock(descriptor.format);
+        const std::uint64_t block_width =
+            formatBlockWidth(descriptor.format);
+        const std::uint64_t block_height =
+            formatBlockHeight(descriptor.format);
+        if (bytes_per_block == 0 || block_width == 0 || block_height == 0)
+        {
+            return 0;
+        }
+
+        std::uint64_t bytes = 0;
+        for (std::uint32_t level = 0;
+             level < descriptor.mipmap_level_count; ++level)
+        {
+            const std::uint64_t width = mipDimension(
+                descriptor.width, level);
+            const std::uint64_t height = mipDimension(
+                descriptor.height, level);
+            const std::uint64_t blocks_x =
+                (width + block_width - 1) / block_width;
+            const std::uint64_t blocks_y =
+                (height + block_height - 1) / block_height;
+            bytes += blocks_x * blocks_y * bytes_per_block;
+        }
+        return bytes * sliceCount(descriptor) * descriptor.sample_count;
+    }
+
+    bool isImageTexture(
+        const ALMetalTextureDescriptor& descriptor) noexcept
+    {
+        return descriptor.label == "Alchemy image texture" ||
+               descriptor.label == "Alchemy render-produced image texture";
+    }
+
+    void recordTextureCreated(
+        const ALMetalTextureDescriptor& descriptor) noexcept
+    {
+        const std::uint64_t bytes = textureAllocationBytes(descriptor);
+        textures_created.fetch_add(1, std::memory_order_relaxed);
+        texture_bytes_live.fetch_add(bytes, std::memory_order_relaxed);
+        if (isImageTexture(descriptor))
+        {
+            image_textures_live.fetch_add(1, std::memory_order_relaxed);
+            image_texture_bytes_live.fetch_add(
+                bytes, std::memory_order_relaxed);
+        }
+    }
+
+    void recordTextureDestroyed(
+        const ALMetalTextureDescriptor& descriptor) noexcept
+    {
+        const std::uint64_t bytes = textureAllocationBytes(descriptor);
+        texture_bytes_live.fetch_sub(bytes, std::memory_order_relaxed);
+        textures_destroyed.fetch_add(1, std::memory_order_relaxed);
+        if (isImageTexture(descriptor))
+        {
+            image_texture_bytes_live.fetch_sub(
+                bytes, std::memory_order_relaxed);
+            image_textures_live.fetch_sub(1, std::memory_order_relaxed);
+        }
+    }
+
     std::size_t alignUp(std::size_t value, std::size_t alignment)
     {
         return (value + alignment - 1) & ~(alignment - 1);
@@ -419,6 +495,27 @@ namespace
     }
 }
 
+ALMetalResourceAllocationStats
+alMetalResourceAllocationStats() noexcept
+{
+    ALMetalResourceAllocationStats stats;
+    stats.buffers_created = buffers_created.load(std::memory_order_relaxed);
+    stats.buffers_destroyed =
+        buffers_destroyed.load(std::memory_order_relaxed);
+    stats.buffer_bytes_live =
+        buffer_bytes_live.load(std::memory_order_relaxed);
+    stats.textures_created = textures_created.load(std::memory_order_relaxed);
+    stats.textures_destroyed =
+        textures_destroyed.load(std::memory_order_relaxed);
+    stats.texture_bytes_live =
+        texture_bytes_live.load(std::memory_order_relaxed);
+    stats.image_textures_live =
+        image_textures_live.load(std::memory_order_relaxed);
+    stats.image_texture_bytes_live =
+        image_texture_bytes_live.load(std::memory_order_relaxed);
+    return stats;
+}
+
 struct ALMetalBuffer::Impl
 {
     id<MTLDevice> device = nil;
@@ -431,7 +528,13 @@ ALMetalBuffer::ALMetalBuffer(std::unique_ptr<Impl> impl, ALMetalBufferDescriptor
 {
 }
 
-ALMetalBuffer::~ALMetalBuffer() = default;
+ALMetalBuffer::~ALMetalBuffer()
+{
+    buffer_bytes_live.fetch_sub(
+        static_cast<std::uint64_t>(mDescriptor.length),
+        std::memory_order_relaxed);
+    buffers_destroyed.fetch_add(1, std::memory_order_relaxed);
+}
 
 std::unique_ptr<ALMetalBuffer> ALMetalBuffer::create(
     const ALMetalDevice& device,
@@ -472,7 +575,13 @@ std::unique_ptr<ALMetalBuffer> ALMetalBuffer::create(
         auto impl = std::make_unique<Impl>();
         impl->device = native_device;
         impl->buffer = buffer;
-        return std::unique_ptr<ALMetalBuffer>(new ALMetalBuffer(std::move(impl), descriptor));
+        auto result = std::unique_ptr<ALMetalBuffer>(
+            new ALMetalBuffer(std::move(impl), descriptor));
+        buffers_created.fetch_add(1, std::memory_order_relaxed);
+        buffer_bytes_live.fetch_add(
+            static_cast<std::uint64_t>(descriptor.length),
+            std::memory_order_relaxed);
+        return result;
     }
 }
 
@@ -801,7 +910,10 @@ ALMetalTexture::ALMetalTexture(std::unique_ptr<Impl> impl, ALMetalTextureDescrip
 {
 }
 
-ALMetalTexture::~ALMetalTexture() = default;
+ALMetalTexture::~ALMetalTexture()
+{
+    recordTextureDestroyed(mDescriptor);
+}
 
 std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
     const ALMetalDevice& device,
@@ -925,7 +1037,10 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
         impl->device = native_device;
         impl->texture = texture;
         impl->shader_view = shader_view;
-        return std::unique_ptr<ALMetalTexture>(new ALMetalTexture(std::move(impl), descriptor));
+        auto result = std::unique_ptr<ALMetalTexture>(
+            new ALMetalTexture(std::move(impl), descriptor));
+        recordTextureCreated(descriptor);
+        return result;
     }
 }
 
@@ -1030,8 +1145,10 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::createFromIOSurface(
         auto impl = std::make_unique<Impl>();
         impl->device = native_device;
         impl->texture = texture;
-        return std::unique_ptr<ALMetalTexture>(
+        auto result = std::unique_ptr<ALMetalTexture>(
             new ALMetalTexture(std::move(impl), descriptor));
+        recordTextureCreated(descriptor);
+        return result;
     }
 }
 
@@ -1922,6 +2039,127 @@ struct ALMetalRenderTarget::Impl
     const ALMetalTexture* borrowed_depth_stencil = nullptr;
 };
 
+struct ALMetalRenderTargetPool::Impl
+{
+    struct Entry
+    {
+        ALMetalRenderTargetDescriptor descriptor;
+        std::unique_ptr<ALMetalRenderTarget::Impl> storage;
+        std::uint64_t bytes = 0;
+    };
+
+    const ALMetalDevice* device = nullptr;
+    std::uint64_t maximum_cached_bytes = 0;
+    std::uint64_t cached_bytes = 0;
+    std::uint64_t acquisitions = 0;
+    std::uint64_t reuses = 0;
+    std::uint64_t evictions = 0;
+    mutable std::mutex mutex;
+    std::vector<Entry> entries;
+
+    static bool complete(
+        const ALMetalRenderTarget::Impl& storage,
+        const ALMetalRenderTargetDescriptor& descriptor) noexcept
+    {
+        for (std::uint32_t index = 0;
+             index < descriptor.color_attachment_count; ++index)
+        {
+            if (!storage.colors[index] || storage.borrowed_colors[index] ||
+                (descriptor.sample_count > 1 &&
+                 !storage.multisample_colors[index]))
+            {
+                return false;
+            }
+        }
+        return descriptor.depth_stencil_format == ALMetalPixelFormat::invalid ||
+            (storage.depth_stencil && !storage.borrowed_depth_stencil);
+    }
+
+    static std::uint64_t storageBytes(
+        const ALMetalRenderTarget::Impl& storage) noexcept
+    {
+        std::uint64_t bytes = 0;
+        for (std::size_t index = 0;
+             index < AL_METAL_MAX_COLOR_ATTACHMENTS; ++index)
+        {
+            if (storage.colors[index])
+            {
+                bytes += textureAllocationBytes(
+                    storage.colors[index]->descriptor());
+            }
+            if (storage.multisample_colors[index])
+            {
+                bytes += textureAllocationBytes(
+                    storage.multisample_colors[index]->descriptor());
+            }
+        }
+        if (storage.depth_stencil)
+        {
+            bytes += textureAllocationBytes(
+                storage.depth_stencil->descriptor());
+        }
+        return bytes;
+    }
+};
+
+namespace
+{
+    bool reusableRenderTargetDescriptor(
+        const ALMetalRenderTargetDescriptor& descriptor) noexcept
+    {
+        if (descriptor.depth_stencil_texture)
+        {
+            return false;
+        }
+        for (std::uint32_t index = 0;
+             index < descriptor.color_attachment_count; ++index)
+        {
+            if (descriptor.colors[index].texture)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool matchingRenderTargetDescriptor(
+        const ALMetalRenderTargetDescriptor& left,
+        const ALMetalRenderTargetDescriptor& right) noexcept
+    {
+        if (left.width != right.width || left.height != right.height ||
+            left.sample_count != right.sample_count ||
+            left.mipmap_level_count != right.mipmap_level_count ||
+            left.color_attachment_count != right.color_attachment_count ||
+            left.depth_stencil_format != right.depth_stencil_format ||
+            left.depth_stencil_shader_read !=
+                right.depth_stencil_shader_read ||
+            left.memoryless_multisample != right.memoryless_multisample ||
+            left.memoryless_depth_stencil !=
+                right.memoryless_depth_stencil ||
+            left.label != right.label ||
+            !reusableRenderTargetDescriptor(left) ||
+            !reusableRenderTargetDescriptor(right))
+        {
+            return false;
+        }
+        for (std::uint32_t index = 0;
+             index < left.color_attachment_count; ++index)
+        {
+            const auto& a = left.colors[index];
+            const auto& b = right.colors[index];
+            if (a.format != b.format ||
+                a.shader_read != b.shader_read ||
+                a.shader_write != b.shader_write ||
+                a.label != b.label)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+}
+
 ALMetalRenderTarget::ALMetalRenderTarget(
     std::unique_ptr<Impl> impl,
     ALMetalRenderTargetDescriptor descriptor)
@@ -1930,7 +2168,180 @@ ALMetalRenderTarget::ALMetalRenderTarget(
 {
 }
 
-ALMetalRenderTarget::~ALMetalRenderTarget() = default;
+ALMetalRenderTarget::~ALMetalRenderTarget()
+{
+    if (mPool)
+    {
+        mPool->recycle(*this);
+    }
+}
+
+ALMetalRenderTargetPool::ALMetalRenderTargetPool(
+    std::unique_ptr<Impl> impl)
+: mImpl(std::move(impl))
+{
+}
+
+ALMetalRenderTargetPool::~ALMetalRenderTargetPool() = default;
+
+std::shared_ptr<ALMetalRenderTargetPool>
+ALMetalRenderTargetPool::create(
+    const ALMetalDevice& device,
+    std::uint64_t maximum_cached_bytes)
+{
+    constexpr std::uint64_t mib = 1024ull * 1024ull;
+    constexpr std::uint64_t minimum_cache = 256ull * mib;
+    constexpr std::uint64_t maximum_cache = 2048ull * mib;
+    if (maximum_cached_bytes == 0)
+    {
+        const std::uint64_t recommended =
+            device.info().recommended_working_set_size;
+        maximum_cached_bytes = recommended == 0
+            ? 512ull * mib
+            : std::clamp(
+                  recommended / 32ull, minimum_cache, maximum_cache);
+    }
+    auto impl = std::make_unique<Impl>();
+    impl->device = &device;
+    impl->maximum_cached_bytes = maximum_cached_bytes;
+    return std::shared_ptr<ALMetalRenderTargetPool>(
+        new ALMetalRenderTargetPool(std::move(impl)));
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalRenderTargetPool::acquire(
+    const ALMetalRenderTargetDescriptor& descriptor,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device)
+    {
+        setError(error, "Metal render-target pool is unavailable");
+        return nullptr;
+    }
+    if (reusableRenderTargetDescriptor(descriptor))
+    {
+        std::lock_guard<std::mutex> lock(mImpl->mutex);
+        ++mImpl->acquisitions;
+        for (auto entry = mImpl->entries.rbegin();
+             entry != mImpl->entries.rend(); ++entry)
+        {
+            if (!matchingRenderTargetDescriptor(
+                    entry->descriptor, descriptor))
+            {
+                continue;
+            }
+            auto storage = std::move(entry->storage);
+            ++mImpl->reuses;
+            mImpl->cached_bytes -= entry->bytes;
+            mImpl->entries.erase(std::next(entry).base());
+            auto target = std::unique_ptr<ALMetalRenderTarget>(
+                new ALMetalRenderTarget(
+                    std::move(storage), descriptor));
+            target->mPool = shared_from_this();
+            return target;
+        }
+    }
+
+    auto target = ALMetalRenderTarget::create(
+        *mImpl->device, descriptor, error);
+    if (target && reusableRenderTargetDescriptor(descriptor))
+    {
+        target->mPool = shared_from_this();
+    }
+    return target;
+}
+
+void ALMetalRenderTargetPool::recycle(
+    ALMetalRenderTarget& target) noexcept
+{
+    if (!mImpl || !target.mImpl ||
+        !reusableRenderTargetDescriptor(target.mDescriptor) ||
+        !Impl::complete(
+            *target.mImpl, target.mDescriptor))
+    {
+        return;
+    }
+
+    const std::uint64_t bytes = Impl::storageBytes(*target.mImpl);
+    if (bytes == 0 || bytes > mImpl->maximum_cached_bytes)
+    {
+        return;
+    }
+
+    try
+    {
+        Impl::Entry entry{
+            target.mDescriptor, std::move(target.mImpl), bytes};
+        std::lock_guard<std::mutex> lock(mImpl->mutex);
+        while (!mImpl->entries.empty() &&
+               mImpl->cached_bytes + bytes >
+                   mImpl->maximum_cached_bytes)
+        {
+            ++mImpl->evictions;
+            mImpl->cached_bytes -= mImpl->entries.front().bytes;
+            mImpl->entries.erase(mImpl->entries.begin());
+        }
+        if (mImpl->cached_bytes + bytes <=
+            mImpl->maximum_cached_bytes)
+        {
+            mImpl->cached_bytes += bytes;
+            mImpl->entries.push_back(std::move(entry));
+        }
+    }
+    catch (...)
+    {
+        // Resource retirement must remain noexcept. A failed cache insertion
+        // simply releases the target through normal unique ownership.
+    }
+}
+
+void ALMetalRenderTargetPool::purge() noexcept
+{
+    if (!mImpl)
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(mImpl->mutex);
+    mImpl->entries.clear();
+    mImpl->cached_bytes = 0;
+}
+
+std::size_t ALMetalRenderTargetPool::cachedTargetCount() const noexcept
+{
+    if (!mImpl)
+    {
+        return 0;
+    }
+    std::lock_guard<std::mutex> lock(mImpl->mutex);
+    return mImpl->entries.size();
+}
+
+std::uint64_t ALMetalRenderTargetPool::cachedBytes() const noexcept
+{
+    if (!mImpl)
+    {
+        return 0;
+    }
+    std::lock_guard<std::mutex> lock(mImpl->mutex);
+    return mImpl->cached_bytes;
+}
+
+ALMetalRenderTargetPoolStats
+ALMetalRenderTargetPool::stats() const noexcept
+{
+    if (!mImpl)
+    {
+        return {};
+    }
+    std::lock_guard<std::mutex> lock(mImpl->mutex);
+    return {
+        mImpl->acquisitions,
+        mImpl->reuses,
+        mImpl->evictions,
+        mImpl->entries.size(),
+        mImpl->cached_bytes,
+    };
+}
 
 std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
     const ALMetalDevice& device,

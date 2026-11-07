@@ -334,6 +334,16 @@ U64 LLImageGL::getTextureBytesAllocated()
     return bytes;
 }
 
+// static
+U64 LLImageGL::getDeviceBytesAllocated()
+{
+#if LL_DARWIN
+    return sImageMetalDevice ? sImageMetalDevice->currentAllocatedSize() : 0;
+#else
+    return 0;
+#endif
+}
+
 //statics
 
 U32 LLImageGL::sUniqueCount             = 0;

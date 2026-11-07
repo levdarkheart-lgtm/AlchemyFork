@@ -42,6 +42,25 @@ enum class ALMetalCpuCacheMode
     write_combined,
 };
 
+// Process-wide C++ ownership counters. These deliberately describe resources
+// whose typed wrappers are still live; comparing them with
+// ALMetalDevice::currentAllocatedSize() distinguishes a viewer ownership leak
+// from driver allocation churn after the wrappers have been released.
+struct ALMetalResourceAllocationStats
+{
+    std::uint64_t buffers_created = 0;
+    std::uint64_t buffers_destroyed = 0;
+    std::uint64_t buffer_bytes_live = 0;
+    std::uint64_t textures_created = 0;
+    std::uint64_t textures_destroyed = 0;
+    std::uint64_t texture_bytes_live = 0;
+    std::uint64_t image_textures_live = 0;
+    std::uint64_t image_texture_bytes_live = 0;
+};
+
+ALMetalResourceAllocationStats
+alMetalResourceAllocationStats() noexcept;
+
 struct ALMetalBufferDescriptor
 {
     std::size_t length = 0;
@@ -469,6 +488,17 @@ struct ALMetalRenderTargetDescriptor
     std::string label;
 };
 
+class ALMetalRenderTargetPool;
+
+struct ALMetalRenderTargetPoolStats
+{
+    std::uint64_t acquisitions = 0;
+    std::uint64_t reuses = 0;
+    std::uint64_t evictions = 0;
+    std::size_t cached_targets = 0;
+    std::uint64_t cached_bytes = 0;
+};
+
 struct ALMetalRenderPassColorConfig
 {
     // Keep the owned attachment out of this pass. Metal permits gaps in the
@@ -573,4 +603,45 @@ private:
     ALMetalRenderTarget(std::unique_ptr<Impl> impl, ALMetalRenderTargetDescriptor descriptor);
     std::unique_ptr<Impl> mImpl;
     ALMetalRenderTargetDescriptor mDescriptor;
+    // A pooled target returns only its owned attachments when the short-lived
+    // wrapper is retired. The pool is shared so an outstanding target remains
+    // safe even when its renderer owner is torn down first.
+    std::shared_ptr<ALMetalRenderTargetPool> mPool;
+
+    friend class ALMetalRenderTargetPool;
+};
+
+// Exact-descriptor render-target reuse for frame graphs. The original GL
+// renderer keeps its screen targets until the resource plan changes; this is
+// the equivalent native ownership boundary for Metal passes whose C++ result
+// wrappers are intentionally short-lived. Borrowed attachments are never
+// admitted, and the byte bound prevents stale window sizes from accumulating.
+class ALMetalRenderTargetPool final
+    : public std::enable_shared_from_this<ALMetalRenderTargetPool>
+{
+public:
+    ALMetalRenderTargetPool(const ALMetalRenderTargetPool&) = delete;
+    ALMetalRenderTargetPool& operator=(const ALMetalRenderTargetPool&) = delete;
+    ~ALMetalRenderTargetPool();
+
+    static std::shared_ptr<ALMetalRenderTargetPool> create(
+        const ALMetalDevice& device,
+        std::uint64_t maximum_cached_bytes = 0);
+
+    std::unique_ptr<ALMetalRenderTarget> acquire(
+        const ALMetalRenderTargetDescriptor& descriptor,
+        std::string* error = nullptr);
+    void purge() noexcept;
+    std::size_t cachedTargetCount() const noexcept;
+    std::uint64_t cachedBytes() const noexcept;
+    ALMetalRenderTargetPoolStats stats() const noexcept;
+
+private:
+    struct Impl;
+    explicit ALMetalRenderTargetPool(std::unique_ptr<Impl> impl);
+    void recycle(ALMetalRenderTarget& target) noexcept;
+
+    std::unique_ptr<Impl> mImpl;
+
+    friend class ALMetalRenderTarget;
 };

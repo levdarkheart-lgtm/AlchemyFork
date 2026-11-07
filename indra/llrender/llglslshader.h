@@ -333,6 +333,12 @@ public:
     // the binary cache, and its post-link hook does not run.
     bool createShader(U32 variants = 0);
 
+    // Native Metal passes do not run GLSL reflection, so a loader that feeds
+    // CPU-authored vertex buffers must declare the reserved attributes its
+    // native pipeline consumes. GL still derives mAttributeMask from the
+    // linked program in mapAttributes().
+    void setNativeAttributeMask(U32 attribute_mask) { mNativeAttributeMask = attribute_mask; }
+
     // What a loader configures, cleared for a load to configure again from nothing, as unload()
     // leaves it: the files, the defines, the features and the post-link hook. A linked program stays
     // linked, and createShader keeps it where it is configured as it was.
@@ -716,6 +722,7 @@ private:
     S32    mLinkedLevel    = 0;
     U32    mLinkCount      = 0;
     bool   mNativeConfigured = false;
+    U32    mNativeAttributeMask = 0;
 
     // The stage objects createShader compiled of mShaderFiles, which this program owns: deleted once it links, or at
     // unload where it never did. The shared objects attachShaderFeatures attaches by name are LLShaderMgr's.

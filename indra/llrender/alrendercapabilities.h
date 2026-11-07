@@ -58,7 +58,14 @@ public:
     bool isIntel() const noexcept { return mIsIntel; }
     bool isSoftware() const noexcept { return mIsSoftware; }
 
+    // Full backend-reported GPU working-set capacity. On Metal this is
+    // MTLDevice.recommendedMaxWorkingSetSize, not a texture-only allowance.
     U32 memoryBudgetMB() const noexcept { return mMemoryBudgetMB; }
+    // VRAM-equivalent capacity used as the input to the viewer's streamed
+    // texture budget heuristic. This remains the detected VRAM value on GL;
+    // unified-memory Metal devices publish a deliberately smaller pool so a
+    // texture streamer cannot consume the entire recommended working set.
+    U32 textureMemoryBudgetMB() const noexcept { return mTextureMemoryBudgetMB; }
     U32 maxTextureDimension() const noexcept { return mMaxTextureDimension; }
     bool hasAnisotropicFiltering() const noexcept { return mHasAnisotropicFiltering; }
     F32 maxAnisotropy() const noexcept { return mMaxAnisotropy; }
@@ -82,6 +89,7 @@ private:
     bool mIsIntel = false;
     bool mIsSoftware = false;
     U32 mMemoryBudgetMB = 0;
+    U32 mTextureMemoryBudgetMB = 0;
     U32 mMaxTextureDimension = 0;
     bool mHasAnisotropicFiltering = false;
     F32 mMaxAnisotropy = 1.f;

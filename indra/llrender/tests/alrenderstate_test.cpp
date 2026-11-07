@@ -22,6 +22,7 @@
 #include "llimagegl.h"
 #include "llrender.h"
 #include "llrendertarget.h"
+#include "llvertexbuffer.h"
 
 #if LL_DARWIN
 #include "almetaldevice.h"
@@ -467,6 +468,10 @@ TEST_CASE("Metal shader configuration retains pass variants without compiling GL
     shader.mShaderFiles.emplace_back("not-opened-nativeV.glsl", GL_VERTEX_SHADER);
     shader.mShaderFiles.emplace_back("not-opened-nativeF.glsl", GL_FRAGMENT_SHADER);
     shader.mShaderLevel = 3;
+    constexpr U32 native_attributes = LLVertexBuffer::MAP_VERTEX |
+                                      LLVertexBuffer::MAP_TEXCOORD0 |
+                                      LLVertexBuffer::MAP_COLOR;
+    shader.setNativeAttributeMask(native_attributes);
 
     REQUIRE(shader.createShader(LLGLSLShader::VARIANT_RIGGED |
                                 LLGLSLShader::VARIANT_MIRROR));
@@ -482,6 +487,7 @@ TEST_CASE("Metal shader configuration retains pass variants without compiling GL
         CHECK(configured.isNativeConfigured());
         CHECK_FALSE(configured.isComplete());
         CHECK(configured.mProgramObject == 0);
+        CHECK(configured.mAttributeMask == native_attributes);
     });
     CHECK(variants == 4);
 

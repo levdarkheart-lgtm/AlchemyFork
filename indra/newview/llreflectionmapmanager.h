@@ -197,7 +197,7 @@ public:
     // by the current selection pack has a Metal generation for its current
     // GL owner. Old generations remain usable while that same probe refreshes;
     // a recycled slot fails closed until its new owner has been mirrored.
-    bool fillMetalReflectionProbes(ALMetalWorldReflectionProbes& probes) const;
+    bool fillMetalReflectionProbes(ALMetalWorldReflectionProbes& probes);
 
     // Snapshot the live selection pack for native owners that inspect probe
     // volumes without sampling their radiance or irradiance generations.

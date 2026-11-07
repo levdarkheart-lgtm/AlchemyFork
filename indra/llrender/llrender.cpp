@@ -901,7 +901,8 @@ bool LLRender::beginMetalUITextureCapture(
     const ALMetalTexture* depth,
     LLGLSLShader* uniform_color_shader,
     EMetalUICaptureMode mode,
-    EMetalUICaptureStorage storage)
+    EMetalUICaptureStorage storage,
+    std::unique_ptr<ALMetalTexture>* reusable_output)
 {
     const bool authoritative =
         mode == EMetalUICaptureMode::NATIVE_AUTHORITATIVE;
@@ -958,6 +959,17 @@ bool LLRender::beginMetalUITextureCapture(
     {
         LL_DEBUGS("Metal")
             << "Could not retain the offscreen composition backing: "
+            << error << LL_ENDL;
+        mMetalUICaptureRenderer.reset();
+        mMetalUICaptureCacheIndex = METAL_UI_CAPTURE_CACHE_SIZE;
+        return false;
+    }
+    if (reusable_output &&
+        !mMetalUICaptureRenderer->setReusableOutputTexture(
+            *reusable_output, &error))
+    {
+        LL_DEBUGS("Metal")
+            << "Could not retain the preceding offscreen color backing: "
             << error << LL_ENDL;
         mMetalUICaptureRenderer.reset();
         mMetalUICaptureCacheIndex = METAL_UI_CAPTURE_CACHE_SIZE;
@@ -1787,7 +1799,15 @@ void LLRender::endFrame(U32 frames_ahead)
             // over the completed world/UI drawable.
             mMetalUISurfaceFrameSubmitted = false;
         }
-        else if (!mMetalUIRenderer->endFrame(&error))
+        // Native world presentation deliberately submits nothing when the
+        // current authoritative world/UI transaction is incomplete.  Do not
+        // manufacture an otherwise empty surface frame in that case: doing so
+        // clears the drawable to black instead of retaining the last complete
+        // world image.  Startup/login still owns direct surface replacement,
+        // and an already-open direct frame must still be finished.
+        else if ((mMetalUIReplacementEnabled ||
+                  mMetalUIRenderer->hasOpenFrame()) &&
+                 !mMetalUIRenderer->endFrame(&error))
         {
             LL_WARNS("Metal") << "Native production UI frame submission failed: "
                                << error << LL_ENDL;
@@ -2768,8 +2788,38 @@ LLVertexBuffer* LLRender::bufferfromCache(U32 attribute_mask, U32 count)
 
 LLVertexBuffer* LLRender::genBuffer(U32 attribute_mask, S32 count)
 {
+    // Immediate-mode batches always contain positions. A native semantic
+    // shader whose loader omitted that layout used to allocate a zero-byte
+    // buffer and then memcpy the positions through a null mapped pointer.
+    // Reject incomplete metadata here so the native renderer records a
+    // failed batch instead of crashing the process.
+    if (count <= 0 || !(attribute_mask & LLVertexBuffer::MAP_VERTEX))
+    {
+        LL_WARNS_ONCE("Render")
+            << "Skipping immediate buffer with incomplete vertex layout: mask=0x"
+            << std::hex << attribute_mask << std::dec
+            << ", count=" << count << ", shader="
+            << (LLGLSLShader::sCurBoundShaderPtr
+                    ? LLGLSLShader::sCurBoundShaderPtr->mName
+                    : std::string("<none>"))
+            << LL_ENDL;
+        return nullptr;
+    }
+
     LLVertexBuffer * vb = new LLVertexBuffer(attribute_mask);
-    vb->allocateBuffer(count, 0);
+    if (!vb->allocateBuffer(count, 0))
+    {
+        LL_WARNS_ONCE("Render")
+            << "Skipping immediate buffer after vertex allocation failed: mask=0x"
+            << std::hex << attribute_mask << std::dec
+            << ", count=" << count << ", shader="
+            << (LLGLSLShader::sCurBoundShaderPtr
+                    ? LLGLSLShader::sCurBoundShaderPtr->mName
+                    : std::string("<none>"))
+            << LL_ENDL;
+        delete vb;
+        return nullptr;
+    }
 
     // Non-Apple path uses glBufferSubData inside setXxxData, so the VBO
     // must already be bound. On Apple, the VBO is lazily created in

@@ -331,6 +331,12 @@ public:
     bool setFrameDepth(
         const ALMetalTexture* depth,
         std::string* error = nullptr);
+    // Re-adopt the preceding completed offscreen color so a continuous
+    // producer retains its screen backing just as the original render-target
+    // plan does. A size/format mismatch is discarded lazily at beginFrame.
+    bool setReusableOutputTexture(
+        std::unique_ptr<ALMetalTexture>& output,
+        std::string* error = nullptr);
     // Localized HUD depth brackets operate on the copied destination depth,
     // while restore samples the immutable retained backing selected above.
     // Restore uses the caller's physical depth comparison so semantic LESS

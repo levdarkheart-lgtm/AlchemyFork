@@ -307,6 +307,12 @@ const ALMetalDeviceInfo& ALMetalDevice::info() const noexcept
     return mInfo;
 }
 
+std::uint64_t ALMetalDevice::currentAllocatedSize() const noexcept
+{
+    return mImpl && mImpl->device
+        ? static_cast<std::uint64_t>(mImpl->device.currentAllocatedSize) : 0;
+}
+
 void* ALMetalDevice::nativeHandle() const noexcept
 {
     return mImpl ? (__bridge void*)mImpl->device : nullptr;

@@ -109,6 +109,11 @@ public:
     // holistically.
     static U64 getTextureBytesAllocated();
 
+    // Actual bytes currently allocated by the native Metal device, including
+    // streamed images, render targets, buffers, staging and driver-visible
+    // resources. Returns zero when no native device is active.
+    static U64 getDeviceBytesAllocated();
+
     // These 2 functions replace glGenTextures() and glDeleteTextures()
     static void generateTextures(S32 numTextures, U32 *textures);
     static void deleteTextures(S32 numTextures, const U32 *textures);

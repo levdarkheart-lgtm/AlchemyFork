@@ -1586,6 +1586,48 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
                 << capture.hero_probe_face << ": " << error << LL_ENDL;
         }
     }
+    else if (capture.hero_probe_face_capture)
+    {
+        LL_WARNS_ONCE("Metal")
+            << "Native hero-probe face " << capture.hero_probe_face
+            << " ended before post-deferred publication: complete="
+            << capture.complete
+            << ", first_incomplete_line="
+            << capture.first_incomplete_source_line
+            << ", renderer=" << static_cast<bool>(capture.renderer)
+            << ", gbuffer=" << static_cast<bool>(capture.target)
+            << ", batches=" << capture.batches.size()
+            << ", light_map="
+            << static_cast<bool>(capture.base_light_map_target)
+            << ", base_light="
+            << static_cast<bool>(capture.base_light_target)
+            << ", composed_light="
+            << static_cast<bool>(capture.composed_light_target)
+            << ", post_attempted="
+            << capture.opaque_post_deferred_attempted
+            << LL_ENDL;
+    }
+    if (capture.renderer && capture.renderer->commandBatchActive())
+    {
+        if (published)
+        {
+            std::string error;
+            if (!capture.renderer->commitCommandBatch(&error))
+            {
+                capture.hero_probe_valid_faces &=
+                    ~(1u << capture.hero_probe_face);
+                published = false;
+                LL_WARNS("Metal")
+                    << "Could not commit bounded native hero-probe face "
+                    << capture.hero_probe_face << ": " << error
+                    << LL_ENDL;
+            }
+        }
+        else
+        {
+            capture.renderer->cancelCommandBatch();
+        }
+    }
     capture.hero_probe_face_capture = false;
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
@@ -1802,6 +1844,13 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     ALMetalDevice* device = getViewerMetalDevice();
     const bool probe_face = mMetalHeroWorldCaptureActive ||
         mMetalReflectionWorldCaptureActive;
+    if (probe_face && capture.frame_active)
+    {
+        // display_cube_face() establishes the native transaction before its
+        // shadows, then renderGeomDeferred() enters the same face again. Keep
+        // the first transaction and its shadow encodes intact.
+        return;
+    }
     const bool main_world_capture = !probe_face && isMainWorldPass() &&
         mRT == &mMainRT;
     if (snapshot_request && !main_world_capture)
@@ -1833,6 +1882,17 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     const U32 capture_height = native_size_override
         ? mMetalSizeOverrideHeight
         : descriptor ? descriptor->height : 0;
+    if (main_world_capture && sReflectionProbesEnabled)
+    {
+        LL_INFOS_ONCE("Metal")
+            << "Native main-world capture entered after reflection probes "
+               "were enabled: frame_active=" << capture.frame_active
+            << ", attempted=" << capture.attempted
+            << ", continuous=" << capture.continuous_world_capture
+            << ", renderer=" << static_cast<bool>(capture.renderer)
+            << ", size=" << capture_width << 'x' << capture_height
+            << LL_ENDL;
+    }
     if (!device || capture_width == 0 || capture_height == 0)
     {
         // Startup can reach the draw-pool owner before the durable Metal
@@ -1840,6 +1900,56 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         // world frame rather than permanently treating that ordering as a
         // renderer failure.
         return;
+    }
+
+    if (main_world_capture)
+    {
+        static U32 last_resource_sample_frame = 0;
+        if (last_resource_sample_frame == 0 ||
+            gFrameCount - last_resource_sample_frame >= 120)
+        {
+            last_resource_sample_frame = gFrameCount;
+            const ALMetalResourceAllocationStats stats =
+                alMetalResourceAllocationStats();
+            const ALMetalRenderTargetPoolStats target_pool =
+                capture.renderer
+                    ? capture.renderer->renderTargetPoolStats()
+                    : ALMetalRenderTargetPoolStats{};
+            constexpr F64 bytes_per_mib = 1024.0 * 1024.0;
+            LL_INFOS("MetalMemory")
+                << "Native resource sample: driver="
+                << static_cast<F64>(device->currentAllocatedSize()) /
+                       bytes_per_mib
+                << " MiB, live_texture_wrappers="
+                << stats.textures_created - stats.textures_destroyed
+                << " (" << static_cast<F64>(stats.texture_bytes_live) /
+                                 bytes_per_mib
+                << " MiB estimated; image=" << stats.image_textures_live
+                << " / "
+                << static_cast<F64>(stats.image_texture_bytes_live) /
+                       bytes_per_mib
+                << " MiB, budget_accounted="
+                << static_cast<F64>(LLImageGL::getTextureBytesAllocated()) /
+                       bytes_per_mib
+                << " MiB, discard_bias="
+                << LLViewerTexture::sDesiredDiscardBias
+                << "), live_buffer_wrappers="
+                << stats.buffers_created - stats.buffers_destroyed
+                << " (" << static_cast<F64>(stats.buffer_bytes_live) /
+                                 bytes_per_mib
+                << " MiB), created/destroyed textures="
+                << stats.textures_created << '/' << stats.textures_destroyed
+                << ", target_pool=" << target_pool.cached_targets
+                << " / "
+                << static_cast<F64>(target_pool.cached_bytes) /
+                       bytes_per_mib
+                << " MiB (reuse=" << target_pool.reuses << '/'
+                << target_pool.acquisitions
+                << ", evictions=" << target_pool.evictions << ')'
+                << ", buffers=" << stats.buffers_created << '/'
+                << stats.buffers_destroyed
+                << LL_ENDL;
+        }
     }
 
     // SamplePath is mutable independently of the render-resource plan. Poll
@@ -2286,6 +2396,29 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                "surface retains its previous drawable"
             << LL_ENDL;
         return;
+    }
+
+    if (mMetalHeroWorldCaptureActive)
+    {
+        if (capture.renderer->commandBatchActive())
+        {
+            LL_WARNS("Metal")
+                << "Discarding a stale native hero-probe command batch "
+                   "before a new cube face"
+                << LL_ENDL;
+            capture.renderer->cancelCommandBatch();
+        }
+        std::string batch_error;
+        if (!capture.renderer->beginCommandBatch(
+                "Alchemy native hero-probe face transaction",
+                &batch_error))
+        {
+            LL_WARNS("Metal")
+                << "Could not begin the bounded native hero-probe face "
+                   "transaction: "
+                << batch_error << LL_ENDL;
+            return;
+        }
     }
 
     if (isMainWorldPass() && mRT == &mMainRT &&
@@ -3718,12 +3851,19 @@ void LLPipeline::beginMetalWorldAvatarPass(
 void LLPipeline::setMetalWorldAvatarAlphaState(
     bool cull, bool front, bool depth_write, bool color_write)
 {
-    if (!mMetalWorldSimpleCapture)
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
     {
+        // The retained avatar pool still traverses while a native
+        // post-deferred transaction is temporarily ineligible (for example,
+        // while the first reflection-probe pack is warming after a live
+        // quality-preset change).  Its transparent-mesh callbacks are then
+        // observation-only.  Do not poison the next native retry merely
+        // because there is no transaction for this state to belong to.
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (!capture.frame_active || !capture.pass_active || !capture.avatar ||
+    if (!capture.pass_active || !capture.avatar ||
         !capture.direct_avatar_alpha ||
         !capture.world_post_deferred_active ||
         capture.world_post_deferred_phase)
@@ -7774,9 +7914,19 @@ void LLPipeline::beginMetalWorldPostWaterAlphaPhase()
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool low_detail_probe = gCubeSnapshot &&
+        shaderInputs().mGlobal.mProbeLevel == 0;
+    const bool atmospheric_haze_expected =
+        !sRenderingHUDs && !sImpostorRender &&
+        RenderDeferredAtmospheric && !low_detail_probe;
+    if (!capture.alpha_environment_valid)
+    {
+        capture.alpha_environment_valid =
+            fillMetalWorldAlphaEnvironment(capture.alpha_environment);
+    }
     if (capture.pass_active || capture.world_pre_water_alpha_active ||
         capture.world_post_water_alpha_active ||
-        !capture.atmospheric_haze_valid ||
+        (atmospheric_haze_expected && !capture.atmospheric_haze_valid) ||
         !capture.alpha_environment_valid)
     {
         capture.markIncomplete(__LINE__);
@@ -8158,28 +8308,36 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     const bool has_forward_environment =
         has_shiny || has_simple_alpha || has_material_alpha ||
         has_pbr_alpha || has_above_water_surface;
-    const bool needs_reflection_probes =
+    bool needs_reflection_probes =
         has_forward_environment && sReflectionProbesEnabled;
-    const bool needs_legacy_environment =
+    bool needs_legacy_environment =
         has_forward_environment && !sReflectionProbesEnabled;
-    const bool hero_active = sReflectionProbesEnabled && !gCubeSnapshot &&
-        mHeroProbeManager.mHeroData.heroProbeCount > 0;
-    const bool ssr_active = sReflectionProbesEnabled &&
-        mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
-        !gCubeSnapshot && !sCutoutRender;
-    const bool ssr_history_ready = !ssr_active ||
-        (!capture.world_ssr_history_warmup &&
-         fillMetalImpostorScreenSpaceReflections());
+    const ALMetalTexture* legacy_environment = nullptr;
     if (capture.complete && needs_reflection_probes &&
         !mReflectionMapManager.fillMetalReflectionProbes(
             capture.impostor_reflection_probes))
     {
-        capture.markIncomplete(__LINE__);
-        LL_WARNS("Metal")
-            << "Could not acquire a coherent reflection-probe pack for "
-               "the native world post-deferred slice" << LL_ENDL;
+        if (isMetalProbeFaceCaptureActive())
+        {
+            // Forward alpha and shiny batches in the first offscreen probe
+            // face have the same circular dependency as deferred base
+            // lighting. Use the native sky cube only for that bootstrap
+            // face; the visible world still requires a coherent probe pack.
+            needs_reflection_probes = false;
+            needs_legacy_environment = true;
+            LL_INFOS_ONCE("Metal")
+                << "Bootstrapping the first native reflection-probe "
+                   "post-deferred face from the native sky cube"
+                << LL_ENDL;
+        }
+        else
+        {
+            capture.markIncomplete(__LINE__);
+            LL_WARNS("Metal")
+                << "Could not acquire a coherent reflection-probe pack for "
+                   "the native world post-deferred slice" << LL_ENDL;
+        }
     }
-    const ALMetalTexture* legacy_environment = nullptr;
     if (capture.complete && needs_legacy_environment)
     {
         LLCubeMap* cube_map =
@@ -8196,6 +8354,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 << environment_error << LL_ENDL;
         }
     }
+    const bool hero_active = needs_reflection_probes && !gCubeSnapshot &&
+        mHeroProbeManager.mHeroData.heroProbeCount > 0;
+    const bool ssr_active = needs_reflection_probes &&
+        mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
+        !gCubeSnapshot && !sCutoutRender;
+    const bool ssr_history_ready = !ssr_active ||
+        (!capture.world_ssr_history_warmup &&
+         fillMetalImpostorScreenSpaceReflections());
     if (capture.complete &&
         (has_simple_alpha || has_material_alpha || has_pbr_alpha ||
          has_above_water_surface) &&
@@ -8990,12 +9156,34 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 cutout_snapshot || !dirt.enabled ||
                 (capture.lens_dirt_target &&
                  capture.lens_dirt_params == dirt.plate);
+            std::string presentation_error;
+            const bool exact_presentation =
+                canCaptureMetalWorldPresentation(&presentation_error);
             const bool exact_base =
-                canCaptureMetalWorldPresentation() && sky &&
+                exact_presentation && sky &&
                 exact_dynamic_exposure && exact_dof && exact_bloom &&
                 exact_cross_filter && exact_lens_flare &&
                 exact_lens_dirt && exact_legacy_glow_noise &&
                 grade.native_resources_ready;
+            if (!exact_base)
+            {
+                LL_INFOS_ONCE("Metal")
+                    << "Native display-post exactness withheld: presentation="
+                    << exact_presentation
+                    << ", sky=" << static_cast<bool>(sky)
+                    << ", hdr=" << capture.hdr
+                    << ", classic=" << legacy_gamma
+                    << ", exposure=" << exact_dynamic_exposure
+                    << ", dof=" << exact_dof
+                    << ", bloom=" << exact_bloom
+                    << ", cross_filter=" << exact_cross_filter
+                    << ", lens_flare=" << exact_lens_flare
+                    << ", lens_dirt=" << exact_lens_dirt
+                    << ", legacy_glow_noise=" << exact_legacy_glow_noise
+                    << ", grade=" << grade.native_resources_ready
+                    << ", presentation_reason=" << presentation_error
+                    << LL_ENDL;
+            }
             if (exact_base)
             {
                 ALMetalWorldDisplayPostScene display;
@@ -9792,6 +9980,25 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         presentation.preview_mode = suppress_effects
                             ? 0u : static_cast<U32>(
                                 llclamp(preview_mode(), 0, 7));
+                        static S32 last_presentation_state = -1;
+                        const S32 presentation_state =
+                            static_cast<S32>(presentation.preview_mode) |
+                            (capture.hdr ? 1 << 4 : 0) |
+                            (legacy_gamma ? 1 << 5 : 0);
+                        if (presentation_state != last_presentation_state)
+                        {
+                            last_presentation_state = presentation_state;
+                            LL_INFOS("Metal")
+                                << "Native final presentation effective state: "
+                                << "preview_mode="
+                                << presentation.preview_mode
+                                << ", hdr=" << capture.hdr
+                                << ", classic=" << legacy_gamma
+                                << ", exposure=" << display.static_exposure
+                                << ", tonemap_type=" << display.tonemap_type
+                                << ", tonemap_mix=" << display.tonemap_mix
+                                << LL_ENDL;
+                        }
                         presentation.frame_id =
                             LLFrameTimer::getFrameCount();
 
@@ -10048,6 +10255,39 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 
     if (!capture.complete)
     {
+        if (isMetalProbeFaceCaptureActive())
+        {
+            LL_WARNS_ONCE("Metal")
+                << "Native probe post-deferred transaction was incomplete "
+                   "before retry-state reset: hero="
+                << mMetalHeroWorldCaptureActive
+                << ", reflection=" << mMetalReflectionWorldCaptureActive
+                << ", first_incomplete_line="
+                << capture.first_incomplete_source_line
+                << ", gbuffer=" << static_cast<bool>(capture.target)
+                << ", light_map="
+                << static_cast<bool>(capture.base_light_map_target)
+                << ", composed_light="
+                << static_cast<bool>(capture.composed_light_target)
+                << LL_ENDL;
+        }
+        if (isMainWorldPass() && mRT == &mMainRT &&
+            sReflectionProbesEnabled)
+        {
+            LL_WARNS_ONCE("Metal")
+                << "Native main-world post-deferred transaction became "
+                   "incomplete after reflection probes were enabled: "
+                   "first_incomplete_line="
+                << capture.first_incomplete_source_line
+                << ", gbuffer=" << static_cast<bool>(capture.target)
+                << ", base_light_map="
+                << static_cast<bool>(capture.base_light_map_target)
+                << ", base_light="
+                << static_cast<bool>(capture.base_light_target)
+                << ", composed_light="
+                << static_cast<bool>(capture.composed_light_target)
+                << LL_ENDL;
+        }
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
@@ -10463,7 +10703,10 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
 
     if (!gGL.beginMetalUITextureCapture(
             ALMetalPixelFormat::bgra8_unorm, &gAlphaMaskProgram,
-            background, depth, &gDebugProgram))
+            background, depth, &gDebugProgram,
+            LLRender::EMetalUICaptureMode::GL_MIRROR,
+            LLRender::EMetalUICaptureStorage::FORMAT_NATIVE,
+            &capture.world_ui_target))
     {
         return false;
     }
@@ -12666,7 +12909,11 @@ void LLPipeline::captureMetalWorldPBRBatch(
         {
             const bool masked = material->mAlphaMode ==
                 LLGLTFMaterial::ALPHA_MODE_MASK;
-            if (masked != capture.alpha_mask)
+            // The original pbrglowF/pbrglowIndexedF shaders deliberately
+            // accept both opaque and MASK materials from PASS_GLTF_GLOW and
+            // apply each material's own cutoff.  Only the G-buffer sweeps are
+            // partitioned into opaque versus alpha-mask passes.
+            if (!capture.pbr_glow && masked != capture.alpha_mask)
             {
                 capture.markIncomplete(__LINE__);
                 capture.batches.clear();
@@ -12711,7 +12958,7 @@ void LLPipeline::captureMetalWorldPBRBatch(
                 material->getStreamedBaseAlpha();
             destination.roughness_factor = material->mRoughnessFactor;
             destination.metallic_factor = material->mMetallicFactor;
-            destination.alpha_cutoff = capture.alpha_mask
+            destination.alpha_cutoff = masked
                 ? material->mAlphaCutoff : -1.f;
             batch.double_sided = batch.double_sided ||
                                  material->mDoubleSided;
@@ -12729,7 +12976,23 @@ void LLPipeline::captureMetalWorldPBRBatch(
             -> ALMetalTexture*
         {
             LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-            return image ? image->getMetalTexture() : nullptr;
+            ALMetalTexture* native = image
+                ? image->getMetalTexture() : nullptr;
+            if (!native)
+            {
+                // LLFetchedGLTFMaterial::bind and the original OpenGL
+                // ALTextureSlot path substitute the viewer default whenever a
+                // streamed material map is not GPU-ready.  Preserve that
+                // draw-local contract here instead of making one pending map
+                // discard the complete native world transaction.
+                LLViewerFetchedTexture* fallback =
+                    LLViewerFetchedTexture::sDefaultImagep.get();
+                LLImageGL* fallback_image = fallback
+                    ? fallback->getGLTexture() : nullptr;
+                native = fallback_image
+                    ? fallback_image->getMetalTexture() : nullptr;
+            }
+            return native;
         };
         batch.diffuse_textures[slot_index] = metal_texture(base_texture);
         destination.normal_texture = metal_texture(normal_texture);
@@ -15761,7 +16024,15 @@ void LLPipeline::endMetalWorldGBufferCapture()
     capture.impostor_bake = false;
     capture.frame_active = false;
     capture.pass_active = false;
-    if (!capture.complete || capture.batches.empty())
+    // A cube face can legitimately contain only sky.  Preserve the strict
+    // non-empty requirement for the visible world and impostor bakes, but
+    // let a complete reflection-probe face encode a clear-only G-buffer so
+    // the ordered sky and post-deferred stages can publish that face.
+    const bool clear_only_probe_face =
+        isMetalProbeFaceCaptureActive() && capture.complete &&
+        capture.batches.empty();
+    if (!capture.complete ||
+        (capture.batches.empty() && !clear_only_probe_face))
     {
         const std::size_t incomplete_batch_count =
             capture.batches.size();
@@ -16835,9 +17106,28 @@ bool LLPipeline::renderMetalWorldLightMap(
                 ready_probes) ||
             !ready_probes.irradiance_texture)
         {
-            // Defer all one-shot bridge work until the downstream base
-            // owner can consume the light map in this frame.
-            return false;
+            // A newly-enabled probe pack has no published irradiance yet,
+            // while its first offscreen face needs base lighting before it
+            // can become that publication. Break only that circular
+            // bootstrap with the already-native legacy sky cube. The main
+            // world remains fail-closed until a coherent probe pack exists.
+            if (!isMetalProbeFaceCaptureActive())
+            {
+                LL_WARNS_ONCE("Metal")
+                    << "Native main-world light-map capture is waiting for "
+                       "a coherent reflection-probe radiance/SH pair"
+                    << LL_ENDL;
+                return false;
+            }
+            LLCubeMap* cube_map =
+                gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : nullptr;
+            std::string environment_error;
+            legacy_environment = cube_map
+                ? cube_map->getMetalTexture(&environment_error) : nullptr;
+            if (!legacy_environment)
+            {
+                return false;
+            }
         }
     }
     else
@@ -16988,12 +17278,34 @@ void LLPipeline::renderMetalWorldBaseLighting(
 
     ALMetalWorldReflectionProbes probes;
     const ALMetalTexture* legacy_environment = nullptr;
+    bool use_reflection_probes = sReflectionProbesEnabled;
     if (sReflectionProbesEnabled)
     {
         if (!mReflectionMapManager.fillMetalReflectionProbes(probes) ||
             !probes.irradiance_texture)
         {
-            return;
+            // The first native probe face cannot depend on the irradiance
+            // texture that this capture is responsible for publishing.
+            // Bootstrap that offscreen face from the native sky cube, while
+            // keeping the visible main-world transaction fail-closed.
+            if (!isMetalProbeFaceCaptureActive())
+            {
+                LL_WARNS_ONCE("Metal")
+                    << "Native main-world base lighting is waiting for a "
+                       "coherent reflection-probe radiance/SH pair"
+                    << LL_ENDL;
+                return;
+            }
+            LLCubeMap* cube_map =
+                gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : nullptr;
+            std::string environment_error;
+            legacy_environment = cube_map
+                ? cube_map->getMetalTexture(&environment_error) : nullptr;
+            if (!legacy_environment)
+            {
+                return;
+            }
+            use_reflection_probes = false;
         }
     }
     else
@@ -17009,13 +17321,13 @@ void LLPipeline::renderMetalWorldBaseLighting(
         }
     }
 
-    const bool hero_active = sReflectionProbesEnabled && !gCubeSnapshot &&
+    const bool hero_active = use_reflection_probes && !gCubeSnapshot &&
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
     if (hero_active && !fillMetalImpostorHeroProbe())
     {
         return;
     }
-    const bool ssr_active = sReflectionProbesEnabled &&
+    const bool ssr_active = use_reflection_probes &&
         mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
         !gCubeSnapshot;
     const bool ssr_history_ready = !ssr_active ||
@@ -17030,7 +17342,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     ALMetalWorldBaseLightingScene scene;
     scene.gbuffer = capture.target.get();
     scene.light_map = capture.base_light_map_target->colorTexture(0);
-    scene.reflection_probes = sReflectionProbesEnabled
+    scene.reflection_probes = use_reflection_probes
         ? &probes : nullptr;
     scene.legacy_environment = legacy_environment;
     scene.hero_probe = hero_active
@@ -17102,7 +17414,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     constants.config[2] = has_sun_shadow ? 1u : 0u;
     constants.config[3] = has_ssao ? 1u : 0u;
     constants.environment_config[0] =
-        sReflectionProbesEnabled ? 0u : 1u;
+        use_reflection_probes ? 0u : 1u;
 
     std::string error;
     auto target = capture.renderer->renderBaseLighting(scene, &error);
@@ -17125,7 +17437,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     {
         LL_DEBUGS("Metal")
             << "Native world "
-            << (sReflectionProbesEnabled
+            << (use_reflection_probes
                     ? "probe-finished" : "legacy-sky-cube")
             << " base-light owner encoded at "
             << capture.base_light_target->descriptor().width << "x"

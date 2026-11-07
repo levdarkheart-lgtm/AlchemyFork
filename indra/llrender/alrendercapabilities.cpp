@@ -22,6 +22,7 @@
 #if LL_DARWIN
 #include "almetaldevice.h"
 
+#include <algorithm>
 #include <sstream>
 #endif
 
@@ -46,6 +47,10 @@ void ALRenderCapabilities::initializeOpenGL(const LLGLManager& gl)
     mIsIntel = gl.mIsIntel;
     mIsSoftware = gl.mIsSoftwareRenderer;
     mMemoryBudgetMB = gl.mVRAM;
+    // Preserve the original viewer's semantics exactly: gGLManager.mVRAM is
+    // detected dedicated/video memory, which the texture manager subsequently
+    // applies RenderTextureVRAMDivisor to.
+    mTextureMemoryBudgetMB = gl.mVRAM;
     mMaxTextureDimension = static_cast<U32>(llmax(gl.mGLMaxTextureSize, 0));
     mHasAnisotropicFiltering = gl.mHasAnisotropic;
     mMaxAnisotropy = llmax(gl.mMaxAnisotropy, 1.f);
@@ -55,6 +60,35 @@ void ALRenderCapabilities::initializeOpenGL(const LLGLManager& gl)
 }
 
 #if LL_DARWIN
+namespace
+{
+// MTLDevice.recommendedMaxWorkingSetSize describes all GPU allocations on a
+// unified-memory device. It is not the dedicated texture VRAM value consumed
+// by the original OpenGL heuristic. Keep streamed images to a bounded share of
+// that ceiling; manual RenderMaxVRAMBudget and RenderTextureVRAMDivisor remain
+// available on top of this automatically detected capacity. This is a
+// containment default, not a scene-derived performance optimum; paired
+// scenario evidence is still required before changing the original streamer's
+// control policy.
+U32 metal_texture_memory_budget_mb(U64 recommended_working_set_size)
+{
+    constexpr U64 MIN_TEXTURE_CAPACITY_MB = 2ull * 1024ull;
+    constexpr U64 MAX_TEXTURE_CAPACITY_MB = 8ull * 1024ull;
+    constexpr U64 WORKING_SET_DIVISOR = 16ull;
+
+    const U64 working_set_mb = recommended_working_set_size >> 20;
+    if (working_set_mb == 0)
+    {
+        return 0;
+    }
+
+    const U64 scaled_mb = std::clamp(working_set_mb / WORKING_SET_DIVISOR,
+                                     MIN_TEXTURE_CAPACITY_MB,
+                                     MAX_TEXTURE_CAPACITY_MB);
+    return static_cast<U32>(std::min(working_set_mb, scaled_mb));
+}
+}
+
 void ALRenderCapabilities::initializeMetal(const ALMetalDeviceInfo& metal)
 {
     reset();
@@ -74,6 +108,8 @@ void ALRenderCapabilities::initializeMetal(const ALMetalDeviceInfo& metal)
 
     mIsApple = true;
     mMemoryBudgetMB = static_cast<U32>(metal.recommended_working_set_size >> 20);
+    mTextureMemoryBudgetMB =
+        metal_texture_memory_budget_mb(metal.recommended_working_set_size);
     mMaxTextureDimension = metal.max_texture_2d_dimension;
     // Every supported Apple Silicon Metal family supports sampler anisotropy
     // through 16. The native sampler validator enforces the same 1...16 range.

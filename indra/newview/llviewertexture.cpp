@@ -504,16 +504,22 @@ void LLViewerTexture::updateClass()
     F64 texture_bytes_alloc = LLImageGL::getTextureBytesAllocated() / 1024.0 / 1024.0;
     F64 vertex_bytes_alloc = LLVertexBuffer::getBytesAllocated() / 1024.0 / 512.0;
 
-    // get an estimate of how much video memory we're using
+    // Get an estimate of how much video memory we're using. The original GL
+    // path deliberately biases its incomplete accounting high. Metal can ask
+    // the device for the actual allocation total, which also includes render
+    // targets, buffers and staging resources that compete with streamed
+    // images in unified memory.
     // NOTE: our metrics miss about half the vram we use, so this biases high but turns out to typically be within 5% of the real number
-    F32 used = (F32)ll_round(texture_bytes_alloc + vertex_bytes_alloc);
+    const F64 estimated_used_mb = texture_bytes_alloc + vertex_bytes_alloc;
+    const F64 device_used_mb = LLImageGL::getDeviceBytesAllocated() / 1024.0 / 1024.0;
+    F32 used = (F32)ll_round(llmax(estimated_used_mb, device_used_mb));
 
     // For debugging purposes, it's useful to be able to set the VRAM budget manually.
     // But when manual control is not enabled, use the VRAM divisor.
     // While we're at it, assume we have 1024 to play with at minimum when the divisor is in use.  Works more elegantly with the logic below this.
     // -Geenz 2025-03-21
     const U32 renderer_memory_mb = gRenderCapabilities.isInitialized()
-        ? gRenderCapabilities.memoryBudgetMB() : gGLManager.mVRAM;
+        ? gRenderCapabilities.textureMemoryBudgetMB() : gGLManager.mVRAM;
     F32 budget = max_vram_budget == 0 ? llmax(1024, (F32)renderer_memory_mb / tex_vram_divisor) : (F32)max_vram_budget;
 
     // Try to leave at least half a GB for everyone else and for bias,

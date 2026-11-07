@@ -1972,6 +1972,9 @@ void LLViewerShaderMgr::loadShadersInterface()
         gUIProgram.mShaderFiles.push_back(make_pair("interface/uiV.glsl", GL_VERTEX_SHADER));
         gUIProgram.mShaderFiles.push_back(make_pair("interface/uiF.glsl", GL_FRAGMENT_SHADER));
         gUIProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
+        gUIProgram.setNativeAttributeMask(LLVertexBuffer::MAP_VERTEX |
+                                          LLVertexBuffer::MAP_TEXCOORD0 |
+                                          LLVertexBuffer::MAP_COLOR);
         // Initialize the shadow-path uniform to passthrough so non-text UI
         // and NO_SHADOW text take the early-return branch in uiF.glsl. GLSL
         // already zero-initializes uniforms, but pushing an explicit default
@@ -2036,6 +2039,8 @@ void LLViewerShaderMgr::loadShadersInterface()
         gSolidColorProgram.mShaderFiles.push_back(make_pair("interface/solidcolorV.glsl", GL_VERTEX_SHADER));
         gSolidColorProgram.mShaderFiles.push_back(make_pair("interface/solidcolorF.glsl", GL_FRAGMENT_SHADER));
         gSolidColorProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
+        gSolidColorProgram.setNativeAttributeMask(LLVertexBuffer::MAP_VERTEX |
+                                                  LLVertexBuffer::MAP_TEXCOORD0);
         gSolidColorProgram.mOnLink = [](LLGLSLShader& s)
         {
             s.bind();
@@ -2129,6 +2134,13 @@ void LLViewerShaderMgr::loadShadersInterface()
         gAlphaMaskProgram.mShaderFiles.push_back(make_pair("interface/alphamaskV.glsl", GL_VERTEX_SHADER));
         gAlphaMaskProgram.mShaderFiles.push_back(make_pair("interface/alphamaskF.glsl", GL_FRAGMENT_SHADER));
         gAlphaMaskProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
+        // Native configuration has no GL reflection step.  The appearance
+        // compositor and ordered world/UI capture both stream the same
+        // position/UV/color layout declared by alphamaskV.glsl.
+        gAlphaMaskProgram.setNativeAttributeMask(
+            LLVertexBuffer::MAP_VERTEX |
+            LLVertexBuffer::MAP_TEXCOORD0 |
+            LLVertexBuffer::MAP_COLOR);
         built(gAlphaMaskProgram.createShader(), gAlphaMaskProgram);
     }
 

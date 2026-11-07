@@ -209,7 +209,12 @@ void LLHeroProbeManager::renderProbes()
         return;
     }
 
-    static LLCachedControl<S32> sDetail(gSavedSettings, "RenderHeroReflectionProbeDetail", -1);
+    // cubeSnapshot() uses the ordinary reflection-detail contract to decide
+    // whether dynamic render types (avatars, control avatars and particles)
+    // belong in a probe face.  There is no RenderHeroReflectionProbeDetail
+    // setting; reading that misspelled key always selected the fallback and
+    // made every mirror capture static-only.
+    static LLCachedControl<S32> sDetail(gSavedSettings, "RenderReflectionProbeDetail", -1);
     static LLCachedControl<S32> sLevel(gSavedSettings, "RenderHeroReflectionProbeLevel", 3);
     static LLCachedControl<S32> sUpdateRate(gSavedSettings, "RenderHeroProbeUpdateRate", 0);
 
@@ -250,7 +255,14 @@ void LLHeroProbeManager::renderProbes()
 #if LL_DARWIN
             mMetalRadianceCaptureComplete = true;
 #endif
-            bool dynamic = mNearestHero->getReflectionProbeIsDynamic() && sDetail() > 0;
+            const bool object_dynamic =
+                mNearestHero->getReflectionProbeIsDynamic();
+            const bool dynamic = object_dynamic && sDetail() > 0;
+            LL_INFOS_ONCE("Metal")
+                << "Native mirror dynamic-capture contract: object_dynamic="
+                << object_dynamic << ", reflection_detail=" << sDetail()
+                << ", dynamic_render_types=" << dynamic
+                << LL_ENDL;
             for (U32 i = 0; i < 6; ++i)
             {
                 if ((gFrameCount % rate) == (i % rate))
@@ -299,6 +311,11 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
         // warm or are unavailable. Do not render a hidden GL face that cannot
         // become the published Metal hero probe.
         mMetalRadianceCaptureComplete = false;
+        LL_WARNS_ONCE("Metal")
+            << "Native mirror warm-up could not begin hero-probe face "
+            << face << "; the ordinary world remains present while the "
+               "mirror retries"
+            << LL_ENDL;
         gPipeline.mRT = &gPipeline.mMainRT;
         return;
     }
@@ -313,9 +330,17 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
     }
     const U32 face_resolution = planned->mResolution;
     probe->update(face_resolution, face, is_dynamic, near_clip);
-    mMetalRadianceCaptureComplete =
-        gPipeline.endMetalHeroProbeFaceCapture() &&
+    const bool face_published = gPipeline.endMetalHeroProbeFaceCapture();
+    mMetalRadianceCaptureComplete = face_published &&
         mMetalRadianceCaptureComplete;
+    if (!face_published)
+    {
+        LL_WARNS_ONCE("Metal")
+            << "Native mirror warm-up did not publish hero-probe face "
+            << face << "; the ordinary world remains present while the "
+               "mirror retries"
+            << LL_ENDL;
+    }
 
     gPipeline.mRT = &gPipeline.mMainRT;
 }
@@ -331,11 +356,21 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap*)
     {
         ++mMetalRadianceGeneration;
     }
-    mMetalRadianceReady = mMetalRadianceCaptureComplete &&
-        mNearestHero.notNull() && !mNearestHero->isDead() &&
+    const bool owner_ready = mNearestHero.notNull() &&
+        !mNearestHero->isDead();
+    mMetalRadianceReady = mMetalRadianceCaptureComplete && owner_ready &&
         gPipeline.publishMetalHeroProbeRadiance(
             mNearestHero->getID(), mMetalRadianceGeneration,
             mHeroProbeStrength);
+    if (!mMetalRadianceReady)
+    {
+        LL_WARNS_ONCE("Metal")
+            << "Native mirror radiance is still warming: faces_complete="
+            << mMetalRadianceCaptureComplete
+            << ", owner_ready=" << owner_ready
+            << "; the mirror remains unadvertised to the main world"
+            << LL_ENDL;
+    }
 }
 
 void LLHeroProbeManager::updateUniforms()
@@ -355,8 +390,19 @@ void LLHeroProbeManager::updateUniforms()
     // picture; 0 tells tapHeroProbe there is nothing to reflect.
     mHeroData.heroProbeCount = 0;
 
-    // Called every frame while mirrors are on, whether or not update() has built the default probe since cleanup().
-    if (!mProbes.empty() && mProbes[0].notNull() && mNearestHero != nullptr && !mNearestHero->isDead())
+    // Called every frame while mirrors are on, whether or not update() has
+    // built the default probe since cleanup(). The original GL owner allocates
+    // its hero cube before advertising count one. Metal must likewise avoid
+    // advertising a mirror until its complete radiance cube is publishable.
+    const bool radiance_ready =
+#if LL_DARWIN
+        mMetalRadianceReady;
+#else
+        true;
+#endif
+    if (!mProbes.empty() && mProbes[0].notNull() &&
+        mNearestHero != nullptr && !mNearestHero->isDead() &&
+        radiance_ready)
     {
         mHeroData.heroProbeCount = 1;
         if (mNearestHero->getReflectionProbeIsBox())

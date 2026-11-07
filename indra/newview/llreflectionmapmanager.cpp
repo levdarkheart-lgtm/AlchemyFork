@@ -357,6 +357,97 @@ bool LLReflectionMapManager::reconcileMetalProbeArray()
         mirror.mPublishedGenerations.assign(cube_count, 0);
         mirror.mPublishedSHGenerations.assign(cube_count, 0);
     }
+
+    // The retained GLSL path keeps rendering while the first default probe
+    // is incomplete: refmapCount is zero, but probe slot zero remains a
+    // legal, black/zero contribution and direct + atmospheric ambient light
+    // still reach the framebuffer.  Give Metal the same coherent bootstrap
+    // resource pair.  These are deliberately not marked as a published
+    // logical generation; the first real twelve-face transaction replaces
+    // them atomically below.
+    if (!mirror.mPublishedRadiance || !mirror.mPublishedSH)
+    {
+        if (mProbeResolution == 0 || !llfinite(mMaxProbeLOD) ||
+            mMaxProbeLOD < 0.f || cube_count == 0)
+        {
+            return false;
+        }
+        const U32 mip_count =
+            static_cast<U32>(std::lround(mMaxProbeLOD)) + 1u;
+
+        ALMetalTextureDescriptor radiance_descriptor;
+        radiance_descriptor.type = ALMetalTextureType::texture_cube_array;
+        radiance_descriptor.format = mHDR
+            ? ALMetalPixelFormat::rgba16_float
+            : ALMetalPixelFormat::rgba8_unorm;
+        radiance_descriptor.width = mProbeResolution;
+        radiance_descriptor.height = mProbeResolution;
+        radiance_descriptor.mipmap_level_count = mip_count;
+        radiance_descriptor.array_length = cube_count;
+        radiance_descriptor.storage = ALMetalStorageMode::private_gpu;
+        radiance_descriptor.usage = ALMetalTextureUsage::shader_read;
+        radiance_descriptor.label =
+            "Alchemy warming reflection-probe radiance";
+        auto warming_radiance = ALMetalTexture::create(
+            *device, radiance_descriptor, nullptr);
+
+        ALMetalTextureDescriptor sh_descriptor;
+        sh_descriptor.format = ALMetalPixelFormat::rgba32_uint;
+        sh_descriptor.width = LL_SH_PACKED_TEXELS;
+        sh_descriptor.height = cube_count;
+        sh_descriptor.storage = ALMetalStorageMode::private_gpu;
+        sh_descriptor.usage = ALMetalTextureUsage::shader_read;
+        sh_descriptor.label = "Alchemy warming reflection-probe SH";
+        auto warming_sh = ALMetalTexture::create(
+            *device, sh_descriptor, nullptr);
+
+        std::string error;
+        auto command = warming_radiance && warming_sh
+            ? device->makeCommandBuffer(
+                  "Alchemy warming reflection-probe initialization",
+                  &error)
+            : nullptr;
+        bool initialized = command != nullptr;
+        const size_t radiance_bytes_per_pixel = warming_radiance
+            ? warming_radiance->bytesPerPixel() : 0;
+        std::vector<U8> black_face(
+            static_cast<size_t>(mProbeResolution) * mProbeResolution *
+                radiance_bytes_per_pixel,
+            0);
+        for (U32 mip = 0; initialized && mip < mip_count; ++mip)
+        {
+            const U32 width = llmax(1u, mProbeResolution >> mip);
+            const size_t bytes_per_row =
+                static_cast<size_t>(width) * radiance_bytes_per_pixel;
+            for (U32 face = 0; initialized && face < 6; ++face)
+            {
+                initialized = warming_radiance->upload(
+                    *command, mip, face, {}, black_face.data(),
+                    bytes_per_row, &error);
+            }
+        }
+        std::vector<U32> zero_sh(
+            static_cast<size_t>(LL_SH_PACKED_TEXELS) * cube_count * 4u,
+            0u);
+        initialized = initialized && warming_sh->upload(
+            *command, 0, 0, {}, zero_sh.data(),
+            static_cast<size_t>(LL_SH_PACKED_TEXELS) * 4u * sizeof(U32),
+            &error) &&
+            command->commitAndWait(&error);
+        if (!initialized)
+        {
+            LL_WARNS("Metal")
+                << "Could not initialize the zero-probe Metal warm-up pack: "
+                << error << LL_ENDL;
+            return false;
+        }
+        mirror.mPublishedRadiance = std::move(warming_radiance);
+        mirror.mPublishedSH = std::move(warming_sh);
+        std::fill(mirror.mPublishedGenerations.begin(),
+                  mirror.mPublishedGenerations.end(), 0);
+        std::fill(mirror.mPublishedSHGenerations.begin(),
+                  mirror.mPublishedSHGenerations.end(), 0);
+    }
     return true;
 }
 
@@ -977,14 +1068,22 @@ bool LLReflectionMapManager::fillMetalDefaultProbe(
 }
 
 bool LLReflectionMapManager::fillMetalReflectionProbes(
-    ALMetalWorldReflectionProbes& probes) const
+    ALMetalWorldReflectionProbes& probes)
 {
+    if (!reconcileMetalProbeArray())
+    {
+        return false;
+    }
     const MetalProbeArrayMirror& mirror = *mMetalProbeArray;
     const S32 count = mProbeData.refmapCount;
-    if (!mirror.mPublishedRadiance || count <= 0 ||
+    if (!mirror.mPublishedRadiance || count < 0 ||
         count > static_cast<S32>(
             ALMetalWorldReflectionProbeConstants::max_probe_count))
     {
+        LL_INFOS_ONCE("Metal")
+            << "Metal reflection-probe pack is warming: radiance="
+            << static_cast<bool>(mirror.mPublishedRadiance)
+            << ", probe_count=" << count << LL_ENDL;
         return false;
     }
     bool complete_sh = mirror.mPublishedSH != nullptr;
@@ -998,6 +1097,22 @@ bool LLReflectionMapManager::fillMetalReflectionProbes(
             mirror.mPublishedGenerations[cube] !=
                 mirror.mSlotGenerations[cube])
         {
+            const bool cube_in_range = cube >= 0 &&
+                static_cast<size_t>(cube) <
+                    mirror.mPublishedGenerations.size() &&
+                static_cast<size_t>(cube) <
+                    mirror.mSlotGenerations.size();
+            LL_INFOS_ONCE("Metal")
+                << "Metal reflection-probe pack excluded a non-current "
+                   "logical probe: logical_index="
+                << index << ", cube=" << cube
+                << ", in_range=" << cube_in_range
+                << ", published_generation="
+                << (cube_in_range
+                        ? mirror.mPublishedGenerations[cube] : 0)
+                << ", slot_generation="
+                << (cube_in_range ? mirror.mSlotGenerations[cube] : 0)
+                << LL_ENDL;
             return false;
         }
         complete_sh = complete_sh &&
@@ -1005,6 +1120,14 @@ bool LLReflectionMapManager::fillMetalReflectionProbes(
                 mirror.mPublishedSHGenerations.size() &&
             mirror.mPublishedSHGenerations[cube] ==
                 mirror.mSlotGenerations[cube];
+    }
+
+    if (!complete_sh)
+    {
+        LL_INFOS_ONCE("Metal")
+            << "Metal reflection-probe radiance is current but its SH pack "
+               "is still warming for "
+            << count << " logical probe(s)" << LL_ENDL;
     }
 
     probes = {};

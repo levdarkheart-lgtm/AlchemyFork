@@ -755,6 +755,7 @@ void LLGLSLShader::configureVariantClone(LLGLSLShader& dst, const std::string& n
     dst.mShaderLevel = mShaderLevel;
     dst.mShaderGroup = mShaderGroup;
     dst.mOnLink      = mOnLink;
+    dst.mNativeAttributeMask = mNativeAttributeMask;
 }
 
 // Build one corner: this program's config plus the requested defines, compiled. Deriving every
@@ -872,6 +873,7 @@ void LLGLSLShader::clearConfiguration()
     mPermutationsAdded = false;
     mFeatures = LLShaderFeatures();
     mOnLink = nullptr;
+    mNativeAttributeMask = 0;
 }
 
 void LLGLSLShader::unloadInternal()
@@ -889,6 +891,7 @@ void LLGLSLShader::unloadInternal()
 
     stop_glerror();
     mAttribute.clear();
+    mAttributeMask = 0;
     mTexture.clear();
     mImage.clear();
     mStorage.clear();
@@ -999,6 +1002,7 @@ bool LLGLSLShader::configureNative(U32 variants)
     sInstances.insert(this);
     mLightHash = 0xFFFFFFFF;
     mLinearDiffuse = mDefines.contains("LINEAR_DIFFUSE");
+    mAttributeMask = mNativeAttributeMask;
 
     // A loader entry without a pass definition is incomplete on either
     // backend. The paths are retained as semantic source provenance only;
@@ -3084,6 +3088,9 @@ LLUUID LLGLSLShader::hash()
     // The shared objects every program links against, which sGlobalDefines alone need not describe.
     hash_obj.update(sSharedObjectsKey.mData, UUID_BYTES);
     hash_obj.update(&mFeatures, sizeof(LLShaderFeatures));
+    // Native attribute declarations replace GLSL reflection and therefore
+    // participate in the semantic configuration cache key.
+    hash_obj.update(&mNativeAttributeMask, sizeof(mNativeAttributeMask));
     // A GL binary is driver-specific. A contextless native configuration has
     // no GL identity; fold the selected Metal device into its semantic cache
     // key instead so it cannot alias a former GL configuration.

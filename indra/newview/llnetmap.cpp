@@ -104,13 +104,15 @@ bool publish_minimap_image(LLViewerTexture* texture, const LLImageRaw* raw,
         return false;
     }
 
-    texture->setExplicitFormat(GL_RGBA8, GL_RGBA);
-    auto* native_image = texture->getGLTexture();
-    const bool uploaded = native_image->getMetalTexture()
-        ? native_image->uploadMetalSubImage(
+    // The original viewer constructs storage from the complete raw minimap
+    // before setSubImage() can update it. Preserve that lifecycle for Metal:
+    // the logical texture deliberately has no LLImageGL on its first draw,
+    // so create the native image before asking for its backing object.
+    const bool uploaded = !texture->hasGPUTexture()
+        ? texture->createMetalTexture(0, raw, LLGLTexture::LOCAL)
+        : texture->getGLTexture()->uploadMetalSubImage(
             raw->getData(), raw->getWidth(), raw->getHeight(),
-            0, 0, raw->getWidth(), raw->getHeight())
-        : texture->createMetalTexture(0, raw, LLGLTexture::LOCAL);
+            0, 0, raw->getWidth(), raw->getHeight());
     if (!uploaded)
     {
         LL_WARNS("NetMap") << "Could not publish the CPU-generated "

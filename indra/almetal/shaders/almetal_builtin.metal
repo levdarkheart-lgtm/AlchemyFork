@@ -16562,11 +16562,16 @@ fragment float4 almetal_world_legacy_glow_extract_fragment(
                 noise_sampler, noise_coordinate).rgb / noise_depth,
             float3(0.0));
     }
-    color.a = max(
+    const float glow_alpha = max(
         color.a,
         mix(luminance, warmth, constants.settings.z) *
             constants.settings.y);
-    return color;
+    // The retained glow extractor ran under BT_ADD_WITH_ALPHA
+    // (SOURCE_ALPHA, ONE) into a cleared target.  Preserve that transaction
+    // explicitly: ordinary scene RGB with zero glow alpha must not enter the
+    // blur pyramid, and the alpha channel itself was multiplied by the same
+    // source-alpha blend factor.
+    return float4(color.rgb * glow_alpha, glow_alpha * glow_alpha);
 }
 
 fragment float4 almetal_world_legacy_glow_blur_fragment(
