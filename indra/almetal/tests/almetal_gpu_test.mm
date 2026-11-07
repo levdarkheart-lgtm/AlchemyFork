@@ -18503,10 +18503,29 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         CHECK(probe_raw_pixels[light_center + 0] == 0);
 
+        // The original OpenGL cube_snapshot path takes the single raw-depth
+        // tap before the PCSS blocker search. Its scale is therefore not an
+        // input to an Ultra probe/mirror capture, even though an ordinary
+        // Ultra receiver must still provide one.
+        world_shadows.constants.parameters[2] = 0.f;
+        auto probe_zero_pcss_scale_light_map = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(probe_zero_pcss_scale_light_map);
+        world_shadows.constants.config[3] = 3u;
+        error.clear();
+        CHECK_FALSE(renderer->renderLightMap(light_map_scene, &error));
+        CHECK(error ==
+              "Metal world light-map directional shadows are incomplete: "
+              "invalid filter or cascade configuration");
+        world_shadows.constants.parameters[2] = 200.f;
+
         world_shadows.constants.config[3] = 0x8u;
         error.clear();
         CHECK_FALSE(renderer->renderLightMap(light_map_scene, &error));
-        CHECK(error == "Metal world light-map scene is incomplete");
+        CHECK(error ==
+              "Metal world light-map directional shadows are incomplete: "
+              "invalid filter or cascade configuration");
         world_shadows.constants.config[3] = 1u;
 
         light_map_scene.directional_shadows = nullptr;

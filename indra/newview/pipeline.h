@@ -1874,7 +1874,6 @@ public:
     {
         F32 shadow_matrix[6][16];
         F32 shadow_clip[4];
-        F32 shadow_res[2];
         F32 shadow_bias;
         F32 shadow_offset;
         F32 spot_shadow_bias;

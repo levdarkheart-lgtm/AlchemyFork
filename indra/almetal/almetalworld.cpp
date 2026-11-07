@@ -1124,12 +1124,12 @@ namespace
                    depth.usage, ALMetalTextureUsage::shader_read);
     }
 
-    bool validDirectionalShadows(
+    const char* invalidDirectionalShadowsReason(
         const ALMetalWorldDirectionalShadows* shadows)
     {
         if (!shadows || !shadows->depth_texture)
         {
-            return false;
+            return "missing depth texture";
         }
         const ALMetalTextureDescriptor& descriptor =
             shadows->depth_texture->descriptor();
@@ -1138,28 +1138,53 @@ namespace
         const std::uint32_t filter_config = constants.config[3];
         const std::uint32_t filter_quality = filter_config &
             ALMetalWorldDirectionalShadowConstants::filter_quality_mask;
-        return descriptor.type == ALMetalTextureType::texture_2d_array &&
-               descriptor.format == ALMetalPixelFormat::r32_float &&
-               descriptor.array_length == 4 &&
-               descriptor.mipmap_level_count == 1 &&
-               alMetalHasUsage(
-                   descriptor.usage, ALMetalTextureUsage::shader_read) &&
-               finiteValues(&constants.shadow_matrix[0][0], 4 * 16) &&
-               finiteValues(constants.shadow_clip, 4) &&
-               finiteValues(constants.resolution, 4) &&
-               finiteValues(constants.parameters, 4) &&
-               constants.resolution[0] == descriptor.width &&
-               constants.resolution[1] == descriptor.height &&
-               constants.resolution[2] > 0.f &&
-               constants.resolution[3] > 0.f &&
-               constants.parameters[3] > 0.f &&
-               constants.config[0] >= 1 && constants.config[0] <= 4 &&
-               (constants.config[1] & ~0xfu) == 0 &&
-               constants.config[2] <= 1 &&
-               (filter_config &
-                ~ALMetalWorldDirectionalShadowConstants::filter_config_mask) ==
-                   0 &&
-               (filter_quality < 3 || constants.parameters[2] > 0.f);
+        const bool probe_single_tap = (filter_config &
+            ALMetalWorldDirectionalShadowConstants::probe_single_tap) != 0;
+        if (descriptor.type != ALMetalTextureType::texture_2d_array ||
+            descriptor.format != ALMetalPixelFormat::r32_float ||
+            descriptor.array_length != 4 ||
+            descriptor.mipmap_level_count != 1 ||
+            !alMetalHasUsage(
+                descriptor.usage, ALMetalTextureUsage::shader_read))
+        {
+            return "incompatible depth texture";
+        }
+        if (!finiteValues(&constants.shadow_matrix[0][0], 4 * 16) ||
+            !finiteValues(constants.shadow_clip, 4) ||
+            !finiteValues(constants.resolution, 4) ||
+            !finiteValues(constants.parameters, 4))
+        {
+            return "non-finite constants";
+        }
+        if (constants.resolution[0] != descriptor.width ||
+            constants.resolution[1] != descriptor.height)
+        {
+            return "depth resolution mismatch";
+        }
+        if (constants.resolution[2] <= 0.f ||
+            constants.resolution[3] <= 0.f ||
+            constants.parameters[3] <= 0.f)
+        {
+            return "invalid destination dimensions";
+        }
+        if (constants.config[0] < 1 || constants.config[0] > 4 ||
+            (constants.config[1] & ~0xfu) != 0 ||
+            constants.config[2] > 1 ||
+            (filter_config &
+             ~ALMetalWorldDirectionalShadowConstants::filter_config_mask) !=
+                0 ||
+            (filter_quality >= 3 && !probe_single_tap &&
+             constants.parameters[2] <= 0.f))
+        {
+            return "invalid filter or cascade configuration";
+        }
+        return nullptr;
+    }
+
+    bool validDirectionalShadows(
+        const ALMetalWorldDirectionalShadows* shadows)
+    {
+        return !invalidDirectionalShadowsReason(shadows);
     }
 
     bool validProjectorShadows(
@@ -17994,6 +18019,9 @@ ALMetalWorldGBufferRenderer::renderLightMap(
     const ALMetalWorldLightMapConstants& constants = scene.constants;
     const bool directional_shadows = constants.config[1] != 0;
     const bool ssao = constants.config[2] != 0;
+    const char* directional_shadow_error = scene.directional_shadows
+        ? invalidDirectionalShadowsReason(scene.directional_shadows)
+        : nullptr;
     if (!mImpl || !mImpl->device || !scene.gbuffer ||
         !finiteValues(constants.inverse_projection, 16) ||
         !finiteValues(constants.light_direction, 4) ||
@@ -18003,15 +18031,17 @@ ALMetalWorldGBufferRenderer::renderLightMap(
         !finiteValues(constants.screen, 4) ||
         constants.config[0] > 1 || constants.config[1] > 1 ||
         constants.config[2] > 1 || constants.config[3] > 1 ||
-        (scene.directional_shadows &&
-         !validDirectionalShadows(scene.directional_shadows)) ||
+        directional_shadow_error ||
         (ssao && (!sampleableTexture(scene.noise_texture) ||
                   constants.ssao[0] < 0.f || constants.ssao[1] < 0.f ||
                   constants.ssao[2] < 0.f || constants.ssao[3] <= 0.f ||
                   constants.blur_taps[0][1] <= 0.f ||
                   constants.blur[0] < 0.f || constants.blur[1] < 0.f)))
     {
-        setError(error, "Metal world light-map scene is incomplete");
+        setError(error, directional_shadow_error
+            ? std::string("Metal world light-map directional shadows are ") +
+                  "incomplete: " + directional_shadow_error
+            : "Metal world light-map scene is incomplete");
         return nullptr;
     }
 

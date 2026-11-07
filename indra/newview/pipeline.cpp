@@ -13467,6 +13467,8 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
     if (capture.impostor_directional_shadow_frame == gFrameCount &&
         capture.impostor_directional_shadows.depth_texture)
     {
+        const ALMetalTextureDescriptor& descriptor =
+            capture.impostor_directional_shadows.depth_texture->descriptor();
         ALMetalWorldDirectionalShadowConstants& constants =
             capture.impostor_directional_shadows.constants;
         std::memcpy(constants.shadow_matrix,
@@ -13474,8 +13476,13 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
                     sizeof(constants.shadow_matrix));
         std::memcpy(constants.shadow_clip, mNativeShadowData.shadow_clip,
                     sizeof(constants.shadow_clip));
-        constants.resolution[0] = mNativeShadowData.shadow_res[0];
-        constants.resolution[1] = mNativeShadowData.shadow_res[1];
+        // The original OpenGL pack publishes shadow_res from the actual
+        // mRT->shadow texture it binds, not from the resource plan.  Hero and
+        // ordinary probe faces share this retained native capture owner and
+        // can alternate sizes within one viewer frame, so the sampled
+        // texture is likewise the only authoritative resolution here.
+        constants.resolution[0] = static_cast<F32>(descriptor.width);
+        constants.resolution[1] = static_cast<F32>(descriptor.height);
         constants.resolution[2] = static_cast<F32>(capture.width);
         constants.resolution[3] = static_cast<F32>(capture.height);
         constants.parameters[0] = mNativeShadowData.shadow_bias;
@@ -13504,14 +13511,15 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
 
     const auto publish = [&](const ALMetalTexture* texture)
     {
+        const ALMetalTextureDescriptor& descriptor = texture->descriptor();
         ALMetalWorldDirectionalShadowConstants constants;
         std::memcpy(constants.shadow_matrix,
                     mNativeShadowData.shadow_matrix,
                     sizeof(constants.shadow_matrix));
         std::memcpy(constants.shadow_clip, mNativeShadowData.shadow_clip,
                     sizeof(constants.shadow_clip));
-        constants.resolution[0] = mNativeShadowData.shadow_res[0];
-        constants.resolution[1] = mNativeShadowData.shadow_res[1];
+        constants.resolution[0] = static_cast<F32>(descriptor.width);
+        constants.resolution[1] = static_cast<F32>(descriptor.height);
         constants.resolution[2] = static_cast<F32>(capture.width);
         constants.resolution[3] = static_cast<F32>(capture.height);
         constants.parameters[0] = mNativeShadowData.shadow_bias;
@@ -27839,13 +27847,6 @@ void LLPipeline::packDeferredConstants()
     d.ssao_effect_mat[8] = matrix_nondiag; d.ssao_effect_mat[9] = matrix_nondiag; d.ssao_effect_mat[10] = matrix_diag;
 
     memcpy(shadow.shadow_clip, mSunClipPlanes.mV, sizeof(shadow.shadow_clip));
-
-    // Metal lighting allocates from the backend-neutral plan. A missing description falls back to one texel so CPU
-    // uniform packing stays finite; the unbuilt mask prevents the corresponding slice from being sampled.
-    const std::optional<ALRenderTargetDesc>& sun_desc =
-        mResourcePlan.desc(ALRenderResourcePlan::sunShadow(renderPack(), 0));
-    shadow.shadow_res[0] = static_cast<F32>(sun_desc ? std::max(sun_desc->width, 1u) : 1u);
-    shadow.shadow_res[1] = static_cast<F32>(sun_desc ? std::max(sun_desc->height, 1u) : 1u);
 
     // Reverse-Z shadow maps store reversed depth and sample with GEQUAL, so the receiver
     // reference is pushed the other way: negate the bias at this single assembly site.
