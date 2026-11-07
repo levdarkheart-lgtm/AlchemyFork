@@ -626,6 +626,9 @@ static bool handleReflectionProbesChanged(const LLSD& newvalue)
 // The mirrors are the hero probes' alone: the reflection probes render the same with them or without.
 static bool handleMirrorsChanged(const LLSD& newvalue)
 {
+    LL_INFOS("RenderSettings")
+        << "RenderMirrors changed to " << newvalue.asBoolean()
+        << "; pipeline initialized=" << gPipeline.isInit() << LL_ENDL;
     if (gPipeline.isInit())
     {
         gPipeline.mHeroProbeManager.reset();

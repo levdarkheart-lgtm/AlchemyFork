@@ -8355,7 +8355,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         }
     }
     const bool hero_active = needs_reflection_probes && !gCubeSnapshot &&
-        mHeroProbeManager.mHeroData.heroProbeCount > 0;
+        isMetalHeroProbeActive();
     const bool ssr_active = needs_reflection_probes &&
         mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
         !gCubeSnapshot && !sCutoutRender;
@@ -10976,8 +10976,7 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
         {
             return batch.impostor_shiny;
         });
-    const bool hero_active = !gCubeSnapshot &&
-        mHeroProbeManager.mHeroData.heroProbeCount > 0;
+    const bool hero_active = !gCubeSnapshot && isMetalHeroProbeActive();
     if (capture.complete && has_shiny &&
         !mReflectionMapManager.fillMetalReflectionProbes(
             capture.impostor_reflection_probes))
@@ -11090,8 +11089,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
                            return slot.env_intensity > 0.f;
                        });
         });
-    const bool hero_active = !gCubeSnapshot &&
-        mHeroProbeManager.mHeroData.heroProbeCount > 0;
+    const bool hero_active = !gCubeSnapshot && isMetalHeroProbeActive();
     const bool ssr_active =
         mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
         !gCubeSnapshot;
@@ -13294,7 +13292,7 @@ bool LLPipeline::fillMetalImpostorHeroProbe()
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     LLHeroProbeManager& manager = mHeroProbeManager;
-    if (manager.mHeroData.heroProbeCount != 1 ||
+    if (!isMetalHeroProbeActive() ||
         manager.mHeroData.heroShape < 0 ||
         manager.mHeroData.heroShape > 1 ||
         !manager.mMetalRadianceReady ||
@@ -13377,6 +13375,76 @@ bool LLPipeline::fillMetalImpostorHeroProbe()
         native_capture->hero_probe_radiance_cube.get();
     capture.impostor_hero_probe.constants = constants;
     return true;
+}
+
+bool LLPipeline::isMetalHeroProbeActive() const
+{
+    return mResourceInputs.mMirrors &&
+        mResourcePlan.heroProbes().has_value() &&
+        mHeroProbeManager.mHeroData.heroProbeCount == 1;
+}
+
+void LLPipeline::retireMetalHeroProbeResources()
+{
+    // A settings change is reconciled at the next frame boundary, after any
+    // bounded probe capture has ended. Recover defensively if that invariant
+    // is ever broken so the ordinary-world owner is restored before its hero
+    // fields are cleared.
+    if (mMetalHeroWorldCaptureActive)
+    {
+        if (mMetalWorldSimpleCapture &&
+            mMetalWorldSimpleCapture->renderer &&
+            mMetalWorldSimpleCapture->renderer->commandBatchActive())
+        {
+            mMetalWorldSimpleCapture->renderer->cancelCommandBatch();
+        }
+        if (mMetalWorldSimpleCapture)
+        {
+            mMetalWorldSimpleCapture->hero_probe_face_capture = false;
+        }
+        std::swap(mMetalWorldSimpleCapture, mMetalProbeWorldSimpleCapture);
+        mMetalHeroWorldCaptureActive = false;
+        mRT = &mMainRT;
+        LL_WARNS("Metal")
+            << "Mirror resources were retired during an active native hero "
+               "capture; the incomplete capture was cancelled"
+            << LL_ENDL;
+    }
+
+    bool retired = false;
+    const auto clear_hero = [&retired](
+        std::unique_ptr<MetalWorldSimpleCapture>& owner)
+    {
+        if (!owner)
+        {
+            return;
+        }
+        retired = retired || owner->hero_probe_source_cube ||
+            owner->hero_probe_radiance_cube ||
+            !owner->hero_probe_owner_id.isNull() ||
+            owner->hero_probe_native_generation != 0 ||
+            owner->impostor_hero_probe.radiance_texture != nullptr;
+        owner->impostor_hero_probe = {};
+        owner->hero_probe_source_cube.reset();
+        owner->hero_probe_radiance_cube.reset();
+        owner->hero_probe_owner_id.setNull();
+        owner->hero_probe_owner_epoch = 0;
+        owner->hero_probe_valid_faces = 0;
+        owner->hero_probe_face = 0;
+        owner->hero_probe_max_lod = 0;
+        owner->hero_probe_native_generation = 0;
+        owner->hero_probe_face_capture = false;
+    };
+    clear_hero(mMetalWorldSimpleCapture);
+    clear_hero(mMetalProbeWorldSimpleCapture);
+
+    if (retired)
+    {
+        LL_INFOS("Metal")
+            << "Retired native mirror source, radiance, and visible-world "
+               "binding after the hero resource plan was disabled"
+            << LL_ENDL;
+    }
 }
 
 bool LLPipeline::fillMetalImpostorDirectionalShadows()
@@ -17322,7 +17390,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     }
 
     const bool hero_active = use_reflection_probes && !gCubeSnapshot &&
-        mHeroProbeManager.mHeroData.heroProbeCount > 0;
+        isMetalHeroProbeActive();
     if (hero_active && !fillMetalImpostorHeroProbe())
     {
         return;
@@ -18264,6 +18332,9 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
     {
         changes.mHeroProbesFreed = mHeroProbeManager.holdsResources();
         mHeroProbeManager.cleanup();
+#if LL_DARWIN
+        retireMetalHeroProbeResources();
+#endif
     }
 
     // What the state derived from the resources depends on, against what they were reconciled to before.

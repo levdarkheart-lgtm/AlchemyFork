@@ -1046,6 +1046,8 @@ public:
         const LLDrawInfo& params, bool particle_or_hud_particle,
         bool depth_only = false);
     bool fillMetalImpostorHeroProbe();
+    bool isMetalHeroProbeActive() const;
+    void retireMetalHeroProbeResources();
     bool beginMetalHeroProbeFaceCapture(
         const LLUUID& hero_id, U64 owner_epoch,
         U32 face, U32 max_probe_lod);

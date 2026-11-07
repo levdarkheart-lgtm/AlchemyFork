@@ -375,6 +375,10 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap*)
 
 void LLHeroProbeManager::updateUniforms()
 {
+    // Count is the publication gate for every consumer. Clear it before the
+    // mirrors-off return so a disabled resource plan cannot leave the last
+    // native radiance owner advertised to the visible world.
+    mHeroData.heroProbeCount = 0;
     if (!gPipeline.resourceInputs().mMirrors)
     {
         return;
@@ -388,8 +392,6 @@ void LLHeroProbeManager::updateUniforms()
     oa.set(0, 0, 0, 0);
     // With no mirror, the box and sphere below keep the last one's, and the cube array its
     // picture; 0 tells tapHeroProbe there is nothing to reflect.
-    mHeroData.heroProbeCount = 0;
-
     // Called every frame while mirrors are on, whether or not update() has
     // built the default probe since cleanup(). The original GL owner allocates
     // its hero cube before advertising count one. Metal must likewise avoid
@@ -498,6 +500,14 @@ void LLHeroProbeManager::initReflectionMaps()
 
 void LLHeroProbeManager::cleanup()
 {
+    // cleanup() is the authoritative transition to "no hero probe". The
+    // original shader contract uses count zero to stop sampling the retained
+    // cube; Metal has direct consumers of the same contract, so retire it
+    // synchronously rather than waiting for the next uniform update.
+    mHeroData.heroProbeCount = 0;
+    mRenderingMirror = false;
+    LLRender::sMirrorPass = false;
+
     ++mMetalRadianceEpoch;
     if (mMetalRadianceEpoch == 0)
     {
