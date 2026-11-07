@@ -1,6 +1,6 @@
 # Current engineering state
 
-**Observed:** 2026-11-06 on the physical M1 Max acceptance host.
+**Observed:** 2026-11-07 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
 **Renderer code checkpoint:** `1bfe631627`
@@ -78,7 +78,13 @@ The latest essential sequence is:
 
 `LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot source state is repaired; execution remains owner-attended. The source-exact Release artifact is now a bounded owner-attended startup/login/world-load smoke-test candidate, not a parity or GL-zero claim.
 
-The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. No viewer was launched; startup/login remains queued. Query culling remains a native-performance replacement task, not a parity claim.
+The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. Query culling remains a native-performance replacement task, not a parity claim.
+
+### Attended-runtime correction committed as `2e2ac6e1c9`
+
+Package `26.4.0.68493` was tested after tracing its Mid black screen against the original OpenGL renderer. The original path draws one tessellated wave patch plus three surrounding flat-water groups; Metal correctly published four groups, but world capture accepted only three and discarded every affected post-deferred world/UI frame.
+Commit `2e2ac6e1c9` gives `ALMetalWaterSurface` one shared `expectedFieldDrawCount()` invariant (`4` with waves, otherwise `3`) for capture and renderer validation, plus a focused GPU assertion.
+An attended login directly into persisted Mid (`RenderQualityPerformance=2`) rendered continuously for 500+ complete native world/UI publications. `first_incomplete_line=8073` and Metal validation/GPU errors did not recur; this proves the bounded Mid correction, not broad parity, High/Ultra stability or release readiness.
 
 ## Build and validation evidence
 
@@ -109,6 +115,7 @@ The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or 
 - `python3 tools/metal/validate_harness.py` passes all 32 required files;
   `python3 -m unittest discover -s tools/metal/tests -v` passes 31/31.
 - Focused alrender/llrender suites pass 28/28; `git diff --check` passes.
+- Release `26.4.0.68493`, built from the mixed working checkpoint containing the now-committed correction at 2026-11-07 01:08:12 GMT, has executable SHA-256 `dfd02973a45085b790c334f1c47574549ce632b6b9e6f6a377946574f972ffd0`; `verify_app.sh` passes 349/349 ARM64 slices and attended Mid/HDR evidence is `/tmp/alchemy-metal-68493-water-wave-release-20261107.log`.
 
 ## OpenGL elimination gate
 
@@ -119,21 +126,17 @@ owner's 2,301 reference. The gate remains zero; runtime proof remains queued.
 
 ## Visual review cadence
 
-Codex does not autonomously launch, drive or capture either viewer. Runtime
-proof, visual evaluation and stability/profiling are reserved for the owner-led
-phase after engineering items 1-3. Existing observations and new checks accumulate in
-the [owner-attended queue](../work/active/visual-review-queue.md). No queued row
-is a parity pass without explicit owner evidence.
+Viewer launches/login/visual changes occur only at the owner's explicit request and control. Checks accumulate in the [owner-attended queue](../work/active/visual-review-queue.md); no row is a parity pass without explicit owner evidence.
 
 ## Milestone state
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended login validation remains. |
+| M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended Mid login/world load now passes, while broader lifecycle and stability validation remain. |
 | M-004 resources/readback | doing | Geometry, ordinary texture publication/residency/lifecycle, fonts, buffers, samplers, image slots, targets and reflection arrays are native; remaining copy/readback consumers follow. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
 | M-006 UI/media | doing | UI/font and media CPU texture publication and retained/immediate UI geometry are Metal-only; Snapshot state/thumbnail/save source path is repaired but runtime behavior remains owner-attended. |
-| M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; parity remains open. |
+| M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; Mid tessellated-water capture now accepts its correct four draw groups and is visually stable in the bounded attended test; broader parity remains open. |
 | M-008 effects/advanced views | doing | Native display owns glow, SMAA and lens dirt with focused GPU proof; remaining optional paths follow the usable-core cut. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
 | M-010 measured performance | deferred | No quality-equivalent paired M1 Max claim yet. |
@@ -143,18 +146,13 @@ is a parity pass without explicit owner evidence.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Core execution, offscreen targets and
-writable image bindings remain valid without GL; required behavior was replaced.
+**Advances the complete product:** yes. Core execution, offscreen targets and writable image bindings remain valid without GL; required behavior was replaced.
 
-**Still incomplete:** the reachable source tail remains, the strict no-GL gate
-fails, and no-context startup/login, runtime module proof, full visual parity,
-prolonged stability, performance and independent review remain open. This
-checkpoint still lacks independent build/review evidence and is not product
-completion or release readiness.
+**Still incomplete:** the reachable source tail remains, the strict no-GL gate fails, and broader startup/lifecycle coverage, runtime module proof, full visual parity, prolonged stability and performance remain open; independent build/review evidence is also still required. This is not product completion or release readiness.
 
 ## Exact next actions
 
-1. In the separate owner session, run the bounded startup/login/world-load smoke test against package 68492; record the first failure without a reference comparison.
-2. Finish remaining essential texture copy/readback ownership and raw manual identities.
-3. Treat Snapshot source repair as ready for later owner-attended execution proof.
+1. Keep Mid as the normalized troubleshooting baseline; Low is a bootstrap/isolation preset, not the visual target.
+2. Test High and Ultra incrementally from stable Mid in owner-attended runs, crossing one graphics-feature boundary at a time and comparing each affected path with the original viewer before changing code.
+3. Finish remaining essential texture copy/readback ownership and raw manual identities.
 4. Continue ordinary UI/world GL removal before optional tails and rerun strict source/link gates.
