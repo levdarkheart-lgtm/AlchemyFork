@@ -997,6 +997,13 @@ struct ALMetalWorldWaterHaze
 // patch before the remaining field is drawn.
 struct ALMetalWorldWaterSurface
 {
+    constexpr std::uint32_t expectedFieldDrawCount() const noexcept
+    {
+        // The flat field has three draw groups. Tessellated water adds the
+        // wave-patch group while retaining those three groups around it.
+        return waves ? 4u : 3u;
+    }
+
     ALMetalWorldWaterHaze field;
     std::array<const ALMetalTexture*, 2> normal_maps{};
     std::array<const ALMetalTexture*, 2> height_maps{};

@@ -13482,6 +13482,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         underwater_wave.patch_count = 64;
         underwater_wave.tessellation_factors.assign(64 * 6, 0x3c00u);
         underwater_wave.waves = true;
+        CHECK(underwater_wave.expectedFieldDrawCount() == 4);
         opaque_forward_scene.gbuffer = coverage_result.get();
         opaque_forward_scene.reverse_z = false;
         opaque_forward_scene.water_surface = &underwater_wave;

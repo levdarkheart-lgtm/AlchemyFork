@@ -13788,7 +13788,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 cell_map->width, cell_map->height)) ||
             field->rings[0] <= 0.f || field->rings[1] <= 0.f ||
             field->rings[2] <= 0.f ||
-            field->draw_count != (surface->waves ? 4u : 3u) ||
+            field->draw_count != surface->expectedFieldDrawCount() ||
             field->fog[0] <= 0.f || field->fog[1] < 0.f ||
             surface->parameters[0] < 0.f ||
             surface->parameters[0] > 1.f ||

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Original Viewer Reference"
+  short_description: "Require original Alchemy behavior before Metal fixes"

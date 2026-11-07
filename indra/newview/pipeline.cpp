@@ -7953,7 +7953,8 @@ void LLPipeline::captureMetalWorldWaterSurface(
         capture.water_surface_valid ||
         (direct_probe && capture.direct_probe_water_surface) ||
         !surface.normal_maps[0] || !surface.normal_maps[1] ||
-        !surface.field.cell_map || surface.field.draw_count != 3 ||
+        !surface.field.cell_map ||
+        surface.field.draw_count != surface.expectedFieldDrawCount() ||
         ((surface.underwater || surface.refracts) &&
          !capture.water_haze_valid))
     {
