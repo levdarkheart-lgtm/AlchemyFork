@@ -18537,7 +18537,10 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         // retained G-buffer must contain occlusion, and a non-zero blur must
         // redistribute at least one occluded texel without touching R.
         ALMetalTextureDescriptor noise_descriptor;
-        noise_descriptor.format = ALMetalPixelFormat::rg32_float;
+        // Production publishes the original RGB16F noise map's first two
+        // channels directly as RG16F. Exercise that exact resource contract
+        // rather than the superseded GL-readback mirror's RG32F format.
+        noise_descriptor.format = ALMetalPixelFormat::rg16_float;
         noise_descriptor.width = 128;
         noise_descriptor.height = 128;
         noise_descriptor.storage = ALMetalStorageMode::private_gpu;
@@ -18547,12 +18550,12 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             *device, noise_descriptor, &error);
         INFO(error);
         REQUIRE(noise_texture);
-        std::array<float, 128 * 128 * 2> noise_values{};
+        std::array<std::uint16_t, 128 * 128 * 2> noise_values{};
         for (std::size_t texel = 0; texel < 128 * 128; ++texel)
         {
-            constexpr float directions[4][2] = {
-                {1.f, 0.f}, {0.f, 1.f},
-                {-1.f, 0.f}, {0.f, -1.f},
+            constexpr std::uint16_t directions[4][2] = {
+                {0x3c00u, 0x0000u}, {0x0000u, 0x3c00u},
+                {0xbc00u, 0x0000u}, {0x0000u, 0xbc00u},
             };
             noise_values[texel * 2 + 0] =
                 directions[texel & 3u][0];
@@ -18565,7 +18568,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         REQUIRE(noise_upload);
         REQUIRE(noise_texture->upload(
             *noise_upload, 0, 0, {}, noise_values.data(),
-            128 * 2 * sizeof(float), &error));
+            128 * 2 * sizeof(std::uint16_t), &error));
         REQUIRE(noise_upload->commitAndWait(&error));
         INFO(error);
 

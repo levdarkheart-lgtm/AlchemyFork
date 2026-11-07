@@ -18025,7 +18025,7 @@ ALMetalWorldGBufferRenderer::renderLightMap(
     const ALMetalTextureDescriptor* noise = ssao
         ? &scene.noise_texture->descriptor() : nullptr;
     const bool valid_noise = !noise ||
-        (noise->format == ALMetalPixelFormat::rg32_float &&
+        (noise->format == ALMetalPixelFormat::rg16_float &&
          noise->width == 128 && noise->height == 128 &&
          noise->sample_count == 1 && noise->mipmap_level_count == 1);
     if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
