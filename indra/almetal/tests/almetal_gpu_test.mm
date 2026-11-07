@@ -30326,6 +30326,26 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
             position_offset, positions, sizeof(positions), &error));
         batch.scissor = {0, 0, 32, 32};
 
+        // A newly opened floater can briefly intersect its layout clip down
+        // to an empty rectangle. OpenGL accepts that scissor and draws no
+        // fragments; the Metal renderer must also accept it without opening a
+        // frame or failing the surrounding ordered world/UI transaction.
+        auto empty_clip_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(empty_clip_renderer);
+        batch.scissor = {0, 0, 0, 32};
+        error.clear();
+        REQUIRE(empty_clip_renderer->draw(batch, &error));
+        CHECK(error.empty());
+        CHECK_FALSE(empty_clip_renderer->hasOpenFrame());
+        const ALMetalUIRendererStats empty_clip_stats =
+            empty_clip_renderer->stats();
+        CHECK(empty_clip_stats.frames == 0);
+        CHECK(empty_clip_stats.batches == 0);
+        CHECK(empty_clip_stats.vertices == 0);
+        batch.scissor = {0, 0, 32, 32};
+
         // An explicitly unbound GL UI texture samples the engine's opaque
         // white placeholder. The native equivalent needs no sampled resource:
         // it emits the streamed vertex colour exactly, which is the common

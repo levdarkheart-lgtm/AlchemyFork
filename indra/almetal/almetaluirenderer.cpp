@@ -1959,6 +1959,16 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
                  "Metal indexed UI batches require a native Metal primitive");
         return false;
     }
+    if (batch.scissor.width == 0 || batch.scissor.height == 0)
+    {
+        // OpenGL accepts an empty scissor and discards every fragment. Metal
+        // does not accept a zero-area MTLScissorRect, so preserve the original
+        // viewer's clip semantics by treating this valid batch as a no-op.
+        // A newly opened floater can transiently produce one while its layout
+        // stacks settle; failing the batch would discard the whole ordered UI
+        // transaction and leave the previous frame visible.
+        return true;
+    }
     if (!mImpl->beginFrame(batch.target_width, batch.target_height, error))
     {
         return false;
@@ -2202,6 +2212,12 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     {
         setError(error, "Metal HUD alpha cutoff must be finite and normalized");
         return false;
+    }
+    if (batch.scissor.width == 0 || batch.scissor.height == 0)
+    {
+        // Match glScissor's empty-clip behavior without issuing an invalid
+        // zero-area MTLScissorRect.
+        return true;
     }
     if (!mImpl->beginFrame(batch.target_width, batch.target_height, error))
     {
