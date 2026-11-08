@@ -3,7 +3,7 @@
 **Observed:** 2026-11-08 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `c436b9fe6e` (`Classify deferred base lighting with depth`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
+**Renderer code checkpoint:** `e52de13acc` (`Implement native Metal occlusion queries`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -71,7 +71,7 @@ The latest essential sequence is:
 
 `LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot source state is repaired; execution remains owner-attended. The source-exact Release artifact is now a bounded owner-attended startup/login/world-load smoke-test candidate, not a parity or GL-zero claim.
 
-The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. Query culling remains a native-performance replacement task, not a parity claim.
+The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. Native Metal visibility-result queries now replace the missing scene/probe occlusion-query path; attended cull-rate and performance evidence remain open and no gain is claimed from implementation alone.
 
 ### Attended-runtime correction committed as `2e2ac6e1c9`
 
@@ -98,7 +98,7 @@ The owner-observed Mid-to-High freeze was a repeated failed-frame loop, not a de
 - `tools/metal/verify_app.sh` passes 349/349 inspected Mach-O slices as ARM64; the product, renderer-test and appearance-utility executables have no OpenGL/Vulkan dependency or unresolved GL-family symbol.
 - Viewer executable SHA-256: `8c752d22881b2113ebf2be2b44ab09a9610e9e3e2e7066a516fea7ac005eabf4`.
 - Packaged `almetal_builtin.metallib` SHA-256: `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-- Focused no-context renderer proof passes 220 assertions/11 cases including native texture lifecycle/residency; query fail-closed proof passes 35 assertions; full llrender passes 1,856/1,856 and Metal passes 52,681/52,681 assertions.
+- Exact `1eb44bbd1b` query tracing (source blob SHA-256 `df2536af88d9edf75f68fbccfe082d4b536d531684f19176e177fc6e405dd534`) is preserved: native Boolean/conservative and Counting/exact queries use original cube fans, exact opaque-batch issue order and fail-open async lifetime. The query proof passes 49 assertions; full Release llrender passes 1,881 assertions across 224 cases (223 passed, one skipped), and the real-device Metal suite passes 52,815 assertions across 58 cases, including visible/clipped results and before/after-opaque ordering. Release `68519` builds/stages/signs and verifies 349/349 ARM64 slices; executable SHA-256 is `1f7d1f5ae827dbad23ae24e1cbc8413925ab03488b53fe8d21a44146cf1cb28b` and packaged metallib SHA-256 is `163168fe50cedaa022a87608f354655246eb110838ad6ba113172555882181a1`.
 - Native glow/SMAA pass 19,815 assertions/four GPU cases; native lens-dirt and display-post ownership pass 3,019 assertions/two cases; native font atlas upload/readback/release passes 28 assertions/five cases.
 - Native transient-pool proof passes 943 assertions/14 cases; full alrender passes 556,617/556,617 assertions across 132 cases.
 - `tools/metal/build.sh test` passes all 517 registered tests in 1,204.60 seconds; six Darwin GL-only migration suites remain intentionally omitted.
@@ -137,10 +137,10 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 | M-004 resources/readback | doing | Native targets now reuse exact owned attachment sets under a byte bound; streamed images use a separate containment capacity while the original override/controller semantics remain. Remaining copy/readback consumers and multi-scene policy validation follow. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
 | M-006 UI/media | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only. Original-compatible empty clips no-op before Metal encoding; Conversations visibly opens/closes/reopens in attended `68497` evidence. Broader UI parity remains open. |
-| M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; Mid water, High SSAO and Ultra directional shadows remain stable. The owner accepts broad Ultra lighting/shadow/sky/color similarity in the bounded source-exact pair; broader parity remains open. |
+| M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; native asynchronous scene/probe visibility queries now preserve original issue order and fail-open consumption. Runtime cull effectiveness and broader parity remain open. |
 | M-008 effects/advanced views | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse. Lifecycle and an Ultra-plus-mirrors transition pass, but the matched pair shows a blue-gray Metal versus green-terrain OpenGL reflected background; trace content/clipping before any fix. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
-| M-010 measured performance | doing | Hero/projector/base-light optimizations are measured; depth-classified base light falls 76.6% to 2.688 ms/present, but attended Ultra steadies near 8 FPS and a quality-equivalent paired 300-frame claim remains open. |
+| M-010 measured performance | doing | Hero/projector/base-light optimizations are measured; native occlusion queries are implemented but not yet measured in-world. Attended Ultra steadies near 8 FPS and a quality-equivalent paired 300-frame claim remains open. |
 | M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, resources, targets, UI replay and retained glow/SMAA require no GL; render tails remain. |
 | M-012 Computer Use bridge | complete | Semantic bridge verified; visual driving is owner-attended. |
 | M-013 RLVa strict parity | deferred | Nonessential ordering only; final no-GL behavior is still required. |
@@ -153,8 +153,8 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 
 ## Exact next actions
 
-1. Prototype the next quality-preserving atmospheric-haze architecture against the traced original; retain only an end-to-end measured improvement because shader specialization and strength reduction already regressed.
-2. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.
-3. Run the quality-equivalent 300-frame Metal/OpenGL protocol with the new elapsed-plus-frame warm-up gate; profile the settled hero/probe transaction rather than startup FPS.
-4. Classify texture churn and run all four scenarios before changing automatic texture capacity.
-5. Continue the highest-value unblocked native-ownership cut while attended visual questions remain queued.
+1. Run an attended dense-scene smoke test with native occlusion enabled, confirm nonzero issued/ready/culled activity without popping, and record settled FPS/cull evidence separately from the earlier Ultra measurements.
+2. Prototype the next quality-preserving atmospheric-haze architecture against the traced original; retain only an end-to-end measured improvement because shader specialization and strength reduction already regressed.
+3. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.
+4. Run the quality-equivalent 300-frame Metal/OpenGL protocol with the new elapsed-plus-frame warm-up gate; profile the settled hero/probe transaction rather than startup FPS.
+5. Classify texture churn and run all four scenarios before changing automatic texture capacity, then continue the highest-value unblocked native-ownership cut.

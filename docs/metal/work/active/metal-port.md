@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
 **Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `c436b9fe6e` (`Classify deferred base lighting with depth`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
+**Renderer checkpoint:** Commit `e52de13acc` (`Implement native Metal occlusion queries`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
 ## Work board
@@ -15,10 +15,10 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-004 | Metal resources, transfers, readback and sync | doing | Exact-descriptor Metal target pooling retains owned attachments under a byte bound; streamed images use a separate containment capacity while original override/controller semantics remain. Copy/readback consumers and multi-scene policy validation follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Reusable native world/UI output and copied depth eliminate per-frame target recreation. Empty UI clips now preserve original no-op semantics; Conversations visibly opens/closes/reopens in attended 68497 evidence. |
-| M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners. Mid water, High SSAO and Ultra shadows pass; the owner accepts broad Ultra lighting/shadow/sky/color similarity in the bounded source-exact pair. |
+| M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners. Native asynchronous scene/probe visibility queries preserve original issue order and fail-open consumption; attended cull effectiveness remains open. |
 | M-008 | Advanced views/effects and compute | doing | Native mirror/probe lifecycle and an Ultra-plus-mirrors transition pass, but the matched pair shows a blue-gray Metal versus green-terrain OpenGL reflected background; trace content/clipping before any fix. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
-| M-010 | M1 Max profiling and optimization | doing | Hero/projector/base-light changes are measured; base light falls 76.6% to 2.688 ms/present, haze remains next, and qualifying steady-state paired 300-frame measurements remain open. |
+| M-010 | M1 Max profiling and optimization | doing | Hero/projector/base-light changes are measured; native occlusion queries are implemented but not yet measured in-world, haze remains next, and qualifying steady-state paired 300-frame measurements remain open. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, UI replay and retained glow/SMAA require no GL. Render tails remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
@@ -139,7 +139,7 @@ Original deferred-soften tracing next showed expensive geometry is depth-classif
 - `tools/metal/verify_app.sh`: 349/349 inspected slices are ARM64.
 - Executable SHA-256: `8c752d22881b2113ebf2be2b44ab09a9610e9e3e2e7066a516fea7ac005eabf4`.
 - Metallib SHA-256: `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-- Focused no-context renderer passes 220 assertions / 11 cases; query fail-closed proof passes 35 assertions; llrender passes 1,856/1,856 and Metal passes 52,681/52,681 assertions.
+- Exact original `1eb44bbd1b` tracing (query-source SHA-256 `df2536af88d9edf75f68fbccfe082d4b536d531684f19176e177fc6e405dd534`) establishes deferred opaque issue order, conservative versus exact zero/nonzero modes, original cube fans and asynchronous fail-open lifetime. The Metal replacement inserts queries at retained batch offsets in the same G-buffer pass and attaches tickets only after commit. Query proof passes 49 assertions; full Release llrender passes 1,881 assertions across 224 cases (223 passed, one skipped), and Metal passes 52,815 assertions across 58 cases with real-device result and ordering coverage. Release `68519` builds/stages/signs and verifies 349/349 ARM64 slices; executable SHA-256 is `1f7d1f5ae827dbad23ae24e1cbc8413925ab03488b53fe8d21a44146cf1cb28b`, packaged metallib SHA-256 is `163168fe50cedaa022a87608f354655246eb110838ad6ba113172555882181a1`, and attended cull-rate/visual/FPS evidence remains open.
 - Native glow/SMAA pass 19,815 assertions/four GPU cases; native lens-dirt/display-post ownership pass 3,019 assertions/two cases; native font atlas upload/readback/release passes 28 assertions/five cases.
 - Native transient pool passes 943 assertions / 14 cases; full alrender passes 556,617/556,617 assertions across 132 cases.
 - Full harness passes 517/517 tests in 1,204.60 seconds; six Darwin GL-only migration suites remain intentionally omitted.
@@ -165,11 +165,11 @@ Launch/login/capture only at the owner's explicit request and control; add bound
 
 ## Immediate executable action
 
-1. Prototype a quality-preserving atmospheric-haze architectural change against the traced original; two cheap shader rewrites already regressed and must stay reverted.
-2. Save a dedicated Ultra profile and repeat source-exact Metal versus exact-base `67607` from launch so the fail-closed gate, rather than a manual transition, owns the manifests.
-3. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.
-4. Run the quality-equivalent 300-frame Metal/OpenGL protocol with the new elapsed-plus-frame warm-up and profile only the settled hero/probe workload.
-5. Classify texture churn and run all four scenarios before tuning capacity, then continue the highest-value unblocked native-ownership cut.
+1. Run an attended dense-scene smoke test with native occlusion enabled; verify nonzero issued/ready/culled activity and no visibility popping, then record settled FPS independently of the earlier Ultra data.
+2. Prototype a quality-preserving atmospheric-haze architectural change against the traced original; two cheap shader rewrites already regressed and must stay reverted.
+3. Save a dedicated Ultra profile and repeat source-exact Metal versus exact-base `67607` from launch so the fail-closed gate, rather than a manual transition, owns the manifests.
+4. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.
+5. Run the quality-equivalent 300-frame Metal/OpenGL protocol with the new elapsed-plus-frame warm-up, then classify texture churn across all four scenarios before tuning capacity.
 
 ## Non-negotiable open gates
 
