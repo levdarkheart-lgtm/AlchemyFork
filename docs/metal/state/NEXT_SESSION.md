@@ -30,23 +30,23 @@ work.
 
 - Repository: `/Users/dekstroza/Programming/AI/Secondlife/Alchemy`.
 - Branch: `codex/apple-silicon-metal`.
-- Current code checkpoint: `18aedd2ecb` (`Reduce repeated Metal hero-view
-  encoding work`). It adds 1/8/32-slot covered-shadow shader variants,
-  80-byte opaque object-shadow constants, in-place capture, wider native
-  state/buffer/offset caches and shared completion-safe per-frame data.
+- Current code checkpoint: `175cd155dd` (`Remove repeated draw payload and
+  scene depth work`). Over `18aedd2ecb` it adds lazy inline material/coverage
+  payloads, one publication for identical vertex/fragment constants, cached
+  shared-page mappings and pooled color ownership with borrowed scene depth.
   Projector owner sharing/filtering is restored narrowly; `7cd1993d8e`
   texture-pressure separation remains reverted. Ultra still updates six faces.
-- Latest renderer implementation commit: `18aedd2ecb`.
+- Latest renderer implementation commit: `175cd155dd`.
 - Implementation began from clean synchronized commit `7a76893312`; recheck
   current branch/worktree state and never discard unexpected later edits.
 - Physical host: MacBookPro18,2, M1 Max, 64 GiB unified memory, macOS 26.5.2,
   Xcode 26.6, Metal Apple family 7. `tools/metal/doctor.sh` exits 0.
-- Current source-exact candidate is Xcode Release `26.4.0.68547` at
+- Current source-exact candidate is Xcode Release `26.4.0.68550` at
   `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-  It was built from renderer commit `18aedd2ecb`, passes deep strict signing
+  It was built from renderer commit `175cd155dd`, passes deep strict signing
   and 349/349 ARM64 slice inspection,
   and has executable SHA-256
-  `6f942194c757fb8a3335970ed1f527b5cf815d4d177d71e1d5ed5ee270c62609`.
+  `b54af1c45224738f9a8f6ec42e17a5ea3cc20478cb900e260c77101d9a66ecf9`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `5bd02961a77fdfcef9d28410e9f92fc86d1de08197aec113660e0cd0ccd779d1`.
 - The prior owner-attended `68543` run used the pinned Ultra profile from
@@ -65,13 +65,17 @@ work.
   so the formal 300-frame gate remains open. Record construction and arena
   publication still sample 7.66%/9.60% of active main-thread time. See
   `archive/CURRENT-68547-hero-cpu-runtime-2026-11-08.md` for evidence, resize-pool
-  memory confound and limits. No follow-up renderer change was made; await the
-  owner's next implementation instruction.
+  memory confound and limits. The owner then authorized the next repairs,
+  implemented at `175cd155dd`. Ready `68550` has not yet replaced the live
+  `68547` process; a permission request to close it and run the comparison is
+  pending. Do not mistake the new on-disk app hash for the older running code.
 - Both optimized Release and assertion-enabled RelWithDebInfo Metal suites
-  pass 53,125 assertions/63 cases with API/GPU validation. All test renderer
-  creation now exercises the production frame arena. Detailed source mapping,
-  corrected attribution and verification are in
-  `docs/metal/state/archive/CURRENT-hero-cpu-encoding-checkpoint-2026-11-08.md`.
+  pass 53,838 assertions/68 cases with API/GPU validation. Draw-payload defaults,
+  copies/moves, shared depth, color pool reuse and queued-resource lifetime
+  are covered. Constructor microbenchmarks improve about 59%/72% for ordinary
+  shadow/simple records, and the tested two-stage publication mechanism about
+  53%; these are not viewer FPS gains. Detailed source mapping and proof are in
+  `archive/CURRENT-draw-payload-depth-reuse-checkpoint-2026-11-08.md`.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
   Do not publish another tag/release without explicit authorization.
 
@@ -632,11 +636,11 @@ explicit owner authorization.
 
 ## Immediate next boundaries
 
-1. Preserve the attended `68547` bounded comparison and await owner instruction
-   before follow-up code changes. Compact common draw records, generation-based
-   immutable frame-data reuse and less per-draw packing/allocation are measured
-   next candidates. Any new comparison must complete camera/window setup before
-   its consecutive 300-frame CSV; do not reuse the excluded small-window data.
+1. After permission to replace the live `68547` session arrives, run ready
+   source-exact `68550`, maximize and set Midday/`Preset123` before warm-up ends.
+   Collect 300 consecutive exact-native frames and separate CPU/GPU traces
+   against `68547`; do not reuse the excluded small-window data. Keep all Ultra
+   controls, six faces and directional shadow cadence unchanged.
 2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
 3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene

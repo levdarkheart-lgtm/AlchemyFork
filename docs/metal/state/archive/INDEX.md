@@ -150,6 +150,7 @@ reload the chronological history.
 | Main-owned projector shadows, cube-view single-tap filtering and bounded finding review, 2026-11-08 | [CURRENT-probe-projector-sharing-checkpoint-2026-11-08.md](CURRENT-probe-projector-sharing-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Owner-attended Ultra 68537 regression diagnosis and exact-original Metal binding cache, 2026-11-08 | [CURRENT-68537-texture-binding-runtime-checkpoint-2026-11-08.md](CURRENT-68537-texture-binding-runtime-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Owner-attended maximized 68547 CPU/GPU comparison and remaining draw-record/frame-data costs, 2026-11-08 | [CURRENT-68547-hero-cpu-runtime-2026-11-08.md](CURRENT-68547-hero-cpu-runtime-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
+| Lazy draw-family payloads, one shader-stage publication, mapped arena pages and original shared scene depth, 2026-11-08 | [CURRENT-draw-payload-depth-reuse-checkpoint-2026-11-08.md](CURRENT-draw-payload-depth-reuse-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

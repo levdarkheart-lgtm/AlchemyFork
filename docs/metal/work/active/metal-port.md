@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
 **Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **Continuation:** [next-session handover](../../state/NEXT_SESSION.md). **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `18aedd2ecb` (`Reduce repeated Metal hero-view encoding work`); narrow shadow bindings/constants, in-place capture, wider state caching, completion-safe shared frame data and main projector sharing. Alpha-2 remains at `26.4.0.68512-alpha2`.
+**Renderer checkpoint:** Commit `175cd155dd` (`Remove repeated draw payload and scene depth work`); lazy inline material/coverage data, one publication for identical shader-stage bytes, cached shared-page mappings and original shared lighting depth with pooled color ownership. Alpha-2 remains at `26.4.0.68512-alpha2`.
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
 ## Work board
@@ -13,12 +13,12 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,797 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended Mid login/world load passes, while broader lifecycle/stability coverage remains. |
 | M-004 | Metal resources, transfers, readback and sync | doing | Vertex/index generations are completion-retired; retained G-buffers are borrowed and sequential haze shares one depth snapshot. Owner-directed comparison checkpoint temporarily restores pre-separation texture-pressure accounting; broader cache trimming remains. |
-| M-005 | MSL and explicit pipeline/resource binding | doing | `18aedd2ecb` adds 1/8/32 shadow signatures, 80-byte opaque constants, wider state/buffer-offset caches and completion-safe shared material/palette data; full validated Release/RelWithDebInfo Metal suites pass 53,125 assertions/63 cases each. |
+| M-005 | MSL and explicit pipeline/resource binding | doing | `175cd155dd` removes unused draw-family initialization and repeated stage publication/native mapping queries. Full validated Release/RelWithDebInfo Metal suites pass 53,838 assertions/68 cases each; all shader pixel baselines and completion-safe page reuse remain. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Reusable native world/UI output and copied depth eliminate per-frame target recreation. Empty UI clips now preserve original no-op semantics; Conversations visibly opens/closes/reopens in attended 68497 evidence. |
 | M-007 | World scene and material correctness | doing | Core world/material/terrain/avatar passes are native. `18aedd2ecb` restores main-owned projector maps and per-face single-tap sampling, narrows shadow bindings/constants and preserves directional cascades; attended light/shadow/mirror smoke remains open. |
 | M-008 | Advanced views/effects and compute | doing | Native mirror/probe lifecycle and an Ultra-plus-mirrors transition pass, but the matched pair shows a blue-gray Metal versus green-terrain OpenGL reflected background; trace content/clipping before any fix. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
-| M-010 | M1 Max profiling and optimization | doing | Owner-attended maximized `68547` records 8.2 versus 7.1 median log FPS, 6.790 versus 5.810 traced presents/s (+16.9%) and hero CPU encoding 31.42 versus 41.22 ms/present. [Runtime comparison and remaining CPU costs](../../state/archive/CURRENT-68547-hero-cpu-runtime-2026-11-08.md); formal 300-frame gate, historical best and 24 FPS remain open. No follow-up fix authorized by this profiling run. |
+| M-010 | M1 Max profiling and optimization | doing | `175cd155dd` addresses measured 7.66%/9.60% main CPU construction/publication and redundant per-view depth copies. [Implementation, mechanism timings and GPU proof](../../state/archive/CURRENT-draw-payload-depth-reuse-checkpoint-2026-11-08.md). Source-exact `68550` is built; attended comparison is pending. Previous `68547` median is 8.2 FPS. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, UI replay and retained glow/SMAA require no GL. Render tails remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
@@ -169,7 +169,7 @@ Launch/login/capture only at the owner's explicit request and control; add bound
 
 ## Immediate executable action
 
-1. Preserve the `68547` runtime checkpoint and await owner instruction before follow-up repairs. Proposed targets are compact draw records, generation-based immutable palette/material reuse and remaining constant packing/allocation; final camera/window setup must precede the 300-frame gate.
+1. Run the ready `68550` comparison after permission to replace the live session; complete window/camera setup before elapsed-plus-frame warm-up, collect 300 exact frames and separate CPU/GPU traces. Preserve Ultra quality, six hero faces, directional maps and view-dependent palettes.
 2. Add bounded issued/ready/culled query telemetry and run a dense-scene no-popping gate; live enablement is verified but effectiveness is not quantified.
 3. Require launch-gated Ultra manifests and captured camera transforms before accepting screenshots or the next source-exact performance pair.
 4. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.
