@@ -2017,6 +2017,20 @@ public:
     static std::unique_ptr<ALMetalWorldGBufferRenderer> create(
         const ALMetalDevice& device,
         std::string* error = nullptr);
+    static std::unique_ptr<ALMetalWorldGBufferRenderer> create(
+        const ALMetalDevice& device,
+        std::uint32_t max_anisotropy,
+        std::string* error = nullptr);
+
+    // Metal sampler states are immutable. Replacing these three persistent
+    // states keeps the native world, terrain, sky and probe paths on the same
+    // live RenderAnisotropicLevel contract as the original renderer without
+    // rebuilding shaders or render pipelines. A value of 1 is Metal's
+    // representation of the viewer's disabled (0) setting.
+    bool setAnisotropy(
+        std::uint32_t max_anisotropy,
+        std::string* error = nullptr);
+    std::uint32_t anisotropy() const noexcept;
 
     // Group a caller-owned sequence of dependent world encoders into one
     // command buffer. Standalone calls retain their existing immediate

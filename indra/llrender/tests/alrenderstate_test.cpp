@@ -177,6 +177,43 @@ TEST_CASE("Sampler intent remains available without an OpenGL context",
 }
 
 #if LL_DARWIN
+TEST_CASE("Native anisotropic sampler intent follows the literal viewer level",
+          "[alrenderstate][metal-cutover]")
+{
+    REQUIRE_FALSE(gGLManager.mInited);
+
+    struct StateReset
+    {
+        F32 anisotropy = LLRender::sAnisotropicFilteringLevel;
+        ~StateReset()
+        {
+            LLRender::sAnisotropicFilteringLevel = anisotropy;
+            gRenderCapabilities.reset();
+        }
+    } reset;
+
+    ALMetalDeviceInfo info;
+    info.name = "Test Apple GPU";
+    info.registry_id = 7;
+    info.highest_apple_family = 8;
+    info.highest_mac_family = 2;
+    gRenderCapabilities.initializeMetal(info);
+
+    constexpr std::array<std::pair<U32, U32>, 5> levels{{
+        {0, 1}, {2, 2}, {4, 4}, {8, 8}, {16, 16},
+    }};
+    for (const auto& [viewer_level, metal_level] : levels)
+    {
+        CAPTURE(viewer_level, metal_level);
+        LLRender::sAnisotropicFilteringLevel =
+            static_cast<F32>(viewer_level);
+        CHECK(ALSamplerCache::makeDesc(ALSamplers::AnisoWrap)
+                  .mMaxAnisotropy == static_cast<F32>(metal_level));
+        CHECK(ALSamplerCache::makeDesc(ALSamplers::AnisoClamp)
+                  .mMaxAnisotropy == static_cast<F32>(metal_level));
+    }
+}
+
 TEST_CASE("Texture slots retain native resource identity without OpenGL",
           "[alrenderstate][metal-cutover]")
 {

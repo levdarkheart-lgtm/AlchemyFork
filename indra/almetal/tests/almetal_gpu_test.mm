@@ -3314,6 +3314,19 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
         INFO(error);
         REQUIRE(renderer);
+        CHECK(renderer->anisotropy() == 1);
+        for (const std::uint32_t level : {2u, 4u, 8u, 16u, 1u})
+        {
+            CAPTURE(level);
+            REQUIRE(renderer->setAnisotropy(level, &error));
+            INFO(error);
+            CHECK(renderer->anisotropy() == level);
+        }
+        error.clear();
+        CHECK_FALSE(renderer->setAnisotropy(0, &error));
+        CHECK(renderer->anisotropy() == 1);
+        CHECK_FALSE(error.empty());
+        error.clear();
 
         const std::array<std::array<float, 4>, 3> positions{{
             {{-0.8f, -0.8f, 0.25f, 1.f}},
@@ -29026,6 +29039,37 @@ TEST_CASE("almetal: water depth pyramid culls only wholly hidden wave patches", 
         run_cull(0.9f, 0u, false);
         run_cull(0.9f, 1u, true);
         run_cull(0.1f, 1u, false);
+    }
+}
+
+TEST_CASE("almetal: sampler states retain supported anisotropy levels", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        for (const std::uint32_t level : {1u, 2u, 4u, 8u, 16u})
+        {
+            CAPTURE(level);
+            ALMetalSamplerDescriptor descriptor;
+            descriptor.max_anisotropy = level;
+            descriptor.label = "Alchemy anisotropy contract test sampler";
+            auto sampler = ALMetalSamplerState::create(
+                *device, descriptor, &error);
+            INFO(error);
+            REQUIRE(sampler);
+            CHECK(sampler->maxAnisotropy() == level);
+        }
+
+        ALMetalSamplerDescriptor invalid;
+        invalid.max_anisotropy = 0;
+        error.clear();
+        CHECK_FALSE(ALMetalSamplerState::create(
+            *device, invalid, &error));
+        CHECK_FALSE(error.empty());
     }
 }
 

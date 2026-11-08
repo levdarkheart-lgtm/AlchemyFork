@@ -308,6 +308,7 @@ public:
         std::string* error = nullptr);
 
     void* nativeHandle() const noexcept;
+    std::uint32_t maxAnisotropy() const noexcept;
 
 private:
     struct Impl;

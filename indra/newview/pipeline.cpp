@@ -452,6 +452,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     {
         const ALMetalDevice* device = nullptr;
         std::string owner;
+        U32 max_anisotropy = 1;
         std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
         std::string error;
         F64 seconds = 0.0;
@@ -1969,6 +1970,17 @@ bool LLPipeline::captureMetalVisibilityQuery(
     return true;
 }
 
+static U32 effectiveMetalWorldAnisotropy()
+{
+    // Reuse the original renderer's authoritative sampler resolution. Its
+    // disabled viewer setting (0) deliberately resolves to Metal's valid
+    // no-anisotropy value (1), while enabled values are capability-clamped.
+    const ALSamplerDesc descriptor =
+        ALSamplerCache::makeDesc(ALSamplers::AnisoWrap);
+    return static_cast<U32>(
+        llclamp(ll_round(descriptor.mMaxAnisotropy), 1, 16));
+}
+
 void LLPipeline::beginMetalWorldGBufferCapture()
 {
     const bool snapshot_request =
@@ -2434,6 +2446,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             std::make_shared<MetalWorldSimpleCapture::RendererBuild>();
         build->device = device;
         build->owner = probe_face ? "probe" : "main-world";
+        build->max_anisotropy = effectiveMetalWorldAnisotropy();
         capture.renderer_build = build;
         const bool posted = main_queue->postTo(
             general_queue,
@@ -2441,7 +2454,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             {
                 const auto start = std::chrono::steady_clock::now();
                 build->renderer = ALMetalWorldGBufferRenderer::create(
-                    *build->device, &build->error);
+                    *build->device, build->max_anisotropy,
+                    &build->error);
                 build->seconds = std::chrono::duration<F64>(
                     std::chrono::steady_clock::now() - start).count();
                 return build;
@@ -2551,6 +2565,25 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << LL_ENDL;
             capture.renderer->cancelCommandBatch();
         }
+    }
+
+    const U32 max_anisotropy = effectiveMetalWorldAnisotropy();
+    if (capture.renderer->anisotropy() != max_anisotropy)
+    {
+        std::string sampler_error;
+        if (!capture.renderer->setAnisotropy(
+                max_anisotropy, &sampler_error))
+        {
+            LL_WARNS("Metal")
+                << "Could not apply the live anisotropic-filtering setting "
+                   "to the native world renderer: "
+                << sampler_error << LL_ENDL;
+            return;
+        }
+    }
+
+    if (mMetalHeroWorldCaptureActive)
+    {
         std::string batch_error;
         if (!capture.renderer->beginCommandBatch(
                 "Alchemy native hero-probe face transaction",

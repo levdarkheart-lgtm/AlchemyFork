@@ -714,6 +714,7 @@ struct ALMetalSamplerState::Impl
 {
     id<MTLDevice> device = nil;
     id<MTLSamplerState> state = nil;
+    std::uint32_t max_anisotropy = 1;
 };
 
 ALMetalSamplerState::ALMetalSamplerState(std::unique_ptr<Impl> impl)
@@ -761,8 +762,14 @@ std::unique_ptr<ALMetalSamplerState> ALMetalSamplerState::create(
         auto impl = std::make_unique<Impl>();
         impl->device = native_device;
         impl->state = state;
+        impl->max_anisotropy = descriptor.max_anisotropy;
         return std::unique_ptr<ALMetalSamplerState>(new ALMetalSamplerState(std::move(impl)));
     }
+}
+
+std::uint32_t ALMetalSamplerState::maxAnisotropy() const noexcept
+{
+    return mImpl ? mImpl->max_anisotropy : 1;
 }
 
 void* ALMetalSamplerState::nativeHandle() const noexcept

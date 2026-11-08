@@ -1643,6 +1643,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalSamplerState> linear_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> linear_mirror_sampler;
     std::unique_ptr<ALMetalSamplerState> ramp_sampler;
+    std::uint32_t max_anisotropy = 1;
     std::unique_ptr<ALMetalSamplerState> hdri_sampler;
     std::unique_ptr<ALMetalTexture> brdf_lut;
     bool brdf_lut_ready = false;
@@ -1738,6 +1739,63 @@ struct ALMetalWorldGBufferRenderer::Impl
     }
 };
 
+namespace
+{
+bool createWorldAnisotropicSamplers(
+    const ALMetalDevice& device,
+    std::uint32_t max_anisotropy,
+    std::unique_ptr<ALMetalSamplerState>& diffuse_sampler,
+    std::unique_ptr<ALMetalSamplerState>& probe_sampler,
+    std::unique_ptr<ALMetalSamplerState>& ramp_sampler,
+    std::string* error)
+{
+    if (max_anisotropy < 1 || max_anisotropy > 16)
+    {
+        setError(error,
+            "Metal world anisotropy must be in the range 1...16");
+        return false;
+    }
+
+    ALMetalSamplerDescriptor sampler;
+    sampler.min_filter = ALMetalSamplerFilter::linear;
+    sampler.mag_filter = ALMetalSamplerFilter::linear;
+    sampler.mip_filter = ALMetalSamplerMipFilter::linear;
+    sampler.address_s = ALMetalSamplerAddressMode::repeat;
+    sampler.address_t = ALMetalSamplerAddressMode::repeat;
+    sampler.address_r = ALMetalSamplerAddressMode::repeat;
+    sampler.max_anisotropy = max_anisotropy;
+    sampler.label = "Alchemy world diffuse anisotropic wrap sampler";
+    auto diffuse = ALMetalSamplerState::create(device, sampler, error);
+    if (!diffuse)
+    {
+        return false;
+    }
+
+    sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.label =
+        "Alchemy world reflection-probe anisotropic clamp sampler";
+    auto probe = ALMetalSamplerState::create(device, sampler, error);
+    if (!probe)
+    {
+        return false;
+    }
+
+    sampler.label = "Alchemy world terrain ramp anisotropic clamp sampler";
+    auto ramp = ALMetalSamplerState::create(device, sampler, error);
+    if (!ramp)
+    {
+        return false;
+    }
+
+    diffuse_sampler = std::move(diffuse);
+    probe_sampler = std::move(probe);
+    ramp_sampler = std::move(ramp);
+    return true;
+}
+}
+
 ALMetalWorldGBufferRenderer::ALMetalWorldGBufferRenderer(
     std::unique_ptr<Impl> impl)
 : mImpl(std::move(impl))
@@ -1745,6 +1803,44 @@ ALMetalWorldGBufferRenderer::ALMetalWorldGBufferRenderer(
 }
 
 ALMetalWorldGBufferRenderer::~ALMetalWorldGBufferRenderer() = default;
+
+bool ALMetalWorldGBufferRenderer::setAnisotropy(
+    std::uint32_t max_anisotropy,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device)
+    {
+        setError(error, "Metal world renderer is unavailable");
+        return false;
+    }
+    if (mImpl->command_batch)
+    {
+        setError(error,
+            "Metal world anisotropy cannot change during a command batch");
+        return false;
+    }
+    if (mImpl->max_anisotropy == max_anisotropy &&
+        mImpl->diffuse_sampler && mImpl->probe_sampler &&
+        mImpl->ramp_sampler)
+    {
+        return true;
+    }
+
+    if (!createWorldAnisotropicSamplers(
+            *mImpl->device, max_anisotropy,
+            mImpl->diffuse_sampler, mImpl->probe_sampler,
+            mImpl->ramp_sampler, error))
+    {
+        return false;
+    }
+    mImpl->max_anisotropy = max_anisotropy;
+    return true;
+}
+
+std::uint32_t ALMetalWorldGBufferRenderer::anisotropy() const noexcept
+{
+    return mImpl ? mImpl->max_anisotropy : 1;
+}
 
 bool ALMetalWorldGBufferRenderer::beginCommandBatch(
     const std::string& label,
@@ -1835,6 +1931,20 @@ std::unique_ptr<ALMetalWorldGBufferRenderer>
 ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                                     std::string* error)
 {
+    return create(device, 1, error);
+}
+
+std::unique_ptr<ALMetalWorldGBufferRenderer>
+ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
+                                    std::uint32_t max_anisotropy,
+                                    std::string* error)
+{
+    if (max_anisotropy < 1 || max_anisotropy > 16)
+    {
+        setError(error,
+            "Metal world anisotropy must be in the range 1...16");
+        return nullptr;
+    }
     auto impl = std::make_unique<Impl>();
     impl->device = &device;
     impl->render_target_pool = ALMetalRenderTargetPool::create(device);
@@ -5034,31 +5144,15 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         return nullptr;
     }
 
+    if (!createWorldAnisotropicSamplers(
+            device, max_anisotropy, impl->diffuse_sampler,
+            impl->probe_sampler, impl->ramp_sampler, error))
+    {
+        return nullptr;
+    }
+    impl->max_anisotropy = max_anisotropy;
+
     ALMetalSamplerDescriptor sampler;
-    sampler.min_filter = ALMetalSamplerFilter::linear;
-    sampler.mag_filter = ALMetalSamplerFilter::linear;
-    sampler.mip_filter = ALMetalSamplerMipFilter::linear;
-    sampler.address_s = ALMetalSamplerAddressMode::repeat;
-    sampler.address_t = ALMetalSamplerAddressMode::repeat;
-    sampler.address_r = ALMetalSamplerAddressMode::repeat;
-    sampler.max_anisotropy = 16;
-    sampler.label = "Alchemy world diffuse anisotropic wrap sampler";
-    impl->diffuse_sampler = ALMetalSamplerState::create(device, sampler, error);
-    if (!impl->diffuse_sampler)
-    {
-        return nullptr;
-    }
-
-    sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
-    sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
-    sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
-    sampler.label = "Alchemy world reflection-probe anisotropic clamp sampler";
-    impl->probe_sampler = ALMetalSamplerState::create(device, sampler, error);
-    if (!impl->probe_sampler)
-    {
-        return nullptr;
-    }
-
     sampler.min_filter = ALMetalSamplerFilter::nearest;
     sampler.mag_filter = ALMetalSamplerFilter::nearest;
     sampler.mip_filter = ALMetalSamplerMipFilter::none;
@@ -5114,19 +5208,6 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->linear_mirror_sampler = ALMetalSamplerState::create(
         device, sampler, error);
     if (!impl->linear_mirror_sampler)
-    {
-        return nullptr;
-    }
-
-    sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
-    sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
-    sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
-
-    sampler.mip_filter = ALMetalSamplerMipFilter::linear;
-    sampler.max_anisotropy = 16;
-    sampler.label = "Alchemy world terrain ramp anisotropic clamp sampler";
-    impl->ramp_sampler = ALMetalSamplerState::create(device, sampler, error);
-    if (!impl->ramp_sampler)
     {
         return nullptr;
     }
