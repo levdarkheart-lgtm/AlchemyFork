@@ -47,11 +47,14 @@ work.
   `dfc5b4e92e36ee23df8da327232f69b42973b492bd6f119ef85e8d131298f82d`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
-- Owner-attended PID `85686` is running source-exact `68543` under the pinned
+- Owner-attended PID `86187` is running source-exact `68543` under the pinned
   Ultra profile from run directory
-  `artifacts/metal/qa-runs/candidate-68543-binding-cache-on-68532-20261108-01`.
-  It is launched but not yet live-verified; do not claim login, settings, or
-  performance until the owner finishes setup and requests measurement.
+  `artifacts/metal/qa-runs/candidate-68543-root-cause-instrumented-20261108-01`.
+  The process environment arms exact-native evidence at
+  `artifacts/metal/private-68543-root-cause-20261108-01.csv` with both 120-frame
+  and 30-second warm-up gates followed by 300 frames. It is not yet live-
+  verified; wait for the owner to finish setup before attaching Metal System
+  Trace and Time Profiler or claiming settings/performance.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
   Do not publish another tag/release without explicit authorization.
 
