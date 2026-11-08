@@ -31,18 +31,18 @@ work.
 - Repository: `/Users/dekstroza/Programming/AI/Secondlife/Alchemy`.
 - Branch: `codex/apple-silicon-metal`.
 - Code checkpoint before the evidence-only follow-up commit:
-  `8247d09c5d77f6fcb82a8f1451aaba40953230fe`.
+  `f93c9f192709cac151bfd76f4eccb20cdf262d67`.
 - Latest renderer implementation commit:
-  `8247d09c5d77f6fcb82a8f1451aaba40953230fe`.
+  `f93c9f192709cac151bfd76f4eccb20cdf262d67`.
 - Implementation began from clean synchronized commit `7a76893312`; recheck
   current branch/worktree state and never discard unexpected later edits.
 - Physical host: MacBookPro18,2, M1 Max, 64 GiB unified memory, macOS 26.5.2,
   Xcode 26.6, Metal Apple family 7. `tools/metal/doctor.sh` exits 0.
-- Current source-exact candidate is Xcode Release `26.4.0.68528` at
+- Current source-exact candidate is Xcode Release `26.4.0.68530` at
   `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-  It was built from renderer commit `8247d09c5d`, passes deep strict signing
+  It was built from renderer commit `f93c9f1927`, passes deep strict signing
   and 349/349 ARM64 slice inspection, and has executable SHA-256
-  `6382a4758a13b8f7fc725bd39184704a5c3515b7bf131e8166131b3fe8987547`.
+  `4c09ff9471b14d6f51c2603ce972d0bf5d70393ec30ba85c436cd0ab40cefafa`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
@@ -201,6 +201,36 @@ assertions/59 cases, and source-exact Release `68528` builds, signs and verifies
 Detailed evidence:
 `docs/metal/state/archive/CURRENT-bounded-local-point-lights-checkpoint-2026-11-08.md`.
 
+### Direct retained shadow slices
+
+Finding: directional and projector shadows used a pooled R32 color plus D32
+depth target, exported raw depth through the opaque fragment shader, then
+copied R32 into a persistent array slice. Confirmed. The D32 store action was
+already `dont_care`, so the issue was the extra color representation, fragment
+destination and explicit copy, not a second stored depth surface. Hero batching
+did not remove the copy; ordinary probe and main shadow pairs also remain less
+fully transacted than the later main-world work.
+
+Exact original `1eb44bbd1b` binds and renders each final directional/projector
+shadow target directly; its `pipeline.cpp` and `alrenderresourceplan.cpp`
+SHA-256 values are respectively
+`bb52adcb83cf493d57246b6410294bb8579f429454b024aeae1ae66efa23231b` and
+`398bbc83dbac2743a5bcd3809994029ec4864f47540ac73ca68a857cc213a6fd`.
+Commit `f93c9f192709cac151bfd76f4eccb20cdf262d67` makes borrowed array slices
+valid color attachments, allocates retained R32 arrays with render-target plus
+shader-read usage, and renders raw depth directly into the selected slice with
+a reusable private D32 test texture. The existing fragment output, pipelines,
+reverse-Z, clamping, alpha coverage, caster admission and raw-depth PCSS
+sampling remain unchanged. Diagnostic readback now runs only after a committed
+non-batched pass.
+
+Focused validated Release and RelWithDebInfo tests each pass 129 assertions;
+full validated Release Metal passes 52,862 assertions/59 cases. Source-exact
+Release `68530` builds, signs and verifies 349/349 ARM64 slices. No viewer
+launch, visual acceptance or FPS gain is claimed. Converting the retained
+representation to sampled depth arrays and depth-only opaque pipelines remains
+a separate change because it alters every raw-depth consumer and coverage path.
+
 ## Other important corrections already completed
 
 - `af65f062a1`: directional shadows. Original sparse null GLTF material slots
@@ -333,9 +363,9 @@ The evidence hashes and limitations are in:
   background remains an open content/clipping question; trace original mirror
   terrain/content before changing it.
 - Game Mode appeared correctly. It is not an open issue.
-- Latest `e90ccdf18f` geometry generations and `8247d09c5d` bounded ordinary
-  lights have build/GPU-test proof but not owner-attended preset/camera-boundary
-  visual smoke.
+- Latest `e90ccdf18f` geometry generations, `8247d09c5d` bounded ordinary
+  lights and `f93c9f1927` direct shadow slices have build/GPU-test proof but not
+  owner-attended preset/camera-boundary/shadow-continuity visual smoke.
 - Use `alchemy-viewer-visual-qa` and exact executable-path/process checks for
   any new reference/candidate launch. Launch/login/capture only on explicit
   owner request.
@@ -350,15 +380,15 @@ git rev-parse HEAD
 tools/metal/doctor.sh
 ```
 
-Narrow and full tests depend on the owner changed. For the latest local-light
+Narrow and full tests depend on the owner changed. For the latest shadow-slice
 change the commands were:
 
 ```sh
 cmake --build build-Darwin-ninja-os-arm64 --config Release --target almetal_tests
 cmake --build build-Darwin-ninja-os-arm64 --config RelWithDebInfo --target almetal_tests
-MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests 'almetal: native world G-buffer feeds exact deferred point lights'
-MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/RelWithDebInfo/almetal_tests 'almetal: native world G-buffer feeds exact deferred point lights'
-build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests 'almetal: direct spot-shadow array slices preserve strict raw raster depth'
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/RelWithDebInfo/almetal_tests 'almetal: direct spot-shadow array slices preserve strict raw raster depth'
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests
 ```
 
 Darwin Metal-only configuration intentionally omits legacy GL test binaries;
@@ -401,8 +431,8 @@ explicit owner authorization.
 ## Immediate next boundaries
 
 1. At the next explicitly requested launch, verify ordinary lights across the
-   camera boundary without popping, capture a matched fully resident local-light
-   trace, and smoke dynamic geometry at Low/Mid/High/Ultra.
+   camera boundary and directional/projector shadow continuity, capture a
+   matched fully resident trace, and smoke dynamic geometry at Low/Mid/High/Ultra.
 2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
 3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene
