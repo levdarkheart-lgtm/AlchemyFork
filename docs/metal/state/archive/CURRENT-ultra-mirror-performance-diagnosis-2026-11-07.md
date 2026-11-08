@@ -112,3 +112,73 @@ SHA-256 values are respectively
 and `a11ef2db25692e4cea277b0948f30d5008263ea1ab3705c26c31faa251722f65`.
 The full Metal suite passes 52,786 assertions/57 cases; the staged app passes
 deep strict signing and 349/349 ARM64 slice verification.
+
+## Second bounded optimization — 2026-11-08
+
+The next source-exact candidate is commit `3bd0451efc` and Release
+`26.4.0.68512`. Its executable SHA-256 is
+`86c520d97bdf640d9e791b6108c62bfb81cd1d40b99685dd73cd135ffcd411fe`.
+Exact original `1eb44bbd1b` source tracing established that deferred projector
+lights rasterize their light volume when the camera is outside and use the
+full-screen path only when it is inside. The Metal path instead invoked the
+projector fragment shader across the full target for every light and discarded
+unrelated fragments afterward.
+
+The candidate projects all eight corners of the conservative eye-space light
+bound through the active camera, adds one-pixel padding and clamps the result.
+Any non-finite corner or bound crossing the eye plane retains full-target
+shading. The native renderer validates and applies the rectangle as a Metal
+scissor before the unchanged fragment constants, textures and draw. An exact
+GPU readback test proves the bounded receiver matches the full-target result
+while an outside pixel remains clear.
+
+The owner drove Low, Mid, High and Ultra in one attended process at Spare Time
+`(105,21,24)`, `3456x1916`. LEAP recorded the production preset values rather
+than inferred slider labels. Settled log samples are:
+
+- Ultra: 19 samples, 6.9--7.2 FPS, median 7.1 after restoring sharpening to
+  `0.0`; shadows 2, SSAO on, probe level 3/count 256, mirrors 1024/every frame,
+  256 m, fixed exposure 1.0.
+- High: 9 samples, 15.7--17.7 FPS, median 16.3; shadows 1, SSAO on, probe level
+  1/count 128, 128 m and mirrors disabled by the original preset.
+- Mid: 6 settled samples, 37.8--43.0 FPS, median 41.7; shadows, SSAO, probes and
+  mirrors off at 128 m.
+- Low: 3 settled samples, 75.4--76.4 FPS, median 76.4; 64 m, one reflection
+  probe and the remaining advanced features off.
+
+Continuous native world/UI publication remained active through every
+transition. The owner did not report a visible issue while driving the sweep. This
+is a bounded live regression check, not a formal screenshot gate or the
+required performance sample count.
+
+The source-exact 30-second Metal System Trace is local at
+`/private/tmp/alchemy-metal-68512-projector-scissor-ultra-trace-20261108-1/metal-system.trace`.
+The frozen runtime directory is
+`/private/tmp/alchemy-metal-68512-projector-scissor-ultra-20261108-1`.
+Viewer log, run manifest, final LEAP sample, encoder export and GPU-interval
+export SHA-256 values are respectively
+`f0cf51f4e4e240de8b3fb2e9638b0eaf72b948c8d8f6e5a13e3d7bba5fd37bb5`,
+`ddc701804cf60201c189c8c02966055293b47503b7bcdc13a2f66e8afa441831`,
+`6d1bdb395afb1da0fb14cb31cd3678d3ed2c6a384581571a253286f7aed9aa82`,
+`6d158021be0de9fe042a3e4b3b4b7472d21afccfc529b471cc8f671cd1924373`
+and `37719b466656059e35daa8234c3034f951b1546433520d03db9c9fa374ad3804`.
+
+Normalizing GPU intervals by fused world/UI presents gives:
+
+| Encoder | 68511 ms/present | 68512 ms/present | Change |
+| --- | ---: | ---: | ---: |
+| Main-world projector | 24.341 | 5.144 | -78.9% |
+| Hero-face projector | 7.708 | 1.027 | -86.7% |
+| All Alchemy-labeled GPU channels | 141.800 | 100.789 | -28.9% |
+
+The prior trace contains 153 fused presents; the candidate contains 179, a
+17.0% increase under the same 30-second instrumentation window. The next
+largest labeled candidate passes are main atmospheric haze at 14.738
+ms/present and main base light at 11.470 ms/present. Instruments perturbs the
+viewer, scene content is live and this is not the 300-frame paired OpenGL gate,
+so the table is bounded optimization attribution rather than a release
+performance claim.
+
+`tools/metal/build.sh build` passes with the Ninja ARM64 Release preset. The
+full Metal suite passes 52,796 assertions/57 cases; deep signing and 349/349
+ARM64 slice verification pass.
