@@ -39,6 +39,7 @@
 #include <vector>
 #include <list>
 #include <memory>
+#include <utility>
 #include "llmatrix4a.h"
 
 #define LL_MAX_VERTEX_ATTRIB_LOCATION 64
@@ -329,6 +330,16 @@ protected:
 #if LL_DARWIN
     std::unique_ptr<ALMetalBuffer> mMetalBuffer;
     std::unique_ptr<ALMetalBuffer> mMetalIndices;
+    // glBufferData gave an existing GL name a fresh backing store: draws
+    // already queued kept the old bytes while later draws saw the new ones.
+    // Metal shared buffers do not orphan on a CPU write, so retain the old
+    // generations until the logical frame that may read them has completed.
+    using MetalBufferGeneration =
+        std::pair<std::unique_ptr<ALMetalBuffer>, U32>;
+    std::vector<MetalBufferGeneration> mRetiredMetalBuffers;
+    std::vector<MetalBufferGeneration> mRetiredMetalIndices;
+    bool mMetalBufferInitialized = false;
+    bool mMetalIndicesInitialized = false;
 #endif
 
     std::vector<MappedRegion> mMappedVertexRegions;  // list of mMappedData byte ranges that must be sent to GL
@@ -365,8 +376,9 @@ private:
     void touchContents();
     U64 mContentStamp = 0;
 
-    // Apple's path only: whether mMappedData / mMappedIndexData hold writes GL has not been
-    // given. An upload sends those stores, and any GL has no buffer for yet, and no others.
+    // Apple's path only: whether mMappedData / mMappedIndexData hold writes the
+    // authoritative GPU store has not been given. GL and Metal keep separate
+    // initialization state because a native buffer deliberately has no GL name.
     bool mVerticesWritten = false;
     bool mIndicesWritten = false;
 

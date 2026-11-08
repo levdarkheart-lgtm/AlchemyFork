@@ -42,8 +42,10 @@
 #include "llimagegl.h"
 #include "llmemory.h"
 
+#include <algorithm>
 #include <atomic>
 #include <boost/unordered_map.hpp>
+#include <utility>
 
 //Next Highest Power Of Two
 //helper function, returns first number > v that is a power of 2, or v if v is already a power of 2
@@ -186,6 +188,74 @@ static void drain_deleted_buffers()
         }
     }
 }
+
+#if LL_DARWIN
+namespace
+{
+    using MetalBufferGeneration =
+        std::pair<std::unique_ptr<ALMetalBuffer>, U32>;
+    using MetalBufferGenerations = std::vector<MetalBufferGeneration>;
+
+    // A vertex buffer may disappear after its native pointer was captured but
+    // before that frame's command buffer is encoded or completed. Keep those
+    // wrappers alive independently of LLVertexBuffer until the frame timeline
+    // says every possible reader is finished.
+    MetalBufferGenerations sRetiredMetalBuffers;
+
+    void collect_retired_metal_buffers(bool drain = false)
+    {
+        if (drain)
+        {
+            sRetiredMetalBuffers.clear();
+            return;
+        }
+
+        const ALFrameFences& frames = gGL.frameFences();
+        sRetiredMetalBuffers.erase(
+            std::remove_if(
+                sRetiredMetalBuffers.begin(), sRetiredMetalBuffers.end(),
+                [&frames](const MetalBufferGeneration& generation)
+                {
+                    return frames.isComplete(generation.second);
+                }),
+            sRetiredMetalBuffers.end());
+    }
+
+    void retire_metal_buffer(std::unique_ptr<ALMetalBuffer> buffer,
+                             U32 last_read_frame)
+    {
+        if (buffer)
+        {
+            sRetiredMetalBuffers.emplace_back(
+                std::move(buffer), last_read_frame);
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> take_completed_metal_buffer(
+        MetalBufferGenerations& generations)
+    {
+        const ALFrameFences& frames = gGL.frameFences();
+        std::unique_ptr<ALMetalBuffer> reusable;
+        for (auto generation = generations.begin();
+             generation != generations.end();)
+        {
+            if (frames.isComplete(generation->second))
+            {
+                if (!reusable)
+                {
+                    reusable = std::move(generation->first);
+                }
+                generation = generations.erase(generation);
+            }
+            else
+            {
+                ++generation;
+            }
+        }
+        return reusable;
+    }
+}
+#endif
 
 
 #define ANALYZE_VBO_POOL 0
@@ -988,6 +1058,12 @@ void LLVertexBuffer::cleanupClass()
     // Last: the pool's teardown above queued its buffers for deletion.
     drain_deleted_buffers();
 
+#if LL_DARWIN
+    // gGL.shutdown() drains the scheduler before LLVertexBuffer cleanup, so
+    // no native command can still reference a globally retired generation.
+    collect_retired_metal_buffers(true);
+#endif
+
     // What follows is a new context, whose names these were not.
     sBufferNameGeneration.fetch_add(1, std::memory_order_relaxed);
 }
@@ -1063,12 +1139,64 @@ static std::unique_ptr<ALMetalBuffer> allocate_metal_buffer(U32 size, const char
     }
     return buffer;
 }
+
+static bool upload_metal_buffer(
+    std::unique_ptr<ALMetalBuffer>& current,
+    MetalBufferGenerations& retired,
+    bool& initialized,
+    const void* bytes,
+    U32 size,
+    const char* label,
+    std::string& error)
+{
+    if (!bytes || size == 0)
+    {
+        error = "Cannot upload an empty native vertex-buffer store";
+        return false;
+    }
+
+    // The first upload cannot race a reader: no complete native generation
+    // has been published yet. Every later upload gets another store, just as
+    // the original Apple glBufferData path orphaned the name's old store.
+    if (!initialized)
+    {
+        if (!current)
+        {
+            current = allocate_metal_buffer(size, label);
+        }
+        if (!current || !current->write(0, bytes, size, &error))
+        {
+            return false;
+        }
+        initialized = true;
+        return true;
+    }
+
+    std::unique_ptr<ALMetalBuffer> next =
+        take_completed_metal_buffer(retired);
+    if (!next)
+    {
+        next = allocate_metal_buffer(size, label);
+    }
+    if (!next || !next->write(0, bytes, size, &error))
+    {
+        return false;
+    }
+
+    retired.emplace_back(
+        std::move(current), gGL.frameFences().frame());
+    current = std::move(next);
+    return true;
+}
 #endif
 
 //static
 void LLVertexBuffer::flushBuffers()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
+#if LL_DARWIN
+    collect_retired_metal_buffers();
+#endif
     // must only be called from main thread
     for (auto& buffer : sMappedBuffers)
     {
@@ -1197,6 +1325,7 @@ bool LLVertexBuffer::createGLBuffer(U32 size)
 
 #if LL_DARWIN
     mMetalBuffer = allocate_metal_buffer(size, "Alchemy vertex data");
+    mMetalBufferInitialized = false;
     if (sMetalDevice && !mMetalBuffer)
     {
         success = false;
@@ -1212,7 +1341,7 @@ bool LLVertexBuffer::createGLBuffer(U32 size)
 
 bool LLVertexBuffer::createGLIndices(U32 size)
 {
-    if (mGLIndices)
+    if (mGLIndices || mMappedIndexData)
     {
         destroyGLIndices();
     }
@@ -1228,6 +1357,7 @@ bool LLVertexBuffer::createGLIndices(U32 size)
 
 #if LL_DARWIN
     mMetalIndices = allocate_metal_buffer(size, "Alchemy index data");
+    mMetalIndicesInitialized = false;
     if (sMetalDevice && !mMetalIndices)
     {
         success = false;
@@ -1244,7 +1374,23 @@ bool LLVertexBuffer::createGLIndices(U32 size)
 void LLVertexBuffer::destroyGLBuffer()
 {
 #if LL_DARWIN
-    mMetalBuffer.reset();
+    collect_retired_metal_buffers();
+    for (MetalBufferGeneration& generation : mRetiredMetalBuffers)
+    {
+        retire_metal_buffer(
+            std::move(generation.first), generation.second);
+    }
+    mRetiredMetalBuffers.clear();
+    if (mMetalBufferInitialized)
+    {
+        retire_metal_buffer(
+            std::move(mMetalBuffer), gGL.frameFences().frame());
+    }
+    else
+    {
+        mMetalBuffer.reset();
+    }
+    mMetalBufferInitialized = false;
 #endif
     if (mGLBuffer || mMappedData)
     {
@@ -1264,7 +1410,23 @@ void LLVertexBuffer::destroyGLBuffer()
 void LLVertexBuffer::destroyGLIndices()
 {
 #if LL_DARWIN
-    mMetalIndices.reset();
+    collect_retired_metal_buffers();
+    for (MetalBufferGeneration& generation : mRetiredMetalIndices)
+    {
+        retire_metal_buffer(
+            std::move(generation.first), generation.second);
+    }
+    mRetiredMetalIndices.clear();
+    if (mMetalIndicesInitialized)
+    {
+        retire_metal_buffer(
+            std::move(mMetalIndices), gGL.frameFences().frame());
+    }
+    else
+    {
+        mMetalIndices.reset();
+    }
+    mMetalIndicesInitialized = false;
 #endif
     if (mGLIndices || mMappedIndexData)
     {
@@ -1581,23 +1743,45 @@ void LLVertexBuffer::_unmapBuffer()
         // delete names and keeps every old store the frames delete_buffers holds it. Keep
         // GL_STATIC_DRAW: a store given again as GL_DYNAMIC_DRAW takes many times as long.
         //
-        // Only the stores the map wrote are sent, and any GL has no buffer for yet, which it is
-        // given whatever they hold: a rebuild of the vertices alone leaves the indices as GL has
-        // them. Like the other path, a store not sent is not bound either.
+        // Only the stores the map wrote are sent, plus any store the active
+        // backend has not initialized yet: a rebuild of the vertices alone
+        // leaves the indices as the GPU has them. Metal reproduces GL's
+        // orphaning contract with completion-retired resource generations;
+        // it never uses the deliberately absent GL name as native state.
         if (!native_upload)
         {
             STOP_GLERROR;
         }
-        if (mMappedData && (mVerticesWritten || !mGLBuffer))
+#if LL_DARWIN
+        const bool upload_vertices = mVerticesWritten ||
+            (native_upload ? !mMetalBufferInitialized : !mGLBuffer);
+#else
+        const bool upload_vertices = mVerticesWritten || !mGLBuffer;
+#endif
+#if LL_DARWIN
+        bool metal_vertices_uploaded = true;
+#endif
+        if (mMappedData && upload_vertices)
         {
 #if LL_DARWIN
-            if (mMetalBuffer)
+            if (sMetalDevice)
             {
                 std::string error;
-                if (!mMetalBuffer->write(0, mMappedData, mSize, &error))
+                metal_vertices_uploaded = upload_metal_buffer(
+                    mMetalBuffer, mRetiredMetalBuffers,
+                    mMetalBufferInitialized, mMappedData, mSize,
+                    "Alchemy vertex data", error);
+                if (!metal_vertices_uploaded)
                 {
                     LL_WARNS("Metal") << "Could not upload vertex data: " << error << LL_ENDL;
                 }
+            }
+            else if (native_upload)
+            {
+                metal_vertices_uploaded = false;
+                LL_WARNS("Metal")
+                    << "Could not upload vertex data without a Metal device"
+                    << LL_ENDL;
             }
 #endif
             if (!native_upload)
@@ -1614,22 +1798,47 @@ void LLVertexBuffer::_unmapBuffer()
                 glBufferData(GL_ARRAY_BUFFER, mSize, mMappedData, GL_STATIC_DRAW);
             }
         }
+#if LL_DARWIN
+        mVerticesWritten = native_upload && upload_vertices &&
+            !metal_vertices_uploaded;
+#else
         mVerticesWritten = false;
+#endif
         if (!native_upload)
         {
             STOP_GLERROR;
         }
 
-        if (mMappedIndexData && (mIndicesWritten || !mGLIndices))
+#if LL_DARWIN
+        const bool upload_indices = mIndicesWritten ||
+            (native_upload ? !mMetalIndicesInitialized : !mGLIndices);
+#else
+        const bool upload_indices = mIndicesWritten || !mGLIndices;
+#endif
+#if LL_DARWIN
+        bool metal_indices_uploaded = true;
+#endif
+        if (mMappedIndexData && upload_indices)
         {
 #if LL_DARWIN
-            if (mMetalIndices)
+            if (sMetalDevice)
             {
                 std::string error;
-                if (!mMetalIndices->write(0, mMappedIndexData, mIndicesSize, &error))
+                metal_indices_uploaded = upload_metal_buffer(
+                    mMetalIndices, mRetiredMetalIndices,
+                    mMetalIndicesInitialized, mMappedIndexData,
+                    mIndicesSize, "Alchemy index data", error);
+                if (!metal_indices_uploaded)
                 {
                     LL_WARNS("Metal") << "Could not upload index data: " << error << LL_ENDL;
                 }
+            }
+            else if (native_upload)
+            {
+                metal_indices_uploaded = false;
+                LL_WARNS("Metal")
+                    << "Could not upload index data without a Metal device"
+                    << LL_ENDL;
             }
 #endif
             if (!native_upload)
@@ -1646,7 +1855,12 @@ void LLVertexBuffer::_unmapBuffer()
                 glBufferData(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData, GL_STATIC_DRAW);
             }
         }
+#if LL_DARWIN
+        mIndicesWritten = native_upload && upload_indices &&
+            !metal_indices_uploaded;
+#else
         mIndicesWritten = false;
+#endif
         if (!native_upload)
         {
             STOP_GLERROR;

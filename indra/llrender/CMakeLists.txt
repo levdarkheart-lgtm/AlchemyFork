@@ -169,6 +169,7 @@ if(AL_BUILD_TESTS)
       tests/algpubuffer_test.cpp
       tests/alquerypool_test.cpp
       tests/aluniformbuffer_test.cpp
+      tests/llvertexbuffer_test.cpp
     )
   endif()
   al_add_test_binary(
