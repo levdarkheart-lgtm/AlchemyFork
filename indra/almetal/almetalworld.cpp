@@ -5604,10 +5604,12 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     }
 
     constexpr std::size_t float4_stride = sizeof(float) * 4;
+    constexpr std::size_t max_inline_palette_bytes = 4096;
     constexpr std::uint32_t max_skin_joints = 110;
     std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
     std::vector<const ALMetalBuffer*> palette_buffers(
         scene.batch_count, nullptr);
+    std::vector<bool> inline_palettes(scene.batch_count, false);
     for (std::size_t index = 0; index < scene.batch_count; ++index)
     {
         const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
@@ -5832,21 +5834,32 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                          : std::string("none")) + ")");
                 return false;
             }
-            ALMetalBufferDescriptor descriptor;
-            descriptor.length = batch.skin_palette_float_count *
-                                sizeof(float);
-            descriptor.storage = ALMetalStorageMode::shared;
-            descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
-            descriptor.label = "Alchemy spot-shadow skin palette";
-            auto palette = ALMetalBuffer::create(
-                *mImpl->device, descriptor, error);
-            if (!palette || !palette->write(
-                    0, batch.skin_palette, descriptor.length, error))
+            const std::size_t palette_bytes =
+                batch.skin_palette_float_count * sizeof(float);
+            if (palette_bytes <= max_inline_palette_bytes)
             {
-                return false;
+                // Metal copies setVertexBytes data into completion-safe
+                // command storage. Avatar palettes and rigged palettes up to
+                // 85 joints therefore need no per-shadow MTLBuffer object.
+                inline_palettes[index] = true;
             }
-            palette_buffers[index] = palette.get();
-            palette_storage.push_back(std::move(palette));
+            else
+            {
+                ALMetalBufferDescriptor descriptor;
+                descriptor.length = palette_bytes;
+                descriptor.storage = ALMetalStorageMode::shared;
+                descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+                descriptor.label = "Alchemy spot-shadow skin palette";
+                auto palette = ALMetalBuffer::create(
+                    *mImpl->device, descriptor, error);
+                if (!palette || !palette->write(
+                        0, batch.skin_palette, descriptor.length, error))
+                {
+                    return false;
+                }
+                palette_buffers[index] = palette.get();
+                palette_storage.push_back(std::move(palette));
+            }
         }
         else if (batch.weight_offset != 0 ||
                  batch.skin_palette_float_count != 0 ||
@@ -6068,8 +6081,13 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             if (encoded && rigged)
             {
                 encoded =
-                    encoder->setVertexBuffer(
-                        4, *palette_buffers[index], 0, error) &&
+                    (inline_palettes[index]
+                         ? encoder->setVertexBytes(
+                               4, batch.skin_palette,
+                               batch.skin_palette_float_count *
+                                   sizeof(float), error)
+                         : encoder->setVertexBuffer(
+                               4, *palette_buffers[index], 0, error)) &&
                     encoder->setVertexBuffer(
                         5, *batch.vertices, batch.weight_offset, error);
             }
@@ -6128,8 +6146,13 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         if (encoded && rigged && covered)
         {
             encoded =
-                encoder->setVertexBuffer(
-                    4, *palette_buffers[index], 0, error) &&
+                (inline_palettes[index]
+                     ? encoder->setVertexBytes(
+                           4, batch.skin_palette,
+                           batch.skin_palette_float_count * sizeof(float),
+                           error)
+                     : encoder->setVertexBuffer(
+                           4, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
                     5, *batch.vertices, batch.weight_offset, error) &&
                 encoder->setVertexBytes(
@@ -6139,8 +6162,13 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         else if (encoded && rigged)
         {
             encoded =
-                encoder->setVertexBuffer(
-                    2, *palette_buffers[index], 0, error) &&
+                (inline_palettes[index]
+                     ? encoder->setVertexBytes(
+                           2, batch.skin_palette,
+                           batch.skin_palette_float_count * sizeof(float),
+                           error)
+                     : encoder->setVertexBuffer(
+                           2, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
                     3, *batch.vertices, batch.weight_offset, error) &&
                 encoder->setVertexBytes(
@@ -6640,6 +6668,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
     std::vector<const ALMetalBuffer*> palette_buffers(
         scene.batch_count, nullptr);
+    std::vector<bool> inline_palettes(scene.batch_count, false);
     for (std::size_t batch_index = 0;
          batch_index < scene.batch_count; ++batch_index)
     {
@@ -6648,10 +6677,21 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         {
             continue;
         }
+        constexpr std::size_t max_inline_palette_bytes = 4096;
+        const std::size_t palette_bytes =
+            batch.skin_palette_float_count * sizeof(float);
+        if (palette_bytes <= max_inline_palette_bytes)
+        {
+            // Inline command data is completion-safe and avoids rebuilding
+            // the same small native buffer for every probe/mirror view.
+            inline_palettes[batch_index] = true;
+            continue;
+        }
         for (std::size_t previous = 0; previous < batch_index; ++previous)
         {
             const ALMetalWorldSimpleBatch& candidate = scene.batches[previous];
-            if (candidate.skin_palette == batch.skin_palette &&
+            if (palette_buffers[previous] &&
+                candidate.skin_palette == batch.skin_palette &&
                 candidate.skin_palette_float_count ==
                     batch.skin_palette_float_count &&
                 candidate.skin_joint_count == batch.skin_joint_count)
@@ -6665,8 +6705,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             continue;
         }
         ALMetalBufferDescriptor palette_descriptor;
-        palette_descriptor.length =
-            batch.skin_palette_float_count * sizeof(float);
+        palette_descriptor.length = palette_bytes;
         palette_descriptor.storage = ALMetalStorageMode::shared;
         palette_descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
         palette_descriptor.label = "Alchemy world skin palette";
@@ -6701,6 +6740,61 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         ALMetalPixelFormat::depth32_float_stencil8;
     target_descriptor.depth_stencil_shader_read = true;
     target_descriptor.label = "Alchemy native world G-buffer bootstrap";
+    if (scene.destination)
+    {
+        const ALMetalRenderTargetDescriptor& destination_descriptor =
+            scene.destination->descriptor();
+        const ALMetalTexture* destination_depth =
+            scene.destination->depthStencilTexture();
+        bool compatible =
+            destination_descriptor.width == target_descriptor.width &&
+            destination_descriptor.height == target_descriptor.height &&
+            destination_descriptor.sample_count ==
+                target_descriptor.sample_count &&
+            destination_descriptor.mipmap_level_count ==
+                target_descriptor.mipmap_level_count &&
+            destination_descriptor.color_attachment_count ==
+                target_descriptor.color_attachment_count &&
+            destination_descriptor.depth_stencil_format ==
+                target_descriptor.depth_stencil_format &&
+            destination_depth &&
+            destination_depth->descriptor().type ==
+                ALMetalTextureType::texture_2d &&
+            alMetalHasUsage(destination_depth->descriptor().usage,
+                            ALMetalTextureUsage::shader_read);
+        for (std::uint32_t attachment = 0;
+             compatible && attachment <
+                 target_descriptor.color_attachment_count;
+             ++attachment)
+        {
+            const ALMetalTexture* destination_color =
+                scene.destination->colorTexture(attachment);
+            compatible = destination_color &&
+                destination_color->descriptor().type ==
+                    ALMetalTextureType::texture_2d &&
+                alMetalHasUsage(destination_color->descriptor().usage,
+                                ALMetalTextureUsage::shader_read) &&
+                destination_descriptor.colors[attachment].format ==
+                    target_descriptor.colors[attachment].format;
+        }
+        if (!compatible)
+        {
+            setError(error,
+                     "Metal world G-buffer destination is incompatible");
+            return nullptr;
+        }
+        for (std::uint32_t attachment = 0;
+             attachment < target_descriptor.color_attachment_count;
+             ++attachment)
+        {
+            target_descriptor.colors[attachment].texture =
+                scene.destination->colorTexture(attachment);
+        }
+        target_descriptor.depth_stencil_texture =
+            destination_depth;
+        target_descriptor.label =
+            "Alchemy retained world G-buffer view";
+    }
     auto target = mImpl->makeRenderTarget(
         *mImpl->device, target_descriptor, error);
     if (!target)
@@ -7185,8 +7279,13 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         if (encoded && batch.skin_palette)
         {
             encoded =
-                encoder->setVertexBuffer(
-                    5, *palette_buffers[index], 0, error) &&
+                (inline_palettes[index]
+                     ? encoder->setVertexBytes(
+                           5, batch.skin_palette,
+                           batch.skin_palette_float_count * sizeof(float),
+                           error)
+                     : encoder->setVertexBuffer(
+                           5, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
                     6, *batch.vertices, batch.weight_offset, error) &&
                 encoder->setVertexBytes(
@@ -7280,9 +7379,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 encoder->setFragmentBytes(
                     0, &pbr_constants, sizeof(pbr_constants), error);
         }
+        const std::size_t base_texture_count = material || pbr
+            ? ALMetalWorldSimpleBatch::max_material_slots
+            : ALMetalWorldSimpleBatch::max_diffuse_textures;
         for (std::size_t texture_index = 0;
-             encoded && texture_index <
-                 ALMetalWorldSimpleBatch::max_diffuse_textures;
+             encoded && texture_index < base_texture_count;
              ++texture_index)
         {
             const ALMetalTexture* texture = texture_index < batch.texture_count
@@ -15203,7 +15304,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
     std::unique_ptr<ALMetalRenderTarget> haze_depth_snapshot;
-    if (has_water_haze)
+    if (has_water_haze || has_atmospheric_haze)
     {
         ALMetalRenderTargetDescriptor haze_depth_descriptor;
         haze_depth_descriptor.width = scene.width;
@@ -15213,29 +15314,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             ALMetalPixelFormat::depth32_float_stencil8;
         haze_depth_descriptor.depth_stencil_shader_read = true;
         haze_depth_descriptor.label =
-            "Alchemy native world water-haze depth snapshot";
+            "Alchemy native world haze depth snapshot";
         haze_depth_snapshot = mImpl->makeRenderTarget(
             *mImpl->device, haze_depth_descriptor, error);
         if (!haze_depth_snapshot)
-        {
-            return nullptr;
-        }
-    }
-    std::unique_ptr<ALMetalRenderTarget> atmospheric_depth_snapshot;
-    if (has_atmospheric_haze)
-    {
-        ALMetalRenderTargetDescriptor depth_descriptor;
-        depth_descriptor.width = scene.width;
-        depth_descriptor.height = scene.height;
-        depth_descriptor.color_attachment_count = 0;
-        depth_descriptor.depth_stencil_format =
-            ALMetalPixelFormat::depth32_float_stencil8;
-        depth_descriptor.depth_stencil_shader_read = true;
-        depth_descriptor.label =
-            "Alchemy native world atmospheric-haze depth snapshot";
-        atmospheric_depth_snapshot = mImpl->makeRenderTarget(
-            *mImpl->device, depth_descriptor, error);
-        if (!atmospheric_depth_snapshot)
         {
             return nullptr;
         }
@@ -15667,8 +15749,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         {
             const ALMetalWorldAtmosphericHaze& haze =
                 *scene.atmospheric_haze;
-            if (!encoder->end(error) || !atmospheric_depth_snapshot ||
-                !atmospheric_depth_snapshot->copyDepthStencilFrom(
+            if (!encoder->end(error) || !haze_depth_snapshot ||
+                !haze_depth_snapshot->copyDepthStencilFrom(
                     *command, *output->depthStencilTexture(), {}, error))
             {
                 return fail_command();
@@ -15722,7 +15804,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     error) &&
                 encoder->setFragmentTexture(
                     33,
-                    atmospheric_depth_snapshot->depthStencilTexture(),
+                    haze_depth_snapshot->depthStencilTexture(),
                     error) &&
                 encoder->setFragmentTexture(34, sky_behind, error) &&
                 encoder->setFragmentSampler(

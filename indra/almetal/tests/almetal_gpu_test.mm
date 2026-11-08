@@ -3718,6 +3718,27 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
               ALMetalPixelFormat::rg11b10_float);
         REQUIRE(result->depthStencilTexture());
 
+        ALMetalRenderTargetDescriptor retained_descriptor =
+            result->descriptor();
+        retained_descriptor.label =
+            "Alchemy retained G-buffer destination test";
+        auto retained = ALMetalRenderTarget::create(
+            *device, retained_descriptor, &error);
+        INFO(error);
+        REQUIRE(retained);
+        scene.destination = retained.get();
+        auto borrowed = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(borrowed);
+        for (std::uint32_t attachment = 0; attachment < 4; ++attachment)
+        {
+            CHECK(borrowed->colorTexture(attachment) ==
+                  retained->colorTexture(attachment));
+        }
+        CHECK(borrowed->depthStencilTexture() ==
+              retained->depthStencilTexture());
+        scene.destination = nullptr;
+
         // The same retained box must pass before this opaque triangle and
         // fail after it. This proves batch_offset preserves the original GL
         // query issue point instead of testing against an empty or completed

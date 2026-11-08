@@ -16708,6 +16708,43 @@ void LLPipeline::endMetalWorldGBufferCapture()
     {
         std::fill(scene.clear_color, scene.clear_color + 4, 0.f);
     }
+    // The retained resource plan already owns the exact G-buffer layout used
+    // by the native renderer. Borrow that storage when it is compatible,
+    // rather than carrying a conversion-era second full-resolution set. Do
+    // not immediately overwrite the same retained set: the prior native
+    // transaction may still be in flight, so the pooled target remains the
+    // alternate frame/view destination.
+    if (!impostor_bake && mRT && mRT->deferredScreen.isComplete() &&
+        mRT->deferredScreen.getNumTextures() == 4 &&
+        mRT->deferredScreen.getWidth() == scene.width &&
+        mRT->deferredScreen.getHeight() == scene.height)
+    {
+        const ALMetalRenderTarget* retained =
+            mRT->deferredScreen.getMetalRenderTarget();
+        const ALMetalRenderTargetDescriptor* descriptor = retained
+            ? &retained->descriptor() : nullptr;
+        const bool exact_layout = descriptor &&
+            descriptor->color_attachment_count == 4 &&
+            descriptor->colors[0].format ==
+                ALMetalPixelFormat::rgba8_unorm_srgb &&
+            descriptor->colors[1].format ==
+                ALMetalPixelFormat::rgba8_unorm &&
+            descriptor->colors[2].format ==
+                (scene.normal_hdr ? ALMetalPixelFormat::rgba16_unorm
+                                  : ALMetalPixelFormat::rgb10a2_unorm) &&
+            descriptor->colors[3].format ==
+                (scene.hdr ? ALMetalPixelFormat::rg11b10_float
+                           : ALMetalPixelFormat::rgba8_unorm) &&
+            descriptor->depth_stencil_format ==
+                ALMetalPixelFormat::depth32_float_stencil8;
+        const bool previous_uses_retained = exact_layout &&
+            capture.target && capture.target->colorTexture(0) ==
+                retained->colorTexture(0);
+        if (exact_layout && !previous_uses_retained)
+        {
+            scene.destination = retained;
+        }
+    }
     std::string error;
     const bool batch_main_world = !impostor_bake &&
         isMainWorldPass() && mRT == &mMainRT;

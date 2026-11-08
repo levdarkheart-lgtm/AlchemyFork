@@ -867,6 +867,11 @@ struct ALMetalWorldGBufferScene
     std::size_t visibility_query_count = 0;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
+    // Optional retained destination supplied by the resource plan. The
+    // renderer accepts it only when all four color attachments plus depth
+    // exactly match this scene, then creates a borrowed wrapper instead of
+    // allocating a second physical G-buffer.
+    const ALMetalRenderTarget* destination = nullptr;
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
