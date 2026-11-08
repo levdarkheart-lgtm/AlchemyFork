@@ -623,6 +623,17 @@ public:
         const ALMetalRenderTargetDescriptor& descriptor,
         std::string* error = nullptr);
 
+    // Carry a scene's existing depth through a color-only target without a
+    // depth allocation or copy. The returned wrapper owns color_owner, so
+    // pooled color attachments return to their pool only when the wrapper
+    // retires. Depth remains externally owned and MUST outlive this wrapper.
+    // Only owned, single-sample color-only targets are accepted.
+    static std::unique_ptr<ALMetalRenderTarget> attachBorrowedDepth(
+        const ALMetalDevice& device,
+        std::unique_ptr<ALMetalRenderTarget> color_owner,
+        const ALMetalTexture& depth,
+        std::string* error = nullptr);
+
     const ALMetalRenderTargetDescriptor& descriptor() const noexcept;
     const ALMetalTexture* colorTexture(std::uint32_t index) const noexcept;
     // Transfers one resolved color attachment out of the target. The caller

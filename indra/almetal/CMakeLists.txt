@@ -135,13 +135,16 @@ if(AL_BUILD_TESTS)
     almetal_tests
     PROJECT almetal
     SOURCES tests/almetal_gpu_test.mm tests/almetal_encoder_cache_test.mm
-            tests/almetal_completion_test.mm
+            tests/almetal_completion_test.mm tests/almetal_world_data_test.mm
+            tests/almetal_borrowed_target_test.mm
     LIBRARIES almetal
     RESOURCE_LOCK apple_gpu
   )
   set_source_files_properties(tests/almetal_gpu_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_encoder_cache_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_completion_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_world_data_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_borrowed_target_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   if(AL_METAL_BUILTIN_LIBRARY)
     target_compile_definitions(
       almetal_tests

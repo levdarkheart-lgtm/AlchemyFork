@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -209,6 +210,29 @@ struct ALMetalWorldSpotShadowBatch
     static constexpr std::size_t max_textures = 32;
     static constexpr std::size_t max_pbr_slots = 8;
 
+    struct CoverageData
+    {
+        std::array<const ALMetalTexture*, max_textures> textures{};
+        std::array<float, max_textures> alpha_cutoffs{};
+        std::array<std::array<std::array<float, 4>, 2>, max_pbr_slots>
+            pbr_base_color_transforms{};
+    };
+
+    // A user-provided constructor leaves inactive optional storage alone.
+    // Opaque casters must not initialize the covered shader's texture arrays.
+    ALMetalWorldSpotShadowBatch() noexcept {}
+
+    CoverageData& coverageData()
+    {
+        if (!mCoverageData) mCoverageData.emplace();
+        return *mCoverageData;
+    }
+    const CoverageData& coverageData() const noexcept
+    {
+        static const CoverageData defaults;
+        return mCoverageData ? *mCoverageData : defaults;
+    }
+
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
     std::size_t normal_offset = 0;
@@ -236,10 +260,6 @@ struct ALMetalWorldSpotShadowBatch
     float avatar_gravity[4]{};
     float avatar_cloth_depth[4]{};
     float avatar_draw_alpha = 1.f;
-    std::array<const ALMetalTexture*, max_textures> textures{};
-    std::array<float, max_textures> alpha_cutoffs{};
-    std::array<std::array<std::array<float, 4>, 2>, max_pbr_slots>
-        pbr_base_color_transforms{};
     const ALMetalTexture* terrain_height_texture = nullptr;
     std::uint16_t terrain_tessellation_factors[6]{};
     float terrain_grid_scale = 0.f;
@@ -252,6 +272,9 @@ struct ALMetalWorldSpotShadowBatch
     bool avatar_cloth = false;
     bool terrain_smoothing = false;
     bool terrain_tessellation_pinned = false;
+
+private:
+    std::optional<CoverageData> mCoverageData;
 };
 
 struct ALMetalWorldSpotShadowScene
@@ -268,6 +291,35 @@ struct ALMetalWorldSimpleBatch
 {
     static constexpr std::size_t max_diffuse_textures = 32;
     static constexpr std::size_t max_material_slots = 8;
+
+    using MaterialSlots =
+        std::array<ALMetalWorldMaterialSlot, max_material_slots>;
+    using PBRSlots = std::array<ALMetalWorldPBRSlot, max_material_slots>;
+
+    // Most draws need neither material family. Keep their inline storage
+    // inactive until a producer writes it, preserving every slot default.
+    ALMetalWorldSimpleBatch() noexcept {}
+
+    MaterialSlots& materialSlots()
+    {
+        if (!mMaterialSlots) mMaterialSlots.emplace();
+        return *mMaterialSlots;
+    }
+    const MaterialSlots& materialSlots() const noexcept
+    {
+        static const MaterialSlots defaults;
+        return mMaterialSlots ? *mMaterialSlots : defaults;
+    }
+    PBRSlots& pbrSlots()
+    {
+        if (!mPBRSlots) mPBRSlots.emplace();
+        return *mPBRSlots;
+    }
+    const PBRSlots& pbrSlots() const noexcept
+    {
+        static const PBRSlots defaults;
+        return mPBRSlots ? *mPBRSlots : defaults;
+    }
 
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
@@ -288,10 +340,8 @@ struct ALMetalWorldSimpleBatch
     std::array<const ALMetalTexture*, max_diffuse_textures> diffuse_textures{};
     std::uint32_t texture_count = 0;
     const ALMetalTexture* normal_texture = nullptr;
-    std::array<ALMetalWorldMaterialSlot, max_material_slots> material_slots{};
     std::uint32_t material_slot_count = 0;
     std::uint32_t material_alpha_mode = 0;
-    std::array<ALMetalWorldPBRSlot, max_material_slots> pbr_slots{};
     std::uint32_t pbr_slot_count = 0;
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
@@ -387,6 +437,10 @@ struct ALMetalWorldSimpleBatch
     bool terrain_pbr = false;
     bool terrain_flat_normals = false;
     bool terrain_tessellation_pinned = false;
+
+private:
+    std::optional<MaterialSlots> mMaterialSlots;
+    std::optional<PBRSlots> mPBRSlots;
 };
 
 // Legacy edit-face and touch highlights are rendered after the ordered world
@@ -2010,6 +2064,10 @@ struct ALMetalWorldBaseLightingScene
     // base-light callers keep the historical color-only target by leaving
     // this false.
     bool carry_depth = false;
+    // Pipeline-owned scene chains keep the G-buffer alive through post/UI.
+    // Match the original shared screen depth without allocating/copying it.
+    // Standalone callers retain the independent copied-depth default.
+    bool borrow_depth = false;
     bool depth_stencil_shader_read = false;
     bool hdr = false;
 };

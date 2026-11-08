@@ -2176,6 +2176,9 @@ struct ALMetalRenderTarget::Impl
     std::array<std::unique_ptr<ALMetalTexture>, AL_METAL_MAX_COLOR_ATTACHMENTS> multisample_colors;
     std::unique_ptr<ALMetalTexture> depth_stencil;
     const ALMetalTexture* borrowed_depth_stencil = nullptr;
+    // Attachment wrappers may borrow a pooled color target while owning its
+    // lifetime. The child retains its original color-only pool descriptor.
+    std::unique_ptr<ALMetalRenderTarget> color_owner;
 };
 
 struct ALMetalRenderTargetPool::Impl
@@ -2665,6 +2668,61 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
 
     return std::unique_ptr<ALMetalRenderTarget>(
         new ALMetalRenderTarget(std::move(impl), descriptor));
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalRenderTarget::attachBorrowedDepth(
+    const ALMetalDevice& device,
+    std::unique_ptr<ALMetalRenderTarget> color_owner,
+    const ALMetalTexture& depth,
+    std::string* error)
+{
+    if (!color_owner || !color_owner->mImpl ||
+        color_owner->mDescriptor.sample_count != 1 ||
+        color_owner->mDescriptor.color_attachment_count == 0 ||
+        color_owner->mDescriptor.depth_stencil_format !=
+            ALMetalPixelFormat::invalid ||
+        color_owner->depthStencilTexture())
+    {
+        setError(error,
+                 "Borrowed-depth attachment requires an owned single-sample color-only target");
+        return nullptr;
+    }
+    ALMetalRenderTargetDescriptor descriptor = color_owner->mDescriptor;
+    for (std::uint32_t index = 0;
+         index < descriptor.color_attachment_count; ++index)
+    {
+        if (!color_owner->mImpl->colors[index] ||
+            color_owner->mImpl->borrowed_colors[index])
+        {
+            setError(error,
+                     "Borrowed-depth attachment requires owned color storage");
+            return nullptr;
+        }
+        descriptor.colors[index].texture = color_owner->colorTexture(index);
+    }
+    const ALMetalTextureDescriptor& source = depth.descriptor();
+    if ((source.format != ALMetalPixelFormat::depth32_float &&
+         source.format != ALMetalPixelFormat::depth32_float_stencil8) ||
+        source.storage == ALMetalStorageMode::memoryless)
+    {
+        setError(error,
+                 "Borrowed-depth attachment requires retained depth storage");
+        return nullptr;
+    }
+    descriptor.depth_stencil_format = source.format;
+    descriptor.depth_stencil_shader_read = alMetalHasUsage(
+        source.usage, ALMetalTextureUsage::shader_read);
+    descriptor.depth_stencil_texture = &depth;
+    descriptor.memoryless_depth_stencil = false;
+    // create() verifies native devices, formats, dimensions, sample count and
+    // render-target usage for every borrowed attachment before publication.
+    auto target = create(device, descriptor, error);
+    if (target)
+    {
+        target->mImpl->color_owner = std::move(color_owner);
+    }
+    return target;
 }
 
 const ALMetalRenderTargetDescriptor& ALMetalRenderTarget::descriptor() const noexcept

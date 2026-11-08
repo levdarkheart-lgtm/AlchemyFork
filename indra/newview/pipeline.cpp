@@ -8529,10 +8529,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 return false;
             }
             const std::size_t slot_count = std::min<std::size_t>(
-                batch.material_slot_count, batch.material_slots.size());
+                batch.material_slot_count, batch.materialSlots().size());
             return std::any_of(
-                batch.material_slots.begin(),
-                batch.material_slots.begin() + slot_count,
+                batch.materialSlots().begin(),
+                batch.materialSlots().begin() + slot_count,
                 [](const ALMetalWorldMaterialSlot& slot)
                 {
                     return slot.env_intensity > 0.f;
@@ -11311,12 +11311,12 @@ void LLPipeline::endMetalImpostorAlphaCapture()
         [](const ALMetalWorldSimpleBatch& batch)
         {
             const std::size_t slot_count = std::min<std::size_t>(
-                batch.material_slot_count, batch.material_slots.size());
+                batch.material_slot_count, batch.materialSlots().size());
             return batch.material_alpha_mode ==
                        LLMaterial::DIFFUSE_ALPHA_MODE_BLEND &&
                    std::any_of(
-                       batch.material_slots.begin(),
-                       batch.material_slots.begin() + slot_count,
+                       batch.materialSlots().begin(),
+                       batch.materialSlots().begin() + slot_count,
                        [](const ALMetalWorldMaterialSlot& slot)
                        {
                            return slot.env_intensity > 0.f;
@@ -12753,7 +12753,7 @@ void LLPipeline::captureMetalWorldMaterialBatch(
         LLViewerTexture* normal_texture = nullptr;
         LLViewerTexture* specular_texture = nullptr;
         ALMetalWorldMaterialSlot& destination =
-            batch.material_slots[slot_index];
+            batch.materialSlots()[slot_index];
         if (indexed_materials)
         {
             const LLDrawInfo::MaterialSlot& source =
@@ -13058,7 +13058,7 @@ void LLPipeline::captureMetalWorldPostWaterPBRGlowBatch(
             // The alpha pool restores its ordinary 0.004 coverage floor
             // before the group-local emissive replay. BLEND glow also
             // weights luminosity by that sampled base coverage.
-            batch.pbr_slots[slot].alpha_cutoff = 0.004f;
+            batch.pbrSlots()[slot].alpha_cutoff = 0.004f;
         }
     }
 }
@@ -13126,7 +13126,7 @@ void LLPipeline::captureMetalWorldPBRBatch(
         LLFetchedGLTFMaterial* material = indexed_materials
             ? params.mGLTFMaterialList[slot_index].get()
             : params.mGLTFMaterial.get();
-        ALMetalWorldPBRSlot& destination = batch.pbr_slots[slot_index];
+        ALMetalWorldPBRSlot& destination = batch.pbrSlots()[slot_index];
 
         LLViewerTexture* media_texture = !indexed_materials
             ? params.mTexture.get() : nullptr;
@@ -14349,17 +14349,17 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
             const LLDrawInfo::MaterialSlot& material =
                 params.mMaterialSlotList[slot];
             texture = material.mDiffuse.get();
-            batch.alpha_cutoffs[slot] = material.mAlphaMaskCutoff;
+            batch.coverageData().alpha_cutoffs[slot] = material.mAlphaMaskCutoff;
         }
         else if (indexed_textures)
         {
             texture = params.mTextureList[slot].get();
-            batch.alpha_cutoffs[slot] = params.mAlphaMaskCutoff;
+            batch.coverageData().alpha_cutoffs[slot] = params.mAlphaMaskCutoff;
         }
         else
         {
             texture = params.mTexture.get();
-            batch.alpha_cutoffs[slot] =
+            batch.coverageData().alpha_cutoffs[slot] =
                 capture.spot_shadow_coverage ==
                     ALMetalWorldSpotShadowCoverage::legacy_blend
                 ? ALPHA_BLEND_CUTOFF : params.mAlphaMaskCutoff;
@@ -14368,8 +14368,8 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
         {
             texture = LLViewerFetchedTexture::sWhiteImagep.get();
         }
-        batch.textures[slot] = metal_texture(texture);
-        if (!batch.textures[slot])
+        batch.coverageData().textures[slot] = metal_texture(texture);
+        if (!batch.coverageData().textures[slot])
         {
             capture.spot_shadow_first_incomplete_source_line = __LINE__;
             capture.spot_shadow_capture_complete = false;
@@ -14380,7 +14380,7 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
     if (capture.spot_shadow_coverage ==
             ALMetalWorldSpotShadowCoverage::legacy_blend)
     {
-        std::fill_n(batch.alpha_cutoffs.begin(), texture_count,
+        std::fill_n(batch.coverageData().alpha_cutoffs.begin(), texture_count,
                     ALPHA_BLEND_CUTOFF);
     }
 
@@ -14513,11 +14513,11 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
             // than invalidating every caster already captured for the map.
             LLViewerTexture* texture =
                 LLViewerFetchedTexture::sWhiteImagep.get();
-            batch.textures[slot] = metal_texture(texture);
-            batch.alpha_cutoffs[slot] = 0.f;
-            batch.pbr_base_color_transforms[slot][0][0] = 1.f;
-            batch.pbr_base_color_transforms[slot][0][1] = 1.f;
-            if (!batch.textures[slot])
+            batch.coverageData().textures[slot] = metal_texture(texture);
+            batch.coverageData().alpha_cutoffs[slot] = 0.f;
+            batch.coverageData().pbr_base_color_transforms[slot][0][0] = 1.f;
+            batch.coverageData().pbr_base_color_transforms[slot][0][1] = 1.f;
+            if (!batch.coverageData().textures[slot])
             {
                 capture.spot_shadow_first_incomplete_source_line = __LINE__;
                 capture.spot_shadow_capture_complete = false;
@@ -14534,17 +14534,17 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
                 ? material->mBaseColorTexture.get()
                 : LLViewerFetchedTexture::sWhiteImagep.get();
         }
-        batch.textures[slot] = metal_texture(texture);
-        batch.alpha_cutoffs[slot] =
+        batch.coverageData().textures[slot] = metal_texture(texture);
+        batch.coverageData().alpha_cutoffs[slot] =
             coverage == ALMetalWorldSpotShadowCoverage::pbr_blend
                 ? ALPHA_BLEND_CUTOFF : material->mAlphaCutoff;
         LLGLTFMaterial::TextureTransform::Pack packed;
         material->mTextureTransform[
             LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(packed);
-        std::memcpy(batch.pbr_base_color_transforms[slot].data(), packed,
+        std::memcpy(batch.coverageData().pbr_base_color_transforms[slot].data(), packed,
                     sizeof(packed));
         batch.double_sided = batch.double_sided || material->mDoubleSided;
-        if (!batch.textures[slot])
+        if (!batch.coverageData().textures[slot])
         {
             capture.spot_shadow_first_incomplete_source_line = __LINE__;
             capture.spot_shadow_capture_complete = false;
@@ -14634,9 +14634,9 @@ void LLPipeline::captureMetalSpotShadowTreeBatch(
     batch.index_type = buffer->getIndexStride() == 4
         ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
     batch.index_count = buffer->getNumIndices();
-    batch.textures[0] = native_texture;
+    batch.coverageData().textures[0] = native_texture;
     batch.texture_count = 1;
-    batch.alpha_cutoffs[0] = 0.5f;
+    batch.coverageData().alpha_cutoffs[0] = 0.5f;
     batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
 
     LLMatrix4a modelview_projection;
@@ -14946,9 +14946,9 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
     batch.avatar_draw_alpha = draw_alpha;
     if (covered)
     {
-        batch.textures[0] = native_texture;
+        batch.coverageData().textures[0] = native_texture;
         batch.texture_count = 1;
-        batch.alpha_cutoffs[0] = LLDrawPoolAvatar::sMinimumAlpha;
+        batch.coverageData().alpha_cutoffs[0] = LLDrawPoolAvatar::sMinimumAlpha;
     }
 
     if (skinned)
@@ -16434,7 +16434,7 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
     {
         batch.diffuse_textures[material] =
             metal_texture(base_color_textures[material]);
-        ALMetalWorldPBRSlot& slot = batch.pbr_slots[material];
+        ALMetalWorldPBRSlot& slot = batch.pbrSlots()[material];
         slot.normal_texture = metal_texture(normal_textures[material]);
         slot.orm_texture = metal_texture(orm_textures[material]);
         slot.emissive_texture = metal_texture(emissive_textures[material]);
@@ -18086,6 +18086,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     // place, then opaque-forward consumes it without a color copy. Keep the
     // depth shader-readable for water pyramids and coherent SSR history.
     scene.carry_depth = true;
+    scene.borrow_depth = true;
     scene.depth_stencil_shader_read = true;
     scene.hdr = capture.hdr;
     ALMetalWorldBaseLightingConstants& constants = scene.constants;

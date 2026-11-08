@@ -3210,8 +3210,8 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         avatar_batch.coverage =
             ALMetalWorldSpotShadowCoverage::avatar_mask;
         avatar_batch.texture_count = 1;
-        avatar_batch.alpha_cutoffs[0] = 0.2f;
-        avatar_batch.textures[0] = avatar_below_cutoff.get();
+        avatar_batch.coverageData().alpha_cutoffs[0] = 0.2f;
+        avatar_batch.coverageData().textures[0] = avatar_below_cutoff.get();
         auto rejected_avatar_mask = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(rejected_avatar_mask);
@@ -3222,7 +3222,7 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         CHECK(std::abs(rejected_avatar_mask_depth[16 * 32 + 16] - 1.f) <
               0.0001f);
 
-        avatar_batch.textures[0] = avatar_at_cutoff.get();
+        avatar_batch.coverageData().textures[0] = avatar_at_cutoff.get();
         auto accepted_avatar_mask = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(accepted_avatar_mask);
@@ -3235,7 +3235,7 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
 
         avatar_batch.coverage =
             ALMetalWorldSpotShadowCoverage::avatar_blend;
-        avatar_batch.textures[0] = opaque_coverage.get();
+        avatar_batch.coverageData().textures[0] = opaque_coverage.get();
         avatar_batch.avatar_draw_alpha = 0.5f;
         auto blended_avatar = render_spot_shadow(scene);
         INFO(error);
@@ -3262,9 +3262,9 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         batch.texcoord_offset = texcoord_offset;
         batch.color_offset = color_offset;
         batch.texture_count = 1;
-        batch.alpha_cutoffs[0] = 0.5f;
+        batch.coverageData().alpha_cutoffs[0] = 0.5f;
         batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
-        batch.textures[0] = below_cutoff.get();
+        batch.coverageData().textures[0] = below_cutoff.get();
         auto rejected_mask = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(rejected_mask);
@@ -3275,7 +3275,7 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         CHECK(std::abs(rejected_mask_depth[16 * 32 + 16] - 1.f) <
               0.0001f);
 
-        batch.textures[0] = above_cutoff.get();
+        batch.coverageData().textures[0] = above_cutoff.get();
         auto accepted_mask = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(accepted_mask);
@@ -3321,9 +3321,9 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
             color_offset, white_colors.data(), sizeof(white_colors),
             &error));
         batch.coverage = ALMetalWorldSpotShadowCoverage::pbr_mask;
-        batch.textures[0] = transform_coverage.get();
-        batch.pbr_base_color_transforms[0][0][0] = 1.f;
-        batch.pbr_base_color_transforms[0][0][1] = 1.f;
+        batch.coverageData().textures[0] = transform_coverage.get();
+        batch.coverageData().pbr_base_color_transforms[0][0][0] = 1.f;
+        batch.coverageData().pbr_base_color_transforms[0][0][1] = 1.f;
         auto unshifted_pbr = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(unshifted_pbr);
@@ -3334,7 +3334,7 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         CHECK(std::abs(unshifted_pbr_depth[16 * 32 + 16] - 0.5f) <
               0.0001f);
 
-        batch.pbr_base_color_transforms[0][1][0] = 0.5f;
+        batch.coverageData().pbr_base_color_transforms[0][1][0] = 0.5f;
         auto shifted_pbr = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(shifted_pbr);
@@ -3344,7 +3344,7 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
             32 * sizeof(float), &error));
         CHECK(std::abs(shifted_pbr_depth[16 * 32 + 16] - 1.f) <
               0.0001f);
-        batch.pbr_base_color_transforms[0][1][0] = 0.f;
+        batch.coverageData().pbr_base_color_transforms[0][1][0] = 0.f;
 
         const std::array<std::array<std::uint8_t, 4>, 3>
             half_alpha_colors{{
@@ -3356,8 +3356,8 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
             color_offset, half_alpha_colors.data(),
             sizeof(half_alpha_colors), &error));
         batch.coverage = ALMetalWorldSpotShadowCoverage::legacy_blend;
-        batch.textures[0] = opaque_coverage.get();
-        batch.alpha_cutoffs[0] = 0.598f;
+        batch.coverageData().textures[0] = opaque_coverage.get();
+        batch.coverageData().alpha_cutoffs[0] = 0.598f;
         auto stippled = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(stippled);
@@ -3372,7 +3372,7 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
             color_offset, white_colors.data(), sizeof(white_colors),
             &error));
         batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
-        batch.alpha_cutoffs[0] = 0.5f;
+        batch.coverageData().alpha_cutoffs[0] = 0.5f;
         batch.weight_offset = weight_offset;
         batch.skin_palette = skin_palette.data();
         batch.skin_palette_float_count = skin_palette.size();
@@ -3409,16 +3409,16 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                 : ALMetalWorldSpotShadowCoverage::texture_mask;
             for (std::uint32_t slot = 0; slot < slots; ++slot)
             {
-                batch.textures[slot] = below_cutoff.get();
-                batch.alpha_cutoffs[slot] = 0.5f;
+                batch.coverageData().textures[slot] = below_cutoff.get();
+                batch.coverageData().alpha_cutoffs[slot] = 0.5f;
                 if (slot < 8)
                 {
-                    batch.pbr_base_color_transforms[slot] = {};
-                    batch.pbr_base_color_transforms[slot][0][0] = 1.f;
-                    batch.pbr_base_color_transforms[slot][0][1] = 1.f;
+                    batch.coverageData().pbr_base_color_transforms[slot] = {};
+                    batch.coverageData().pbr_base_color_transforms[slot][0][0] = 1.f;
+                    batch.coverageData().pbr_base_color_transforms[slot][0][1] = 1.f;
                 }
             }
-            batch.textures[slots - 1] = above_cutoff.get();
+            batch.coverageData().textures[slots - 1] = above_cutoff.get();
             auto indexed = render_spot_shadow(scene);
             INFO(error);
             REQUIRE(indexed);
@@ -3426,7 +3426,7 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
             REQUIRE(indexed->readback(*device, 0, 0, {}, indexed_depth.data(),
                                      32 * sizeof(float), &error));
             CHECK(std::abs(indexed_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
-            batch.textures[slots - 1] = below_cutoff.get();
+            batch.coverageData().textures[slots - 1] = below_cutoff.get();
             auto rejected_indexed = render_spot_shadow(scene);
             REQUIRE(rejected_indexed);
             REQUIRE(rejected_indexed->readback(*device, 0, 0, {}, indexed_depth.data(),
@@ -3436,7 +3436,7 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         REQUIRE(vertices->write(0, positions.data(), sizeof(positions), &error));
         batch.texture_count = 1;
         batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
-        batch.textures[0] = nullptr;
+        batch.coverageData().textures[0] = nullptr;
         error.clear();
         CHECK_FALSE(render_spot_shadow(scene));
         CHECK(error == "Metal spot-shadow coverage texture is invalid");
@@ -4348,13 +4348,13 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         batch.diffuse_textures[1] = indexed_diffuse.get();
         batch.material_slot_count = 2;
         batch.material_alpha_mode = 1;
-        batch.material_slots[1].specular_color[0] = 0.25f;
-        batch.material_slots[1].specular_color[1] = 0.5f;
-        batch.material_slots[1].specular_color[2] = 0.75f;
-        batch.material_slots[1].specular_color[3] = 0.25f;
-        batch.material_slots[1].env_intensity = 0.375f;
-        batch.material_slots[1].alpha_cutoff = 0.5f;
-        batch.material_slots[1].fullbright = 0.25f;
+        batch.materialSlots()[1].specular_color[0] = 0.25f;
+        batch.materialSlots()[1].specular_color[1] = 0.5f;
+        batch.materialSlots()[1].specular_color[2] = 0.75f;
+        batch.materialSlots()[1].specular_color[3] = 0.25f;
+        batch.materialSlots()[1].env_intensity = 0.375f;
+        batch.materialSlots()[1].alpha_cutoff = 0.5f;
+        batch.materialSlots()[1].fullbright = 0.25f;
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error == "Metal world simple batch is invalid");
 
@@ -4402,8 +4402,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         batch.tangent_offset = tangent_offset;
         batch.texcoord1_offset = texcoord_offset;
         batch.texcoord2_offset = texcoord_offset;
-        batch.material_slots[0].normal_texture = bump_normal.get();
-        batch.material_slots[1].normal_texture = bump_normal.get();
+        batch.materialSlots()[0].normal_texture = bump_normal.get();
+        batch.materialSlots()[1].normal_texture = bump_normal.get();
         auto material_normal_map_result = renderer->render(scene, &error);
         INFO(error);
         REQUIRE(material_normal_map_result);
@@ -4430,8 +4430,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // when the fetched asset's shared backing is sRGB. The opaque
         // material owner must produce the same G-buffer normal from the same
         // raw bytes in either storage declaration.
-        batch.material_slots[0].normal_texture = srgb_bump_normal.get();
-        batch.material_slots[1].normal_texture = srgb_bump_normal.get();
+        batch.materialSlots()[0].normal_texture = srgb_bump_normal.get();
+        batch.materialSlots()[1].normal_texture = srgb_bump_normal.get();
         auto srgb_material_normal_map_result = renderer->render(scene, &error);
         INFO(error);
         REQUIRE(srgb_material_normal_map_result);
@@ -4447,11 +4447,11 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                   material_normal_map_normal[center + channel]);
         }
 
-        batch.material_slots[0].normal_texture = nullptr;
-        batch.material_slots[1].normal_texture = nullptr;
-        batch.material_slots[0].specular_texture =
+        batch.materialSlots()[0].normal_texture = nullptr;
+        batch.materialSlots()[1].normal_texture = nullptr;
+        batch.materialSlots()[0].specular_texture =
             material_specular_texture.get();
-        batch.material_slots[1].specular_texture =
+        batch.materialSlots()[1].specular_texture =
             material_specular_texture.get();
         auto material_specular_map_result = renderer->render(scene, &error);
         INFO(error);
@@ -4486,8 +4486,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                            material_specular_map_normal[center + 2]) -
                        12336) <= 3);
 
-        batch.material_slots[0].normal_texture = bump_normal.get();
-        batch.material_slots[1].normal_texture = bump_normal.get();
+        batch.materialSlots()[0].normal_texture = bump_normal.get();
+        batch.materialSlots()[1].normal_texture = bump_normal.get();
         batch.texcoord2_offset = vertex_bytes.size();
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error ==
@@ -4517,7 +4517,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                        12336) <= 3);
 
         batch.material_alpha_mode = 2;
-        batch.material_slots[1].alpha_cutoff = 1.01f;
+        batch.materialSlots()[1].alpha_cutoff = 1.01f;
         auto material_masked_result = renderer->render(scene, &error);
         INFO(error);
         REQUIRE(material_masked_result);
@@ -4641,7 +4641,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         batch.tangent_offset = tangent_offset;
         batch.material_slot_count = 2;
         batch.material_alpha_mode = 0;
-        batch.material_slots[1].fullbright = 0.25f;
+        batch.materialSlots()[1].fullbright = 0.25f;
         auto skinned_material_result = renderer->render(scene, &error);
         INFO(error);
         REQUIRE(skinned_material_result);
@@ -4686,7 +4686,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         batch.diffuse_textures[1] = pbr_base_texture.get();
         for (std::size_t slot = 0; slot < batch.pbr_slot_count; ++slot)
         {
-            ALMetalWorldPBRSlot& pbr = batch.pbr_slots[slot];
+            ALMetalWorldPBRSlot& pbr = batch.pbrSlots()[slot];
             pbr.normal_texture = bump_normal.get();
             pbr.orm_texture = pbr_orm_texture.get();
             pbr.emissive_texture = diffuse.get();
@@ -4716,11 +4716,11 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         alpha_scene.hdr = true;
         alpha_scene.normal_hdr = true;
         alpha_scene.reverse_z = false;
-        alpha_batch.pbr_slots[0].alpha_cutoff = 0.5f;
+        alpha_batch.pbrSlots()[0].alpha_cutoff = 0.5f;
         CHECK_FALSE(renderer->compositeImpostorPostDeferred(
             *coverage_result, alpha_scene, &error));
         CHECK(error == "Metal world PBR alpha material is invalid");
-        alpha_batch.pbr_slots[0].alpha_cutoff = -1.f;
+        alpha_batch.pbrSlots()[0].alpha_cutoff = -1.f;
         error.clear();
         REQUIRE(renderer->compositeImpostorPostDeferred(
             *coverage_result, alpha_scene, &error));
@@ -11717,11 +11717,11 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         pbr_glow_batch.index_count = index_values.size();
         pbr_glow_batch.diffuse_textures[0] = indexed_diffuse.get();
         pbr_glow_batch.texture_count = 1;
-        pbr_glow_batch.pbr_slots[0].emissive_texture =
+        pbr_glow_batch.pbrSlots()[0].emissive_texture =
             indexed_diffuse.get();
-        pbr_glow_batch.pbr_slots[0].emissive_color[1] = 0.5f;
-        pbr_glow_batch.pbr_slots[0].base_color_factor[3] = 1.f;
-        pbr_glow_batch.pbr_slots[0].alpha_cutoff = -1.f;
+        pbr_glow_batch.pbrSlots()[0].emissive_color[1] = 0.5f;
+        pbr_glow_batch.pbrSlots()[0].base_color_factor[3] = 1.f;
+        pbr_glow_batch.pbrSlots()[0].alpha_cutoff = -1.f;
         pbr_glow_batch.pbr_slot_count = 1;
         pbr_glow_batch.pbr_glow = true;
         std::memcpy(pbr_glow_batch.modelview_projection,
@@ -11746,12 +11746,12 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(error.find(
                   "Metal world opaque post-deferred batch is invalid") == 0);
         pbr_glow_batches[0].emissive_offset = emissive_offset;
-        pbr_glow_batches[0].pbr_slots[0].emissive_texture = nullptr;
+        pbr_glow_batches[0].pbrSlots()[0].emissive_texture = nullptr;
         error.clear();
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error));
         CHECK(error == "Metal world PBR glow slot is invalid");
-        pbr_glow_batches[0].pbr_slots[0].emissive_texture =
+        pbr_glow_batches[0].pbrSlots()[0].emissive_texture =
             indexed_diffuse.get();
         error.clear();
         auto pbr_glow_result = renderer->renderOpaquePostDeferred(
@@ -12209,14 +12209,14 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             legacy_alpha_batch.modelview[index * 4 + index] = 1.f;
         }
         legacy_alpha_batch.modelview[14] = -2.f;
-        legacy_alpha_batch.material_slots[0].specular_color[0] = 1.f;
-        legacy_alpha_batch.material_slots[0].specular_color[1] = 1.f;
-        legacy_alpha_batch.material_slots[0].specular_color[2] = 1.f;
-        legacy_alpha_batch.material_slots[0].specular_color[3] = 1.f;
-        legacy_alpha_batch.material_slots[0].normal_texture = nullptr;
-        legacy_alpha_batch.material_slots[0].specular_texture = nullptr;
-        legacy_alpha_batch.material_slots[0].env_intensity = 1.f;
-        legacy_alpha_batch.material_slots[0].fullbright = 0.f;
+        legacy_alpha_batch.materialSlots()[0].specular_color[0] = 1.f;
+        legacy_alpha_batch.materialSlots()[0].specular_color[1] = 1.f;
+        legacy_alpha_batch.materialSlots()[0].specular_color[2] = 1.f;
+        legacy_alpha_batch.materialSlots()[0].specular_color[3] = 1.f;
+        legacy_alpha_batch.materialSlots()[0].normal_texture = nullptr;
+        legacy_alpha_batch.materialSlots()[0].specular_texture = nullptr;
+        legacy_alpha_batch.materialSlots()[0].env_intensity = 1.f;
+        legacy_alpha_batch.materialSlots()[0].fullbright = 0.f;
 
         ALMetalWorldLegacyAlphaLighting legacy_lighting;
         legacy_lighting.sun_direction[2] = 1.f;
@@ -12359,7 +12359,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             reflection_probes.constants.ref_params[1][1];
         reflection_probes.constants.ref_params[0][1] = 0.f;
         reflection_probes.constants.ref_params[1][1] = 0.f;
-        legacy_alpha_batch.material_slots[0].normal_texture =
+        legacy_alpha_batch.materialSlots()[0].normal_texture =
             ssr_normal.get();
         legacy_alpha_scene.screen_space_reflections = nullptr;
         auto no_ssr_target = make_legacy_target();
@@ -12387,7 +12387,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // traces one mirror ray at full gloss and applies the authored
         // glossiness only to the final hit weight. A quarter-gloss hit is
         // therefore still strong enough to saturate this environment glare.
-        legacy_alpha_batch.material_slots[0].specular_color[3] = 0.25f;
+        legacy_alpha_batch.materialSlots()[0].specular_color[3] = 0.25f;
         auto low_gloss_ssr_target = make_legacy_target();
         INFO(error);
         REQUIRE(low_gloss_ssr_target);
@@ -12397,9 +12397,9 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(read_legacy_alpha_at(
                            *low_gloss_ssr_target, 16, 8)) -
                        128) <= 2);
-        legacy_alpha_batch.material_slots[0].specular_color[3] = 1.f;
+        legacy_alpha_batch.materialSlots()[0].specular_color[3] = 1.f;
         legacy_alpha_scene.screen_space_reflections = nullptr;
-        legacy_alpha_batch.material_slots[0].normal_texture = nullptr;
+        legacy_alpha_batch.materialSlots()[0].normal_texture = nullptr;
         reflection_probes.constants.ref_params[0][1] =
             saved_default_radiance_scale;
         reflection_probes.constants.ref_params[1][1] =
@@ -12410,7 +12410,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // one half. Tangent-space +X and an orthogonal green specular map
         // each remove that same red highlight, proving both authored maps
         // participate in the coverage calculation.
-        legacy_alpha_batch.material_slots[0].env_intensity = 0.f;
+        legacy_alpha_batch.materialSlots()[0].env_intensity = 0.f;
         auto sun_target = make_legacy_target();
         INFO(error);
         REQUIRE(sun_target);
@@ -12582,7 +12582,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                        128) <= 1);
         legacy_alpha_scene.directional_shadows = nullptr;
 
-        legacy_alpha_batch.material_slots[0].normal_texture =
+        legacy_alpha_batch.materialSlots()[0].normal_texture =
             bump_normal.get();
         auto normal_map_target = make_legacy_target();
         INFO(error);
@@ -12596,7 +12596,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // The impostor-alpha legacy material uses the same raw normal-map
         // contract. Hold the bytes constant while changing only the backing
         // declaration and require its glare-derived coverage to stay exact.
-        legacy_alpha_batch.material_slots[0].normal_texture =
+        legacy_alpha_batch.materialSlots()[0].normal_texture =
             flat_normal.get();
         auto linear_flat_normal_target = make_legacy_target();
         INFO(error);
@@ -12606,7 +12606,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         INFO(error);
         const std::uint8_t linear_flat_normal_alpha =
             read_legacy_alpha(*linear_flat_normal_target);
-        legacy_alpha_batch.material_slots[0].normal_texture =
+        legacy_alpha_batch.materialSlots()[0].normal_texture =
             srgb_flat_normal.get();
         auto srgb_flat_normal_target = make_legacy_target();
         INFO(error);
@@ -12617,8 +12617,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(read_legacy_alpha(*srgb_flat_normal_target) ==
               linear_flat_normal_alpha);
 
-        legacy_alpha_batch.material_slots[0].normal_texture = nullptr;
-        legacy_alpha_batch.material_slots[0].specular_texture =
+        legacy_alpha_batch.materialSlots()[0].normal_texture = nullptr;
+        legacy_alpha_batch.materialSlots()[0].specular_texture =
             indexed_diffuse.get();
         auto specular_map_target = make_legacy_target();
         INFO(error);
@@ -12629,8 +12629,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(
                            read_legacy_alpha(*specular_map_target)) - 64) <= 1);
 
-        legacy_alpha_batch.material_slots[0].specular_texture = nullptr;
-        legacy_alpha_batch.material_slots[0].fullbright = 1.f;
+        legacy_alpha_batch.materialSlots()[0].specular_texture = nullptr;
+        legacy_alpha_batch.materialSlots()[0].fullbright = 1.f;
         auto emissive_target = make_legacy_target();
         INFO(error);
         REQUIRE(emissive_target);
@@ -12643,7 +12643,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // Punctual glare follows the same legacy attenuation and spot/omni
         // contract as deferredUtil.glsl. Disable the sun, place an omni light
         // one metre above the eye-space surface and require raised coverage.
-        legacy_alpha_batch.material_slots[0].fullbright = 0.f;
+        legacy_alpha_batch.materialSlots()[0].fullbright = 0.f;
         legacy_lighting.sun_color[0] = 0.f;
         legacy_lighting.local_lights[0].position[2] = -0.75f;
         legacy_lighting.local_lights[0].diffuse[0] = 1.f;
@@ -12662,7 +12662,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // Object-skinned legacy alpha uses the same probe/material inputs but
         // writes depth, while the static variant above kept depth read-only.
         legacy_lighting.local_lights[0] = {};
-        legacy_alpha_batch.material_slots[0].env_intensity = 1.f;
+        legacy_alpha_batch.materialSlots()[0].env_intensity = 1.f;
         legacy_alpha_batch.skin_palette = alpha_skin_palette.data();
         legacy_alpha_batch.skin_palette_float_count =
             alpha_skin_palette.size();
@@ -12694,9 +12694,9 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         pre_water_material.pre_water_alpha = true;
         pre_water_material.pre_water_material = true;
         pre_water_material.pre_water_shadows = false;
-        pre_water_material.material_slots[0].specular_color[3] = 0.f;
-        pre_water_material.material_slots[0].env_intensity = 0.f;
-        pre_water_material.material_slots[0].fullbright = 1.f;
+        pre_water_material.materialSlots()[0].specular_color[3] = 0.f;
+        pre_water_material.materialSlots()[0].env_intensity = 0.f;
+        pre_water_material.materialSlots()[0].fullbright = 1.f;
         ALMetalWorldSimpleBatch pre_water_material_rigged =
             pre_water_material;
         pre_water_material_rigged.skin_palette = alpha_skin_palette.data();
@@ -12781,7 +12781,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // Restore lit material behavior. A shadowed cascade removes the
         // modern directional term without changing authored coverage; the
         // all-unbuilt mask restores the fully lit result.
-        pre_water_material.material_slots[0].fullbright = 0.f;
+        pre_water_material.materialSlots()[0].fullbright = 0.f;
         pre_water_material.pre_water_shadows = true;
         opaque_forward_scene.batches = &pre_water_material;
         directional_shadows.constants.config[1] = 0xeu;
@@ -12827,8 +12827,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // ordinary bright probe raises blue radiance and glare; the valid
         // black hero override removes both.
         pre_water_material.pre_water_shadows = false;
-        pre_water_material.material_slots[0].specular_color[3] = 1.f;
-        pre_water_material.material_slots[0].env_intensity = 1.f;
+        pre_water_material.materialSlots()[0].specular_color[3] = 1.f;
+        pre_water_material.materialSlots()[0].env_intensity = 1.f;
         alpha_environment.atmos_sunlit_linear[0] = 0.f;
         alpha_environment.atmos_sunlit_linear[1] = 0.f;
         alpha_environment.atmos_sunlit_linear[2] = 0.f;
@@ -12885,7 +12885,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             reflection_probes.constants.ref_params[1][1];
         reflection_probes.constants.ref_params[0][1] = 0.f;
         reflection_probes.constants.ref_params[1][1] = 0.f;
-        pre_water_material.material_slots[0].normal_texture =
+        pre_water_material.materialSlots()[0].normal_texture =
             ssr_normal.get();
         auto no_ssr_material_result =
             renderer->renderOpaquePostDeferred(
@@ -12911,7 +12911,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(half_to_float(pre_water_pixels[material_pixel + 0]) >
               no_ssr_material_red);
         opaque_forward_scene.screen_space_reflections = nullptr;
-        pre_water_material.material_slots[0].normal_texture = nullptr;
+        pre_water_material.materialSlots()[0].normal_texture = nullptr;
         reflection_probes.constants.ref_params[0][1] =
             material_default_radiance_scale;
         reflection_probes.constants.ref_params[1][1] =
@@ -12921,13 +12921,13 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // the simple-alpha diffuse-only helper. With authored gloss and the
         // environment disabled it must add visible green over the retained
         // background while also preserving the coverage contract.
-        pre_water_material.material_slots[0].env_intensity = 0.f;
-        pre_water_material.material_slots[0].specular_color[3] = 0.f;
+        pre_water_material.materialSlots()[0].env_intensity = 0.f;
+        pre_water_material.materialSlots()[0].specular_color[3] = 0.f;
         simple_alpha_lighting.local_lights[0].position[2] = 10.f;
         simple_alpha_lighting.local_lights[0].diffuse[1] = 0.5f;
         simple_alpha_lighting.local_lights[0].parameters[0] = 100.f;
         simple_alpha_lighting.local_lights[0].parameters[2] = 1.f;
-        pre_water_material.material_slots[0].normal_texture =
+        pre_water_material.materialSlots()[0].normal_texture =
             flat_normal.get();
         auto local_material_result = renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error);
@@ -12942,7 +12942,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         std::array<std::uint16_t, 4> linear_legacy_alpha_color{};
         std::copy_n(pre_water_pixels.begin() + material_pixel, 4,
                     linear_legacy_alpha_color.begin());
-        pre_water_material.material_slots[0].normal_texture =
+        pre_water_material.materialSlots()[0].normal_texture =
             srgb_flat_normal.get();
         auto srgb_local_material_result =
             renderer->renderOpaquePostDeferred(
@@ -12958,7 +12958,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             CHECK(pre_water_pixels[material_pixel + channel] ==
                   linear_legacy_alpha_color[channel]);
         }
-        pre_water_material.material_slots[0].normal_texture = nullptr;
+        pre_water_material.materialSlots()[0].normal_texture = nullptr;
         simple_alpha_lighting.local_lights[0] = {};
         alpha_environment.atmos_sunlit_linear[0] = 1.f;
         alpha_environment.atmos_sunlit_linear[1] = 0.5f;
@@ -12982,7 +12982,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         pre_water_pbr.diffuse_textures[0] = tree_diffuse.get();
         pre_water_pbr.double_sided = true;
         ALMetalWorldPBRSlot& pre_water_pbr_slot =
-            pre_water_pbr.pbr_slots[0];
+            pre_water_pbr.pbrSlots()[0];
         pre_water_pbr_slot.normal_texture = flat_normal.get();
         pre_water_pbr_slot.orm_texture = pbr_orm_texture.get();
         pre_water_pbr_slot.emissive_texture = diffuse.get();
@@ -14043,8 +14043,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
 
         ALMetalWorldSimpleBatch no_probe_material = pre_water_material;
         no_probe_material.pre_water_shadows = false;
-        no_probe_material.material_slots[0].env_intensity = 1.f;
-        no_probe_material.material_slots[0].specular_color[3] = 0.f;
+        no_probe_material.materialSlots()[0].env_intensity = 1.f;
+        no_probe_material.materialSlots()[0].specular_color[3] = 0.f;
         no_probe_forward_scene.batches = &no_probe_material;
         auto no_probe_material_blue = renderer->renderOpaquePostDeferred(
             no_probe_forward_scene, &error);
@@ -14070,11 +14070,11 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
 
         ALMetalWorldSimpleBatch no_probe_pbr = pre_water_pbr;
         no_probe_pbr.pre_water_shadows = false;
-        no_probe_pbr.pbr_slots[0].emissive_color[0] = 0.f;
-        no_probe_pbr.pbr_slots[0].emissive_color[1] = 0.f;
-        no_probe_pbr.pbr_slots[0].emissive_color[2] = 0.f;
-        no_probe_pbr.pbr_slots[0].roughness_factor = 0.f;
-        no_probe_pbr.pbr_slots[0].metallic_factor = 1.f;
+        no_probe_pbr.pbrSlots()[0].emissive_color[0] = 0.f;
+        no_probe_pbr.pbrSlots()[0].emissive_color[1] = 0.f;
+        no_probe_pbr.pbrSlots()[0].emissive_color[2] = 0.f;
+        no_probe_pbr.pbrSlots()[0].roughness_factor = 0.f;
+        no_probe_pbr.pbrSlots()[0].metallic_factor = 1.f;
         no_probe_forward_scene.batches = &no_probe_pbr;
         no_probe_forward_scene.legacy_environment =
             water_legacy_environment.get();
@@ -15062,7 +15062,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
 
         ALMetalWorldSimpleBatch post_water_pbr_glow = pbr_glow_batch;
         post_water_pbr_glow.post_water_glow = true;
-        post_water_pbr_glow.pbr_slots[0].alpha_cutoff = 0.004f;
+        post_water_pbr_glow.pbrSlots()[0].alpha_cutoff = 0.004f;
         post_water_glow_batches[2] = post_water_pbr_glow;
         auto post_water_pbr_glow_result =
             renderer->renderOpaquePostDeferred(
@@ -15111,11 +15111,11 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         post_water_glow_batches[2].indices = indices.get();
         post_water_glow_batches[2].diffuse_textures[0] =
             pbr_base_texture.get();
-        post_water_glow_batches[2].pbr_slots[0].emissive_texture =
+        post_water_glow_batches[2].pbrSlots()[0].emissive_texture =
             pbr_base_texture.get();
-        post_water_glow_batches[2].pbr_slots[0].emissive_color[0] = 1.f;
-        post_water_glow_batches[2].pbr_slots[0].emissive_color[1] = 1.f;
-        post_water_glow_batches[2].pbr_slots[0].emissive_color[2] = 1.f;
+        post_water_glow_batches[2].pbrSlots()[0].emissive_color[0] = 1.f;
+        post_water_glow_batches[2].pbrSlots()[0].emissive_color[1] = 1.f;
+        post_water_glow_batches[2].pbrSlots()[0].emissive_color[2] = 1.f;
         post_water_glow_batches[2].texture_matrix[12] = 1.25f;
         post_water_glow_batches[2].pre_water_particle = true;
         post_water_glow_batches[1].pre_water_particle = false;
@@ -15466,8 +15466,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         scene.mirror_clip = false;
 
         constexpr float half_pi = 1.5707963267948966f;
-        batch.pbr_slots[0].texture_transform[1][2] = half_pi;
-        batch.pbr_slots[1].texture_transform[1][2] = half_pi;
+        batch.pbrSlots()[0].texture_transform[1][2] = half_pi;
+        batch.pbrSlots()[1].texture_transform[1][2] = half_pi;
         auto rotated_pbr_result = renderer->render(scene, &error);
         INFO(error);
         REQUIRE(rotated_pbr_result);
@@ -15479,8 +15479,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(rotated_pbr_normal[center + 0]) -
                        32768) < 512);
         CHECK(rotated_pbr_normal[center + 1] < 512);
-        batch.pbr_slots[0].texture_transform[1][2] = 0.f;
-        batch.pbr_slots[1].texture_transform[1][2] = 0.f;
+        batch.pbrSlots()[0].texture_transform[1][2] = 0.f;
+        batch.pbrSlots()[1].texture_transform[1][2] = 0.f;
 
         batch.pbr_slot_count = 1;
         batch.texture_count = 1;
@@ -15501,8 +15501,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // A masked PBR texel uses base texture alpha times streamed alpha and
         // the same half-byte equality bias as the GL owner.
         batch.alpha_mask = true;
-        batch.pbr_slots[0].alpha_cutoff = 0.6f;
-        batch.pbr_slots[1].alpha_cutoff = 0.6f;
+        batch.pbrSlots()[0].alpha_cutoff = 0.6f;
+        batch.pbrSlots()[1].alpha_cutoff = 0.6f;
         auto pbr_masked_out = renderer->render(scene, &error);
         INFO(error);
         REQUIRE(pbr_masked_out);
@@ -15513,8 +15513,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(pbr_masked_albedo[center + 0] == 255);
         CHECK(pbr_masked_albedo[center + 1] == 0);
         CHECK(pbr_masked_albedo[center + 2] == 255);
-        batch.pbr_slots[0].alpha_cutoff = 0.253f;
-        batch.pbr_slots[1].alpha_cutoff = 0.253f;
+        batch.pbrSlots()[0].alpha_cutoff = 0.253f;
+        batch.pbrSlots()[1].alpha_cutoff = 0.253f;
         auto pbr_masked_in = renderer->render(scene, &error);
         INFO(error);
         REQUIRE(pbr_masked_in);
@@ -15527,8 +15527,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
 
         // Reuse the same complete PBR contract through object skinning.
         batch.alpha_mask = false;
-        batch.pbr_slots[0].alpha_cutoff = -1.f;
-        batch.pbr_slots[1].alpha_cutoff = -1.f;
+        batch.pbrSlots()[0].alpha_cutoff = -1.f;
+        batch.pbrSlots()[1].alpha_cutoff = -1.f;
         batch.weight_offset = weight_offset;
         batch.skin_palette = skin_palette.data();
         batch.skin_palette_float_count = skin_palette.size();
@@ -19456,6 +19456,8 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         REQUIRE(accumulated->descriptor().depth_stencil_format ==
                 ALMetalPixelFormat::depth32_float_stencil8);
         CHECK(accumulated->descriptor().depth_stencil_shader_read);
+        CHECK(accumulated->depthStencilTexture() !=
+              pbr_gbuffer->depthStencilTexture());
         const ALMetalRenderTarget* accumulated_identity = accumulated.get();
         REQUIRE(renderer->accumulateLocalLights(
             *accumulated, lighting_scene, &error));
@@ -19528,11 +19530,14 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         batched_base_scene.light_map =
             batched_light_map->colorTexture(0);
         batched_base_scene.carry_depth = true;
+        batched_base_scene.borrow_depth = true;
         batched_base_scene.depth_stencil_shader_read = true;
         auto batched_base = batched_renderer->renderBaseLighting(
             batched_base_scene, &error);
         INFO(error);
         REQUIRE(batched_base);
+        CHECK(batched_base->depthStencilTexture() ==
+              pbr_gbuffer->depthStencilTexture());
         const ALMetalRenderTarget* batched_identity = batched_base.get();
         REQUIRE(batched_renderer->accumulateLocalLights(
             *batched_base, batched_local_scene, &error));
@@ -26966,7 +26971,7 @@ TEST_CASE("almetal: PBR terrain preserves material tiers, paint ownership and ma
         batch.diffuse_textures[3] = base3.get();
         for (std::size_t material = 0; material < 4; ++material)
         {
-            ALMetalWorldPBRSlot& slot = batch.pbr_slots[material];
+            ALMetalWorldPBRSlot& slot = batch.pbrSlots()[material];
             slot.normal_texture = normal_map.get();
             slot.orm_texture = orm_map.get();
             slot.emissive_texture = emissive_map.get();
@@ -26975,13 +26980,13 @@ TEST_CASE("almetal: PBR terrain preserves material tiers, paint ownership and ma
             batch.terrain_normal_axes[material][0] = 1.f;
             batch.terrain_normal_axes[material][3] = 1.f;
         }
-        batch.pbr_slots[0].base_color_factor[0] = 0.5f;
-        batch.pbr_slots[0].base_color_factor[2] = 0.25f;
-        batch.pbr_slots[0].roughness_factor = 0.5f;
-        batch.pbr_slots[0].metallic_factor = 0.5f;
-        batch.pbr_slots[0].emissive_color[0] = 0.25f;
-        batch.pbr_slots[0].emissive_color[1] = 0.5f;
-        batch.pbr_slots[0].emissive_color[2] = 1.f;
+        batch.pbrSlots()[0].base_color_factor[0] = 0.5f;
+        batch.pbrSlots()[0].base_color_factor[2] = 0.25f;
+        batch.pbrSlots()[0].roughness_factor = 0.5f;
+        batch.pbrSlots()[0].metallic_factor = 0.5f;
+        batch.pbrSlots()[0].emissive_color[0] = 0.25f;
+        batch.pbrSlots()[0].emissive_color[1] = 0.5f;
+        batch.pbrSlots()[0].emissive_color[2] = 1.f;
         batch.terrain_height_texture = height.get();
         batch.terrain_composition_texture = composition.get();
         batch.terrain_paint_texture = paint_map.get();
@@ -27193,7 +27198,7 @@ TEST_CASE("almetal: PBR terrain preserves material tiers, paint ownership and ma
         batch.terrain_alpha_ramp_texture = nullptr;
         batch.terrain_paint_texture = paint_map.get();
         batch.alpha_mask = true;
-        batch.pbr_slots[0].alpha_cutoff = 0.75f;
+        batch.pbrSlots()[0].alpha_cutoff = 0.75f;
         auto masked_out = renderer->render(scene, &error);
         INFO(error);
         REQUIRE(masked_out);
@@ -27210,7 +27215,7 @@ TEST_CASE("almetal: PBR terrain preserves material tiers, paint ownership and ma
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error == "Metal world PBR terrain mask state is invalid");
         batch.alpha_mask = true;
-        batch.pbr_slots[0].alpha_cutoff = 0.5f;
+        batch.pbrSlots()[0].alpha_cutoff = 0.5f;
         error.clear();
         auto masked_in = renderer->render(scene, &error);
         INFO(error);
