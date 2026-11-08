@@ -30,27 +30,29 @@ work.
 
 - Repository: `/Users/dekstroza/Programming/AI/Secondlife/Alchemy`.
 - Branch: `codex/apple-silicon-metal`.
-- Current code checkpoint: `ec8159f8fb` (`Restore measured 68532 renderer
-  configuration`). It reverses only `7cd1993d8e`, `1682010004`, and
-  `f8af790f32`; every non-documentation source file matches measured renderer
-  commit `8f4d5654e5`, while all later commits/evidence remain in history.
-- Latest renderer implementation commit: `ec8159f8fb`.
+- Current code checkpoint: `177c443cfd` (`Restore binding cache on measured
+  renderer`). It is measured renderer `8f4d5654e5` plus only the exact
+  `f8af790f32` encoder-local texture/sampler binding cache; `7cd1993d8e`
+  texture-pressure separation and `1682010004` projector sharing remain
+  reverted, while all commits/evidence remain in history.
+- Latest renderer implementation commit: `177c443cfd`.
 - Implementation began from clean synchronized commit `7a76893312`; recheck
   current branch/worktree state and never discard unexpected later edits.
 - Physical host: MacBookPro18,2, M1 Max, 64 GiB unified memory, macOS 26.5.2,
   Xcode 26.6, Metal Apple family 7. `tools/metal/doctor.sh` exits 0.
-- Current source-exact candidate is Xcode Release `26.4.0.68541` at
+- Current source-exact candidate is Xcode Release `26.4.0.68543` at
   `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-  It was built from rollback commit `ec8159f8fb`, passes deep strict signing
+  It was built from binding-cache commit `177c443cfd`, passes deep strict signing
   and 349/349 ARM64 slice inspection, and has executable SHA-256
-  `54a8c05c4918f40dfe2e0d5e82a7ede9d57b2db73528e1abb1b1b4bd2f9549ae`.
+  `dfc5b4e92e36ee23df8da327232f69b42973b492bd6f119ef85e8d131298f82d`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
-- Owner-attended PID `59683` is running source-exact `68541` under the pinned
-  Ultra profile from run directory
+- Owner-attended PID `59683` remains the already-running source-exact `68541`
+  process under the pinned Ultra profile from run directory
   `artifacts/metal/qa-runs/candidate-restored-68532-68541-20261108-01`.
-  It is launched but not yet live-verified; do not claim login, settings, or
-  performance until the owner finishes setup and requests measurement.
+  The bundle path has since been rebuilt in place as `68543`; the live process
+  cannot validate the binding-cache candidate. Do not terminate it without
+  owner permission or claim `68543` runtime evidence from it.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
   Do not publish another tag/release without explicit authorization.
 
