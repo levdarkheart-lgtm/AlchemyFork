@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
 **Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `f799262971` (`Honor anisotropy preference in native world`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
+**Renderer checkpoint:** Commit `e90ccdf18f` (`Fix native vertex buffer upload generations`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
 ## Work board
@@ -12,7 +12,7 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-001 | Reproducible ARM64 OSS build/reference baseline | doing | Exact-base OpenGL `67607` and diagnostics-free Metal Release both build, stage, sign and verify 349/349 ARM64 slices; manual alpha-2 CI also clean-builds, verifies and publishes the ARM64 archive. Controlled visual/performance baselines remain open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,797 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended Mid login/world load passes, while broader lifecycle/stability coverage remains. |
-| M-004 | Metal resources, transfers, readback and sync | doing | Exact-descriptor Metal target pooling retains owned attachments under a byte bound; streamed images use a separate containment capacity while original override/controller semantics remain. Copy/readback consumers and multi-scene policy validation follow. |
+| M-004 | Metal resources, transfers, readback and sync | doing | Vertex/index stores now have independent native initialization/dirty state and completion-retired reusable Metal generations; resize/destruction preserves captured pointers. Owner-attended runtime smoke, remaining copy/readback consumers and multi-scene validation follow. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Persistent world/terrain/sky/probe samplers now follow the live original-compatible `0→1/2/4/8/16` Metal anisotropy contract without rebuilding pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Reusable native world/UI output and copied depth eliminate per-frame target recreation. Empty UI clips now preserve original no-op semantics; Conversations visibly opens/closes/reopens in attended 68497 evidence. |
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners. Native asynchronous scene/probe visibility queries preserve original issue order and fail-open consumption; attended cull effectiveness remains open. |
@@ -83,10 +83,9 @@ they no longer create, wait on or delete `GLsync` objects.
 `MTLBuffer`, ordered blits and exceptional synchronous readback. Timeline-safe
 stream rings refuse open-frame reuse; binding/query/compute tails remain.
 
-`dd41713fea` deletes `ALUniformBuffer`'s GL allocation, mapping, upload, binding
-and scratch calls. Private/shared Metal stores publish native buffer, aligned
-offset, size and serial. Timeline-safe rings grow, spill or fail closed;
-existing producers remain and historical update modes select one native path.
+`e90ccdf18f` repairs the persistent geometry-buffer path after tracing exact original `1eb44bbd1b`: native initialization no longer depends on deliberately zero GL names, uploads remain independently dirty, and later writes rotate reusable frame-retired Metal generations while resize/destruction retains captured wrappers through completion.
+
+`dd41713fea` deletes `ALUniformBuffer`'s GL allocation, mapping, upload, binding and scratch calls. Private/shared Metal stores publish native buffer, aligned offset, size and serial. Timeline-safe rings grow, spill or fail closed; existing producers remain and historical update modes select one native path.
 
 `cafe91682c` deletes GL sampler allocation/configuration/deletion; stable
 identities feed Metal directly. `6ec5884b85` gives slots real Metal texture
@@ -147,6 +146,7 @@ Release `68521` verifies live Ultra anisotropy `4` and `UseOcclusion=1`. After f
 - Focused shared shader tests: 1,353 assertions / 25 cases pass plus 13 hardware skips.
 - Broad shared tests reproduce baseline host/driver failures: four assertions in three frame-fence timing cases and one render-target depth-format assertion.
 - Commit `f799262971`: exact original tracing proves literal anisotropy levels and Ultra `4`; native mapping/state/world replacement proofs pass 8,092 assertions, full llrender passes 1,892 assertions/225 cases (one skipped), full Metal passes 52,842 assertions/59 cases, and Xcode Release `68521` builds/signs and verifies 349/349 ARM64 slices (executable SHA-256 `a527489ee69388abd6c34003e5d22632190807d7b8d95b589087f72b63a04353`). Harness structure remains 32/32; tool tests remain 31/31.
+- Commit `e90ccdf18f`: exact original tracing proves selective vertex/index uploads and fresh-backing lifetime. Focused Release and RelWithDebInfo native tests each pass 46 assertions; full Release llrender passes 1,938 assertions/226 cases (one skipped), full Metal passes 52,842 assertions/59 cases, and source-exact Xcode Release `68525` builds/signs and verifies 349/349 ARM64 slices (executable SHA-256 `cb42e7fd22575fba27096ba40ce2e514cade94a82eb8a0a68a2cdb9840315403`). Harness/tool tests pass 32/32 and 31/31.
 - Release 68493 verifies 349/349 ARM64 slices; attended Mid/HDR remains stable through 500+ native world/UI publications without the prior water-count rejection.
 - Commit `dbe1215cea`: diagnostics-free Xcode Release 68499 builds and verifies 349/349 ARM64 slices; the separate Ninja Metal suite passes 52,772 assertions/57 cases. Release `ctest` has no registrations because its preset has tests disabled; attended toggle-off and mirrors-off startup/login both pass.
 - Commit `af65f062a1`: Xcode Release 68502 builds and verifies 349/349 ARM64 slices; the focused Metal suite passes 52,774 assertions/57 cases; attended diagnostics show four populated main directional cascades and stable moving avatar/object shadows.
@@ -165,7 +165,7 @@ Launch/login/capture only at the owner's explicit request and control; add bound
 
 ## Immediate executable action
 
-1. Trace exact-original fully resident opaque post-deferred content/state/order before changing Metal; do not optimize against the incomplete early-load trace.
+1. At the next owner-directed launch, smoke dynamic geometry at Low/Mid/High/Ultra, then trace exact-original fully resident opaque post-deferred content/state/order; do not optimize against the incomplete early-load trace.
 2. Add bounded issued/ready/culled query telemetry and run a dense-scene no-popping gate; live enablement is verified but effectiveness is not quantified.
 3. Save a dedicated Ultra profile and repeat source-exact Metal versus exact-base `67607` from launch so the fail-closed gate, rather than a manual transition, owns the manifests.
 4. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.

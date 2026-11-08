@@ -1,9 +1,8 @@
 # Current engineering state
 
 **Observed:** 2026-11-08 on the physical M1 Max acceptance host.
-
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `f799262971` (`Honor anisotropy preference in native world`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
+**Renderer code checkpoint:** `e90ccdf18f` (`Fix native vertex buffer upload generations`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -71,7 +70,7 @@ The latest essential sequence is:
 
 `LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot source state is repaired; execution remains owner-attended. The source-exact Release artifact is now a bounded owner-attended startup/login/world-load smoke-test candidate, not a parity or GL-zero claim.
 
-The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. Native Metal visibility-result queries replace the missing scene/probe query path. Persistent native world/terrain/sky/probe samplers now follow the original renderer's live literal anisotropy levels (`0` maps to Metal `1`, then `2/4/8/16`) instead of forcing 16×. In bounded attended Ultra evidence, Release `68521` held live `UseOcclusion=1` and anisotropy `4`; its settled 54-sample median/mean were `6.35`/`6.322` FPS versus immediate predecessor `68515` at `5.9`/`5.833`, a directional 7.63%/8.38% improvement. Camera transform, raw consecutive-frame data and a retained source-exact predecessor were not available, so this is not the formal performance gate and no isolated query or anisotropy gain is claimed.
+The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. Native Metal visibility-result queries replace the missing scene/probe query path. Persistent native world/terrain/sky/probe samplers now follow the original renderer's live literal anisotropy levels (`0` maps to Metal `1`, then `2/4/8/16`) instead of forcing 16×. In bounded attended Ultra evidence, Release `68521` held live `UseOcclusion=1` and anisotropy `4`; its settled 54-sample median/mean were `6.35`/`6.322` FPS versus immediate predecessor `68515` at `5.9`/`5.833`, a directional 7.63%/8.38% improvement. Camera transform, raw consecutive-frame data and a retained source-exact predecessor were not available, so this is not the formal performance gate and no isolated query or anisotropy gain is claimed. Commit `e90ccdf18f` restores the exact original vertex/index dirty-store contract without treating absent GL names as native initialization state; later native uploads rotate completion-retired reusable Metal generations and native index resize releases the CPU store. The [archived checkpoint](archive/CURRENT-native-vertex-buffer-generations-checkpoint-2026-11-08.md) records provenance, lifetime reasoning and tests; runtime visual/performance evidence remains owner-attended and no FPS gain is claimed.
 
 ### Attended-runtime correction committed as `2e2ac6e1c9`
 
@@ -112,6 +111,7 @@ Fully resident Release `68521` profiling found main opaque post-deferred at `55.
 - `python3 tools/metal/validate_harness.py` passes all 32 required files;
   `python3 -m unittest discover -s tools/metal/tests -v` passes 31/31.
 - Commit `f799262971`: original `1eb44bbd1b` tracing confirms literal `0/2/4/8/16` sampler intent and Ultra `4`; native sampler/world replacement proofs pass 8,092 assertions, full llrender passes 1,892 assertions/225 cases (one skipped), full Metal passes 52,842 assertions/59 cases, Xcode Release `68521` builds/signs and verifies 349/349 ARM64 slices; executable SHA-256 is `a527489ee69388abd6c34003e5d22632190807d7b8d95b589087f72b63a04353`.
+- Commit `e90ccdf18f`: exact original `1eb44bbd1b` tracing establishes selective store upload plus `glBufferData` orphaning. Focused Release and RelWithDebInfo native proofs each pass 46 assertions; full Release llrender passes 1,938 assertions/226 cases (one skipped), full Metal passes 52,842 assertions/59 cases, and source-exact Xcode Release `68525` builds/signs and verifies 349/349 ARM64 slices. Executable SHA-256 is `cb42e7fd22575fba27096ba40ce2e514cade94a82eb8a0a68a2cdb9840315403`; harness/tool tests remain 32/32 and 31/31.
 - Release `26.4.0.68493`, built from the mixed working checkpoint containing the now-committed correction at 2026-11-07 01:08:12 GMT, has executable SHA-256 `dfd02973a45085b790c334f1c47574549ce632b6b9e6f6a377946574f972ffd0`; `verify_app.sh` passes 349/349 ARM64 slices and attended Mid/HDR evidence is `/tmp/alchemy-metal-68493-water-wave-release-20261107.log`.
 - At `dbe1215cea`, Xcode Release `68499` builds warnings-as-errors and verifies 349/349 ARM64 slices; the direct Metal suite passes 52,772 assertions across 57 cases. Release-tree `ctest` correctly reports no registered tests because that preset has `AL_BUILD_TESTS=OFF`; the separate Ninja test preset supplied the passing suite. Owner-attended mirror toggle-off and mirrors-off startup/login both pass; raw account/location logs remain local.
 - Commit `af65f062a1`: Xcode Release `68502` builds and verifies 349/349 ARM64 slices; the direct Metal suite passes 52,774 assertions across 57 cases. Opt-in runtime diagnostics and owner evidence show four populated main-world directional cascades and stable moving avatar/object shadows.
@@ -134,7 +134,7 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended Mid login/world load now passes, while broader lifecycle and stability validation remain. |
-| M-004 resources/readback | doing | Native targets now reuse exact owned attachment sets under a byte bound; streamed images use a separate containment capacity while the original override/controller semantics remain. Remaining copy/readback consumers and multi-scene policy validation follow. |
+| M-004 resources/readback | doing | Native vertex/index uploads now preserve independent dirty state and use completion-retired, reusable Metal generations; resize/destruction keeps captured pointers valid. Runtime smoke plus remaining copy/readback and multi-scene validation follow. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
 | M-006 UI/media | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only. Original-compatible empty clips no-op before Metal encoding; Conversations visibly opens/closes/reopens in attended `68497` evidence. Broader UI parity remains open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners; native asynchronous scene/probe visibility queries now preserve original issue order and fail-open consumption. Runtime cull effectiveness and broader parity remain open. |
