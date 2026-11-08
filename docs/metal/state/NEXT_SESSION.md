@@ -30,24 +30,23 @@ work.
 
 - Repository: `/Users/dekstroza/Programming/AI/Secondlife/Alchemy`.
 - Branch: `codex/apple-silicon-metal`.
-- Code checkpoint before the evidence-only follow-up commit:
-  `7cd1993d8ed7a3ba04beb200e7dc007ecae19e0c`.
+- Code checkpoint before this evidence-only follow-up commit:
+  `16820100044d46d66ed306dd77e8f0ca14797780`.
 - Latest renderer implementation commit:
-  `7cd1993d8ed7a3ba04beb200e7dc007ecae19e0c`.
+  `16820100044d46d66ed306dd77e8f0ca14797780`.
 - Implementation began from clean synchronized commit `7a76893312`; recheck
   current branch/worktree state and never discard unexpected later edits.
 - Physical host: MacBookPro18,2, M1 Max, 64 GiB unified memory, macOS 26.5.2,
   Xcode 26.6, Metal Apple family 7. `tools/metal/doctor.sh` exits 0.
-- Current source-exact candidate is Xcode Release `26.4.0.68535` at
+- Current source-exact candidate is Xcode Release `26.4.0.68537` at
   `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-  It was built from renderer commit `7cd1993d8e`, passes deep strict signing
+  It was built from renderer commit `1682010004`, passes deep strict signing
   and 349/349 ARM64 slice inspection, and has executable SHA-256
-  `160852c8679a3d26cd0cd31d0d833dec0f9b445820739223a3713c22faf97286`.
+  `60c6e2772eff0c51f76db3a5e36782c40d9ce2e3662db9fa77d39f77e9985c6b`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
-- PID `14685` is still the owner-attended `68532` process even though the bundle
-  at that path has since been rebuilt as `68535`. Preserve it until the owner
-  directs otherwise; its mapped old code cannot validate the pressure repair.
+- No viewer process was running after the source-exact `68537` rebuild. Do not
+  launch/login/capture without an explicit owner-attended request.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
   Do not publish another tag/release without explicit authorization.
 
@@ -301,9 +300,40 @@ expected skip. Release `68535` builds, signs and verifies 349/349 ARM64 slices.
 
 Detailed evidence:
 `docs/metal/state/archive/CURRENT-native-texture-pressure-accounting-checkpoint-2026-11-08.md`.
-Fresh-launch `68535` before evaluating post-fix discard bias. If the next goal
+Fresh-launch `68537` before evaluating post-fix discard bias. If the next goal
 is cache-churn attribution, instrument fetched-image decode/upload/downscale
 events rather than inferring them from aggregate Metal resource counters.
+
+### Probe projector sharing, filtering and bounded encoder cleanup
+
+The owner-supplied assessment identified two additional projector differences.
+Both are confirmed against exact original `1eb44bbd1b`. Original
+`generateSunShadow()` recomputes projector matrices for each cube face but
+guards caster camera/cull/cache/draw with `!gCubeSnapshot`; its shared shadow
+utility also takes the cube single-tap shortcut before PCSS for both sun and
+spot maps. Metal instead rebuilt a probe-owner projector pair and omitted the
+projector flag.
+
+Commit `16820100044d46d66ed306dd77e8f0ca14797780` keeps per-face matrices but
+borrows the main-world retained projector texture/validity during hero and
+ordinary-probe captures, prevents cube faces from entering projector caster
+cull/draw, publishes `probe_single_tap`, and accepts that shared flag in
+projector validation. It also skips G-buffer visibility depth/fill restoration
+when no query changed state, and renames broad capture labels to describe haze
+plus later replay accurately. Discard-capable opaque variants remain an
+unproven HSR risk requiring a capture; no coverage-semantic shader change was
+made.
+
+Focused projector and visibility cases pass 1,991 and 10 assertions; the full
+real-device Metal suite passes 52,870 assertions/59 cases. Source-exact Xcode
+Release `68537` builds warnings-as-errors, signs and verifies 349/349 ARM64
+slices. Its executable SHA-256 is
+`60c6e2772eff0c51f76db3a5e36782c40d9ce2e3662db9fa77d39f77e9985c6b`.
+Owner-attended projector continuity and zero cube-view caster-traversal/draw
+proof remain open; no visual or FPS gain is claimed.
+
+Detailed evidence:
+`docs/metal/state/archive/CURRENT-probe-projector-sharing-checkpoint-2026-11-08.md`.
 
 ## Other important corrections already completed
 
@@ -531,17 +561,18 @@ explicit owner authorization.
 
 ## Immediate next boundaries
 
-1. After owner direction for the existing `68532` process, fresh-launch
-   source-exact `68535` with a dedicated Ultra profile and compare settled
-   tracked texture bytes, total allocation and discard bias. Add fetched-image
-   churn telemetry before attributing decode/upload cost.
+1. On explicit owner direction, launch source-exact `68537` with a dedicated
+   Ultra profile. Smoke projector continuity, verify zero cube-view projector
+   caster culls/draws, and compare settled texture bytes, total allocation and
+   discard bias; add fetched-image telemetry before attributing churn.
 2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
 3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene
    no-popping gate; live `UseOcclusion=1` alone is insufficient.
 4. Capture the camera transform and run the formal source-exact,
    quality-equivalent 300-frame Metal/OpenGL protocol; separately smoke
-   ordinary-light boundaries and directional/projector shadow continuity.
+   ordinary-light boundaries and directional/projector shadow continuity. Use
+   a matched capture before changing discard-capable opaque variants for HSR.
 5. Strict no-GL source/runtime, feature/visual parity, prolonged stability,
    independent review and the 24 FPS objective remain open. The product is not
    complete.

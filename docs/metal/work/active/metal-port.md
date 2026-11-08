@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
 **Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **Continuation:** [next-session handover](../../state/NEXT_SESSION.md). **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `7cd1993d8e` (`Separate Metal texture and global memory pressure`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
+**Renderer checkpoint:** Commit `1682010004` (`Reuse projector shadows across Metal probe views`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
 ## Work board
@@ -15,10 +15,10 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-004 | Metal resources, transfers, readback and sync | doing | Vertex/index generations are completion-retired; retained G-buffers are borrowed and sequential haze shares one depth snapshot. Texture pressure now separates streamed-image and global device scopes; post-fix runtime and broader cache trimming remain. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Persistent world samplers follow live original-compatible anisotropy. Material/PBR base ladders now bind 8 rather than overwritten 32 slots; skin palettes through 4 KiB use completion-safe inline command data. Larger palettes and broader constant arenas remain. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Reusable native world/UI output and copied depth eliminate per-frame target recreation. Empty UI clips now preserve original no-op semantics; Conversations visibly opens/closes/reopens in attended 68497 evidence. |
-| M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners. Ordinary point lights preserve the original bounded split; directional/projector shadows render directly into retained array slices without a temporary R32 copy. Attended light-boundary/shadow smoke and broader parity remain open. |
+| M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners. Ordinary point lights preserve the bounded split; direct slices avoid shadow copies; cube views now share main projector maps and use original single-tap filtering. Attended light/shadow smoke remains open. |
 | M-008 | Advanced views/effects and compute | doing | Native mirror/probe lifecycle and an Ultra-plus-mirrors transition pass, but the matched pair shows a blue-gray Metal versus green-terrain OpenGL reflected background; trace content/clipping before any fix. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
-| M-010 | M1 Max profiling and optimization | doing | Combined Ultra `68532` evidence removes 7.589 shadow-copy submissions/present. Pre-fix discard bias 4 with 4.81–4.93 GiB total allocation confirms the pressure-scope mechanism, not cache churn or FPS cost. Fresh `68535` and paired evidence remain open. |
+| M-010 | M1 Max profiling and optimization | doing | Combined Ultra `68532` evidence removes 7.589 shadow-copy submissions/present. Cube projector cull/draw duplication is removed structurally; isolated cost and discard/HSR remain unmeasured. Fresh `68537` and paired evidence remain open. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, UI replay and retained glow/SMAA require no GL. Render tails remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
@@ -150,7 +150,7 @@ Exact original `1eb44bbd1b` confirms bounded camera-outside point lights and dir
 - Broad shared tests reproduce baseline host/driver failures: four assertions in three frame-fence timing cases and one render-target depth-format assertion.
 - Commit `f799262971`: exact original tracing proves literal anisotropy levels and Ultra `4`; native mapping/state/world replacement proofs pass 8,092 assertions, full llrender passes 1,892 assertions/225 cases (one skipped), full Metal passes 52,842 assertions/59 cases, and Xcode Release `68521` builds/signs and verifies 349/349 ARM64 slices (executable SHA-256 `a527489ee69388abd6c34003e5d22632190807d7b8d95b589087f72b63a04353`). Harness structure remains 32/32; tool tests remain 31/31.
 - Commit `e90ccdf18f`: exact original tracing proves selective vertex/index uploads and fresh-backing lifetime. Focused Release and RelWithDebInfo native tests each pass 46 assertions; full Release llrender passes 1,938 assertions/226 cases (one skipped), full Metal passes 52,842 assertions/59 cases, and source-exact Xcode Release `68525` builds/signs and verifies 349/349 ARM64 slices (executable SHA-256 `cb42e7fd22575fba27096ba40ce2e514cade94a82eb8a0a68a2cdb9840315403`). Harness/tool tests pass 32/32 and 31/31.
-- Commits `8247d09c5d`/`f93c9f1927` restore bounded point lights/direct shadow slices with focused/full validated proof. Commit `8f4d5654e5`: validated Release/RelWithDebInfo G-buffer and shadow cases pass 8,075/129 assertions each; full validated Release Metal passes 52,869 assertions/59 cases. Commit `7cd1993d8e`: focused texture-pressure proof passes 22 assertions/6 cases and full viewer tests pass 99,012 assertions/752 cases (one expected skip). Source-exact Xcode Release `68535` builds/signs/verifies 349/349 ARM64 slices; executable/metallib SHA-256 values are `160852c8679a3d26cd0cd31d0d833dec0f9b445820739223a3713c22faf97286`/`4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
+- Commits `8247d09c5d`/`f93c9f1927` restore bounded point lights/direct shadow slices with focused/full proof. Commit `8f4d5654e5` passes validated G-buffer/shadow/full Metal proof; `7cd1993d8e` passes texture-pressure and full viewer proof. Commit `1682010004` passes 1,991 projector, 10 visibility and 52,870/59 full Metal assertions. Source-exact Xcode Release `68537` builds/signs/verifies 349/349 ARM64 slices; executable/metallib SHA-256 `60c6e2772eff0c51f76db3a5e36782c40d9ce2e3662db9fa77d39f77e9985c6b`/`4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
 - Release 68493 verifies 349/349 ARM64 slices; attended Mid/HDR remains stable through 500+ native world/UI publications without the prior water-count rejection.
 - Commit `dbe1215cea`: diagnostics-free Xcode Release 68499 builds and verifies 349/349 ARM64 slices; the separate Ninja Metal suite passes 52,772 assertions/57 cases. Release `ctest` has no registrations because its preset has tests disabled; attended toggle-off and mirrors-off startup/login both pass.
 - Commit `af65f062a1`: Xcode Release 68502 builds and verifies 349/349 ARM64 slices; the focused Metal suite passes 52,774 assertions/57 cases; attended diagnostics show four populated main directional cascades and stable moving avatar/object shadows.
@@ -169,11 +169,11 @@ Launch/login/capture only at the owner's explicit request and control; add bound
 
 ## Immediate executable action
 
-1. Save and launch a dedicated Ultra profile, capture the camera transform, and repeat source-exact Metal versus exact-base `67607`; separately smoke ordinary-light camera boundaries and directional/projector shadow continuity.
+1. Save and launch source-exact `68537` with a dedicated Ultra profile, capture the camera transform, repeat exact-base `67607`, smoke projector continuity and verify zero cube projector caster culls/draws.
 2. Add bounded issued/ready/culled query telemetry and run a dense-scene no-popping gate; live enablement is verified but effectiveness is not quantified.
 3. Require launch-gated Ultra manifests and captured camera transforms before accepting screenshots or the next source-exact performance pair.
 4. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.
-5. Fresh-launch source-exact `68535` at dedicated Ultra and compare settled tracked texture bytes, total allocation and discard bias; add fetched-image-specific churn telemetry before attributing decode/upload cost, then run all four scenarios.
+5. In fresh `68537`, compare settled tracked texture bytes, total allocation and discard bias; add fetched-image-specific churn telemetry before attributing decode/upload cost, then run all four scenarios.
 
 ## Non-negotiable open gates
 

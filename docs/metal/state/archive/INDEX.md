@@ -146,6 +146,7 @@ reload the chronological history.
 | Retained G-buffer borrowing, sequential haze-depth reuse and reduced draw/palette setup, 2026-11-08 | [CURRENT-native-world-resource-churn-checkpoint-2026-11-08.md](CURRENT-native-world-resource-churn-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Owner-attended Ultra runtime measurement of bounded lights, direct shadow slices and world resource churn, 2026-11-08 | [CURRENT-native-world-runtime-measurement-checkpoint-2026-11-08.md](CURRENT-native-world-runtime-measurement-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Native streamed-texture versus global Metal memory-pressure accounting, 2026-11-08 | [CURRENT-native-texture-pressure-accounting-checkpoint-2026-11-08.md](CURRENT-native-texture-pressure-accounting-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
+| Main-owned projector shadows, cube-view single-tap filtering and bounded finding review, 2026-11-08 | [CURRENT-probe-projector-sharing-checkpoint-2026-11-08.md](CURRENT-probe-projector-sharing-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
