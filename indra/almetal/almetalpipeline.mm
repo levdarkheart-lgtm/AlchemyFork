@@ -1095,6 +1095,36 @@ bool ALMetalRenderEncoder::setDepthBias(float constant_bias,
     return true;
 }
 
+bool ALMetalRenderEncoder::setVisibilityResultMode(
+    ALMetalVisibilityResultMode mode,
+    std::size_t offset,
+    std::string* error)
+{
+    if (!mImpl || mImpl->ended ||
+        (mode != ALMetalVisibilityResultMode::disabled &&
+         offset % sizeof(std::uint64_t) != 0))
+    {
+        setError(error,
+                 "Metal visibility result offset is unaligned or encoder has ended");
+        return false;
+    }
+    MTLVisibilityResultMode native_mode = MTLVisibilityResultModeDisabled;
+    switch (mode)
+    {
+        case ALMetalVisibilityResultMode::disabled:
+            break;
+        case ALMetalVisibilityResultMode::boolean:
+            native_mode = MTLVisibilityResultModeBoolean;
+            break;
+        case ALMetalVisibilityResultMode::counting:
+            native_mode = MTLVisibilityResultModeCounting;
+            break;
+    }
+    [mImpl->encoder setVisibilityResultMode:native_mode
+                                     offset:offset];
+    return true;
+}
+
 bool ALMetalRenderEncoder::setTessellationFactorBuffer(const ALMetalBuffer& buffer,
                                                         std::size_t offset,
                                                         std::size_t instance_stride,

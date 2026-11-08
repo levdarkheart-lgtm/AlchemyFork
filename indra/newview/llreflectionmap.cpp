@@ -490,12 +490,25 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
             return;
         }
 
+#if LL_DARWIN
+        LLVector4a half_extent;
+        half_extent.splat(mRadius);
+        if (!gPipeline.captureMetalVisibilityQuery(
+                mOcclusionQuery, ALQueryKind::Occlusion, mOrigin,
+                half_extent, LLViewerCamera::getInstance()))
+        {
+            queries.discard(mOcclusionQuery);
+            mOcclusionQuery = {};
+            return;
+        }
+#else
         LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
 
         shader->uniform3fv(LLShaderMgr::BOX_CENTER, 1, mOrigin.getF32ptr());
         shader->uniform3f(LLShaderMgr::BOX_SIZE, mRadius, mRadius, mRadius);
 
         gPipeline.mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, get_box_fan_indices(LLViewerCamera::getInstance(), mOrigin));
+#endif
     }
 #endif
 }

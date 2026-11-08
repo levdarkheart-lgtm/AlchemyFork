@@ -91,6 +91,16 @@ namespace
         return false;
     }
 
+    struct alignas(16) WorldVisibilityConstants
+    {
+        float modelview_projection[16]{};
+        float center[4]{};
+        float half_extent[4]{};
+        // x = cube-fan selector, y = reverse-Z convention.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldVisibilityConstants) == 112);
+
     struct alignas(16) WorldSimpleConstants
     {
         float modelview_projection[16];
@@ -1404,6 +1414,7 @@ struct ALMetalWorldGBufferRenderer::Impl
         cutout_coverage_pipelines;
     std::array<TerrainPartitionPipelines, 2> terrain_pipelines;
     std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
+    std::array<NormalPipelines, 2> visibility_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         local_light_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -1855,6 +1866,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_avatar_spot_shadow_skinned_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_avatar_spot_shadow_cloth_vertex") ||
+        !impl->library->hasFunction("almetal_world_visibility_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_fullbright_vertex") ||
@@ -4766,6 +4778,38 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         }
     }
 
+    for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
+    {
+        for (std::size_t normal_hdr = 0; normal_hdr < 2; ++normal_hdr)
+        {
+            ALMetalRenderPipelineDescriptor descriptor;
+            descriptor.library = impl->library.get();
+            descriptor.vertex_function =
+                "almetal_world_visibility_vertex";
+            descriptor.color_attachment_count = 4;
+            descriptor.colors[0].format =
+                ALMetalPixelFormat::rgba8_unorm_srgb;
+            descriptor.colors[1].format = ALMetalPixelFormat::rgba8_unorm;
+            descriptor.colors[2].format = normal_hdr
+                ? ALMetalPixelFormat::rgba16_unorm
+                : ALMetalPixelFormat::rgb10a2_unorm;
+            descriptor.colors[3].format = emissive_formats[hdr];
+            for (auto& color : descriptor.colors)
+            {
+                color.write_mask = ALMetalColorWriteMask::none;
+            }
+            descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float_stencil8;
+            descriptor.label = "Alchemy world visibility-query pipeline";
+            impl->visibility_pipelines[hdr][normal_hdr] =
+                ALMetalRenderPipeline::create(device, descriptor, error);
+            if (!impl->visibility_pipelines[hdr][normal_hdr])
+            {
+                return nullptr;
+            }
+        }
+    }
+
     ALMetalDepthStencilDescriptor depth;
     depth.depth_compare = ALMetalCompareFunction::less_equal;
     depth.depth_write_enabled = true;
@@ -6011,10 +6055,17 @@ bool ALMetalWorldGBufferRenderer::retainSpotShadowSlice(
 
 std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     const ALMetalWorldGBufferScene& scene,
-    std::string* error)
+    std::string* error,
+    std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
 {
+    if (visibility_results)
+    {
+        visibility_results->reset();
+    }
     if (!mImpl || !mImpl->device ||
         (scene.batch_count != 0 && !scene.batches) ||
+        (scene.visibility_query_count != 0 &&
+         !scene.visibility_queries) ||
         scene.width == 0 || scene.height == 0)
     {
         setError(error, "Metal world G-buffer scene is incomplete");
@@ -6025,6 +6076,29 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     {
         setError(error, "Metal world G-buffer clear/clip data is non-finite");
         return nullptr;
+    }
+
+    std::size_t previous_query_offset = 0;
+    for (std::size_t index = 0;
+         index < scene.visibility_query_count; ++index)
+    {
+        const ALMetalWorldVisibilityQuery& query =
+            scene.visibility_queries[index];
+        if (!finiteValues(query.modelview_projection, 16) ||
+            !finiteValues(query.center, 4) ||
+            !finiteValues(query.half_extent, 4) ||
+            query.batch_offset > scene.batch_count ||
+            (index != 0 && query.batch_offset < previous_query_offset) ||
+            query.fan > 7 || query.fan_count == 0 ||
+            query.fan_count > 2 || query.count_samples > 1 ||
+            query.half_extent[0] < 0.f ||
+            query.half_extent[1] < 0.f ||
+            query.half_extent[2] < 0.f)
+        {
+            setError(error, "Metal world visibility query is invalid");
+            return nullptr;
+        }
+        previous_query_offset = query.batch_offset;
     }
 
     constexpr std::size_t float4_stride = sizeof(float) * 4;
@@ -6528,7 +6602,20 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         return nullptr;
     }
 
+    std::shared_ptr<ALMetalVisibilityResultBatch> query_results;
+    if (scene.visibility_query_count != 0)
+    {
+        std::string visibility_error;
+        query_results = ALMetalVisibilityResultBatch::create(
+            *mImpl->device, scene.visibility_query_count,
+            &visibility_error);
+        // Visibility rejection is an optimization. Preserve the original
+        // fail-open behavior when its optional result store is unavailable:
+        // render the world normally and let the caller expire the tickets.
+    }
+
     ALMetalRenderPassConfig pass_config;
+    pass_config.visibility_results = query_results.get();
     for (std::size_t attachment = 0; attachment < 4; ++attachment)
     {
         pass_config.colors[attachment].load = ALMetalLoadAction::clear;
@@ -6572,6 +6659,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     {
         return nullptr;
     }
+    if (query_results && !query_results->attachCommand(*command, error))
+    {
+        return nullptr;
+    }
     auto encoder = ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world simple G-buffer encoder", error);
     if (!encoder)
@@ -6598,8 +6689,84 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise,
                                        error);
 
+    std::size_t visibility_index = query_results
+        ? 0 : scene.visibility_query_count;
+    const auto encode_visibility_at =
+        [&](std::size_t batch_offset) -> bool
+    {
+        const ALMetalDepthStencilState* readonly_depth = scene.reverse_z
+            ? mImpl->reverse_readonly_depth.get()
+            : mImpl->forward_readonly_depth.get();
+        const ALMetalRenderPipeline* visibility_pipeline =
+            mImpl->visibility_pipelines[scene.hdr ? 1 : 0]
+                                        [scene.normal_hdr ? 1 : 0].get();
+        while (visibility_index < scene.visibility_query_count &&
+               scene.visibility_queries[visibility_index].batch_offset ==
+                   batch_offset)
+        {
+            const ALMetalWorldVisibilityQuery& query =
+                scene.visibility_queries[visibility_index];
+            WorldVisibilityConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        query.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.center, query.center,
+                        sizeof(constants.center));
+            std::memcpy(constants.half_extent, query.half_extent,
+                        sizeof(constants.half_extent));
+            constants.config[0] = query.fan;
+            constants.config[1] = scene.reverse_z ? 1u : 0u;
+
+            bool query_encoded =
+                encoder->setDepthStencilState(readonly_depth, error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setTriangleFillMode(
+                    ALMetalTriangleFillMode::fill, error) &&
+                encoder->setPipeline(*visibility_pipeline, error) &&
+                encoder->setVisibilityResultMode(
+                    query.count_samples
+                        ? ALMetalVisibilityResultMode::counting
+                        : ALMetalVisibilityResultMode::boolean,
+                    visibility_index * sizeof(std::uint64_t), error) &&
+                encoder->setVertexBytes(
+                    0, &constants, sizeof(constants), error) &&
+                encoder->draw(
+                    ALMetalPrimitiveType::triangle, 0, 18, 1, error);
+            if (query_encoded && query.fan_count == 2)
+            {
+                constants.config[0] = 7;
+                query_encoded = encoder->setVertexBytes(
+                    0, &constants, sizeof(constants), error) &&
+                    encoder->draw(
+                        ALMetalPrimitiveType::triangle, 0, 18, 1, error);
+            }
+            query_encoded = query_encoded &&
+                encoder->setVisibilityResultMode(
+                    ALMetalVisibilityResultMode::disabled, 0, error);
+            if (!query_encoded)
+            {
+                return false;
+            }
+            ++visibility_index;
+        }
+
+        // Subsequent retained batches expect the ordinary G-buffer depth and
+        // polygon state. Their own paths select pipelines and culling.
+        return encoder->setDepthStencilState(depth, error) &&
+            encoder->setTriangleFillMode(
+                scene.wireframe ? ALMetalTriangleFillMode::lines
+                                : ALMetalTriangleFillMode::fill,
+                error);
+    };
+
     for (std::size_t index = 0; encoded && index < scene.batch_count; ++index)
     {
+        encoded = encode_visibility_at(index);
+        if (!encoded)
+        {
+            break;
+        }
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         if (batch.impostor)
         {
@@ -7072,6 +7239,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                  *batch.indices, batch.index_offset, 1, error);
     }
 
+    encoded = encoded && encode_visibility_at(scene.batch_count) &&
+        visibility_index == scene.visibility_query_count;
+
     if (!encoded || !encoder->end(error))
     {
         return nullptr;
@@ -7128,6 +7298,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     if (!mImpl->finishCommandBuffer(owned_command, true, error))
     {
         return nullptr;
+    }
+    if (visibility_results)
+    {
+        *visibility_results = std::move(query_results);
     }
     return target;
 }

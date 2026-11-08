@@ -361,6 +361,48 @@ static float3 almetal_object_skin_direction(
     return float3x3(column0.xyz, column1.xyz, column2.xyz) * direction;
 }
 
+struct ALMetalWorldVisibilityConstants
+{
+    float4x4 modelview_projection;
+    float4 center;
+    float4 half_extent;
+    uint4 config;
+};
+
+// Original llvieweroctree.cpp cube-fan ordering. Each selected eight-index
+// fan is expanded to six triangles so the retained query needs no vertex or
+// index buffer and cannot inherit application geometry state.
+constant ushort almetal_world_visibility_indices[64] = {
+    7, 6, 2, 3, 1, 5, 4, 6,
+    3, 2, 0, 1, 5, 7, 6, 2,
+    5, 4, 6, 7, 3, 1, 0, 4,
+    1, 0, 4, 5, 7, 3, 2, 0,
+    6, 0, 2, 3, 7, 5, 4, 0,
+    2, 4, 0, 1, 3, 7, 6, 4,
+    4, 2, 6, 7, 5, 1, 0, 2,
+    0, 6, 4, 5, 1, 3, 2, 6,
+};
+
+vertex float4 almetal_world_visibility_vertex(
+    uint vertex_id [[vertex_id]],
+    constant ALMetalWorldVisibilityConstants& constants [[buffer(0)]])
+{
+    const uint triangle = vertex_id / 3u;
+    const uint lane = vertex_id % 3u;
+    const uint fan_lane = lane == 0u ? 0u : triangle + lane;
+    const uint cube_index = almetal_world_visibility_indices[
+        min(constants.config.x, 7u) * 8u + fan_lane];
+    const float3 sign = float3(
+        (cube_index & 4u) != 0u ? 1.0 : -1.0,
+        (cube_index & 2u) != 0u ? 1.0 : -1.0,
+        (cube_index & 1u) != 0u ? 1.0 : -1.0);
+    const float3 world = constants.center.xyz +
+        sign * constants.half_extent.xyz;
+    float4 clip = constants.modelview_projection * float4(world, 1.0);
+    clip.y = -clip.y;
+    return constants.config.y != 0u ? clip : almetal_clip_from_gl(clip);
+}
+
 struct ALMetalWorldSimpleConstants
 {
     float4x4 modelview_projection;

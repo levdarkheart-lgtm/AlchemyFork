@@ -324,6 +324,7 @@ enum class ALMetalCullMode { none, front, back };
 enum class ALMetalTriangleFillMode { fill, lines };
 enum class ALMetalWinding { clockwise, counter_clockwise };
 enum class ALMetalDepthClipMode { clip, clamp };
+enum class ALMetalVisibilityResultMode { disabled, boolean, counting };
 
 struct ALMetalViewport
 {
@@ -389,6 +390,10 @@ public:
                           std::string* error = nullptr);
     bool setDepthBias(float constant_bias, float slope_scale, float clamp,
                       std::string* error = nullptr);
+    bool setVisibilityResultMode(
+        ALMetalVisibilityResultMode mode,
+        std::size_t offset = 0,
+        std::string* error = nullptr);
     bool setTessellationFactorBuffer(const ALMetalBuffer& buffer, std::size_t offset = 0,
                                      std::size_t instance_stride = 0,
                                      std::string* error = nullptr);

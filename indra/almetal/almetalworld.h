@@ -843,10 +843,28 @@ struct alignas(16) ALMetalWorldFarPlaneOverlayColumn
     float color[4] = {1.f, 1.f, 1.f, 1.f};
 };
 
+// A retained equivalent of the original viewer's camera-facing occlusion
+// cube fan. batch_offset places the query at the exact point in the opaque
+// G-buffer stream where the GL traversal issued it. fan_count is one for the
+// camera-facing fan and two (fan 0 plus fan 7) only for the legacy invalid-
+// camera fallback that draws the complete box.
+struct alignas(16) ALMetalWorldVisibilityQuery
+{
+    float modelview_projection[16]{};
+    float center[4] = {0.f, 0.f, 0.f, 1.f};
+    float half_extent[4]{};
+    std::size_t batch_offset = 0;
+    std::uint32_t fan = 0;
+    std::uint32_t fan_count = 1;
+    std::uint32_t count_samples = 0;
+};
+
 struct ALMetalWorldGBufferScene
 {
     const ALMetalWorldSimpleBatch* batches = nullptr;
     std::size_t batch_count = 0;
+    const ALMetalWorldVisibilityQuery* visibility_queries = nullptr;
+    std::size_t visibility_query_count = 0;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     bool normal_hdr = false;
@@ -2018,7 +2036,9 @@ public:
 
     std::unique_ptr<ALMetalRenderTarget> render(
         const ALMetalWorldGBufferScene& scene,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results =
+            nullptr);
 
     // Render one spotlight-camera slice directly from retained viewer buffers.
     // R32F color stores the exact raster depth sampled by the projector owner;

@@ -895,6 +895,145 @@ bool ALMetalBuffer::readback(const ALMetalDevice& device,
     }
 }
 
+struct ALMetalVisibilityResultBatch::Impl
+{
+    id<MTLDevice> device = nil;
+    std::unique_ptr<ALMetalBuffer> buffer;
+    id<MTLCommandBuffer> command = nil;
+    std::size_t result_count = 0;
+};
+
+ALMetalVisibilityResultBatch::ALMetalVisibilityResultBatch(
+    std::unique_ptr<Impl> impl)
+: mImpl(std::move(impl))
+{
+}
+
+ALMetalVisibilityResultBatch::~ALMetalVisibilityResultBatch() = default;
+
+std::shared_ptr<ALMetalVisibilityResultBatch>
+ALMetalVisibilityResultBatch::create(const ALMetalDevice& device,
+                                     std::size_t result_count,
+                                     std::string* error)
+{
+    @autoreleasepool
+    {
+        if (!device.nativeHandle() || result_count == 0 ||
+            result_count >
+                std::numeric_limits<std::size_t>::max() / sizeof(std::uint64_t))
+        {
+            setError(error,
+                     "Metal visibility results require a device and a non-empty bounded result count");
+            return nullptr;
+        }
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = result_count * sizeof(std::uint64_t);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::default_cache;
+        descriptor.label = "Alchemy visibility results";
+        auto buffer = ALMetalBuffer::create(device, descriptor, error);
+        if (!buffer || !buffer->mappedBytes())
+        {
+            return nullptr;
+        }
+        std::memset(buffer->mappedBytes(), 0, descriptor.length);
+
+        auto impl = std::make_unique<Impl>();
+        impl->device = (__bridge id<MTLDevice>)device.nativeHandle();
+        impl->buffer = std::move(buffer);
+        impl->result_count = result_count;
+        return std::shared_ptr<ALMetalVisibilityResultBatch>(
+            new ALMetalVisibilityResultBatch(std::move(impl)));
+    }
+}
+
+std::size_t ALMetalVisibilityResultBatch::resultCount() const noexcept
+{
+    return mImpl ? mImpl->result_count : 0;
+}
+
+ALMetalVisibilityResultBatch::Status
+ALMetalVisibilityResultBatch::status() const noexcept
+{
+    if (!mImpl || !mImpl->buffer || !mImpl->command)
+    {
+        return Status::failed;
+    }
+    switch (mImpl->command.status)
+    {
+        case MTLCommandBufferStatusCompleted:
+            return Status::ready;
+        case MTLCommandBufferStatusError:
+            return Status::failed;
+        default:
+            return Status::pending;
+    }
+}
+
+bool ALMetalVisibilityResultBatch::result(
+    std::size_t index, std::uint64_t& value) const noexcept
+{
+    value = 0;
+    if (status() != Status::ready || index >= resultCount() ||
+        !mImpl->buffer->mappedBytes())
+    {
+        return false;
+    }
+    value = static_cast<const std::uint64_t*>(
+        mImpl->buffer->mappedBytes())[index];
+    return true;
+}
+
+bool ALMetalVisibilityResultBatch::wait(
+    std::size_t index, std::uint64_t& value, std::string* error) const
+{
+    value = 0;
+    if (!mImpl || !mImpl->command || index >= resultCount())
+    {
+        setError(error, "Metal visibility result is unavailable");
+        return false;
+    }
+    const MTLCommandBufferStatus command_status = mImpl->command.status;
+    if (command_status == MTLCommandBufferStatusNotEnqueued)
+    {
+        setError(error,
+                 "Metal visibility command has not been committed");
+        return false;
+    }
+    [mImpl->command waitUntilCompleted];
+    if (mImpl->command.status != MTLCommandBufferStatusCompleted)
+    {
+        NSString* description = mImpl->command.error.localizedDescription;
+        const char* utf8 = description.UTF8String;
+        setError(error, utf8 && *utf8
+            ? std::string(utf8)
+            : "Metal visibility command did not complete successfully");
+        return false;
+    }
+    return result(index, value);
+}
+
+void* ALMetalVisibilityResultBatch::nativeBufferHandle() const noexcept
+{
+    return mImpl && mImpl->buffer
+        ? mImpl->buffer->nativeHandle() : nullptr;
+}
+
+bool ALMetalVisibilityResultBatch::attachCommand(
+    const ALMetalCommandBuffer& command, std::string* error)
+{
+    if (!mImpl || !mImpl->buffer || !command.nativeHandle() ||
+        command.nativeDevice() != (__bridge void*)mImpl->device)
+    {
+        setError(error,
+                 "Metal visibility results and command use different devices");
+        return false;
+    }
+    mImpl->command =
+        (__bridge id<MTLCommandBuffer>)command.nativeHandle();
+    return true;
+}
+
 struct ALMetalTexture::Impl
 {
     id<MTLDevice> device = nil;
@@ -2593,6 +2732,7 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
             return nullptr;
         }
         MTLRenderPassDescriptor* descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+        id<MTLDevice> target_device = nil;
         for (std::uint32_t index = 0; index < mDescriptor.color_attachment_count; ++index)
         {
             const auto& pass_config = config.colors[index];
@@ -2639,6 +2779,7 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
                 return nullptr;
             }
             attachment.texture = (__bridge id<MTLTexture>)color_handle;
+            target_device = attachment.texture.device;
             attachment.resolveTexture = multisample
                 ? (__bridge id<MTLTexture>)resolved_color->nativeHandle() : nil;
             attachment.loadAction = loadAction(pass_config.load);
@@ -2661,6 +2802,7 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
             }
             id<MTLTexture> depth_texture = (__bridge id<MTLTexture>)
                 depthStencilTexture()->nativeHandle();
+            target_device = depth_texture.device;
             descriptor.depthAttachment.texture = depth_texture;
             descriptor.depthAttachment.loadAction = loadAction(config.depth_load);
             descriptor.depthAttachment.storeAction = storeAction(config.depth_store);
@@ -2680,6 +2822,20 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
                 descriptor.stencilAttachment.storeAction = storeAction(config.stencil_store);
                 descriptor.stencilAttachment.clearStencil = config.clear_stencil;
             }
+        }
+
+        if (config.visibility_results)
+        {
+            id<MTLBuffer> visibility = (__bridge id<MTLBuffer>)
+                config.visibility_results->nativeBufferHandle();
+            if (!visibility || !target_device ||
+                visibility.device != target_device)
+            {
+                setError(error,
+                         "Metal visibility results do not match the render-target device");
+                return nullptr;
+            }
+            descriptor.visibilityResultBuffer = visibility;
         }
 
         auto impl = std::make_unique<ALMetalRenderPass::Impl>();

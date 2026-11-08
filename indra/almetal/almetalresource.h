@@ -132,6 +132,49 @@ private:
     ALMetalBufferDescriptor mDescriptor;
 };
 
+// One shared Metal visibility-result store and the command buffer that
+// produces it.  The store remains CPU-readable only after that command has
+// completed; steady-state callers poll status and never wait in the cull.
+class ALMetalVisibilityResultBatch final
+{
+public:
+    enum class Status
+    {
+        pending,
+        ready,
+        failed,
+    };
+
+    ALMetalVisibilityResultBatch(const ALMetalVisibilityResultBatch&) = delete;
+    ALMetalVisibilityResultBatch& operator=(
+        const ALMetalVisibilityResultBatch&) = delete;
+    ~ALMetalVisibilityResultBatch();
+
+    static std::shared_ptr<ALMetalVisibilityResultBatch> create(
+        const ALMetalDevice& device,
+        std::size_t result_count,
+        std::string* error = nullptr);
+
+    std::size_t resultCount() const noexcept;
+    Status status() const noexcept;
+    bool result(std::size_t index, std::uint64_t& value) const noexcept;
+    bool wait(std::size_t index, std::uint64_t& value,
+              std::string* error = nullptr) const;
+
+private:
+    struct Impl;
+    explicit ALMetalVisibilityResultBatch(std::unique_ptr<Impl> impl);
+    std::unique_ptr<Impl> mImpl;
+
+    void* nativeBufferHandle() const noexcept;
+    bool attachCommand(const ALMetalCommandBuffer& command,
+                       std::string* error = nullptr);
+
+    friend class ALMetalRenderPass;
+    friend class ALMetalRenderTarget;
+    friend class ALMetalWorldGBufferRenderer;
+};
+
 enum class ALMetalPixelFormat
 {
     invalid,
@@ -528,6 +571,10 @@ struct ALMetalRenderPassConfig
     // writes one intermediate pass. Leave the attachment owned but unbound
     // for that pass so the pipeline does not need a false depth contract.
     bool bind_depth_stencil = true;
+    // Visibility buffers are render-pass state in Metal. The result owner
+    // retains this buffer and the producing command independently of the
+    // descriptor wrapper.
+    const ALMetalVisibilityResultBatch* visibility_results = nullptr;
 };
 
 class ALMetalRenderPass final

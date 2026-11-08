@@ -1835,7 +1835,11 @@ void LLRender::endFrame(U32 frames_ahead)
     // queries, and the fences of the uploads handed over by other contexts are polled here rather than in the next
     // idle: a threaded driver answers a call that returns a value only once its thread has caught up, and the fences'
     // own calls have just caught it up.
-    if (gGLManager.mInited)
+    if (gGLManager.mInited
+#if LL_DARWIN
+        || mMetalFrames
+#endif
+       )
     {
         mQueries.endFrame();
         mQueries.retire();

@@ -1,6 +1,6 @@
 /**
  * @file alquerypool.cpp
- * @brief Fail-closed renderer query contract for the native Metal viewer.
+ * @brief Asynchronous renderer queries backed by Metal visibility results.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -26,33 +26,90 @@
 
 #include "alquerypool.h"
 
-// Metal visibility-result and counter-sample buffers must be attached while
-// their owning render pass is encoded. The legacy immediate query API has no
-// such encoder boundary yet. Advertising support here used to enter removed
-// GL calls from ordinary world culling after the GL context was gone. Until a
-// native encoder adapter owns those scopes, every acquisition is invalid and
-// every result expires. Visibility users consequently render (fail open)
-// rather than incorrectly cull, while profiling users receive no fabricated
-// measurements.
+#include "almetalresource.h"
+
+#include <algorithm>
+#include <limits>
+#include <new>
+
+namespace
+{
+    bool visibilityKind(ALQueryKind kind)
+    {
+        return kind == ALQueryKind::Occlusion ||
+               kind == ALQueryKind::OcclusionExact;
+    }
+}
+
+ALQueryPool::ALQueryPool(ALFrameFences&) noexcept
+{
+    mFrames[mSerial % RESULT_FRAMES].serial = mSerial;
+}
 
 // static
-bool ALQueryPool::supports(ALQueryKind)
+bool ALQueryPool::supports(ALQueryKind kind)
 {
-    return false;
+    return visibilityKind(kind);
 }
 
-bool ALQueryPool::canBegin(ALQueryKind) const
+bool ALQueryPool::canBegin(ALQueryKind kind) const
 {
-    return false;
+    return mVisibilityCaptureActive && supports(kind) &&
+           !mOpen.isValid() && !mVisibilityReserved;
 }
 
-ALQueryTicket ALQueryPool::begin(ALQueryKind)
+ALQueryTicket ALQueryPool::acquire(ALQueryKind kind, bool reserved)
 {
-    return {};
+    if (!mVisibilityCaptureActive || !supports(kind) ||
+        mOpen.isValid() || (mVisibilityReserved != reserved))
+    {
+        return {};
+    }
+
+    Frame& frame = mFrames[mSerial % RESULT_FRAMES];
+    if (frame.serial != mSerial)
+    {
+        frame.entries.clear();
+        frame.serial = mSerial;
+    }
+    constexpr std::size_t ticket_slot_count = 1u << 24;
+    if (frame.entries.size() >= ticket_slot_count)
+    {
+        return {};
+    }
+
+    ALQueryTicket ticket;
+    ticket.mSerial = mSerial;
+    ticket.mSlot = static_cast<U32>(frame.entries.size());
+    ticket.mKind = static_cast<U32>(kind);
+    try
+    {
+        frame.entries.push_back({ ticket });
+    }
+    catch (const std::bad_alloc&)
+    {
+        return {};
+    }
+    mOpen = ticket;
+    return ticket;
 }
 
-void ALQueryPool::end(const ALQueryTicket&)
+ALQueryTicket ALQueryPool::begin(ALQueryKind kind)
 {
+    return acquire(kind, false);
+}
+
+void ALQueryPool::end(const ALQueryTicket& ticket)
+{
+    if (!ticket.isValid() || !(ticket == mOpen))
+    {
+        return;
+    }
+    if (Entry* entry = find(ticket))
+    {
+        entry->closed = true;
+    }
+    mOpen = {};
 }
 
 ALQuerySpan ALQueryPool::beginSpan()
@@ -64,28 +121,92 @@ void ALQueryPool::endSpan(ALQuerySpan&)
 {
 }
 
-ALQueryPool::Status ALQueryPool::result(const ALQueryTicket&, U64& value) const
+ALQueryPool::Entry* ALQueryPool::find(const ALQueryTicket& ticket)
+{
+    return const_cast<Entry*>(
+        static_cast<const ALQueryPool*>(this)->find(ticket));
+}
+
+const ALQueryPool::Entry* ALQueryPool::find(
+    const ALQueryTicket& ticket) const
+{
+    if (!ticket.isValid())
+    {
+        return nullptr;
+    }
+    const Frame& frame = mFrames[ticket.mSerial % RESULT_FRAMES];
+    if (frame.serial != ticket.mSerial ||
+        ticket.mSlot >= frame.entries.size())
+    {
+        return nullptr;
+    }
+    const Entry& entry = frame.entries[ticket.mSlot];
+    return entry.ticket == ticket ? &entry : nullptr;
+}
+
+ALQueryPool::Status ALQueryPool::result(
+    const ALQueryTicket& ticket, U64& value) const
 {
     value = 0;
+    const Entry* entry = find(ticket);
+    if (!entry || !entry->closed || entry->discarded || !entry->results)
+    {
+        return Status::Expired;
+    }
+
+    U64 native_value = 0;
+    switch (entry->results->status())
+    {
+    case ALMetalVisibilityResultBatch::Status::pending:
+        return Status::Pending;
+    case ALMetalVisibilityResultBatch::Status::ready:
+        if (!entry->results->result(entry->result_index, native_value))
+        {
+            return Status::Expired;
+        }
+        value = native_value;
+        return Status::Ready;
+    case ALMetalVisibilityResultBatch::Status::failed:
+        return Status::Expired;
+    }
     return Status::Expired;
 }
 
-ALQueryPool::Status ALQueryPool::result(const ALQueryTicket&, ALStatistics& statistics) const
+ALQueryPool::Status ALQueryPool::result(
+    const ALQueryTicket&, ALStatistics& statistics) const
 {
     statistics = {};
     return Status::Expired;
 }
 
-ALQueryPool::Status ALQueryPool::result(const ALQuerySpan&, U64& nanoseconds) const
+ALQueryPool::Status ALQueryPool::result(
+    const ALQuerySpan&, U64& nanoseconds) const
 {
     nanoseconds = 0;
     return Status::Expired;
 }
 
-bool ALQueryPool::wait(const ALQueryTicket&, U64& value)
+bool ALQueryPool::wait(const ALQueryTicket& ticket, U64& value)
 {
     value = 0;
-    return false;
+    Entry* entry = find(ticket);
+    if (!entry || !entry->closed || entry->discarded || !entry->results)
+    {
+        return false;
+    }
+    ++mAskedReads;
+    const auto before = entry->results->status();
+    U64 native_value = 0;
+    if (!entry->results->wait(entry->result_index, native_value))
+    {
+        return false;
+    }
+    if (before == ALMetalVisibilityResultBatch::Status::pending)
+    {
+        ++mStalls;
+    }
+    value = native_value;
+    return true;
 }
 
 bool ALQueryPool::wait(const ALQueryTicket&, ALStatistics& statistics)
@@ -100,13 +221,17 @@ bool ALQueryPool::wait(const ALQuerySpan&, U64& nanoseconds)
     return false;
 }
 
-void ALQueryPool::reserve(ALQueryKind, bool)
+void ALQueryPool::reserve(ALQueryKind kind, bool reserved)
 {
+    if (supports(kind))
+    {
+        mVisibilityReserved = reserved;
+    }
 }
 
-ALQueryTicket ALQueryPool::beginReserved(ALQueryKind)
+ALQueryTicket ALQueryPool::beginReserved(ALQueryKind kind)
 {
-    return {};
+    return acquire(kind, true);
 }
 
 void ALQueryPool::beginConditional(const ALQueryTicket&)
@@ -131,8 +256,90 @@ void ALQueryPool::makeRoom()
 
 void ALQueryPool::endFrame()
 {
+    endVisibilityCapture();
+    if (++mSerial == 0)
+    {
+        // Zero is the invalid ticket sentinel. A wrap is practically
+        // unreachable, but releasing retained entries preserves that rule.
+        release();
+        mSerial = 1;
+    }
+    Frame& frame = mFrames[mSerial % RESULT_FRAMES];
+    frame.entries.clear();
+    frame.serial = mSerial;
 }
 
 void ALQueryPool::release()
 {
+    for (Frame& frame : mFrames)
+    {
+        frame.entries.clear();
+        frame.serial = 0;
+    }
+    mOpen = {};
+    mVisibilityCaptureActive = false;
+    mVisibilityReserved = false;
+    mFrames[mSerial % RESULT_FRAMES].serial = mSerial;
+}
+
+bool ALQueryPool::beginVisibilityCapture()
+{
+    if (mVisibilityCaptureActive || mOpen.isValid())
+    {
+        return false;
+    }
+    mVisibilityCaptureActive = true;
+    return true;
+}
+
+void ALQueryPool::endVisibilityCapture()
+{
+    if (mOpen.isValid())
+    {
+        discard(mOpen);
+    }
+    mOpen = {};
+    mVisibilityCaptureActive = false;
+}
+
+bool ALQueryPool::attachVisibilityResult(
+    const ALQueryTicket& ticket,
+    std::shared_ptr<ALMetalVisibilityResultBatch> results,
+    std::size_t result_index)
+{
+    Entry* entry = find(ticket);
+    if (!entry || !entry->closed || entry->discarded || !results ||
+        result_index >= results->resultCount())
+    {
+        return false;
+    }
+    entry->results = std::move(results);
+    entry->result_index = result_index;
+    return true;
+}
+
+void ALQueryPool::discard(const ALQueryTicket& ticket)
+{
+    Entry* entry = find(ticket);
+    if (entry)
+    {
+        entry->results.reset();
+        entry->closed = true;
+        entry->discarded = true;
+    }
+    if (ticket == mOpen)
+    {
+        mOpen = {};
+    }
+}
+
+U32 ALQueryPool::getNameCount() const
+{
+    std::size_t count = 0;
+    for (const Frame& frame : mFrames)
+    {
+        count += frame.entries.size();
+    }
+    return static_cast<U32>(std::min<std::size_t>(
+        count, std::numeric_limits<U32>::max()));
 }

@@ -1241,6 +1241,22 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
                         //store which frame this query was issued on
                         mOcclusionIssued[LLViewerCamera::sCurCameraID] = gFrameCount;
 
+#if LL_DARWIN
+                        LLVector4a query_half_extent;
+                        query_half_extent.set(
+                            bounds[1][0] + SG_OCCLUSION_FUDGE,
+                            bounds[1][1] + SG_OCCLUSION_FUDGE,
+                            bounds[1][2] + SG_OCCLUSION_FUDGE, 0.f);
+                        if (!gPipeline.captureMetalVisibilityQuery(
+                                query.ticket(), queryKind(), bounds[0],
+                                query_half_extent, camera,
+                                camera->getOrigin().isExactlyZero()))
+                        {
+                            clearOcclusionState(
+                                QUERY_PENDING | DISCARD_QUERY);
+                            return;
+                        }
+#else
                         LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
                         llassert(shader);
 
@@ -1261,6 +1277,7 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
                                 gPipeline.mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, get_box_fan_indices(camera, bounds[0]));
                             }
                         }
+#endif
                     }
                 }
 

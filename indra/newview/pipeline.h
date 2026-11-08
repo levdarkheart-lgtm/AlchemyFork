@@ -1002,6 +1002,11 @@ public:
     // One bounded fail-closed production probe of the first native world
     // slices. renderGeomDeferred owns the frame capture; eligible draw pools
     // bracket their GL sweeps so pushBatch snapshots only those exact draws.
+    bool isMetalVisibilityCullingAvailable() const;
+    bool captureMetalVisibilityQuery(
+        const ALQueryTicket& ticket, ALQueryKind kind,
+        const LLVector4a& center, const LLVector4a& half_extent,
+        LLCamera* camera, bool full_box = false);
     void beginMetalWorldGBufferCapture();
     void beginMetalWorldGBufferPass(bool rigged, bool alpha_mask);
     void beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,

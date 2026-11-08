@@ -26,7 +26,12 @@
 
 #include "stdtypes.h"
 
+#include <array>
+#include <memory>
+#include <vector>
+
 class ALFrameFences;
+class ALMetalVisibilityResultBatch;
 
 enum class ALQueryKind : U8
 {
@@ -82,10 +87,9 @@ private:
     ALQueryTicket mEnd;
 };
 
-/// Query acquisition fails closed until the native render encoders expose
-/// visibility and counter-sample scopes through this legacy-facing contract.
-/// Invalid/expired results make visibility callers render rather than cull,
-/// preserving correctness without claiming or calling a fallback backend.
+/// Legacy-facing asynchronous query contract backed by Metal visibility
+/// result buffers. Only the two visibility kinds are native: unsupported
+/// profiling/counter kinds remain invalid rather than fabricating data.
 class ALQueryPool
 {
 public:
@@ -99,7 +103,7 @@ public:
         Expired,
     };
 
-    explicit ALQueryPool(ALFrameFences&) noexcept {}
+    explicit ALQueryPool(ALFrameFences&) noexcept;
     ALQueryPool(const ALQueryPool&) = delete;
     ALQueryPool& operator=(const ALQueryPool&) = delete;
 
@@ -132,9 +136,49 @@ public:
     void endFrame();
     void release();
 
-    U32 getStalls() const { return 0; }
-    U32 getAskedReads() const { return 0; }
-    U32 getNameCount() const { return 0; }
+    // The native world owner brackets the exact retained traversal interval
+    // in which bounding boxes can be captured. Results are attached after the
+    // ordered G-buffer encoder has accepted the corresponding draws.
+    bool beginVisibilityCapture();
+    void endVisibilityCapture();
+    bool visibilityCaptureActive() const { return mVisibilityCaptureActive; }
+    bool attachVisibilityResult(
+        const ALQueryTicket& ticket,
+        std::shared_ptr<ALMetalVisibilityResultBatch> results,
+        std::size_t result_index);
+    void discard(const ALQueryTicket& ticket);
+
+    U32 getStalls() const { return mStalls; }
+    U32 getAskedReads() const { return mAskedReads; }
+    U32 getNameCount() const;
+
+private:
+    struct Entry
+    {
+        ALQueryTicket ticket;
+        std::shared_ptr<ALMetalVisibilityResultBatch> results;
+        std::size_t result_index = 0;
+        bool closed = false;
+        bool discarded = false;
+    };
+
+    struct Frame
+    {
+        U32 serial = 0;
+        std::vector<Entry> entries;
+    };
+
+    Entry* find(const ALQueryTicket& ticket);
+    const Entry* find(const ALQueryTicket& ticket) const;
+    ALQueryTicket acquire(ALQueryKind kind, bool reserved);
+
+    std::array<Frame, RESULT_FRAMES> mFrames;
+    ALQueryTicket mOpen;
+    U32 mSerial = 1;
+    U32 mStalls = 0;
+    U32 mAskedReads = 0;
+    bool mVisibilityCaptureActive = false;
+    bool mVisibilityReserved = false;
 };
 
 class ALQueryScope

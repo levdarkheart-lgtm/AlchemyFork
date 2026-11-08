@@ -719,6 +719,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_avatar_spot_shadow_rigid_vertex",
             "almetal_world_avatar_spot_shadow_skinned_vertex",
             "almetal_world_avatar_spot_shadow_cloth_vertex",
+            "almetal_world_visibility_vertex",
             "almetal_world_simple_vertex",
             "almetal_world_highlight_vertex",
             "almetal_world_simple_skinned_vertex",
@@ -3691,6 +3692,42 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(result->descriptor().colors[3].format ==
               ALMetalPixelFormat::rg11b10_float);
         REQUIRE(result->depthStencilTexture());
+
+        // The same retained box must pass before this opaque triangle and
+        // fail after it. This proves batch_offset preserves the original GL
+        // query issue point instead of testing against an empty or completed
+        // frame depth buffer.
+        std::array<ALMetalWorldVisibilityQuery, 2> ordered_queries{};
+        for (ALMetalWorldVisibilityQuery& query : ordered_queries)
+        {
+            for (std::size_t axis = 0; axis < 4; ++axis)
+            {
+                query.modelview_projection[axis * 4 + axis] = 1.f;
+            }
+            query.center[2] = 0.75f;
+            query.center[3] = 1.f;
+            query.half_extent[0] = 0.05f;
+            query.half_extent[1] = 0.05f;
+            query.half_extent[2] = 0.05f;
+            query.fan = 7;
+        }
+        ordered_queries[1].batch_offset = 1;
+        scene.visibility_queries = ordered_queries.data();
+        scene.visibility_query_count = ordered_queries.size();
+        std::shared_ptr<ALMetalVisibilityResultBatch> ordered_results;
+        auto ordered_target = renderer->render(
+            scene, &error, &ordered_results);
+        INFO(error);
+        REQUIRE(ordered_target);
+        REQUIRE(ordered_results);
+        std::uint64_t before_opaque = 0;
+        REQUIRE(ordered_results->wait(0, before_opaque, &error));
+        CHECK(before_opaque > 0);
+        std::uint64_t after_opaque = 1;
+        REQUIRE(ordered_results->result(1, after_opaque));
+        CHECK(after_opaque == 0);
+        scene.visibility_queries = nullptr;
+        scene.visibility_query_count = 0;
 
         std::array<std::uint8_t, 32 * 32 * 4> albedo{};
         REQUIRE(result->colorTexture(0)->readback(
@@ -15661,6 +15698,60 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(
                            avatar_cloth_normal[
                                avatar_cloth_translated + 1]) - 32768) <= 2);
+    }
+}
+
+TEST_CASE("almetal: world visibility queries publish asynchronous Metal results",
+          "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        std::array<ALMetalWorldVisibilityQuery, 2> queries{};
+        for (ALMetalWorldVisibilityQuery& query : queries)
+        {
+            for (std::size_t axis = 0; axis < 4; ++axis)
+            {
+                query.modelview_projection[axis * 4 + axis] = 1.f;
+            }
+            query.center[3] = 1.f;
+            query.half_extent[0] = 0.25f;
+            query.half_extent[1] = 0.25f;
+            query.half_extent[2] = 0.25f;
+            query.fan = 7;
+        }
+        queries[0].count_samples = 1;
+        queries[1].center[0] = 4.f;
+
+        ALMetalWorldGBufferScene scene;
+        scene.visibility_queries = queries.data();
+        scene.visibility_query_count = queries.size();
+        scene.width = 32;
+        scene.height = 32;
+
+        std::shared_ptr<ALMetalVisibilityResultBatch> results;
+        auto target = renderer->render(scene, &error, &results);
+        INFO(error);
+        REQUIRE(target);
+        REQUIRE(results);
+        REQUIRE(results->resultCount() == queries.size());
+
+        std::uint64_t visible = 0;
+        REQUIRE(results->wait(0, visible, &error));
+        INFO(error);
+        CHECK(visible > 0);
+        std::uint64_t clipped = 1;
+        REQUIRE(results->result(1, clipped));
+        CHECK(clipped == 0);
+        CHECK(results->status() ==
+              ALMetalVisibilityResultBatch::Status::ready);
     }
 }
 

@@ -1033,7 +1033,14 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         }
         // The queries draw through gOcclusionCubeProgram. One that did not build would draw them through the stand-in,
         // which passes no sample, so that every group queried read as occluded: the frame culls by no occlusion.
-        if (!gOcclusionCubeProgram.isComplete())
+        bool occlusion_program_available =
+            gOcclusionCubeProgram.isComplete();
+#if LL_DARWIN
+        occlusion_program_available = occlusion_program_available ||
+            (gOcclusionCubeProgram.isNativeConfigured() &&
+             gPipeline.isMetalVisibilityCullingAvailable());
+#endif
+        if (!occlusion_program_available)
         {
             LLPipeline::sUseOcclusion = 0;
         }

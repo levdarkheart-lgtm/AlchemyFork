@@ -27,7 +27,7 @@
 #include "alframefences.h"
 #include "alquerypool.h"
 
-TEST_CASE("Legacy query acquisition fails closed without a fallback backend",
+TEST_CASE("Metal visibility tickets are bounded by retained capture scopes",
           "[alquerypool][metal-cutover]")
 {
     ALFrameFences frames;
@@ -36,21 +36,56 @@ TEST_CASE("Legacy query acquisition fails closed without a fallback backend",
     for (U32 value = 0; value < U32(ALQueryKind::Count); ++value)
     {
         const auto kind = ALQueryKind(value);
-        CHECK_FALSE(ALQueryPool::supports(kind));
+        const bool visibility = kind == ALQueryKind::Occlusion ||
+            kind == ALQueryKind::OcclusionExact;
+        CHECK(ALQueryPool::supports(kind) == visibility);
         CHECK_FALSE(queries.canBegin(kind));
         CHECK_FALSE(queries.begin(kind).isValid());
-        queries.reserve(kind, true);
-        CHECK_FALSE(queries.beginReserved(kind).isValid());
-        queries.reserve(kind, false);
     }
 
-    ALQueryTicket ticket;
+    REQUIRE(queries.beginVisibilityCapture());
+    CHECK_FALSE(queries.beginVisibilityCapture());
+    CHECK(queries.visibilityCaptureActive());
+    CHECK(queries.canBegin(ALQueryKind::Occlusion));
+    CHECK(queries.canBegin(ALQueryKind::OcclusionExact));
+    CHECK_FALSE(queries.canBegin(ALQueryKind::Samples));
+
+    ALQueryTicket ticket = queries.begin(ALQueryKind::Occlusion);
+    REQUIRE(ticket.isValid());
+    CHECK_FALSE(queries.canBegin(ALQueryKind::Occlusion));
+    CHECK_FALSE(queries.begin(ALQueryKind::Occlusion).isValid());
+    queries.end(ticket);
+    CHECK(queries.canBegin(ALQueryKind::Occlusion));
+    CHECK(queries.getNameCount() == 1);
+
     U64 count = 99;
+    // No producer attachment means the draw was not accepted by a native
+    // command buffer. Expiring it is the fail-open outcome.
     CHECK(queries.result(ticket, count) == ALQueryPool::Status::Expired);
     CHECK(count == 0);
     count = 99;
     CHECK_FALSE(queries.wait(ticket, count));
     CHECK(count == 0);
+
+    queries.reserve(ALQueryKind::Occlusion, true);
+    CHECK_FALSE(queries.canBegin(ALQueryKind::Occlusion));
+    CHECK_FALSE(queries.begin(ALQueryKind::Occlusion).isValid());
+    ALQueryTicket reserved =
+        queries.beginReserved(ALQueryKind::OcclusionExact);
+    REQUIRE(reserved.isValid());
+    queries.end(reserved);
+    queries.reserve(ALQueryKind::Occlusion, false);
+
+    ALQueryTicket discarded = queries.begin(ALQueryKind::Occlusion);
+    REQUIRE(discarded.isValid());
+    queries.discard(discarded);
+    CHECK(queries.canBegin(ALQueryKind::Occlusion));
+    CHECK(queries.result(discarded, count) ==
+          ALQueryPool::Status::Expired);
+
+    queries.endVisibilityCapture();
+    CHECK_FALSE(queries.visibilityCaptureActive());
+    CHECK_FALSE(queries.canBegin(ALQueryKind::Occlusion));
 
     ALStatistics statistics;
     statistics.mCounts[0] = 3;

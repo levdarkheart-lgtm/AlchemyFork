@@ -551,6 +551,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> base_light_target;
     std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
     std::vector<ALMetalWorldSimpleBatch> batches;
+    std::vector<ALMetalWorldVisibilityQuery> visibility_queries;
+    std::vector<ALQueryTicket> visibility_tickets;
+    bool visibility_capture_active = false;
     // Reflection probes enumerate the CPU-owned opaque render maps directly.
     // Retain exact draw/face identities so the following legacy traversal does
     // not mirror those same batches into Metal a second time.
@@ -1898,6 +1901,74 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     return published;
 }
 
+bool LLPipeline::isMetalVisibilityCullingAvailable() const
+{
+    return mMetalWorldSimpleCapture &&
+        mMetalWorldSimpleCapture->renderer != nullptr;
+}
+
+bool LLPipeline::captureMetalVisibilityQuery(
+    const ALQueryTicket& ticket, ALQueryKind kind,
+    const LLVector4a& center, const LLVector4a& half_extent,
+    LLCamera* camera, bool full_box)
+{
+    if (!ticket.isValid() || !camera ||
+        !mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->visibility_capture_active ||
+        (kind != ALQueryKind::Occlusion &&
+         kind != ALQueryKind::OcclusionExact))
+    {
+        return false;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    ALMetalWorldVisibilityQuery retained;
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(retained.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(retained.modelview_projection));
+    std::memcpy(retained.center, center.getF32ptr(),
+                sizeof(retained.center));
+    std::memcpy(retained.half_extent, half_extent.getF32ptr(),
+                sizeof(retained.half_extent));
+    retained.center[3] = 1.f;
+    retained.half_extent[3] = 0.f;
+    retained.batch_offset = capture.batches.size();
+    if (!full_box)
+    {
+        LLVector4a camera_origin;
+        camera_origin.load3(camera->getOrigin().mV);
+        retained.fan =
+            center.greaterThan(camera_origin).getGatheredBits() & 0x7;
+    }
+    retained.fan_count = full_box ? 2u : 1u;
+    retained.count_samples =
+        kind == ALQueryKind::OcclusionExact ? 1u : 0u;
+
+    try
+    {
+        capture.visibility_queries.push_back(retained);
+        try
+        {
+            capture.visibility_tickets.push_back(ticket);
+        }
+        catch (const std::bad_alloc&)
+        {
+            capture.visibility_queries.pop_back();
+            throw;
+        }
+    }
+    catch (const std::bad_alloc&)
+    {
+        gGL.queries().discard(ticket);
+        return false;
+    }
+    return true;
+}
+
 void LLPipeline::beginMetalWorldGBufferCapture()
 {
     const bool snapshot_request =
@@ -2526,6 +2597,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     capture.batches.clear();
+    capture.visibility_queries.clear();
+    capture.visibility_tickets.clear();
+    capture.visibility_capture_active = false;
     capture.direct_probe_draw_infos.clear();
     capture.direct_probe_tree_faces.clear();
     capture.direct_probe_terrain_faces.clear();
@@ -2627,6 +2701,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.continuous_world_frame = gFrameCount;
     capture.frame_active = true;
     capture.pass_active = false;
+    capture.visibility_capture_active =
+        main_world_capture && !snapshot_request &&
+        gGL.queries().beginVisibilityCapture();
 }
 
 void LLPipeline::beginMetalWorldHDRISky(
@@ -16464,6 +16541,37 @@ void LLPipeline::endMetalWorldGBufferCapture()
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.visibility_capture_active)
+    {
+        gGL.queries().endVisibilityCapture();
+        capture.visibility_capture_active = false;
+    }
+    const auto settle_visibility_results =
+        [&](std::shared_ptr<ALMetalVisibilityResultBatch> results)
+    {
+        const bool complete_results = results &&
+            results->resultCount() == capture.visibility_tickets.size() &&
+            capture.visibility_queries.size() ==
+                capture.visibility_tickets.size();
+        for (std::size_t index = 0;
+             index < capture.visibility_tickets.size(); ++index)
+        {
+            if (!complete_results ||
+                !gGL.queries().attachVisibilityResult(
+                    capture.visibility_tickets[index], results, index))
+            {
+                gGL.queries().discard(
+                    capture.visibility_tickets[index]);
+            }
+        }
+        capture.visibility_queries.clear();
+        capture.visibility_tickets.clear();
+    };
+    if (capture.visibility_queries.size() !=
+        capture.visibility_tickets.size())
+    {
+        capture.markIncomplete(__LINE__);
+    }
     const bool impostor_bake = capture.impostor_bake;
     capture.impostor_bake = false;
     capture.frame_active = false;
@@ -16480,6 +16588,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     {
         const std::size_t incomplete_batch_count =
             capture.batches.size();
+        settle_visibility_results(nullptr);
         capture.batches.clear();
         capture.avatar_palettes.clear();
         if (impostor_bake)
@@ -16518,6 +16627,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
     ALMetalWorldGBufferScene scene;
     scene.batches = capture.batches.data();
     scene.batch_count = capture.batches.size();
+    scene.visibility_queries = capture.visibility_queries.data();
+    scene.visibility_query_count = capture.visibility_queries.size();
     scene.width = capture.width;
     scene.height = capture.height;
     scene.normal_hdr = capture.normal_hdr;
@@ -16585,9 +16696,12 @@ void LLPipeline::endMetalWorldGBufferCapture()
             error.clear();
         }
     }
-    auto target = capture.renderer->render(scene, &error);
+    std::shared_ptr<ALMetalVisibilityResultBatch> visibility_results;
+    auto target = capture.renderer->render(
+        scene, &error, &visibility_results);
     if (!target)
     {
+        settle_visibility_results(nullptr);
         if (command_batch_active)
         {
             capture.renderer->cancelCommandBatch();
@@ -17012,6 +17126,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 }
             }
         }
+        settle_visibility_results(
+            target ? std::move(visibility_results) : nullptr);
         if (target)
         {
             capture.target = std::move(target);
