@@ -460,6 +460,7 @@ struct LLPipeline::MetalWorldSimpleCapture
 
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
+    std::shared_ptr<ALMetalWorldFrameData> frame_data;
     std::shared_ptr<RendererBuild> renderer_build;
     std::unique_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalRenderTarget> composed_light_target;
@@ -726,6 +727,36 @@ struct LLPipeline::MetalWorldSimpleCapture
     {
         complete = true;
         first_incomplete_source_line = 0;
+    }
+
+    bool beginFrameData(const MetalWorldSimpleCapture* other, U64 frame)
+    {
+        if (!device || !renderer)
+        {
+            return false;
+        }
+        if (!frame_data && other && other->device == device)
+        {
+            frame_data = other->frame_data;
+        }
+        if (!frame_data)
+        {
+            std::string error;
+            frame_data = ALMetalWorldFrameData::create(*device, &error);
+            if (!frame_data)
+            {
+                LL_WARNS("Metal")
+                    << "Could not prepare native frame data: " << error
+                    << LL_ENDL;
+                return false;
+            }
+        }
+        // Main, hero and ordinary-probe owners swap slots, but all views in
+        // this viewer frame share immutable data and completion-safe pages.
+        // Repeated beginFrame calls for the same generation do not retire it.
+        frame_data->beginFrame(frame);
+        renderer->setFrameData(frame_data);
+        return true;
     }
 
     bool hdri_sky_active = false;
@@ -2114,6 +2145,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     if (capture.device != device)
     {
         capture.renderer.reset();
+        capture.frame_data.reset();
         capture.renderer_build.reset();
         capture.target.reset();
         capture.composed_light_target.reset();
@@ -2551,6 +2583,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             << " renderer pipelines are warming asynchronously; the native "
                "surface retains its previous drawable"
             << LL_ENDL;
+        return;
+    }
+
+    if (!capture.beginFrameData(
+            mMetalProbeWorldSimpleCapture.get(), gFrameCount))
+    {
         return;
     }
 
@@ -4147,6 +4185,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     if (capture.device != device)
     {
         capture.renderer.reset();
+        capture.frame_data.reset();
         capture.renderer_build.reset();
         capture.target.reset();
         capture.composed_light_target.reset();
@@ -4322,6 +4361,12 @@ void LLPipeline::beginMetalImpostorBakeCapture(
             << "Native avatar-impostor baking is waiting for the asynchronous "
                "world renderer warm-up; the native world remains incomplete"
             << LL_ENDL;
+        return;
+    }
+
+    if (!capture.beginFrameData(
+            mMetalProbeWorldSimpleCapture.get(), gFrameCount))
+    {
         return;
     }
 
@@ -12116,7 +12161,10 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
         LLMatrix4a modelview_projection;
         buildMetalWorldDrawMatrices(
             params, modelview, modelview_projection);
-        ALMetalWorldSimpleBatch batch;
+        // Build directly in the retained vector. A failed field/resource
+        // check below clears the transaction before returning, so no partial
+        // record can reach the renderer.
+        ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
         batch.vertices = buffer->getMetalVertexBuffer();
         batch.position_offset = buffer->getOffset(
             LLVertexBuffer::TYPE_VERTEX);
@@ -12133,7 +12181,6 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                     sizeof(batch.modelview_projection));
         std::memcpy(batch.modelview, modelview.getF32ptr(),
                     sizeof(batch.modelview));
-        capture.batches.push_back(batch);
         return;
     }
     const bool indexed_textures =
@@ -12168,7 +12215,7 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
         return;
     }
 
-    ALMetalWorldSimpleBatch batch;
+    ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.normal_offset = buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL)
@@ -12271,7 +12318,6 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
         batch.skin_palette_float_count = palette.mGLMp.size();
         batch.skin_joint_count = joint_count;
     }
-    capture.batches.push_back(batch);
 }
 
 void LLPipeline::captureMetalWorldHighlightBatch(
@@ -12548,7 +12594,7 @@ void LLPipeline::captureMetalWorldBumpBatch(
         buildMetalWorldDrawMatrices(
             params, modelview, modelview_projection);
 
-        ALMetalWorldSimpleBatch batch;
+        ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
         batch.vertices = buffer->getMetalVertexBuffer();
         batch.position_offset = buffer->getOffset(
             LLVertexBuffer::TYPE_VERTEX);
@@ -12596,7 +12642,6 @@ void LLPipeline::captureMetalWorldBumpBatch(
             batch.skin_palette_float_count = palette.mGLMp.size();
             batch.skin_joint_count = joint_count;
         }
-        capture.batches.push_back(batch);
         return;
     }
     if (!buffer ||
@@ -12844,7 +12889,7 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
     buildMetalWorldDrawMatrices(
         params, modelview, modelview_projection);
 
-    ALMetalWorldSimpleBatch batch;
+    ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
@@ -12938,7 +12983,6 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
         batch.skin_palette_float_count = palette.mGLMp.size();
         batch.skin_joint_count = joint_count;
     }
-    capture.batches.push_back(batch);
 }
 
 void LLPipeline::captureMetalWorldPostWaterLegacyGlowBatch(
@@ -13970,6 +14014,11 @@ void LLPipeline::beginMetalSpotShadowCapture(
         return;
     }
     capture.direct_projector_shadow_valid[map] = false;
+    if (!capture.beginFrameData(
+            mMetalProbeWorldSimpleCapture.get(), gFrameCount))
+    {
+        return;
+    }
     capture.spot_shadow_batches.clear();
     capture.spot_shadow_avatar_palettes.clear();
     capture.spot_shadow_map = map;
@@ -14009,6 +14058,11 @@ void LLPipeline::beginMetalDirectionalShadowCapture(
         return;
     }
     capture.direct_directional_shadow_valid[map] = false;
+    if (!capture.beginFrameData(
+            mMetalProbeWorldSimpleCapture.get(), gFrameCount))
+    {
+        return;
+    }
     capture.spot_shadow_batches.clear();
     capture.spot_shadow_avatar_palettes.clear();
     capture.spot_shadow_map = map;
@@ -14149,7 +14203,11 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
         return;
     }
 
-    ALMetalWorldSpotShadowBatch batch;
+    // Populate retained storage in place instead of copying every unused
+    // material/terrain field for each cascade. Every failure after admission
+    // clears the shadow transaction and returns immediately.
+    ALMetalWorldSpotShadowBatch& batch =
+        capture.spot_shadow_batches.emplace_back();
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.vertex_count = buffer->getNumVerts();
@@ -14195,7 +14253,6 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
         batch.skin_palette_float_count = palette.mGLMp.size();
         batch.skin_joint_count = joint_count;
     }
-    capture.spot_shadow_batches.push_back(batch);
 }
 
 void LLPipeline::captureMetalSpotShadowTexturedBatch(
@@ -14234,7 +14291,8 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
         return;
     }
 
-    ALMetalWorldSpotShadowBatch batch;
+    ALMetalWorldSpotShadowBatch& batch =
+        capture.spot_shadow_batches.emplace_back();
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(
@@ -14354,7 +14412,6 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
         batch.skin_palette_float_count = palette.mGLMp.size();
         batch.skin_joint_count = joint_count;
     }
-    capture.spot_shadow_batches.push_back(batch);
 }
 
 void LLPipeline::captureMetalSpotShadowPBRBatch(
@@ -14395,7 +14452,8 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
         return;
     }
 
-    ALMetalWorldSpotShadowBatch batch;
+    ALMetalWorldSpotShadowBatch& batch =
+        capture.spot_shadow_batches.emplace_back();
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(
@@ -14523,7 +14581,6 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
         batch.skin_palette_float_count = palette.mGLMp.size();
         batch.skin_joint_count = joint_count;
     }
-    capture.spot_shadow_batches.push_back(batch);
 }
 
 void LLPipeline::captureMetalSpotShadowTreeBatch(
@@ -14565,7 +14622,8 @@ void LLPipeline::captureMetalSpotShadowTreeBatch(
         return;
     }
 
-    ALMetalWorldSpotShadowBatch batch;
+    ALMetalWorldSpotShadowBatch& batch =
+        capture.spot_shadow_batches.emplace_back();
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(
@@ -14587,7 +14645,6 @@ void LLPipeline::captureMetalSpotShadowTreeBatch(
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
-    capture.spot_shadow_batches.push_back(batch);
 }
 
 void LLPipeline::captureMetalSpotShadowTerrainBatch(
@@ -14634,7 +14691,8 @@ void LLPipeline::captureMetalSpotShadowTerrainBatch(
         return;
     }
 
-    ALMetalWorldSpotShadowBatch batch;
+    ALMetalWorldSpotShadowBatch& batch =
+        capture.spot_shadow_batches.emplace_back();
     batch.terrain = true;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
@@ -14770,7 +14828,6 @@ void LLPipeline::captureMetalSpotShadowTerrainBatch(
         batch.terrain_tessellation_factors[4 + inside] =
             ALWaterHeightBake::halfOf(inner[inside]);
     }
-    capture.spot_shadow_batches.push_back(batch);
 }
 
 void LLPipeline::captureMetalSpotShadowAvatarBatch(
@@ -14871,7 +14928,8 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
         return;
     }
 
-    ALMetalWorldSpotShadowBatch batch;
+    ALMetalWorldSpotShadowBatch& batch =
+        capture.spot_shadow_batches.emplace_back();
     batch.avatar = true;
     batch.avatar_cloth = capture.spot_shadow_avatar_cloth;
     batch.vertices = buffer->getMetalVertexBuffer();
@@ -14949,7 +15007,6 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
                     modelview_projection.getF32ptr(),
                     sizeof(batch.modelview_projection));
     }
-    capture.spot_shadow_batches.push_back(batch);
 }
 
 void LLPipeline::endMetalSpotShadowCapture()
@@ -15310,9 +15367,32 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     const U32 unbuilt = (unbuiltShadowMaps() >> 4u) & 0x3u;
+    if (unbuilt == 0x3u)
+    {
+        // Cold startup may reach cube faces before the main view has built
+        // either map. The light collector leaves those lights unshadowed and
+        // the renderer binds its own lit fallback; no retained texture is
+        // needed or exposed as a valid shadow input in that case.
+        capture.projector_shadows = {};
+        capture.projector_shadows.constants.config[0] = 2;
+        capture.projector_shadows.constants.config[1] = unbuilt;
+        capture.projector_shadow_frame = gFrameCount;
+        return true;
+    }
+    // Projector maps belong to the main view even while a cube face is
+    // active. The owner swap leaves that retained map pair in the probe
+    // slot; only the receiver matrices below depend on the current face.
+    const MetalWorldSimpleCapture* shadow_owner =
+        isMetalProbeFaceCaptureActive()
+            ? mMetalProbeWorldSimpleCapture.get()
+            : &capture;
+    if (!shadow_owner || shadow_owner->device != capture.device)
+    {
+        return false;
+    }
     const ALMetalTextureDescriptor* direct =
-        capture.direct_projector_shadow_texture
-            ? &capture.direct_projector_shadow_texture->descriptor()
+        shadow_owner->direct_projector_shadow_texture
+            ? &shadow_owner->direct_projector_shadow_texture->descriptor()
             : nullptr;
     if (!direct || direct->type != ALMetalTextureType::texture_2d_array ||
         direct->format != ALMetalPixelFormat::r32_float ||
@@ -15348,7 +15428,10 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
         constants.config[1] = unbuilt;
         constants.config[2] = capture.reverse_z ? 1u : 0u;
         constants.config[3] = static_cast<U32>(std::clamp(
-            shaderInputs().mGlobal.mShadowFilterQuality, 0, 3));
+            shaderInputs().mGlobal.mShadowFilterQuality, 0, 3)) |
+            (gCubeSnapshot
+                 ? ALMetalWorldDirectionalShadowConstants::probe_single_tap
+                 : 0u);
 
         capture.projector_shadows.depth_texture = texture;
         capture.projector_shadows.constants = constants;
@@ -15356,26 +15439,17 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
         return true;
     };
 
-    if (capture.projector_shadow_frame == gFrameCount &&
-        capture.projector_shadows.depth_texture)
-    {
-        // Cubemap updates can render several camera faces in one viewer
-        // frame. Their spot maps are deliberately retained, but
-        // generateSunShadow recomputes mSunShadowMatrix[4..5] from each
-        // face's eye space. Re-publish the current pass constants even when
-        // the raw depth texture is already resident; otherwise face two and
-        // later filter with face one's projector matrices.
-        return publish(capture.projector_shadows.depth_texture);
-    }
-
     bool direct_complete = true;
     for (U32 index = 0; direct_complete && index < 2; ++index)
     {
         direct_complete = (unbuilt & (1u << index)) != 0 ||
-            capture.direct_projector_shadow_valid[index];
+            shadow_owner->direct_projector_shadow_valid[index];
     }
+    // Publish from the current owner every time: multiple cube faces can
+    // share a frame number while their receiver matrices differ, and an
+    // earlier publication must not retain a replaced owner's texture.
     return direct_complete &&
-        publish(capture.direct_projector_shadow_texture.get());
+        publish(shadow_owner->direct_projector_shadow_texture.get());
 }
 
 void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
@@ -15568,7 +15642,7 @@ void LLPipeline::captureMetalWorldAvatarBatch(
         return;
     }
 
-    ALMetalWorldSimpleBatch batch;
+    ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
@@ -15705,7 +15779,6 @@ void LLPipeline::captureMetalWorldAvatarBatch(
             batch.normal_matrix[column][2] = inverse[2 * 4 + column];
         }
     }
-    capture.batches.push_back(batch);
     if (capture.direct_probe_scene_active)
     {
         if (avatar_alpha)
@@ -16014,7 +16087,7 @@ void LLPipeline::captureMetalWorldTreeBatch(LLFace* face,
         capture.batches.clear();
         return;
     }
-    ALMetalWorldSimpleBatch batch;
+    ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
@@ -16054,7 +16127,6 @@ void LLPipeline::captureMetalWorldTreeBatch(LLFace* face,
         batch.rigged_normal_matrix[column][2] =
             modelview_values[column * 4 + 2];
     }
-    capture.batches.push_back(batch);
 }
 
 void LLPipeline::captureMetalWorldTerrainBatch(
@@ -16114,7 +16186,7 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     }
 
     ALTerrainSurfaceMaps& maps = surface->getSurfaceMaps();
-    ALMetalWorldSimpleBatch batch;
+    ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     batch.terrain = true;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
@@ -16269,7 +16341,6 @@ void LLPipeline::captureMetalWorldTerrainBatch(
         batch.terrain_tessellation_factors[4 + inside] =
             ALWaterHeightBake::halfOf(inner[inside]);
     }
-    capture.batches.push_back(batch);
 }
 
 void LLPipeline::captureMetalWorldPBRTerrainBatch(
@@ -16350,7 +16421,7 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
         return image ? image->getMetalTexture() : nullptr;
     };
     ALTerrainSurfaceMaps& maps = surface->getSurfaceMaps();
-    ALMetalWorldSimpleBatch batch;
+    ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     batch.terrain = true;
     batch.terrain_pbr = true;
     batch.vertices = buffer->getMetalVertexBuffer();
@@ -16544,7 +16615,6 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
         batch.terrain_tessellation_factors[4 + inside] =
             ALWaterHeightBake::halfOf(inner[inside]);
     }
-    capture.batches.push_back(batch);
 }
 
 void LLPipeline::endMetalWorldGBufferPass()
@@ -29226,11 +29296,17 @@ U32 LLPipeline::unbuiltShadowMaps() const
             unbuilt |= 1u << i;
         }
     }
+    const MetalWorldSimpleCapture* projector_capture =
+        isMetalProbeFaceCaptureActive()
+            ? mMetalProbeWorldSimpleCapture.get()
+            : capture;
     for (U32 i = 0; i < 2; ++i)
     {
         if (!mResourcePlan.wants(i == 0 ? ALRenderResourcePlan::Id::SpotShadow0
                                        : ALRenderResourcePlan::Id::SpotShadow1) ||
-            !capture || !capture->direct_projector_shadow_valid[i])
+            !projector_capture ||
+            (capture && projector_capture->device != capture->device) ||
+            !projector_capture->direct_projector_shadow_valid[i])
         {
             unbuilt |= 1u << (4 + i);
         }
@@ -30303,7 +30379,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 mResourcePlan.desc(
                     i == 0 ? ALRenderResourcePlan::Id::SpotShadow0
                            : ALRenderResourcePlan::Id::SpotShadow1);
-            if (planned && planned->width != 0 &&
+            if (!gCubeSnapshot && planned && planned->width != 0 &&
                 planned->height != 0 && mMetalWorldSimpleCapture &&
                 mMetalWorldSimpleCapture->device &&
                 mMetalWorldSimpleCapture->renderer)
@@ -30320,10 +30396,9 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             }
 #endif
 
-            // Every native view renders projector casters directly into the
-            // Metal shadow pack. A missing planned
-            // resource leaves the slice explicitly unbuilt; it never selects
-            // the retained GL target.
+            // Like the original viewer, cube faces update their eye-to-light
+            // matrices above but sample the retained main-view maps. Only
+            // ordinary views perform projector caster cull/cache/draw work.
             if (shadow_width != 0 && shadow_height != 0)
             {
                 LLCamera shadow_cam = camera;

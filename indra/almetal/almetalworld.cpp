@@ -19,6 +19,9 @@
 #include <cstring>
 #include <deque>
 #include <limits>
+#include <functional>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -211,6 +214,13 @@ namespace
         float avatar_draw[4] = {1.f, 0.f, 0.f, 0.f};
     };
     static_assert(sizeof(WorldSpotShadowConstants) == 608);
+
+    struct alignas(16) WorldOpaqueShadowConstants
+    {
+        float modelview_projection[16];
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldOpaqueShadowConstants) == 80);
 
     struct alignas(16) WorldDisplayPostConstants
     {
@@ -657,9 +667,6 @@ namespace
             slots[ALMetalWorldSimpleBatch::max_material_slots]{};
         // x = populated slot count, y = alpha mask, z = HDR normal target.
         std::uint32_t config[4]{};
-        // Supplies the eye-space position used by PBR mirror clipping and
-        // forward alpha lighting.
-        float modelview[16]{};
     };
 
     struct alignas(16) WorldLocalLightingConstants
@@ -1208,6 +1215,11 @@ namespace
             shadows->depth_texture->descriptor();
         const ALMetalWorldDirectionalShadowConstants& constants =
             shadows->constants;
+        const std::uint32_t filter_config = constants.config[3];
+        const std::uint32_t filter_quality = filter_config &
+            ALMetalWorldDirectionalShadowConstants::filter_quality_mask;
+        const bool probe_single_tap = (filter_config &
+            ALMetalWorldDirectionalShadowConstants::probe_single_tap) != 0;
         return descriptor.type == ALMetalTextureType::texture_2d_array &&
                descriptor.format == ALMetalPixelFormat::r32_float &&
                descriptor.width != 0 && descriptor.height != 0 &&
@@ -1227,10 +1239,175 @@ namespace
                constants.parameters[3] > 0.f &&
                constants.config[0] == 2 &&
                (constants.config[1] & ~0x3u) == 0 &&
-               constants.config[2] <= 1 && constants.config[3] <= 3 &&
-               (constants.config[3] < 3 || constants.parameters[2] > 0.f);
+               constants.config[2] <= 1 &&
+               (filter_config &
+                ~ALMetalWorldDirectionalShadowConstants::filter_config_mask) == 0 &&
+               (filter_quality < 3 || probe_single_tap ||
+                constants.parameters[2] > 0.f);
     }
 
+}
+
+struct ALMetalWorldFrameData::Impl
+{
+    struct Page
+    {
+        std::unique_ptr<ALMetalBuffer> buffer;
+        std::size_t used = 0;
+        std::vector<std::shared_ptr<const ALMetalCommandCompletion>> commands;
+    };
+    struct Entry { Page* page; std::size_t offset; std::size_t length; };
+    const ALMetalDevice* device = nullptr;
+    bool initialized = false;
+    std::uint64_t generation = 0;
+    std::vector<std::unique_ptr<Page>> active;
+    std::vector<std::unique_ptr<Page>> retired;
+    std::vector<std::unique_ptr<Page>> available;
+    std::unordered_multimap<std::uint64_t, Entry> entries;
+    ALMetalWorldFrameDataStats statistics;
+};
+
+ALMetalWorldFrameData::ALMetalWorldFrameData(std::unique_ptr<Impl> impl)
+    : mImpl(std::move(impl)) {}
+ALMetalWorldFrameData::~ALMetalWorldFrameData() = default;
+
+std::shared_ptr<ALMetalWorldFrameData> ALMetalWorldFrameData::create(
+    const ALMetalDevice& device, std::string* error)
+{
+    if (!device.nativeHandle())
+    {
+        setError(error, "Metal frame draw data requires a device");
+        return nullptr;
+    }
+    auto impl = std::make_unique<Impl>();
+    impl->device = &device;
+    return std::shared_ptr<ALMetalWorldFrameData>(
+        new ALMetalWorldFrameData(std::move(impl)));
+}
+
+void ALMetalWorldFrameData::beginFrame(std::uint64_t generation)
+{
+    if (mImpl->initialized && mImpl->generation == generation) return;
+    mImpl->initialized = true;
+    mImpl->generation = generation;
+    mImpl->entries.clear();
+    for (auto& page : mImpl->active)
+        mImpl->retired.push_back(std::move(page));
+    mImpl->active.clear();
+    for (auto it = mImpl->retired.begin(); it != mImpl->retired.end();)
+    {
+        if (std::all_of((*it)->commands.begin(), (*it)->commands.end(),
+                [](const auto& command) { return command->isComplete(); }))
+        {
+            (*it)->used = 0;
+            (*it)->commands.clear();
+            mImpl->available.push_back(std::move(*it));
+            it = mImpl->retired.erase(it);
+        }
+        else ++it;
+    }
+    // Retain a bounded spare working set after a transient heavy frame.
+    if (mImpl->available.size() > 32) mImpl->available.resize(32);
+}
+
+bool ALMetalWorldFrameData::publish(
+    ALMetalCommandBuffer& command, const void* bytes, std::size_t length,
+    ALMetalWorldDataSlice& slice, std::string* error, bool deduplicate)
+{
+    slice = {};
+    if (!bytes || !length || command.isCommitted() ||
+        command.nativeDevice() != mImpl->device->nativeHandle() ||
+        length > std::numeric_limits<std::size_t>::max() - 255)
+    {
+        setError(error, "Metal frame draw data is invalid");
+        return false;
+    }
+    // Hash only selects candidates. Equality always compares immutable bytes,
+    // so reused stack addresses and view-dependent avatar palettes are safe.
+    const auto* input = static_cast<const std::uint8_t*>(bytes);
+    const std::uint64_t hash = deduplicate
+        ? std::hash<std::string_view>{}(std::string_view(
+              static_cast<const char*>(bytes), length)) : 0;
+    Impl::Page* page = nullptr;
+    std::size_t offset = 0;
+    const auto candidates = deduplicate
+        ? mImpl->entries.equal_range(hash)
+        : std::make_pair(mImpl->entries.end(), mImpl->entries.end());
+    for (auto it = candidates.first; it != candidates.second; ++it)
+    {
+        const auto& entry = it->second;
+        if (entry.length == length && std::memcmp(input,
+                static_cast<const std::uint8_t*>(entry.page->buffer->mappedBytes()) +
+                    entry.offset, length) == 0)
+        {
+            page = entry.page;
+            offset = entry.offset;
+            mImpl->statistics.reused_bytes += length;
+            break;
+        }
+    }
+    if (!page)
+    {
+        const std::size_t aligned = (length + 255) & ~std::size_t(255);
+        if (!mImpl->active.empty() &&
+            aligned <= mImpl->active.back()->buffer->length() -
+                mImpl->active.back()->used)
+            page = mImpl->active.back().get();
+        if (!page)
+        {
+            auto available = std::find_if(mImpl->available.begin(),
+                mImpl->available.end(), [aligned](const auto& candidate) {
+                    return candidate->buffer->length() >= aligned;
+                });
+            if (available != mImpl->available.end())
+            {
+                mImpl->active.push_back(std::move(*available));
+                mImpl->available.erase(available);
+                ++mImpl->statistics.pages_reused;
+            }
+            else
+            {
+                auto fresh = std::make_unique<Impl::Page>();
+                ALMetalBufferDescriptor descriptor;
+                descriptor.length = std::max<std::size_t>(1024 * 1024, aligned);
+                descriptor.storage = ALMetalStorageMode::shared;
+                descriptor.label = "Alchemy immutable frame draw data";
+                fresh->buffer = ALMetalBuffer::create(
+                    *mImpl->device, descriptor, error);
+                if (!fresh->buffer) return false;
+                mImpl->active.push_back(std::move(fresh));
+                ++mImpl->statistics.pages_created;
+            }
+            page = mImpl->active.back().get();
+        }
+        offset = page->used;
+        if (!page->buffer->write(offset, bytes, length, error)) return false;
+        page->used += aligned;
+        if (deduplicate)
+            mImpl->entries.emplace(hash, Impl::Entry{page, offset, length});
+        mImpl->statistics.published_bytes += length;
+    }
+    auto completion = command.completionToken();
+    if (!completion)
+    {
+        setError(error, "Metal frame draw data requires a completion token");
+        return false;
+    }
+    if (page->commands.empty() || page->commands.back() != completion)
+    {
+        if (std::find(page->commands.begin(), page->commands.end(), completion) ==
+                page->commands.end())
+            page->commands.push_back(std::move(completion));
+    }
+    slice = {page->buffer.get(), offset, length};
+    return true;
+}
+
+ALMetalWorldFrameDataStats ALMetalWorldFrameData::stats() const noexcept
+{
+    auto result = mImpl->statistics;
+    result.retired_pages = mImpl->retired.size();
+    return result;
 }
 
 struct ALMetalWorldGBufferRenderer::Impl
@@ -1277,6 +1454,29 @@ struct ALMetalWorldGBufferRenderer::Impl
     };
 
     const ALMetalDevice* device = nullptr;
+    std::shared_ptr<ALMetalWorldFrameData> frame_data;
+
+    bool setVertexData(ALMetalRenderEncoder& encoder,
+                       ALMetalCommandBuffer& command, std::uint32_t index,
+                       const void* bytes, std::size_t length, std::string* error,
+                       bool deduplicate = false)
+    {
+        if (!frame_data) return encoder.setVertexBytes(index, bytes, length, error);
+        ALMetalWorldDataSlice slice;
+        return frame_data->publish(command, bytes, length, slice, error, deduplicate) &&
+            encoder.setVertexBuffer(index, *slice.buffer, slice.offset, error);
+    }
+
+    bool setFragmentData(ALMetalRenderEncoder& encoder,
+                         ALMetalCommandBuffer& command, std::uint32_t index,
+                         const void* bytes, std::size_t length, std::string* error,
+                         bool deduplicate = false)
+    {
+        if (!frame_data) return encoder.setFragmentBytes(index, bytes, length, error);
+        ALMetalWorldDataSlice slice;
+        return frame_data->publish(command, bytes, length, slice, error, deduplicate) &&
+            encoder.setFragmentBuffer(index, *slice.buffer, slice.offset, error);
+    }
     std::shared_ptr<ALMetalRenderTargetPool> render_target_pool;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalCommandBuffer> command_batch;
@@ -1389,7 +1589,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     }
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_pipelines;
-    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
         spot_shadow_coverage_pipelines;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
         spot_shadow_avatar_pipelines;
@@ -1805,6 +2005,12 @@ ALMetalWorldGBufferRenderer::ALMetalWorldGBufferRenderer(
 
 ALMetalWorldGBufferRenderer::~ALMetalWorldGBufferRenderer() = default;
 
+void ALMetalWorldGBufferRenderer::setFrameData(
+    std::shared_ptr<ALMetalWorldFrameData> data)
+{
+    mImpl->frame_data = std::move(data);
+}
+
 bool ALMetalWorldGBufferRenderer::setAnisotropy(
     std::uint32_t max_anisotropy,
     std::string* error)
@@ -2197,8 +2403,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = impl->library.get();
         descriptor.vertex_function = rigged != 0
-            ? "almetal_world_spot_shadow_skinned_vertex"
-            : "almetal_world_spot_shadow_vertex";
+            ? "almetal_world_spot_shadow_opaque_skinned_vertex"
+            : "almetal_world_spot_shadow_opaque_vertex";
         descriptor.fragment_function =
             "almetal_world_spot_shadow_fragment";
         descriptor.color_attachment_count = 1;
@@ -2217,16 +2423,23 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         descriptor.vertex_function = rigged != 0
             ? "almetal_world_spot_shadow_coverage_skinned_vertex"
             : "almetal_world_spot_shadow_coverage_vertex";
-        descriptor.fragment_function =
-            "almetal_world_spot_shadow_coverage_fragment";
         descriptor.label = rigged != 0
             ? "Alchemy rigged covered spot-shadow depth pipeline"
             : "Alchemy static covered spot-shadow depth pipeline";
-        impl->spot_shadow_coverage_pipelines[rigged] =
-            ALMetalRenderPipeline::create(device, descriptor, error);
-        if (!impl->spot_shadow_coverage_pipelines[rigged])
+        constexpr std::array<const char*, 3> coverage_fragments{{
+            "almetal_world_spot_shadow_coverage_single_fragment",
+            "almetal_world_spot_shadow_coverage_eight_fragment",
+            "almetal_world_spot_shadow_coverage_fragment",
+        }};
+        for (std::size_t slots = 0; slots < coverage_fragments.size(); ++slots)
         {
-            return nullptr;
+            descriptor.fragment_function = coverage_fragments[slots];
+            impl->spot_shadow_coverage_pipelines[rigged][slots] =
+                ALMetalRenderPipeline::create(device, descriptor, error);
+            if (!impl->spot_shadow_coverage_pipelines[rigged][slots])
+            {
+                return nullptr;
+            }
         }
     }
 
@@ -2244,7 +2457,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             descriptor.library = impl->library.get();
             descriptor.vertex_function = avatar_spot_vertices[variant];
             descriptor.fragment_function = covered
-                ? "almetal_world_spot_shadow_coverage_fragment"
+                ? "almetal_world_spot_shadow_coverage_single_fragment"
                 : "almetal_world_spot_shadow_fragment";
             descriptor.color_attachment_count = 1;
             descriptor.colors[0].format = ALMetalPixelFormat::r32_float;
@@ -5836,7 +6049,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             }
             const std::size_t palette_bytes =
                 batch.skin_palette_float_count * sizeof(float);
-            if (palette_bytes <= max_inline_palette_bytes)
+            if (mImpl->frame_data || palette_bytes <= max_inline_palette_bytes)
             {
                 // Metal copies setVertexBytes data into completion-safe
                 // command storage. Avatar palettes and rigged palettes up to
@@ -6005,7 +6218,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                     error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     1, &constants, sizeof(constants), error) &&
                 encoder->setVertexTexture(
                     0, batch.terrain_height_texture, error) &&
@@ -6019,33 +6232,49 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         const bool rigged = batch.skin_palette != nullptr;
         const bool covered = batch.coverage !=
             ALMetalWorldSpotShadowCoverage::opaque;
-        WorldSpotShadowConstants constants{};
-        std::memcpy(constants.modelview_projection,
-                    batch.modelview_projection,
-                    sizeof(constants.modelview_projection));
-        std::memcpy(constants.texture_matrix, batch.texture_matrix,
-                    sizeof(constants.texture_matrix));
-        std::memcpy(constants.pbr_base_color_transforms,
-                    batch.pbr_base_color_transforms.data(),
-                    sizeof(constants.pbr_base_color_transforms));
-        std::memcpy(constants.alpha_cutoffs,
-                    batch.alpha_cutoffs.data(),
-                    sizeof(constants.alpha_cutoffs));
-        std::memcpy(constants.avatar_wind, batch.avatar_wind,
-                    sizeof(constants.avatar_wind));
-        std::memcpy(constants.avatar_sin_wave, batch.avatar_sin_wave,
-                    sizeof(constants.avatar_sin_wave));
-        std::memcpy(constants.avatar_gravity, batch.avatar_gravity,
-                    sizeof(constants.avatar_gravity));
-        std::memcpy(constants.avatar_cloth_depth,
-                    batch.avatar_cloth_depth,
-                    sizeof(constants.avatar_cloth_depth));
-        constants.avatar_draw[0] = batch.avatar_draw_alpha;
-        constants.config[0] = scene.reverse_z ? 1u : 0u;
-        constants.config[1] =
-            static_cast<std::uint32_t>(batch.coverage);
-        constants.config[2] = batch.texture_count;
-        constants.config[3] = scene.height;
+        WorldOpaqueShadowConstants opaque_constants;
+        WorldSpotShadowConstants constants;
+        const bool full_constants = covered || batch.avatar;
+        const void* constant_bytes = &opaque_constants;
+        std::size_t constant_length = sizeof(opaque_constants);
+        if (full_constants)
+        {
+            constant_bytes = &constants;
+            constant_length = sizeof(constants);
+            std::memcpy(constants.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.texture_matrix, batch.texture_matrix,
+                        sizeof(constants.texture_matrix));
+            std::memcpy(constants.pbr_base_color_transforms,
+                        batch.pbr_base_color_transforms.data(),
+                        sizeof(constants.pbr_base_color_transforms));
+            std::memcpy(constants.alpha_cutoffs,
+                        batch.alpha_cutoffs.data(),
+                        sizeof(constants.alpha_cutoffs));
+            std::memcpy(constants.avatar_wind, batch.avatar_wind,
+                        sizeof(constants.avatar_wind));
+            std::memcpy(constants.avatar_sin_wave, batch.avatar_sin_wave,
+                        sizeof(constants.avatar_sin_wave));
+            std::memcpy(constants.avatar_gravity, batch.avatar_gravity,
+                        sizeof(constants.avatar_gravity));
+            std::memcpy(constants.avatar_cloth_depth,
+                        batch.avatar_cloth_depth,
+                        sizeof(constants.avatar_cloth_depth));
+            constants.avatar_draw[0] = batch.avatar_draw_alpha;
+            constants.config[0] = scene.reverse_z ? 1u : 0u;
+            constants.config[1] =
+                static_cast<std::uint32_t>(batch.coverage);
+            constants.config[2] = batch.texture_count;
+            constants.config[3] = scene.height;
+        }
+        else
+        {
+            std::memcpy(opaque_constants.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(opaque_constants.modelview_projection));
+            opaque_constants.config[0] = scene.reverse_z ? 1u : 0u;
+        }
         if (batch.avatar)
         {
             const std::size_t variant = !rigged
@@ -6057,20 +6286,19 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                         covered ? 1 : 0][variant], error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
-                encoder->setVertexBytes(
-                    1, &constants, sizeof(constants), error) &&
+                mImpl->setVertexData(*encoder, *command,
+                    1, constant_bytes, constant_length, error) &&
                 encoder->setVertexBuffer(
                     2, *batch.vertices, batch.texcoord_offset, error);
             if (encoded && covered)
             {
                 encoded =
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         0, &constants, sizeof(constants), error) &&
                     encoder->setFragmentSampler(
                         0, mImpl->diffuse_sampler.get(), error);
                 for (std::size_t texture = 0;
-                     encoded && texture <
-                         ALMetalWorldSpotShadowBatch::max_textures;
+                     encoded && texture < 1;
                      ++texture)
                 {
                     encoded = encoder->setFragmentTexture(
@@ -6082,10 +6310,10 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             {
                 encoded =
                     (inline_palettes[index]
-                         ? encoder->setVertexBytes(
+                         ? mImpl->setVertexData(*encoder, *command,
                                4, batch.skin_palette,
                                batch.skin_palette_float_count *
-                                   sizeof(float), error)
+                                   sizeof(float), error, true)
                          : encoder->setVertexBuffer(
                                4, *palette_buffers[index], 0, error)) &&
                     encoder->setVertexBuffer(
@@ -6113,13 +6341,14 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             encoder->setPipeline(
                 *(covered
                     ? mImpl->spot_shadow_coverage_pipelines[
-                          rigged ? 1 : 0]
+                          rigged ? 1 : 0][batch.texture_count == 1 ? 0 :
+                              (batch.texture_count <= 8 ? 1 : 2)]
                     : mImpl->spot_shadow_pipelines[rigged ? 1 : 0]),
                 error) &&
             encoder->setVertexBuffer(
                 0, *batch.vertices, batch.position_offset, error) &&
-            encoder->setVertexBytes(
-                1, &constants, sizeof(constants), error);
+            mImpl->setVertexData(*encoder, *command,
+                1, constant_bytes, constant_length, error);
         if (encoded && covered)
         {
             encoded =
@@ -6127,13 +6356,13 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                     2, *batch.vertices, batch.texcoord_offset, error) &&
                 encoder->setVertexBuffer(
                     3, *batch.vertices, batch.color_offset, error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &constants, sizeof(constants), error) &&
                 encoder->setFragmentSampler(
                     0, mImpl->diffuse_sampler.get(), error);
             for (std::size_t texture = 0;
-                 encoded && texture <
-                     ALMetalWorldSpotShadowBatch::max_textures;
+                 encoded && texture < (batch.texture_count == 1 ? 1u :
+                     (batch.texture_count <= 8 ? 8u : 32u));
                  ++texture)
             {
                 const std::size_t source = std::min<std::size_t>(
@@ -6147,15 +6376,15 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         {
             encoded =
                 (inline_palettes[index]
-                     ? encoder->setVertexBytes(
+                     ? mImpl->setVertexData(*encoder, *command,
                            4, batch.skin_palette,
                            batch.skin_palette_float_count * sizeof(float),
-                           error)
+                           error, true)
                      : encoder->setVertexBuffer(
                            4, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
                     5, *batch.vertices, batch.weight_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     6, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error);
         }
@@ -6163,15 +6392,15 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         {
             encoded =
                 (inline_palettes[index]
-                     ? encoder->setVertexBytes(
+                     ? mImpl->setVertexData(*encoder, *command,
                            2, batch.skin_palette,
                            batch.skin_palette_float_count * sizeof(float),
-                           error)
+                           error, true)
                      : encoder->setVertexBuffer(
                            2, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
                     3, *batch.vertices, batch.weight_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     4, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error);
         }
@@ -6680,7 +6909,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         constexpr std::size_t max_inline_palette_bytes = 4096;
         const std::size_t palette_bytes =
             batch.skin_palette_float_count * sizeof(float);
-        if (palette_bytes <= max_inline_palette_bytes)
+        if (mImpl->frame_data || palette_bytes <= max_inline_palette_bytes)
         {
             // Inline command data is completion-safe and avoids rebuilding
             // the same small native buffer for every probe/mirror view.
@@ -6929,14 +7158,14 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                         ? ALMetalVisibilityResultMode::counting
                         : ALMetalVisibilityResultMode::boolean,
                     visibility_index * sizeof(std::uint64_t), error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     0, &constants, sizeof(constants), error) &&
                 encoder->draw(
                     ALMetalPrimitiveType::triangle, 0, 18, 1, error);
             if (query_encoded && query.fan_count == 2)
             {
                 constants.config[0] = 7;
-                query_encoded = encoder->setVertexBytes(
+                query_encoded = mImpl->setVertexData(*encoder, *command,
                     0, &constants, sizeof(constants), error) &&
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 18, 1, error);
@@ -7014,7 +7243,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                     encoder->setTriangleFillMode(
                         ALMetalTriangleFillMode::fill, error) &&
                     encoder->setPipeline(*debug_pipeline, error) &&
-                    encoder->setVertexBytes(
+                    mImpl->setVertexData(*encoder, *command,
                         0, &constants, sizeof(constants), error) &&
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 24, 1, error);
@@ -7032,9 +7261,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                     : ALMetalTriangleFillMode::fill,
                     error) &&
                 encoder->setPipeline(*pipeline, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     0, &constants, sizeof(constants), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &constants, sizeof(constants), error) &&
                 encoder->setFragmentTextureLinear(
                     0, batch.impostor_textures[0], error) &&
@@ -7128,9 +7357,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 encoder->setPipeline(*pipeline, error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     4, &constants, sizeof(constants), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &constants, sizeof(constants), error) &&
                 encoder->setVertexTexture(
                     0, batch.terrain_height_texture, error) &&
@@ -7269,7 +7498,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                      batch.normal_offset, error) &&
             encoder->setVertexBuffer(2, *batch.vertices,
                                      batch.texcoord_offset, error) &&
-            encoder->setVertexBytes(4, &constants, sizeof(constants), error) &&
+            mImpl->setVertexData(*encoder, *command,4, &constants, sizeof(constants), error) &&
             encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
         if (encoded && !avatar)
         {
@@ -7280,15 +7509,15 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         {
             encoded =
                 (inline_palettes[index]
-                     ? encoder->setVertexBytes(
+                     ? mImpl->setVertexData(*encoder, *command,
                            5, batch.skin_palette,
                            batch.skin_palette_float_count * sizeof(float),
-                           error)
+                           error, true)
                      : encoder->setVertexBuffer(
                            5, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
                     6, *batch.vertices, batch.weight_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     7, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error);
         }
@@ -7345,8 +7574,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             material_constants.config[1] = batch.material_alpha_mode;
             material_constants.config[2] = material_normal_map ? 1u : 0u;
             material_constants.config[3] = material_specular_map ? 1u : 0u;
-            encoded = encoded && encoder->setFragmentBytes(
-                0, &material_constants, sizeof(material_constants), error);
+            encoded = encoded && mImpl->setFragmentData(*encoder, *command,
+                0, &material_constants, sizeof(material_constants), error, true);
         }
         if (encoded && pbr)
         {
@@ -7371,13 +7600,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             pbr_constants.config[0] = batch.pbr_slot_count;
             pbr_constants.config[1] = batch.alpha_mask ? 1u : 0u;
             pbr_constants.config[2] = scene.normal_hdr ? 1u : 0u;
-            std::memcpy(pbr_constants.modelview, batch.modelview,
-                        sizeof(pbr_constants.modelview));
             encoded = encoded &&
-                encoder->setVertexBytes(
-                    11, &pbr_constants, sizeof(pbr_constants), error) &&
-                encoder->setFragmentBytes(
-                    0, &pbr_constants, sizeof(pbr_constants), error);
+                mImpl->setVertexData(*encoder, *command,
+                    11, &pbr_constants, sizeof(pbr_constants), error, true) &&
+                mImpl->setFragmentData(*encoder, *command,
+                    0, &pbr_constants, sizeof(pbr_constants), error, true);
         }
         const std::size_t base_texture_count = material || pbr
             ? ALMetalWorldSimpleBatch::max_material_slots
@@ -7492,7 +7719,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             coverage_encoder->setScissor(scissor, error) &&
             coverage_encoder->setCullMode(ALMetalCullMode::none, error) &&
             coverage_encoder->setPipeline(*coverage_pipeline, error) &&
-            coverage_encoder->setVertexBytes(
+            mImpl->setVertexData(*coverage_encoder, *command,
                 0, &reverse_z, sizeof(reverse_z), error) &&
             coverage_encoder->draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
@@ -14719,7 +14946,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
          batch_index < scene.batch_count; ++batch_index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[batch_index];
-        if (!batch.skin_palette)
+        if (!batch.skin_palette || mImpl->frame_data)
         {
             continue;
         }
@@ -15612,7 +15839,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setTriangleFillMode(
                 ALMetalTriangleFillMode::fill, error) &&
             encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 0, &reverse_z, sizeof(reverse_z), error) &&
             encoder->setDepthStencilState(background_depth, error) &&
             encoder->setPipeline(
@@ -15712,7 +15939,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     error) &&
                 encoder->setFragmentSampler(
                     1, mImpl->point_clamp_sampler.get(), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &constants, sizeof(constants), error);
             if (encoded && haze.above_water)
             {
@@ -15725,7 +15952,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         haze.draws[draw];
                     constants.config[2] = field.part;
                     encoded =
-                        encoder->setVertexBytes(
+                        mImpl->setVertexData(*encoder, *command,
                             0, &constants, sizeof(constants), error) &&
                         encoder->draw(
                             field.triangle_strip
@@ -15738,7 +15965,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             else if (encoded)
             {
                 encoded =
-                    encoder->setVertexBytes(
+                    mImpl->setVertexData(*encoder, *command,
                         0, &constants, sizeof(constants), error) &&
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 3, 1, error);
@@ -15811,7 +16038,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     1, mImpl->point_clamp_sampler.get(), error) &&
                 encoder->setFragmentSampler(
                     2, mImpl->linear_clamp_sampler.get(), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     1, scene.alpha_environment,
                     sizeof(*scene.alpha_environment), error);
             if (encoded && haze.sky_behind)
@@ -15819,18 +16046,18 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 constants.config[1] = 0u;
                 encoded =
                     encoder->setStencilReferenceValue(0u, error) &&
-                    encoder->setVertexBytes(
+                    mImpl->setVertexData(*encoder, *command,
                         0, &constants, sizeof(constants), error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         0, &constants, sizeof(constants), error) &&
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 3, 1, error);
                 constants.config[1] = 1u;
                 encoded = encoded &&
                     encoder->setStencilReferenceValue(2u, error) &&
-                    encoder->setVertexBytes(
+                    mImpl->setVertexData(*encoder, *command,
                         0, &constants, sizeof(constants), error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         0, &constants, sizeof(constants), error) &&
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 3, 1, error);
@@ -15840,9 +16067,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 constants.config[1] = 0u;
                 encoded =
                     encoder->setStencilReferenceValue(0u, error) &&
-                    encoder->setVertexBytes(
+                    mImpl->setVertexData(*encoder, *command,
                         0, &constants, sizeof(constants), error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         0, &constants, sizeof(constants), error) &&
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 3, 1, error);
@@ -16130,10 +16357,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     0, mImpl->diffuse_sampler.get(), error) &&
                 encoder->setFragmentSampler(
                     1, mImpl->linear_clamp_sampler.get(), error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     1, &water_constants,
                     sizeof(water_constants), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &field_constants,
                     sizeof(field_constants), error);
             if (encoded && water.waves)
@@ -16188,29 +16415,29 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         ? scene.legacy_environment
                         : mImpl->inactive_hero_probe.get();
                 encoded =
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         2, scene.alpha_environment,
                         sizeof(*scene.alpha_environment), error) &&
                     encoder->setFragmentBuffer(
                         3, *probe_constants_buffer, 0, error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         4, scene.alpha_lighting,
                         sizeof(*scene.alpha_lighting), error) &&
                     encoder->setFragmentTexture(
                         33, directional_depth, error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         5, &directional_constants,
                         sizeof(directional_constants), error) &&
                     encoder->setFragmentTexture(
                         34, hero_texture, error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         6, &hero_constants,
                         sizeof(hero_constants), error) &&
                     encoder->setFragmentTexture(
                         35, ssr_color, error) &&
                     encoder->setFragmentTexture(
                         36, ssr_depth, error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         7, &ssr_constants,
                         sizeof(ssr_constants), error) &&
                     encoder->setFragmentTexture(
@@ -16230,19 +16457,19 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 for (std::uint32_t draw = 0;
                      drew && draw < field.draw_count; ++draw)
                 {
-                    const ALMetalWorldWaterFieldDraw& command =
+                    const ALMetalWorldWaterFieldDraw& draw_command =
                         field.draws[draw];
-                    field_constants.config[2] = command.part;
+                    field_constants.config[2] = draw_command.part;
                     drew =
-                        encoder->setVertexBytes(
+                        mImpl->setVertexData(*encoder, *command,
                             0, &field_constants,
                             sizeof(field_constants), error) &&
                         encoder->draw(
-                            command.triangle_strip
+                            draw_command.triangle_strip
                                 ? ALMetalPrimitiveType::triangle_strip
                                 : ALMetalPrimitiveType::triangle,
-                            0, command.vertex_count,
-                            command.instance_count, error);
+                            0, draw_command.vertex_count,
+                            draw_command.instance_count, error);
                 }
                 return drew;
             };
@@ -16253,7 +16480,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     (wave_water_pipeline && water_factor_buffer &&
                      encoder->setPipeline(
                          *wave_water_pipeline, error) &&
-                     encoder->setVertexBytes(
+                     mImpl->setVertexData(*encoder, *command,
                          0, &field_constants,
                          sizeof(field_constants), error) &&
                      encoder->setTessellationFactorBuffer(
@@ -16268,7 +16495,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoded = encoded &&
                 encoder->setDepthStencilState(surface_depth, error) &&
                 encoder->setStencilReferenceValue(2u, error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     1, &water_constants,
                     sizeof(water_constants), error) &&
                 draw_water_patches() &&
@@ -16285,7 +16512,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     encoder->setDepthStencilState(
                         excluded_depth, error) &&
                     encoder->setStencilReferenceValue(1u, error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         1, &water_constants,
                         sizeof(water_constants), error) &&
                     draw_water_patches() &&
@@ -16335,6 +16562,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             std::memcpy(pbr_world.modelview_projection,
                         batch.modelview_projection,
                         sizeof(pbr_world.modelview_projection));
+            std::memcpy(pbr_world.modelview, batch.modelview,
+                        sizeof(pbr_world.modelview));
             std::memcpy(pbr_world.normal_matrix,
                         batch.normal_matrix,
                         sizeof(pbr_world.normal_matrix));
@@ -16474,7 +16703,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     2, *batch.vertices, batch.texcoord_offset, error) &&
                 encoder->setVertexBuffer(
                     3, *batch.vertices, batch.color_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     4,
                     batch.pre_water_pbr
                         ? static_cast<const void*>(&pbr_world)
@@ -16533,17 +16762,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                             ? batch.texcoord2_offset
                             : batch.texcoord_offset,
                         error) &&
-                    encoder->setFragmentBytes(
-                        0, &material, sizeof(material), error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
+                        0, &material, sizeof(material), error, true) &&
+                    mImpl->setFragmentData(*encoder, *command,
                         2, scene.alpha_lighting,
                         sizeof(*scene.alpha_lighting), error) &&
                     encoder->setFragmentTexture(
                         33, directional_depth, error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         3, &directional_constants,
                         sizeof(directional_constants), error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         6, &alpha_environment,
                         sizeof(alpha_environment), error);
                 for (std::size_t slot = 0;
@@ -16594,8 +16823,6 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         source.base_color_factor[3];
                 }
                 pbr.config[0] = batch.pbr_slot_count;
-                std::memcpy(pbr.modelview, batch.modelview,
-                            sizeof(pbr.modelview));
                 const ALMetalTexture* directional_depth =
                     batch.pre_water_shadows
                         ? scene.alpha_directional_shadows->depth_texture
@@ -16607,19 +16834,19 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoded =
                     encoder->setVertexBuffer(
                         8, *batch.vertices, batch.tangent_offset, error) &&
-                    encoder->setVertexBytes(
-                        11, &pbr, sizeof(pbr), error) &&
-                    encoder->setFragmentBytes(
-                        0, &pbr, sizeof(pbr), error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setVertexData(*encoder, *command,
+                        11, &pbr, sizeof(pbr), error, true) &&
+                    mImpl->setFragmentData(*encoder, *command,
+                        0, &pbr, sizeof(pbr), error, true) &&
+                    mImpl->setFragmentData(*encoder, *command,
                         2, scene.alpha_lighting,
                         sizeof(*scene.alpha_lighting), error) &&
                     encoder->setFragmentTexture(
                         33, directional_depth, error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         3, &directional_constants,
                         sizeof(directional_constants), error) &&
-                    encoder->setFragmentBytes(
+                    mImpl->setFragmentData(*encoder, *command,
                         6, &alpha_environment,
                         sizeof(alpha_environment), error);
                 for (std::size_t slot = 0;
@@ -16653,12 +16880,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             }
             else if (encoded)
             {
-                encoded = encoder->setFragmentBytes(
+                encoded = mImpl->setFragmentData(*encoder, *command,
                     0, &alpha_environment,
                     sizeof(alpha_environment), error);
                 if (encoded && batch.pre_water_simple)
                 {
-                    encoded = encoder->setFragmentBytes(
+                    encoded = mImpl->setFragmentData(*encoder, *command,
                         2, scene.alpha_lighting,
                         sizeof(*scene.alpha_lighting), error);
                 }
@@ -16669,7 +16896,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                             33,
                             scene.alpha_directional_shadows->depth_texture,
                             error) &&
-                        encoder->setFragmentBytes(
+                        mImpl->setFragmentData(*encoder, *command,
                             3,
                             &scene.alpha_directional_shadows->constants,
                             sizeof(scene.alpha_directional_shadows
@@ -16680,11 +16907,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             if (encoded && rigged)
             {
                 encoded =
-                    encoder->setVertexBuffer(
-                        5, *palette_buffers[index], 0, error) &&
+                    (mImpl->frame_data
+                         ? mImpl->setVertexData(*encoder, *command, 5,
+                               batch.skin_palette, batch.skin_palette_float_count *
+                                   sizeof(float), error, true)
+                         : encoder->setVertexBuffer(
+                               5, *palette_buffers[index], 0, error)) &&
                     encoder->setVertexBuffer(
                         6, *batch.vertices, batch.weight_offset, error) &&
-                    encoder->setVertexBytes(
+                    mImpl->setVertexData(*encoder, *command,
                         7, &batch.skin_joint_count,
                         sizeof(batch.skin_joint_count), error);
             }
@@ -16743,9 +16974,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     1, &constants, sizeof(constants), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &constants, sizeof(constants), error) &&
                 encoder->setFragmentTexture(
                     0, scene.water_exclusion_surface->cell_map, error) &&
@@ -16804,16 +17035,20 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     2, *batch.vertices, batch.texcoord_offset, error) &&
                 encoder->setVertexBuffer(
                     3, *batch.vertices, batch.emissive_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     4, &world, sizeof(world), error);
             if (encoded && rigged)
             {
                 encoded =
-                    encoder->setVertexBuffer(
-                        5, *palette_buffers[index], 0, error) &&
+                    (mImpl->frame_data
+                         ? mImpl->setVertexData(*encoder, *command, 5,
+                               batch.skin_palette, batch.skin_palette_float_count *
+                                   sizeof(float), error, true)
+                         : encoder->setVertexBuffer(
+                               5, *palette_buffers[index], 0, error)) &&
                     encoder->setVertexBuffer(
                         6, *batch.vertices, batch.weight_offset, error) &&
-                    encoder->setVertexBytes(
+                    mImpl->setVertexData(*encoder, *command,
                         7, &batch.skin_joint_count,
                         sizeof(batch.skin_joint_count), error);
             }
@@ -16841,10 +17076,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 pbr.config[0] = batch.pbr_slot_count;
                 pbr.config[1] = batch.post_water_glow ? 1u : 0u;
                 encoded =
-                    encoder->setVertexBytes(
-                        11, &pbr, sizeof(pbr), error) &&
-                    encoder->setFragmentBytes(
-                        0, &pbr, sizeof(pbr), error);
+                    mImpl->setVertexData(*encoder, *command,
+                        11, &pbr, sizeof(pbr), error, true) &&
+                    mImpl->setFragmentData(*encoder, *command,
+                        0, &pbr, sizeof(pbr), error, true);
                 for (std::size_t slot = 0;
                      encoded && slot <
                          ALMetalWorldSimpleBatch::max_material_slots; ++slot)
@@ -16955,7 +17190,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 0, *batch.vertices, batch.position_offset, error) &&
             encoder->setVertexBuffer(
                 2, *batch.vertices, batch.texcoord_offset, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 4,
                 batch.impostor_shiny
                     ? static_cast<const void*>(&shiny_world)
@@ -16984,11 +17219,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         if (encoded && rigged)
         {
             encoded =
-                encoder->setVertexBuffer(
-                    5, *palette_buffers[index], 0, error) &&
+                (mImpl->frame_data
+                         ? mImpl->setVertexData(*encoder, *command, 5,
+                               batch.skin_palette, batch.skin_palette_float_count *
+                                   sizeof(float), error, true)
+                         : encoder->setVertexBuffer(
+                               5, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
                     6, *batch.vertices, batch.weight_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     7, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error);
         }
@@ -17000,7 +17239,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     : ALMetalWorldAlphaEnvironment{};
             shiny_environment.environment_config[0] =
                 legacy_environment ? 1u : 0u;
-            encoded = encoder->setFragmentBytes(
+            encoded = mImpl->setFragmentData(*encoder, *command,
                 0, &shiny_environment,
                 sizeof(shiny_environment), error);
         }
@@ -17051,12 +17290,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 0, *batch.vertices, batch.position_offset, error) &&
             encoder->setVertexBuffer(
                 2, *batch.vertices, batch.texcoord_offset, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 4, &constants, sizeof(constants), error) &&
             encoder->setFragmentTexture(0, batch.texture, error) &&
             encoder->setFragmentSampler(
                 0, mImpl->diffuse_sampler.get(), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error);
         if (encoded && rigged)
         {
@@ -17065,7 +17304,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     5, *highlight_palette_buffers[index], 0, error) &&
                 encoder->setVertexBuffer(
                     6, *batch.vertices, batch.weight_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     7, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error);
         }
@@ -17095,7 +17334,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 error) &&
             encoder->setVertexBuffer(
                 0, *debug_blip_buffer, 0, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::point, 0,
@@ -17124,7 +17363,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 error) &&
             encoder->setVertexBuffer(
                 0, *agent_target_buffer, 0, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::line, 0,
@@ -17158,9 +17397,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setPipeline(
                     *mImpl->texture_anim_pipelines[
                         scene.hdr ? 1 : 0], error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     1, &constants, sizeof(constants), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &constants, sizeof(constants), error);
             if (sphere)
             {
@@ -17176,7 +17415,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         0, 1, error);
             }
             return part_encoded &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     0, line_positions, sizeof(line_positions), error) &&
                 encoder->draw(
                     ALMetalPrimitiveType::line, 0, 2, 1, error);
@@ -17231,9 +17470,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setPipeline(
                 *mImpl->light_debug_outline_pipelines[
                     scene.hdr ? 1 : 0], error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::line, 0, 24, 1, error);
@@ -17273,9 +17512,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setTriangleFillMode(
                 ALMetalTriangleFillMode::fill, error) &&
             encoder->setPipeline(*pipeline, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->draw(
                 wide ? ALMetalPrimitiveType::triangle
@@ -17337,9 +17576,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setCullMode(ALMetalCullMode::none, error) &&
             encoder->setTriangleFillMode(
                 ALMetalTriangleFillMode::fill, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error);
         if (!batch_encoded)
         {
@@ -17423,9 +17662,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         scene.hdr ? 1 : 0], error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     1, &constants, sizeof(constants), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &constants, sizeof(constants), error) &&
                 encoder->drawIndexed(
                     ALMetalPrimitiveType::triangle,
@@ -17458,9 +17697,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setPipeline(
                 *mImpl->raycast_box_pipelines[
                     scene.hdr ? 1 : 0], error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::triangle_strip,
@@ -17499,9 +17738,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         scene.hdr ? 1 : 0][rigged ? 1 : 0], error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     1, &constants, sizeof(constants), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &constants, sizeof(constants), error);
             if (batch_encoded && rigged)
             {
@@ -17511,7 +17750,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         0, error) &&
                     encoder->setVertexBuffer(
                         3, *batch.vertices, batch.weight_offset, error) &&
-                    encoder->setVertexBytes(
+                    mImpl->setVertexData(*encoder, *command,
                         4, &batch.skin_joint_count,
                         sizeof(batch.skin_joint_count), error);
             }
@@ -17557,9 +17796,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     : mImpl->light_debug_outline_pipelines[
                           scene.hdr ? 1 : 0]),
                 error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->draw(
                 flash ? ALMetalPrimitiveType::triangle
@@ -17623,9 +17862,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setPipeline(*pipeline, error) &&
             encoder->setVertexBuffer(
                 0, *physics_shape_vertex_buffer, offset, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::triangle,
@@ -17660,9 +17899,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         scene.hdr ? 1 : 0], error) &&
                 encoder->setVertexBuffer(
                     0, *normal_vertex_buffer, offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     1, &constants, sizeof(constants), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &constants, sizeof(constants), error) &&
                 encoder->draw(
                     ALMetalPrimitiveType::line, 0,
@@ -17694,7 +17933,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 1, *batch.vertices, batch.normal_offset, error) &&
             encoder->setVertexBuffer(
                 3, *batch.indices, batch.index_offset, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 4, &constants, sizeof(constants), error);
         if (batch_encoded && batch.with_tangents)
         {
@@ -17727,7 +17966,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 error) &&
             encoder->setVertexBuffer(
                 0, *debug_point_buffer, 0, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::point, batch.first_vertex,
@@ -17755,9 +17994,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 error) &&
             encoder->setVertexBuffer(
                 0, *batch.vertices, batch.position_offset, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->drawIndexed(
                 ALMetalPrimitiveType::triangle, batch.index_count,
@@ -17788,9 +18027,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 error) &&
             encoder->setVertexBuffer(
                 0, *batch.vertices, batch.position_offset, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->drawIndexed(
                 ALMetalPrimitiveType::triangle, batch.index_count,
@@ -17821,9 +18060,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 error) &&
             encoder->setVertexBuffer(
                 0, *batch.vertices, batch.position_offset, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->drawIndexed(
                 ALMetalPrimitiveType::triangle, batch.index_count,
@@ -17860,9 +18099,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 error) &&
             encoder->setVertexBuffer(
                 0, *batch.vertices, batch.position_offset, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error);
         if (batch_encoded && rigged)
         {
@@ -17872,7 +18111,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     0, error) &&
                 encoder->setVertexBuffer(
                     3, *batch.vertices, batch.weight_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     4, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error);
         }
@@ -17907,9 +18146,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         scene.hdr ? 1 : 0], error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
-                encoder->setVertexBytes(
+                mImpl->setVertexData(*encoder, *command,
                     1, &constants, sizeof(constants), error) &&
-                encoder->setFragmentBytes(
+                mImpl->setFragmentData(*encoder, *command,
                     0, &constants, sizeof(constants), error) &&
                 encoder->drawIndexed(
                     ALMetalPrimitiveType::triangle,
@@ -17942,9 +18181,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setPipeline(
                 *mImpl->light_debug_outline_pipelines[
                     scene.hdr ? 1 : 0], error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::line, 0, 24, 1, error);
@@ -18263,7 +18502,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 error) &&
             encoder->setVertexBuffer(
                 0, *reflection_probe_link_buffer, 0, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::line, 0,
@@ -18295,7 +18534,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 0, scene.gbuffer->depthStencilTexture(), error) &&
             encoder->setFragmentSampler(
                 0, mImpl->point_clamp_sampler.get(), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->setFragmentBuffer(
                 1, *reflection_probe_volume_buffer, 0, error) &&
@@ -18333,9 +18572,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setPipeline(
                 *mImpl->raycast_particle_pipelines[
                     scene.hdr ? 1 : 0], error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::line, 0, 6, 1, error);
@@ -18364,7 +18603,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 error) &&
             encoder->setVertexBuffer(
                 0, *shadow_frustum_buffer, 0, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error);
         for (std::size_t index = 0;
              encoded && index < scene.shadow_frustum_batch_count; ++index)
@@ -18406,7 +18645,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setPipeline(
                 *mImpl->wind_vector_pipelines[scene.hdr ? 1 : 0],
                 error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
             encoder->setVertexBuffer(
                 0, *wind_vector_buffer, 0, error) &&
@@ -18447,7 +18686,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 error) &&
             encoder->setVertexBuffer(
                 0, *composition_debug_buffer, 0, error) &&
-            encoder->setVertexBytes(
+            mImpl->setVertexData(*encoder, *command,
                 1, &constants, sizeof(constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::point, 0,

@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <utility>
 
 #ifndef AL_METAL_BUILTIN_SOURCE_PATH
@@ -779,6 +780,11 @@ void* ALMetalSamplerState::nativeHandle() const noexcept
 
 struct ALMetalRenderEncoder::Impl
 {
+    struct BufferBinding
+    {
+        void* handle = nullptr;
+        std::size_t offset = 0;
+    };
     id<MTLDevice> device = nil;
     id<MTLRenderCommandEncoder> encoder = nil;
     // The exact OpenGL renderer caches texture and sampler identity per slot.
@@ -790,6 +796,20 @@ struct ALMetalRenderEncoder::Impl
     std::array<void*, 128> fragment_textures{};
     std::array<void*, 16> vertex_samplers{};
     std::array<void*, 16> fragment_samplers{};
+    std::array<BufferBinding, 31> vertex_buffers{};
+    std::array<BufferBinding, 31> fragment_buffers{};
+    void* pipeline = nullptr;
+    std::optional<void*> depth_stencil;
+    std::optional<std::uint32_t> stencil_reference;
+    std::optional<ALMetalViewport> viewport;
+    std::optional<ALMetalScissorRect> scissor;
+    std::optional<ALMetalCullMode> cull_mode;
+    std::optional<ALMetalTriangleFillMode> fill_mode;
+    std::optional<ALMetalWinding> front_winding;
+    std::optional<ALMetalDepthClipMode> depth_clip_mode;
+    std::optional<std::array<float, 3>> depth_bias;
+    std::optional<ALMetalVisibilityResultMode> visibility_mode;
+    std::size_t visibility_offset = 0;
     bool ended = false;
     bool pipeline_set = false;
     bool tessellation_enabled = false;
@@ -846,10 +866,18 @@ bool ALMetalRenderEncoder::setPipeline(const ALMetalRenderPipeline& pipeline, st
         setError(error, "Metal render pipeline is unavailable or belongs to another device");
         return false;
     }
-    [mImpl->encoder setRenderPipelineState:pipeline.mImpl->state];
+    // Preserve the wrapper's factor-rebind precondition even when the native
+    // pipeline is unchanged. A cache hit must not make a formerly invalid
+    // drawPatches call valid.
     mImpl->pipeline_set = true;
     mImpl->tessellation_enabled = pipeline.mDescriptor.tessellation.enabled;
     mImpl->tessellation_factor_buffer_set = false;
+    void* handle = pipeline.nativeHandle();
+    if (mImpl->pipeline != handle)
+    {
+        [mImpl->encoder setRenderPipelineState:pipeline.mImpl->state];
+        mImpl->pipeline = handle;
+    }
     return true;
 }
 
@@ -861,7 +889,13 @@ bool ALMetalRenderEncoder::setDepthStencilState(const ALMetalDepthStencilState* 
         setError(error, "Metal depth state is unavailable or belongs to another device");
         return false;
     }
+    void* handle = state ? state->nativeHandle() : nullptr;
+    if (mImpl->depth_stencil && *mImpl->depth_stencil == handle)
+    {
+        return true;
+    }
     [mImpl->encoder setDepthStencilState:state ? state->mImpl->state : nil];
+    mImpl->depth_stencil = handle;
     return true;
 }
 
@@ -873,7 +907,12 @@ bool ALMetalRenderEncoder::setStencilReferenceValue(
         setError(error, "Metal render encoder has ended");
         return false;
     }
+    if (mImpl->stencil_reference == value)
+    {
+        return true;
+    }
     [mImpl->encoder setStencilReferenceValue:value];
+    mImpl->stencil_reference = value;
     return true;
 }
 
@@ -886,13 +925,27 @@ bool ALMetalRenderEncoder::setVertexBuffer(std::uint32_t index, const ALMetalBuf
         if (offset >= buffer.length()) setError(error, "Metal vertex buffer offset is out of range");
         return false;
     }
-    id<MTLBuffer> native_buffer = (__bridge id<MTLBuffer>)buffer.nativeHandle();
+    void* handle = buffer.nativeHandle();
+    auto& previous = mImpl->vertex_buffers[index];
+    if (handle && previous.handle == handle)
+    {
+        if (previous.offset != offset)
+        {
+            // Constant arenas change ranges within one buffer frequently;
+            // keep the existing resource binding and update only its range.
+            [mImpl->encoder setVertexBufferOffset:offset atIndex:index];
+            previous.offset = offset;
+        }
+        return true;
+    }
+    id<MTLBuffer> native_buffer = (__bridge id<MTLBuffer>)handle;
     if (!native_buffer || native_buffer.device != mImpl->device)
     {
         setError(error, "Metal vertex buffer belongs to another device");
         return false;
     }
     [mImpl->encoder setVertexBuffer:native_buffer offset:offset atIndex:index];
+    mImpl->vertex_buffers[index] = {handle, offset};
     return true;
 }
 
@@ -905,13 +958,25 @@ bool ALMetalRenderEncoder::setFragmentBuffer(std::uint32_t index, const ALMetalB
         if (offset >= buffer.length()) setError(error, "Metal fragment buffer offset is out of range");
         return false;
     }
-    id<MTLBuffer> native_buffer = (__bridge id<MTLBuffer>)buffer.nativeHandle();
+    void* handle = buffer.nativeHandle();
+    auto& previous = mImpl->fragment_buffers[index];
+    if (handle && previous.handle == handle)
+    {
+        if (previous.offset != offset)
+        {
+            [mImpl->encoder setFragmentBufferOffset:offset atIndex:index];
+            previous.offset = offset;
+        }
+        return true;
+    }
+    id<MTLBuffer> native_buffer = (__bridge id<MTLBuffer>)handle;
     if (!native_buffer || native_buffer.device != mImpl->device)
     {
         setError(error, "Metal fragment buffer belongs to another device");
         return false;
     }
     [mImpl->encoder setFragmentBuffer:native_buffer offset:offset atIndex:index];
+    mImpl->fragment_buffers[index] = {handle, offset};
     return true;
 }
 
@@ -925,6 +990,8 @@ bool ALMetalRenderEncoder::setVertexBytes(std::uint32_t index, const void* bytes
         return false;
     }
     [mImpl->encoder setVertexBytes:bytes length:length atIndex:index];
+    // Inline bytes and explicit buffers share one Metal argument slot.
+    mImpl->vertex_buffers[index] = {};
     return true;
 }
 
@@ -938,6 +1005,7 @@ bool ALMetalRenderEncoder::setFragmentBytes(std::uint32_t index, const void* byt
         return false;
     }
     [mImpl->encoder setFragmentBytes:bytes length:length atIndex:index];
+    mImpl->fragment_buffers[index] = {};
     return true;
 }
 
@@ -945,12 +1013,12 @@ bool ALMetalRenderEncoder::setVertexTexture(std::uint32_t index, const ALMetalTe
                                             std::string* error)
 {
     if (!mImpl || mImpl->ended || !validBindingIndex(index, 128, "vertex texture", error)) return false;
-    id<MTLTexture> native_texture = texture ? (__bridge id<MTLTexture>)texture->nativeHandle() : nil;
-    void* native_handle = (__bridge void*)native_texture;
+    void* native_handle = texture ? texture->nativeHandle() : nullptr;
     if (mImpl->vertex_textures[index] == native_handle)
     {
         return true;
     }
+    id<MTLTexture> native_texture = (__bridge id<MTLTexture>)native_handle;
     if (native_texture && native_texture.device != mImpl->device)
     {
         setError(error, "Metal vertex texture belongs to another device");
@@ -965,12 +1033,12 @@ bool ALMetalRenderEncoder::setFragmentTexture(std::uint32_t index, const ALMetal
                                               std::string* error)
 {
     if (!mImpl || mImpl->ended || !validBindingIndex(index, 128, "fragment texture", error)) return false;
-    id<MTLTexture> native_texture = texture ? (__bridge id<MTLTexture>)texture->nativeHandle() : nil;
-    void* native_handle = (__bridge void*)native_texture;
+    void* native_handle = texture ? texture->nativeHandle() : nullptr;
     if (mImpl->fragment_textures[index] == native_handle)
     {
         return true;
     }
+    id<MTLTexture> native_texture = (__bridge id<MTLTexture>)native_handle;
     if (native_texture && native_texture.device != mImpl->device)
     {
         setError(error, "Metal fragment texture belongs to another device");
@@ -990,18 +1058,17 @@ bool ALMetalRenderEncoder::setFragmentTextureLinear(std::uint32_t index,
     {
         return false;
     }
-    id<MTLTexture> native_texture = texture
-        ? (__bridge id<MTLTexture>)texture->nativeLinearHandle() : nil;
-    if (texture && !native_texture)
+    void* native_handle = texture ? texture->nativeLinearHandle() : nullptr;
+    if (texture && !native_handle)
     {
         setError(error, "Metal could not provide the linear fragment texture view");
         return false;
     }
-    void* native_handle = (__bridge void*)native_texture;
     if (mImpl->fragment_textures[index] == native_handle)
     {
         return true;
     }
+    id<MTLTexture> native_texture = (__bridge id<MTLTexture>)native_handle;
     if (native_texture && native_texture.device != mImpl->device)
     {
         setError(error, "Metal fragment texture belongs to another device");
@@ -1025,12 +1092,12 @@ bool ALMetalRenderEncoder::setVertexSampler(std::uint32_t index, const ALMetalSa
         setError(error, "Metal vertex sampler belongs to another device");
         return false;
     }
-    id<MTLSamplerState> native_sampler = sampler ? sampler->mImpl->state : nil;
-    void* native_handle = (__bridge void*)native_sampler;
+    void* native_handle = sampler ? sampler->nativeHandle() : nullptr;
     if (mImpl->vertex_samplers[index] == native_handle)
     {
         return true;
     }
+    id<MTLSamplerState> native_sampler = (__bridge id<MTLSamplerState>)native_handle;
     if (sampler && sampler->mImpl->device != mImpl->device)
     {
         setError(error, "Metal vertex sampler belongs to another device");
@@ -1054,12 +1121,12 @@ bool ALMetalRenderEncoder::setFragmentSampler(std::uint32_t index, const ALMetal
         setError(error, "Metal fragment sampler belongs to another device");
         return false;
     }
-    id<MTLSamplerState> native_sampler = sampler ? sampler->mImpl->state : nil;
-    void* native_handle = (__bridge void*)native_sampler;
+    void* native_handle = sampler ? sampler->nativeHandle() : nullptr;
     if (mImpl->fragment_samplers[index] == native_handle)
     {
         return true;
     }
+    id<MTLSamplerState> native_sampler = (__bridge id<MTLSamplerState>)native_handle;
     if (sampler && sampler->mImpl->device != mImpl->device)
     {
         setError(error, "Metal fragment sampler belongs to another device");
@@ -1078,8 +1145,17 @@ bool ALMetalRenderEncoder::setViewport(const ALMetalViewport& viewport, std::str
         setError(error, "Metal viewport has invalid dimensions or depth range");
         return false;
     }
+    if (mImpl->viewport && mImpl->viewport->x == viewport.x &&
+        mImpl->viewport->y == viewport.y && mImpl->viewport->width == viewport.width &&
+        mImpl->viewport->height == viewport.height &&
+        mImpl->viewport->near_depth == viewport.near_depth &&
+        mImpl->viewport->far_depth == viewport.far_depth)
+    {
+        return true;
+    }
     [mImpl->encoder setViewport:MTLViewport{viewport.x, viewport.y, viewport.width, viewport.height,
                                             viewport.near_depth, viewport.far_depth}];
+    mImpl->viewport = viewport;
     return true;
 }
 
@@ -1090,7 +1166,14 @@ bool ALMetalRenderEncoder::setScissor(const ALMetalScissorRect& scissor, std::st
         setError(error, "Metal scissor rectangle has zero area");
         return false;
     }
+    if (mImpl->scissor && mImpl->scissor->x == scissor.x &&
+        mImpl->scissor->y == scissor.y && mImpl->scissor->width == scissor.width &&
+        mImpl->scissor->height == scissor.height)
+    {
+        return true;
+    }
     [mImpl->encoder setScissorRect:MTLScissorRect{scissor.x, scissor.y, scissor.width, scissor.height}];
+    mImpl->scissor = scissor;
     return true;
 }
 
@@ -1101,7 +1184,12 @@ bool ALMetalRenderEncoder::setCullMode(ALMetalCullMode mode, std::string* error)
         setError(error, "Metal render encoder has ended");
         return false;
     }
+    if (mImpl->cull_mode == mode)
+    {
+        return true;
+    }
     [mImpl->encoder setCullMode:cullMode(mode)];
+    mImpl->cull_mode = mode;
     return true;
 }
 
@@ -1113,7 +1201,12 @@ bool ALMetalRenderEncoder::setTriangleFillMode(
         setError(error, "Metal render encoder has ended");
         return false;
     }
+    if (mImpl->fill_mode == mode)
+    {
+        return true;
+    }
     [mImpl->encoder setTriangleFillMode:triangleFillMode(mode)];
+    mImpl->fill_mode = mode;
     return true;
 }
 
@@ -1124,7 +1217,12 @@ bool ALMetalRenderEncoder::setFrontFacingWinding(ALMetalWinding value, std::stri
         setError(error, "Metal render encoder has ended");
         return false;
     }
+    if (mImpl->front_winding == value)
+    {
+        return true;
+    }
     [mImpl->encoder setFrontFacingWinding:winding(value)];
+    mImpl->front_winding = value;
     return true;
 }
 
@@ -1136,9 +1234,14 @@ bool ALMetalRenderEncoder::setDepthClipMode(
         setError(error, "Metal render encoder has ended");
         return false;
     }
+    if (mImpl->depth_clip_mode == mode)
+    {
+        return true;
+    }
     [mImpl->encoder setDepthClipMode:
         mode == ALMetalDepthClipMode::clamp
             ? MTLDepthClipModeClamp : MTLDepthClipModeClip];
+    mImpl->depth_clip_mode = mode;
     return true;
 }
 
@@ -1153,9 +1256,15 @@ bool ALMetalRenderEncoder::setDepthBias(float constant_bias,
         setError(error, "Metal depth bias is invalid or encoder has ended");
         return false;
     }
+    const std::array<float, 3> bias = {constant_bias, slope_scale, clamp};
+    if (mImpl->depth_bias == bias)
+    {
+        return true;
+    }
     [mImpl->encoder setDepthBias:constant_bias
                       slopeScale:slope_scale
                             clamp:clamp];
+    mImpl->depth_bias = bias;
     return true;
 }
 
@@ -1172,6 +1281,10 @@ bool ALMetalRenderEncoder::setVisibilityResultMode(
                  "Metal visibility result offset is unaligned or encoder has ended");
         return false;
     }
+    if (mImpl->visibility_mode == mode && mImpl->visibility_offset == offset)
+    {
+        return true;
+    }
     MTLVisibilityResultMode native_mode = MTLVisibilityResultModeDisabled;
     switch (mode)
     {
@@ -1186,6 +1299,8 @@ bool ALMetalRenderEncoder::setVisibilityResultMode(
     }
     [mImpl->encoder setVisibilityResultMode:native_mode
                                      offset:offset];
+    mImpl->visibility_mode = mode;
+    mImpl->visibility_offset = offset;
     return true;
 }
 

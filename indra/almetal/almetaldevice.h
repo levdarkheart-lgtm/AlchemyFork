@@ -58,6 +58,23 @@ enum class ALMetalCommandStatus
     unknown,
 };
 
+// Retains the native completion identity without retaining its C++ command
+// wrapper. Resource arenas can poll this after a standalone wrapper has gone
+// away; neither polling nor destruction waits for the GPU. An uncommitted
+// command discarded by its wrapper is also complete for resource reuse.
+class ALMetalCommandCompletion final
+{
+public:
+    ~ALMetalCommandCompletion();
+    bool isComplete() const noexcept;
+
+private:
+    struct Impl;
+    explicit ALMetalCommandCompletion(std::unique_ptr<Impl> impl);
+    std::unique_ptr<Impl> mImpl;
+    friend class ALMetalCommandBuffer;
+};
+
 class ALMetalCommandBuffer final
 {
 public:
@@ -75,6 +92,7 @@ public:
 
     ALMetalCommandStatus status() const noexcept;
     bool isCommitted() const noexcept;
+    std::shared_ptr<const ALMetalCommandCompletion> completionToken() const;
     std::string errorDescription() const;
 
     bool commit(std::string* error = nullptr);

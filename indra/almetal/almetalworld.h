@@ -2019,6 +2019,41 @@ struct ALMetalWorldBaseLightingScene
 // It writes four colour attachments plus depth and is not presented yet. The
 // viewer runs one bounded fail-closed probe so world integration can advance
 // without doubling these passes every migration frame.
+struct ALMetalWorldDataSlice
+{
+    const ALMetalBuffer* buffer = nullptr;
+    std::size_t offset = 0;
+    std::size_t length = 0;
+};
+
+struct ALMetalWorldFrameDataStats
+{
+    std::uint64_t published_bytes = 0;
+    std::uint64_t reused_bytes = 0;
+    std::uint64_t pages_created = 0;
+    std::uint64_t pages_reused = 0;
+    std::size_t retired_pages = 0;
+};
+
+// Immutable draw data shared by main, ordinary probe and hero renderers. Each
+// frame owns its published ranges until every referencing command completes.
+class ALMetalWorldFrameData final
+{
+public:
+    ~ALMetalWorldFrameData();
+    static std::shared_ptr<ALMetalWorldFrameData> create(
+        const ALMetalDevice& device, std::string* error = nullptr);
+    void beginFrame(std::uint64_t generation);
+    bool publish(ALMetalCommandBuffer& command, const void* bytes,
+                 std::size_t length, ALMetalWorldDataSlice& slice,
+                 std::string* error = nullptr, bool deduplicate = true);
+    ALMetalWorldFrameDataStats stats() const noexcept;
+private:
+    struct Impl;
+    explicit ALMetalWorldFrameData(std::unique_ptr<Impl> impl);
+    std::unique_ptr<Impl> mImpl;
+};
+
 class ALMetalWorldGBufferRenderer final
 {
 public:
@@ -2043,6 +2078,7 @@ public:
         std::uint32_t max_anisotropy,
         std::string* error = nullptr);
     std::uint32_t anisotropy() const noexcept;
+    void setFrameData(std::shared_ptr<ALMetalWorldFrameData> data);
 
     // Group a caller-owned sequence of dependent world encoders into one
     // command buffer. Standalone calls retain their existing immediate

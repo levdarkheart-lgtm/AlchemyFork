@@ -4,7 +4,7 @@ This document defines the evidence contract and the implemented development-view
 
 ## Implemented per-frame collector
 
-Commit `3b8997edd7` implements an opt-in collector in `indra/newview/almetalbenchmark.*`; commit `14adac8c70` adds the per-frame native-wrapper command-buffer submission delta. The current collector also enables native command-completion timing only while an explicit run is active. The viewer calls the collector only from non-download macOS builds after a complete display iteration. With no environment request it allocates no recorder, installs no timing completion handlers and writes nothing.
+Commit `3b8997edd7` implements an opt-in collector in `indra/newview/almetalbenchmark.*`; commit `14adac8c70` adds the per-frame native-wrapper command-buffer submission delta. The current collector also enables native command-completion timing only while an explicit run is active. The viewer calls the collector from macOS builds, including optimized download/Release builds, after a complete display iteration. With no environment request it allocates no recorder, installs no timing completion handlers and writes nothing. Previously the download-build compile guard silently omitted the collector from the measured Release viewer despite its benchmark environment; this prevented the requested CSV from being produced.
 
 Arm collection with all three required values:
 

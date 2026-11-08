@@ -40,6 +40,28 @@
 
 namespace
 {
+    std::unique_ptr<ALMetalWorldGBufferRenderer> createFrameDataRenderer(
+        const ALMetalDevice& device, std::uint32_t anisotropy,
+        std::string* error)
+    {
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            device, anisotropy, error);
+        if (renderer)
+        {
+            auto frame_data = ALMetalWorldFrameData::create(device, error);
+            if (!frame_data) return nullptr;
+            frame_data->beginFrame(1);
+            renderer->setFrameData(std::move(frame_data));
+        }
+        return renderer;
+    }
+
+    std::unique_ptr<ALMetalWorldGBufferRenderer> createFrameDataRenderer(
+        const ALMetalDevice& device, std::string* error)
+    {
+        return createFrameDataRenderer(device, 1, error);
+    }
+
     id<MTLDevice> nativeDevice(const ALMetalDevice& device)
     {
         return (__bridge id<MTLDevice>)device.nativeHandle();
@@ -2630,6 +2652,72 @@ TEST_CASE("almetal: terrain paint bake consumes indexed viewer buffers and gener
     }
 }
 
+TEST_CASE("almetal: immutable frame data deduplicates bytes and retires all users", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        REQUIRE(device);
+        auto data = ALMetalWorldFrameData::create(*device, &error);
+        REQUIRE(data);
+        data->beginFrame(7);
+        auto first = device->makeCommandBuffer("Frame data first user", &error);
+        auto second = device->makeCommandBuffer("Frame data second user", &error);
+        REQUIRE(first);
+        REQUIRE(second);
+        std::array<std::uint32_t, 8> bytes{{1, 2, 3, 4, 5, 6, 7, 8}};
+        ALMetalWorldDataSlice original, duplicate, changed;
+        REQUIRE(data->publish(*first, bytes.data(), sizeof(bytes), original, &error));
+        REQUIRE(data->publish(*second, bytes.data(), sizeof(bytes), duplicate, &error));
+        CHECK(original.buffer == duplicate.buffer);
+        CHECK(original.offset == duplicate.offset);
+        CHECK(original.offset % 256 == 0);
+        bytes[0] = 42; // Same CPU address, different view/palette bytes.
+        REQUIRE(data->publish(*second, bytes.data(), sizeof(bytes), changed, &error));
+        CHECK((changed.buffer != original.buffer || changed.offset != original.offset));
+        CHECK(data->stats().published_bytes == 2 * sizeof(bytes));
+        CHECK(data->stats().reused_bytes == sizeof(bytes));
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = sizeof(bytes);
+        auto result = ALMetalBuffer::create(*device, descriptor, &error);
+        REQUIRE(result);
+        REQUIRE(result->copyFrom(*second, *original.buffer, original.offset, 0,
+                                 sizeof(bytes), &error));
+        REQUIRE(first->commitAndWait(&error));
+        // The other user remains uncommitted: neither completion of the first
+        // command nor a new frame may recycle the original page.
+        data->beginFrame(8);
+        auto next = device->makeCommandBuffer("Frame data following frame", &error);
+        REQUIRE(next);
+        ALMetalWorldDataSlice following;
+        REQUIRE(data->publish(*next, bytes.data(), sizeof(bytes), following, &error));
+        CHECK(following.buffer != original.buffer);
+        CHECK(data->stats().retired_pages == 1);
+        REQUIRE(second->commitAndWait(&error));
+        std::array<std::uint32_t, 8> read{};
+        REQUIRE(result->read(0, read.data(), sizeof(read), &error));
+        CHECK(read[0] == 1); // Original GPU-visible bytes survived the next frame.
+        next.reset(); // Abandoned uncommitted command releases its token.
+        data->beginFrame(9);
+        auto recycled_command = device->makeCommandBuffer("Frame data recycled page", &error);
+        REQUIRE(recycled_command);
+        ALMetalWorldDataSlice recycled;
+        REQUIRE(data->publish(*recycled_command, bytes.data(), sizeof(bytes), recycled, &error));
+        CHECK(data->stats().pages_created == 2);
+        CHECK(data->stats().pages_reused == 1);
+        CHECK(data->stats().retired_pages == 0);
+        // Destroy the arena before submitted work finishes: Metal commands
+        // retain their native buffers independently of the C++ wrappers.
+        REQUIRE(result->copyFrom(*recycled_command, *recycled.buffer, recycled.offset,
+                                 0, sizeof(bytes), &error));
+        data.reset();
+        REQUIRE(recycled_command->commitAndWait(&error));
+        REQUIRE(result->read(0, read.data(), sizeof(read), &error));
+        CHECK(read == bytes);
+    }
+}
+
 TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster depth", "[almetal]")
 {
     @autoreleasepool
@@ -2638,9 +2726,13 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        auto renderer = createFrameDataRenderer(*device, &error);
         INFO(error);
         REQUIRE(renderer);
+        auto frame_data = ALMetalWorldFrameData::create(*device, &error);
+        REQUIRE(frame_data);
+        frame_data->beginFrame(1);
+        renderer->setFrameData(frame_data);
 
         const std::array<std::array<float, 4>, 3> positions{{
             {{-0.75f, -0.75f, 0.f, 1.f}},
@@ -3301,6 +3393,49 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         batch.skin_palette_float_count = 0;
         batch.skin_joint_count = 0;
         batch.weight_offset = 0;
+        // Each narrowed coverage signature must still address its highest
+        // valid slot. A one-slot draw ignores packed indices entirely.
+        for (const std::uint32_t slots : {1u, 8u, 32u})
+        {
+            auto indexed_positions = positions;
+            const std::uint32_t packed_index = slots == 1 ? 31u : slots - 1;
+            for (auto& position : indexed_positions)
+                std::memcpy(&position[3], &packed_index, sizeof(packed_index));
+            REQUIRE(vertices->write(0, indexed_positions.data(),
+                                    sizeof(indexed_positions), &error));
+            batch.texture_count = slots;
+            batch.coverage = slots == 8
+                ? ALMetalWorldSpotShadowCoverage::pbr_mask
+                : ALMetalWorldSpotShadowCoverage::texture_mask;
+            for (std::uint32_t slot = 0; slot < slots; ++slot)
+            {
+                batch.textures[slot] = below_cutoff.get();
+                batch.alpha_cutoffs[slot] = 0.5f;
+                if (slot < 8)
+                {
+                    batch.pbr_base_color_transforms[slot] = {};
+                    batch.pbr_base_color_transforms[slot][0][0] = 1.f;
+                    batch.pbr_base_color_transforms[slot][0][1] = 1.f;
+                }
+            }
+            batch.textures[slots - 1] = above_cutoff.get();
+            auto indexed = render_spot_shadow(scene);
+            INFO(error);
+            REQUIRE(indexed);
+            std::array<float, 32 * 32> indexed_depth{};
+            REQUIRE(indexed->readback(*device, 0, 0, {}, indexed_depth.data(),
+                                     32 * sizeof(float), &error));
+            CHECK(std::abs(indexed_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
+            batch.textures[slots - 1] = below_cutoff.get();
+            auto rejected_indexed = render_spot_shadow(scene);
+            REQUIRE(rejected_indexed);
+            REQUIRE(rejected_indexed->readback(*device, 0, 0, {}, indexed_depth.data(),
+                                              32 * sizeof(float), &error));
+            CHECK(std::abs(indexed_depth[16 * 32 + 16] - 1.f) < 0.0001f);
+        }
+        REQUIRE(vertices->write(0, positions.data(), sizeof(positions), &error));
+        batch.texture_count = 1;
+        batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
         batch.textures[0] = nullptr;
         error.clear();
         CHECK_FALSE(render_spot_shadow(scene));
@@ -3323,7 +3458,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        auto renderer = createFrameDataRenderer(*device, &error);
         INFO(error);
         REQUIRE(renderer);
         CHECK(renderer->anisotropy() == 1);
@@ -15756,7 +15891,7 @@ TEST_CASE("almetal: world visibility queries publish asynchronous Metal results"
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        auto renderer = createFrameDataRenderer(*device, &error);
         INFO(error);
         REQUIRE(renderer);
 
@@ -15809,7 +15944,7 @@ TEST_CASE("almetal: avatar impostor replays a coherent baked G-buffer", "[almeta
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        auto renderer = createFrameDataRenderer(*device, &error);
         INFO(error);
         REQUIRE(renderer);
 
@@ -16216,7 +16351,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        auto renderer = createFrameDataRenderer(*device, &error);
         INFO(error);
         REQUIRE(renderer);
 
@@ -19356,7 +19491,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         // renderer must generate the shared BRDF LUT only once inside that
         // batch, and canceling an earlier batch must not leave the renderer
         // claiming that discarded generation is available to the next one.
-        auto batched_renderer = ALMetalWorldGBufferRenderer::create(
+        auto batched_renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(batched_renderer);
@@ -20298,7 +20433,7 @@ TEST_CASE("almetal: native final color publishes coherent SSR history", "[almeta
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -20419,7 +20554,7 @@ TEST_CASE("almetal: world exposure matches the production meter and history", "[
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -20706,7 +20841,7 @@ TEST_CASE("almetal: world lens flare owns visibility history and display", "[alm
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        auto renderer = createFrameDataRenderer(*device, &error);
         INFO(error);
         REQUIRE(renderer);
 
@@ -21224,7 +21359,7 @@ TEST_CASE("almetal: world lens dirt owns its plate and light response", "[almeta
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        auto renderer = createFrameDataRenderer(*device, &error);
         INFO(error);
         REQUIRE(renderer);
 
@@ -21531,7 +21666,7 @@ TEST_CASE("almetal: world bloom matches the production HDR pyramid", "[almetal]"
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -21823,7 +21958,7 @@ TEST_CASE("almetal: world legacy glow owns non-HDR extract blur and combine", "[
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -22042,7 +22177,7 @@ TEST_CASE("almetal: RLVa vision sphere owns every post mode", "[almetal]")
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -22235,7 +22370,7 @@ TEST_CASE("almetal: world CAS matches the standalone production kernel", "[almet
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -22436,7 +22571,7 @@ TEST_CASE("almetal: world FXAA matches every production quality preset", "[almet
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -22822,7 +22957,7 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -23258,7 +23393,7 @@ TEST_CASE("almetal: world SMAA blending weights match lookup reference", "[almet
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -23441,7 +23576,7 @@ TEST_CASE("almetal: world SMAA neighborhood blend matches linear-light reference
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -23740,7 +23875,7 @@ TEST_CASE("almetal: world depth of field matches the HDR gather and combine refe
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -24244,7 +24379,7 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -25235,7 +25370,7 @@ TEST_CASE("almetal: world final presentation owns the complete print chain", "[a
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -25694,7 +25829,7 @@ TEST_CASE("almetal: native final color serves one-shot scene pixels", "[almetal]
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -25816,7 +25951,7 @@ TEST_CASE("almetal: native hero faces publish filtered cube radiance", "[almetal
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -26155,7 +26290,7 @@ TEST_CASE("almetal: native ordinary probes filter radiance and project SH", "[al
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(
+        auto renderer = createFrameDataRenderer(
             *device, &error);
         INFO(error);
         REQUIRE(renderer);
@@ -26404,7 +26539,7 @@ TEST_CASE("almetal: classic terrain tessellates its height field into the world 
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        auto renderer = createFrameDataRenderer(*device, &error);
         INFO(error);
         REQUIRE(renderer);
 
@@ -26690,7 +26825,7 @@ TEST_CASE("almetal: PBR terrain preserves material tiers, paint ownership and ma
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        auto renderer = createFrameDataRenderer(*device, &error);
         INFO(error);
         REQUIRE(renderer);
 

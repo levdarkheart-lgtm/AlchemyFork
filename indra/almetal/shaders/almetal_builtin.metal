@@ -464,6 +464,13 @@ struct ALMetalWorldSpotShadowConstants
     float4 avatar_draw;
 };
 
+// Opaque object casters do not consume texture/material/cloth parameters.
+struct ALMetalWorldOpaqueShadowConstants
+{
+    float4x4 modelview_projection;
+    uint4 config;
+};
+
 struct ALMetalWorldSpotShadowVaryings
 {
     float4 position [[position]];
@@ -2715,6 +2722,44 @@ vertex ALMetalWorldSpotShadowVaryings almetal_world_spot_shadow_vertex(
         constants);
 }
 
+vertex ALMetalWorldSpotShadowVaryings almetal_world_spot_shadow_opaque_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldOpaqueShadowConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalWorldSpotShadowVaryings output;
+    output.position = almetal_shadow_clip_from_gl(
+        constants.modelview_projection * float4(positions[vertex_id].xyz, 1.0),
+        constants.config.x);
+    output.texcoord = 0.0;
+    output.vertex_alpha = 1.0;
+    output.texture_index = 0u;
+    return output;
+}
+
+vertex ALMetalWorldSpotShadowVaryings
+almetal_world_spot_shadow_opaque_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldOpaqueShadowConstants& constants [[buffer(1)]],
+    const device float4* skin_palette [[buffer(2)]],
+    const device float4* encoded_weights [[buffer(3)]],
+    constant uint& joint_count [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], float4(0.0), encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    ALMetalWorldSpotShadowVaryings output;
+    output.position = almetal_shadow_clip_from_gl(
+        constants.modelview_projection * skinned.position +
+            constants.modelview_projection * float4(skin_palette[0].xyz, 1.0),
+        constants.config.x);
+    output.texcoord = 0.0;
+    output.vertex_alpha = 1.0;
+    output.texture_index = 0u;
+    return output;
+}
+
 vertex ALMetalWorldSpotShadowVaryings
 almetal_world_spot_shadow_skinned_vertex(
     const device float4* positions [[buffer(0)]],
@@ -2918,15 +2963,11 @@ fragment float almetal_world_spot_shadow_fragment(
     return almetal_world_shadow_depth(input);
 }
 
-fragment float almetal_world_spot_shadow_coverage_fragment(
-    ALMetalWorldSpotShadowVaryings input [[stage_in]],
-    array<texture2d<float>, 32> textures [[texture(0)]],
-    sampler texture_sampler [[sampler(0)]],
-    constant ALMetalWorldSpotShadowConstants& constants [[buffer(0)]])
+static float almetal_world_spot_shadow_coverage_depth(
+    ALMetalWorldSpotShadowVaryings input,
+    float texture_alpha, uint texture_index,
+    constant ALMetalWorldSpotShadowConstants& constants)
 {
-    const uint texture_index = min(input.texture_index, 31u);
-    const float texture_alpha = textures[texture_index].sample(
-        texture_sampler, input.texcoord).a;
     const float cutoff = constants.alpha_cutoffs[texture_index];
     const uint coverage = constants.config.y;
     constexpr float quantization_bias = 1.0 / 512.0;
@@ -2995,6 +3036,40 @@ fragment float almetal_world_spot_shadow_coverage_fragment(
         }
     }
     return almetal_world_shadow_depth(input);
+}
+
+fragment float almetal_world_spot_shadow_coverage_fragment(
+    ALMetalWorldSpotShadowVaryings input [[stage_in]],
+    array<texture2d<float>, 32> textures [[texture(0)]],
+    sampler texture_sampler [[sampler(0)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(0)]])
+{
+    const uint index = min(input.texture_index, 31u);
+    return almetal_world_spot_shadow_coverage_depth(input,
+        textures[index].sample(texture_sampler, input.texcoord).a, index,
+        constants);
+}
+
+fragment float almetal_world_spot_shadow_coverage_single_fragment(
+    ALMetalWorldSpotShadowVaryings input [[stage_in]],
+    texture2d<float> texture [[texture(0)]],
+    sampler texture_sampler [[sampler(0)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(0)]])
+{
+    return almetal_world_spot_shadow_coverage_depth(input,
+        texture.sample(texture_sampler, input.texcoord).a, 0u, constants);
+}
+
+fragment float almetal_world_spot_shadow_coverage_eight_fragment(
+    ALMetalWorldSpotShadowVaryings input [[stage_in]],
+    array<texture2d<float>, 8> textures [[texture(0)]],
+    sampler texture_sampler [[sampler(0)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(0)]])
+{
+    const uint index = min(input.texture_index, 7u);
+    return almetal_world_spot_shadow_coverage_depth(input,
+        textures[index].sample(texture_sampler, input.texcoord).a, index,
+        constants);
 }
 
 vertex ALMetalWorldWaterExclusionVaryings
@@ -4818,7 +4893,6 @@ struct ALMetalWorldPBRConstants
     ALMetalWorldPBRSlotConstants slots[8];
     // x = populated slot count, y = alpha mask, z = HDR normal target.
     uint4 config;
-    float4x4 modelview;
 };
 
 struct ALMetalWorldPBRVaryings
@@ -5046,7 +5120,7 @@ vertex ALMetalWorldPBRVaryings almetal_world_pbr_vertex(
     return almetal_world_pbr_varyings(
         world.modelview_projection *
             float4(positions[vertex_id].xyz, 1.0),
-        pbr.modelview * float4(positions[vertex_id].xyz, 1.0),
+        world.modelview * float4(positions[vertex_id].xyz, 1.0),
         normal_matrix * normals[vertex_id].xyz,
         float4(normal_matrix * tangents[vertex_id].xyz,
                tangents[vertex_id].w),
@@ -5082,7 +5156,7 @@ vertex ALMetalWorldPBRVaryings almetal_world_pbr_skinned_vertex(
         skinned.position + float4(skin_palette[0].xyz, 1.0);
     return almetal_world_pbr_varyings(
         world.modelview_projection * rebased_position,
-        pbr.modelview * rebased_position,
+        world.modelview * rebased_position,
         normal_matrix * skinned.normal.xyz,
         float4(normal_matrix * tangent, tangents[vertex_id].w),
         texcoords[vertex_id], colors[vertex_id], material_index, world, pbr);

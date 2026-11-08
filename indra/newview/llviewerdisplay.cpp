@@ -519,7 +519,7 @@ static void fill_pacing_slack()
     LL_PROFILE_PLOT("frame pacing slack work ms", worked * 1000.0);
 }
 
-#if LL_DARWIN && !defined(LL_RELEASE_FOR_DOWNLOAD)
+#if LL_DARWIN
 static ALMetalBenchmarkRecorder::NativePresentationState
 benchmark_presentation_state(
     LLPipeline::MetalWorldPresentationState state)
@@ -1347,7 +1347,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
     display_stats();
 
-#if LL_DARWIN && !defined(LL_RELEASE_FOR_DOWNLOAD)
+#if LL_DARWIN
     record_metal_benchmark_frame(for_snapshot, presented);
 #endif
 

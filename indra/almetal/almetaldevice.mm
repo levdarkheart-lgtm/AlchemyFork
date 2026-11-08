@@ -93,11 +93,40 @@ namespace
     }
 }
 
+struct ALMetalCommandCompletion::Impl
+{
+    id<MTLCommandBuffer> command_buffer = nil;
+    std::atomic<bool> abandoned{false};
+};
+
+ALMetalCommandCompletion::ALMetalCommandCompletion(std::unique_ptr<Impl> impl)
+: mImpl(std::move(impl))
+{
+}
+
+ALMetalCommandCompletion::~ALMetalCommandCompletion() = default;
+
+bool ALMetalCommandCompletion::isComplete() const noexcept
+{
+    if (mImpl && mImpl->abandoned.load(std::memory_order_acquire))
+    {
+        return true;
+    }
+    if (!mImpl || !mImpl->command_buffer)
+    {
+        return false;
+    }
+    const MTLCommandBufferStatus status = mImpl->command_buffer.status;
+    return status == MTLCommandBufferStatusCompleted ||
+           status == MTLCommandBufferStatusError;
+}
+
 struct ALMetalCommandBuffer::Impl
 {
     id<MTLDevice> device = nil;
     id<MTLCommandBuffer> command_buffer = nil;
     bool committed = false;
+    std::shared_ptr<const ALMetalCommandCompletion> completion;
 };
 
 struct ALMetalDevice::Impl
@@ -111,7 +140,14 @@ ALMetalCommandBuffer::ALMetalCommandBuffer(std::unique_ptr<Impl> impl)
 {
 }
 
-ALMetalCommandBuffer::~ALMetalCommandBuffer() = default;
+ALMetalCommandBuffer::~ALMetalCommandBuffer()
+{
+    if (mImpl && !mImpl->committed && mImpl->completion)
+    {
+        mImpl->completion->mImpl->abandoned.store(
+            true, std::memory_order_release);
+    }
+}
 
 void* ALMetalCommandBuffer::nativeHandle() const noexcept
 {
@@ -131,6 +167,23 @@ ALMetalCommandStatus ALMetalCommandBuffer::status() const noexcept
 bool ALMetalCommandBuffer::isCommitted() const noexcept
 {
     return mImpl && mImpl->committed;
+}
+
+std::shared_ptr<const ALMetalCommandCompletion>
+ALMetalCommandBuffer::completionToken() const
+{
+    if (!mImpl || !mImpl->command_buffer)
+    {
+        return {};
+    }
+    if (!mImpl->completion)
+    {
+        auto impl = std::make_unique<ALMetalCommandCompletion::Impl>();
+        impl->command_buffer = mImpl->command_buffer;
+        mImpl->completion = std::shared_ptr<const ALMetalCommandCompletion>(
+            new ALMetalCommandCompletion(std::move(impl)));
+    }
+    return mImpl->completion;
 }
 
 std::string ALMetalCommandBuffer::errorDescription() const
