@@ -1208,11 +1208,6 @@ namespace
             shadows->depth_texture->descriptor();
         const ALMetalWorldDirectionalShadowConstants& constants =
             shadows->constants;
-        const std::uint32_t filter_config = constants.config[3];
-        const std::uint32_t filter_quality = filter_config &
-            ALMetalWorldDirectionalShadowConstants::filter_quality_mask;
-        const bool probe_single_tap = (filter_config &
-            ALMetalWorldDirectionalShadowConstants::probe_single_tap) != 0;
         return descriptor.type == ALMetalTextureType::texture_2d_array &&
                descriptor.format == ALMetalPixelFormat::r32_float &&
                descriptor.width != 0 && descriptor.height != 0 &&
@@ -1232,12 +1227,8 @@ namespace
                constants.parameters[3] > 0.f &&
                constants.config[0] == 2 &&
                (constants.config[1] & ~0x3u) == 0 &&
-               constants.config[2] <= 1 &&
-               (filter_config &
-                ~ALMetalWorldDirectionalShadowConstants::
-                    filter_config_mask) == 0 &&
-               (filter_quality < 3 || probe_single_tap ||
-                constants.parameters[2] > 0.f);
+               constants.config[2] <= 1 && constants.config[3] <= 3 &&
+               (constants.config[3] < 3 || constants.parameters[2] > 0.f);
     }
 
 }
@@ -6909,12 +6900,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         const ALMetalRenderPipeline* visibility_pipeline =
             mImpl->visibility_pipelines[scene.hdr ? 1 : 0]
                                         [scene.normal_hdr ? 1 : 0].get();
-        bool changed_render_state = false;
         while (visibility_index < scene.visibility_query_count &&
                scene.visibility_queries[visibility_index].batch_offset ==
                    batch_offset)
         {
-            changed_render_state = true;
             const ALMetalWorldVisibilityQuery& query =
                 scene.visibility_queries[visibility_index];
             WorldVisibilityConstants constants{};
@@ -6960,11 +6949,6 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 return false;
             }
             ++visibility_index;
-        }
-
-        if (!changed_render_state)
-        {
-            return true;
         }
 
         // Subsequent retained batches expect the ordinary G-buffer depth and
@@ -15501,7 +15485,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     auto pass = output->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
         *command, *pass,
-        "Alchemy world post-deferred pre-haze encoder", error) : nullptr;
+        "Alchemy world opaque post-deferred encoder", error) : nullptr;
     if (!encoder)
     {
         return fail_command();
@@ -15669,8 +15653,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 haze_pass_config, error);
             encoder = haze_pass ? ALMetalRenderEncoder::begin(
                 *command, *haze_pass,
-                "Alchemy world water-haze and later replay encoder", error)
-                : nullptr;
+                "Alchemy world water-haze encoder", error) : nullptr;
             if (!encoder)
             {
                 return fail_command();
@@ -15784,8 +15767,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 haze_pass_config, error);
             encoder = haze_pass ? ALMetalRenderEncoder::begin(
                 *command, *haze_pass,
-                "Alchemy world atmospheric-haze and later replay encoder",
-                error)
+                "Alchemy world atmospheric-haze encoder", error)
                 : nullptr;
             if (!encoder)
             {

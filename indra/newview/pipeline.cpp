@@ -15309,22 +15309,10 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
     }
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    // The original viewer retains one main-world projector-shadow pair and
-    // samples it from probe and hero faces. During a native cube capture the
-    // owner swap leaves that main-world capture in the probe slot; matrices
-    // remain per-view in `capture.projector_shadows` below.
-    const MetalWorldSimpleCapture* shadow_owner =
-        isMetalProbeFaceCaptureActive()
-            ? mMetalProbeWorldSimpleCapture.get()
-            : &capture;
-    if (!shadow_owner || shadow_owner->device != capture.device)
-    {
-        return false;
-    }
     const U32 unbuilt = (unbuiltShadowMaps() >> 4u) & 0x3u;
     const ALMetalTextureDescriptor* direct =
-        shadow_owner->direct_projector_shadow_texture
-            ? &shadow_owner->direct_projector_shadow_texture->descriptor()
+        capture.direct_projector_shadow_texture
+            ? &capture.direct_projector_shadow_texture->descriptor()
             : nullptr;
     if (!direct || direct->type != ALMetalTextureType::texture_2d_array ||
         direct->format != ALMetalPixelFormat::r32_float ||
@@ -15360,10 +15348,7 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
         constants.config[1] = unbuilt;
         constants.config[2] = capture.reverse_z ? 1u : 0u;
         constants.config[3] = static_cast<U32>(std::clamp(
-            shaderInputs().mGlobal.mShadowFilterQuality, 0, 3)) |
-            (gCubeSnapshot
-                 ? ALMetalWorldDirectionalShadowConstants::probe_single_tap
-                 : 0u);
+            shaderInputs().mGlobal.mShadowFilterQuality, 0, 3));
 
         capture.projector_shadows.depth_texture = texture;
         capture.projector_shadows.constants = constants;
@@ -15387,10 +15372,10 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
     for (U32 index = 0; direct_complete && index < 2; ++index)
     {
         direct_complete = (unbuilt & (1u << index)) != 0 ||
-            shadow_owner->direct_projector_shadow_valid[index];
+            capture.direct_projector_shadow_valid[index];
     }
     return direct_complete &&
-        publish(shadow_owner->direct_projector_shadow_texture.get());
+        publish(capture.direct_projector_shadow_texture.get());
 }
 
 void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
@@ -29241,16 +29226,11 @@ U32 LLPipeline::unbuiltShadowMaps() const
             unbuilt |= 1u << i;
         }
     }
-    const MetalWorldSimpleCapture* projector_capture =
-        isMetalProbeFaceCaptureActive()
-            ? mMetalProbeWorldSimpleCapture.get()
-            : capture;
     for (U32 i = 0; i < 2; ++i)
     {
         if (!mResourcePlan.wants(i == 0 ? ALRenderResourcePlan::Id::SpotShadow0
                                        : ALRenderResourcePlan::Id::SpotShadow1) ||
-            !projector_capture ||
-            !projector_capture->direct_projector_shadow_valid[i])
+            !capture || !capture->direct_projector_shadow_valid[i])
         {
             unbuilt |= 1u << (4 + i);
         }
@@ -30323,7 +30303,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 mResourcePlan.desc(
                     i == 0 ? ALRenderResourcePlan::Id::SpotShadow0
                            : ALRenderResourcePlan::Id::SpotShadow1);
-            if (!gCubeSnapshot && planned && planned->width != 0 &&
+            if (planned && planned->width != 0 &&
                 planned->height != 0 && mMetalWorldSimpleCapture &&
                 mMetalWorldSimpleCapture->device &&
                 mMetalWorldSimpleCapture->renderer)
@@ -30340,11 +30320,10 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             }
 #endif
 
-            // Like the exact OpenGL viewer, cube faces rebuild only their
-            // eye-to-light matrices above and sample the retained main-world
-            // projector maps. Ordinary views own the caster cull/cache/draw.
-            // A missing planned resource leaves the slice explicitly
-            // unbuilt; it never selects the retained GL target.
+            // Every native view renders projector casters directly into the
+            // Metal shadow pack. A missing planned
+            // resource leaves the slice explicitly unbuilt; it never selects
+            // the retained GL target.
             if (shadow_width != 0 && shadow_height != 0)
             {
                 LLCamera shadow_cam = camera;
