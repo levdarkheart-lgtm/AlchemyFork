@@ -31,20 +31,23 @@ work.
 - Repository: `/Users/dekstroza/Programming/AI/Secondlife/Alchemy`.
 - Branch: `codex/apple-silicon-metal`.
 - Code checkpoint before the evidence-only follow-up commit:
-  `8f4d5654e53f0540a263c4f954ccbbc10d46a7c4`.
+  `7cd1993d8ed7a3ba04beb200e7dc007ecae19e0c`.
 - Latest renderer implementation commit:
-  `8f4d5654e53f0540a263c4f954ccbbc10d46a7c4`.
+  `7cd1993d8ed7a3ba04beb200e7dc007ecae19e0c`.
 - Implementation began from clean synchronized commit `7a76893312`; recheck
   current branch/worktree state and never discard unexpected later edits.
 - Physical host: MacBookPro18,2, M1 Max, 64 GiB unified memory, macOS 26.5.2,
   Xcode 26.6, Metal Apple family 7. `tools/metal/doctor.sh` exits 0.
-- Current source-exact candidate is Xcode Release `26.4.0.68532` at
+- Current source-exact candidate is Xcode Release `26.4.0.68535` at
   `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-  It was built from renderer commit `8f4d5654e5`, passes deep strict signing
+  It was built from renderer commit `7cd1993d8e`, passes deep strict signing
   and 349/349 ARM64 slice inspection, and has executable SHA-256
-  `f242b041ebcba41cdc07a003b4fa040321c87368190b8aa192c803655953e9f9`.
+  `160852c8679a3d26cd0cd31d0d833dec0f9b445820739223a3713c22faf97286`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
+- PID `14685` is still the owner-attended `68532` process even though the bundle
+  at that path has since been rebuilt as `68535`. Preserve it until the owner
+  directs otherwise; its mapped old code cannot validate the pressure repair.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
   Do not publish another tag/release without explicit authorization.
 
@@ -265,6 +268,43 @@ measurement is recorded below. Detailed source/validation and runtime evidence:
 `docs/metal/state/archive/CURRENT-native-world-resource-churn-checkpoint-2026-11-08.md`
 and `docs/metal/state/archive/CURRENT-native-world-runtime-measurement-checkpoint-2026-11-08.md`.
 
+### Texture versus global Metal memory pressure
+
+Finding: the Metal streamer derived a deliberately bounded image capacity from
+`recommendedMaxWorkingSetSize / 16`, then compared its 2.90-GiB post-headroom
+target with `max(texture + biased vertex estimate, currentAllocatedSize)`.
+Confirmed. `currentAllocatedSize` includes all device resources, while the
+small target is a streamed-image policy. Registered and live
+`RenderTextureVRAMDivisor` is `1`; the constructor's `2` is only a fallback.
+
+Exact original `1eb44bbd1b` compares its tracked texture plus 2x-biased vertex
+estimate with one dedicated `gGLManager.mVRAM` pool. Its
+`llviewertexture.cpp` SHA-256 is
+`27b94a757e9cdbba99d3a5b2b07d6ab592455c4546e5191b6bad5c323b806c61`.
+Conversion commit `ab98aae4a9` introduced the mismatched Metal maximum.
+
+In the still-running pre-fix `68532` Ultra process, 86 settled samples recorded
+`2,947.87–3,066.48 MiB` tracked texture bytes, `4,807.58–4,931.12 MiB` total
+device allocation and discard bias `4`. The targets were respectively
+`2,969.6 MiB` and the full `59,392 MiB` recommendation. This proves the
+pressure mechanism was active but does not prove fetched-image decode/upload
+oscillation or an FPS cost; generic wrapper churn is not sufficient attribution.
+
+Commit `7cd1993d8ed7a3ba04beb200e7dc007ecae19e0c` pairs Metal tracked texture
+bytes with the existing bounded texture target and total device allocation with
+the full recommendation, taking the worse signal only under real global
+overcommit. System-memory pressure remains independent, exact-original GL
+accounting is preserved, a zero divisor is clamped safely, and the texture
+allowance is not inflated to unified-memory size. Focused proof passes 22
+assertions/6 cases; full viewer tests pass 99,012 assertions/752 cases with one
+expected skip. Release `68535` builds, signs and verifies 349/349 ARM64 slices.
+
+Detailed evidence:
+`docs/metal/state/archive/CURRENT-native-texture-pressure-accounting-checkpoint-2026-11-08.md`.
+Fresh-launch `68535` before evaluating post-fix discard bias. If the next goal
+is cache-churn attribution, instrument fetched-image decode/upload/downscale
+events rather than inferring them from aggregate Metal resource counters.
+
 ## Other important corrections already completed
 
 - `af65f062a1`: directional shadows. Original sparse null GLTF material slots
@@ -443,17 +483,13 @@ git rev-parse HEAD
 tools/metal/doctor.sh
 ```
 
-Narrow and full tests depend on the owner changed. For the latest resource
-change the commands were:
+Narrow and full tests depend on the owner changed. For the latest
+texture-pressure change the commands were:
 
 ```sh
-cmake --build build-Darwin-ninja-os-arm64 --config Release --target almetal_tests
-cmake --build build-Darwin-ninja-os-arm64 --config RelWithDebInfo --target almetal_tests
-MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests 'almetal: direct spot-shadow array slices preserve strict raw raster depth'
-MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests 'almetal: world simple pass writes the native four-attachment G-buffer'
-MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/RelWithDebInfo/almetal_tests 'almetal: direct spot-shadow array slices preserve strict raw raster depth'
-MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/RelWithDebInfo/almetal_tests 'almetal: world simple pass writes the native four-attachment G-buffer'
-MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests
+cmake --build build-Darwin-ninja-os-arm64 --config Release --target newview_tests
+build-Darwin-ninja-os-arm64/newview/Release/newview_tests '[texture][pressure]'
+build-Darwin-ninja-os-arm64/newview/Release/newview_tests
 ```
 
 Darwin Metal-only configuration intentionally omits legacy GL test binaries;
@@ -495,15 +531,17 @@ explicit owner authorization.
 
 ## Immediate next boundaries
 
-1. Save and launch a dedicated Ultra profile, capture the camera transform and
-   repeat source-exact Metal versus exact-base `67607`; separately verify
-   ordinary-light camera boundaries and directional/projector shadow continuity.
+1. After owner direction for the existing `68532` process, fresh-launch
+   source-exact `68535` with a dedicated Ultra profile and compare settled
+   tracked texture bytes, total allocation and discard bias. Add fetched-image
+   churn telemetry before attributing decode/upload cost.
 2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
 3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene
    no-popping gate; live `UseOcclusion=1` alone is insufficient.
-4. Run the formal source-exact, camera-pinned, quality-equivalent 300-frame
-   Metal/OpenGL protocol before making a product performance claim.
+4. Capture the camera transform and run the formal source-exact,
+   quality-equivalent 300-frame Metal/OpenGL protocol; separately smoke
+   ordinary-light boundaries and directional/projector shadow continuity.
 5. Strict no-GL source/runtime, feature/visual parity, prolonged stability,
    independent review and the 24 FPS objective remain open. The product is not
    complete.
