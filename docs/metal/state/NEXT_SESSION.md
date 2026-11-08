@@ -31,18 +31,18 @@ work.
 - Repository: `/Users/dekstroza/Programming/AI/Secondlife/Alchemy`.
 - Branch: `codex/apple-silicon-metal`.
 - Code checkpoint before the evidence-only follow-up commit:
-  `f93c9f192709cac151bfd76f4eccb20cdf262d67`.
+  `8f4d5654e53f0540a263c4f954ccbbc10d46a7c4`.
 - Latest renderer implementation commit:
-  `f93c9f192709cac151bfd76f4eccb20cdf262d67`.
+  `8f4d5654e53f0540a263c4f954ccbbc10d46a7c4`.
 - Implementation began from clean synchronized commit `7a76893312`; recheck
   current branch/worktree state and never discard unexpected later edits.
 - Physical host: MacBookPro18,2, M1 Max, 64 GiB unified memory, macOS 26.5.2,
   Xcode 26.6, Metal Apple family 7. `tools/metal/doctor.sh` exits 0.
-- Current source-exact candidate is Xcode Release `26.4.0.68530` at
+- Current source-exact candidate is Xcode Release `26.4.0.68532` at
   `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-  It was built from renderer commit `f93c9f1927`, passes deep strict signing
+  It was built from renderer commit `8f4d5654e5`, passes deep strict signing
   and 349/349 ARM64 slice inspection, and has executable SHA-256
-  `4c09ff9471b14d6f51c2603ce972d0bf5d70393ec30ba85c436cd0ab40cefafa`.
+  `f242b041ebcba41cdc07a003b4fa040321c87368190b8aa192c803655953e9f9`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
@@ -231,6 +231,37 @@ launch, visual acceptance or FPS gain is claimed. Converting the retained
 representation to sampled depth arrays and depth-only opaque pipelines remains
 a separate change because it alters every raw-depth consumer and coverage path.
 
+### Retained world resources and per-draw setup
+
+Findings: the retained Main/Probe/Hero G-buffers and direct renderer both
+allocated physical attachments; water and atmospheric haze held two sequential
+full-resolution depth snapshots; material/PBR batches bound 32 base slots
+before overwriting most of them; and shadow/G-buffer skinning created palette
+buffers per invocation. Confirmed. This was not a second scene render, and the
+haze copy/pass boundary is still required by the current read/write contract.
+
+Exact original `1eb44bbd1b` renders deferred geometry into retained
+`deferredScreen` and caps indexed legacy/glTF material families at eight slots.
+Its `pipeline.cpp`, resource-plan and `llglslshader.h` SHA-256 values are
+`bb52adcb83cf493d57246b6410294bb8579f429454b024aeae1ae66efa23231b`,
+`398bbc83dbac2743a5bcd3809994029ec4864f47540ac73ca68a857cc213a6fd` and
+`93edb05d16724dd632f0f21af215e600c4fbafa772bfc391c9e12b5e11a8424a`.
+
+Commit `8f4d5654e53f0540a263c4f954ccbbc10d46a7c4` strictly borrows compatible
+four-color retained G-buffer attachments, alternates with the pool for in-flight
+safety, shares the sequential haze snapshot, binds eight material/PBR base
+textures and uses completion-safe inline command data for palettes through
+4,096 bytes (85 rigged joints). Emissive-disabled three-color plans, larger and
+diagnostic palettes, retained screen/post targets, other constants and both
+haze copies/pass boundaries remain.
+
+Validated Release/RelWithDebInfo G-buffer and shadow cases pass 8,075/129
+assertions each under Metal API/GPU validation; full validated Release Metal
+passes 52,869 assertions/59 cases. Source-exact Xcode Release `68532` builds,
+signs and verifies 349/349 ARM64 slices. No launch, allocation capture or FPS
+gain is claimed. Detailed evidence:
+`docs/metal/state/archive/CURRENT-native-world-resource-churn-checkpoint-2026-11-08.md`.
+
 ## Other important corrections already completed
 
 - `af65f062a1`: directional shadows. Original sparse null GLTF material slots
@@ -363,9 +394,9 @@ The evidence hashes and limitations are in:
   background remains an open content/clipping question; trace original mirror
   terrain/content before changing it.
 - Game Mode appeared correctly. It is not an open issue.
-- Latest `e90ccdf18f` geometry generations, `8247d09c5d` bounded ordinary
-  lights and `f93c9f1927` direct shadow slices have build/GPU-test proof but not
-  owner-attended preset/camera-boundary/shadow-continuity visual smoke.
+- Latest geometry generations, bounded ordinary lights, direct shadow slices
+  and `8f4d5654e5` resource-churn reductions have build/GPU-test proof but not
+  owner-attended visual, allocation or performance evidence.
 - Use `alchemy-viewer-visual-qa` and exact executable-path/process checks for
   any new reference/candidate launch. Launch/login/capture only on explicit
   owner request.
@@ -380,14 +411,16 @@ git rev-parse HEAD
 tools/metal/doctor.sh
 ```
 
-Narrow and full tests depend on the owner changed. For the latest shadow-slice
+Narrow and full tests depend on the owner changed. For the latest resource
 change the commands were:
 
 ```sh
 cmake --build build-Darwin-ninja-os-arm64 --config Release --target almetal_tests
 cmake --build build-Darwin-ninja-os-arm64 --config RelWithDebInfo --target almetal_tests
 MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests 'almetal: direct spot-shadow array slices preserve strict raw raster depth'
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests 'almetal: world simple pass writes the native four-attachment G-buffer'
 MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/RelWithDebInfo/almetal_tests 'almetal: direct spot-shadow array slices preserve strict raw raster depth'
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/RelWithDebInfo/almetal_tests 'almetal: world simple pass writes the native four-attachment G-buffer'
 MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests
 ```
 
@@ -430,9 +463,9 @@ explicit owner authorization.
 
 ## Immediate next boundaries
 
-1. At the next explicitly requested launch, verify ordinary lights across the
-   camera boundary and directional/projector shadow continuity, capture a
-   matched fully resident trace, and smoke dynamic geometry at Low/Mid/High/Ultra.
+1. At the next explicitly requested launch, verify ordinary-light and shadow
+   continuity, then capture matched resident allocation/CPU/GPU evidence for
+   retained borrowing, haze reuse, bindings and palettes across presets.
 2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
 3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene
