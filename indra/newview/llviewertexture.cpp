@@ -29,6 +29,8 @@
 
 #include "llviewertexture.h"
 
+#include "altexturememoryaccounting.h"
+
 // Library includes
 #include "llmath.h"
 #include "alrendercapabilities.h"
@@ -501,18 +503,23 @@ void LLViewerTexture::updateClass()
     static LLCachedControl<U32> tex_vram_divisor(gSavedSettings, "RenderTextureVRAMDivisor", 2);
     static LLCachedControl<U32> max_vram_budget(gSavedSettings, "RenderMaxVRAMBudget", 0);
 
-    F64 texture_bytes_alloc = LLImageGL::getTextureBytesAllocated() / 1024.0 / 1024.0;
-    F64 vertex_bytes_alloc = LLVertexBuffer::getBytesAllocated() / 1024.0 / 512.0;
-
-    // Get an estimate of how much video memory we're using. The original GL
-    // path deliberately biases its incomplete accounting high. Metal can ask
-    // the device for the actual allocation total, which also includes render
-    // targets, buffers and staging resources that compete with streamed
-    // images in unified memory.
-    // NOTE: our metrics miss about half the vram we use, so this biases high but turns out to typically be within 5% of the real number
-    const F64 estimated_used_mb = texture_bytes_alloc + vertex_bytes_alloc;
-    const F64 device_used_mb = LLImageGL::getDeviceBytesAllocated() / 1024.0 / 1024.0;
-    F32 used = (F32)ll_round(llmax(estimated_used_mb, device_used_mb));
+    constexpr F64 bytes_per_mib = 1024.0 * 1024.0;
+    const F64 texture_bytes_alloc =
+        LLImageGL::getTextureBytesAllocated() / bytes_per_mib;
+    // Preserve the exact original /512 conversion on GL. It deliberately
+    // biases the incomplete vertex accounting by 2x.
+    const F64 legacy_vertex_bytes_alloc =
+        LLVertexBuffer::getBytesAllocated() / 1024.0 / 512.0;
+    const F64 device_used_mb =
+        LLImageGL::getDeviceBytesAllocated() / bytes_per_mib;
+    const F64 device_budget_mb = gRenderCapabilities.isInitialized()
+        ? gRenderCapabilities.memoryBudgetMB() : 0.0;
+    const ALTextureMemoryAccounting::Usage usage =
+        ALTextureMemoryAccounting::classify(
+            gRenderCapabilities.isMetal(), texture_bytes_alloc,
+            legacy_vertex_bytes_alloc, device_used_mb, device_budget_mb);
+    const F32 used = static_cast<F32>(
+        ll_round(usage.texture_pressure_mb));
 
     // For debugging purposes, it's useful to be able to set the VRAM budget manually.
     // But when manual control is not enabled, use the VRAM divisor.
@@ -520,7 +527,8 @@ void LLViewerTexture::updateClass()
     // -Geenz 2025-03-21
     const U32 renderer_memory_mb = gRenderCapabilities.isInitialized()
         ? gRenderCapabilities.textureMemoryBudgetMB() : gGLManager.mVRAM;
-    F32 budget = max_vram_budget == 0 ? llmax(1024, (F32)renderer_memory_mb / tex_vram_divisor) : (F32)max_vram_budget;
+    const U32 divisor = llmax<U32>(tex_vram_divisor(), 1);
+    F32 budget = max_vram_budget == 0 ? llmax(1024, (F32)renderer_memory_mb / divisor) : (F32)max_vram_budget;
 
     // Try to leave at least half a GB for everyone else and for bias,
     // but keep at least 768MB for ourselves
@@ -530,7 +538,20 @@ void LLViewerTexture::updateClass()
     F32 target = llmax(llmin(budget - 512.f, budget * 0.8f), MIN_VRAM_BUDGET);
     sFreeVRAMMegabytes = target - used;
 
-    F32 over_pct = (used - target) / target;
+    const F32 texture_over_pct = static_cast<F32>(
+        ALTextureMemoryAccounting::overageFraction(used, target));
+    const bool has_global_pressure = usage.global_budget_mb > 0.0;
+    const F32 global_over_pct = has_global_pressure
+        ? static_cast<F32>(ALTextureMemoryAccounting::overageFraction(
+              usage.global_pressure_mb, usage.global_budget_mb))
+        : texture_over_pct;
+    // Texture eviction is a last-resort response to genuine global device
+    // overcommit as well as the normal response to exceeding the deliberately
+    // smaller streamed-image allowance. System-memory pressure remains an
+    // independent emergency signal below.
+    const F32 over_pct = has_global_pressure
+        ? llmax(texture_over_pct, global_over_pct)
+        : texture_over_pct;
 
     bool is_sys_low = isSystemMemoryLow();
     bool is_low = is_sys_low || over_pct > 0.f;
