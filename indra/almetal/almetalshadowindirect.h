@@ -39,6 +39,13 @@ struct ALMetalShadowIndirectStats
     std::uint64_t executed_draws = 0;
     std::uint64_t resource_declarations = 0;
     std::size_t slot_count = 0;
+    std::uint64_t direct_prepared_draws = 0;
+    std::uint64_t direct_executions = 0;
+    std::uint64_t direct_executed_draws = 0;
+    std::uint64_t direct_slot_allocations = 0;
+    std::uint64_t direct_slot_reuses = 0;
+    std::uint64_t direct_coalesced_draws = 0;
+    std::size_t direct_slot_count = 0;
 };
 
 // Single-CPU-owner helper. It changes neither draw admission nor render state.
@@ -56,6 +63,7 @@ public:
         Batch(const Batch&) = delete;
         Batch& operator=(const Batch&) = delete;
         std::size_t drawCount() const noexcept;
+        bool isIndirect() const noexcept;
     private:
         struct Impl;
         explicit Batch(std::unique_ptr<Impl> impl);
@@ -77,6 +85,15 @@ public:
     bool execute(ALMetalRenderEncoder& encoder, const Batch& batch,
                  std::size_t first, std::size_t count,
                  std::string* error = nullptr);
+    // Ordinary native draws keep the same immutable packet/slab contract
+    // without requiring ICB-compatible pipeline state or indirect resources.
+    std::unique_ptr<Batch> prepareDirect(
+        ALMetalCommandBuffer& command,
+        std::span<const ALMetalShadowIndirectDraw> draws,
+        std::string* error = nullptr);
+    bool executeDirect(ALMetalRenderEncoder& encoder, const Batch& batch,
+                       std::size_t first, std::size_t count,
+                       std::string* error = nullptr);
     ALMetalShadowIndirectStats stats() const noexcept;
 
 private:

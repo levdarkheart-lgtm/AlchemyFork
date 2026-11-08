@@ -115,14 +115,16 @@ fragment float indirect_fragment(Out in [[stage_in]])
         }
 
         std::unique_ptr<ALMetalRenderEncoder> encoder(
-            ALMetalCommandBuffer& command, ALMetalRenderTarget& target)
+            ALMetalCommandBuffer& command, ALMetalRenderTarget& target,
+            bool indirect_pipeline = true)
         {
             auto pass = target.makeRenderPass({}, &error);
             REQUIRE(pass);
             auto result = ALMetalRenderEncoder::begin(command, *pass,
                 "Indirect shadow regression pass", &error);
             REQUIRE(result);
-            REQUIRE(result->setPipeline(*pipeline, &error));
+            REQUIRE(result->setPipeline(
+                indirect_pipeline ? *pipeline : *scalar_pipeline, &error));
             REQUIRE(result->setViewport({0., 0., width, height, 0., 1.}, &error));
             REQUIRE(result->setCullMode(ALMetalCullMode::none, &error));
             REQUIRE(result->setDepthClipMode(ALMetalDepthClipMode::clamp, &error));
@@ -209,12 +211,16 @@ TEST_CASE("almetal: shadow indirect ranges match scalar order and restore buffer
     {
         Fixture fixture;
         Draws draws(fixture, 257);
-        auto reference = fixture.target(), candidate = fixture.target();
+        auto reference = fixture.target(), candidate = fixture.target(), bulk = fixture.target();
         auto command = fixture.device->makeCommandBuffer("Indirect ordered ranges", &fixture.error);
         REQUIRE(command);
         auto batch = fixture.indirect->prepare(*command, draws.values, &fixture.error);
         REQUIRE(batch);
         REQUIRE(batch->drawCount() == draws.values.size());
+        CHECK(batch->isIndirect());
+        auto direct_batch = fixture.indirect->prepareDirect(*command, draws.values, &fixture.error);
+        REQUIRE(direct_batch);
+        CHECK_FALSE(direct_batch->isIndirect());
         const bool timing_was_enabled = ALMetalDevice::commandTimingEnabled();
         ALMetalDevice::setCommandTimingEnabled(true);
         struct RestoreTiming
@@ -223,37 +229,45 @@ TEST_CASE("almetal: shadow indirect ranges match scalar order and restore buffer
             ~RestoreTiming() { ALMetalDevice::setCommandTimingEnabled(value); }
         } restore{timing_was_enabled};
         const auto census_before = ALMetalDevice::encodedDrawCallCount();
-        for (bool indirect : {false, true})
+        for (unsigned mode : {0u, 1u, 2u})
         {
-            auto encoder = fixture.encoder(*command, indirect ? *candidate : *reference);
+            auto encoder = fixture.encoder(*command,
+                mode == 0 ? *reference : mode == 1 ? *candidate : *bulk, mode == 1);
             REQUIRE(encoder->setScissor({0, 0, 8, height}, &fixture.error));
             // Seed the scalar cache before indirect execution, then restore
             // exactly those identities afterwards. ICB changes must invalidate it.
             bind(fixture, *encoder, draws.values[0]);
-            if (indirect)
+            if (mode == 1)
                 REQUIRE(fixture.indirect->execute(*encoder, *batch, 0, 128, &fixture.error));
+            else if (mode == 2)
+                REQUIRE(fixture.indirect->executeDirect(*encoder, *direct_batch, 0, 128, &fixture.error));
             else
                 for (std::size_t i = 0; i < 128; ++i) draw(fixture, *encoder, draws.values[i]);
             REQUIRE(encoder->setScissor({8, 0, 8, height}, &fixture.error));
             draw(fixture, *encoder, draws.values[0]);
             REQUIRE(encoder->setScissor({16, 0, 8, height}, &fixture.error));
-            if (indirect)
+            if (mode == 1)
                 REQUIRE(fixture.indirect->execute(*encoder, *batch, 128, 129, &fixture.error));
+            else if (mode == 2)
+                REQUIRE(fixture.indirect->executeDirect(*encoder, *direct_batch, 128, 129, &fixture.error));
             else
                 for (std::size_t i = 128; i < 257; ++i) draw(fixture, *encoder, draws.values[i]);
             REQUIRE(encoder->setScissor({24, 0, 8, height}, &fixture.error));
             draw(fixture, *encoder, draws.values[1]);
             REQUIRE(encoder->end(&fixture.error));
         }
-        CHECK(ALMetalDevice::encodedDrawCallCount() - census_before == 2 * (257 + 2));
+        CHECK(ALMetalDevice::encodedDrawCallCount() - census_before == 3 * (257 + 2));
         CHECK(fixture.indirect->stats().executions == 2);
         CHECK(fixture.indirect->stats().executed_draws == 257);
         // Four unique native buffers, declared once for both ordered ranges.
         CHECK(fixture.indirect->stats().resource_declarations == 4);
+        CHECK(fixture.indirect->stats().direct_executions == 2);
+        CHECK(fixture.indirect->stats().direct_executed_draws == 257);
         REQUIRE(command->commitAndWait(&fixture.error));
         const auto expected = fixture.pixels(*reference);
         const auto actual = fixture.pixels(*candidate);
         CHECK(actual == expected);
+        CHECK(fixture.pixels(*bulk) == expected);
         CHECK(std::count_if(actual.begin(), actual.end(), [](float value)
             { return std::isfinite(value) && value != 0.f; }) == width * height);
         CHECK(actual[0] != actual[8]);
@@ -555,5 +569,80 @@ TEST_CASE("almetal: indirect owners survive renderer destruction and release com
             CHECK(weak_owner.expired());
             REQUIRE(fixture.device->waitUntilIdle(&fixture.error));
         }
+    }
+}
+
+TEST_CASE("almetal: native direct shadow packets isolate pending views and validate mode",
+          "[almetal][shadow-indirect][shadow-direct]")
+{
+    @autoreleasepool
+    {
+        Fixture fixture;
+        auto target_a = fixture.target(), target_b = fixture.target();
+        auto command = fixture.device->makeCommandBuffer("Native static pending views", &fixture.error);
+        REQUIRE(command);
+        const auto prepare_view = [&](ALMetalRenderTarget& target, unsigned seed)
+        {
+            Draws draws(fixture, 3, seed);
+            auto batch = fixture.indirect->prepareDirect(*command, draws.values, &fixture.error);
+            REQUIRE(batch);
+            auto encoder = fixture.encoder(*command, target, false);
+            CHECK_FALSE(fixture.indirect->execute(*encoder, *batch, 0, 3, &fixture.error));
+            REQUIRE(fixture.indirect->executeDirect(*encoder, *batch, 0, 3, &fixture.error));
+            REQUIRE(encoder->end(&fixture.error));
+            CHECK_FALSE(fixture.indirect->executeDirect(*encoder, *batch, 0, 1, &fixture.error));
+        };
+        prepare_view(*target_a, 400);
+        prepare_view(*target_b, 501);
+        CHECK(fixture.indirect->stats().direct_slot_count == 2);
+        CHECK(fixture.indirect->stats().direct_slot_reuses == 0);
+        REQUIRE(command->commitAndWait(&fixture.error));
+        CHECK(std::abs(fixture.pixels(*target_a)[0] - (403.f / 1024.f + 2.25f / 8.f)) < 1e-6f);
+        CHECK(std::abs(fixture.pixels(*target_b)[0] - (504.f / 1024.f - 1.25f / 8.f)) < 1e-6f);
+
+        auto next_command = fixture.device->makeCommandBuffer("Native static packet reuse", &fixture.error);
+        auto foreign_command = fixture.device->makeCommandBuffer("Native static foreign command", &fixture.error);
+        REQUIRE(next_command);
+        REQUIRE(foreign_command);
+        Draws next(fixture, 1, 600);
+        auto bad = next.values[0];
+        bad.indices = nullptr;
+        const std::array invalid_list{next.values[0], bad};
+        const auto before_invalid = fixture.indirect->stats();
+        CHECK_FALSE(fixture.indirect->prepareDirect(*next_command, invalid_list, &fixture.error));
+        CHECK(fixture.indirect->stats().direct_prepared_draws == before_invalid.direct_prepared_draws);
+        CHECK(fixture.indirect->stats().direct_slot_reuses == before_invalid.direct_slot_reuses);
+        std::vector<ALMetalShadowIndirectDraw> too_many(
+            ALMetalShadowIndirectCommands::maximum_draw_count + 1, next.values[0]);
+        CHECK_FALSE(fixture.indirect->prepareDirect(*next_command, too_many, &fixture.error));
+        auto batch = fixture.indirect->prepareDirect(*next_command, next.values, &fixture.error);
+        auto indirect = fixture.indirect->prepare(*next_command, next.values, &fixture.error);
+        auto empty = fixture.indirect->prepareDirect(*next_command, {}, &fixture.error);
+        REQUIRE(batch);
+        REQUIRE(indirect);
+        REQUIRE(empty);
+        CHECK(fixture.indirect->stats().direct_slot_count == 2);
+        CHECK(fixture.indirect->stats().direct_slot_reuses == 1);
+        auto foreign_encoder = fixture.encoder(*foreign_command, *target_a, false);
+        CHECK_FALSE(fixture.indirect->executeDirect(*foreign_encoder, *batch, 0, 1, &fixture.error));
+        REQUIRE(foreign_encoder->end(&fixture.error));
+        auto encoder = fixture.encoder(*next_command, *target_a, false);
+        CHECK_FALSE(fixture.indirect->executeDirect(*encoder, *indirect, 0, 1, &fixture.error));
+        CHECK_FALSE(fixture.indirect->executeDirect(*encoder, *batch, 1, 1, &fixture.error));
+        CHECK_FALSE(fixture.indirect->executeDirect(*encoder, *batch, 0,
+            std::numeric_limits<std::size_t>::max(), &fixture.error));
+        REQUIRE(fixture.indirect->executeDirect(*encoder, *empty, 0, 0, &fixture.error));
+        REQUIRE(fixture.indirect->executeDirect(*encoder, *batch, 0, 1, &fixture.error));
+        REQUIRE(encoder->end(&fixture.error));
+        batch.reset();
+        indirect.reset();
+        empty.reset();
+        fixture.indirect.reset(); // The prepared command keeps packet owners alive.
+        next.positions.reset();
+        next.constants.reset();
+        next.indices16.reset();
+        next.indices32.reset();
+        REQUIRE(next_command->commitAndWait(&fixture.error));
+        CHECK(std::abs(fixture.pixels(*target_a)[0] - (601.f / 1024.f + .25f / 8.f)) < 1e-6f);
     }
 }

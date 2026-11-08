@@ -285,9 +285,11 @@ struct ALMetalWorldSpotShadowScene
     std::uint32_t height = 0;
     bool reverse_z = false;
     bool depth_clamp = false;
-    // Ordered static runs may use native indirect commands. Retain a direct
-    // path for equivalence tests and devices without indirect draw support.
-    bool indirect_draws = true;
+    // Bulk native direct encoding preserves ordinary GPU draw commands.
+    // Indirect commands remain opt-in for isolated equivalence/perf tests;
+    // both switches off selects the original scalar reference encoder.
+    bool indirect_draws = false;
+    bool bulk_draws = true;
 };
 
 struct ALMetalWorldSimpleBatch

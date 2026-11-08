@@ -423,8 +423,9 @@ private:
     void* nativeDeviceForIndirect() const noexcept;
     void* nativeCommandBufferForIndirect() const noexcept;
     bool canExecuteIndirect() const noexcept;
+    bool canExecuteStaticDraws() const noexcept;
     void invalidateIndirectBufferBindings() noexcept;
-    void recordIndirectDraws(std::uint32_t count) noexcept;
+    void recordPrevalidatedDraws(std::uint32_t count) noexcept;
     friend class ALMetalShadowIndirectCommands;
 };
 

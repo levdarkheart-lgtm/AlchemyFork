@@ -1461,6 +1461,12 @@ bool ALMetalRenderEncoder::canExecuteIndirect() const noexcept
         mImpl->indirect_pipeline && !mImpl->tessellation_enabled;
 }
 
+bool ALMetalRenderEncoder::canExecuteStaticDraws() const noexcept
+{
+    return mImpl && !mImpl->ended && mImpl->pipeline_set &&
+        !mImpl->tessellation_enabled;
+}
+
 void ALMetalRenderEncoder::invalidateIndirectBufferBindings() noexcept
 {
     if (!mImpl) return;
@@ -1468,7 +1474,7 @@ void ALMetalRenderEncoder::invalidateIndirectBufferBindings() noexcept
     mImpl->fragment_buffers.fill({});
 }
 
-void ALMetalRenderEncoder::recordIndirectDraws(std::uint32_t count) noexcept
+void ALMetalRenderEncoder::recordPrevalidatedDraws(std::uint32_t count) noexcept
 {
     if (mImpl && mImpl->count_draws) mImpl->encoded_draws += count;
 }

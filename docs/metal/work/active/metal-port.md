@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
 **Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **Continuation:** [next-session handover](../../state/NEXT_SESSION.md). **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `175cd155dd` is the measured predecessor. Next implementation: cached opaque shadow commands, slab constants, completion-safe indirect ownership, lazy terrain factors, exact base-light dead-work gates and native draw census are implemented; Release/RelWithDebInfo GPU validation each passes 56,620 assertions/73 cases. Source-exact product build/runtime comparison pending; measured predecessor is `175cd155dd` / `68550`. Alpha-2 remains `26.4.0.68512-alpha2`.
+**Renderer checkpoint:** Commit `b1d198674d` implements the next performance repair: cached opaque shadow commands, slab constants, completion-safe indirect ownership, lazy terrain factors, exact base-light dead-work gates and native draw census are implemented; Release/RelWithDebInfo GPU validation each passes 56,620 assertions/73 cases. Source-exact product build/runtime comparison pending; measured predecessor is `175cd155dd` / `68550`. Alpha-2 remains `26.4.0.68512-alpha2`.
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
 ## Work board
@@ -39,7 +39,7 @@ Continue removing all application-owned OpenGL, but prioritize the shortest sour
 This is ordering, not scope reduction. Do not delete required features merely to lower inventory, do not retain a fallback, and do not let an unreviewed visual row block source- and test-proven authority removal.
 ## Current implementation boundary
 
-Implemented and GPU-tested under the owner's request: completion-safe cached opaque shadow commands, one constant slab per view, lazy terrain factors, exact legacy shader dead-work gates, and native draw telemetry. Preserve every original caster/view boundary; validate GPU output, build source-exact, then repeat the authorized full-screen/Midday/`Preset123` comparison against `68550`. [Implementation record](../../state/archive/CURRENT-shadow-indirect-checkpoint-2026-11-08.md). Metal is the only visible post-startup presenter. Production geometry, textures/fonts and async uploads create no parallel GL resources; Snapshot has no GL capture scratch/reconcile path. Core world/material/avatar/shadow/sky/water/atmosphere layers and converted effects have direct native owners.
+`68553` passed both GPU-validated suites and source-exact ARM64 build, but regressed the matched300-frame CSV. Reject its FPS claim. Direct bulk shadows, compatible-range merging, populated ordinary/material/PBR bindings and previous shaders now pass57,344 assertions/75 cases in both validated configs; rebuild and repeat the authorized same-scene comparison against68550. [Regression evidence](../../state/archive/CURRENT-68553-shadow-indirect-runtime-2026-11-08.md). Metal is the only visible post-startup presenter. Production geometry, textures/fonts and async uploads create no parallel GL resources; Snapshot has no GL capture scratch/reconcile path. Core world/material/avatar/shadow/sky/water/atmosphere layers and converted effects have direct native owners.
 
 The essential initialization sequence now advances through:
 

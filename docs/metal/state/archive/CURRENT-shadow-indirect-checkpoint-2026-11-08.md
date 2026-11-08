@@ -1,6 +1,6 @@
 # Cached native shadow commands — 2026-11-08
 
-Implementation is complete following the owner's instruction to address
+Implementation commit `b1d198674d` is complete following the owner's instruction to address
 continued single-digit FPS. The predecessor is renderer `175cd155dd` and
 source-exact Release `68550`; its matched runtime evidence is in
 [the predecessor report](CURRENT-68550-draw-payload-runtime-2026-11-08.md).
@@ -92,11 +92,11 @@ explicitly armed and aggregates once per encoder without per-draw atomics.
 A 3,000-draw wrapper-versus-helper benchmark alternates order, rotates three
 pending views and checks exact GPU output. Across 1–1,000 geometry pairs
 (3–2,001 unique buffers), cached helper CPU preparation/encoding is roughly
-53–85% lower with both stable and changing native identities. It excludes
+57–83% lower with both stable and changing native identities. It excludes
 source-vector construction, resource creation, submission and waiting. The
 old viewer and other local work were active; this is a mechanism test, not a
-net viewer FPS result. Raw comparison SHA-256 is
-`97485890e62bc37d12dcf2d23e13e8a880ae23023cb65b216bed82861f198edb` in
+net viewer FPS result. Final post-keepalive `comparison-after-keepalive.json` SHA-256 is
+`24a13037df042b1a6298179e3c1fc2254c3c3c2f8ce3d6ffbf5786866eb982b3` in
 `/private/tmp/alchemy-metal-shadow-indirect-tests-20261108.HGz01r`.
 
 The pool retains its high-water slots and cached native references until

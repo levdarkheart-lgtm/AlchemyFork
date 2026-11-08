@@ -6,6 +6,8 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| Direct shadow packets, compatible-range merging and populated texture bindings,2026-11-08 | [CURRENT-direct-shadow-texture-checkpoint-2026-11-08.md](CURRENT-direct-shadow-texture-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
+| Source-exact68553 indirect shadow regression and CPU redistribution, 2026-11-08 | [CURRENT-68553-shadow-indirect-runtime-2026-11-08.md](CURRENT-68553-shadow-indirect-runtime-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Cached native shadow commands and shader dead-work repair, 2026-11-08 (runtime pending) | [CURRENT-shadow-indirect-checkpoint-2026-11-08.md](CURRENT-shadow-indirect-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Hero CPU capture/encoding and shared frame-data repair, 2026-11-08 | [CURRENT-hero-cpu-encoding-checkpoint-2026-11-08.md](CURRENT-hero-cpu-encoding-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Initial implementation through the PBR-alpha data-map checkpoint, 2026-11-01 | [CURRENT-through-2026-11-01.md](CURRENT-through-2026-11-01.md) | `docs/metal/state/CURRENT.md` |

@@ -2153,6 +2153,20 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << probe_indirect.slot_count << " slots (new/reuse="
                 << probe_indirect.slot_allocations << '/'
                 << probe_indirect.slot_reuses << ')'
+                << ", shadow_direct=" << indirect.direct_executed_draws << '/'
+                << indirect.direct_prepared_draws << " draws, "
+                << indirect.direct_executions << " runs, "
+                << indirect.direct_slot_count << " slots (new/reuse="
+                << indirect.direct_slot_allocations << '/'
+                << indirect.direct_slot_reuses << ", coalesced="
+                << indirect.direct_coalesced_draws << ')'
+                << ", probe_shadow_direct=" << probe_indirect.direct_executed_draws
+                << '/' << probe_indirect.direct_prepared_draws << " draws, "
+                << probe_indirect.direct_executions << " runs, "
+                << probe_indirect.direct_slot_count << " slots (new/reuse="
+                << probe_indirect.direct_slot_allocations << '/'
+                << probe_indirect.direct_slot_reuses << ", coalesced="
+                << probe_indirect.direct_coalesced_draws << ')'
                 << LL_ENDL;
         }
     }

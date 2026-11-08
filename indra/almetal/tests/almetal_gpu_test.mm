@@ -3551,14 +3551,30 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                     scene.reverse_z = reverse_z;
                     scene.depth_clamp = clamp;
                     scene.indirect_draws = false;
+                    scene.bulk_draws = false;
                     const auto before = renderer->shadowIndirectStats();
                     REQUIRE(render_spot_shadow(scene, 0));
                     const auto after_direct = renderer->shadowIndirectStats();
                     CHECK(after_direct.prepared_draws == before.prepared_draws);
                     CHECK(after_direct.executions == before.executions);
+                    CHECK(after_direct.direct_prepared_draws == before.direct_prepared_draws);
+                    CHECK(after_direct.direct_executions == before.direct_executions);
                     std::array<float, 32 * 32> direct_depth{};
                     REQUIRE(retained->readback(*device, 0, 0, {}, direct_depth.data(),
                                               32 * sizeof(float), &error));
+                    scene.bulk_draws = true;
+                    REQUIRE(render_spot_shadow(scene, 1));
+                    INFO(error);
+                    const auto after_bulk = renderer->shadowIndirectStats();
+                    CHECK(after_bulk.direct_prepared_draws - after_direct.direct_prepared_draws == 128);
+                    CHECK(after_bulk.direct_executed_draws - after_direct.direct_executed_draws == 128);
+                    CHECK(after_bulk.direct_executions - after_direct.direct_executions == 2);
+                    CHECK(after_bulk.prepared_draws == after_direct.prepared_draws);
+                    CHECK(after_bulk.executions == after_direct.executions);
+                    std::array<float, 32 * 32> bulk_depth{};
+                    REQUIRE(retained->readback(*device, 0, 1, {}, bulk_depth.data(),
+                                              32 * sizeof(float), &error));
+                    CHECK(bulk_depth == direct_depth);
                     scene.indirect_draws = true;
                     REQUIRE(render_spot_shadow(scene, 1));
                     INFO(error);
@@ -3566,6 +3582,8 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                     CHECK(after_indirect.prepared_draws - after_direct.prepared_draws == 128);
                     CHECK(after_indirect.executed_draws - after_direct.executed_draws == 128);
                     CHECK(after_indirect.executions - after_direct.executions == 2);
+                    CHECK(after_indirect.direct_prepared_draws == after_bulk.direct_prepared_draws);
+                    CHECK(after_indirect.direct_executions == after_bulk.direct_executions);
                     REQUIRE(retained->readback(*device, 0, 1, {}, last_indirect_depth.data(),
                                               32 * sizeof(float), &error));
                     CHECK(last_indirect_depth == direct_depth);
@@ -3582,13 +3600,19 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         // execute or clear the retained slice before preflight finishes.
         const auto before_invalid = renderer->shadowIndirectStats();
         mixed_batches.back().vertices = nullptr;
-        error.clear();
-        CHECK_FALSE(render_spot_shadow(scene, 1));
-        CHECK(error == "Metal spot-shadow batch geometry is invalid");
+        for (const bool indirect : {false, true})
+        {
+            scene.indirect_draws = indirect;
+            error.clear();
+            CHECK_FALSE(render_spot_shadow(scene, 1));
+            CHECK(error == "Metal spot-shadow batch geometry is invalid");
+        }
         const auto after_invalid = renderer->shadowIndirectStats();
         CHECK(after_invalid.prepared_draws == before_invalid.prepared_draws);
         CHECK(after_invalid.executions == before_invalid.executions);
         CHECK(after_invalid.executed_draws == before_invalid.executed_draws);
+        CHECK(after_invalid.direct_prepared_draws == before_invalid.direct_prepared_draws);
+        CHECK(after_invalid.direct_executions == before_invalid.direct_executions);
         std::array<float, 32 * 32> after_invalid_depth{};
         REQUIRE(retained->readback(*device, 0, 1, {}, after_invalid_depth.data(),
                                   32 * sizeof(float), &error));
@@ -3602,6 +3626,8 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         auto below_threshold = renderer->shadowIndirectStats();
         CHECK(below_threshold.prepared_draws == before_invalid.prepared_draws);
         CHECK(below_threshold.executions == before_invalid.executions);
+        CHECK(below_threshold.direct_prepared_draws == before_invalid.direct_prepared_draws);
+        CHECK(below_threshold.direct_executions == before_invalid.direct_executions);
         mixed_batches.assign(128, opaque_batch);
         for (std::size_t draw = 0; draw < mixed_batches.size(); ++draw)
             mixed_batches[draw].double_sided = (draw & 1u) != 0;
@@ -3611,6 +3637,246 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         const auto short_runs = renderer->shadowIndirectStats();
         CHECK(short_runs.prepared_draws == before_invalid.prepared_draws);
         CHECK(short_runs.executions == before_invalid.executions);
+        CHECK(short_runs.direct_prepared_draws == before_invalid.direct_prepared_draws);
+        CHECK(short_runs.direct_executions == before_invalid.direct_executions);
+
+        // Adjacent opaque triangle ranges with identical geometry bindings
+        // and constants can become one ordinary native draw. Preserve exact
+        // scalar raster depth and prove that each merge barrier remains a
+        // separate packet, without changing the logical caster membership.
+        std::array<std::uint16_t, 128 * 3> adjacent_indices{};
+        for (std::size_t draw = 0; draw < 128; ++draw)
+            std::copy(index_values.begin(), index_values.end(),
+                      adjacent_indices.begin() + draw * 3);
+        descriptor.length = sizeof(adjacent_indices);
+        auto adjacent_buffer = ALMetalBuffer::create(*device, descriptor, &error);
+        REQUIRE(adjacent_buffer);
+        REQUIRE(adjacent_buffer->write(0, adjacent_indices.data(),
+                                      sizeof(adjacent_indices), &error));
+        std::vector<ALMetalWorldSpotShadowBatch> adjacent_batches(128, opaque_batch);
+        enum class Barrier { none, matrix, position_offset, index_offset, partial_triangle };
+        for (const bool reverse_z : {false, true})
+        {
+            for (const bool clamp : {false, true})
+            {
+                for (const Barrier barrier : {Barrier::none, Barrier::matrix,
+                     Barrier::position_offset, Barrier::index_offset,
+                     Barrier::partial_triangle})
+                {
+                    CAPTURE(reverse_z, clamp, static_cast<unsigned>(barrier));
+                    adjacent_batches.assign(128, opaque_batch);
+                    for (std::size_t draw = 0; draw < adjacent_batches.size(); ++draw)
+                    {
+                        auto& value = adjacent_batches[draw];
+                        value.indices = adjacent_buffer.get();
+                        value.index_offset = draw * 3 * sizeof(std::uint16_t);
+                        value.modelview_projection[14] = clamp
+                            ? (reverse_z ? 2.f : -2.f)
+                            : (reverse_z ? 0.5f : 0.f);
+                    }
+                    switch (barrier)
+                    {
+                        case Barrier::none: break;
+                        case Barrier::matrix:
+                            adjacent_batches[64].modelview_projection[12] = 0.125f;
+                            break;
+                        case Barrier::position_offset:
+                            adjacent_batches[64].position_offset = 16;
+                            break;
+                        case Barrier::index_offset:
+                            adjacent_batches[64].index_offset += 3 * sizeof(std::uint16_t);
+                            break;
+                        case Barrier::partial_triangle:
+                            adjacent_batches[64].index_count = 2;
+                            // Keep the following byte ranges adjacent: the
+                            // count's incomplete primitive is the barrier.
+                            for (std::size_t draw = 65; draw < adjacent_batches.size(); ++draw)
+                                adjacent_batches[draw].index_offset -= sizeof(std::uint16_t);
+                            break;
+                    }
+                    scene.batches = adjacent_batches.data();
+                    scene.batch_count = adjacent_batches.size();
+                    scene.reverse_z = reverse_z;
+                    scene.depth_clamp = clamp;
+                    scene.indirect_draws = false;
+                    scene.bulk_draws = false;
+                    const auto before_scalar = renderer->shadowIndirectStats();
+                    REQUIRE(render_spot_shadow(scene, 0));
+                    const auto after_scalar = renderer->shadowIndirectStats();
+                    CHECK(after_scalar.direct_prepared_draws == before_scalar.direct_prepared_draws);
+                    CHECK(after_scalar.direct_executions == before_scalar.direct_executions);
+                    std::array<float, 32 * 32> scalar_depth{};
+                    REQUIRE(retained->readback(*device, 0, 0, {}, scalar_depth.data(),
+                                              32 * sizeof(float), &error));
+                    scene.bulk_draws = true;
+                    REQUIRE(render_spot_shadow(scene, 1));
+                    INFO(error);
+                    const auto after_merged = renderer->shadowIndirectStats();
+                    const std::uint64_t expected_packets = barrier == Barrier::none ? 1 : 3;
+                    CHECK(after_merged.direct_prepared_draws - after_scalar.direct_prepared_draws == expected_packets);
+                    CHECK(after_merged.direct_executed_draws - after_scalar.direct_executed_draws == expected_packets);
+                    CHECK(after_merged.direct_executions - after_scalar.direct_executions == 1);
+                    CHECK(after_merged.prepared_draws == after_scalar.prepared_draws);
+                    CHECK(after_merged.executions == after_scalar.executions);
+                    std::array<float, 32 * 32> merged_depth{};
+                    REQUIRE(retained->readback(*device, 0, 1, {}, merged_depth.data(),
+                                              32 * sizeof(float), &error));
+                    CHECK(merged_depth == scalar_depth);
+                    CHECK(std::abs(scalar_depth[16 * 32 + 16] -
+                        (clamp ? (reverse_z ? 1.f : 0.f) : 0.5f)) < 0.0001f);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("almetal: ordinary G-buffer binds only populated diffuse slots",
+          "[almetal][diffuse-bindings]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        REQUIRE(device);
+        auto renderer = createFrameDataRenderer(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+        struct VertexData
+        {
+            std::array<std::array<float, 4>, 3> positions{{
+                {{-0.8f, -0.8f, 0.25f, 1.f}},
+                {{ 0.8f, -0.8f, 0.25f, 1.f}},
+                {{ 0.f,   0.8f, 0.25f, 1.f}},
+            }};
+            std::array<std::array<float, 4>, 3> normals{{
+                {{0.f, 0.f, 1.f, 0.f}},
+                {{0.f, 0.f, 1.f, 0.f}},
+                {{0.f, 0.f, 1.f, 0.f}},
+            }};
+            std::array<std::array<float, 2>, 3> texcoords{};
+            std::array<std::array<std::uint8_t, 4>, 3> colors{{
+                {{255, 255, 255, 128}},
+                {{255, 255, 255, 128}},
+                {{255, 255, 255, 128}},
+            }};
+        } data;
+        ALMetalBufferDescriptor buffer_descriptor;
+        buffer_descriptor.length = sizeof(data);
+        buffer_descriptor.storage = ALMetalStorageMode::shared;
+        auto vertices = ALMetalBuffer::create(*device, buffer_descriptor, &error);
+        REQUIRE(vertices);
+        const std::array<std::uint16_t, 3> index_values{{0, 1, 2}};
+        buffer_descriptor.length = sizeof(index_values);
+        auto indices = ALMetalBuffer::create(*device, buffer_descriptor, &error);
+        REQUIRE(indices);
+        REQUIRE(indices->write(0, index_values.data(), sizeof(index_values), &error));
+        ALMetalTextureDescriptor texture_descriptor;
+        texture_descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+        auto red = ALMetalTexture::create(*device, texture_descriptor, &error);
+        auto green = ALMetalTexture::create(*device, texture_descriptor, &error);
+        REQUIRE(red);
+        REQUIRE(green);
+        const std::array<std::uint8_t, 4> red_pixel{{255, 0, 0, 255}};
+        const std::array<std::uint8_t, 4> green_pixel{{0, 255, 0, 255}};
+        auto upload = device->makeCommandBuffer("Ordinary diffuse binding fixtures", &error);
+        REQUIRE(upload);
+        REQUIRE(red->upload(*upload, 0, 0, {}, red_pixel.data(), 4, &error));
+        REQUIRE(green->upload(*upload, 0, 0, {}, green_pixel.data(), 4, &error));
+        REQUIRE(upload->commitAndWait(&error));
+
+        ALMetalWorldSimpleBatch batch;
+        batch.vertices = vertices.get();
+        batch.normal_offset = offsetof(VertexData, normals);
+        batch.texcoord_offset = offsetof(VertexData, texcoords);
+        batch.color_offset = offsetof(VertexData, colors);
+        batch.vertex_count = data.positions.size();
+        batch.indices = indices.get();
+        batch.index_count = index_values.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            batch.modelview_projection[axis * 4 + axis] = 1.f;
+            batch.modelview[axis * 4 + axis] = 1.f;
+        }
+        for (std::size_t axis = 0; axis < 3; ++axis)
+            batch.normal_matrix[axis][axis] = 1.f;
+        ALMetalWorldGBufferScene scene;
+        scene.batches = &batch;
+        scene.batch_count = 1;
+        scene.width = 32;
+        scene.height = 32;
+        std::fill_n(scene.clear_color, 4, 0.f);
+        const auto set_index = [&](std::uint32_t index)
+        {
+            for (auto& position : data.positions)
+                std::memcpy(&position[3], &index, sizeof(index));
+            REQUIRE(vertices->write(0, &data, sizeof(data), &error));
+        };
+        const auto pixels_for = [&]()
+        {
+            auto target = renderer->render(scene, &error);
+            INFO(error);
+            REQUIRE(target);
+            std::array<std::uint8_t, 32 * 32 * 4> pixels{};
+            REQUIRE(target->colorTexture(0)->readback(*device, 0, 0, {},
+                pixels.data(), 32 * 4, &error));
+            return pixels;
+        };
+        constexpr std::size_t center = (16 * 32 + 16) * 4;
+        for (const std::uint32_t count : {1u, 2u, 8u, 9u, 32u})
+        {
+            CAPTURE(count);
+            batch.diffuse_textures.fill(nullptr);
+            for (std::uint32_t slot = 0; slot < count; ++slot)
+                batch.diffuse_textures[slot] = red.get();
+            batch.diffuse_textures[count - 1] = green.get();
+            batch.texture_count = count;
+            // Each render begins a new encoder: unused suffix slots have
+            // never been bound there, including the first count-one draw.
+            // Scalar draws ignore the packed position word entirely.
+            set_index(count == 1 ? 31u : count - 1);
+            const auto valid = pixels_for();
+            CHECK(valid[center] == 0);
+            CHECK(valid[center + 1] == 255);
+            CHECK(valid[center + 2] == 0);
+            CHECK(valid[center + 3] == 0);
+            if (count > 1)
+            {
+                set_index(count);
+                const auto invalid = pixels_for();
+                CHECK(invalid[center] == 255);
+                CHECK(invalid[center + 1] == 0);
+                CHECK(invalid[center + 2] == 255);
+                CHECK(invalid[center + 3] == 0);
+            }
+        }
+
+        // One encoder changes from a populated 32-slot ladder to a single
+        // texture with a different slot-zero identity. The right draw must
+        // ignore packed index31 and the previous draw's remaining bindings.
+        set_index(31);
+        std::array<ALMetalWorldSimpleBatch, 2> transition{{batch, batch}};
+        transition[0].texture_count = 32;
+        transition[0].diffuse_textures.fill(red.get());
+        transition[0].diffuse_textures[0] = green.get();
+        transition[0].diffuse_textures[31] = green.get();
+        transition[0].modelview_projection[0] = 0.5f;
+        transition[0].modelview_projection[12] = -0.5f;
+        transition[1].texture_count = 1;
+        transition[1].diffuse_textures.fill(nullptr);
+        transition[1].diffuse_textures[0] = red.get();
+        transition[1].modelview_projection[0] = 0.5f;
+        transition[1].modelview_projection[12] = 0.5f;
+        scene.batches = transition.data();
+        scene.batch_count = transition.size();
+        const auto transitioned = pixels_for();
+        constexpr std::size_t left = (16 * 32 + 8) * 4;
+        constexpr std::size_t right = (16 * 32 + 24) * 4;
+        CHECK(transitioned[left] == 0);
+        CHECK(transitioned[left + 1] == 255);
+        CHECK(transitioned[left + 2] == 0);
+        CHECK(transitioned[right] == 255);
+        CHECK(transitioned[right + 1] == 0);
+        CHECK(transitioned[right + 2] == 0);
     }
 }
 
@@ -4558,6 +4824,43 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                        24576) <= 2);
         CHECK(std::abs(static_cast<int>(material_normal[center + 3]) -
                        22282) <= 2);
+
+        const auto write_texture_index = [&](std::int32_t index)
+        {
+            for (std::size_t vertex = 0; vertex < positions.size(); ++vertex)
+                REQUIRE(vertices->write(vertex * sizeof(positions[0]) + 3 * sizeof(float),
+                                        &index, sizeof(index), &error));
+        };
+        // Material lookup clamps to the populated slot count. Exercise its
+        // highest eight-slot entry and an oversized packed index with only
+        // one/two populated slots, whose auxiliary suffix is now unbound.
+        for (const std::uint32_t slots : {1u, 2u, 8u})
+        {
+            ALMetalWorldSimpleBatch edge_material = batch;
+            edge_material.texture_count = slots;
+            edge_material.material_slot_count = slots;
+            edge_material.diffuse_textures.fill(nullptr);
+            for (std::uint32_t slot = 0; slot < slots; ++slot)
+                edge_material.diffuse_textures[slot] = diffuse.get();
+            edge_material.diffuse_textures[slots - 1] = indexed_diffuse.get();
+            edge_material.materialSlots()[slots - 1] = batch.materialSlots()[1];
+            auto edge_scene = scene;
+            edge_scene.batches = &edge_material;
+            for (const std::int32_t index : {static_cast<std::int32_t>(slots - 1), 31})
+            {
+                CAPTURE(slots, index);
+                write_texture_index(index);
+                auto edge = renderer->render(edge_scene, &error);
+                INFO(error);
+                REQUIRE(edge);
+                std::array<std::uint8_t, 32 * 32 * 4> edge_pixels{};
+                REQUIRE(edge->colorTexture(0)->readback(*device, 0, 0, {},
+                    edge_pixels.data(), 32 * 4, &error));
+                for (std::size_t channel = 0; channel < 4; ++channel)
+                    CHECK(edge_pixels[center + channel] == material_albedo[center + channel]);
+            }
+        }
+        write_texture_index(indexed_texture);
 
         // The three remaining legacy material families share the same slot
         // constants but independently opt into the tangent/UV1 normal map and
@@ -15661,6 +15964,42 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(scalar_pbr_albedo[center + 2] == 0);
         batch.pbr_slot_count = 2;
         batch.texture_count = 2;
+
+        for (const std::uint32_t slots : {1u, 2u, 8u})
+        {
+            ALMetalWorldSimpleBatch edge_pbr = batch;
+            edge_pbr.texture_count = slots;
+            edge_pbr.pbr_slot_count = slots;
+            edge_pbr.diffuse_textures.fill(nullptr);
+            for (std::uint32_t slot = 0; slot < slots; ++slot)
+            {
+                edge_pbr.diffuse_textures[slot] = diffuse.get();
+                edge_pbr.pbrSlots()[slot] = batch.pbrSlots()[1];
+            }
+            edge_pbr.diffuse_textures[slots - 1] = pbr_base_texture.get();
+            auto edge_scene = scene;
+            edge_scene.batches = &edge_pbr;
+            for (const std::int32_t index : {static_cast<std::int32_t>(slots - 1), 31})
+            {
+                CAPTURE(slots, index);
+                write_texture_index(index);
+                auto edge = renderer->render(edge_scene, &error);
+                INFO(error);
+                REQUIRE(edge);
+                std::array<std::uint8_t, 32 * 32 * 4> edge_albedo{};
+                std::array<std::uint16_t, 32 * 32 * 4> edge_normal{};
+                REQUIRE(edge->colorTexture(0)->readback(*device, 0, 0, {},
+                    edge_albedo.data(), 32 * 4, &error));
+                REQUIRE(edge->colorTexture(2)->readback(*device, 0, 0, {},
+                    edge_normal.data(), 32 * 8, &error));
+                for (std::size_t channel = 0; channel < 4; ++channel)
+                {
+                    CHECK(edge_albedo[center + channel] == pbr_albedo[center + channel]);
+                    CHECK(edge_normal[center + channel] == pbr_normal[center + channel]);
+                }
+            }
+        }
+        write_texture_index(indexed_texture);
 
         // A masked PBR texel uses base texture alpha times streamed alpha and
         // the same half-byte equality bias as the GL owner.

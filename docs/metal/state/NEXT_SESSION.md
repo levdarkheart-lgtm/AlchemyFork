@@ -28,7 +28,7 @@ work.
 
 ## Repository and artifact state
 
-The next owner-authorized optimization is now implemented and tested: cached
+The `b1d198674d` experiment was measured as68553 and regressed p50 to124.32ms versus112.78ms. New direct bulk shadow packets, compatible-range merging and actual populated ordinary/material/PBR bindings now pass57,344 assertions/75 cases in both GPU-validated configs; original175 shader restored. Product build/fresh68550 comparison are pending. See [revised implementation](archive/CURRENT-direct-shadow-texture-checkpoint-2026-11-08.md). Earlier experimental source description: cached
 opaque shadow ICB runs, one immutable constant slab per view, completion-owned
 indirect resources, lazy terrain factors, exact legacy base-light dead-work
 gates and actual native draw telemetry. Full Release and RelWithDebInfo suites
