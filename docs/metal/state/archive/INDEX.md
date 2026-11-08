@@ -140,6 +140,7 @@ reload the chronological history.
 | Original-compatible empty UI clip semantics and visible Conversations floater, 2026-11-07 | [CURRENT-empty-ui-clip-checkpoint-2026-11-07.md](CURRENT-empty-ui-clip-checkpoint-2026-11-07.md) | `docs/metal/state/CURRENT.md` |
 | Bounded Ultra mirror performance diagnosis and Metal submission-cost evidence, 2026-11-07 | [CURRENT-ultra-mirror-performance-diagnosis-2026-11-07.md](CURRENT-ultra-mirror-performance-diagnosis-2026-11-07.md) | `docs/metal/state/CURRENT.md` |
 | Deferred base-light depth classification, rejected haze experiments and steady-state warm-up correction, 2026-11-08 | [CURRENT-base-light-depth-classification-2026-11-08.md](CURRENT-base-light-depth-classification-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
+| Native occlusion/anisotropy attended profiling and fully resident GPU-priority correction, 2026-11-08 | [CURRENT-native-occlusion-anisotropy-performance-2026-11-08.md](CURRENT-native-occlusion-anisotropy-performance-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
