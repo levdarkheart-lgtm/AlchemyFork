@@ -47,12 +47,11 @@ work.
   `dfc5b4e92e36ee23df8da327232f69b42973b492bd6f119ef85e8d131298f82d`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
-- Owner-attended PID `59683` remains the already-running source-exact `68541`
-  process under the pinned Ultra profile from run directory
-  `artifacts/metal/qa-runs/candidate-restored-68532-68541-20261108-01`.
-  The bundle path has since been rebuilt in place as `68543`; the live process
-  cannot validate the binding-cache candidate. Do not terminate it without
-  owner permission or claim `68543` runtime evidence from it.
+- Owner-attended PID `85686` is running source-exact `68543` under the pinned
+  Ultra profile from run directory
+  `artifacts/metal/qa-runs/candidate-68543-binding-cache-on-68532-20261108-01`.
+  It is launched but not yet live-verified; do not claim login, settings, or
+  performance until the owner finishes setup and requests measurement.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
   Do not publish another tag/release without explicit authorization.
 
