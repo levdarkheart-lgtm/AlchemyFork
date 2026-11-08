@@ -226,8 +226,10 @@ non-batched pass.
 
 Focused validated Release and RelWithDebInfo tests each pass 129 assertions;
 full validated Release Metal passes 52,862 assertions/59 cases. Source-exact
-Release `68530` builds, signs and verifies 349/349 ARM64 slices. No viewer
-launch, visual acceptance or FPS gain is claimed. Converting the retained
+Release `68530` builds, signs and verifies 349/349 ARM64 slices. Combined
+owner-attended Ultra `68532` evidence below confirms that the former retention
+copy submission stream is absent; visual acceptance and isolated FPS gain are
+not claimed. Converting the retained
 representation to sampled depth arrays and depth-only opaque pipelines remains
 a separate change because it alters every raw-depth consumer and coverage path.
 
@@ -258,9 +260,10 @@ haze copies/pass boundaries remain.
 Validated Release/RelWithDebInfo G-buffer and shadow cases pass 8,075/129
 assertions each under Metal API/GPU validation; full validated Release Metal
 passes 52,869 assertions/59 cases. Source-exact Xcode Release `68532` builds,
-signs and verifies 349/349 ARM64 slices. No launch, allocation capture or FPS
-gain is claimed. Detailed evidence:
-`docs/metal/state/archive/CURRENT-native-world-resource-churn-checkpoint-2026-11-08.md`.
+signs and verifies 349/349 ARM64 slices. Its combined owner-attended Ultra
+measurement is recorded below. Detailed source/validation and runtime evidence:
+`docs/metal/state/archive/CURRENT-native-world-resource-churn-checkpoint-2026-11-08.md`
+and `docs/metal/state/archive/CURRENT-native-world-runtime-measurement-checkpoint-2026-11-08.md`.
 
 ## Other important corrections already completed
 
@@ -369,16 +372,40 @@ the earlier trace started around 32 seconds after launch and contained only
 that haze/base light is the next priority. Trace exact-original fully resident
 opaque post-deferred content/state/order before optimizing it.
 
+Release `68532` was then measured owner-attended at the same `3456x2168`
+drawable after the owner selected Ultra and fixed the camera. A settled
+30.697-second repeat recorded 265 presents (`8.633` traced presents/s), 8,401
+submissions (`31.702`/present), `80.5%` GPU-active union, 4.661–4.795 GiB Metal
+allocation and Nominal thermals. Thirty-seven untraced ten-second samples had
+median/mean `9.9`/`9.746` and range `7.2–10.5` FPS.
+
+This is direct structural evidence for the combined repair set: the prior
+shadow-retention copy stream fell from `7.589` submissions and `8.002` labelled
+GPU ms per present to zero, while direct spot-shadow renders increased from
+`7.583` to `8.211` per present and hero transactions remained six. Total
+submissions fell 18.2%; allocation floor/ceiling were directionally about
+120/117 MiB lower. Time Profiler sampled standard `setFragmentTexture` stacks
+at 16.6% versus the prior 20.1% and native buffer creation at 2 versus 9 ms,
+directionally consistent with the eight-slot ladder and inline palettes.
+
+Do not call the present/FPS difference a product gain: the previous camera
+transform was not preserved, live content and source differ, and opaque-post
+work changed from `55.307` to `1.386` labelled ms/present. The launch manifest
+was Mid and the owner changed it to Ultra manually, so the formal visual-QA
+gate remained blocked; no agent screenshot or visual conclusion was produced.
+
 Local raw evidence directories currently exist at:
 
 - `/private/tmp/alchemy-metal-68521-post-fixes-ultra-20261108-1`
 - `/private/tmp/alchemy-metal-base-classification-trace-20261108-1`
+- `/private/tmp/alchemy-metal-68532-resource-churn-ultra-20261108-1`
 
 The evidence hashes and limitations are in:
 
 - `docs/metal/state/archive/CURRENT-native-occlusion-anisotropy-performance-2026-11-08.md`
 - `docs/metal/state/archive/CURRENT-base-light-depth-classification-2026-11-08.md`
 - `docs/metal/state/archive/CURRENT-ultra-mirror-performance-diagnosis-2026-11-07.md`
+- `docs/metal/state/archive/CURRENT-native-world-runtime-measurement-checkpoint-2026-11-08.md`
 
 ## Visual/reference state
 
@@ -395,8 +422,13 @@ The evidence hashes and limitations are in:
   terrain/content before changing it.
 - Game Mode appeared correctly. It is not an open issue.
 - Latest geometry generations, bounded ordinary lights, direct shadow slices
-  and `8f4d5654e5` resource-churn reductions have build/GPU-test proof but not
-  owner-attended visual, allocation or performance evidence.
+  and `8f4d5654e5` resource-churn reductions have build/GPU-test proof plus the
+  combined bounded Ultra runtime evidence above. Ordinary-light camera-boundary
+  and moving-shadow visual smoke remain open.
+- The latest process launched with the Mid QA manifest before the owner changed
+  it to Ultra and fixed the camera. Treat its runtime probes/traces as bounded
+  evidence only; the fail-closed screenshot gate was blocked and no visual
+  comparison was made.
 - Use `alchemy-viewer-visual-qa` and exact executable-path/process checks for
   any new reference/candidate launch. Launch/login/capture only on explicit
   owner request.
@@ -463,9 +495,9 @@ explicit owner authorization.
 
 ## Immediate next boundaries
 
-1. At the next explicitly requested launch, verify ordinary-light and shadow
-   continuity, then capture matched resident allocation/CPU/GPU evidence for
-   retained borrowing, haze reuse, bindings and palettes across presets.
+1. Save and launch a dedicated Ultra profile, capture the camera transform and
+   repeat source-exact Metal versus exact-base `67607`; separately verify
+   ordinary-light camera boundaries and directional/projector shadow continuity.
 2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
 3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene
