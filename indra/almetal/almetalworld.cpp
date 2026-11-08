@@ -1572,6 +1572,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<NormalPipelines, 2> windlight_cloud_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         base_light_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        base_light_sky_pipelines;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
     std::unique_ptr<ALMetalComputePipeline> hero_probe_filter_pipeline;
     std::unique_ptr<ALMetalComputePipeline> probe_gaussian_pipeline;
@@ -2034,7 +2036,11 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_aurora_fragment") ||
         !impl->library->hasFunction("almetal_world_cloud_vertex") ||
         !impl->library->hasFunction("almetal_world_cloud_fragment") ||
-        !impl->library->hasFunction("almetal_world_base_light_fragment") ||
+        !impl->library->hasFunction("almetal_world_base_light_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_base_light_geometry_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_base_light_sky_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_ssr_history_fragment") ||
         !impl->library->hasFunction(
@@ -3257,13 +3263,29 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         descriptor.color_attachment_count = 1;
         descriptor.colors[0].format = screen_formats[hdr];
 
-        descriptor.fragment_function = "almetal_world_base_light_fragment";
+        descriptor.vertex_function = "almetal_world_base_light_vertex";
+        descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        descriptor.fragment_function =
+            "almetal_world_base_light_geometry_fragment";
         descriptor.label = hdr
-            ? "Alchemy HDR world base-light pipeline"
-            : "Alchemy world base-light pipeline";
+            ? "Alchemy HDR world base-light geometry pipeline"
+            : "Alchemy world base-light geometry pipeline";
         impl->base_light_pipelines[hdr] =
             ALMetalRenderPipeline::create(device, descriptor, error);
         if (!impl->base_light_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        descriptor.fragment_function =
+            "almetal_world_base_light_sky_fragment";
+        descriptor.label = hdr
+            ? "Alchemy HDR world base-light sky pipeline"
+            : "Alchemy world base-light sky pipeline";
+        impl->base_light_sky_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->base_light_sky_pipelines[hdr])
         {
             return nullptr;
         }
@@ -19690,6 +19712,29 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         return nullptr;
     }
 
+    // Match the original deferred soften split without copying depth: lend
+    // the output color and G-buffer depth to a short-lived target. The
+    // geometry draw can then reject clear sky in fixed-function depth before
+    // the expensive base shader, while a second cheap draw transfers sky.
+    ALMetalRenderTargetDescriptor pass_target_descriptor;
+    pass_target_descriptor.width = input.width;
+    pass_target_descriptor.height = input.height;
+    pass_target_descriptor.colors[0].format =
+        output_descriptor.colors[0].format;
+    pass_target_descriptor.colors[0].texture = output->colorTexture(0);
+    pass_target_descriptor.depth_stencil_format =
+        ALMetalPixelFormat::depth32_float_stencil8;
+    pass_target_descriptor.depth_stencil_shader_read = true;
+    pass_target_descriptor.depth_stencil_texture = depth;
+    pass_target_descriptor.label =
+        "Alchemy borrowed-depth world base-light pass target";
+    auto pass_target = mImpl->makeRenderTarget(
+        *mImpl->device, pass_target_descriptor, error);
+    if (!pass_target)
+    {
+        return nullptr;
+    }
+
     ALMetalBufferDescriptor probe_buffer_descriptor;
     probe_buffer_descriptor.length =
         sizeof(ALMetalWorldReflectionProbeConstants);
@@ -19742,13 +19787,14 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
-    // The base pipeline only shades color. An optional carried depth
-    // attachment is populated by the exact G-buffer blit below and must not
-    // participate in this render pass's pipeline compatibility contract.
-    pass_config.bind_depth_stencil = false;
-    auto pass = output->makeRenderPass(pass_config, error);
+    pass_config.depth_load = ALMetalLoadAction::load;
+    pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.stencil_load = ALMetalLoadAction::load;
+    pass_config.stencil_store = ALMetalStoreAction::store;
+    auto pass = pass_target->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
-        *command, *pass, "Alchemy world base-light encoder", error)
+        *command, *pass, "Alchemy world depth-classified base-light encoder",
+        error)
         : nullptr;
     if (!encoder)
     {
@@ -19787,12 +19833,23 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         scene.screen_space_reflections
             ? scene.screen_space_reflections->constants
             : mImpl->inactive_ssr_constants;
-    const bool encoded =
+    const std::size_t pipeline_index = scene.hdr ? 1 : 0;
+    const bool reverse_z = scene.constants.config[0] != 0;
+    const ALMetalDepthStencilState* geometry_depth = reverse_z
+        ? mImpl->reverse_coverage_depth.get()
+        : mImpl->forward_coverage_depth.get();
+    const ALMetalDepthStencilState* sky_depth = reverse_z
+        ? mImpl->reverse_readonly_depth.get()
+        : mImpl->forward_readonly_depth.get();
+    bool encoded =
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setDepthStencilState(geometry_depth, error) &&
+        encoder->setVertexBytes(
+            0, &scene.constants, sizeof(scene.constants), error) &&
         encoder->setPipeline(
-            *mImpl->base_light_pipelines[scene.hdr ? 1 : 0], error) &&
+            *mImpl->base_light_pipelines[pipeline_index], error) &&
         encoder->setFragmentBytes(
             0, &scene.constants, sizeof(scene.constants), error) &&
         encoder->setFragmentBuffer(
@@ -19822,6 +19879,15 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         encoder->setFragmentSampler(
             2, mImpl->linear_clamp_sampler.get(), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (encoded && scene.constants.sky[0] != 0)
+    {
+        encoded =
+            encoder->setDepthStencilState(sky_depth, error) &&
+            encoder->setPipeline(
+                *mImpl->base_light_sky_pipelines[pipeline_index], error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    }
     const bool ended = encoder->end(error);
     const bool copied_depth =
         !scene.carry_depth ||
