@@ -504,9 +504,12 @@ struct ALMetalRenderTargetColorDescriptor
     bool shader_write = false;
     // Optional externally-owned resolved attachment. The texture must outlive
     // the render target and match its device, dimensions, format, mip count,
-    // and render-target usage. This is the native equivalent of lending an
-    // image to an offscreen target; no second texture is allocated.
+    // and render-target usage. A 2D-array attachment binds texture_slice;
+    // ordinary 2D attachments require slice zero. This is the native
+    // equivalent of lending an image to an offscreen target; no second
+    // texture is allocated.
     const ALMetalTexture* texture = nullptr;
+    std::uint32_t texture_slice = 0;
     std::string label;
 };
 

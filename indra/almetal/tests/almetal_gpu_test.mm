@@ -2630,7 +2630,7 @@ TEST_CASE("almetal: terrain paint bake consumes indexed viewer buffers and gener
     }
 }
 
-TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "[almetal]")
+TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster depth", "[almetal]")
 {
     @autoreleasepool
     {
@@ -2712,19 +2712,6 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         scene.width = 32;
         scene.height = 32;
 
-        auto forward = renderer->renderSpotShadow(scene, &error);
-        INFO(error);
-        REQUIRE(forward);
-        REQUIRE(forward->descriptor().colors[0].format ==
-                ALMetalPixelFormat::r32_float);
-        std::array<float, 32 * 32> forward_depth{};
-        REQUIRE(forward->colorTexture(0)->readback(
-            *device, 0, 0, {}, forward_depth.data(), 32 * sizeof(float),
-            &error));
-        INFO(error);
-        CHECK(std::abs(forward_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
-        CHECK(std::abs(forward_depth[1 * 32 + 1] - 1.f) < 0.0001f);
-
         ALMetalTextureDescriptor retained_descriptor;
         retained_descriptor.type = ALMetalTextureType::texture_2d_array;
         retained_descriptor.format = ALMetalPixelFormat::r32_float;
@@ -2732,21 +2719,47 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         retained_descriptor.height = scene.height;
         retained_descriptor.array_length = 2;
         retained_descriptor.storage = ALMetalStorageMode::private_gpu;
-        retained_descriptor.usage = ALMetalTextureUsage::shader_read;
+        retained_descriptor.usage = ALMetalTextureUsage::render_target |
+            ALMetalTextureUsage::shader_read;
         retained_descriptor.label =
-            "Alchemy batched spot-shadow retention test";
+            "Alchemy direct spot-shadow array-slice test";
         auto retained = ALMetalTexture::create(
             *device, retained_descriptor, &error);
         INFO(error);
         REQUIRE(retained);
+        const auto render_spot_shadow =
+            [&](const ALMetalWorldSpotShadowScene& shadow_scene,
+                std::uint32_t slice = 0) -> ALMetalTexture*
+        {
+            return renderer->renderSpotShadow(
+                *retained, slice, shadow_scene, &error)
+                ? retained.get() : nullptr;
+        };
+
+        auto forward = render_spot_shadow(scene);
+        INFO(error);
+        REQUIRE(forward);
+        REQUIRE(forward->descriptor().format ==
+                ALMetalPixelFormat::r32_float);
+        std::array<float, 32 * 32> forward_depth{};
+        REQUIRE(forward->readback(
+            *device, 0, 0, {}, forward_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(forward_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
+        CHECK(std::abs(forward_depth[1 * 32 + 1] - 1.f) < 0.0001f);
+
+        error.clear();
+        CHECK_FALSE(renderer->renderSpotShadow(
+            *retained, retained_descriptor.array_length, scene, &error));
+        CHECK(error == "Metal spot-shadow destination is incompatible");
+        error.clear();
+
         REQUIRE(renderer->beginCommandBatch(
             "Alchemy batched spot-shadow test", &error));
-        auto batched = renderer->renderSpotShadow(scene, &error);
+        auto batched = render_spot_shadow(scene, 1);
         INFO(error);
         REQUIRE(batched);
-        REQUIRE(renderer->retainSpotShadowSlice(
-            *retained, 1, *batched->colorTexture(0), &error));
-        INFO(error);
         CHECK(renderer->commandBatchActive());
         REQUIRE(renderer->commitCommandBatch(&error));
         INFO(error);
@@ -2760,33 +2773,33 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         CHECK(std::abs(retained_depth[1 * 32 + 1] - 1.f) < 0.0001f);
 
         batch.modelview_projection[14] = -2.f;
-        auto clipped = renderer->renderSpotShadow(scene, &error);
+        auto clipped = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(clipped);
         std::array<float, 32 * 32> clipped_depth{};
-        REQUIRE(clipped->colorTexture(0)->readback(
+        REQUIRE(clipped->readback(
             *device, 0, 0, {}, clipped_depth.data(), 32 * sizeof(float),
             &error));
         INFO(error);
         CHECK(std::abs(clipped_depth[16 * 32 + 16] - 1.f) < 0.0001f);
 
         scene.depth_clamp = true;
-        auto clamped = renderer->renderSpotShadow(scene, &error);
+        auto clamped = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(clamped);
         std::array<float, 32 * 32> clamped_depth{};
-        REQUIRE(clamped->colorTexture(0)->readback(
+        REQUIRE(clamped->readback(
             *device, 0, 0, {}, clamped_depth.data(), 32 * sizeof(float),
             &error));
         INFO(error);
         CHECK(std::abs(clamped_depth[16 * 32 + 16]) < 0.0001f);
 
         batch.modelview_projection[14] = 0.f;
-        auto clamped_mid = renderer->renderSpotShadow(scene, &error);
+        auto clamped_mid = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(clamped_mid);
         std::array<float, 32 * 32> clamped_mid_depth{};
-        REQUIRE(clamped_mid->colorTexture(0)->readback(
+        REQUIRE(clamped_mid->readback(
             *device, 0, 0, {}, clamped_mid_depth.data(),
             32 * sizeof(float), &error));
         INFO(error);
@@ -2804,11 +2817,11 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         batch.skin_palette = skin_palette.data();
         batch.skin_palette_float_count = skin_palette.size();
         batch.skin_joint_count = 1;
-        auto rigged = renderer->renderSpotShadow(scene, &error);
+        auto rigged = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(rigged);
         std::array<float, 32 * 32> rigged_depth{};
-        REQUIRE(rigged->colorTexture(0)->readback(
+        REQUIRE(rigged->readback(
             *device, 0, 0, {}, rigged_depth.data(), 32 * sizeof(float),
             &error));
         INFO(error);
@@ -2821,11 +2834,11 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         batch.weight_offset = 0;
         scene.reverse_z = true;
         batch.modelview_projection[14] = 0.5f;
-        auto reverse = renderer->renderSpotShadow(scene, &error);
+        auto reverse = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(reverse);
         std::array<float, 32 * 32> reverse_depth{};
-        REQUIRE(reverse->colorTexture(0)->readback(
+        REQUIRE(reverse->readback(
             *device, 0, 0, {}, reverse_depth.data(), 32 * sizeof(float),
             &error));
         INFO(error);
@@ -2834,11 +2847,11 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
 
         scene.depth_clamp = true;
         batch.modelview_projection[14] = 2.f;
-        auto reverse_clamped = renderer->renderSpotShadow(scene, &error);
+        auto reverse_clamped = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(reverse_clamped);
         std::array<float, 32 * 32> reverse_clamped_depth{};
-        REQUIRE(reverse_clamped->colorTexture(0)->readback(
+        REQUIRE(reverse_clamped->readback(
             *device, 0, 0, {}, reverse_clamped_depth.data(),
             32 * sizeof(float), &error));
         INFO(error);
@@ -2846,12 +2859,11 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
             reverse_clamped_depth[16 * 32 + 16] - 1.f) < 0.0001f);
 
         batch.modelview_projection[14] = 0.5f;
-        auto reverse_clamped_mid = renderer->renderSpotShadow(
-            scene, &error);
+        auto reverse_clamped_mid = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(reverse_clamped_mid);
         std::array<float, 32 * 32> reverse_clamped_mid_depth{};
-        REQUIRE(reverse_clamped_mid->colorTexture(0)->readback(
+        REQUIRE(reverse_clamped_mid->readback(
             *device, 0, 0, {}, reverse_clamped_mid_depth.data(),
             32 * sizeof(float), &error));
         INFO(error);
@@ -2915,11 +2927,11 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         }
         scene.batches = &terrain_batch;
         scene.reverse_z = false;
-        auto terrain_shadow = renderer->renderSpotShadow(scene, &error);
+        auto terrain_shadow = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(terrain_shadow);
         std::array<float, 32 * 32> terrain_depth{};
-        REQUIRE(terrain_shadow->colorTexture(0)->readback(
+        REQUIRE(terrain_shadow->readback(
             *device, 0, 0, {}, terrain_depth.data(), 32 * sizeof(float),
             &error));
         INFO(error);
@@ -2929,16 +2941,16 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         terrain_batch.terrain_tessellation_pinned = true;
         std::fill_n(terrain_batch.terrain_tessellation_factors, 6,
                     std::uint16_t{0x4c00});
-        auto pinned_terrain_shadow = renderer->renderSpotShadow(scene, &error);
+        auto pinned_terrain_shadow = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(pinned_terrain_shadow);
         scene.reverse_z = true;
         terrain_batch.modelview_projection[14] = 0.5f;
-        auto reverse_terrain_shadow = renderer->renderSpotShadow(scene, &error);
+        auto reverse_terrain_shadow = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(reverse_terrain_shadow);
         std::array<float, 32 * 32> reverse_terrain_depth{};
-        REQUIRE(reverse_terrain_shadow->colorTexture(0)->readback(
+        REQUIRE(reverse_terrain_shadow->readback(
             *device, 0, 0, {}, reverse_terrain_depth.data(),
             32 * sizeof(float), &error));
         INFO(error);
@@ -2949,7 +2961,7 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         terrain_batch.modelview_projection[14] = 0.f;
         terrain_batch.terrain_tessellation_factors[0] = 0;
         error.clear();
-        CHECK_FALSE(renderer->renderSpotShadow(scene, &error));
+        CHECK_FALSE(render_spot_shadow(scene));
         CHECK(error == "Metal spot-shadow terrain batch is invalid");
 
         scene.batches = &batch;
@@ -3076,7 +3088,7 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         }
         scene.batches = &avatar_batch;
         scene.reverse_z = false;
-        auto rigid_avatar = renderer->renderSpotShadow(scene, &error);
+        auto rigid_avatar = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(rigid_avatar);
 
@@ -3084,11 +3096,11 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         avatar_batch.skin_palette_float_count = 45 * 4;
         avatar_batch.skin_joint_count = 15;
         avatar_batch.weight_offset = avatar_weight_offset;
-        auto skinned_avatar = renderer->renderSpotShadow(scene, &error);
+        auto skinned_avatar = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(skinned_avatar);
         std::array<float, 32 * 32> skinned_avatar_depth{};
-        REQUIRE(skinned_avatar->colorTexture(0)->readback(
+        REQUIRE(skinned_avatar->readback(
             *device, 0, 0, {}, skinned_avatar_depth.data(),
             32 * sizeof(float), &error));
         INFO(error);
@@ -3098,7 +3110,7 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         avatar_batch.avatar_cloth = true;
         avatar_batch.normal_offset = avatar_normal_offset;
         avatar_batch.cloth_offset = avatar_cloth_offset;
-        auto cloth_avatar = renderer->renderSpotShadow(scene, &error);
+        auto cloth_avatar = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(cloth_avatar);
         avatar_batch.avatar_cloth = false;
@@ -3108,22 +3120,22 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         avatar_batch.texture_count = 1;
         avatar_batch.alpha_cutoffs[0] = 0.2f;
         avatar_batch.textures[0] = avatar_below_cutoff.get();
-        auto rejected_avatar_mask = renderer->renderSpotShadow(scene, &error);
+        auto rejected_avatar_mask = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(rejected_avatar_mask);
         std::array<float, 32 * 32> rejected_avatar_mask_depth{};
-        REQUIRE(rejected_avatar_mask->colorTexture(0)->readback(
+        REQUIRE(rejected_avatar_mask->readback(
             *device, 0, 0, {}, rejected_avatar_mask_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(rejected_avatar_mask_depth[16 * 32 + 16] - 1.f) <
               0.0001f);
 
         avatar_batch.textures[0] = avatar_at_cutoff.get();
-        auto accepted_avatar_mask = renderer->renderSpotShadow(scene, &error);
+        auto accepted_avatar_mask = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(accepted_avatar_mask);
         std::array<float, 32 * 32> accepted_avatar_mask_depth{};
-        REQUIRE(accepted_avatar_mask->colorTexture(0)->readback(
+        REQUIRE(accepted_avatar_mask->readback(
             *device, 0, 0, {}, accepted_avatar_mask_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(accepted_avatar_mask_depth[16 * 32 + 16] - 0.5f) <
@@ -3133,11 +3145,11 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
             ALMetalWorldSpotShadowCoverage::avatar_blend;
         avatar_batch.textures[0] = opaque_coverage.get();
         avatar_batch.avatar_draw_alpha = 0.5f;
-        auto blended_avatar = renderer->renderSpotShadow(scene, &error);
+        auto blended_avatar = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(blended_avatar);
         std::array<float, 32 * 32> blended_avatar_depth{};
-        REQUIRE(blended_avatar->colorTexture(0)->readback(
+        REQUIRE(blended_avatar->readback(
             *device, 0, 0, {}, blended_avatar_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(blended_avatar_depth[16 * 32 + 16] - 0.5f) <
@@ -3147,7 +3159,7 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
 
         avatar_batch.skin_palette_float_count = 45 * 4 - 1;
         error.clear();
-        CHECK_FALSE(renderer->renderSpotShadow(scene, &error));
+        CHECK_FALSE(render_spot_shadow(scene));
         CHECK(error.find("Metal spot-shadow skinning data is invalid") == 0);
         CHECK(error.find("palette=179/180") != std::string::npos);
         CHECK(error.find("palette-size-valid=0") != std::string::npos);
@@ -3161,22 +3173,22 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         batch.alpha_cutoffs[0] = 0.5f;
         batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
         batch.textures[0] = below_cutoff.get();
-        auto rejected_mask = renderer->renderSpotShadow(scene, &error);
+        auto rejected_mask = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(rejected_mask);
         std::array<float, 32 * 32> rejected_mask_depth{};
-        REQUIRE(rejected_mask->colorTexture(0)->readback(
+        REQUIRE(rejected_mask->readback(
             *device, 0, 0, {}, rejected_mask_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(rejected_mask_depth[16 * 32 + 16] - 1.f) <
               0.0001f);
 
         batch.textures[0] = above_cutoff.get();
-        auto accepted_mask = renderer->renderSpotShadow(scene, &error);
+        auto accepted_mask = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(accepted_mask);
         std::array<float, 32 * 32> accepted_mask_depth{};
-        REQUIRE(accepted_mask->colorTexture(0)->readback(
+        REQUIRE(accepted_mask->readback(
             *device, 0, 0, {}, accepted_mask_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(accepted_mask_depth[16 * 32 + 16] - 0.5f) <
@@ -3192,22 +3204,22 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
             color_offset, transparent_vertex_colors.data(),
             sizeof(transparent_vertex_colors), &error));
         batch.coverage = ALMetalWorldSpotShadowCoverage::legacy_mask;
-        auto tinted_mask = renderer->renderSpotShadow(scene, &error);
+        auto tinted_mask = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(tinted_mask);
         std::array<float, 32 * 32> tinted_mask_depth{};
-        REQUIRE(tinted_mask->colorTexture(0)->readback(
+        REQUIRE(tinted_mask->readback(
             *device, 0, 0, {}, tinted_mask_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(tinted_mask_depth[16 * 32 + 16] - 1.f) < 0.0001f);
 
         batch.coverage =
             ALMetalWorldSpotShadowCoverage::legacy_fullbright_mask;
-        auto fullbright_mask = renderer->renderSpotShadow(scene, &error);
+        auto fullbright_mask = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(fullbright_mask);
         std::array<float, 32 * 32> fullbright_mask_depth{};
-        REQUIRE(fullbright_mask->colorTexture(0)->readback(
+        REQUIRE(fullbright_mask->readback(
             *device, 0, 0, {}, fullbright_mask_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(fullbright_mask_depth[16 * 32 + 16] - 0.5f) <
@@ -3220,22 +3232,22 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         batch.textures[0] = transform_coverage.get();
         batch.pbr_base_color_transforms[0][0][0] = 1.f;
         batch.pbr_base_color_transforms[0][0][1] = 1.f;
-        auto unshifted_pbr = renderer->renderSpotShadow(scene, &error);
+        auto unshifted_pbr = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(unshifted_pbr);
         std::array<float, 32 * 32> unshifted_pbr_depth{};
-        REQUIRE(unshifted_pbr->colorTexture(0)->readback(
+        REQUIRE(unshifted_pbr->readback(
             *device, 0, 0, {}, unshifted_pbr_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(unshifted_pbr_depth[16 * 32 + 16] - 0.5f) <
               0.0001f);
 
         batch.pbr_base_color_transforms[0][1][0] = 0.5f;
-        auto shifted_pbr = renderer->renderSpotShadow(scene, &error);
+        auto shifted_pbr = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(shifted_pbr);
         std::array<float, 32 * 32> shifted_pbr_depth{};
-        REQUIRE(shifted_pbr->colorTexture(0)->readback(
+        REQUIRE(shifted_pbr->readback(
             *device, 0, 0, {}, shifted_pbr_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(shifted_pbr_depth[16 * 32 + 16] - 1.f) <
@@ -3254,11 +3266,11 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         batch.coverage = ALMetalWorldSpotShadowCoverage::legacy_blend;
         batch.textures[0] = opaque_coverage.get();
         batch.alpha_cutoffs[0] = 0.598f;
-        auto stippled = renderer->renderSpotShadow(scene, &error);
+        auto stippled = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(stippled);
         std::array<float, 32 * 32> stippled_depth{};
-        REQUIRE(stippled->colorTexture(0)->readback(
+        REQUIRE(stippled->readback(
             *device, 0, 0, {}, stippled_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(stippled_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
@@ -3273,11 +3285,11 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         batch.skin_palette = skin_palette.data();
         batch.skin_palette_float_count = skin_palette.size();
         batch.skin_joint_count = 1;
-        auto covered_rigged = renderer->renderSpotShadow(scene, &error);
+        auto covered_rigged = render_spot_shadow(scene);
         INFO(error);
         REQUIRE(covered_rigged);
         std::array<float, 32 * 32> covered_rigged_depth{};
-        REQUIRE(covered_rigged->colorTexture(0)->readback(
+        REQUIRE(covered_rigged->readback(
             *device, 0, 0, {}, covered_rigged_depth.data(),
             32 * sizeof(float), &error));
         CHECK(std::abs(covered_rigged_depth[16 * 32 + 24] - 0.5f) <
@@ -3291,14 +3303,14 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         batch.weight_offset = 0;
         batch.textures[0] = nullptr;
         error.clear();
-        CHECK_FALSE(renderer->renderSpotShadow(scene, &error));
+        CHECK_FALSE(render_spot_shadow(scene));
         CHECK(error == "Metal spot-shadow coverage texture is invalid");
 
         batch.coverage = ALMetalWorldSpotShadowCoverage::opaque;
         batch.texture_count = 0;
         batch.index_count = 4;
         error.clear();
-        CHECK_FALSE(renderer->renderSpotShadow(scene, &error));
+        CHECK_FALSE(render_spot_shadow(scene));
         CHECK(error == "Metal spot-shadow batch geometry is invalid");
     }
 }

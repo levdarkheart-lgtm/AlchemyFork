@@ -2061,23 +2061,15 @@ public:
         std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results =
             nullptr);
 
-    // Render one spotlight-camera slice directly from retained viewer buffers.
-    // R32F color stores the exact raster depth sampled by the projector owner;
-    // a private D32 attachment supplies the authoritative depth test. The
-    // caller may blit color attachment zero into its persistent two-slice pack.
-    std::unique_ptr<ALMetalRenderTarget> renderSpotShadow(
-        const ALMetalWorldSpotShadowScene& scene,
-        std::string* error = nullptr);
-
-    // Retain one rendered raw-depth slice in the caller's persistent array.
-    // When a command batch is active this blit follows the slice render in
-    // that same command buffer; standalone callers keep immediate commit
-    // behavior. This preserves the original renderer's ordered shadow stream
-    // without manufacturing a second submission per slice.
-    bool retainSpotShadowSlice(
+    // Render one spotlight-camera slice directly into the caller's persistent
+    // R32F array. R32F stores the exact raster depth sampled by the shadow
+    // owner; a cached private D32 attachment supplies the authoritative depth
+    // test while its contents are discarded after each pass. No retention
+    // texture or copy is introduced between caster rendering and sampling.
+    bool renderSpotShadow(
         ALMetalTexture& destination,
         std::uint32_t destination_slice,
-        const ALMetalTexture& source,
+        const ALMetalWorldSpotShadowScene& scene,
         std::string* error = nullptr);
 
     // Decode the retained native G-buffer and accumulate every ordinary

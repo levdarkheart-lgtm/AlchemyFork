@@ -1607,6 +1607,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_spot_shadow_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_spot_shadow_depth;
+    std::unique_ptr<ALMetalTexture> spot_shadow_depth_attachment;
     std::unique_ptr<ALMetalDepthStencilState> forward_readonly_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_readonly_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_coverage_depth;
@@ -5571,8 +5572,9 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         new ALMetalWorldGBufferRenderer(std::move(impl)));
 }
 
-std::unique_ptr<ALMetalRenderTarget>
-ALMetalWorldGBufferRenderer::renderSpotShadow(
+bool ALMetalWorldGBufferRenderer::renderSpotShadow(
+    ALMetalTexture& destination,
+    std::uint32_t destination_slice,
     const ALMetalWorldSpotShadowScene& scene,
     std::string* error)
 {
@@ -5580,7 +5582,25 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
         (scene.batch_count != 0 && !scene.batches))
     {
         setError(error, "Metal spot-shadow scene is incomplete");
-        return nullptr;
+        return false;
+    }
+    const ALMetalTextureDescriptor& destination_descriptor =
+        destination.descriptor();
+    if (destination_descriptor.type !=
+            ALMetalTextureType::texture_2d_array ||
+        destination_descriptor.format != ALMetalPixelFormat::r32_float ||
+        destination_descriptor.width != scene.width ||
+        destination_descriptor.height != scene.height ||
+        destination_descriptor.mipmap_level_count != 1 ||
+        destination_descriptor.sample_count != 1 ||
+        destination_slice >= destination_descriptor.array_length ||
+        !alMetalHasUsage(destination_descriptor.usage,
+                         ALMetalTextureUsage::render_target) ||
+        !alMetalHasUsage(destination_descriptor.usage,
+                         ALMetalTextureUsage::shader_read))
+    {
+        setError(error, "Metal spot-shadow destination is incompatible");
+        return false;
     }
 
     constexpr std::size_t float4_stride = sizeof(float) * 4;
@@ -5637,7 +5657,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
             {
                 setError(error,
                          "Metal spot-shadow terrain batch is invalid");
-                return nullptr;
+                return false;
             }
             continue;
         }
@@ -5654,7 +5674,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
                        index_stride, batch.indices->length()))
         {
             setError(error, "Metal spot-shadow batch geometry is invalid");
-            return nullptr;
+            return false;
         }
 
         if (batch.avatar)
@@ -5691,13 +5711,13 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
             {
                 setError(error,
                          "Metal spot-shadow avatar batch is invalid");
-                return nullptr;
+                return false;
             }
         }
         else if (avatar_coverage || batch.avatar_cloth)
         {
             setError(error, "Metal spot-shadow avatar data is incomplete");
-            return nullptr;
+            return false;
         }
         else if (covered)
         {
@@ -5723,7 +5743,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
             {
                 setError(error,
                          "Metal spot-shadow coverage data is invalid");
-                return nullptr;
+                return false;
             }
             for (std::size_t texture = 0;
                  texture < batch.texture_count; ++texture)
@@ -5734,7 +5754,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
                 {
                     setError(error,
                              "Metal spot-shadow coverage texture is invalid");
-                    return nullptr;
+                    return false;
                 }
             }
         }
@@ -5742,7 +5762,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
         {
             setError(error,
                      "Metal opaque spot-shadow batch has coverage data");
-            return nullptr;
+            return false;
         }
 
         if (batch.skin_palette)
@@ -5810,7 +5830,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
                            std::to_string(
                                batch.skin_palette[first_nonfinite])
                          : std::string("none")) + ")");
-                return nullptr;
+                return false;
             }
             ALMetalBufferDescriptor descriptor;
             descriptor.length = batch.skin_palette_float_count *
@@ -5823,7 +5843,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
             if (!palette || !palette->write(
                     0, batch.skin_palette, descriptor.length, error))
             {
-                return nullptr;
+                return false;
             }
             palette_buffers[index] = palette.get();
             palette_storage.push_back(std::move(palette));
@@ -5833,7 +5853,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
                  batch.skin_joint_count != 0)
         {
             setError(error, "Metal spot-shadow skinning data is incomplete");
-            return nullptr;
+            return false;
         }
     }
 
@@ -5865,7 +5885,30 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
         if (!terrain_factor_buffer || !terrain_factor_buffer->write(
                 0, terrain_factors.data(), descriptor.length, error))
         {
-            return nullptr;
+            return false;
+        }
+    }
+
+    const ALMetalTextureDescriptor* existing_depth =
+        mImpl->spot_shadow_depth_attachment
+            ? &mImpl->spot_shadow_depth_attachment->descriptor()
+            : nullptr;
+    if (!existing_depth || existing_depth->width != scene.width ||
+        existing_depth->height != scene.height)
+    {
+        ALMetalTextureDescriptor depth_descriptor;
+        depth_descriptor.format = ALMetalPixelFormat::depth32_float;
+        depth_descriptor.width = scene.width;
+        depth_descriptor.height = scene.height;
+        depth_descriptor.storage = ALMetalStorageMode::private_gpu;
+        depth_descriptor.usage = ALMetalTextureUsage::render_target;
+        depth_descriptor.label =
+            "Alchemy reusable spot-shadow depth test";
+        mImpl->spot_shadow_depth_attachment = ALMetalTexture::create(
+            *mImpl->device, depth_descriptor, error);
+        if (!mImpl->spot_shadow_depth_attachment)
+        {
+            return false;
         }
     }
 
@@ -5874,16 +5917,20 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
     target_descriptor.height = scene.height;
     target_descriptor.color_attachment_count = 1;
     target_descriptor.colors[0].format = ALMetalPixelFormat::r32_float;
+    target_descriptor.colors[0].texture = &destination;
+    target_descriptor.colors[0].texture_slice = destination_slice;
     target_descriptor.colors[0].label =
         "Alchemy direct spot-shadow raw depth";
     target_descriptor.depth_stencil_format =
         ALMetalPixelFormat::depth32_float;
+    target_descriptor.depth_stencil_texture =
+        mImpl->spot_shadow_depth_attachment.get();
     target_descriptor.label = "Alchemy direct spot-shadow slice";
     auto target = mImpl->makeRenderTarget(
         *mImpl->device, target_descriptor, error);
     if (!target)
     {
-        return nullptr;
+        return false;
     }
 
     const double far_depth = scene.reverse_z ? 0.0 : 1.0;
@@ -5905,7 +5952,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
     if (!encoder)
     {
         mImpl->finishCommandBuffer(owned_command, false, error);
-        return nullptr;
+        return false;
     }
 
     const ALMetalDepthStencilState* depth = scene.reverse_z
@@ -6107,31 +6154,9 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
     const bool complete = encoded && encoder->end(error);
     if (!mImpl->finishCommandBuffer(owned_command, complete, error))
     {
-        return nullptr;
-    }
-    return target;
-}
-
-bool ALMetalWorldGBufferRenderer::retainSpotShadowSlice(
-    ALMetalTexture& destination,
-    std::uint32_t destination_slice,
-    const ALMetalTexture& source,
-    std::string* error)
-{
-    if (!mImpl || !mImpl->device)
-    {
-        setError(error, "Metal world renderer is unavailable");
         return false;
     }
-
-    std::unique_ptr<ALMetalCommandBuffer> owned_command;
-    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
-        "Alchemy direct shadow slice retention", owned_command, error);
-    ALMetalTextureCopy copy;
-    copy.destination_slice = destination_slice;
-    const bool encoded = command && destination.copyFrom(
-        *command, source, copy, error);
-    return mImpl->finishCommandBuffer(owned_command, encoded, error);
+    return true;
 }
 
 std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(

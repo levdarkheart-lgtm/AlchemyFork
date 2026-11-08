@@ -2556,8 +2556,15 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
             const ALMetalTextureDescriptor& external = color.texture->descriptor();
             id<MTLTexture> native_texture =
                 (__bridge id<MTLTexture>)color.texture->nativeHandle();
+            const bool ordinary_2d =
+                external.type == ALMetalTextureType::texture_2d &&
+                color.texture_slice == 0;
+            const bool array_slice =
+                external.type == ALMetalTextureType::texture_2d_array &&
+                descriptor.sample_count == 1 &&
+                color.texture_slice < external.array_length;
             if (!native_texture || native_texture.device != native_device ||
-                external.type != ALMetalTextureType::texture_2d ||
+                (!ordinary_2d && !array_slice) ||
                 external.format != resolved.format ||
                 external.width != resolved.width ||
                 external.height != resolved.height ||
@@ -2574,6 +2581,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
         }
         else
         {
+            if (color.texture_slice != 0)
+            {
+                setError(error,
+                         "An owned Metal color attachment cannot select an array slice");
+                return nullptr;
+            }
             impl->colors[index] = ALMetalTexture::create(device, resolved, error);
             if (!impl->colors[index])
             {
@@ -2779,6 +2792,7 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
                 return nullptr;
             }
             attachment.texture = (__bridge id<MTLTexture>)color_handle;
+            attachment.slice = mDescriptor.colors[index].texture_slice;
             target_device = attachment.texture.device;
             attachment.resolveTexture = multisample
                 ? (__bridge id<MTLTexture>)resolved_color->nativeHandle() : nil;

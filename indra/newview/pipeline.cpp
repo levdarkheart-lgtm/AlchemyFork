@@ -15021,8 +15021,59 @@ void LLPipeline::endMetalSpotShadowCapture()
     scene.depth_clamp = directional;
     std::string error;
     const std::size_t rendered_batches = capture.spot_shadow_batches.size();
-    auto slice = capture.renderer->renderSpotShadow(scene, &error);
-    if (!slice)
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.type = ALMetalTextureType::texture_2d_array;
+    descriptor.format = ALMetalPixelFormat::r32_float;
+    descriptor.width = scene.width;
+    descriptor.height = scene.height;
+    descriptor.array_length = directional ? 4 : 2;
+    descriptor.storage = ALMetalStorageMode::private_gpu;
+    descriptor.usage = ALMetalTextureUsage::render_target |
+        ALMetalTextureUsage::shader_read;
+    descriptor.label = directional
+        ? "Alchemy direct raw directional-shadow maps"
+        : "Alchemy direct raw projector-shadow maps";
+    std::unique_ptr<ALMetalTexture>& retained_texture = directional
+        ? capture.direct_directional_shadow_texture
+        : capture.direct_projector_shadow_texture;
+    const ALMetalTextureDescriptor* existing =
+        retained_texture
+            ? &retained_texture->descriptor()
+            : nullptr;
+    if (!existing || existing->type != descriptor.type ||
+        existing->format != descriptor.format ||
+        existing->width != descriptor.width ||
+        existing->height != descriptor.height ||
+        existing->array_length != descriptor.array_length ||
+        existing->usage != descriptor.usage)
+    {
+        retained_texture = ALMetalTexture::create(
+            *capture.device, descriptor, &error);
+        if (directional)
+        {
+            capture.direct_directional_shadow_valid = {};
+        }
+        else
+        {
+            capture.direct_projector_shadow_valid = {};
+        }
+        if (!retained_texture)
+        {
+            capture.spot_shadow_batches.clear();
+            capture.spot_shadow_avatar_palettes.clear();
+            LL_WARNS("Metal")
+                << "Could not allocate direct Metal "
+                << (directional ? "directional" : "spot")
+                << "-shadow pack: "
+                << error << LL_ENDL;
+            return;
+        }
+    }
+
+    const bool rendered = capture.renderer->renderSpotShadow(
+        *retained_texture, map, scene, &error);
+    if (!rendered)
     {
         capture.spot_shadow_batches.clear();
         capture.spot_shadow_avatar_palettes.clear();
@@ -15043,6 +15094,7 @@ void LLPipeline::endMetalSpotShadowCapture()
         static_cast<std::size_t>(ALRenderResourcePlan::Pack::COUNT)>
         diagnosed_directional_slices{};
     if (shadow_diagnostics && directional &&
+        !capture.renderer->commandBatchActive() &&
         pack_index < diagnosed_directional_slices.size() &&
         (diagnosed_directional_slices[pack_index] & map_bit) == 0)
     {
@@ -15050,8 +15102,8 @@ void LLPipeline::endMetalSpotShadowCapture()
         std::vector<F32> depths(
             static_cast<std::size_t>(scene.width) * scene.height);
         std::string diagnostic_error;
-        const bool read = slice->colorTexture(0)->readback(
-            *capture.device, 0, 0, {}, depths.data(),
+        const bool read = retained_texture->readback(
+            *capture.device, 0, map, {}, depths.data(),
             static_cast<std::size_t>(scene.width) * sizeof(F32),
             &diagnostic_error);
         if (read)
@@ -15217,63 +15269,6 @@ void LLPipeline::endMetalSpotShadowCapture()
 
     capture.spot_shadow_batches.clear();
     capture.spot_shadow_avatar_palettes.clear();
-
-    ALMetalTextureDescriptor descriptor;
-    descriptor.type = ALMetalTextureType::texture_2d_array;
-    descriptor.format = ALMetalPixelFormat::r32_float;
-    descriptor.width = scene.width;
-    descriptor.height = scene.height;
-    descriptor.array_length = directional ? 4 : 2;
-    descriptor.storage = ALMetalStorageMode::private_gpu;
-    descriptor.usage = ALMetalTextureUsage::shader_read;
-    descriptor.label = directional
-        ? "Alchemy direct raw directional-shadow maps"
-        : "Alchemy direct raw projector-shadow maps";
-    std::unique_ptr<ALMetalTexture>& retained_texture = directional
-        ? capture.direct_directional_shadow_texture
-        : capture.direct_projector_shadow_texture;
-    const ALMetalTextureDescriptor* existing =
-        retained_texture
-            ? &retained_texture->descriptor()
-            : nullptr;
-    if (!existing || existing->type != descriptor.type ||
-        existing->format != descriptor.format ||
-        existing->width != descriptor.width ||
-        existing->height != descriptor.height ||
-        existing->array_length != descriptor.array_length)
-    {
-        retained_texture = ALMetalTexture::create(
-            *capture.device, descriptor, &error);
-        if (directional)
-        {
-            capture.direct_directional_shadow_valid = {};
-        }
-        else
-        {
-            capture.direct_projector_shadow_valid = {};
-        }
-        if (!retained_texture)
-        {
-            LL_WARNS("Metal")
-                << "Could not allocate direct Metal "
-                << (directional ? "directional" : "spot")
-                << "-shadow pack: "
-                << error << LL_ENDL;
-            return;
-        }
-    }
-
-    const bool copied = capture.renderer->retainSpotShadowSlice(
-        *retained_texture, map, *slice->colorTexture(0), &error);
-    if (!copied)
-    {
-        LL_WARNS("Metal")
-            << "Could not retain direct Metal "
-            << (directional ? "directional" : "spot")
-            << "-shadow slice " << map
-            << ": " << error << LL_ENDL;
-        return;
-    }
     if (directional)
     {
         capture.direct_directional_shadow_valid[map] = true;
@@ -15283,8 +15278,9 @@ void LLPipeline::endMetalSpotShadowCapture()
         {
             mMetalDirectionalShadowReported = true;
             LL_INFOS("Metal")
-                << "Direct Metal directional-shadow slices are retained "
-                   "from native caster draws; no GL depth import remains"
+                << "Direct Metal directional-shadow slices are rendered "
+                   "in place from native caster draws; no retention copy "
+                   "or GL depth import remains"
                 << LL_ENDL;
         }
     }
@@ -15296,8 +15292,9 @@ void LLPipeline::endMetalSpotShadowCapture()
         {
             mMetalProjectorShadowReported = true;
             LL_INFOS("Metal")
-                << "Direct Metal projector-shadow slices are retained "
-                   "from native caster draws; no GL depth import remains"
+                << "Direct Metal projector-shadow slices are rendered "
+                   "in place from native caster draws; no retention copy "
+                   "or GL depth import remains"
                 << LL_ENDL;
         }
     }
