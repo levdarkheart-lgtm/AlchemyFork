@@ -781,6 +781,15 @@ struct ALMetalRenderEncoder::Impl
 {
     id<MTLDevice> device = nil;
     id<MTLRenderCommandEncoder> encoder = nil;
+    // The exact OpenGL renderer caches texture and sampler identity per slot.
+    // Keep the narrower Metal equivalent per encoder so repeated material
+    // batches do not re-enter the driver for unchanged bindings. Store the
+    // actual native view identity: an sRGB shader view and its linear view
+    // must remain distinct even when they belong to one ALMetalTexture.
+    std::array<void*, 128> vertex_textures{};
+    std::array<void*, 128> fragment_textures{};
+    std::array<void*, 16> vertex_samplers{};
+    std::array<void*, 16> fragment_samplers{};
     bool ended = false;
     bool pipeline_set = false;
     bool tessellation_enabled = false;
@@ -937,12 +946,18 @@ bool ALMetalRenderEncoder::setVertexTexture(std::uint32_t index, const ALMetalTe
 {
     if (!mImpl || mImpl->ended || !validBindingIndex(index, 128, "vertex texture", error)) return false;
     id<MTLTexture> native_texture = texture ? (__bridge id<MTLTexture>)texture->nativeHandle() : nil;
+    void* native_handle = (__bridge void*)native_texture;
+    if (mImpl->vertex_textures[index] == native_handle)
+    {
+        return true;
+    }
     if (native_texture && native_texture.device != mImpl->device)
     {
         setError(error, "Metal vertex texture belongs to another device");
         return false;
     }
     [mImpl->encoder setVertexTexture:native_texture atIndex:index];
+    mImpl->vertex_textures[index] = native_handle;
     return true;
 }
 
@@ -951,12 +966,18 @@ bool ALMetalRenderEncoder::setFragmentTexture(std::uint32_t index, const ALMetal
 {
     if (!mImpl || mImpl->ended || !validBindingIndex(index, 128, "fragment texture", error)) return false;
     id<MTLTexture> native_texture = texture ? (__bridge id<MTLTexture>)texture->nativeHandle() : nil;
+    void* native_handle = (__bridge void*)native_texture;
+    if (mImpl->fragment_textures[index] == native_handle)
+    {
+        return true;
+    }
     if (native_texture && native_texture.device != mImpl->device)
     {
         setError(error, "Metal fragment texture belongs to another device");
         return false;
     }
     [mImpl->encoder setFragmentTexture:native_texture atIndex:index];
+    mImpl->fragment_textures[index] = native_handle;
     return true;
 }
 
@@ -976,40 +997,76 @@ bool ALMetalRenderEncoder::setFragmentTextureLinear(std::uint32_t index,
         setError(error, "Metal could not provide the linear fragment texture view");
         return false;
     }
+    void* native_handle = (__bridge void*)native_texture;
+    if (mImpl->fragment_textures[index] == native_handle)
+    {
+        return true;
+    }
     if (native_texture && native_texture.device != mImpl->device)
     {
         setError(error, "Metal fragment texture belongs to another device");
         return false;
     }
     [mImpl->encoder setFragmentTexture:native_texture atIndex:index];
+    mImpl->fragment_textures[index] = native_handle;
     return true;
 }
 
 bool ALMetalRenderEncoder::setVertexSampler(std::uint32_t index, const ALMetalSamplerState* sampler,
                                             std::string* error)
 {
-    if (!mImpl || mImpl->ended || !validBindingIndex(index, 16, "vertex sampler", error) ||
-        (sampler && (!sampler->mImpl || sampler->mImpl->device != mImpl->device)))
+    if (!mImpl || mImpl->ended ||
+        !validBindingIndex(index, 16, "vertex sampler", error))
     {
-        if (sampler && (!sampler->mImpl || sampler->mImpl->device != mImpl->device))
-            setError(error, "Metal vertex sampler belongs to another device");
         return false;
     }
-    [mImpl->encoder setVertexSamplerState:sampler ? sampler->mImpl->state : nil atIndex:index];
+    if (sampler && !sampler->mImpl)
+    {
+        setError(error, "Metal vertex sampler belongs to another device");
+        return false;
+    }
+    id<MTLSamplerState> native_sampler = sampler ? sampler->mImpl->state : nil;
+    void* native_handle = (__bridge void*)native_sampler;
+    if (mImpl->vertex_samplers[index] == native_handle)
+    {
+        return true;
+    }
+    if (sampler && sampler->mImpl->device != mImpl->device)
+    {
+        setError(error, "Metal vertex sampler belongs to another device");
+        return false;
+    }
+    [mImpl->encoder setVertexSamplerState:native_sampler atIndex:index];
+    mImpl->vertex_samplers[index] = native_handle;
     return true;
 }
 
 bool ALMetalRenderEncoder::setFragmentSampler(std::uint32_t index, const ALMetalSamplerState* sampler,
                                               std::string* error)
 {
-    if (!mImpl || mImpl->ended || !validBindingIndex(index, 16, "fragment sampler", error) ||
-        (sampler && (!sampler->mImpl || sampler->mImpl->device != mImpl->device)))
+    if (!mImpl || mImpl->ended ||
+        !validBindingIndex(index, 16, "fragment sampler", error))
     {
-        if (sampler && (!sampler->mImpl || sampler->mImpl->device != mImpl->device))
-            setError(error, "Metal fragment sampler belongs to another device");
         return false;
     }
-    [mImpl->encoder setFragmentSamplerState:sampler ? sampler->mImpl->state : nil atIndex:index];
+    if (sampler && !sampler->mImpl)
+    {
+        setError(error, "Metal fragment sampler belongs to another device");
+        return false;
+    }
+    id<MTLSamplerState> native_sampler = sampler ? sampler->mImpl->state : nil;
+    void* native_handle = (__bridge void*)native_sampler;
+    if (mImpl->fragment_samplers[index] == native_handle)
+    {
+        return true;
+    }
+    if (sampler && sampler->mImpl->device != mImpl->device)
+    {
+        setError(error, "Metal fragment sampler belongs to another device");
+        return false;
+    }
+    [mImpl->encoder setFragmentSamplerState:native_sampler atIndex:index];
+    mImpl->fragment_samplers[index] = native_handle;
     return true;
 }
 
