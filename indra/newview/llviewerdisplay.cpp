@@ -572,6 +572,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
             << "Metal benchmark collection armed for pseudonymous scenario "
             << config->scenario << ", variant " << config->variant << ", "
             << config->warmup_frames << " warm-up frames and "
+            << config->warmup_seconds << " warm-up seconds, followed by "
             << config->sample_frames << " consecutive samples"
             << (config->require_exact_native
                     ? "; every sample requires exact native presentation"

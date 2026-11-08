@@ -26,6 +26,7 @@
 namespace
 {
 constexpr std::uint32_t MAX_FRAME_COUNT = 1'000'000;
+constexpr std::uint32_t MAX_WARMUP_SECONDS = 3'600;
 
 void set_error(std::string* error, const std::string& message)
 {
@@ -62,6 +63,8 @@ bool unsigned_environment(
     const char* name,
     std::uint32_t fallback,
     bool allow_zero,
+    std::uint32_t maximum,
+    const char* unit,
     std::uint32_t& value,
     std::string* error)
 {
@@ -75,10 +78,10 @@ bool unsigned_environment(
     char* end = nullptr;
     const unsigned long parsed = std::strtoul(text, &end, 10);
     if (errno != 0 || end == text || *end != '\0' ||
-        parsed > MAX_FRAME_COUNT || (!allow_zero && parsed == 0))
+        parsed > maximum || (!allow_zero && parsed == 0))
     {
         set_error(error, std::string(name) +
-            " must be a bounded unsigned frame count");
+            " must be a bounded unsigned " + unit);
         return false;
     }
     value = static_cast<std::uint32_t>(parsed);
@@ -212,10 +215,14 @@ ALMetalBenchmarkRecorder::configFromEnvironment(
     config.build_type = build_type.empty() ? "unknown" : build_type;
     if (!unsigned_environment(
             "ALCHEMY_METAL_BENCHMARK_WARMUP_FRAMES", 120, true,
-            config.warmup_frames, error) ||
+            MAX_FRAME_COUNT, "frame count", config.warmup_frames, error) ||
+        !unsigned_environment(
+            "ALCHEMY_METAL_BENCHMARK_WARMUP_SECONDS", 30, true,
+            MAX_WARMUP_SECONDS, "second count", config.warmup_seconds,
+            error) ||
         !unsigned_environment(
             "ALCHEMY_METAL_BENCHMARK_SAMPLE_FRAMES", 300, false,
-            config.sample_frames, error) ||
+            MAX_FRAME_COUNT, "frame count", config.sample_frames, error) ||
         !bool_environment(
             "ALCHEMY_METAL_BENCHMARK_REQUIRE_EXACT", false,
             config.require_exact_native, error))
@@ -234,6 +241,7 @@ ALMetalBenchmarkRecorder::~ALMetalBenchmarkRecorder() = default;
 
 void ALMetalBenchmarkRecorder::resetSequence() noexcept
 {
+    mSequenceStartTimestamp.reset();
     mLastTimestamp.reset();
     mLastFrameIndex = 0;
     mLastMetalCommandBuffers = 0;
@@ -309,7 +317,8 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
     }
     if (mConfig.sample_frames == 0 ||
         mConfig.sample_frames > MAX_FRAME_COUNT ||
-        mConfig.warmup_frames > MAX_FRAME_COUNT)
+        mConfig.warmup_frames > MAX_FRAME_COUNT ||
+        mConfig.warmup_seconds > MAX_WARMUP_SECONDS)
     {
         return fail("The benchmark frame counts are invalid", error);
     }
@@ -370,6 +379,7 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
 
     if (!mLastTimestamp)
     {
+        mSequenceStartTimestamp = frame.timestamp;
         mLastTimestamp = frame.timestamp;
         mLastFrameIndex = frame.frame_index;
         mLastMetalCommandBuffers = frame.metal_command_buffers_committed;
@@ -432,7 +442,10 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
     mLastMetalTimingCompleted = frame.metal_timing_completed;
     mLastMetalTimingValid = frame.metal_timing_valid;
     mLastMetalGPUTimeNanoseconds = frame.metal_gpu_time_nanoseconds;
-    if (mWarmupSeen < mConfig.warmup_frames)
+    const bool warmup_time_complete = mSequenceStartTimestamp &&
+        frame.timestamp - *mSequenceStartTimestamp >=
+            std::chrono::seconds(mConfig.warmup_seconds);
+    if (mWarmupSeen < mConfig.warmup_frames || !warmup_time_complete)
     {
         ++mWarmupSeen;
         return Result::warming;

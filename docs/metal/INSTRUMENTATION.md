@@ -15,13 +15,14 @@ env \
   ALCHEMY_METAL_BENCHMARK_VARIANT="candidate" \
   ALCHEMY_METAL_BENCHMARK_REQUIRE_EXACT=1 \
   ALCHEMY_METAL_BENCHMARK_WARMUP_FRAMES=120 \
+  ALCHEMY_METAL_BENCHMARK_WARMUP_SECONDS=30 \
   ALCHEMY_METAL_BENCHMARK_SAMPLE_FRAMES=300 \
   "/absolute/path/Alchemy Metal Diagnostic.app/Contents/MacOS/Alchemy Metal Diagnostic"
 ```
 
 - `ALCHEMY_METAL_BENCHMARK_CSV` must be an absolute path to a new `.csv` whose parent already exists. The collector refuses to overwrite evidence. Raw files under `artifacts/metal/` are ignored by Git.
 - Scenario and variant are pseudonymous 1-64 character labels restricted to letters, numbers, dot, dash and underscore. Do not encode account, avatar, region or credential data in either label or the filename.
-- Warm-up defaults to 120 eligible frames and may be zero. Samples default to 300 and must be nonzero. The first eligible timestamp establishes the interval baseline and is not a measured row.
+- Warm-up requires both thresholds: 120 eligible frames and 30 elapsed seconds by default. Either threshold may be configured as zero with `ALCHEMY_METAL_BENCHMARK_WARMUP_FRAMES` or `ALCHEMY_METAL_BENCHMARK_WARMUP_SECONDS`; samples default to 300 and must be nonzero. The elapsed gate prevents a high-FPS startup burst from completing warm-up before deferred, probe, mirror and streamed-scene work becomes active. The first eligible timestamp establishes both the elapsed gate and interval baseline and is not a measured row.
 - Set `ALCHEMY_METAL_BENCHMARK_REQUIRE_EXACT=1` for the candidate. Every candidate row then requires the current frame's complete native world/UI texture to have actually committed to the drawable; a setting alone is not accepted as proof. A presentation-off GL reference uses `0`.
 - Pre-sample discontinuity restarts warm-up. After the first row, a missing frame, ineligible frame, resolution/quality change, regressed submission/completion/timing counter or invalid clock interval fails and closes the run instead of combining unlike samples. The viewer logs arming, completion or one failure summary but no per-frame content.
 - Eligible frames require `STATE_STARTED`, a visible window, no snapshot, teleport, disconnect or logout transition, and either GL or exact native presentation. Frame intervals use `std::chrono::steady_clock`.

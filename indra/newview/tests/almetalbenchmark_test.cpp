@@ -55,6 +55,7 @@ public:
         result.source_sha = "0123456789abcdef0123456789abcdef01234567";
         result.build_type = "RelWithDebInfo";
         result.warmup_frames = warmup;
+        result.warmup_seconds = 0;
         result.sample_frames = samples;
         result.require_exact_native = require_exact;
         return result;
@@ -147,6 +148,36 @@ TEST_CASE("ALMetalBenchmark restarts warmup before sampling but rejects a broken
     CHECK(error.find("consecutive benchmark sequence") != std::string::npos);
     CHECK(recorder.samplesWritten() == 1);
     CHECK(recorder.finished());
+}
+
+TEST_CASE("ALMetalBenchmark requires elapsed warmup time as well as frames",
+          "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    auto config = output.config(2, 1);
+    config.warmup_seconds = 30;
+    ALMetalBenchmarkRecorder recorder(std::move(config));
+    std::string error;
+    CHECK(recorder.record(frame(100, 1'000), &error) ==
+          ALMetalBenchmarkRecorder::Result::warming);
+    CHECK(recorder.record(frame(101, 1'010), &error) ==
+          ALMetalBenchmarkRecorder::Result::warming);
+    CHECK(recorder.record(frame(102, 1'020), &error) ==
+          ALMetalBenchmarkRecorder::Result::warming);
+    CHECK(recorder.record(frame(103, 30'999), &error) ==
+          ALMetalBenchmarkRecorder::Result::warming);
+    CHECK_FALSE(std::filesystem::exists(output.path()));
+    CHECK(recorder.record(frame(104, 31'000), &error) ==
+          ALMetalBenchmarkRecorder::Result::complete);
+    CHECK(error.empty());
+
+    std::ifstream csv(output.path());
+    REQUIRE(csv.good());
+    std::string contents{
+        std::istreambuf_iterator<char>(csv),
+        std::istreambuf_iterator<char>()};
+    CHECK(contents.find("quiet-region,candidate,1.000000,104") !=
+          std::string::npos);
 }
 
 TEST_CASE("ALMetalBenchmark exact candidate gating resets before evidence and never overwrites",

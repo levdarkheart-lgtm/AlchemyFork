@@ -45,6 +45,7 @@ public:
         std::string source_sha;
         std::string build_type;
         std::uint32_t warmup_frames = 120;
+        std::uint32_t warmup_seconds = 30;
         std::uint32_t sample_frames = 300;
         bool require_exact_native = false;
     };
@@ -104,6 +105,7 @@ private:
 
     Config mConfig;
     std::unique_ptr<std::ofstream> mOutput;
+    std::optional<Clock::time_point> mSequenceStartTimestamp;
     std::optional<Clock::time_point> mLastTimestamp;
     std::uint64_t mLastFrameIndex = 0;
     std::uint64_t mLastMetalCommandBuffers = 0;
