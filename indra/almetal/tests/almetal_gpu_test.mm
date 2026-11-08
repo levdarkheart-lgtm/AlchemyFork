@@ -16835,6 +16835,19 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(pcss_projector_shadow_pixels[center + 0] == 0);
         CHECK(pcss_projector_shadow_pixels[center + 1] == 0);
         CHECK(pcss_projector_shadow_pixels[center + 2] == 0);
+
+        // The original shared shadow utility bypasses projector PCSS during
+        // probe and hero captures just as it bypasses directional PCSS. The
+        // probe bit must therefore be accepted by projector validation, and
+        // an Ultra single-tap path must not require a PCSS search scale.
+        projector_shadow_input.constants.config[3] = 3u |
+            ALMetalWorldDirectionalShadowConstants::probe_single_tap;
+        projector_shadow_input.constants.parameters[2] = 0.f;
+        auto probe_single_tap_projector = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(probe_single_tap_projector);
+        projector_shadow_input.constants.parameters[2] = 32.f;
         projector_shadow_input.constants.config[3] = 1u;
 
         projector.sampling[1] = 0.5f;
