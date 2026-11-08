@@ -31,22 +31,23 @@ work.
 - Repository: `/Users/dekstroza/Programming/AI/Secondlife/Alchemy`.
 - Branch: `codex/apple-silicon-metal`.
 - Code checkpoint before this evidence-only follow-up commit:
-  `16820100044d46d66ed306dd77e8f0ca14797780`.
+  `f8af790f32`.
 - Latest renderer implementation commit:
-  `16820100044d46d66ed306dd77e8f0ca14797780`.
+  `f8af790f32`.
 - Implementation began from clean synchronized commit `7a76893312`; recheck
   current branch/worktree state and never discard unexpected later edits.
 - Physical host: MacBookPro18,2, M1 Max, 64 GiB unified memory, macOS 26.5.2,
   Xcode 26.6, Metal Apple family 7. `tools/metal/doctor.sh` exits 0.
-- Current source-exact candidate is Xcode Release `26.4.0.68537` at
+- Current source-exact candidate is Xcode Release `26.4.0.68539` at
   `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-  It was built from renderer commit `1682010004`, passes deep strict signing
+  It was built from renderer commit `f8af790f32`, passes deep strict signing
   and 349/349 ARM64 slice inspection, and has executable SHA-256
-  `60c6e2772eff0c51f76db3a5e36782c40d9ce2e3662db9fa77d39f77e9985c6b`.
+  `427414330ab546c034536fc27227c1bad335726290bc963a1eb0087fe631a6cb`.
 - Packaged `almetal_builtin.metallib` SHA-256:
   `4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
-- No viewer process was running after the source-exact `68537` rebuild. Do not
-  launch/login/capture without an explicit owner-attended request.
+- Owner-attended PID `38044` is running source-exact `68539` under the verified
+  Ultra profile. It passed the final live gate after tracing. Do not reuse the
+  process for later acceptance after the owner exits or changes the scene.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
   Do not publish another tag/release without explicit authorization.
 
@@ -335,6 +336,52 @@ proof remain open; no visual or FPS gain is claimed.
 Detailed evidence:
 `docs/metal/state/archive/CURRENT-probe-projector-sharing-checkpoint-2026-11-08.md`.
 
+### Ultra 68537 regression and exact-original binding cache
+
+The owner confirmed the live scene and fixed camera matched the settled
+`68532` run. Under a fresh 21-control gate, `68537` recorded 5.188 traced
+presents/s and 6.0 median log FPS versus `68532` at 8.633/9.9. This is a real
+bounded regression signal, not scene variance. GPU-active union fell to 57.5%
+and labelled hero GPU time fell 17.1%, while hero-face CPU encoder time rose
+379.7% and sampled standard `setFragmentTexture` stacks rose from 3,305 to
+6,117 ms. Projector sharing worked: hero direct-spot interval count fell to the
+expected 24.063/present.
+
+The earlier 32-base-slot claim was already repaired: current material/PBR
+batches bind eight base diffuse slots. A separate exact-original discrepancy
+remained. Original `ALTextureSlot` skips unchanged texture and sampler
+identities; `ALMetalRenderEncoder` forwarded every setter. Commit `f8af790f32`
+adds encoder-local native texture/sampler handle caches, preserving distinct
+linear and sRGB views and per-pass reset semantics.
+
+The full real-device Metal suite still passes 52,870 assertions/59 cases.
+Source-exact Release `68539` builds warnings-as-errors, signs and verifies
+349/349 ARM64 slices. Executable/metallib SHA-256 values are
+`427414330ab546c034536fc27227c1bad335726290bc963a1eb0087fe631a6cb` and
+`4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
+
+The first `68539` trace was rejected because discard bias was still converging
+and it contained 1,062 immediate scale-down submissions. After stabilization,
+the repeated trace recorded 6.009 presents/s, 29.935 submissions/present,
+56.36% GPU-active union, 4.917–4.998 GiB allocation and Nominal thermals;
+twenty pretrace log samples had median 7.1 FPS. Versus `68537`, traced/log FPS
+rose 15.8%/18.3%, sampled standard texture binding fell 23.4%, and hero/main
+encoder time fell 21.3%/19.6%. The cache is therefore a measured partial
+recovery.
+
+It remains 30.4% below `68532` in traced presents/s. Hero labelled GPU interval
+count/time are similar to `68532`, but hero CPU encoder time remains 277.7%
+higher and texture-binding samples remain 41.8% higher. Next quantify
+issued/skipped bindings and palette/constant allocations per view; do not
+revert projector sharing or claim the binding cache closed the regression.
+
+Raw settled evidence is under
+`/private/tmp/alchemy-metal-68539-binding-cache-ultra-measurement-20261108-2`;
+summary SHA-256 is
+`a67d1d2c0772a6edb83c429a6c6d24c36635a3c275f0576460f8a59cd1c0ccc1`.
+Detailed evidence:
+`docs/metal/state/archive/CURRENT-68537-texture-binding-runtime-checkpoint-2026-11-08.md`.
+
 ## Other important corrections already completed
 
 - `af65f062a1`: directional shadows. Original sparse null GLTF material slots
@@ -561,10 +608,10 @@ explicit owner authorization.
 
 ## Immediate next boundaries
 
-1. On explicit owner direction, launch source-exact `68537` with a dedicated
-   Ultra profile. Smoke projector continuity, verify zero cube-view projector
-   caster culls/draws, and compare settled texture bytes, total allocation and
-   discard bias; add fetched-image telemetry before attributing churn.
+1. Against the `68532`/`68537`/settled-`68539` traces, quantify issued/skipped
+   texture/sampler bindings and palette/constant allocations per main, hero and
+   ordinary-probe view; attribute the remaining per-present hero/shadow CPU
+   expansion before selecting a bounded repair.
 2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
 3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene
