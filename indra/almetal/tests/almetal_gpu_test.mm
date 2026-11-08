@@ -2722,6 +2722,40 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         CHECK(std::abs(forward_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
         CHECK(std::abs(forward_depth[1 * 32 + 1] - 1.f) < 0.0001f);
 
+        ALMetalTextureDescriptor retained_descriptor;
+        retained_descriptor.type = ALMetalTextureType::texture_2d_array;
+        retained_descriptor.format = ALMetalPixelFormat::r32_float;
+        retained_descriptor.width = scene.width;
+        retained_descriptor.height = scene.height;
+        retained_descriptor.array_length = 2;
+        retained_descriptor.storage = ALMetalStorageMode::private_gpu;
+        retained_descriptor.usage = ALMetalTextureUsage::shader_read;
+        retained_descriptor.label =
+            "Alchemy batched spot-shadow retention test";
+        auto retained = ALMetalTexture::create(
+            *device, retained_descriptor, &error);
+        INFO(error);
+        REQUIRE(retained);
+        REQUIRE(renderer->beginCommandBatch(
+            "Alchemy batched spot-shadow test", &error));
+        auto batched = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(batched);
+        REQUIRE(renderer->retainSpotShadowSlice(
+            *retained, 1, *batched->colorTexture(0), &error));
+        INFO(error);
+        CHECK(renderer->commandBatchActive());
+        REQUIRE(renderer->commitCommandBatch(&error));
+        INFO(error);
+        std::array<float, 32 * 32> retained_depth{};
+        REQUIRE(retained->readback(
+            *device, 0, 1, {}, retained_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(
+            retained_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
+        CHECK(std::abs(retained_depth[1 * 32 + 1] - 1.f) < 0.0001f);
+
         batch.modelview_projection[14] = -2.f;
         auto clipped = renderer->renderSpotShadow(scene, &error);
         INFO(error);

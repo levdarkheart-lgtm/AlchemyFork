@@ -70,3 +70,45 @@ Formal quality-equivalent 300-frame Metal/OpenGL evidence therefore requires an
 instrumentation-only Release build or matched external captures. These local
 traces identify the optimization boundary but do not satisfy
 `docs/metal/PERFORMANCE.md`.
+
+## First bounded optimization
+
+Exact original tracing showed each face's directional shadow renders and
+retention copies execute in the same ordered GL stream before the face draw.
+The Metal renderer now lets `renderSpotShadow()` and its retained-array blit
+join an already active command batch. Hero faces use their existing transaction
+and admit one bounded six-face update in flight; the two-batch default remains
+unchanged for full-resolution world/post graphs. An initial two-face-limit run
+proved the submission reduction but not frame-time improvement, so it was not
+accepted as the final implementation.
+
+The final Release `26.4.0.68511` executable SHA-256 is
+`d4b150e31414a1437858a6e188e466564cb9100c0d9140afd05ca454ee3e4c07`.
+At the same owner-held Ultra scene, 42 untraced settled samples from the final
+run span 6.5–7.1 FPS with median 6.8, versus the prior run's last 30 settled
+samples at 5.2–5.7 with median 5.4. This bounded 25.9% improvement is useful
+optimization evidence, not the required quality-equivalent 300-frame claim.
+The owner confirmed the mirror and directional shadows still looked correct;
+the log contains no stale hero-batch warning.
+
+The final 30-second trace is local at
+`/private/tmp/alchemy-metal-68511-shadow-batch-six-face-20261107-1/metal-system.trace`.
+It records 7,109 application command buffers for 153 presents, or 46.46 per
+present: 30.2% below the 66.60 baseline. Labels normalize to 7.69 standalone
+shadow renders, 7.69 standalone retention blits and exactly six hero-face
+transactions per present; the face-owned shadow work is therefore coalesced
+without changing the required six-face cadence. GPU active-union time rose
+from 40.4% to 94.4%, thermals remained Nominal, and allocated Metal memory
+ranged from 3.94 to 4.38 GiB. Trace FPS is deliberately not compared because
+Metal System Trace perturbs both runs and saturated the optimized GPU.
+
+Final log, command-buffer, present, GPU-state, thermal and allocation export
+SHA-256 values are respectively
+`d302192c692104427433c4d206d04010e6e9d6c74e95ebfa1ea3029127fbe61d`,
+`48a9dbd5dab41c1c3225008dd9cd7181db59ce7e94683d4d80966227dfd91c26`,
+`1df4d291ef5e0e9a526f1bbfa79d65337f1b228595b971995beefdc44d40861c`,
+`625e7d414364acd13eac40a545e450793ec2a83aa8a646b68fb3a903c5fe65a8`,
+`4613f0cd70d11ea015699aa8fec348f0078b0e076cf7a61c7130d451cde1beee`
+and `a11ef2db25692e4cea277b0948f30d5008263ea1ab3705c26c31faa251722f65`.
+The full Metal suite passes 52,786 assertions/57 cases; the staged app passes
+deep strict signing and 349/349 ARM64 slice verification.

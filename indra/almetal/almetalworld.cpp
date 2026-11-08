@@ -1328,13 +1328,18 @@ struct ALMetalWorldGBufferRenderer::Impl
         return encoded;
     }
 
-    bool makeCommandBatchSlot(std::string* error)
+    bool makeCommandBatchSlot(
+        std::size_t max_pending_command_batches,
+        std::string* error)
     {
         // These batches retain a complete full-resolution world/post graph,
         // not merely a drawable. Double buffering preserves CPU/GPU overlap
         // while preventing a third graph from consuming several more GB of
-        // unified memory on a Retina window.
-        constexpr std::size_t max_pending_command_batches = 2;
+        // unified memory on a Retina window. A bounded multi-face owner can
+        // admit its complete transaction width explicitly; zero never means
+        // unbounded.
+        max_pending_command_batches =
+            std::max<std::size_t>(max_pending_command_batches, 1);
         while (!pending_command_batches.empty())
         {
             ALMetalCommandBuffer& oldest =
@@ -1730,7 +1735,8 @@ ALMetalWorldGBufferRenderer::~ALMetalWorldGBufferRenderer() = default;
 
 bool ALMetalWorldGBufferRenderer::beginCommandBatch(
     const std::string& label,
-    std::string* error)
+    std::string* error,
+    std::size_t max_pending_command_batches)
 {
     if (!mImpl || !mImpl->device)
     {
@@ -1742,7 +1748,8 @@ bool ALMetalWorldGBufferRenderer::beginCommandBatch(
         setError(error, "Metal world command batch is already active");
         return false;
     }
-    if (!mImpl->makeCommandBatchSlot(error))
+    if (!mImpl->makeCommandBatchSlot(
+            max_pending_command_batches, error))
     {
         return false;
     }
@@ -5742,13 +5749,15 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
     pass_config.depth_store = ALMetalStoreAction::dont_care;
     pass_config.clear_depth = far_depth;
     auto pass = target->makeRenderPass(pass_config, error);
-    auto command = pass ? mImpl->device->makeCommandBuffer(
-        "Alchemy direct spot-shadow slice", error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
+        "Alchemy direct spot-shadow slice", owned_command, error) : nullptr;
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy direct spot-shadow encoder", error)
                            : nullptr;
     if (!encoder)
     {
+        mImpl->finishCommandBuffer(owned_command, false, error);
         return nullptr;
     }
 
@@ -5948,11 +5957,34 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
             ALMetalPrimitiveType::triangle, batch.index_count,
             batch.index_type, *batch.indices, batch.index_offset, 1, error);
     }
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool complete = encoded && encoder->end(error);
+    if (!mImpl->finishCommandBuffer(owned_command, complete, error))
     {
         return nullptr;
     }
     return target;
+}
+
+bool ALMetalWorldGBufferRenderer::retainSpotShadowSlice(
+    ALMetalTexture& destination,
+    std::uint32_t destination_slice,
+    const ALMetalTexture& source,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device)
+    {
+        setError(error, "Metal world renderer is unavailable");
+        return false;
+    }
+
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy direct shadow slice retention", owned_command, error);
+    ALMetalTextureCopy copy;
+    copy.destination_slice = destination_slice;
+    const bool encoded = command && destination.copyFrom(
+        *command, source, copy, error);
+    return mImpl->finishCommandBuffer(owned_command, encoded, error);
 }
 
 std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(

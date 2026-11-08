@@ -2413,7 +2413,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         std::string batch_error;
         if (!capture.renderer->beginCommandBatch(
                 "Alchemy native hero-probe face transaction",
-                &batch_error))
+                &batch_error,
+                6))
         {
             LL_WARNS("Metal")
                 << "Could not begin the bounded native hero-probe face "
@@ -15083,17 +15084,8 @@ void LLPipeline::endMetalSpotShadowCapture()
         }
     }
 
-    auto command = capture.device->makeCommandBuffer(
-        directional
-            ? "Alchemy direct directional-shadow slice copy"
-            : "Alchemy direct spot-shadow slice copy",
-        &error);
-    ALMetalTextureCopy copy;
-    copy.destination_slice = map;
-    const bool copied = command &&
-        retained_texture->copyFrom(
-            *command, *slice->colorTexture(0), copy, &error) &&
-        command->commit(&error);
+    const bool copied = capture.renderer->retainSpotShadowSlice(
+        *retained_texture, map, *slice->colorTexture(0), &error);
     if (!copied)
     {
         LL_WARNS("Metal")
@@ -30125,7 +30117,6 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     { //no spotlight shadows
         mShadowSpotLight[0] = mShadowSpotLight[1] = NULL;
     }
-
 
     if (!CameraOffset)
     {

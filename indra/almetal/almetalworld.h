@@ -1999,9 +1999,13 @@ public:
     // command buffer. Standalone calls retain their existing immediate
     // commit behavior. A batch is deliberately explicit so reflection,
     // impostor and test callers cannot accidentally share frame lifetime.
+    // Full-resolution callers retain the two-batch default; bounded
+    // multi-face owners may raise the limit to their complete transaction
+    // width so they do not introduce an intra-transaction CPU/GPU wait.
     bool beginCommandBatch(
         const std::string& label,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        std::size_t max_pending_command_batches = 2);
     bool commitCommandBatch(std::string* error = nullptr);
     void cancelCommandBatch();
     bool commandBatchActive() const;
@@ -2017,6 +2021,17 @@ public:
     // caller may blit color attachment zero into its persistent two-slice pack.
     std::unique_ptr<ALMetalRenderTarget> renderSpotShadow(
         const ALMetalWorldSpotShadowScene& scene,
+        std::string* error = nullptr);
+
+    // Retain one rendered raw-depth slice in the caller's persistent array.
+    // When a command batch is active this blit follows the slice render in
+    // that same command buffer; standalone callers keep immediate commit
+    // behavior. This preserves the original renderer's ordered shadow stream
+    // without manufacturing a second submission per slice.
+    bool retainSpotShadowSlice(
+        ALMetalTexture& destination,
+        std::uint32_t destination_slice,
+        const ALMetalTexture& source,
         std::string* error = nullptr);
 
     // Decode the retained native G-buffer and accumulate every ordinary
