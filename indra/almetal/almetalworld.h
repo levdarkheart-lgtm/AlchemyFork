@@ -907,6 +907,11 @@ struct alignas(16) ALMetalWorldProjectorLight
     float sampling[4]{};
     // -1 = unshadowed, otherwise the raw spot-shadow array slice.
     std::int32_t shadow_channel = -1;
+    // Metal viewport-space x/y/width/height. The all-zero default preserves
+    // full-target shading for isolated callers and camera-inside cases.
+    // Production supplies a conservative projected light-volume bound so a
+    // projector does not shade unrelated screen tiles.
+    std::uint32_t screen_rect[4]{};
 };
 
 struct ALMetalWorldProjectorLightingScene

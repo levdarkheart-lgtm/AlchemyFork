@@ -16451,6 +16451,35 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
                       projected_pixels[center + channel]) - expected) <= 1);
         }
 
+        // Production projects the original light-volume cube to a
+        // conservative Metal scissor. Constraining the draw must preserve
+        // the covered receiver exactly while leaving unrelated tiles clear.
+        projector.screen_rect[0] = 8;
+        projector.screen_rect[1] = 8;
+        projector.screen_rect[2] = 16;
+        projector.screen_rect[3] = 16;
+        auto bounded_projector = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(bounded_projector);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            bounded_projector_pixels{};
+        REQUIRE(bounded_projector->colorTexture(0)->readback(
+            *device, 0, 0, {}, bounded_projector_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(bounded_projector_pixels[center + channel] ==
+                  projected_pixels[center + channel]);
+            CHECK(bounded_projector_pixels[outside + channel] ==
+                  projected_pixels[outside + channel]);
+        }
+        projector.screen_rect[0] = 0;
+        projector.screen_rect[1] = 0;
+        projector.screen_rect[2] = 0;
+        projector.screen_rect[3] = 0;
+
         // Viewer projector focus is authorable over [-20, 20]. Negative
         // focus is consumed directly by both GLSL and MSL when selecting the
         // cookie mip; it is not malformed scene data.

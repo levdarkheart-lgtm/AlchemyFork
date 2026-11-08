@@ -7456,6 +7456,15 @@ ALMetalWorldGBufferRenderer::renderProjectorLightsInternal(
         const bool finite_normal = finiteValues(light.projector_normal, 4);
         const bool finite_origin = finiteValues(light.projector_origin, 4);
         const bool finite_sampling = finiteValues(light.sampling, 4);
+        const bool default_screen_rect =
+            light.screen_rect[0] == 0 && light.screen_rect[1] == 0 &&
+            light.screen_rect[2] == 0 && light.screen_rect[3] == 0;
+        const bool valid_screen_rect = default_screen_rect ||
+            (light.screen_rect[0] < input.width &&
+             light.screen_rect[1] < input.height &&
+             light.screen_rect[2] > 0 && light.screen_rect[3] > 0 &&
+             light.screen_rect[2] <= input.width - light.screen_rect[0] &&
+             light.screen_rect[3] <= input.height - light.screen_rect[1]);
         const bool valid_scalars = light.position_radius[3] > 0.f &&
             light.color_falloff[3] > -1.f &&
             light.projector_normal[3] > 0.f &&
@@ -7464,7 +7473,8 @@ ALMetalWorldGBufferRenderer::renderProjectorLightsInternal(
             light.shadow_channel <= 1;
         if (!valid_cookie || !finite_position || !finite_color ||
             !finite_matrix || !finite_plane || !finite_normal ||
-            !finite_origin || !finite_sampling || !valid_scalars)
+            !finite_origin || !finite_sampling || !valid_screen_rect ||
+            !valid_scalars)
         {
             setError(error,
                 "Metal world projector light is invalid at index " +
@@ -7483,7 +7493,8 @@ ALMetalWorldGBufferRenderer::renderProjectorLightsInternal(
                 std::to_string(light.projector_origin[3]) + ", lod=" +
                 std::to_string(light.sampling[0]) + ", shadow-fade=" +
                 std::to_string(light.sampling[1]) + ", shadow-channel=" +
-                std::to_string(light.shadow_channel) + ")");
+                std::to_string(light.shadow_channel) + ", screen-rect=" +
+                std::to_string(valid_screen_rect) + ")");
             return nullptr;
         }
         needs_shadows = needs_shadows || light.shadow_channel >= 0;
@@ -7623,6 +7634,14 @@ ALMetalWorldGBufferRenderer::renderProjectorLightsInternal(
          ++index)
     {
         const ALMetalWorldProjectorLight& light = scene.lights[index];
+        const bool default_screen_rect =
+            light.screen_rect[0] == 0 && light.screen_rect[1] == 0 &&
+            light.screen_rect[2] == 0 && light.screen_rect[3] == 0;
+        const ALMetalScissorRect light_scissor = default_screen_rect
+            ? scissor
+            : ALMetalScissorRect{
+                  light.screen_rect[0], light.screen_rect[1],
+                  light.screen_rect[2], light.screen_rect[3]};
         WorldProjectorLightingConstants constants;
         std::memcpy(constants.inverse_projection,
                     scene.inverse_projection,
@@ -7649,6 +7668,7 @@ ALMetalWorldGBufferRenderer::renderProjectorLightsInternal(
             light.shadow_channel + 1);
         constants.config[2] = scene.normal_hdr ? 1u : 0u;
         encoded =
+            encoder->setScissor(light_scissor, error) &&
             encoder->setFragmentBytes(
                 0, &constants, sizeof(constants), error) &&
             encoder->setFragmentTexture(
