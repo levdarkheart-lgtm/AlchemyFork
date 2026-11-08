@@ -49,9 +49,215 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A Metal alpha is deliberately reachable only through a manual dispatch on
+  # an existing versioned alpha tag. `tag-release.yaml` creates that tag and
+  # dispatches this workflow; pushing the tag alone cannot enter this job.
+  # Keep this path separate from the upstream multi-platform build: this fork
+  # ships only native Apple Silicon macOS application binaries.
+  metal-alpha-release:
+    name: Build Metal alpha release
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' &&
+        github.ref_type == 'tag' &&
+        contains(github.ref_name, '-alpha') &&
+        inputs.channel == 'Project' &&
+        startsWith(inputs.project, 'Metal Alpha ')
+      }}
+    runs-on: xcode-27
+    timeout-minutes: 240
+    permissions:
+      contents: write
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_BINARY_SOURCES: clear
+      master_message_template_checkout: ${{ github.workspace }}/.master-message-template
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: recursive
+          ref: ${{ github.sha }}
+
+      - name: Checkout master-message-template
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          repository: secondlife/master-message-template
+          path: .master-message-template
+
+      - name: Set up the build
+        uses: ./.github/actions/setup-build
+        with:
+          r2-cache-mode: ${{ vars.VCPKG_R2_ENABLED == 'true' && 'read' || '' }}
+          r2-endpoint-url: ${{ vars.VCPKG_R2_ENDPOINT_URL }}
+          r2-bucket: ${{ vars.VCPKG_R2_BUCKET }}
+          r2-access-key-id: ${{ secrets.VCPKG_R2_READ_ACCESS_KEY_ID }}
+          r2-secret-access-key: ${{ secrets.VCPKG_R2_READ_SECRET_ACCESS_KEY }}
+
+      - name: Validate alpha identity
+        id: identity
+        shell: bash
+        env:
+          PROJECT: ${{ inputs.project }}
+        run: |
+          set -euo pipefail
+
+          tag_re='^([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+)-alpha([0-9]+)$'
+          if [[ ! "$GITHUB_REF_NAME" =~ $tag_re ]]; then
+            echo "::error::Metal alpha tag must look like 26.4.0.68512-alpha2"
+            exit 1
+          fi
+
+          short_version="${BASH_REMATCH[1]}"
+          revision="${BASH_REMATCH[2]}"
+          alpha_number="${BASH_REMATCH[3]}"
+          expected_project="Metal Alpha $alpha_number"
+          source_version="$(tr -d '[:space:]' < indra/newview/VIEWER_VERSION.txt)"
+
+          if [[ "$source_version" != "$short_version" ]]; then
+            echo "::error::Tag version $short_version does not match source version $source_version"
+            exit 1
+          fi
+          if [[ "$PROJECT" != "$expected_project" ]]; then
+            echo "::error::Project '$PROJECT' must be '$expected_project' for tag $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+          echo "revision=$revision" >> "$GITHUB_ENV"
+          echo "channel=Alchemy $PROJECT" >> "$GITHUB_OUTPUT"
+          echo "release_title=Alchemy $PROJECT ($GITHUB_REF_NAME)" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Validate source-independent harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/metal/validate_harness.py
+          python3 -m unittest discover -s tools/metal/tests -v
+          python3 -m py_compile tools/metal/*.py
+          bash -n tools/metal/*.sh
+          git diff --check
+
+      - name: Configure ARM64 Metal release
+        shell: bash
+        env:
+          AL_CHANNEL: ${{ steps.identity.outputs.channel }}
+        run: |
+          set -euo pipefail
+
+          template="$master_message_template_checkout/message_template.msg"
+          if [[ ! -r "$template" ]]; then
+            echo "::error::Missing master message template at $template"
+            exit 1
+          fi
+
+          cmake -S indra --preset ninja-os-arm64 \
+            -DVCPKG_INSTALL_OPTIONS=--clean-after-build \
+            -DVCPKG_TARGET_TRIPLET=arm64-osx-alchemy-release \
+            -DAL_BUILD_VIEWER:BOOL=ON \
+            -DAL_BUILD_APPEARANCE_UTILITY:BOOL=OFF \
+            -DAL_BUILD_TESTS:BOOL=OFF \
+            -DAL_BUILD_PACKAGE:BOOL=ON \
+            -DAL_USE_VELOPACK:BOOL=OFF \
+            -DAL_USE_LTO:BOOL=ON \
+            -DAL_USE_TRACY:BOOL=OFF \
+            -DAL_ENABLE_RELEASE_DEBUG_LOGGING:BOOL=OFF \
+            -DAL_ENABLE_CRASH_REPORTING:BOOL=OFF \
+            -DAL_USE_SENTRY:BOOL=OFF \
+            -DAL_CHANNEL:STRING="$AL_CHANNEL" \
+            -DAL_GRID:STRING=agni \
+            -DAL_TEMPLATE_VERIFIER_MASTER_URL="file://$template"
+
+      - name: Build and package release archive
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          build_directory=build-Darwin-ninja-os-arm64
+          jobs="$(sysctl -n hw.logicalcpu)"
+          cmake --build "$build_directory" --config Release --parallel "$jobs"
+
+          package_directory="$RUNNER_TEMP/package"
+          mkdir -p "$package_directory"
+          cpack --config "$build_directory/CPackConfig.cmake" \
+            -C Release -G TXZ -B "$package_directory"
+
+          archive="$(find "$package_directory" -maxdepth 1 -type f -name '*.tar.xz' -print -quit)"
+          if [[ -z "$archive" || ! -f "$archive.sha256" ]]; then
+            echo "::error::CPack did not produce a release archive and SHA-256 file"
+            exit 1
+          fi
+
+          unpacked="$RUNNER_TEMP/unpacked"
+          mkdir -p "$unpacked"
+          tar -xJf "$archive" -C "$unpacked"
+          app="$(find "$unpacked" -maxdepth 3 -type d -name '*.app' -print -quit)"
+          if [[ -z "$app" ]]; then
+            echo "::error::No application bundle found in $archive"
+            exit 1
+          fi
+
+          tools/metal/verify_app.sh "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          (cd "$package_directory" && shasum -a 256 -c "$(basename "$archive.sha256")")
+
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "checksum=$archive.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve release archive as a workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: alchemy-metal-${{ github.ref_name }}-macos-arm64
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.checksum }}
+
+      - name: Publish prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+          CHECKSUM: ${{ steps.package.outputs.checksum }}
+          RELEASE_TITLE: ${{ steps.identity.outputs.release_title }}
+        run: |
+          set -euo pipefail
+
+          notes=".github/release-notes/$GITHUB_REF_NAME.md"
+          if [[ ! -r "$notes" ]]; then
+            notes=.github/release-notes/metal-alpha.md
+          fi
+
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$ARCHIVE" "$CHECKSUM" --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "$RELEASE_TITLE" --notes-file "$notes" --prerelease
+          else
+            gh release create "$GITHUB_REF_NAME" "$ARCHIVE" "$CHECKSUM" \
+              --verify-tag --title "$RELEASE_TITLE" --notes-file "$notes" --prerelease
+          fi
+
+          gh release view "$GITHUB_REF_NAME" --json url --jq .url
+
   # The whole point of the setup job is that we want to set variables once
   # that will be consumed by multiple subsequent jobs.
   setup:
+    if: >-
+      ${{
+        !(
+          github.event_name == 'workflow_dispatch' &&
+          github.ref_type == 'tag' &&
+          contains(github.ref_name, '-alpha') &&
+          inputs.channel == 'Project' &&
+          startsWith(inputs.project, 'Metal Alpha ')
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
