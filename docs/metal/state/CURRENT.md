@@ -3,7 +3,7 @@
 **Observed:** 2026-11-08 on the physical M1 Max acceptance host.
 
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `e52de13acc` (`Implement native Metal occlusion queries`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
+**Renderer code checkpoint:** `f799262971` (`Honor anisotropy preference in native world`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
@@ -71,7 +71,7 @@ The latest essential sequence is:
 
 `LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot source state is repaired; execution remains owner-attended. The source-exact Release artifact is now a bounded owner-attended startup/login/world-load smoke-test candidate, not a parity or GL-zero claim.
 
-The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. Native Metal visibility-result queries now replace the missing scene/probe occlusion-query path; attended cull-rate and performance evidence remain open and no gain is claimed from implementation alone.
+The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. Native Metal visibility-result queries replace the missing scene/probe query path. Persistent native world/terrain/sky/probe samplers now follow the original renderer's live literal anisotropy levels (`0` maps to Metal `1`, then `2/4/8/16`) instead of forcing 16×; attended performance evidence remains open and no gain is claimed from implementation alone.
 
 ### Attended-runtime correction committed as `2e2ac6e1c9`
 
@@ -111,7 +111,7 @@ The owner-observed Mid-to-High freeze was a repeated failed-frame loop, not a de
   binary; changed files do not own those components.
 - `python3 tools/metal/validate_harness.py` passes all 32 required files;
   `python3 -m unittest discover -s tools/metal/tests -v` passes 31/31.
-- Focused alrender/llrender suites pass 28/28; `git diff --check` passes.
+- Commit `f799262971`: original `1eb44bbd1b` tracing confirms literal `0/2/4/8/16` sampler intent and Ultra `4`; native sampler/world replacement proofs pass 8,092 assertions, full llrender passes 1,892 assertions/225 cases (one skipped), full Metal passes 52,842 assertions/59 cases, Xcode Release `68521` builds/signs and verifies 349/349 ARM64 slices; executable SHA-256 is `a527489ee69388abd6c34003e5d22632190807d7b8d95b589087f72b63a04353`.
 - Release `26.4.0.68493`, built from the mixed working checkpoint containing the now-committed correction at 2026-11-07 01:08:12 GMT, has executable SHA-256 `dfd02973a45085b790c334f1c47574549ce632b6b9e6f6a377946574f972ffd0`; `verify_app.sh` passes 349/349 ARM64 slices and attended Mid/HDR evidence is `/tmp/alchemy-metal-68493-water-wave-release-20261107.log`.
 - At `dbe1215cea`, Xcode Release `68499` builds warnings-as-errors and verifies 349/349 ARM64 slices; the direct Metal suite passes 52,772 assertions across 57 cases. Release-tree `ctest` correctly reports no registered tests because that preset has `AL_BUILD_TESTS=OFF`; the separate Ninja test preset supplied the passing suite. Owner-attended mirror toggle-off and mirrors-off startup/login both pass; raw account/location logs remain local.
 - Commit `af65f062a1`: Xcode Release `68502` builds and verifies 349/349 ARM64 slices; the direct Metal suite passes 52,774 assertions across 57 cases. Opt-in runtime diagnostics and owner evidence show four populated main-world directional cascades and stable moving avatar/object shadows.

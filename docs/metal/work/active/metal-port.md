@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
 **Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
-**Renderer checkpoint:** Commit `e52de13acc` (`Implement native Metal occlusion queries`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
+**Renderer checkpoint:** Commit `f799262971` (`Honor anisotropy preference in native world`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 
 ## Work board
@@ -13,12 +13,12 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-002 | GL/shader/pass/resource and binary inventory | doing | Strict inventory is 1,797 and exits 1; `sdl_gl` is zero and product link audit is clean; runtime audit remains owner-led. |
 | M-003 | Native drawable, presentation and lifecycle | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended Mid login/world load passes, while broader lifecycle/stability coverage remains. |
 | M-004 | Metal resources, transfers, readback and sync | doing | Exact-descriptor Metal target pooling retains owned attachments under a byte bound; streamed images use a separate containment capacity while original override/controller semantics remain. Copy/readback consumers and multi-scene policy validation follow. |
-| M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Pass/variant, sampler and texture identities configure without GL objects, placeholder textures or GLSL/program names. |
+| M-005 | MSL and explicit pipeline/resource binding | doing | Production metallib and native encoders execute. Persistent world/terrain/sky/probe samplers now follow the live original-compatible `0→1/2/4/8/16` Metal anisotropy contract without rebuilding pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Reusable native world/UI output and copied depth eliminate per-frame target recreation. Empty UI clips now preserve original no-op semantics; Conversations visibly opens/closes/reopens in attended 68497 evidence. |
 | M-007 | World scene and material correctness | doing | Core world, terrain, materials, avatars, shadows, sky, water and atmosphere have direct Metal owners. Native asynchronous scene/probe visibility queries preserve original issue order and fail-open consumption; attended cull effectiveness remains open. |
 | M-008 | Advanced views/effects and compute | doing | Native mirror/probe lifecycle and an Ultra-plus-mirrors transition pass, but the matched pair shows a blue-gray Metal versus green-terrain OpenGL reflected background; trace content/clipping before any fix. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
-| M-010 | M1 Max profiling and optimization | doing | Hero/projector/base-light changes are measured; native occlusion queries are implemented but not yet measured in-world, haze remains next, and qualifying steady-state paired 300-frame measurements remain open. |
+| M-010 | M1 Max profiling and optimization | doing | Hero/projector/base-light changes are measured; Ultra now requests its source-exact 4× anisotropy rather than forced 16×, native occlusion remains unmeasured in-world, haze is next, and paired 300-frame evidence remains open. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, UI replay and retained glow/SMAA require no GL. Render tails remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
@@ -146,7 +146,7 @@ Original deferred-soften tracing next showed expensive geometry is depth-classif
 - Fresh shared renderer tests: 3,698 assertions / 111 cases pass.
 - Focused shared shader tests: 1,353 assertions / 25 cases pass plus 13 hardware skips.
 - Broad shared tests reproduce baseline host/driver failures: four assertions in three frame-fence timing cases and one render-target depth-format assertion.
-- Focused alrender/llrender suites pass 28/28; harness structure passes 32/32 required files; tool tests pass 31/31.
+- Commit `f799262971`: exact original tracing proves literal anisotropy levels and Ultra `4`; native mapping/state/world replacement proofs pass 8,092 assertions, full llrender passes 1,892 assertions/225 cases (one skipped), full Metal passes 52,842 assertions/59 cases, and Xcode Release `68521` builds/signs and verifies 349/349 ARM64 slices (executable SHA-256 `a527489ee69388abd6c34003e5d22632190807d7b8d95b589087f72b63a04353`). Harness structure remains 32/32; tool tests remain 31/31.
 - Release 68493 verifies 349/349 ARM64 slices; attended Mid/HDR remains stable through 500+ native world/UI publications without the prior water-count rejection.
 - Commit `dbe1215cea`: diagnostics-free Xcode Release 68499 builds and verifies 349/349 ARM64 slices; the separate Ninja Metal suite passes 52,772 assertions/57 cases. Release `ctest` has no registrations because its preset has tests disabled; attended toggle-off and mirrors-off startup/login both pass.
 - Commit `af65f062a1`: Xcode Release 68502 builds and verifies 349/349 ARM64 slices; the focused Metal suite passes 52,774 assertions/57 cases; attended diagnostics show four populated main directional cascades and stable moving avatar/object shadows.
