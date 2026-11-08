@@ -142,6 +142,7 @@ reload the chronological history.
 | Deferred base-light depth classification, rejected haze experiments and steady-state warm-up correction, 2026-11-08 | [CURRENT-base-light-depth-classification-2026-11-08.md](CURRENT-base-light-depth-classification-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Native occlusion/anisotropy attended profiling and fully resident GPU-priority correction, 2026-11-08 | [CURRENT-native-occlusion-anisotropy-performance-2026-11-08.md](CURRENT-native-occlusion-anisotropy-performance-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Native selective vertex/index uploads with frame-retired Metal generations, 2026-11-08 | [CURRENT-native-vertex-buffer-generations-checkpoint-2026-11-08.md](CURRENT-native-vertex-buffer-generations-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
+| Exact-original bounded ordinary deferred point lights with maximum-16 camera-inside batches, 2026-11-08 | [CURRENT-bounded-local-point-lights-checkpoint-2026-11-08.md](CURRENT-bounded-local-point-lights-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

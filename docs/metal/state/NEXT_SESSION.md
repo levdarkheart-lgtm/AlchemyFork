@@ -30,22 +30,21 @@ work.
 
 - Repository: `/Users/dekstroza/Programming/AI/Secondlife/Alchemy`.
 - Branch: `codex/apple-silicon-metal`.
-- Code/evidence HEAD before this handover-only document:
-  `9fea1855e9bc662f1e7d80bb5cdea04da558ccc3`.
+- Code checkpoint before the evidence-only follow-up commit:
+  `8247d09c5d77f6fcb82a8f1451aaba40953230fe`.
 - Latest renderer implementation commit:
-  `e90ccdf18f076cc3beb6d8fe97e4dd045c8d2cb5`.
-- At handover creation, local branch and
-  `origin/codex/apple-silicon-metal` were synchronized and the worktree was
-  clean. Recheck; never discard unexpected later edits.
+  `8247d09c5d77f6fcb82a8f1451aaba40953230fe`.
+- Implementation began from clean synchronized commit `7a76893312`; recheck
+  current branch/worktree state and never discard unexpected later edits.
 - Physical host: MacBookPro18,2, M1 Max, 64 GiB unified memory, macOS 26.5.2,
   Xcode 26.6, Metal Apple family 7. `tools/metal/doctor.sh` exits 0.
-- Current source-exact candidate is Xcode Release `26.4.0.68525` at
+- Current source-exact candidate is Xcode Release `26.4.0.68528` at
   `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-  It was built from renderer commit `e90ccdf18f`, passes deep strict signing
+  It was built from renderer commit `8247d09c5d`, passes deep strict signing
   and 349/349 ARM64 slice inspection, and has executable SHA-256
-  `cb42e7fd22575fba27096ba40ce2e514cade94a82eb8a0a68a2cdb9840315403`.
+  `6382a4758a13b8f7fc725bd39184704a5c3515b7bf131e8166131b3fe8987547`.
 - Packaged `almetal_builtin.metallib` SHA-256:
-  `163168fe50cedaa022a87608f354655246eb110838ad6ba113172555882181a1`.
+  `4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
   Do not publish another tag/release without explicit authorization.
 
@@ -184,6 +183,24 @@ claimed.
 Detailed evidence:
 `docs/metal/state/archive/CURRENT-native-vertex-buffer-generations-checkpoint-2026-11-08.md`.
 
+### Ordinary deferred point-light coverage
+
+Finding: the native renderer collected all qualifying ordinary lights into one
+full-target draw and looped over that complete list in every geometry fragment,
+whereas exact original uses bounded cube volumes for camera-outside lights and
+full-screen batches only for lights surrounding the camera. Confirmed.
+
+Commit `8247d09c5d77f6fcb82a8f1451aaba40953230fe` preserves the original
+camera-inside predicate and maximum-16 inside batches. Camera-outside lights use
+conservative projected cube scissors and one-light buffer ranges; fragment
+lighting math remains unchanged. Focused Release/RelWithDebInfo validated GPU
+tests each pass 1,990 assertions, full validated Release Metal passes 52,861
+assertions/59 cases, and source-exact Release `68528` builds, signs and verifies
+349/349 ARM64 slices. No viewer launch or FPS improvement is claimed.
+
+Detailed evidence:
+`docs/metal/state/archive/CURRENT-bounded-local-point-lights-checkpoint-2026-11-08.md`.
+
 ## Other important corrections already completed
 
 - `af65f062a1`: directional shadows. Original sparse null GLTF material slots
@@ -316,8 +333,9 @@ The evidence hashes and limitations are in:
   background remains an open content/clipping question; trace original mirror
   terrain/content before changing it.
 - Game Mode appeared correctly. It is not an open issue.
-- Latest `e90ccdf18f` geometry generations have build/GPU-test proof but have
-  not yet received the owner-attended Low/Mid/High/Ultra visual smoke.
+- Latest `e90ccdf18f` geometry generations and `8247d09c5d` bounded ordinary
+  lights have build/GPU-test proof but not owner-attended preset/camera-boundary
+  visual smoke.
 - Use `alchemy-viewer-visual-qa` and exact executable-path/process checks for
   any new reference/candidate launch. Launch/login/capture only on explicit
   owner request.
@@ -332,15 +350,14 @@ git rev-parse HEAD
 tools/metal/doctor.sh
 ```
 
-Narrow and full tests depend on the owner changed. For the latest geometry
+Narrow and full tests depend on the owner changed. For the latest local-light
 change the commands were:
 
 ```sh
-cmake --build build-Darwin-ninja-os-arm64 --config Release --target llrender_tests
-cmake --build build-Darwin-ninja-os-arm64 --config RelWithDebInfo --target llrender_tests
-build-Darwin-ninja-os-arm64/llrender/Release/llrender_tests '[llvertexbuffer][almetal]'
-build-Darwin-ninja-os-arm64/llrender/RelWithDebInfo/llrender_tests '[llvertexbuffer][almetal]'
-build-Darwin-ninja-os-arm64/llrender/Release/llrender_tests
+cmake --build build-Darwin-ninja-os-arm64 --config Release --target almetal_tests
+cmake --build build-Darwin-ninja-os-arm64 --config RelWithDebInfo --target almetal_tests
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests 'almetal: native world G-buffer feeds exact deferred point lights'
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-ninja-os-arm64/almetal/RelWithDebInfo/almetal_tests 'almetal: native world G-buffer feeds exact deferred point lights'
 build-Darwin-ninja-os-arm64/almetal/Release/almetal_tests
 ```
 
@@ -383,17 +400,15 @@ explicit owner authorization.
 
 ## Immediate next boundaries
 
-1. Accept the owner's next claimed finding and run the full source-grounded
-   classification/fix workflow above; do not assume its numbering or links are
-   current.
-2. At the next explicitly requested launch, smoke dynamic geometry at Low,
-   Mid, High and Ultra for stale indices/corruption after `e90ccdf18f`.
-3. Trace exact-original fully resident opaque post-deferred content, state and
+1. At the next explicitly requested launch, verify ordinary lights across the
+   camera boundary without popping, capture a matched fully resident local-light
+   trace, and smoke dynamic geometry at Low/Mid/High/Ultra.
+2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
-4. Add bounded native-query issued/ready/culled telemetry and run a dense-scene
+3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene
    no-popping gate; live `UseOcclusion=1` alone is insufficient.
-5. Run the formal source-exact, camera-pinned, quality-equivalent 300-frame
+4. Run the formal source-exact, camera-pinned, quality-equivalent 300-frame
    Metal/OpenGL protocol before making a product performance claim.
-6. Strict no-GL source/runtime, feature/visual parity, prolonged stability,
+5. Strict no-GL source/runtime, feature/visual parity, prolonged stability,
    independent review and the 24 FPS objective remain open. The product is not
    complete.
