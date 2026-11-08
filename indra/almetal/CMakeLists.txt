@@ -80,6 +80,7 @@ target_sources(
     almetalpbrpreview.cpp
     almetalpipeline.mm
     almetalresource.mm
+    almetalshadowindirect.mm
     almetalsculptpreview.cpp
     almetalsurface.mm
     almetalterrainpaint.cpp
@@ -94,6 +95,7 @@ target_sources(
       almetalpbrpreview.h
       almetalpipeline.h
       almetalresource.h
+      almetalshadowindirect.h
       almetalsculptpreview.h
       almetalsurface.h
       almetalterrainpaint.h
@@ -126,6 +128,7 @@ set_source_files_properties(
   almetalframe.mm
   almetalpipeline.mm
   almetalresource.mm
+  almetalshadowindirect.mm
   almetalsurface.mm
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
@@ -137,6 +140,8 @@ if(AL_BUILD_TESTS)
     SOURCES tests/almetal_gpu_test.mm tests/almetal_encoder_cache_test.mm
             tests/almetal_completion_test.mm tests/almetal_world_data_test.mm
             tests/almetal_borrowed_target_test.mm
+            tests/almetal_base_lighting_fastpath_test.mm
+            tests/almetal_shadow_indirect_test.mm
     LIBRARIES almetal
     RESOURCE_LOCK apple_gpu
   )
@@ -145,6 +150,8 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_completion_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_world_data_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_borrowed_target_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_base_lighting_fastpath_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_shadow_indirect_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   if(AL_METAL_BUILTIN_LIBRARY)
     target_compile_definitions(
       almetal_tests

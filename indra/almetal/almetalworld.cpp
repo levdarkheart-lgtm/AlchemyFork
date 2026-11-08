@@ -9,6 +9,7 @@
  */
 
 #include "almetalworld.h"
+#include "almetalshadowindirect.h"
 
 #include "../newview/SMAAAreaTex.h"
 #include "../newview/SMAASearchTex.h"
@@ -1617,6 +1618,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     }
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_pipelines;
+    std::unique_ptr<ALMetalShadowIndirectCommands> shadow_indirect;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
         spot_shadow_coverage_pipelines;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
@@ -2039,6 +2041,13 @@ void ALMetalWorldGBufferRenderer::setFrameData(
     mImpl->frame_data = std::move(data);
 }
 
+ALMetalShadowIndirectStats
+ALMetalWorldGBufferRenderer::shadowIndirectStats() const noexcept
+{
+    return mImpl && mImpl->shadow_indirect
+        ? mImpl->shadow_indirect->stats() : ALMetalShadowIndirectStats{};
+}
+
 bool ALMetalWorldGBufferRenderer::setAnisotropy(
     std::uint32_t max_anisotropy,
     std::string* error)
@@ -2426,6 +2435,11 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         return nullptr;
     }
 
+    impl->shadow_indirect = ALMetalShadowIndirectCommands::create(device, error);
+    if (!impl->shadow_indirect)
+    {
+        return nullptr;
+    }
     for (std::size_t rigged = 0; rigged < 2; ++rigged)
     {
         ALMetalRenderPipelineDescriptor descriptor;
@@ -2441,6 +2455,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         descriptor.label = rigged != 0
             ? "Alchemy rigged spot-shadow depth pipeline"
             : "Alchemy static spot-shadow depth pipeline";
+        descriptor.support_indirect_commands = rigged == 0 &&
+            impl->shadow_indirect->supported();
         impl->spot_shadow_pipelines[rigged] =
             ALMetalRenderPipeline::create(device, descriptor, error);
         if (!impl->spot_shadow_pipelines[rigged])
@@ -2448,6 +2464,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             return nullptr;
         }
 
+        descriptor.support_indirect_commands = false;
         descriptor.vertex_function = rigged != 0
             ? "almetal_world_spot_shadow_coverage_skinned_vertex"
             : "almetal_world_spot_shadow_coverage_vertex";
@@ -5847,6 +5864,19 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     constexpr std::size_t float4_stride = sizeof(float) * 4;
     constexpr std::size_t max_inline_palette_bytes = 4096;
     constexpr std::uint32_t max_skin_joints = 110;
+    struct IndirectRun
+    {
+        std::size_t first;
+        std::size_t count;
+        std::size_t command_first = 0;
+        bool double_sided;
+    };
+    constexpr std::size_t minimum_indirect_run = 64;
+    constexpr std::size_t minimum_indirect_draws = 128;
+    const bool collect_indirect = scene.indirect_draws && mImpl->frame_data &&
+        mImpl->shadow_indirect && mImpl->shadow_indirect->supported();
+    std::vector<IndirectRun> indirect_runs;
+    std::vector<std::uint16_t> terrain_factors;
     std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
     std::vector<const ALMetalBuffer*> palette_buffers(
         scene.batch_count, nullptr);
@@ -5902,6 +5932,13 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                          "Metal spot-shadow terrain batch is invalid");
                 return false;
             }
+            if (terrain_factors.empty())
+            {
+                terrain_factors.resize(scene.batch_count * 6);
+            }
+            std::memcpy(terrain_factors.data() + index * 6,
+                        batch.terrain_tessellation_factors,
+                        sizeof(batch.terrain_tessellation_factors));
             continue;
         }
         if (!batch.vertices || !batch.indices || batch.vertex_count == 0 ||
@@ -6109,24 +6146,44 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             setError(error, "Metal spot-shadow skinning data is incomplete");
             return false;
         }
+        if (collect_indirect && !covered && !batch.avatar && !batch.skin_palette)
+        {
+            if (!indirect_runs.empty() &&
+                indirect_runs.back().first + indirect_runs.back().count == index &&
+                indirect_runs.back().double_sided == batch.double_sided)
+            {
+                ++indirect_runs.back().count;
+            }
+            else
+            {
+                indirect_runs.push_back({index, 1, 0, batch.double_sided});
+            }
+        }
+    }
+
+    std::size_t indirect_draw_count = 0;
+    std::erase_if(indirect_runs, [&](IndirectRun& run)
+    {
+        // Keep short or oversized runs scalar. Never change caster membership
+        // or reorder draws across alpha, avatar, terrain or culling boundaries.
+        if (run.count < minimum_indirect_run ||
+            run.count > ALMetalShadowIndirectCommands::maximum_draw_count -
+                indirect_draw_count)
+        {
+            return true;
+        }
+        run.command_first = indirect_draw_count;
+        indirect_draw_count += run.count;
+        return false;
+    });
+    if (indirect_draw_count < minimum_indirect_draws)
+    {
+        indirect_runs.clear();
+        indirect_draw_count = 0;
     }
 
     std::unique_ptr<ALMetalBuffer> terrain_factor_buffer;
-    std::vector<std::uint16_t> terrain_factors(scene.batch_count * 6, 0);
-    bool has_terrain = false;
-    for (std::size_t index = 0; index < scene.batch_count; ++index)
-    {
-        const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
-        if (!batch.terrain)
-        {
-            continue;
-        }
-        has_terrain = true;
-        std::memcpy(terrain_factors.data() + index * 6,
-                    batch.terrain_tessellation_factors,
-                    sizeof(batch.terrain_tessellation_factors));
-    }
-    if (has_terrain)
+    if (!terrain_factors.empty())
     {
         ALMetalBufferDescriptor descriptor;
         descriptor.length = terrain_factors.size() *
@@ -6200,6 +6257,54 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
     ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
         "Alchemy direct spot-shadow slice", owned_command, error) : nullptr;
+    std::unique_ptr<ALMetalShadowIndirectCommands::Batch> indirect_batch;
+    if (command && indirect_draw_count != 0)
+    {
+        // One immutable slab replaces per-draw arena publication. Each command
+        // binds its 80-byte, 16-byte-aligned record directly; the frame arena
+        // and ICB pool both retire their resources on command completion.
+        std::vector<WorldOpaqueShadowConstants> constants(indirect_draw_count);
+        std::vector<ALMetalShadowIndirectDraw> draws;
+        draws.reserve(indirect_draw_count);
+        for (const IndirectRun& run : indirect_runs)
+        {
+            for (std::size_t n = 0; n < run.count; ++n)
+            {
+                const auto& batch = scene.batches[run.first + n];
+                auto& data = constants[run.command_first + n];
+                std::memcpy(data.modelview_projection, batch.modelview_projection,
+                            sizeof(data.modelview_projection));
+                data.config[0] = scene.reverse_z ? 1u : 0u;
+                ALMetalShadowIndirectDraw draw;
+                draw.positions = batch.vertices;
+                draw.indices = batch.indices;
+                draw.position_offset = batch.position_offset;
+                draw.index_offset = batch.index_offset;
+                draw.vertex_count = batch.vertex_count;
+                draw.index_count = batch.index_count;
+                draw.index_type = batch.index_type;
+                draws.push_back(draw);
+            }
+        }
+        ALMetalWorldDataSlice slice;
+        if (!mImpl->frame_data->publish(*command, constants.data(),
+                constants.size() * sizeof(constants.front()), slice, error, false))
+        {
+            mImpl->finishCommandBuffer(owned_command, false, error);
+            return false;
+        }
+        for (std::size_t n = 0; n < draws.size(); ++n)
+        {
+            draws[n].constants = slice.buffer;
+            draws[n].constant_offset = slice.offset + n * sizeof(constants.front());
+        }
+        indirect_batch = mImpl->shadow_indirect->prepare(*command, draws, error);
+        if (!indirect_batch)
+        {
+            mImpl->finishCommandBuffer(owned_command, false, error);
+            return false;
+        }
+    }
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy direct spot-shadow encoder", error)
                            : nullptr;
@@ -6225,10 +6330,24 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                               : ALMetalDepthClipMode::clip,
             error) &&
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error);
+    std::size_t next_indirect_run = 0;
     for (std::size_t index = 0;
          encoded && index < scene.batch_count; ++index)
     {
         const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
+        if (next_indirect_run < indirect_runs.size() &&
+            indirect_runs[next_indirect_run].first == index)
+        {
+            const IndirectRun& run = indirect_runs[next_indirect_run++];
+            encoded = encoder->setCullMode(
+                run.double_sided ? ALMetalCullMode::none : ALMetalCullMode::back,
+                error) &&
+                encoder->setPipeline(*mImpl->spot_shadow_pipelines[0], error) &&
+                mImpl->shadow_indirect->execute(*encoder, *indirect_batch,
+                    run.command_first, run.count, error);
+            index += run.count - 1;
+            continue;
+        }
         if (batch.terrain)
         {
             WorldTerrainSpotShadowConstants constants{};

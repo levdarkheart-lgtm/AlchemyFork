@@ -18,6 +18,7 @@
 #include <limits>
 #include <mutex>
 #include <utility>
+#include <vector>
 
 #if !defined(__arm64__)
 #error "The native Metal backend must be compiled for arm64"
@@ -26,6 +27,7 @@
 namespace
 {
     std::atomic<std::uint64_t> committed_command_buffers{0};
+    std::atomic<std::uint64_t> encoded_draw_calls{0};
     std::atomic<bool> command_timing_enabled{false};
 
     struct CommandTimingState
@@ -127,6 +129,8 @@ struct ALMetalCommandBuffer::Impl
     id<MTLCommandBuffer> command_buffer = nil;
     bool committed = false;
     std::shared_ptr<const ALMetalCommandCompletion> completion;
+    // Empty commands allocate no owner list or completion callback.
+    std::shared_ptr<std::vector<std::shared_ptr<const void>>> resource_owners;
 };
 
 struct ALMetalDevice::Impl
@@ -191,6 +195,24 @@ std::string ALMetalCommandBuffer::errorDescription() const
     return mImpl ? describeNSError(mImpl->command_buffer.error) : "No Metal command buffer";
 }
 
+bool ALMetalCommandBuffer::retainUntilCompletion(
+    std::shared_ptr<const void> owner, std::string* error)
+{
+    if (!mImpl || !mImpl->command_buffer || mImpl->committed || !owner)
+    {
+        setError(error, "Metal resource retention requires an owner and uncommitted command");
+        return false;
+    }
+    if (!mImpl->resource_owners)
+        mImpl->resource_owners =
+            std::make_shared<std::vector<std::shared_ptr<const void>>>();
+    for (const auto& existing : *mImpl->resource_owners)
+        if (!existing.owner_before(owner) && !owner.owner_before(existing))
+            return true;
+    mImpl->resource_owners->push_back(std::move(owner));
+    return true;
+}
+
 bool ALMetalCommandBuffer::commit(std::string* error)
 {
     if (!mImpl || !mImpl->command_buffer)
@@ -202,6 +224,17 @@ bool ALMetalCommandBuffer::commit(std::string* error)
     {
         setError(error, "Metal command buffer was already committed");
         return false;
+    }
+
+    if (mImpl->resource_owners)
+    {
+        const auto owners = std::move(mImpl->resource_owners);
+        [mImpl->command_buffer addCompletedHandler:^(id<MTLCommandBuffer>)
+        {
+            // Explicitly break owner -> completion token -> native command
+            // -> callback -> owner, even if Metal retains a finished callback.
+            owners->clear();
+        }];
     }
 
     if (command_timing_enabled.load(std::memory_order_relaxed))
@@ -379,6 +412,19 @@ void* ALMetalDevice::nativeCommandQueue() const noexcept
 std::uint64_t ALMetalDevice::committedCommandBufferCount() noexcept
 {
     return committed_command_buffers.load(std::memory_order_relaxed);
+}
+
+std::uint64_t ALMetalDevice::encodedDrawCallCount() noexcept
+{
+    return encoded_draw_calls.load(std::memory_order_relaxed);
+}
+
+void ALMetalDevice::addEncodedDrawCalls(std::uint64_t count) noexcept
+{
+    if (count != 0)
+    {
+        encoded_draw_calls.fetch_add(count, std::memory_order_relaxed);
+    }
 }
 
 void ALMetalDevice::setCommandTimingEnabled(bool enabled) noexcept

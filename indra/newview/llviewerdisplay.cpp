@@ -33,6 +33,9 @@
 #include "alframeend.h"
 #include "alhuddepth.h"
 #include "almetalbenchmark.h"
+#if LL_DARWIN
+#include "../almetal/almetaldevice.h"
+#endif
 #include "aluniformbuffer.h"
 #include "fsyspath.h"
 #include "hexdump.h"
@@ -550,6 +553,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
 {
     static bool initialized = false;
     static bool reported_failure = false;
+    static std::uint64_t previous_native_draw_count = 0;
     static std::unique_ptr<ALMetalBenchmarkRecorder> recorder;
     if (!initialized)
     {
@@ -579,6 +583,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
                     : "; non-exact native presentation states are accepted")
             << LL_ENDL;
         LLRender::setMetalCommandTimingEnabled(true);
+        previous_native_draw_count = ALMetalDevice::encodedDrawCallCount();
         recorder = std::make_unique<ALMetalBenchmarkRecorder>(
             std::move(*config));
     }
@@ -600,7 +605,10 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
         llmax(gViewerWindow->getWindowHeightRaw(), 0));
     frame.quality_profile =
         gSavedSettings.getU32("RenderQualityPerformance");
-    frame.draw_calls = LLRender::sDrawCalls;
+    const std::uint64_t native_draw_count =
+        ALMetalDevice::encodedDrawCallCount();
+    frame.draw_calls = native_draw_count - previous_native_draw_count;
+    previous_native_draw_count = native_draw_count;
 #if LL_DARWIN
     frame.metal_command_buffers_committed =
         LLRender::metalCommandBuffersCommitted();

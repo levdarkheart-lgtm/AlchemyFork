@@ -146,6 +146,7 @@ struct ALMetalRenderPipelineDescriptor
     std::array<ALMetalColorPipelineDescriptor, AL_METAL_MAX_COLOR_ATTACHMENTS> colors{};
     ALMetalPixelFormat depth_stencil_format = ALMetalPixelFormat::invalid;
     std::uint32_t sample_count = 1;
+    bool support_indirect_commands = false;
     ALMetalTessellationDescriptor tessellation;
     std::string label;
 };
@@ -415,6 +416,16 @@ private:
     struct Impl;
     explicit ALMetalRenderEncoder(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> mImpl;
+
+    // Narrow native bridge for the owned shadow-command helper. Indirect
+    // execution must preserve the parent state and invalidate buffer caches.
+    void* nativeHandleForIndirect() const noexcept;
+    void* nativeDeviceForIndirect() const noexcept;
+    void* nativeCommandBufferForIndirect() const noexcept;
+    bool canExecuteIndirect() const noexcept;
+    void invalidateIndirectBufferBindings() noexcept;
+    void recordIndirectDraws(std::uint32_t count) noexcept;
+    friend class ALMetalShadowIndirectCommands;
 };
 
 class ALMetalComputeEncoder final

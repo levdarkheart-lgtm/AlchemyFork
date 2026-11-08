@@ -95,6 +95,13 @@ public:
     std::shared_ptr<const ALMetalCommandCompletion> completionToken() const;
     std::string errorDescription() const;
 
+    // Retain indirect/argument-buffer resource owners through actual GPU
+    // completion, including when their renderer and this wrapper are gone.
+    // Owners added before submission are released on abandonment. The native
+    // callback is installed only at commit, avoiding an uncommitted cycle.
+    bool retainUntilCompletion(std::shared_ptr<const void> owner,
+                               std::string* error = nullptr);
+
     bool commit(std::string* error = nullptr);
     bool waitUntilCompleted(std::string* error = nullptr);
     bool commitAndWait(std::string* error = nullptr);
@@ -132,6 +139,15 @@ public:
     // native Metal wrapper. Monotonic deltas provide low-overhead per-frame
     // submission telemetry; this is not a GPU-time measurement.
     static std::uint64_t committedCommandBufferCount() noexcept;
+
+    // Process-wide cumulative census supplied only by explicitly armed
+    // encoder collectors. Count direct draws and populated draw commands in
+    // executed indirect ranges, not just indirect execution API calls.
+    // Encoders aggregate locally and publish once, avoiding per-draw atomic
+    // work. This counts encoded work even if its command is later discarded;
+    // it is not a committed/completed or GPU-time counter.
+    static std::uint64_t encodedDrawCallCount() noexcept;
+    static void addEncodedDrawCalls(std::uint64_t count) noexcept;
 
     // Default-off development telemetry for explicit benchmark collection.
     // submitted/completed/timed and GPU duration are process-wide monotonic

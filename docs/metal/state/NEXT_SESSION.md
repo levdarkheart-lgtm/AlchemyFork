@@ -28,6 +28,15 @@ work.
 
 ## Repository and artifact state
 
+The next owner-authorized optimization is now implemented and tested: cached
+opaque shadow ICB runs, one immutable constant slab per view, completion-owned
+indirect resources, lazy terrain factors, exact legacy base-light dead-work
+gates and actual native draw telemetry. Full Release and RelWithDebInfo suites
+each pass 56,620 assertions/73 cases with Metal API/GPU validation. Product
+build and same full-screen/Midday/`Preset123` measurement against `68550` remain
+pending. See [the implementation checkpoint](archive/CURRENT-shadow-indirect-checkpoint-2026-11-08.md).
+The detailed predecessor provenance below remains the last observed runtime.
+
 - Repository: `/Users/dekstroza/Programming/AI/Secondlife/Alchemy`.
 - Branch: `codex/apple-silicon-metal`.
 - Current code checkpoint: `175cd155dd` (`Remove repeated draw payload and

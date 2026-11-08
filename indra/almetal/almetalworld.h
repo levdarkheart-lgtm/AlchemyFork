@@ -285,6 +285,9 @@ struct ALMetalWorldSpotShadowScene
     std::uint32_t height = 0;
     bool reverse_z = false;
     bool depth_clamp = false;
+    // Ordered static runs may use native indirect commands. Retain a direct
+    // path for equivalence tests and devices without indirect draw support.
+    bool indirect_draws = true;
 };
 
 struct ALMetalWorldSimpleBatch
@@ -2112,6 +2115,8 @@ private:
     std::unique_ptr<Impl> mImpl;
 };
 
+struct ALMetalShadowIndirectStats;
+
 class ALMetalWorldGBufferRenderer final
 {
 public:
@@ -2153,6 +2158,7 @@ public:
     void cancelCommandBatch();
     bool commandBatchActive() const;
     ALMetalRenderTargetPoolStats renderTargetPoolStats() const noexcept;
+    ALMetalShadowIndirectStats shadowIndirectStats() const noexcept;
 
     std::unique_ptr<ALMetalRenderTarget> render(
         const ALMetalWorldGBufferScene& scene,

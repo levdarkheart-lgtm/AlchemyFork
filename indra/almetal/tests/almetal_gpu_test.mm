@@ -13,6 +13,7 @@
 #include "../almetalpbrpreview.h"
 #include "../almetalpipeline.h"
 #include "../almetalresource.h"
+#include "../almetalshadowindirect.h"
 #include "../almetalsculptpreview.h"
 #include "../almetalsurface.h"
 #include "../almetalterrainpaint.h"
@@ -3447,6 +3448,169 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
         error.clear();
         CHECK_FALSE(render_spot_shadow(scene));
         CHECK(error == "Metal spot-shadow batch geometry is invalid");
+
+        // Exercise the world owner's admission and scalar/ICB transitions,
+        // not only the backend helper. Both 64-draw opaque runs qualify;
+        // covered, terrain, rigged and avatar casters between them must keep
+        // their scalar programs and original ordering.
+        ALMetalWorldSpotShadowBatch opaque_batch;
+        opaque_batch.vertices = vertices.get();
+        opaque_batch.vertex_count = positions.size();
+        opaque_batch.indices = indices.get();
+        opaque_batch.index_count = index_values.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+            opaque_batch.modelview_projection[axis * 4 + axis] = 1.f;
+        ALMetalWorldSpotShadowBatch covered_batch = opaque_batch;
+        covered_batch.texcoord_offset = texcoord_offset;
+        covered_batch.color_offset = color_offset;
+        covered_batch.texture_count = 1;
+        covered_batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
+        covered_batch.coverageData().textures[0] = opaque_coverage.get();
+        covered_batch.coverageData().alpha_cutoffs[0] = 0.5f;
+        ALMetalWorldSpotShadowBatch rigged_batch = opaque_batch;
+        rigged_batch.weight_offset = weight_offset;
+        rigged_batch.skin_palette = skin_palette.data();
+        rigged_batch.skin_palette_float_count = skin_palette.size();
+        rigged_batch.skin_joint_count = 1;
+        ALMetalWorldSpotShadowBatch scalar_terrain = terrain_batch;
+        scalar_terrain.terrain_smoothing = false;
+        scalar_terrain.terrain_tessellation_pinned = false;
+        std::fill_n(scalar_terrain.terrain_tessellation_factors, 6,
+                    std::uint16_t{0x4400});
+        ALMetalWorldSpotShadowBatch scalar_avatar = avatar_batch;
+        scalar_avatar.skin_palette_float_count = 45 * 4;
+        scalar_avatar.coverage = ALMetalWorldSpotShadowCoverage::opaque;
+        scalar_avatar.texture_count = 0;
+
+        // The second ICB run also proves nonzero vertex/index byte offsets
+        // and uint32 indices; its reflected winding tests double-sided cull.
+        std::array<std::uint8_t, 16 + sizeof(vertex_bytes)> padded_vertices{};
+        std::memcpy(padded_vertices.data() + 16, vertex_bytes.data(),
+                    vertex_bytes.size());
+        descriptor.length = padded_vertices.size();
+        auto offset_vertices = ALMetalBuffer::create(*device, descriptor, &error);
+        REQUIRE(offset_vertices);
+        REQUIRE(offset_vertices->write(0, padded_vertices.data(),
+                                      padded_vertices.size(), &error));
+        const std::array<std::uint32_t, 4> wide_indices{{99, 0, 1, 2}};
+        descriptor.length = sizeof(wide_indices);
+        auto offset_indices = ALMetalBuffer::create(*device, descriptor, &error);
+        REQUIRE(offset_indices);
+        REQUIRE(offset_indices->write(0, wide_indices.data(), sizeof(wide_indices), &error));
+
+        const auto place_batch = [](ALMetalWorldSpotShadowBatch& draw,
+                                    float x_scale, float y_scale,
+                                    float x, float y, float z)
+        {
+            std::fill_n(draw.modelview_projection, 16, 0.f);
+            draw.modelview_projection[0] = x_scale;
+            draw.modelview_projection[5] = y_scale;
+            draw.modelview_projection[10] = 1.f;
+            draw.modelview_projection[12] = x;
+            draw.modelview_projection[13] = y;
+            draw.modelview_projection[14] = z;
+            draw.modelview_projection[15] = 1.f;
+        };
+        std::array<float, 32 * 32> last_indirect_depth{};
+        std::vector<ALMetalWorldSpotShadowBatch> mixed_batches;
+        for (const bool reverse_z : {false, true})
+        {
+            for (const bool clamp : {false, true})
+            {
+                for (const bool double_sided : {false, true})
+                {
+                    CAPTURE(reverse_z, clamp, double_sided);
+                    const float caster_z = clamp
+                        ? (reverse_z ? 2.f : -2.f)
+                        : (reverse_z ? 0.5f : 0.f);
+                    mixed_batches.assign(64, opaque_batch);
+                    mixed_batches.push_back(covered_batch);
+                    mixed_batches.push_back(scalar_terrain);
+                    mixed_batches.push_back(rigged_batch);
+                    mixed_batches.push_back(scalar_avatar);
+                    mixed_batches.insert(mixed_batches.end(), 64, opaque_batch);
+                    for (std::size_t draw = 0; draw < 64; ++draw)
+                    {
+                        place_batch(mixed_batches[draw], 0.45f, 0.45f,
+                                    -0.45f, 0.f, caster_z);
+                        auto& second = mixed_batches[68 + draw];
+                        second.vertices = offset_vertices.get();
+                        second.position_offset = 16;
+                        second.indices = offset_indices.get();
+                        second.index_type = ALMetalIndexType::uint32;
+                        second.index_offset = sizeof(std::uint32_t);
+                        second.double_sided = double_sided;
+                        place_batch(second, -0.45f, 0.45f, 0.45f, 0.f, caster_z);
+                    }
+                    for (std::size_t draw = 64; draw < 68; ++draw)
+                        place_batch(mixed_batches[draw], 0.15f, 0.15f,
+                                    0.f, draw < 66 ? 0.8f : -0.8f,
+                                    reverse_z ? 0.5f : 0.f);
+                    scene.batches = mixed_batches.data();
+                    scene.batch_count = mixed_batches.size();
+                    scene.reverse_z = reverse_z;
+                    scene.depth_clamp = clamp;
+                    scene.indirect_draws = false;
+                    const auto before = renderer->shadowIndirectStats();
+                    REQUIRE(render_spot_shadow(scene, 0));
+                    const auto after_direct = renderer->shadowIndirectStats();
+                    CHECK(after_direct.prepared_draws == before.prepared_draws);
+                    CHECK(after_direct.executions == before.executions);
+                    std::array<float, 32 * 32> direct_depth{};
+                    REQUIRE(retained->readback(*device, 0, 0, {}, direct_depth.data(),
+                                              32 * sizeof(float), &error));
+                    scene.indirect_draws = true;
+                    REQUIRE(render_spot_shadow(scene, 1));
+                    INFO(error);
+                    const auto after_indirect = renderer->shadowIndirectStats();
+                    CHECK(after_indirect.prepared_draws - after_direct.prepared_draws == 128);
+                    CHECK(after_indirect.executed_draws - after_direct.executed_draws == 128);
+                    CHECK(after_indirect.executions - after_direct.executions == 2);
+                    REQUIRE(retained->readback(*device, 0, 1, {}, last_indirect_depth.data(),
+                                              32 * sizeof(float), &error));
+                    CHECK(last_indirect_depth == direct_depth);
+                    const float far = reverse_z ? 0.f : 1.f;
+                    const float near = clamp ? (reverse_z ? 1.f : 0.f) : 0.5f;
+                    CHECK(std::abs(direct_depth[16 * 32 + 8] - near) < 0.0001f);
+                    CHECK(std::abs(direct_depth[16 * 32 + 24] -
+                                   (double_sided ? near : far)) < 0.0001f);
+                }
+            }
+        }
+
+        // A late invalid batch cannot allow an earlier qualifying run to
+        // execute or clear the retained slice before preflight finishes.
+        const auto before_invalid = renderer->shadowIndirectStats();
+        mixed_batches.back().vertices = nullptr;
+        error.clear();
+        CHECK_FALSE(render_spot_shadow(scene, 1));
+        CHECK(error == "Metal spot-shadow batch geometry is invalid");
+        const auto after_invalid = renderer->shadowIndirectStats();
+        CHECK(after_invalid.prepared_draws == before_invalid.prepared_draws);
+        CHECK(after_invalid.executions == before_invalid.executions);
+        CHECK(after_invalid.executed_draws == before_invalid.executed_draws);
+        std::array<float, 32 * 32> after_invalid_depth{};
+        REQUIRE(retained->readback(*device, 0, 1, {}, after_invalid_depth.data(),
+                                  32 * sizeof(float), &error));
+        CHECK(after_invalid_depth == last_indirect_depth);
+
+        // Neither 127 eligible draws nor 128 single-draw cull runs meets
+        // admission. Both remain valid scalar scenes without ICB work.
+        mixed_batches.back().vertices = offset_vertices.get();
+        scene.batch_count = mixed_batches.size() - 1;
+        REQUIRE(render_spot_shadow(scene));
+        auto below_threshold = renderer->shadowIndirectStats();
+        CHECK(below_threshold.prepared_draws == before_invalid.prepared_draws);
+        CHECK(below_threshold.executions == before_invalid.executions);
+        mixed_batches.assign(128, opaque_batch);
+        for (std::size_t draw = 0; draw < mixed_batches.size(); ++draw)
+            mixed_batches[draw].double_sided = (draw & 1u) != 0;
+        scene.batches = mixed_batches.data();
+        scene.batch_count = mixed_batches.size();
+        REQUIRE(render_spot_shadow(scene));
+        const auto short_runs = renderer->shadowIndirectStats();
+        CHECK(short_runs.prepared_draws == before_invalid.prepared_draws);
+        CHECK(short_runs.executions == before_invalid.executions);
     }
 }
 

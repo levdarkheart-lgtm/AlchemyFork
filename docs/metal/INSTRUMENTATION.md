@@ -26,6 +26,13 @@ env \
 - Set `ALCHEMY_METAL_BENCHMARK_REQUIRE_EXACT=1` for the candidate. Every candidate row then requires the current frame's complete native world/UI texture to have actually committed to the drawable; a setting alone is not accepted as proof. A presentation-off GL reference uses `0`.
 - Pre-sample discontinuity restarts warm-up. After the first row, a missing frame, ineligible frame, resolution/quality change, regressed submission/completion/timing counter or invalid clock interval fails and closes the run instead of combining unlike samples. The viewer logs arming, completion or one failure summary but no per-frame content.
 - Eligible frames require `STATE_STARTED`, a visible window, no snapshot, teleport, disconnect or logout transition, and either GL or exact native presentation. Frame intervals use `std::chrono::steady_clock`.
+- `draw_calls` counts actual native encoded draws while benchmark timing is
+  armed, including each populated indirect command. Render encoders aggregate
+  locally and publish once on end; ordinary unarmed rendering performs no
+  per-draw atomic operation. This is encoded workload (even if a command is
+  later abandoned), not a count of committed or visible objects. Older native
+  captures used the dormant GL draw counter and can contain zeros; those zeros
+  do not establish absent GPU draws.
 - Each row is stamped with the CMake-configured Git commit and build type. Reconfigure after the source commit and verify the generated `LL_VIEWER_SOURCE_REVISION` before collecting source-exact evidence.
 - The publication census is taken from the actual current-frame transaction,
   not from the default setting. `native_requested` records enabled Metal

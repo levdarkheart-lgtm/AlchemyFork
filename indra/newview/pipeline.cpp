@@ -84,6 +84,7 @@
 #include "../almetal/almetaltextureops.h"
 #include "../almetal/almetaluirenderer.h"
 #include "../almetal/almetalworld.h"
+#include "../almetal/almetalshadowindirect.h"
 #include "alhexlattice.h"
 #include "alwaterheightbake.h"
 #include "alterrainsurfacemaps.h"
@@ -2100,6 +2101,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 capture.renderer
                     ? capture.renderer->renderTargetPoolStats()
                     : ALMetalRenderTargetPoolStats{};
+            const ALMetalShadowIndirectStats indirect = capture.renderer
+                ? capture.renderer->shadowIndirectStats()
+                : ALMetalShadowIndirectStats{};
+            const ALMetalShadowIndirectStats probe_indirect =
+                mMetalProbeWorldSimpleCapture &&
+                    mMetalProbeWorldSimpleCapture->renderer
+                ? mMetalProbeWorldSimpleCapture->renderer->shadowIndirectStats()
+                : ALMetalShadowIndirectStats{};
             constexpr F64 bytes_per_mib = 1024.0 * 1024.0;
             LL_INFOS("MetalMemory")
                 << "Native resource sample: driver="
@@ -2133,6 +2142,17 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", evictions=" << target_pool.evictions << ')'
                 << ", buffers=" << stats.buffers_created << '/'
                 << stats.buffers_destroyed
+                << ", shadow_indirect=" << indirect.executed_draws << '/'
+                << indirect.prepared_draws << " draws, "
+                << indirect.executions << " runs, " << indirect.slot_count
+                << " slots (new/reuse=" << indirect.slot_allocations << '/'
+                << indirect.slot_reuses << ')'
+                << ", probe_shadow_indirect=" << probe_indirect.executed_draws
+                << '/' << probe_indirect.prepared_draws << " draws, "
+                << probe_indirect.executions << " runs, "
+                << probe_indirect.slot_count << " slots (new/reuse="
+                << probe_indirect.slot_allocations << '/'
+                << probe_indirect.slot_reuses << ')'
                 << LL_ENDL;
         }
     }

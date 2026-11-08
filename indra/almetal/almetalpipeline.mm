@@ -522,6 +522,8 @@ std::unique_ptr<ALMetalRenderPipeline> ALMetalRenderPipeline::create(
         native_descriptor.vertexFunction = vertex;
         native_descriptor.fragmentFunction = fragment;
         native_descriptor.rasterSampleCount = descriptor.sample_count;
+        native_descriptor.supportIndirectCommandBuffers =
+            descriptor.support_indirect_commands;
         if (descriptor.tessellation.enabled)
         {
             native_descriptor.tessellationPartitionMode =
@@ -787,6 +789,7 @@ struct ALMetalRenderEncoder::Impl
     };
     id<MTLDevice> device = nil;
     id<MTLRenderCommandEncoder> encoder = nil;
+    void* command_buffer = nullptr;
     // The exact OpenGL renderer caches texture and sampler identity per slot.
     // Keep the narrower Metal equivalent per encoder so repeated material
     // batches do not re-enter the driver for unchanged bindings. Store the
@@ -812,6 +815,9 @@ struct ALMetalRenderEncoder::Impl
     std::size_t visibility_offset = 0;
     bool ended = false;
     bool pipeline_set = false;
+    bool indirect_pipeline = false;
+    bool count_draws = false;
+    std::uint64_t encoded_draws = 0;
     bool tessellation_enabled = false;
     bool tessellation_factor_buffer_set = false;
 };
@@ -826,6 +832,8 @@ ALMetalRenderEncoder::~ALMetalRenderEncoder()
     if (mImpl && mImpl->encoder && !mImpl->ended)
     {
         [mImpl->encoder endEncoding];
+        if (mImpl->count_draws)
+            ALMetalDevice::addEncodedDrawCalls(mImpl->encoded_draws);
         mImpl->ended = true;
     }
 }
@@ -855,6 +863,8 @@ std::unique_ptr<ALMetalRenderEncoder> ALMetalRenderEncoder::begin(
         auto impl = std::make_unique<Impl>();
         impl->device = (__bridge id<MTLDevice>)command_buffer.nativeDevice();
         impl->encoder = encoder;
+        impl->command_buffer = command_buffer.nativeHandle();
+        impl->count_draws = ALMetalDevice::commandTimingEnabled();
         return std::unique_ptr<ALMetalRenderEncoder>(new ALMetalRenderEncoder(std::move(impl)));
     }
 }
@@ -870,6 +880,8 @@ bool ALMetalRenderEncoder::setPipeline(const ALMetalRenderPipeline& pipeline, st
     // pipeline is unchanged. A cache hit must not make a formerly invalid
     // drawPatches call valid.
     mImpl->pipeline_set = true;
+    mImpl->indirect_pipeline =
+        pipeline.mDescriptor.support_indirect_commands;
     mImpl->tessellation_enabled = pipeline.mDescriptor.tessellation.enabled;
     mImpl->tessellation_factor_buffer_set = false;
     void* handle = pipeline.nativeHandle();
@@ -1354,6 +1366,7 @@ bool ALMetalRenderEncoder::draw(ALMetalPrimitiveType primitive, std::uint32_t ve
                        vertexStart:vertex_start
                        vertexCount:vertex_count
                      instanceCount:instance_count];
+    if (mImpl->count_draws) ++mImpl->encoded_draws;
     return true;
 }
 
@@ -1383,6 +1396,7 @@ bool ALMetalRenderEncoder::drawIndexed(ALMetalPrimitiveType primitive, std::uint
                               indexBuffer:native_buffer
                         indexBufferOffset:index_buffer_offset
                             instanceCount:instance_count];
+    if (mImpl->count_draws) ++mImpl->encoded_draws;
     return true;
 }
 
@@ -1407,6 +1421,7 @@ bool ALMetalRenderEncoder::drawPatches(std::uint32_t control_point_count,
          patchIndexBufferOffset:0
                   instanceCount:instance_count
                    baseInstance:base_instance];
+    if (mImpl->count_draws) ++mImpl->encoded_draws;
     return true;
 }
 
@@ -1418,8 +1433,44 @@ bool ALMetalRenderEncoder::end(std::string* error)
         return false;
     }
     [mImpl->encoder endEncoding];
+    if (mImpl->count_draws)
+        ALMetalDevice::addEncodedDrawCalls(mImpl->encoded_draws);
     mImpl->ended = true;
     return true;
+}
+
+void* ALMetalRenderEncoder::nativeHandleForIndirect() const noexcept
+{
+    return mImpl && !mImpl->ended
+        ? (__bridge void*)mImpl->encoder : nullptr;
+}
+
+void* ALMetalRenderEncoder::nativeDeviceForIndirect() const noexcept
+{
+    return mImpl ? (__bridge void*)mImpl->device : nullptr;
+}
+
+void* ALMetalRenderEncoder::nativeCommandBufferForIndirect() const noexcept
+{
+    return mImpl ? mImpl->command_buffer : nullptr;
+}
+
+bool ALMetalRenderEncoder::canExecuteIndirect() const noexcept
+{
+    return mImpl && !mImpl->ended && mImpl->pipeline_set &&
+        mImpl->indirect_pipeline && !mImpl->tessellation_enabled;
+}
+
+void ALMetalRenderEncoder::invalidateIndirectBufferBindings() noexcept
+{
+    if (!mImpl) return;
+    mImpl->vertex_buffers.fill({});
+    mImpl->fragment_buffers.fill({});
+}
+
+void ALMetalRenderEncoder::recordIndirectDraws(std::uint32_t count) noexcept
+{
+    if (mImpl && mImpl->count_draws) mImpl->encoded_draws += count;
 }
 
 struct ALMetalComputeEncoder::Impl

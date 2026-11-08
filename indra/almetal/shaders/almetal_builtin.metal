@@ -12747,11 +12747,25 @@ fragment float4 almetal_world_base_light_geometry_fragment(
     sampler probe_sampler [[sampler(1)]],
     sampler brdf_sampler [[sampler(2)]])
 {
+    const float4 normal_sample = normal_texture.sample(
+        point_sampler, input.texcoord);
+    const float4 base_color = albedo_texture.sample(
+        point_sampler, input.texcoord);
+    const bool pbr = abs(normal_sample.a - 0.67) < 0.1;
+    const bool classic_mode = constants.config.y != 0u;
+    // The original soften pass mixes fully fullbright legacy geometry to
+    // base color before its optional environment lobe. With no environment
+    // contribution, lighting, probes and SSR cannot affect the final color.
+    if (!pbr && base_color.a == 1.0 && normal_sample.z == 0.0)
+    {
+        return float4(max(almetal_world_bounded_radiance(
+            base_color.rgb * (classic_mode ? 1.1 : 1.0)),
+            float3(0.0)), 0.0);
+    }
+
     const float depth = depth_texture.sample(
         point_sampler, input.texcoord).r;
     const bool reverse_z = constants.config.x != 0u;
-    const float4 normal_sample = normal_texture.sample(
-        point_sampler, input.texcoord);
     const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
     float4 position = constants.inverse_projection *
         float4(input.texcoord * 2.0 - 1.0, ndc_z, 1.0);
@@ -12759,14 +12773,10 @@ fragment float4 almetal_world_base_light_geometry_fragment(
     position /= position.w;
 
     const float3 normal = almetal_world_oct_decode(normal_sample.xy);
-    const float4 base_color = albedo_texture.sample(
-        point_sampler, input.texcoord);
     float4 specular = specular_texture.sample(
         point_sampler, input.texcoord);
     const float3 emissive = emissive_texture.sample(
         point_sampler, input.texcoord).rgb;
-    const bool pbr = abs(normal_sample.a - 0.67) < 0.1;
-    const bool classic_mode = constants.config.y != 0u;
     const float2 shadow_occlusion = light_map.sample(
         point_sampler, input.texcoord).rg;
     const float sun_visibility = constants.config.z != 0u
@@ -12843,7 +12853,7 @@ fragment float4 almetal_world_base_light_geometry_fragment(
         radiance = almetal_finish_hero_probe(
             radiance, position.xyz, normal, glossiness,
             hero_radiance, probe_sampler, probes, hero);
-        if (!pbr)
+        if (!pbr && environment_intensity > 0.0)
         {
             legacy_environment = mix(
                 legacy_environment, ssr_sample.rgb, ssr_sample.a);

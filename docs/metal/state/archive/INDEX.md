@@ -6,6 +6,7 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| Cached native shadow commands and shader dead-work repair, 2026-11-08 (runtime pending) | [CURRENT-shadow-indirect-checkpoint-2026-11-08.md](CURRENT-shadow-indirect-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Hero CPU capture/encoding and shared frame-data repair, 2026-11-08 | [CURRENT-hero-cpu-encoding-checkpoint-2026-11-08.md](CURRENT-hero-cpu-encoding-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Initial implementation through the PBR-alpha data-map checkpoint, 2026-11-01 | [CURRENT-through-2026-11-01.md](CURRENT-through-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Legacy material-normal and standard/generated-bump checkpoints through build 68012, 2026-11-01 | [CURRENT-legacy-normal-checkpoint-2026-11-01.md](CURRENT-legacy-normal-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
