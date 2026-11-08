@@ -66,9 +66,17 @@ work.
   publication still sample 7.66%/9.60% of active main-thread time. See
   `archive/CURRENT-68547-hero-cpu-runtime-2026-11-08.md` for evidence, resize-pool
   memory confound and limits. The owner then authorized the next repairs,
-  implemented at `175cd155dd`. Ready `68550` has not yet replaced the live
-  `68547` process; a permission request to close it and run the comparison is
-  pending. Do not mistake the new on-disk app hash for the older running code.
+  implemented at `175cd155dd`. The owner then explicitly authorized closing
+  the old viewer and running `68550` full screen before login, Midday and
+  `Preset123`. That comparison is complete: 20 clean log samples have median
+  8.8 versus 8.2 FPS (+7.3%); the matched trace records 7.180 versus 6.790
+  presents/s (+5.75%), and CPU encoding falls 65.70 to 59.33 ms/present.
+  Base-light depth copies fall from 8.014/present to zero. A valid 300-frame
+  candidate CSV has p50/p95 112.78/133.69 ms, 300 exact-native publications
+  and zero fallbacks; no matching admissible predecessor CSV exists. The
+  full-screen `68550` process remains running at the end of collection.
+  See `archive/CURRENT-68550-draw-payload-runtime-2026-11-08.md` for raw paths,
+  hashes, allocation/resize confound and unresolved hero GPU interval growth.
 - Both optimized Release and assertion-enabled RelWithDebInfo Metal suites
   pass 53,838 assertions/68 cases with API/GPU validation. Draw-payload defaults,
   copies/moves, shared depth, color pool reuse and queued-resource lifetime
@@ -636,11 +644,11 @@ explicit owner authorization.
 
 ## Immediate next boundaries
 
-1. After permission to replace the live `68547` session arrives, run ready
-   source-exact `68550`, maximize and set Midday/`Preset123` before warm-up ends.
-   Collect 300 consecutive exact-native frames and separate CPU/GPU traces
-   against `68547`; do not reuse the excluded small-window data. Keep all Ultra
-   controls, six faces and directional shadow cadence unchanged.
+1. Preserve the completed `68550` comparison. Remaining measured CPU targets
+   are per-view culling and draw/binding submission. Hero GPU intervals rose
+   despite unchanged shaders and shadow counts; use suitable counters/captures
+   before assigning a cause or another shader/pass repair. Keep Ultra controls,
+   six faces and directional shadow cadence unchanged.
 2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
 3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene

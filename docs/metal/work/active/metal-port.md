@@ -18,7 +18,7 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-007 | World scene and material correctness | doing | Core world/material/terrain/avatar passes are native. `18aedd2ecb` restores main-owned projector maps and per-face single-tap sampling, narrows shadow bindings/constants and preserves directional cascades; attended light/shadow/mirror smoke remains open. |
 | M-008 | Advanced views/effects and compute | doing | Native mirror/probe lifecycle and an Ultra-plus-mirrors transition pass, but the matched pair shows a blue-gray Metal versus green-terrain OpenGL reflected background; trace content/clipping before any fix. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
-| M-010 | M1 Max profiling and optimization | doing | `175cd155dd` addresses measured 7.66%/9.60% main CPU construction/publication and redundant per-view depth copies. [Implementation, mechanism timings and GPU proof](../../state/archive/CURRENT-draw-payload-depth-reuse-checkpoint-2026-11-08.md). Source-exact `68550` is built; attended comparison is pending. Previous `68547` median is 8.2 FPS. |
+| M-010 | M1 Max profiling and optimization | doing | Owner-attended full-screen `68550` records 8.8 versus 8.2 median log FPS (+7.3%), traced presents/s +5.75%, CPU encoding -9.7% and base depth copies 8.014/present to zero. [300-frame candidate and CPU/GPU comparison](../../state/archive/CURRENT-68550-draw-payload-runtime-2026-11-08.md). Historical best, 24 FPS and formal paired gate remain open. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, UI replay and retained glow/SMAA require no GL. Render tails remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
@@ -169,7 +169,7 @@ Launch/login/capture only at the owner's explicit request and control; add bound
 
 ## Immediate executable action
 
-1. Run the ready `68550` comparison after permission to replace the live session; complete window/camera setup before elapsed-plus-frame warm-up, collect 300 exact frames and separate CPU/GPU traces. Preserve Ultra quality, six hero faces, directional maps and view-dependent palettes.
+1. Preserve the completed `68550` baseline; remaining measured CPU targets are per-view culling and draw/binding submission. Investigate increased hero GPU intervals with counters/captures before another shader/pass repair; preserve Ultra quality, six faces and directional maps.
 2. Add bounded issued/ready/culled query telemetry and run a dense-scene no-popping gate; live enablement is verified but effectiveness is not quantified.
 3. Require launch-gated Ultra manifests and captured camera transforms before accepting screenshots or the next source-exact performance pair.
 4. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.
