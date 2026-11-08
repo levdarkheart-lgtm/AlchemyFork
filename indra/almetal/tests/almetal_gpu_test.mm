@@ -16301,6 +16301,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         const std::size_t center = (16 * 32 + 16) * 4;
         const std::size_t outside = (2 * 32 + 2) * 4;
+        const std::size_t bounded_outside = (16 * 32 + 8) * 4;
         CHECK(legacy_pixels[center + 0] > legacy_pixels[center + 1]);
         CHECK(legacy_pixels[center + 1] > legacy_pixels[center + 2]);
         CHECK(legacy_pixels[center + 2] > 0);
@@ -16308,6 +16309,31 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(legacy_pixels[outside + 0] == 0);
         CHECK(legacy_pixels[outside + 1] == 0);
         CHECK(legacy_pixels[outside + 2] == 0);
+        CHECK(legacy_pixels[bounded_outside + 0] > 0);
+
+        // The exact original renders camera-outside ordinary lights through
+        // bounded light volumes. Production supplies the conservative Metal
+        // projection of that volume; prove that the covered receiver is
+        // unchanged while a receiver outside the bound avoids the light.
+        lights[0].screen_rect[0] = 12;
+        lights[0].screen_rect[1] = 12;
+        lights[0].screen_rect[2] = 8;
+        lights[0].screen_rect[3] = 8;
+        lighting_scene.bounded_light_count = 1;
+        auto bounded = renderer->renderLocalLights(lighting_scene, &error);
+        INFO(error);
+        REQUIRE(bounded);
+        std::array<std::uint8_t, 32 * 32 * 4> bounded_pixels{};
+        REQUIRE(bounded->colorTexture(0)->readback(
+            *device, 0, 0, {}, bounded_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(bounded_pixels[center + channel] ==
+                  legacy_pixels[center + channel]);
+            CHECK(bounded_pixels[bounded_outside + channel] == 0);
+        }
+        lighting_scene.bounded_light_count = 0;
 
         const auto srgb_to_linear = [](float encoded)
         {
@@ -16403,6 +16429,35 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(doubled_pixels[center + 0] > legacy_pixels[center + 0]);
         CHECK(doubled_pixels[center + 1] > legacy_pixels[center + 1]);
         CHECK(doubled_pixels[center + 2] > legacy_pixels[center + 2]);
+
+        // Bounded lights are drawn individually first; only the remaining
+        // camera-inside lights enter the original sixteen-light full-screen
+        // batches. Their additive result must neither skip nor double either
+        // contribution.
+        lighting_scene.bounded_light_count = 1;
+        auto mixed_bounds = renderer->renderLocalLights(
+            lighting_scene, &error);
+        INFO(error);
+        REQUIRE(mixed_bounds);
+        std::array<std::uint8_t, 32 * 32 * 4> mixed_bounds_pixels{};
+        REQUIRE(mixed_bounds->colorTexture(0)->readback(
+            *device, 0, 0, {}, mixed_bounds_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(static_cast<int>(
+                      mixed_bounds_pixels[center + channel]) -
+                  static_cast<int>(doubled_pixels[center + channel])) <= 1);
+            CHECK(std::abs(static_cast<int>(
+                      mixed_bounds_pixels[bounded_outside + channel]) -
+                  static_cast<int>(legacy_pixels[
+                      bounded_outside + channel])) <= 1);
+        }
+        lighting_scene.bounded_light_count = 0;
+        lights[0].screen_rect[0] = 0;
+        lights[0].screen_rect[1] = 0;
+        lights[0].screen_rect[2] = 0;
+        lights[0].screen_rect[3] = 0;
 
         // The projector owner uses one draw per cookie so every light keeps
         // its own sRGB mip chain. Its transitional shadow input is the pair

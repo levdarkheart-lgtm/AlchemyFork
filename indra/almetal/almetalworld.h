@@ -892,6 +892,9 @@ struct alignas(16) ALMetalWorldLocalLight
     float position_radius[4]{};
     // Linear RGB after global/fade scaling, deferred falloff in w.
     float color_falloff[4]{};
+    // Metal viewport-space x/y/width/height for a camera-outside light.
+    // Full-screen lights do not consume this field.
+    std::uint32_t screen_rect[4]{};
 };
 
 struct ALMetalWorldLocalLightingScene
@@ -899,6 +902,10 @@ struct ALMetalWorldLocalLightingScene
     const ALMetalRenderTarget* gbuffer = nullptr;
     const ALMetalWorldLocalLight* lights = nullptr;
     std::size_t light_count = 0;
+    // The original renderer draws camera-outside lights as individual volume
+    // draws, then batches only camera-inside lights into full-screen passes.
+    // The bounded lights occupy the first entries in lights.
+    std::size_t bounded_light_count = 0;
     float inverse_projection[16]{};
     float specular_exponent = 128.f;
     bool reverse_z = false;

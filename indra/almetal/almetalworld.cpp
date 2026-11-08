@@ -667,11 +667,11 @@ namespace
         float inverse_projection[16]{};
         // x = legacy specular exponent, y = classic-mode output scale.
         float surface[4] = {128.f, 1.f, 0.f, 0.f};
-        // x = light count, y = reverse-Z convention.
+        // x = light count in this draw, y = reverse-Z convention.
         std::uint32_t config[4]{};
     };
     static_assert(sizeof(WorldLocalLightingConstants) == 96);
-    static_assert(sizeof(ALMetalWorldLocalLight) == 32);
+    static_assert(sizeof(ALMetalWorldLocalLight) == 48);
 
     struct alignas(16) WorldProjectorLightingConstants
     {
@@ -7421,6 +7421,7 @@ ALMetalWorldGBufferRenderer::renderLocalLightsInternal(
     if (!mImpl || !mImpl->device || !scene.gbuffer ||
         (scene.light_count != 0 && !scene.lights) ||
         scene.light_count > max_light_count ||
+        scene.bounded_light_count > scene.light_count ||
         !finiteValues(scene.inverse_projection, 16) ||
         !std::isfinite(scene.specular_exponent) ||
         scene.specular_exponent <= 0.f)
@@ -7461,10 +7462,17 @@ ALMetalWorldGBufferRenderer::renderLocalLightsInternal(
     for (std::size_t index = 0; index < scene.light_count; ++index)
     {
         const ALMetalWorldLocalLight& light = scene.lights[index];
+        const bool valid_screen_rect =
+            index >= scene.bounded_light_count ||
+            (light.screen_rect[0] < input.width &&
+             light.screen_rect[1] < input.height &&
+             light.screen_rect[2] > 0 && light.screen_rect[3] > 0 &&
+             light.screen_rect[2] <= input.width - light.screen_rect[0] &&
+             light.screen_rect[3] <= input.height - light.screen_rect[1]);
         if (!finiteValues(light.position_radius, 4) ||
             !finiteValues(light.color_falloff, 4) ||
             light.position_radius[3] <= 0.f ||
-            light.color_falloff[3] <= -1.f)
+            light.color_falloff[3] <= -1.f || !valid_screen_rect)
         {
             setError(error, "Metal world local point light is invalid");
             return nullptr;
@@ -7597,18 +7605,7 @@ ALMetalWorldGBufferRenderer::renderLocalLightsInternal(
         };
         encoded =
             encoder->setViewport(viewport, error) &&
-            encoder->setScissor(scissor, error) &&
             encoder->setCullMode(ALMetalCullMode::none, error) &&
-            encoder->setPipeline(
-                *(accumulation_target
-                    ? mImpl->local_light_accumulation_pipelines[
-                          scene.hdr ? 1 : 0]
-                    : mImpl->local_light_pipelines[
-                          scene.hdr ? 1 : 0]),
-                error) &&
-            encoder->setFragmentBuffer(0, *light_buffer, 0, error) &&
-            encoder->setFragmentBytes(
-                1, &constants, sizeof(constants), error) &&
             encoder->setFragmentTexture(0, albedo, error) &&
             encoder->setFragmentTexture(1, specular, error) &&
             encoder->setFragmentTexture(2, normal, error) &&
@@ -7617,9 +7614,62 @@ ALMetalWorldGBufferRenderer::renderLocalLightsInternal(
             encoder->setFragmentSampler(
                 0, mImpl->point_clamp_sampler.get(), error) &&
             encoder->setFragmentSampler(
-                1, mImpl->linear_clamp_sampler.get(), error) &&
-            encoder->draw(
-                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+                1, mImpl->linear_clamp_sampler.get(), error);
+
+        bool first_draw = true;
+        const auto draw_lights =
+            [&](std::size_t first, std::size_t count,
+                const ALMetalScissorRect& light_scissor)
+            {
+                if (!encoded)
+                {
+                    return;
+                }
+                constants.config[0] = static_cast<std::uint32_t>(count);
+                const bool additive = accumulation_target || !first_draw;
+                encoded =
+                    encoder->setScissor(light_scissor, error) &&
+                    encoder->setPipeline(
+                        *(additive
+                            ? mImpl->local_light_accumulation_pipelines[
+                                  scene.hdr ? 1 : 0]
+                            : mImpl->local_light_pipelines[
+                                  scene.hdr ? 1 : 0]),
+                        error) &&
+                    encoder->setFragmentBuffer(
+                        0, *light_buffer,
+                        first * sizeof(ALMetalWorldLocalLight), error) &&
+                    encoder->setFragmentBytes(
+                        1, &constants, sizeof(constants), error) &&
+                    encoder->draw(
+                        ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+                first_draw = false;
+            };
+
+        for (std::size_t index = 0;
+             index < scene.bounded_light_count; ++index)
+        {
+            const ALMetalWorldLocalLight& light = scene.lights[index];
+            const ALMetalScissorRect light_scissor{
+                light.screen_rect[0], light.screen_rect[1],
+                light.screen_rect[2], light.screen_rect[3],
+            };
+            draw_lights(index, 1, light_scissor);
+        }
+
+        // Exact original behavior batches only camera-inside lights and caps
+        // each full-screen shader variant at sixteen lights.
+        constexpr std::size_t max_fullscreen_light_batch = 16;
+        for (std::size_t first = scene.bounded_light_count;
+             first < scene.light_count;
+             first += max_fullscreen_light_batch)
+        {
+            draw_lights(
+                first,
+                std::min(max_fullscreen_light_batch,
+                         scene.light_count - first),
+                scissor);
+        }
     }
     const bool ended = encoder->end(error);
     if (!mImpl->finishCommandBuffer(

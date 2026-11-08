@@ -690,6 +690,7 @@ struct ALMetalWorldLocalLight
 {
     float4 position_radius;
     float4 color_falloff;
+    uint4 screen_rect;
 };
 
 struct ALMetalWorldLocalLightingConstants

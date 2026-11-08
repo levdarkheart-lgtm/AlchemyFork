@@ -1491,25 +1491,24 @@ bool metalWorldAlphaUsesDirectionalShadows(const LLPipeline& pipeline)
            pipeline.shaderInputs().mGlobal.mShadowDetail > 0;
 }
 
-void setMetalProjectorScreenRect(
-    ALMetalWorldProjectorLight& light, const LLMatrix4a& projection,
-    U32 width, U32 height)
+void setMetalLightScreenRect(
+    const F32* position_radius, U32* screen_rect,
+    const LLMatrix4a& projection, U32 width, U32 height)
 {
-    light.screen_rect[0] = 0;
-    light.screen_rect[1] = 0;
-    light.screen_rect[2] = width;
-    light.screen_rect[3] = height;
+    screen_rect[0] = 0;
+    screen_rect[1] = 0;
+    screen_rect[2] = width;
+    screen_rect[3] = height;
     if (width == 0 || height == 0)
     {
         return;
     }
 
-    // The original renderer rasterizes the projector's bounding cube when
-    // the camera is outside and uses a full-screen triangle only when the
-    // camera is inside. Metal keeps the existing full-screen fragment math,
-    // but constrains it to the conservative projection of that same volume.
-    // If the volume crosses the eye plane, retain full-screen behavior.
-    const F32 radius = light.position_radius[3];
+    // The original renderer rasterizes a light's bounding cube when the
+    // camera is outside. Metal keeps the existing fragment math, but
+    // constrains it to the conservative projection of that same volume. If
+    // the volume crosses the eye plane, retain full-screen behavior.
+    const F32 radius = position_radius[3];
     F32 minimum_x = std::numeric_limits<F32>::infinity();
     F32 minimum_y = std::numeric_limits<F32>::infinity();
     F32 maximum_x = -std::numeric_limits<F32>::infinity();
@@ -1517,9 +1516,9 @@ void setMetalProjectorScreenRect(
     for (U32 corner = 0; corner < 8; ++corner)
     {
         LLVector4a eye_corner(
-            light.position_radius[0] + ((corner & 1u) ? radius : -radius),
-            light.position_radius[1] + ((corner & 2u) ? radius : -radius),
-            light.position_radius[2] + ((corner & 4u) ? radius : -radius),
+            position_radius[0] + ((corner & 1u) ? radius : -radius),
+            position_radius[1] + ((corner & 2u) ? radius : -radius),
+            position_radius[2] + ((corner & 4u) ? radius : -radius),
             1.f);
         LLVector4a clip;
         projection.transform4(eye_corner, clip);
@@ -1555,10 +1554,10 @@ void setMetalProjectorScreenRect(
     {
         return;
     }
-    light.screen_rect[0] = static_cast<U32>(left);
-    light.screen_rect[1] = static_cast<U32>(top);
-    light.screen_rect[2] = static_cast<U32>(right - left);
-    light.screen_rect[3] = static_cast<U32>(bottom - top);
+    screen_rect[0] = static_cast<U32>(left);
+    screen_rect[1] = static_cast<U32>(top);
+    screen_rect[2] = static_cast<U32>(right - left);
+    screen_rect[3] = static_cast<U32>(bottom - top);
 }
 }
 
@@ -17265,10 +17264,16 @@ void LLPipeline::renderMetalWorldLocalLights(
         return;
     }
 
-    std::vector<ALMetalWorldLocalLight> lights;
-    lights.reserve(std::min<std::size_t>(
+    std::vector<ALMetalWorldLocalLight> bounded_lights;
+    std::vector<ALMetalWorldLocalLight> fullscreen_lights;
+    const std::size_t light_capacity = std::min<std::size_t>(
         static_cast<std::size_t>(std::max(local_light_count, 0)),
-        mNearbyLights.size()));
+        mNearbyLights.size());
+    bounded_lights.reserve(light_capacity);
+    fullscreen_lights.reserve(light_capacity);
+    const LLVector3& camera_origin = camera.getOrigin();
+    const ALMetalRenderTargetDescriptor& target_descriptor =
+        capture.target->descriptor();
     S32 count = 0;
     for (light_set_t::iterator iter = mNearbyLights.begin();
          iter != mNearbyLights.end(); ++iter)
@@ -17318,13 +17323,38 @@ void LLPipeline::renderMetalWorldLocalLights(
         light.color_falloff[2] = color.mV[2];
         light.color_falloff[3] =
             volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF);
-        lights.push_back(light);
+        const F32* world_center = center.getF32ptr();
+        const bool camera_outside =
+            camera_origin.mV[0] > world_center[0] + radius + 0.2f ||
+            camera_origin.mV[0] < world_center[0] - radius - 0.2f ||
+            camera_origin.mV[1] > world_center[1] + radius + 0.2f ||
+            camera_origin.mV[1] < world_center[1] - radius - 0.2f ||
+            camera_origin.mV[2] > world_center[2] + radius + 0.2f ||
+            camera_origin.mV[2] < world_center[2] - radius - 0.2f;
+        if (camera_outside)
+        {
+            setMetalLightScreenRect(
+                light.position_radius, light.screen_rect,
+                camera.getProjection(), target_descriptor.width,
+                target_descriptor.height);
+            bounded_lights.push_back(light);
+        }
+        else
+        {
+            fullscreen_lights.push_back(light);
+        }
     }
+
+    std::vector<ALMetalWorldLocalLight> lights = std::move(bounded_lights);
+    const std::size_t bounded_light_count = lights.size();
+    lights.insert(
+        lights.end(), fullscreen_lights.begin(), fullscreen_lights.end());
 
     ALMetalWorldLocalLightingScene scene;
     scene.gbuffer = capture.target.get();
     scene.lights = lights.empty() ? nullptr : lights.data();
     scene.light_count = lights.size();
+    scene.bounded_light_count = bounded_light_count;
     LLMatrix4a inverse_projection;
     inverse_projection.setInverse(camera.getProjection());
     std::memcpy(scene.inverse_projection,
@@ -17358,7 +17388,9 @@ void LLPipeline::renderMetalWorldLocalLights(
     {
         LL_DEBUGS("Metal")
             << "Native world local-point-light owner encoded "
-            << lights.size() << " ordinary lights at "
+            << bounded_light_count << " bounded and "
+            << lights.size() - bounded_light_count
+            << " camera-inside ordinary lights at "
             << capture.base_light_target->descriptor().width << "x"
             << capture.base_light_target->descriptor().height
             << "; accumulated in place after native base lighting"
@@ -17561,8 +17593,9 @@ void LLPipeline::renderMetalWorldProjectorLights(
                 break;
             }
         }
-        setMetalProjectorScreenRect(
-            light, camera.getProjection(), capture.target->descriptor().width,
+        setMetalLightScreenRect(
+            light.position_radius, light.screen_rect,
+            camera.getProjection(), capture.target->descriptor().width,
             capture.target->descriptor().height);
         lights.push_back(light);
     }
