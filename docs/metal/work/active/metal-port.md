@@ -1,7 +1,7 @@
 # Active execution plan — full native Alchemy Metal conversion
 
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a demo.
-**Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **History:** [archive index](../../state/archive/INDEX.md).
+**Evidence contract:** `docs/metal/VALIDATION.md` and `docs/metal/PERFORMANCE.md`. **Continuation:** [next-session handover](../../state/NEXT_SESSION.md). **History:** [archive index](../../state/archive/INDEX.md).
 **Renderer checkpoint:** Commit `e90ccdf18f` (`Fix native vertex buffer upload generations`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
 This ledger contains current decisions and executable work. Prior checkpoint detail belongs in the indexed archive.
 

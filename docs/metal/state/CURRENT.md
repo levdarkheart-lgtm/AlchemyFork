@@ -3,7 +3,7 @@
 **Observed:** 2026-11-08 on the physical M1 Max acceptance host.
 **Branch:** `codex/apple-silicon-metal`
 **Renderer code checkpoint:** `e90ccdf18f` (`Fix native vertex buffer upload generations`); benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
-**Historical evidence:** [archive index](archive/INDEX.md)
+**Continuation:** [next-session handover](NEXT_SESSION.md). **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
 
