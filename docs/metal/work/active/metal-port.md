@@ -18,7 +18,7 @@ This ledger contains current decisions and executable work. Prior checkpoint det
 | M-007 | World scene and material correctness | doing | Core world/material/terrain/avatar passes are native. `18aedd2ecb` restores main-owned projector maps and per-face single-tap sampling, narrows shadow bindings/constants and preserves directional cascades; attended light/shadow/mirror smoke remains open. |
 | M-008 | Advanced views/effects and compute | doing | Native mirror/probe lifecycle and an Ultra-plus-mirrors transition pass, but the matched pair shows a blue-gray Metal versus green-terrain OpenGL reflected background; trace content/clipping before any fix. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Essential no-context/no-link viewer precedes optional-path cleanup; strict, visual and stability gates remain open. |
-| M-010 | M1 Max profiling and optimization | doing | Hero CPU repairs are committed at `18aedd2ecb`; source-exact `68547` builds/signs/verifies 349/349 ARM64 slices. [Source/capture mapping and full GPU proof](../../state/archive/CURRENT-hero-cpu-encoding-checkpoint-2026-11-08.md); attended FPS/continuity proof remains open. |
+| M-010 | M1 Max profiling and optimization | doing | Owner-attended maximized `68547` records 8.2 versus 7.1 median log FPS, 6.790 versus 5.810 traced presents/s (+16.9%) and hero CPU encoding 31.42 versus 41.22 ms/present. [Runtime comparison and remaining CPU costs](../../state/archive/CURRENT-68547-hero-cpu-runtime-2026-11-08.md); formal 300-frame gate, historical best and 24 FPS remain open. No follow-up fix authorized by this profiling run. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | Startup, windows, utilities, workers, linkage, completion, resources, targets, UI replay and retained glow/SMAA require no GL. Render tails remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation verified; comparison driving is owner-attended only. |
 | M-013 | RLVa strict parity | deferred | Owner-designated nonessential ordering; minimum final Metal/no-GL behavior remains required. |
@@ -169,7 +169,7 @@ Launch/login/capture only at the owner's explicit request and control; add bound
 
 ## Immediate executable action
 
-1. Measure source-exact `18aedd2ecb` versus fixed-camera `68543` with actual per-view draws/bindings, frame-data reuse, shadow/mirror continuity and the consecutive 300-frame gate after stable residency.
+1. Preserve the `68547` runtime checkpoint and await owner instruction before follow-up repairs. Proposed targets are compact draw records, generation-based immutable palette/material reuse and remaining constant packing/allocation; final camera/window setup must precede the 300-frame gate.
 2. Add bounded issued/ready/culled query telemetry and run a dense-scene no-popping gate; live enablement is verified but effectiveness is not quantified.
 3. Require launch-gated Ultra manifests and captured camera transforms before accepting screenshots or the next source-exact performance pair.
 4. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.

@@ -55,8 +55,18 @@ work.
   trace recorded 5.810 presents/s. No CSV was created because the collector
   was compiled out of the download/Release build; the current change fixes
   that guard while preserving explicit opt-in and exact-native sampling.
-  `68547` has not been launched or measured. Wait for the owner's attended
-  request before launch/login/capture or any performance claim.
+  `68547` was subsequently launched at the owner's request, logged in through
+  native UI, set to Midday/`Preset123` and maximized to `3456x2168`. The clean
+  30.634-second trace records 208 presents (6.790/s versus `68543` at 5.810/s),
+  hero CPU encoding 31.42 versus 41.22 ms/present and Nominal thermals. Twenty
+  clean ten-second log samples have median 8.2 versus the published baseline's
+  7.1 FPS (+15.5%); this remains below historical `68532` at about 9.9 FPS. All 21
+  live Ultra controls match. The earlier small-window CSV/captures are excluded,
+  so the formal 300-frame gate remains open. Record construction and arena
+  publication still sample 7.66%/9.60% of active main-thread time. See
+  `archive/CURRENT-68547-hero-cpu-runtime-2026-11-08.md` for evidence, resize-pool
+  memory confound and limits. No follow-up renderer change was made; await the
+  owner's next implementation instruction.
 - Both optimized Release and assertion-enabled RelWithDebInfo Metal suites
   pass 53,125 assertions/63 cases with API/GPU validation. All test renderer
   creation now exercises the production frame arena. Detailed source mapping,
@@ -622,10 +632,11 @@ explicit owner authorization.
 
 ## Immediate next boundaries
 
-1. Run an owner-attended, fixed-camera `68547` comparison against `68543`
-   after stable residency. Verify exact source/path, unchanged Ultra settings,
-   six hero faces, directional/projector continuity and frame-data reuse;
-   collect the consecutive 300-frame CSV and separate CPU/GPU traces.
+1. Preserve the attended `68547` bounded comparison and await owner instruction
+   before follow-up code changes. Compact common draw records, generation-based
+   immutable frame-data reuse and less per-draw packing/allocation are measured
+   next candidates. Any new comparison must complete camera/window setup before
+   its consecutive 300-frame CSV; do not reuse the excluded small-window data.
 2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
 3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene
