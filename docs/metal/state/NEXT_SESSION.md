@@ -30,31 +30,38 @@ work.
 
 - Repository: `/Users/dekstroza/Programming/AI/Secondlife/Alchemy`.
 - Branch: `codex/apple-silicon-metal`.
-- Current code checkpoint: `177c443cfd` (`Restore binding cache on measured
-  renderer`). It is measured renderer `8f4d5654e5` plus only the exact
-  `f8af790f32` encoder-local texture/sampler binding cache; `7cd1993d8e`
-  texture-pressure separation and `1682010004` projector sharing remain
-  reverted, while all commits/evidence remain in history.
-- Latest renderer implementation commit: `177c443cfd`.
+- Current code checkpoint: `18aedd2ecb` (`Reduce repeated Metal hero-view
+  encoding work`). It adds 1/8/32-slot covered-shadow shader variants,
+  80-byte opaque object-shadow constants, in-place capture, wider native
+  state/buffer/offset caches and shared completion-safe per-frame data.
+  Projector owner sharing/filtering is restored narrowly; `7cd1993d8e`
+  texture-pressure separation remains reverted. Ultra still updates six faces.
+- Latest renderer implementation commit: `18aedd2ecb`.
 - Implementation began from clean synchronized commit `7a76893312`; recheck
   current branch/worktree state and never discard unexpected later edits.
 - Physical host: MacBookPro18,2, M1 Max, 64 GiB unified memory, macOS 26.5.2,
   Xcode 26.6, Metal Apple family 7. `tools/metal/doctor.sh` exits 0.
-- Current source-exact candidate is Xcode Release `26.4.0.68543` at
+- Current source-exact candidate is Xcode Release `26.4.0.68547` at
   `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-  It was built from binding-cache commit `177c443cfd`, passes deep strict signing
-  and 349/349 ARM64 slice inspection, and has executable SHA-256
-  `dfc5b4e92e36ee23df8da327232f69b42973b492bd6f119ef85e8d131298f82d`.
+  It was built from renderer commit `18aedd2ecb`, passes deep strict signing
+  and 349/349 ARM64 slice inspection,
+  and has executable SHA-256
+  `6f942194c757fb8a3335970ed1f527b5cf815d4d177d71e1d5ed5ee270c62609`.
 - Packaged `almetal_builtin.metallib` SHA-256:
-  `4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
-- Owner-attended PID `86187` is running source-exact `68543` under the pinned
-  Ultra profile from run directory
+  `5bd02961a77fdfcef9d28410e9f92fc86d1de08197aec113660e0cd0ccd779d1`.
+- The prior owner-attended `68543` run used the pinned Ultra profile from
   `artifacts/metal/qa-runs/candidate-68543-root-cause-instrumented-20261108-01`.
-  The process environment arms exact-native evidence at
-  `artifacts/metal/private-68543-root-cause-20261108-01.csv` with both 120-frame
-  and 30-second warm-up gates followed by 300 frames. It is not yet live-
-  verified; wait for the owner to finish setup before attaching Metal System
-  Trace and Time Profiler or claiming settings/performance.
+  Its 21-control live gate passed; settled log median was 7.1 FPS and the Metal
+  trace recorded 5.810 presents/s. No CSV was created because the collector
+  was compiled out of the download/Release build; the current change fixes
+  that guard while preserving explicit opt-in and exact-native sampling.
+  `68547` has not been launched or measured. Wait for the owner's attended
+  request before launch/login/capture or any performance claim.
+- Both optimized Release and assertion-enabled RelWithDebInfo Metal suites
+  pass 53,125 assertions/63 cases with API/GPU validation. All test renderer
+  creation now exercises the production frame arena. Detailed source mapping,
+  corrected attribution and verification are in
+  `docs/metal/state/archive/CURRENT-hero-cpu-encoding-checkpoint-2026-11-08.md`.
 - The published alpha-2 remains `26.4.0.68512-alpha2`; current source is newer.
   Do not publish another tag/release without explicit authorization.
 
@@ -615,10 +622,10 @@ explicit owner authorization.
 
 ## Immediate next boundaries
 
-1. Against the `68532`/`68537`/settled-`68539` traces, quantify issued/skipped
-   texture/sampler bindings and palette/constant allocations per main, hero and
-   ordinary-probe view; attribute the remaining per-present hero/shadow CPU
-   expansion before selecting a bounded repair.
+1. Run an owner-attended, fixed-camera `68547` comparison against `68543`
+   after stable residency. Verify exact source/path, unchanged Ultra settings,
+   six hero faces, directional/projector continuity and frame-data reuse;
+   collect the consecutive 300-frame CSV and separate CPU/GPU traces.
 2. Trace exact-original fully resident opaque post-deferred content, state and
    ordering before attempting that optimization.
 3. Add bounded native-query issued/ready/culled telemetry and run a dense-scene

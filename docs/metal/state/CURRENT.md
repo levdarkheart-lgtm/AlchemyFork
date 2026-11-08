@@ -2,14 +2,14 @@
 
 **Observed:** 2026-11-08 on the physical M1 Max acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `177c443cfd` (`Restore binding cache on measured renderer`), measured renderer `8f4d5654e5` plus only the encoder-local binding cache; benchmark evidence gate `1e962c84e2`; alpha-2 remains at `26.4.0.68512-alpha2`.
+**Renderer code checkpoint:** `18aedd2ecb` (`Reduce repeated Metal hero-view encoding work`); narrow shadow shaders/constants, in-place capture, wider encoder caches, shared completion-safe frame data and main-projector reuse. Alpha-2 remains at `26.4.0.68512-alpha2`.
 **Continuation:** [next-session handover](NEXT_SESSION.md). **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
 
 The owner-directed essential-first OpenGL cutover makes startup, normal UI/text, world/avatar/material rendering, streaming, presentation and readback usable without GL before Debug/Develop/RLVa-only paths. This changes order, not scope: required features must be replaced rather than deleted.
 
-Metal is the sole post-startup presenter. Production geometry, textures/fonts and async uploads are Metal-authoritative with no parallel GL names; Snapshot has no GL scratch/reconcile path. Direct Metal owners cover normal world, material, avatar, shadow, sky, water, atmosphere, selection and converted effects. Visual questions remain queued without blocking proven cutovers.
+Metal is the sole post-startup presenter. Production geometry, textures/fonts and async uploads are Metal-authoritative with no parallel GL names; Snapshot has no GL scratch/reconcile path. Direct Metal owners cover normal world, material, avatar, shadow, sky, water, atmosphere, selection and converted effects. The owner-authorized CPU repair at `18aedd2ecb` preserves six Ultra hero faces and their directional maps, restores main projector sharing, narrows covered-shadow bindings to 1/8/32 slots, uses 80-byte opaque constants, constructs captures in place, and shares immutable material/palette uploads with completion-safe slab reuse. Wider native state/buffer/offset caches preserve byte-slot invalidation. Release benchmark collection is now explicitly opt-in rather than compiled out. Optimized Release and assertion-enabled RelWithDebInfo full Metal suites each pass 53,125 assertions/63 cases under API/GPU validation. Source-exact Release `68547` builds/signs and verifies 349/349 ARM64 slices; executable/metallib SHA-256 values are `6f942194c757fb8a3335970ed1f527b5cf815d4d177d71e1d5ed5ee270c62609`/`5bd02961a77fdfcef9d28410e9f92fc86d1de08197aec113660e0cd0ccd779d1`. [Detailed mapping and evidence](archive/CURRENT-hero-cpu-encoding-checkpoint-2026-11-08.md). No new viewer launch, FPS or visual gain is claimed.
 
 The latest essential sequence is:
 
@@ -134,13 +134,13 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended Mid login/world load now passes, while broader lifecycle and stability validation remain. |
-| M-004 resources/readback | doing | Native vertex/index uploads preserve independent dirty state and completion-retired generations. Metal texture pressure now charges tracked texture bytes to the bounded texture target and total device resources to the full recommendation; post-fix runtime validation and broader cache trimming remain. |
+| M-004 resources/readback | doing | Native geometry uses completion-retired generations; shared frame-data pages wait for every referencing command before reuse. The owner-directed texture-pressure rollback remains in place; separate accounting and broader cache trimming are deferred. |
 | M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
 | M-006 UI/media | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only. Original-compatible empty clips no-op before Metal encoding; Conversations visibly opens/closes/reopens in attended `68497` evidence. Broader UI parity remains open. |
 | M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners. Ordinary point lights preserve the original bounded split; direct shadow slices avoid retention copies; cube views now share main projector maps and use original single-tap filtering. Owner-attended light-boundary/shadow smoke and broader parity remain open. |
 | M-008 effects/advanced views | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse. Lifecycle and an Ultra-plus-mirrors transition pass, but the matched pair shows a blue-gray Metal versus green-terrain OpenGL reflected background; trace content/clipping before any fix. |
 | M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
-| M-010 measured performance | doing | Same-scene/camera `68539` recovers 15.8% traced presents/s over `68537` with 23.4% lower sampled texture-binding time, but remains 30.4% below `68532`; remaining hero/shadow CPU encoding and the formal paired gate are open. |
+| M-010 measured performance | doing | `18aedd2ecb` addresses captured hero CPU binding/copy work and passes full GPU proof in Release/RelWithDebInfo; source-exact `68547` awaits attended fixed-camera timing, continuity and the formal paired gate. |
 | M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, resources, targets, UI replay and retained glow/SMAA require no GL; render tails remain. |
 | M-012 Computer Use bridge | complete | Semantic bridge verified; visual driving is owner-attended. |
 | M-013 RLVa strict parity | deferred | Nonessential ordering only; final no-GL behavior is still required. |
@@ -153,7 +153,7 @@ Viewer launches/login/visual changes occur only at the owner's explicit request 
 
 ## Exact next actions
 
-1. Attribute the remaining per-present hero/shadow CPU expansion against `68532`: quantify issued/skipped bindings and palette/constant allocations before selecting the next bounded repair.
+1. Measure source-exact `18aedd2ecb` against the fixed-camera `68543` baseline after residency stabilizes; capture actual per-view draws/bindings and frame-data reuse. Confirm shadow/mirror continuity and the consecutive 300-frame gate before claiming a gain.
 2. Add bounded native-query issued/ready/culled telemetry and run a dense-scene no-popping gate; live `UseOcclusion=1` is verified but cull effectiveness is not yet quantified.
 3. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.
 4. Run the camera-pinned quality-equivalent 300-frame Metal/OpenGL protocol with the elapsed-plus-frame warm-up gate; profile fully resident work rather than startup FPS.
