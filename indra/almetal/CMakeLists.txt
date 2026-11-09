@@ -160,6 +160,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_hero_overwrite_test.mm
             tests/almetal_shadow_indirect_test.mm
             tests/almetal_shadow_capture_test.mm
+            tests/almetal_shadow_gather_test.mm
             tests/almetal_world_diagnostics_test.cpp
             tests/almetal_gbuffer_constants_test.mm
             tests/almetal_probe_workload_test.mm
@@ -177,6 +178,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_hero_overwrite_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_indirect_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_shadow_gather_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_gbuffer_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_probe_workload_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_frame_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

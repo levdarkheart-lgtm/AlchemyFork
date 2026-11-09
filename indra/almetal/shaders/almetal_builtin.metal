@@ -7434,15 +7434,15 @@ static float4 almetal_shadow_gather_depth(
 {
     const int2 lower_left = int2(floor(
         at * float2(resolution) - 0.5));
-    return float4(
-        almetal_shadow_depth(
-            shadow_maps, cascade, lower_left + int2(0, 1), resolution),
-        almetal_shadow_depth(
-            shadow_maps, cascade, lower_left + int2(1, 1), resolution),
-        almetal_shadow_depth(
-            shadow_maps, cascade, lower_left + int2(1, 0), resolution),
-        almetal_shadow_depth(
-            shadow_maps, cascade, lower_left, resolution));
+    // Keep the original integer footprint, then gather at its block center
+    // rather than selecting a footprint again at a half-texel boundary.
+    // Metal's xyzw order is (0,1), (1,1), (1,0), (0,0), as shadowUtil expects.
+    const float2 block_center =
+        (float2(lower_left) + 1.0) / float2(resolution);
+    constexpr sampler raw_depth_sampler(
+        coord::normalized, address::clamp_to_edge, filter::nearest);
+    return shadow_maps.gather(
+        raw_depth_sampler, block_center, cascade, int2(0), component::x);
 }
 
 static float4 almetal_shadow_gather_references(
