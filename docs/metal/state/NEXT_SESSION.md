@@ -1,114 +1,125 @@
-# Next session — active20FPS goal, no substantial FPS gain yet
+# Next session — active20FPS goal, gather viewer RUNNING in warmup
 
-Read AGENTS/CURRENT completely, active ledger and relevant skills. Existing goal
-is ACTIVE/unbudgeted; do not recreate or mark achieved. User asked about11hours
-without progress. Answer with measured FPS and retained fixes; do not substitute
-test/profiling volume. Autonomous quit/build/login/measure authorized at current
-private location/numericPreset123 only. No travel. Prefer Mac shortcuts. Preserve
-Ultra3456×2168/Midday, all6hero1024faces/two cascades, PCSS/casters/quality.
-No releases/private uploads. Root owns shared source/docs/runtime.
+Read AGENTS/CURRENT completely, active ledger and relevant skills. Existing
+unbudgeted goal ACTIVE/unmet; do not recreate/complete. User questioned11hours
+withoutFPSgain. Reportactualresults, not test/profilevolume. Autonomousquit/
+build/login/measure authorized atfixedprivateplace/numericPreset123 only, NO
+travel. PreferMacshortcuts. Preserve Ultra3456×2168/Midday/all6hero1024faces/
+2cascades/PCSS/clamp/casters/features. No privateuploads/releases.
 
-## Source/app and measured baseline
+## Current source and actual live handles
 
-Branch codex/apple-silicon-metal, renderer checkpoint
-74ee5d48d97368d92e83ae40ba580516cef1e876. API-only fragment bool specialization
-support committed; NO production shader/world consumer yet. Full native GPU
-suites391587assertions/90cases EACH Release/RWDI pass with API+GPU validation.
-Initial focused134optional-default bug fixed/reviewed; focused425/1 passes.
-Both Ninja GPU binaries are CURRENT, not stale. Doctor/configure/build/349ARM64/
-deep-strict signature all0. Canonical68574 built but UNLAUNCHED/UNMEASURED:
-build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app.
-Executablec19ea644343a61a4219771dd7beec351c59fc12903da511a21092bf75c7f5bbd;
-metallib8bbfe4c6f3ce45eabd4fb58049cec413178213da480b23020447f01ef864b943.
-Identity artifacts/metal/private-74ee5d-build-identity-20261109.json.
+Branchcodex/apple-silicon-metal, HEADrenderer30715f3cde5d6b29e2f0fe974e5d0ef72a7db94f.
+Minimalgatherhelper+new184lineproductiontest+CMake COMMITTED. No sourceWIP;
+rootdocsWIPneedfinalize/harness/commit. Rootownssharedsource/docs/runtime.
 
-Last MEASURED68572/source46d622 preserved at
-/private/tmp/alchemy-metal-68572-quality-baseline.app, exe
-84e49c91677697abf7527c93b21567950c5d525111b85ed3f3b0d189a1bbd155, same shader8bb.
-300consecutive ready frames9637–9936, all256complete/faded/current,43controls,
-main98, camera sampled delta0:9.382155FPS,mean106.585321,p50105.948188,
-p95110.883167ms; desired bias1 ALL300finite.20FPS needs about53%lower mean time.
-No substantial isolated FPS improvement or hardware infeasibility proved.
-68566was8.864746/bias4; cannot attribute sequential quality-different FPS solely
-to memory repair. Original67611/exact1ebrenderer+observer6.095519FPS,bias1,
-main104; broad pixel/residency/geometry parity remains open. No scene change
-assumed. Native occlusion consumes120828spatial skip EVENTS/299intervals,
-not uniquegroups/savedGPUtime; do not re-audit missing queries.
+Current68577/PID58207 RUNNING:30715fplanINSTALLED NOTRESTORED. Previous38935exactbundleverified,
+SIGTERM→Goodbye/PIDabsence0, then0fa4e3plan restored0. No CUAphase active.
+FullReleaseGPUtest28704 ACTUALexit0:426213assertions/91cases. Focusedshadowgather
+34626/1 API+GPU0. FullRWDI71370 ACTUAL0:426213/91; verify_app9881 ACTUAL0:349ARM64. No GPUtests/profile/build live.
+Xcodeconfigure36644/build54580 ACTUALexit0; deepstrictsignature0. Pollthese exact
+handlesbeforeclaimingcomplete; no restart on timeout. SandboxfirstNinja32518
+failedmodulecachewrite; hostretry72697actual0. RWDIbuild45939actual0.
 
-Keep3969405image/global scope and46d622resource-aware capacity repairs:
-C=max(R−max(A−I,0),0), rawlogicalI, then original divisor/headroom ONCE.
-Manual/global/system/controller safeguards unchanged; nonimage reserve is an
-estimate including padding/retired/unpublished resources. Tests159/21pressure
-and29/3capability EACH config pass. During formal68572 image7838MiB versus
-45994–46000target, device9730–9737 versus59392recommendation; all93syslow0.
-Earlier scope-only68571 showed18samples bias1→4 against2969.6smalltarget,
-although global memory ample.68571 ended early, no formalFPS. Budget repair
-restores normal bias/detail, not proof of exact original pixels.
+Canonical68577 appbuild-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app,
+RUNNING/UNMEASURED. Exe712bee665eefd7b6ca0255460070ba9fd023e0d4b3774310279bab27902d0bba,
+metallibffd9e1d178988b0719c516cd1e87444907d59d063630d7fd9ac2d17cafaa9347.
+Identityartifacts/metal/private-30715f-build-identity-20261109.json.
+QAconfigartifacts/metal/private-ultra-30715f-shadow-gather-qa.json;
+launcher/private/tmp/alchemy-metal-30715f-launch-20261109.py dryrun0.
+30715fstartupplanINSTALLED, NOTrestored. Plan
+artifacts/metal/private-30715f-startup-setup-plan-20261109.json, helper
+/private/tmp/alchemy-metal-session-state-20261109.py install --plan ABS --sourceFULLSHA.
+Launch succeeded afteractualRWDI/verify0/quiet; fullscreenCtrlSuperF BEFOREloginReturn;
+freshloggedin43controls/location/binary observeverifygateALL0. CUAphasecomplete
+summaryalready sent. Launcher usesexactconfig/hash/private
+location,43controls, readiness256/stable120, warmup120frames/300sec then300frames.
+ExpectedCSVartifacts/metal/private-30715f-shadow-gather-20261109-01.csv andsibling
+.provenance.jsonl, QAruncandidate-30715f-shadow-gather-20261109-01.
 
-## Private shader experiments — no production admission
+## Latest completed68576 — REGRESSION, neverclaimwin
 
-Full evidence: archive/CURRENT-base-specialization-experiments-2026-11-09.md.
-PrivateCM5KIW classic/SSR combined source108bcc025f1508c3c6860f5ccdfac65afafde8ed50db8792c73573f89c52736a
-preserves full production5dea prefix. Diagnostic269/324byte-exact,55fail incl
-15nativeHDRcases onehalfunit/onechannel each. No NaNInf/signedzero/coverage
-class changes; SSR5/5controls bothpass. Exploratory timing modern2.68–3.49%
-lower near control blockvariation−3.39..+3.57%; classic17.91–19.76%lower7/7.
-Current profile MODERN. No tolerance accepted/downstream parity; NOTadmitted.
-Do not redo classic work or claim its fixture result as current FPS.
+Source0fa4e331333f99401955bc0722929fafb6bdff22 setsnativefacehas_ssao=false
+sameflagmap/base; mainSSAOremainsglobaltrue. Exact1eb11716sunProbeusesclass2
+sunLightFgreen1,11752skipscubeblur; twoindependentsourceauditsapproved. Removed
+extra8tapSSAO+2blursperhero/ordinaryface. No shader/caster/cadencechange.
+Doctor/config/build/349ARM64/signature0, actualpipelineO3/NDEBUG, GPUfocused1992/1.
+Fullsourceevidencearchive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md.
 
-Private /private/tmp/alchemy-metal-base-material-split-20261109.MxAxT0:
-shader2d66805daa30df4b91f4eb65f50b36fbd6d6c81f8b2e919278f5a40968baeaa3,
-host5b2aefb08505bb8aa6c43544ab1ad7bdd558d4ca360b74d867493aa1bd52772c.
-Two independent source reviews approved before compile/GPU. Named base only
-specializes PBR bool; classic/SSR/sharedmath original. Actual normal-alpha
-classifier handles mixed impostor/packednormalpixels. Sameencoder stencil4reset
-preserveswaterbits1/2, classifier then2heavy draws. Originalbaseline1draw;
-SAMEactualPSOcontrol, all extra candidate work timed. RealD32S8 sameattachment
-sampled; init/readbackoutside timing; no stencil fragment export assumed.
+App68576preserved/private/tmp/alchemy-metal-68576-probe-ssao-measured.app (ditto88732
+actual0). Exe75a0c59d7b862ba3d4668bd01cf9f9fe4ecc4fe257746386589589a6bfbb26e5,
+shader8bbfe4c6f3ce45eabd4fb58049cec413178213da480b23020447f01ef864b943.
+Fullready300frames7623–7922:mean148.613868,p50149.572063,p95156.249375ms,
+6.728847FPS. All exactnative/noGL/bias1finite/256ready/stable120,43controls,
+sun/environment/restorationmatch, sampledmaincameradelta0, betweenruns5.722e−6m
+translation. Main97vsbaseline98; drawmean53827.41vs55420.33(−2.874%). Pressure
+image7629MiB,target45996–46006,device9514–9526,R59392,syslow0. CPUcompileprivate
+gather endedearlywarmup10+minbeforeformal; noheavy/GPU/profile/buildoverlapformal.
+Officialperf_compare enforce+provenanceexit1, targetfalse, failurepreserved.
+CSVprivate-0fa4e3-probe-ssao-20261109-01.csv SHA5678a0b3e307a11a0d4457dcbe3a0aed096ba8e5e5d3fcef31a905d64a1348a7,
+siblingprovenanceSHA3c12eeca04bc1b765effe954ffbb138b07c9c8814f1afc97d4c42dad2abb9afe.
+Independentreport/private/tmp/alchemy-metal-68576-probe-ssao-comparison-20261109/
+formal-comparison-68572-vs-68576.json SHA44df65c9b2d5090dcf3a6faaaa6fe457a1d457fcc69c7be2938fd64cf8528c2d.
 
-Compile/link0; API+GPU correctness78056 ACTUALexit0 completionONLY.
-97fixtures×4:319pass69fail strictbytes. RGBA16F82pass15fail, each1changedchannel/
-1halfULP,maxabs.0001220703125. RGBA32F43pass54fail,max3ULP. RGBA8/RG11B10 all97
-exact. Stencil lowerbit/class/depth preservation errors0,coverage0,nonfinite/
-signedzeroclass0; all5SSRpositivecontrols bothpass. Summary correctness-summary-01.json
-SHA1ef2ee308ad11ae79628b49a3085ac2a3daf6f8955b924ae444a18614e06f0f8.
+Afterformal, vieweronly15sMetalTrace80367 ACTUAL0; exporter/parsers0, allquiet.
+/private/tmp/alchemy-metal-68576-regression-attribution-20261109. Actualtrace
+15.738528sec/96presents; viewerActiveUNION143.135660ms/p,87.3082%wall,thermalNominal,
+9.26–9.31GiB. Maininitialopaquegroup44.843684ms/p (CPUencodeonly.19908),base17.633,
+haze17.090,heroabove-water20.168 INCLUSIVE/OVERLAPPING, neveradd/callshadercosts.
+ZEROhero/ordinarySSAOblurs, main97eachretained confirmsfix. Initialsourcecensus103
+(44fullbright/2shiny/3avataralpha/54glow)matcheshistorical68566;68572had109with6extra
+glow. Snapshotsbeforetrace, physicaldraw/primitivecountunavailable. No68572GPUtrace;
+old68566bias4mainopaque4.946 uncontrolled. Exactcostlydraw/resourcecauseunresolved.
 
-Separately authorized EXPLORATORY timing session65843 ACTUALexit0,8modern/control
-cases1024²RGBA16F, commoncalibrated8–20msCB,7counterbalancedblocks14samplesvariant,
-all extra4draws included, validation/capture/HUDunset,thermal0. Log
-MxAxT0/timing-exploratory-1024x1024-RGBA16F-01.log completed. Timing summary f71a6f88967537b1f934b452a3367e9b5e4f557bccc601fdc11fbd414657f518:
-uniform5.9–12.5%faster all7blocks, independentmixed6.14%faster all7, BUT
-checkerboardmixed2.66%slower1/7faster andRGB10A2mixed4.65%slower0/7faster.
-SAMEPSOcontrol−.663%, blockrange−5.35..+3.32. NOTadmitted generally; broad
-mixed-material regressions plus unapproved precision remain. No epsilon or
-production approval. All GPU/processes finished now.
+## Gather proof and limits — implemented, not yet viewerFPS
 
-## Runtime state and next executable boundary
+Private/private/tmp/alchemy-metal-shadow-gather-20261109.u34k2G. Full5dea prefix
+untouched+namedhelperchainchangesonly4clampedreads→native2×2gatheratSAMEinteger
+blockcenter. AppleMSL§6.13order(-,+),(+,+),(+,-),(-,-)matchesoriginal. PCSS8/12
+counts/refs/reverse/cascades/mathunchanged. No4×bandwidthclaim.
+Initialcompile0/API+GPU72157actual0:15680rawqueries(62720components)exact and96
+fullmaps48RG32F+48RG8byteexact, positivecontrols. Extendedhost62ad54fa... reviewed,
+compile0/API+GPUactual0:23480queries production1k²/2k²/nonPOT/16kedges, robust
+XYZhashfinite+IEEE±zero/subnormal/Inf/NaNpatterns exact/classemismatch0/thermal0.
+No inputpayloadpreservationclaim. CurrentproductionR32only, D32futuredeferred.
 
-ALLVIEWERS CLOSED. All userstate startup plans RESTORED. Lastviewer96622 Goodbye
-12:27:46UTC; restore12:28:03UTC. No CUA currently active. Screenshot attempt after
-fresh68572QA gate timedout15s; no image/pixelclaim, CUAcompletion alreadysent.
-Statehelper /private/tmp/alchemy-metal-session-state-20261109.py; newplan/hash/
-CSV/runpaths for any future launch. Do not reuse old hardcoded launchers blindly.
-After compaction use cua.rewriteDocumentation before CUA. FullscreenCtrlSuperF
-beforelogin thenReturn savedlogin; fresh43control/Preset123/Midday/readygate.
-Collect>=300resident frames, no validation/profile/build overlap, quit exactPID
-and confirmGoodbye/PIDabsence before state restore. Authorized SIGTERM path
-setsQuitting; no need fresh user permission. Tools/QA skill requires exact app.
+Quiettiming18272actual0 afterviewerexit/traceprocessingquiet,6cases168samples,
+7ABBAblocks14/variant,8–20mscommonCB,thermal0, actual3456×2168/RG8/2048maps.
+PCSS noBlocker3.522→2.518ms(−28.50%),blocked8.345→6.476(−22.40%),varied8.246→6.317
+(−23.39%),all7blocksfaster. SAMEactualPSO−.51%; UNCHANGEDGaussian+.0228ms/+3.15%,
+probeSingle+.0163ms/+10.98%,both7/7slower. Keepregressions/attributionlimits;
+no generalno-regression/FPSforecast. Timingreporta2ceea312af46faf473762fcf23a2bea2894da050ee83b0c82144afadc4e8418.
+PermanenttestACTUALproductionhelpervsfrozenindependent4readoracle,9extents4layers,
+strictbits,3824queries/extent; focused34626/1 andfullRelease426213/91 pass, source
+independentreviewapprovedincluding61KiBconstantbudget/lifetimes/dimensionguards.
 
-NEXT: preserve mixed material-split evidence, no general integration. Select a
-substantial measured GPU architecture issue; exact instruction/resource cost
-remains unresolved. Do not continue minor variants or broad reprofiling without
-a specific unanswered question. Any later selective split needs general
-mixed-material handling, downstream precision and actualviewer validation.
-No measured register-pressure diagnosis. Prior base/haze/hero GPU labels overlap;
-do not sum or call individual shader milliseconds. CPU repair59177 reduced
-91.5→72.8%ONEcore without established FPSgain; sourceGPU/qualitynotCPUalone.
+## Baselines and safe next execution
 
-Retain per-view probe correctness, shinyfullhero bypass, compiler/bindings,
-boundedlights/directR32shadows/borroweddepth/projectors/arenas/caches/retiredgeometry,
-realocclusion andUltra4×aniso. NoKilltrial d3d139 reverted d967; prior masks/layered/
-SH/scalar variants remain rejected/deferred. Compression/excessforwardloop ruled
-out. Deferred nonUltra alpha count0 enableguard is real but not currentFPScause.
-Fullfeature/visualparity,multi-sceneperformance,stability,strictGLzero andrelease
-checks remain OPEN; do not declare product or20FPS goal complete.
+Preserved68572/source46d622/private/tmp/alchemy-metal-68572-quality-baseline.app:
+9.382155FPS,mean106.585321,p50105.948188,p95110.883167,bias1all300/main98. Exe
+84e49c91677697abf7527c93b21567950c5d525111b85ed3f3b0d189a1bbd155,shader8bb.
+KEEP3969405image/globalscope and46d622capacityreserve/originalheadroomonce/manual/
+global/systemcontroller. Earlier68566bias4(8.864746)notcomparablefullquality.
+Original67611exact1eb+observer6.095519FPS,bias1/main104, broadpixelparityopen.
+
+Already launched68577/PID58207. DoNOTrestart.
+Monitor currentprovenance/CSV untilready256 and300consecutiveframes complete.
+For any futurelaunch, CUA
+rewriteDocumentationaftercompaction, getEXACTapp atlogin, CtrlSuperF fullscreen
+BEFOREReturn. LiveLEAP43controls/location/binary observeverifygate. Camerapreset
+alreadyseeded/reusedbyestablishednumericsetup; proveactualmetadata. All256probe
+initializationtakes~18minutes, normal; doNOTrestartoracceptpartialstate. Pollsame
+PID/provenance; earlyfpsnotresult. Collect300readyframes, endQA, agentindependent
+compareagainst68576and68572, quitexactPIDgracefullyandrestoreONLYafterGoodbye/
+PIDabsence. NoGPU/profile/build duringformal. Do not bypassscreenshotgate orclaim
+pixels; worldAX/screenshotscan15stimeout, no currentCUAphaseactive.
+
+OtherprivatefusedPBRskin tnn4ox source-only/staged/reviewedNOTcompiled/GPU/integrated;
+compilerCSEunknown. Read-onlyCPUprofile68566hasNOmatchedframecounter, so do not
+infer77msCPUfloor. Largestleavesdriver/copy/postSort/batchconstruction;lazyterrain/
+impostorpayload is smallcandidate, NOT prioritywhilemeasuredGPUhotspotopen.
+Priorclassic/SSR/materialsplit/layered/mask/SH/noKill remainrejected/deferred.
+Occlusionconsumes120828spatialskipEVENTS/299intervals, notuniquegroups; Ultra4×aniso
+alreadyfixed. No needre-audit. Fullfeature/pixelparity,multi-sceneperformance,
+prolongedstability,strictGLzero andindependentbuild/reviewreleasegatesremainOPEN.
+Do notmarkgoalcomplete orhardwareimpossiblewithoutactualevidence.

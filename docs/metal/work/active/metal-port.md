@@ -1,8 +1,8 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `74ee5d48d97368d92e83ae40ba580516cef1e876`;
-latest settled68572:9.382155FPS/bias1. Original6.095519FPS; full parity remains open.
+**Renderer checkpoint:** Commit `30715f3cde5d6b29e2f0fe974e5d0ef72a7db94f`;
+latest68576:6.728847FPS/bias1 regression;68572baseline9.382155FPS. Full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -84,26 +84,25 @@ not uniquegroups/savedGPUtime. No shader-line or hardware-infeasibility claim.
 3. **Open gates:**20 FPS objective, multi-scene performance contract, strict
    source/runtime GL-zero, visual/feature parity, prolonged stability and review.
 
-## Immediate executable action
+## Immediate executable action — committed gather, live result pending
 
-Private classic/SSRbaseCM5KIW is NOT admitted:55/324 strict differences include
-15nativeHDR one-half-unit differences. Exploratory modern timing2.7–3.5% is near
-control variation; classic17.9–19.8% is not current-profile FPS. Precision and
-downstream parity remain open. Shader/source fixtures and failures retained.
+0fa4e3 restores original main-onlySSAO: no cubeAO/2blurs, main preserved.
+68576fullready300samples neverthelessREGRESSED6.728847FPS,mean148.613868ms,
+p95156.249375 vs68572/bias1mean106.585321/9.382155FPS. Controls/environment match,
+cameradelta0/tinytranslation,main97vs98. Officialperf gate1. GPUtracecurrent
+viewerActiveunion143.136ms/p,maininitialopaqueinclusive44.844ms/p; not shader
+cost orcontrolledhistoricalcomparison. SSAOblur removal observablyconfirmed.
+38935quit/Goodbye/PIDabsent; stateRESTORED. New68577 is now running as described below.
 
-Independently reviewed material-split MxAxT0 preserves actual normal-alpha
-classification and masked stencil4 ownership; net candidate cost includes reset,
-classifier and two specialized lighting draws. Compile/link0; correctness78056 actual0 with
-API+GPUvalidation:319/388strictpass69fail, incl15nativeHDR oneunit differences;
-stencil/class/depth/coverage errors0. Net exploratory timing65843 actual0:
-uniform5.9–12.5%faster, checkerboardmixed2.7–4.6%slower. NOTadmitted. All
-processes quiet; no production world/shader change. Keep memory-policy quality
-repairs and68572/bias1baseline. Next change needs a specific measured GPU cause,
-not minor variants. [Evidence](../../state/archive/CURRENT-base-specialization-experiments-2026-11-09.md).
-
-Deferred non-Ultra correctness edge: native alpha light producer misses the
-RenderLocalLightCountenable guard on count0 transitions; preserve for later fix.
-No current-FPS attribution. Goal20FPS ACTIVE/unmet; independent release gates open.
+30715f commits native rawshadowgather preserving exactintegerfootprint/order.
+Initial15680queries+96lightmaps andextended23480IEEE/prodextentqueries allEXACT;
+GPUvalidation0. Quiet7blocktimingsPCSS22–29%lower,unchangedGaussian/probepaths
++.023/.016ms explicit, noFPSforecast. Newpermanenttestfocused34626/1 andfull
+Release426213/91 API+GPU0; independentreviewapproved. FullRWDI71370/appverify9881 actual0,426213/91 and349ARM64; Xcodebuild/signature0.
+Canonical68577/PID58207 RUNNING warmup, fullscreenbeforelogin/live43controlgate0;
+30715fplanINSTALLED/NOTrestored. Config/launcher dryrun0. Finish residentcomparison,
+noGPU/profile/buildoverlapformal. Usefreshstartupplan andrestoreaftergracefulexit.
+[Fullsource/runtime/filterevidence](../../state/archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
 
 ## Non-negotiable open gates
 
