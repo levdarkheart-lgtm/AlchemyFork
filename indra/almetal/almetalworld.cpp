@@ -17043,10 +17043,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     mImpl->setFragmentData(*encoder, *command,
                         6, &alpha_environment,
                         sizeof(alpha_environment), error);
+                // The shader clamps selectors to this validated prefix;
+                // unused suffix slots need no per-draw bindings.
                 for (std::size_t slot = 0;
-                     encoded && slot <
-                         ALMetalWorldSimpleBatch::max_material_slots;
-                     ++slot)
+                     encoded && slot < batch.material_slot_count; ++slot)
                 {
                     const std::size_t source = std::min<std::size_t>(
                         slot, batch.material_slot_count - 1);
@@ -17116,9 +17116,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         6, &alpha_environment,
                         sizeof(alpha_environment), error);
                 for (std::size_t slot = 0;
-                     encoded && slot <
-                         ALMetalWorldSimpleBatch::max_material_slots;
-                     ++slot)
+                     encoded && slot < batch.pbr_slot_count; ++slot)
                 {
                     const std::size_t source = std::min<std::size_t>(
                         slot, batch.pbr_slot_count - 1);

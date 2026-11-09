@@ -13629,6 +13629,247 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         pre_water_pbr_slot.orm_texture = pbr_orm_texture.get();
         simple_alpha_lighting.local_lights[0] = {};
 
+        // Forward material families bind only their populated texture prefix.
+        // Compare every indexed selection with its scalar equivalent, then
+        // prime stale tails within one encoder and across a haze restart.
+        // These are image/depth regressions, not binding-count timing tests.
+        {
+            ALMetalBufferDescriptor binding_vertex_descriptor = vertex_descriptor;
+            binding_vertex_descriptor.label =
+                "Alchemy forward populated-slot regression vertices";
+            auto binding_vertices = ALMetalBuffer::create(
+                *device, binding_vertex_descriptor, &error);
+            INFO(error);
+            REQUIRE(binding_vertices);
+            REQUIRE(vertices->mappedBytes());
+            REQUIRE(binding_vertices->write(0, vertices->mappedBytes(),
+                vertex_descriptor.length, &error));
+            // Scalar vertices must ignore even a valid large packed index;
+            // indexed vertices clamp it to the final populated slot.
+            const auto set_binding_index = [&](std::int32_t packed)
+            {
+                for (std::size_t vertex = 0; vertex < positions.size(); ++vertex)
+                    REQUIRE(binding_vertices->write(
+                        vertex * sizeof(positions[0]) + 3 * sizeof(float),
+                        &packed, sizeof(packed), &error));
+            };
+
+            ALMetalWorldLegacyAlphaLighting binding_lighting = simple_alpha_lighting;
+            binding_lighting.local_lights[0].position[2] = 10.f;
+            binding_lighting.local_lights[0].diffuse[0] = 0.25f;
+            binding_lighting.local_lights[0].diffuse[1] = 0.5f;
+            binding_lighting.local_lights[0].diffuse[2] = 0.75f;
+            binding_lighting.local_lights[0].parameters[0] = 100.f;
+            binding_lighting.local_lights[0].parameters[2] = 1.f;
+            ALMetalWorldAtmosphericHaze binding_haze;
+            std::memcpy(binding_haze.inverse_projection,
+                        identity.data(), sizeof(identity));
+            binding_haze.above_water = true;
+            ALMetalWorldSimpleBatch binding_haze_marker;
+            binding_haze_marker.atmospheric_haze = true;
+
+            const auto make_binding_batch = [&](bool pbr, std::uint32_t slots,
+                                                 bool rigged)
+            {
+                ALMetalWorldSimpleBatch result = pbr
+                    ? pre_water_pbr : pre_water_material;
+                result.vertices = binding_vertices.get();
+                result.pre_water_shadows = false;
+                result.pre_water_alpha = true;
+                result.post_water_alpha = false;
+                result.texture_count = slots;
+                result.diffuse_textures.fill(nullptr);
+                result.skin_palette = rigged ? alpha_skin_palette.data() : nullptr;
+                result.skin_palette_float_count = rigged ? alpha_skin_palette.size() : 0;
+                result.skin_joint_count = rigged ? 1u : 0u;
+                result.weight_offset = rigged ? weight_offset : 0;
+                if (pbr)
+                {
+                    result.pbr_slot_count = slots;
+                    for (std::uint32_t slot = 0; slot < slots; ++slot)
+                    {
+                        auto& material = result.pbrSlots()[slot];
+                        material = pre_water_pbr_slot;
+                        material.normal_texture = slot + 1 == slots
+                            ? flat_normal.get() : bump_normal.get();
+                        material.orm_texture = slot + 1 == slots
+                            ? pbr_orm_texture.get() : flat_normal.get();
+                        material.emissive_texture = slot + 1 == slots
+                            ? diffuse.get() : indexed_diffuse.get();
+                        material.emissive_color[0] = slot + 1 == slots ? 0.f : 1.f;
+                        material.emissive_color[1] = slot + 1 == slots ? 1.f : 0.f;
+                        material.emissive_color[2] = 0.f;
+                        material.roughness_factor = 0.5f;
+                        material.metallic_factor = 0.25f;
+                        result.diffuse_textures[slot] = slot + 1 == slots
+                            ? tree_diffuse.get() : indexed_diffuse.get();
+                    }
+                }
+                else
+                {
+                    result.material_slot_count = slots;
+                    for (std::uint32_t slot = 0; slot < slots; ++slot)
+                    {
+                        auto& material = result.materialSlots()[slot];
+                        material = pre_water_material.materialSlots()[0];
+                        material.normal_texture = slot + 1 == slots
+                            ? flat_normal.get() : bump_normal.get();
+                        material.specular_texture = slot + 1 == slots
+                            ? material_specular_texture.get() : flat_normal.get();
+                        material.specular_color[3] = 0.5f;
+                        material.env_intensity = 0.f;
+                        material.fullbright = slot + 1 == slots ? 0.25f : 1.f;
+                        result.diffuse_textures[slot] = slot + 1 == slots
+                            ? tree_diffuse.get() : indexed_diffuse.get();
+                    }
+                }
+                return result;
+            };
+            struct BindingReadback
+            {
+                std::array<std::uint16_t, 32 * 32 * 4> color{};
+                std::array<float, 32 * 32> depth{};
+            };
+            const auto read_binding_batches =
+                [&](std::vector<ALMetalWorldSimpleBatch> draws, bool post_water)
+            {
+                ALMetalWorldAlphaEnvironment binding_environment = alpha_environment;
+                binding_environment.water_plane[0] = 0.f;
+                binding_environment.water_plane[1] = 0.f;
+                binding_environment.water_plane[2] = 1.f;
+                // Host post-water replay flips water_fog.z. Both modes keep
+                // the tested triangle on their own accepted side.
+                binding_environment.water_plane[3] = post_water ? 3.f : -1.f;
+                binding_environment.water_fog[2] = -1.f;
+                auto binding_scene = opaque_forward_scene;
+                binding_scene.gbuffer = coverage_result.get();
+                binding_scene.reverse_z = false;
+                binding_scene.hero_probe = nullptr;
+                binding_scene.screen_space_reflections = nullptr;
+                binding_scene.alpha_environment = &binding_environment;
+                binding_scene.alpha_lighting = &binding_lighting;
+                binding_scene.alpha_directional_shadows = nullptr;
+                binding_scene.water_exclusion_surface = nullptr;
+                binding_scene.water_haze = nullptr;
+                binding_scene.water_surface = nullptr;
+                binding_scene.atmospheric_haze = post_water ? &binding_haze : nullptr;
+                binding_scene.sky_behind = nullptr;
+                if (post_water)
+                {
+                    for (auto& draw : draws)
+                    {
+                        draw.pre_water_alpha = false;
+                        draw.post_water_alpha = true;
+                    }
+                    // Bind eight maps before the atmospheric owner ends that
+                    // encoder. The post-water consumer must restore its own
+                    // active prefix in the fresh encoder, including slot0.
+                    auto before_restart = make_binding_batch(
+                        draws.front().pre_water_pbr, 8, false);
+                    before_restart.modelview_projection[12] += 4.f;
+                    draws.insert(draws.begin(), binding_haze_marker);
+                    draws.insert(draws.begin(), before_restart);
+                }
+                binding_scene.batches = draws.data();
+                binding_scene.batch_count = draws.size();
+                auto output = renderer->renderOpaquePostDeferred(binding_scene, &error);
+                INFO(error);
+                REQUIRE(output);
+                BindingReadback pixels;
+                REQUIRE(output->colorTexture(0)->readback(*device, 0, 0, {},
+                    pixels.color.data(), 32 * 8, &error));
+                REQUIRE(output->depthStencilTexture()->readback(*device, 0, 0, {},
+                    pixels.depth.data(), 32 * sizeof(float), &error));
+                return pixels;
+            };
+
+            for (bool pbr : {false, true})
+            for (bool rigged : {false, true})
+            for (bool post_water : {false, true})
+            {
+                CAPTURE(pbr, rigged, post_water);
+                set_binding_index(31);
+                const auto scalar = make_binding_batch(pbr, 1, rigged);
+                const auto reference = read_binding_batches({scalar}, post_water);
+                for (std::uint32_t slots : {1u, 2u, 8u})
+                for (std::int32_t packed : {static_cast<std::int32_t>(slots - 1), 31})
+                {
+                    CAPTURE(slots, packed);
+                    set_binding_index(packed);
+                    const auto indexed = make_binding_batch(pbr, slots, rigged);
+                    const auto result = read_binding_batches({indexed}, post_water);
+                    CHECK(result.color == reference.color);
+                    CHECK(result.depth == reference.depth);
+                }
+
+                set_binding_index(31);
+                const auto eight = make_binding_batch(pbr, 8, rigged);
+                auto hidden_eight = eight;
+                hidden_eight.modelview_projection[12] += 4.f;
+                hidden_eight.diffuse_textures[7] = indexed_diffuse.get();
+                if (pbr)
+                {
+                    hidden_eight.pbrSlots()[7].normal_texture = bump_normal.get();
+                    hidden_eight.pbrSlots()[7].orm_texture = flat_normal.get();
+                    hidden_eight.pbrSlots()[7].emissive_texture = indexed_diffuse.get();
+                }
+                else
+                {
+                    hidden_eight.materialSlots()[7].normal_texture = bump_normal.get();
+                    hidden_eight.materialSlots()[7].specular_texture = flat_normal.get();
+                }
+                auto hidden_scalar = scalar;
+                hidden_scalar.modelview_projection[12] += 4.f;
+                const auto scalar_after_eight = read_binding_batches(
+                    {hidden_eight, scalar, hidden_eight}, post_water);
+                CHECK(scalar_after_eight.color == reference.color);
+                CHECK(scalar_after_eight.depth == reference.depth);
+                const auto eight_reference = read_binding_batches({eight}, post_water);
+                const auto eight_after_scalar = read_binding_batches(
+                    {hidden_eight, hidden_scalar, eight}, post_water);
+                CHECK(eight_after_scalar.color == eight_reference.color);
+                CHECK(eight_after_scalar.depth == eight_reference.depth);
+                auto different_eight = hidden_eight;
+                different_eight.modelview_projection[12] -= 4.f;
+                const auto primed_pixels = read_binding_batches({different_eight}, post_water);
+                CHECK(primed_pixels.color != eight_reference.color);
+
+                // A differently textured scalar must alter the image; this
+                // guards against a fully discarded/hidden comparison fixture.
+                auto different = scalar;
+                different.diffuse_textures[0] = indexed_diffuse.get();
+                const auto different_pixels = read_binding_batches({different}, post_water);
+                CHECK(different_pixels.color != reference.color);
+
+                auto encoded_data = scalar;
+                if (pbr)
+                {
+                    encoded_data.pbrSlots()[0].normal_texture = srgb_flat_normal.get();
+                    encoded_data.pbrSlots()[0].orm_texture = srgb_pbr_orm_texture.get();
+                }
+                else
+                    encoded_data.materialSlots()[0].normal_texture = srgb_flat_normal.get();
+                const auto data_pixels = read_binding_batches({encoded_data}, post_water);
+                CHECK(data_pixels.color == reference.color);
+                CHECK(data_pixels.depth == reference.depth);
+
+                if (pbr)
+                {
+                    // The same bytes used as EMISSIVE COLOR must decode as
+                    // sRGB. They must not inherit the raw-data view selected
+                    // for the preceding normal/ORM samples.
+                    auto linear_color = scalar;
+                    linear_color.pbrSlots()[0].emissive_texture = flat_normal.get();
+                    auto encoded_color = linear_color;
+                    encoded_color.pbrSlots()[0].emissive_texture = srgb_flat_normal.get();
+                    const auto linear_pixels = read_binding_batches({linear_color}, post_water);
+                    const auto encoded_pixels = read_binding_batches({encoded_color}, post_water);
+                    CHECK(linear_pixels.color != encoded_pixels.color);
+                    CHECK(linear_pixels.depth == encoded_pixels.depth);
+                }
+            }
+        }
+
         // Finish the glossy radiance lobe through the same ordinary, SSR,
         // then hero order as pbralphaF.glsl. A black hero removes the blue
         // ordinary cube; with ordinary radiance disabled, the paired red
