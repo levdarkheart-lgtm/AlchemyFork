@@ -22501,6 +22501,17 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 #if LL_DARWIN
     if (isMetalProbeFaceCaptureActive())
     {
+        // As in the original renderGeomDeferred path, rebuild the complete
+        // probe pack after installing this face's camera. Spheres and boxes
+        // are in eye space; depth ordering, buckets and neighbor indices also
+        // depend on this view. Updating only env_matrix in the native copy
+        // would mix last main-view spatial data with this face's positions.
+        if (LLViewerShaderMgr::instance()->mShaderLevel[
+                LLViewerShaderMgr::SHADER_DEFERRED] > 1)
+        {
+            mReflectionMapManager.updateUniforms();
+            mHeroProbeManager.updateUniforms();
+        }
         // The native probe face owns its complete G-buffer scene directly.
         // Return before legacy light setup, pool prerender, shader/UBO binds,
         // GL state checks and matrix/color-mask mutation.
