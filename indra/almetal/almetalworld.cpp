@@ -1638,6 +1638,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::uint64_t shadow_early_coalesced_records = 0;
     std::uint64_t opaque_diagnostic_calls = 0;
     ALMetalWorldPostDiagnostics opaque_diagnostics;
+    std::array<ALMetalWorldSimpleShadowPSOCensus, 13> simple_shadow_pso_diagnostics{};
     const bool opaque_family_split_requested = []()
     {
         const char* value = std::getenv("ALCHEMY_METAL_POST_FAMILY_ENCODERS");
@@ -2093,7 +2094,11 @@ ALMetalWorldPostDiagnostics
 ALMetalWorldGBufferRenderer::opaquePostDiagnostics() const noexcept
 {
     auto stats = mImpl ? mImpl->opaque_diagnostics : ALMetalWorldPostDiagnostics{};
-    if (mImpl) stats.encoded_calls = mImpl->opaque_diagnostic_calls;
+    if (mImpl)
+    {
+        stats.encoded_calls = mImpl->opaque_diagnostic_calls;
+        stats.simple_shadow_psos = mImpl->simple_shadow_pso_diagnostics;
+    }
     return stats;
 }
 
@@ -16216,6 +16221,29 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         return seeded;
     };
 
+    // This opt-in census follows actual successful draw encoding. No descriptor
+    // inspection or counter initialization occurs in normal unarmed rendering.
+    std::optional<ALMetalWorldSimpleShadowPSOCensus> selected_simple_shadow_psos;
+    std::size_t selected_simple_shadow_view = 0;
+    if (ALMetalDevice::commandTimingEnabled() &&
+        ((scene.diagnostic_view_kind == 1u && scene.diagnostic_view_index == 0u) ||
+         ((scene.diagnostic_view_kind == 2u || scene.diagnostic_view_kind == 3u) &&
+          scene.diagnostic_view_index < 6u)))
+    {
+        selected_simple_shadow_psos.emplace();
+        auto& census = *selected_simple_shadow_psos;
+        census.valid = true;
+        census.source_frame_index = scene.diagnostic_frame_index;
+        census.source_view_kind = scene.diagnostic_view_kind;
+        census.source_view_index = scene.diagnostic_view_index;
+        census.probe_count = scene.reflection_probes
+            ? static_cast<std::uint32_t>(scene.reflection_probes->constants.config[0]) : 0u;
+        census.shadow_pack_present = scene.alpha_directional_shadows != nullptr;
+        census.shadow_flags = scene.alpha_directional_shadows
+            ? scene.alpha_directional_shadows->constants.config[3] : 0u;
+        selected_simple_shadow_view = scene.diagnostic_view_kind == 1u ? 0u
+            : 1u + (scene.diagnostic_view_kind - 2u) * 6u + scene.diagnostic_view_index;
+    }
     for (std::size_t index = 0;
          encoded && index < scene.batch_count; ++index)
     {
@@ -17323,6 +17351,28 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ALMetalPrimitiveType::triangle, batch.index_count,
                 batch.index_type, *batch.indices,
                 batch.index_offset, 1, error);
+            if (encoded && selected_simple_shadow_psos)
+            {
+                const auto& selected = alpha_pipeline->descriptor();
+                if (selected.fragment_function ==
+                    "almetal_world_pre_water_simple_shadow_fragment")
+                {
+                    std::size_t constant_state = 0; // Undefined optional bool.
+                    for (const auto& value : selected.fragment_bool_constants)
+                        if (value.index == probe_shadow_function_constant)
+                            constant_state = value.value ? 2u : 1u;
+                    const bool avatar = selected.vertex_function.find(
+                        "almetal_world_avatar_alpha_") == 0;
+                    const bool custom =
+                        selected.colors[0].source_rgb != ALMetalBlendFactor::source_alpha ||
+                        selected.colors[0].destination_rgb != ALMetalBlendFactor::one_minus_source_alpha;
+                    auto& counts = selected_simple_shadow_psos->draws[
+                        (avatar ? 6u : 0u) + (custom ? 3u : 0u) + constant_state];
+                    ++counts.batches;
+                    counts.vertices += batch.vertex_count;
+                    counts.indices += batch.index_count;
+                }
+            }
             continue;
         }
         if (batch.water_exclusion)
@@ -19091,6 +19141,14 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         // faces. The snapshot's source frame/view remains explicit in logs.
         if (sequence == 1 || sequence % 127 == 0)
             mImpl->opaque_diagnostics = alMetalDescribeOpaquePost(scene, sequence);
+    }
+    if (selected_simple_shadow_psos)
+    {
+        // Publish only after the whole render succeeded. A failed/cancelled
+        // encoding cannot replace the previous successful view observation.
+        selected_simple_shadow_psos->sample_sequence = mImpl->opaque_diagnostic_calls;
+        mImpl->simple_shadow_pso_diagnostics[selected_simple_shadow_view] =
+            *selected_simple_shadow_psos;
     }
     if (request_family_split)
     {

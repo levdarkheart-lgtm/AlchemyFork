@@ -13169,6 +13169,13 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             selection_scene.alpha_directional_shadows = &selection_shadows;
             selection_scene.reflection_probes = &selection_probes;
 
+            struct RestoreSelectionTiming
+            {
+                bool saved = ALMetalDevice::commandTimingEnabled();
+                ~RestoreSelectionTiming() { ALMetalDevice::setCommandTimingEnabled(saved); }
+            } restore_selection_timing;
+            ALMetalDevice::setCommandTimingEnabled(true);
+            selection_scene.diagnostic_frame_index = 1000u;
             const auto read_selection = [&](unsigned probe_count,
                                             bool probe_filter)
             {
@@ -13178,10 +13185,33 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                     (probe_filter
                          ? ALMetalWorldDirectionalShadowConstants::probe_single_tap
                          : 0u);
+                selection_scene.diagnostic_view_kind = probe_filter ? 2u : 1u;
+                selection_scene.diagnostic_view_index = probe_filter ? 1u : 0u;
+                ++selection_scene.diagnostic_frame_index;
                 auto target = renderer->renderOpaquePostDeferred(
                     selection_scene, &error);
                 INFO(error);
                 REQUIRE(target);
+                const auto observed = renderer->opaquePostDiagnostics();
+                const auto& selected = observed.simple_shadow_psos[probe_filter ? 2u : 0u];
+                CHECK(selected.valid);
+                CHECK(selected.source_frame_index == selection_scene.diagnostic_frame_index);
+                CHECK(selected.source_view_kind == selection_scene.diagnostic_view_kind);
+                CHECK(selected.source_view_index == selection_scene.diagnostic_view_index);
+                CHECK(selected.probe_count == probe_count);
+                CHECK(selected.shadow_pack_present);
+                CHECK(selected.shadow_flags == selection_shadows.constants.config[3]);
+                const bool custom = selection_batches[0].pre_water_source_rgb == ALMetalBlendFactor::one;
+                const std::size_t expected = (custom ? 3u : 0u) +
+                    (probe_filter && probe_count > 1u ? 2u : 0u);
+                for (std::size_t bucket = 0; bucket < selected.bucket_count; ++bucket)
+                {
+                    CHECK(selected.draws[bucket].batches == (bucket == expected ? 2u : 0u));
+                    CHECK(selected.draws[bucket].vertices == (bucket == expected
+                        ? selection_batches[0].vertex_count + selection_batches[1].vertex_count : 0u));
+                    CHECK(selected.draws[bucket].indices == (bucket == expected
+                        ? selection_batches[0].index_count + selection_batches[1].index_count : 0u));
+                }
                 std::array<std::uint16_t, 32 * 32 * 4> color{};
                 // Read raw depth into integer storage for exact bits,
                 // including any signed-zero difference.
@@ -13230,6 +13260,23 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                           default_only.first[pixel + 1]);
                 }
             }
+            // Default-off and failed renders cannot replace a successful
+            // actual-pipeline observation with an unencoded input census.
+            const auto previous = renderer->opaquePostDiagnostics().simple_shadow_psos[0];
+            ALMetalDevice::setCommandTimingEnabled(false);
+            ++selection_scene.diagnostic_frame_index;
+            REQUIRE(renderer->renderOpaquePostDeferred(selection_scene, &error));
+            auto unchanged = renderer->opaquePostDiagnostics().simple_shadow_psos[0];
+            CHECK(unchanged.source_frame_index == previous.source_frame_index);
+            CHECK(unchanged.sample_sequence == previous.sample_sequence);
+            ALMetalDevice::setCommandTimingEnabled(true);
+            selection_scene.alpha_directional_shadows = nullptr;
+            ++selection_scene.diagnostic_frame_index;
+            CHECK_FALSE(renderer->renderOpaquePostDeferred(selection_scene, &error));
+            unchanged = renderer->opaquePostDiagnostics().simple_shadow_psos[0];
+            CHECK(unchanged.source_frame_index == previous.source_frame_index);
+            CHECK(unchanged.sample_sequence == previous.sample_sequence);
+            error.clear();
         }
 
         opaque_forward_scene.alpha_directional_shadows = nullptr;
@@ -16868,6 +16915,42 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                 opaque_forward_scene, &error);
         INFO(error);
         REQUIRE(avatar_alpha_cloth_result);
+
+        // The same fragment symbol also serves system-avatar PSOs. A real
+        // shadowed avatar draw must be classified from its chosen descriptor,
+        // independently of the ordinary simple-alpha specialization selector.
+        {
+            struct RestoreAvatarCensusTiming
+            {
+                bool saved = ALMetalDevice::commandTimingEnabled();
+                ~RestoreAvatarCensusTiming() { ALMetalDevice::setCommandTimingEnabled(saved); }
+            } restore_avatar_census_timing;
+            ALMetalDevice::setCommandTimingEnabled(true);
+            auto census_avatar = avatar_alpha_batch;
+            census_avatar.pre_water_shadows = true;
+            auto census_shadows = directional_shadows;
+            census_shadows.constants.config[3] = 3u |
+                ALMetalWorldDirectionalShadowConstants::probe_single_tap;
+            auto census_scene = opaque_forward_scene;
+            census_scene.batches = &census_avatar;
+            census_scene.alpha_directional_shadows = &census_shadows;
+            census_scene.diagnostic_frame_index = 2000u;
+            census_scene.diagnostic_view_kind = 2u;
+            census_scene.diagnostic_view_index = 1u;
+            auto census_result = renderer->renderOpaquePostDeferred(census_scene, &error);
+            INFO(error);
+            REQUIRE(census_result);
+            const auto observed = renderer->opaquePostDiagnostics();
+            const auto& chosen = observed.simple_shadow_psos[2];
+            CHECK(chosen.valid);
+            CHECK(chosen.source_frame_index == 2000u);
+            for (std::size_t bucket = 0; bucket < chosen.bucket_count; ++bucket)
+            {
+                CHECK(chosen.draws[bucket].batches == (bucket == 6u ? 1u : 0u));
+                CHECK(chosen.draws[bucket].vertices == (bucket == 6u ? census_avatar.vertex_count : 0u));
+                CHECK(chosen.draws[bucket].indices == (bucket == 6u ? census_avatar.index_count : 0u));
+            }
+        }
 
         // With a unit wind strength and phase PI, the owner's minimax sine
         // produces a unit primary displacement. The clothing X vector moves

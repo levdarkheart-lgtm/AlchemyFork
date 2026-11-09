@@ -2254,6 +2254,29 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                         << ", family_batches/indices={" << families.str()
                         << "}, segment_batches={" << segments.str() << '}'
                         << LL_ENDL;
+                    for (const auto& view : post.simple_shadow_psos)
+                    {
+                        if (!view.valid) continue;
+                        std::ostringstream chosen;
+                        for (std::size_t bucket = 0; bucket < view.bucket_count; ++bucket)
+                        {
+                            const auto& counts = view.draws[bucket];
+                            if (counts.batches)
+                                chosen << view.bucket_names[bucket] << '='
+                                       << counts.batches << '/' << counts.vertices
+                                       << '/' << counts.indices << ',';
+                        }
+                        LL_INFOS("MetalPost")
+                            << "Native simple-shadow PSO sample: owner=" << owner
+                            << ", sample_sequence=" << view.sample_sequence
+                            << ", source_frame=" << view.source_frame_index
+                            << ", source_view=" << view.source_view_kind << '/' << view.source_view_index
+                            << ", probe_count=" << view.probe_count
+                            << ", shadow_pack=" << view.shadow_pack_present
+                            << ", shadow_flags=" << view.shadow_flags
+                            << ", selected_batches/vertices/indices={" << chosen.str() << '}'
+                            << LL_ENDL;
+                    }
                 };
                 log_post("main", capture.renderer.get());
                 log_post("probe", mMetalProbeWorldSimpleCapture

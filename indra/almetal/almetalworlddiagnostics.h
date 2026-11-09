@@ -30,6 +30,30 @@ enum class ALMetalWorldPostFamily : std::size_t
     water_haze, atmospheric_haze, water_surface, glow, count
 };
 
+// Encoded indexed draw commands, not unique geometry or GPU invocations.
+struct ALMetalWorldEncodedDrawCensus
+{
+    std::uint64_t batches = 0, vertices = 0, indices = 0;
+};
+
+struct ALMetalWorldSimpleShadowPSOCensus
+{
+    // Per selected descriptor: ordinary/avatar x standard/custom RGB blend x
+    // optional constant 0 undefined/false/true. Avatar is identified from the
+    // actual vertex function, not a duplicated pipeline selector predicate.
+    static constexpr std::size_t bucket_count = 12;
+    static constexpr std::array<const char*, bucket_count> bucket_names{
+        "ordinary.standard.undefined", "ordinary.standard.false", "ordinary.standard.true",
+        "ordinary.custom.undefined", "ordinary.custom.false", "ordinary.custom.true",
+        "avatar.standard.undefined", "avatar.standard.false", "avatar.standard.true",
+        "avatar.custom.undefined", "avatar.custom.false", "avatar.custom.true"};
+    bool valid = false, shadow_pack_present = false;
+    std::uint64_t source_frame_index = 0, sample_sequence = 0;
+    std::uint32_t source_view_kind = 0, source_view_index = 0;
+    std::uint32_t probe_count = 0, shadow_flags = 0;
+    std::array<ALMetalWorldEncodedDrawCensus, bucket_count> draws{};
+};
+
 struct ALMetalWorldPostDiagnostics
 {
     static constexpr std::size_t family_count =
@@ -53,6 +77,9 @@ struct ALMetalWorldPostDiagnostics
     std::uint64_t diagnostic_initial_family_frame = 0;
     std::uint32_t diagnostic_initial_family_view_kind = 0;
     std::uint32_t diagnostic_initial_family_view_index = 0;
+    // Latest successfully encoded call per main(1), hero(6), ordinary(6)
+    // view. Each entry has its own tuple; these are not synchronized frames.
+    std::array<ALMetalWorldSimpleShadowPSOCensus, 13> simple_shadow_psos{};
     std::array<std::uint64_t, family_count> batches{}, indices{};
     std::array<std::uint64_t, family_count> initial_batches{};
     // Initial, water-haze, atmospheric-haze, water-surface encoder segments.
