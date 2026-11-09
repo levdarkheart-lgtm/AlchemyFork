@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `b52c1ba96913fecc4c81f082ce97bffd6b43f6eb`;
+**Renderer checkpoint:** Commit `7b03110f71c69455bf45da6626058ad917026998`;
 latest68581:9.454639FPS; best controlled68579:9.608673.20FPS/full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
@@ -75,20 +75,18 @@ Addedpassboundaries altercost; no shader-duration/unsplit equivalence claim.
 
 ## Immediate executable action
 
-Finish root's narrow resource.mm PixelFormatView eligibility repair and meaningful
-GPU assertions. Compatible sRGB/swizzle views need noPFV; retain actual formats,
-bytes, views, swizzles/read|write|RT flags. Original color-vs-data binding contract
-traced; independent source/diff reviews approved. Full426552/92 API+GPU BOTHconfigs0, exact68581appbuild/349ARM64/sign0; viewer
-measurement completed9.454639FPS versuscontrolled9.608673, no gain. Ordinary radiance already read-only; hero write flag needed.
-Bothapps preserved; both TranslatorOFF, settings/readinessmatched. Newmean+1.629%,
-p50+1.844%,p95+1.707%; onepairdoesnotprove cause. Actualposttrace68510exit0, all
-8exports/4parsersactual0; viewerGPUunion105.542vs103.541, no broadreduction. No compression/FPSgainfromeligibilityalone. Finishtrace
-analysis, thenprivatefrozen/newdual-outputSSRproofbeforeanotherlivecandidate.
-
-PrivateD32 geometry strictgate run79366exit2 isolated oldR32 export mismatch:
-Bhardware/Cfragment-freeD32 exact all896+192cases; A/B differs221productioncases/
-5522pixels. Originalhardwaredepth supportsdirection, no epsilon waiver; alpha/
-cloth/terrain/receiver gates open, no productionmigration.
+7b03110f71 focusedmainbasecapture implemented/reviewed.2041/3actualcaptureAPI EACH
+optimizedconfig0; full426583/93normalAPI+GPU EACH0.68584appbuild/349ARM64/sign0,
+shader sources recorded; no new math/quality/cadence. Newdiagnosticlauncher dryrun/launch0,
+current68584/PID21257warming; fullscreenbeforelogin/start43controlbinarygates0.
+New7b0311Middayplanactive. PrivateSSRtiming86820ACTUAL0, independentCPUanalysis
+pending; rootliveviewer startedonlyafterterminal. FinishSAMEPIDready300arm/
+MODEmain-base capture. It is diagnostic, not FPSbaseline.
+Verifyactualtracecounts/validinputs before shaderprofileclaims. Owner CANattend
+Xcode, sendexactnewfile/stepswhenready. GPUexclusive withthatmanualhandoff.
+PrivateSSR candidate64strictcolor/depth passes, missinitial14.3%faster butcontrols
+variable;72caseconfirmationvalidation0, timingpending. No sharedSSRshaderchange.
+[Evidence](../../state/archive/CURRENT-selected-base-capture-2026-11-09.md).
 
 ## Non-negotiable open gates
 

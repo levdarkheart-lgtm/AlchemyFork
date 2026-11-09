@@ -6,6 +6,7 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| Focused base-light capture and bounded SSR experiment,2026-11-09 | [CURRENT-selected-base-capture-2026-11-09.md](CURRENT-selected-base-capture-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
 | Original cube SSAO repair,68576regression/GPUattribution and shadow-gather candidate,2026-11-09 | [CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md](CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
 | Validated fragment constants, classic/SSR negative result and private material split, 2026-11-09 | [CURRENT-base-specialization-experiments-2026-11-09.md](CURRENT-base-specialization-experiments-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
 | Correct image/global pressure scopes, resource-aware capacity and68572normal-bias9.38FPS, 2026-11-09 | [CURRENT-resource-aware-texture-budget-2026-11-09.md](CURRENT-resource-aware-texture-budget-2026-11-09.md) | `docs/metal/state/CURRENT.md` |

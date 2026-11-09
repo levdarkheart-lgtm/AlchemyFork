@@ -124,6 +124,24 @@ Future extensions may include `cpu_scene_ms,cpu_encode_ms,gpu_ms,dispatches,psos
 ## Programmatic Metal capture
 On supported macOS versions use `MTLCaptureManager` with an explicit request (scene/time/frame) to capture a controlled frame; provide a user-visible opt-in only in development builds. `MTL_CAPTURE_ENABLED=1` can allow developer capture. Store `.gputrace` locally and record frame indexes, shader variants and draw/pass labels. Do not commit large captures or user-identifying textures.
 
+### Isolating the main base-light pass
+
+Set `ALCHEMY_METAL_FRAME_CAPTURE_DIRECTORY` to an existing absolute, user-owned
+mode0700 directory and launch with `MTL_CAPTURE_ENABLED=1`. Unset shader
+validation for capture compatibility. The default mode captures one eligible
+display interval after a successful benchmark and60eligible-interval cooldown.
+`ALCHEMY_METAL_FRAME_CAPTURE_MODE=main-base` instead waits for that same gate,
+then captures only the main base-light call. On that one diagnostic invocation,
+the outer lighting batch is omitted so the base command is CREATED after
+capture starts and COMMITTED before it stops. All normal frames keep batching.
+Geometry and sky draws, input ownership, math and order remain unchanged.
+Concurrent upload commands may enter this device-wide interval; verify actual
+command counts and replay input contents. A saved file is not proof of replay
+or completed shader profiling. Failure/unwind cancels the owned diagnostic.
+Use `AL_METAL_RECORD_SHADER_SOURCES=ON` for source inspection without changing
+shader optimization. Capture-enabled collector output is diagnostic, not a
+formal FPS comparison. Invalid modes/paths and existing output fail closed.
+
 ## Automated quality checks
 Create a reference/candidate image comparison mechanism over deterministic camera/scene captures; report color-space/format/scale, pixel diff distributions and screenshots with sensitive content redacted. Do not use a single global pixel-equality test for temporal rendering; define local tolerances for stochastic/animated effects. Validate asset/UI editing flows separately.
 

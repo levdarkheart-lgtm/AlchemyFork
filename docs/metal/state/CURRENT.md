@@ -2,8 +2,8 @@
 
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `b52c1ba96913fecc4c81f082ce97bffd6b43f6eb`.
-**Working source:** texture-usage repair built/measured; all viewers closed, plans restored.
+**Renderer code checkpoint:** `7b03110f71c69455bf45da6626058ad917026998`.
+**Working source:** focused capture built/verified;68584/PID21257 warming for diagnostic capture.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -68,32 +68,27 @@ nonviewer outside union.77878%wall. Family attribution FINDINGS SHA
 
 ## Active implementation checkpoint
 
-Root owns shared source/docs/runtime. New resource.mm candidate removes ONLY
-automatic PixelFormatView usage for compatible sRGB/swizzle views. Apple says
-these views need no flag; the flag can disable lossless compression. Formats,
-bytes, view identities, swizzles, actual ShaderWrite/Read/RT flags unchanged.
-Original1eb imagegl2873–2946/fetchedgltfmaterial86–159 preserve uploaded encoded
-bytes and select color versus raw-data decoding at bind. Native views preserve
-that contract. Ordinary radiance already shader-read-only; hero ShaderWrite is
-required by real compute writes. No radiance format/precision reduction.
-GPU tests cover combined RGBA/BGRA sRGB+swizzle, both actual view reads, raw byte
-preservation, privateR8 alpha+mips, resampler read|RT and BRDF read|Write. Two
-read-only audits support candidate; Release and RWDI API+GPU426552/92 EACH actual0; app68581 build/349ARM64/
-deepstrictsignature0. Exact b52c1ba969 source; completed comparison shows no gain.
-Eligibility is not proof of compression ratio, bandwidth saving or FPS gain.
-
-Keep0fa4e3 original cubeSSAO parity repair: neutralAO1/no face blur, mainSSAO
-unchanged. Keep30715f rawPCSS gather: original2×2footprint/order/math/8+12samples,
-exact raw/full-map tests and22–29% lower private PCSS fixture, no4×bandwidthclaim.
-1f2cc0 defaultOFF post-sample family diagnostic changes no formal timing pass.
-
-PrivateD32 feasibility firstgate8960queries+96maps exact/API+GPU0. Geometrygate
-q6gN3i actualcompile0/run79366exit2: old scratch hardwareB and fragment-freeD32C
-bit-exact all896production+192bias cases; R32exportA differs fromB in221cases/
-5522pixels. Only1208production mismatch values logged; maxloggedgap4.768e-7,
-no uniform1ULP/epsilon waiver or global nonfinite/max claim. Original stores
-hardware depth, making B/C source-grounded direction, not completed migration.
-Alpha/cloth/terrain/receiver/pixel gates remain; private only, no production edit.
+Root owns shared source/docs/runtime.7b03110f71 adds defaultOFF MODEmain-base to
+existing capture owner: same successfulbenchmark/disarm/60cooldown gate, then
+ready-for-pass. Bypass outerlightingbatchONE maininvocation; capture actualbase
+freshownedCB aftersceneprep/creationthroughcommit, stopbeforepublication/local
+lights. Mainkind1/noSnapshot/noactivebatch; postincrementframestamp; noexcept
+cleanup and failedrender/unwind cancellation. No shader/quality/cadence change.
+Final serial60712 actual0: capture2041/3 API EACH Release/RWDI (shader-validation
+UNSET), fullnormal426583/93 API+GPU EACH0. Independentreviewapproved.
+App68584/source7b0311 built45995/349ARM64+signature87002 all0, shader sources
+recorded with unchanged compiler optimization; DIAGNOSTIC, not FPScomparison.
+Exe b428b6e391358547e4263e5a87787a3761cd22832335b93cc2a680925a017624,
+metallib9e4fa00fb75f63660a1790abcf4314f08e72a41d22878db015129b17a0a86f1d.
+Newlauncher dryrun/launch0;68584/PID21257 FULLSCREENbeforelogin andfresh43control/
+location/exactbinarygates0. New7b0311MiddayplanINSTALLED/NOTrestored; allpriorplans
+RESTORED. TranslatorSTOPPED. Warmup1360/incomplete250/samples0/camera0; do notrestart.
+Owner CANattend Xcode (corrected can't); send exactnewcapture/steps WHENREADY.
+Existing68581 countertables4exports all0 butZEROrows; realshadercountersunknown.
+PrivateSSRshare validation64strictcolor/depth cases0; miss14.3%faster7/7blocks,
+butcontrolvariable. Bracketedconfirmationcompiled0/72casevalidation0; quiettiming
+handle86820 ACTUAL0; independent analysis pending. No sharedSSRshaderedit/FPSforecast.
+[Capture and experiment evidence](archive/CURRENT-selected-base-capture-2026-11-09.md).
 
 ## Latest candidate result — no measured improvement
 
@@ -143,12 +138,10 @@ classic/SSR/materialsplit/layered candidates remain rejected; no repeated trials
 
 ## Exact next actions
 
-68581 trace exports/analysis complete; no active viewer or startupplan. Translator MUST STAY STOPPED. Best controlled9.61FPS
-remains reference, candidate9.45 is not a demonstrated improvement. Next source
-candidate is PRIVATE duplicate legacy-forward SSR sample (original computesonce),
-needs frozen-vs-new GPU/compiled-cost proof before another live build. Per-face
-hero occlusion is not a safe one-flag toggle: independent ownership AND complete
-occluder invalidation/current-frame visibility needed; no measured saving yet.
-No agent GPU/build/runtime work without root release. Full feature/pixel parity,
-multi-scene performance, prolonged stability, strict no-GL and
-independent build/review evidence remain OPEN. No release/product-complete claim.
+Finish actual bracketedSSR timing (newhandle inNEXT), then finish currentexact68584
+warmup/capture with MTL_CAPTURE_ENABLED1/MODEmain-base. SameUltra/
+Preset123/ready256probes before300collectorframes; capture-onlyCSV isNOTFPSproof.
+After capturestops, verifyfile/metadata andgracefullyquit/restore BEFOREXcode
+replay/userhandoff. PreserveGPUexclusivity withownerattendingXcode. No repeat
+whole51kdraw stalledprofile. Broadfeature/pixel parity,multi-sceneperformance,
+prolonged stability, strict no-GL and independent build/review evidence OPEN.
