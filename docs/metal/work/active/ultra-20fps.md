@@ -34,7 +34,7 @@ shadow draws coalesce about70%, yet all logical captures are still constructed.
 Full GPU-validated Release/RelWithDebInfo suites each pass57,344/75.
 [Complete runtime record](../../state/archive/CURRENT-68554-direct-shadow-runtime-2026-11-08.md).
 
-## Latest result — normal texture bias, still9FPS
+## Preserved baseline — normal texture bias,9.38FPS
 
 Resource scope3969405 and capacity46d622 fix the all-device/image threshold
 mismatch and replace arbitrary recommendation/16 with non-image reserve then
@@ -55,6 +55,21 @@ Canonical68574/source74ee5d adds validated fragment-constant API support only;
 full391587/90checks pass each config, build/349/signature0. It is unmeasured,
 with production shader unchanged. No experiment overlapped formal collection.
 [Complete evidence](../../state/archive/CURRENT-resource-aware-texture-budget-2026-11-09.md).
+
+## Latest gather result —8.01FPS, target still unmet
+
+30715f nativegather preserves exactintegerfootprint andrawPCSS. Initial15680+
+extended23480queries/96fullmaps passstrictbytes; permanent34626/1 andfull426213/91
+API+GPUchecks EACHconfigpass. QuietfixturePCSS22–29%lower; unchangedGaussian/
+probe controls+.023/.016ms retained, no no-regressionclaim.
+68577resident300frames8.011210FPS,mean124.825083/p50121.765792/p95154.566750ms,
+bias1/ready256/43controls/camerafixed, exactmain/endcamera match68572. Recent
+68576original-contractcubeSSAOfix had6.728847FPS/148.613868msmean despitefewer
+draws; latestmean16.007%betterrecent but17.113%worsepreserved68572. Bothofficial
+performancegatesfail. No20FPS orhardwareinfeasibilityclaim.
+PostformalGPUmaininitialopaqueinclusive44.844→20.756ms/p, lightmap5.418→4.743,
+baseabout18; overlapandexternalGPUactivityprecludefullcausalclaim. Allviewers
+closed/plansrestored; evidencein[repair/gatherrecord](../../state/archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
 
 ## Decisions and next implementation boundary
 

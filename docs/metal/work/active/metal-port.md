@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `30715f3cde5d6b29e2f0fe974e5d0ef72a7db94f`;
+**Renderer checkpoint:** Commit `1f2cc0e786f6c88f5a1dee23215c17650e6e83b0`;
 latest68576:6.728847FPS/bias1 regression;68572baseline9.382155FPS. Full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
@@ -52,28 +52,19 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 
 ## Current source ownership and latest result
 
-Root owns shared renderer/shaders/tests/CMake/docs/runtime. All viewers closed
-and temporary user-state plans restored. Preserved68572 source46d622 is the
-next bias1baseline. Canonical68574/source74ee5d is built/verified349/signature0,
-unlaunched/unmeasured, with unchanged production metallib.74ee5d adds fragment
-bool specialization support only; full391587/90 API+GPU checks pass EACH config.
-
-Scope3969405 and resource-aware capacity46d622 preserve original controller,
-manual/divisor/headroom semantics and global/system safeguards. CPU tests pass
-159/21pressure+29/3capability checks EACH Release/RWDI; source review approved.
-App configure/build/349ARM64/signature all0; shader8bbbyte-identical baseline.
-
-Latest68572:300consecutive exact-native frames9637–9936,Ultra3456×2168/Midday/
-Preset123/43controls,all256ready/stable120,main98,bias1all300,camera delta0.
-Mean106.585ms,p50105.948,p95110.883,9.382155FPS. Prior68566bias4was8.864746FPS;
-different image workloads prevent isolated FPS attribution. Images7838MiB
-retained at normal bias;20FPS remains unmet. No fullpixelparity claim.
-[Complete evidence](../../state/archive/CURRENT-resource-aware-texture-budget-2026-11-09.md).
-
-Older59177compiler repair relieved CPU91.476→72.768%ONEcore without FPS gain.
-Its bias4GPUunion109.245ms/p is not current-bias1 attribution; inclusive labels
-overlap. Live occlusion consumes results:120828spatial skip EVENTS/299intervals,
-not uniquegroups/savedGPUtime. No shader-line or hardware-infeasibility claim.
+Rootownssharedsource/docs/runtime. Renderer30715fgather+test committed; all
+viewersclosed/startupplansrestored. Canonical68577preservedmeasuredapp; all349
+ARM64/signature0. Full426213/91 API+GPUtests EACH Release/RWDI pass.
+Latest68577:8.011210FPS/124.825083msmean,121.765792p50/154.566750p95; bias1,
+300readyframes10487–10786,43controls/environmentmatch, cameraEXACT68572,main98.
+Versus68576recent6.728847FPS:mean−16.007%; versus685729.382155:mean+17.113%.
+Bothofficialperformancegates1;20FPSunmet. No netwin overolderbaseline claimed.
+PostformalGPUviewerunion129.350ms/p vs143.136recent; mainopaqueinclusive20.756
+vs44.844, lightmap4.743vs5.418, baseabout18. Othergroupsvary; nofullcausalclaim,
+noadditionofoverlaplabels. ExtraGPUactivityidentifiedpythonPID35824 fromTranslatorvenv; userauthorizedFULLSTOPviauvcommand(actual0),workerabsent. DO NOTRESTART.
+Current68579/PID78103 controlledwarmup/1f2cc0Middayplanactive; preserveformalunsplit,
+postCSVfamilytraceonly. Both426444/91GPUconfigs/app349/sign0.
+[Completeevidence](../../state/archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
 
 ## Complete-product checkpoint gate
 
@@ -84,25 +75,19 @@ not uniquegroups/savedGPUtime. No shader-line or hardware-infeasibility claim.
 3. **Open gates:**20 FPS objective, multi-scene performance contract, strict
    source/runtime GL-zero, visual/feature parity, prolonged stability and review.
 
-## Immediate executable action — committed gather, live result pending
+## Immediate executable action
 
-0fa4e3 restores original main-onlySSAO: no cubeAO/2blurs, main preserved.
-68576fullready300samples neverthelessREGRESSED6.728847FPS,mean148.613868ms,
-p95156.249375 vs68572/bias1mean106.585321/9.382155FPS. Controls/environment match,
-cameradelta0/tinytranslation,main97vs98. Officialperf gate1. GPUtracecurrent
-viewerActiveunion143.136ms/p,maininitialopaqueinclusive44.844ms/p; not shader
-cost orcontrolledhistoricalcomparison. SSAOblur removal observablyconfirmed.
-38935quit/Goodbye/PIDabsent; stateRESTORED. New68577 is now running as described below.
+Allcurrenttests/builds/verify/profilesfinished; no runningviewer. Keeporiginal-
+contractcubeSSAOrepair0fa4e3 and testednativegather30715f; quality/cadenceintact.
+1f2cc0commitsvalidatedinitialfamilydiagnostic+counter/test, defaultOFF,
+mainonlyandafterformalCSV. Preserveallbindings/depth/stencil/order; realparity
+neededbeforecapture. Specificquestion: whichinitialfullbright/shiny/avataralpha/
+glowgroupcostsremainingmainopaqueGPUtime. Addedpassboundariesarediagnosticcost,
+notproductionFPS. Newtestsourcebeingpreparedprivately, notappliedyet.
 
-30715f commits native rawshadowgather preserving exactintegerfootprint/order.
-Initial15680queries+96lightmaps andextended23480IEEE/prodextentqueries allEXACT;
-GPUvalidation0. Quiet7blocktimingsPCSS22–29%lower,unchangedGaussian/probepaths
-+.023/.016ms explicit, noFPSforecast. Newpermanenttestfocused34626/1 andfull
-Release426213/91 API+GPU0; independentreviewapproved. FullRWDI71370/appverify9881 actual0,426213/91 and349ARM64; Xcodebuild/signature0.
-Canonical68577/PID58207 RUNNING warmup, fullscreenbeforelogin/live43controlgate0;
-30715fplanINSTALLED/NOTrestored. Config/launcher dryrun0. Finish residentcomparison,
-noGPU/profile/buildoverlapformal. Usefreshstartupplan andrestoreaftergracefulexit.
-[Fullsource/runtime/filterevidence](../../state/archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
+SeparateD32arrayfeasibilityGPU98353passed8960rawqueries+96fullthreewaymaps exactly;
+noopaqueFSnilcaster/clamp/coverage/migrationproof. Sourceplanonlynext, notproduct
+optimizationclaim. Full20FPS,visualparity/generalperformance stillopen.
 
 ## Non-negotiable open gates
 

@@ -2,8 +2,8 @@
 
 **Observed:**2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `30715f3cde5d6b29e2f0fe974e5d0ef72a7db94f`.
-**Working source:**gather implementation committed; viewer measurement pending.
+**Renderer code checkpoint:** `1f2cc0e786f6c88f5a1dee23215c17650e6e83b0`.
+**Working source:**diagnostic committed/built/verified; controlled viewer RUNNING.
 **Recovery:**[NEXT](NEXT_SESSION.md),[ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md),[history](archive/INDEX.md).
 
@@ -14,13 +14,34 @@ measure authorized at the fixed private location/numericPreset123 only; no trave
 Prefer Mac shortcuts. Preserve Ultra3456×2168/Midday, six hero1024faces/two cascades,
 PCSS/clamp/casters and viewer functionality. No private uploads/releases.
 
-Latest68576/source0fa4e3 resident run REGRESSED:6.728847FPS,mean148.613868ms,
-p50149.572063,p95156.249375 over300frames7623–7922. All native/zeroGL,256probes
-ready/stable120,bias1all300,43controls match, camera sampled delta0. Baseline68572/
-source46d622:9.382155FPS,mean106.585321,p95110.883167,bias1. Main-visible97vs98;
-camera translation difference5.722e−6m. No source-causal FPS win established.
-20FPS is neither achieved nor proved impossible. Do not substitute tests/profile
-volume or CPU relief for the requested outcome.
+Latest68577/source30715f completed300frames10487–10786:8.011210FPS,
+mean124.825083ms,p50121.765792,p95154.566750. Allnative/noGL/Release/Ultra3456×2168,
+256ready/stable120,bias1all300,43controls/environment/sun/restoration match,
+cameraEXACTmatch68572 andsampleddelta0,main98. Versus68576/source0fa4e3,
+mean148.613868/6.728847FPS:mean−16.007%,FPS+19.058%,draws+.038%. Versus68572/
+source46d622mean106.585321/9.382155FPS:mean+17.113%,FPS−14.612%,draws−2.837%.
+Both officialenforce/provenance performancegates1. This is observed improvement
+versusrecentregression, not fullsourcecausalproof or20FPS. Goal remains unmet;
+hardwareinfeasibility unproved. Do not substitute test/profilevolume forFPS.
+
+Post-formal viewer-only15sGPUtrace42832 completed0; serialexports/parsers0.
+Maininitialopaquegroup44.844→20.756ms/p, mainlightmap5.418→4.743, baseabout18.
+Viewer ActiveGPUunion143.136→129.350ms/p acrossseparateinstrumentedwindows;
+othergroupsvaried, labelsoverlap, nofull24mscausalclaim. Forwardshadowedalpha
+useschangedhelpertoo. AdditionalGPUactor identified:python3.12/PID35824 Active33.98%wall,7.30%outside
+viewer in68577trace. Userfirstauthorizedpause thenEXPLICITLYclarifiedFULLSTOP
+usinguv. Rootran `uv run --no-sync python scripts/service.py stop` actual0 from
+Translatorproject; API35823/tailscaled35866stopped,worker35824absentverified.
+USERREQUESTNOAUTOMATICRESTART. Stoprecordprivate-1f2cc0-translator-stop-20261109.json.
+
+CURRENT68579/PID78103 RUNNING, source1f2cc0, exactappfullscreenBEFORElogin,
+fresh43control/location/binaryobserveverifygate0. TranslatorSTOPPED, allprior
+viewerstateplansrestored;1f2cc0MiddayplanINSTALLED/NOTrestored. Normal300sample
+first (no addedencoders); envALCHEMY_METAL_POST_FAMILY_ENCODERS=1 onlyactivates
+AFTERcommandtimingtrue→falsepostCSV. Needseparate15sGPUtraceafterformal; parser
+mustrecognize'Alchemy DIAGNOSTIC initial...' asfamilydiagnosticnotnormalFPS.
+ExpectedCSVprivate-1f2cc0-family-diagnostic-20261109-01.csv/siblingprovenance.
+AllGPUtests/builds/verifyfinished; nootherrootGPUtasksduringrun. Agentssourceonly.
 
 ## Retained original-contract repair
 
@@ -39,8 +60,7 @@ FormalCSV/privateprovenance inartifacts/metal/private-0fa4e3-probe-ssao-20261109
 Fresh start/end43control/location/binary gates0. Official performance comparison
 with enforce/provenance exits1 (failed performance, not fake passing result).
 
-Viewer68577/PID58207 RUNNING in controlled warmup. Fresh30715fstartup plan
-INSTALLED, NOT restored. Prior38935 quit/Goodbye/PIDabsence0;0fa4e3plan restored.
+Previous30715f/0fa4e3startupplansRESTORED aftergracefulquit/PIDabsence; current1f2cc0planactive.
 No CUA phase active; fullscreen-before-login phase summary sent. No screenshot
 for this run, so no pixel-parity claim. Root owns shared source/docs/runtime.
 
@@ -81,11 +101,10 @@ ExtendedRAW compile0/API+GPUrun0:23480queries exact includingproduction/nonPOT/
 16kedges andIEEEclasses.30715f integrates helper plus permanentproductiontest:
 focused34626/1 and fullRelease426213/91 API+GPU0. Independentreviewapproved.
 FullRWDI71370 and verify_app9881 ACTUALexit0:426213/91 and349ARM64; Xcodeconfigure/build0,
-deep-strict signature0. Newcanonical68577 now RUNNING in controlled warmup, exe712bee665eefd7b6ca0255460070ba9fd023e0d4b3774310279bab27902d0bba,
+deep-strict signature0. Measuredcanonical68577 now CLOSED/preserved, exe712bee665eefd7b6ca0255460070ba9fd023e0d4b3774310279bab27902d0bba,
 shaderffd9e1d178988b0719c516cd1e87444907d59d063630d7fd9ac2d17cafaa9347.
-Launcher/config30715f dryrun0; installed30715fplan, exactappfullscreenbeforelogin,
-43livecontrol/location/binary gates0. Collector warmup300sec/120frames/ready256
-before300samples; expectedprivate-30715f-shadow-gather-20261109-01.csv.
+Launcher/config30715f dryrun0; exactappfullscreenbeforelogin/start+end43control/
+location/binary gates0. CSVprivate-30715f-shadow-gather-20261109-01.csv complete300.
 
 ## Retained quality baseline and earlier proven work
 
@@ -125,7 +144,14 @@ Deferred alpha local-light count0 guard is real but not this UltraFPS cause.
 
 CubeSSAO parity is fixed; netFPS regressed, mainopaque GPU cost newly localized.
 Gather is a measured general filter candidate with initial exact proof, not a
-viewer result. Extendedraw/prodtest/build/GPUreview passed; finish active controlled
-resident comparison, then exactPIDquit/restore and independent analysis. Fullfeature/pixelparity,multi-sceneperformance, prolonged stability,
+viewer result. Extendedraw/prodtest/build/GPUreview andresidentcomparison finished. Next:finish activecontrolledsample/postCSVfamilytrace, thenquit/restore.
+1f2cc0doctor/configure/build/349ARM64/deep-strict signature all0; focused9149/1
+and full426444/91 API+GPUchecks EACH Release/RWDI0. App68579executable
+bf4cdfef2fe95cf91991f26e4f948328878fa8627871100825d54b11fe6d69f5,shaderffd9unchanged. Firstfixturefailed8922assertions(1invalid
+water-exclusionorder), sourceonlytestorderfixed/productionvalidationretained;
+retry0. DiagnosticdefaultOFF/main/postCSVonly, exactcolor/depth/stencil/counter
+proof. Independentreviewsapproved. NeveruseaddedpasscostasproductionFPS. D32arrayfirstgate
+actualAPI+GPU98353 passed8960queries+96threewaymaps; opaqueFSnilcaster/clamp/alpha
+parity/migrationstillunproven. NootherGPU/heavyrootprocessesduringrun, agentsCPUsourceonly. Fullfeature/pixelparity,multi-sceneperformance, prolonged stability,
 strict no-GL and independent build/review evidence remain OPEN. No hardware-
 infeasibility, release or product-complete claim.
