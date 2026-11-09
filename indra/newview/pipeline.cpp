@@ -18120,8 +18120,24 @@ void LLPipeline::renderMetalWorldBaseLighting(
     constants.environment_config[0] =
         use_reflection_probes ? 0u : 1u;
 
+    // Begin only after scene preparation, immediately before the owned base
+    // command is created. Reject an enclosing batch rather than capturing an
+    // empty interval whose command was created before capture began.
+    struct BaseCaptureEnd
+    {
+        bool started;
+        ~BaseCaptureEnd() noexcept { if (started) end_metal_base_capture(false); }
+    } capture_end{
+        scene.diagnostic_view.view_kind == 1 && !gSnapshot && !gCubeSnapshot &&
+        !capture.renderer->commandBatchActive() && begin_metal_base_capture()};
     std::string error;
     auto target = capture.renderer->renderBaseLighting(scene, &error);
+    // End before publishing the result or emitting any other rendering work.
+    if (capture_end.started)
+    {
+        end_metal_base_capture(static_cast<bool>(target));
+        capture_end.started = false;
+    }
     if (!target)
     {
         ++capture.base_lighting_failed_frames;
@@ -28546,7 +28562,14 @@ void LLPipeline::renderDeferredLighting()
             !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
             mMetalWorldSimpleCapture &&
             mMetalWorldSimpleCapture->renderer;
-        if (batch_main_lighting)
+        // A selected diagnostic pass must create and commit its own command
+        // inside the capture interval. An already-created enclosing batch
+        // would omit that work from Metal's capture. All other frames retain
+        // the normal lighting batch and all rendering inputs/order unchanged.
+        const bool capture_main_base = batch_main_lighting &&
+            !gSnapshot && !gCubeSnapshot && !sRenderingHUDs &&
+            metal_base_capture_ready();
+        if (batch_main_lighting && !capture_main_base)
         {
             lighting_batch_active =
                 mMetalWorldSimpleCapture->renderer->beginCommandBatch(

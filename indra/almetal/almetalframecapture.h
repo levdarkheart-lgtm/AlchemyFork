@@ -20,6 +20,8 @@ class ALMetalFrameCapture final
 public:
     static constexpr const char* directory_environment =
         "ALCHEMY_METAL_FRAME_CAPTURE_DIRECTORY";
+    static constexpr const char* mode_environment =
+        "ALCHEMY_METAL_FRAME_CAPTURE_MODE";
     static constexpr const char* session_directory = "frame-capture";
     static constexpr const char* trace_name = "display-interval.gputrace";
     static constexpr const char* metadata_name = "metadata.jsonl";
@@ -32,7 +34,8 @@ public:
         cooling_down,
         capturing,
         stopped,
-        failed
+        failed,
+        ready_for_pass
     };
 
     struct Stats
@@ -73,6 +76,18 @@ public:
     // false is a terminal diagnostic failure; normal rendering must continue.
     bool advanceDisplayInterval(std::uint64_t frame, bool eligible,
                                 std::string* error = nullptr) noexcept;
+
+    // With MODE=main-base, the same arming/cooldown instead prepares one
+    // selected pass. Begin BEFORE creating its command buffer and finish
+    // AFTER committing it. The caller must omit any enclosing command batch.
+    // Device scope can also include concurrent upload commands; inspect the
+    // actual capture rather than assuming a single command buffer.
+    bool selectedPassReady() const noexcept;
+    bool beginSelectedPass(std::uint64_t frame,
+                           std::string* error = nullptr) noexcept;
+    bool finishSelectedPass(std::uint64_t frame,
+                            std::string* error = nullptr,
+                            bool completed = true) noexcept;
     Stats stats() const noexcept;
 
 private:

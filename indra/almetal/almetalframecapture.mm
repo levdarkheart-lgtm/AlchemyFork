@@ -68,6 +68,7 @@ struct ALMetalFrameCapture::Impl
     // All capture control is main-owner-only; do not concurrently stop/restart
     // this process's singleton capture manager from another controller.
     bool owns_capture = false;
+    bool selected_pass = false;
     unsigned records = 0;
     std::uint64_t last_frame = 0;
 
@@ -116,7 +117,7 @@ struct ALMetalFrameCapture::Impl
             "\"cooldown_eligible_intervals\":%u,\"eligible_intervals_waited\":%u,"
             "\"start_attempts\":%u,\"native_error_code\":%lld,"
             "\"scope\":\"device_all_queues\","
-            "\"interval\":\"eligible_display_to_next_eligible_display\","
+            "\"interval\":\"%s\","
             "\"includes_intervening_idle_uploads\":true,"
             "\"gpu_completion_waited\":false,\"present_duration_measurement\":false}\n",
             status, static_cast<unsigned long long>(frame),
@@ -124,7 +125,9 @@ struct ALMetalFrameCapture::Impl
             static_cast<unsigned long long>(stats.stop_frame),
             static_cast<unsigned long long>(registry_id), cooldown_frames,
             stats.eligible_intervals_waited, stats.start_attempts,
-            static_cast<long long>(native_error));
+            static_cast<long long>(native_error), selected_pass
+                ? "selected_main_base_pass"
+                : "eligible_display_to_next_eligible_display");
         if (size <= 0 || static_cast<std::size_t>(size) >= sizeof(json)) return false;
         ++records;
         return writeAll(metadata, json, static_cast<std::size_t>(size));
@@ -137,6 +140,40 @@ struct ALMetalFrameCapture::Impl
         record(status, frame, native_error);
         setError(error, message);
         return false;
+    }
+
+    bool start(std::uint64_t frame, std::string* error)
+    {
+        if (manager.isCapturing)
+            return fail("Another controller started capture; it was left unchanged",
+                        "capture_conflict", frame, error);
+        if (!outputLocationUnchanged())
+            return fail("Frame capture output path changed during warm-up; no capture attempted",
+                        "path_changed", frame, error);
+        struct stat existing{};
+        if (fstatat(directory, trace_name, &existing, AT_SYMLINK_NOFOLLOW) == 0 || errno != ENOENT)
+            return fail("Frame capture trace already exists; no overwrite attempted",
+                        "output_conflict", frame, error);
+
+        ++stats.start_attempts;
+        MTLCaptureDescriptor* descriptor = [[MTLCaptureDescriptor alloc] init];
+        descriptor.captureObject = device;
+        descriptor.destination = MTLCaptureDestinationGPUTraceDocument;
+        descriptor.outputURL = trace_url;
+        NSError* native_error = nil;
+        if (![manager startCaptureWithDescriptor:descriptor error:&native_error])
+            return fail("Metal could not start frame capture; normal rendering continues",
+                        "start_failed", frame, error, native_error.code);
+        owns_capture = true;
+        stats.start_frame = frame;
+        stats.state = State::capturing;
+        if (!record("capturing", frame))
+        {
+            stop(frame, true, nullptr);
+            return fail("Could not write frame capture start metadata",
+                        "metadata_error", frame, error);
+        }
+        return true;
     }
 
     bool stop(std::uint64_t frame, bool cancelled, std::string* error)
@@ -152,7 +189,7 @@ struct ALMetalFrameCapture::Impl
         owns_capture = false;
         stats.stop_frame = frame;
         if (cancelled)
-            return fail("Frame capture owner was destroyed before its next eligible boundary",
+            return fail("Frame capture ended before its requested work completed",
                         "cancelled", frame, error);
         struct stat output{};
         if (fstatat(directory, trace_name, &output, AT_SYMLINK_NOFOLLOW) != 0 ||
@@ -187,6 +224,13 @@ std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::createIfRequested(
 {
     const char* path = std::getenv(directory_environment);
     if (!path || !*path) return nullptr;
+    const char* mode = std::getenv(mode_environment);
+    const bool selected_pass = mode && std::strcmp(mode, "main-base") == 0;
+    if (mode && *mode && !selected_pass && std::strcmp(mode, "display") != 0)
+    {
+        setError(error, "Frame capture mode must be display or main-base");
+        return nullptr;
+    }
     try
     {
         @autoreleasepool
@@ -255,6 +299,7 @@ std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::createIfRequested(
                 impl->session_path = impl->parent_path + '/' + session_directory;
                 impl->device = (__bridge id<MTLDevice>)device.nativeHandle();
                 impl->manager = manager;
+                impl->selected_pass = selected_pass;
                 impl->registry_id = device.info().registry_id;
                 // Atomic exclusive reservation: even two helpers targeting
                 // the same directory cannot supply an existing trace to Metal.
@@ -323,7 +368,7 @@ bool ALMetalFrameCapture::advanceDisplayInterval(
                 if (mImpl->stats.state == State::failed) return false;
                 if (mImpl->stats.state == State::stopped) return true;
                 if (mImpl->stats.state == State::capturing)
-                    return !eligible || mImpl->stop(frame, false, error);
+                    return !eligible || mImpl->stop(frame, mImpl->selected_pass, error);
 
                 // Observe timing even during warm-up/ineligible main entries.
                 if (ALMetalDevice::commandTimingEnabled())
@@ -337,6 +382,7 @@ bool ALMetalFrameCapture::advanceDisplayInterval(
                     return true;
                 }
                 if (mImpl->stats.state == State::waiting_for_timing) return true;
+                if (mImpl->stats.state == State::ready_for_pass) return true;
                 if (mImpl->stats.state == State::waiting_for_disarm)
                 {
                     mImpl->stats.state = State::cooling_down;
@@ -349,36 +395,14 @@ bool ALMetalFrameCapture::advanceDisplayInterval(
                 }
                 if (!eligible) return true;
                 if (++mImpl->stats.eligible_intervals_waited < cooldown_frames) return true;
-                if (mImpl->manager.isCapturing)
-                    return mImpl->fail("Another controller started capture; it was left unchanged",
-                                       "capture_conflict", frame, error);
-                if (!mImpl->outputLocationUnchanged())
-                    return mImpl->fail("Frame capture output path changed during warm-up; no capture attempted",
-                                       "path_changed", frame, error);
-                struct stat existing{};
-                if (fstatat(mImpl->directory, trace_name, &existing, AT_SYMLINK_NOFOLLOW) == 0 || errno != ENOENT)
-                    return mImpl->fail("Frame capture trace already exists; no overwrite attempted",
-                                       "output_conflict", frame, error);
-
-                ++mImpl->stats.start_attempts;
-                MTLCaptureDescriptor* descriptor = [[MTLCaptureDescriptor alloc] init];
-                descriptor.captureObject = mImpl->device;
-                descriptor.destination = MTLCaptureDestinationGPUTraceDocument;
-                descriptor.outputURL = mImpl->trace_url;
-                NSError* native_error = nil;
-                if (![mImpl->manager startCaptureWithDescriptor:descriptor error:&native_error])
-                    return mImpl->fail("Metal could not start frame capture; normal rendering continues",
-                                       "start_failed", frame, error, native_error.code);
-                mImpl->owns_capture = true;
-                mImpl->stats.start_frame = frame;
-                mImpl->stats.state = State::capturing;
-                if (!mImpl->record("capturing", frame))
+                if (mImpl->selected_pass)
                 {
-                    mImpl->stop(frame, true, nullptr);
-                    return mImpl->fail("Could not write frame capture start metadata",
-                                       "metadata_error", frame, error);
+                    mImpl->stats.state = State::ready_for_pass;
+                    return mImpl->record("ready_for_pass", frame) ||
+                        mImpl->fail("Could not write selected-pass readiness metadata",
+                                    "metadata_error", frame, error);
                 }
-                return true;
+                return mImpl->start(frame, error);
             }
             @catch (NSException*)
             {
@@ -395,6 +419,69 @@ bool ALMetalFrameCapture::advanceDisplayInterval(
         @catch (NSException*) {}
         return mImpl->fail("Frame capture skipped after a diagnostic exception",
                            "exception", frame, error);
+    }
+}
+
+bool ALMetalFrameCapture::selectedPassReady() const noexcept
+{
+    return mImpl->selected_pass &&
+        mImpl->stats.state == State::ready_for_pass &&
+        !ALMetalDevice::commandTimingEnabled();
+}
+
+bool ALMetalFrameCapture::beginSelectedPass(
+    std::uint64_t frame, std::string* error) noexcept
+{
+    if (!selectedPassReady())
+    {
+        setError(error, "Selected-pass capture is not armed and ready");
+        return false;
+    }
+    @autoreleasepool
+    {
+        @try
+        {
+            mImpl->last_frame = frame;
+            return mImpl->start(frame, error);
+        }
+        @catch (NSException*)
+        {
+            @try { mImpl->stop(frame, true, nullptr); }
+            @catch (NSException*) {}
+            return mImpl->fail("Selected-pass capture skipped after a native exception",
+                               "native_exception", frame, error);
+        }
+    }
+}
+
+bool ALMetalFrameCapture::finishSelectedPass(
+    std::uint64_t frame, std::string* error, bool completed) noexcept
+{
+    if (!mImpl->selected_pass)
+    {
+        setError(error, "Manual capture completion requires main-base mode");
+        return false;
+    }
+    @autoreleasepool
+    {
+        @try
+        {
+            mImpl->last_frame = frame;
+            if (mImpl->stats.state == State::stopped) return true;
+            if (mImpl->stats.state != State::capturing)
+            {
+                setError(error, "Selected-pass capture has not started");
+                return false;
+            }
+            return mImpl->stop(frame, !completed, error);
+        }
+        @catch (NSException*)
+        {
+            @try { mImpl->stop(frame, true, nullptr); }
+            @catch (NSException*) {}
+            return mImpl->fail("Selected-pass capture completion failed after a native exception",
+                               "native_exception", frame, error);
+        }
     }
 }
 

@@ -529,11 +529,57 @@ static void fill_pacing_slack()
 #if LL_DARWIN
 static ALMetalBenchmarkRecorder::Provenance sMetalBenchmarkProvenance;
 static bool sMetalBenchmarkCompletedSuccessfully = false;
+static std::unique_ptr<ALMetalFrameCapture> sMetalFrameCapture;
+static bool sMetalFrameCaptureMainEligible = false;
+static U64 sMetalFrameCaptureEligibleFrame = 0;
+
+bool metal_base_capture_ready() noexcept
+{
+    return sMetalFrameCaptureMainEligible &&
+        sMetalFrameCaptureEligibleFrame == gFrameCount &&
+        sMetalBenchmarkCompletedSuccessfully && sMetalFrameCapture &&
+        sMetalFrameCapture->selectedPassReady();
+}
+
+bool begin_metal_base_capture() noexcept
+{
+    try
+    {
+        if (!metal_base_capture_ready()) return false;
+        std::string error;
+        if (!sMetalFrameCapture->beginSelectedPass(gFrameCount, &error))
+        {
+            LL_WARNS("MetalCapture") << error << LL_ENDL;
+            return false;
+        }
+        return true;
+    }
+    catch (...)
+    {
+        sMetalFrameCapture.reset();
+        return false;
+    }
+}
+
+void end_metal_base_capture(bool completed) noexcept
+{
+    try
+    {
+        if (!sMetalFrameCapture) return;
+        std::string error;
+        if (!sMetalFrameCapture->finishSelectedPass(gFrameCount, &error, completed))
+            LL_WARNS("MetalCapture") << error << LL_ENDL;
+    }
+    catch (...)
+    {
+        sMetalFrameCapture.reset();
+    }
+}
 
 static void advance_metal_frame_capture(bool normal_display)
 {
     static bool initialized = false;
-    static std::unique_ptr<ALMetalFrameCapture> capture;
+    auto& capture = sMetalFrameCapture;
     if (initialized && !capture) return;
     try
     {
@@ -552,6 +598,12 @@ static void advance_metal_frame_capture(bool normal_display)
         const bool world_ready = LLStartUp::getStartupState() >= STATE_STARTED &&
             !gTeleportDisplay && !gDisconnected &&
             !LLAppViewer::instance()->logoutRequestSent() && !display_window_hidden();
+        if (normal_display)
+        {
+            sMetalFrameCaptureMainEligible =
+                world_ready && sMetalBenchmarkCompletedSuccessfully;
+            sMetalFrameCaptureEligibleFrame = gFrameCount;
+        }
         if (normal_display && !world_ready &&
             capture->stats().state == ALMetalFrameCapture::State::capturing)
         {
@@ -921,8 +973,10 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
             ? benchmark_session.recorder : nullptr);
     // Start before any frame commands, and stop at the next normal display
     // entry. Ordinary probes run after display_end_frame, outside display().
-    advance_metal_frame_capture(!for_snapshot && !gSnapshot && !gCubeSnapshot &&
-        !LLPipeline::sRenderingHUDs && zoom_factor == 1.f && subfield == 0);
+    const bool metal_normal_display =
+        !for_snapshot && !gSnapshot && !gCubeSnapshot &&
+        !LLPipeline::sRenderingHUDs && zoom_factor == 1.f && subfield == 0;
+    advance_metal_frame_capture(metal_normal_display);
 #endif
     LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Render");
     LL_PROFILE_GPU_ZONE("Render");
@@ -1112,6 +1166,12 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
     gPipeline.mBackfaceCull = true;
     gFrameCount++;
+#if LL_DARWIN
+    // display entry observes the preceding frame index; the actual world
+    // commands below belong to this newly incremented main display.
+    if (metal_normal_display && sMetalFrameCaptureMainEligible)
+        sMetalFrameCaptureEligibleFrame = gFrameCount;
+#endif
     gRecentFrameCount++;
     if (gFocusMgr.getAppHasFocus())
     {

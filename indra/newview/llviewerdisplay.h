@@ -42,6 +42,14 @@ void display_end_frame();
 // draws nothing.
 bool display_window_hidden();
 
+#if LL_DARWIN
+// Diagnostic-only main-base capture. Readiness requires this normal main
+// display's successful benchmark completion and post-sample cooldown.
+bool metal_base_capture_ready() noexcept;
+bool begin_metal_base_capture() noexcept;
+void end_metal_base_capture(bool completed = true) noexcept;
+#endif
+
 // The projection and modelview the HUD's attachments are drawn with over the whole world view. False where the
 // agent's avatar wears no HUD.
 bool get_hud_matrices(LLMatrix4a& proj, LLMatrix4a& model);

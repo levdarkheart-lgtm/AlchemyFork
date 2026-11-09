@@ -10,12 +10,14 @@
 #include "../almetalframecapture.h"
 #include "../almetaldevice.h"
 #include "../almetalresource.h"
+#include "../almetalpipeline.h"
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -34,12 +36,15 @@ namespace
     {
         std::optional<std::string> directory;
         std::optional<std::string> capture;
+        std::optional<std::string> mode;
         bool timing = ALMetalDevice::commandTimingEnabled();
         Environment()
         {
             if (const char* value = std::getenv(ALMetalFrameCapture::directory_environment)) directory = value;
             if (const char* value = std::getenv("MTL_CAPTURE_ENABLED")) capture = value;
+            if (const char* value = std::getenv(ALMetalFrameCapture::mode_environment)) mode = value;
             unsetenv(ALMetalFrameCapture::directory_environment);
+            unsetenv(ALMetalFrameCapture::mode_environment);
             ALMetalDevice::setCommandTimingEnabled(false);
         }
         ~Environment()
@@ -48,6 +53,8 @@ namespace
             else unsetenv(ALMetalFrameCapture::directory_environment);
             if (capture) setenv("MTL_CAPTURE_ENABLED", capture->c_str(), 1);
             else unsetenv("MTL_CAPTURE_ENABLED");
+            if (mode) setenv(ALMetalFrameCapture::mode_environment, mode->c_str(), 1);
+            else unsetenv(ALMetalFrameCapture::mode_environment);
             ALMetalDevice::setCommandTimingEnabled(timing);
         }
     };
@@ -214,8 +221,12 @@ TEST_CASE("almetal: opted-in display interval captures a completed clear once",
         CHECK((status.st_mode & 0777) == 0600);
         CHECK_FALSE(fs::exists(directory.trace()));
         CHECK_FALSE(ALMetalFrameCapture::createIfRequested(*device, &error));
+        CHECK_FALSE(capture->selectedPassReady());
+        CHECK_FALSE(capture->beginSelectedPass(1, &error));
         reachStart(*capture, error);
         REQUIRE(manager.isCapturing);
+        CHECK_FALSE(capture->finishSelectedPass(259, &error));
+        CHECK(manager.isCapturing); // A manual finish must not stop default display mode.
 
         id<MTLDevice> native_device = (__bridge id<MTLDevice>)device->nativeHandle();
         MTLTextureDescriptor* texture_descriptor = [MTLTextureDescriptor
@@ -388,6 +399,312 @@ TEST_CASE("almetal: opted-in capture respects another controller and stops its o
             planted >> sentinel;
             CHECK(sentinel == "preserve-old-output");
             CHECK(fs::exists(reserved / ALMetalFrameCapture::metadata_name));
+        }
+    }
+}
+
+TEST_CASE("almetal: selected capture mode preserves default-off and rejects invalid modes",
+          "[almetal][frame-capture]")
+{
+    Environment environment;
+    std::string error;
+    auto device = ALMetalDevice::create(&error);
+    REQUIRE(device);
+    REQUIRE(setenv(ALMetalFrameCapture::mode_environment, "not-a-mode", 1) == 0);
+    error = "unchanged";
+    CHECK_FALSE(ALMetalFrameCapture::createIfRequested(*device, &error));
+    CHECK(error == "unchanged"); // No directory means no diagnostic, regardless of mode.
+
+    Directory directory;
+    REQUIRE(unsetenv("MTL_CAPTURE_ENABLED") == 0);
+    for (const char* mode : {"not-a-mode", "MAIN-BASE", "1"})
+    {
+        CAPTURE(mode);
+        REQUIRE(setenv(ALMetalFrameCapture::mode_environment, mode, 1) == 0);
+        CHECK_FALSE(ALMetalFrameCapture::createIfRequested(*device, &error));
+        CHECK(error.find("mode") != std::string::npos);
+        CHECK(fs::is_empty(directory.path));
+    }
+    for (const char* mode : {"display", "main-base"})
+    {
+        CAPTURE(mode);
+        REQUIRE(setenv(ALMetalFrameCapture::mode_environment, mode, 1) == 0);
+        CHECK_FALSE(ALMetalFrameCapture::createIfRequested(*device, &error));
+        CHECK(error.find("process launch") != std::string::npos);
+        CHECK(fs::is_empty(directory.path));
+    }
+    REQUIRE(unsetenv(ALMetalFrameCapture::mode_environment) == 0);
+    CHECK_FALSE(ALMetalFrameCapture::createIfRequested(*device, &error));
+    CHECK(error.find("process launch") != std::string::npos);
+}
+
+// These fixtures verify the real producing command and capture lifecycle.
+// A trace file alone does NOT establish that Xcode replay or profiling succeeds.
+// Launch in a fresh process with capture/test flags; shader validation UNSET.
+TEST_CASE("almetal: selected main pass captures a fresh consumer after an uncaptured producer",
+          "[.][almetal][frame-capture-gpu]")
+{
+    if (!captureTestRequested())
+    {
+        WARN("Selected pass capture requires the explicit startup flags");
+        return;
+    }
+    @autoreleasepool
+    {
+        Environment environment;
+        REQUIRE(environment.capture == std::optional<std::string>("1"));
+        REQUIRE(setenv(ALMetalFrameCapture::mode_environment, "main-base", 1) == 0);
+        Directory directory;
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        REQUIRE(device);
+        MTLCaptureManager* manager = [MTLCaptureManager sharedCaptureManager];
+        if (![manager supportsDestination:MTLCaptureDestinationGPUTraceDocument])
+        {
+            WARN("GPUTraceDocument unsupported; selected-pass capture was not executed");
+            return;
+        }
+        REQUIRE_FALSE(manager.isCapturing);
+        auto capture = ALMetalFrameCapture::createIfRequested(*device, &error);
+        INFO(error);
+        REQUIRE(capture);
+        CHECK_FALSE(capture->selectedPassReady());
+        CHECK_FALSE(capture->beginSelectedPass(1, &error));
+        CHECK_FALSE(manager.isCapturing);
+        CHECK(capture->stats().start_attempts == 0);
+
+        const auto ready = [&]()
+        {
+            ALMetalDevice::setCommandTimingEnabled(true);
+            REQUIRE(capture->advanceDisplayInterval(100, false, &error));
+            ALMetalDevice::setCommandTimingEnabled(false);
+            REQUIRE(capture->advanceDisplayInterval(101, false, &error));
+            for (std::uint64_t frame = 200; frame < 259; ++frame)
+                REQUIRE(capture->advanceDisplayInterval(frame, true, &error));
+            CHECK(capture->stats().eligible_intervals_waited == 59);
+            REQUIRE(capture->advanceDisplayInterval(259, true, &error));
+            REQUIRE(capture->stats().state == ALMetalFrameCapture::State::ready_for_pass);
+            REQUIRE(capture->selectedPassReady());
+            CHECK(capture->stats().start_attempts == 0);
+            CHECK_FALSE(manager.isCapturing); // Unlike the default display mode, no automatic start.
+            REQUIRE(capture->advanceDisplayInterval(260, false, &error));
+            CHECK(capture->selectedPassReady());
+            CHECK_FALSE(manager.isCapturing);
+        };
+        ready();
+
+        SECTION("timing rearm refuses manual start and requires another complete cooldown")
+        {
+            ALMetalDevice::setCommandTimingEnabled(true);
+            CHECK_FALSE(capture->selectedPassReady());
+            CHECK_FALSE(capture->beginSelectedPass(260, &error));
+            CHECK_FALSE(manager.isCapturing);
+            CHECK(capture->stats().start_attempts == 0);
+            REQUIRE(capture->advanceDisplayInterval(261, false, &error));
+            CHECK(capture->stats().state == ALMetalFrameCapture::State::waiting_for_disarm);
+            ALMetalDevice::setCommandTimingEnabled(false);
+            REQUIRE(capture->advanceDisplayInterval(262, true, &error));
+            for (std::uint64_t frame = 263; frame < 322; ++frame)
+                REQUIRE(capture->advanceDisplayInterval(frame, true, &error));
+            CHECK_FALSE(capture->selectedPassReady());
+            REQUIRE(capture->advanceDisplayInterval(322, true, &error));
+            CHECK(capture->selectedPassReady());
+            CHECK(capture->stats().start_attempts == 0);
+            CHECK_FALSE(manager.isCapturing);
+            REQUIRE(capture->beginSelectedPass(323, &error));
+            ALMetalBufferDescriptor descriptor;
+            descriptor.length = 4;
+            descriptor.storage = ALMetalStorageMode::shared;
+            auto output = ALMetalBuffer::create(*device, descriptor, &error);
+            REQUIRE(output);
+            auto command = device->makeCommandBuffer("Rearmed selected pass", &error);
+            REQUIRE(command);
+            auto native_command = (__bridge id<MTLCommandBuffer>)command->nativeHandle();
+            auto encoder = [native_command blitCommandEncoder];
+            REQUIRE(encoder);
+            [encoder fillBuffer:(__bridge id<MTLBuffer>)output->nativeHandle()
+                         range:NSMakeRange(0, 4) value:0x62];
+            [encoder endEncoding];
+            REQUIRE(command->commit(&error));
+            REQUIRE(capture->finishSelectedPass(323, &error));
+            REQUIRE(command->waitUntilCompleted(&error));
+            CHECK(static_cast<const unsigned char*>(output->mappedBytes())[0] == 0x62);
+            CHECK(capture->stats().state == ALMetalFrameCapture::State::stopped);
+            CHECK_FALSE(manager.isCapturing);
+            const auto metadata = records(directory);
+            CHECK(metadata.size() == 8);
+            CHECK([metadata.back()[@"status"] isEqualToString:@"stopped"]);
+        }
+
+        SECTION("deferred start rechecks output collision without overwriting")
+        {
+            { std::ofstream planted(directory.trace()); planted << "preserve-selected-output"; }
+            CHECK_FALSE(capture->beginSelectedPass(260, &error));
+            CHECK(capture->stats().state == ALMetalFrameCapture::State::failed);
+            CHECK(capture->stats().start_attempts == 0);
+            CHECK_FALSE(manager.isCapturing);
+            capture.reset();
+            std::ifstream input(directory.trace());
+            std::string sentinel;
+            input >> sentinel;
+            CHECK(sentinel == "preserve-selected-output");
+        }
+
+        SECTION("deferred start never joins or stops an external controller")
+        {
+            MTLCaptureDescriptor* descriptor = [[MTLCaptureDescriptor alloc] init];
+            descriptor.captureObject = (__bridge id<MTLDevice>)device->nativeHandle();
+            descriptor.destination = MTLCaptureDestinationGPUTraceDocument;
+            descriptor.outputURL = [NSURL fileURLWithPath:
+                [NSString stringWithUTF8String:(directory.path / "external-selected.gputrace").c_str()]];
+            NSError* native_error = nil;
+            const bool started =
+                [manager startCaptureWithDescriptor:descriptor error:&native_error];
+            INFO((native_error ? native_error.description.UTF8String : "no native error"));
+            REQUIRE(started);
+            struct StopExternal
+            {
+                MTLCaptureManager* manager;
+                ~StopExternal() { if (manager.isCapturing) [manager stopCapture]; }
+            } external{manager};
+            CHECK_FALSE(capture->beginSelectedPass(260, &error));
+            CHECK(capture->stats().state == ALMetalFrameCapture::State::failed);
+            CHECK(capture->stats().start_attempts == 0);
+            CHECK(manager.isCapturing);
+            capture->finishSelectedPass(260, &error);
+            CHECK(manager.isCapturing);
+            capture.reset();
+            CHECK(manager.isCapturing);
+            CHECK_FALSE(fs::exists(directory.trace()));
+        }
+
+        SECTION("fresh captured consumer samples a previously committed private texture")
+        {
+            ALMetalTextureDescriptor descriptor;
+            descriptor.width = descriptor.height = 8;
+            descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+            descriptor.storage = ALMetalStorageMode::private_gpu;
+            descriptor.usage = ALMetalTextureUsage::shader_read | ALMetalTextureUsage::render_target;
+            descriptor.label = "Selected-pass pre-capture input";
+            auto input = ALMetalTexture::create(*device, descriptor, &error);
+            REQUIRE(input);
+            auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+            REQUIRE(library);
+            ALMetalComputePipelineDescriptor pipeline_descriptor;
+            pipeline_descriptor.library = library.get();
+            pipeline_descriptor.function = "almetal_test_sample_texture";
+            pipeline_descriptor.label = "Selected-pass sample pre-capture input";
+            auto pipeline = ALMetalComputePipeline::create(*device, pipeline_descriptor, &error);
+            REQUIRE(pipeline);
+            ALMetalBufferDescriptor result_descriptor;
+            result_descriptor.length = 4 * sizeof(float);
+            result_descriptor.storage = ALMetalStorageMode::shared;
+            result_descriptor.label = "Selected-pass sampled output";
+            auto result = ALMetalBuffer::create(*device, result_descriptor, &error);
+            REQUIRE(result);
+
+            // This producer is CREATED and COMMITTED before capture, without a CPU wait.
+            auto producer = device->makeCommandBuffer("Selected-pass uncaptured producer", &error);
+            REQUIRE(producer);
+            auto native_producer = (__bridge id<MTLCommandBuffer>)producer->nativeHandle();
+            auto clear = [MTLRenderPassDescriptor renderPassDescriptor];
+            clear.colorAttachments[0].texture = (__bridge id<MTLTexture>)input->nativeHandle();
+            clear.colorAttachments[0].loadAction = MTLLoadActionClear;
+            clear.colorAttachments[0].storeAction = MTLStoreActionStore;
+            clear.colorAttachments[0].clearColor = MTLClearColorMake(64.0 / 255.0, 128.0 / 255.0, 192.0 / 255.0, 1.0);
+            auto clear_encoder = [native_producer renderCommandEncoderWithDescriptor:clear];
+            REQUIRE(clear_encoder);
+            [clear_encoder endEncoding];
+            REQUIRE(producer->commit(&error));
+            REQUIRE_FALSE(manager.isCapturing);
+
+            REQUIRE(capture->beginSelectedPass(260, &error));
+            REQUIRE(manager.isCapturing);
+            CHECK(capture->stats().start_frame == 260);
+            CHECK(capture->stats().start_attempts == 1);
+            auto consumer = device->makeCommandBuffer("Selected-pass fresh captured consumer", &error);
+            REQUIRE(consumer);
+            auto encoder = ALMetalComputeEncoder::begin(*consumer, "Selected-pass sampled consumer", &error);
+            REQUIRE(encoder);
+            REQUIRE(encoder->setPipeline(*pipeline, &error));
+            REQUIRE(encoder->setTexture(0, input.get(), &error));
+            REQUIRE(encoder->setBuffer(0, *result, 0, &error));
+            REQUIRE(encoder->dispatch(1, 1, 1, 1, 1, 1, &error));
+            REQUIRE(encoder->end(&error));
+            REQUIRE(consumer->commit(&error));
+            REQUIRE(capture->finishSelectedPass(260, &error));
+            CHECK_FALSE(manager.isCapturing);
+            CHECK(capture->stats().state == ALMetalFrameCapture::State::stopped);
+            CHECK(capture->stats().stop_frame == 260);
+            CHECK_FALSE(capture->selectedPassReady());
+            REQUIRE(consumer->waitUntilCompleted(&error)); // Test-only data proof after capture stopped.
+            REQUIRE(producer->waitUntilCompleted(&error));
+            std::array<float, 4> sampled{};
+            REQUIRE(result->read(0, sampled.data(), sizeof(sampled), &error));
+            const std::array<float, 4> expected{{64.0f / 255.0f, 128.0f / 255.0f, 192.0f / 255.0f, 1.f}};
+            for (std::size_t channel = 0; channel < 4; ++channel)
+                CHECK(std::abs(sampled[channel] - expected[channel]) < 0.00001f);
+            REQUIRE(fs::exists(directory.trace()));
+            const auto metadata = records(directory);
+            REQUIRE_FALSE(metadata.empty());
+            CHECK([metadata.back()[@"status"] isEqualToString:@"stopped"]);
+            CHECK([metadata.back()[@"interval"] isEqualToString:@"selected_main_base_pass"]);
+            CHECK([metadata.back()[@"includes_intervening_idle_uploads"] boolValue] == YES);
+            const auto metadata_bytes = fs::file_size(directory.session() / ALMetalFrameCapture::metadata_name);
+            CHECK_FALSE(capture->beginSelectedPass(261, &error));
+            REQUIRE(capture->finishSelectedPass(261, &error));
+            REQUIRE(capture->advanceDisplayInterval(262, true, &error));
+            CHECK(capture->stats().start_attempts == 1);
+            CHECK_FALSE(manager.isCapturing);
+            CHECK(fs::file_size(directory.session() / ALMetalFrameCapture::metadata_name) == metadata_bytes);
+        }
+
+        SECTION("abandoned selected capture is stopped only by its owner")
+        {
+            REQUIRE(capture->beginSelectedPass(260, &error));
+            REQUIRE(manager.isCapturing);
+            ALMetalBufferDescriptor descriptor;
+            descriptor.length = 4;
+            descriptor.storage = ALMetalStorageMode::shared;
+            descriptor.label = "Selected-pass cancellation result";
+            auto result = ALMetalBuffer::create(*device, descriptor, &error);
+            REQUIRE(result);
+            auto command = device->makeCommandBuffer("Selected-pass cancellation command", &error);
+            REQUIRE(command);
+            auto native_command = (__bridge id<MTLCommandBuffer>)command->nativeHandle();
+            auto encoder = [native_command blitCommandEncoder];
+            REQUIRE(encoder);
+            [encoder fillBuffer:(__bridge id<MTLBuffer>)result->nativeHandle()
+                         range:NSMakeRange(0, 4) value:0x79];
+            [encoder endEncoding];
+            REQUIRE(command->commit(&error));
+            SECTION("destruction cancels its successfully started interval")
+            {
+                capture.reset();
+                CHECK_FALSE(manager.isCapturing);
+            }
+            SECTION("next eligible display rejects a selected interval left open")
+            {
+                REQUIRE(capture->advanceDisplayInterval(261, false, &error));
+                CHECK(manager.isCapturing); // Nested/ineligible does not truncate.
+                CHECK_FALSE(capture->advanceDisplayInterval(262, true, &error));
+                CHECK(capture->stats().state == ALMetalFrameCapture::State::failed);
+                CHECK_FALSE(manager.isCapturing);
+                CHECK_FALSE(capture->finishSelectedPass(262, &error));
+            }
+            SECTION("an unsuccessful selected pass is recorded as cancelled")
+            {
+                CHECK_FALSE(capture->finishSelectedPass(260, &error, false));
+                CHECK(capture->stats().state == ALMetalFrameCapture::State::failed);
+                CHECK_FALSE(manager.isCapturing);
+            }
+            REQUIRE(command->waitUntilCompleted(&error));
+            CHECK(static_cast<const unsigned char*>(result->mappedBytes())[0] == 0x79);
+            REQUIRE(fs::exists(directory.trace()));
+            const auto metadata = records(directory);
+            REQUIRE_FALSE(metadata.empty());
+            CHECK([metadata.back()[@"status"] isEqualToString:@"cancelled"]);
+            CHECK([metadata.back()[@"interval"] isEqualToString:@"selected_main_base_pass"]);
         }
     }
 }
