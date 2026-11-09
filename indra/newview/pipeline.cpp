@@ -28459,7 +28459,11 @@ void LLPipeline::renderDeferredLighting()
             gSavedSettings, "RenderLocalLightCount", 256);
         const bool has_sun_shadow =
             mResourceInputs.mShadowDetail > 0;
-        const bool has_ssao = mResourceInputs.mSSAO;
+        // Original cube snapshots select gDeferredSunProbeProgram, whose
+        // occlusion channel is white, and skip both light-map blur passes.
+        // Keep SSAO in the main view; reflecting it here both darkens probe
+        // lighting incorrectly and repeats screen-space work for every face.
+        const bool has_ssao = false;
         renderMetalWorldLightMap(*camera, has_sun_shadow, has_ssao);
         if (RenderDeferredAtmospheric)
         {
