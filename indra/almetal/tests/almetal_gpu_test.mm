@@ -3852,6 +3852,12 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                 std::array<std::array<float, 2>, 19> uv{};
                 std::array<std::array<std::uint8_t, 4>, 19> colors{};
             } data;
+            struct RestoreCoveredDrawTiming
+            {
+                bool saved = ALMetalDevice::commandTimingEnabled();
+                ~RestoreCoveredDrawTiming() { ALMetalDevice::setCommandTimingEnabled(saved); }
+            } restore_covered_draw_timing;
+            ALMetalDevice::setCommandTimingEnabled(true);
             for (std::size_t island = 0; island < 6; ++island)
             {
                 const float x = -0.65f + float(island % 3) * 0.65f;
@@ -3933,13 +3939,17 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                                            std::uint64_t static_covered_inputs = 6)
             {
                 join_scene.bulk_draws = false;
+                const auto scalar_draws_before = ALMetalDevice::encodedDrawCallCount();
                 REQUIRE(render_spot_shadow(join_scene, 0));
+                CHECK(ALMetalDevice::encodedDrawCallCount() - scalar_draws_before == joins.size());
                 std::array<std::uint32_t, 32 * 32> scalar_bits{};
                 REQUIRE(retained->readback(*device, 0, 0, {}, scalar_bits.data(),
                                           32 * sizeof(std::uint32_t), &error));
                 const auto before = renderer->shadowIndirectStats();
                 join_scene.bulk_draws = true;
+                const auto merged_draws_before = ALMetalDevice::encodedDrawCallCount();
                 REQUIRE(render_spot_shadow(join_scene, 1));
+                CHECK(ALMetalDevice::encodedDrawCallCount() - merged_draws_before == physical_draws);
                 std::array<std::uint32_t, 32 * 32> merged_bits{};
                 REQUIRE(retained->readback(*device, 0, 1, {}, merged_bits.data(),
                                           32 * sizeof(std::uint32_t), &error));
@@ -4044,8 +4054,12 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                 std::array<std::uint32_t, 32 * 32> retained_before{};
                 REQUIRE(retained->readback(*device, 0, 1, {}, retained_before.data(),
                                           32 * sizeof(std::uint32_t), &error));
+                const auto invalid_draws_before = ALMetalDevice::encodedDrawCallCount();
+                const auto invalid_commits_before = ALMetalDevice::committedCommandBufferCount();
                 error.clear();
                 CHECK_FALSE(render_spot_shadow(join_scene, 1));
+                CHECK(ALMetalDevice::encodedDrawCallCount() == invalid_draws_before);
+                CHECK(ALMetalDevice::committedCommandBufferCount() == invalid_commits_before);
                 const auto after = renderer->shadowIndirectStats();
                 CHECK(after.encoded_records == before.encoded_records);
                 CHECK(after.covered_coalesced_draws == before.covered_coalesced_draws);
