@@ -6,34 +6,37 @@ Branch codex/apple-silicon-metal; renderer735a407bb7da33a95bf14f7cbae995e1d9a91d
 commits actual function-constant specialization +public tests. RootdocsWIPupdate
 recovery; source3files committed/clean. Rootowns shared source/docs/runtime/GPU.
 
-## CRITICAL runtime — current viewer LEFT RUNNING per latest request
+## CRITICAL runtime — all viewers closed; normal app build next
 
-LIVE CURRENT68594/PID17022/fullsourceb299d5c99afd519da82f0db11b5b9ee60f88b283,
-renderer735a. Exactlibproc/path/exehashverified beforeCua fullscreen→savedlogin.
-LatestUSERasksSTARTcurrentviewer andOBSERVEtoprightFPS160→11in15–20seconds;
-userreports11then12. Do NOTmistakethis forcapclaim. No10capwasfound; foreground
-statistics argueagainstsustainedBackgroundYield40ms duringpriorformal run.
-MaxFPSunused, gFPSClamped10 iscamera/simulationEMA, NOTthiswidget.
+Renderer 4e833fa29aadabee3a66023fb67da0975f6b6c7f, actual-selected-PSO diagnostics committed;
+735a specialization unchanged. Both optimized API+GPU suites428004/95 pass.
+Releasebuild82672 terminal/noopcheck0, RWDI49590=0; native suites28560/32381=0.
+Initial sandbox42/noMetaldevice is separate failed environmental attempt.
+Packet/private/tmp/alchemy-metal-selected-pso-validation-20261109.bh6k72uq.
+Allfour applied source hashes match reviewed proposal1bc731; root owns source.
 
-Actualnormal68594 formal test COMPLETE300frames7949–8248: mean103.782010697ms,
-p50103.661375/p95NEAREST108.9555 (linear108.965404),9.635581285FPS vsbest9.60867,
-+0.28%effectivelyflat; latest68581 9.45464. All300native1/3456×2168/Ultra6/bias1/
-256ready/stable120; freshstart+end43gates0. Camera4changes ONLYwarmup, same-view
-2898→3197throughsamples, basis/projection/EEPfixed; translation3.8micrometres vsbest.
-Physicaldraws~3.8%lower, olderbaseline31neighbors vsnew64correctnessfix =>NOTpure
-shaderA/B. Exact14587shutdown/Goodbye/absence75320=0; oldb299planRESTORED0.
-Comparison/private/tmp/alchemy-metal-68594-formal-independent-20261109.p5xjUcY1/independent-formal-summary.json
-SHA602fd7673d857cf3122dc697d8fb5978e885b958c3e37a9b83a99bccdeff7ab0.
+Exact68594/PID17022/path/exesha/SIGTERM/Goodbye/absence71674=0 in2.01s.
+Startup-readout setup plan RESTORED0, allotherplans restored. Normal68594
+preserved/private/tmp/alchemy-metal-68594-normal-preserved.app; original
+exeshaac27e181... verifiedbefore/aftercopy. TranslatorFULLYSTOPPED/NEVERrestart.
+XcodeGPUreplaySTOPPED; no viewer/GPU/profile jobs. Rootcontrols Xcode/UI.
 
-NEW ACTIVE plan artifacts/metal/private-b299-startup-readout-setup-plan-20261109.json.
-RestoreONLYafter exact17022exit using/private/tmp/alchemy-metal-session-state-20261109.py
-restore --plan ABS. Allolderplansrestored. TranslatorFULLYSTOPPED/NEVERrestart.
-Do notbuild/test/profilewhilethisvieweractive. Allagentsquiet/sourceonly.
-UserhandedROOTXcodecontrol; XcodeGPUreplaySTOPPED/Finishedapp/CuaSummarysent.
-Cua getScreenshotonfullyloadedworld previouslytimedout15s/reset. Do notclaimnew
-worldscreenshot; useofficialapplicationAPIforFPSText asbelow. Current Cua kernel
-reinitialized/fpsViewer bound68594; loginpart completedsummary Confirmed live FPS display changes.
-Next Cuaaftercontextrestore MUSTrewriteDocumentation; getAppbyfullpath ifneeded.
+NEXT run/private/tmp/alchemy-metal-selected-pso-app-build-20261109.py AFTERdocs
+commit: wrapper records doctor/configRECORDOFF/fullbuild/verify actualexits.
+Then pin rebuilt exact exesha inartifacts/metal/private-ultra-selected-pso-census-qa-20261109.json
+(currentlyNone/PENDING, DO NOTLAUNCH unpinned). Newsource/appidentity thenfresh
+Middayplan/privateQA launch/fullscreenBEFORElogin/fresh43controls/location/binary
+gates. No per-familyencoder/capture/GPUvalidation flags; benchmarkarmscensus.
+Rootdeferred68588parentcontrol tocheck actualhotshaderpopulationfirst.
+Do not describe census as GPUtime/fragmentinvocations or laterouterbatchcommit.
+
+Owner correction: latest startup~38ratherthan160; initialnumbervaries. Root
+recorded32peak. Oldstartup observation below is historical;17022isCLOSED.
+Failed CPU sample0 hasonly2main-threadobservations/58DWARFwarnings: nohotspot
+attribution. Explicit quality-and-unit-correction.json SHAe06560514578757a580eb97ab74f31ab365ae5b4d7e9bd8d525d223ed164b550
+besiderawsample; rawMach125/3 correction, oldnsderivedfields invalidated.
+No profiler rerun queued. Cua completion Confirmed live FPS display changes done;
+aftercontextrestore callrewriteDocumentation beforeUI, thengetAppbyfullpath.
 
 ## Latest startup observation — exact widget plus RAWframe timings
 
@@ -44,7 +47,7 @@ requireReadyOFF/requireExactOFF: readinessfieldsfalse/None areDISABLEDobserver,
 NOT evidenceunbuiltprobes. Same43runtimecontrols/location/binary observe/verify/gate0.
 No shadercapture/GPUvalidation/familysplits/qualitychanges. Worldcameraunchanged
 first20sec; tinyheighttranslationsonlyat~300–302sec, noaxis/projection/viewport/FOVchange.
-Nativeviewer stillrendering afterCSVcompletion; widgetobserver continues.
+Nativeviewer/watcherstopped afterCSVcompletion; shutdown andrestoreverified.
 
 Rootprivateobserver created by COPYINGstockalchemy_qa.py andleap_probe.py into
 /private/tmp/alchemy-metal-startup-fps-observer-20261109.* (pointer/private/tmp/alchemy-metal-startup-fps-observer-latest-path-20261109.txt).
@@ -62,7 +65,17 @@ then11/12,11from21:16:45,10from21:19:15 onward. NO160captured; explicitlytelluse
 Rawfirst10s12.2576FPS/44,631mediandraws; next10s11.0384/50,697, SAMEcamera.
 350–360s10.2404/54,797 (aftertinycameraZsettling). Moreencodedworkisreal, notpure
 readoutlag; laterdrawsplateau52–54k whileframetimekeepsrising, so cannotattribute
-entiredeclineto drawgrowth. Noexactsubsystemcause orFPSimprovementclaimyet.
+entiredeclineto drawgrowth. Noexactsubsystemcause orFPSimprovementclaimyet. Sourceframealignedpostlogs show
+mainpack2at10s→98at428s, hero832fixedpostbatches whilepack105→237. Otherhero
+facesreach256. Count!=actualiterations (bucket/depth/max64neighbors/max32accepted).
+Filteredstartup-pass-growth.json incurrentanalysispacket SHAcba4c42f64463719f974a3e6dfca742c9ba252b0173177f1b6751e0deaaf047b.
+All6000bias1/56system_low0, no pressurebias/churnproof. ONE10s nativeCPU sample
+17022 completed0 in35.16s but ONLY2main-threadobservations/DWARFwarnings: invalid
+forhotspotattribution (do notcallfontsahotspot). Raw/private/tmp/alchemy-metal-68594-startup-cpu-sample-20261109.zNbsrCJC/sample.txt
+SHA4ad93a824e26e0c4853949b2b91467841a9684a8c5618e48e36a29fe1b827d64.
+Invocation preliminaryCPUseconds fields incorrectlytreatMach ticksasns; donotuse.
+Explicitunitcorrectionsavedabove; rawusagepreserved. No rerunqueued. UIreturned
+freshvalue10at21:48:18, watcheravailable/loggedintrue aftersample. Alljobsidle.
 Independent/private/tmp/alchemy-metal-b299-startup-readout-analysis-20261109.EZPDu5/startup-readout-analysis.json
 SHA813732a14f4e310262427637ba3e2abf6f2e19bfb39ffea40c6a12c460f3a53f.
 
@@ -76,13 +89,13 @@ artifacts/metal/private-ultra-b299-startup-readout-qa.json. Nooriginalplanoverwr
 Actualselected-PSO census PRIVATEpatch frozen/sourcepeerapproved:
 /private/tmp/alchemy-metal-selected-pso-census-20261109.CqfjEO/selected-pso-census.patch
 SHA1bc7312794faf3cba8577161945acee2404b8ce4df53c9a29f499da7ceba420b.
-4existingfiles, actualchosenPSOdescriptor AFTERsuccessfuldraw (no duplicated
+APPLIED/COMMITTED4e833; BOTHoptimized428004/95PASS.4existingfiles, actualchosenPSOdescriptor AFTERsuccessfuldraw (no duplicated
 selector),12bins regular/avatar/standard/custom/constant0undefinedfalse/true;
 13independentlydatedviewslots, boundedexistingdiaglog. CPUencodedcounts/declared
 vertices/indexcounts, NOTGPUtime. Wholefinishsuccess publication; failuretest
 preflightonly (latefailureguard sourceplacement, notinjectedtest). Tests extended
-checkerboard+actualavatar+off/failretain. gitapplycheck0, UNAPPLIED/UNCOMPILED/UNRUN.
-ReadREADME/manifest/review beforeapply; rootownsallsharedfiles. DefaultflagsOFF.
+checkerboard+actualavatar+off/failretain. gitapplycheck0, appliedhashesmatchmanifest, compiled andGPUvalidated.
+OriginalREADME/manifest/review retained forprovenance; rootownsallsharedfiles. DefaultflagsOFF.
 Needactualhotpopulation/criticalpath proof beforemorehypotheses.
 
 Fresh corrected64parent68588control preparedbutUNLAUNCHED becauseownerprioritized
@@ -94,7 +107,7 @@ Packetpointer/private/tmp/alchemy-metal-4b23-parent-control-latest-path-20261109
 Configartifacts/metal/private-ultra-4b23-parent-control-qa.json(reference68588,candidate68594),
 launcher/private/tmp/alchemy-metal-4b23-parent-launch-20261109.py dryrun0. NOPLAN
 installedforparent. Thisparenthassame64lightingmath, unlikeoldbest68579.
-Do NOTlaunchuntil17022closed+startupplanrestored; no travel, samePreset123/Midday/Ultra.
+17022closed/startupplanrestored, rootprioritizesselectedPSOsbeforethiscontrol; no travel, samePreset123/Midday/Ultra.
 
 Sourceaudits: shippingcommonconstantcache isO(1) one400Bprev value, noN²scan;
 arena beginsBEFOREeachhero/ordinaryshadows/Gbuffer, so palettefallbackscansnotnormal.

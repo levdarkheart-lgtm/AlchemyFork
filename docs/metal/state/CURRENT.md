@@ -2,8 +2,8 @@
 
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `735a407bb7da33a95bf14f7cbae995e1d9a91d4b`.
-**Working source:** committed735a in normal68594; formal test flat, startup observation complete.
+**Renderer code checkpoint:** `4e833fa29aadabee3a66023fb67da0975f6b6c7f`.
+**Working source:** selected-PSO census committed/validated; normal app build next.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -16,24 +16,25 @@ six hero1024 faces/two cascades, PCSS, reverse-Z/clamp/casters/viewer features.
 No private uploads/releases. Root owns shared source/docs/runtime/GPU; agents
 prepare/review private source only. User explicitly handed Xcode back to ROOT.
 
-LIVE68594/sourceb299d5c99a/renderer735a, exact PID17022/path/hash verified.
-Latest owner requested restart and observe top-right FPS. Startup DIAGNOSTIC:
-normal flags/quality, warmup0/ready-gateOFF/exact-gateOFF,6000 raw frames COMPLETE.
-Readiness false fields are DISABLED observations, not missing-probe evidence.
-Same43-control/location/binary observe/verify/gate each0. Cua fullscreen before
-login, then exact displayed FPSText read via official read-only LLWindow.getInfo;
-not a new scene screenshot/visual parity claim. Widget32→11/22.4s, later10;
-160 not captured, polling gaps up8.8s permit a missed transient.240/0 are UI
-initialization values. First10s actual12.258FPS/44,631 median draws; next10s
-11.038FPS/50,697 with unchanged camera. Real workload growth accompanies UI lag.
-Viewer LEFT RUNNING; NEW startup-readout Midday plan ACTIVE until verified exit.
-Prior normal PID14587 shutdown/Goodbye/absence75320=0; prior b299plan RESTORED0.
-All other plans restored. Translator FULLY STOPPED/NEVER restart/resume.
-Xcode replay STOPPED. No competing build/GPU/profile; agents source-only/quiet.
-Original full-world Cua screenshot timedout/reset; later login/UItext worked.
-Cua completion Confirmed live FPS display changes recorded. Root controls UI.
-BOTH optimized API+GPU427529/95 pass. Normal doctor/configOFF/build13489 all0,
-verify87922=0, independent349ARM64/deepstrictsignature96763=0; old68590 preserved.
+All viewers CLOSED. Exact68594/PID17022/path/executable hash verified before
+SIGTERM; Goodbye/PID absence confirmed in2.01s, command71674 exit0. Current
+startup-readout plan RESTORED0; all older plans restored. Normal68594 preserved
+at/private/tmp/alchemy-metal-68594-normal-preserved.app, original executable
+SHAac27e181... verified before/after copy. Translator FULLY STOPPED; NEVER
+restart. Xcode GPU replay STOPPED. No competing viewer/GPU/profile jobs.
+Startup6000 raw frames complete:12.258→11.038FPS first10/next10s, median draws
+44,631→50,697, early camera unchanged. Later main probe pack2→98/hero up to256
+while several fixedfaces retain post family/index counts. Correlation, not
+causal GPUtime. Bias1/system_low0. Widget observed32→11 then11/12/later10;
+owner clarified start~38 this time, starting value varies. Do not assume160.
+NativeCPU sample exit0 but only2main-thread observations/58DWARF warnings:
+unusable for attribution. Explicit Mach-unit correctione0656051 preserves raw
+counters; no font hotspot/normal CPU-time claim. Viewer UI recovered afterward.
+Committed selected-PSO census4e833; both optimized API+GPU suites428004/95 PASS.
+First sandbox test failed42/no Metal device; native rerun0, distinct logs kept.
+No shader/quality changes; diagnostics armed only by existing command timing.
+Next normal app doctor/configOFF/build/verify via private wrapper, then same-
+location diagnostic login to inspect actual selected shader populations.
 
 ## Controlled viewer baselines
 
@@ -150,6 +151,6 @@ gamma remains, no proven look defect/settings change from that observation.
 Full pixel/feature parity, multi-scene performance, prolonged stability,
 strict no-GL and independent build/review evidence remain OPEN.20FPS unmet;
 infeasibility unproved. Next: attribute startup growth/actual selected PSOs;
-close exact17022/restoreONLYstartup-readout plan before any build/GPU test.
-Private selected-PSO census patch1bc731 is reviewed/unapplied; parent68588 control
-prepared but UNLAUNCHED (latest owner prioritized current-viewer observation).
+Selected-PSO diagnostics4e833 validated; build/verify normal app, then collect
+actual per-view selections. Corrected64-parent68588 control remains prepared
+but UNLAUNCHED; prior best68579 has31-neighbor behavior, so not a pure A/B.

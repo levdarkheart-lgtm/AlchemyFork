@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `735a407bb7da33a95bf14f7cbae995e1d9a91d4b`;
+**Renderer checkpoint:** Commit `4e833fa29aadabee3a66023fb67da0975f6b6c7f`;
 latest68594:9.635581FPS, effectively flat vs68579:9.608673.20FPS/full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
@@ -52,8 +52,8 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 
 ## Current source ownership and latest result
 
-Root owns shared source/docs/runtime. LIVE68594/PID17022 startup observation, NEW
-startup-readout plan ACTIVE; prior normal14587 closed/restored.68581 preserved.
+Root owns shared source/docs/runtime. All viewers closed; exact17022 shutdown/
+Goodbye/absence71674=0 and startup-readout plan restored0.68594/68581 preserved.
 Translator explicitly fully stopped via its uv service command, actual0; stays
 STOPPED, no automatic restart. Latest68579/source1f2cc0 ready300:9.608672762FPS,
 mean104.072646/p50103.895667/p95109.0435ms,bias1/main95/Ultra3456×2168. Freshstart/
@@ -112,10 +112,13 @@ Goodbye/absence75320=0 andb299plan restored0. Latestuserrequested startupFPS
 observation: LIVE17022 current68594, same43gates0, startupDIAG6000frames complete.
 ExactFPSwidget readviaofficialLLWindow.getInfo:32→11/22.4s,later10;160notcaptured.
 Rawfirst10s12.26FPS/44.6kdraws,next10s11.04/50.7k, unchangedearlycamera.
-NEWstartup-readoutplanACTIVE untilverifiedshutdown; oldplansrestored/Translator
-STOPPED. ReadinessobservationsDISABLED inthisdiagnostic. Noimageparityclaim.
-Next selectedPSOcensus/privatepatch1bc731+startupgrowth attribution; parent68588
-control prepared/unlaunched. Close17022/restorecurrentplan beforeGPU/build.
+Mainprobe pack2→98/hero up to256 despite somefixedpostbatchcounts. Correlation
+notcausalGPUtime. CPU sample0 but only2main-threadsamples/DWARFwarnings: unusable.
+All plans restored/Translator STOPPED. Readiness observations DISABLED in this
+startup diagnostic. No image parity claim. Committed4e833 actual-selected-PSO
+counters; both optimized nativeAPI+GPU428004/95 pass. First sandbox42/noGPU,
+separate native rerun0. Normal app build/verify next, then live per-view census.
+Corrected64parent68588 control prepared/unlaunched. No FPS gain from counters.
 Ambient-only rewrite REJECTED (all timing ranges cross0). Rejected SH/predecode/
 cursor/simplemask remain rejected. PBR/water source-only fixtures may prepare;
 no combined optimization before current controlled viewer comparison.

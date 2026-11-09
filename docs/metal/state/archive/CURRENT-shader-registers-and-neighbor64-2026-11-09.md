@@ -498,3 +498,57 @@ No20FPS/live speedup/infeasibility claim. Translator remains STOPPED, Xcode
 replay STOPPED, no concurrent GPU/build work. Next root: attribute available
 startup counters; then exact17022 shutdown/currentplan restoration before
 corrected64-parent control or actual-selected-PSO census patch/test/build.
+
+
+### Startup pass population cross-check
+
+Independent source-frame-aligned98post snapshots and56numeric pressure samples:
+/private/tmp/alchemy-metal-b299-startup-readout-analysis-20261109.EZPDu5/startup-pass-growth.json
+SHAcba4c42f64463719f974a3e6dfca742c9ba252b0173177f1b6751e0deaaf047b;
+analysis exit0, root reread/hash matches. Main view probe pack2at10.2s,
+39at119.8s,74at291.4s,98at427.8s. Hero face1 keeps832post batches/223initial
+and identical recorded family/index counts as pack105at163.6s→237at389.7s;
+other fixedfaces similarly reach256. This is evidence of growing lighting
+population with stable encoded-family counts, not literal sampled-probe counts
+or causal milliseconds. Current walker uses depth buckets, minDepth break,
+first-owner ordered max64neighbor chain, max32accepted, conditional default.
+From60–120s to240–300s mean frame time85.0→93.8ms while draw/submission totals
+broadly plateau. No per-pass CPU/GPU timing in this dataset. CSVmetal_gpu_ms
+sums overlapping completed command-buffer intervals (with delayed reporting);
+do not treat it as active GPU union or add it to frame/CPU times.
+Pressureimage1293→7761MiB/device3133→9730MiB; all56system_low0 and all6000 finite
+discard-bias samples1. This shows residency growth, no measured cache churn or
+pressure-driven bias escalation. Root authorized a separate10s nativeCPU sample
+of exact17022 to distinguish main-thread execution/wait. Actual exit0 but only
+TWOmain-thread observations,35.156s invocation and DWARF-analysis warnings: unusable
+for hotspot attribution. No font-shaping CPU claim from these two observations.
+Private raw/private/tmp/alchemy-metal-68594-startup-cpu-sample-20261109.zNbsrCJC/sample.txt
+SHA4ad93a824e26e0c4853949b2b91467841a9684a8c5618e48e36a29fe1b827d64.
+Wrapper preliminary CPU seconds mistakenly treat Mach ticks as nanoseconds;
+do not use those derived fields. Raw rusage preserved; agent corrects units in
+separate record. No rerun queued. Existing watcher fresh10/loggedin/available at
+21:48:18 after sampling; viewer remains running/current plan ACTIVE.
+
+
+## Actual-selected-PSO census integrated — 2026-11-09
+
+Renderer commit 4e833fa29aadabee3a66023fb67da0975f6b6c7f. Applied reviewed private patch1bc731; allfour source
+hashes match manifest. NativePSOdiagnostics have no exactOpenGL equivalent;
+nearest1eb cube_snapshot producer/shadowguard and Metal alpha owner unchanged.
+Counters only: no shader/quality/ordering/fallback change. Observe actualchosen
+PSO AFTERsuccessfuldraw,13 independentlydatedviews/12disjointbuckets, publish
+afterwholerenderfinishsuccess. Encoded draw/declaredranges, notGPUtime/invocations
+or laterouterbatchcommit. Defaultunarmed skipsinspection/counters. Independent
+shadow_contract re-review approved f7+patch; rootverified allsourcehashes.
+Exact68594/PID17022 path/hash/SIGTERM/Goodbye/absence71674=0 in2.01s; startupplan
+restore0. Allviewers closed/allplans restored/Translator STOPPED. Normal68594
+copied/private/tmp/alchemy-metal-68594-normal-preserved.app, originalSHAac27...
+verifiedbefore/after. Owner clarified thisstart~38ratherthan160, numbervaries.
+NinjaRelease82672 terminal/noopcompletioncheck0; RWDI49590=0. Initialsandbox
+suite42/noMetaldevice retained separately. NativeRelease28560=0 andRWDI32381=0,
+BOTH428004assertions/95cases. Packet/private/tmp/alchemy-metal-selected-pso-validation-20261109.bh6k72uq.
+GPU/APIvalidationON, no viewer/profile/build competed. FailedCPU samplequality/
+Machunitcorrectione0656051 saved; no CPU hotspot/normaltimeclaim.
+Next normalappwrapper/private/tmp/alchemy-metal-selected-pso-app-build-20261109.py,
+thenexactnewidentity/privateQAconfig/freshMiddayplan. Corrected64parent68588
+control deferred toprioritizeactualselectedPSOs.20FPSgoal ACTIVE/unmet.
