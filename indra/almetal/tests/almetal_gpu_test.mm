@@ -3842,6 +3842,221 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                 }
             }
         }
+        // Covered joins preserve six different triangle islands, packed
+        // texture selectors and authored coverage. The scalar owner is the
+        // output oracle; the census additionally proves draws were removed.
+        {
+            struct CoveredJoinVertices
+            {
+                std::array<std::array<float, 4>, 19> positions{};
+                std::array<std::array<float, 2>, 19> uv{};
+                std::array<std::array<std::uint8_t, 4>, 19> colors{};
+            } data;
+            for (std::size_t island = 0; island < 6; ++island)
+            {
+                const float x = -0.65f + float(island % 3) * 0.65f;
+                const float y = island < 3 ? -0.4f : 0.4f;
+                data.positions[island * 3 + 0] = {x - 0.2f, y - 0.2f, 0.f, 0.f};
+                data.positions[island * 3 + 1] = {x + 0.2f, y - 0.2f, 0.f, 0.f};
+                data.positions[island * 3 + 2] = {x, y + 0.2f, 0.f, 0.f};
+            }
+            for (std::size_t vertex = 0; vertex < 19; ++vertex)
+            {
+                data.uv[vertex] = {0.125f, 0.5f};
+                data.colors[vertex] = {255, 255, 255, 128};
+            }
+            data.positions[18] = data.positions[0];
+            descriptor.length = sizeof(data);
+            auto join_vertices = ALMetalBuffer::create(*device, descriptor, &error);
+            REQUIRE(join_vertices);
+            std::array<std::uint16_t, 24> narrow{};
+            std::array<std::uint32_t, 24> wide{};
+            for (std::size_t index = 0; index < 18; ++index)
+                narrow[index + 3] = std::uint16_t(index);
+            for (std::size_t index = 0; index < narrow.size(); ++index)
+                wide[index] = narrow[index];
+            descriptor.length = sizeof(narrow);
+            auto join_indices = ALMetalBuffer::create(*device, descriptor, &error);
+            REQUIRE(join_indices);
+            REQUIRE(join_indices->write(0, narrow.data(), sizeof(narrow), &error));
+            descriptor.length = sizeof(wide);
+            auto join_wide_indices = ALMetalBuffer::create(*device, descriptor, &error);
+            REQUIRE(join_wide_indices);
+            REQUIRE(join_wide_indices->write(0, wide.data(), sizeof(wide), &error));
+
+            auto join_scene = scene;
+            join_scene.indirect_draws = false;
+            join_scene.source_batch_count = 0;
+            join_scene.early_merged_source_count = 0;
+            std::array<ALMetalWorldSpotShadowBatch, 6> joins;
+            const auto configure_joins = [&](ALMetalWorldSpotShadowCoverage coverage,
+                                             std::uint32_t slots, bool reverse, bool clamp)
+            {
+                const std::uint32_t selector = slots == 1 ? 31u : slots - 1;
+                for (auto& vertex : data.positions)
+                    std::memcpy(&vertex[3], &selector, sizeof(selector));
+                REQUIRE(join_vertices->write(0, &data, sizeof(data), &error));
+                for (std::size_t draw = 0; draw < joins.size(); ++draw)
+                {
+                    auto& value = joins[draw];
+                    value = ALMetalWorldSpotShadowBatch{};
+                    value.vertices = join_vertices.get();
+                    value.vertex_count = 18;
+                    value.texcoord_offset = offsetof(CoveredJoinVertices, uv);
+                    value.color_offset = offsetof(CoveredJoinVertices, colors);
+                    value.indices = join_indices.get();
+                    value.index_offset = (3 + draw * 3) * sizeof(std::uint16_t);
+                    value.index_count = 3;
+                    value.coverage = coverage;
+                    value.texture_count = slots;
+                    for (std::size_t axis = 0; axis < 4; ++axis)
+                        value.modelview_projection[axis * 4 + axis] = 1.f;
+                    value.modelview_projection[14] = clamp ? (reverse ? 2.f : -2.f) : (reverse ? 0.5f : 0.f);
+                    for (std::uint32_t slot = 0; slot < slots; ++slot)
+                    {
+                        value.coverageData().textures[slot] = slot + 1 == slots
+                            ? opaque_coverage.get() : below_cutoff.get();
+                        value.coverageData().alpha_cutoffs[slot] = 0.5f;
+                        if (slot < 8)
+                        {
+                            value.coverageData().pbr_base_color_transforms[slot][0][0] = 1.f;
+                            value.coverageData().pbr_base_color_transforms[slot][0][1] = 1.f;
+                        }
+                    }
+                }
+                join_scene.batches = joins.data();
+                join_scene.batch_count = joins.size();
+                join_scene.reverse_z = reverse;
+                join_scene.depth_clamp = clamp;
+            };
+            const auto compare_joins = [&](std::uint64_t physical_draws, bool require_visible,
+                                           std::uint64_t static_covered_inputs = 6)
+            {
+                join_scene.bulk_draws = false;
+                REQUIRE(render_spot_shadow(join_scene, 0));
+                std::array<std::uint32_t, 32 * 32> scalar_bits{};
+                REQUIRE(retained->readback(*device, 0, 0, {}, scalar_bits.data(),
+                                          32 * sizeof(std::uint32_t), &error));
+                const auto before = renderer->shadowIndirectStats();
+                join_scene.bulk_draws = true;
+                REQUIRE(render_spot_shadow(join_scene, 1));
+                std::array<std::uint32_t, 32 * 32> merged_bits{};
+                REQUIRE(retained->readback(*device, 0, 1, {}, merged_bits.data(),
+                                          32 * sizeof(std::uint32_t), &error));
+                const auto after = renderer->shadowIndirectStats();
+                CHECK(merged_bits == scalar_bits);
+                CHECK(after.covered_input_draws - before.covered_input_draws == static_covered_inputs);
+                CHECK(after.covered_coalesced_draws - before.covered_coalesced_draws == 6 - physical_draws);
+                CHECK(after.encoded_records - before.encoded_records == physical_draws);
+                CHECK(after.direct_prepared_draws == before.direct_prepared_draws);
+                if (require_visible)
+                {
+                    const std::uint32_t far = join_scene.reverse_z ? 0u : 0x3f800000u;
+                    CHECK(std::count_if(scalar_bits.begin(), scalar_bits.end(),
+                        [&](std::uint32_t z) { return z != far; }) > 0);
+                }
+            };
+            for (const auto coverage : {
+                     ALMetalWorldSpotShadowCoverage::legacy_mask,
+                     ALMetalWorldSpotShadowCoverage::legacy_fullbright_mask,
+                     ALMetalWorldSpotShadowCoverage::legacy_blend,
+                     ALMetalWorldSpotShadowCoverage::texture_mask,
+                     ALMetalWorldSpotShadowCoverage::pbr_mask,
+                     ALMetalWorldSpotShadowCoverage::pbr_blend})
+            for (const std::uint32_t slots : {1u, 8u, 32u})
+            {
+                const bool pbr = coverage == ALMetalWorldSpotShadowCoverage::pbr_mask ||
+                    coverage == ALMetalWorldSpotShadowCoverage::pbr_blend;
+                if (pbr && slots > 8) continue;
+                for (const bool reverse : {false, true})
+                for (const bool clamp : {false, true})
+                {
+                    CAPTURE(coverage, slots, reverse, clamp);
+                    configure_joins(coverage, slots, reverse, clamp);
+                    compare_joins(1, true);
+                }
+            }
+            configure_joins(ALMetalWorldSpotShadowCoverage::pbr_mask, 8, false, false);
+            join_scene.indirect_draws = true;
+            compare_joins(6, true); // ICB mode keeps covered scalar emission.
+            join_scene.indirect_draws = false;
+
+            auto covered_skin_boundary = covered_batch;
+            covered_skin_boundary.skin_palette = rigged_batch.skin_palette;
+            covered_skin_boundary.skin_palette_float_count = rigged_batch.skin_palette_float_count;
+            covered_skin_boundary.skin_joint_count = rigged_batch.skin_joint_count;
+            covered_skin_boundary.weight_offset = rigged_batch.weight_offset;
+            const std::array<ALMetalWorldSpotShadowBatch, 3> family_boundaries{{
+                covered_skin_boundary, scalar_avatar, scalar_terrain,
+            }};
+            for (const auto& boundary : family_boundaries)
+            {
+                configure_joins(ALMetalWorldSpotShadowCoverage::pbr_mask, 8, false, false);
+                joins[3] = boundary;
+                compare_joins(3, true, 5);
+            }
+            // Every changed third-island state splits the contiguous list
+            // into a prefix, that draw, and a suffix. No sorting is allowed.
+            for (int barrier = 0; barrier < 14; ++barrier)
+            {
+                CAPTURE(barrier);
+                configure_joins(ALMetalWorldSpotShadowCoverage::pbr_mask, 8, false, false);
+                auto& changed = joins[3];
+                switch (barrier)
+                {
+                    case 0: changed.modelview_projection[12] = 0.1f; break;
+                    case 1: changed.texture_matrix[12] = 0.125f; break;
+                    case 2: changed.coverageData().alpha_cutoffs[7] = 1.f; break;
+                    case 3: changed.coverageData().pbr_base_color_transforms[7][1][0] = 0.125f; break;
+                    case 4: changed.coverageData().textures[7] = below_cutoff.get(); break;
+                    case 5: changed.double_sided = true; break;
+                    case 6: changed.position_offset += 16; break;
+                    case 7: changed.texcoord_offset += 8; break;
+                    case 8: changed.color_offset += 4; break;
+                    case 9: changed.vertex_count = 17; break;
+                    case 10: changed.index_offset += 3 * sizeof(std::uint16_t); break;
+                    case 11: changed.index_count = 2; break;
+                    case 12: changed.coverage = ALMetalWorldSpotShadowCoverage::texture_mask; break;
+                    case 13:
+                        changed.indices = join_wide_indices.get();
+                        changed.index_type = ALMetalIndexType::uint32;
+                        changed.index_offset = (3 + 3 * 3) * sizeof(std::uint32_t);
+                        break;
+                }
+                compare_joins(3, true);
+            }
+            // Later invalid records still fail before any source is encoded,
+            // even when the preceding records form a valid mergeable run.
+            for (int invalid = 0; invalid < 5; ++invalid)
+            {
+                configure_joins(ALMetalWorldSpotShadowCoverage::pbr_mask, 8, false, false);
+                auto& last = joins.back();
+                switch (invalid)
+                {
+                    case 0: last.index_offset = join_indices->length(); break;
+                    case 1: last.texcoord_offset = join_vertices->length(); break;
+                    case 2: last.coverageData().textures[7] = nullptr; break;
+                    case 3: last.coverageData().alpha_cutoffs[7] = std::numeric_limits<float>::quiet_NaN(); break;
+                    case 4: last.coverageData().pbr_base_color_transforms[7][0][0] = std::numeric_limits<float>::quiet_NaN(); break;
+                }
+                join_scene.bulk_draws = true;
+                const auto before = renderer->shadowIndirectStats();
+                std::array<std::uint32_t, 32 * 32> retained_before{};
+                REQUIRE(retained->readback(*device, 0, 1, {}, retained_before.data(),
+                                          32 * sizeof(std::uint32_t), &error));
+                error.clear();
+                CHECK_FALSE(render_spot_shadow(join_scene, 1));
+                const auto after = renderer->shadowIndirectStats();
+                CHECK(after.encoded_records == before.encoded_records);
+                CHECK(after.covered_coalesced_draws == before.covered_coalesced_draws);
+                std::array<std::uint32_t, 32 * 32> retained_after{};
+                error.clear();
+                REQUIRE(retained->readback(*device, 0, 1, {}, retained_after.data(),
+                                          32 * sizeof(std::uint32_t), &error));
+                CHECK(retained_after == retained_before);
+            }
+            error.clear();
+        }
     }
 }
 

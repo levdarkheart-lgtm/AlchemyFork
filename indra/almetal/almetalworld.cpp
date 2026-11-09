@@ -221,6 +221,54 @@ namespace
     };
     static_assert(sizeof(WorldSpotShadowConstants) == 608);
 
+    // Called only after renderSpotShadow validated every source record. Join
+    // complete adjacent triangles without changing any shader-visible input,
+    // texture selector, primitive order or scalar-family boundary.
+    bool canMergeStaticCoveredShadow(
+        const ALMetalWorldSpotShadowBatch& first,
+        const ALMetalWorldSpotShadowBatch& next,
+        std::uint32_t merged_index_count) noexcept
+    {
+        if (first.coverage == ALMetalWorldSpotShadowCoverage::opaque ||
+            first.coverage != next.coverage || first.terrain || next.terrain ||
+            first.avatar || next.avatar || first.avatar_cloth || next.avatar_cloth ||
+            first.skin_palette || next.skin_palette ||
+            first.vertices != next.vertices || first.indices != next.indices ||
+            first.position_offset != next.position_offset ||
+            first.texcoord_offset != next.texcoord_offset ||
+            first.color_offset != next.color_offset ||
+            first.vertex_count != next.vertex_count ||
+            first.index_type != next.index_type ||
+            first.double_sided != next.double_sided ||
+            first.texture_count != next.texture_count ||
+            first.texture_count == 0 ||
+            first.texture_count > ALMetalWorldSpotShadowBatch::max_textures ||
+            merged_index_count % 3 != 0 || next.index_count % 3 != 0 ||
+            next.index_count > std::numeric_limits<std::uint32_t>::max() - merged_index_count ||
+            std::memcmp(first.modelview_projection, next.modelview_projection,
+                        sizeof(first.modelview_projection)) != 0 ||
+            std::memcmp(first.texture_matrix, next.texture_matrix,
+                        sizeof(first.texture_matrix)) != 0)
+            return false;
+
+        const std::size_t stride = first.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        const std::size_t bytes = std::size_t(merged_index_count) * stride;
+        if (first.index_offset > std::numeric_limits<std::size_t>::max() - bytes ||
+            first.index_offset + bytes != next.index_offset)
+            return false;
+        const auto& a = first.coverageData();
+        const auto& b = next.coverageData();
+        if (std::memcmp(a.alpha_cutoffs.data(), b.alpha_cutoffs.data(),
+                        ALMetalWorldSpotShadowBatch::max_textures * sizeof(float)) != 0 ||
+            std::memcmp(&a.pbr_base_color_transforms[0][0][0],
+                        &b.pbr_base_color_transforms[0][0][0],
+                        ALMetalWorldSpotShadowBatch::max_pbr_slots * 8 * sizeof(float)) != 0)
+            return false;
+        for (std::size_t texture = 0; texture < first.texture_count; ++texture)
+            if (a.textures[texture] != b.textures[texture]) return false;
+        return true;
+    }
+
     struct alignas(16) WorldOpaqueShadowConstants
     {
         float modelview_projection[16];
@@ -1633,6 +1681,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalShadowIndirectCommands> shadow_indirect;
     std::unique_ptr<ALMetalRenderPipeline> spot_shadow_indirect_pipeline;
     std::uint64_t shadow_coalesced_draws = 0;
+    std::uint64_t shadow_covered_input_draws = 0;
+    std::uint64_t shadow_covered_coalesced_draws = 0;
     std::uint64_t shadow_source_records = 0;
     std::uint64_t shadow_encoded_records = 0;
     std::uint64_t shadow_early_coalesced_records = 0;
@@ -2083,6 +2133,8 @@ ALMetalWorldGBufferRenderer::shadowIndirectStats() const noexcept
     if (mImpl) stats.direct_coalesced_draws = mImpl->shadow_coalesced_draws;
     if (mImpl)
     {
+        stats.covered_input_draws = mImpl->shadow_covered_input_draws;
+        stats.covered_coalesced_draws = mImpl->shadow_covered_coalesced_draws;
         stats.source_records = mImpl->shadow_source_records;
         stats.encoded_records = mImpl->shadow_encoded_records;
         stats.early_coalesced_records = mImpl->shadow_early_coalesced_records;
@@ -5972,6 +6024,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     const bool collect_bulk = (use_indirect || scene.bulk_draws) &&
         mImpl->frame_data && mImpl->shadow_indirect;
     std::vector<ShadowRun> bulk_runs;
+    std::uint64_t covered_input_draws = 0, covered_coalesced_draws = 0;
     std::vector<std::uint16_t> terrain_factors;
     std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
     std::vector<const ALMetalBuffer*> palette_buffers(
@@ -6133,6 +6186,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                     return false;
                 }
             }
+            if (!batch.skin_palette) ++covered_input_draws;
         }
         else if (batch.texture_count != 0)
         {
@@ -6512,6 +6566,20 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         const bool rigged = batch.skin_palette != nullptr;
         const bool covered = batch.coverage !=
             ALMetalWorldSpotShadowCoverage::opaque;
+        std::uint32_t merged_index_count = batch.index_count;
+        std::size_t merged_batch_count = 1;
+        // Full scene validation above remains authoritative for every source
+        // record. Coalescing is a direct-only emission choice, after admission.
+        if (scene.bulk_draws && !use_indirect && covered && !rigged && !batch.avatar)
+        {
+            while (merged_batch_count < scene.batch_count - index &&
+                   canMergeStaticCoveredShadow(batch,
+                       scene.batches[index + merged_batch_count], merged_index_count))
+            {
+                merged_index_count += scene.batches[index + merged_batch_count].index_count;
+                ++merged_batch_count;
+            }
+        }
         WorldOpaqueShadowConstants opaque_constants;
         WorldSpotShadowConstants constants;
         const bool full_constants = covered || batch.avatar;
@@ -6687,8 +6755,13 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                     sizeof(batch.skin_joint_count), error);
         }
         encoded = encoded && encoder->drawIndexed(
-            ALMetalPrimitiveType::triangle, batch.index_count,
+            ALMetalPrimitiveType::triangle, merged_index_count,
             batch.index_type, *batch.indices, batch.index_offset, 1, error);
+        if (encoded)
+        {
+            covered_coalesced_draws += merged_batch_count - 1;
+            index += merged_batch_count - 1;
+        }
     }
     const bool complete = encoded && encoder->end(error);
     if (!mImpl->finishCommandBuffer(owned_command, complete, error))
@@ -6698,7 +6771,9 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     mImpl->shadow_coalesced_draws += coalesced_draws;
     mImpl->shadow_source_records += scene.source_batch_count
         ? scene.source_batch_count : scene.batch_count;
-    mImpl->shadow_encoded_records += scene.batch_count - coalesced_draws;
+    mImpl->shadow_covered_input_draws += covered_input_draws;
+    mImpl->shadow_covered_coalesced_draws += covered_coalesced_draws;
+    mImpl->shadow_encoded_records += scene.batch_count - coalesced_draws - covered_coalesced_draws;
     mImpl->shadow_early_coalesced_records += scene.early_merged_source_count;
     return true;
 }

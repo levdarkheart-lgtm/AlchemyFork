@@ -2196,6 +2196,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", shadow_capture=" << indirect.source_records << '/'
                 << indirect.encoded_records << " sources/records, early_coalesced="
                 << indirect.early_coalesced_records
+                << ", shadow_covered=" << indirect.covered_coalesced_draws
+                << '/' << indirect.covered_input_draws << " merged/input draws"
                 << ", probe_shadow_direct=" << probe_indirect.direct_executed_draws
                 << '/' << probe_indirect.direct_prepared_draws << " draws, "
                 << probe_indirect.direct_executions << " runs, "
@@ -2206,6 +2208,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", probe_shadow_capture=" << probe_indirect.source_records << '/'
                 << probe_indirect.encoded_records << " sources/records, early_coalesced="
                 << probe_indirect.early_coalesced_records
+                << ", probe_shadow_covered=" << probe_indirect.covered_coalesced_draws
+                << '/' << probe_indirect.covered_input_draws << " merged/input draws"
                 << LL_ENDL;
             if (ALMetalDevice::commandTimingEnabled())
             {
