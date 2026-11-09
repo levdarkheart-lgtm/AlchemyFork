@@ -30,6 +30,9 @@
 
 namespace
 {
+    // Matches almetal_probe_shadow_single_tap in almetal_builtin.metal.
+    constexpr std::uint32_t probe_shadow_function_constant = 0;
+
     void setError(std::string* destination, const std::string& message)
     {
         if (destination)
@@ -1446,12 +1449,19 @@ struct ALMetalWorldGBufferRenderer::Impl
         pbr,
     };
 
+    enum class SimpleShadowMode : std::uint8_t
+    {
+        none,
+        runtime,
+        probe_single_tap,
+    };
+
     struct PreWaterAlphaPipelineEntry
     {
         PreWaterAlphaFamily family = PreWaterAlphaFamily::fullbright;
         bool hdr = false;
         bool rigged = false;
-        bool shadows = false;
+        SimpleShadowMode shadows = SimpleShadowMode::none;
         bool coverage = false;
         ALMetalBlendFactor source = ALMetalBlendFactor::source_alpha;
         ALMetalBlendFactor destination =
@@ -1794,7 +1804,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         pre_water_fullbright_pipelines;
     std::array<std::array<
-        std::array<OpaqueForwardRiggedPipelines, 2>, 2>, 2>
+        std::array<OpaqueForwardRiggedPipelines, 3>, 2>, 2>
         pre_water_simple_pipelines;
     // HDR x coverage x shadows x rigid/skinned/cloth system-avatar mesh x
     // color-write state. The latter keeps the middle pass of three-pass
@@ -1906,7 +1916,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     ALMetalWorldScreenSpaceReflectionConstants inactive_ssr_constants{};
 
     ALMetalRenderPipeline* customPreWaterAlphaPipeline(
-        PreWaterAlphaFamily family, bool hdr, bool rigged, bool shadows,
+        PreWaterAlphaFamily family, bool hdr, bool rigged,
+        SimpleShadowMode shadows,
         bool coverage,
         ALMetalBlendFactor source, ALMetalBlendFactor destination,
         std::string* error)
@@ -1952,9 +1963,14 @@ struct ALMetalWorldGBufferRenderer::Impl
                 descriptor.vertex_function = rigged
                     ? "almetal_world_shiny_skinned_vertex"
                     : "almetal_world_shiny_vertex";
-                descriptor.fragment_function = shadows
+                descriptor.fragment_function = shadows != SimpleShadowMode::none
                     ? "almetal_world_pre_water_simple_shadow_fragment"
                     : "almetal_world_pre_water_simple_fragment";
+                if (shadows == SimpleShadowMode::probe_single_tap)
+                {
+                    descriptor.fragment_bool_constants = {
+                        {probe_shadow_function_constant, true}};
+                }
                 break;
             case PreWaterAlphaFamily::material:
                 descriptor.vertex_function = rigged
@@ -4370,14 +4386,22 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 {
                     return nullptr;
                 }
-                for (std::size_t shadows = 0; shadows < 2; ++shadows)
+                for (std::size_t shadows = 0; shadows < 3; ++shadows)
                 {
                     alpha_descriptor.fragment_function = shadows
                         ? "almetal_world_pre_water_simple_shadow_fragment"
                         : "almetal_world_pre_water_simple_fragment";
-                    alpha_descriptor.label = shadows
+                    alpha_descriptor.label = shadows == 2
+                        ? "Alchemy world probe simple-alpha shadow pipeline"
+                        : shadows
                         ? "Alchemy world simple-alpha shadow pipeline"
                         : "Alchemy world simple-alpha pipeline";
+                    alpha_descriptor.fragment_bool_constants.clear();
+                    if (shadows == 2)
+                    {
+                        alpha_descriptor.fragment_bool_constants = {
+                            {probe_shadow_function_constant, true}};
+                    }
                     impl->pre_water_simple_pipelines
                         [hdr][coverage][shadows][rigged] =
                         ALMetalRenderPipeline::create(
@@ -4389,6 +4413,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     }
                 }
 
+                alpha_descriptor.fragment_bool_constants.clear();
                 alpha_descriptor.vertex_function = rigged
                     ? "almetal_world_legacy_alpha_skinned_vertex"
                     : "almetal_world_legacy_alpha_vertex";
@@ -16959,6 +16984,22 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     : batch.pre_water_simple
                     ? Impl::PreWaterAlphaFamily::simple
                     : Impl::PreWaterAlphaFamily::fullbright;
+            // Specialize the same flag that will actually be bound at buffer 3;
+            // a cube-view label alone does not establish the filter contract.
+            // Keep the default-only pack on the runtime PSO: measured simple
+            // probe walks benefit, while that short path regressed in isolation.
+            const bool probe_simple_shadow =
+                batch.pre_water_simple && batch.pre_water_shadows &&
+                probe_environment &&
+                scene.reflection_probes->constants.config[0] > 1 &&
+                (scene.alpha_directional_shadows->constants.config[3] &
+                 ALMetalWorldDirectionalShadowConstants::probe_single_tap) != 0;
+            const Impl::SimpleShadowMode simple_shadow_mode =
+                !batch.pre_water_simple || !batch.pre_water_shadows
+                    ? Impl::SimpleShadowMode::none
+                    : probe_simple_shadow
+                    ? Impl::SimpleShadowMode::probe_single_tap
+                    : Impl::SimpleShadowMode::runtime;
             ALMetalRenderPipeline* alpha_pipeline = nullptr;
             if (batch.avatar_alpha)
             {
@@ -16985,8 +17026,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             {
                 alpha_pipeline = mImpl->customPreWaterAlphaPipeline(
                     alpha_family, scene.hdr, rigged,
-                    batch.pre_water_simple &&
-                        batch.pre_water_shadows,
+                    simple_shadow_mode,
                     batch.pre_water_alpha_writes_coverage,
                     batch.pre_water_source_rgb,
                     batch.pre_water_destination_rgb, error);
@@ -17011,7 +17051,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     ? mImpl->pre_water_simple_pipelines
                           [scene.hdr ? 1 : 0]
                           [batch.pre_water_alpha_writes_coverage ? 1 : 0]
-                          [batch.pre_water_shadows ? 1 : 0]
+                          [static_cast<std::size_t>(simple_shadow_mode)]
                           [rigged ? 1 : 0].get()
                     : mImpl->pre_water_fullbright_pipelines
                           [scene.hdr ? 1 : 0]

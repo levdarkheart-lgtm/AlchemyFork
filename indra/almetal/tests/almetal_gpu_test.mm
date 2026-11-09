@@ -13116,6 +13116,122 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(half_to_float(
                   pre_water_pixels[pre_water_left + 1]) - 0.3125f) <
               0.002f);
+        // The probe-specialized PSO must reproduce the public renderer's
+        // default-only runtime path, and must never force main-view PCSS to
+        // single-tap filtering. Keep all inputs local so the tests below retain
+        // their original shadow, scene, probe and map state.
+        {
+            ALMetalTextureDescriptor selection_descriptor = shadow_descriptor;
+            selection_descriptor.label =
+                "Alchemy simple-alpha pipeline-selection checkerboard";
+            auto selection_depth = ALMetalTexture::create(
+                *device, selection_descriptor, &error);
+            INFO(error);
+            REQUIRE(selection_depth);
+            std::array<float, 8 * 8> checkerboard_depth{};
+            for (std::size_t y = 0; y < 8; ++y)
+            {
+                for (std::size_t x = 0; x < 8; ++x)
+                {
+                    checkerboard_depth[y * 8 + x] =
+                        ((x + y) & 1u) == 0u ? 0.25f : 1.f;
+                }
+            }
+            auto selection_upload = device->makeCommandBuffer(
+                "Alchemy simple-alpha pipeline-selection upload", &error);
+            REQUIRE(selection_upload);
+            for (std::uint32_t cascade = 0; cascade < 4; ++cascade)
+            {
+                REQUIRE(selection_depth->upload(
+                    *selection_upload, 0, cascade, {},
+                    checkerboard_depth.data(), 8 * sizeof(float), &error));
+            }
+            REQUIRE(selection_upload->commitAndWait(&error));
+
+            auto selection_shadows = directional_shadows;
+            selection_shadows.depth_texture = selection_depth.get();
+            selection_shadows.constants.config[0] = 2;
+            selection_shadows.constants.config[1] = 0xeu;
+            selection_shadows.constants.config[2] = 0;
+            auto selection_probes = reflection_probes;
+            // The existing two-row irradiance texture is all zero. Changing
+            // only the admitted count cannot change simple-alpha ambient.
+            std::array<ALMetalWorldSimpleBatch, 2> selection_batches{{
+                simple_pre_water, simple_pre_water_rigged,
+            }};
+            for (auto& batch : selection_batches)
+            {
+                batch.pre_water_shadows = true;
+            }
+            auto selection_scene = opaque_forward_scene;
+            selection_scene.batches = selection_batches.data();
+            selection_scene.batch_count = selection_batches.size();
+            selection_scene.alpha_directional_shadows = &selection_shadows;
+            selection_scene.reflection_probes = &selection_probes;
+
+            const auto read_selection = [&](unsigned probe_count,
+                                            bool probe_filter)
+            {
+                selection_probes.constants.config[0] =
+                    static_cast<float>(probe_count);
+                selection_shadows.constants.config[3] = 3u |
+                    (probe_filter
+                         ? ALMetalWorldDirectionalShadowConstants::probe_single_tap
+                         : 0u);
+                auto target = renderer->renderOpaquePostDeferred(
+                    selection_scene, &error);
+                INFO(error);
+                REQUIRE(target);
+                std::array<std::uint16_t, 32 * 32 * 4> color{};
+                // Read raw depth into integer storage for exact bits,
+                // including any signed-zero difference.
+                std::array<std::uint32_t, 32 * 32> depth_bits{};
+                REQUIRE(target->colorTexture(0)->readback(
+                    *device, 0, 0, {}, color.data(), 32 * 8, &error));
+                REQUIRE(target->depthStencilTexture()->readback(
+                    *device, 0, 0, {}, depth_bits.data(),
+                    32 * sizeof(std::uint32_t), &error));
+                return std::make_pair(color, depth_bits);
+            };
+
+            for (bool custom_blend : {false, true})
+            {
+                CAPTURE(custom_blend);
+                for (auto& batch : selection_batches)
+                {
+                    batch.pre_water_source_rgb = custom_blend
+                        ? ALMetalBlendFactor::one
+                        : ALMetalBlendFactor::source_alpha;
+                    batch.pre_water_destination_rgb = custom_blend
+                        ? ALMetalBlendFactor::one
+                        : ALMetalBlendFactor::one_minus_source_alpha;
+                }
+                // Create the specialized custom entry first. A cache key
+                // that collapses runtime/specialized modes would otherwise
+                // silently reuse a correct-but-unspecialized runtime PSO.
+                const auto probe_first = read_selection(2, true);
+                const auto default_only = read_selection(1, true);
+                CHECK(probe_first == default_only);
+                const auto main_before = read_selection(2, false);
+                const auto probe_after = read_selection(2, true);
+                const auto main_after = read_selection(2, false);
+                CHECK(probe_after == default_only);
+                CHECK(main_after == main_before);
+                CHECK(main_before.second == default_only.second);
+                // Both actual vertex paths must render, and the checkerboard
+                // PCSS result must differ from the nearest single tap at
+                // (0.5,0.5), which selects a shadowed checkerboard texel.
+                for (const std::size_t pixel :
+                     {pre_water_left, pre_water_right})
+                {
+                    CAPTURE(pixel);
+                    CHECK(probe_after.second[pixel / 4] == 0x3f000000u);
+                    CHECK(main_before.first[pixel + 1] !=
+                          default_only.first[pixel + 1]);
+                }
+            }
+        }
+
         opaque_forward_scene.alpha_directional_shadows = nullptr;
         directional_shadows.constants.config[1] = 0xeu;
         legacy_alpha_scene.directional_shadows = &directional_shadows;

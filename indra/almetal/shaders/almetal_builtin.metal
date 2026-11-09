@@ -7531,6 +7531,10 @@ static bool almetal_shadow_map_built(
     return (shadows.config.y & (1u << cascade)) == 0u;
 }
 
+// Optional constant 0 is enabled only by the simple-alpha probe pipeline.
+// Other pipelines retain the runtime flag and the complete main-view filter.
+constant bool almetal_probe_shadow_single_tap [[function_constant(0)]];
+
 static float almetal_filter_directional_shadow(
     texture2d_array<float> shadow_maps, uint cascade,
     float4 light_position, float4 light_dx, float4 light_dy,
@@ -7542,7 +7546,10 @@ static float almetal_filter_directional_shadow(
     uvz.z += constant_bias;
     const uint quality = shadows.config.w & 0x3u;
     const uint2 resolution = uint2(shadows.resolution.xy);
-    if ((shadows.config.w & 0x4u) != 0u)
+    const bool probe_pipeline =
+        is_function_constant_defined(almetal_probe_shadow_single_tap)
+            ? almetal_probe_shadow_single_tap : false;
+    if (probe_pipeline || (shadows.config.w & 0x4u) != 0u)
     {
         return almetal_shadow_single_tap(
             shadow_maps, cascade, uvz, resolution,
