@@ -6,6 +6,8 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+|68559 repaired probe space,8.121FPS and GPU-cost regression,2026-11-09 | [CURRENT-68559-probe-view-runtime-2026-11-09.md](CURRENT-68559-probe-view-runtime-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
+|68558 constant reuse runtime,10.064FPS and per-face probe-space repair,2026-11-09 | [CURRENT-68558-constants-and-probe-view-2026-11-09.md](CURRENT-68558-constants-and-probe-view-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
 | Probe-mask/ordered-list tradeoffs and400B constant reuse,2026-11-09 | [CURRENT-probe-and-constants-experiments-2026-11-09.md](CURRENT-probe-and-constants-experiments-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
 |68556 source capture/provenance runtime,9.939 FPS and unchanged GPU cost,2026-11-09 | [CURRENT-68556-capture-runtime-2026-11-09.md](CURRENT-68556-capture-runtime-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
 | Isolated layered-shadow tradeoffs, timestamp capability and Apple guidance,2026-11-08 | [CURRENT-ultra-goal-experiments-2026-11-08.md](CURRENT-ultra-goal-experiments-2026-11-08.md) | `docs/metal/work/active/ultra-20fps.md` |

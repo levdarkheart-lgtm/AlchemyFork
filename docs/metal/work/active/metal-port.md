@@ -1,8 +1,8 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `5a99ceb9ece582728339920658f1f0e75e6041e4`;
-latest measured artifact iscf398b2fab/Release68556 (9.939 FPS).
+**Renderer checkpoint:** Commit `7a2639ea4d2237f0ed9b935ea4fee983f418347d`;
+latest measured artifact is7a2639ea4d/Release68559 (8.121045 FPS, correct probe space).
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -84,22 +84,19 @@ thread94.28% of one core. Selected static-source coalescing is69.86%.
 
 ## Immediate executable action
 
-Current recovery snapshot supersedes historical pre-build entries below:68556
-run03 and traces are COMPLETE; all viewers CLOSED. Local400B reuse passes both
-full GPU suites67291/81. Final integrated5a99ceb9ec passes BOTH full Metal
-API/GPU suites121201/85, both benchmark644/16 and review. Build/verify app,
-run unchanged-location capture
-with effective sky provenance and post-CSV sparse workload data before choosing
-ordered-list admission. See CURRENT/NEXT for exact paths and ownership.
+All viewers/profilers closed, user startup state restored. Corrected68559:
+8.121FPS, GPUviewerunion110.517ms/present. Initial opaque-post19.232ms and hero
+water12.235ms need per-draw/attachment inspection; CPU probe refresh is small.
+[Latest record](../../state/archive/CURRENT-68559-probe-view-runtime-2026-11-09.md).
 
-
-1. Build d1966efd09 or docs-only descendant source-exact and verify/sign.
-2. Capture camera/query/pass provenance before attributing variable opaque cost.
-3. Keep rejected layered/named-shader changes out; preserve all original views.
-4. Both Release/RWDI suites pass; proceed through signature/ARM verification → fixed-location
-   keyboard-first setup → resident300-frame comparison and separate traces.
-5. Continue toward20 FPS; if feasibility evidence exhausts viable paths, explain
-   the bounds and remaining costs without claiming target attainment.
+1. Matrix memo rejected after exact-output tests and slower repeated/unique CPU
+   benchmarks; uncommitted integration removed, private prototype preserved.
+2. Finish/review/integrate default-off native frame capture, validate/build, then
+   separate capture-only run and Xcode inspection of actual GPU costs.
+3. Keep per-face correctness repair and original Ultra workload. Broad ordered
+   lists remain rejected by actual dense/neighbor-heavy selection data.
+4. Root coordinates shared files/builds/runtime. No heavy work during timing.
+5. Continue goal;20FPS, parity, multi-scene and release gates remain open.
 
 ## Non-negotiable open gates
 

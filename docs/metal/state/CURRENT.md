@@ -2,7 +2,7 @@
 
 **Observed:**2026-11-09, physical M1 Max/64 GiB, macOS26.5.2/Xcode26.6.
 **Branch:**`codex/apple-silicon-metal`; renderer checkpoint below, source committed.
-**Renderer code checkpoint:** `5a99ceb9ece582728339920658f1f0e75e6041e4`.
+**Renderer code checkpoint:** `7a2639ea4d2237f0ed9b935ea4fee983f418347d`.
 **Recovery:**[next session](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [20 FPS campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -17,71 +17,68 @@ Apple guidance and architectural changes are allowed; preserve correctness and
 accept measured benefit rather than assuming every native mechanism is faster.
 The goal remains active;20 FPS and product release gates are not achieved.
 
-## Latest accepted runtime
+## Latest completed runtime —68559
 
-All viewers are CLOSED. Historical23144/22915/21685 are exited.
-Source-exact Release68556 is cf398b2fab, executable SHA256
-`264e4fe2d7f2169195471be7cb6d415e8945d196e93f77ea62830a367c87f1aa`.
-Metallib `5bd02961a77fdfcef9d28410e9f92fc86d1de08197aec113660e0cd0ccd779d1`
-is unchanged from68554/68550. Build/signature/349 ARM64 slice checks pass.
-App: `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-It DOES NOT contain the new constant reuse/diagnostics committed as5a99ceb9ec.
+All viewers/profilers are CLOSED. Release68559/source7a2639ea4d built and passes
+configure/build/349 ARM64/deep strict signature. Executable
+219e7df316edf16f9f6ef3665e43c90bfc6d6ba45085c192389c25d0c0a5f98e;
+metallib5bd02961a77fdfcef9d28410e9f92fc86d1de08197aec113660e0cd0ccd779d1 unchanged.
+App build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app.
+Current app EXCLUDES the uncommitted matrix memo below.
 
-Run03 at3456x2168/Ultra6, full screen before login, exact numeric Preset123,
-Midday startup loader,28 live controls,120frames+300seconds warmup and300
-exact-native frames:68554→68556 mean102.679→100.613ms,9.739→9.939 FPS;
-p50101.876→98.969ms,p95119.074→114.090ms. Observed+2.05%throughput is small;
-do not assign all of it to source changes. Camera stable, restoration passes.
-CSV `artifacts/metal/private-68556-startup-20261109-03.csv`, SHA256
-`2516022d2a5937f424630fca79630fdedd15c27b4cb7389d820d7ae3571d126a`.
-[Complete runtime/evidence](archive/CURRENT-68556-capture-runtime-2026-11-09.md).
+Same location/fullscreen/Midday/numeric Preset123,28 live controls,3456x2168/
+Ultra6,120frames/300seconds warmup then300 exact-native/submitted frames.
+68558→68559 mean99.366256→123.136859ms,10.063779→8.121045FPS;
+p5098.375104→114.624521,p95114.118750→171.057208. Regression retained because
+68558 used incorrect face-space probe data. No quality/cadence reductions.
+Camera stable; all hero/HUD restorations true, local/effective Midday UUID exact.
+48frames≥150ms,40clustered in one50frame block; draws increased only0.387%.
+Actual constant reuse47.4795%,pool9/292.966MiB,discard bias4.
+No screenshot parity claim. Temporary user state restored after graceful exit;
+artifacts/metal/private-68559-startup-setup-plan-20261109.json cleanup DONE.
 
-Separate30s CPU/GPU traces: main thread93.96%of one core, hero49.97%of main
-samples, ordinary6.01%; target-viewer GPU union86.705ms/present, essentially
-unchanged. Encoder CPU43.933ms/present excludes pre-encoder work. Families and
-GPU channels overlap; do not add inclusive durations or use summed CSV command
-spans as frame GPU duration. Main base17.218ms; atmospheric encoder17.139ms
-includes528 alpha/glow/haze records and does not isolate haze arithmetic.
-Main query results prove real rejection:118422 spatial skips/299frame intervals,
-no pending/expired/duplicate polls. Median52400.5 physical draws/frame remains.
-Driver allocation4.39–4.47GiB; discard bias4. Texture-pressure fix stays reverted.
-
-CUA login/fullscreen works; world AX/screenshots time out. Runs01/02 are INVALID
-FPS comparisons. Native startup recovery loads exact numeric camera preset and
-headerless LLSD Midday sky selection. Graceful exit rewrote exact Midday asset;
-old release logging cannot timestamp asynchronous completion during sampling.
-New environment provenance addresses that gap. No screenshot/parity success
-claimed. Temporary user environment/persistence state was restored after exit.
-Private setup plan: `artifacts/metal/private-startup-setup-plan-20261109.json`.
+CPU separately recorded and fully exited before GPU recording: main89.4187%of
+onecore (old94.1085%), reflection preparation89ms/30.4s (old10ms), too small
+in this trace to attribute the entire regression to the added CPU call.
+GPU viewer Active union86.3931→110.5173ms/present. Initial main opaque-post
+label~0.36→19.2323ms despite identical103initial records; mainbase16.5766ms,
+main atmospheric16.9401ms (includesalpha/glow),heroabove-water6.1180→12.2349ms.
+ThermalNominal. Historical initial-post0.3/20ms anomaly remains unresolved;
+per-draw/attachment inspection is needed before claiming a single shader cost.
+All recording windows/exports ended before subsequent implementation work.
+[Full68559 evidence](archive/CURRENT-68559-probe-view-runtime-2026-11-09.md).
+Metrics /private/tmp/alchemy-metal-68559-metrics-20261109, CSV/provenance under
+artifacts/metal/private-68559-startup-20261109-01.*, QA run same suffix.
 
 ## Active implementation checkpoint
 
-- Root owns shared world renderer/pipeline/CMake/shaders/docs/integration.
-- Local400B G-buffer constant-slice reuse is implemented, always restores slot4,
-  only within one render/command. New raw-color/depth GPU fixtures and actual
-  reuse counters: final Release/RWDI full suites each67291assertions/81cases pass
-  with API/GPU validation. Logs `/private/tmp/alchemy-metal-400b-cache-final-*`.
-  Microbenchmark shows repeated-state CPU savings and unique-state overhead;
-  actual runtime hit rate/full-viewer FPS effect remain unknown.
-- trace_recheck completed/froze effective/local sky provenance and explicit
-  intentional infinite reverse-Z far-plane flags. Environment stays outside
-  camera equality; CSV unchanged. Independent source review passes. Release
-  benchmark suite644assertions/16cases passes in both configurations; product pending.
-- draw_cpu_costs completed/froze almetalprobeworkload.h/.mm and focused test.
-  Root integrated factory/view identity/capture site/CMake source.
-  Default off; explicit private directory compiles tiny sampler before timing,
-  captures64x40 actual G-buffer samples/probe constants AFTER collector disarms
-  on same producing command, completion-only readback. No normal-render failure
-  on diagnostic errors. Independent completion/file/integration review passes.
-- shadow_contract independently reviews helper completion/lifetime/file safety.
-  No concurrent shared edits/builds/GPU timings. Raw data remains local.
+7a2639ea4d restores both original per-view CPU updateUniforms calls before
+native-face capture. Whole spatial/order/bucket/neighbor/scaling pack is rebuilt;
+shader math and original quality/cadence stay intact. Independent source review,
+product build and actual relative-space proof pass. New13records have13distinct
+spatial packs (old allidentical).87matched hero probes have zero rotation-relative
+residual; cross main/ordinary/hero max4.1438e-5 after accounting for translation,
+versus old278–471 units. Depth buckets match. No absolute-origin/visual claim.
 
-Final integrated source5a99ceb9ec: full Release/RWDI Metal API/GPU suites each
-121201assertions/85cases pass. Focused sampler53910/4 passed; both benchmark
-suites644/16 pass. Build logs /private/tmp/alchemy-metal-probe-workload-*;
-source review approved. Doctor rerun0,5a99-doctor-20261109.log. Source-exact
-product build/runtime remains next. Earlier no-matching-test invocation used
-old executable before build finished; no result from it is accepted.
+Root owns shared pipeline/world/CMake/shaders/docs. Matrix memo candidate was
+REJECTED after meaningful tests: Release252assertions/4cases pass, hidden640/1,
+but even repeated/null100k MV/MVP455.5→705us and inverse757.75→1064.08us regress;
+all-unique inverse769→1911.29us. Direct SIMD is cheaper here. Uncommitted pipeline/
+CMake integration removed; prototype+SHAmanifest preserved in
+/private/tmp/alchemy-metal-matrix-memo-prototype-20261109. No production effect.
+
+5a99 underlying Metal suites both121201/85, benchmark644/16, focused sampler
+53910/4 passed;400B local reuse live gain small (68556→58+1.25%throughput).
+Source/test logs /private/tmp/alchemy-metal-probe-workload-* and matrix-memo-*.
+
+trace_recheck owns NEW almetalframecapture.h/.mm/test implementation until
+freeze; shadow_contract reviews independently. Root has NOT integrated it yet.
+Default off, explicit private0700directory, one logical display interval after
+successful CSV+60normal frames, next normal display entry stops before commands;
+ignore nested views. Device capture includes allqueues/ordinary outside display.
+MTL_CAPTURE_ENABLED=1 adds diagnostic overhead: next run is capture-only, not a
+formal FPS comparison. Root owns CMake/display hooks and optional embedded shader
+sources for Xcode inspection. No capture build/execution claim yet.
 
 ## Experiments and constraints
 
@@ -118,10 +115,14 @@ prolonged stability and independent build/review evidence remain release gates.
 
 ## Exact next actions
 
-Source/tests/review committed and pass. Configure/build/verify source-exact
-product from5a99ceb9ec or docs-only descendant. Relaunch same location/fullscreen/Midday/Preset123 with
-new sky provenance, historical scenario pbr-interior, private0700 workload dir.
-Collect300resident frames, then wait sparse dump completion before separate
-CPU/GPU traces. Restore temporary user state after graceful exit. Use actual
-samples to accept/reject conservative ordered probe lists; do not forecast FPS
-from fixtures. Continue toward goal; explain remaining bounds if infeasible.
+1. Finish/freeze/review default-off native frame-capture helper/test. Integrate
+   guarded display hooks and diagnostic-only shader-source embedding option.
+2. Run focused real GPU/capture/lifetime tests, appropriate suites, build/verify
+   source-exact capture app. No cache/shader arithmetic or quality changes.
+3. Separate capture-only login at same location/Midday/Preset123, after settling;
+   inspect actual initial-post and mirror-water commands/attachments in Xcode.
+4. Keep original per-face data correct. No broad ordered lists or rejected matrix
+   memo. Record limitations; do not infer cost from inclusive labels alone.
+5. Update docs/harness and commit coherent evidence. User state is restored;
+   future setup requires a new pinned config and later cleanup.
+6. Continue general20FPS goal; no target/parity/GLstrict/stability/release claim.
