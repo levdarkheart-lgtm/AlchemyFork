@@ -3,7 +3,7 @@
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `7b03110f71c69455bf45da6626058ad917026998`.
-**Working source:** focused capture built/verified;68584/PID21257 warming for diagnostic capture.
+**Working source:** focused replay/profile completed; viewer closed/restored, GPU idle.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -80,14 +80,15 @@ App68584/source7b0311 built45995/349ARM64+signature87002 all0, shader sources
 recorded with unchanged compiler optimization; DIAGNOSTIC, not FPScomparison.
 Exe b428b6e391358547e4263e5a87787a3761cd22832335b93cc2a680925a017624,
 metallib9e4fa00fb75f63660a1790abcf4314f08e72a41d22878db015129b17a0a86f1d.
-Newlauncher dryrun/launch0;68584/PID21257 FULLSCREENbeforelogin andfresh43control/
-location/exactbinarygates0. New7b0311MiddayplanINSTALLED/NOTrestored; allpriorplans
-RESTORED. TranslatorSTOPPED. Warmup1360/incomplete250/samples0/camera0; do notrestart.
+68584 fullscreen/login/start+end43control/location/binarygates0. Diagnostic300
+framescomplete/ready256/camera0. Capture6422→6422,1attempt/error0/stopped;9.03GiB
+toplevelresources, actualcommands/replayNOTyetverified. PID21257gracefullyquit/
+Goodbye/PIDabsence;7b0311MiddayplanRESTORED73096actual0. TranslatorSTOPPED.
 Owner CANattend Xcode (corrected can't); send exactnewcapture/steps WHENREADY.
 Existing68581 countertables4exports all0 butZEROrows; realshadercountersunknown.
-PrivateSSRshare validation64strictcolor/depth cases0; miss14.3%faster7/7blocks,
-butcontrolvariable. Bracketedconfirmationcompiled0/72casevalidation0; quiettiming
-handle86820 ACTUAL0; independent analysis pending. No sharedSSRshaderedit/FPSforecast.
+PrivateSSR strict64cases0; bracketedconfirmationcompile/72casevalidation/timing86820
+all0.32miss13.37%faster12/12, robust tolocalcontrols/targets/order; controlsnear0.
+No liveFPS/cubeSSRgainclaim or sharedSSRshaderedit; regressiontestpreparedprivately.
 [Capture and experiment evidence](archive/CURRENT-selected-base-capture-2026-11-09.md).
 
 ## Latest candidate result — no measured improvement
@@ -138,10 +139,18 @@ classic/SSR/materialsplit/layered candidates remain rejected; no repeated trials
 
 ## Exact next actions
 
-Finish actual bracketedSSR timing (newhandle inNEXT), then finish currentexact68584
-warmup/capture with MTL_CAPTURE_ENABLED1/MODEmain-base. SameUltra/
-Preset123/ready256probes before300collectorframes; capture-onlyCSV isNOTFPSproof.
-After capturestops, verifyfile/metadata andgracefullyquit/restore BEFOREXcode
-replay/userhandoff. PreserveGPUexclusivity withownerattendingXcode. No repeat
-whole51kdraw stalledprofile. Broadfeature/pixel parity,multi-sceneperformance,
-prolonged stability, strict no-GL and independent build/review evidence OPEN.
+Focused Xcode replay/profile COMPLETED:1CB/1render/2draws,31.17ms atMEDIUM PState
+(notliveframeFPS), geometry99.68%/216registers/0spill.7,176,832FSinvocations,
+43.22samplercalls/FS,37.460B ALUinstructions; ALUlimiter44.54% vsTextureRead6.01%.
+Per-lineprofile unavailable(missingdebugtables/deployment26.0vsdevice26.5.2);
+occupancyUNKNOWN. StopGPUworkload→Finishedapp observed, CUA summarysent. AllGPU
+processes/viewers closed, allMiddayplansRESTORED, TranslatorSTOPPED.
+XcodeAutoRGB0..0.218/NoColorMatch stretchespreview; finalsourcecolororderingmatches
+originalwithonegamma conversion. No colorfix/settingschange indicated. ActualQA
+SSR=0; validatedSSRsharing hasno livecurrentraymarchbenefit. Keepitprivate.
+Next: rootexecutePRIVATE SHlive-range experiment beingpreparedbyshadow_contract,
+current216regs justifytest butcompilerbenefitunproven. Preserveformats/4SHreads/
+FPgrouping/32cap/neighbor/boxrules; priornamedaccumulatorsrejected, notrepeat.
+AllactualXcodemetrics/artifact/hash/detail in[focusedcapture record](archive/CURRENT-selected-base-capture-2026-11-09.md).
+Fullfeature/pixel/multi-scene/prolonged stability/strict no-GL and
+independent build/review evidence OPEN.20FPSgoalACTIVE/unmet.

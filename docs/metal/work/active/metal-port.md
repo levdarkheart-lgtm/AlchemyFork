@@ -75,18 +75,16 @@ Addedpassboundaries altercost; no shader-duration/unsplit equivalence claim.
 
 ## Immediate executable action
 
-7b03110f71 focusedmainbasecapture implemented/reviewed.2041/3actualcaptureAPI EACH
-optimizedconfig0; full426583/93normalAPI+GPU EACH0.68584appbuild/349ARM64/sign0,
-shader sources recorded; no new math/quality/cadence. Newdiagnosticlauncher dryrun/launch0,
-current68584/PID21257warming; fullscreenbeforelogin/start43controlbinarygates0.
-New7b0311Middayplanactive. PrivateSSRtiming86820ACTUAL0, independentCPUanalysis
-pending; rootliveviewer startedonlyafterterminal. FinishSAMEPIDready300arm/
-MODEmain-base capture. It is diagnostic, not FPSbaseline.
-Verifyactualtracecounts/validinputs before shaderprofileclaims. Owner CANattend
-Xcode, sendexactnewfile/stepswhenready. GPUexclusive withthatmanualhandoff.
-PrivateSSR candidate64strictcolor/depth passes, missinitial14.3%faster butcontrols
-variable;72caseconfirmationvalidation0, timingpending. No sharedSSRshaderchange.
-[Evidence](../../state/archive/CURRENT-selected-base-capture-2026-11-09.md).
+Focusedcapture/replay/profileCOMPLETED:1CB/2draws,31.17msMEDIUMdiagnostic, geometry
+99.68%/216regs/0spill/43.22samplerperfragment. ALUlimiter44.54%,texread6.01%;
+occupancy/perlinecostUNKNOWN. XcodeGPUreplaySTOPPED; allviewersclosed/plansrestored,
+TranslatorSTOPPED. CurrentactualUltraSSR=0, soholdgeneralSSRsharingcandidateprivate.
+ShadowpreparesdistinctPRIVATE SHdecode/loadlifetime experiment preserving4reads/
+math/selection/cap; noGPU/buildbyagents. Rootmustreviewandexecuteactualstrict
+parity+timing/registerproofbeforeproduction. Prior namedaccumulatorsrejected.
+UsercolorquestionexplainedbyXcodeAuto0..0.218plusintermediateHDRstage; sourcefinal
+pipelineorderingoriginal/onegamma, nocolorfix/settingschange. Newcapturedmetrics
+in[focusedrecord](../../state/archive/CURRENT-selected-base-capture-2026-11-09.md).
 
 ## Non-negotiable open gates
 

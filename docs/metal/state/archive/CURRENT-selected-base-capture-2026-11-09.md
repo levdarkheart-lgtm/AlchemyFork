@@ -110,3 +110,87 @@ Parentartifacts/metal/private-7b0311-main-base-capture-20261109, mode0700;
 childframe-capturemetadataexists/waitingfortiming. No actualnewcapturefile yet.
 UserCANattendXcode; waitfileandquit/restore beforemanualGPUhandoff. Translator
 remainsSTOPPED. Newstartupplanactive/NOTrestored untilverifiedquit.
+
+
+### Bracketed SSR confirmation completed
+
+Compile43544/API+GPUvalidation64956/timing86820 allACTUAL0, thermal0.
+Independent boundedCPUparse verified864samples/72blocks andnormal+swappedstrict
+outputs/hitcensus (72+72validation comparisons; timingresolution12+12preflights).
+32iterationmiss8.231479→7.131083ms,−13.3681%/1.100396ms,12/12rawfaster; bracket
+normalized12/12negative,11/12beatsbothadjacentcontrols. Bothphysicaltargets/orders
+shownegative medians. SameactualPSOmedian−.1244%,SSRoff−.1450%; perblocknoise
+remains. Miss8−6.82%,miss64−19.77%,hit−2.74% have weaker/mixedblockevidence.
+Normalization is descriptive and assumeslocalmultiplicativedrift, notconfidence
+intervalorcontrolsubtraction. Supportsactualrendererregression/livecandidate,
+notviewerFPS/hero gain. CubeSSRdisabled. No productionSSRshaderedit yet.
+Report `/private/tmp/alchemy-metal-forward-ssr-confirmation-review-20261109.ia45wgjz/confirmation-independent-summary.json`
+SHA8379fbf0ae36df2a547bd9603eda48e9c8cf3357b4214aa7c86f644d092a8f5d;
+rawconfirmation0b3e0f061ad66eaa26d29cfd58e3b088ad0c1aaad465309c28d0b95be89abaaa.
+Allanalysisfinishedbeforeformalarming; agentsquiet/sourceonly. Rootcontinuesto
+currentlive68584capturebeforealteringworkspaceMSLsourceforprofileclarity.
+
+
+### Live capture complete, Xcode opening requested
+
+All256probesready/current/faded/stable120 and300DIAGNOSTICcollectorframes complete,
+within-windowcamera0; start/end43controls/location/exactbinarygates0. Selected
+capturemetadataSTOPPED,start=stop6422,attempts1,error0,deviceallqueues/selectedbase
+interval. Fileexists with21574toplevelentries/9695800649resourcefilebytes(~9.03GiB).
+Residentpoolstillstored; actualcommandcount andXcodereplay/profile NOTyetverified.
+Initialresourceinventory command accidentally printedallfilenames; outputtruncated,
+subsequentinventoryboundedcounts-only. No capturecontentuploaded/committed.
+
+Root21257exactexeverified, gracefulSIGTERM→PIDabsence/run-specificGoodbye; restore
+73096ACTUAL0. Allviewersclosed/plansrestored, TranslatorSTOPPED. UserCANattend;
+asyncquestionasksopenexactnewfileinXcodeandreportLoaded/Error beforeReplay/Profile.
+AllrootGPU/build/test/recordingprocessesterminal; GPUexclusivityhandedtoUIphase.
+Outcomeprivate-7b0311-capture-outcome-20261109.json; metadataSHA
+1c7a304848292d4367ff9086483e1fd375efdfb84749745f6175c6474a764b51.
+PrivateactualSSRrendererregressionpatch125lines FINAL59895c511bd130a418ac0eaed0d5837e8aef8d32ba9fafce9398e5dca5bac367
+reviewedbytwoagents, unapplied/uncompiled untilcurrentcaptureinspectioncomplete.
+
+
+### Actual Xcode replay, profile and counters completed
+
+OwneransweredLoaded; rootCUAfoundold68561/03:28window, explicitlyopenednew7b0311/
+17:19filewithCmdO/GoToPathTextField. ReplaywithProfileafterReplayOFF completed;
+actualsummary1CB/1render/0compute/2draws/0dispatch/6vertices,3456×2168RGBA16F.
+SceneTexturepreviewnonempty, raworientationupsideDown, notfinalpixelparityproof.
+Profilecompletedin~20seconds:31.17ms atMEDIUMPState. This is a diagnosticreplay
+value, notliveframe/groupFPS. Geometry99.684%commandcost, sky.315%; FS99.62%
+shadercost. Geometryallocated/highregisters216,spilled0; sky23regs/0spill.
+Geometry7,176,832FSinvocations,overdraw.95,43.22sampler/FS,37,460,254,720ALU
+instructions. F32composition32.58%,F16 0,intconditional50.11%,intcomplex8.33%,
+inefficiency8.96%; L1texture7.04GiB(CACHEtraffic, notDRAMbandwidth).
+EncoderscopeALUlimiter44.54%/util41.65%,textureReadlim6.01%,bufferRead2.74%,
+LLC7.04%,MMU1.27%. Scopesnotinterchangeable. OccupancycounterUNKNOWN.
+PerlineUI explicitlyunavailable(missingdebuglineinfo/deploymentOSmismatch).
+RootStopGPUworkload→FinishedrunningmacOSApp, Replaylanding/checkboxOFF; CUA
+completion_summarysent. NoactiveGPUwork. Rawobservedmetrics transcribedto
+artifacts/metal/private-7b0311-xcode-profile-observed-20261109.json SHA
+fdd3f7b583912f7a6777dd40b9446f93b5b792ac0bbbe4ef6763892a86d8e48f.
+
+InstalledMetalCompiler.xcspec maps include-source toBOTH -gline-tables-only and
+-frecord-sources; currentCMakeoptiononlylatter. Futuredebugcapture needslineflag,
+nooptimizationreduction. ApplealsorequiresmatchingdeploymentOS; min26.0 vsSDK26.5/
+host26.5.2 remainsfactor. DocumentedsamecaptureShaderedit→ReloadShadersworkflow
+exists, currenteditorinput/reloadnotyetverified. No furtherbuild/GUItrialclaimed.
+
+### Color0 preview observation
+
+OwnernotedColor0richer/brighterthanviewer. ActualXcodeFiltersAutoRGB0..0.218,
+DefaultNoColorMatch, EDRoff,RGBcombined,alphaoff,premultAlpha1; automaticpreview
+rangeexpands~4.59×. No settingchanged. CapturedColor0linearHDRbaseaccumulation,
+thenvieweraddsorderedlighting/haze/transparency,bloom,exposure,tonemap/grade,
+one linear→sRGB, AA/presentationSDRsRGB(noEDR). Boundedsourceauditmatchesexact1eb
+ordering/ACES_Hill; no demonstratedextra/missinggamma. ActualQAexposure1/dynamic
+false/ACES_Hill1/registeredmix.7; effectiveskymixandgradingnotfullycaptured.
+This is notsame-stage/calibrateddisplaycomparison, noqualityfixinferred.
+
+ActualQA RenderScreenSpaceReflections=0; XcodeboundinactiveSSRfallbackconfirms.
+PrivateSSRshare13.37%missfixturegain is GENERAL, notcurrentliveUltraFPSfix.
+HolditprivatewhiletargetingmeasuredALU/registercost. ShadowpreparesSHlive-range
+onlyprototype; SHlayout/halfpolynomialexactlyoriginal, noextra256probe/threadarray.
+Prior namedaccums remainrejected. Rootmusttestnewhypothesis, notclaimsourcecode
+livenessor216regsautomatically proveslowoccupancy or anoptimizationgain.

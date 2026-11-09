@@ -1,4 +1,4 @@
-# Next session — focused main-base capture, owner can attend Xcode
+# Next session — focused capture saved, owner opening Xcode
 
 Read AGENTS/CURRENT completely and relevant skills. Existingunbudgeted20FPSgoal
 ACTIVE/unmet. PreviousgoalturnPROGRESS: actualcontrolledcandidate ruledoutFPSgain,
@@ -10,10 +10,11 @@ reverseZ/clamp/casters/features. No privateuploads/releases.
 ## Critical live authority
 
 Translator FULLY STOPPED via userrequested uvcommand, NEVERrestart. PriorAPI/
-GPUworker/tailscalePIDs absent verified, noSIGSTOP. PriorviewersCLOSED/allpriorMiddayplansRESTORED. Current68584/PID21257 RUNNING;
-new7b0311MiddayplanINSTALLED/NOTrestored. FullscreenCtrlSuperF BEFOREloginReturn;
-LEAPlogged_intrue, startfresh43controls/location/exactbinarygates0. CUAcompleted
-summarysent; noactiveCUA/Xcodeprofile byroot.
+GPUworker/tailscalePIDs absent verified, noSIGSTOP. All viewersCLOSED/allMiddayplansRESTORED.68584/PID21257 exactexe verified,
+gracefulSIGTERM→run-specificGoodbye/PIDabsence; restore73096ACTUAL0. CUAviewer
+phasecompletedsummaryalready. TranslatorSTAYSSTOPPED. NoactiveGPUtests/builds/
+recorders/replay/profilers byroot; ALLhandlesTERMINAL. RootmanualXcodehandoff
+COMPLETED; focusedprofiledata collected, GPUreplaySTOPPED/Finishedapp.
 Owner's latestmessage explicitlycorrects can't→CANattend laptop/Xcode. Rootsaid
 preparefilefirstthen sendexactcapture/profilingstepsWHENREADY. SerializeallGPU
 workwithmanualXcodehandoff; do notrunGPUtests/viewer whileownerprofiles.
@@ -52,23 +53,36 @@ Privateparentartifacts/metal/private-7b0311-main-base-capture-20261109 EXISTSmod
 childframe-captureNOTcreatedyet. EnvMTL_CAPTURE_ENABLED1/MODEmain-base/privateparent;
 postfamilydiagnosticUNSET/probeworkloaddumpUNSET, allvalidationUNSET.
 CSVprivate-7b0311-main-base-capture-20261109-01.csv (DIAGNOSTICnotFPS);
-runcandidate-7b0311-main-base-capture-20261109-01. Actualrunlaunched0; CSV/provenanceexists, samplecount0.
+runcandidate-7b0311-main-base-capture-20261109-01. Actualrun/CSVcompleted300DIAGNOSTICsamples, start/endfreshQA43controlsgates0.
 Requireexact1/provenance1/ready256/stable120/warmup300sec+120frames/300samples,
-then60eligiblecooldown→onepasscapture. Fresh7b0311MiddayplanINSTALLED; do NOT reinstall/duplicate/restart. Latest
-frame1360/incomplete250/fading250/samples0/camera0/source7b0311/3456×2168.
-LetSAMEPID initialize; no GPU/build/profile/heavyparse duringcollector interval.
+then60eligiblecooldown→onepasscapture. Fresh7b0311MiddayplanRESTORED73096actual0 afterverifiedshutdown. No newlaunch.
+CapturemetadataSTOPPED, start=stop6422, attempts1,error0, intervalselected_main_base_pass.
+FileEXISTS;21574toplevelentries/9695800649filebytes(~9.03GiB, residentpoolincluded),
+NOTyetactualcommandcount/replayproof. Outcomeprivate-7b0311-capture-outcome-20261109.json;
+metadataSHA1c7a304848292d4367ff9086483e1fd375efdfb84749745f6175c6474a764b51.
+Actualfile/Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/private-7b0311-main-base-capture-20261109/frame-capture/display-interval.gputrace.
+UserasyncquestionrequestedopenXcode/CmdO/CmdShiftG/pastepath andreplyLoaded orError,
+BEFOREReplay/Profile. LeaveGPUidle untilresponse; rootCANuseCUAafteruseropens.
+No XcodeCUAphaseactive yet. Aftercontextrestorecua.rewriteDocumentation beforeUI.
 
-## Specific process still live
+## Completed private SSR confirmation
 
 ROOTprivate SSRconfirmation timing handle86820 ACTUALexit0. All appbuilds/
-verify/GPUtestscompleted; rootlaunchedviewerONLYafter86820terminal0. Do not duplicate/restart; independentCPUanalysispending. Exactcwd/private/tmp/alchemy-metal-forward-ssr-confirmation-20261109.el8dshgm,
+verify/GPUtestscompleted; rootlaunchedviewerONLYafter86820terminal0. Do not duplicate/restart; independentCPUanalysisfinished/QUIET. Exactcwd/private/tmp/alchemy-metal-forward-ssr-confirmation-20261109.el8dshgm,
 env -u MTL_DEBUG_LAYER -u MTL_SHADER_VALIDATION ./legacy_ssr_confirmation --bench 1024 1024
 >confirmation-1024-01.log. Compile43544 all3steps0, API+GPUvalidation64956 ACTUAL0:
 72caseinvocations/18setups×4formats inclnormal+swappedstrictcolor/depth/hitcensus,
 thermal0. 864timingsamples/6cases/12blocks with before+afteridenticalPSOcontrols,
 independenttargetswap/caseorder, three miss histories. Reviewapprovedsourceonly.
-NOsharedSSRshaderedit. Waitactualtimingexit BEFORElaunch/livecapture; independent
-CPUanalysiscanfollow afterterminal, notduringformal/recorder intervals.
+NOsharedSSRshaderedit. Independentreport confirmation-review-20261109.ia45wgjz/
+confirmation-independent-summary.json SHA8379fbf0ae36df2a547bd9603eda48e9c8cf3357b4214aa7c86f644d092a8f5d.
+All864samples/72blocks, strictnormal+swappedoutputs andactualhitcensus verified.
+32miss8.231479→7.131083ms(−13.368%,12/12rawfaster,12/12bracketnormalized,11/12
+beatsbothadjacentcontrols), stablebothphysicaltarget/orderstrata. SamePSO−.1244%/
+SSRoff−.1450% medians; individualcontrolblocksstillnoisy. No confinterval/causal
+viewerFPSclaim, cubeSSRoff. Supportsactualrendererregression+viewertrialAFTER
+currentcapture/Xcodeprofiling. Drawagentprivatelypreparingminimalexistingfixture
+tests; no sharedshaderedit toavoidsource-positionconfusion incurrentcapture.
 
 PriorSSR _aexcrf5 sourcecompile02/API+GPU38864=0,64strictcases/positivehit. Initial
 compile01reservedkernelword fixedDIAGNOSTIC ONLY. Quiet1024timing83182=0:missboth
@@ -76,29 +90,69 @@ compile01reservedkernelword fixedDIAGNOSTIC ONLY. Quiet1024timing83182=0:missbot
 No generaladmission/FPSforecast/cubeSSRbenefit. Newbracketedtrialconfirmorpivot.
 RawfirsttimingreviewSHA81f734fe68873d2dde0d7573247bd559d173324603edf217acf5c3351e70d83d.
 
-## Next executable sequence
+## Xcode completed — NO pending handoff or GPU job
 
-1. 86820 actualexit0; finishindependenttimingreport; update docs+harness+commit. No otherGPUtasks
-   remain. Current68584/PID21257alreadylaunched/fullscreen/login/startQAall0.
-   All7b0311pathsareACTIVE, no duplicateinstall/launch. CUAaftercontext call
-   rewriteDocumentation beforefuture UIactions.
-2. LetSAMEPID warm256 probes, stable120, then300collectorframes. No GPUtests/
-   builds/profiling/heavyparsing duringformalarming. Capture-enabledCSV DIAGNOSTIC.
-   Pollprovenancetail lightweight; no timeout-driven restart. Readcapturemetadata
-   statusstopped/start=stop(frame), tracefileexists; inspectactualfile size/counts.
-   Outputparent/frame-capture/display-interval.gputrace (legacyfilename, NEWmode
-   metadata selected_main_base_pass). Fileexistence notXcodereplay/profileproof.
-3. EndQA, exactPID/exeverified gracefulSIGTERM, GoodbyeinRUNSPECIFIC--logfile,
-   PIDabsence BEFORErestore7b0311Middayplan. TranslatorSTAYSSTOPPED. NoGPUwork
-   duringownerXcodehandoff. Sendexactnewfile/actionsthencollectcompletedprofile
-   metrics: actualbasegeometrydraw/fragmentinvocations, occupancy/ALU/texture
-   limiter/bandwidth/expensiveshaderlines byactualavailablecounter names.
-   Confirmpreview/inputsnonempty. GPUserialprofilenotliveframeFPS.
-4. Old68561full4.2GB/51kdrawprofilesstalled85%; donotrepeatwholecapture/selected
-   contextmenuwithunknownscope. RootnewsourcecaptureisboundedfreshbaseCBonly.
-   Existing68581tracecounter4exportsactual0ZEROrows, notdataavailable. gpudebug/
-   gpucapture/metalperftraceABSENTexit72 oninstalledmacOS26.5/Xcode26.6; newCLI
-   describedfor27 notavailable. Methods packet/private/tmp/alchemy-metal-shader-profiling-methods-20261109.md.
+UseransweredLoaded; CUAinitiallyexposedOLD68561/03:28capture. RootCmdO/CmdShiftG/
+explicitPathTextFieldselectedNEW7b0311/17:19URL, thenReplaywithProfilecheckboxOFF.
+Actualsummary1CB/1render/0compute/2draws/0dispatch,3456×2168RGBA16F. Scene
+previewnonempty(upsideDownraworientationnotfinalparity). Profilecompleted~20s,
+31.17ms atMEDIUMperformance state, notlive17msgroup/timeorframeFPS. Activity85%
+wasnotstalled: actualperformancedataavailable. Geometry99.684%cost/sky.315%.
+PergeometryFS7,176,832invocations/AvgOverdraw.95/43.22samplerperFS/37,460,254,720
+ALUinstructions. Float32.58%/half0/integerconditional50.11%/intcomplex8.33%/
+inefficiency8.96%. L1texture7.04GiB isCACHEtraffic, notexternalDRAMbandwidth.
+Program216allocated/highregisters/0spilledbytes, sky23. EncoderscopeALUlimiter44.54%,
+ALUutil41.65%,texreadlim6.01%,bufferread2.74%,LLC7.04%,MMU1.27%. Labels/counters
+scopesmuststaydistinct; occupancyNOTcollected/unknown. PerlineUIunavailable:
+missingdebuginfoordeploymenttargetlowerOS. ActualSourceViewrecordssourcesONLY;
+installedXcodexcspecrequires -gline-tables-only PLUS -frecord-sources; currentmin
+26.0 vsSDK26.5/host26.5.2. Addlineflagforfuturesource-record builds, noO0needed.
+Apple supportseditcapturedshader→ReloadShaders→samecaptureprofile; currenteditor
+editability/reloadnotverified. Methods/private/tmp/alchemy-metal-line-profile-debug-info-20261109.md
+SHAd3ff60c1710ed11b97de69b724a712d8cebd149e31af08a9a5a2cf78eacd699d.
+
+RootSTOPGPUworkload→FinishedrunningmacOSApp observed, Replaylanding/checkboxOFF.
+CUAcompletion_summary 'Profiled the isolated lighting pass' SENT. NoactiveCUA/
+XcodeGPUwork. Ownercanleaveidle. ActualmetricsJSONartifacts/metal/
+private-7b0311-xcode-profile-observed-20261109.json SHAfdd3f7b583912f7a6777dd40b9446f93b5b792ac0bbbe4ef6763892a86d8e48f.
+
+## User's color question, source-verified answer
+
+UseraskswhyColor0looksricher. ActualXcodeFiltersAutoRGB min0/max.218, Default
+Nocolor-match, EDRoff,RGBcombined1,alphaoff,premultAlpha1. Previewstretchesrange
+~4.59×; no settingschanged. Color0linearRGBA16Fbase-light only, beforelater
+local/projector/orderedopaque/alpha/haze/water/glow, bloom/exposure/tonemap/grade.
+ActualQAexposure1,dynamicfalse,ACESHill1,registeredmix.7 (effectiveskymix/grade
+notfullyrecorded). Finalsourceonelinear→sRGB thenAA/presentation, SDRsRGBMetalLayer
+EDRfalse; orderingmatchesexact1eb. No demonstrateddoublegamma/colorlossdefect.
+No userlooksetting/codechange. Replyself-containedwithAuto-rangeandintermediate
+bufferexplanation; donotclaimperceptualparityfromthiscomparison.
+
+## Next executable implementation
+
+Mainshadercostnowmeasured. CrucialQA RenderScreenSpaceReflections=0 (alsoinactive
+texturefallbackactuallybound); generalSSRsharecandidateWILLNOTremovealiveraymarch
+incurrentUltra. Keepprivateproposal/regressionpatchforlatergeneralimprovement,
+notanotherliveSSR-onlywarmup. The125linetestpatch FINALSHA
+59895c511bd130a418ac0eaed0d5837e8aef8d32ba9fafce9398e5dca5bac367 at
+/private/tmp/alchemy-metal-forward-ssr-production-regression-20261109.1_lsnoic/production-regression.patch
+unapplied/uncompiled; privatefrozenSSRcorrectness+bracket13.37%missproofretained.
+
+Shadow_contractPREPARINGnewPRIVATE SHlive-range-onlysource+standaloneactualbase
+A/Bfixture; noGPU/build/sourceedits permittedtoagent. Fullcurrente6ea prefix,
+appendnamedhelperchain/changeONLYpackedSHdecode/load/consume scheduling. Keep
+4uint4reads/14half2decodes/9RGBcoeffs/floatassociation, counts/box/neighbors/cap.
+Sourceaudit: SHlayoutmatchesoriginalexactly, no extrarepresentation; onlyprivate
+sumarrays112B, notgiant256probe/threadarray. PriorNAMEDACCUMS variantalready
+rejected, donotrevive.216regsjustifynewlifetimehypothesis, compilercouldalready
+scheduleidentically. Waitagentpacketthenreview/compile/rootexclusiveGPUcorrectness
+BEFOREtiming/registercapture. Need actualnew216→Nregisterevidence pluscontrolled
+fulloutputs beforeadmission. Possibletinyprivate2variantcapture/4draws withfull
+lineinfo/minmatchingSDK, notanother51kdrawcapture. Rootownsallsharedfiles.
+
+Preserve68584app BEFOREfuturebuild (notyetpreserved); alloldermeasuredapps preserved.
+ReturnCMake AL_METAL_RECORD_SHADER_SOURCES=OFF fornormalformalbuild. Currentapp
+captureonly/noFPSclaim. DocsWIP needharness+commit. No rootGPUtasksrunning now.
 
 ## Retained facts/limits
 
