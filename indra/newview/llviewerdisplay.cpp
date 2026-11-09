@@ -533,19 +533,30 @@ static std::unique_ptr<ALMetalFrameCapture> sMetalFrameCapture;
 static bool sMetalFrameCaptureMainEligible = false;
 static U64 sMetalFrameCaptureEligibleFrame = 0;
 
-bool metal_base_capture_ready() noexcept
+static bool metal_selected_capture_ready(ALMetalFrameCapture::Mode mode) noexcept
 {
     return sMetalFrameCaptureMainEligible &&
         sMetalFrameCaptureEligibleFrame == gFrameCount &&
         sMetalBenchmarkCompletedSuccessfully && sMetalFrameCapture &&
+        sMetalFrameCapture->mode() == mode &&
         sMetalFrameCapture->selectedPassReady();
 }
 
-bool begin_metal_base_capture() noexcept
+bool metal_base_capture_ready() noexcept
+{
+    return metal_selected_capture_ready(ALMetalFrameCapture::Mode::main_base);
+}
+
+bool metal_hero_forward_capture_ready() noexcept
+{
+    return metal_selected_capture_ready(ALMetalFrameCapture::Mode::hero_forward);
+}
+
+static bool begin_metal_selected_capture(ALMetalFrameCapture::Mode mode) noexcept
 {
     try
     {
-        if (!metal_base_capture_ready()) return false;
+        if (!metal_selected_capture_ready(mode)) return false;
         std::string error;
         if (!sMetalFrameCapture->beginSelectedPass(gFrameCount, &error))
         {
@@ -561,7 +572,17 @@ bool begin_metal_base_capture() noexcept
     }
 }
 
-void end_metal_base_capture(bool completed) noexcept
+bool begin_metal_base_capture() noexcept
+{
+    return begin_metal_selected_capture(ALMetalFrameCapture::Mode::main_base);
+}
+
+bool begin_metal_hero_forward_capture() noexcept
+{
+    return begin_metal_selected_capture(ALMetalFrameCapture::Mode::hero_forward);
+}
+
+static void end_metal_selected_capture(bool completed) noexcept
 {
     try
     {
@@ -574,6 +595,16 @@ void end_metal_base_capture(bool completed) noexcept
     {
         sMetalFrameCapture.reset();
     }
+}
+
+void end_metal_base_capture(bool completed) noexcept
+{
+    end_metal_selected_capture(completed);
+}
+
+void end_metal_hero_forward_capture(bool completed) noexcept
+{
+    end_metal_selected_capture(completed);
 }
 
 static void advance_metal_frame_capture(bool normal_display)

@@ -26,6 +26,14 @@ public:
     static constexpr const char* trace_name = "display-interval.gputrace";
     static constexpr const char* metadata_name = "metadata.jsonl";
     static constexpr std::uint32_t cooldown_frames = 60;
+    static constexpr std::uint32_t hero_forward_face_index = 1;
+
+    enum class Mode : std::uint8_t
+    {
+        display,
+        main_base,
+        hero_forward
+    };
 
     enum class State : std::uint8_t
     {
@@ -77,12 +85,13 @@ public:
     bool advanceDisplayInterval(std::uint64_t frame, bool eligible,
                                 std::string* error = nullptr) noexcept;
 
-    // With MODE=main-base, the same arming/cooldown instead prepares one
+    // With MODE=main-base or hero-forward, the same arming/cooldown prepares one
     // selected pass. Begin BEFORE creating its command buffer and finish
     // AFTER committing it. The caller must omit any enclosing command batch.
     // Device scope can also include concurrent upload commands; inspect the
     // actual capture rather than assuming a single command buffer.
     bool selectedPassReady() const noexcept;
+    Mode mode() const noexcept;
     bool beginSelectedPass(std::uint64_t frame,
                            std::string* error = nullptr) noexcept;
     bool finishSelectedPass(std::uint64_t frame,

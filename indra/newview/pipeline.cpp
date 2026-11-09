@@ -84,6 +84,7 @@
 #include "../almetal/almetaltextureops.h"
 #include "../almetal/almetaluirenderer.h"
 #include "../almetal/almetalworld.h"
+#include "../almetal/almetalframecapture.h"
 #include "../almetal/almetalshadowindirect.h"
 #include "../almetal/almetalshadowcapture.h"
 #include "alhexlattice.h"
@@ -866,6 +867,12 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 hero_probe_max_lod = 0;
     U64 hero_probe_native_generation = 0;
     bool hero_probe_face_capture = false;
+    // One diagnostic face transaction; never reused across owner/frame swaps.
+    bool hero_forward_capture_reserved = false;
+    U64 hero_forward_capture_frame = 0;
+    LLUUID hero_forward_capture_owner_id;
+    U64 hero_forward_capture_owner_epoch = 0;
+    U32 hero_forward_capture_face = 0;
     LLReflectionMap* reflection_probe_owner = nullptr;
     U32 reflection_probe_face = 0;
     bool reflection_probe_radiance = false;
@@ -1669,6 +1676,17 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.hero_probe_face_capture = true;
     capture.hero_probe_face = face;
     capture.hero_probe_max_lod = max_probe_lod;
+    capture.hero_forward_capture_reserved =
+        face == ALMetalFrameCapture::hero_forward_face_index &&
+        !gSnapshot && !sRenderingHUDs && mRT == &mHeroProbeRT &&
+        metal_hero_forward_capture_ready();
+    if (capture.hero_forward_capture_reserved)
+    {
+        capture.hero_forward_capture_frame = gFrameCount;
+        capture.hero_forward_capture_owner_id = hero_id;
+        capture.hero_forward_capture_owner_epoch = owner_epoch;
+        capture.hero_forward_capture_face = face;
+    }
     return true;
 }
 
@@ -1740,6 +1758,7 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
         }
     }
     capture.hero_probe_face_capture = false;
+    capture.hero_forward_capture_reserved = false;
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
@@ -2725,7 +2744,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         }
     }
 
-    if (mMetalHeroWorldCaptureActive)
+    if (mMetalHeroWorldCaptureActive &&
+        !capture.hero_forward_capture_reserved)
     {
         std::string batch_error;
         if (!capture.renderer->beginCommandBatch(
@@ -8860,9 +8880,47 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     << post_batch_error << LL_ENDL;
             }
         }
+        // This selected hero face alone omitted its enclosing face batch.
+        // Earlier inputs have been committed; capture starts before the
+        // renderer creates its owned forward command, never mid-command.
+        struct HeroForwardCaptureEnd
+        {
+            bool started;
+            ~HeroForwardCaptureEnd() noexcept
+            {
+                if (started) end_metal_hero_forward_capture(false);
+            }
+        } hero_capture_end{
+            capture.hero_forward_capture_reserved &&
+            capture.hero_forward_capture_frame == gFrameCount &&
+            capture.hero_forward_capture_owner_id == capture.hero_probe_owner_id &&
+            capture.hero_forward_capture_owner_epoch == capture.hero_probe_owner_epoch &&
+            capture.hero_forward_capture_face == capture.hero_probe_face &&
+            capture.hero_probe_face == ALMetalFrameCapture::hero_forward_face_index &&
+            mMetalHeroWorldCaptureActive && capture.hero_probe_face_capture &&
+            !mMetalReflectionWorldCaptureActive &&
+            !capture.reflection_probe_face_capture &&
+            scene.diagnostic_view_kind == 2 &&
+            scene.diagnostic_view_index == capture.hero_probe_face &&
+            !gSnapshot && gCubeSnapshot && !sRenderingHUDs &&
+            mRT == &mHeroProbeRT &&
+            !capture.renderer->commandBatchActive() &&
+            begin_metal_hero_forward_capture()};
+        if (hero_capture_end.started)
+        {
+            LL_INFOS("MetalCapture")
+                << "Selected hero forward: frame=" << gFrameCount
+                << ", owner_epoch=" << capture.hero_probe_owner_epoch
+                << ", face=" << capture.hero_probe_face << LL_ENDL;
+        }
         std::string error;
         auto target = capture.renderer->renderOpaquePostDeferred(
             scene, std::move(capture.composed_light_target), &error);
+        if (hero_capture_end.started)
+        {
+            end_metal_hero_forward_capture(static_cast<bool>(target));
+            hero_capture_end.started = false;
+        }
         if (!target)
         {
             if (opaque_post_batch_active)
@@ -13605,6 +13663,7 @@ void LLPipeline::retireMetalHeroProbeResources()
         if (mMetalWorldSimpleCapture)
         {
             mMetalWorldSimpleCapture->hero_probe_face_capture = false;
+            mMetalWorldSimpleCapture->hero_forward_capture_reserved = false;
         }
         std::swap(mMetalWorldSimpleCapture, mMetalProbeWorldSimpleCapture);
         mMetalHeroWorldCaptureActive = false;
@@ -13638,6 +13697,7 @@ void LLPipeline::retireMetalHeroProbeResources()
         owner->hero_probe_max_lod = 0;
         owner->hero_probe_native_generation = 0;
         owner->hero_probe_face_capture = false;
+        owner->hero_forward_capture_reserved = false;
     };
     clear_hero(mMetalWorldSimpleCapture);
     clear_hero(mMetalProbeWorldSimpleCapture);

@@ -15,6 +15,7 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <array>
 #include <cmath>
@@ -214,6 +215,7 @@ TEST_CASE("almetal: opted-in display interval captures a completed clear once",
         auto capture = ALMetalFrameCapture::createIfRequested(*device, &error);
         INFO(error);
         REQUIRE(capture);
+        CHECK(capture->mode() == ALMetalFrameCapture::Mode::display);
         struct stat status{};
         REQUIRE(stat(directory.session().c_str(), &status) == 0);
         CHECK((status.st_mode & 0777) == 0700);
@@ -417,7 +419,7 @@ TEST_CASE("almetal: selected capture mode preserves default-off and rejects inva
 
     Directory directory;
     REQUIRE(unsetenv("MTL_CAPTURE_ENABLED") == 0);
-    for (const char* mode : {"not-a-mode", "MAIN-BASE", "1"})
+    for (const char* mode : {"not-a-mode", "MAIN-BASE", "HERO-FORWARD", "hero_forward", "1"})
     {
         CAPTURE(mode);
         REQUIRE(setenv(ALMetalFrameCapture::mode_environment, mode, 1) == 0);
@@ -425,7 +427,7 @@ TEST_CASE("almetal: selected capture mode preserves default-off and rejects inva
         CHECK(error.find("mode") != std::string::npos);
         CHECK(fs::is_empty(directory.path));
     }
-    for (const char* mode : {"display", "main-base"})
+    for (const char* mode : {"display", "main-base", "hero-forward"})
     {
         CAPTURE(mode);
         REQUIRE(setenv(ALMetalFrameCapture::mode_environment, mode, 1) == 0);
@@ -441,7 +443,7 @@ TEST_CASE("almetal: selected capture mode preserves default-off and rejects inva
 // These fixtures verify the real producing command and capture lifecycle.
 // A trace file alone does NOT establish that Xcode replay or profiling succeeds.
 // Launch in a fresh process with capture/test flags; shader validation UNSET.
-TEST_CASE("almetal: selected main pass captures a fresh consumer after an uncaptured producer",
+TEST_CASE("almetal: selected pass modes capture a fresh consumer after an uncaptured producer",
           "[.][almetal][frame-capture-gpu]")
 {
     if (!captureTestRequested())
@@ -449,11 +451,17 @@ TEST_CASE("almetal: selected main pass captures a fresh consumer after an uncapt
         WARN("Selected pass capture requires the explicit startup flags");
         return;
     }
+    const char* selected_mode = GENERATE("main-base", "hero-forward");
+    CAPTURE(selected_mode);
+    const auto expected_mode = std::strcmp(selected_mode, "hero-forward") == 0
+        ? ALMetalFrameCapture::Mode::hero_forward : ALMetalFrameCapture::Mode::main_base;
+    NSString* expected_interval = expected_mode == ALMetalFrameCapture::Mode::hero_forward
+        ? @"selected_hero_forward_face_1" : @"selected_main_base_pass";
     @autoreleasepool
     {
         Environment environment;
         REQUIRE(environment.capture == std::optional<std::string>("1"));
-        REQUIRE(setenv(ALMetalFrameCapture::mode_environment, "main-base", 1) == 0);
+        REQUIRE(setenv(ALMetalFrameCapture::mode_environment, selected_mode, 1) == 0);
         Directory directory;
         std::string error;
         auto device = ALMetalDevice::create(&error);
@@ -468,6 +476,12 @@ TEST_CASE("almetal: selected main pass captures a fresh consumer after an uncapt
         auto capture = ALMetalFrameCapture::createIfRequested(*device, &error);
         INFO(error);
         REQUIRE(capture);
+        CHECK(capture->mode() == expected_mode);
+        // Mode is a factory snapshot, not a mutable environment query.
+        REQUIRE(setenv(ALMetalFrameCapture::mode_environment,
+            expected_mode == ALMetalFrameCapture::Mode::hero_forward ? "main-base" : "hero-forward", 1) == 0);
+        CHECK(capture->mode() == expected_mode);
+        REQUIRE(setenv(ALMetalFrameCapture::mode_environment, selected_mode, 1) == 0);
         CHECK_FALSE(capture->selectedPassReady());
         CHECK_FALSE(capture->beginSelectedPass(1, &error));
         CHECK_FALSE(manager.isCapturing);
@@ -648,7 +662,7 @@ TEST_CASE("almetal: selected main pass captures a fresh consumer after an uncapt
             const auto metadata = records(directory);
             REQUIRE_FALSE(metadata.empty());
             CHECK([metadata.back()[@"status"] isEqualToString:@"stopped"]);
-            CHECK([metadata.back()[@"interval"] isEqualToString:@"selected_main_base_pass"]);
+            CHECK([metadata.back()[@"interval"] isEqualToString:expected_interval]);
             CHECK([metadata.back()[@"includes_intervening_idle_uploads"] boolValue] == YES);
             const auto metadata_bytes = fs::file_size(directory.session() / ALMetalFrameCapture::metadata_name);
             CHECK_FALSE(capture->beginSelectedPass(261, &error));
@@ -704,7 +718,7 @@ TEST_CASE("almetal: selected main pass captures a fresh consumer after an uncapt
             const auto metadata = records(directory);
             REQUIRE_FALSE(metadata.empty());
             CHECK([metadata.back()[@"status"] isEqualToString:@"cancelled"]);
-            CHECK([metadata.back()[@"interval"] isEqualToString:@"selected_main_base_pass"]);
+            CHECK([metadata.back()[@"interval"] isEqualToString:expected_interval]);
         }
     }
 }

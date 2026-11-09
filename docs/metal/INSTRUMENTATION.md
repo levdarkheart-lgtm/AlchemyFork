@@ -145,6 +145,26 @@ options are an explicit generated shader-build input so changing diagnostics or
 deployment settings invalidates stale shader outputs. Capture-enabled collector
 output is diagnostic, not a formal FPS comparison. Invalid modes/paths and existing output fail closed.
 
+### Isolating a hero forward face
+
+`ALCHEMY_METAL_FRAME_CAPTURE_MODE=hero-forward` uses the same successful
+benchmark/disarm/cooldown gate, then selects hero face1. The current face's
+frame, owner and owner epoch are reserved and rechecked. Only that diagnostic
+face omits its outer command batch. Capture begins immediately before the
+actual `renderOpaquePostDeferred` call creates its owned command buffer, and
+stops after commit, before retained-face publication or radiance filtering.
+Main base, ordinary probes, other faces, snapshots and HUD passes cannot consume
+this mode. Failure/unwind cancels only the owned capture; other transactions
+retain normal batching. All six faces and their quality/cadence remain intact.
+
+This covers the selected forward call's actual initial/haze/water encoders and
+any internal blit/compute work, not a single alpha family. Face1 had the largest
+source batch population in the previous diagnostic snapshot; that observation
+is not a physical draw count. Verify actual commands, bound inputs, replay,
+fragment invocations and early/late depth rejection in Xcode. Capture success
+alone proves neither useful hidden-work savings nor a faster viewer. These
+capture-enabled collector samples are diagnostic, not formal FPS results.
+
 ## Automated quality checks
 Create a reference/candidate image comparison mechanism over deterministic camera/scene captures; report color-space/format/scale, pixel diff distributions and screenshots with sensitive content redacted. Do not use a single global pixel-equality test for temporal rendering; define local tolerances for stochastic/animated effects. Validate asset/UI editing flows separately.
 

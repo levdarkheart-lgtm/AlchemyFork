@@ -43,11 +43,14 @@ void display_end_frame();
 bool display_window_hidden();
 
 #if LL_DARWIN
-// Diagnostic-only main-base capture. Readiness requires this normal main
+// Diagnostic-only selected-pass capture. Readiness requires this normal main
 // display's successful benchmark completion and post-sample cooldown.
 bool metal_base_capture_ready() noexcept;
 bool begin_metal_base_capture() noexcept;
 void end_metal_base_capture(bool completed = true) noexcept;
+bool metal_hero_forward_capture_ready() noexcept;
+bool begin_metal_hero_forward_capture() noexcept;
+void end_metal_hero_forward_capture(bool completed = true) noexcept;
 #endif
 
 // The projection and modelview the HUD's attachments are drawn with over the whole world view. False where the

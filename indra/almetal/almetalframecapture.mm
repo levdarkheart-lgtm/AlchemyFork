@@ -69,6 +69,7 @@ struct ALMetalFrameCapture::Impl
     // this process's singleton capture manager from another controller.
     bool owns_capture = false;
     bool selected_pass = false;
+    Mode mode = Mode::display;
     unsigned records = 0;
     std::uint64_t last_frame = 0;
 
@@ -125,8 +126,9 @@ struct ALMetalFrameCapture::Impl
             static_cast<unsigned long long>(stats.stop_frame),
             static_cast<unsigned long long>(registry_id), cooldown_frames,
             stats.eligible_intervals_waited, stats.start_attempts,
-            static_cast<long long>(native_error), selected_pass
-                ? "selected_main_base_pass"
+            static_cast<long long>(native_error),
+            mode == Mode::hero_forward ? "selected_hero_forward_face_1"
+                : selected_pass ? "selected_main_base_pass"
                 : "eligible_display_to_next_eligible_display");
         if (size <= 0 || static_cast<std::size_t>(size) >= sizeof(json)) return false;
         ++records;
@@ -225,10 +227,12 @@ std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::createIfRequested(
     const char* path = std::getenv(directory_environment);
     if (!path || !*path) return nullptr;
     const char* mode = std::getenv(mode_environment);
-    const bool selected_pass = mode && std::strcmp(mode, "main-base") == 0;
+    const bool hero_forward = mode && std::strcmp(mode, "hero-forward") == 0;
+    const bool selected_pass = hero_forward ||
+        (mode && std::strcmp(mode, "main-base") == 0);
     if (mode && *mode && !selected_pass && std::strcmp(mode, "display") != 0)
     {
-        setError(error, "Frame capture mode must be display or main-base");
+        setError(error, "Frame capture mode must be display, main-base or hero-forward");
         return nullptr;
     }
     try
@@ -300,6 +304,8 @@ std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::createIfRequested(
                 impl->device = (__bridge id<MTLDevice>)device.nativeHandle();
                 impl->manager = manager;
                 impl->selected_pass = selected_pass;
+                impl->mode = hero_forward ? Mode::hero_forward
+                    : selected_pass ? Mode::main_base : Mode::display;
                 impl->registry_id = device.info().registry_id;
                 // Atomic exclusive reservation: even two helpers targeting
                 // the same directory cannot supply an existing trace to Metal.
@@ -422,6 +428,11 @@ bool ALMetalFrameCapture::advanceDisplayInterval(
     }
 }
 
+ALMetalFrameCapture::Mode ALMetalFrameCapture::mode() const noexcept
+{
+    return mImpl->mode;
+}
+
 bool ALMetalFrameCapture::selectedPassReady() const noexcept
 {
     return mImpl->selected_pass &&
@@ -459,7 +470,7 @@ bool ALMetalFrameCapture::finishSelectedPass(
 {
     if (!mImpl->selected_pass)
     {
-        setError(error, "Manual capture completion requires main-base mode");
+        setError(error, "Manual capture completion requires selected-pass mode");
         return false;
     }
     @autoreleasepool
