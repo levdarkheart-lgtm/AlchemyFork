@@ -552,3 +552,61 @@ Machunitcorrectione0656051 saved; no CPU hotspot/normaltimeclaim.
 Next normalappwrapper/private/tmp/alchemy-metal-selected-pso-app-build-20261109.py,
 thenexactnewidentity/privateQAconfig/freshMiddayplan. Corrected64parent68588
 control deferred toprioritizeactualselectedPSOs.20FPSgoal ACTIVE/unmet.
+
+
+## Continuous startup CPU capture — 2026-11-09
+
+The owner asked for CPU profiling from before login through the visible decline.
+The same normal68597 executable/source6f620/renderer4e833 was verified by exact
+PID/path/SHA before fullscreen and saved login. The initial/end43-control,
+location and binary gates all exited0. No shader or quality change was made.
+Prior48160 diagnostic300 readyframes gave8.159294607FPS, separately labeled;
+its exact shutdown92003/Goodbye/absence and environment restoration exited0.
+
+The new viewer50766 was profiled continuously from the login window BEFORE
+login for720.726011s,22:20:40.373–22:32:41.099UTC. xctrace TimeProfiler14305
+exited0; TOC33140/time-profile16452/thermal60378 exports each0. The private
+packet is/private/tmp/alchemy-metal-continuous-startup-profile-20261109.3a9on15l.
+CPU export274330512bytes SHA8d7cc7bcc4b3b563385cb6facfb22bcb5bf5c5726c2c4b3b2ae2445afe92d5ce.
+Streaming analysis ran once/exit0/22.99s:920867 exact-target Running samples,
+596968main,596.968 sampled mainCPU-s, no reference errors. Fullanalysis SHA
+e50ce5dfdcef41b7de69acbcb2c7dbcac1975f9a52fcddb1c2db1c75fbb59ada;
+findings8d1a48fcd78db2a11ed4b5673495a825ba1087cb767277826200f98b924a47c3.
+The parser was validated once against the earlier11076/8417 fixture and uses
+compact references without retaining XML; it was not added to production tools.
+
+Main-thread CPU-active weight declined27.4→23.7s per30s (roughly92%→79% of one
+core) as the visible counter fell12→11→10. World rendering stayed on Pcores,
+with only.001 sampled Ecore-second after the first30s. Hero work remained about
+half main activity; shadow/Gbuffer/bindings/draws stayed prominent without an
+upward CPU ramp. Root's approximate rawframe alignment yields77.558 sampled
+mainCPU-ms/frame at11.782FPS (trace120–150s), versus76.463 at10.751FPS(510–540s).
+These are30s statistical proxies, not an exact CPU floor. Alignment uses CSV
+birthtime and2391Hz frameflush observations, lag.087–1.094s/median.610s. Report
+startup-correlated-phases.json SHA4e46f5c4afbe2ad4516b5a428d2d23f4a726151fd7d00e13df2ff1220e0f9c55.
+
+The raw startup log contains6000 consecutive frames199–6198/527.46s, allnative
+exact1/fallback0, Ultra3456×2168/bias1. First10s12.347FPS/43,506.5 median draws,
+next10s12.067/47,085; later~52k draws and10.674FPS last300. Raw stops before
+12min CPU trace; remaining CPU bins have widget/process/probelog observations.
+The displayed peak was41, compatible with the owner's variable~38 startup;
+no repeatable160 value assumed. All frames are diagnostic (warmup0/readyobserver
+OFF/exactgateOFF), not a formal gain comparison. False readiness fields prove
+nothing about probe completion. Actual view packs grew toward256; GPU completed
+CB interval sums increased~226→473ms/frame in matched bins while CPU/frame stayed
+flat. Sums overlap and completion lag applies: this supports investigating GPU
+work/backpressure but does not prove GPU active time or causal milliseconds.
+
+Thermal export reportsNominal for the entire720.726s. The owner heard louder
+fans; that observation does not establish throttling. CPU/GPU clocks remain
+unknown: powermetrics exited1/requiresroot; sudo-n preflight1/password required.
+No privileged sampler ran. Correct Mach125/3 process CPU/RSS/disk metrics were
+recorded at1Hz. The12min recording had0DWARF warnings with cached symbols; this
+does not prove the proposed CAS metadata cause/fix. No compiler flags changed.
+
+Exact50766 shutdown29248 exited0 with Goodbye/PID absence; continuous setup
+plan restored0/allolderplans restored. Translator remains fullySTOPPED; Xcode
+GPU replaySTOPPED. No runtime jobs remain.20FPS goal remains ACTIVE/unmet.
+Next: measured GPU probe-work growth plus broader scalar covered-shadow draw
+reduction; staticbulk-only optimization deferred because it is only2.22% of
+main CPU weight. A private source-only covered-coalescing proposal is pending.

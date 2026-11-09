@@ -3,7 +3,7 @@
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `4e833fa29aadabee3a66023fb67da0975f6b6c7f`.
-**Working source:** selected-PSO census committed/validated; normal app build next.
+**Working source:** normal68597 live; actual selected probe specialization confirmed.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -16,12 +16,28 @@ six hero1024 faces/two cascades, PCSS, reverse-Z/clamp/casters/viewer features.
 No private uploads/releases. Root owns shared source/docs/runtime/GPU; agents
 prepare/review private source only. User explicitly handed Xcode back to ROOT.
 
-All viewers CLOSED. Exact68594/PID17022/path/executable hash verified before
-SIGTERM; Goodbye/PID absence confirmed in2.01s, command71674 exit0. Current
-startup-readout plan RESTORED0; all older plans restored. Normal68594 preserved
-at/private/tmp/alchemy-metal-68594-normal-preserved.app, original executable
-SHAac27e181... verified before/after copy. Translator FULLY STOPPED; NEVER
-restart. Xcode GPU replay STOPPED. No competing viewer/GPU/profile jobs.
+All viewers CLOSED; exact50766 path/hash/SIGTERM/Goodbye/absence29248=0,
+continuous-startup plan RESTORED0/allolderplans restored. Translator FULLY
+STOPPED/NEVERrestart; Xcode GPU replay STOPPED. Root owns source/runtime/UI.
+Normal68597/source6f6207698720bc4455c43f68e007715135643074, renderer4e833,
+exe47670056.../metallib61c5dcb3... verified; doctor/config/build/verify25454 all0,
+independent349ARM64/deepstrictidentity0. Currentapp preserved; no shaderchange.
+User-requested continuous TimeProfiler14305 actual0,12m from BEFORElogin;
+920867CPU-active samples/596968main. TOC33140/export16452/thermal60378 each0.
+Main sampled activity92%→79% ofonecore; world onPcores. Approx aligned CPU/frame
+77.56→76.46ms as actualFPS11.78→10.75 (30s bins; UTC/flush alignment~1s).
+CPU work did not ramp upward. Thermal Nominal ALL720.726s; fans louder is not
+proof of throttling. Clock sampler unavailable(requiresroot/sudo-n1); clocks
+unknown. GPU completed-CB spans grow with probe packs; sums overlap, notactive
+GPUtime/criticalpath proof. CPU serialcost still needs reduction for20FPS.
+6000rawframes ALLnative1/fallback0 complete (527.46s), freshstart/end43gates0.
+Raw logging stops before12minCPUtrace; laterbins usewidget/process/logdata.
+Mean11.375FPS; first10s12.35/43.5kmedian draws, later10.71/~52.4k. DIAGNOSTIC,
+no formal gain. StartupreadyobserverOFF, do notinterpretfalsefieldsasmissing.
+Prior68597 ready300DIAG8.159FPS is separate; no causal samebuildcomparison.
+Both optimized API+GPU428004/95PASS. Live selected eligibleheroPSOs true;
+staticbulkexecute only2.22%ofmainCPU =>defer bulk-only baseInstance/parallelwork.
+Rootcorrelation report4e46f5c4/CPUfullanalysise50ce5df inpacket3a9on15l (NEXT).
 Startup6000 raw frames complete:12.258→11.038FPS first10/next10s, median draws
 44,631→50,697, early camera unchanged. Later main probe pack2→98/hero up to256
 while several fixedfaces retain post family/index counts. Correlation, not
@@ -33,8 +49,8 @@ counters; no font hotspot/normal CPU-time claim. Viewer UI recovered afterward.
 Committed selected-PSO census4e833; both optimized API+GPU suites428004/95 PASS.
 First sandbox test failed42/no Metal device; native rerun0, distinct logs kept.
 No shader/quality changes; diagnostics armed only by existing command timing.
-Next normal app doctor/configOFF/build/verify via private wrapper, then same-
-location diagnostic login to inspect actual selected shader populations.
+Continuous recording captured startup decline; CPU no upward ramp, per-frame
+CPU cost remains~77ms. GPU causal attribution and actual CPU repairs remain.
 
 ## Controlled viewer baselines
 
@@ -48,15 +64,9 @@ freshgates0. Four camera changes occurred ONLYwarmup; samplecamera/basis/EEP
 fixed, same-view2898→3197. Full endshutdown/restore verified, no claimedlivegain.
 [Independent report](/private/tmp/alchemy-metal-68594-formal-independent-20261109.p5xjUcY1/independent-formal-summary.json).
 
-Best controlled normal68579/source1f2cc0:300 frames5032–5331,
-**9.608672762FPS**, mean104.072646ms/p50103.8956665/p95109.0435.
-Latest normal68581/sourceb52c1b:300 frames, **9.454638960FPS**,
-mean105.768185ms/p50105.811167/p95110.90525. One pair not causal. Both matched
-43 controls/location/binary/camera/Ultra3456×2168/bias1/256 ready/stable120,
-TranslatorOFF, no heavy work during samples. Exact apps preserved privately.
-Earlier68577 8.011210/68576 6.728847 had external Translator GPU contention.
-Original67611/exact1eb+observer6.095519FPS; full parity remains open.
-[Raw comparison/hashes](archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
+Earlier68577 8.011210/68576 6.728847 had Translator GPU contention; do not
+attribute their difference to code. Original67611/exact1eb+observer6.095519FPS;
+full parity remains open. [History](archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
 
 ## Actual GPU diagnosis
 
@@ -98,20 +108,10 @@ assumption. Constants cleared before other families; avatars remain runtime.
 Source independently approved twice. No sampling/caster/quality/math change.
 Production MSL920d2e2d927b94a43cd396478bfa3776bc2edccaf5e5dd3ef8eb10bbbfcb1fa1.
 
-Initial forced-clone strict200 pairs pass;168 timings show heavy cases22–32%
-lower/all7 blocks, default-only+5.34%. Density followup168 cases with2/8 active
-probes/manual boxes also improve6.4–32.8%; smaller effect has variable control.
-Actual function-constant source compile31725=0/0/0, API+GPU10157=0:200 bitwise
-full color/rawD32 pairs50×4, including main/default fallbacks; thermal0.
-Actual guarded timing33685=0:168 samples/7ABBA blocks, heavy cases23.2–31.8%
-lower/all7/both targets. Default-only−2.08% range crosses0; samePSO control−2%
-also crosses0. No isolated default gain, viewer FPS or spill-reduction proof.
-Independent raw-log/parser/source-hash checks pass. No other GPU/profile/build
-competed. Tiny Xcode capture ACTUAL1CB/4render/4draws/1024²RGBA16F, profile29.09ms
-MEDIUM (notliveFPS). Baseline245→candidate224 registers; BOTH304spill bytes.
-Costs55.69/44.22% for two draws each; repeated quiet timings are stronger proof.
-No spill elimination/occupancy-causality claim. Replay STOPPED/Finished app observed
-and CUA completion recorded before other tools.
+Actual735a function-constant fixture:200 strict color/rawD32 pairs PASS;
+168 quiet7-block timings show heavy23.2–31.8%lower, control/default ranges cross0.
+TinyactualXcode capture1CB/4draws:245→224registers, BOTH304spill bytes. No spill
+elimination/liveFPS claim. Bothoptimized publictests pass; full paths/archive.
 
 Public renderer regression patch applied after source/peer review: local
 checkerboard raw shadows, complete RGBA16/rawdepth count1vs2 equality,
@@ -151,6 +151,6 @@ gamma remains, no proven look defect/settings change from that observation.
 Full pixel/feature parity, multi-scene performance, prolonged stability,
 strict no-GL and independent build/review evidence remain OPEN.20FPS unmet;
 infeasibility unproved. Next: attribute startup growth/actual selected PSOs;
-Selected-PSO diagnostics4e833 validated; build/verify normal app, then collect
-actual per-view selections. Corrected64-parent68588 control remains prepared
+Selected-PSO diagnostics4e833 validated; fullstartupCPU evidence captured.
+Next GPU growth attribution and scalar covered-shadow draw reduction prototype. Corrected64-parent68588 control remains prepared
 but UNLAUNCHED; prior best68579 has31-neighbor behavior, so not a pure A/B.

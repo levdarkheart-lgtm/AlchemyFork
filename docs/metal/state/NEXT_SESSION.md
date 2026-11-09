@@ -1,4 +1,4 @@
-# Next session — actual probe specialization implemented, validation in progress
+# Next session — live selected-PSO census and CPU capture
 
 Read AGENTS.md and CURRENT.md completely before acting. Unbudgeted20FPS Ultra
 goal ACTIVE/unmet; do not replace it or declare infeasible without evidence.
@@ -6,37 +6,80 @@ Branch codex/apple-silicon-metal; renderer735a407bb7da33a95bf14f7cbae995e1d9a91d
 commits actual function-constant specialization +public tests. RootdocsWIPupdate
 recovery; source3files committed/clean. Rootowns shared source/docs/runtime/GPU.
 
-## CRITICAL runtime — all viewers closed; normal app build next
+## CRITICAL runtime — all viewers closed; continuous startup analyzed
 
-Renderer 4e833fa29aadabee3a66023fb67da0975f6b6c7f, actual-selected-PSO diagnostics committed;
-735a specialization unchanged. Both optimized API+GPU suites428004/95 pass.
-Releasebuild82672 terminal/noopcheck0, RWDI49590=0; native suites28560/32381=0.
-Initial sandbox42/noMetaldevice is separate failed environmental attempt.
-Packet/private/tmp/alchemy-metal-selected-pso-validation-20261109.bh6k72uq.
-Allfour applied source hashes match reviewed proposal1bc731; root owns source.
+AllviewersCLOSED. Exact50766 path/hash/SIGTERM/Goodbye/PIDabsence29248=0;
+artifacts/metal/private-continuous-startup-setup-plan-20261109.json RESTORED0.
+Allolderplans restored, including48160 and17022. TranslatorFULLYSTOPPED/
+NEVERrestart. XcodeGPUreplaySTOPPED. No build/profile/GPU jobs. RootcontrolsUI.
+Canonicalnormal68597/source6f6207698720bc4455c43f68e007715135643074,
+renderer4e833fa29aadabee3a66023fb67da0975f6b6c7f. Exe47670056bc6ee2fcb26c5b3b90959ebb384850b28efe3d2c9e983dd4420f75fa;
+metallib61c5dcb3fa1677818cd3ef6b069837979a00cf9cf4d56cf1594e46d011d41585.
+Doctor/configOFF/build/verify25454each0; independent94909=0/349ARM64/strictsignature.
+Identity7NGCfS/app-identity.json SHA170c4b3ef7c8d3d9e4a9a517fa2fe3f768e6cc8ed9696ec82c3a937967edb811.
+App68594 preserved/private/tmp/alchemy-metal-68594-normal-preserved.app;
+corrected64parent68588 preserved/unlaunched. No sourcepatch beyond4e833.
 
-Exact68594/PID17022/path/exesha/SIGTERM/Goodbye/absence71674=0 in2.01s.
-Startup-readout setup plan RESTORED0, allotherplans restored. Normal68594
-preserved/private/tmp/alchemy-metal-68594-normal-preserved.app; original
-exeshaac27e181... verifiedbefore/aftercopy. TranslatorFULLYSTOPPED/NEVERrestart.
-XcodeGPUreplaySTOPPED; no viewer/GPU/profile jobs. Rootcontrols Xcode/UI.
+UseraskedfullstartupCPUcapture: COMPLETED/ANALYZED. Packet
+/private/tmp/alchemy-metal-continuous-startup-profile-20261109.3a9on15l.
+CPU14305 actual0;12min720.726011s22:20:40.373→22:32:41.099, attachedBEFORElogin.
+TOC33140=0,time-profile16452=0,thermal60378=0. Parseronce0/22.99s,920867exactPID
+rows/596968mainRunning=596.968sampledCPU-s, no referrors. Input274330512bytes
+SHA8d7cc7bcc4b3b563385cb6facfb22bcb5bf5c5726c2c4b3b2ae2445afe92d5ce.
+CPUanalysiscontinuous-cpu-analysis.json SHAe50ce5dfdcef41b7de69acbcb2c7dbcac1975f9a52fcddb1c2db1c75fbb59ada;
+findings8d1a48fc...; rootstartup-correlated-phases.json SHA4e46f5c4afbe2ad4516b5a428d2d23f4a726151fd7d00e13df2ff1220e0f9c55.
+Usecachedreports, don'treparseentireexport unnecessarily. Streamingparserf4f79cab
+validatedonce onold11076/8417fixture, noXML retained/compactrefs~14MiB.
 
-NEXT run/private/tmp/alchemy-metal-selected-pso-app-build-20261109.py AFTERdocs
-commit: wrapper records doctor/configRECORDOFF/fullbuild/verify actualexits.
-Then pin rebuilt exact exesha inartifacts/metal/private-ultra-selected-pso-census-qa-20261109.json
-(currentlyNone/PENDING, DO NOTLAUNCH unpinned). Newsource/appidentity thenfresh
-Middayplan/privateQA launch/fullscreenBEFORElogin/fresh43controls/location/binary
-gates. No per-familyencoder/capture/GPUvalidation flags; benchmarkarmscensus.
-Rootdeferred68588parentcontrol tocheck actualhotshaderpopulationfirst.
-Do not describe census as GPUtime/fragmentinvocations or laterouterbatchcommit.
+ActualmainCPUwork per30s FALLS27.4→23.7CPU-s (91–92%→79%onecore) asFPSfalls;
+noCPUbusyramp. World100%Pcore withonly.001ECPU-s afterfirst30s. Per-frameCPU
+proxy approximately77.56ms at11.78FPS(trace120–150s) vs76.46ms at10.75FPS(510–540s),
+notexactCPUfloor: 30s alignmentusesCSVbirthtime +2391Hzflushanchors(lag.087–1.094s,
+median.610s). Nativecommandencoding/shadows/Gbuffer remainCPUhot. Scalarshadow
+paths dominate: prior10s disjoint shadow2533ms includesdraw788/setters633/arena250/
+bulkexecute187/prepare162/self185/allocation104/terrain15/other209. Bulk-only
+baseInstance/parallelization deferred:2.22%ofmainCPU maxbucket, notwhole30%shadow.
+Rootshadow_contract investigating PRIVATE static COVERED/MASKED adjacentdraw
+coalescing, exactgeometry/state/texture/triangleorder only; excludeavatar/skinned/
+terrain initially, actualliveeligiblefractionUNKNOWN/noassumedgain. No patchapplied.
 
-Owner correction: latest startup~38ratherthan160; initialnumbervaries. Root
-recorded32peak. Oldstartup observation below is historical;17022isCLOSED.
-Failed CPU sample0 hasonly2main-threadobservations/58DWARFwarnings: nohotspot
-attribution. Explicit quality-and-unit-correction.json SHAe06560514578757a580eb97ab74f31ab365ae5b4d7e9bd8d525d223ed164b550
-besiderawsample; rawMach125/3 correction, oldnsderivedfields invalidated.
-No profiler rerun queued. Cua completion Confirmed live FPS display changes done;
-aftercontextrestore callrewriteDocumentation beforeUI, thengetAppbyfullpath.
+Thermal-state.xml Nominal forALL720.726s; userreportslouderfans, no thermal
+pressureeventproved. Hardwareclocksunknown: powermetrics failed1/requiresroot,
+sudo-npreflight1/passwordrequired; no moresamplerattempts queued. Process1Hz
+metrics correctMach125/3 CPUtime/RSS/disk/lastflushedframe, notexactframeclock.
+GPUcompletedCBinterval SUM grows~226→473ms perrecordedframe (trace120→510bins)
+whilemedianphysicaldraws~52k; intervals overlap/completionlag, NOTGPUactiveunion
+orcriticalpath proof. Increasingper-viewprobelists supportGPUworkgrowth asnext
+hypothesis. CPUcost~77ms/frame mustalsofalltoward50msfor20FPS; nohardware
+infeasibilityproof. Do notsumCPUandGPUtimes or claimGPUcausalms fromCPUtrace.
+
+Currentcompletedrun artifacts/metal/qa-runs/candidate-continuous-startup-20261109-01;
+raw artifacts/metal/private-continuous-startup-20261109-01.csv +.provenance.jsonl.
+6000consecutiveframes199–6198/527.46s, ALLnativeexact1/fallback0, source6f620,
+Ultra3456×2168, bias1. Initialandendfresh43control/location/binarygates each0.
+Rawends~8.8minworld/trace~9.4min; CPUtracecontinues12min withwidget/process/log
+coverage, no laterrawframeCSV. Counterpeak41, fell12→11→10; ownerconfirmedvariable
+start~38vsprior160. First10sactual12.347FPS/43,506.5mediandraws; next10s12.067/
+47,085; laterrawlast30010.674FPS. Mean11.375FPS isSTARTUPdiagnostic, notformalA/B.
+Warmup0/readinessobserverOFF/exactgateOFF; false readinessfields doNOTmeanunbuilt
+probes. Per-viewprobecountPSOlogs provideactualshadingpopulation. No sceneimage
+captured/visualparityclaim. Allnormalcapture/GPUvalidation/familysplitflagsOFF.
+Cua fullscreenbeforelogin andcompletion Logged in with startup profiling done.
+Viewerclosedaftercapture toanalyzefiles; originalenvironment/persistence restored.
+
+PriorselectedPSOdiagnostic candidate-selected-pso-census-20261109-01 completed300
+readyframes5567–5866, mean122.559614303ms/8.159294607FPS, end43gates0; separate
+single-runcomparisonnotcausal. Closed48160/restored. Actualeligibleheroordinary
+PSOstrue, zero unexpectedruntime/false. Early99.22%matchingdraws/89.63%indices
+specialized—notGPUcost. Source unchanged735a shadowfunctionconstant semantics.
+BOTHoptimized fullAPI+GPU428004/95 PASS;4e833 isdiagnosticcensusonly.
+
+Next chooseGPUprobe-growth attribution/acceleration plusCPUscalarshadowdraw
+reduction usingactualCPUevidence. Privatecovered-coalescingproposal pending.
+CASwarningscauseUNPROVEN; supportedfutureXcodeCOMPILATION_CACHE_ENABLE_CACHING=NO
+or targetalmetalCLANG_ENABLE_COMPILE_CACHE=NO couldtestmetadataonly, preserveO3/g/
+MSLflags. Repo00-Common forcesYESsoCMAKE_XCODE_ATTRIBUTE CLI masked. Currentfull
+12minrecord0DWARFwarnings(cachedsymbols), do notclaimCASfixed. No changesmade.
 
 ## Latest startup observation — exact widget plus RAWframe timings
 

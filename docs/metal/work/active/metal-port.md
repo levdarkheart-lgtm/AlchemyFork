@@ -52,8 +52,8 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 
 ## Current source ownership and latest result
 
-Root owns shared source/docs/runtime. All viewers closed; exact17022 shutdown/
-Goodbye/absence71674=0 and startup-readout plan restored0.68594/68581 preserved.
+Root owns shared source/docs/runtime. All viewers closed;50766 shutdown/restore0;
+17022shutdown/Goodbye/absence71674=0 andoldplanrestored.68594/68581 preserved.
 Translator explicitly fully stopped via its uv service command, actual0; stays
 STOPPED, no automatic restart. Latest68579/source1f2cc0 ready300:9.608672762FPS,
 mean104.072646/p50103.895667/p95109.0435ms,bias1/main95/Ultra3456×2168. Freshstart/
@@ -117,7 +117,17 @@ notcausalGPUtime. CPU sample0 but only2main-threadsamples/DWARFwarnings: unusabl
 All plans restored/Translator STOPPED. Readiness observations DISABLED in this
 startup diagnostic. No image parity claim. Committed4e833 actual-selected-PSO
 counters; both optimized nativeAPI+GPU428004/95 pass. First sandbox42/noGPU,
-separate native rerun0. Normal app build/verify next, then live per-view census.
+separate native rerun0. Normal68597 doctor/configOFF/build/verify25454 all0;
+independent349ARM64/signature/sourceidentity0, exactPID48160 beforefullscreen/
+login; fresh43gates0. Livehero ordinary.standard.true/main+avatarundefined.
+Earlywarmup10s CPUtrace0/11076samples, hero51%mainCPUactive; staticbulk2.22%.
+Prior48160 ready300DIAG8.159FPS/end43gates0/closed92003=0/restored. NewPID50766
+continuousTimeProfiler12min14305 COMPLETED0/920867samples, raw6000allnative1,
+freshstart/end43gates0;50766closed29248=0/Goodbye/absence/currentplanrestored0.
+MainCPUactive92→79%; approximateCPU/frame77.6→76.5ms whileFPS11.8→10.75,
+noCPUbusyramp. ThermalNominalfulltrace; clocksunknown. GPUspansgrowbutoverlap,
+no criticalpathproof. Privatecovered-shadowcoalescingfeasibilitypending; nochange.
+No formalFPSgain/infeasibilityclaim. Fullcontinuousdetails inNEXT/archive.
 Corrected64parent68588 control prepared/unlaunched. No FPS gain from counters.
 Ambient-only rewrite REJECTED (all timing ranges cross0). Rejected SH/predecode/
 cursor/simplemask remain rejected. PBR/water source-only fixtures may prepare;
