@@ -1,8 +1,8 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `d1966efd09654659e83c0f2df926a36e8d7f023c`;
-latest measured artifact remains6c694df237/Release68554.
+**Renderer checkpoint:** Commit `5a99ceb9ece582728339920658f1f0e75e6041e4`;
+latest measured artifact iscf398b2fab/Release68556 (9.939 FPS).
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -56,6 +56,7 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 | shadow_contract | Completed capture helper/source and independent review | Both GPU suites pass;70%join CPU mechanism saves0.157ms/10k sources. |
 | trace_recheck | Completed query/camera diagnostics and obsolete probe-set cleanup | Both suites/syntax/review pass; actual native query effect and capture census await runtime. |
 | draw_cpu_costs | Ignored architecture/shader experiments, source-only probe-pruning audit | Layered/named-accumulator changes rejected; no product shader edit. |
+| shadow_contract/root next candidate | Local400B vertex-constant slice reuse, new GPU test/hidden benchmark | Uncommitted/prepared only; no build/GPU until live68556 capture ends. |
 | root | World renderer/shaders/CMake/docs/integration | Opaque family census, original-source review, serialized builds/benchmarks, final actual runtime validation. |
 
 No source-overlap edits. Shared builds wait for file freezes and isolated GPU
@@ -82,6 +83,15 @@ thread94.28% of one core. Selected static-source coalescing is69.86%.
    source/runtime GL-zero, visual/feature parity, prolonged stability and review.
 
 ## Immediate executable action
+
+Current recovery snapshot supersedes historical pre-build entries below:68556
+run03 and traces are COMPLETE; all viewers CLOSED. Local400B reuse passes both
+full GPU suites67291/81. Final integrated5a99ceb9ec passes BOTH full Metal
+API/GPU suites121201/85, both benchmark644/16 and review. Build/verify app,
+run unchanged-location capture
+with effective sky provenance and post-CSV sparse workload data before choosing
+ordered-list admission. See CURRENT/NEXT for exact paths and ownership.
+
 
 1. Build d1966efd09 or docs-only descendant source-exact and verify/sign.
 2. Capture camera/query/pass provenance before attributing variable opaque cost.

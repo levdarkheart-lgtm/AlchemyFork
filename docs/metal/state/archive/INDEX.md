@@ -6,6 +6,8 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| Probe-mask/ordered-list tradeoffs and400B constant reuse,2026-11-09 | [CURRENT-probe-and-constants-experiments-2026-11-09.md](CURRENT-probe-and-constants-experiments-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
+|68556 source capture/provenance runtime,9.939 FPS and unchanged GPU cost,2026-11-09 | [CURRENT-68556-capture-runtime-2026-11-09.md](CURRENT-68556-capture-runtime-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
 | Isolated layered-shadow tradeoffs, timestamp capability and Apple guidance,2026-11-08 | [CURRENT-ultra-goal-experiments-2026-11-08.md](CURRENT-ultra-goal-experiments-2026-11-08.md) | `docs/metal/work/active/ultra-20fps.md` |
 | Completed68554 direct-shadow runtime and active20 FPS goal baseline,2026-11-08 | [CURRENT-68554-direct-shadow-runtime-2026-11-08.md](CURRENT-68554-direct-shadow-runtime-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Recovery snapshot before Ultra20 FPS campaign,2026-11-08 | [CURRENT-before-ultra-goal-2026-11-08.md](CURRENT-before-ultra-goal-2026-11-08.md) | `docs/metal/state/CURRENT.md` |

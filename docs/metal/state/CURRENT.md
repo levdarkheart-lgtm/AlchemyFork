@@ -1,115 +1,127 @@
 # Current engineering state
 
-**Observed:** 2026-11-09 on physical M1 Max/64 GiB, macOS26.5.2, Xcode26.6.
-**Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `d1966efd09654659e83c0f2df926a36e8d7f023c` — early
-shadow admission, obsolete probe-set removal and opt-in query/camera/pass census.
-**Continuation:** [next session](NEXT_SESSION.md), [active ledger](../work/active/metal-port.md),
+**Observed:**2026-11-09, physical M1 Max/64 GiB, macOS26.5.2/Xcode26.6.
+**Branch:**`codex/apple-silicon-metal`; renderer checkpoint below, source committed.
+**Renderer code checkpoint:** `5a99ceb9ece582728339920658f1f0e75e6041e4`.
+**Recovery:**[next session](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [20 FPS campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
 ## Active owner goal
 
-Try to achieve at least20 FPS on Ultra with general native optimizations,
-preserving original quality/functionality. Autonomous quit/relaunch/login and
-measurement are authorized. Live tests stay at the current location and
-Preset123; do not move the avatar or visit other regions. Use Mac keyboard
-shortcuts first and verify their result. Broader coverage uses varied fixtures
-and source parity, not scene-specific branches. Explain with evidence if the
-goal proves infeasible. The product release gates remain separate and open.
+Work toward at least20 FPS on Ultra through general native Metal optimizations,
+preserving exact-original quality and viewer functionality. Autonomous builds,
+quit/relaunch/login and measurement are authorized. Stay at the current private
+location/Preset123; do not move the avatar or visit other regions. Prefer Mac
+keyboard shortcuts. Broader workloads use deterministic varied fixtures.
+Apple guidance and architectural changes are allowed; preserve correctness and
+accept measured benefit rather than assuming every native mechanism is faster.
+The goal remains active;20 FPS and product release gates are not achieved.
 
-## Latest observed artifact and runtime
+## Latest accepted runtime
 
-- Latest measured artifact:6c694df237 source-exact Xcode Release26.4.0.68554 under
-  `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-- Executable SHA-256 `223bdc1054b9cdf73c336a26530431ded5eb4ca001de0339c74390ec41af93db`.
-- Metallib SHA-256 `5bd02961a77fdfcef9d28410e9f92fc86d1de08197aec113660e0cd0ccd779d1`,
-  byte-identical to measured68550. Deep strict signing and349 ARM64 slices pass.
-- Complete preserved baseline: `/private/tmp/alchemy-metal-68554-goal-baseline.app`.
-- Both full Release/RelWithDebInfo suites pass57,344 assertions/75 cases with
-  Metal API/GPU validation. These results precede current uncommitted goal work.
-- Same full-screen-before-login/Midday/Preset123,3456x2168,21-control Ultra gate:
-  fresh68550→68554 CSV mean118.916→102.679ms (8.409→9.739 FPS),
-  p50117.437→101.876ms, p95133.511→119.074ms,300 exact-native rows each.
-- Eligible static-shadow records coalesce69.86%; median55,647 physical native
-  draws/frame remain. Main thread94.28% of one core; hero50.44% of main samples.
-- Traced presents7.003→7.998/s; encoder CPU60.772→44.052ms/present. Pre-encoder
-  preparation is excluded; inclusive CPU scopes and GPU channels overlap.
-- Important confound: main opaque-post GPU cost swings0.3–20ms/present across
-  unchanged-shader runs. Observed throughput gain cannot be assigned entirely
-  to the code. Exact main-camera/pass/query provenance is the next control.
-- [Complete latest runtime record](archive/CURRENT-68554-direct-shadow-runtime-2026-11-08.md).
-- The viewer is currently closed for isolated experiments. No region change
-  occurred. Do not confuse historical PID89607 with a current live process.
+All viewers are CLOSED. Historical23144/22915/21685 are exited.
+Source-exact Release68556 is cf398b2fab, executable SHA256
+`264e4fe2d7f2169195471be7cb6d415e8945d196e93f77ea62830a367c87f1aa`.
+Metallib `5bd02961a77fdfcef9d28410e9f92fc86d1de08197aec113660e0cd0ccd779d1`
+is unchanged from68554/68550. Build/signature/349 ARM64 slice checks pass.
+App: `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
+It DOES NOT contain the new constant reuse/diagnostics committed as5a99ceb9ec.
+
+Run03 at3456x2168/Ultra6, full screen before login, exact numeric Preset123,
+Midday startup loader,28 live controls,120frames+300seconds warmup and300
+exact-native frames:68554→68556 mean102.679→100.613ms,9.739→9.939 FPS;
+p50101.876→98.969ms,p95119.074→114.090ms. Observed+2.05%throughput is small;
+do not assign all of it to source changes. Camera stable, restoration passes.
+CSV `artifacts/metal/private-68556-startup-20261109-03.csv`, SHA256
+`2516022d2a5937f424630fca79630fdedd15c27b4cb7389d820d7ae3571d126a`.
+[Complete runtime/evidence](archive/CURRENT-68556-capture-runtime-2026-11-09.md).
+
+Separate30s CPU/GPU traces: main thread93.96%of one core, hero49.97%of main
+samples, ordinary6.01%; target-viewer GPU union86.705ms/present, essentially
+unchanged. Encoder CPU43.933ms/present excludes pre-encoder work. Families and
+GPU channels overlap; do not add inclusive durations or use summed CSV command
+spans as frame GPU duration. Main base17.218ms; atmospheric encoder17.139ms
+includes528 alpha/glow/haze records and does not isolate haze arithmetic.
+Main query results prove real rejection:118422 spatial skips/299frame intervals,
+no pending/expired/duplicate polls. Median52400.5 physical draws/frame remains.
+Driver allocation4.39–4.47GiB; discard bias4. Texture-pressure fix stays reverted.
+
+CUA login/fullscreen works; world AX/screenshots time out. Runs01/02 are INVALID
+FPS comparisons. Native startup recovery loads exact numeric camera preset and
+headerless LLSD Midday sky selection. Graceful exit rewrote exact Midday asset;
+old release logging cannot timestamp asynchronous completion during sampling.
+New environment provenance addresses that gap. No screenshot/parity success
+claimed. Temporary user environment/persistence state was restored after exit.
+Private setup plan: `artifacts/metal/private-startup-setup-plan-20261109.json`.
 
 ## Active implementation checkpoint
 
-- `shadow_contract`: completed early capture implementation/review;
-  early static-source validation/coalescing, independent logical reconciliation,
-  every family/view barrier. Release build and real GPU raw-depth proof pass;
-  CPU benchmark saves0.157ms/10k sources at70%joins, nonmerge−2.6%to+3.3% noise.
-- `trace_recheck`: query pool, octree/spatial hooks, benchmark/display files;
-  default-off unique-query/poll/rejection counters and private exact main-camera
-  provenance and obsolete probe-set cleanup. Release/RWDI tests and pipeline
-  syntax pass; independent cleanup review passes. Actual viewer proof pending.
-- `draw_cpu_costs`: layered6/12-view general integration deferred after low-overlap
-  CPU/GPU regressions. A standalone base-probe accumulator A/B is prepared;
-  named accumulator A/B was slower twice and rejected. No product shader change.
-- Root owns almetalworld/shaders/CMake/docs/integration and opaque pass census.
-  No shared build while isolated timings or measured live windows are active.
-- Native direct production path remains active; experimental ICBs stay opt-in.
-  The earlier68553 ICB experiment regressed and is not a performance success.
-- Committed d1966efd09: Release and RelWithDebInfo full Metal66,962/79 each,
-  llrender2030 assertions/229 cases (one unrelated single-palette-font skip),
-  benchmark423 assertions/13 cases pass. Metal API/GPU validation enabled on
-  actual host GPU. Restricted-process no-device attempt failed before host rerun.
-  Source-exact product/runtime validation remains pending. Logs are
-  `/private/tmp/alchemy-metal-20fps-{release,rwdi}-*`; harness32 passes.
-  [Experiment results/source mapping](archive/CURRENT-ultra-goal-experiments-2026-11-08.md).
+- Root owns shared world renderer/pipeline/CMake/shaders/docs/integration.
+- Local400B G-buffer constant-slice reuse is implemented, always restores slot4,
+  only within one render/command. New raw-color/depth GPU fixtures and actual
+  reuse counters: final Release/RWDI full suites each67291assertions/81cases pass
+  with API/GPU validation. Logs `/private/tmp/alchemy-metal-400b-cache-final-*`.
+  Microbenchmark shows repeated-state CPU savings and unique-state overhead;
+  actual runtime hit rate/full-viewer FPS effect remain unknown.
+- trace_recheck completed/froze effective/local sky provenance and explicit
+  intentional infinite reverse-Z far-plane flags. Environment stays outside
+  camera equality; CSV unchanged. Independent source review passes. Release
+  benchmark suite644assertions/16cases passes in both configurations; product pending.
+- draw_cpu_costs completed/froze almetalprobeworkload.h/.mm and focused test.
+  Root integrated factory/view identity/capture site/CMake source.
+  Default off; explicit private directory compiles tiny sampler before timing,
+  captures64x40 actual G-buffer samples/probe constants AFTER collector disarms
+  on same producing command, completion-only readback. No normal-render failure
+  on diagnostic errors. Independent completion/file/integration review passes.
+- shadow_contract independently reviews helper completion/lifetime/file safety.
+  No concurrent shared edits/builds/GPU timings. Raw data remains local.
 
-## Preserved contracts and known limits
+Final integrated source5a99ceb9ec: full Release/RWDI Metal API/GPU suites each
+121201assertions/85cases pass. Focused sampler53910/4 passed; both benchmark
+suites644/16 pass. Build logs /private/tmp/alchemy-metal-probe-workload-*;
+source review approved. Doctor rerun0,5a99-doctor-20261109.log. Source-exact
+product build/runtime remains next. Earlier no-matching-test invocation used
+old executable before build finished; no result from it is accepted.
 
-- Metal is the sole application-owned presenter/resource authority. No GL
-  fallback or translation backend is introduced. Non-rendering features remain.
-- Native scene occlusion was implemented by e52de13acc; conservative/exact
-  visibility results and original issue order have GPU proof. Live rejection
-  effectiveness is not yet measured. Hero cubes disable it as exact original.
-- f799262971 honors literal anisotropy (Ultra4; disabled0→Metal1); no forced16.
-- e90ccdf18f preserves selective geometry uploads and retired native generations.
-- Bounded point lights, direct R32 shadow slices, borrowed G-buffer/depth,
-  main-owned probe projectors, sampler/buffer caches and frame arenas remain.
-- The texture-pressure separation7cd1993d8e remains reverted at owner baseline;
-  discard bias4 was observed. Do not restore it without controlled evidence.
-- Preserve raw-depth PCSS, reverse-Z, clamp, alpha and all caster behavior,
-  six Ultra mirror faces and two sun slices per face. No cadence/quality win.
-- Exact original reference is1eb44bbd1bdc76d0100c75699bad1fb337e8cb45; external
-  instrumented OpenGL app is67607 at734afd3179, not /Applications/Alchemy Beta.
-- Published alpha-2 remains26.4.0.68512-alpha2. No new release authorization.
+## Experiments and constraints
+
+Layered shadows/named accumulators and always-on spatial masks regressed varied
+workloads; not enabled. Ordered compact probe lists pass29pixel/counter fixtures
+and58resolution pairs bitwise, speed sparse synthetic cases substantially but
+regress dense/low-count cases. Actual per-view selectivity is unmeasured;
+collect samples before designing admission. No product shader change.
+[Latest isolated results](archive/CURRENT-probe-and-constants-experiments-2026-11-09.md).
+
+Preserve native occlusion e52de13acc, literal Ultra4x anisotropy f799262971,
+retired geometry generations e90ccdf18f, bounded lights/direct R32 shadow slices,
+borrowed G-buffer depth, main-owned probe projector sharing, sampler/buffer
+caches/frame arenas. Keep six Ultra hero faces/two sun cascades per face,
+raw PCSS/reverse-Z/depth clamp/alpha casters. No quality/cadence reduction.
+Exact original is1eb44bbd1bdc76d0100c75699bad1fb337e8cb45; external reference
+67607 at validation HEAD734afd3179, not /Applications/Alchemy Beta.
+Published alpha2 remains68512; no release/private upload authorization.
 
 ## Complete-product advancement assessment
 
 | Milestone | State | Evidence / remaining requirement |
 | --- | --- | --- |
-| M-008 Advanced views/effects | doing | Native mirror path works; original parity and larger view batching require validation. |
-| M-012 Native UI automation | complete | Scoped keyboard/AX operation verified; current owner authorizes fixed-location tests. |
-| M-014 Ultra20 FPS campaign | doing | Baseline9.739 FPS; native CPU/GPU and control work active; broader live gates unexecuted. |
+| M-008 Advanced views/effects | doing | Native mirrors retained, measured optimization active; parity open. |
+| M-012 Native UI automation | complete | Bounded keyboard/AX flow; world AX currently times out. |
+| M-014 Ultra20 FPS campaign | doing | Latest9.939 FPS, source/runtime work continues. |
 
-The current work advances measured efficiency while retaining Metal-only
-authority. It does not establish20 FPS, source-isolated multi-scene benefit,
-complete visual/feature parity, strict source/runtime GL-zero or release readiness.
-Open gates include prolonged stability, strict no-GL and independent build/review evidence.
-Earlier details are preserved in indexed archives, including the
-[pre-goal snapshot](archive/CURRENT-before-ultra-goal-2026-11-08.md).
+Advanced views/effects: measured mirror optimization preserves
+original views; complete parity remains open. M-012 native UI automation is
+complete in its bounded keyboard/AX scope; current world AX has a runtime limit.
+M-014 Ultra20 FPS campaign is doing, latest9.939 FPS. This is progress toward
+native efficiency, not product completion. Strict no-GL, visual/feature parity,
+prolonged stability and independent build/review evidence remain release gates.
 
 ## Exact next actions
 
-1. Configure/build d1966efd09 (or docs-only descendant), verify/sign the exact
-   artifact, then run the controlled current-location300-frame comparison.
-2. Pin main-camera state and initial/later opaque workloads using new census;
-   measure query acquisition/unique results/actual group skips, not polls alone.
-3. Keep rejected layered/named-shader experiments out of production. Probe tile
-   pruning remains a source-only candidate; actual scan-vs-tap cost is unknown.
-4. Preserve Release+RelWithDebInfo proof; source-exact build and verified
-   source-exact, verify/sign, then keyboard-first login at unchanged location,
-   full screen/Midday/Preset123 and resident300-frame comparisons.
-5. Continue general optimization toward20 FPS; document rejected approaches,
-   remaining limits and feasibility rather than declaring success from a microtest.
+Source/tests/review committed and pass. Configure/build/verify source-exact
+product from5a99ceb9ec or docs-only descendant. Relaunch same location/fullscreen/Midday/Preset123 with
+new sky provenance, historical scenario pbr-interior, private0700 workload dir.
+Collect300resident frames, then wait sparse dump completion before separate
+CPU/GPU traces. Restore temporary user state after graceful exit. Use actual
+samples to accept/reject conservative ordered probe lists; do not forecast FPS
+from fixtures. Continue toward goal; explain remaining bounds if infeasible.
