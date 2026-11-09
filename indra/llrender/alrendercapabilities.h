@@ -62,9 +62,9 @@ public:
     // MTLDevice.recommendedMaxWorkingSetSize, not a texture-only allowance.
     U32 memoryBudgetMB() const noexcept { return mMemoryBudgetMB; }
     // VRAM-equivalent capacity used as the input to the viewer's streamed
-    // texture budget heuristic. This remains the detected VRAM value on GL;
-    // unified-memory Metal devices publish a deliberately smaller pool so a
-    // texture streamer cannot consume the entire recommended working set.
+    // texture budget heuristic. GL uses detected VRAM. Metal publishes its
+    // overall recommendation as a ceiling; the controller reserves non-image
+    // resources before applying the original divisor and headroom.
     U32 textureMemoryBudgetMB() const noexcept { return mTextureMemoryBudgetMB; }
     U32 maxTextureDimension() const noexcept { return mMaxTextureDimension; }
     bool hasAnisotropicFiltering() const noexcept { return mHasAnisotropicFiltering; }

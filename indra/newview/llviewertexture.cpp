@@ -515,6 +515,9 @@ void LLViewerTexture::updateClass()
         ALTextureMemoryAccounting::classify(
             gRenderCapabilities.isMetal(), texture_bytes_alloc,
             legacy_vertex_bytes_alloc, device_used_mb, device_budget_mb);
+    const ALTextureMemoryAccounting::Capacity capacity =
+        ALTextureMemoryAccounting::automaticCapacity(
+            device_budget_mb, device_used_mb, texture_bytes_alloc);
     const F32 used = static_cast<F32>(
         ll_round(usage.texture_pressure_mb));
 
@@ -522,8 +525,10 @@ void LLViewerTexture::updateClass()
     // But when manual control is not enabled, use the VRAM divisor.
     // While we're at it, assume we have 1024 to play with at minimum when the divisor is in use.  Works more elegantly with the logic below this.
     // -Geenz 2025-03-21
-    const U32 renderer_memory_mb = gRenderCapabilities.isInitialized()
-        ? gRenderCapabilities.textureMemoryBudgetMB() : gGLManager.mVRAM;
+    const F32 renderer_memory_mb = gRenderCapabilities.isMetal()
+        ? static_cast<F32>(capacity.automatic_capacity_mb)
+        : static_cast<F32>(gRenderCapabilities.isInitialized()
+            ? gRenderCapabilities.textureMemoryBudgetMB() : gGLManager.mVRAM);
     const U32 divisor = llmax<U32>(tex_vram_divisor(), 1);
     F32 budget = max_vram_budget == 0 ? llmax(1024, (F32)renderer_memory_mb / divisor) : (F32)max_vram_budget;
 
@@ -556,6 +561,8 @@ void LLViewerTexture::updateClass()
             << " MiB, image_target=" << target
             << " MiB, device=" << usage.global_pressure_mb
             << " MiB, device_budget=" << usage.global_budget_mb
+            << " MiB, non_image_estimate=" << capacity.non_image_estimate_mb
+            << " MiB, automatic_capacity=" << capacity.automatic_capacity_mb
             << " MiB, over_fraction=" << over_pct
             << ", system_low=" << is_sys_low
             << ", discard_bias_before=" << sDesiredDiscardBias

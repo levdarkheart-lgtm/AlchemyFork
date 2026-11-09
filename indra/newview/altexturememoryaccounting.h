@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <limits>
+
 namespace ALTextureMemoryAccounting
 {
     struct Usage
@@ -26,8 +28,8 @@ namespace ALTextureMemoryAccounting
 
     // The original GL controller deliberately combined its incomplete texture
     // and vertex estimates because both occupied one dedicated VRAM pool. On
-    // unified-memory Metal, the automatically detected texture allowance is a
-    // bounded streamed-image policy, while currentAllocatedSize and
+    // unified-memory Metal, the effective image allowance reserves other
+    // resource storage, while currentAllocatedSize and
     // recommendedMaxWorkingSetSize both describe the complete device resource
     // set. Keep those two scopes paired instead of comparing all Metal
     // resources with the smaller texture allowance.
@@ -48,6 +50,34 @@ namespace ALTextureMemoryAccounting
         return target_mb > 0.0
             ? (used_mb - target_mb) / target_mb
             : 0.0;
+    }
+
+    struct Capacity
+    {
+        double non_image_estimate_mb = 0.0;
+        double automatic_capacity_mb = 0.0;
+    };
+
+    // LLImageGL reports logical storage, so this residual also includes image
+    // padding and unpublished/retired resources. It is an estimate, not a second
+    // physical residency census. Derive it from raw counters, never discard
+    // bias or a previous target, and apply the viewer's headroom only afterward.
+    constexpr Capacity automaticCapacity(double recommended_mb,
+                                         double device_mb,
+                                         double image_mb) noexcept
+    {
+        constexpr double largest = std::numeric_limits<double>::max();
+        if (!(recommended_mb > 0.0 && recommended_mb <= largest) ||
+            !(device_mb >= 0.0 && device_mb <= largest) ||
+            !(image_mb >= 0.0 && image_mb <= largest))
+        {
+            return {};
+        }
+
+        const double non_image = device_mb > image_mb
+            ? device_mb - image_mb : 0.0;
+        return {non_image, recommended_mb > non_image
+            ? recommended_mb - non_image : 0.0};
     }
 
     struct Pressure

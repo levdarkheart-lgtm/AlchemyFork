@@ -17,6 +17,7 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <limits>
 
 #include "../altexturememoryaccounting.h"
 
@@ -147,4 +148,130 @@ TEST_CASE("ALTextureMemoryAccounting preserves exact legacy F32 controller arith
         CHECK(pressure.over_pct == legacy_over);
         CHECK(pressure.free_mb == legacy_free);
     }
+}
+
+TEST_CASE("ALTextureMemoryAccounting reserves non-image storage at diagnostic magnitudes without rounding images",
+          "[texture][pressure][capacity]")
+{
+    // Representative observed magnitudes, with fractional synthetic inputs
+    // to catch premature rounding. This is not a new runtime observation.
+    const auto capacity = ALTextureMemoryAccounting::automaticCapacity(
+        59'392.0, 4'876.125, 3'053.375);
+    CHECK(capacity.non_image_estimate_mb == 1'822.75);
+    CHECK(capacity.automatic_capacity_mb == 57'569.25);
+    CHECK(capacity.automatic_capacity_mb < 59'392.0);
+}
+
+TEST_CASE("ALTextureMemoryAccounting clamps image estimates above device allocation",
+          "[texture][pressure][capacity]")
+{
+    const auto capacity = ALTextureMemoryAccounting::automaticCapacity(
+        10'000.0, 1'000.0, 2'000.0);
+    CHECK(capacity.non_image_estimate_mb == 0.0);
+    CHECK(capacity.automatic_capacity_mb == 10'000.0);
+}
+
+TEST_CASE("ALTextureMemoryAccounting admits no automatic image capacity when non-images exhaust the recommendation",
+          "[texture][pressure][capacity]")
+{
+    for (double device : {12'000.0, 13'000.0})
+    {
+        CAPTURE(device);
+        const auto capacity = ALTextureMemoryAccounting::automaticCapacity(
+            10'000.0, device, 2'000.0);
+        CHECK(capacity.non_image_estimate_mb >= 10'000.0);
+        CHECK(capacity.automatic_capacity_mb == 0.0);
+    }
+}
+
+TEST_CASE("ALTextureMemoryAccounting rejects unknown or invalid automatic-capacity inputs",
+          "[texture][pressure][capacity]")
+{
+    CHECK(ALTextureMemoryAccounting::automaticCapacity(
+        0.0, 5'000.0, 3'000.0).automatic_capacity_mb == 0.0);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (double invalid : {nan, inf, -inf, -1.0})
+    for (unsigned field : {0u, 1u, 2u})
+    {
+        CAPTURE(invalid, field);
+        double inputs[3] = {10'000.0, 5'000.0, 3'000.0};
+        inputs[field] = invalid;
+        const auto capacity = ALTextureMemoryAccounting::automaticCapacity(
+            inputs[0], inputs[1], inputs[2]);
+        CHECK(capacity.non_image_estimate_mb == 0.0);
+        CHECK(capacity.automatic_capacity_mb == 0.0);
+    }
+}
+
+TEST_CASE("ALTextureMemoryAccounting does not grow capacity as image and total allocations grow equally",
+          "[texture][pressure][capacity]")
+{
+    for (double image : {0.0, 1'000.0, 3'000.0, 10'000.0})
+    {
+        CAPTURE(image);
+        const auto capacity = ALTextureMemoryAccounting::automaticCapacity(
+            59'392.0, image + 1'800.0, image);
+        CHECK(capacity.non_image_estimate_mb == 1'800.0);
+        CHECK(capacity.automatic_capacity_mb == 57'592.0);
+    }
+}
+
+TEST_CASE("ALTextureMemoryAccounting pressure rises monotonically while global allocation remains below recommendation",
+          "[texture][pressure][capacity]")
+{
+    float previous = -std::numeric_limits<float>::infinity();
+    for (float image : {1'000.f, 3'000.f, 6'000.f, 7'000.f})
+    {
+        CAPTURE(image);
+        const double device = static_cast<double>(image) + 2'000.0;
+        const auto capacity = ALTextureMemoryAccounting::automaticCapacity(
+            10'000.0, device, image);
+        REQUIRE(device < 10'000.0);
+        REQUIRE(capacity.automatic_capacity_mb == 8'000.0);
+        // Existing divisor1/headroom applied ONCE to capacity8000 gives
+        // target6400. The helper must not itself apply that policy again.
+        const auto pressure = ALTextureMemoryAccounting::evaluate(
+            image, 6'400.f, device, 10'000.0);
+        CHECK(pressure.over_pct > previous);
+        previous = pressure.over_pct;
+    }
+    CHECK(previous > 0.f); // preserved headroom can trigger before global R
+}
+
+TEST_CASE("ALTextureMemoryAccounting global guard blocks recovery at and above the recommendation",
+          "[texture][pressure][capacity]")
+{
+    for (double device : {10'000.0, 10'001.0})
+    {
+        CAPTURE(device);
+        // A comfortable manual image target cannot override genuine global
+        // pressure. Equal R blocks strict recovery; above R is overcommit.
+        const auto pressure = ALTextureMemoryAccounting::evaluate(
+            1'000.f, 8'000.f, device, 10'000.0);
+        CHECK_FALSE(pressure.over_pct < -0.1f);
+        CHECK(pressure.over_pct >= 0.f);
+        CHECK(pressure.free_mb <= 0.f);
+        if (device > 10'000.0) CHECK(pressure.over_pct > 0.f);
+    }
+}
+
+TEST_CASE("ALTextureMemoryAccounting cannot create recovery by increasing logical image accounting alone",
+          "[texture][pressure][capacity]")
+{
+    float previous = -std::numeric_limits<float>::infinity();
+    for (float image : {1'000.f, 3'000.f, 5'000.f, 7'000.f, 9'000.f})
+    {
+        CAPTURE(image);
+        // With fixed physical allocation, a revised logical estimate raises
+        // the capacity too. Its normalized pressure must still never fall.
+        const auto capacity = ALTextureMemoryAccounting::automaticCapacity(
+            10'000.0, 8'000.0, image);
+        const float target = static_cast<float>(capacity.automatic_capacity_mb) * 0.8f;
+        const auto pressure = ALTextureMemoryAccounting::evaluate(
+            image, target, 8'000.0, 10'000.0);
+        CHECK(pressure.over_pct >= previous);
+        previous = pressure.over_pct;
+    }
+    CHECK(previous > 0.f);
 }

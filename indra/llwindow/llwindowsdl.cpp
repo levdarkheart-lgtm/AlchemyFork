@@ -388,7 +388,7 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     // this value; keep native identity in the Metal capability owner.
     LL_INFOS("Metal") << "Recommended renderer working set: "
                        << gRenderCapabilities.memoryBudgetMB()
-                       << " MiB; automatic streamed texture capacity: "
+                       << " MiB; automatic image capacity ceiling: "
                        << gRenderCapabilities.textureMemoryBudgetMB()
                        << " MiB" << LL_ENDL;
 #endif
