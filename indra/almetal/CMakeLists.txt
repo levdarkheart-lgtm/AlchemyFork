@@ -164,6 +164,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_gbuffer_constants_test.mm
             tests/almetal_probe_workload_test.mm
             tests/almetal_frame_capture_test.mm
+            tests/almetal_function_constants_test.mm
     LIBRARIES almetal
     RESOURCE_LOCK apple_gpu
   )
@@ -179,6 +180,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_gbuffer_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_probe_workload_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_frame_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_function_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   if(AL_METAL_BUILTIN_LIBRARY)
     target_compile_definitions(
       almetal_tests

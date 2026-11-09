@@ -500,6 +500,12 @@ std::unique_ptr<ALMetalRenderPipeline> ALMetalRenderPipeline::create(
             setError(error, "Metal render pipeline descriptor is incomplete");
             return nullptr;
         }
+        if (descriptor.fragment_function.empty() &&
+            !descriptor.fragment_bool_constants.empty())
+        {
+            setError(error, "Metal fragment function constants require a fragment function");
+            return nullptr;
+        }
         id<MTLFunction> vertex = [descriptor.library->mImpl->library
             newFunctionWithName:toNSString(descriptor.vertex_function)];
         id<MTLFunction> fragment = descriptor.fragment_function.empty() ? nil
@@ -508,6 +514,65 @@ std::unique_ptr<ALMetalRenderPipeline> ALMetalRenderPipeline::create(
         {
             setError(error, "Metal render pipeline could not resolve its vertex or fragment function");
             return nullptr;
+        }
+
+        if (vertex.functionConstantsDictionary.count != 0)
+        {
+            setError(error, "Metal vertex function constants are not supported by this fragment-only descriptor");
+            return nullptr;
+        }
+
+        NSDictionary<NSString*, MTLFunctionConstant*>* declared =
+            fragment.functionConstantsDictionary;
+        if (declared.count != 0 || !descriptor.fragment_bool_constants.empty())
+        {
+            // Metal can ignore supplied constants that the function does not use.
+            // Require a declared bool at every requested index so an old metallib
+            // cannot silently turn a requested specialization into a generic PSO.
+            MTLFunctionConstantValues* values =
+                [[MTLFunctionConstantValues alloc] init];
+            for (std::size_t index = 0;
+                 index < descriptor.fragment_bool_constants.size(); ++index)
+            {
+                const auto& constant = descriptor.fragment_bool_constants[index];
+                for (std::size_t previous = 0; previous < index; ++previous)
+                {
+                    if (descriptor.fragment_bool_constants[previous].index == constant.index)
+                    {
+                        setError(error, "Metal fragment function constants contain duplicate index " +
+                            std::to_string(constant.index));
+                        return nullptr;
+                    }
+                }
+                MTLFunctionConstant* declaration = nil;
+                for (MTLFunctionConstant* entry in declared.allValues)
+                {
+                    if (entry.index == constant.index)
+                    {
+                        declaration = entry;
+                        break;
+                    }
+                }
+                if (!declaration || declaration.type != MTLDataTypeBool)
+                {
+                    setError(error, "Metal fragment function constant " +
+                        std::to_string(constant.index) +
+                        " is absent or is not bool in the loaded library");
+                    return nullptr;
+                }
+                const bool value = constant.value;
+                [values setConstantValue:&value type:MTLDataTypeBool atIndex:constant.index];
+            }
+            NSError* specialization_error = nil;
+            fragment = [descriptor.library->mImpl->library
+                newFunctionWithName:toNSString(descriptor.fragment_function)
+                constantValues:values error:&specialization_error];
+            if (!fragment)
+            {
+                setError(error, "Could not specialize Metal fragment function " +
+                    descriptor.fragment_function + ": " + describeError(specialization_error));
+                return nullptr;
+            }
         }
 
         id<MTLDevice> native_device = (__bridge id<MTLDevice>)device.nativeHandle();

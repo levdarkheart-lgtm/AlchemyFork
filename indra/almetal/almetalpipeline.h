@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 class ALMetalShaderLibrary final
 {
@@ -137,6 +138,14 @@ struct ALMetalTessellationDescriptor
         ALMetalTessellationOutputWinding::counter_clockwise;
 };
 
+// Deliberately limited to boolean fragment specialization. An empty list uses
+// optional defaults; functions without constants keep the plain lookup path.
+struct ALMetalBoolFunctionConstant
+{
+    std::uint32_t index = 0;
+    bool value = false;
+};
+
 struct ALMetalRenderPipelineDescriptor
 {
     const ALMetalShaderLibrary* library = nullptr;
@@ -149,6 +158,7 @@ struct ALMetalRenderPipelineDescriptor
     bool support_indirect_commands = false;
     ALMetalTessellationDescriptor tessellation;
     std::string label;
+    std::vector<ALMetalBoolFunctionConstant> fragment_bool_constants;
 };
 
 class ALMetalRenderPipeline final
