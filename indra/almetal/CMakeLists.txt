@@ -40,7 +40,9 @@ if(al_metal_compiler_available)
   set(al_metal_source_record_flags "")
   set(al_metal_shader_directory "shaders")
   if(AL_METAL_RECORD_SHADER_SOURCES)
-    list(APPEND al_metal_source_record_flags -frecord-sources)
+    # Match Xcode's Include Source setting without reducing optimization.
+    # Embedded text alone does not provide the line tables the profiler needs.
+    list(APPEND al_metal_source_record_flags -gline-tables-only -frecord-sources)
     set(al_metal_shader_directory "shaders-with-source")
   endif()
   set(al_metal_builtin_dir "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${al_metal_shader_directory}")
@@ -51,17 +53,25 @@ if(al_metal_compiler_available)
     set(al_metal_deployment_arg
         "-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
   endif()
+  set(al_metal_compile_options
+      -std=metal3.1 -ffast-math ${al_metal_deployment_arg}
+      ${al_metal_source_record_flags})
+  # Xcode's script dependency check does not invalidate existing outputs when
+  # only the command's options change. Make those options an actual input.
+  set(al_metal_options_stamp "${al_metal_builtin_dir}/compiler-options.txt")
+  file(GENERATE OUTPUT "${al_metal_options_stamp}"
+       CONTENT "compiler=${AL_XCRUN_EXECUTABLE}\noptions=${al_metal_compile_options}\n")
   add_custom_command(
     OUTPUT "${AL_METAL_BUILTIN_LIBRARY}"
     BYPRODUCTS "${al_metal_builtin_air}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${al_metal_builtin_dir}"
     COMMAND "${AL_XCRUN_EXECUTABLE}" --sdk macosx metal
-            -std=metal3.1 -ffast-math ${al_metal_deployment_arg}
-            ${al_metal_source_record_flags}
+            ${al_metal_compile_options}
             -c "${AL_METAL_BUILTIN_SOURCE}" -o "${al_metal_builtin_air}"
     COMMAND "${AL_XCRUN_EXECUTABLE}" --sdk macosx metallib
             "${al_metal_builtin_air}" -o "${AL_METAL_BUILTIN_LIBRARY}"
-    DEPENDS "${AL_METAL_BUILTIN_SOURCE}"
+    DEPENDS "${AL_METAL_BUILTIN_SOURCE}" "${al_metal_options_stamp}"
+            "${CMAKE_CURRENT_LIST_FILE}"
     COMMENT "Compiling built-in Metal shader library"
     VERBATIM
   )
