@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
 **Renderer checkpoint:** Commit `b52c1ba96913fecc4c81f082ce97bffd6b43f6eb`;
-latest68579:9.608673FPS/bias1 with Translator stopped;20FPS and full parity open.
+latest68581:9.454639FPS; best controlled68579:9.608673.20FPS/full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -52,7 +52,7 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 
 ## Current source ownership and latest result
 
-Root owns all shared source/docs/runtime. Previous viewers closed/plans restored; current68581/PID97769 warming, newb52c1bplanactive.
+Root owns all shared source/docs/runtime. All viewers CLOSED/all startupplans RESTORED;68581 exactapp preserved.
 Translator explicitly fully stopped via its uv service command, actual0; stays
 STOPPED, no automatic restart. Latest68579/source1f2cc0 ready300:9.608672762FPS,
 mean104.072646/p50103.895667/p95109.0435ms,bias1/main95/Ultra3456×2168. Freshstart/
@@ -79,10 +79,11 @@ Finish root's narrow resource.mm PixelFormatView eligibility repair and meaningf
 GPU assertions. Compatible sRGB/swizzle views need noPFV; retain actual formats,
 bytes, views, swizzles/read|write|RT flags. Original color-vs-data binding contract
 traced; independent source/diff reviews approved. Full426552/92 API+GPU BOTHconfigs0, exact68581appbuild/349ARM64/sign0; viewer
-measurement in progress. Ordinary radiance already read-only; hero write flag needed.
-68579 controlled app preserved; current68581 sourceb52c1b compares with Translator
-STILL STOPPED and no formal-window competing work. Do not claim actual compression
-or FPS gain from flag eligibility alone.
+measurement completed9.454639FPS versuscontrolled9.608673, no gain. Ordinary radiance already read-only; hero write flag needed.
+Bothapps preserved; both TranslatorOFF, settings/readinessmatched. Newmean+1.629%,
+p50+1.844%,p95+1.707%; onepairdoesnotprove cause. Actualposttrace68510exit0, all
+8exports/4parsersactual0; viewerGPUunion105.542vs103.541, no broadreduction. No compression/FPSgainfromeligibilityalone. Finishtrace
+analysis, thenprivatefrozen/newdual-outputSSRproofbeforeanotherlivecandidate.
 
 PrivateD32 geometry strictgate run79366exit2 isolated oldR32 export mismatch:
 Bhardware/Cfragment-freeD32 exact all896+192cases; A/B differs221productioncases/

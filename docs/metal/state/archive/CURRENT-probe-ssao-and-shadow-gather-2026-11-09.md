@@ -393,3 +393,59 @@ location/exactbinary gates0. PID97769 currently warming all256 probes; no
 performance result yet. CSV/run names private-b52c1b-texture-usage-20261109-01 /
 candidate-b52c1b-texture-usage-20261109-01. Translator original servicePIDs absent
 again verified(ps exit1,empty); never restarted. No compression-ratio/FPS claim.
+
+
+### 68581 actual controlled result — no improvement established
+
+Completed300consecutive5032–5331: mean105.7681847233ms,p50105.811167,
+p95110.90525,9.45463895987FPS. Versus68579 mean+1.62919%,FPS−1.60307%,
+p50+1.84368%,p95+1.70735%. Both TranslatorOFF,43livecontrols/environment/bias1/
+256ready/current/faded/stable120 match; all300native/noGL/Release/Ultra3456×2168.
+Camera basis/projectionmatch, Zdelta26.70micrometres,no formalchanges. Drawmean
+55752.2233vs55781.4867(−.05246%),mainvisible96vs95; sourcepost-samplebatches831vs858.
+Sparsehero source snapshots showdifferentfaces and cannot be directlycompared.
+No build/GPUtest/profile/heavyparsing overlapped formal. Freshendgates0.
+Singlepairdoesnotproveflagcausedregression; noFPS/compressionbenefitclaimed.
+Official perf_compare enforce/provenance actual1: provenanceverified, target
+unmet/three required scenarios missing; no configuredp95regressionflag.
+CSV SHA256 `384cb3f21fdb1558529f671fcbc727739e6d458276076d78f22d187bdbd0c7dc`;
+provenance `a2e345a069f0fd5675de358cab2295eb546f01063bf06e29cb9297f540a10c47`.
+Independent report `/private/tmp/alchemy-metal-68581-formal-independent-20261109.oj4_ddpb/independent-formal-summary.json`
+SHA256 `82095ff3b65c73157107b3ef4c7cd3b55dced86a0e77316c147b903612efdb6b`.
+
+Postformaltrace68510 actual0,15s recordingcompleted thenDWARFcursorwarnings
+whilefinalizing, savedviewer.trace. Agentserialexportsinprogress. Rootexactexe
+checkedPID97769, gracefulSIGTERM→PIDabsence. FirstshutdowncheckerwrongLibraryLogs
+path causedexit1, noenvironmentrestore. Correctedusingrun.json --logfile,
+verifiedactualGoodbye/PIDabsence thenrestoreb52c1bplanactual0. Allviewersclosed/
+plansrestored. Translatorremainsfullystopped. App68581preserved via ditto46169
+actual0 andexehashcheckat `/private/tmp/alchemy-metal-68581-texture-usage-measured.app`.
+
+
+### 68581 completed GPU attribution
+
+All8serialxctraceexports, submission/union/family/actor parsers actual0; no
+remainingagentheavyprocesses. Initialsandboxexport−6(cachewritepermission)
+preserved; approvedhostretry23819 andfinalparser19607 succeeded. Independent
+methodologyreview approved PID/union/overlap scopes.
+Packet `/private/tmp/alchemy-metal-68581-texture-usage-attribution-20261109/comparison-packet-68579-vs-68581.json`
+SHA256 `fa94e6826f98bbdbb9d137eb6651996ad1a8d321a1335cb5468d0e1f0d3ce877`.
+129presents/15.693901s=8.21975instrumentedrequests/s; separate fromformal9.45464.
+ViewerActiveGPUunion105.542vs103.541ms/p, CPUencodersegments44.551vs44.164,
+heroabove20.709vs21.067/mainbase17.331vs17.333/mainhaze15.909vs15.716.
+MainGb6.711vs9.108, initialavatar5.350vs2.161 despite same3sourcebatches/9180
+indices. No universal2.16msavatarcost. Initialglow22batches/300indicesvs21/258,
+so sourceworkloads differ. Herolabelledaggregate57.725vs57.639(+.15%) overlaps.
+ThermalNominalboth, allocation9.380–9.439GiBvs9.224–9.279; no compressionratio
+or bandwidthclaim fromresourceallocation. NoTranslator35824Active rows.
+Nonvieweroutsideviewerunion.9473%vs.7788%; WindowServer/Dullahan stillactive.
+No broadGPUreduction orisolatedPFVcausalclaim. No furtherGPU/build/runtimeagentwork.
+
+Private source-only followups: duplicate legacyforward SSR sample matches
+originalsingle-resultstructure, but compilerCSE/performanceunknown andcubeSSR
+disabled. Proposal privatey18a3xuf SHA5a1ff36b5e902519ded2e9f20b246cd95f4c38dbbf9da287adade3256745f775;
+no sharedshaderedit. Probe traversal matches original32cap/buckets/neighbor/
+manualbox policy, no extraall-probeloopconfirmed. Heroocclusion cannotbe safely
+oneflag-enabled: needsindependentfaceownership/capture ANDcompleteoccluder
+invalidation/current-framevisibility, no measuredsavedtime. PrivateauditSHA
+ e2ecd4fd12d0d6807e3a5e330346bd267475c9936b0ddf82ca2a1270e489c1e5.

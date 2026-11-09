@@ -3,11 +3,11 @@
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `b52c1ba96913fecc4c81f082ce97bffd6b43f6eb`.
-**Working source:** texture-usage repair built/verified; controlled68581 RUNNING.
+**Working source:** texture-usage repair built/measured; all viewers closed, plans restored.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
-## Goal and latest result
+## Goal and controlled baseline
 
 The unbudgeted20FPS Ultra goal remains ACTIVE/unmet. Autonomous quit/build/login/
 measure is authorized at the fixed private location/numericPreset123 only; no
@@ -32,11 +32,11 @@ Native query119002 spatial skip EVENTS/299 intervals, not unique groups/savedtim
 
 ## Runtime and external service
 
-Previous68579 PID78103 gracefully quit, Goodbye/PIDabsence verified, then1f2cc0
-Midday plan RESTORED (all earlier plans restored too). Current68581/PID97769 is
-RUNNING; fresh b52c1b Midday plan INSTALLED, not restored. Fullscreen before login;
-start live43control/location/binary observe/verify/gate0. Warming256 probes; do
-not restart or run GPU/build/profile/heavy parsing during formal collection.
+All viewers CLOSED.68581/PID97769 exact executable verified, gracefulSIGTERM,
+PIDabsence and run-specific viewer.log Goodbye verified. Newb52c1b Middayplan
+RESTORED actual0, all earlier plans restored too. Shutdown checker initially
+looked in wrong log directory and exited1; corrected to --logfile from run.json
+BEFORE restoration. No active CUA.68579 and68581 apps preserved with exact hashes.
 Canonical68579 and preserved `/private/tmp/alchemy-metal-68579-controlled-measured.app`
 executable bf4cdfef2fe95cf91991f26e4f948328878fa8627871100825d54b11fe6d69f5;
 metallib ffd9e1d178988b0719c516cd1e87444907d59d063630d7fd9ac2d17cafaa9347.
@@ -79,7 +79,7 @@ required by real compute writes. No radiance format/precision reduction.
 GPU tests cover combined RGBA/BGRA sRGB+swizzle, both actual view reads, raw byte
 preservation, privateR8 alpha+mips, resampler read|RT and BRDF read|Write. Two
 read-only audits support candidate; Release and RWDI API+GPU426552/92 EACH actual0; app68581 build/349ARM64/
-deepstrictsignature0. Exact b52c1ba969 source; measurement in progress.
+deepstrictsignature0. Exact b52c1ba969 source; completed comparison shows no gain.
 Eligibility is not proof of compression ratio, bandwidth saving or FPS gain.
 
 Keep0fa4e3 original cubeSSAO parity repair: neutralAO1/no face blur, mainSSAO
@@ -94,6 +94,30 @@ bit-exact all896production+192bias cases; R32exportA differs fromB in221cases/
 no uniform1ULP/epsilon waiver or global nonfinite/max claim. Original stores
 hardware depth, making B/C source-grounded direction, not completed migration.
 Alpha/cloth/terrain/receiver/pixel gates remain; private only, no production edit.
+
+## Latest candidate result — no measured improvement
+
+68581/sourceb52c1ba969:300 consecutive5032–5331, mean105.768184723ms,
+p50105.811167/p95110.90525, **9.454638960FPS**. Versus68579 mean+1.62919%,
+FPS−1.60307%,p50+1.84368%,p95+1.70735%. Both TranslatorOFF, all native/noGL,
+43controls/environment/bias1/all256ready/stable120 match. Camera basis/projection
+match, Zdelta26.70micrometres, no within-window changes. Drawmean55752.2233 vs
+55781.4867(−.05246%), mainvisible96vs95; post-sample main batches831vs858.
+No competing build/GPUtest/profile/heavyparse during formal. One pair does not
+establish causality; flag eligibility is not an observed FPS win.
+Officialenforce/provenance exit1: provenanceverified, performance target and
+three other required scenes unmet. CSV SHA384cb3f21fdb1558529f671fcbc727739e6d458276076d78f22d187bdbd0c7dc;
+provenance a2e345a069f0fd5675de358cab2295eb546f01063bf06e29cb9297f540a10c47.
+Independent report82095ff3b65c73157107b3ef4c7cd3b55dced86a0e77316c147b903612efdb6b.
+App `/private/tmp/alchemy-metal-68581-texture-usage-measured.app`, exe
+3d3977af32ff663b19bfef4a9f3dbf5c88d6721f0a105a5d0de0e10f6595fb0f; shaderffd9 unchanged.
+Postformal15sGPUtrace68510 actual0; sourceDWARF warnings duringfinalization,
+trace saved;8serialexports/submission/union/family/actor parsers allactual0.
+ViewerGPUunion105.542vs103.541ms/p, mainbase17.331vs17.333, heroabove20.709vs
+21.067, mainhaze15.909vs15.716. Initialavatar5.350vs2.161 despite same3/9180
+sourcecounts; mainGb6.711vs9.108. No broad reduction; overlap/diagnosticcost and
+extra glowbatch prevent shader-cause claims. PacketSHAfa94e6826f98bbdbb9d137eb6651996ad1a8d321a1335cb5468d0e1f0d3ce877.
+All agents/exports/parsers quiet; no active rootGPU/build/viewer/runtime processes.
 
 ## Retained quality baseline and constraints
 
@@ -115,14 +139,16 @@ classic/SSR/materialsplit/layered candidates remain rejected; no repeated trials
 | M-004 Resource ownership | doing | Image/global scopes corrected; compression eligibility candidate. |
 | M-008 Advanced views/effects | doing | Cube SSAO parity fixed; main and mirror GPU costs remain. |
 | M-012 Native UI automation | complete | Exact fullscreen/login verified; world AX/capture timeout limits. |
-| M-014 Ultra20FPS campaign | doing | Controlled9.61FPS with Translator stopped;20FPS unmet. |
+| M-014 Ultra20FPS campaign | doing | Best controlled9.61FPS; new68581 9.45FPS shows no gain. |
 
 ## Exact next actions
 
-Finish current68581 controlled300-frame comparison against68579, Translator
-STILL STOPPED, same camera/Midday/Ultra/ready256probes/bias1. Do not duplicate
-run: candidate-b52c1b-texture-usage-20261109-01. After endgate/actual trace exits,
-gracefullyquit97769/Goodbye/PIDabsence BEFORE restoring freshb52c1b Middayplan.
-No agent GPU/build/runtime work without root release. Broader feature/pixel parity,
+68581 trace exports/analysis complete; no active viewer or startupplan. Translator MUST STAY STOPPED. Best controlled9.61FPS
+remains reference, candidate9.45 is not a demonstrated improvement. Next source
+candidate is PRIVATE duplicate legacy-forward SSR sample (original computesonce),
+needs frozen-vs-new GPU/compiled-cost proof before another live build. Per-face
+hero occlusion is not a safe one-flag toggle: independent ownership AND complete
+occluder invalidation/current-frame visibility needed; no measured saving yet.
+No agent GPU/build/runtime work without root release. Full feature/pixel parity,
 multi-scene performance, prolonged stability, strict no-GL and
 independent build/review evidence remain OPEN. No release/product-complete claim.

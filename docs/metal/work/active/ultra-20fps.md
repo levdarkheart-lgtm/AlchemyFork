@@ -92,8 +92,20 @@ Root implemented b52c1ba969 compatible texture-view usage repair: remove unused
 PixelFormatView without changing format/quality/bytes/swizzles/colorvsdata views
 or real ShaderWrite. Apple M1 guidance supports lossless compression eligibility,
 not measured ratio/FPS. Independent review approved, both optimized426552/92 API+GPU0;
-appbuild/controlledsame-Translator-off comparison pending.
+appbuild/349ARM64/sign0; controlledcomparison completed below.
 [Complete evidence](../../state/archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
+
+## Texture-usage candidate measured —9.45FPS, no gain
+
+68581/sourceb52c1ba969 completed300readyframes5032–5331:mean105.768185ms,
+p50105.811167/p95110.90525,9.454639FPS. Versus68579 FPS−1.603%,p50+1.844%,
+p95+1.707%. BothTranslatorOFF/43controls/environment/bias1/ready256match;
+mainvisible96vs95/draws−.0525%/cameraZdelta26.70micrometres. Onepairnotcausalproof.
+Officialenforce/provenanceexit1, no claimofFPS/compressiongain. Bothapps preserved,
+allviewersclosed/plansrestored. Trace68510/8exports/parsersactual0:viewerGPUunion105.542vs103.541ms/p,
+mainbase17.331vs17.333/heroabove20.709vs21.067, no broadreduction.
+NextchangesneedactualGPU/compiledcostproof; no further livecandidate basedon
+source-duplicate workalone.20FPSremainsunmet, notproveninfeasible.
 
 ## Decisions and next implementation boundary
 
