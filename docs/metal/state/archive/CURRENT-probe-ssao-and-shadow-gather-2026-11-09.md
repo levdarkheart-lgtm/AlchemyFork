@@ -255,3 +255,141 @@ Investigate main initial opaque GPU cost with explicit scope; do not blame haze,
 CPU alone or a specific shader from inclusive labels.20FPS, full visual/feature
 parity, multi-scene performance and release gates remain open. Hardware
 infeasibility has not been established.
+
+
+## Controlled 68579 completion and Translator GPU contention
+
+Source `1f2cc0e786f6c88f5a1dee23215c17650e6e83b0`, executable
+`bf4cdfef2fe95cf91991f26e4f948328878fa8627871100825d54b11fe6d69f5`.
+Metallib `ffd9e1d178988b0719c516cd1e87444907d59d063630d7fd9ac2d17cafaa9347`.
+The exact app was preserved at `/private/tmp/alchemy-metal-68579-controlled-measured.app`
+with executable hash verified; `ditto` and preservation check exited 0.
+
+The user explicitly superseded pause/resume with a complete Translator stop.
+From `/Users/dekstroza/Programming/translator`, root ran
+`uv run --no-sync python scripts/service.py stop`, actual exit 0. API35823 and
+its tailscaled35866 stopped; GPU worker35824 absence was verified. Translator
+must remain stopped. No SIGSTOP was issued. Private stop record is
+`artifacts/metal/private-1f2cc0-translator-stop-20261109.json`.
+The earlier 68577 trace attributed 33.98% of wall time to that Python GPU actor,
+including 7.30% outside viewer GPU activity. Earlier comparisons therefore do
+not isolate renderer source changes from competing GPU work.
+
+Formal unsplit collection completed 300 consecutive frames5032–5331:
+mean104.0726461133ms, p50103.8956665ms, nearest-rank p95109.0435ms,
+9.6086727622FPS. All rows native/noGL/Release/Ultra3456×2168, bias1,
+main-visible95; all256 probes ready/faded/current and stable120. Fresh start/end
+43-control, exact binary and location gates exited 0; environment/sun/hero/HUD
+restoration matched. Sampled camera changes0; basis/projection unchanged.
+Vertical camera delta versus68572/68577 was30.52 micrometres, versus68576
+24.80 micrometres. Mean draw count55781.49, +3.591% versus68577.
+No build, GPU test, profiling or heavy parsing overlapped the formal window.
+FPS +19.94% versus68577, +42.80% versus68576, +2.414% versus68572;
+Translator stopped is an explicit changed control, not a pure code gain.
+20FPS remains unmet; hardware infeasibility is not established.
+
+Raw data: `artifacts/metal/private-1f2cc0-family-diagnostic-20261109-01.csv`
+and sibling `.provenance.jsonl`. Independent comparison JSON at
+`/private/tmp/alchemy-metal-68579-family-diagnostic-comparison-20261109/formal-comparison-68572-68576-68577-vs-68579.json`,
+SHA256 `39a27d619640cdf02a3db9d85769f145beca2323a5a41b128e70773b25bc00ce`.
+Pressure samples: images7599MiB, all device9483–9510MiB, target45985–46006MiB,
+recommendation59392MiB, system-low0. Native query299 intervals consumed119002
+spatial skip events, not unique groups or directly measured saved GPU time.
+
+### Post-sample diagnostic: initial forward families are not the dominant cost
+
+After formal timing true→false, the opt-in diagnostic split contiguous main-view
+families into six encoder runs without regrouping draws. Trace recorder75165,
+serial exporters/parsers all exited0. 131 presents/15.706s gave8.3405 instrumented
+requests/s, separate from9.6087 formal FPS. Viewer Active GPU interval union
+103.5406ms/present (86.3584% wall), whole-device87.4914%, thermalNominal.
+Family interval union2.61622ms/present: avataralpha2.16112, fullbright.31048,
+glow.17212, shiny.06002; per-label sums overlap and must not be added. Added
+attachment load/store boundaries change scheduling and cost; do not equate
+these durations with individual shader time or the old unsplit20.756ms group.
+Largest inclusive contexts: heroabove-water21.067, mainbase17.333,
+mainhaze/latertransparency15.716, mainGbuffer9.108, heroHaze8.333,
+heroGbuffer7.616, heroShadows6.271ms/present. These also overlap.
+Translator35824 has zero Active rows. Other GPU work remains: WindowServer,
+Dullahan and unknown actors, with nonviewer outside union.77878% wall.
+Private trace evidence directory:
+`/private/tmp/alchemy-metal-68579-family-attribution-20261109`;
+FINDINGS SHA256 `eebc1718407318251aae95dd77241329fe462974e7979e6f537c1e4a757dfa13`.
+
+After trace/export completion, root verified PID78103/executable, gracefully
+sent SIGTERM, observed Goodbye and PID absence (session93455 exit0). Then
+`alchemy-metal-session-state-20261109.py restore --plan artifacts/metal/private-1f2cc0-startup-setup-plan-20261109.json`
+exited0. All viewer startup plans are restored; no viewer remains running.
+Translator remains stopped. No screenshot or full pixel-parity claim.
+
+### Native depth geometry feasibility: distinguish export from hardware depth
+
+Private `alchemy-metal-depth-geometry-20261109.q6gN3i` compile steps exited0;
+API+GPU run79366 exited2 on strict A/B differences. A=current R32 fragment
+export, B=the same pass's retained hardware scratch depth, C=fragment-free
+native D32 array slice. B/C match bit-for-bit in all896 production slice cases
+and192 nonzero-bias diagnostic cases, with zero neighbor-slice corruption.
+A/B differ in221 production cases/5522 pixels and51 bias cases/196 pixels.
+Only1208 of5522 production mismatch values were logged; full numerical maxima
+and complete nonfinite scans are unavailable. Largest logged production gap
+4.768371582e-7; near-zero differences are not uniformly one ULP and can switch
+clear-far classification. No epsilon waiver is inferred.
+Exact original1eb opaqueShadowF writes white without gl_FragDepth/discard and
+its color writes are disabled: hardware depth is authoritative. Thus B/C are a
+source-grounded direction, not proof of original cross-API bitwise parity or
+approval for production migration. Alpha/cloth/terrain/caster/readback gates
+remain. Grouped summary SHA256
+`9ef52be408638d08e4b540d00f88c0c2b786a94d91e6b59a6aa568ab33ca1506`.
+
+### Next narrow resource candidate
+
+Current resource.mm adds PixelFormatView for swizzle or linear/sRGB views,
+although its only view creations preserve component layout. Apple explicitly
+says this flag is unnecessary for these views and can inhibit lossless texture
+compression on M1. The candidate removes only this automatic flag; formats,
+upload bytes, swizzles, view identities, shader-write flags and sampling remain.
+Original1eb imagegl2873–2946 preserves encoded asset bytes and channel swizzles;
+fetchedgltfmaterial86–159 chooses color decoding versus raw data at binding.
+Native compatible views are the implementation mechanism for that invariant.
+Ordinary retained radiance already has shader-read-only usage; hero filtered
+radiance genuinely requires ShaderWrite and is not changed.
+This is compression eligibility, not measured compression ratio or FPS benefit.
+Primary sources: https://developer.apple.com/videos/play/wwdc2021/10153/ and
+https://developer.apple.com/videos/play/tech-talks/10580/.
+
+
+Formal68579 CSV SHA256 `e344e81c5df5d7675e03284e0c86f4598d7cf5c3378ff84afa752cb1ea4c5f17`;
+provenance `b379600dec103a79a2afb01d35d70a370ea96ce8c7b07b05992657ba14cd2a07`.
+Independent official `perf_compare.py --enforce --require-provenance` against
+68577 and68572 both actualexit1: provenance verified,300 samples/noP95 regressions,
+p50wins14.68%/1.94% below20%, other three required scenarios absent.
+Full report `/private/tmp/alchemy-metal-68579-formal-independent-20261109.HMcYRO/independent-formal-summary.json`
+SHA256 `abed389ee8e095d03ccb09a3e525c6a24a986cd4a5e63ef98f8dca8caad9f2e8`.
+
+
+### Compatible-view eligibility implementation b52c1ba969
+
+Commit `b52c1ba96913fecc4c81f082ce97bffd6b43f6eb` changes only automatic native
+PixelFormatView usage plus tests. New combined RGBA/BGRA sRGB identity/swizzle
+fixture executes both actual native view reads, an independent CPU transfer
+oracle, stable/distinct handles and raw upload/readback checks. Existing R8
+swizzle/mip test and real resampler read|RT / BRDF compute read|Write tests
+assert exact native usage. No shader/format/quality change. Independent review
+approved. Doctor0, Release builds86560/88117 and RWDI49668 actual0. Focused GPU
+validation0:131assertions/2cases; middle-wildcard resampler/BRDF filters did not
+match, so those were verified by full suites instead. Metal API+GPU Release90528
+and RWDI27625 EACH actual0:426552 assertions/92 cases. Logs use
+`/private/tmp/alchemy-metal-texture-usage-` prefix and `-20261109.log` suffix.
+Configure72329/build70026/verify65462/deepstrictsignature all0,349ARM64 components.
+App68581 exesha `3d3977af32ff663b19bfef4a9f3dbf5c88d6721f0a105a5d0de0e10f6595fb0f`,
+unchanged metallib `ffd9e1d178988b0719c516cd1e87444907d59d063630d7fd9ac2d17cafaa9347`.
+First gitcommit attempt sandbox rejected index.lock, no mutation; authorized
+escalation succeeded. Configure repeated after commit to refresh exactsource,
+so build68580 number was reserved but measured candidate is68581.
+
+Fresh b52c1b Midday plan installed/launchdryrun0/launch0; fullscreenCtrlSuperF
+beforeloginReturn via CUA, actualLEAPlogged_in true. Freshstart43controls/
+location/exactbinary gates0. PID97769 currently warming all256 probes; no
+performance result yet. CSV/run names private-b52c1b-texture-usage-20261109-01 /
+candidate-b52c1b-texture-usage-20261109-01. Translator original servicePIDs absent
+again verified(ps exit1,empty); never restarted. No compression-ratio/FPS claim.

@@ -1,8 +1,8 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `1f2cc0e786f6c88f5a1dee23215c17650e6e83b0`;
-latest68576:6.728847FPS/bias1 regression;68572baseline9.382155FPS. Full parity open.
+**Renderer checkpoint:** Commit `b52c1ba96913fecc4c81f082ce97bffd6b43f6eb`;
+latest68579:9.608673FPS/bias1 with Translator stopped;20FPS and full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -52,19 +52,17 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 
 ## Current source ownership and latest result
 
-Rootownssharedsource/docs/runtime. Renderer30715fgather+test committed; all
-viewersclosed/startupplansrestored. Canonical68577preservedmeasuredapp; all349
-ARM64/signature0. Full426213/91 API+GPUtests EACH Release/RWDI pass.
-Latest68577:8.011210FPS/124.825083msmean,121.765792p50/154.566750p95; bias1,
-300readyframes10487–10786,43controls/environmentmatch, cameraEXACT68572,main98.
-Versus68576recent6.728847FPS:mean−16.007%; versus685729.382155:mean+17.113%.
-Bothofficialperformancegates1;20FPSunmet. No netwin overolderbaseline claimed.
-PostformalGPUviewerunion129.350ms/p vs143.136recent; mainopaqueinclusive20.756
-vs44.844, lightmap4.743vs5.418, baseabout18. Othergroupsvary; nofullcausalclaim,
-noadditionofoverlaplabels. ExtraGPUactivityidentifiedpythonPID35824 fromTranslatorvenv; userauthorizedFULLSTOPviauvcommand(actual0),workerabsent. DO NOTRESTART.
-Current68579/PID78103 controlledwarmup/1f2cc0Middayplanactive; preserveformalunsplit,
-postCSVfamilytraceonly. Both426444/91GPUconfigs/app349/sign0.
-[Completeevidence](../../state/archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
+Root owns all shared source/docs/runtime. Previous viewers closed/plans restored; current68581/PID97769 warming, newb52c1bplanactive.
+Translator explicitly fully stopped via its uv service command, actual0; stays
+STOPPED, no automatic restart. Latest68579/source1f2cc0 ready300:9.608672762FPS,
+mean104.072646/p50103.895667/p95109.0435ms,bias1/main95/Ultra3456×2168. Freshstart/
+end43controls/location/binary gates0; camera basis/projection unchanged. Prior
+68577 8.011210/68576 6.728847/68572 9.382155FPS had uncontrolled TranslatorGPUwork:
+no purecodegain claim.20FPS remains unmet. App68579 preserved with exact hash.
+Formal unsplit; later diagnostic131presents viewerGPUunion103.5406ms/p, initial
+familyunion2.61622ms/p, mainbase17.333/heroabove-water21.067 inclusive/overlapping.
+Addedpassboundaries altercost; no shader-duration/unsplit equivalence claim.
+[Complete evidence](../../state/archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
 
 ## Complete-product checkpoint gate
 
@@ -77,17 +75,19 @@ postCSVfamilytraceonly. Both426444/91GPUconfigs/app349/sign0.
 
 ## Immediate executable action
 
-Allcurrenttests/builds/verify/profilesfinished; no runningviewer. Keeporiginal-
-contractcubeSSAOrepair0fa4e3 and testednativegather30715f; quality/cadenceintact.
-1f2cc0commitsvalidatedinitialfamilydiagnostic+counter/test, defaultOFF,
-mainonlyandafterformalCSV. Preserveallbindings/depth/stencil/order; realparity
-neededbeforecapture. Specificquestion: whichinitialfullbright/shiny/avataralpha/
-glowgroupcostsremainingmainopaqueGPUtime. Addedpassboundariesarediagnosticcost,
-notproductionFPS. Newtestsourcebeingpreparedprivately, notappliedyet.
+Finish root's narrow resource.mm PixelFormatView eligibility repair and meaningful
+GPU assertions. Compatible sRGB/swizzle views need noPFV; retain actual formats,
+bytes, views, swizzles/read|write|RT flags. Original color-vs-data binding contract
+traced; independent source/diff reviews approved. Full426552/92 API+GPU BOTHconfigs0, exact68581appbuild/349ARM64/sign0; viewer
+measurement in progress. Ordinary radiance already read-only; hero write flag needed.
+68579 controlled app preserved; current68581 sourceb52c1b compares with Translator
+STILL STOPPED and no formal-window competing work. Do not claim actual compression
+or FPS gain from flag eligibility alone.
 
-SeparateD32arrayfeasibilityGPU98353passed8960rawqueries+96fullthreewaymaps exactly;
-noopaqueFSnilcaster/clamp/coverage/migrationproof. Sourceplanonlynext, notproduct
-optimizationclaim. Full20FPS,visualparity/generalperformance stillopen.
+PrivateD32 geometry strictgate run79366exit2 isolated oldR32 export mismatch:
+Bhardware/Cfragment-freeD32 exact all896+192cases; A/B differs221productioncases/
+5522pixels. Originalhardwaredepth supportsdirection, no epsilon waiver; alpha/
+cloth/terrain/receiver gates open, no productionmigration.
 
 ## Non-negotiable open gates
 

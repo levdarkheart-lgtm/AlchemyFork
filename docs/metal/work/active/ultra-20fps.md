@@ -71,14 +71,38 @@ PostformalGPUmaininitialopaqueinclusive44.844→20.756ms/p, lightmap5.418→4.74
 baseabout18; overlapandexternalGPUactivityprecludefullcausalclaim. Allviewers
 closed/plansrestored; evidencein[repair/gatherrecord](../../state/archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
 
+## Latest controlled result —9.61FPS, Translator stopped
+
+68579/source1f2cc0,300readyframes5032–5331:9.608673FPS, mean104.072646ms,
+p50103.895667/p95109.0435ms; bias1/native/Ultra3456×2168/43controls match.
+Sampledcamera0changes, basis/projectionmatch,30.52micrometreZdelta versus68572/
+68577; main-visible95 and drawmean55781.49. FPS +19.94%vs68577/+2.41%vs68572.
+User explicitly fully stopped Translator via uv(actual0), worker35824 absent.
+Earlier trace found PythonGPU33.98%wall/7.30%outside viewer: changed workload
+control prevents purecodeattribution. Translator must STAY STOPPED.
+Both officialcomparisons exit1: provenance passes, p50targets/requiredscenes unmet.
+All viewers closed/startupplans restored; exact68579app preserved.
+
+Postformal family diagnostic viewerGPUunion103.5406ms/p; initialfamilies only
+2.61622ms/p (avatar2.16112), addedencoder boundaries altercost. Largest inclusive
+contexts remain heroabove-water21.067/mainbase17.333/mainhaze15.716/mainGb9.108;
+labels overlap. This redirects work away from speculative initialalpha fixes.
+
+Root implemented b52c1ba969 compatible texture-view usage repair: remove unused
+PixelFormatView without changing format/quality/bytes/swizzles/colorvsdata views
+or real ShaderWrite. Apple M1 guidance supports lossless compression eligibility,
+not measured ratio/FPS. Independent review approved, both optimized426552/92 API+GPU0;
+appbuild/controlledsame-Translator-off comparison pending.
+[Complete evidence](../../state/archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
+
 ## Decisions and next implementation boundary
 
 - Keep compiler, forward-binding, scope/capacity and existing correctness repairs.
   Do not restore lower texture quality to simplify a performance comparison.
-- Use measured68572/bias1 for subsequent comparisons. Earlier no-discard trial
+- Use controlled68579/bias1/Translator stopped for subsequent comparisons; retain68572 as historical quality baseline. Earlier no-discard trial
   stays reverted; source/patch/app preserved. Rebuild stale GPU test binaries.
 - Existing query metadata proves main occlusion is consumed; no need repeat the
-  missing-query audit. Compression/excess-forward-loop hypotheses were ruled out.
+  missing-query audit. Earlier sampled-attachment compression/excess-forward-loop hypotheses were ruled out; generic compatible-view usage is a newly verified separate candidate.
 - Private classic/SSR specialization is not admitted:55/324strict failures and
   modern2.7–3.5%effects near control variation. Private material split preserves
   depth/water bits but has69/388strict failures and mixed performance: uniform
