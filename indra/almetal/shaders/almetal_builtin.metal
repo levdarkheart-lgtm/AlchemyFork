@@ -5939,7 +5939,9 @@ static float3 almetal_sample_legacy_probes(
         if (neighbor < 0 && probes.ref_index[candidate].y != -1)
         {
             neighbor_base = probes.ref_index[candidate].y;
-            neighbor_count = clamp(probes.ref_index[candidate].z, 0, 31);
+            // The manager packs up to 64 candidates; only accepted taps
+            // consume the separate 32-probe sampling limit.
+            neighbor_count = clamp(probes.ref_index[candidate].z, 0, 64);
             neighbor = 0;
         }
     }
@@ -6197,7 +6199,7 @@ static void almetal_sample_base_probes(
         {
             neighbor_base = probes.ref_index[candidate].y;
             neighbor_count = clamp(
-                probes.ref_index[candidate].z, 0, 31);
+                probes.ref_index[candidate].z, 0, 64);
             neighbor = 0;
         }
     }
@@ -7774,7 +7776,7 @@ static float3 almetal_sample_water_probes(
         {
             neighbor_base = probes.ref_index[candidate].y;
             neighbor_count = clamp(
-                probes.ref_index[candidate].z, 0, 31);
+                probes.ref_index[candidate].z, 0, 64);
             neighbor = 0;
         }
     }

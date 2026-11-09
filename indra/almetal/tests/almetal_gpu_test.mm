@@ -14069,6 +14069,53 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             pre_water_pixels[material_pixel + 2]);
         CHECK(neighbor_box_blue > automatic_probe_blue);
         CHECK(neighbor_box_red < automatic_probe_red);
+
+        // The original manager packs up to 64 neighbors. The 32-tap cap
+        // counts accepted probes, so rejected neighbors must not hide a
+        // containing box later in that list. Compare the complete image
+        // with the same box reached directly, including automatic removal.
+        const auto neighbor_box_pixels = pre_water_pixels;
+        neighbor_probes.constants.config[0] = 4.f;
+        neighbor_probes.constants.ref_sphere[3][0] = 10000.f;
+        neighbor_probes.constants.ref_sphere[3][3] = 1.f;
+        neighbor_probes.constants.ref_index[3][0] = 0;
+        neighbor_probes.constants.ref_index[3][1] = -1;
+        for (int late_neighbor : {32, 64})
+        {
+            CAPTURE(late_neighbor);
+            std::fill_n(neighbor_probes.constants.ref_neighbor, 64, 3);
+            neighbor_probes.constants.ref_neighbor[late_neighbor - 1] = 2;
+            neighbor_probes.constants.ref_index[1][2] = late_neighbor;
+            auto late_box_result = renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+            INFO(error);
+            REQUIRE(late_box_result);
+            REQUIRE(late_box_result->colorTexture(0)->readback(
+                *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8, &error));
+            CHECK(pre_water_pixels == neighbor_box_pixels);
+        }
+
+        // Accepted duplicates still consume the cap. Once the owner and
+        // its first 31 accepted neighbors fill it, a later box cannot enter.
+        std::fill_n(neighbor_probes.constants.ref_neighbor, 64, 1);
+        neighbor_probes.constants.ref_neighbor[63] = 2;
+        neighbor_probes.constants.ref_index[1][2] = 31;
+        auto full_neighbor_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(full_neighbor_result);
+        REQUIRE(full_neighbor_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8, &error));
+        const auto full_neighbor_pixels = pre_water_pixels;
+        CHECK(full_neighbor_pixels != neighbor_box_pixels);
+        neighbor_probes.constants.ref_index[1][2] = 64;
+        auto capped_neighbor_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(capped_neighbor_result);
+        REQUIRE(capped_neighbor_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8, &error));
+        CHECK(pre_water_pixels == full_neighbor_pixels);
         opaque_forward_scene.reflection_probes = &reflection_probes;
 
         auto ordinary_pbr_alpha_result =
