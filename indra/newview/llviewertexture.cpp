@@ -29,6 +29,8 @@
 
 #include "llviewertexture.h"
 
+#include "altexturememoryaccounting.h"
+
 // Library includes
 #include "llmath.h"
 #include "alrendercapabilities.h"
@@ -493,26 +495,28 @@ void LLViewerTexture::updateClass()
     sCurrentTime = gFrameTimeSeconds;
 
     LLViewerMediaTexture::updateClass();
-    // This is a divisor used to determine how much VRAM from our overall VRAM budget to use.
-    // This is **cumulative** on whatever the detected or manually set VRAM budget is.
-    // If we detect 2048MB of VRAM, this will, by default, only use 1024.
-    // If you set 1024MB of VRAM, this will, by default, use 512.
-    // -Geenz 2025-03-03
+    // The divisor applies only to the automatically detected image capacity.
+    // A nonzero manual texture budget bypasses it, as in the original viewer.
     static LLCachedControl<U32> tex_vram_divisor(gSavedSettings, "RenderTextureVRAMDivisor", 2);
     static LLCachedControl<U32> max_vram_budget(gSavedSettings, "RenderMaxVRAMBudget", 0);
 
-    F64 texture_bytes_alloc = LLImageGL::getTextureBytesAllocated() / 1024.0 / 1024.0;
-    F64 vertex_bytes_alloc = LLVertexBuffer::getBytesAllocated() / 1024.0 / 512.0;
-
-    // Get an estimate of how much video memory we're using. The original GL
-    // path deliberately biases its incomplete accounting high. Metal can ask
-    // the device for the actual allocation total, which also includes render
-    // targets, buffers and staging resources that compete with streamed
-    // images in unified memory.
-    // NOTE: our metrics miss about half the vram we use, so this biases high but turns out to typically be within 5% of the real number
-    const F64 estimated_used_mb = texture_bytes_alloc + vertex_bytes_alloc;
-    const F64 device_used_mb = LLImageGL::getDeviceBytesAllocated() / 1024.0 / 1024.0;
-    F32 used = (F32)ll_round(llmax(estimated_used_mb, device_used_mb));
+    constexpr F64 bytes_per_mib = 1024.0 * 1024.0;
+    const F64 texture_bytes_alloc =
+        LLImageGL::getTextureBytesAllocated() / bytes_per_mib;
+    // Preserve the exact original /512 conversion on GL. It deliberately
+    // biases the incomplete vertex accounting by 2x.
+    const F64 legacy_vertex_bytes_alloc =
+        LLVertexBuffer::getBytesAllocated() / 1024.0 / 512.0;
+    const F64 device_used_mb =
+        LLImageGL::getDeviceBytesAllocated() / bytes_per_mib;
+    const F64 device_budget_mb = gRenderCapabilities.isInitialized()
+        ? gRenderCapabilities.memoryBudgetMB() : 0.0;
+    const ALTextureMemoryAccounting::Usage usage =
+        ALTextureMemoryAccounting::classify(
+            gRenderCapabilities.isMetal(), texture_bytes_alloc,
+            legacy_vertex_bytes_alloc, device_used_mb, device_budget_mb);
+    const F32 used = static_cast<F32>(
+        ll_round(usage.texture_pressure_mb));
 
     // For debugging purposes, it's useful to be able to set the VRAM budget manually.
     // But when manual control is not enabled, use the VRAM divisor.
@@ -520,7 +524,8 @@ void LLViewerTexture::updateClass()
     // -Geenz 2025-03-21
     const U32 renderer_memory_mb = gRenderCapabilities.isInitialized()
         ? gRenderCapabilities.textureMemoryBudgetMB() : gGLManager.mVRAM;
-    F32 budget = max_vram_budget == 0 ? llmax(1024, (F32)renderer_memory_mb / tex_vram_divisor) : (F32)max_vram_budget;
+    const U32 divisor = llmax<U32>(tex_vram_divisor(), 1);
+    F32 budget = max_vram_budget == 0 ? llmax(1024, (F32)renderer_memory_mb / divisor) : (F32)max_vram_budget;
 
     // Try to leave at least half a GB for everyone else and for bias,
     // but keep at least 768MB for ourselves
@@ -528,12 +533,34 @@ void LLViewerTexture::updateClass()
     // can negatively impact performance, so leave 20% of a breathing room for
     // 'bias' calculation to kick in.
     F32 target = llmax(llmin(budget - 512.f, budget * 0.8f), MIN_VRAM_BUDGET);
-    sFreeVRAMMegabytes = target - used;
-
-    F32 over_pct = (used - target) / target;
+    const ALTextureMemoryAccounting::Pressure pressure =
+        ALTextureMemoryAccounting::evaluate(
+            used, target, usage.global_pressure_mb, usage.global_budget_mb);
+    sFreeVRAMMegabytes = pressure.free_mb;
+    // Genuine device overcommit and image overage feed the original discard
+    // controller independently. System-memory pressure remains separate below.
+    const F32 over_pct = pressure.over_pct;
 
     bool is_sys_low = isSystemMemoryLow();
     bool is_low = is_sys_low || over_pct > 0.f;
+
+    // Keep the independently scoped operands observable without per-frame
+    // logging or assuming that a high discard bias identifies its cause.
+    static LLFrameTimer accounting_sample_timer;
+    if (gRenderCapabilities.isMetal() &&
+        accounting_sample_timer.getElapsedTimeF32() >= 10.f)
+    {
+        accounting_sample_timer.reset();
+        LL_INFOS("MetalMemory")
+            << "Native texture pressure: image=" << used
+            << " MiB, image_target=" << target
+            << " MiB, device=" << usage.global_pressure_mb
+            << " MiB, device_budget=" << usage.global_budget_mb
+            << " MiB, over_fraction=" << over_pct
+            << ", system_low=" << is_sys_low
+            << ", discard_bias_before=" << sDesiredDiscardBias
+            << LL_ENDL;
+    }
 
     static bool was_low = false;
 
