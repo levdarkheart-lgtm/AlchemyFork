@@ -1638,7 +1638,6 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
-    std::array<MaterialRiggedPipelines, 2> pbr_opaque_pipelines;
     std::array<MaskPipelines, 2> fullbright_pipelines;
     std::array<RiggedPipelines, 2> shiny_pipelines;
     std::array<RiggedPipelines, 2> emboss_pipelines;
@@ -2299,7 +2298,6 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_bump_fragment") ||
         !impl->library->hasFunction("almetal_world_material_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_fragment") ||
-        !impl->library->hasFunction("almetal_world_pbr_opaque_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_fullbright_fragment") ||
         !impl->library->hasFunction("almetal_world_shiny_vertex") ||
@@ -5061,19 +5059,6 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 {
                     return nullptr;
                 }
-
-                descriptor.fragment_function =
-                    "almetal_world_pbr_opaque_fragment";
-                descriptor.label =
-                    "Alchemy world opaque PBR G-buffer pipeline";
-                auto& opaque_pipeline =
-                    impl->pbr_opaque_pipelines[hdr][rigged][normal_hdr];
-                opaque_pipeline = ALMetalRenderPipeline::create(
-                    device, descriptor, error);
-                if (!opaque_pipeline)
-                {
-                    return nullptr;
-                }
             }
         }
     }
@@ -7767,12 +7752,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                      [avatar_variant]
                                      [scene.normal_hdr ? 1 : 0].get()
             : (pbr
-                ? (batch.alpha_mask
-                    ? mImpl->pbr_pipelines
-                    : mImpl->pbr_opaque_pipelines)
-                        [scene.hdr ? 1 : 0]
-                        [rigged ? 1 : 0]
-                        [scene.normal_hdr ? 1 : 0].get()
+                ? mImpl->pbr_pipelines[scene.hdr ? 1 : 0]
+                                      [rigged ? 1 : 0]
+                                      [scene.normal_hdr ? 1 : 0].get()
                 : (material
                     ? mImpl->material_pipelines[scene.hdr ? 1 : 0]
                                                [rigged ? 1 : 0]
