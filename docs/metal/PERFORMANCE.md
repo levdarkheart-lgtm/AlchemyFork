@@ -3,6 +3,13 @@
 ## Reference and candidate
 Reference: **unmodified ARM64 Alchemy open-source build at a pinned commit**. Candidate: same source lineage with native Metal. Record all source SHAs, build mode (`Release` or fullopt), macOS and Xcode versions, M1 Max GPU characteristics, RAM, display scale, power mode, thermals, viewer settings and source of data.
 
+Verify effective compiler options for the actual C/C++ objects, including core
+libraries, rather than relying on the configuration label. The native Xcode
+cache once produced27of36 Release targets at `-O0` while mixed-language targets
+used `-O3`; see the [diagnosis](state/archive/CURRENT-67611-original-and-release-flags-2026-11-09.md).
+Preserve the completed build log and the response files it actually references;
+stale response files elsewhere in the build tree are not current compile proof.
+
 ## Workloads
 Use scenario IDs and descriptions from `benchmarks/scenarios.json`. Codex must determine reproducible lawful/consented ways to visit or construct comparison scenes and avoid automated load on public Second Life services. Same viewpoint, avatars, lighting, time, graphics configuration, texture/cache state and display resolution per paired run. Record minimum 300 measured frames per variant/scenario **after warm-up**, with multiple repetitions across steady thermal conditions. Capture separate cold-cache data; never mix with warm-cache comparisons.
 

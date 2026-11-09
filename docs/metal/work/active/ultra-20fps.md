@@ -34,48 +34,42 @@ shadow draws coalesce about70%, yet all logical captures are still constructed.
 Full GPU-validated Release/RelWithDebInfo suites each pass57,344/75.
 [Complete runtime record](../../state/archive/CURRENT-68554-direct-shadow-runtime-2026-11-08.md).
 
-## Active work and exclusive ownership
+## Latest result — no established FPS gain
 
-| Work | Owner | State / next proof |
-| --- | --- | --- |
-| Early static shadow admission/coalescing | shadow_contract | pipeline.cpp plus new almetalshadowcapture.h/test; preserve logical validation/count reconciliation and every family/view boundary. |
-| Layered6/12-view static shadow experiment | draw_cpu_costs | General integration deferred:112 validated states/56 exact depth comparisons pass, but GPU and low-overlap costs regress. See experiment record. |
-| Base-probe accumulator layout experiment | draw_cpu_costs | Ignored standalone production-shader A/B fixture compiled; no GPU timing yet. Preserve fused traversal and exact math. |
-| Query/camera benchmark provenance | trace_recheck | Code frozen for integration; default-off unique ticket/outcome counters, actual main-camera hooks and private JSONL sidecar, unchanged CSV. Runtime tests pending. |
-| Opaque pass workload census and integration | root | almetalworld.h/.cpp, shaders and CMake; capture family/count/state signatures before attributing the variable fragment cost. |
+59177fixed empty Release flags; main CPU91.476→72.768% of one core, yet measured
+68566was8.865FPS versus settled68564's9.270FPS.62e2forward binding repair passes
+full391162assertions/89cases EACH Release/RWDI; shader bytecode unchanged.
 
-Only the integrator runs shared builds after file freezes. No heavy benchmark,
-compilation or trace export overlaps a measured live frame window. Raw captures
-remain local. Current viewer is closed for isolated experiments; its full
-baseline bundle is `/private/tmp/alchemy-metal-68554-goal-baseline.app`.
+Combined binding+opaque PBR no-discard trial68568/source d3d139passes all392926/
+89production API+GPU assertions each configuration and source-exact app checks.
+Actual Ultra/Midday/Preset123/fullscreen/43controls,3456×2168,all256probes ready,
+bias4,300consecutive frames:9.193FPS,mean108.776ms,p50108.786,p95113.496.
+One window is3.57%better mean than68566 but below earlier68564; no isolated or
+repeatable gain established. The trial is reverted by d967, with source/app/
+patch preserved for future general testing. Default68569 rebuilt/verified but
+unmeasured; it keeps the confirmed compiler and tested binding fixes.
 
-## Decisions / next actions
+Root owns shared edits/runtime. All viewers closed; user state restored. No
+profile overlapped the latest formal window and none is pending. Agents finished.
+[Complete evidence](../../state/archive/CURRENT-68566-68568-performance-trial-2026-11-09.md).
 
-1. Control camera, query effectiveness and opaque family workload; existing
-   native occlusion and literal Ultra4x anisotropy are already implemented.
-2. Remove repeated logical shadow record work while retaining full source
-   validity and independent expected-source reconciliation.
-3. Prototype layered native shadows only for compatible states and actual
-   visible view instances. Reject low-overlap/extra-GPU-work regressions.
-4. Inspect original shader/pass contracts for measured GPU costs. Do not repeat
-   previously rejected haze arithmetic or treat nominal GPU bandwidth as proof.
-5. Integrate successful changes, validate both configurations, build source-exact
-   and repeat the fixed-location comparison. Record rejected experiments and
-   remaining feasible opportunities before any infeasibility conclusion.
+## Decisions and next implementation boundary
 
-[Isolated architecture experiments and Apple guidance](../../state/archive/CURRENT-ultra-goal-experiments-2026-11-08.md)
-record the negative layered result and supported M1 timestamp boundaries.
-The atmospheric-haze encoder includes later draws; its aggregate GPU label is
-not an isolated haze shader measurement. Opaque segment census must resolve this.
+- Goal20FPS remains ACTIVE/unmet. The owner's11hour status concern is valid;
+  test/profiling work does not constitute FPS improvement. No hardware
+  infeasibility conclusion is supported.
+- Preserve original quality, cadence, casters, per-view probe correctness and
+  established native fixes. No travel or quality reduction is authorized.
+- GPU viewer-active union remains about109ms/present. Inclusive main/reflected
+  labels overlap; no single shader cost is established. Next source change needs
+  a bounded causal case addressing substantial work and varied output proof.
+- Avoid another speculative microshader variant or broad profile without a
+  specific unanswered question. Rejected/private experiments remain recorded.
+- Rebuild Ninja test binaries before any new source-specific claim; they still
+  contain the trial even though default source has been reverted.
 
-Current working-tree Release verification (2026-11-08): targeted shadow/census
-9618 assertions/4 cases, full Metal66,962/79, render-resource/query2030/229
-(one unrelated Noto single-palette skip), benchmark423/13 pass. Native suites
-use MTL_DEBUG_LAYER=1 and MTL_SHADER_VALIDATION=1 on actual host GPU. Initial
-restricted-process attempt returned no Metal device; host rerun passes.
-Build/test logs: `/private/tmp/alchemy-metal-20fps-{release,rwdi}-*`. Source is
-committed as d1966efd09654659e83c0f2df926a36e8d7f023c. RelWithDebInfo also passes
-the same full Metal/render-resource/benchmark suites. Product build and actual
-resident viewer comparisons remain. Obsolete native-only duplicate sets are
-removed; source mapping and independent review are in the experiment record.
-No product shader math changed.
+[Architecture experiments](../../state/archive/CURRENT-ultra-goal-experiments-2026-11-08.md)
+retain rejected layered results and actual M1 timestamp capability limits.
+No capture/validation-enabled CSV is performance evidence. Raw captures remain
+private; broad pixel/feature parity, multi-scene performance, prolonged stability,
+strict no-GL and independent build/review evidence remain required.

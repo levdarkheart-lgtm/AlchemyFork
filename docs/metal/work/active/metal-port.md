@@ -1,8 +1,8 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `d1288129991e72b425c7dd60b2932f9fb1214f7b`;
-latest measured artifact is7a2639ea4d/Release68559 (8.121045 FPS, correct probe space).
+**Renderer checkpoint:** Commit `d967552ae823ae6d1cc7c979c8528c4fe10fc5e8`;
+latest settled sample494c/Release68564:9.270128FPS. Original6.095519FPS, closed; quality caveats remain.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -14,10 +14,10 @@ latest measured artifact is7a2639ea4d/Release68559 (8.121045 FPS, correct probe 
 | M-002 | GL inventory and release audit | doing | No product GL/Vulkan link; strict source inventory and runtime zero gate remain. |
 | M-003 | Native presentation/lifecycle | doing | Metal-only world/UI publication and attended startup work; wider lifecycle/stability remains. |
 | M-004 | Resource/transfer/sync ownership | doing | Completion-retired geometry/arenas, borrowed targets/depth and direct shadow slices; cache pressure/retention remain. |
-| M-005 | MSL/binding behavior | doing | Goal edits pass Release/RWDI66,962/79 each; source-exact product/live validation pending. |
+| M-005 | MSL/binding behavior | doing | Default source62e2passed391162/89 each Release/RWDI; restored68569built/verified, unmeasured; broad parity open. |
 | M-006 | UI/fonts/HUD/media | doing | Native world/UI and font ownership; full parity/stability gates remain. |
 | M-007 | World/material/shadow correctness | doing | Native families, original raw depth/casters/projector sharing retained; broader visual smoke remains. |
-| M-008 | Advanced views/effects | doing | Native mirrors/probes work; preserve six Ultra faces, investigate general layered batching and original reflected-content parity. |
+| M-008 | Advanced views/effects | doing | Preserve six Ultra faces and reflected-content parity; layered prototype rejected, broad correctness/performance open. |
 | M-009 | Feature/stability/native-only release | doing | Feature matrix, prolonged stability, independent review and strict release gates remain. |
 | M-010 | M1 Max measured optimization | doing |68554 paired CSV observes8.409→9.739 FPS, with material opaque-GPU variability confound; full attribution/multi-scene contract open. |
 | M-011 | Remaining owned GL authority | doing | Core rendering/resources/window/UI are native; remove reachable nonessential tails without feature deletion. |
@@ -49,28 +49,22 @@ Detailed prior lifecycle/binding/GL-removal history is retained in the
 [pre-goal ledger](../archive/metal-port-before-ultra-goal-2026-11-08.md) and
 indexed engineering archives. No release invariant was waived by this rewrite.
 
-## Current source ownership
+## Current source ownership and latest result
 
-| Owner | Exclusive edits | Acceptance |
-| --- | --- | --- |
-| shadow_contract | Read-only independent hero-blend candidate review | Exact-original semantics, endpoint coverage and partial/off paths. |
-| trace_recheck | Ignored hero-blend prototype, exclusive GPU window | Expanded parity and counterbalanced varied timings; no product edits. |
-| draw_cpu_costs | Read-only exact-original external measurement audit | LEAP histories/cursor feasibility; no launch/build/GPU activity. |
-| root | World renderer/shaders/CMake/docs/integration | Opaque family census, original-source review, serialized builds/benchmarks, final actual runtime validation. |
+Root owns shared renderer, shaders, tests, CMake, documentation and runtime.
+Agents supplied private patches/reviews and are finished; no active process or
+uncoordinated edit remains. All viewers closed and temporary state restored.
 
-No source-overlap edits. Shared builds wait for file freezes and isolated GPU
-timings. Benchmark/capture data stays local; no private upload is authorized.
+Latest combined trial68568:300consecutive exact-native frames, Ultra6/3456×2168,
+Midday/Preset123/43controls,all256probes ready/stable120,bias4. Mean108.776ms,
+p50108.786,p95113.496,9.193FPS. Last optimized68566 was8.865FPS, earlier settled
+68564was9.270FPS. One combined window does not establish repeatable improvement.
+[Complete record](../../state/archive/CURRENT-68566-68568-performance-trial-2026-11-09.md).
 
-## Latest measurement and limits
-
-Full screen before login, Midday, Preset123,3456x2168 and21 live Ultra controls
-were verified. Warmup120frames+300seconds; both variants300 consecutive exact
-native rows, zero GL fallbacks. Fresh68550→68554 mean118.916→102.679ms,
-p50117.437→101.876ms, p95133.511→119.074ms. Observed mean FPS+15.8%.
-The same-shader main opaque GPU pass varies0.3–20ms; entire gain is not isolated
-to source changes. Hero remains50.44% of sampled main activity and the main
-thread94.28% of one core. Selected static-source coalescing is69.86%.
-[Latest runtime](../../state/archive/CURRENT-68554-direct-shadow-runtime-2026-11-08.md).
+59177compiler repair relieved main CPU91.476→72.768% of one core without FPS
+improvement. GPU viewer-active union109.245ms/present remains substantial.
+Inclusive base/haze/hero labels overlap and cannot be summed as a frame budget.
+No shader-line attribution or hardware-infeasibility claim exists.
 
 ## Complete-product checkpoint gate
 
@@ -83,22 +77,18 @@ thread94.28% of one core. Selected static-source coalescing is69.86%.
 
 ## Immediate executable action
 
-All viewers/profilers closed, user startup state restored. Corrected68559:
-8.121FPS, GPUviewerunion110.517ms/present. Initial opaque-post19.232ms and hero
-water12.235ms need per-draw/attachment inspection; CPU probe refresh is small.
-[Latest record](../../state/archive/CURRENT-68559-probe-view-runtime-2026-11-09.md).
+Default d967reverts the unproven opaque PBR trial, preserving source/app/patch for
+future general testing. Retain Release compiler and forward binding repairs.
+Default renderer/test sources match62e2; prior full API+GPU391162/89 pass each
+optimized configuration. Trial full392926/89 pass each. Ninja test binaries still
+contain trial code: rebuild before any fresh source-specific test claim.
 
-1. Matrix memo rejected after exact-output tests and slower repeated/unique CPU
-   benchmarks; uncommitted integration removed, private prototype preserved.
-2. Capture68561 saved; Xcode commands/resources inspected, profiling stalled85%
-   and explicitly stopped. No per-draw timings. Viewer exited/userstate restored.
-   [Inspection](../../state/archive/CURRENT-68561-capture-inspection-2026-11-09.md).
-3. Keep per-face correctness repair and original Ultra workload. Broad ordered
-   lists remain rejected by actual dense/neighbor-heavy selection data.
-4. Shiny fullhero optimization d128812999 committed/reviewed. Release existing
-   full121227/86+focused268745/1, fullRWDI389972/87 pass API+GPU validation.
-   No live speed claim yet; exactsource normal build and300frame comparison next.
-5. Continue goal;20FPS, parity, multi-scene and release gates remain open.
+Default app68569 configure/build/349ARM64/signature all0; not launched/measured.
+All source provenance, hashes and local logs are in CURRENT and the trial record.
+20FPS remains ACTIVE/unmet. Next change needs a bounded causal case addressing
+substantial remaining CPU/GPU work, exact-original mapping and varied correctness
+proof. Avoid speculative shader arithmetic and repeated broad profiles. No20FPS
+or hardware-infeasibility conclusion is justified. Keep owner informed promptly.
 
 ## Non-negotiable open gates
 

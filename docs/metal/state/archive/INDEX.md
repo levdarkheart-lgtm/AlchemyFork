@@ -6,6 +6,10 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| CPU Release repair and unproven opaque-PBR trial68568, reverted to default68569, 2026-11-09 | [CURRENT-68566-68568-performance-trial-2026-11-09.md](CURRENT-68566-68568-performance-trial-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
+|67611 settled original comparison, quality caveats and confirmed Release compiler mismatch,2026-11-09 | [CURRENT-67611-original-and-release-flags-2026-11-09.md](CURRENT-67611-original-and-release-flags-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
+|68564 first settled native9.270FPS, CPU/GPU profiles and V2 candidate rejection,2026-11-09 | [CURRENT-68564-settled-runtime-2026-11-09.md](CURRENT-68564-settled-runtime-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
+|68563 shiny runtime and probe-initialization confound,2026-11-09 | [CURRENT-68563-shiny-runtime-2026-11-09.md](CURRENT-68563-shiny-runtime-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
 |68561 real GPU capture/Xcode limitations and hero-overwrite experiment,2026-11-09 | [CURRENT-68561-capture-inspection-2026-11-09.md](CURRENT-68561-capture-inspection-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
 |68559 repaired probe space,8.121FPS and GPU-cost regression,2026-11-09 | [CURRENT-68559-probe-view-runtime-2026-11-09.md](CURRENT-68559-probe-view-runtime-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
 |68558 constant reuse runtime,10.064FPS and per-face probe-space repair,2026-11-09 | [CURRENT-68558-constants-and-probe-view-2026-11-09.md](CURRENT-68558-constants-and-probe-view-2026-11-09.md) | `docs/metal/state/CURRENT.md` |
@@ -169,3 +173,5 @@ Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
 
 - [Shiny hero overwrite validation](CURRENT-hero-overwrite-validation-2026-11-09.md) — narrow candidate, GPU reference tests; live acceptance pending.
+
+- [68563 runtime and warmup confound](CURRENT-68563-shiny-runtime-2026-11-09.md) — confirmed shiny GPU saving, incomplete probe initialization prevents settled A/B.
