@@ -2,7 +2,7 @@
 
 **Observed:**2026-11-09, physical M1 Max/64 GiB, macOS26.5.2/Xcode26.6.
 **Branch:**`codex/apple-silicon-metal`; renderer checkpoint below, source committed.
-**Renderer code checkpoint:** `7a2639ea4d2237f0ed9b935ea4fee983f418347d`.
+**Renderer code checkpoint:** `d1288129991e72b425c7dd60b2932f9fb1214f7b`.
 **Recovery:**[next session](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [20 FPS campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -71,14 +71,50 @@ CMake integration removed; prototype+SHAmanifest preserved in
 53910/4 passed;400B local reuse live gain small (68556→58+1.25%throughput).
 Source/test logs /private/tmp/alchemy-metal-probe-workload-* and matrix-memo-*.
 
-trace_recheck owns NEW almetalframecapture.h/.mm/test implementation until
-freeze; shadow_contract reviews independently. Root has NOT integrated it yet.
-Default off, explicit private0700directory, one logical display interval after
-successful CSV+60normal frames, next normal display entry stops before commands;
-ignore nested views. Device capture includes allqueues/ordinary outside display.
-MTL_CAPTURE_ENABLED=1 adds diagnostic overhead: next run is capture-only, not a
-formal FPS comparison. Root owns CMake/display hooks and optional embedded shader
-sources for Xcode inspection. No capture build/execution claim yet.
+83641ef8f8 adds default-off Metal frame capture, now source committed/reviewed.
+Both full Release/RWDI renderer suites121227assertions/86cases pass with API+GPU
+validation/captureOFF. Real opt-in capture fixtures1076/2 pass in both configs
+with API validation and shader validation UNSET; no-layer Release also passes.
+Combined GPU shader validation blocks native capture start (initial fixture
+failure retained), so capture uses a separate working configuration.
+Display syntax passes after bypassing an old stale binary PCH (no source defect).
+Logs /private/tmp/alchemy-metal-frame-capture-*.
+
+Capture-only68561/source83641ef8f8 build/signature/349ARM64 pass. Executable
+8168a914c9ec912e50cc743e3584fa00d843b8802b95985dc6c440df8bd95bbd,
+source-embedded metallib9faffdd40ffb340029cb06c9f73715c605539ec713b65541487f7318d4460147.
+CMake source recordsON, optimization/fast math unchanged. Diagnostic CSV is
+NOT a formal performance comparison. Same28live controls/location,3456x2168/
+Ultra6/Midday/Preset123, stablecamera;300resident rows completed. Capture started
+frame2556, stopped2557, oneattempt/error0 after60eligibleintervals. Real4.2GB
+.gputrace saved in artifacts/metal/private-68561-frame-capture-20261109/frame-capture/.
+ViewerPID79875 now EXITED; temporary startup environment/persistence restored
+(private68561plan cleanupDONE). No viewer live. Corrected68559 baseline preserved.
+
+Xcode replay/profile is STOPPED; trace remains open on Replay landing page.
+Plain replay permits command/resource inspection, but three profiling attempts
+stalled85%; no per-draw timings or shader-line costs obtained. CUA completion
+summary sent; all viewers closed and user state restored. Captured main shiny
+draws384/216indices,instance1; no hidden giant draw count.29CB/129render/10compute/
+37blit/51754draws,4.43GiBresources are static capture facts, not FPS measurements.
+[Inspection record](archive/CURRENT-68561-capture-inspection-2026-11-09.md).
+Shiny candidate d128812999 is COMMITTED: exact fullhero weight skips ordinary
+legacy probes; partial/off/legacy selection and shared PBR/water/alpha unchanged.
+Independent source/test review approved. Release existingfull121227/86 plus final
+focused268745/1 and fullRWDI389972/87 pass API+GPU validation.24fixturecases×four
+formats bitwise match frozen old shiny output, with actual GPU weight census.
+Private fullhero synthetic~14→0.4ms; disabled/rejected~2–3%slower. Not liveFPS.
+[Candidate evidence](archive/CURRENT-hero-overwrite-validation-2026-11-09.md).
+Root owns shader/CMake/tests/docs/build; no GPU windows active. Next exactsource
+normal build, source recordsOFF/captureunset, controlled300frame comparison.
+
+Helper is off without explicit owned0700 directory. It observes timing, waits
+for root's successful recorder completion+60eligible normal frames, starts all
+queues of window device, stops at NEXT eligible display before commands. Nested
+views don't truncate; ordinary/idle uploads are included. Only commands created
+after start and committed before stop enter trace. No waits/submission changes.
+Directory/session identity is rechecked before start; only own capture is stopped.
+MTL_CAPTURE_ENABLED=1 adds overhead; completed68561 was capture-only, not FPS. Root owns CMake/display, agents' sources frozen/reviewed.
 
 ## Experiments and constraints
 
@@ -104,25 +140,21 @@ Published alpha2 remains68512; no release/private upload authorization.
 | --- | --- | --- |
 | M-008 Advanced views/effects | doing | Native mirrors retained, measured optimization active; parity open. |
 | M-012 Native UI automation | complete | Bounded keyboard/AX flow; world AX currently times out. |
-| M-014 Ultra20 FPS campaign | doing | Latest9.939 FPS, source/runtime work continues. |
+| M-014 Ultra20 FPS campaign | doing | Corrected baseline8.121 FPS; shader experiment active. |
 
 Advanced views/effects: measured mirror optimization preserves
 original views; complete parity remains open. M-012 native UI automation is
 complete in its bounded keyboard/AX scope; current world AX has a runtime limit.
-M-014 Ultra20 FPS campaign is doing, latest9.939 FPS. This is progress toward
+M-014 Ultra20 FPS campaign is doing, corrected baseline8.121 FPS. This advances
 native efficiency, not product completion. Strict no-GL, visual/feature parity,
 prolonged stability and independent build/review evidence remain release gates.
 
 ## Exact next actions
 
-1. Finish/freeze/review default-off native frame-capture helper/test. Integrate
-   guarded display hooks and diagnostic-only shader-source embedding option.
-2. Run focused real GPU/capture/lifetime tests, appropriate suites, build/verify
-   source-exact capture app. No cache/shader arithmetic or quality changes.
-3. Separate capture-only login at same location/Midday/Preset123, after settling;
-   inspect actual initial-post and mirror-water commands/attachments in Xcode.
-4. Keep original per-face data correct. No broad ordered lists or rejected matrix
-   memo. Record limitations; do not infer cost from inclusive labels alone.
-5. Update docs/harness and commit coherent evidence. User state is restored;
-   future setup requires a new pinned config and later cleanup.
-6. Continue general20FPS goal; no target/parity/GLstrict/stability/release claim.
+1. Build committed shiny candidate, source-exact normal Xcode configuration;
+   capture/API/shader validation unset, shader source recordsOFF. Verify/sign.
+2. Repeat controlled normal300frame comparison with capture/source recordsOFF;
+   preserve fixed location/Ultra/Midday/Preset123 and original per-view data.
+3. Exact-original observer implementation/review is external/validation-only;
+   no build or launch yet. Preserve approved67607 app before rebuilding.
+4. Continue20FPS goal; no release/parity claim or private capture upload.

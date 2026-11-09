@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `7a2639ea4d2237f0ed9b935ea4fee983f418347d`;
+**Renderer checkpoint:** Commit `d1288129991e72b425c7dd60b2932f9fb1214f7b`;
 latest measured artifact is7a2639ea4d/Release68559 (8.121045 FPS, correct probe space).
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
@@ -53,10 +53,9 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 
 | Owner | Exclusive edits | Acceptance |
 | --- | --- | --- |
-| shadow_contract | Completed capture helper/source and independent review | Both GPU suites pass;70%join CPU mechanism saves0.157ms/10k sources. |
-| trace_recheck | Completed query/camera diagnostics and obsolete probe-set cleanup | Both suites/syntax/review pass; actual native query effect and capture census await runtime. |
-| draw_cpu_costs | Ignored architecture/shader experiments, source-only probe-pruning audit | Layered/named-accumulator changes rejected; no product shader edit. |
-| shadow_contract/root next candidate | Local400B vertex-constant slice reuse, new GPU test/hidden benchmark | Uncommitted/prepared only; no build/GPU until live68556 capture ends. |
+| shadow_contract | Read-only independent hero-blend candidate review | Exact-original semantics, endpoint coverage and partial/off paths. |
+| trace_recheck | Ignored hero-blend prototype, exclusive GPU window | Expanded parity and counterbalanced varied timings; no product edits. |
+| draw_cpu_costs | Read-only exact-original external measurement audit | LEAP histories/cursor feasibility; no launch/build/GPU activity. |
 | root | World renderer/shaders/CMake/docs/integration | Opaque family census, original-source review, serialized builds/benchmarks, final actual runtime validation. |
 
 No source-overlap edits. Shared builds wait for file freezes and isolated GPU
@@ -91,11 +90,14 @@ water12.235ms need per-draw/attachment inspection; CPU probe refresh is small.
 
 1. Matrix memo rejected after exact-output tests and slower repeated/unique CPU
    benchmarks; uncommitted integration removed, private prototype preserved.
-2. Finish/review/integrate default-off native frame capture, validate/build, then
-   separate capture-only run and Xcode inspection of actual GPU costs.
+2. Capture68561 saved; Xcode commands/resources inspected, profiling stalled85%
+   and explicitly stopped. No per-draw timings. Viewer exited/userstate restored.
+   [Inspection](../../state/archive/CURRENT-68561-capture-inspection-2026-11-09.md).
 3. Keep per-face correctness repair and original Ultra workload. Broad ordered
    lists remain rejected by actual dense/neighbor-heavy selection data.
-4. Root coordinates shared files/builds/runtime. No heavy work during timing.
+4. Shiny fullhero optimization d128812999 committed/reviewed. Release existing
+   full121227/86+focused268745/1, fullRWDI389972/87 pass API+GPU validation.
+   No live speed claim yet; exactsource normal build and300frame comparison next.
 5. Continue goal;20FPS, parity, multi-scene and release gates remain open.
 
 ## Non-negotiable open gates
