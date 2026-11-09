@@ -75,32 +75,31 @@ Addedpassboundaries altercost; no shader-duration/unsplit equivalence claim.
 
 ## Immediate executable action
 
-SH lifetime candidate REJECTED:224 timings show no consistent gain and actual
-four-draw Xcode profile gives216 registers/0 spills for BOTH variants. Replay
-stopped/Finished app observed. Source-line costs and occupancy remain unknown.
-Diagnostic line metadata/dependency fix479ff is built in68587, independently
-ARM64/signature verified; original build process exit unavailable, log succeeded.
-All viewers closed/plans restored, Translator stays STOPPED. Normal future
-performance builds must set source recording OFF.
+Committed neighbor repair4b23 restores exact-original64 candidate/32 accepted
+traversal. Both full optimized API+GPU suites427464/98 and independent12-case
+oracle pass. Normal68588 built/verified, preserved; no new live FPS claim.
+Hero-forward diagnostic0d5d49 is validated in BOTH configs: actual capture3059/3,
+normal API+GPU427476/95. Diagnostic68590 built/verified, ran and captured face1;
+300 diagnostic frames/all256 ready/stable120/43 gates/camera0. All viewers closed,
+plans restored, Translator stays STOPPED. Canonical source recording ON; future
+formal normal app must configure OFF. No overlapping profile/GPU work.
 
-Root is correcting confirmed exact-original neighbor traversal: manager/GLSL
-allow64 examined candidates with32 ACCEPTED taps; native3 walkers truncated31.
-Actual forward regression failed exactly late32/64 before fix (9159 other
-assertions passed). Three clamps repaired; green API+GPU run10932 passed9161 assertions, exit0.
-Both full optimized API+GPU suites pass427464/98 each; private12-case
-all-walker expected-color oracle passes. Code4b23c0b345 committed. Normal
-source-recordOFF app68588 built after doctor/configure, all actual0; independent
-349 ARM64/0 invalid and deep strict signature each0. Not launched.
-Scalar-addressing candidate passed strict outputs but also REJECTED for no
-general timing win. No claimed FPS gain from parity repair. Next prepare one
-hero-forward capture to measure actual hidden/overdrawn fragment work before
-face-local culling. Do not repeat rejected SH micro-variants.
+Actual Xcode1CB/4render/4blit/833draws;15.74ms MEDIUM not live FPS. Simple alpha
+shadow58.02%/245 registers/304 spill bytes; encoder occupancy4.19%/overdraw1.58,
+early PreZ rejects55.29%. Call Stack base-probe sampling71.05%, holds28.93%
+(inclusive/optimized source attribution, not literal per-instruction timing).
+User manual inspection complete; replay STOPPED/Finished app observed and CUA
+completion recorded. Haze label includes later alpha draws; haze FS only1.79%.
+
+Next PRIVATE probe-only shadow specialization: actual bound pack bit0x4 gate,
+unchanged main PCSS/quality. Root verified frozen inputs/production prefix;
+compile0/0/0 and API+GPU35852 actual0,200 strict color/rawD32 pairs50×4 formats.
+No performance/occupancy gain yet; run quiet A/B/control timing before admission.
+Distinct ambient-only simple probe walker is source-only preparation. Rejected
+SH lifetimes/predecoded SH/scalar cursor/simple tile mask remain rejected.
+Ordinary SCENE batching proposal/tests source-reviewed but unapplied/uncompiled;
+commit before independent face publication, preserve failure/generation rules.
 [Full checkpoint](../../state/archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
-Main base is~17 of~105ms GPU union; seek larger measured causes as well.
-Selected hero-forward diagnostic0d5d49 now committed: face1 owner/frame/epoch
-isolation, fresh owned command and stop-before-publication, defaultOFF. Both
-actual capture suites3059/3 and normal API+GPU427476/95 pass. App68590 built
-with optimized source records; verification underway. No runtime capture yet.
 
 ## Non-negotiable open gates
 

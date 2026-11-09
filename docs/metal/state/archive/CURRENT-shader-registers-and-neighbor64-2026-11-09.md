@@ -233,3 +233,109 @@ Runtime viewport3456×2168/Ultra6/Preset123, camera-change0. Probes still warmin
 no samples/capture yet. New Midday plan remains ACTIVE until verified shutdown.
 All older plans restored, Translator stopped, no competing build/GPU/profile.
 This run is diagnostic, not a formal FPS comparison or scene-image parity proof.
+
+
+Live diagnostic completed:300 samples, all256 probes ready/stable120, zero camera
+changes. Fresh end observe/verify/gate each0. Environment and camera basis match
+68579; camera Zdelta−30.5 micrometres. One selected hero-forward capture stopped
+7506→7506,1 attempt/error0. Metadata SHA
+e72fc019ee62ac6244e321ac4aca0326ed12c8653d59f039e554bb107dafd163.
+File `artifacts/metal/private-0d5d49-hero-forward-capture-20261109/frame-capture/display-interval.gputrace`
+exists,21,909 top-level entries (resources, NOT command count). Actual replay,
+profiling, command census and early-depth work remain UNKNOWN until Xcode.
+Exact PID80172 verified, graceful SIGTERM, Goodbye/absence19750 actual0; fresh
+0d5d49 Midday plan restored actual0. All viewers closed/plans restored, Translator
+stopped, GPU idle. No performance improvement or scene parity claim.
+
+
+## Actual hero-forward profile and attended source inspection
+
+The exact NEW0d5d49 face1 trace (full path in NEXT_SESSION) replayed a nonempty
+raw cube scene. Xcode census:1 command buffer,4 render/4 blit encoders,833 draws,
+154577 vertices,0 compute,1024²RGBA16F,9.22GiB resource total. Profile completed
+15.74ms at MEDIUM PState: one diagnostic forward face, NOT live frame/FPS.
+
+Shader execution cost/register/spilled bytes: simple-alpha shadow58.02%/245/304,
+above-water20.39%/254/96, PBR alpha15.22%/254/80, legacy alpha1.21%/254/32;
+haze fragment1.79%/64/0. Atmospheric-haze ENCODER3063 has589 draws and77.867%
+cost because later alpha shares that encoder. Do not equate haze label with
+haze shader or sum overlapping encoder/shader/function scopes.
+
+Encoder fragment occupancy4.19% is actually observed, unlike older main-base
+unknown occupancy.1,660,704 fragment invocations, average overdraw1.58, PreZ
+rejects55.29%,1.4197248B ALU instructions:21.33%float/41.73%integerconditional/
+8.06%integercomplex/28.88%inefficiency. ALU limiter9.72%, cull28.46%; measured
+fragment-device bandwidth.753GiB/s is not saturation evidence. Static spill
+bytes are compiler metadata, not per-fragment external-memory traffic. No late
+Z rejection counter was displayed in the inspected PostFragment category.
+
+User drove Xcode while root observed read-only. Source Files dropdown→Call Stack
+revealed simple-shadow9.14ms, simple_lighting91.94%, sample_base_probes71.05%,
+holds28.93%, base_probe_tap15.61%, SHirradiance8.29%, weight4.86%. Holds source
+5518 marker28.93%, probe type branch5525=11.50%, boxmatrix5527=3.31%, bounds5528=.15%.
+Source sphere-check line costs were not collected. Optimized inline/source
+attribution nests directional_shadow under holds even though source holds calls
+NO shadow helper. Therefore these are displayed/inclusive attributions, not a
+literal callgraph or proof of instruction-level timing. Declaration97.32% marker
+must not be described as a single instruction consuming97%.
+
+User stopped replay; root actual full AX saw Finished running macOS App with
+Replay landing. CUA completion Recorded hero shader profile breakdown occurred
+BEFORE any subsequent compilation/GPU test. No viewer/profile/other GPU test
+competed. Observation packet is ignored private-0d5d49-xcode-profile-observed-20261109.json.
+
+## Distinct private probe-only shadow specialization — strict output verified
+
+Frozen packet /private/tmp/alchemy-metal-probe-shadow-specialization-20261109.3dmkq674,
+combined026b58407cd1cf0964a624775b4f6fae456bc723991c3ee6d1bc945e984b741e,
+host50a15da7b8ed8cb74ae46665568bcfc8f5ee86ed03321860c138f704e469ad29;
+source manifest96d800685bf91dd9b0d8d33c544f2786c21a10e99850ce401c7490ecf78b844a.
+Root verified ALL frozen file hashes and byte-identical current d6ad production
+prefix before execution. Independent shader reviews draw/shadow and host trace
+approved the narrow contract. Exact original1eb class1/deferred/shadowUtil.glsl503
+already branches cube_snapshot to its single tap; native generic forward PSOs
+retain runtime branch/unreachable Gaussian/PCSS code. Candidate forces ONLY the
+existing bit0x4 taken path; same quality/Z/cascade/fade/bias/sampler behavior.
+Main unflagged PSO remains original. Source alone does not prove unused code
+causes245 registers/304 spill bytes.
+
+First compiler attempt exited1 because sandbox user clang module cache was
+unwritable. Retry uses -fmodules-cache-path=PRIVATE/module-cache. Actual33790
+metal/metallib/clang++ each exited0. Shader flags stdmetal3.1/ffast-math/
+min26.5/gline-tables-only/frecord-sources (fixture SDK target, app remains26.0).
+Initial sandbox strict run exited1: Actual Metal device unavailable; not shader
+failure. Authorized native GPU run35852 exited0 with API+GPU validation enabled:
+200 strict full-color/rawD32 bitwise pairs across50 cases/four output formats,
+shadow and local-light positive controls, rigid/skinned, alpha/clip/coverage,
+read-only depth,2/4 cascades/quality0..3/F/RZ/bounds/fades/unbuilt maps; thermal0.
+Exact argv/exits in compile-exits.json, compile-retry-exits.json and
+strict-validation-native-exit.json; full validation log retained in packet.
+No performance/occupancy/register gain is yet measured or integrated. Derived
+quiet A/B/control timing adapter is source-only preparation; capture only if
+merited. Production shader/PSOs unchanged. Ambient-only simple walker is a
+separate source hypothesis preserving dynamic family arrays/exact traversal;
+compiler may already eliminate its dead gloss/legacy state. No gain assumed.
+
+
+Distinct ambient-only SIMPLE packet gtmapgbm also independently source-reviewed:
+actual caller false/0/0 cannot sample gloss/legacy. It keeps dynamic family arrays
+and unchanged cursor/order/64 candidates/32 accepted/default, SH/weight/mix,
+shadows and fragment math. Prior rejected named-accumulator rewrite instead
+changed representation/branching. Combined shaderfee6e71420eef5a8c47c69a3203706d6e8633ecbe9950624242042f99cd03590;
+nominal sum112→48 bytes is not physical-register proof. Root derived validation
+host7045921ccb6269ae4e2635f2599367bece80f10a5ccaded3b9023ac68a8f9a90 from
+frozen probe-shadow host, selecting ambient candidate for BOTH probe and actual
+unflagged-main case; only identical-PSO control aliases baseline. Compile60428
+metal/metallib/host all0; native GPU53042 API+GPU validation actual0,200 bitwise
+color/rawD32 pairs50×4, positive/coverage checks, thermal0. All inputs/hash/prefix
+verified. Production source remains unchanged.
+
+Independent timing adapter8bdf6dfd16671e44fcb22a262d6ef7afd3a95336d88759d2ca231529a39a4b19
+and root ambient derivative98f34d6428fb6e1535ef536d7893e7629576d3090ced3c9a29dfa5aff39d1705
+compile32525 each0. Six cached setups/7 counterbalanced ABBA blocks/168samples,
+same actual-PSO control and shared within-block physical targets, common8–20ms
+commands; validation/HUD/capture OFF and thermal nominal required. Await source
+review before GPU timing. No performance or register conclusion yet.
+Doctor post-profile native run exited0 (sandbox first run1 at hardware sysctl);
+M1 Max/64GiB/ARM64/macOS26.5.2/Xcode26.6, unified memory, recommended working
+set62277025792 bytes/Apple7supported. Full log retained privately in/tmp.

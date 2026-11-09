@@ -3,7 +3,7 @@
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `0d5d49c188f8bfee4dd866adbac757af750340d4`.
-**Working source:** validated neighbor repair built; hero-forward capture extension under test.
+**Working source:** neighbor repair and hero-forward capture validated; no new optimization integrated.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -15,16 +15,16 @@ travel. Prefer Mac shortcuts and fullscreen before login. Preserve Ultra
 3456×2168/Midday, all six hero1024 faces/two cascades, PCSS, reverse-Z, clamp,
 casters and viewer features. No private uploads/releases.
 
-Viewer68590/PID80172 is RUNNING, exact source0d5d49 diagnostic app. Fullscreen
-CtrlSuperF BEFORE saved-login Return; LEAP logged_in=true and fresh43-control/
-location/exact-binary observe/verify/gate all0.3456×2168/Ultra6/Preset123;
-new0d5d49 Midday startup plan is ACTIVE, NOT restored until verified shutdown.
-Current capture is waiting for benchmark/disarm; probes are still warming.
-All older plans restored. Translator remains stopped. No builds/GPU tests/Xcode
-replay overlap this run. Root owns source/docs/runtime; agents are quiet.
-CUA world AX recheck timed out/reset; no repeated world AX polling. LEAP/runtime
-metadata verify login; CUA login phase completion summary sent. No scene-image
-parity claim from this launch. Xcode profiling must wait until viewer closes.
+All viewers CLOSED/all startup plans RESTORED. Diagnostic68590/source0d5d49
+captured face1, then exact PID80172 gracefully closed with Goodbye/absence;
+shutdown19750 actual0. Diagnostic300 samples/all256 probes ready/stable120,
+camera changes0; fresh start/end43-control/location/binary gates all0.
+Capture7506→7506 STOPPED/one attempt/error0. Actual Xcode census1CB/4render/
+4blit/833draws/0compute/1024²RGBA16F; nonempty scene replay observed.
+Profile15.74ms MEDIUM is one forward face, not live FPS. User drove source
+inspection; root read status Finished running macOS App/Replay landing after
+user stopped GPU workload. CUA completion recorded before further GPU work.
+Root owns shared source/docs/runtime; agents source-only. No scene parity/FPS claim.
 
 Translator remains FULLY STOPPED by explicit user instruction. Its project
 `uv run --no-sync python scripts/service.py stop` exited0; API35823,
@@ -71,11 +71,11 @@ not external DRAM bandwidth. Source-line costs remain UNKNOWN.
 479ff989 fixes diagnostic shader line flags and Xcode stale-output dependency:
 source-record ON uses optimized line tables plus recorded source, with a real
 compiler-options input stamp. Actual AIR has34,812 line locations/749 subprograms;
-normal OFF metallib remains byte-identical ffd9e1d1…. Canonical diagnostic68587
+normal OFF metallib remains byte-identical ffd9e1d1…. Preserved diagnostic68587
 identifies479ff989; independent ARM64 audit349/0 and deep strict signature exit0.
 Saved full-build log says BUILD SUCCEEDED; original process exit is UNKNOWN.
-This app was not launched; source-record cache remains ON, unsuitable as the
-normal performance identity.68584 is separately preserved.
+This app was not launched;68584 is separately preserved. Canonical68590 is now
+the diagnostic source-recordON app; normal68588 remains preserved separately.
 
 Private SH load/lifetime scheduling passed340 base bitwise pairs and172 oracle
 pairs. Quiet224-sample timing found no consistent win: PBR−0.1866% matches
@@ -95,8 +95,7 @@ examined only31 neighbors. Rejected entries could hide a later containing probe
 or manual box. Root changed only3 clamps31→64, keeping bounds/order/accepted cap.
 Actual forward-image regression before fix exited42: late32/64 each failed,
 9,159 other assertions passed. Green actual API+GPU run10932 exited0: all9,161 assertions passed.
-No FPS improvement is claimed. Independent source review approved the contract
-and asymmetric full-image oracle. Full Release and RWDI API+GPU suites each
+Independent source review approved the contract/oracle. Both optimized suites
 passed427,464 assertions/98 cases. Independent12-case base/legacy/water fixture
 passed strict expected-color and CPU-membership checks, including late64 and cap.
 Normal app68588/source4b23: doctor/configure/source-recordOFF/build11888 all0;
@@ -107,14 +106,33 @@ Private scalar cursor also REJECTED:404 strict image pairs and16 neighbor
 contract checks passed, but252 timing samples show mainPBR−0.55% against
 same-PSO control−2.62%, legacy+1.30%, mixed+0.09%. All but the64-rejected
 stress case have paired ranges crossing zero. No general gain or integration.
-Next: measure hidden/overdrawn fragments in one expensive hero forward face
-before implementing current-frame face-local culling. Preserve all six views.
+Actual hero profile below supersedes the earlier proposed hidden-work capture.
+Preserve all six views; no face-local culling optimization is integrated.
 Hero-forward diagnostic mode is now applied and independently reviewed.
 Release build12288 and actual capture82486 passed3059 assertions/3 cases.
 RWDI build55464 and serial validation27224 passed: EACH capture3059/3 and
 normal API+GPU427476/95. Diagnostic app68590/source0d5d49 built20880 after doctor
 and source-recordON configure, all actual0. Independent349 ARM64/0 invalid and deep strict signature actual0; QA dry-run0.
-Actual live warmup is in progress; no hero routing/replay result claimed yet.
+Live capture routing reached selected face1; actual replay/profile/census are
+recorded above and in the private observation JSON.
+
+Latest hero-forward profile isolates a different issue: simple-shadow alpha
+58.02%/245 registers/304 spilled bytes; water20.39%/254/96; PBR alpha15.22%/254/80.
+The589-draw atmospheric encoder includes these alpha draws; its haze shader is
+only1.79%. Encoder FS occupancy4.19%,1.6607M invocations, overdraw1.58,
+PreZ rejects55.29%. High registers/spills correlate with low occupancy; cause
+requires A/B proof. Call Stack attributes71.05% of simple-shadow cost to base
+probe sampling,28.93% to holds; inclusive optimized-source attribution is not a
+literal call graph or per-instruction timing. Source type branch shows11.50%.
+Private probe-only shadow specialization removes unreachable main PCSS machinery
+only under the ACTUAL bound pack single-tap flag. Frozen source/prefix hashes
+verified; compile0/0/0, API+GPU35852 actual0:200 bitwise color/rawD32 pairs,
+50 cases/four formats, positive controls, thermal0. Performance/register gain
+UNMEASURED; no production change. Next run bounded quiet timing/control A/B,
+then register capture only if justified. Ambient-only simple walker also passed
+200 strict pairs53042=0; both timings pending. Rejected SH/cursor/mask stay rejected.
+Actual metrics: ignored private-0d5d49-xcode-profile-observed-20261109.json;
+full private packet and compiler/device-access caveats are in the archive.
 
 ## Retained behavior and open release gates
 
@@ -125,9 +143,8 @@ SSAO/gather repairs. Private native D32 differs from current raw-depth reference
 no migration or epsilon waiver. Hero occlusion needs independent face ownership
 and complete occluder invalidation; no measured saving yet.
 
-Xcode Color0 Auto RGB0..0.218 expands its intermediate linear-HDR preview.
-Final source ordering matches original with one linear→sRGB conversion; no
-proven color defect or look/settings change from the owner's question.
+Xcode Color0 Auto RGB0..0.218 expands its intermediate linear-HDR preview;
+original final ordering/one gamma retained, no proven color defect/settings change.
 
 ## Complete-product advancement assessment
 
