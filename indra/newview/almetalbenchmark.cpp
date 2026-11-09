@@ -318,6 +318,37 @@ bool same_view(const ALMetalBenchmarkRecorder::Provenance& a,
         a.main_view == b.main_view && a.frame_end_view == b.frame_end_view &&
         a.hero_restoration == b.hero_restoration && a.hud_restoration == b.hud_restoration;
 }
+
+void json_readiness(std::ostream& out, const ALMetalBenchmarkRecorder::Frame& frame,
+                    bool required, const ALProbeReadiness::Status& status)
+{
+    out << "{\"required\":" << (required ? "true" : "false")
+        << ",\"fresh\":" << (status.fresh ? "true" : "false")
+        << ",\"valid\":" << (status.valid ? "true" : "false")
+        << ",\"ready\":" << (status.ready ? "true" : "false")
+        << ",\"admitted\":" << (status.admitted() ? "true" : "false")
+        << ",\"membership_changed\":" << (status.membership_changed ? "true" : "false")
+        << ",\"consecutive_ready_frames\":" << status.consecutive_ready_frames;
+    if (required && status.fresh && frame.probe_readiness)
+    {
+        const auto& s = *frame.probe_readiness;
+#define READINESS_BOOL(name) out << ",\"" #name "\":" << (s.name ? "true" : "false")
+#define READINESS_COUNT(name) out << ",\"" #name "\":" << s.name
+        READINESS_BOOL(enabled); READINESS_BOOL(layout_ready); READINESS_BOOL(invalid);
+        READINESS_BOOL(reset); READINESS_BOOL(paused); READINESS_BOOL(reset_fade_pending);
+        READINESS_BOOL(default_ready); READINESS_BOOL(native_pairs_required);
+        READINESS_BOOL(updating_incomplete); READINESS_BOOL(refreshing);
+        READINESS_BOOL(radiance_pass); READINESS_COUNT(updating_face);
+        READINESS_COUNT(budget); READINESS_COUNT(dynamic_count); READINESS_COUNT(resolution);
+        READINESS_COUNT(queued_create); READINESS_COUNT(queued_kill); READINESS_COUNT(assigned);
+        READINESS_COUNT(incomplete); READINESS_COUNT(fading); READINESS_COUNT(unpublished_pairs);
+        READINESS_COUNT(main_visible); READINESS_COUNT(member_count);
+#undef READINESS_BOOL
+#undef READINESS_COUNT
+    }
+    // Opaque owner/slot/generation tuples are deliberately never serialized.
+    out << '}';
+}
 }
 
 std::optional<ALMetalBenchmarkRecorder::Config>
@@ -395,8 +426,16 @@ ALMetalBenchmarkRecorder::configFromEnvironment(
             config.require_exact_native, error) ||
         !bool_environment(
             "ALCHEMY_METAL_BENCHMARK_PROVENANCE", true,
-            config.collect_provenance, error))
+            config.collect_provenance, error) ||
+        !bool_environment(
+            "ALCHEMY_METAL_BENCHMARK_REQUIRE_READY_PROBES", false,
+            config.require_ready_probes, error))
     {
+        return std::nullopt;
+    }
+    if (config.require_ready_probes && !config.collect_provenance)
+    {
+        set_error(error, "Probe-readiness collection requires benchmark provenance");
         return std::nullopt;
     }
     if (config.collect_provenance)
@@ -420,6 +459,30 @@ ALMetalBenchmarkRecorder::ALMetalBenchmarkRecorder(Config config) :
 ALMetalBenchmarkRecorder::~ALMetalBenchmarkRecorder()
 {
     closeProvenance();
+}
+
+ALMetalBenchmarkRecorder::DisplayObservation::~DisplayObservation() noexcept
+{
+    if (!mObserved && mRecorder && !mRecorder->finished())
+    {
+        try { mRecorder->record(Frame{}); }
+        catch (...)
+        {
+            // An early return must never leave an apparently continuous run.
+            mRecorder->mFailed = true;
+            mRecorder->mFinished = true;
+            mRecorder->closeProvenance();
+            try { if (mRecorder->mOutput) mRecorder->mOutput->close(); }
+            catch (...) {} // The guard itself must never escape a destructor.
+        }
+    }
+}
+
+ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::DisplayObservation::record(
+    const Frame& frame, std::string* error)
+{
+    mObserved = true;
+    return mRecorder ? mRecorder->record(frame, error) : Result::inactive;
 }
 
 bool ALMetalBenchmarkRecorder::closeProvenance() noexcept
@@ -493,6 +556,8 @@ bool ALMetalBenchmarkRecorder::recordProvenance(
     out << ",\"hero_restoration\":"; json_restoration(out, p.hero_restoration);
     out << ",\"hud_restoration\":"; json_restoration(out, p.hud_restoration);
     out << ",\"main_world_queries\":"; json_queries(out, p.main_world_queries);
+    out << ",\"probe_readiness\":";
+    json_readiness(out, frame, mConfig.require_ready_probes, mProbeReadiness.status());
     out << "}\n";
     const auto line = out.str();
     if (std::fwrite(line.data(), 1, line.size(), mProvenanceOutput) != line.size() ||
@@ -508,6 +573,7 @@ bool ALMetalBenchmarkRecorder::recordProvenance(
 
 void ALMetalBenchmarkRecorder::resetSequence() noexcept
 {
+    mProbeReadiness.reset();
     mSequenceStartTimestamp.reset();
     mLastTimestamp.reset();
     mLastFrameIndex = 0;
@@ -590,6 +656,8 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
     {
         return fail("The benchmark frame counts are invalid", error);
     }
+    if (mConfig.require_ready_probes && !mConfig.collect_provenance)
+        return fail("Probe-readiness collection requires benchmark provenance", error);
     const bool acceptable = frame.eligible && frame.drawable_width != 0 &&
         frame.drawable_height != 0 &&
         (!mConfig.require_exact_native || frame.native_exact) &&
@@ -645,6 +713,27 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
         }
         resetSequence();
         return Result::inactive;
+    }
+
+    // This stricter mode owns a controlled main-view sequence. Probe
+    // initialization and routine refresh are outside camera equality.
+    if (mConfig.require_ready_probes && mLastTimestamp &&
+        mLastObservedProvenance && frame.provenance &&
+        !same_view(*mLastObservedProvenance, *frame.provenance))
+    {
+        if (mSamplesWritten)
+            return fail("The probe-ready benchmark main view changed during sampling", error);
+        resetSequence();
+    }
+    if (mConfig.require_ready_probes)
+    {
+        const auto status = mProbeReadiness.observe(frame.frame_index,
+            frame.probe_readiness ? &*frame.probe_readiness : nullptr);
+        if (mSamplesWritten && !status.admitted())
+        {
+            recordProvenance(frame, "probe_readiness_failure", nullptr);
+            return fail("The sampled probe population became unready or changed membership", error);
+        }
     }
 
     if (!mLastTimestamp)
@@ -717,9 +806,10 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
     const bool warmup_time_complete = mSequenceStartTimestamp &&
         frame.timestamp - *mSequenceStartTimestamp >=
             std::chrono::seconds(mConfig.warmup_seconds);
-    if (mWarmupSeen < mConfig.warmup_frames || !warmup_time_complete)
+    if (mWarmupSeen < mConfig.warmup_frames || !warmup_time_complete ||
+        (mConfig.require_ready_probes && !mProbeReadiness.status().admitted()))
     {
-        ++mWarmupSeen;
+        if (mWarmupSeen < MAX_FRAME_COUNT) ++mWarmupSeen;
         if (!recordProvenance(frame, nullptr, error))
             return fail(error && !error->empty() ? *error : "Could not record benchmark warmup provenance", error);
         return Result::warming;

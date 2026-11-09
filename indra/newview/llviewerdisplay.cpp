@@ -33,6 +33,7 @@
 #include "alframeend.h"
 #include "alhuddepth.h"
 #include "almetalbenchmark.h"
+#include "alprobereadiness.h"
 #if LL_DARWIN
 #include "../almetal/almetaldevice.h"
 #include "../almetal/almetalframecapture.h"
@@ -708,12 +709,45 @@ benchmark_presentation_state(
     return BenchmarkState::disabled;
 }
 
-static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
+struct MetalBenchmarkSession
+{
+    std::shared_ptr<ALMetalBenchmarkRecorder> recorder;
+    std::uint64_t previous_native_draw_count = 0;
+    bool reported_failure = false;
+    bool stopped = false;
+};
+
+static void stop_interrupted_metal_benchmark_session(MetalBenchmarkSession& session) noexcept
+{
+    if (session.recorder && session.recorder->finished() && !session.stopped)
+    {
+        session.stopped = true;
+        sMetalBenchmarkCompletedSuccessfully = false;
+        LLRender::setMetalCommandTimingEnabled(false);
+        gGL.queries().setDiagnosticsEnabled(false);
+        ALProbeReadiness::requestObservation(false);
+        try
+        {
+            LL_WARNS("MetalBenchmark")
+                << "Metal benchmark collection ended outside a normal display; "
+                   "capture is not admissible" << LL_ENDL;
+        }
+        catch (...) {}
+
+    }
+}
+
+struct MetalBenchmarkScopeCleanup
+{
+    MetalBenchmarkSession& session;
+    ~MetalBenchmarkScopeCleanup() noexcept
+    { stop_interrupted_metal_benchmark_session(session); }
+};
+
+static MetalBenchmarkSession& metal_benchmark_session()
 {
     static bool initialized = false;
-    static bool reported_failure = false;
-    static std::uint64_t previous_native_draw_count = 0;
-    static std::unique_ptr<ALMetalBenchmarkRecorder> recorder;
+    static MetalBenchmarkSession session;
     if (!initialized)
     {
         initialized = true;
@@ -729,7 +763,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
                     << "Metal benchmark collection was requested but is "
                        "disabled: " << error << LL_ENDL;
             }
-            return;
+            return session;
         }
         LL_INFOS("MetalBenchmark")
             << "Metal benchmark collection armed for pseudonymous scenario "
@@ -741,12 +775,37 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
                     ? "; every sample requires exact native presentation"
                     : "; non-exact native presentation states are accepted")
             << LL_ENDL;
-        LLRender::setMetalCommandTimingEnabled(true);
-        gGL.queries().setDiagnosticsEnabled(config->collect_provenance);
-        previous_native_draw_count = ALMetalDevice::encodedDrawCallCount();
-        recorder = std::make_unique<ALMetalBenchmarkRecorder>(
-            std::move(*config));
+        const bool collect_provenance = config->collect_provenance;
+        try
+        {
+            session.recorder = std::make_shared<ALMetalBenchmarkRecorder>(
+                std::move(*config));
+            LLRender::setMetalCommandTimingEnabled(true);
+            gGL.queries().setDiagnosticsEnabled(collect_provenance);
+            session.previous_native_draw_count = ALMetalDevice::encodedDrawCallCount();
+            ALProbeReadiness::requestObservation(
+                session.recorder->requiresReadyProbes());
+        }
+        catch (...)
+        {
+            session.recorder.reset();
+            LLRender::setMetalCommandTimingEnabled(false);
+            gGL.queries().setDiagnosticsEnabled(false);
+            ALProbeReadiness::requestObservation(false);
+            LL_WARNS("MetalBenchmark")
+                << "Metal benchmark initialization failed; collection disabled"
+                << LL_ENDL;
+        }
     }
+    stop_interrupted_metal_benchmark_session(session);
+    return session;
+}
+
+static void record_metal_benchmark_frame(
+    bool for_snapshot, bool gl_presented, MetalBenchmarkSession& session,
+    ALMetalBenchmarkRecorder::DisplayObservation& observation)
+{
+    const auto& recorder = session.recorder;
     if (!recorder || recorder->finished())
     {
         return;
@@ -767,8 +826,8 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
         gSavedSettings.getU32("RenderQualityPerformance");
     const std::uint64_t native_draw_count =
         ALMetalDevice::encodedDrawCallCount();
-    frame.draw_calls = native_draw_count - previous_native_draw_count;
-    previous_native_draw_count = native_draw_count;
+    frame.draw_calls = native_draw_count - session.previous_native_draw_count;
+    session.previous_native_draw_count = native_draw_count;
 #if LL_DARWIN
     frame.metal_command_buffers_committed =
         LLRender::metalCommandBuffersCommitted();
@@ -788,6 +847,10 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
         !for_snapshot && !gSnapshot && !gTeleportDisplay && !gDisconnected &&
         !LLAppViewer::instance()->logoutRequestSent() &&
         !display_window_hidden() && (gl_presented || native_exact);
+    if (recorder->requiresReadyProbes())
+    {
+        frame.probe_readiness = ALProbeReadiness::observe(gFrameCount);
+    }
     if (ALQueryPool::diagnosticsEnabled())
     {
         sMetalBenchmarkProvenance.frame_end_view = benchmark_view_state();
@@ -797,24 +860,28 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
 
     std::string error;
     const ALMetalBenchmarkRecorder::Result result =
-        recorder->record(frame, &error);
+        observation.record(frame, &error);
     if (result == ALMetalBenchmarkRecorder::Result::complete)
     {
+        session.stopped = true;
         sMetalBenchmarkCompletedSuccessfully = true;
         LLRender::setMetalCommandTimingEnabled(false);
         gGL.queries().setDiagnosticsEnabled(false);
+        ALProbeReadiness::requestObservation(false);
         LL_INFOS("MetalBenchmark")
             << "Metal benchmark collection completed with "
             << recorder->samplesWritten()
             << " consecutive post-warm-up frame samples" << LL_ENDL;
     }
     else if (result == ALMetalBenchmarkRecorder::Result::failed &&
-             !reported_failure)
+             !session.reported_failure)
     {
+        session.stopped = true;
         sMetalBenchmarkCompletedSuccessfully = false;
         LLRender::setMetalCommandTimingEnabled(false);
         gGL.queries().setDiagnosticsEnabled(false);
-        reported_failure = true;
+        ALProbeReadiness::requestObservation(false);
+        session.reported_failure = true;
         LL_WARNS("MetalBenchmark")
             << "Metal benchmark collection stopped without admissible "
                "completion: " << error << LL_ENDL;
@@ -843,6 +910,13 @@ void display_end_frame()
 void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 {
 #if LL_DARWIN
+    auto& benchmark_session = metal_benchmark_session();
+    // Declared first so cleanup runs after the observation guard invalidates
+    // an early-return sequence, including nested-display failures.
+    MetalBenchmarkScopeCleanup benchmark_cleanup{benchmark_session};
+    ALMetalBenchmarkRecorder::DisplayObservation benchmark_observation(
+        benchmark_session.recorder && !benchmark_session.recorder->finished()
+            ? benchmark_session.recorder : nullptr);
     // Start before any frame commands, and stop at the next normal display
     // entry. Ordinary probes run after display_end_frame, outside display().
     advance_metal_frame_capture(!for_snapshot && !gSnapshot && !gCubeSnapshot &&
@@ -1552,7 +1626,8 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     display_stats();
 
 #if LL_DARWIN
-    record_metal_benchmark_frame(for_snapshot, presented);
+    record_metal_benchmark_frame(
+        for_snapshot, presented, benchmark_session, benchmark_observation);
 #endif
 
     LLAppViewer::instance()->pingMainloopTimeout("Display:Done");

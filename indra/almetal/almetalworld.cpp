@@ -20799,8 +20799,9 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         try
         {
             std::string diagnostic_error;
-            if (!mImpl->probe_workload->captureIfReady(*command, *depth, *normal,
+            if (!mImpl->probe_workload->captureIfReady(*command, *depth, *normal, *specular,
                     scene.constants, scene.reflection_probes ? &probe_constants : nullptr,
+                    scene.hero_probe ? &hero_constants : nullptr,
                     scene.diagnostic_view, &diagnostic_error))
                 std::fprintf(stderr, "Metal probe workload diagnostic skipped: %s\n",
                              diagnostic_error.c_str());

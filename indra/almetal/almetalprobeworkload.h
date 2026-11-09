@@ -10,7 +10,9 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 
 class ALMetalDevice;
@@ -18,6 +20,47 @@ class ALMetalCommandBuffer;
 class ALMetalTexture;
 struct ALMetalWorldBaseLightingConstants;
 struct ALMetalWorldReflectionProbeConstants;
+struct ALMetalWorldHeroProbeConstants;
+
+// Explicit packet versions let offline readers keep accepting archived v1
+// evidence. The v2 sample retains the complete v1 prefix, including reserved0.
+struct alignas(16) ALMetalProbeWorkloadSampleV1
+{
+    std::uint32_t x, y;
+    float depth, normal_alpha;
+    std::uint32_t material_class, geometry;
+    std::uint32_t reserved[2];
+};
+struct alignas(16) ALMetalProbeWorkloadSampleV2
+{
+    ALMetalProbeWorkloadSampleV1 prefix;
+    float glossiness, legacy_environment_intensity;
+    float hero_gloss_weight, hero_legacy_weight;
+    float eye_position[3];
+    std::uint32_t channel_flags;
+    enum : std::uint32_t
+    {
+        uses_gloss = 1u, uses_legacy = 2u,
+        full_hero_gloss = 4u, full_hero_legacy = 8u,
+    };
+};
+static_assert(sizeof(ALMetalProbeWorkloadSampleV1) == 32);
+static_assert(sizeof(ALMetalProbeWorkloadSampleV2) == 64);
+static_assert(offsetof(ALMetalProbeWorkloadSampleV2, glossiness) == 32);
+static_assert(offsetof(ALMetalProbeWorkloadSampleV2, eye_position) == 48);
+
+struct ALMetalProbeWorkloadPacketLayout
+{
+    std::uint32_t lighting_offset, probe_offset, hero_offset, hero_bytes;
+    std::uint32_t samples_offset, sample_stride;
+    static constexpr std::optional<ALMetalProbeWorkloadPacketLayout>
+    forVersion(std::uint32_t version) noexcept
+    {
+        if (version == 1) return ALMetalProbeWorkloadPacketLayout{64,400,0,0,49616,32};
+        if (version == 2) return ALMetalProbeWorkloadPacketLayout{64,400,49616,112,49728,64};
+        return std::nullopt;
+    }
+};
 
 struct ALMetalProbeWorkloadView
 {
@@ -49,7 +92,8 @@ public:
 
     // Unset/empty environment returns nullptr without allocating or compiling.
     // An explicit path must be absolute, existing, owned and mode0700. The
-    // tiny diagnostic kernel compiles here, before benchmark arming.
+    // tiny diagnostic kernel compiles here; capture dispatches only after
+    // command timing has armed and subsequently disarmed.
     static std::unique_ptr<ALMetalProbeWorkloadCapture> createIfRequested(
         const ALMetalDevice& device, std::string* error = nullptr) noexcept;
     ~ALMetalProbeWorkloadCapture();
@@ -64,8 +108,10 @@ public:
     bool captureIfReady(
         ALMetalCommandBuffer& command,
         const ALMetalTexture& depth, const ALMetalTexture& normal,
+        const ALMetalTexture& specular,
         const ALMetalWorldBaseLightingConstants& lighting,
         const ALMetalWorldReflectionProbeConstants* probes,
+        const ALMetalWorldHeroProbeConstants* hero,
         const ALMetalProbeWorkloadView& view,
         std::string* error = nullptr) noexcept;
     ALMetalProbeWorkloadStats stats() const noexcept;

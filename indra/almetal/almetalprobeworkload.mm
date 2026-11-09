@@ -37,27 +37,22 @@ namespace
     constexpr std::uint32_t grid_height = ALMetalProbeWorkloadCapture::sample_height;
     constexpr std::size_t sample_count = grid_width * grid_height;
 
-    struct alignas(16) Sample
-    {
-        std::uint32_t x, y;
-        float depth, normal_alpha;
-        std::uint32_t material_class, geometry;
-        std::uint32_t reserved[2];
-    };
-    static_assert(sizeof(Sample) == 32);
+    using Sample = ALMetalProbeWorkloadSampleV2;
     static_assert(sizeof(ALMetalWorldBaseLightingConstants) == 336);
     static_assert(sizeof(ALMetalWorldReflectionProbeConstants) == 49216);
+    static_assert(sizeof(ALMetalWorldHeroProbeConstants) == 112);
 
     struct Header
     {
-        char magic[8] = {'A','L','P','R','W','K','1','\0'};
-        std::uint32_t version = 1, header_bytes = sizeof(Header);
+        char magic[8] = {'A','L','P','R','W','K','2','\0'};
+        std::uint32_t version = 2, header_bytes = sizeof(Header);
         std::uint32_t sample_stride = sizeof(Sample), samples = sample_count;
         std::uint32_t grid_width = ::grid_width, grid_height = ::grid_height;
         std::uint32_t width = 0, height = 0;
         std::uint32_t lighting_bytes = sizeof(ALMetalWorldBaseLightingConstants);
         std::uint32_t probe_bytes = sizeof(ALMetalWorldReflectionProbeConstants);
-        std::uint32_t reserved[4]{};
+        std::uint32_t hero_bytes = sizeof(ALMetalWorldHeroProbeConstants);
+        std::uint32_t hero_offset = 49616, samples_offset = 49728, reserved = 0;
     };
     static_assert(sizeof(Header) == 64);
 
@@ -91,13 +86,15 @@ namespace
     {
         std::shared_ptr<State> state;
         std::unique_ptr<ALMetalBuffer> samples;
-        id<MTLTexture> depth = nil, normal = nil;
+        id<MTLTexture> depth = nil, normal = nil, specular = nil;
         id<MTLComputePipelineState> pipeline = nil;
         ALMetalWorldBaseLightingConstants lighting{};
         ALMetalWorldReflectionProbeConstants probes{};
+        ALMetalWorldHeroProbeConstants hero{};
         ALMetalProbeWorkloadView view{};
         Header header;
         bool has_probes = false;
+        bool has_hero = false;
         std::uint64_t registry_id = 0;
         pid_t process = 0;
         std::atomic<unsigned> terminal{0};
@@ -182,6 +179,7 @@ namespace
                 writeAll(binary, &snapshot->header, sizeof(Header)) &&
                 writeAll(binary, &snapshot->lighting, sizeof(snapshot->lighting)) &&
                 writeAll(binary, &snapshot->probes, sizeof(snapshot->probes)) &&
+                writeAll(binary, &snapshot->hero, sizeof(snapshot->hero)) &&
                 writeAll(binary, snapshot->samples->mappedBytes(), sizeof(Sample) * sample_count);
             const bool closed = close(binary) == 0;
             if (!success || !closed)
@@ -195,7 +193,7 @@ namespace
         std::ostringstream json;
         json.imbue(std::locale::classic());
         json << std::setprecision(std::numeric_limits<float>::max_digits10)
-             << "{\"schema_version\":1,\"status\":\""
+             << "{\"schema_version\":2,\"status\":\""
              << terminal_status
              << "\",\"gpu_error_code\":" << gpu_error
              << ",\"gpu_completed\":" << (completed ? "true" : "false")
@@ -210,21 +208,31 @@ namespace
              << ",\"normal_hdr\":" << snapshot->lighting.surface[1]
              << ",\"legacy_environment\":" << snapshot->lighting.environment_config[0]
              << ",\"has_probe_pack\":" << (snapshot->has_probes ? "true" : "false")
+             << ",\"has_hero_pack\":" << (snapshot->has_hero ? "true" : "false")
              << ",\"probe_count\":" << snapshot->probes.config[0]
              << ",\"projection_column_major\":";
         matrixJSON(json, view.projection);
         json << ",\"inverse_projection_column_major\":";
         matrixJSON(json, snapshot->lighting.inverse_projection);
         json << ",\"sampling\":{\"grid\":[64,40],\"pattern\":\"integer_cell_centers\","
-                "\"stride_bytes\":32,\"fields\":[\"x:u32\",\"y:u32\",\"depth:f32\","
-                "\"normal_alpha:f32\",\"material_class:u32\",\"geometry:u32\",\"reserved:u32x2\"],"
+                "\"stride_bytes\":64,\"v1_prefix_bytes\":32,\"fields\":[\"x:u32\",\"y:u32\",\"depth:f32\","
+                "\"normal_alpha:f32\",\"material_class:u32\",\"geometry:u32\",\"reserved:u32x2\","
+                "\"glossiness:f32\",\"legacy_environment_intensity:f32\",\"hero_gloss_weight:f32\","
+                "\"hero_legacy_weight:f32\",\"eye_position:f32x3\",\"channel_flags:u32\"],"
                 "\"material_classes\":{\"legacy\":0,\"pbr\":1,\"sky\":2},"
-                "\"pbr_rule\":\"abs(normal_alpha-0.67)<0.1\"},"
+                "\"pbr_rule\":\"abs(normal_alpha-0.67)<0.1\","
+                "\"gloss_rule\":\"pbr?1-(specular.g+specular.a/255):specular.a\","
+                "\"channel_flags\":{\"uses_gloss\":1,\"uses_legacy\":2,\"full_hero_gloss\":4,\"full_hero_legacy\":8},"
+                "\"use_rule\":\"geometry&&!legacy_environment&&(pbr||glossiness>0);geometry&&!legacy_environment&&!pbr&&normal.z>0\","
+                "\"full_rule\":\"used_channel&&exact_hero_weight==1; never >=1 or epsilon\","
+                "\"weights_zero_when\":\"nongeometry or legacy sky environment\"},"
                 "\"binary\":{\"file\":\"" << (completed ? binary_name : "")
-             << "\",\"endianness\":\"little\",\"header_bytes\":64,"
+             << "\",\"version\":2,\"magic\":\"ALPRWK2\",\"endianness\":\"little\",\"header_bytes\":64,"
                 "\"lighting_offset\":64,\"lighting_bytes\":336,"
                 "\"probe_offset\":400,\"probe_bytes\":49216,"
-                "\"samples_offset\":49616,\"sample_count\":2560},"
+                "\"hero_offset\":49616,\"hero_bytes\":112,"
+                "\"samples_offset\":49728,\"sample_stride\":64,\"sample_count\":2560},"
+                "\"archived_v1\":{\"magic\":\"ALPRWK1\",\"samples_offset\":49616,\"sample_stride\":32,\"hero_bytes\":0},"
                 "\"selection_reference\":\"1eb44bbd1bdc76d0100c75699bad1fb337e8cb45:class3/deferred/reflectionProbeF.glsl\","
                 "\"limitation\":\"Sparse observed geometry samples; not full image, timing or a proof of tile-wide containment\"}\n";
         const std::string text = json.str();
@@ -253,20 +261,71 @@ namespace
     constexpr const char* kernel_source = R"metal(
 #include <metal_stdlib>
 using namespace metal;
-struct Sample { uint2 pixel; float depth; float normal_alpha; uint material_class; uint geometry; uint2 reserved; };
+struct Sample {
+    uint2 pixel; float depth; float normal_alpha; uint material_class; uint geometry; uint2 reserved;
+    float glossiness; float legacy_environment_intensity; float hero_gloss_weight; float hero_legacy_weight;
+    packed_float3 eye_position; uint channel_flags;
+};
+struct Hero { float4x4 box; float4 sphere; float4 clip; uint4 config; };
+// Byte-for-byte arithmetic/order of production almetal_finish_hero_probe's
+// weight (exact original reflectionProbeF.glsl::tapHeroProbe), no tap/sample.
+static float hero_weight(float3 position, float glossiness, constant Hero& hero)
+{
+    if (hero.config.y < 1u || glossiness <= 0.75) return 0.0;
+    float weight;
+    if (hero.config.x < 1u)
+    {
+        const float3 box_position = (hero.box * float4(position, 1.0)).xyz;
+        weight = max(1.0 - max(max(abs(box_position.x), abs(box_position.y)), abs(box_position.z)), 0.0);
+    }
+    else
+    {
+        const float radius = hero.sphere.w;
+        const float inner_radius = radius * 0.5;
+        const float distance = max(length(position - hero.sphere.xyz), 0.001);
+        const float attenuation = 1.0 - max(distance - inner_radius, 0.0) / max(radius - inner_radius, 0.001);
+        weight = attenuation / distance;
+    }
+    float clip_distance = dot(position, hero.clip.xyz) + hero.clip.w;
+    clip_distance = clamp((clip_distance * 0.95 + 0.05) * 10.0, 0.0, 1.0);
+    weight = clamp(weight * 10.0 * clip_distance, 0.0, 1.0);
+    weight *= clamp(glossiness - 0.75, 0.0, 1.0) * 4.0;
+    if (weight <= 0.0) return 0.0;
+    return weight;
+}
 kernel void almetal_probe_workload_sample(
     texture2d<float> depth [[texture(0)]], texture2d<float> normal [[texture(1)]],
+    texture2d<float> specular [[texture(2)]],
     device Sample* output [[buffer(0)]], constant uint& reverse_z [[buffer(1)]],
+    constant float4x4& inverse_projection [[buffer(2)]], constant Hero& hero [[buffer(3)]],
+    constant uint& legacy_environment [[buffer(4)]],
     uint2 cell [[thread_position_in_grid]])
 {
     if (cell.x >= 64u || cell.y >= 40u) return;
     uint2 dimensions = uint2(depth.get_width(), depth.get_height());
     uint2 pixel = min(((cell * 2u + 1u) * dimensions) / uint2(128u,80u), dimensions - 1u);
     float d = depth.read(pixel).r;
-    float alpha = normal.read(pixel).a;
+    float4 n = normal.read(pixel), s = specular.read(pixel);
+    float alpha = n.a;
     bool geometry = reverse_z != 0u ? d > 0.0 : d < 1.0;
     uint kind = !geometry ? 2u : abs(alpha - 0.67) < 0.1 ? 1u : 0u;
-    output[cell.y * 64u + cell.x] = {pixel,d,alpha,kind,uint(geometry),uint2(0)};
+    const bool pbr = abs(alpha - 0.67) < 0.1;
+    const float gloss = pbr ? 1.0 - (s.g + s.a / 255.0) : s.a;
+    const float environment = pbr ? 0.0 : n.z;
+    const float ndc_z = reverse_z != 0u ? d : d * 2.0 - 1.0;
+    const float2 uv = (float2(pixel) + 0.5) / float2(dimensions);
+    float4 position = inverse_projection * float4(uv * 2.0 - 1.0, ndc_z, 1.0);
+    position.w = max(position.w, 0.000001);
+    position /= position.w;
+    const bool used = geometry && legacy_environment == 0u;
+    const bool use_gloss = used && (pbr || gloss > 0.0);
+    const bool use_legacy = used && !pbr && environment > 0.0;
+    const float wg = used ? hero_weight(position.xyz, gloss, hero) : 0.0;
+    const float wl = used ? hero_weight(position.xyz, 1.0, hero) : 0.0;
+    const uint flags = uint(use_gloss) | (uint(use_legacy) << 1u) |
+        (uint(use_gloss && wg == 1.0) << 2u) | (uint(use_legacy && wl == 1.0) << 3u);
+    output[cell.y * 64u + cell.x] = {pixel,d,alpha,kind,uint(geometry),uint2(0),
+        gloss,environment,wg,wl,packed_float3(position.xyz),flags};
 }
 )metal";
 }
@@ -336,8 +395,10 @@ catch (...)
 
 bool ALMetalProbeWorkloadCapture::captureIfReady(
     ALMetalCommandBuffer& command, const ALMetalTexture& depth, const ALMetalTexture& normal,
+    const ALMetalTexture& specular,
     const ALMetalWorldBaseLightingConstants& lighting,
     const ALMetalWorldReflectionProbeConstants* probes,
+    const ALMetalWorldHeroProbeConstants* hero,
     const ALMetalProbeWorkloadView& view, std::string* error) noexcept
 try
 {
@@ -390,7 +451,13 @@ try
     if (!finiteMatrix(view.projection) || !finiteMatrix(lighting.inverse_projection) ||
         command.isCommitted() || command.nativeDevice() != mImpl->device->nativeHandle() ||
         depth.width() == 0 || depth.height() == 0 ||
-        depth.width() != normal.width() || depth.height() != normal.height())
+        depth.width() != normal.width() || depth.height() != normal.height() ||
+        depth.width() != specular.width() || depth.height() != specular.height() ||
+        (hero && (!finiteMatrix(hero->hero_box) ||
+            !std::isfinite(hero->hero_sphere[0]) || !std::isfinite(hero->hero_sphere[1]) ||
+            !std::isfinite(hero->hero_sphere[2]) || !std::isfinite(hero->hero_sphere[3]) ||
+            !std::isfinite(hero->clip_plane[0]) || !std::isfinite(hero->clip_plane[1]) ||
+            !std::isfinite(hero->clip_plane[2]) || !std::isfinite(hero->clip_plane[3]))))
     {
         mImpl->state->failed.fetch_add(1, std::memory_order_relaxed);
         setError(error, "Probe workload capture skipped: invalid view, dimensions, projection or command");
@@ -398,9 +465,13 @@ try
     }
     auto native_depth = (__bridge id<MTLTexture>)depth.nativeHandle();
     auto native_normal = (__bridge id<MTLTexture>)normal.nativeHandle();
+    auto native_specular = (__bridge id<MTLTexture>)specular.nativeHandle();
     auto native_device = (__bridge id<MTLDevice>)mImpl->device->nativeHandle();
-    if (!native_depth || !native_normal || native_depth.device != native_device ||
-        native_normal.device != native_device || native_depth.sampleCount != 1 ||
+    if (!native_depth || !native_normal || !native_specular || native_depth.device != native_device ||
+        native_normal.device != native_device || native_specular.device != native_device ||
+        native_specular.sampleCount != 1 || native_specular.textureType != MTLTextureType2D ||
+        native_specular.pixelFormat != MTLPixelFormatRGBA8Unorm ||
+        !(native_specular.usage & MTLTextureUsageShaderRead) || native_depth.sampleCount != 1 ||
         native_normal.sampleCount != 1 || native_depth.textureType != MTLTextureType2D ||
         native_normal.textureType != MTLTextureType2D ||
         (native_depth.pixelFormat != MTLPixelFormatDepth32Float &&
@@ -421,13 +492,16 @@ try
     snapshot->view = view;
     snapshot->lighting = lighting;
     if (probes) snapshot->probes = *probes;
+    if (hero) snapshot->hero = *hero;
     snapshot->has_probes = probes != nullptr;
+    snapshot->has_hero = hero != nullptr;
     snapshot->header.width = depth.width();
     snapshot->header.height = depth.height();
     snapshot->registry_id = mImpl->device->info().registry_id;
     snapshot->process = getpid();
     snapshot->depth = native_depth;
     snapshot->normal = native_normal;
+    snapshot->specular = native_specular;
     snapshot->pipeline = (__bridge id<MTLComputePipelineState>)mImpl->pipeline->nativeHandle();
     ALMetalBufferDescriptor descriptor;
     descriptor.length = sizeof(Sample) * sample_count;
@@ -441,8 +515,12 @@ try
     auto encoder = ALMetalComputeEncoder::begin(command, "Alchemy diagnostic probe workload sampler", error);
     if (!encoder || !encoder->setPipeline(*mImpl->pipeline, error) ||
         !encoder->setTexture(0, &depth, error) || !encoder->setTexture(1, &normal, error) ||
+        !encoder->setTexture(2, &specular, error) ||
         !encoder->setBuffer(0, *snapshot->samples, 0, error) ||
         !encoder->setBytes(1, &lighting.config[0], sizeof(lighting.config[0]), error) ||
+        !encoder->setBytes(2, lighting.inverse_projection, sizeof(lighting.inverse_projection), error) ||
+        !encoder->setBytes(3, &snapshot->hero, sizeof(snapshot->hero), error) ||
+        !encoder->setBytes(4, &lighting.environment_config[0], sizeof(lighting.environment_config[0]), error) ||
         !encoder->dispatch(grid_width, grid_height, 1, 8, 8, 1, error) || !encoder->end(error))
     {
         mImpl->state->failed.fetch_add(1, std::memory_order_relaxed);

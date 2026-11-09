@@ -30,7 +30,10 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "llreflectionmapmanager.h"
+#include "alprobereadiness.h"
 
+#include <algorithm>
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -134,6 +137,7 @@ void hdri_preview()
 }
 
 extern bool gCubeSnapshot;
+extern bool gSnapshot;
 extern bool gSnapshotOffMainView;
 extern bool gTeleportDisplay;
 
@@ -1819,6 +1823,95 @@ void LLReflectionMapManager::getReflectionMaps(std::vector<LLReflectionMap*>& ma
     if (count < maps.size())
     {
         maps[count] = nullptr;
+    }
+
+    // Explicit benchmark evidence only; never retain or mutate a probe.
+    if (ALProbeReadiness::observationRequested() &&
+        LLPipeline::isMainWorldPass() && !gSnapshot &&
+        !gSnapshotOffMainView && gPipeline.mRT == &gPipeline.mMainRT)
+    {
+        ALProbeReadiness::Snapshot snapshot;
+        const auto& planned = gPipeline.resourcePlan().reflectionProbes();
+        snapshot.enabled = LLPipeline::sReflectionProbesEnabled && planned.has_value();
+        snapshot.budget = mReflectionProbeCount;
+        snapshot.dynamic_count = mDynamicProbeCount;
+        snapshot.resolution = mProbeResolution;
+        snapshot.reset = mReset;
+        snapshot.paused = mPaused;
+        snapshot.reset_fade_pending = !std::isfinite(mResetFade) || mResetFade < 1.f;
+        snapshot.default_ready = mDefaultProbe.notNull() &&
+            mDefaultProbe->mCubeIndex == 0 && mDefaultProbe->mComplete;
+        snapshot.updating_incomplete = mUpdatingProbe != nullptr && !mUpdatingProbe->mComplete;
+        snapshot.refreshing = mUpdatingProbe != nullptr && mUpdatingProbe->mComplete;
+        snapshot.radiance_pass = mRadiancePass;
+        snapshot.updating_face = mUpdatingFace;
+        if (mCreateList.size() > std::numeric_limits<U32>::max() ||
+            mKillList.size() > std::numeric_limits<U32>::max()) snapshot.invalid = true;
+        else
+        {
+            snapshot.queued_create = static_cast<U32>(mCreateList.size());
+            snapshot.queued_kill = static_cast<U32>(mKillList.size());
+        }
+        snapshot.layout_ready = snapshot.enabled &&
+            snapshot.budget > 0 && snapshot.budget <= ALProbeReadiness::capacity &&
+            snapshot.budget == snapshot.dynamic_count &&
+            mProbeResolution == planned->mResolution &&
+            mSuperSample == planned->mSuperSample && mHDR == planned->mHDR;
+        snapshot.native_pairs_required = true;
+        const MetalProbeArrayMirror* mirror = mMetalProbeArray.get();
+        snapshot.layout_ready = snapshot.layout_ready && mirror && mirror->mDevice &&
+            mirror->mCubeCount == snapshot.budget + 2 &&
+            mirror->mSlotGenerations.size() == mirror->mCubeCount &&
+            mirror->mPublishedGenerations.size() == mirror->mCubeCount &&
+            mirror->mPublishedSHGenerations.size() == mirror->mCubeCount;
+        std::array<bool, ALProbeReadiness::capacity> visible{};
+        snapshot.main_visible = count;
+        for (U32 i = 0; i < count; ++i)
+        {
+            const S32 slot = maps[i]->mCubeIndex;
+            if (slot < 0 || static_cast<U32>(slot) >= ALProbeReadiness::capacity) snapshot.invalid = true;
+            else
+            {
+                if (visible[slot]) snapshot.invalid = true;
+                visible[slot] = true;
+            }
+        }
+        bool found_default = false;
+        for (const auto& probe : mProbes)
+        {
+            if (probe.isNull()) { snapshot.invalid = true; continue; }
+            if (probe->mCubeIndex < 0) continue; // Unassigned probes do not block readiness.
+            ++snapshot.assigned;
+            if (!probe->mComplete) ++snapshot.incomplete;
+            if (!std::isfinite(probe->mFadeIn) || probe->mFadeIn < 1.f) ++snapshot.fading;
+            found_default = found_default || probe == mDefaultProbe;
+            ALProbeReadiness::Member member;
+            member.owner = reinterpret_cast<std::uintptr_t>(probe.get());
+            member.slot = probe->mCubeIndex;
+            const bool valid_slot = member.slot >= 0 &&
+                static_cast<U32>(member.slot) < ALProbeReadiness::capacity;
+            if (!valid_slot) snapshot.invalid = true;
+            else member.main_visible = visible[member.slot];
+            const auto slot = static_cast<std::size_t>(member.slot);
+            if (mirror && slot < mirror->mSlotGenerations.size())
+                member.generation = mirror->mSlotGenerations[slot];
+            if (probe->mComplete &&
+                (!mirror || !mirror->mPublishedRadiance || !mirror->mPublishedSH ||
+                 member.generation == 0 || slot >= mirror->mPublishedGenerations.size() ||
+                 slot >= mirror->mPublishedSHGenerations.size() ||
+                 mirror->mPublishedGenerations[slot] != member.generation ||
+                 mirror->mPublishedSHGenerations[slot] != member.generation))
+                ++snapshot.unpublished_pairs;
+            if (snapshot.member_count < ALProbeReadiness::capacity)
+                snapshot.members[snapshot.member_count++] = member;
+            else snapshot.invalid = true;
+        }
+        if (!found_default || snapshot.assigned > snapshot.budget) snapshot.invalid = true;
+        std::sort(snapshot.members.begin(), snapshot.members.begin() + snapshot.member_count,
+            [](const auto& a, const auto& b) { return a.slot < b.slot; });
+        for (U32 i = 1; i < snapshot.member_count; ++i)
+            if (snapshot.members[i - 1].slot == snapshot.members[i].slot) snapshot.invalid = true;
+        ALProbeReadiness::publish(gFrameCount, snapshot);
     }
 }
 

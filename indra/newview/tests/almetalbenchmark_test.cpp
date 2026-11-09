@@ -19,11 +19,13 @@
 
 #include "llfile.h"
 #include "lluuid.h"
+#include "llsdjson.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <cstdlib>
 
 namespace
 {
@@ -41,6 +43,9 @@ public:
     {
         std::error_code ignored;
         std::filesystem::remove(mPath, ignored);
+        auto sidecar = mPath;
+        sidecar.replace_extension(".provenance.jsonl");
+        std::filesystem::remove(sidecar, ignored);
     }
 
     ALMetalBenchmarkRecorder::Config config(
@@ -62,9 +67,28 @@ public:
     }
 
     const std::filesystem::path& path() const { return mPath; }
+    std::filesystem::path sidecar() const
+    { auto result = mPath; return result.replace_extension(".provenance.jsonl"); }
 
 private:
     std::filesystem::path mPath;
+};
+
+class environment_override
+{
+public:
+    environment_override(const char* name, const char* value) : mName(name)
+    {
+        if (const char* previous = std::getenv(name)) mPrevious = previous;
+        if (value) ::setenv(name, value, 1); else ::unsetenv(name);
+    }
+    ~environment_override()
+    {
+        if (mPrevious) ::setenv(mName, mPrevious->c_str(), 1); else ::unsetenv(mName);
+    }
+private:
+    const char* mName;
+    std::optional<std::string> mPrevious;
 };
 
 ALMetalBenchmarkRecorder::Frame frame(
@@ -91,6 +115,29 @@ ALMetalBenchmarkRecorder::Frame frame(
     result.native_exact = exact;
     result.gl_fallback = !exact;
     result.eligible = true;
+    return result;
+}
+
+ALMetalBenchmarkRecorder::Frame ready_frame(std::uint64_t index, std::int64_t milliseconds)
+{
+    auto result = frame(index, milliseconds);
+    result.provenance.emplace();
+    result.provenance->main_view_captured = true;
+    result.provenance->main_view.main_world_pass = true;
+    auto& s = result.probe_readiness.emplace();
+    s.frame_index = index;
+    s.enabled = s.layout_ready = s.default_ready = s.native_pairs_required = true;
+    s.budget = s.dynamic_count = s.assigned = s.member_count = s.main_visible = 2;
+    s.resolution = 128;
+    s.members[0] = {1234567894, 0, 19, true};
+    s.members[1] = {1234567895, 1, 23, true};
+    return result;
+}
+
+ALMetalBenchmarkRecorder::Config ready_config(const benchmark_file& output, unsigned samples = 2)
+{
+    auto result = output.config(0, samples);
+    result.collect_provenance = result.require_ready_probes = true;
     return result;
 }
 
@@ -306,5 +353,190 @@ TEST_CASE("ALMetalBenchmark accepts an unpublished native-only frame without GL 
     CHECK(recorder.record(native_only, &error) ==
           ALMetalBenchmarkRecorder::Result::complete);
     CHECK(error.empty());
+}
+
+TEST_CASE("Probe-ready benchmarks run timed warmup in parallel with initialization", "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    auto config = ready_config(output);
+    config.warmup_frames = 120;
+    config.warmup_seconds = 300;
+    ALMetalBenchmarkRecorder recorder(config);
+    REQUIRE(recorder.requiresReadyProbes());
+    std::string error;
+    for (std::uint64_t i = 1; i < 320; ++i)
+    {
+        auto f = ready_frame(i, i * 1000);
+        if (i <= 200) f.probe_readiness->incomplete = 1;
+        // Initial membership progress must not restart the 300-second clock.
+        if (i <= 150) f.probe_readiness->members[1].owner = 77;
+        CHECK(recorder.record(f, &error) == ALMetalBenchmarkRecorder::Result::warming);
+    }
+    CHECK_FALSE(std::filesystem::exists(output.path()));
+    CHECK(recorder.record(ready_frame(320, 320000), &error) == ALMetalBenchmarkRecorder::Result::recorded);
+    auto refreshed = ready_frame(321, 321000);
+    refreshed.probe_readiness->refreshing = refreshed.probe_readiness->radiance_pass = true;
+    refreshed.probe_readiness->updating_face = 5;
+    CHECK(recorder.record(refreshed, &error) == ALMetalBenchmarkRecorder::Result::complete);
+    CHECK(error.empty());
+    std::ifstream sidecar(output.sidecar());
+    std::string line;
+    bool found_start = false;
+    while (std::getline(sidecar, line))
+    {
+        LLSD parsed;
+        REQUIRE(LlsdFromJsonString(line, parsed, &error));
+        CHECK(line.find("1234567894") == std::string::npos);
+        CHECK(line.find("1234567895") == std::string::npos);
+        CHECK_FALSE(parsed["probe_readiness"].has("members"));
+        if (parsed["event"].asString() == "sample_start")
+        {
+            found_start = true;
+            CHECK(parsed["frame_index"].asInteger() == 320);
+            CHECK(parsed["probe_readiness"]["required"].asBoolean());
+            CHECK(parsed["probe_readiness"]["admitted"].asBoolean());
+            CHECK(parsed["probe_readiness"]["consecutive_ready_frames"].asInteger() == 120);
+            CHECK(parsed["probe_readiness"]["assigned"].asInteger() == 2);
+        }
+    }
+    CHECK(found_start);
+}
+
+TEST_CASE("Probe-ready samples fail on missing stale changing or unready populations", "[ALMetalBenchmark]")
+{
+    for (unsigned variant = 0; variant < 8; ++variant)
+    {
+        benchmark_file output;
+        ALMetalBenchmarkRecorder recorder(ready_config(output));
+        std::string error;
+        for (std::uint64_t i = 1; i <= 120; ++i)
+        {
+            const auto result = recorder.record(ready_frame(i, i * 10), &error);
+            REQUIRE(result == (i == 120 ? ALMetalBenchmarkRecorder::Result::recorded
+                                       : ALMetalBenchmarkRecorder::Result::warming));
+        }
+        auto changed = ready_frame(121, 1210);
+        switch (variant)
+        {
+        case 0: changed.probe_readiness.reset(); break;
+        case 1: --changed.probe_readiness->frame_index; break;
+        case 2: changed.probe_readiness->queued_create = 1; break;
+        case 3: changed.probe_readiness->fading = 1; break;
+        case 4: ++changed.probe_readiness->members[1].generation; break;
+        case 5: changed.probe_readiness->members[1].owner = 555; break;
+        case 6:
+            changed.probe_readiness->members[1].main_visible = false;
+            --changed.probe_readiness->main_visible;
+            break;
+        case 7: changed.probe_readiness->unpublished_pairs = 1; break;
+        }
+        INFO("loss " << variant);
+        CHECK(recorder.record(changed, &error) == ALMetalBenchmarkRecorder::Result::failed);
+        CHECK(recorder.samplesWritten() == 1);
+        CHECK(recorder.finished());
+        CHECK(error.find("probe population") != std::string::npos);
+    }
+}
+
+TEST_CASE("Probe-ready warmup resets on main-view discontinuities", "[ALMetalBenchmark]")
+{
+    for (unsigned variant = 0; variant < 3; ++variant)
+    {
+        benchmark_file output;
+        ALMetalBenchmarkRecorder recorder(ready_config(output, 1));
+        std::string error;
+        for (std::uint64_t i = 1; i <= 119; ++i)
+            REQUIRE(recorder.record(ready_frame(i, i * 10), &error) == ALMetalBenchmarkRecorder::Result::warming);
+        auto changed = ready_frame(120, 1200);
+        switch (variant)
+        {
+        case 0: changed.eligible = false; break;
+        case 1: changed.frame_index = changed.probe_readiness->frame_index = 121; break;
+        case 2: changed.provenance->main_view.viewer_camera.origin[0] = 1.f; break;
+        }
+        const auto result = recorder.record(changed, &error);
+        CHECK((result == ALMetalBenchmarkRecorder::Result::warming || result == ALMetalBenchmarkRecorder::Result::inactive));
+        CHECK(recorder.samplesWritten() == 0);
+        CHECK_FALSE(std::filesystem::exists(output.path()));
+    }
+}
+
+TEST_CASE("Display observations reject early returns and keep their recorder alive", "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    auto config = output.config(0, 2);
+    config.warmup_seconds = 300;
+    auto recorder = std::make_shared<ALMetalBenchmarkRecorder>(config);
+    std::string error;
+    CHECK(recorder->record(frame(1, 0), &error) == ALMetalBenchmarkRecorder::Result::warming);
+    { ALMetalBenchmarkRecorder::DisplayObservation early(recorder); }
+    CHECK(recorder->record(frame(2, 400000), &error) == ALMetalBenchmarkRecorder::Result::warming);
+    CHECK(recorder->record(frame(3, 400010), &error) == ALMetalBenchmarkRecorder::Result::warming);
+    CHECK(recorder->record(frame(4, 700000), &error) == ALMetalBenchmarkRecorder::Result::recorded);
+    std::weak_ptr<ALMetalBenchmarkRecorder> weak = recorder;
+    {
+        ALMetalBenchmarkRecorder::DisplayObservation early(recorder);
+        recorder.reset();
+        REQUIRE_FALSE(weak.expired());
+        CHECK_FALSE(weak.lock()->finished());
+    }
+    CHECK(weak.expired());
+    // Observe the terminal result while another owner survives.
+    benchmark_file second_output;
+    recorder = std::make_shared<ALMetalBenchmarkRecorder>(second_output.config(0, 2));
+    recorder->record(frame(1, 10));
+    recorder->record(frame(2, 20));
+    { ALMetalBenchmarkRecorder::DisplayObservation early(recorder); }
+    CHECK(recorder->finished());
+    CHECK(recorder->record(frame(3, 30)) == ALMetalBenchmarkRecorder::Result::failed);
+    ALMetalBenchmarkRecorder::DisplayObservation null(nullptr);
+    CHECK(null.record(frame(1, 10)) == ALMetalBenchmarkRecorder::Result::inactive);
+}
+
+TEST_CASE("Probe readiness is default-off and cannot suppress its provenance", "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    auto config = output.config(0, 1);
+    ALMetalBenchmarkRecorder recorder(config);
+    CHECK_FALSE(recorder.requiresReadyProbes());
+    CHECK(recorder.record(frame(1, 10)) == ALMetalBenchmarkRecorder::Result::warming);
+    CHECK(recorder.record(frame(2, 20)) == ALMetalBenchmarkRecorder::Result::complete);
+    benchmark_file invalid_output;
+    config = ready_config(invalid_output);
+    config.collect_provenance = false;
+    ALMetalBenchmarkRecorder invalid(config);
+    CHECK(invalid.record(ready_frame(1, 10)) == ALMetalBenchmarkRecorder::Result::failed);
+    CHECK_FALSE(std::filesystem::exists(invalid_output.path()));
+}
+
+TEST_CASE("Probe readiness requires an explicit bounded environment flag", "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    environment_override csv("ALCHEMY_METAL_BENCHMARK_CSV", output.path().c_str());
+    environment_override scenario("ALCHEMY_METAL_BENCHMARK_SCENARIO", "unit");
+    environment_override variant("ALCHEMY_METAL_BENCHMARK_VARIANT", "candidate");
+    environment_override provenance("ALCHEMY_METAL_BENCHMARK_PROVENANCE", "1");
+    environment_override ready("ALCHEMY_METAL_BENCHMARK_REQUIRE_READY_PROBES", nullptr);
+    std::string error;
+    auto config = ALMetalBenchmarkRecorder::configFromEnvironment("source", "Release", &error);
+    REQUIRE(config);
+    CHECK_FALSE(config->require_ready_probes);
+    {
+        environment_override enabled("ALCHEMY_METAL_BENCHMARK_REQUIRE_READY_PROBES", "1");
+        config = ALMetalBenchmarkRecorder::configFromEnvironment("source", "Release", &error);
+        REQUIRE(config);
+        CHECK(config->require_ready_probes);
+        environment_override disabled_provenance("ALCHEMY_METAL_BENCHMARK_PROVENANCE", "0");
+        CHECK_FALSE(ALMetalBenchmarkRecorder::configFromEnvironment("source", "Release", &error));
+        CHECK(error.find("requires benchmark provenance") != std::string::npos);
+    }
+    {
+        environment_override malformed("ALCHEMY_METAL_BENCHMARK_REQUIRE_READY_PROBES", "yes");
+        CHECK_FALSE(ALMetalBenchmarkRecorder::configFromEnvironment("source", "Release", &error));
+        CHECK(error.find("must be 0 or 1") != std::string::npos);
+    }
+    environment_override no_csv("ALCHEMY_METAL_BENCHMARK_CSV", nullptr);
+    environment_override standalone("ALCHEMY_METAL_BENCHMARK_REQUIRE_READY_PROBES", "1");
+    CHECK_FALSE(ALMetalBenchmarkRecorder::configFromEnvironment("source", "Release", &error));
 }
 }

@@ -15,6 +15,7 @@
 #define AL_ALMETALBENCHMARK_H
 
 #include "alquerypool.h"
+#include "alprobereadiness.h"
 #include "lluuid.h"
 
 #include <array>
@@ -25,6 +26,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 class ALMetalBenchmarkRecorder
 {
@@ -56,6 +58,7 @@ public:
         // Environment-based collection enables this only after an explicit
         // benchmark request. The sidecar is local, mode 0600, and never sent.
         bool collect_provenance = false;
+        bool require_ready_probes = false;
     };
 
     struct Camera
@@ -148,6 +151,9 @@ public:
         bool gl_fallback = false;
         bool eligible = false;
         std::optional<Provenance> provenance;
+        // Internal identities are used only by the readiness gate. The
+        // sidecar writes bounded counts/status, never membership identities.
+        std::optional<ALProbeReadiness::Snapshot> probe_readiness;
     };
 
     enum class Result
@@ -157,6 +163,20 @@ public:
         recorded,
         complete,
         failed,
+    };
+
+    class DisplayObservation
+    {
+    public:
+        explicit DisplayObservation(std::shared_ptr<ALMetalBenchmarkRecorder> recorder) noexcept
+            : mRecorder(std::move(recorder)) {}
+        ~DisplayObservation() noexcept;
+        DisplayObservation(const DisplayObservation&) = delete;
+        DisplayObservation& operator=(const DisplayObservation&) = delete;
+        Result record(const Frame& frame, std::string* error = nullptr);
+    private:
+        std::shared_ptr<ALMetalBenchmarkRecorder> mRecorder;
+        bool mObserved = false;
     };
 
     // No path means benchmarking was not requested. A supplied path makes
@@ -177,6 +197,7 @@ public:
     Result record(const Frame& frame, std::string* error = nullptr);
     std::uint32_t samplesWritten() const noexcept;
     bool finished() const noexcept;
+    bool requiresReadyProbes() const noexcept { return mConfig.require_ready_probes; }
 
 private:
     void resetSequence() noexcept;
@@ -186,6 +207,7 @@ private:
     bool closeProvenance() noexcept;
 
     Config mConfig;
+    ALProbeReadiness::Gate mProbeReadiness;
     std::unique_ptr<std::ofstream> mOutput;
     std::FILE* mProvenanceOutput = nullptr;
     std::optional<Provenance> mLastObservedProvenance;
