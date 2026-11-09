@@ -154,6 +154,9 @@ public:
         // Internal identities are used only by the readiness gate. The
         // sidecar writes bounded counts/status, never membership identities.
         std::optional<ALProbeReadiness::Snapshot> probe_readiness;
+        // Sample-window telemetry only. Changing streaming pressure must not
+        // reset camera/readiness identity or alter the texture controller.
+        std::optional<float> texture_discard_bias;
     };
 
     enum class Result
@@ -229,6 +232,11 @@ private:
     std::uint32_t mSequenceQuality = 0;
     std::uint32_t mWarmupSeen = 0;
     std::uint32_t mSamplesWritten = 0;
+    std::uint32_t mDiscardFinite = 0;
+    std::uint32_t mDiscardMissing = 0;
+    std::uint32_t mDiscardNonfinite = 0;
+    std::optional<float> mDiscardMinimum;
+    std::optional<float> mDiscardMaximum;
     bool mFinished = false;
     bool mFailed = false;
 };

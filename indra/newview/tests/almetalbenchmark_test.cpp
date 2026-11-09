@@ -26,6 +26,7 @@
 #include <fstream>
 #include <iterator>
 #include <cstdlib>
+#include <limits>
 
 namespace
 {
@@ -507,6 +508,76 @@ TEST_CASE("Probe readiness is default-off and cannot suppress its provenance", "
     ALMetalBenchmarkRecorder invalid(config);
     CHECK(invalid.record(ready_frame(1, 10)) == ALMetalBenchmarkRecorder::Result::failed);
     CHECK_FALSE(std::filesystem::exists(invalid_output.path()));
+}
+
+TEST_CASE("Discard telemetry covers sampled rows without changing frame identity", "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    auto config = output.config(0, 6);
+    config.collect_provenance = true;
+    ALMetalBenchmarkRecorder recorder(config);
+    auto f = ready_frame(1, 10);
+    f.texture_discard_bias = 999.f;
+    REQUIRE(recorder.record(f) == ALMetalBenchmarkRecorder::Result::warming);
+    const std::array<std::optional<float>, 6> values{
+        4.f, 1.25f, std::nullopt,
+        std::numeric_limits<float>::infinity(),
+        std::numeric_limits<float>::quiet_NaN(), 0.25f};
+    for (std::size_t i = 0; i < values.size(); ++i)
+    {
+        f = ready_frame(i + 2, (i + 2) * 10);
+        f.texture_discard_bias = values[i];
+        CHECK(recorder.record(f) == (i + 1 == values.size()
+            ? ALMetalBenchmarkRecorder::Result::complete
+            : ALMetalBenchmarkRecorder::Result::recorded));
+    }
+    CHECK(recorder.samplesWritten() == 6);
+    std::ifstream sidecar(output.sidecar());
+    std::string line, error;
+    LLSD end;
+    while (std::getline(sidecar, line))
+    {
+        LLSD parsed;
+        REQUIRE(LlsdFromJsonString(line, parsed, &error));
+        if (parsed["event"].asString() == "sample_end") end = parsed;
+    }
+    REQUIRE(end.isMap());
+    CHECK(end["camera_change_frames"].asInteger() == 0);
+    const auto& bias = end["discard_bias"];
+    CHECK(bias["scope"].asString() == "recorded_samples_only");
+    CHECK(bias["finite_samples"].asInteger() == 3);
+    CHECK(bias["missing_samples"].asInteger() == 1);
+    CHECK(bias["nonfinite_samples"].asInteger() == 2);
+    CHECK(bias["minimum"].asReal() == 0.25);
+    CHECK(bias["maximum"].asReal() == 4.0);
+}
+
+TEST_CASE("Discard telemetry serializes absent finite extrema as null", "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    auto config = output.config(0, 2);
+    config.collect_provenance = true;
+    ALMetalBenchmarkRecorder recorder(config);
+    CHECK(recorder.record(ready_frame(1, 10)) == ALMetalBenchmarkRecorder::Result::warming);
+    CHECK(recorder.record(ready_frame(2, 20)) == ALMetalBenchmarkRecorder::Result::recorded);
+    auto f = ready_frame(3, 30);
+    f.texture_discard_bias = -std::numeric_limits<float>::infinity();
+    CHECK(recorder.record(f) == ALMetalBenchmarkRecorder::Result::complete);
+    std::ifstream sidecar(output.sidecar());
+    std::string line, error;
+    LLSD end;
+    while (std::getline(sidecar, line))
+    {
+        LLSD parsed;
+        REQUIRE(LlsdFromJsonString(line, parsed, &error));
+        if (parsed["event"].asString() == "sample_end") end = parsed;
+    }
+    REQUIRE(end.isMap());
+    CHECK(end["discard_bias"]["finite_samples"].asInteger() == 0);
+    CHECK(end["discard_bias"]["missing_samples"].asInteger() == 1);
+    CHECK(end["discard_bias"]["nonfinite_samples"].asInteger() == 1);
+    CHECK(end["discard_bias"]["minimum"].isUndefined());
+    CHECK(end["discard_bias"]["maximum"].isUndefined());
 }
 
 TEST_CASE("Probe readiness requires an explicit bounded environment flag", "[ALMetalBenchmark]")

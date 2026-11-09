@@ -52,6 +52,43 @@ env \
 - Completion is asynchronous, so `metal_completed`, `metal_timed` and `metal_gpu_ms` can lag the frame that submitted the work. `metal_gpu_ms` excludes legacy-driver work and is neither whole-frame GPU duration nor pass attribution. Treat all four Metal columns as secondary diagnostics and average them only across a steady consecutive sequence. Use Instruments/Metal capture for per-label attribution and independent GPU evidence.
 
 ## Frame observability (real viewer process)
+
+For probe-heavy fixed-view comparisons, also set
+`ALCHEMY_METAL_BENCHMARK_REQUIRE_READY_PROBES=1`. This requires provenance and
+admits samples only after assigned probes, including the default, are complete
+and faded in, resource layouts and queues are settled, and exact in-process
+owner/slot/generation plus main-visible membership stays stable for120 eligible
+frames. Native published SH/radiance pairs must match slot ownership. Routine
+refresh remains eligible. Existing elapsed/frame warmup and readiness run in
+parallel; normal initialization progress does not restart the elapsed clock.
+Missing/stale observations, readiness loss or membership changes during sampling
+invalidate the sequence. Early display returns also invalidate an active sample
+sequence and reset pre-sample warmup. Counts and status are written under
+`probe_readiness` in the JSONL sidecar; opaque owner identities are never written.
+
+The opt-in sidecar also reports `discard_bias` for successfully written sample
+rows: finite, missing and nonfinite counts plus finite minimum/maximum. Warmup
+and rejected frames are excluded; nonfinite extrema serialize as null. Bias
+changes do not reset camera identity or readiness and never alter streaming
+policy. Compare this telemetry with the external original's sampled bias before
+attributing cross-backend performance to equal texture detail. The CSV is unchanged.
+
+The68559/68563 five-minute runs still had increasing probe populations. Treat
+their FPS as observed initialization-window results, not settled steady-state
+comparisons; see the [runtime record](state/archive/CURRENT-68563-shiny-runtime-2026-11-09.md).
+
+The optional post-timing probe workload sampler uses
+`ALCHEMY_METAL_PROBE_WORKLOAD_DIRECTORY`, an existing owned0700 directory. It
+captures at most13 kind/face keys on the producing commands after timing disarms,
+without committing or waiting. Version2 retains the version1 field prefix and
+adds copied hero constants, specular-derived channels, pixel-center eye position,
+exact hero weights and eligibility flags. Readers must inspect packet version
+and stride; `ALMetalProbeWorkloadCapture::PacketLayout::forVersion()` describes
+both layouts.64x40 samples are sparse post-window coverage, not a full-pixel
+census. Source/build binding must be supplied by the verified run because packet
+metadata does not intrinsically contain a source SHA. Compute-reference parity
+does not prove exact raster interpolation at boundary pixels.
+
 The implemented local CSV schema is:
 
 `scenario,variant,frame_ms,frame_index,source_sha,build_type,drawable_width,drawable_height,quality_profile,draw_calls,metal_submissions,metal_completed,metal_timed,metal_gpu_ms,native_requested,native_attempted,native_exact,gl_fallback,native_presentation_state`

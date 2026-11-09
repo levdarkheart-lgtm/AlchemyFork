@@ -89,6 +89,7 @@
 #include "llviewerparcelmgr.h"
 #include "llviewerregion.h"
 #include "llviewershadermgr.h"
+#include "llviewertexture.h"
 #include "llviewertexturelist.h"
 #include "llviewerwindow.h"
 #include "llvoavatarself.h"
@@ -824,6 +825,7 @@ static void record_metal_benchmark_frame(
         llmax(gViewerWindow->getWindowHeightRaw(), 0));
     frame.quality_profile =
         gSavedSettings.getU32("RenderQualityPerformance");
+    frame.texture_discard_bias = LLViewerTexture::sDesiredDiscardBias;
     const std::uint64_t native_draw_count =
         ALMetalDevice::encodedDrawCallCount();
     frame.draw_calls = native_draw_count - session.previous_native_draw_count;

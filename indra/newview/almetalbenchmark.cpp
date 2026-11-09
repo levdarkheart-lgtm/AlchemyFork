@@ -558,6 +558,14 @@ bool ALMetalBenchmarkRecorder::recordProvenance(
     out << ",\"main_world_queries\":"; json_queries(out, p.main_world_queries);
     out << ",\"probe_readiness\":";
     json_readiness(out, frame, mConfig.require_ready_probes, mProbeReadiness.status());
+    out << ",\"discard_bias\":{\"scope\":\"recorded_samples_only\",\"finite_samples\":"
+        << mDiscardFinite << ",\"missing_samples\":" << mDiscardMissing
+        << ",\"nonfinite_samples\":" << mDiscardNonfinite
+        << ",\"minimum\":";
+    if (mDiscardMinimum) json_number(out, *mDiscardMinimum); else out << "null";
+    out << ",\"maximum\":";
+    if (mDiscardMaximum) json_number(out, *mDiscardMaximum); else out << "null";
+    out << '}';
     out << "}\n";
     const auto line = out.str();
     if (std::fwrite(line.data(), 1, line.size(), mProvenanceOutput) != line.size() ||
@@ -586,6 +594,9 @@ void ALMetalBenchmarkRecorder::resetSequence() noexcept
     mSequenceHeight = 0;
     mSequenceQuality = 0;
     mWarmupSeen = 0;
+    mDiscardFinite = mDiscardMissing = mDiscardNonfinite = 0;
+    mDiscardMinimum.reset();
+    mDiscardMaximum.reset();
 }
 
 ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::fail(
@@ -842,6 +853,20 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
     if (!*mOutput)
     {
         return fail("Writing the benchmark CSV failed", error);
+    }
+    // Include only successfully written sample rows, never warmup or rejected
+    // observations. Nonfinite input is counted without emitting invalid JSON.
+    if (!frame.texture_discard_bias) ++mDiscardMissing;
+    else if (!std::isfinite(*frame.texture_discard_bias)) ++mDiscardNonfinite;
+    else
+    {
+        ++mDiscardFinite;
+        mDiscardMinimum = mDiscardMinimum
+            ? std::min(*mDiscardMinimum, *frame.texture_discard_bias)
+            : *frame.texture_discard_bias;
+        mDiscardMaximum = mDiscardMaximum
+            ? std::max(*mDiscardMaximum, *frame.texture_discard_bias)
+            : *frame.texture_discard_bias;
     }
     ++mSamplesWritten;
     if (mSamplesWritten == mConfig.sample_frames)
