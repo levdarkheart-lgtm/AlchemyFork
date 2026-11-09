@@ -1,4 +1,4 @@
-# Next session — live68601 covered-shadow measurement; fixed-texture Metal4 no win
+# Next session — 68601 measured9.83FPS; validate material argument-buffer comparator
 
 Read AGENTS.md and CURRENT.md completely. The unbudgeted20FPS Ultra goal is
 ACTIVE/unmet. Previous turn made progress: source optimization, native GPU
@@ -9,11 +9,10 @@ Do not create a new goal, mark complete, or declare hardware infeasibility.
 
 - Branch: codex/apple-silicon-metal. Root owns ALL shared source/docs/runtime,
   builds, GPU experiments and UI. Agents prepare/review private files only.
-- LIVE68601 PID73462, exactexe f277ea10... source77977290; full-screen BEFORE
-  saved login, fresh43controls/location/exactbinary observe/verify/gate each0.
-  Activeplan artifacts/metal/private-covered-shadow-setup-plan-20261109.json;
-  restore ONLY after exact73462 gracefulexit/Goodbye/PIDabsence. ALL older plans
-  restored, including continuous50766. Translator FULLY STOPPED;
+- ALLviewersCLOSED.68601 PID73462/source77977290/exe f277ea10 ranfullscreen
+  beforelogin, freshstart/end43controls/location/exactbinary gates0. Completed
+  300readyframes, SIGTERM/Goodbye/absence+planrestore0; ALLplansrestored.
+  Media subprocesses also exited before privateGPU tests. TranslatorFULLYSTOPPED;
   NEVER restart/resume it. Xcode GPU replay STOPPED. No competingGPU/profile/build.
 - Same private location/numericPreset123 ONLY. No travel or avatar movement.
   Preserve Ultra3456×2168/Midday/six hero1024faces/two cascades/PCSS/raw-depth/
@@ -45,7 +44,7 @@ Release47183=0,RWDI47338=0,finalfocusedRelease0/RWDI0; no competing GPU jobs.
 Source-only reviews approved twice. Initial reverse-depth fixture issue fixed
 before GPU execution; do not invent an executed red failure.
 
-Normal68601 candidate BUILT/VERIFIED and LIVE as above. Wrapper91206 terminal0:
+Normal68601 candidate BUILT/VERIFIED and measured/closed as above. Wrapper91206 terminal0:
 doctor/configRECORDOFF/fullbuild/verify each0. Buildpacket
 /private/tmp/alchemy-metal-covered-shadow-app-build-20261109.uiuvk2ho,
 source77977290c9bd2e3712d547f7b8e75b20c4191eca, exeSHA
@@ -60,15 +59,19 @@ Prepared artifacts/metal/private-ultra-covered-shadow-qa-20261109.json pins
 candidate68601 and reference/private/tmp/alchemy-metal-68597-normal-preserved.app.
 Launcher/private/tmp/alchemy-metal-covered-shadow-launch-20261109.py dryrun0,
 actual0. Run artifacts/metal/qa-runs/candidate-covered-shadow-20261109-01.
-CSV artifacts/metal/private-covered-shadow-20261109-01.csv not yet created:
-ready gate waits for256 probes (frame3918/151incomplete/camera stable3721frames).
-Sidecar private-covered-shadow-20261109-01.provenance.jsonl exists. Counters:
-one120-frame interval main216720/1332141 static covered inputs removed16.27%;
-probe300274/1600111 removed18.77%. Denominator is this source family, NOT all
-fully merge-eligible draws; independent counter audit pending. No FPS gain yet.
-Finish>=300ready/stable frames, freshend43gates and comparepreserved68597.
-No profiler/capture/build/unrelatedGPUwork during timing. RestoreONLYactiveplan
-afterverifiedexactviewerexit, using/private/tmp/alchemy-metal-session-state-20261109.py.
+CSV artifacts/metal/private-covered-shadow-20261109-01.csv COMPLETE300frames
+9507–9806:9.833798386FPS/mean101.690105973ms/p50101.5027085/p95nearest106.397708.
+Allnative1/fallback0/256ready120/bias1/camera0/endrestorationtrue. Independent
+audit /private/tmp/alchemy-metal-covered-shadow-formal-audit-20261109.tYbsMw/summary.json
+SHA6fad0e2570c155988f235054f403879daf263cf1b99024d3a14eb73c410aa6d9.
+Prior68597ready3008.159295→9.833798 is descriptive+20.52%FPS; oldbest68594
+9.635581→current only+2.057%. Same43controls/EEP/normal61c5MSL, sampledcamera
+stable eachsession/crosssessionZdiff2.29e−5m. Onepair is NOT causal proof.
+Counteraudit VUhsf14y/8fc7f266 confirms39intervals exactly120frames; latest
+main1833/probe2465.86 commandsremoved/frame (16.40%/18.41%familyinput). All
+source triangles/math unchanged; this is APIcommand reduction, not GPUtime.
+End43gates0/exactexit/Goodbye/absence/currentplanrestore0. Noactiveplan.
+Freshpreserved68597pairedcontrol still needed before attributing FPSgain.
 Scalaroracle uses
 scene.bulk_draws=false; productiondefaulttrue, no newquality setting.
 
@@ -129,11 +132,28 @@ PRIVATE proof packet /private/tmp/alchemy-metal3-metal4-covered-shadow-20261109.
   All7paired4096blocks slower. Short .1/.4ms encoding scopes limit precision.
   Independent strictparser shTjM2Y0/timing-summary.json SHA03f54b3597e2067aac170e707ad1869c9e687f6d3eed732a7fd0a195801c748d.
   Setup/lifecycle/GPUwait separately reported; no fullviewer/FPS inference.
-- Next private8/32-slot CHANGING-MATERIAL experiment is source prep only;
-  persistent per-materialM4tables vs exact cachedM3 changedtexture setters.
-  SAME currentMSL/PSO/math, strictnewN/materialpositivecontrols and calibrated
-  common repeats are required. NO compile/GPU/profile while live73462active.
-  Whole-shadowparallel preparation also source-only; no productionAPI switch.
+- Changing-materialpacket frBX0a is NOWEXECUTED, frozenhost34f04741d5bc4252d98cd210b3daea16dc33f637ab052d8c33ac827c14c688d2.
+  ActualO3/ARCcompile0, API+GPUvalidation0/24strictR32D32pairs+CPUoracle/no
+  warnings; quiet168samples0/allthermal0. Per4096draw8slot CPUencode
+  1.183785→.478506ms(−59.58%),32slots3.657612→.602937(−83.52%),all7pairedwins.
+  MeasuredlifecycleexcludingGPUwait amortizedperencoder−59.40%/−83.31%; controls
+  small. CommonR10/3 and fastarm<8ms explicitlylogged. Fourrecurringmaterials
+  change EVERYdraw/allslots, prebuilttables/residency/aniso1: stress mechanism,
+  NOT actualviewertransitiondistribution/FPS. No productionMetal4 switch.
+  Rootcompile/validation/quietexitJSONs pinexe6724dbc9/lib61c5/source09f034cd.
+  Independentparser /private/tmp/alchemy-metal4-material-parser-20261109.ZFV27thx,
+  summarySHA4c4bd444fb67ab254421db43322a7816641e782bc82e02eabef27ce50d9fbf14,
+  provenanceSHA569249ee91a765d8b780c7c5217dc5897c7dd872bce28e4b27c0ed69dbd04c70.
+- NEXT: trace_recheck preparing NEWprivateMetal3argument-buffer comparator
+  source only. Append1/8/32coverage wrappers withresourceABIbuffer1, preserve
+  byteidenticalcurrentvertex/608Bconstants/coverage-depth math; per-material
+  immutabletables +once-perencoder unique useResources +strongowners. Strict
+  24pairs/CPUoracle, API/GPUvalidation andquietcostincludingresidency required.
+  This retainscurrentnativequeue/hero-batch/cancel/arena lifetimes. M4midshadow
+  split would addattachmentroundtrips/crossqueueevents andbreakcancellation;
+  do NOT just swap wrappers. No automatic terrain/tessellation feature loss.
+  Rootmay compiletestafterindependentreview; no viewer/profilecurrentlyactive.
+  Whole-shadowtwoorderedchild proposal remainsSOURCEONLY atXoxaun/proposal.md.
 
 ## Continuous startup evidence guiding priorities
 

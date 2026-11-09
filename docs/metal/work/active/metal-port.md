@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
 **Renderer checkpoint:** Commit `5e1ecb76459de8a0bc90dc16da56aec75f1fc02d`;
-latest68594:9.635581FPS, effectively flat vs68579:9.608673.20FPS/full parity open.
+latest68601:9.833798FPS vspriorbest68594:9.635581; causal gain/20FPS/full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -52,10 +52,10 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 
 ## Current source ownership and latest result
 
-Root owns shared source/docs/runtime. LIVE68601 PID73462/source77977290;
-fresh43controls/location/exactbinary gates0/fullscreen before login. Active plan
-artifacts/metal/private-covered-shadow-setup-plan-20261109.json: restore ONLY
-after exact73462 shutdown/Goodbye/absence. All older plans restored.
+Root owns shared source/docs/runtime. AllviewersCLOSED;68601/source77977290
+300readyframes9507–9806:9.833798FPS/mean101.690106ms/p50101.502709/p95106.397708.
+Freshstart/end43controls/location/exactbinary gates0/fullscreen before login;
+exact73462 SIGTERM/Goodbye/absence+currentMiddayplanrestore0. Allplansrestored.
 Translator explicitly fully stopped via its uv service command, actual0; stays
 STOPPED, no automatic restart. Latest68579/source1f2cc0 ready300:9.608672762FPS,
 mean104.072646/p50103.895667/p95109.0435ms,bias1/main95/Ultra3456×2168. Freshstart/
@@ -130,19 +130,24 @@ MainCPUactive92→79%; approximateCPU/frame77.6→76.5ms whileFPS11.8→10.75,
 noCPUbusyramp. ThermalNominalfulltrace; clocksunknown. GPUspansgrowbutoverlap,
 no criticalpathproof. Covered-shadow5e1ecb implemented; both optimized428946/95 pass, strengthened
 native commandcounter1747/1 bothpass. Live covered merges16.27%main/18.77%probe
-in one interval; independent interval audit pending, FPS benefit UNKNOWN.
+in one interval; independent39intervalaudit confirms4298.86commands/frame.
+Whole-frame causal gain UNKNOWN; latest9.83vspriorbest9.64 is only~2%descriptive.
 Private Metal3/4samePSO/oldMSL3.1 prototype compiled0/API+GPU0,12coverage/Z
 pairs+positivecontrol rawR32/D32exact. No performance/fullviewerclaim. Normal68601/source779772 doctor/configOFF/build/verify91206each0; independent
 identity/source/library/deepstrictsignature pass (root349ARM64 reviewed).
-Current QA candidate-covered-shadow-20261109-01 waits for probe initialization:
-frame3918/256assigned/151incomplete, camera stable3721frames; no formal CSV yet.
+Current QA candidate-covered-shadow-20261109-01 completed300/allnative1/
+fallback0/256ready/bias1; endgates+exactshutdown+restore0, noimageparityclaim.
 Private fixed-textureM3/M4 CPUbenchmark xitJjX actuallycompiled0, API+GPUstrict
 parity0, quiet168timings0. CachedM3 vsM4 precommit107.459→113.894us/1024draw,
 387.270→404.291us/4096draw: NO WIN. Strictparser shTjM2Y0 SHA03f54b35 verifies
-schedule/parity/thermal; no shippingMetal4 switch. Next ready-gated300frames/
-end43gates andpreserved68597 comparison. New changing-material8/32-slot private
-experiment and whole-shadow parallel proposal are source-only whilevieweractive.
-Do not overlapviewer/GPUtimings; exactexit/restore before privatebenchmarks.
+schedule/parity/thermal. NEWchanging-materialfrBX0a actualcompile0/API+GPU0,
+24strictpairs, quiet168samples0:8slots−59.58%CPUencode/32slots−83.52%,all7paired
+wins. Bindingstressfourrecurringmaterials EVERYdraw/prebuilttables/aniso1,
+notliveFPS. No shippingMetal4 switch; mid-shadowAPI split breaks currentbatch
+ownership. NextprivateM3argumentbuffer ABI comparator preservesnativequeue/
+retention/cancel; prepare shaderresource-only clone and strictsameoutput tests.
+Whole-shadow2orderedchild proposal remains source-only. Fresh68597pairedcontrol
+still required for causalcoveredFPS. No overlappingviewer/GPUtimings.
 No formalFPSgain/infeasibilityclaim. Fullcontinuousdetails inNEXT/archive.
 Corrected64parent68588 control prepared/unlaunched. No FPS gain from counters.
 Ambient-only rewrite REJECTED (all timing ranges cross0). Rejected SH/predecode/

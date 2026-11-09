@@ -728,3 +728,48 @@ No competingGPU/profile/build. RestoreONLYthisplan afterexact73462gracefulexit/
 Goodbye/PIDabsence. TranslatorfullySTOPPED/XcodeGPUreplaySTOPPED. GoalACTIVE,
 20FPSunmet/noinfeasibilityproof. Finishcapture/endgates andpreserved68597control
 before running the new private experiment; all agents text/source-only meanwhile.
+
+### Covered68601 formal result and changing-material mechanism — actual
+
+Current68601 source77977290 300readyframes9507–9806:mean101.690105973ms,
+p50101.5027085/p95nearest106.397708 (linear106.42281635),9.833798386FPS.
+All300native1/fallback0/Ultra6/3456×2168/bias1;256assigned/member/incomplete0/
+ready120; sampledcamera/EEPfixed/restorationalltrue. Freshend43gates0, exact73462
+SIGTERM/Goodbye/absence andcurrentMiddayplanrestore0; ALLplansrestored. Record
+QA candidate-covered-shadow-20261109-01/root-finish-record.json (63957terminal0).
+Mediachildren brieflyremained aftermainexit; compilationadmissionblocked them,
+then confirmedallgone beforecompiler/GPUtests. No privateGPUwork overlappedviewer.
+Independentformalreport /private/tmp/alchemy-metal-covered-shadow-formal-audit-20261109.tYbsMw/summary.json
+SHA6fad0e2570c155988f235054f403879daf263cf1b99024d3a14eb73c410aa6d9.
+Earlier68597ready3008.159295→9.833798(+20.52%FPS) is onecrosssessionpair;
+priorbest68594ready9.635581→currentonly+2.057%. All43graphics/EEP/packaged61c5MSL
+match; sampledposesinternallystable, crosssessionZdiff2.29e−5m. No causalclaim.
+Actualdrawmean53901.83→50455.67(−6.39%); sourcefamilycounteraudit confirms
+~4298.86coveredcommandsremoved/frame; no triangles/shaderwork omitted.
+
+Changing-material nativeM3/M4 packet frBX0a host34f04741d5bc4252d98cd210b3daea16dc33f637ab052d8c33ac827c14c688d2
+actualO3/NDEBUG/ARCcompile0 at23:47:33.992–35.009UTC, API+GPUvalidation0 at
+23:47:43.644–46.653, quiettiming0 at23:48:04.614–06.821. ExeSHA
+6724dbc9c8ff2d3a152f025bf07457f89a9c72e4f1b74107d52a0e38e1f57f57,
+samecurrentMSL3.1lib61c5/PSOs/math; independenthost/manifest/exe/library/flags/
+env/actualexit verification recorded. All24strictR32/D32pairs +CPUall-selector/
+materialoracle pass; validationactualenabled/noerrors/warnings/zero timings.
+Quiet168rows/all7counterbalancedpairedblocks/2targets/commonrepeat/thermal0 pass.
+Per4096drawencode8slots1.183785→.478506ms(−59.58%,paired−60.83..−57.93%);
+32slots3.657612→.602937ms(−83.52%,−83.96..−83.24%). Measuredhostlifecycleexcluding
+GPUwaitAMORTIZEDperencoder1.185431→.481319ms(−59.40%),3.663208→.611554(−83.31%).
+Controlsencode+0.50/−0.04%8slots,+0.54/−1.53%32slots; rangescross0. CommonR10/3;
+M4fastarm4.8/1.8msbelow8ms flagged14/14. SetupandGPUwait separatelyreported.
+Fourrecurringdisjointmaterials change EVERYdraw/allslots, cachedtable/residency
+setupoutside/aniso1bothAPIs: a binding-stress mechanism, notlive transition
+distribution/FPS. FixedtexturecasepreviouslyNOwin; no universalMetal4claim.
+
+Independentparser/report /private/tmp/alchemy-metal4-material-parser-20261109.ZFV27thx/ACTUAL-REVIEW.md,
+summarySHA4c4bd444fb67ab254421db43322a7816641e782bc82e02eabef27ce50d9fbf14,
+provenanceSHA569249ee91a765d8b780c7c5217dc5897c7dd872bce28e4b27c0ed69dbd04c70.
+NEXTprivateM3argument-buffer comparator preservesqueue/hero-batch/cancel/arena
+ownership whilechangingonlyresourceABI; sourceprep trace_recheck, noexecution.
+Metal4mid-encoder covered-only split is unsafe withoutnewownership/attachment/
+eventscontract. Whole-shadowparallel two-child sourceproposal Xoxaun SHA
+b75fea1fac7ce1ac3b1526b7a3a6ace8204b3a5c78d02bd1b91a7dff341564a1 remains
+unimplemented.20FPSunmet/infeasibilityunproved; allreleasegatesremainOPEN.
