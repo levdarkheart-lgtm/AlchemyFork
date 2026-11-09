@@ -1,6 +1,6 @@
 # Direct shadow packets and populated texture bindings — 2026-11-08
 
-The owner requested further low-FPS repair. Source-exact `68553` at `b1d198674d`
+Renderer commit `6c694df23756ed9805b7d853fa83d9fc64212c04` implements the repair after the owner requested further low-FPS work. Source-exact `68553` at `b1d198674d`
 passed correctness but regressed its 300-frame run, so its isolated ICB CPU
 benchmark was not accepted as a viewer gain. See the
 [experiment report](CURRENT-68553-shadow-indirect-runtime-2026-11-08.md).
@@ -53,3 +53,18 @@ bundle, same full-screen-before-login/Midday/Preset123 flow and21-control gate.
 Its run directory is
 `artifacts/metal/qa-runs/candidate-68550-baseline-rerun-20261108-01`;
 metrics folder `/private/tmp/alchemy-metal-68550-baseline-rerun-20261108.92x7iims`.
+
+Source-exact Xcode Release68554 build exits0; deep strict signature verifies.
+Executable SHA-256:
+`223bdc1054b9cdf73c336a26530431ded5eb4ca001de0339c74390ec41af93db`.
+Packaged shader SHA-256 is exactly the measured68550 library:
+`5bd02961a77fdfcef9d28410e9f92fc86d1de08197aec113660e0cd0ccd779d1`.
+The source-exact frame comparison is pending.
+Final validated native-span mechanism benchmark is
+`native-span-comparison.json` SHA-256
+`8c399378d65a3db97eb427fa2bbcb07b637625999c0c2ce578c85c75f4167e24`.
+It reports18.7–28.7% lower CPU prepare/encoding versus direct wrappers and
+broadly similar completed GPU command spans. Those spans have live-viewer
+competition and are not isolatedGPUcost or viewerFPS. The optionalICB variant
+retains higher syntheticGPUspans; flag-only normal draws show no consistent
+penalty. All four modes preserve exactreadback.

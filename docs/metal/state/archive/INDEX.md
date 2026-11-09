@@ -6,6 +6,10 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| Isolated layered-shadow tradeoffs, timestamp capability and Apple guidance,2026-11-08 | [CURRENT-ultra-goal-experiments-2026-11-08.md](CURRENT-ultra-goal-experiments-2026-11-08.md) | `docs/metal/work/active/ultra-20fps.md` |
+| Completed68554 direct-shadow runtime and active20 FPS goal baseline,2026-11-08 | [CURRENT-68554-direct-shadow-runtime-2026-11-08.md](CURRENT-68554-direct-shadow-runtime-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
+| Recovery snapshot before Ultra20 FPS campaign,2026-11-08 | [CURRENT-before-ultra-goal-2026-11-08.md](CURRENT-before-ultra-goal-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
+| Detailed pre-campaign handover,2026-11-08 | [NEXT_SESSION-before-ultra-goal-2026-11-08.md](NEXT_SESSION-before-ultra-goal-2026-11-08.md) | `docs/metal/state/NEXT_SESSION.md` |
 | Direct shadow packets, compatible-range merging and populated texture bindings,2026-11-08 | [CURRENT-direct-shadow-texture-checkpoint-2026-11-08.md](CURRENT-direct-shadow-texture-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Source-exact68553 indirect shadow regression and CPU redistribution, 2026-11-08 | [CURRENT-68553-shadow-indirect-runtime-2026-11-08.md](CURRENT-68553-shadow-indirect-runtime-2026-11-08.md) | `docs/metal/state/CURRENT.md` |
 | Cached native shadow commands and shader dead-work repair, 2026-11-08 (runtime pending) | [CURRENT-shadow-indirect-checkpoint-2026-11-08.md](CURRENT-shadow-indirect-checkpoint-2026-11-08.md) | `docs/metal/state/CURRENT.md` |

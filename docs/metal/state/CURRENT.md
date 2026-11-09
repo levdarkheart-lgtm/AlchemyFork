@@ -1,160 +1,115 @@
 # Current engineering state
 
-**Observed:** 2026-11-08 on the physical M1 Max acceptance host.
-**Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `b1d198674d` implements the next performance repair: cached static opaque shadow commands, one immutable constant slab, completion-owned indirect resources, lazy terrain factors, exact legacy base-light dead-work gates and native draw census. Full validated Release/RelWithDebInfo suites each pass 56,620 assertions/73 cases; product build/runtime comparison pending. Measured predecessor remains `175cd155dd` / Release `68550`; alpha-2 remains `26.4.0.68512-alpha2`.
-**Continuation:** [next-session handover](NEXT_SESSION.md). **Historical evidence:** [archive index](archive/INDEX.md)
+**Observed:** 2026-11-09 on physical M1 Max/64 GiB, macOS26.5.2, Xcode26.6.
+**Branch:** `codex/apple-silicon-metal`.
+**Renderer code checkpoint:** `d1966efd09654659e83c0f2df926a36e8d7f023c` — early
+shadow admission, obsolete probe-set removal and opt-in query/camera/pass census.
+**Continuation:** [next session](NEXT_SESSION.md), [active ledger](../work/active/metal-port.md),
+[20 FPS campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
+
+## Active owner goal
+
+Try to achieve at least20 FPS on Ultra with general native optimizations,
+preserving original quality/functionality. Autonomous quit/relaunch/login and
+measurement are authorized. Live tests stay at the current location and
+Preset123; do not move the avatar or visit other regions. Use Mac keyboard
+shortcuts first and verify their result. Broader coverage uses varied fixtures
+and source parity, not scene-specific branches. Explain with evidence if the
+goal proves infeasible. The product release gates remain separate and open.
+
+## Latest observed artifact and runtime
+
+- Latest measured artifact:6c694df237 source-exact Xcode Release26.4.0.68554 under
+  `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
+- Executable SHA-256 `223bdc1054b9cdf73c336a26530431ded5eb4ca001de0339c74390ec41af93db`.
+- Metallib SHA-256 `5bd02961a77fdfcef9d28410e9f92fc86d1de08197aec113660e0cd0ccd779d1`,
+  byte-identical to measured68550. Deep strict signing and349 ARM64 slices pass.
+- Complete preserved baseline: `/private/tmp/alchemy-metal-68554-goal-baseline.app`.
+- Both full Release/RelWithDebInfo suites pass57,344 assertions/75 cases with
+  Metal API/GPU validation. These results precede current uncommitted goal work.
+- Same full-screen-before-login/Midday/Preset123,3456x2168,21-control Ultra gate:
+  fresh68550→68554 CSV mean118.916→102.679ms (8.409→9.739 FPS),
+  p50117.437→101.876ms, p95133.511→119.074ms,300 exact-native rows each.
+- Eligible static-shadow records coalesce69.86%; median55,647 physical native
+  draws/frame remain. Main thread94.28% of one core; hero50.44% of main samples.
+- Traced presents7.003→7.998/s; encoder CPU60.772→44.052ms/present. Pre-encoder
+  preparation is excluded; inclusive CPU scopes and GPU channels overlap.
+- Important confound: main opaque-post GPU cost swings0.3–20ms/present across
+  unchanged-shader runs. Observed throughput gain cannot be assigned entirely
+  to the code. Exact main-camera/pass/query provenance is the next control.
+- [Complete latest runtime record](archive/CURRENT-68554-direct-shadow-runtime-2026-11-08.md).
+- The viewer is currently closed for isolated experiments. No region change
+  occurred. Do not confuse historical PID89607 with a current live process.
 
 ## Active implementation checkpoint
 
-The owner-directed essential-first OpenGL cutover makes startup, normal UI/text, world/avatar/material rendering, streaming, presentation and readback usable without GL before Debug/Develop/RLVa-only paths. This changes order, not scope: required features must be replaced rather than deleted.
+- `shadow_contract`: completed early capture implementation/review;
+  early static-source validation/coalescing, independent logical reconciliation,
+  every family/view barrier. Release build and real GPU raw-depth proof pass;
+  CPU benchmark saves0.157ms/10k sources at70%joins, nonmerge−2.6%to+3.3% noise.
+- `trace_recheck`: query pool, octree/spatial hooks, benchmark/display files;
+  default-off unique-query/poll/rejection counters and private exact main-camera
+  provenance and obsolete probe-set cleanup. Release/RWDI tests and pipeline
+  syntax pass; independent cleanup review passes. Actual viewer proof pending.
+- `draw_cpu_costs`: layered6/12-view general integration deferred after low-overlap
+  CPU/GPU regressions. A standalone base-probe accumulator A/B is prepared;
+  named accumulator A/B was slower twice and rejected. No product shader change.
+- Root owns almetalworld/shaders/CMake/docs/integration and opaque pass census.
+  No shared build while isolated timings or measured live windows are active.
+- Native direct production path remains active; experimental ICBs stay opt-in.
+  The earlier68553 ICB experiment regressed and is not a performance success.
+- Committed d1966efd09: Release and RelWithDebInfo full Metal66,962/79 each,
+  llrender2030 assertions/229 cases (one unrelated single-palette-font skip),
+  benchmark423 assertions/13 cases pass. Metal API/GPU validation enabled on
+  actual host GPU. Restricted-process no-device attempt failed before host rerun.
+  Source-exact product/runtime validation remains pending. Logs are
+  `/private/tmp/alchemy-metal-20fps-{release,rwdi}-*`; harness32 passes.
+  [Experiment results/source mapping](archive/CURRENT-ultra-goal-experiments-2026-11-08.md).
 
-Source-exact `68553` at `b1d198674d` builds/signs/verifies 349 ARM64 slices and passes both full GPU-validated suites, but the matched 300-frame live run regresses p50/p95 from 112.78/133.69 to 124.32/139.70 ms. CPU preparation offsets most encoder savings; this is rejected as a performance win. Native direct bulk shadow draws with adjacent-range merging, populated ordinary/material/PBR bindings and original shaders are now implemented; final Release/RelWithDebInfo validation each passes57,344 assertions/75 cases. New build/comparison pending. [Regression and next repair](archive/CURRENT-68553-shadow-indirect-runtime-2026-11-08.md). Metal is the sole post-startup presenter. Production geometry, textures/fonts and async uploads are Metal-authoritative with no parallel GL names; Snapshot has no GL scratch/reconcile path. Direct Metal owners cover normal world, material, avatar, shadow, sky, water, atmosphere, selection and converted effects. Latest `175cd155dd` uses lazy inline material/coverage data, one uploaded range for identical vertex/fragment constants, cached shared-page mappings and original shared G-buffer depth through pooled lighting color ownership. No shader math, shadow coverage, six-face Ultra cadence or quality was reduced. Full validated Release and RelWithDebInfo Metal suites each pass 53,838 assertions/68 cases. Source-exact Release `68550` builds/signs/verifies 349/349 ARM64 slices; executable/metallib SHA-256 values are `b54af1c45224738f9a8f6ec42e17a5ea3cc20478cb900e260c77101d9a66ecf9`/`5bd02961a77fdfcef9d28410e9f92fc86d1de08197aec113660e0cd0ccd779d1`. [Implementation proof](archive/CURRENT-draw-payload-depth-reuse-checkpoint-2026-11-08.md). Owner-attended full-screen-before-login, Midday/`Preset123`, 3456x2168 comparison now records 8.8 versus 8.2 median log FPS (+7.3%), 7.180 versus 6.790 traced presents/s (+5.75%) and CPU encoding 59.33 versus 65.70 ms/present. All 21 live Ultra controls match; 300 candidate frames are consecutive/exact-native (p50/p95 112.78/133.69 ms), with no admissible predecessor CSV for the formal paired gate. Base-light depth copies fall from 8.014/present to zero. Remaining culling/draw/binding CPU work and hero GPU time are substantial. [Runtime evidence and limits](archive/CURRENT-68550-draw-payload-runtime-2026-11-08.md). No further renderer change was applied during measurement.
+## Preserved contracts and known limits
 
-The latest essential sequence is:
-
-- `9e90be44e1` separates renderer capabilities from `gGLManager` and obtains
-  Apple Silicon limits from the selected Metal device.
-- `70eca3a0c9` separates native renderer initialization from legacy GL
-  initialization.
-- `e3ec32d3b2` makes renderer state semantic and safe with no current GL
-  context.
-- `349c0278c3` makes texture and shader binding bookkeeping contextless while
-  preserving native authority.
-- `3087308155` configures the loader-authored pass/rigged/classic/mirror graph
-  as native semantic identities without reading, compiling or caching GLSL and
-  without creating GL program/shader names. Essential avatar, terrain and
-  world/UI composition consumers accept those native identities. Existing MSL
-  libraries and Metal encoders still own executable GPU work.
-- `22def49efb` removes the Darwin SDL OpenGL-window flag, context creation and
-  currentness, shared-context path, `gGLManager` initialization/shutdown and GL
-  renderer bootstrap. The opaque `CAMetalLayer`, native device/scheduler,
-  Metal-only `LLRender` initialization, display/input/fullscreen lifecycle and
-  renderer telemetry remain.
-- `def3811797` removes the hidden Darwin GL backend and CGL shared-context
-  implementation, initializes the appearance utility through the native Metal
-  device/scheduler path, removes the product `llrender` OpenGL dependency and
-  builds SDL with its Darwin GL/Vulkan platform backends disabled.
-- `1a76b76a6d` removes the hidden backend's remaining cross-platform GL
-  implementation and the texture/vertex workers' shared-context fallback.
-  Async uploads retain Metal batching and fail closed without authoritative
-  Metal textures. Darwin no longer builds six legacy GL-only test executables.
-- `f7ecf74e84` removes visible-window GL lifecycle; SDL/Cocoa now owns only its Metal surface, Darwin procedure lookup fails closed and `sdl_gl` is zero.
-- `c865c15220` replaces ordinary-frame `GLsync` creation, polling, waiting and
-  deletion with an ordered Metal command-submission timeline. Frame pacing,
-  safe resource reuse and teardown draining remain explicit native behavior.
-- `8bd5ff1bfd` replaces `ALGPUBuffer` GL storage/transfers with private/shared
-  `MTLBuffer` and ordered blits; stream rings fail closed on open-frame reuse.
-- `dd41713fea` replaces `ALUniformBuffer` GL allocation, mapping, upload and
-  binding with Metal storage and timeline-safe stream/scratch rings while
-  retaining matrix/light/environment/deferred/GLTF producers.
-- `cafe91682c` replaces GL sampler objects/enums with stable logical identities
-  and backend-neutral descriptions consumed directly by Metal encoders.
-- `6ec5884b85` publishes actual Metal texture identities through ordinary slots,
-  makes native cube maps bindable, and removes the white-GL-texture detour from
-  native-only image sampling while retaining dimension and sampler semantics.
-- `e607b19e27` removes the slot's remaining driver texture/sampler/unit calls;
-  unresolved integer render-target names fail closed pending native attachments.
-- `07e4d7a626` replaces `LLRenderTarget` GL ownership with typed Metal owned and
-  borrowed color/depth, shared depth, mip, clear, copy, resample, swap and
-  sampling behavior. Default-window copies fail closed pending the retained
-  Metal presentation texture; no GL driver call remains in this owner.
-- `029694fedb` gives image slots typed Metal read/write attachments, validates subresources/access and rejects raw integer identities. It removes the dormant
-  GL depth-pyramid owner/GLSL while retaining native water hierarchy/cull compute.
-- `e8eaa3701b` replaces transient-target GL side effects/poison clears with explicit Metal attachment clears while preserving shared depth; `768250a2fc` makes Metal exposure/lens-flare history native-owned.
-- `ecf223cf4c` removes scale-down/CEF GL tails; `a3067b1aac` makes noise/SMAA lifecycle native; `9c74277821` makes font atlas allocation, glyph publication and release Metal-only with no runtime GL fallback.
-- `60e350e29a` removes orphan cube-array/framebuffer-copy GL owners; `c62977bd49` makes ordinary texture publication Metal-only; `8a00656289` removes uncalled
-  GL ownership modes; `b86b1e4c53` repairs Snapshot state; `1081614942` removes legacy GL queries; `2e255de87c` makes ordinary texture residency, invalidation,
-  cache identity, preview/save, terrain/map/avatar/bump and projector availability native.
-- `6e5047e50b` removes retained UI/text geometry's raw texture/sampler names and GL replay fallback; `b971465ca7` deletes superseded retained GL glow/SMAA; `f77024a20a` makes lens-dirt generation Metal-authoritative; `1bfe631627` removes `LLRender`'s dormant GL driver-state, clear, draw and compute authority while retaining semantic state for Metal encoders. Unsupported instanced/indirect/compute entry points fail closed pending native owners.
-
-`LLGLSLShader::isComplete()` remains a linked-GL-program predicate; native identities do not masquerade as GL. Snapshot source state is repaired; execution remains owner-attended. The source-exact Release artifact is now a bounded owner-attended startup/login/world-load smoke-test candidate, not a parity or GL-zero claim.
-
-The viewer, renderer tests and appearance utility have no OpenGL/Vulkan link or unresolved GL-family import; SDL's unselected stubs do not enter the product. Native Metal visibility-result queries replace the missing scene/probe query path. Persistent world samplers follow the original live anisotropy levels (`0→1`, then `2/4/8/16`). Bounded attended Release `68521` held live occlusion and anisotropy `4`, but its directional 6.35-versus-5.9 FPS comparison lacks a pinned camera/source-exact predecessor and proves no isolated gain. Commit `e90ccdf18f` restores independent vertex/index dirty uploads and completion-retired Metal generations. Commit `8247d09c5d` restores exact-original bounded ordinary lights; `f93c9f1927` renders directional/projector raw depth directly into retained R32 slices. Commit `8f4d5654e5` borrows exact retained G-buffer attachments, shares sequential haze depth, removes 24 overwritten material/PBR texture calls and inlines skin palettes through 4 KiB. In owner-attended Ultra `68532`, a settled 30.697-second trace records 8.633 presents/s, 31.702 submissions/present, 4.661–4.795 GiB allocation and Nominal thermals; the former 7.589/present shadow-retention copy stream is zero while direct shadow renders rise to 8.211/present. Later commits `7cd1993d8e`, `1682010004`, and `f8af790f32` separately improved memory-pressure accounting, projector reuse, and unchanged binding suppression, but same-scene/camera releases `68537`/`68539` reached only 5.188/6.009 traced presents/s and 6.0/7.1 median log FPS. At the owner's request, `ec8159f8fb` restored every non-documentation source file to the measured `68532` renderer state; `177c443cfd` then reapplies only the exact `f8af790f32` encoder-local native-handle binding cache. The texture-pressure and projector-sharing changes remain reverted. This is a comparison checkpoint, not proof that either omitted change caused the regression or a formal benchmark. The [runtime](archive/CURRENT-native-world-runtime-measurement-checkpoint-2026-11-08.md), [texture-pressure](archive/CURRENT-native-texture-pressure-accounting-checkpoint-2026-11-08.md), [probe-projector](archive/CURRENT-probe-projector-sharing-checkpoint-2026-11-08.md) and [68537/binding](archive/CURRENT-68537-texture-binding-runtime-checkpoint-2026-11-08.md) checkpoints preserve provenance, hashes and limitations.
-
-### Attended-runtime correction committed as `2e2ac6e1c9`
-
-Package `26.4.0.68493` was tested after tracing its Mid black screen against the original OpenGL renderer. The original path draws one tessellated wave patch plus three surrounding flat-water groups; Metal correctly published four groups, but world capture accepted only three and discarded every affected post-deferred world/UI frame.
-Commit `2e2ac6e1c9` gives `ALMetalWaterSurface` one shared `expectedFieldDrawCount()` invariant (`4` with waves, otherwise `3`) for capture and renderer validation, plus a focused GPU assertion.
-An attended login directly into persisted Mid (`RenderQualityPerformance=2`) rendered continuously for 500+ complete native world/UI publications. `first_incomplete_line=8073` and Metal validation/GPU errors did not recur; this proves the bounded Mid correction, not broad parity, High/Ultra stability or release readiness.
-
-### Resource and UI checkpoints through `dbe1215cea`
-Archived checkpoints cover [mirror resources](archive/CURRENT-mirror-resource-lifecycle-checkpoint-2026-11-07.md) and [UI clips/Conversations](archive/CURRENT-empty-ui-clip-checkpoint-2026-11-07.md). The latest fix clears the hero publication count before the mirrors-off return, retires only native hero source/radiance/binding state when the resource plan drops mirrors, and gates every direct Metal consumer on the live mirror plan. In attended `68499`, enabled-at-login then toggle-off visibly worked and logged count/resource retirement; a separate mirrors-off-before-login run logged successful login and continuous world/UI publication and visibly loaded normally.
-
-### Attended directional-shadow correction — 2026-11-07
-
-Release `26.4.0.68502` initially retained the Shadows preference but produced no visible world shadows. Original-path tracing showed null indexed GLTF-material slots are fragmented batch gaps and streaming textures bind the default image; Metal had invalidated a whole cascade for either condition. Commit `af65f062a1` preserves sparse slots with inert material data, uses the default native texture for streaming legacy/PBR/tree/covered-avatar casters and keeps null avatar images fail-closed. Diagnostics show four populated `3472x1920` cascades, moving caster shadows and no repeated main-cascade invalidation; one separate hero-probe terrain attempt recovered on retry. Release/349-slice verification and 52,774 assertions/57 cases pass.
-An exploratory `Preset123`/Midday/128 m/Mid/Sun-Moon+Projector/ACES 1.0/no-sharpening `3456x2168` pair inadvertently used `/Applications/Alchemy Beta.app` (`7.1.9.2516`, executable SHA-256 `a361437f58866d9f41b029b21048cebc6dee635ee8678e41d40dfa5a20daa75a`) rather than the pinned QA reference. It suggests Metal is darker with softer/lower-contrast shadows, but is not acceptance evidence. The exact-base OpenGL reference has now been rebuilt and fully staged at `/tmp/alchemy-reference-1eb44bb/build-Darwin-ninja-os-arm64/newview/Release/Alchemy Metal Development.app`; its new executable SHA-256 is `de8fc8f817c0afb2063f641e9c24cbd58054c32c3053f4d0e863232498bb1797`. The prior `fac5225435df2c096d10b856f6e0f186b37e41446576398ee8f4842b884ef28d` executable survives only in preserved incomplete bundle `/tmp/alchemy-reference-67607-incomplete-backup.app`. The owner then captured the exact `67607` reference and Xcode Release `68502` Metal candidate at matching `3456x1916`; image SHA-256 values are `c73ed75207b9aa115cd193a9f5280fdbaf05fb8e1b44406c0316c7b4d6247b4c` and `39a08453dfe77ca732c9bb6440d05a097d8a153397aac84dc7a19912d3e792e1`. Settings screenshots preceding each save establish exposure `1.0`; the owner confirms matched Mid, `Preset123`, Midday/Lightbox, 128 m, Sun/Moon + Projector, mirrors 512/every third frame, ACES and zero sharpening. These are bounded owner-attended captures, not a formal parity pass: their run manifests predate the corrected QA profile and the candidate LEAP probe was blocked by an obsolete unsupported diagnostic key.
-
-### High/Ultra quality corrections — 2026-11-07
-
-The owner-observed Mid-to-High freeze was a repeated failed-frame loop, not a deadlock. Exact original tracing shows High enables `RenderDeferredSSAO` and the OpenGL noise authority is `GL_RGB16F`; Metal's source-correct CPU publication is therefore `rg16_float`, but `renderLightMap()` still required the superseded `rg32_float` GL-readback mirror. Commit `8a201381e2` aligns that consumer contract and its GPU test with the production `rg16_float` resource. In attended working-checkpoint package `68505`, live High plus a manual Mirrors re-enable continued current-frame world/UI publication past 1,300 frames with zero G-buffer incompatibility messages; High disabling Mirrors itself is original preset behavior. Ultra plus Mirrors exposed a separate repeated fail-closed loop: the light-map validator compared actual shadow depth to a stale planned resolution and required a positive PCSS scale even though the exact original cube-snapshot path takes its raw single tap before PCSS. Commit `921aed5ca9` derives resolution from the retained Metal texture and exempts only the probe-single-tap path from PCSS scale. Source-exact `68508` and exact-base OpenGL `67607` owner captures at `3456x2168` have image SHA-256 values `30e90493ffea570c74f71c8f2e1a26c5044731b398151dee678ffc9dc1c5ef2c` and `082c610acb4d00963dc4a450a6abf5f7533b6bdd8aa75609b2e85a99bb72997f`; fresh LEAP samples match all 17 compared Ultra controls and exact world position. The owner accepts broad lighting, directional shadows, sky and color as similar enough to move on; the remaining visible question is the mirror's upper reflected background (blue-gray in Metal, green terrain in OpenGL). Because both runs changed Mid to Ultra after launch, this is bounded attended evidence rather than a formal fail-closed gate artifact or broad parity pass. Bounded `68508` profiling isolated CPU-side mirror shadow/probe submission granularity: 4.9 versus 8.1 FPS and 66.60 versus 28.19 command buffers/present with Mirrors on versus off, only 40.4% GPU activity and Nominal thermals. Release `68511` folds face shadow work into the hero transaction for median 6.8 versus 5.4 FPS and 30.2% fewer command buffers/present. Commit `3bd0451efc` then restores original camera-outside projector volume bounds as conservative Metal scissors: Release `68512` passes 52,796 Metal assertions, signing and 349/349 ARM64 verification; Low/Mid/High/Ultra publish continuously, main/hero projector GPU-channel time falls 78.9%/86.7%, total labeled work falls 28.9%, and attended Ultra remains median 7.1 FPS. Commit `c436b9fe6e` next restores the original deferred-soften depth split: main base-light GPU-channel time falls from 11.470 to 2.688 ms/present (-76.6%) in bounded traces. Two atmospheric shader rewrites regressed haze by 3.2%/3.9% and were reverted. An attended working-tree `68516` strict Ultra run fell from 22.8 to 9.1 FPS when the hero/probe workload published and settled at 8.2-8.9; selecting Midday then held 8.3-8.7, so the startup burst—not the environment click—was incomplete-workload evidence. Commit `1e962c84e2` now requires both 120 warm-up frames and 30 elapsed seconds by default. Source-exact Release `68518` embeds that commit, passes 52,798 Metal assertions, 99,002 viewer assertions and 349/349 ARM64 verification, and has executable SHA-256 `764a0e8f5372e62357f7b67b354a0fbe1e50e53c25aed39c466caeb1a1fe3fde`. The 24 FPS objective and paired 300-frame gate remain open; [new archived evidence](archive/CURRENT-base-light-depth-classification-2026-11-08.md) preserves provenance, hashes and limitations. Alpha-2 packaging remains documented at tag `26.4.0.68512-alpha2` and is not a completion claim.
-Fully resident Release `68521` profiling found main opaque post-deferred at `55.307` ms/present, haze at `17.544`, and base light at `17.267`; CPU attribution found query mechanics at only 0.4% of sampled main-thread time while shadow/probe work dominated. The prior base-light trace began only about 32 seconds after launch and contained `0.579` ms/present of opaque-post work, so it did not include the final streamed workload and cannot establish haze/base light as the next largest targets. The [new profiling checkpoint](archive/CURRENT-native-occlusion-anisotropy-performance-2026-11-08.md) records provenance, hashes and limitations. Trace fully resident original-viewer opaque post-deferred content/state/order before changing Metal; separately instrument issued/ready/culled query activity because live enablement does not quantify cull effectiveness. The 24 FPS and formal paired 300-frame gates remain open.
-## Build and validation evidence
-
-- `tools/metal/doctor.sh` passes on macOS 26.5.2, MacBookPro18,2, M1 Max, 64 GiB unified memory and Xcode 26.6; Metal reports Apple family 7 and 62,277,025,792 bytes.
-- Source-exact Xcode Release warnings-as-errors build/stage and `tools/metal/verify_app.sh` pass; the current product, renderer-test and appearance-utility executables have no OpenGL/Vulkan dependency or unresolved GL-family symbol.
-- Exact `1eb44bbd1b` query tracing (source blob SHA-256 `df2536af88d9edf75f68fbccfe082d4b536d531684f19176e177fc6e405dd534`) is preserved: native Boolean/conservative and Counting/exact queries use original cube fans, exact opaque-batch issue order and fail-open async lifetime. The query proof passes 49 assertions; full Release llrender passes 1,881 assertions across 224 cases (223 passed, one skipped), and the real-device Metal suite passes 52,815 assertions across 58 cases, including visible/clipped results and before/after-opaque ordering. Release `68519` builds/stages/signs and verifies 349/349 ARM64 slices; executable SHA-256 is `1f7d1f5ae827dbad23ae24e1cbc8413925ab03488b53fe8d21a44146cf1cb28b` and packaged metallib SHA-256 is `163168fe50cedaa022a87608f354655246eb110838ad6ba113172555882181a1`.
-- Native glow/SMAA pass 19,815 assertions/four GPU cases; native lens-dirt and display-post ownership pass 3,019 assertions/two cases; native font atlas upload/readback/release passes 28 assertions/five cases.
-- Native transient-pool proof passes 943 assertions/14 cases; full alrender passes 556,617/556,617 assertions across 132 cases.
-- `tools/metal/build.sh test` passes all 517 registered tests in 1,204.60 seconds; six Darwin GL-only migration suites remain intentionally omitted.
-- The appearance utility compiles and links through the Metal-only hidden backend; params and joint-offset modes exit 0. Its texture fixture exits 5 before window creation on invalid J2C, so it is not backend evidence.
-- Fresh shared renderer suite: 3,698 assertions pass across 111 cases.
-- Focused shared GLSL suite: 1,353 assertions pass across 25 cases, with 13 hardware-dependent skips.
-- The broad shared suite still reproduces pre-existing host/driver failures:
-  four assertions in three frame-fence timing cases and one render-target
-  depth-format assertion. The same failures occur in the earlier Release
-  binary; changed files do not own those components.
-- `python3 tools/metal/validate_harness.py` passes all 32 required files;
-  `python3 -m unittest discover -s tools/metal/tests -v` passes 31/31.
-- Commit `f799262971`: original `1eb44bbd1b` tracing confirms literal `0/2/4/8/16` sampler intent and Ultra `4`; native sampler/world replacement proofs pass 8,092 assertions, full llrender passes 1,892 assertions/225 cases (one skipped), full Metal passes 52,842 assertions/59 cases, Xcode Release `68521` builds/signs and verifies 349/349 ARM64 slices; executable SHA-256 is `a527489ee69388abd6c34003e5d22632190807d7b8d95b589087f72b63a04353`.
-- Commit `e90ccdf18f`: exact original `1eb44bbd1b` tracing establishes selective store upload plus `glBufferData` orphaning. Focused Release and RelWithDebInfo native proofs each pass 46 assertions; full Release llrender passes 1,938 assertions/226 cases (one skipped), full Metal passes 52,842 assertions/59 cases, and source-exact Xcode Release `68525` builds/signs and verifies 349/349 ARM64 slices. Executable SHA-256 is `cb42e7fd22575fba27096ba40ce2e514cade94a82eb8a0a68a2cdb9840315403`; harness/tool tests remain 32/32 and 31/31.
-- Commits `8247d09c5d`/`f93c9f1927` restore bounded point lights/direct shadow slices with focused and full validated Metal proof. Commit `8f4d5654e5`: validated Release/RelWithDebInfo G-buffer and shadow cases pass 8,075/129 assertions each; full validated Release Metal passes 52,869 assertions/59 cases. Commit `7cd1993d8e`: texture-pressure proof passes 22 assertions/6 cases and full viewer tests pass 99,012 assertions/752 cases (one expected skip). Commit `1682010004`: projector/visibility focused cases pass 1,991/10 assertions and the full Metal suite passes 52,870/59. Commit `f8af790f32`: full Metal remains 52,870/59; source-exact Xcode Release `68539` builds/signs/verifies 349/349 ARM64 slices, executable/metallib SHA-256 `427414330ab546c034536fc27227c1bad335726290bc963a1eb0087fe631a6cb`/`4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`.
-- Commit `ec8159f8fb`: owner-directed rollback restores the measured `68532` renderer source. Xcode Release `68541` builds warnings-as-errors, passes deep signing and 349/349 ARM64 verification; validated Metal passes 52,869 assertions/59 cases. Executable/metallib SHA-256 values are `54a8c05c4918f40dfe2e0d5e82a7ede9d57b2db73528e1abb1b1b4bd2f9549ae`/`4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`. Owner-attended PID `59683` was launched with the pinned Ultra profile; login/runtime measurement remains owner-controlled and is not yet claimed.
-- Commit `177c443cfd`: reapplies only the exact `f8af790f32` binding cache over the measured renderer. Xcode Release `68543` builds warnings-as-errors, passes deep signing and 349/349 ARM64 verification; validated Metal passes 52,869 assertions/59 cases. Executable/metallib SHA-256 values are `dfc5b4e92e36ee23df8da327232f69b42973b492bd6f119ef85e8d131298f82d`/`4f4778e6d6558654b52986ac4caa69b42add1ec1fe940bed331844a9f1ad97bb`. Owner-attended PID `86187` is launched with the pinned Ultra profile and exact-native 30-second/120-frame warm-up plus 300-frame collector; login/runtime verification remains owner-controlled and is not yet claimed.
-- Release `26.4.0.68493`, built from the mixed working checkpoint containing the now-committed correction at 2026-11-07 01:08:12 GMT, has executable SHA-256 `dfd02973a45085b790c334f1c47574549ce632b6b9e6f6a377946574f972ffd0`; `verify_app.sh` passes 349/349 ARM64 slices and attended Mid/HDR evidence is `/tmp/alchemy-metal-68493-water-wave-release-20261107.log`.
-- At `dbe1215cea`, Xcode Release `68499` builds warnings-as-errors and verifies 349/349 ARM64 slices; the direct Metal suite passes 52,772 assertions across 57 cases. Release-tree `ctest` correctly reports no registered tests because that preset has `AL_BUILD_TESTS=OFF`; the separate Ninja test preset supplied the passing suite. Owner-attended mirror toggle-off and mirrors-off startup/login both pass; raw account/location logs remain local.
-- Commit `af65f062a1`: Xcode Release `68502` builds and verifies 349/349 ARM64 slices; the direct Metal suite passes 52,774 assertions across 57 cases. Opt-in runtime diagnostics and owner evidence show four populated main-world directional cascades and stable moving avatar/object shadows.
-- Commit `921aed5ca9`: source-exact Ninja Release `68508` builds, stages, signs and verifies 349/349 ARM64 slices; executable SHA-256 is `01dbd31503c99c2d3fb315c2584fe75d38c5f3478a35facc889c5b0fd82c6c5d`. The full Metal suite passes 52,777 assertions/57 cases, including the Ultra probe-single-tap/ordinary-Ultra validation split. Its bounded owner-attended Ultra pair with exact-base OpenGL `67607` matches 17 live controls and world position; broad lighting/shadow/sky/color appearance is accepted for this checkpoint, while mirror terrain/content parity and formal launch-gated capture remain open. This exact source commit is the target of first-alpha tag `26.4.0.68508-alpha`. Release `68511` (`d4b150e31414a1437858a6e188e466564cb9100c0d9140afd05ca454ee3e4c07`) passes 52,786 Metal assertions; commit `3bd0451efc` Release `68512` (`86c520d97bdf640d9e791b6108c62bfb81cd1d40b99685dd73cd135ffcd411fe`) builds through `tools/metal/build.sh`, passes 52,796 assertions, deep signing and 349/349 ARM64 verification, publishes across all four presets and reduces traced main/hero projector GPU-channel work by 78.9%/86.7%.
-- External OpenGL reference validation HEAD `734afd3179` is exact renderer base `1eb44bbd1b` plus the three instrumentation-only commits. `cmake -S indra --preset ninja-os-arm64 -DAL_CHANNEL:STRING="Alchemy Metal Development"` and `cmake --build build-Darwin-ninja-os-arm64 --config Release --parallel 10` both exit 0 after removing only the obsolete generated Ninja `-duplicate_symbols` option. The fully staged `26.4.0.67607` app has 8,111 files, includes `settings_files.xml`, passes deep strict signing and 349/349 ARM64 slice verification, and has executable SHA-256 `de8fc8f817c0afb2063f641e9c24cbd58054c32c3053f4d0e863232498bb1797`. A repeat build reports no work. The local fail-closed QA profile is corrected to Mid/exposure `1.0`/zero sharpening, Static+Dynamic reflections with coverage None, 64 probes, HDR/emissive, shadows 2 and mirrors 512/every third frame. The obsolete `ALMetalHeroMirrorSnapshotValidation` key is removed. Exact-path reference and candidate dry runs both exit 0 and assert the same 19 controls; graphics/Looks preset SHA-256 values are `8b5f56aaa26eed855ab4a671534d8a5beca8388b21d47a096789f87932eaef56` and `5108dd19f9c53aea37211b4cb08e84cce7b340cfc00c91a8a6b186b3bb58d4e6`. Fresh live gates remain required on new runs.
-
-## OpenGL elimination gate
-
-Strict source inventory intentionally still fails: 1,797 findings in 2,403 viewer-owned files (`gl_function` 340, `gl_shader` 1,457, `sdl_gl` 0).
-Report SHA-256 is `219eb943960b124745e171a8d420e9ab983e74c04de50ad52f19a2ce47fee74d`.
-No audit rule or suppression changed; this is 331 below 2,128 and 504 below the
-owner's 2,301 reference. The gate remains zero; runtime proof remains queued.
-
-## Visual review cadence
-
-Viewer launches/login/visual changes occur only at the owner's explicit request and control. Checks accumulate in the [owner-attended queue](../work/active/visual-review-queue.md); no row is a parity pass without explicit owner evidence.
-
-## Milestone state
-
-| Area | State | Current fact |
-| --- | --- | --- |
-| M-003 platform/presentation | doing | SDL/Cocoa window source has no GL setup/context/swap owner; Metal surface is sole presentation owner; attended Mid login/world load now passes, while broader lifecycle and stability validation remain. |
-| M-004 resources/readback | doing | Native geometry uses completion-retired generations; shared frame-data pages wait for every referencing command before reuse. The owner-directed texture-pressure rollback remains in place; separate accounting and broader cache trimming are deferred. |
-| M-005 pipelines/bindings | doing | MSL pipelines execute; native pass, sampler and texture identities no longer require GL objects, placeholder textures or GLSL/program names. |
-| M-006 UI/media | doing | UI/font and media CPU texture publication plus retained/immediate UI geometry are Metal-only. Original-compatible empty clips no-op before Metal encoding; Conversations visibly opens/closes/reopens in attended `68497` evidence. Broader UI parity remains open. |
-| M-007 world/material | doing | Normal world/material/avatar/shadow/sky/water layers have direct Metal owners. Ordinary point lights preserve the original bounded split; direct shadow slices avoid retention copies; cube views now share main projector maps and use original single-tap filtering. Owner-attended light-boundary/shadow smoke and broader parity remain open. |
-| M-008 effects/advanced views | doing | Native mirror/probe capture publishes scene reflections with bounded target reuse. Lifecycle and an Ultra-plus-mirrors transition pass, but the matched pair shows a blue-gray Metal versus green-terrain OpenGL reflected background; trace content/clipping before any fix. |
-| M-009 parity/stability/no-GL | doing | Linked executable proof passes; strict source, runtime, visual and stability gates remain open. |
-| M-010 measured performance | doing | Full-screen `68550` reaches 8.8 versus 8.2 median log FPS (+7.3%) and 7.180 versus 6.790 traced presents/s; CPU encoding falls 9.7%, base depth copies become zero. Main remains busy and hero GPU intervals rose; historical best, 24 FPS and formal paired gate remain open. |
-| M-011 GL authority removal | doing | Startup, windows, utilities, workers, linkage, frame completion, resources, targets, UI replay and retained glow/SMAA require no GL; render tails remain. |
-| M-012 Computer Use bridge | complete | Semantic bridge verified; visual driving is owner-attended. |
-| M-013 RLVa strict parity | deferred | Nonessential ordering only; final no-GL behavior is still required. |
+- Metal is the sole application-owned presenter/resource authority. No GL
+  fallback or translation backend is introduced. Non-rendering features remain.
+- Native scene occlusion was implemented by e52de13acc; conservative/exact
+  visibility results and original issue order have GPU proof. Live rejection
+  effectiveness is not yet measured. Hero cubes disable it as exact original.
+- f799262971 honors literal anisotropy (Ultra4; disabled0→Metal1); no forced16.
+- e90ccdf18f preserves selective geometry uploads and retired native generations.
+- Bounded point lights, direct R32 shadow slices, borrowed G-buffer/depth,
+  main-owned probe projectors, sampler/buffer caches and frame arenas remain.
+- The texture-pressure separation7cd1993d8e remains reverted at owner baseline;
+  discard bias4 was observed. Do not restore it without controlled evidence.
+- Preserve raw-depth PCSS, reverse-Z, clamp, alpha and all caster behavior,
+  six Ultra mirror faces and two sun slices per face. No cadence/quality win.
+- Exact original reference is1eb44bbd1bdc76d0100c75699bad1fb337e8cb45; external
+  instrumented OpenGL app is67607 at734afd3179, not /Applications/Alchemy Beta.
+- Published alpha-2 remains26.4.0.68512-alpha2. No new release authorization.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Core execution, offscreen targets and writable image bindings remain valid without GL; required behavior was replaced.
+| Milestone | State | Evidence / remaining requirement |
+| --- | --- | --- |
+| M-008 Advanced views/effects | doing | Native mirror path works; original parity and larger view batching require validation. |
+| M-012 Native UI automation | complete | Scoped keyboard/AX operation verified; current owner authorizes fixed-location tests. |
+| M-014 Ultra20 FPS campaign | doing | Baseline9.739 FPS; native CPU/GPU and control work active; broader live gates unexecuted. |
 
-**Still incomplete:** the reachable source tail remains, the strict no-GL gate fails, and broader startup/lifecycle coverage, runtime module proof, full visual parity, prolonged stability and performance remain open; independent build/review evidence is also still required. This is not product completion or release readiness.
+The current work advances measured efficiency while retaining Metal-only
+authority. It does not establish20 FPS, source-isolated multi-scene benefit,
+complete visual/feature parity, strict source/runtime GL-zero or release readiness.
+Open gates include prolonged stability, strict no-GL and independent build/review evidence.
+Earlier details are preserved in indexed archives, including the
+[pre-goal snapshot](archive/CURRENT-before-ultra-goal-2026-11-08.md).
 
 ## Exact next actions
 
-1. Preserve the completed `68550` baseline and address remaining per-view culling/draw/binding CPU work with source-grounded profiling. Investigate increased hero GPU intervals with appropriate counters/captures before assigning a cause or applying another shader/pass change; preserve quality and six-face cadence.
-2. Add bounded native-query issued/ready/culled telemetry and run a dense-scene no-popping gate; live `UseOcclusion=1` is verified but cull effectiveness is not yet quantified.
-3. Trace original mirror terrain/content and clipping before deciding whether the bounded blue-gray-versus-green reflected-background difference needs a Metal fix.
-4. Run the camera-pinned quality-equivalent 300-frame Metal/OpenGL protocol with the elapsed-plus-frame warm-up gate; profile fully resident work rather than startup FPS.
-5. Capture the camera transform and run exact-base OpenGL with the same fully resident protocol; smoke projector continuity and ordinary-light boundaries, then run the formal paired 300-frame gate.
+1. Configure/build d1966efd09 (or docs-only descendant), verify/sign the exact
+   artifact, then run the controlled current-location300-frame comparison.
+2. Pin main-camera state and initial/later opaque workloads using new census;
+   measure query acquisition/unique results/actual group skips, not polls alone.
+3. Keep rejected layered/named-shader experiments out of production. Probe tile
+   pruning remains a source-only candidate; actual scan-vs-tap cost is unknown.
+4. Preserve Release+RelWithDebInfo proof; source-exact build and verified
+   source-exact, verify/sign, then keyboard-first login at unchanged location,
+   full screen/Midday/Preset123 and resident300-frame comparisons.
+5. Continue general optimization toward20 FPS; document rejected approaches,
+   remaining limits and feasibility rather than declaring success from a microtest.
