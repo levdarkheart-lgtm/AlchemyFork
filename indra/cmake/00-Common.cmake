@@ -84,6 +84,26 @@ endif()
 # Configurations
 #------------------------------------------------------------------------------
 
+# An existing Xcode cache can retain empty Release flags across policy changes.
+# Unlike Ninja, Xcode then emits -O0 for pure C/C++ targets; mixed ObjC targets
+# may still inherit -O3, hiding the mismatch. Restore Clang's standard Release
+# defaults only for empty entries, including NDEBUG assumed by the policy below.
+# Preserve explicit nonempty flags and every other configuration.
+if(DARWIN AND XCODE)
+  foreach(al_language C CXX OBJC OBJCXX)
+    if(CMAKE_${al_language}_COMPILER_LOADED)
+      string(STRIP "${CMAKE_${al_language}_FLAGS_RELEASE}" al_release_flags)
+      if(al_release_flags STREQUAL "")
+        set(CMAKE_${al_language}_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING
+            "Flags used by the ${al_language} compiler during Release builds." FORCE)
+        # CMP0126 NEW preserves an existing normal binding when CACHE is set.
+        set(CMAKE_${al_language}_FLAGS_RELEASE "-O3 -DNDEBUG")
+        message(STATUS "Restored empty ${al_language} Release flags to -O3 -DNDEBUG")
+      endif()
+    endif()
+  endforeach()
+endif()
+
 # OptDebug compiles like Debug and links like Release: the release CRT on
 # Windows, and the release variant of every imported library.
 if(LL_GENERATOR_IS_MULTI_CONFIG OR CMAKE_BUILD_TYPE STREQUAL "OptDebug")
