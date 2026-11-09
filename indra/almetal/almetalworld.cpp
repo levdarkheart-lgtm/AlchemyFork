@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -1626,6 +1627,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::uint64_t shadow_early_coalesced_records = 0;
     std::uint64_t opaque_diagnostic_calls = 0;
     ALMetalWorldPostDiagnostics opaque_diagnostics;
+    ALMetalWorldConstantStats constant_stats;
+    std::unique_ptr<ALMetalProbeWorkloadCapture> probe_workload;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
         spot_shadow_coverage_pipelines;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
@@ -2071,6 +2074,12 @@ ALMetalWorldGBufferRenderer::opaquePostDiagnostics() const noexcept
     return stats;
 }
 
+ALMetalWorldConstantStats
+ALMetalWorldGBufferRenderer::constantStats() const noexcept
+{
+    return mImpl ? mImpl->constant_stats : ALMetalWorldConstantStats{};
+}
+
 bool ALMetalWorldGBufferRenderer::setAnisotropy(
     std::uint32_t max_anisotropy,
     std::string* error)
@@ -2214,6 +2223,19 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     }
     auto impl = std::make_unique<Impl>();
     impl->device = &device;
+    try
+    {
+        std::string diagnostic_error;
+        impl->probe_workload = ALMetalProbeWorkloadCapture::createIfRequested(
+            device, &diagnostic_error);
+        if (!diagnostic_error.empty())
+            std::fprintf(stderr, "Metal probe workload diagnostic unavailable: %s\n",
+                         diagnostic_error.c_str());
+    }
+    catch (...)
+    {
+        std::fprintf(stderr, "Metal probe workload diagnostic initialization failed\n");
+    }
     impl->render_target_pool = ALMetalRenderTargetPool::create(device);
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->render_target_pool || !impl->library ||
@@ -7417,6 +7439,39 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 error);
     };
 
+    // Consecutive common draw constants are immutable for this render and
+    // command. Keep one owned value instead of hashing or publishing it again.
+    // Other families (notably terrain) can overwrite vertex slot 4, so a hit
+    // still binds the saved slice before the next ordinary draw.
+    static_assert(sizeof(WorldSimpleConstants) == 400);
+    WorldSimpleConstants previous_world_constants{};
+    ALMetalWorldDataSlice previous_world_slice;
+    bool have_previous_world_constants = false;
+    ALMetalWorldConstantStats constant_stats;
+    const auto bind_world_constants = [&](const WorldSimpleConstants& constants)
+    {
+        if (!mImpl->frame_data)
+            return mImpl->setVertexData(*encoder, *command,
+                4, &constants, sizeof(constants), error);
+        ++constant_stats.bindings;
+        if (!have_previous_world_constants ||
+            std::memcmp(&previous_world_constants, &constants,
+                        sizeof(constants)) != 0)
+        {
+            ALMetalWorldDataSlice slice;
+            if (!mImpl->frame_data->publish(*command, &constants,
+                    sizeof(constants), slice, error, false))
+                return false;
+            std::memcpy(&previous_world_constants, &constants,
+                        sizeof(constants));
+            previous_world_slice = slice;
+            have_previous_world_constants = true;
+        }
+        else ++constant_stats.reused_bindings;
+        return encoder->setVertexBuffer(4, *previous_world_slice.buffer,
+                                         previous_world_slice.offset, error);
+    };
+
     for (std::size_t index = 0; encoded && index < scene.batch_count; ++index)
     {
         encoded = encode_visibility_at(index);
@@ -7722,7 +7777,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                      batch.normal_offset, error) &&
             encoder->setVertexBuffer(2, *batch.vertices,
                                      batch.texcoord_offset, error) &&
-            mImpl->setVertexData(*encoder, *command,4, &constants, sizeof(constants), error) &&
+            bind_world_constants(constants) &&
             encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
         if (encoded && !avatar)
         {
@@ -7954,6 +8009,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     {
         *visibility_results = std::move(query_results);
     }
+    mImpl->constant_stats.bindings += constant_stats.bindings;
+    mImpl->constant_stats.reused_bindings += constant_stats.reused_bindings;
     return target;
 }
 
@@ -20734,6 +20791,26 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         !scene.carry_depth || borrow_depth ||
         (encoded && ended && output->copyDepthStencilFrom(
             *command, *depth, {}, error));
+    if (encoded && ended && copied_depth && mImpl->probe_workload)
+    {
+        // The diagnostic adds work only after the timing collector disarms.
+        // Read the completed G-buffer on this same producing command and keep
+        // diagnostic errors independent of normal frame publication.
+        try
+        {
+            std::string diagnostic_error;
+            if (!mImpl->probe_workload->captureIfReady(*command, *depth, *normal,
+                    scene.constants, scene.reflection_probes ? &probe_constants : nullptr,
+                    scene.diagnostic_view, &diagnostic_error))
+                std::fprintf(stderr, "Metal probe workload diagnostic skipped: %s\n",
+                             diagnostic_error.c_str());
+        }
+        catch (...)
+        {
+            std::fprintf(stderr, "Metal probe workload diagnostic capture failed\n");
+            mImpl->probe_workload.reset();
+        }
+    }
     if (!mImpl->finishCommandBuffer(
             owned_command, encoded && ended && copied_depth, error))
     {

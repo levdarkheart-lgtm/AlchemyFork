@@ -1,0 +1,77 @@
+/**
+ * @file almetalprobeworkload.h
+ * @brief Explicitly armed, post-benchmark reflection-probe workload samples.
+ *
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright (C) 2026, Alchemy Viewer Project
+ * $/LicenseInfo$
+ */
+#pragma once
+
+#include <cstdint>
+#include <memory>
+#include <string>
+
+class ALMetalDevice;
+class ALMetalCommandBuffer;
+class ALMetalTexture;
+struct ALMetalWorldBaseLightingConstants;
+struct ALMetalWorldReflectionProbeConstants;
+
+struct ALMetalProbeWorkloadView
+{
+    std::uint64_t frame_index = 0;
+    // Same identities as native benchmark provenance: main1/hero2/ordinary3.
+    std::uint32_t view_kind = 0;
+    std::uint32_t face_index = 0;
+    float projection[16]{};
+};
+
+struct ALMetalProbeWorkloadStats
+{
+    std::uint64_t scheduled = 0;
+    std::uint64_t written = 0;
+    std::uint64_t failed = 0;
+    std::uint64_t cancelled = 0;
+};
+
+// Single-CPU-owner, default-off diagnostics. No full image or scene/account
+// metadata is recorded. Call only after the producing base encoder has ended
+// on the same uncommitted command; this helper never commits or waits.
+class ALMetalProbeWorkloadCapture final
+{
+public:
+    static constexpr const char* directory_environment =
+        "ALCHEMY_METAL_PROBE_WORKLOAD_DIRECTORY";
+    static constexpr std::uint32_t sample_width = 64;
+    static constexpr std::uint32_t sample_height = 40;
+
+    // Unset/empty environment returns nullptr without allocating or compiling.
+    // An explicit path must be absolute, existing, owned and mode0700. The
+    // tiny diagnostic kernel compiles here, before benchmark arming.
+    static std::unique_ptr<ALMetalProbeWorkloadCapture> createIfRequested(
+        const ALMetalDevice& device, std::string* error = nullptr) noexcept;
+    ~ALMetalProbeWorkloadCapture();
+    ALMetalProbeWorkloadCapture(const ALMetalProbeWorkloadCapture&) = delete;
+    ALMetalProbeWorkloadCapture& operator=(const ALMetalProbeWorkloadCapture&) = delete;
+
+    // Timing enabled only arms collection. After it becomes false, captures
+    // each (kind,face) once. Kind0 is ignored. For ordinary(kind3), this is
+    // the first observed probe for each face, not every ordinary probe.
+    // false reports a diagnostic error only; callers
+    // must keep normal rendering independent of this result.
+    bool captureIfReady(
+        ALMetalCommandBuffer& command,
+        const ALMetalTexture& depth, const ALMetalTexture& normal,
+        const ALMetalWorldBaseLightingConstants& lighting,
+        const ALMetalWorldReflectionProbeConstants* probes,
+        const ALMetalProbeWorkloadView& view,
+        std::string* error = nullptr) noexcept;
+    ALMetalProbeWorkloadStats stats() const noexcept;
+
+private:
+    struct Impl;
+    explicit ALMetalProbeWorkloadCapture(std::unique_ptr<Impl> impl);
+    std::unique_ptr<Impl> mImpl;
+};

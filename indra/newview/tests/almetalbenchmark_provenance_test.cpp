@@ -6,6 +6,7 @@
 #include "llsdjson.h"
 #include "lluuid.h"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -191,6 +192,7 @@ TEST_CASE("Benchmark provenance marks non-finite cameras without emitting invali
     for (U64 i = 1; i <= 2; ++i)
     {
         auto f = frame(i);
+        f.provenance->main_view.projection_far_clip = std::numeric_limits<float>::infinity();
         f.provenance->main_view.viewer_camera.modelview[0] = std::numeric_limits<float>::infinity();
         f.provenance->main_view.agent_camera_global[0] = std::numeric_limits<double>::quiet_NaN();
         REQUIRE(recorder.record(f) != Recorder::Result::failed);
@@ -198,6 +200,129 @@ TEST_CASE("Benchmark provenance marks non-finite cameras without emitting invali
     const auto lines = read_json_lines(output.sidecar);
     REQUIRE(lines.size() == 3);
     CHECK_FALSE(lines[0]["main_view"]["finite_camera_values"].asBoolean());
+    CHECK(lines[0]["main_view"]["projection_far_clip_valid"].asBoolean());
     CHECK(lines[0]["main_view"]["viewer_camera"]["modelview"][0].isUndefined());
     CHECK(lines[0]["main_view"]["agent_camera_global"][0].isUndefined());
+}
+
+TEST_CASE("Benchmark provenance distinguishes intentional infinite reverse-Z far planes",
+          "[ALMetalBenchmark][provenance]")
+{
+    struct FarCase { float far; bool reverse, infinite, valid; };
+    const std::array<FarCase, 5> cases{{
+        {std::numeric_limits<float>::infinity(), true, true, true},
+        {std::numeric_limits<float>::infinity(), false, true, false},
+        {-std::numeric_limits<float>::infinity(), true, true, false},
+        {std::numeric_limits<float>::quiet_NaN(), true, false, false},
+        {256.f, false, false, true},
+    }};
+    for (const auto& value : cases)
+    {
+        CAPTURE(value.far, value.reverse);
+        EvidenceFiles output;
+        Recorder recorder(output.config(0, 1));
+        for (U64 i = 1; i <= 2; ++i)
+        {
+            auto f = frame(i);
+            f.provenance->main_view.projection_far_clip = value.far;
+            f.provenance->main_view.reverse_z = value.reverse;
+            f.provenance->frame_end_view = f.provenance->main_view;
+            REQUIRE(recorder.record(f) != Recorder::Result::failed);
+        }
+        const auto lines = read_json_lines(output.sidecar);
+        REQUIRE(lines.size() == 3);
+        for (const auto& line : lines)
+        {
+            for (const char* key : {"main_view", "frame_end_view"})
+            {
+                const auto& view = line[key];
+                CHECK(view["projection_far_clip_infinite"].asBoolean() == value.infinite);
+                CHECK(view["projection_far_clip_valid"].asBoolean() == value.valid);
+                CHECK(view["finite_camera_values"].asBoolean() == value.valid);
+                if (std::isfinite(value.far))
+                    CHECK(static_cast<float>(view["projection_far_clip"].asReal()) == value.far);
+                else
+                    CHECK(view["projection_far_clip"].isUndefined());
+            }
+        }
+        if (value.valid)
+            CHECK(lines.back()["camera_change_frames"].asInteger() == 0);
+    }
+}
+
+TEST_CASE("Benchmark environment provenance round-trips sky state without changing camera stability",
+          "[ALMetalBenchmark][provenance]")
+{
+    EvidenceFiles output;
+    Recorder recorder(output.config(0, 3));
+    // LLEnvironment::KNOWN_SKY_MIDDAY, not an inventory/account identity.
+    const LLUUID midday("c46226b4-0e43-5a56-9708-d27ca1df3292");
+    const LLUUID other_sky("11111111-2222-3333-4444-555555555555");
+    for (U64 i = 1; i <= 4; ++i)
+    {
+        auto f = frame(i);
+        auto& environment = f.provenance->main_environment;
+        environment.captured = true;
+        environment.selected_environment = 1; // ENV_LOCAL
+        environment.local_sky_available = environment.current_sky_available = true;
+        environment.local_sky_asset_id = midday;
+        environment.current_sky_asset_id = i < 4 ? midday : other_sky;
+        environment.sun_direction_available = true;
+        environment.sun_direction = {0.123456791f, static_cast<float>(i) * 0.125f, -0.75f};
+        REQUIRE(recorder.record(f) != Recorder::Result::failed);
+    }
+    const auto lines = read_json_lines(output.sidecar);
+    REQUIRE(lines.size() == 3);
+    for (const auto& line : lines)
+    {
+        CHECK(line["event"].asString() != "camera_change");
+        CHECK(line["camera_change_frames"].asInteger() == 0);
+        const auto& environment = line["main_environment"];
+        CHECK(environment["captured"].asBoolean());
+        CHECK(environment["selected_environment"].asInteger() == 1);
+        CHECK(environment["local_sky_available"].asBoolean());
+        CHECK(environment["local_sky_asset_id"].asString() == midday.asString());
+        CHECK(environment["current_sky_available"].asBoolean());
+        CHECK(environment["sun_direction_available"].asBoolean());
+        CHECK(environment["sun_direction_finite"].asBoolean());
+        CHECK(static_cast<float>(environment["sun_direction"][0].asReal()) == 0.123456791f);
+    }
+    CHECK(lines.front()["main_environment"]["current_sky_asset_id"].asString() == midday.asString());
+    CHECK(lines.back()["main_environment"]["current_sky_asset_id"].asString() == other_sky.asString());
+    CHECK(lines.back()["main_environment"]["sun_direction"][1].asReal() == 0.5);
+}
+
+TEST_CASE("Benchmark environment provenance distinguishes missing skies and invalid directions",
+          "[ALMetalBenchmark][provenance]")
+{
+    EvidenceFiles output;
+    Recorder recorder(output.config(0, 1));
+    REQUIRE(recorder.record(frame(1)) != Recorder::Result::failed);
+    auto observed = frame(2);
+    auto& environment = observed.provenance->main_environment;
+    environment.captured = true;
+    environment.selected_environment = 1;
+    environment.current_sky_available = true;
+    environment.sun_direction_available = true;
+    environment.sun_direction[0] = std::numeric_limits<float>::quiet_NaN();
+    REQUIRE(recorder.record(observed) != Recorder::Result::failed);
+    const auto lines = read_json_lines(output.sidecar);
+    REQUIRE(lines.size() == 3);
+    const auto& missing = lines.front()["main_environment"];
+    CHECK_FALSE(missing["captured"].asBoolean());
+    CHECK(missing["selected_environment"].isUndefined());
+    CHECK(missing["local_sky_asset_id"].isUndefined());
+    CHECK(missing["current_sky_asset_id"].isUndefined());
+    CHECK(missing["sun_direction"].isUndefined());
+    const auto& loaded = lines.back()["main_environment"];
+    CHECK(loaded["captured"].asBoolean());
+    CHECK_FALSE(loaded["local_sky_available"].asBoolean());
+    CHECK(loaded["local_sky_asset_id"].isUndefined());
+    // An available sky without a persisted asset retains the observed null UUID.
+    CHECK(loaded["current_sky_available"].asBoolean());
+    CHECK(loaded["current_sky_asset_id"].asString() == LLUUID::null.asString());
+    CHECK(loaded["sun_direction_available"].asBoolean());
+    CHECK_FALSE(loaded["sun_direction_finite"].asBoolean());
+    CHECK(loaded["sun_direction"][0].isUndefined());
+    CHECK(lines.back()["camera_change_frames"].asInteger() == 0);
 }

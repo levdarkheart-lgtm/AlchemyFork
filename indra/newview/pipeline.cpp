@@ -2114,6 +2114,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 ? mMetalProbeWorldSimpleCapture->renderer->shadowIndirectStats()
                 : ALMetalShadowIndirectStats{};
             constexpr F64 bytes_per_mib = 1024.0 * 1024.0;
+            const auto constants = capture.renderer
+                ? capture.renderer->constantStats() : ALMetalWorldConstantStats{};
+            const auto probe_constants = mMetalProbeWorldSimpleCapture &&
+                mMetalProbeWorldSimpleCapture->renderer
+                ? mMetalProbeWorldSimpleCapture->renderer->constantStats()
+                : ALMetalWorldConstantStats{};
             LL_INFOS("MetalMemory")
                 << "Native resource sample: driver="
                 << static_cast<F64>(device->currentAllocatedSize()) /
@@ -2146,6 +2152,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", evictions=" << target_pool.evictions << ')'
                 << ", buffers=" << stats.buffers_created << '/'
                 << stats.buffers_destroyed
+                << ", gbuffer_constants=" << constants.bindings << '/'
+                << constants.reused_bindings << " binds/reuses"
+                << ", probe_gbuffer_constants=" << probe_constants.bindings << '/'
+                << probe_constants.reused_bindings << " binds/reuses"
                 << ", shadow_indirect=" << indirect.executed_draws << '/'
                 << indirect.prepared_draws << " draws, "
                 << indirect.executions << " runs, " << indirect.slot_count
@@ -18024,6 +18034,15 @@ void LLPipeline::renderMetalWorldBaseLighting(
         ssr_active && !ssr_history_ready;
 
     ALMetalWorldBaseLightingScene scene;
+    scene.diagnostic_view.frame_index = gFrameCount;
+    scene.diagnostic_view.view_kind = capture.hero_probe_face_capture ? 2
+        : capture.reflection_probe_face_capture ? 3 : isMainWorldPass() ? 1 : 0;
+    scene.diagnostic_view.face_index = capture.hero_probe_face_capture
+        ? capture.hero_probe_face : capture.reflection_probe_face_capture
+        ? capture.reflection_probe_face : 0;
+    std::memcpy(scene.diagnostic_view.projection,
+                camera.getProjection().getF32ptr(),
+                sizeof(scene.diagnostic_view.projection));
     scene.gbuffer = capture.target.get();
     scene.light_map = capture.base_light_map_target->colorTexture(0);
     scene.reflection_probes = use_reflection_probes

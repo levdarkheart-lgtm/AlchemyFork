@@ -15,6 +15,14 @@
 
 struct ALMetalWorldOpaquePostDeferredScene;
 
+// Cumulative arena-backed common-constant bindings in accepted G-buffer
+// renders. Reuses stay within one render/command; these are not GPU timings.
+struct ALMetalWorldConstantStats
+{
+    std::uint64_t bindings = 0;
+    std::uint64_t reused_bindings = 0;
+};
+
 enum class ALMetalWorldPostFamily : std::size_t
 {
     fullbright, shiny, emboss, alpha_simple, alpha_fullbright,

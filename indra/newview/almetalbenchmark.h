@@ -15,6 +15,7 @@
 #define AL_ALMETALBENCHMARK_H
 
 #include "alquerypool.h"
+#include "lluuid.h"
 
 #include <array>
 #include <chrono>
@@ -96,13 +97,33 @@ public:
         bool operator==(const Restoration&) const = default;
     };
 
+    struct Environment
+    {
+        bool captured = false;
+        // LLEnvironment::EnvSelection_t; -2 is ENV_NONE, 1 is ENV_LOCAL.
+        std::int32_t selected_environment = -2;
+        // Available sky settings can legitimately have a null asset UUID
+        // (for example an unsaved setting or an interpolated day-cycle sky).
+        bool local_sky_available = false;
+        bool current_sky_available = false;
+        LLUUID local_sky_asset_id;
+        LLUUID current_sky_asset_id;
+        bool sun_direction_available = false;
+        // Raw current LLSettingsSky direction, before eye-space transforms.
+        std::array<float, 3> sun_direction{};
+    };
+
     struct Provenance
     {
         // Captured immediately before main-world culling, separately from the
-        // state at the end of UI/HUD rendering. No account or asset identities.
+        // state at the end of UI/HUD rendering. No account/object identities;
+        // the only asset IDs are the two bounded sky-setting IDs below.
         bool main_view_captured = false;
         ViewState main_view;
         ViewState frame_end_view;
+        // Deliberately outside ViewState/camera equality: a moving sun or a
+        // newly loaded sky must not manufacture a camera-change event.
+        Environment main_environment;
         Restoration hero_restoration;
         Restoration hud_restoration;
         ALQueryPool::Diagnostics main_world_queries;

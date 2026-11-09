@@ -567,6 +567,34 @@ static ALMetalBenchmarkRecorder::ViewState benchmark_view_state()
     return view;
 }
 
+static ALMetalBenchmarkRecorder::Environment benchmark_environment()
+{
+    ALMetalBenchmarkRecorder::Environment state;
+    if (!LLEnvironment::instanceExists()) return state;
+    LLEnvironment& environment = LLEnvironment::instance();
+    state.captured = true;
+    state.selected_environment = static_cast<S32>(environment.getSelectedEnvironment());
+    // Do not resolve the local slot through parcel/region defaults: this must
+    // distinguish a completed local asset load from the effective fallback.
+    const LLSettingsSky::ptr_t local = environment.getEnvironmentFixedSky(
+        LLEnvironment::ENV_LOCAL, false);
+    if (local)
+    {
+        state.local_sky_available = true;
+        state.local_sky_asset_id = local->getAssetId();
+    }
+    const LLSettingsSky::ptr_t current = environment.getCurrentSky();
+    if (current)
+    {
+        state.current_sky_available = true;
+        state.current_sky_asset_id = current->getAssetId();
+        const LLVector3 sun = current->getSunDirection();
+        std::copy_n(sun.mV, 3, state.sun_direction.begin());
+        state.sun_direction_available = true;
+    }
+    return state;
+}
+
 static void benchmark_camera_restoration(
     ALMetalBenchmarkRecorder::Restoration& result,
     const ALMetalBenchmarkRecorder::ViewState& before)
@@ -1162,6 +1190,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         if (ALQueryPool::diagnosticsEnabled() && LLPipeline::isMainWorldPass())
         {
             sMetalBenchmarkProvenance.main_view = benchmark_view_state();
+            sMetalBenchmarkProvenance.main_environment = benchmark_environment();
             sMetalBenchmarkProvenance.main_view_captured = true;
         }
 #endif

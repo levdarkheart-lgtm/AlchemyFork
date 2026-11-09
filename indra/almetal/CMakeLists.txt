@@ -79,6 +79,7 @@ target_sources(
     almetalframe.mm
     almetalpbrpreview.cpp
     almetalpipeline.mm
+    almetalprobeworkload.mm
     almetalresource.mm
     almetalshadowindirect.mm
     almetalsculptpreview.cpp
@@ -95,6 +96,7 @@ target_sources(
       almetalframe.h
       almetalpbrpreview.h
       almetalpipeline.h
+      almetalprobeworkload.h
       almetalresource.h
       almetalshadowindirect.h
       almetalshadowcapture.h
@@ -147,6 +149,8 @@ if(AL_BUILD_TESTS)
             tests/almetal_shadow_indirect_test.mm
             tests/almetal_shadow_capture_test.mm
             tests/almetal_world_diagnostics_test.cpp
+            tests/almetal_gbuffer_constants_test.mm
+            tests/almetal_probe_workload_test.mm
     LIBRARIES almetal
     RESOURCE_LOCK apple_gpu
   )
@@ -158,6 +162,8 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_base_lighting_fastpath_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_indirect_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_gbuffer_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_probe_workload_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   if(AL_METAL_BUILTIN_LIBRARY)
     target_compile_definitions(
       almetal_tests

@@ -229,10 +229,15 @@ bool finite_camera(const ALMetalBenchmarkRecorder::Camera& camera)
 
 void json_view(std::ostream& out, const ALMetalBenchmarkRecorder::ViewState& view)
 {
+    const bool far_infinite = std::isinf(view.projection_far_clip);
+    // A positive infinite projection far plane is intentional for reverse-Z.
+    // This tests the number policy, not full geometric frustum validity.
+    const bool far_valid = std::isfinite(view.projection_far_clip) ||
+        (view.reverse_z && far_infinite && view.projection_far_clip > 0.f);
     const bool finite = finite_camera(view.viewer_camera) && finite_camera(view.pass_current_camera) &&
         finite_array(view.agent_camera_global) && finite_array(view.agent_focus_global) &&
         finite_array(view.agent_focus_target_global) && finite_array(view.agent_camera_up) &&
-        std::isfinite(view.projection_far_clip) && std::isfinite(view.requested_draw_distance);
+        far_valid && std::isfinite(view.requested_draw_distance);
     out << "{\"finite_camera_values\":" << (finite ? "true" : "false") << ",\"viewer_camera\":";
     json_camera(out, view.viewer_camera);
     out << ",\"pass_current_camera\":"; json_camera(out, view.pass_current_camera);
@@ -242,6 +247,8 @@ void json_view(std::ostream& out, const ALMetalBenchmarkRecorder::ViewState& vie
     out << ",\"agent_camera_up\":"; json_array(out, view.agent_camera_up);
     out << ",\"viewport\":"; json_array(out, view.viewport);
     out << ",\"projection_far_clip\":"; json_number(out, view.projection_far_clip);
+    out << ",\"projection_far_clip_infinite\":" << (far_infinite ? "true" : "false")
+        << ",\"projection_far_clip_valid\":" << (far_valid ? "true" : "false");
     out << ",\"requested_draw_distance\":"; json_number(out, view.requested_draw_distance);
     out << ",\"camera_id\":" << view.camera_id
         << ",\"agent_camera_mode\":" << view.agent_camera_mode
@@ -249,6 +256,31 @@ void json_view(std::ostream& out, const ALMetalBenchmarkRecorder::ViewState& vie
         << ",\"occlusion_mode\":" << view.occlusion_mode
         << ",\"reverse_z\":" << (view.reverse_z ? "true" : "false")
         << ",\"main_world_pass\":" << (view.main_world_pass ? "true" : "false") << '}';
+}
+
+void json_environment(std::ostream& out, const ALMetalBenchmarkRecorder::Environment& state)
+{
+    const bool local = state.captured && state.local_sky_available;
+    const bool current = state.captured && state.current_sky_available;
+    const bool sun = current && state.sun_direction_available;
+    out << "{\"captured\":" << (state.captured ? "true" : "false")
+        << ",\"selected_environment\":";
+    if (state.captured) out << state.selected_environment;
+    else out << "null";
+    out << ",\"local_sky_available\":" << (local ? "true" : "false")
+        << ",\"local_sky_asset_id\":";
+    if (local) json_string(out, state.local_sky_asset_id.asString());
+    else out << "null";
+    out << ",\"current_sky_available\":" << (current ? "true" : "false")
+        << ",\"current_sky_asset_id\":";
+    if (current) json_string(out, state.current_sky_asset_id.asString());
+    else out << "null";
+    out << ",\"sun_direction_available\":" << (sun ? "true" : "false")
+        << ",\"sun_direction_finite\":" << (sun && finite_array(state.sun_direction) ? "true" : "false")
+        << ",\"sun_direction\":";
+    if (sun) json_array(out, state.sun_direction);
+    else out << "null";
+    out << '}';
 }
 
 void json_restoration(std::ostream& out, const ALMetalBenchmarkRecorder::Restoration& state)
@@ -457,6 +489,7 @@ bool ALMetalBenchmarkRecorder::recordProvenance(
         << ",\"quality_profile\":" << frame.quality_profile
         << ",\"main_view\":"; json_view(out, p.main_view);
     out << ",\"frame_end_view\":"; json_view(out, p.frame_end_view);
+    out << ",\"main_environment\":"; json_environment(out, p.main_environment);
     out << ",\"hero_restoration\":"; json_restoration(out, p.hero_restoration);
     out << ",\"hud_restoration\":"; json_restoration(out, p.hud_restoration);
     out << ",\"main_world_queries\":"; json_queries(out, p.main_world_queries);

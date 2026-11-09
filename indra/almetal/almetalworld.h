@@ -11,6 +11,7 @@
 #pragma once
 
 #include "almetalworlddiagnostics.h"
+#include "almetalprobeworkload.h"
 
 #include "almetalpipeline.h"
 
@@ -2085,6 +2086,8 @@ struct ALMetalWorldBaseLightingScene
     bool borrow_depth = false;
     bool depth_stencil_shader_read = false;
     bool hdr = false;
+    // Optional private diagnostic identity. Kind0 keeps standalone callers out.
+    ALMetalProbeWorkloadView diagnostic_view;
 };
 
 // The ordered native world G-buffer owner for supported object, material and
@@ -2171,6 +2174,7 @@ public:
     bool commandBatchActive() const;
     ALMetalRenderTargetPoolStats renderTargetPoolStats() const noexcept;
     ALMetalShadowIndirectStats shadowIndirectStats() const noexcept;
+    ALMetalWorldConstantStats constantStats() const noexcept;
     ALMetalWorldPostDiagnostics opaquePostDiagnostics() const noexcept;
 
     std::unique_ptr<ALMetalRenderTarget> render(
