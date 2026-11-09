@@ -6,34 +6,105 @@ Branch codex/apple-silicon-metal; renderer735a407bb7da33a95bf14f7cbae995e1d9a91d
 commits actual function-constant specialization +public tests. RootdocsWIPupdate
 recovery; source3files committed/clean. Rootowns shared source/docs/runtime/GPU.
 
-## Runtime/next action — no overlapping GPU/profile/build
+## CRITICAL runtime — current viewer LEFT RUNNING per latest request
 
-ALL VIEWERS CLOSED/all Midday plans RESTORED/Translator FULLY STOPPED.
-Never restart/resume Translator; explicit uv service stop0 was final owner choice.
-User explicitly handed Xcode back to ROOT. Tiny actualfunctionconstant capture
-replay/profile COMPLETED:1CB/4render/4draws/1024²RGBA16F,29.09msMEDIUM, notliveFPS.
-Baseline245→candidate224 registers; BOTH304spill bytes. Costs55.69/44.22% with
-two draws each; actual quiet timings below are stronger proof than oneprofile.
-RootSTOPPED GPUworkload, observed Finishedrunningapp/Replaylanding, then sent
-CUAcompletion Measured lower probe shader registers. NO replay active/jobs.
-RawobservedJSON ad1tpate/xcode-register-profile-observed.json. No occupancy or
-spill elimination/causalityclaim. Next CUAaftercompaction rewriteDocumentation.
-RootUIbinding attendedXcode stillvalid; getAppbybundlecom.apple.dt.Xcode ifneeded.
-Avoid MissingBindinginsightclicks (automationtimedout, Xcode itselfresponsive).
+LIVE CURRENT68594/PID17022/fullsourceb299d5c99afd519da82f0db11b5b9ee60f88b283,
+renderer735a. Exactlibproc/path/exehashverified beforeCua fullscreen→savedlogin.
+LatestUSERasksSTARTcurrentviewer andOBSERVEtoprightFPS160→11in15–20seconds;
+userreports11then12. Do NOTmistakethis forcapclaim. No10capwasfound; foreground
+statistics argueagainstsustainedBackgroundYield40ms duringpriorformal run.
+MaxFPSunused, gFPSClamped10 iscamera/simulationEMA, NOTthiswidget.
 
-ALL build/GPU suites terminal: Release72719build0/95754API+GPU0 andRWDI70294
-build0/API+GPU0, EACH427529assertions/95cases inclnewcheckerboard positives.
-Earlier incorrectXcodetarget76595=65 (appbuildtestsdisabled) correctedNinja;
-no unexplained renderer failure. No activeGPU/profile/build. Allagentsquiet.
+Actualnormal68594 formal test COMPLETE300frames7949–8248: mean103.782010697ms,
+p50103.661375/p95NEAREST108.9555 (linear108.965404),9.635581285FPS vsbest9.60867,
++0.28%effectivelyflat; latest68581 9.45464. All300native1/3456×2168/Ultra6/bias1/
+256ready/stable120; freshstart+end43gates0. Camera4changes ONLYwarmup, same-view
+2898→3197throughsamples, basis/projection/EEPfixed; translation3.8micrometres vsbest.
+Physicaldraws~3.8%lower, olderbaseline31neighbors vsnew64correctnessfix =>NOTpure
+shaderA/B. Exact14587shutdown/Goodbye/absence75320=0; oldb299planRESTORED0.
+Comparison/private/tmp/alchemy-metal-68594-formal-independent-20261109.p5xjUcY1/independent-formal-summary.json
+SHA602fd7673d857cf3122dc697d8fb5978e885b958c3e37a9b83a99bccdeff7ab0.
 
-NEXT: commitdocs checkpointmatchingledger/harness/diffcheck→normalOFF app
-doctor/build/verify→controlled300frameFPS. Renderer735a alreadycommitted.
-Existing68590 app DOES NOT contain uncommitted specialization. Do NOT launch it
-for candidate comparison. Future normal build MUST configure recordsOFF, cacheON
-currently in Xcodeapp tree; Ninjatest tree recordsOFF. Preserve68590 beforebuild.
-Same place/numericPreset123 ONLY, NO travel/private uploads/releases. Userallows
-quit/build/login/measure autonomously. Fullscreen BEFORE saved-login, Midday;
-Ultra3456×2168/sixhero1024faces/twocascades/PCSS/RZ/clamp/casters/features retained.
+NEW ACTIVE plan artifacts/metal/private-b299-startup-readout-setup-plan-20261109.json.
+RestoreONLYafter exact17022exit using/private/tmp/alchemy-metal-session-state-20261109.py
+restore --plan ABS. Allolderplansrestored. TranslatorFULLYSTOPPED/NEVERrestart.
+Do notbuild/test/profilewhilethisvieweractive. Allagentsquiet/sourceonly.
+UserhandedROOTXcodecontrol; XcodeGPUreplaySTOPPED/Finishedapp/CuaSummarysent.
+Cua getScreenshotonfullyloadedworld previouslytimedout15s/reset. Do notclaimnew
+worldscreenshot; useofficialapplicationAPIforFPSText asbelow. Current Cua kernel
+reinitialized/fpsViewer bound68594; loginpart completedsummary Confirmed live FPS display changes.
+Next Cuaaftercontextrestore MUSTrewriteDocumentation; getAppbyfullpath ifneeded.
+
+## Latest startup observation — exact widget plus RAWframe timings
+
+CURRENTstartup run artifacts/metal/qa-runs/candidate-b299-startup-readout-20261109-01.
+CSV artifacts/metal/private-b299-startup-readout-20261109-01.csv +provenance;
+6000samplesCOMPLETE(558.45s), allnative_exact1. ThisisDIAGNOSTIC, warmup0/
+requireReadyOFF/requireExactOFF: readinessfieldsfalse/None areDISABLEDobserver,
+NOT evidenceunbuiltprobes. Same43runtimecontrols/location/binary observe/verify/gate0.
+No shadercapture/GPUvalidation/familysplits/qualitychanges. Worldcameraunchanged
+first20sec; tinyheighttranslationsonlyat~300–302sec, noaxis/projection/viewport/FOVchange.
+Nativeviewer stillrendering afterCSVcompletion; widgetobserver continues.
+
+Rootprivateobserver created by COPYINGstockalchemy_qa.py andleap_probe.py into
+/private/tmp/alchemy-metal-startup-fps-observer-20261109.* (pointer/private/tmp/alchemy-metal-startup-fps-observer-latest-path-20261109.txt).
+Installedskillfiles unchanged. Privateprobe polls EXACTdisplayedfield through
+Probe.query('LLWindow','getInfo',path='/main_view/menu_stack/status_bar_container/status/FPSText'),
+value+visible_chain, timestampedfps-widget-observed.jsonl. //FPSText supported
+fallback. ThisreadsLLTextBox.getValue, notcomputedFPS. LoopUI0.5s plusstock43
+controlpolls3s; sequentialfullpolls causegapsup8.82s (cannotruleoutbrief160).
+Source: FPSText LLStatusBar updates<=.1s using199completed-framearithmeticmeanof
+perframerates, roundedinteger. At10FPS history~20sec; WORLD_INITresetsoldloginhistory.
+Initial240 isXUItemplateliteral/0reset, notrealFPS.
+
+ActualUIrecorded19→32peak21:14:01.1→12at21:14:13.1→11at21:14:23.5 (32→11/22.44s),
+then11/12,11from21:16:45,10from21:19:15 onward. NO160captured; explicitlytelluser.
+Rawfirst10s12.2576FPS/44,631mediandraws; next10s11.0384/50,697, SAMEcamera.
+350–360s10.2404/54,797 (aftertinycameraZsettling). Moreencodedworkisreal, notpure
+readoutlag; laterdrawsplateau52–54k whileframetimekeepsrising, so cannotattribute
+entiredeclineto drawgrowth. Noexactsubsystemcause orFPSimprovementclaimyet.
+Independent/private/tmp/alchemy-metal-b299-startup-readout-analysis-20261109.EZPDu5/startup-readout-analysis.json
+SHA813732a14f4e310262427637ba3e2abf6f2e19bfb39ffea40c6a12c460f3a53f.
+
+StartupMiddayinstall0, firstlaunch1 becauseouter/innerlogfilenamecollision BEFORE
+viewerstart; correctedprivate logpath +readonlyobserver thenlaunch0, PID17022verified.
+Launcher/private/tmp/alchemy-metal-b299-startup-launch-20261109.py, pinnedconfig
+artifacts/metal/private-ultra-b299-startup-readout-qa.json. Nooriginalplanoverwrite.
+
+## Next implementation/control tasks (not yet executed)
+
+Actualselected-PSO census PRIVATEpatch frozen/sourcepeerapproved:
+/private/tmp/alchemy-metal-selected-pso-census-20261109.CqfjEO/selected-pso-census.patch
+SHA1bc7312794faf3cba8577161945acee2404b8ce4df53c9a29f499da7ceba420b.
+4existingfiles, actualchosenPSOdescriptor AFTERsuccessfuldraw (no duplicated
+selector),12bins regular/avatar/standard/custom/constant0undefinedfalse/true;
+13independentlydatedviewslots, boundedexistingdiaglog. CPUencodedcounts/declared
+vertices/indexcounts, NOTGPUtime. Wholefinishsuccess publication; failuretest
+preflightonly (latefailureguard sourceplacement, notinjectedtest). Tests extended
+checkerboard+actualavatar+off/failretain. gitapplycheck0, UNAPPLIED/UNCOMPILED/UNRUN.
+ReadREADME/manifest/review beforeapply; rootownsallsharedfiles. DefaultflagsOFF.
+Needactualhotpopulation/criticalpath proof beforemorehypotheses.
+
+Fresh corrected64parent68588control preparedbutUNLAUNCHED becauseownerprioritized
+currentstartupobservation. Preserved/private/tmp/alchemy-metal-68588-neighbor64-verified.app,
+exe44d83b1a7a162cb82b06fc901b3bb35f30d6ad95db9f501d612fde8f6ebecd97;
+metal33bd2d7f0e1f240354b92ca26289136373b27152992cba9214f4448844c6bbb1.
+Freshcodesign0/exesha/source4b23+metal matchSHA-pinnedpriorverifiedreport67a60...
+Packetpointer/private/tmp/alchemy-metal-4b23-parent-control-latest-path-20261109.txt.
+Configartifacts/metal/private-ultra-4b23-parent-control-qa.json(reference68588,candidate68594),
+launcher/private/tmp/alchemy-metal-4b23-parent-launch-20261109.py dryrun0. NOPLAN
+installedforparent. Thisparenthassame64lightingmath, unlikeoldbest68579.
+Do NOTlaunchuntil17022closed+startupplanrestored; no travel, samePreset123/Midday/Ultra.
+
+Sourceaudits: shippingcommonconstantcache isO(1) one400Bprev value, noN²scan;
+arena beginsBEFOREeachhero/ordinaryshadows/Gbuffer, so palettefallbackscansnotnormal.
+~210ms/10k COMMON_CONSTANTS_CPU fromFULLGPU/APIvalidation combinesnative
+pub/bind/texture/draw, NOTshippinglookupcost. Quietmodel~1.4ms/10k; don'toptimize
+false21usclaim. Existinglivecounters47%commonreuse, notCPUtimeproof.
+Hero+ordinary BOTHbit4truebysource/current+exact1eb cubeSnapshotwrapper; noquality
+exception. Old58%functioncostdoesnotbyitselfproveordinary-vs-avatarPSOpopulation.
+No10capfound; saved/sessionyield/VSyncabsent/defaults, foregroundtimer covers
+formalrunwithfullwalltime. LFSbacklogsleep possible butUNMEASURED, noattribution.
 
 ## Actual implemented source / strict output / timing proof
 

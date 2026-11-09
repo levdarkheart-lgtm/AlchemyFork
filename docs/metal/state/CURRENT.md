@@ -3,7 +3,7 @@
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `735a407bb7da33a95bf14f7cbae995e1d9a91d4b`.
-**Working source:** validated probe-shadow specialization committed; normal app build pending.
+**Working source:** committed735a in normal68594; formal test flat, startup observation complete.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -16,17 +16,36 @@ six hero1024 faces/two cascades, PCSS, reverse-Z/clamp/casters/viewer features.
 No private uploads/releases. Root owns shared source/docs/runtime/GPU; agents
 prepare/review private source only. User explicitly handed Xcode back to ROOT.
 
-ALL VIEWERS CLOSED/all Midday plans RESTORED. Exact68590 PID80172 gracefully
-closed/Goodbye/absence19750=0, fresh0d5d49 plan restored0. Translator explicitly
-FULLY STOPPED with its uv service command0; NEVER restart/resume it.
-Manual hero profile finished; root observed Finished running macOS App/Replay
-landing and recorded CUA completion before experiments. Xcode replay STOPPED.
-Public Release API+GPU95754=0:427529 assertions/95 cases inclnew positives.
-RWDI build/API+GPU70294 each0:427529/95 also pass. GPU/build idle. Release build
-72719=0. Earlier Xcode test-target attempt65: tests disabled
-in that app tree; corrected verified Ninja tree, not a renderer compile failure.
+LIVE68594/sourceb299d5c99a/renderer735a, exact PID17022/path/hash verified.
+Latest owner requested restart and observe top-right FPS. Startup DIAGNOSTIC:
+normal flags/quality, warmup0/ready-gateOFF/exact-gateOFF,6000 raw frames COMPLETE.
+Readiness false fields are DISABLED observations, not missing-probe evidence.
+Same43-control/location/binary observe/verify/gate each0. Cua fullscreen before
+login, then exact displayed FPSText read via official read-only LLWindow.getInfo;
+not a new scene screenshot/visual parity claim. Widget32→11/22.4s, later10;
+160 not captured, polling gaps up8.8s permit a missed transient.240/0 are UI
+initialization values. First10s actual12.258FPS/44,631 median draws; next10s
+11.038FPS/50,697 with unchanged camera. Real workload growth accompanies UI lag.
+Viewer LEFT RUNNING; NEW startup-readout Midday plan ACTIVE until verified exit.
+Prior normal PID14587 shutdown/Goodbye/absence75320=0; prior b299plan RESTORED0.
+All other plans restored. Translator FULLY STOPPED/NEVER restart/resume.
+Xcode replay STOPPED. No competing build/GPU/profile; agents source-only/quiet.
+Original full-world Cua screenshot timedout/reset; later login/UItext worked.
+Cua completion Confirmed live FPS display changes recorded. Root controls UI.
+BOTH optimized API+GPU427529/95 pass. Normal doctor/configOFF/build13489 all0,
+verify87922=0, independent349ARM64/deepstrictsignature96763=0; old68590 preserved.
 
 ## Controlled viewer baselines
+
+New68594/sourceb299 formal300 frames7949–8248: **9.635581285FPS**,
+mean103.782010697ms/p50103.661375/p95nearest108.9555. Best68579 **9.608672762FPS**:
+mean104.072646/p50103.8956665/p95109.0435; newmean−0.2793%/FPS+0.2800%, effectively
+FLAT. Latest68581 **9.454638960FPS**/mean105.768185. Single pairs not causal;
+physical draws differ~3.8%, olderbaselines lack64neighbor repair. Newformal
+all300 consecutive/native1/Ultra3456×2168/bias1/256ready/stable120; start/end43
+freshgates0. Four camera changes occurred ONLYwarmup; samplecamera/basis/EEP
+fixed, same-view2898→3197. Full endshutdown/restore verified, no claimedlivegain.
+[Independent report](/private/tmp/alchemy-metal-68594-formal-independent-20261109.p5xjUcY1/independent-formal-summary.json).
 
 Best controlled normal68579/source1f2cc0:300 frames5032–5331,
 **9.608672762FPS**, mean104.072646ms/p50103.8956665/p95109.0435.
@@ -97,7 +116,7 @@ Public renderer regression patch applied after source/peer review: local
 checkerboard raw shadows, complete RGBA16/rawdepth count1vs2 equality,
 rigid/skinned and standard/custom blend, main→probe→main isolation with actual
 PCSS-vs-single-tap positive controls PASS in BOTH optimized suites. Next small
-normal app build; no new viewer build/FPS result yet.
+normal68594 formal result is flat as recorded above.
 [Full evidence/paths](archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
 
 Ambient-only sum rewrite REJECTED:200 strict pairs pass but168 timing samples
@@ -124,11 +143,13 @@ gamma remains, no proven look defect/settings change from that observation.
 | Milestone | State | Evidence / remaining requirement |
 | --- | --- | --- |
 | M-004 Resource ownership | doing | Image/global pressure repaired; broader lifecycle open. |
-| M-008 Advanced views/effects | doing | Probe shader specialization under GPU validation; mirror cost open. |
+| M-008 Advanced views/effects | doing | Probe shader specialization validated; live result flat, mirror cost open. |
 | M-012 Native UI automation | complete | Fullscreen/login verified; root controls Xcode again. |
-| M-014 Ultra20FPS campaign | doing | Best controlled9.61FPS; new actual shader timings improve, viewer comparison pending. |
+| M-014 Ultra20FPS campaign | doing | Best controlled9.64FPS; specialization comparison flat, attribution open. |
 
 Full pixel/feature parity, multi-scene performance, prolonged stability,
 strict no-GL and independent build/review evidence remain OPEN.20FPS unmet;
-infeasibility unproved. Next: normal source-recordOFF app doctor/build/verify
-from committed source→controlled300frame run before combining other work.
+infeasibility unproved. Next: attribute startup growth/actual selected PSOs;
+close exact17022/restoreONLYstartup-readout plan before any build/GPU test.
+Private selected-PSO census patch1bc731 is reviewed/unapplied; parent68588 control
+prepared but UNLAUNCHED (latest owner prioritized current-viewer observation).

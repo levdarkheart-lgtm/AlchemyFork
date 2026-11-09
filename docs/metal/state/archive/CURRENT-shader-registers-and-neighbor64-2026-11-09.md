@@ -419,3 +419,82 @@ result yet. Next normal source-recordOFF doctor/build/verify, preserving old6859
 then fixedlocation/Ultra/Midday/Preset123 controlled300frame comparison. No other
 families combined. Independently reviewed source-only PBRt54uaujb and flat-water
 qfeQtB fixtures remain UNCOMPILED/UNRUN; no production admissions or gains claimed.
+
+
+## Normal app built/verified and controlled viewer comparison started
+
+Clean fullsourceb299d5c99afd519da82f0db11b5b9ee60f88b283 (renderer735a), normal
+68594. Build13489 actual0: preserve68590/doctor/configure SOURCE_RECORDOFF/full
+toolsbuild each0 (build45.56s). Packet/private/tmp/alchemy-metal-b299-normal-build-20261109.wpzx41rj
+holds argv/exits/logs and preserved68590. Canonical app at usual Release path;
+exeac27e181622600b2c561c681c8734778a3f50a34e6c07912fb6b60e10e8f058f;
+metallib61c5dcb3fa1677818cd3ef6b069837979a00cf9cf4d56cf1594e46d011d41585.
+Rootverify_app87922=0. Independentstatic96763=0:349MachO/0nonARM64/deepstrict
+signature0, embeddedfullsource/HEAD/headerb299, packagedmetal=normalartifact,
+cacheOFF/exactstd3.1/fastmath/min26.0/no debugsources, freshAIR/currentMSL.
+Identityreport/private/tmp/alchemy-metal-68594-normal-identity-20261109.zgkX3Z/app-identity.json,
+SHAcfe672bab98752f763c27f9f62db7bbfedfee16120cba6bc981648c427a0004c.
+
+Pinned fresh normal QAconfig/launcher dryrun0. NEWb299Middayinstall0/QAlaunch0;
+exactlivePID14587 verifiedvia libproc/path/EXESHA beforeUI. Cua boundexact68594,
+CtrlSuperF fullscreenBEFOREloginReturn, progress seen; freshLEAPloggedintrue.
+Cua completion Logged into verified fullscreen viewer recorded. Freshstart
+observe/verify/gate each0:43controls/location/exactbinary, Ultra6/3456×2168/
+Preset123/aniso4. No validation/capture/split/probe workloadflags inrun. World
+screenshot aftergates timedout15s/resetCua; no image/visual-smoke claim. Cua
+completion Recorded viewer screenshot timeout endedattempt; no repeatedworldUI.
+
+BenchmarkCSV private-b299-normal-probe-shadow-20261109-01 isstillwaiting for256
+ready/stable120 then300samples, minimumwarmup300s/120frames. Earlycamera Z−5.8cm
+settled byframe5172 to+34.3micrometres vsprior0d5diag; camera basis/projection/
+EEPidentical, camera_changes0. This iswarmup, notformalposesampling. No liveFPS
+result yet. NEWb299setupplan remainsACTIVE untilverifiedshutdown; alloldplans
+restored. TranslatorstaysSTOPPED, XcodeSTOPPED, no otherbuild/GPU/profile. Root
+ownsmeasurement. AgentsfinishedPBR/water source-onlypackets, neithercompiled/run.
+
+
+## Completed normal68594 comparison and startup observation — 2026-11-09
+
+Normal sourceb299/renderer735a, full source/library/executable identity verified.
+Formal300ready native-exact frames7949–8248 at Ultra3456×2168/bias1/256ready/
+stable120: mean103.782010697ms, median103.661375, nearest-rankp95108.9555,
+9.635581285FPS. Best68579 was9.608672762FPS: +0.28%, effectively flat. Earlier
+build lacks the64-neighbor repair; physical draws differ~3.8%, so this is not
+an isolated shader A/B. Fresh start/end43-control/location/binary gates exit0;
+pose changes are warmup-only. Independent report:
+/private/tmp/alchemy-metal-68594-formal-independent-20261109.p5xjUcY1/independent-formal-summary.json
+SHA602fd7673d857cf3122dc697d8fb5978e885b958c3e37a9b83a99bccdeff7ab0.
+Raw artifacts/metal/private-b299-normal-probe-shadow-20261109-01.csv and sidecar.
+Exact14587 graceful shutdown/Goodbye/absence75320=0, oldnormal plan restored0.
+
+Owner then requested CURRENT68594 restart and direct FPS-widget observation.
+LIVE17022/path/executable hash verified; Cua fullscreen before saved login.
+NEW artifacts/metal/private-b299-startup-readout-setup-plan-20261109.json ACTIVE;
+restore only after exact17022 exit. First launch failed1 before viewer start
+because private wrapper/inner logfile paths collided; corrected launch0, no
+plan overwrite. Current launcher/private/tmp/alchemy-metal-b299-startup-launch-20261109.py.
+Installed skill files unchanged; private copied LEAP observer reads actual
+FPSText through official LLWindow.getInfo. Cua completion Confirmed live FPS
+display changes recorded; no new world screenshot or visual-parity claim.
+Fresh43-control/location/binary observe/verify/gate each0. Widget log:
+artifacts/metal/qa-runs/candidate-b299-startup-readout-20261109-01/fps-widget-observed.jsonl.
+Observed32→11 over22.44s, later10, matching user11/12. Brief160 was not captured;
+initial polling gaps up8.82s mean it cannot be excluded.240/0 initialization
+values are not measured FPS. Source widget averages199 completed frame rates,
+rounded integer; WORLD_INIT resets login history. It can lag real workload.
+
+Startup raw6000frames/558.45s/allnative1 completed in
+artifacts/metal/private-b299-startup-readout-20261109-01.csv +provenance. This is
+DIAGNOSTIC: warmup0/readiness observer and admission disabled, so false readiness
+fields do not prove missing/unbuilt probes. Actualfirst10s12.257585FPS/median
+44,631encoded draws; next10s11.038430FPS/50,697draws, unchanged camera. Real
+workload growth accompanies display smoothing. Later drawcounts plateau52–54k
+while throughput declines toward10; no complete causal attribution from counts.
+Small camera-Z settling at300–302s prevents identical-pose startup-vs-late claim.
+Independent analysis/private/tmp/alchemy-metal-b299-startup-readout-analysis-20261109.EZPDu5/startup-readout-analysis.json
+SHA813732a14f4e310262427637ba3e2abf6f2e19bfb39ffea40c6a12c460f3a53f.
+
+No20FPS/live speedup/infeasibility claim. Translator remains STOPPED, Xcode
+replay STOPPED, no concurrent GPU/build work. Next root: attribute available
+startup counters; then exact17022 shutdown/currentplan restoration before
+corrected64-parent control or actual-selected-PSO census patch/test/build.

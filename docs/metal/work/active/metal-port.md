@@ -2,7 +2,7 @@
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
 **Renderer checkpoint:** Commit `735a407bb7da33a95bf14f7cbae995e1d9a91d4b`;
-latest68581:9.454639FPS; best controlled68579:9.608673.20FPS/full parity open.
+latest68594:9.635581FPS, effectively flat vs68579:9.608673.20FPS/full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -52,7 +52,8 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 
 ## Current source ownership and latest result
 
-Root owns all shared source/docs/runtime. All viewers CLOSED/all startupplans RESTORED;68581 exactapp preserved.
+Root owns shared source/docs/runtime. LIVE68594/PID17022 startup observation, NEW
+startup-readout plan ACTIVE; prior normal14587 closed/restored.68581 preserved.
 Translator explicitly fully stopped via its uv service command, actual0; stays
 STOPPED, no automatic restart. Latest68579/source1f2cc0 ready300:9.608672762FPS,
 mean104.072646/p50103.895667/p95109.0435ms,bias1/main95/Ultra3456×2168. Freshstart/
@@ -80,9 +81,9 @@ traversal. Both full optimized API+GPU suites427464/98 and independent12-case
 oracle pass. Normal68588 built/verified, preserved; no new live FPS claim.
 Hero-forward diagnostic0d5d49 is validated in BOTH configs: actual capture3059/3,
 normal API+GPU427476/95. Diagnostic68590 built/verified, ran and captured face1;
-300 diagnostic frames/all256 ready/stable120/43 gates/camera0. All viewers closed,
-plans restored, Translator stays STOPPED. Canonical source recording ON; future
-formal normal app must configure OFF. No overlapping profile/GPU work.
+300 diagnostic frames/all256 ready/stable120/43 gates/camera0. That diagnostic
+viewer closed and its plan restored; Translator stays STOPPED. Canonical source
+recording now OFF in normal68594. No overlapping profile/GPU work.
 
 Actual Xcode1CB/4render/4blit/833draws;15.74ms MEDIUM not live FPS. Simple alpha
 shadow58.02%/245 registers/304 spill bytes; encoder occupancy4.19%/overdraw1.58,
@@ -103,8 +104,18 @@ rigid/skinned/standard/custom cache isolation. Ninja Releasebuild72719=0;
 full API+GPU95754=0,427529/95; RWDI build+API/GPU70294=0, same427529/95.
 Xcode test-target attempt65 corrected to Ninja tree. All jobs terminal/GPU idle.
 User handed Xcode back to ROOT; replay remains STOPPED until all GPU tests end.
-Small replay STOPPED/Finished app and CUA completion observed. Next normalOFF
-app doctor/build/verify→controlled300frames. No new live FPS claim.
+Small replay STOPPED/Finished app and CUA completion observed. Normal68594
+sourceb299 doctor/configOFF/build13489=0, verify87922=0, independent349ARM64/
+strictsignature96763=0. Formal68594 300readyframes/end43gates0:9.635581FPS vsbest9.608673, effectively
+flat(+.28%); globalcamera4warmup-only, sampledpose/EEP fixed. Exact14587 closed/
+Goodbye/absence75320=0 andb299plan restored0. Latestuserrequested startupFPS
+observation: LIVE17022 current68594, same43gates0, startupDIAG6000frames complete.
+ExactFPSwidget readviaofficialLLWindow.getInfo:32→11/22.4s,later10;160notcaptured.
+Rawfirst10s12.26FPS/44.6kdraws,next10s11.04/50.7k, unchangedearlycamera.
+NEWstartup-readoutplanACTIVE untilverifiedshutdown; oldplansrestored/Translator
+STOPPED. ReadinessobservationsDISABLED inthisdiagnostic. Noimageparityclaim.
+Next selectedPSOcensus/privatepatch1bc731+startupgrowth attribution; parent68588
+control prepared/unlaunched. Close17022/restorecurrentplan beforeGPU/build.
 Ambient-only rewrite REJECTED (all timing ranges cross0). Rejected SH/predecode/
 cursor/simplemask remain rejected. PBR/water source-only fixtures may prepare;
 no combined optimization before current controlled viewer comparison.
