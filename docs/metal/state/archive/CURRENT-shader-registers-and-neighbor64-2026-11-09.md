@@ -610,3 +610,53 @@ GPU replaySTOPPED. No runtime jobs remain.20FPS goal remains ACTIVE/unmet.
 Next: measured GPU probe-work growth plus broader scalar covered-shadow draw
 reduction; staticbulk-only optimization deferred because it is only2.22% of
 main CPU weight. A private source-only covered-coalescing proposal is pending.
+
+
+## Covered-shadow draw coalescing and Apple-primary research — 2026-11-09
+
+Production commit5e1ecb76459de8a0bc90dc16da56aec75f1fc02d, test-only native-counter
+strengthening96af75c0d978b1c61c64b2b74ef9aa239ba376bc. Whole-scene validation
+remains before encoding. Compatible adjacent static covered complete triangles
+merge without sorting, remapping, shader or coverage changes. Geometry/offset/
+range/index type, coverage/count/cull, exact matrices, cutoffs/transforms and
+used texture identities must match. Avatar/rigged/terrain/ICB do not merge.
+Exact1eb shadowAlphaMask/PBR paths inspected;1/512 mask bias/checker stipple and
+rawR32/reverseZ/clamp behavior preserved. No actual live gain claimed yet.
+Private source proposal ebf20cf6 and tests e4ac7988 received two independent
+reviews; root added retained-output and native encoder draw/commit assertions.
+Focused firstGPU1573/1=0; fullRelease47183=0/RWDI47338=0,428946/95 each. Final
+native-counter focused1747/1 passes BOTH configs. Native calls6→1/fieldbarrier3
+and no draw/commit/retained change on later invalid inputs are verified. All
+API/GPUvalidationON; no viewer/profile/competingGPU work. Packet
+/private/tmp/alchemy-metal-covered-shadow-validation-20261109.ainfndy_.
+Normal68597 baseline preserved/private/tmp/alchemy-metal-68597-normal-preserved.app,
+executable47670056... verified before/after copy. Next normal candidate build
+wrapper/private/tmp/alchemy-metal-covered-shadow-app-build-20261109.py.
+
+Apple-primary research found no matching published version-specific driver bug.
+Apple documents CPU overhead from individual resource bindings and explains
+how argument buffers reduce bookkeeping; this matches the type of work in our
+profile. [Argument-buffer guidance](https://developer.apple.com/documentation/metal/improving-cpu-performance-by-using-argument-buffers).
+Metal4 core supports M1 and later and permits incremental command-encoding
+adoption. Explicit residency, synchronization and resource lifetime ownership
+must accompany it. [WWDC25](https://developer.apple.com/videos/play/wwdc2025/205/),
+[core API](https://developer.apple.com/documentation/metal/understanding-the-metal-4-core-api).
+Exact26.5.2 advisory unknown; inspected Xcode26.6/macOS26.5 notes supply no
+matching runtime fix. No cache deletion/toolchain switch/system change made.
+Research/private/tmp/alchemy-metal-primary-performance-research-20261109.md
+SHAbb30ee13b4538aa92d5f4c354bc4aa37aead929338560534111436c22d019b3c.
+
+PRIVATE M1Max feasibility packet:
+/private/tmp/alchemy-metal3-metal4-covered-shadow-20261109.25axBX.
+HostSHAcb19ab4f82335ae694c190261605ba7a5d6f2177ed8afc260bcd160215054fa1;
+clang++ C++20/O2/ARC/min26.0/Foundation/Metal compile0; native API+GPUrun0.
+ActualexistingMSL3.1 library61c5dcb3.../SAMEoldnativePSO/sharedsampler,608B ABI,
+two distinct immutable768B-offset transforms, singletexture/64²R32+D32. All12
+coverage/Z pairs plus2cutoff positive controls pass full rawBITWISE parity with
+visible pixels and same-target poison. M3cache/offset setters match current
+issued-work model; M4persistent argument tables/explicit residency/owners/
+sharedEvents/queuebarriers/feedback/GPUcompletion-before-allocator-reset are
+present. Sampler supportArgumentBuffersYES is shared by both test backends.
+No performance,8/32texture,rigged/terrain/tessellation/clamp/perspective or full
+viewer Metal4 claim. Future quietCPUbenchmark is a separate source-only packet;
+actual timing and production adoption remain unexecuted.20FPSgoal ACTIVE/unmet.

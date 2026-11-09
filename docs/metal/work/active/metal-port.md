@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `4e833fa29aadabee3a66023fb67da0975f6b6c7f`;
+**Renderer checkpoint:** Commit `5e1ecb76459de8a0bc90dc16da56aec75f1fc02d`;
 latest68594:9.635581FPS, effectively flat vs68579:9.608673.20FPS/full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
@@ -126,7 +126,11 @@ continuousTimeProfiler12min14305 COMPLETED0/920867samples, raw6000allnative1,
 freshstart/end43gates0;50766closed29248=0/Goodbye/absence/currentplanrestored0.
 MainCPUactive92→79%; approximateCPU/frame77.6→76.5ms whileFPS11.8→10.75,
 noCPUbusyramp. ThermalNominalfulltrace; clocksunknown. GPUspansgrowbutoverlap,
-no criticalpathproof. Privatecovered-shadowcoalescingfeasibilitypending; nochange.
+no criticalpathproof. Covered-shadow5e1ecb implemented; both optimized428946/95 pass, strengthened
+native commandcounter1747/1 bothpass. Liveeligiblefraction/FPSgain unknown.
+Private Metal3/4samePSO/oldMSL3.1 prototype compiled0/API+GPU0,12coverage/Z
+pairs+positivecontrol rawR32/D32exact. No performance/fullviewerclaim. Nextnormal
+appbuild/verify+livecoveredcensus, thenquietM3/M4CPUbenchmark separately.
 No formalFPSgain/infeasibilityclaim. Fullcontinuousdetails inNEXT/archive.
 Corrected64parent68588 control prepared/unlaunched. No FPS gain from counters.
 Ambient-only rewrite REJECTED (all timing ranges cross0). Rejected SH/predecode/

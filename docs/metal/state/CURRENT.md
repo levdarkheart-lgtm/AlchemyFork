@@ -2,8 +2,8 @@
 
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `4e833fa29aadabee3a66023fb67da0975f6b6c7f`.
-**Working source:** normal68597 live; actual selected probe specialization confirmed.
+**Renderer code checkpoint:** `5e1ecb76459de8a0bc90dc16da56aec75f1fc02d`.
+**Working source:** covered-shadow draw coalescing validated/committed; normal app build next.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -16,28 +16,29 @@ six hero1024 faces/two cascades, PCSS, reverse-Z/clamp/casters/viewer features.
 No private uploads/releases. Root owns shared source/docs/runtime/GPU; agents
 prepare/review private source only. User explicitly handed Xcode back to ROOT.
 
-All viewers CLOSED; exact50766 path/hash/SIGTERM/Goodbye/absence29248=0,
-continuous-startup plan RESTORED0/allolderplans restored. Translator FULLY
-STOPPED/NEVERrestart; Xcode GPU replay STOPPED. Root owns source/runtime/UI.
-Normal68597/source6f6207698720bc4455c43f68e007715135643074, renderer4e833,
-exe47670056.../metallib61c5dcb3... verified; doctor/config/build/verify25454 all0,
-independent349ARM64/deepstrictidentity0. Currentapp preserved; no shaderchange.
-User-requested continuous TimeProfiler14305 actual0,12m from BEFORElogin;
-920867CPU-active samples/596968main. TOC33140/export16452/thermal60378 each0.
-Main sampled activity92%→79% ofonecore; world onPcores. Approx aligned CPU/frame
-77.56→76.46ms as actualFPS11.78→10.75 (30s bins; UTC/flush alignment~1s).
-CPU work did not ramp upward. Thermal Nominal ALL720.726s; fans louder is not
-proof of throttling. Clock sampler unavailable(requiresroot/sudo-n1); clocks
-unknown. GPU completed-CB spans grow with probe packs; sums overlap, notactive
-GPUtime/criticalpath proof. CPU serialcost still needs reduction for20FPS.
-6000rawframes ALLnative1/fallback0 complete (527.46s), freshstart/end43gates0.
-Raw logging stops before12minCPUtrace; laterbins usewidget/process/logdata.
-Mean11.375FPS; first10s12.35/43.5kmedian draws, later10.71/~52.4k. DIAGNOSTIC,
-no formal gain. StartupreadyobserverOFF, do notinterpretfalsefieldsasmissing.
-Prior68597 ready300DIAG8.159FPS is separate; no causal samebuildcomparison.
-Both optimized API+GPU428004/95PASS. Live selected eligibleheroPSOs true;
-staticbulkexecute only2.22%ofmainCPU =>defer bulk-only baseInstance/parallelwork.
-Rootcorrelation report4e46f5c4/CPUfullanalysise50ce5df inpacket3a9on15l (NEXT).
+All viewers CLOSED; exact50766 shutdown/Goodbye/absence29248=0, all setup
+plans RESTORED. Translator FULLY STOPPED/NEVERrestart; XcodeGPUreplay STOPPED.
+Root owns shared source/runtime/UI. Normal68597/source6f620 preserved at
+/private/tmp/alchemy-metal-68597-normal-preserved.app, executable47670056...
+verified before/after copy. Original canonical app still68597; next build below.
+Committed5e1ecb: adjacent static covered-shadow triangles with identical full
+shader/buffer/texture/cull state merge in order. Full source validation stays
+before emission; avatar/rigged/terrain/ICB untouched. No shader/math changes.
+Both optimized native API+GPU suites428946/95 PASS; final native draw/commit
+counter tests1747/1 PASS each (test-only96af75). Counters separate covered/opaque.
+Actual live merge fraction and FPS benefit UNKNOWN. Next build/verify/log census.
+Apple research found no matching published driver bug in bounded official
+sources. Documented binding/residency CPU cost matches profile; argument buffers
+and Metal4 command ownership are concrete candidates (links in archive).
+PRIVATE M1 Metal3/4 prototype compiled0 and native API+GPU0: same currentMSL3.1
+library61c5.../samePSO,12single-texture coverage/Z pairs +cutoff positivecontrol,
+bitwise fullR32/D32 parity. Explicit residency/events/owners/completion retained.
+No timing,8/32-texture,terrain,rigging or full-viewer Metal4 claim. Sourcecb19ab4f.
+Packet/private/tmp/alchemy-metal3-metal4-covered-shadow-20261109.25axBX.
+Next private CPU benchmark prepared separately bytraceagent; no jobs yet.
+Continuous12minCPU evidence:920867samples, main~77ms/frame flat asFPS11.8→10.75;
+mainactive92→79%, Pcores; Nominalthermal720.726s, clocksunknown. GPUgrowth
+attribution remains open. Startup6000allnative1/no fallback; no formal gain.
 Startup6000 raw frames complete:12.258→11.038FPS first10/next10s, median draws
 44,631→50,697, early camera unchanged. Later main probe pack2→98/hero up to256
 while several fixedfaces retain post family/index counts. Correlation, not
@@ -151,6 +152,6 @@ gamma remains, no proven look defect/settings change from that observation.
 Full pixel/feature parity, multi-scene performance, prolonged stability,
 strict no-GL and independent build/review evidence remain OPEN.20FPS unmet;
 infeasibility unproved. Next: attribute startup growth/actual selected PSOs;
-Selected-PSO diagnostics4e833 validated; fullstartupCPU evidence captured.
-Next GPU growth attribution and scalar covered-shadow draw reduction prototype. Corrected64-parent68588 control remains prepared
+Covered-shadow5e1ecb validated; build and measure actual merge population.
+Then private quiet Metal3/4 CPU command benchmark; no concurrent viewer/GPU work. Corrected64-parent68588 control remains prepared
 but UNLAUNCHED; prior best68579 has31-neighbor behavior, so not a pure A/B.
