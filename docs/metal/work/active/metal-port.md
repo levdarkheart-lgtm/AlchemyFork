@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `0d5d49c188f8bfee4dd866adbac757af750340d4`;
+**Renderer checkpoint:** Commit `735a407bb7da33a95bf14f7cbae995e1d9a91d4b`;
 latest68581:9.454639FPS; best controlled68579:9.608673.20FPS/full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
@@ -91,14 +91,25 @@ early PreZ rejects55.29%. Call Stack base-probe sampling71.05%, holds28.93%
 User manual inspection complete; replay STOPPED/Finished app observed and CUA
 completion recorded. Haze label includes later alpha draws; haze FS only1.79%.
 
-Next PRIVATE probe-only shadow specialization: actual bound pack bit0x4 gate,
-unchanged main PCSS/quality. Root verified frozen inputs/production prefix;
-compile0/0/0 and API+GPU35852 actual0,200 strict color/rawD32 pairs50×4 formats.
-No performance/occupancy gain yet; run quiet A/B/control timing before admission.
-Distinct ambient-only simple probe walker is source-only preparation. Rejected
-SH lifetimes/predecoded SH/scalar cursor/simple tile mask remain rejected.
-Ordinary SCENE batching proposal/tests source-reviewed but unapplied/uncompiled;
-commit before independent face publication, preserve failure/generation rules.
+Committed735a probe-shadow function constant0 folds existing bit4 single-tap branch;
+stock/custom simple-alpha keys distinguish none/runtime/probe. Gate actual bound
+validated shadow flag +actual probe count>1, retaining default-only runtime.
+Two source reviews approve; MSL920d2e2d. Actual native API+GPU10157=0 ALL200
+strict color/rawD32 pairs50×4 inclmain/default;168 quiet timings33685=0,
+heavy23.2–31.8%lower/all7 blocks, fallback/control ranges cross0. Small capture actual1CB/4draws/profile29.09msMEDIUM;245→224 registers,
+BOTH304spill bytes (no spill-elimination/liveFPS claim). Actual public renderer regression
+patch applied: checkerboard main-vs-probe positive controls, full color/rawdepth,
+rigid/skinned/standard/custom cache isolation. Ninja Releasebuild72719=0;
+full API+GPU95754=0,427529/95; RWDI build+API/GPU70294=0, same427529/95.
+Xcode test-target attempt65 corrected to Ninja tree. All jobs terminal/GPU idle.
+User handed Xcode back to ROOT; replay remains STOPPED until all GPU tests end.
+Small replay STOPPED/Finished app and CUA completion observed. Next normalOFF
+app doctor/build/verify→controlled300frames. No new live FPS claim.
+Ambient-only rewrite REJECTED (all timing ranges cross0). Rejected SH/predecode/
+cursor/simplemask remain rejected. PBR/water source-only fixtures may prepare;
+no combined optimization before current controlled viewer comparison.
+Ordinary SCENE batching proposal/tests remain private/uncompiled, preserve
+scene-before-publication/generation/failure ordering.
 [Full checkpoint](../../state/archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
 
 ## Non-negotiable open gates

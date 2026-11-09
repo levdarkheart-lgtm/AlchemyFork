@@ -339,3 +339,83 @@ review before GPU timing. No performance or register conclusion yet.
 Doctor post-profile native run exited0 (sandbox first run1 at hardware sysctl);
 M1 Max/64GiB/ARM64/macOS26.5.2/Xcode26.6, unified memory, recommended working
 set62277025792 bytes/Apple7supported. Full log retained privately in/tmp.
+
+
+## Actual specialization timing and production implementation
+
+Initial forced-clone168-sample/7-block timing21311 actual0, all8–20ms/thermal0,
+found accepted rigid/skinned−24.61/−22.43% paired medians and rejected-neighbor
+rigid/skinned−29.27/−31.65%, ALL7/both targets negative. Default-only+5.34%
+[+.31,+18.74] regressed; same actual-PSO median+1.06% range crosses zero.
+Ambient-only same serial run0,168samples, every paired range crosses zero:
+REJECTED/no production change. Independent parser/hash/schedule checks pass.
+Density followup76515=0/168 samples:2accepted−16.79%,2outside−6.39%,8accepted
+−32.79%,8rejected−21.53%,8manual−25.39%, all7 negative. Control+1.92% variable;
+smaller effect is qualified. This motivated actual probe-count>1 admission.
+
+ROOT now implements optional Metal bool function constant0 in the existing
+filter guard, default false. True folds the already-taken raw-depth single-tap
+branch; no math/caster/quality changes. Stock simple-alpha three-mode PSOs and
+custom blend cache mode use ACTUAL validated bound shadowbit4 andactualprobe
+count>1. Main/default-only/legacy/avatar keep runtime; constant list cleared
+before other materials. Existing native function-constant wrapper reused.
+Production MSL920d2e2d927b94a43cd396478bfa3776bc2edccaf5e5dd3ef8eb10bbbfcb1fa1.
+Two independent source reviews approve cache/index/null/constant-reset semantics.
+
+Actual-functionconstant packet at/var/folders/ds/8jjw6_7x0kzd98p2w2z16r3w0000gn/T/alchemy-metal-probe-function-constant-20261109.ad1tpate
+(pointer /private/tmp/alchemy-metal-probe-function-constant-latest-path-20261109.txt).
+Compile31725 metal/metallib/host0/0/0; API+GPU10157=0 ALL200 strict color/rawD32
+pairs50×4formats against unchanged old d6ad library, including actual newsource
+main/default/legacy fallback, thermal0. Guarded quiet timing33685=0/168 samples:
+accepted rigid−23.2226%[−30.17,−21.75],skinned−25.4957%[−31.50,−20.11]; rejected
+rigid−30.6883%[−35.90,−26.55],skinned−31.8305%[−34.45,−27.60], ALL7/both targets.
+Default-only−2.08%[−9.60,+10.08] and samePSO−2.00%[−5.65,+1.76] have no isolated
+benefit. No competing build/GPU/profile; all nominal/inrange. Independent parser
+checks all168/schedule/normalization/hashguards; summarySHA
+dd2b60e251c485df3726bbba296d965cacddddfe90ca3ab7abbb12cad6af0a62.
+These are mechanism timings, NOT viewer FPS or proved spill causality.
+
+Small actual-functionconstant A/B/B/A capture producednative0/preflight+finalA
+strict color/depth equality, at/private/tmp/alchemy-metal-function-constant-registers-20261109.8jh1vz8a/four-simple-shadow-draws.gputrace.
+Hostec5e1f3ba900454e34aaffa1aa0c466638f99bf2380b98304655dccb1dff9676;
+planned1CB/4clear-storeencoders/4draws/1024²RGBA16F/readonlyD32, commit→stop→wait.
+Actual Xcode census/replay/profile/registers/spills NOT yet observed. User has
+explicitly handed Xcode control back to root. Replay remains stopped until all
+GPU tests complete; those have now completed. All viewers closed/plans restored.
+
+Root applied independently reviewed public-renderer patchfebff14885bc3d45083e698276d89215515d3540310c2108748f1353605f0111:
+local checkerboardR32 plus unchangedSH, fullRGBA16/rawdepth count1vs2 equality,
+rigid/skinned/standard/custom blend, specialized custom FIRST thenmain→probe→main
+and PCSS-vs-singleTap covered-pixel positive controls. Existing state/maps remain
+local/unchanged. First test build76595 exited65: Xcode app tree has tests disabled,
+not compiler failure. Corrected verified Ninja Releasebuild72719=0 (57.25s),
+fullAPI+GPU95754=0 (129.69s),427529 assertions/95 cases PASS. RWDI70294 build0
+(52.35s)/fullAPI+GPU0 (37.20s), SAME427529/95 PASS. Capturetests excluded asbefore;
+no capture lifecycle code changed. Exact argv/exits/source hashes and full logs
+are in ad1tpate. No new normal app or live FPS measurement yet; code uncommitted.
+
+
+## Small actual function-constant capture verified and code committed
+
+Root took back Xcode as explicitly requested, opened exact8jh1vz8a capture via
+Mac Open/GoTo shortcuts (paste did not update GoTo field; AXsetValue corrected
+and exact URL verified before Replay). Actual Summary1CB/4render/0compute/
+4draws/0dispatch/1024²RGBA16F,49.45MiB resources. Replay then Profile completed
+29.09ms at MEDIUM PState, four synthetic mechanism draws, NOT live frame/FPS.
+Shader rows: baseline245 allocated/high registers/304 spilled bytes/cost55.69%;
+guarded functionconstant candidate224/224/304/cost44.22%. Static spill allocation
+is UNCHANGED, so no spill-elimination claim. Register reduction alone does not
+prove occupancy/performance causality. Encoder draw0A25.17/draw1B22.09/draw2B22.18/
+draw3A30.56%; single-profile variability is not substituted for quiet paired tests.
+Root clicked Stop, observed Finished running macOS App/Replay landing, then
+next CUAcall completion Measured lower probe shader registers before other tools.
+Rawprivatead1tpate/xcode-register-profile-observed.json records this observation.
+
+Committed three source/test files as735a407bb7da33a95bf14f7cbae995e1d9a91d4b,
+metal: specialize probe simple-alpha shadow pipelines.173 insertions/10 deletions.
+Publicsource/C++test exacthashes in buildrecords. Both optimized fullAPI+GPU
+427529/95 and private200strict/168timings pass asabove. No new normal app/liveFPS
+result yet. Next normal source-recordOFF doctor/build/verify, preserving old68590,
+then fixedlocation/Ultra/Midday/Preset123 controlled300frame comparison. No other
+families combined. Independently reviewed source-only PBRt54uaujb and flat-water
+qfeQtB fixtures remain UNCOMPILED/UNRUN; no production admissions or gains claimed.

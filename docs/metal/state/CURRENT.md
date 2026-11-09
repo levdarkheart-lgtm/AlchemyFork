@@ -2,159 +2,133 @@
 
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `0d5d49c188f8bfee4dd866adbac757af750340d4`.
-**Working source:** neighbor repair and hero-forward capture validated; no new optimization integrated.
+**Renderer code checkpoint:** `735a407bb7da33a95bf14f7cbae995e1d9a91d4b`.
+**Working source:** validated probe-shadow specialization committed; normal app build pending.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
-## Goal, authority and current runtime
+## Goal, authority and runtime
 
-The unbudgeted20FPS Ultra goal is ACTIVE and unmet. Autonomous quit/build/login/
-measure is authorized only at the fixed private location/numericPreset123; no
-travel. Prefer Mac shortcuts and fullscreen before login. Preserve Ultra
-3456×2168/Midday, all six hero1024 faces/two cascades, PCSS, reverse-Z, clamp,
-casters and viewer features. No private uploads/releases.
+Unbudgeted20FPS Ultra goal ACTIVE/unmet. Autonomous quit/build/login/measure
+is authorized at the same private place/numericPreset123 ONLY; no travel.
+Prefer Mac shortcuts/fullscreen before login. Preserve Ultra3456×2168/Midday,
+six hero1024 faces/two cascades, PCSS, reverse-Z/clamp/casters/viewer features.
+No private uploads/releases. Root owns shared source/docs/runtime/GPU; agents
+prepare/review private source only. User explicitly handed Xcode back to ROOT.
 
-All viewers CLOSED/all startup plans RESTORED. Diagnostic68590/source0d5d49
-captured face1, then exact PID80172 gracefully closed with Goodbye/absence;
-shutdown19750 actual0. Diagnostic300 samples/all256 probes ready/stable120,
-camera changes0; fresh start/end43-control/location/binary gates all0.
-Capture7506→7506 STOPPED/one attempt/error0. Actual Xcode census1CB/4render/
-4blit/833draws/0compute/1024²RGBA16F; nonempty scene replay observed.
-Profile15.74ms MEDIUM is one forward face, not live FPS. User drove source
-inspection; root read status Finished running macOS App/Replay landing after
-user stopped GPU workload. CUA completion recorded before further GPU work.
-Root owns shared source/docs/runtime; agents source-only. No scene parity/FPS claim.
+ALL VIEWERS CLOSED/all Midday plans RESTORED. Exact68590 PID80172 gracefully
+closed/Goodbye/absence19750=0, fresh0d5d49 plan restored0. Translator explicitly
+FULLY STOPPED with its uv service command0; NEVER restart/resume it.
+Manual hero profile finished; root observed Finished running macOS App/Replay
+landing and recorded CUA completion before experiments. Xcode replay STOPPED.
+Public Release API+GPU95754=0:427529 assertions/95 cases inclnew positives.
+RWDI build/API+GPU70294 each0:427529/95 also pass. GPU/build idle. Release build
+72719=0. Earlier Xcode test-target attempt65: tests disabled
+in that app tree; corrected verified Ninja tree, not a renderer compile failure.
 
-Translator remains FULLY STOPPED by explicit user instruction. Its project
-`uv run --no-sync python scripts/service.py stop` exited0; API35823,
-tailscale35866 and GPUworker35824 absence verified. NEVER restart/resume it.
+## Controlled viewer baselines
 
-## Controlled viewer measurements
+Best controlled normal68579/source1f2cc0:300 frames5032–5331,
+**9.608672762FPS**, mean104.072646ms/p50103.8956665/p95109.0435.
+Latest normal68581/sourceb52c1b:300 frames, **9.454638960FPS**,
+mean105.768185ms/p50105.811167/p95110.90525. One pair not causal. Both matched
+43 controls/location/binary/camera/Ultra3456×2168/bias1/256 ready/stable120,
+TranslatorOFF, no heavy work during samples. Exact apps preserved privately.
+Earlier68577 8.011210/68576 6.728847 had external Translator GPU contention.
+Original67611/exact1eb+observer6.095519FPS; full parity remains open.
+[Raw comparison/hashes](archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
 
-Best controlled68579/source1f2cc0:300 consecutive frames5032–5331,
-**9.608672762FPS**, mean104.072646ms, p50103.8956665, p95109.0435.
-Latest normal68581/sourceb52c1ba969:300 frames, **9.454638960FPS**,
-mean105.768185ms, p50105.811167, p95110.90525. One pair does not establish a
-causal regression; flag eligibility showed no FPS gain. Both Translator OFF,
-43 control/location/binary gates matched, bias1,256 probes ready/stable120,
-Ultra3456×2168. No heavy work overlapped formal samples. Camera basis/projection
-matched; Zdelta26.7 micrometres, no within-sample movement. Main-visible96vs95.
+## Actual GPU diagnosis
 
-68579 and68581 exact measured apps are preserved under/private/tmp. Earlier
-68577 8.011210/68576 6.728847 had uncontrolled Translator GPU work; no pure-code
-speedup claim. Original67611/exact1eb+observer6.095519FPS; full parity remains
-open. Official performance gates still fail20FPS/other required scenes.
-[Full comparison and hashes](archive/CURRENT-probe-ssao-and-shadow-gather-2026-11-09.md).
+Diagnostic GPU union105.542ms/p; inclusive mainbase17.33/heroabove20.71/
+mainhaze15.91 overlap: DO NOT ADD. Old CPU trace has no matched frame counts;
+no77ms CPU floor. Focused mainbase216 registers/0spill,7.177M fragments,
+37.46B ALU, ALUlim44.54%; mainbase occupancy still unknown.
 
-## Measured GPU cause
-
-Post-formal68581 diagnostic viewer GPU interval union105.542ms/p, versus103.541
-for68579. Largest inclusive contexts: main base17.33ms, hero above-water20.71ms,
-main haze/later transparency15.91ms, hero haze/G-buffer/shadows also material.
-These labels overlap and added diagnostic pass boundaries alter cost: do not
-sum labels or equate them with isolated shader durations. Main initial-avatar
-family5.35vs2.16 despite matching source counts; no universal avatar cost.
-Old68566 CPU trace lacks matched frame counts; no77ms CPU floor claim.
-
-Actual focused main-base Xcode replay/profile:1 command buffer,1 render encoder,
-2 draws.31.17ms at MEDIUM PState is diagnostic, not live frame/FPS. Geometry
-99.68% of command cost;7,176,832 fragment invocations,43.22 sampler calls/fragment,
-37.460B ALU instructions. Integer-conditional50.11%, integer-complex8.33%,
-F32 32.58%.216 registers,0 spilled bytes; occupancy UNKNOWN. Encoder ALU limiter
-44.54% versus texture-read6.01%.7.04GiB L1 texture traffic is CACHE traffic,
-not external DRAM bandwidth. Source-line costs remain UNKNOWN.
-[Focused capture evidence](archive/CURRENT-selected-base-capture-2026-11-09.md).
+New0d5d49 hero face1 capture7506:1CB/4render/4blit/833draws/1024²RGBA16F,
+nonempty raw-cube preview. Profile15.74ms MEDIUM is one face, NOTliveFPS.
+Simple-shadow alpha58.02%/245registers/304spill bytes; water20.39%/254/96;
+PBR alpha15.22%/254/80, legacy alpha1.21%/254/32. Haze FS only1.79%/64/0;
+589-draw haze ENCODER77.867% includes later alpha. Encoder occupancy4.19%,
+1.6607MFS, overdraw1.58, PreZfails55.29%,1.4197BALU; high registers/spill
+correlate with low occupancy but causality requires A/B. No DRAM saturation
+or late-Z count claim. Static spill bytes are NOT per-fragment memory traffic.
+Call Stack attributes71.05% to base-probe sampling,28.93% to holds; optimized
+source/inclusive percentages overlap and are not literal call edges. Branch
+5525 shows11.50%; declaration97.32% is not a single-instruction cost.
+Private profile JSON/capture paths and full counters are in NEXT/archive.
 
 ## Active implementation checkpoint
 
-479ff989 fixes diagnostic shader line flags and Xcode stale-output dependency:
-source-record ON uses optimized line tables plus recorded source, with a real
-compiler-options input stamp. Actual AIR has34,812 line locations/749 subprograms;
-normal OFF metallib remains byte-identical ffd9e1d1…. Preserved diagnostic68587
-identifies479ff989; independent ARM64 audit349/0 and deep strict signature exit0.
-Saved full-build log says BUILD SUCCEEDED; original process exit is UNKNOWN.
-This app was not launched;68584 is separately preserved. Canonical68590 is now
-the diagnostic source-recordON app; normal68588 remains preserved separately.
+Committed4b23 repairs exact-original64 candidate/32 ACCEPTED neighbor traversal
+in three walkers (old31 truncated valid later probes). Red late32/64 failures;
+green9161 assertions, both optimized API+GPU suites427464/98, independent12-case
+all-walker oracle pass. Normal68588 built/verified/preserved; no FPS gain claim.
+Committed0d5d49 adds defaultOFF selected hero-forward capture ownership. BOTH
+capture suites3059/3 and normal API+GPU427476/95 pass. Diagnostic68590 ran300
+frames/all256 ready/stable120/camera0/fresh43 gates0 and captured face1.
+479ff diagnostic compiler/dependency repair retains optimization and source-line
+metadata; full history/verified hashes in the archive. Normal builds recordOFF.
 
-Private SH load/lifetime scheduling passed340 base bitwise pairs and172 oracle
-pairs. Quiet224-sample timing found no consistent win: PBR−0.1866% matches
-same-PSO control−0.1859%; all8 paired ranges cross zero. Actual tiny A/B/B/A
-capture replay/profile completed:4 draws, both216 registers/0 spills, costs
-49.98/50.00%. REJECTED. No production SH math change. Older predecoded-SH,
-named accumulators, specialization, material split and layered prototypes also
-remain rejected; do not repeat unchanged. Actual live Ultra SSR=0, so privately
-validated SSR-sharing miss-path savings do not address this current workload.
-[New experiment and build record](archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
+Committed735a: optional Metal bool function constant0 folds the EXISTING single-tap
+shadow branch; main/default shaders retain runtime behavior. Stock simple-alpha
+PSOs now none/runtime/probe, custom blend cache includes mode. Selection checks
+ACTUAL validated bound shadow bit0x4 plus actual probe count>1; no view-label
+assumption. Constants cleared before other families; avatars remain runtime.
+Source independently approved twice. No sampling/caster/quality/math change.
+Production MSL920d2e2d927b94a43cd396478bfa3776bc2edccaf5e5dd3ef8eb10bbbfcb1fa1.
+
+Initial forced-clone strict200 pairs pass;168 timings show heavy cases22–32%
+lower/all7 blocks, default-only+5.34%. Density followup168 cases with2/8 active
+probes/manual boxes also improve6.4–32.8%; smaller effect has variable control.
+Actual function-constant source compile31725=0/0/0, API+GPU10157=0:200 bitwise
+full color/rawD32 pairs50×4, including main/default fallbacks; thermal0.
+Actual guarded timing33685=0:168 samples/7ABBA blocks, heavy cases23.2–31.8%
+lower/all7/both targets. Default-only−2.08% range crosses0; samePSO control−2%
+also crosses0. No isolated default gain, viewer FPS or spill-reduction proof.
+Independent raw-log/parser/source-hash checks pass. No other GPU/profile/build
+competed. Tiny Xcode capture ACTUAL1CB/4render/4draws/1024²RGBA16F, profile29.09ms
+MEDIUM (notliveFPS). Baseline245→candidate224 registers; BOTH304spill bytes.
+Costs55.69/44.22% for two draws each; repeated quiet timings are stronger proof.
+No spill elimination/occupancy-causality claim. Replay STOPPED/Finished app observed
+and CUA completion recorded before other tools.
+
+Public renderer regression patch applied after source/peer review: local
+checkerboard raw shadows, complete RGBA16/rawdepth count1vs2 equality,
+rigid/skinned and standard/custom blend, main→probe→main isolation with actual
+PCSS-vs-single-tap positive controls PASS in BOTH optimized suites. Next small
+normal app build; no new viewer build/FPS result yet.
+[Full evidence/paths](archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
+
+Ambient-only sum rewrite REJECTED:200 strict pairs pass but168 timing samples
+show no consistent benefit. Prior SH lifetimes/predecode/named accumulators/
+mainbase specialization/materialsplit/layered/scalarcursor/simpletilemask stay
+rejected; do not repeat unchanged. Live Ultra SSR=0, so private SSR miss-path
+win does not address this scene. Ordinary SCENE batch proposal remains private;
+commit BEFORE separate face publication, preserve generation/failure ordering.
+Agents may prepare independent PBR/water specialization fixtures source-only;
+do not combine before this simple variant's controlled viewer comparison.
 
 ## Exact next actions
 
-Exact1eb manager packs up to64 neighbor candidates; class3 GLSL examines that
-count while limiting ACCEPTED taps to32. Native base/legacy/water incorrectly
-examined only31 neighbors. Rejected entries could hide a later containing probe
-or manual box. Root changed only3 clamps31→64, keeping bounds/order/accepted cap.
-Actual forward-image regression before fix exited42: late32/64 each failed,
-9,159 other assertions passed. Green actual API+GPU run10932 exited0: all9,161 assertions passed.
-Independent source review approved the contract/oracle. Both optimized suites
-passed427,464 assertions/98 cases. Independent12-case base/legacy/water fixture
-passed strict expected-color and CPU-membership checks, including late64 and cap.
-Normal app68588/source4b23: doctor/configure/source-recordOFF/build11888 all0;
-independent349 ARM64/0 invalid and deep strict signature each actual0.
-Exe44d83b1a…/metallib33bd2d7f…; full hashes in archive. No new live FPS sample.
-
-Private scalar cursor also REJECTED:404 strict image pairs and16 neighbor
-contract checks passed, but252 timing samples show mainPBR−0.55% against
-same-PSO control−2.62%, legacy+1.30%, mixed+0.09%. All but the64-rejected
-stress case have paired ranges crossing zero. No general gain or integration.
-Actual hero profile below supersedes the earlier proposed hidden-work capture.
-Preserve all six views; no face-local culling optimization is integrated.
-Hero-forward diagnostic mode is now applied and independently reviewed.
-Release build12288 and actual capture82486 passed3059 assertions/3 cases.
-RWDI build55464 and serial validation27224 passed: EACH capture3059/3 and
-normal API+GPU427476/95. Diagnostic app68590/source0d5d49 built20880 after doctor
-and source-recordON configure, all actual0. Independent349 ARM64/0 invalid and deep strict signature actual0; QA dry-run0.
-Live capture routing reached selected face1; actual replay/profile/census are
-recorded above and in the private observation JSON.
-
-Latest hero-forward profile isolates a different issue: simple-shadow alpha
-58.02%/245 registers/304 spilled bytes; water20.39%/254/96; PBR alpha15.22%/254/80.
-The589-draw atmospheric encoder includes these alpha draws; its haze shader is
-only1.79%. Encoder FS occupancy4.19%,1.6607M invocations, overdraw1.58,
-PreZ rejects55.29%. High registers/spills correlate with low occupancy; cause
-requires A/B proof. Call Stack attributes71.05% of simple-shadow cost to base
-probe sampling,28.93% to holds; inclusive optimized-source attribution is not a
-literal call graph or per-instruction timing. Source type branch shows11.50%.
-Private probe-only shadow specialization removes unreachable main PCSS machinery
-only under the ACTUAL bound pack single-tap flag. Frozen source/prefix hashes
-verified; compile0/0/0, API+GPU35852 actual0:200 bitwise color/rawD32 pairs,
-50 cases/four formats, positive controls, thermal0. Performance/register gain
-UNMEASURED; no production change. Next run bounded quiet timing/control A/B,
-then register capture only if justified. Ambient-only simple walker also passed
-200 strict pairs53042=0; both timings pending. Rejected SH/cursor/mask stay rejected.
-Actual metrics: ignored private-0d5d49-xcode-profile-observed-20261109.json;
-full private packet and compiler/device-access caveats are in the archive.
-
-## Retained behavior and open release gates
-
-Keep image/global pressure scopes3969405+46d622 (bias1), per-view probes,
-shiny bypass, bindings, real occlusion, Ultra4× anisotropy, bounded lights,
-direct R32 shadows, borrowed targets/depth, arenas/caches/retirement and cube
-SSAO/gather repairs. Private native D32 differs from current raw-depth reference:
-no migration or epsilon waiver. Hero occlusion needs independent face ownership
-and complete occluder invalidation; no measured saving yet.
-
-Xcode Color0 Auto RGB0..0.218 expands its intermediate linear-HDR preview;
-original final ordering/one gamma retained, no proven color defect/settings change.
+Retain image/global memory accounting3969405+46d622(bias1), binding cache,
+per-view probes, shiny bypass, real main occlusion/Ultra4× anisotropy, bounded
+lights/direct R32 shadows/borrowed targets/depth/arenas/retirement/cube SSAO.
+NativeD32 differs from raw-depth reference: no migration/epsilon waiver. Cube
+occlusion needs per-face current depth and conservative ownership/invalidation.
+Xcode Color0 Auto expands intermediate linear HDR; original final order/one
+gamma remains, no proven look defect/settings change from that observation.
 
 ## Complete-product advancement assessment
 
 | Milestone | State | Evidence / remaining requirement |
 | --- | --- | --- |
-| M-004 Resource ownership | doing | Image/global scope repaired; broader lifecycle/caches remain. |
-| M-008 Advanced views/effects | doing | Cube SSAO parity fixed; mirror costs remain. |
-| M-012 Native UI automation | complete | Exact fullscreen/login verified. |
-| M-014 Ultra20FPS campaign | doing | Best controlled9.61FPS; target unmet. |
+| M-004 Resource ownership | doing | Image/global pressure repaired; broader lifecycle open. |
+| M-008 Advanced views/effects | doing | Probe shader specialization under GPU validation; mirror cost open. |
+| M-012 Native UI automation | complete | Fullscreen/login verified; root controls Xcode again. |
+| M-014 Ultra20FPS campaign | doing | Best controlled9.61FPS; new actual shader timings improve, viewer comparison pending. |
 
-Full feature/pixel parity, multi-scene performance, prolonged stability,
-strict no-GL and independent build/review evidence remain OPEN. No evidence
-establishes that20FPS is impossible; no product-complete claim.
+Full pixel/feature parity, multi-scene performance, prolonged stability,
+strict no-GL and independent build/review evidence remain OPEN.20FPS unmet;
+infeasibility unproved. Next: normal source-recordOFF app doctor/build/verify
+from committed source→controlled300frame run before combining other work.
