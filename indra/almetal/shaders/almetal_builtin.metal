@@ -6280,6 +6280,81 @@ static float3 almetal_finish_hero_probe(
     return mix(environment_color, hero_environment, weight);
 }
 
+// Shiny uses glossiness 1 and can avoid the ordinary probe walk when the
+// original hero blend replaces it completely. Keep this path separate from
+// the shared finish used by PBR, water and alpha; their work is unchanged.
+static float almetal_shiny_hero_weight(float3 position, float glossiness,
+    constant ALMetalWorldHeroProbeConstants& hero)
+{
+    if (hero.config.y < 1u || glossiness <= 0.75)
+    {
+        return 0.0;
+    }
+
+    float weight;
+    if (hero.config.x < 1u)
+    {
+        const float3 box_position =
+            (hero.hero_box * float4(position, 1.0)).xyz;
+        weight = max(almetal_probe_box_depth(box_position), 0.0);
+    }
+    else
+    {
+        const float radius = hero.hero_sphere.w;
+        const float inner_radius = radius * 0.5;
+        const float distance = max(
+            length(position - hero.hero_sphere.xyz), 0.001);
+        const float attenuation = 1.0 -
+            max(distance - inner_radius, 0.0) /
+            max(radius - inner_radius, 0.001);
+        weight = attenuation / distance;
+    }
+
+    float clip_distance =
+        dot(position, hero.clip_plane.xyz) + hero.clip_plane.w;
+    clip_distance = clamp((clip_distance * 0.95 + 0.05) * 10.0,
+                          0.0, 1.0);
+    weight = clamp(weight * 10.0 * clip_distance, 0.0, 1.0);
+    weight *= clamp(glossiness - 0.75, 0.0, 1.0) * 4.0;
+    if (weight <= 0.0)
+    {
+        return 0.0;
+    }
+
+    return weight;
+}
+
+static float3 almetal_sample_shiny_hero(float3 position, float3 normal, float glossiness,
+    texturecube<float> hero_radiance, sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    constant ALMetalWorldHeroProbeConstants& hero)
+{
+    const float3 reflected = reflect(position, normal);
+    const float3x3 environment = float3x3(
+        probes.env_matrix[0].xyz,
+        probes.env_matrix[1].xyz,
+        probes.env_matrix[2].xyz);
+    const float3 hero_environment = hero_radiance.sample(
+        probe_sampler, environment * reflected,
+        level((1.0 - glossiness) * float(hero.config.z))).rgb;
+    return hero_environment;
+}
+
+static float3 almetal_mix_shiny_hero(float3 environment_color,
+    float3 position, float3 normal, float glossiness, float weight,
+    texturecube<float> hero_radiance, sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    constant ALMetalWorldHeroProbeConstants& hero)
+{
+    if (weight <= 0.0)
+    {
+        return environment_color;
+    }
+    const float3 hero_environment = almetal_sample_shiny_hero(position, normal,
+        glossiness, hero_radiance, probe_sampler, probes, hero);
+    return mix(environment_color, hero_environment, weight);
+}
+
 constant float3 almetal_ssr_poisson[128] = {
     float3(0.5433144, 0.1122154, 0.2501391),
     float3(0.6575254, 0.7214090, 0.1628600),
@@ -6689,13 +6764,12 @@ fragment float4 almetal_world_shiny_fragment(
     const float environment_intensity = input.color.a;
     const bool legacy_environment_path =
         environment.environment_config.x != 0u;
-    float3 legacy_environment = legacy_environment_path
-        ? almetal_sample_legacy_sky(
-              input.eye_position, normal, legacy_sky,
-              probe_sampler, environment)
-        : almetal_sample_legacy_probes(
-              input.eye_position, normal,
-              reflection_probes, probe_sampler, probes);
+    float3 legacy_environment = 0.0;
+    if (legacy_environment_path)
+    {
+        legacy_environment = almetal_sample_legacy_sky(input.eye_position,
+            normal, legacy_sky, probe_sampler, environment);
+    }
     if (legacy_environment_path)
     {
         color = almetal_srgb_to_linear(mix(
@@ -6705,9 +6779,22 @@ fragment float4 almetal_world_shiny_fragment(
     }
     else
     {
-        legacy_environment = almetal_finish_hero_probe(
-            legacy_environment, input.eye_position, normal, 1.0,
-            hero_probe, probe_sampler, probes, hero);
+        const float hero_weight = almetal_shiny_hero_weight(
+            input.eye_position, 1.0, hero);
+        // Partial blends still need the exact ordinary probe selection/mix.
+        if (hero_weight == 1.0)
+        {
+            legacy_environment = almetal_sample_shiny_hero(input.eye_position,
+                normal, 1.0, hero_probe, probe_sampler, probes, hero);
+        }
+        else
+        {
+            legacy_environment = almetal_sample_legacy_probes(input.eye_position,
+                normal, reflection_probes, probe_sampler, probes);
+            legacy_environment = almetal_mix_shiny_hero(legacy_environment,
+                input.eye_position, normal, 1.0, hero_weight,
+                hero_probe, probe_sampler, probes, hero);
+        }
         float fresnel = 1.0 + dot(
             normalize(input.eye_position), normal);
         fresnel *= fresnel;
