@@ -678,3 +678,53 @@ installed. Allplansrestored/TranslatorSTOPPED/XcodeGPUreplaySTOPPED/no jobs.
 Metal3/4 quietCPUbenchmark prepared separately/sourceonly atxitJjX, explicit
 validation-only and quiet-timing modes; no timing/speedup claim. Next measure
 CPUcommand cost and actual coveredmergepopulation in separatequiet windows.
+
+### Fixed-material native Metal3/4 CPU experiment executed; no win
+
+Frozen packet /private/tmp/alchemy-metal3-metal4-shadow-encoding-20261109.xitJjX,
+hostSHA5a36d4e0991da61ea6f6a77d03d7034d019f9f49da9c13b48b9c437270747784,
+manifest8397ee31784f20359381bbab82633f95c1eae50a3353cf557ff17146ac5645a1.
+Actual O3/ARC/min26 compile0, nativeAPI+GPUvalidation-only0 (4strict fullR32/D32
+pairs and0timings); separatequiet --timing0/168samples at23:27:41.789–42.060UTC,
+before viewer launch. M1Max, thermal0 throughout, competingknownprocesslistempty.
+Existing currentMSL3.1/PSO, constant-material singletexture, N1024/4096 distinct
+MVP/cutoff records at768Bstride,2physical targets,7rotatingABBA/BAABblocks and
+genuine same3/same4 controls. NativeM3cache+offset-only setters/currentinstance1
+draw selector vs persistentM4tables/constantaddress updates; ownership/residency/
+barriers/crossqueueevents/GPUcompletion-before-allocator-reset retained.
+
+Pooledprecommit medians1024draw107.459us M3 vs113.894us M4(+5.99%),4096draw
+387.270vs404.291us(+4.40%). Sevenpairedranges−.85..+11.77% and+4.86..+7.33%;
+M4faster1/7 and0/7. Summed measured host scopes excludingGPUwait113.437→120.809us
+(+6.50%) and393.685→412.437us(+4.76%). These are sums of instrumented host wall
+scopes, not threadCPU or full contiguous lifecycle. Setup81.6ms and GPUwait
+are reported separately. Controls1024M3+.70%/M4−1.37%,4096M3−1.70%/M4+.68%;
+short .1/.4ms encoding scopes limit small-effect precision. No Metal4 performance
+benefit to promote from this case, and no fullrenderer/FPS conclusion.
+
+Independent source/schedule/lifetime review and strict168row parser:
+/private/tmp/alchemy-metal3-metal4-shadow-parser-20261109.shTjM2Y0/REVIEW.md,
+timing-summary.json SHA03f54b3597e2067aac170e707ad1869c9e687f6d3eed732a7fd0a195801c748d.
+RawtimingSHA9b98cbc5cddbf126ddd5ae9c8b7da76329b451450bac23587d2a199560de1b24.
+Exact source/executable/library/env/exit provenance root-quiet-timing-exit.json.
+Next experiment is a separate changing-material1/8/32-slot source fixture;
+fixedtexture does not exercise ResourceList costs from changing textures.
+
+### Covered-shadow live comparison admitted to warmup
+
+LIVE68601 PID73462/source77977290/exe f277ea10... normal library61c5... unchanged.
+RootinstalledFRESHplan artifacts/metal/private-covered-shadow-setup-plan-20261109.json
+(ACTIVE), QAlauncheractual0, runtime path/hash independentlymatched. Fullscreen
+shortcut BEFORE savedloginReturn; loginobserved and CUAcompletionrecorded.
+Freshobserve/verify/gate each0 verifies43controls/location/exactbinary. No
+worldimage-parity claim. Currentrun candidate-covered-shadow-20261109-01;
+CSV private-covered-shadow-20261109-01.csv waits forready/stable probes, with
+provenance sidecar active. Atframe3918:256assigned/151incomplete, camera same3721.
+Recent120-frame numericlog interval: main216720/1332141 source-family static
+covered commands removed(16.27%), probe300274/1600111(18.77%). Denominator is
+source family rather than fullymergeable inputs. Commands removed are not
+milliseconds or measuredFPS; counter audit and formal>=300frames pending.
+No competingGPU/profile/build. RestoreONLYthisplan afterexact73462gracefulexit/
+Goodbye/PIDabsence. TranslatorfullySTOPPED/XcodeGPUreplaySTOPPED. GoalACTIVE,
+20FPSunmet/noinfeasibilityproof. Finishcapture/endgates andpreserved68597control
+before running the new private experiment; all agents text/source-only meanwhile.

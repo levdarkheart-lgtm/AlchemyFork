@@ -1,4 +1,4 @@
-# Next session — normal68601 ready; measure covered draws and Metal4 CPU cost
+# Next session — live68601 covered-shadow measurement; fixed-texture Metal4 no win
 
 Read AGENTS.md and CURRENT.md completely. The unbudgeted20FPS Ultra goal is
 ACTIVE/unmet. Previous turn made progress: source optimization, native GPU
@@ -9,9 +9,12 @@ Do not create a new goal, mark complete, or declare hardware infeasibility.
 
 - Branch: codex/apple-silicon-metal. Root owns ALL shared source/docs/runtime,
   builds, GPU experiments and UI. Agents prepare/review private files only.
-- ALL viewers CLOSED. Exact50766/SIGTERM/Goodbye/PID absence29248=0; continuous
-  plan restored0. ALL older setup plans restored. Translator FULLY STOPPED;
-  NEVER restart/resume it. Xcode GPU replay STOPPED. No capture/profile jobs.
+- LIVE68601 PID73462, exactexe f277ea10... source77977290; full-screen BEFORE
+  saved login, fresh43controls/location/exactbinary observe/verify/gate each0.
+  Activeplan artifacts/metal/private-covered-shadow-setup-plan-20261109.json;
+  restore ONLY after exact73462 gracefulexit/Goodbye/PIDabsence. ALL older plans
+  restored, including continuous50766. Translator FULLY STOPPED;
+  NEVER restart/resume it. Xcode GPU replay STOPPED. No competingGPU/profile/build.
 - Same private location/numericPreset123 ONLY. No travel or avatar movement.
   Preserve Ultra3456×2168/Midday/six hero1024faces/two cascades/PCSS/raw-depth/
   reverseZ/clamp/alpha/caster behavior. Prefer Mac shortcuts/fullscreen BEFORE
@@ -42,7 +45,7 @@ Release47183=0,RWDI47338=0,finalfocusedRelease0/RWDI0; no competing GPU jobs.
 Source-only reviews approved twice. Initial reverse-depth fixture issue fixed
 before GPU execution; do not invent an executed red failure.
 
-Normal68601 candidate BUILT/VERIFIED, not launched. Wrapper91206 terminal0:
+Normal68601 candidate BUILT/VERIFIED and LIVE as above. Wrapper91206 terminal0:
 doctor/configRECORDOFF/fullbuild/verify each0. Buildpacket
 /private/tmp/alchemy-metal-covered-shadow-app-build-20261109.uiuvk2ho,
 source77977290c9bd2e3712d547f7b8e75b20c4191eca, exeSHA
@@ -56,14 +59,17 @@ root349ARM64/0bad report parsed, not rescanned. No runtime changes.
 Prepared artifacts/metal/private-ultra-covered-shadow-qa-20261109.json pins
 candidate68601 and reference/private/tmp/alchemy-metal-68597-normal-preserved.app.
 Launcher/private/tmp/alchemy-metal-covered-shadow-launch-20261109.py dryrun0,
-actualrun candidate-covered-shadow-20261109-01 NOTcreated. No newMiddayplan
-installed. After any privateGPUbenchmarks finish, installFRESH setupplan via
-/private/tmp/alchemy-metal-session-state-20261109.py, launch verifiedcandidate,
-fullscreen BEFORElogin/fresh43controls/location/binarygates. First inspect
-shadow_covered/probe_shadow_covered merged/input counts. If negligible, do not
-claim gain from syntheticmerges. If useful, collect>=300ready/stable frames
-and comparepreserved68597. No profiler/capture/build/unrelatedGPUwork during
-timing. RestoreONLYfreshplan afterverifiedexactviewerexit. Scalaroracle uses
+actual0. Run artifacts/metal/qa-runs/candidate-covered-shadow-20261109-01.
+CSV artifacts/metal/private-covered-shadow-20261109-01.csv not yet created:
+ready gate waits for256 probes (frame3918/151incomplete/camera stable3721frames).
+Sidecar private-covered-shadow-20261109-01.provenance.jsonl exists. Counters:
+one120-frame interval main216720/1332141 static covered inputs removed16.27%;
+probe300274/1600111 removed18.77%. Denominator is this source family, NOT all
+fully merge-eligible draws; independent counter audit pending. No FPS gain yet.
+Finish>=300ready/stable frames, freshend43gates and comparepreserved68597.
+No profiler/capture/build/unrelatedGPUwork during timing. RestoreONLYactiveplan
+afterverifiedexactviewerexit, using/private/tmp/alchemy-metal-session-state-20261109.py.
+Scalaroracle uses
 scene.bulk_draws=false; productiondefaulttrue, no newquality setting.
 
 ## Preserved baseline and current candidate
@@ -109,16 +115,25 @@ PRIVATE proof packet /private/tmp/alchemy-metal3-metal4-covered-shadow-20261109.
   before allocator reset. Feedback header guarantees workload completion.
 - No CPU timing,8/32texture,clamp,perspective,rigged/terrain/tessellation or full
   viewer Metal4 claim. Production viewer remains the existing native API path.
-- trace_recheck prepared SEPARATE quiet CPU benchmark SOURCEONLY packet
+- trace_recheck prepared SEPARATE quiet CPU benchmark packet
   /private/tmp/alchemy-metal3-metal4-shadow-encoding-20261109.xitJjX. HostSHA
   5a36d4e0991da61ea6f6a77d03d7034d019f9f49da9c13b48b9c437270747784; manifest
   8397ee31784f20359381bbab82633f95c1eae50a3353cf557ff17146ac5645a1. ReadREADME/
-  peerreviewbeforecompile. Explicit--parity-only needsAPI/GPUvalidation1; --timing
-  rejectsdebug/capture/HUDenvvars; quietfirstrepeatsstrictnewNparity. No compile/
-  GPU/timingexecuted yet. Do not mutate proven25axBX. N1024/4096, constoffsetchanges,
+  peerreview passed. Actualcompile0/O3; nativeAPI+GPUvalidation-only0 (4strict
+  R32/D32pairs,0timings); separate quiettiming0 (168samples, allthermal0).
+  Do not mutate frozen25axBX or xitJjX. N1024/4096, constoffsetchanges,
   native M3 instance1/base0 calls, M4tableupdates, full precommit cost split,
   explicit residency/setup/reset/commit costs, newNparity,7counterbalanced
-  ABBAblocks/two targets/samebackend controls. No execution until root release.
+  ABBAblocks/two targets/samebackend controls. NO WIN for fixedtexture:1024draw
+  precommit107.459us M3→113.894us M4(+5.99%);4096draw387.270→404.291us(+4.40%).
+  All7paired4096blocks slower. Short .1/.4ms encoding scopes limit precision.
+  Independent strictparser shTjM2Y0/timing-summary.json SHA03f54b3597e2067aac170e707ad1869c9e687f6d3eed732a7fd0a195801c748d.
+  Setup/lifecycle/GPUwait separately reported; no fullviewer/FPS inference.
+- Next private8/32-slot CHANGING-MATERIAL experiment is source prep only;
+  persistent per-materialM4tables vs exact cachedM3 changedtexture setters.
+  SAME currentMSL/PSO/math, strictnewN/materialpositivecontrols and calibrated
+  common repeats are required. NO compile/GPU/profile while live73462active.
+  Whole-shadowparallel preparation also source-only; no productionAPI switch.
 
 ## Continuous startup evidence guiding priorities
 

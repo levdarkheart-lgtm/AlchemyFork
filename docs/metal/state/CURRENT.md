@@ -1,9 +1,8 @@
 # Current engineering state
 
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
-**Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `5e1ecb76459de8a0bc90dc16da56aec75f1fc02d`.
-**Working source:** normal68601 built/verified; covered-shadow live benefit unmeasured.
+**Branch:** `codex/apple-silicon-metal`. **Renderer code checkpoint:** `5e1ecb76459de8a0bc90dc16da56aec75f1fc02d`.
+**Working source:** normal68601 live; covered-shadow draw reduction observed, FPS pending.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -16,11 +15,15 @@ six hero1024 faces/two cascades, PCSS, reverse-Z/clamp/casters/viewer features.
 No private uploads/releases. Root owns shared source/docs/runtime/GPU; agents
 prepare/review private source only. User explicitly handed Xcode back to ROOT.
 
-All viewers CLOSED; exact50766 shutdown/Goodbye/absence29248=0, all setup
-plans RESTORED. Translator FULLY STOPPED/NEVERrestart; XcodeGPUreplay STOPPED.
-Root owns shared source/runtime/UI. New68601/source77977290c9bd2e3712d547f7b8e75b20c4191eca
-exe f277ea10... built; doctor/configOFF/build/verify91206 each0. Independent
-source/header/library/signature review passed; root349ARM64/0bad. No launch yet.
+LIVE68601 PID73462, source77977290c9bd2e3712d547f7b8e75b20c4191eca,
+exe f277ea10...; doctor/configOFF/build/verify91206 each0. Independent
+source/header/library/signature review passed; root349ARM64/0bad.
+Fullscreen BEFORE saved login, fresh observe/verify/gate each0 (43controls,
+location/exact binary); CUA completion recorded. No image-parity claim.
+ACTIVE Midday plan artifacts/metal/private-covered-shadow-setup-plan-20261109.json;
+restore ONLY after exact73462 graceful exit/Goodbye/PID absence. Older plans
+restored. Translator FULLY STOPPED/NEVERrestart; XcodeGPUreplay STOPPED.
+No competing build/GPU/profile work during capture. Root owns runtime/UI.
 Normal68597/source6f620 preserved at
 /private/tmp/alchemy-metal-68597-normal-preserved.app, executable47670056...
 verified before/after copy; source-exact comparison baseline is available.
@@ -29,34 +32,37 @@ shader/buffer/texture/cull state merge in order. Full source validation stays
 before emission; avatar/rigged/terrain/ICB untouched. No shader/math changes.
 Both optimized native API+GPU suites428946/95 PASS; final native draw/commit
 counter tests1747/1 PASS each (test-only96af75). Counters separate covered/opaque.
-Actual live merge fraction and FPS benefit UNKNOWN. Pinned QAconfig/dryrun0;
-no setup plan installed. Next quiet M3/M4 benchmark then live covered census.
+Independent39interval audit VUhsf14y/8fc7f266 verifies120frames each; latest
+main1833/probe2465.86 commands removed/frame (16.40%/18.41%family inputs).
+Combined4298.86/frame is API-command reduction, NOT triangles or FPS.
+QA run artifacts/metal/qa-runs/candidate-covered-shadow-20261109-01;
+CSV private-covered-shadow-20261109-01.csv is not created until readiness.
+Atframe4998:256assigned/121incomplete/camera_changes0, no formal admission.
+Keep ready/stable gate and >=300 samples; no FPS gain claim.
 Apple research found no matching published driver bug in bounded official
 sources. Documented binding/residency CPU cost matches profile; argument buffers
 and Metal4 command ownership are concrete candidates (links in archive).
 PRIVATE M1 Metal3/4 prototype compiled0 and native API+GPU0: same currentMSL3.1
 library61c5.../samePSO,12single-texture coverage/Z pairs +cutoff positivecontrol,
 bitwise fullR32/D32 parity. Explicit residency/events/owners/completion retained.
-No timing,8/32-texture,terrain,rigging or full-viewer Metal4 claim. Sourcecb19ab4f.
+No8/32-texture,terrain,rigging or full-viewer Metal4 claim. Sourcecb19ab4f.
 Packet/private/tmp/alchemy-metal3-metal4-covered-shadow-20261109.25axBX.
-Separate privateCPUbenchmark xitJjX source5a36d4e0 prepared, parity-only/timing
-modes, no compilation/GPU/timing yet. Review/freeze manifest before execution.
+Separate privateCPUbenchmark xitJjX source5a36d4e0 compiled0; actualAPI/GPU
+validation-only0 (4strict fullR32/D32pairs), quiettiming0/168samples.
+FIXED-TEXTURE native cached API experiment found NO WIN:1024draw precommit
+107.459us M3 vs113.894us M4 (+5.99%);4096draw387.270vs404.291us (+4.40%).
+All7 paired4096blocks slower; short scopes limit small-effect precision.
+Independent strict schedule/parser report shTjM2Y0/timing-summary.json SHA03f54b35.
+No production Metal4 switch. Changing-material8/32-slot experiment is SOURCE
+PREP only; agents must NOT compile/run while live viewer73462 is measured.
 Continuous12minCPU evidence:920867samples, main~77ms/frame flat asFPS11.8→10.75;
 mainactive92→79%, Pcores; Nominalthermal720.726s, clocksunknown. GPUgrowth
 attribution remains open. Startup6000allnative1/no fallback; no formal gain.
-Startup6000 raw frames complete:12.258→11.038FPS first10/next10s, median draws
-44,631→50,697, early camera unchanged. Later main probe pack2→98/hero up to256
-while several fixedfaces retain post family/index counts. Correlation, not
-causal GPUtime. Bias1/system_low0. Widget observed32→11 then11/12/later10;
-owner clarified start~38 this time, starting value varies. Do not assume160.
-NativeCPU sample exit0 but only2main-thread observations/58DWARF warnings:
-unusable for attribution. Explicit Mach-unit correctione0656051 preserves raw
-counters; no font hotspot/normal CPU-time claim. Viewer UI recovered afterward.
-Committed selected-PSO census4e833; both optimized API+GPU suites428004/95 PASS.
-First sandbox test failed42/no Metal device; native rerun0, distinct logs kept.
-No shader/quality changes; diagnostics armed only by existing command timing.
-Continuous recording captured startup decline; CPU no upward ramp, per-frame
-CPU cost remains~77ms. GPU causal attribution and actual CPU repairs remain.
+Startup probe packs grew2→98/main and256/hero while draw counts plateaued;
+GPUcompleted-CB sums overlap, so no causal shader-ms attribution. Widget peak41,
+later12/11/10; initial value varies. Earlier2-sampleCPUtrace unusable; corrected
+Mach units e0656051 retained. SelectedPSOcensus4e833 passed428004/95 bothconfigs
+(firstsandbox42/noGPU, separatenativererun0). Full evidence in archive.
 
 ## Controlled viewer baselines
 
@@ -106,18 +112,12 @@ frames/all256 ready/stable120/camera0/fresh43 gates0 and captured face1.
 479ff diagnostic compiler/dependency repair retains optimization and source-line
 metadata; full history/verified hashes in the archive. Normal builds recordOFF.
 
-Committed735a: optional Metal bool function constant0 folds the EXISTING single-tap
-shadow branch; main/default shaders retain runtime behavior. Stock simple-alpha
-PSOs now none/runtime/probe, custom blend cache includes mode. Selection checks
-ACTUAL validated bound shadow bit0x4 plus actual probe count>1; no view-label
-assumption. Constants cleared before other families; avatars remain runtime.
-Source independently approved twice. No sampling/caster/quality/math change.
-Production MSL920d2e2d927b94a43cd396478bfa3776bc2edccaf5e5dd3ef8eb10bbbfcb1fa1.
-
-Actual735a function-constant fixture:200 strict color/rawD32 pairs PASS;
-168 quiet7-block timings show heavy23.2–31.8%lower, control/default ranges cross0.
-TinyactualXcode capture1CB/4draws:245→224registers, BOTH304spill bytes. No spill
-elimination/liveFPS claim. Bothoptimized publictests pass; full paths/archive.
+Committed735a folds EXISTING probe single-tap branch with boolconstant0;
+actualvalidatedshadowbit4/probecount>1 selects PSO, runtime main/avatar preserved.
+Source approved twice; no math/quality change. MSL920d2e2d927b94a43cd396478bfa3776bc2edccaf5e5dd3ef8eb10bbbfcb1fa1.
+Actualfixture200strict color/rawD32 pairs PASS;168timings heavy23.2–31.8%lower,
+controls cross0. Xcode1CB/4draws245→224registers/BOTH304spill: no spill removal.
+Public optimized tests pass; actual viewer result flat, not synthetic gain.
 
 Public regression suites and prototype evidence are in the
 [archive](archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
@@ -152,7 +152,9 @@ gamma remains, no proven look defect/settings change from that observation.
 
 Full pixel/feature parity, multi-scene performance, prolonged stability,
 strict no-GL and independent build/review evidence remain OPEN.20FPS unmet;
-infeasibility unproved. Next: attribute startup growth/actual selected PSOs;
-Covered-shadow5e1ecb validated; build and measure actual merge population.
-Then private quiet Metal3/4 CPU command benchmark; no concurrent viewer/GPU work. Corrected64-parent68588 control remains prepared
+infeasibility unproved. Next: finish ready-gated68601 capture/end43gates,
+compare preserved68597 under same controls; exact exit/restore before further
+private GPU work. Covered coalescing has live eligibility but unmeasured FPS.
+Review changing-material API experiment and whole-shadow parallel preparation;
+do not repeat fixed-texture API benchmark unchanged. Corrected64-parent68588 control remains prepared
 but UNLAUNCHED; prior best68579 has31-neighbor behavior, so not a pure A/B.
