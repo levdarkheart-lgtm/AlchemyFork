@@ -1134,13 +1134,8 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
             ? MTLHazardTrackingModeTracked : MTLHazardTrackingModeUntracked;
         native_descriptor.cpuCacheMode = MTLCPUCacheModeDefaultCache;
         native_descriptor.usage = textureUsage(descriptor.usage);
-        const MTLPixelFormat linear_format = pixelFormat(
-            alMetalLinearFormat(descriptor.format));
-        const bool needs_linear_view = linear_format != native_descriptor.pixelFormat;
-        if (!hasIdentitySwizzle(descriptor) || needs_linear_view)
-        {
-            native_descriptor.usage |= MTLTextureUsagePixelFormatView;
-        }
+        // Swizzle and compatible linear/sRGB views need no PixelFormatView
+        // usage. Avoid unnecessarily disabling lossless texture compression.
 
         id<MTLTexture> texture = [native_device newTextureWithDescriptor:native_descriptor];
         if (!texture)

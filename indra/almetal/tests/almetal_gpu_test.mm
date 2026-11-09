@@ -1952,6 +1952,8 @@ TEST_CASE("almetal: texture swizzles and generated mipmaps survive private uploa
         CHECK(texture->blockHeight() == 1);
         CHECK(texture->bytesPerBlock() == 1);
         CHECK_FALSE(texture->isCompressed());
+        id<MTLTexture> native_texture = (__bridge id<MTLTexture>)texture->nativeHandle();
+        CHECK(native_texture.usage == MTLTextureUsageShaderRead);
 
         auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
         INFO(error);
@@ -2006,6 +2008,114 @@ TEST_CASE("almetal: texture swizzles and generated mipmaps survive private uploa
         REQUIRE(texture->readback(*device, 2, 0, {}, &final_mip, 1, &error));
         INFO(error);
         CHECK(final_mip == 64);
+    }
+}
+
+TEST_CASE("almetal: compatible sRGB and swizzle views preserve private texture usage and pixels", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+        REQUIRE(library);
+        ALMetalComputePipelineDescriptor pipeline_descriptor;
+        pipeline_descriptor.library = library.get();
+        pipeline_descriptor.function = "almetal_test_sample_texture";
+        auto pipeline = ALMetalComputePipeline::create(*device, pipeline_descriptor, &error);
+        REQUIRE(pipeline);
+        ALMetalBufferDescriptor result_descriptor;
+        result_descriptor.length = sizeof(float) * 8;
+        result_descriptor.storage = ALMetalStorageMode::shared;
+        auto result = ALMetalBuffer::create(*device, result_descriptor, &error);
+        REQUIRE(result);
+
+        const auto decode = [](float value)
+        {
+            return value <= 0.04045f ? value / 12.92f
+                : std::pow((value + 0.055f) / 1.055f, 2.4f);
+        };
+        const std::array<std::uint8_t, 4> source{{64, 128, 192, 224}};
+        for (bool bgra : {false, true})
+        {
+            for (bool swizzled : {false, true})
+            {
+                INFO("bgra=" << bgra << " swizzled=" << swizzled);
+                ALMetalTextureDescriptor descriptor;
+                descriptor.format = bgra ? ALMetalPixelFormat::bgra8_unorm_srgb
+                                         : ALMetalPixelFormat::rgba8_unorm_srgb;
+                descriptor.width = 1;
+                descriptor.height = 1;
+                descriptor.storage = ALMetalStorageMode::private_gpu;
+                descriptor.usage = ALMetalTextureUsage::shader_read;
+                if (swizzled)
+                {
+                    descriptor.swizzle = {
+                        ALMetalTextureSwizzle::blue, ALMetalTextureSwizzle::one,
+                        ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::alpha};
+                }
+                auto texture = ALMetalTexture::create(*device, descriptor, &error);
+                INFO(error);
+                REQUIRE(texture);
+                id<MTLTexture> srgb = (__bridge id<MTLTexture>)texture->nativeHandle();
+                id<MTLTexture> linear = (__bridge id<MTLTexture>)texture->nativeLinearHandle();
+                REQUIRE(srgb);
+                REQUIRE(linear);
+                CHECK(srgb != linear);
+                CHECK(texture->nativeLinearHandle() == (__bridge void*)linear);
+                CHECK(srgb.storageMode == MTLStorageModePrivate);
+                CHECK(srgb.usage == MTLTextureUsageShaderRead);
+                CHECK(linear.usage == MTLTextureUsageShaderRead);
+                CHECK(srgb.pixelFormat == (bgra ? MTLPixelFormatBGRA8Unorm_sRGB
+                                               : MTLPixelFormatRGBA8Unorm_sRGB));
+                CHECK(linear.pixelFormat == (bgra ? MTLPixelFormatBGRA8Unorm
+                                                 : MTLPixelFormatRGBA8Unorm));
+
+                auto command = device->makeCommandBuffer("Alchemy compatible texture view test", &error);
+                REQUIRE(command);
+                REQUIRE(texture->upload(*command, 0, 0, {}, source.data(), 4, &error));
+                // Exercise both real view objects, including their combined
+                // color-space conversion and channel swizzle, on the GPU.
+                id<MTLCommandBuffer> native_command =
+                    (__bridge id<MTLCommandBuffer>)command->nativeHandle();
+                id<MTLComputeCommandEncoder> encoder = [native_command computeCommandEncoder];
+                REQUIRE(encoder);
+                [encoder setComputePipelineState:(__bridge id<MTLComputePipelineState>)pipeline->nativeHandle()];
+                const std::array<id<MTLTexture>, 2> views{{srgb, linear}};
+                for (std::size_t view = 0; view < views.size(); ++view)
+                {
+                    [encoder setTexture:views[view] atIndex:0];
+                    [encoder setBuffer:(__bridge id<MTLBuffer>)result->nativeHandle()
+                                offset:view * sizeof(float) * 4 atIndex:0];
+                    [encoder dispatchThreads:MTLSizeMake(1, 1, 1)
+                       threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+                }
+                [encoder endEncoding];
+                REQUIRE(command->commitAndWait(&error));
+                std::array<float, 8> samples{};
+                REQUIRE(result->read(0, samples.data(), sizeof(samples), &error));
+                for (std::size_t view = 0; view < views.size(); ++view)
+                {
+                    std::array<float, 4> expected{{
+                        source[bgra ? 2 : 0] / 255.0f, source[1] / 255.0f,
+                        source[bgra ? 0 : 2] / 255.0f, source[3] / 255.0f}};
+                    if (view == 0)
+                    {
+                        for (std::size_t channel = 0; channel < 3; ++channel)
+                            expected[channel] = decode(expected[channel]);
+                    }
+                    if (swizzled)
+                        expected = {{expected[2], 1.0f, expected[0], expected[3]}};
+                    for (std::size_t channel = 0; channel < 4; ++channel)
+                        CHECK(std::abs(samples[view * 4 + channel] - expected[channel]) < 0.001f);
+                }
+                std::array<std::uint8_t, 4> stored{};
+                REQUIRE(texture->readback(*device, 0, 0, {}, stored.data(), 4, &error));
+                CHECK(stored == source);
+            }
+        }
     }
 }
 
@@ -2253,6 +2363,8 @@ TEST_CASE("almetal: bilinear texture resampling stays entirely on the GPU", "[al
             *device, srgb_source_descriptor, &error);
         INFO(error);
         REQUIRE(srgb_source);
+        CHECK(((__bridge id<MTLTexture>)srgb_source->nativeHandle()).usage ==
+              MTLTextureUsageShaderRead);
 
         ALMetalTextureDescriptor srgb_destination_descriptor = srgb_source_descriptor;
         srgb_destination_descriptor.width = 2;
@@ -2264,6 +2376,8 @@ TEST_CASE("almetal: bilinear texture resampling stays entirely on the GPU", "[al
             *device, srgb_destination_descriptor, &error);
         INFO(error);
         REQUIRE(srgb_destination);
+        CHECK(((__bridge id<MTLTexture>)srgb_destination->nativeHandle()).usage ==
+              (MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget));
 
         std::array<std::uint8_t, 4 * 4 * 4> srgb_pixels{};
         for (std::size_t y = 0; y < 4; ++y)
@@ -29725,6 +29839,8 @@ TEST_CASE("almetal: native BRDF LUT matches the GGX split-sum oracle",
         CHECK(texture->descriptor().usage ==
               (ALMetalTextureUsage::shader_read |
                ALMetalTextureUsage::shader_write));
+        CHECK(((__bridge id<MTLTexture>)texture->nativeHandle()).usage ==
+              (MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite));
 
         auto command = device->makeCommandBuffer(
             "Alchemy native BRDF LUT regression", &error);
