@@ -34,39 +34,39 @@ shadow draws coalesce about70%, yet all logical captures are still constructed.
 Full GPU-validated Release/RelWithDebInfo suites each pass57,344/75.
 [Complete runtime record](../../state/archive/CURRENT-68554-direct-shadow-runtime-2026-11-08.md).
 
-## Latest result — no established FPS gain
+## Latest result — normal texture bias, still9FPS
 
-59177fixed empty Release flags; main CPU91.476→72.768% of one core, yet measured
-68566was8.865FPS versus settled68564's9.270FPS.62e2forward binding repair passes
-full391162assertions/89cases EACH Release/RWDI; shader bytecode unchanged.
+Resource scope3969405 and capacity46d622 fix the all-device/image threshold
+mismatch and replace arbitrary recommendation/16 with non-image reserve then
+original headroom/divisor once. Scope-only diagnostic proved image-cap pressure
+continued despite ample global memory. Both repairs preserve original controller,
+manual overrides and global/system safeguards. Tests159/21pressure+29/3capability
+each configuration, independent review/build/349ARM64/signature allpass.
 
-Combined binding+opaque PBR no-discard trial68568/source d3d139passes all392926/
-89production API+GPU assertions each configuration and source-exact app checks.
-Actual Ultra/Midday/Preset123/fullscreen/43controls,3456×2168,all256probes ready,
-bias4,300consecutive frames:9.193FPS,mean108.776ms,p50108.786,p95113.496.
-One window is3.57%better mean than68566 but below earlier68564; no isolated or
-repeatable gain established. The trial is reverted by d967, with source/app/
-patch preserved for future general testing. Default68569 rebuilt/verified but
-unmeasured; it keeps the confirmed compiler and tested binding fixes.
+68572full-screen Ultra/Midday/Preset123,3456×2168,43controls,all256probes ready,
+300consecutive frames9637–9936:9.382155FPS,mean106.585ms,p50105.948,p95110.883,
+bias1all300. Prior68566bias4was8.864746; differing image workloads prevent an
+isolated speedup claim. Normal bias is sustained with7838MiB image storage.
+Fullpixelquality parity remains open, and20FPS is not achieved or proven
+impossible. Use this preserved app as the next native baseline.
 
-Root owns shared edits/runtime. All viewers closed; user state restored. No
-profile overlapped the latest formal window and none is pending. Agents finished.
-[Complete evidence](../../state/archive/CURRENT-68566-68568-performance-trial-2026-11-09.md).
+Root owns shared edits/runtime. All viewers closed and user state restored.
+No profiling/build/GPU experiment overlapped formal collection. Agents finished.
+[Complete evidence](../../state/archive/CURRENT-resource-aware-texture-budget-2026-11-09.md).
 
 ## Decisions and next implementation boundary
 
-- Goal20FPS remains ACTIVE/unmet. The owner's11hour status concern is valid;
-  test/profiling work does not constitute FPS improvement. No hardware
-  infeasibility conclusion is supported.
-- Preserve original quality, cadence, casters, per-view probe correctness and
-  established native fixes. No travel or quality reduction is authorized.
-- GPU viewer-active union remains about109ms/present. Inclusive main/reflected
-  labels overlap; no single shader cost is established. Next source change needs
-  a bounded causal case addressing substantial work and varied output proof.
-- Avoid another speculative microshader variant or broad profile without a
-  specific unanswered question. Rejected/private experiments remain recorded.
-- Rebuild Ninja test binaries before any new source-specific claim; they still
-  contain the trial even though default source has been reverted.
+- Keep compiler, forward-binding, scope/capacity and existing correctness repairs.
+  Do not restore lower texture quality to simplify a performance comparison.
+- Use measured68572/bias1 for subsequent comparisons. Earlier no-discard trial
+  stays reverted; source/patch/app preserved. Rebuild stale GPU test binaries.
+- Existing query metadata proves main occlusion is consumed; no need repeat the
+  missing-query audit. Compression/excess-forward-loop hypotheses were ruled out.
+- Next source question: original compile-time view/shadow/SSR variants versus
+  native runtime branches. Investigate immutable view specialization with actual
+  output and repeated timing proof; do not assume register pressure as a cause.
+- The11hour status concern remains valid: tests/profiling alone do not achieve
+ 20FPS. Keep owner informed; no lower quality, travel or scope waiver.
 
 [Architecture experiments](../../state/archive/CURRENT-ultra-goal-experiments-2026-11-08.md)
 retain rejected layered results and actual M1 timestamp capability limits.

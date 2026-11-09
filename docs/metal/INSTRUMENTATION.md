@@ -159,3 +159,16 @@ provenance but no account or session data.
 
 ## Automation acceptance
 A performance comparison is admissible only with real raw CSV. Use `tools/metal/perf_compare.py --enforce --require-provenance`: the provenance gate rejects missing source/build/display fields, nonconsecutive frame indexes, metadata changes within a scenario, baseline/candidate build-type, resolution or quality mismatches, and any candidate row without `native_exact=1`. Common optional `cpu_ms`, `gpu_ms`, `draw_calls`, `metal_submissions`, `metal_completed`, `metal_timed` and `metal_gpu_ms` columns are validated and summarized under `secondary_metrics`; they do not affect the pass gate. When the complete presentation-census group is present, the analyzer validates its internal consistency and reports per-scenario exact-publication and GL-fallback counts/rates plus state counts under `presentation_census`; those diagnostics also do not affect the performance pass gate. The analyzer still only proves that the supplied numbers and metadata meet those mechanical checks and performance targets. It does **not** prove images, hardware identity, data authenticity, power state, thermal equivalence or camera/scene equivalence; Codex must supply that evidence explicitly.
+
+## Native memory-pressure operands
+
+The `MetalMemory` category logs `Native texture pressure` at ten-second intervals:
+logical image MiB/target, all-device allocation/recommendation, estimated non-image
+storage, automatic image-capacity residual, combined overage, system-low flag
+and bias BEFORE the controller update. These periodic checkpoints do not replace
+sampled bias or constitute a per-frame residency/pressure census. Logical image
+bytes are not driver-aligned physical residency. Capacity is derived from raw
+counters, then the original divisor/headroom is applied once; it is an eviction
+threshold rather than an upfront reservation. Keep logs private.
+
+See the [verified budget repair and controlled68572 run](state/archive/CURRENT-resource-aware-texture-budget-2026-11-09.md).

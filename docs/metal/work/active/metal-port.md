@@ -1,8 +1,8 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `d967552ae823ae6d1cc7c979c8528c4fe10fc5e8`;
-latest settled sample494c/Release68564:9.270128FPS. Original6.095519FPS, closed; quality caveats remain.
+**Renderer checkpoint:** Commit `46d6227526ef28850e0b306d1dcb0537c7d59f07`;
+latest settled68572:9.382155FPS/bias1. Original6.095519FPS; full parity remains open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -14,7 +14,7 @@ latest settled sample494c/Release68564:9.270128FPS. Original6.095519FPS, closed;
 | M-002 | GL inventory and release audit | doing | No product GL/Vulkan link; strict source inventory and runtime zero gate remain. |
 | M-003 | Native presentation/lifecycle | doing | Metal-only world/UI publication and attended startup work; wider lifecycle/stability remains. |
 | M-004 | Resource/transfer/sync ownership | doing | Completion-retired geometry/arenas, borrowed targets/depth and direct shadow slices; cache pressure/retention remain. |
-| M-005 | MSL/binding behavior | doing | Default source62e2passed391162/89 each Release/RWDI; restored68569built/verified, unmeasured; broad parity open. |
+| M-005 | MSL/binding behavior | doing | Shader source62e2passed391162/89 each config; current68572built/verified/measured at bias1; broad parity open. |
 | M-006 | UI/fonts/HUD/media | doing | Native world/UI and font ownership; full parity/stability gates remain. |
 | M-007 | World/material/shadow correctness | doing | Native families, original raw depth/casters/projector sharing retained; broader visual smoke remains. |
 | M-008 | Advanced views/effects | doing | Preserve six Ultra faces and reflected-content parity; layered prototype rejected, broad correctness/performance open. |
@@ -42,8 +42,9 @@ Full Release/RWDI API+GPU validation each passes57,344 assertions/75 cases.
 
 Latest native query/aniso audit: e52de13acc implements real conservative/exact
 visibility and original issue ordering; f799262971 maps literal0/2/4/8/16 levels
-to native1/2/4/8/16 and live replacement. Current Ultra uses4. Actual group
-rejections remain unquantified. Hero cube occlusion stays disabled as original.
+to native1/2/4/8/16 and live replacement. Current Ultra uses4. Latest metadata
+records120828spatial skip events/299intervals, not uniquegroups or savedGPUtime.
+Hero cube occlusion stays disabled as original.
 
 Detailed prior lifecycle/binding/GL-removal history is retained in the
 [pre-goal ledger](../archive/metal-port-before-ultra-goal-2026-11-08.md) and
@@ -51,20 +52,26 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 
 ## Current source ownership and latest result
 
-Root owns shared renderer, shaders, tests, CMake, documentation and runtime.
-Agents supplied private patches/reviews and are finished; no active process or
-uncoordinated edit remains. All viewers closed and temporary state restored.
+Root owns shared renderer/shaders/tests/CMake/docs/runtime. All agents and
+viewer/build/test/profile processes finished. All temporary user-state plans
+restored. Canonical/preserved68572 source46d622 is the next bias1baseline.
 
-Latest combined trial68568:300consecutive exact-native frames, Ultra6/3456×2168,
-Midday/Preset123/43controls,all256probes ready/stable120,bias4. Mean108.776ms,
-p50108.786,p95113.496,9.193FPS. Last optimized68566 was8.865FPS, earlier settled
-68564was9.270FPS. One combined window does not establish repeatable improvement.
-[Complete record](../../state/archive/CURRENT-68566-68568-performance-trial-2026-11-09.md).
+Scope3969405 and resource-aware capacity46d622 preserve original controller,
+manual/divisor/headroom semantics and global/system safeguards. CPU tests pass
+159/21pressure+29/3capability checks EACH Release/RWDI; source review approved.
+App configure/build/349ARM64/signature all0; shader8bbbyte-identical baseline.
 
-59177compiler repair relieved main CPU91.476→72.768% of one core without FPS
-improvement. GPU viewer-active union109.245ms/present remains substantial.
-Inclusive base/haze/hero labels overlap and cannot be summed as a frame budget.
-No shader-line attribution or hardware-infeasibility claim exists.
+Latest68572:300consecutive exact-native frames9637–9936,Ultra3456×2168/Midday/
+Preset123/43controls,all256ready/stable120,main98,bias1all300,camera delta0.
+Mean106.585ms,p50105.948,p95110.883,9.382155FPS. Prior68566bias4was8.864746FPS;
+different image workloads prevent isolated FPS attribution. Images7838MiB
+retained at normal bias;20FPS remains unmet. No fullpixelparity claim.
+[Complete evidence](../../state/archive/CURRENT-resource-aware-texture-budget-2026-11-09.md).
+
+Older59177compiler repair relieved CPU91.476→72.768%ONEcore without FPS gain.
+Its bias4GPUunion109.245ms/p is not current-bias1 attribution; inclusive labels
+overlap. Live occlusion consumes results:120828spatial skip EVENTS/299intervals,
+not uniquegroups/savedGPUtime. No shader-line or hardware-infeasibility claim.
 
 ## Complete-product checkpoint gate
 
@@ -77,18 +84,17 @@ No shader-line attribution or hardware-infeasibility claim exists.
 
 ## Immediate executable action
 
-Default d967reverts the unproven opaque PBR trial, preserving source/app/patch for
-future general testing. Retain Release compiler and forward binding repairs.
-Default renderer/test sources match62e2; prior full API+GPU391162/89 pass each
-optimized configuration. Trial full392926/89 pass each. Ninja test binaries still
-contain trial code: rebuild before any fresh source-specific test claim.
+Keep memory-policy quality repairs and use preserved68572/bias1baseline. Rebuild
+stale Ninja GPU test binaries before new source-specific GPU claims. Next bounded
+audit: original compile-time view/shadow/SSR variants versus native runtime
+branches in base/IBL/forward shaders and pipeline creation. Immutable view
+invariants may allow substantial function-constant specialization; this is not
+a measured register-pressure diagnosis. Require varied output proof/repeated
+control before admission. Avoid rejected micro-arithmetic/broad profile loops.
 
-Default app68569 configure/build/349ARM64/signature all0; not launched/measured.
-All source provenance, hashes and local logs are in CURRENT and the trial record.
-20FPS remains ACTIVE/unmet. Next change needs a bounded causal case addressing
-substantial remaining CPU/GPU work, exact-original mapping and varied correctness
-proof. Avoid speculative shader arithmetic and repeated broad profiles. No20FPS
-or hardware-infeasibility conclusion is justified. Keep owner informed promptly.
+Deferred non-Ultra correctness edge: native alpha light producer misses the
+RenderLocalLightCountenable guard on count0 transitions; preserve for later fix.
+No current-FPS attribution. Goal20FPS ACTIVE/unmet; independent release gates open.
 
 ## Non-negotiable open gates
 

@@ -17,6 +17,11 @@ Use scenario IDs and descriptions from `benchmarks/scenarios.json`. Codex must d
 - Primary: per-frame wall/frame time **p50 and p95 in milliseconds**, not headline FPS. Frame-pacing variance matters.
 - Secondary: GPU frame duration, CPU render/scene time, draw/dispatch and Metal command-buffer submission counts, PSO compile stalls, allocated textures/buffers, memory throughput, working set, decode/asset cache load and frame-to-frame stalls; report if instruments cannot expose a metric. Submission count is pressure evidence, not GPU time or a pass criterion.
 - Preserve render resolution, quality, material settings, avatar density, exposure/HDR and camera path. An apparent speedup due to reduced quality is a regression, not a success.
+- Record sampled desired texture discard bias and the image/device pressure operands.
+  Matching Ultra labels alone is insufficient: earlier native runs used bias4
+  while the original used1. The [resource-aware budget record](state/archive/CURRENT-resource-aware-texture-budget-2026-11-09.md)
+  restores bias1; its sequential FPS comparison does not isolate a speedup or
+  prove per-texture/pixel parity.
 
 ## Initial product targets (provisional until baseline is actually captured)
 - **Meaningful improvement target:** >=20% lower p50 frame time in >=3 of the four defined representative scenes; this is a *performance target*, not a prediction.
