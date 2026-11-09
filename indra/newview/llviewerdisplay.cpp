@@ -35,6 +35,7 @@
 #include "almetalbenchmark.h"
 #if LL_DARWIN
 #include "../almetal/almetaldevice.h"
+#include "../almetal/almetalframecapture.h"
 #endif
 #include "aluniformbuffer.h"
 #include "fsyspath.h"
@@ -525,6 +526,62 @@ static void fill_pacing_slack()
 
 #if LL_DARWIN
 static ALMetalBenchmarkRecorder::Provenance sMetalBenchmarkProvenance;
+static bool sMetalBenchmarkCompletedSuccessfully = false;
+
+static void advance_metal_frame_capture(bool normal_display)
+{
+    static bool initialized = false;
+    static std::unique_ptr<ALMetalFrameCapture> capture;
+    if (initialized && !capture) return;
+    try
+    {
+        if (!gViewerWindow || !gViewerWindow->getWindow()) return;
+        ALMetalDevice* device = gViewerWindow->getWindow()->getMetalDevice();
+        if (!device) return;
+        if (!initialized)
+        {
+            initialized = true;
+            std::string error;
+            capture = ALMetalFrameCapture::createIfRequested(*device, &error);
+            if (!error.empty())
+                LL_WARNS("MetalCapture") << error << LL_ENDL;
+        }
+        if (!capture) return;
+        const bool world_ready = LLStartUp::getStartupState() >= STATE_STARTED &&
+            !gTeleportDisplay && !gDisconnected &&
+            !LLAppViewer::instance()->logoutRequestSent() && !display_window_hidden();
+        if (normal_display && !world_ready &&
+            capture->stats().state == ALMetalFrameCapture::State::capturing)
+        {
+            // Abandon only our diagnostic interval if the normal world stops.
+            // Nested cube/snapshot entries must not truncate a main interval.
+            capture.reset();
+            return;
+        }
+        const auto before = capture->stats().state;
+        std::string error;
+        if (!capture->advanceDisplayInterval(gFrameCount,
+                normal_display && world_ready && sMetalBenchmarkCompletedSuccessfully,
+                &error))
+        {
+            LL_WARNS("MetalCapture") << error << LL_ENDL;
+            capture.reset();
+            return;
+        }
+        const auto after = capture->stats();
+        if (after.state != before &&
+            (after.state == ALMetalFrameCapture::State::capturing ||
+             after.state == ALMetalFrameCapture::State::stopped))
+            LL_INFOS("MetalCapture") << "Native diagnostic interval state="
+                << static_cast<unsigned>(after.state) << ", start_frame="
+                << after.start_frame << ", stop_frame=" << after.stop_frame
+                << "; capture-enabled runs are diagnostic only" << LL_ENDL;
+    }
+    catch (...)
+    {
+        capture.reset();
+    }
+}
 
 static ALMetalBenchmarkRecorder::Camera benchmark_camera(const LLCamera& source)
 {
@@ -743,6 +800,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
         recorder->record(frame, &error);
     if (result == ALMetalBenchmarkRecorder::Result::complete)
     {
+        sMetalBenchmarkCompletedSuccessfully = true;
         LLRender::setMetalCommandTimingEnabled(false);
         gGL.queries().setDiagnosticsEnabled(false);
         LL_INFOS("MetalBenchmark")
@@ -753,6 +811,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
     else if (result == ALMetalBenchmarkRecorder::Result::failed &&
              !reported_failure)
     {
+        sMetalBenchmarkCompletedSuccessfully = false;
         LLRender::setMetalCommandTimingEnabled(false);
         gGL.queries().setDiagnosticsEnabled(false);
         reported_failure = true;
@@ -783,6 +842,12 @@ void display_end_frame()
 // Paint the display!
 void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 {
+#if LL_DARWIN
+    // Start before any frame commands, and stop at the next normal display
+    // entry. Ordinary probes run after display_end_frame, outside display().
+    advance_metal_frame_capture(!for_snapshot && !gSnapshot && !gCubeSnapshot &&
+        !LLPipeline::sRenderingHUDs && zoom_factor == 1.f && subfield == 0);
+#endif
     LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Render");
     LL_PROFILE_GPU_ZONE("Render");
 

@@ -10,6 +10,8 @@ find_library(AL_IOSURFACE_FRAMEWORK IOSurface REQUIRED)
 set(AL_METAL_BUILTIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/almetal_builtin.metal")
 set(AL_METAL_BUILTIN_SOURCE "${AL_METAL_BUILTIN_SOURCE}" CACHE INTERNAL
     "Built-in native Metal shader source")
+option(AL_METAL_RECORD_SHADER_SOURCES
+       "Embed optimized Metal shader sources for local GPU capture inspection" OFF)
 
 # Prefer a deterministic offline-compiled library in packaged viewers. Keep
 # the source path below as a developer/test fallback for machines that have
@@ -35,7 +37,13 @@ if(AL_XCRUN_EXECUTABLE)
 endif()
 
 if(al_metal_compiler_available)
-  set(al_metal_builtin_dir "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/shaders")
+  set(al_metal_source_record_flags "")
+  set(al_metal_shader_directory "shaders")
+  if(AL_METAL_RECORD_SHADER_SOURCES)
+    list(APPEND al_metal_source_record_flags -frecord-sources)
+    set(al_metal_shader_directory "shaders-with-source")
+  endif()
+  set(al_metal_builtin_dir "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${al_metal_shader_directory}")
   set(al_metal_builtin_air "${al_metal_builtin_dir}/almetal_builtin.air")
   set(AL_METAL_BUILTIN_LIBRARY "${al_metal_builtin_dir}/almetal_builtin.metallib")
   set(al_metal_deployment_arg "")
@@ -49,6 +57,7 @@ if(al_metal_compiler_available)
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${al_metal_builtin_dir}"
     COMMAND "${AL_XCRUN_EXECUTABLE}" --sdk macosx metal
             -std=metal3.1 -ffast-math ${al_metal_deployment_arg}
+            ${al_metal_source_record_flags}
             -c "${AL_METAL_BUILTIN_SOURCE}" -o "${al_metal_builtin_air}"
     COMMAND "${AL_XCRUN_EXECUTABLE}" --sdk macosx metallib
             "${al_metal_builtin_air}" -o "${AL_METAL_BUILTIN_LIBRARY}"
@@ -77,6 +86,7 @@ target_sources(
   PRIVATE
     almetaldevice.mm
     almetalframe.mm
+    almetalframecapture.mm
     almetalpbrpreview.cpp
     almetalpipeline.mm
     almetalprobeworkload.mm
@@ -94,6 +104,7 @@ target_sources(
     FILES
       almetaldevice.h
       almetalframe.h
+      almetalframecapture.h
       almetalpbrpreview.h
       almetalpipeline.h
       almetalprobeworkload.h
@@ -151,6 +162,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_world_diagnostics_test.cpp
             tests/almetal_gbuffer_constants_test.mm
             tests/almetal_probe_workload_test.mm
+            tests/almetal_frame_capture_test.mm
     LIBRARIES almetal
     RESOURCE_LOCK apple_gpu
   )
@@ -164,6 +176,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_shadow_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_gbuffer_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_probe_workload_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_frame_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   if(AL_METAL_BUILTIN_LIBRARY)
     target_compile_definitions(
       almetal_tests
