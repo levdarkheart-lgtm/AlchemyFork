@@ -168,6 +168,8 @@ if(AL_BUILD_TESTS)
     list(APPEND llrender_native_test_sources
       tests/algpubuffer_test.cpp
       tests/alquerypool_test.cpp
+      tests/alquerypool_diagnostics_test.cpp
+      tests/alquerypool_metal_diagnostics_test.cpp
       tests/aluniformbuffer_test.cpp
       tests/llvertexbuffer_test.cpp
     )

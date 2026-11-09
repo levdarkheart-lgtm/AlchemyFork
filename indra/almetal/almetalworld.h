@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "almetalworlddiagnostics.h"
+
 #include "almetalpipeline.h"
 
 #include <array>
@@ -290,6 +292,9 @@ struct ALMetalWorldSpotShadowScene
     // both switches off selects the original scalar reference encoder.
     bool indirect_draws = false;
     bool bulk_draws = true;
+    // Optional producer census. Zero source count means not supplied.
+    std::uint64_t source_batch_count = 0;
+    std::uint64_t early_merged_source_count = 0;
 };
 
 struct ALMetalWorldSimpleBatch
@@ -1337,6 +1342,11 @@ struct ALMetalWorldOpaquePostDeferredScene
     // can become the next frame's coherent SSR color/depth history pair.
     bool publish_screen_space_reflection_history = false;
     bool wireframe = false;
+    // Optional CPU-only provenance for bounded diagnostic snapshots.
+    // View kind: 0 unknown, 1 main, 2 hero face, 3 ordinary reflection face.
+    std::uint64_t diagnostic_frame_index = 0;
+    std::uint32_t diagnostic_view_kind = 0;
+    std::uint32_t diagnostic_view_index = 0;
 };
 
 // The display-transfer base of colorCorrectF.glsl. This owner
@@ -2161,6 +2171,7 @@ public:
     bool commandBatchActive() const;
     ALMetalRenderTargetPoolStats renderTargetPoolStats() const noexcept;
     ALMetalShadowIndirectStats shadowIndirectStats() const noexcept;
+    ALMetalWorldPostDiagnostics opaquePostDiagnostics() const noexcept;
 
     std::unique_ptr<ALMetalRenderTarget> render(
         const ALMetalWorldGBufferScene& scene,

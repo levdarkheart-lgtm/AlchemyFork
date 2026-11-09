@@ -34,11 +34,113 @@
 
 namespace
 {
+    constexpr U8 PHASE_ATTACHED = 1u << 0;
+    constexpr U8 PHASE_PENDING = 1u << 1;
+    constexpr U8 PHASE_READY_ZERO = 1u << 2;
+    constexpr U8 PHASE_READY_NONZERO = 1u << 3;
+    constexpr U8 PHASE_EXPIRED = 1u << 4;
+    constexpr U8 PHASE_TERMINAL = PHASE_READY_ZERO | PHASE_READY_NONZERO | PHASE_EXPIRED;
+
     bool visibilityKind(ALQueryKind kind)
     {
         return kind == ALQueryKind::Occlusion ||
                kind == ALQueryKind::OcclusionExact;
     }
+}
+
+bool ALQueryPool::sDiagnosticsEnabled = false;
+U64 ALQueryPool::sDiagnosticEpoch = 0;
+
+void ALQueryPool::setDiagnosticsEnabled(bool enabled) noexcept
+{
+    sDiagnosticsEnabled = enabled;
+    if (enabled)
+    {
+        if (++sDiagnosticEpoch == 0) ++sDiagnosticEpoch;
+        mDiagnostics = {};
+        mDiagnostics.epoch = sDiagnosticEpoch;
+    }
+}
+
+bool ALQueryPool::diagnosticEntry(const Entry& entry) const noexcept
+{
+    return entry.diagnostic_epoch != 0 &&
+        entry.diagnostic_epoch == mDiagnostics.epoch;
+}
+
+void ALQueryPool::recordMainWorldGroupTransition(bool occluded) noexcept
+{
+    if (diagnosticsArmed())
+    {
+        if (occluded) ++mDiagnostics.group_occluded_transitions;
+        else ++mDiagnostics.group_visible_transitions;
+    }
+}
+
+void ALQueryPool::recordMainWorldGroupSkip(GroupSkip skip) noexcept
+{
+    if (diagnosticsArmed())
+    {
+        if (skip == GroupSkip::spatial_cull) ++mDiagnostics.spatial_group_skips;
+        else ++mDiagnostics.state_sort_group_skips;
+    }
+}
+
+void ALQueryPool::retireEntries(Frame& frame)
+{
+    if (diagnosticsArmed())
+    {
+        for (const Entry& entry : frame.entries)
+        {
+            if (diagnosticEntry(entry))
+            {
+                ++mDiagnostics.retired;
+                if (!(entry.diagnostic_phases & PHASE_TERMINAL))
+                    ++mDiagnostics.retired_without_terminal_observation;
+            }
+        }
+    }
+    frame.entries.clear();
+}
+
+ALQueryPool::Status ALQueryPool::observeResult(
+    const Entry* entry, Status status, U64 value) const
+{
+    if (!diagnosticsArmed()) return status;
+    if (!entry || !diagnosticEntry(*entry))
+    {
+        // A missing/older ticket cannot establish its producer or uniqueness.
+        ++mDiagnostics.untracked_polls;
+        return status;
+    }
+    U8 phase = PHASE_EXPIRED;
+    U64* unique = &mDiagnostics.expired_unique;
+    if (status == Status::Pending)
+    {
+        phase = PHASE_PENDING;
+        unique = &mDiagnostics.pending_unique;
+        ++mDiagnostics.pending_polls;
+    }
+    else if (status == Status::Ready && value == 0)
+    {
+        phase = PHASE_READY_ZERO;
+        unique = &mDiagnostics.ready_zero_unique;
+        ++mDiagnostics.ready_zero_polls;
+    }
+    else if (status == Status::Ready)
+    {
+        phase = PHASE_READY_NONZERO;
+        unique = &mDiagnostics.ready_nonzero_unique;
+        ++mDiagnostics.ready_nonzero_polls;
+    }
+    else ++mDiagnostics.expired_polls;
+    if (entry->diagnostic_phases & phase) ++mDiagnostics.duplicate_phase_polls;
+    else
+    {
+        entry->diagnostic_phases |= phase;
+        ++*unique;
+    }
+    return status;
 }
 
 ALQueryPool::ALQueryPool(ALFrameFences&) noexcept
@@ -69,7 +171,7 @@ ALQueryTicket ALQueryPool::acquire(ALQueryKind kind, bool reserved)
     Frame& frame = mFrames[mSerial % RESULT_FRAMES];
     if (frame.serial != mSerial)
     {
-        frame.entries.clear();
+        retireEntries(frame);
         frame.serial = mSerial;
     }
     constexpr std::size_t ticket_slot_count = 1u << 24;
@@ -91,6 +193,11 @@ ALQueryTicket ALQueryPool::acquire(ALQueryKind kind, bool reserved)
         return {};
     }
     mOpen = ticket;
+    if (diagnosticsArmed() && mVisibilityCaptureMainWorld)
+    {
+        frame.entries.back().diagnostic_epoch = mDiagnostics.epoch;
+        ++mDiagnostics.acquired;
+    }
     return ticket;
 }
 
@@ -151,25 +258,25 @@ ALQueryPool::Status ALQueryPool::result(
     const Entry* entry = find(ticket);
     if (!entry || !entry->closed || entry->discarded || !entry->results)
     {
-        return Status::Expired;
+        return sDiagnosticsEnabled ? observeResult(entry, Status::Expired, 0) : Status::Expired;
     }
 
     U64 native_value = 0;
     switch (entry->results->status())
     {
     case ALMetalVisibilityResultBatch::Status::pending:
-        return Status::Pending;
+        return sDiagnosticsEnabled ? observeResult(entry, Status::Pending, 0) : Status::Pending;
     case ALMetalVisibilityResultBatch::Status::ready:
         if (!entry->results->result(entry->result_index, native_value))
         {
-            return Status::Expired;
+            return sDiagnosticsEnabled ? observeResult(entry, Status::Expired, 0) : Status::Expired;
         }
         value = native_value;
-        return Status::Ready;
+        return sDiagnosticsEnabled ? observeResult(entry, Status::Ready, value) : Status::Ready;
     case ALMetalVisibilityResultBatch::Status::failed:
-        return Status::Expired;
+        return sDiagnosticsEnabled ? observeResult(entry, Status::Expired, 0) : Status::Expired;
     }
-    return Status::Expired;
+    return sDiagnosticsEnabled ? observeResult(entry, Status::Expired, 0) : Status::Expired;
 }
 
 ALQueryPool::Status ALQueryPool::result(
@@ -265,7 +372,7 @@ void ALQueryPool::endFrame()
         mSerial = 1;
     }
     Frame& frame = mFrames[mSerial % RESULT_FRAMES];
-    frame.entries.clear();
+    retireEntries(frame);
     frame.serial = mSerial;
 }
 
@@ -273,22 +380,24 @@ void ALQueryPool::release()
 {
     for (Frame& frame : mFrames)
     {
-        frame.entries.clear();
+        retireEntries(frame);
         frame.serial = 0;
     }
     mOpen = {};
     mVisibilityCaptureActive = false;
+    mVisibilityCaptureMainWorld = false;
     mVisibilityReserved = false;
     mFrames[mSerial % RESULT_FRAMES].serial = mSerial;
 }
 
-bool ALQueryPool::beginVisibilityCapture()
+bool ALQueryPool::beginVisibilityCapture(bool main_world)
 {
     if (mVisibilityCaptureActive || mOpen.isValid())
     {
         return false;
     }
     mVisibilityCaptureActive = true;
+    mVisibilityCaptureMainWorld = main_world;
     return true;
 }
 
@@ -300,6 +409,7 @@ void ALQueryPool::endVisibilityCapture()
     }
     mOpen = {};
     mVisibilityCaptureActive = false;
+    mVisibilityCaptureMainWorld = false;
 }
 
 bool ALQueryPool::attachVisibilityResult(
@@ -315,6 +425,15 @@ bool ALQueryPool::attachVisibilityResult(
     }
     entry->results = std::move(results);
     entry->result_index = result_index;
+    if (diagnosticsArmed() && diagnosticEntry(*entry))
+    {
+        ++mDiagnostics.attachment_calls;
+        if (!(entry->diagnostic_phases & PHASE_ATTACHED))
+        {
+            entry->diagnostic_phases |= PHASE_ATTACHED;
+            ++mDiagnostics.attached_unique;
+        }
+    }
     return true;
 }
 
@@ -323,6 +442,8 @@ void ALQueryPool::discard(const ALQueryTicket& ticket)
     Entry* entry = find(ticket);
     if (entry)
     {
+        if (diagnosticsArmed() && diagnosticEntry(*entry) && !entry->discarded)
+            ++mDiagnostics.discarded_unique;
         entry->results.reset();
         entry->closed = true;
         entry->discarded = true;

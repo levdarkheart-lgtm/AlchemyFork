@@ -1449,6 +1449,8 @@ public:
     static void setRenderHighlightTextureChannel(LLRender::eTexIndex channel); // sets which UV setup to display in highlight overlay
 
     static void refreshCachedSettings();
+    // Authoritative main-camera scope for culling and opt-in diagnostics.
+    static bool isMainWorldPass();
 
     void addDebugBlip(const LLVector3& position, const LLColor4& color);
 
@@ -2258,10 +2260,6 @@ public:
     static S32 RenderHeroProbeUpdateRate;
     static S32 RenderHeroProbeConservativeUpdateMultiplier;
 
-private:
-    // The main camera's view of the world: not a shadow map, an impostor
-    // bake, the HUD or a probe's cube face.
-    static bool isMainWorldPass();
 };
 
 // Occlusion culling off for as long as this lives.

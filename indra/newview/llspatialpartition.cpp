@@ -1018,6 +1018,10 @@ public:
             group->isOcclusionState(LLSpatialGroup::OCCLUDED))
         {
             gPipeline.markOccluder(group);
+            if (ALQueryPool::diagnosticsEnabled() && LLPipeline::isMainWorldPass())
+            {
+                gGL.queries().recordMainWorldGroupSkip(ALQueryPool::GroupSkip::spatial_cull);
+            }
             return true;
         }
 

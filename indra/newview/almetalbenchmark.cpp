@@ -15,13 +15,20 @@
 
 #include "almetalbenchmark.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fcntl.h>
 #include <iomanip>
+#include <limits>
+#include <locale>
+#include <sstream>
 #include <system_error>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace
 {
@@ -151,6 +158,134 @@ const char* presentation_state_name(
     }
     return nullptr;
 }
+
+std::string provenance_path(const std::string& csv)
+{
+    auto path = std::filesystem::path(csv);
+    path.replace_extension(".provenance.jsonl");
+    return path.string();
+}
+
+void json_string(std::ostream& out, const std::string& value)
+{
+    constexpr char hex[] = "0123456789abcdef";
+    out << '"';
+    for (const unsigned char c : value)
+    {
+        if (c == '"' || c == '\\') out << '\\' << char(c);
+        else if (c < 0x20) out << "\\u00" << hex[c >> 4] << hex[c & 15];
+        else out << char(c);
+    }
+    out << '"';
+}
+
+template<typename T> void json_number(std::ostream& out, T value)
+{
+    if (std::isfinite(value)) out << std::setprecision(std::numeric_limits<T>::max_digits10) << value;
+    else out << "null";
+}
+
+template<typename T, std::size_t N>
+void json_array(std::ostream& out, const std::array<T, N>& values)
+{
+    out << '[';
+    for (std::size_t i = 0; i < N; ++i)
+    {
+        if (i) out << ',';
+        json_number(out, values[i]);
+    }
+    out << ']';
+}
+
+void json_camera(std::ostream& out, const ALMetalBenchmarkRecorder::Camera& camera)
+{
+    out << "{\"origin\":"; json_array(out, camera.origin);
+    out << ",\"at\":"; json_array(out, camera.at);
+    out << ",\"left\":"; json_array(out, camera.left);
+    out << ",\"up\":"; json_array(out, camera.up);
+    out << ",\"modelview\":"; json_array(out, camera.modelview);
+    out << ",\"projection\":"; json_array(out, camera.projection);
+    out << ",\"vertical_fov_radians\":"; json_number(out, camera.vertical_fov_radians);
+    out << ",\"aspect\":"; json_number(out, camera.aspect);
+    out << ",\"near_clip\":"; json_number(out, camera.near_clip);
+    out << ",\"draw_far_clip\":"; json_number(out, camera.draw_far_clip);
+    out << '}';
+}
+
+template<typename T, std::size_t N>
+bool finite_array(const std::array<T, N>& values)
+{
+    return std::all_of(values.begin(), values.end(), [](T value) { return std::isfinite(value); });
+}
+
+bool finite_camera(const ALMetalBenchmarkRecorder::Camera& camera)
+{
+    return finite_array(camera.origin) && finite_array(camera.at) &&
+        finite_array(camera.left) && finite_array(camera.up) &&
+        finite_array(camera.modelview) && finite_array(camera.projection) &&
+        std::isfinite(camera.vertical_fov_radians) && std::isfinite(camera.aspect) &&
+        std::isfinite(camera.near_clip) && std::isfinite(camera.draw_far_clip);
+}
+
+void json_view(std::ostream& out, const ALMetalBenchmarkRecorder::ViewState& view)
+{
+    const bool finite = finite_camera(view.viewer_camera) && finite_camera(view.pass_current_camera) &&
+        finite_array(view.agent_camera_global) && finite_array(view.agent_focus_global) &&
+        finite_array(view.agent_focus_target_global) && finite_array(view.agent_camera_up) &&
+        std::isfinite(view.projection_far_clip) && std::isfinite(view.requested_draw_distance);
+    out << "{\"finite_camera_values\":" << (finite ? "true" : "false") << ",\"viewer_camera\":";
+    json_camera(out, view.viewer_camera);
+    out << ",\"pass_current_camera\":"; json_camera(out, view.pass_current_camera);
+    out << ",\"agent_camera_global\":"; json_array(out, view.agent_camera_global);
+    out << ",\"agent_focus_global\":"; json_array(out, view.agent_focus_global);
+    out << ",\"agent_focus_target_global\":"; json_array(out, view.agent_focus_target_global);
+    out << ",\"agent_camera_up\":"; json_array(out, view.agent_camera_up);
+    out << ",\"viewport\":"; json_array(out, view.viewport);
+    out << ",\"projection_far_clip\":"; json_number(out, view.projection_far_clip);
+    out << ",\"requested_draw_distance\":"; json_number(out, view.requested_draw_distance);
+    out << ",\"camera_id\":" << view.camera_id
+        << ",\"agent_camera_mode\":" << view.agent_camera_mode
+        << ",\"agent_camera_preset\":" << view.agent_camera_preset
+        << ",\"occlusion_mode\":" << view.occlusion_mode
+        << ",\"reverse_z\":" << (view.reverse_z ? "true" : "false")
+        << ",\"main_world_pass\":" << (view.main_world_pass ? "true" : "false") << '}';
+}
+
+void json_restoration(std::ostream& out, const ALMetalBenchmarkRecorder::Restoration& state)
+{
+    out << "{\"checked\":" << (state.checked ? "true" : "false")
+        << ",\"viewer_camera_restored\":" << (state.viewer_camera_restored ? "true" : "false")
+        << ",\"pass_current_camera_restored\":" << (state.pass_current_camera_restored ? "true" : "false")
+        << ",\"agent_camera_fields_restored\":" << (state.agent_camera_fields_restored ? "true" : "false")
+        << ",\"camera_id_restored\":" << (state.camera_id_restored ? "true" : "false") << '}';
+}
+
+void json_queries(std::ostream& out, const ALQueryPool::Diagnostics& d)
+{
+    out << '{';
+#define QUERY_FIELD(name) out << "\"" #name "\":" << d.name << ','
+    QUERY_FIELD(epoch); QUERY_FIELD(acquired);
+    QUERY_FIELD(attachment_calls); QUERY_FIELD(attached_unique);
+    QUERY_FIELD(pending_polls); QUERY_FIELD(ready_zero_polls);
+    QUERY_FIELD(ready_nonzero_polls); QUERY_FIELD(expired_polls);
+    QUERY_FIELD(pending_unique); QUERY_FIELD(ready_zero_unique);
+    QUERY_FIELD(ready_nonzero_unique); QUERY_FIELD(expired_unique);
+    QUERY_FIELD(duplicate_phase_polls); QUERY_FIELD(untracked_polls);
+    QUERY_FIELD(discarded_unique); QUERY_FIELD(retired);
+    QUERY_FIELD(retired_without_terminal_observation);
+    QUERY_FIELD(group_occluded_transitions); QUERY_FIELD(group_visible_transitions);
+    QUERY_FIELD(spatial_group_skips);
+#undef QUERY_FIELD
+    out << "\"state_sort_group_skips\":" << d.state_sort_group_skips << '}';
+}
+
+bool same_view(const ALMetalBenchmarkRecorder::Provenance& a,
+               const ALMetalBenchmarkRecorder::Provenance& b)
+{
+    return a.main_view_captured == b.main_view_captured &&
+        a.main_view == b.main_view && a.frame_end_view == b.frame_end_view &&
+        a.hero_restoration == b.hero_restoration && a.hud_restoration == b.hud_restoration;
+}
 }
 
 std::optional<ALMetalBenchmarkRecorder::Config>
@@ -225,9 +360,22 @@ ALMetalBenchmarkRecorder::configFromEnvironment(
             MAX_FRAME_COUNT, "frame count", config.sample_frames, error) ||
         !bool_environment(
             "ALCHEMY_METAL_BENCHMARK_REQUIRE_EXACT", false,
-            config.require_exact_native, error))
+            config.require_exact_native, error) ||
+        !bool_environment(
+            "ALCHEMY_METAL_BENCHMARK_PROVENANCE", true,
+            config.collect_provenance, error))
     {
         return std::nullopt;
+    }
+    if (config.collect_provenance)
+    {
+        const bool sidecar_exists = std::filesystem::exists(
+            provenance_path(config.output_path), filesystem_error);
+        if (filesystem_error || sidecar_exists)
+        {
+            set_error(error, "The benchmark provenance sidecar exists or could not be inspected safely");
+            return std::nullopt;
+        }
     }
     return config;
 }
@@ -237,7 +385,93 @@ ALMetalBenchmarkRecorder::ALMetalBenchmarkRecorder(Config config) :
 {
 }
 
-ALMetalBenchmarkRecorder::~ALMetalBenchmarkRecorder() = default;
+ALMetalBenchmarkRecorder::~ALMetalBenchmarkRecorder()
+{
+    closeProvenance();
+}
+
+bool ALMetalBenchmarkRecorder::closeProvenance() noexcept
+{
+    if (!mProvenanceOutput) return true;
+    const bool flushed = std::fflush(mProvenanceOutput) == 0;
+    const bool closed = std::fclose(mProvenanceOutput) == 0;
+    mProvenanceOutput = nullptr;
+    return flushed && closed;
+}
+
+bool ALMetalBenchmarkRecorder::recordProvenance(
+    const Frame& frame, const char* boundary, std::string* error)
+{
+    if (!mConfig.collect_provenance) return true;
+    if (!frame.provenance || !frame.provenance->main_view_captured)
+    {
+        set_error(error, "The main-world benchmark provenance snapshot is missing");
+        return false;
+    }
+    const Provenance& p = *frame.provenance;
+    if (!mLastObservedProvenance || mLastObservedProvenanceFrame != frame.frame_index)
+    {
+        const bool unchanged = mLastObservedProvenance && same_view(p, *mLastObservedProvenance);
+        if (mLastObservedProvenance && !unchanged) ++mCameraChangeFrames;
+        mStableCameraFrames = unchanged && frame.frame_index == mLastObservedProvenanceFrame + 1
+            ? mStableCameraFrames + 1 : 1;
+        mLastObservedProvenance = p;
+        mLastObservedProvenanceFrame = frame.frame_index;
+    }
+    const bool changed = !mLastWrittenProvenance || !same_view(p, *mLastWrittenProvenance);
+    // Moving cameras are observed every frame but written after two stable
+    // observations or at the bounded periodic checkpoint, not once per jitter.
+    if (!boundary && !(changed && mStableCameraFrames >= 2) &&
+        frame.frame_index < mLastProvenanceFrame + 120) return true;
+    if (!mProvenanceOutput)
+    {
+        const int fd = ::open(provenance_path(mConfig.output_path).c_str(),
+            O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+        if (fd == -1)
+        {
+            set_error(error, "Could not create a new private benchmark provenance sidecar");
+            return false;
+        }
+        mProvenanceOutput = ::fdopen(fd, "w");
+        if (!mProvenanceOutput)
+        {
+            ::close(fd);
+            set_error(error, "Could not open the benchmark provenance stream");
+            return false;
+        }
+    }
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    out << "{\"schema_version\":1,\"event\":";
+    json_string(out, boundary ? boundary : (changed ? "camera_change" : "periodic"));
+    out << ",\"frame_index\":" << frame.frame_index
+        << ",\"samples_written\":" << mSamplesWritten
+        << ",\"camera_change_frames\":" << mCameraChangeFrames
+        << ",\"consecutive_same_view_frames\":" << mStableCameraFrames
+        << ",\"scenario\":"; json_string(out, mConfig.scenario);
+    out << ",\"variant\":"; json_string(out, mConfig.variant);
+    out << ",\"source_sha\":"; json_string(out, mConfig.source_sha);
+    out << ",\"build_type\":"; json_string(out, mConfig.build_type);
+    out << ",\"drawable_width\":" << frame.drawable_width
+        << ",\"drawable_height\":" << frame.drawable_height
+        << ",\"quality_profile\":" << frame.quality_profile
+        << ",\"main_view\":"; json_view(out, p.main_view);
+    out << ",\"frame_end_view\":"; json_view(out, p.frame_end_view);
+    out << ",\"hero_restoration\":"; json_restoration(out, p.hero_restoration);
+    out << ",\"hud_restoration\":"; json_restoration(out, p.hud_restoration);
+    out << ",\"main_world_queries\":"; json_queries(out, p.main_world_queries);
+    out << "}\n";
+    const auto line = out.str();
+    if (std::fwrite(line.data(), 1, line.size(), mProvenanceOutput) != line.size() ||
+        std::fflush(mProvenanceOutput) != 0)
+    {
+        set_error(error, "Writing the benchmark provenance sidecar failed");
+        return false;
+    }
+    mLastWrittenProvenance = p;
+    mLastProvenanceFrame = frame.frame_index;
+    return true;
+}
 
 void ALMetalBenchmarkRecorder::resetSequence() noexcept
 {
@@ -266,6 +500,7 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::fail(
     {
         mOutput->close();
     }
+    closeProvenance();
     return Result::failed;
 }
 
@@ -324,7 +559,9 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
     }
     const bool acceptable = frame.eligible && frame.drawable_width != 0 &&
         frame.drawable_height != 0 &&
-        (!mConfig.require_exact_native || frame.native_exact);
+        (!mConfig.require_exact_native || frame.native_exact) &&
+        (!mConfig.collect_provenance || (frame.provenance &&
+            frame.provenance->main_view_captured && frame.provenance->main_view.main_world_pass));
     if (!acceptable)
     {
         if (mSamplesWritten != 0)
@@ -392,6 +629,8 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
         mSequenceHeight = frame.drawable_height;
         mSequenceQuality = frame.quality_profile;
         mWarmupSeen = mConfig.warmup_frames == 0 ? 0 : 1;
+        if (!recordProvenance(frame, "warmup_start", error))
+            return fail(error && !error->empty() ? *error : "Could not record benchmark warmup provenance", error);
         return Result::warming;
     }
 
@@ -448,8 +687,13 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
     if (mWarmupSeen < mConfig.warmup_frames || !warmup_time_complete)
     {
         ++mWarmupSeen;
+        if (!recordProvenance(frame, nullptr, error))
+            return fail(error && !error->empty() ? *error : "Could not record benchmark warmup provenance", error);
         return Result::warming;
     }
+
+    if (!recordProvenance(frame, mSamplesWritten == 0 ? "sample_start" : nullptr, error))
+        return fail(error && !error->empty() ? *error : "Could not record benchmark sample provenance", error);
 
     if (!openOutput(error))
     {
@@ -479,6 +723,8 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
     ++mSamplesWritten;
     if (mSamplesWritten == mConfig.sample_frames)
     {
+        if (!recordProvenance(frame, "sample_end", error) || !closeProvenance())
+            return fail(error && !error->empty() ? *error : "Could not finish benchmark provenance", error);
         mOutput->close();
         if (mOutput->fail())
         {

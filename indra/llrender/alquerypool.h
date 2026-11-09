@@ -103,6 +103,45 @@ public:
         Expired,
     };
 
+    enum class GroupSkip : U8 { spatial_cull, state_sort };
+
+    // Explicit benchmark-only, main-thread diagnostics. These count query
+    // tickets, not occluded draw calls or saved GPU work. Phase counts overlap:
+    // one ticket may first be pending and later become ready. Repeated polls
+    // of the same phase are reported separately from first observations.
+    struct Diagnostics
+    {
+        U64 epoch = 0;
+        U64 acquired = 0;
+        U64 attachment_calls = 0; // successful calls, including reattachment
+        U64 attached_unique = 0;
+        U64 pending_polls = 0;
+        U64 ready_zero_polls = 0;
+        U64 ready_nonzero_polls = 0;
+        U64 expired_polls = 0;
+        U64 pending_unique = 0;
+        U64 ready_zero_unique = 0;
+        U64 ready_nonzero_unique = 0;
+        U64 expired_unique = 0;
+        U64 duplicate_phase_polls = 0;
+        U64 untracked_polls = 0;
+        U64 discarded_unique = 0;
+        U64 retired = 0;
+        U64 retired_without_terminal_observation = 0; // no terminal result() poll; wait() keeps its existing counters
+        U64 group_occluded_transitions = 0;
+        U64 group_visible_transitions = 0;
+        U64 spatial_group_skips = 0;
+        U64 state_sort_group_skips = 0;
+    };
+
+    // Arming starts a new epoch. Existing tickets are deliberately untracked,
+    // including tickets acquired while diagnostics were previously armed.
+    void setDiagnosticsEnabled(bool enabled) noexcept;
+    static bool diagnosticsEnabled() noexcept { return sDiagnosticsEnabled; }
+    Diagnostics diagnostics() const noexcept { return mDiagnostics; }
+    void recordMainWorldGroupTransition(bool occluded) noexcept;
+    void recordMainWorldGroupSkip(GroupSkip skip) noexcept;
+
     explicit ALQueryPool(ALFrameFences&) noexcept;
     ALQueryPool(const ALQueryPool&) = delete;
     ALQueryPool& operator=(const ALQueryPool&) = delete;
@@ -139,7 +178,7 @@ public:
     // The native world owner brackets the exact retained traversal interval
     // in which bounding boxes can be captured. Results are attached after the
     // ordered G-buffer encoder has accepted the corresponding draws.
-    bool beginVisibilityCapture();
+    bool beginVisibilityCapture(bool main_world = false);
     void endVisibilityCapture();
     bool visibilityCaptureActive() const { return mVisibilityCaptureActive; }
     bool attachVisibilityResult(
@@ -160,6 +199,8 @@ private:
         std::size_t result_index = 0;
         bool closed = false;
         bool discarded = false;
+        U64 diagnostic_epoch = 0;
+        mutable U8 diagnostic_phases = 0;
     };
 
     struct Frame
@@ -171,6 +212,18 @@ private:
     Entry* find(const ALQueryTicket& ticket);
     const Entry* find(const ALQueryTicket& ticket) const;
     ALQueryTicket acquire(ALQueryKind kind, bool reserved);
+    void retireEntries(Frame& frame);
+    Status observeResult(const Entry* entry, Status status, U64 value) const;
+    bool diagnosticEntry(const Entry& entry) const noexcept;
+    bool diagnosticsArmed() const noexcept
+    {
+        return sDiagnosticsEnabled && mDiagnostics.epoch != 0 &&
+            mDiagnostics.epoch == sDiagnosticEpoch;
+    }
+
+    static bool sDiagnosticsEnabled;
+    static U64 sDiagnosticEpoch;
+    mutable Diagnostics mDiagnostics;
 
     std::array<Frame, RESULT_FRAMES> mFrames;
     ALQueryTicket mOpen;
@@ -178,6 +231,7 @@ private:
     U32 mStalls = 0;
     U32 mAskedReads = 0;
     bool mVisibilityCaptureActive = false;
+    bool mVisibilityCaptureMainWorld = false;
     bool mVisibilityReserved = false;
 };
 

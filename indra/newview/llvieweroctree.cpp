@@ -911,6 +911,11 @@ void LLOcclusionCullingGroup::setOcclusionState(U32 state, S32 mode /* = STATE_M
         if (state & OCCLUDED)
         {
             add(sNumObjectsOccluded, 1);
+            if (ALQueryPool::diagnosticsEnabled() && LLPipeline::isMainWorldPass() &&
+                !(mOcclusionState[LLViewerCamera::sCurCameraID] & OCCLUDED))
+            {
+                gGL.queries().recordMainWorldGroupTransition(true);
+            }
         }
         mOcclusionState[LLViewerCamera::sCurCameraID] |= state;
         if (state & DISCARD_QUERY)
@@ -936,6 +941,12 @@ void LLOcclusionCullingGroup::setOcclusionState(U32 state, S32 mode /* = STATE_M
         break;
 
     case STATE_MODE_ALL_CAMERAS:
+        if ((state & OCCLUDED) && ALQueryPool::diagnosticsEnabled() &&
+            LLPipeline::isMainWorldPass() &&
+            !(mOcclusionState[LLViewerCamera::CAMERA_WORLD] & OCCLUDED))
+        {
+            gGL.queries().recordMainWorldGroupTransition(true);
+        }
         for (U32 i = 0; i < LLViewerCamera::NUM_CAMERAS; i++)
         {
             mOcclusionState[i] |= state;
@@ -1032,6 +1043,11 @@ void LLOcclusionCullingGroup::clearOcclusionState(U32 state, S32 mode /* = STATE
             if (state & OCCLUDED)
             {
                 add(sNumObjectsUnoccluded, 1);
+                if (ALQueryPool::diagnosticsEnabled() && LLPipeline::isMainWorldPass() &&
+                    (mOcclusionState[LLViewerCamera::sCurCameraID] & OCCLUDED))
+                {
+                    gGL.queries().recordMainWorldGroupTransition(false);
+                }
             }
             mOcclusionState[LLViewerCamera::sCurCameraID] &= ~state;
             break;
@@ -1053,6 +1069,12 @@ void LLOcclusionCullingGroup::clearOcclusionState(U32 state, S32 mode /* = STATE
             break;
 
         case STATE_MODE_ALL_CAMERAS:
+            if ((state & OCCLUDED) && ALQueryPool::diagnosticsEnabled() &&
+                LLPipeline::isMainWorldPass() &&
+                (mOcclusionState[LLViewerCamera::CAMERA_WORLD] & OCCLUDED))
+            {
+                gGL.queries().recordMainWorldGroupTransition(false);
+            }
             for (U32 i = 0; i < LLViewerCamera::NUM_CAMERAS; i++)
             {
                 mOcclusionState[i] &= ~state;

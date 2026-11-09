@@ -2574,6 +2574,7 @@ if(AL_BUILD_TESTS)
       tests/alfeedbackoutbox_test.cpp
       tests/algradehistory_test.cpp
       tests/almetalbenchmark_test.cpp
+      tests/almetalbenchmark_provenance_test.cpp
       tests/almotionpredictor_test.cpp
       tests/alnotecardembedded_test.cpp
       tests/alrecoverykeeper_test.cpp

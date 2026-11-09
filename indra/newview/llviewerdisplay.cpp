@@ -95,6 +95,7 @@
 #include "pipeline.h"
 
 #include <filesystem>
+#include <algorithm>
 #include <iomanip>
 #include <sstream>
 // [RLVa:KB] - Checked: 2011-05-22 (RLVa-1.3.1a)
@@ -523,6 +524,79 @@ static void fill_pacing_slack()
 }
 
 #if LL_DARWIN
+static ALMetalBenchmarkRecorder::Provenance sMetalBenchmarkProvenance;
+
+static ALMetalBenchmarkRecorder::Camera benchmark_camera(const LLCamera& source)
+{
+    ALMetalBenchmarkRecorder::Camera camera;
+    std::copy_n(source.getOrigin().mV, 3, camera.origin.begin());
+    std::copy_n(source.getAtAxis().mV, 3, camera.at.begin());
+    std::copy_n(source.getLeftAxis().mV, 3, camera.left.begin());
+    std::copy_n(source.getUpAxis().mV, 3, camera.up.begin());
+    std::copy_n(source.getModelview().getF32ptr(), 16, camera.modelview.begin());
+    std::copy_n(source.getProjection().getF32ptr(), 16, camera.projection.begin());
+    camera.vertical_fov_radians = source.getView();
+    camera.aspect = source.getAspect();
+    camera.near_clip = source.getNear();
+    camera.draw_far_clip = source.getFar();
+    return camera;
+}
+
+static ALMetalBenchmarkRecorder::ViewState benchmark_view_state()
+{
+    ALMetalBenchmarkRecorder::ViewState view;
+    const LLViewerCamera& camera = LLViewerCamera::instance();
+    view.viewer_camera = benchmark_camera(camera);
+    view.pass_current_camera = benchmark_camera(LLViewerCamera::getCurrent());
+    const LLVector3d global = gAgentCamera.getCameraPositionGlobal();
+    std::copy_n(global.mdV, 3, view.agent_camera_global.begin());
+    std::copy_n(gAgentCamera.getFocusGlobal().mdV, 3, view.agent_focus_global.begin());
+    std::copy_n(gAgentCamera.getFocusTargetGlobal().mdV, 3, view.agent_focus_target_global.begin());
+    std::copy_n(gAgentCamera.getCameraUpVector().mV, 3, view.agent_camera_up.begin());
+    S32 viewport[4];
+    gGL.getViewport(viewport);
+    std::copy_n(viewport, 4, view.viewport.begin());
+    view.projection_far_clip = camera.getProjectionFar();
+    view.requested_draw_distance = gAgentCamera.mDrawDistance;
+    view.camera_id = LLViewerCamera::sCurCameraID;
+    view.agent_camera_mode = static_cast<U32>(gAgentCamera.getCameraMode());
+    view.agent_camera_preset = static_cast<U32>(gAgentCamera.getCameraPreset());
+    view.occlusion_mode = static_cast<U32>(LLPipeline::sUseOcclusion);
+    view.reverse_z = LLRender::sReverseZ;
+    view.main_world_pass = LLPipeline::isMainWorldPass();
+    return view;
+}
+
+static void benchmark_camera_restoration(
+    ALMetalBenchmarkRecorder::Restoration& result,
+    const ALMetalBenchmarkRecorder::ViewState& before)
+{
+    const auto after = benchmark_view_state();
+    ALMetalBenchmarkRecorder::Restoration restored;
+    restored.checked = true;
+    restored.viewer_camera_restored = before.viewer_camera == after.viewer_camera &&
+        before.projection_far_clip == after.projection_far_clip;
+    restored.pass_current_camera_restored = before.pass_current_camera == after.pass_current_camera;
+    // These are the explicit controller fields read above; HUD zoom animates
+    // intentionally and is not a claim about restoring the whole controller.
+    restored.agent_camera_fields_restored = before.agent_camera_global == after.agent_camera_global &&
+        before.agent_focus_global == after.agent_focus_global &&
+        before.agent_focus_target_global == after.agent_focus_target_global &&
+        before.agent_camera_up == after.agent_camera_up &&
+        before.agent_camera_mode == after.agent_camera_mode &&
+        before.agent_camera_preset == after.agent_camera_preset &&
+        before.requested_draw_distance == after.requested_draw_distance;
+    restored.camera_id_restored = before.camera_id == after.camera_id;
+    if (!result.checked) result = restored;
+    else
+    {
+        result.viewer_camera_restored &= restored.viewer_camera_restored;
+        result.pass_current_camera_restored &= restored.pass_current_camera_restored;
+        result.agent_camera_fields_restored &= restored.agent_camera_fields_restored;
+        result.camera_id_restored &= restored.camera_id_restored;
+    }
+}
+
 static ALMetalBenchmarkRecorder::NativePresentationState
 benchmark_presentation_state(
     LLPipeline::MetalWorldPresentationState state)
@@ -583,6 +657,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
                     : "; non-exact native presentation states are accepted")
             << LL_ENDL;
         LLRender::setMetalCommandTimingEnabled(true);
+        gGL.queries().setDiagnosticsEnabled(config->collect_provenance);
         previous_native_draw_count = ALMetalDevice::encodedDrawCallCount();
         recorder = std::make_unique<ALMetalBenchmarkRecorder>(
             std::move(*config));
@@ -628,6 +703,12 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
         !for_snapshot && !gSnapshot && !gTeleportDisplay && !gDisconnected &&
         !LLAppViewer::instance()->logoutRequestSent() &&
         !display_window_hidden() && (gl_presented || native_exact);
+    if (ALQueryPool::diagnosticsEnabled())
+    {
+        sMetalBenchmarkProvenance.frame_end_view = benchmark_view_state();
+        sMetalBenchmarkProvenance.main_world_queries = gGL.queries().diagnostics();
+        frame.provenance = sMetalBenchmarkProvenance;
+    }
 
     std::string error;
     const ALMetalBenchmarkRecorder::Result result =
@@ -635,6 +716,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
     if (result == ALMetalBenchmarkRecorder::Result::complete)
     {
         LLRender::setMetalCommandTimingEnabled(false);
+        gGL.queries().setDiagnosticsEnabled(false);
         LL_INFOS("MetalBenchmark")
             << "Metal benchmark collection completed with "
             << recorder->samplesWritten()
@@ -644,6 +726,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
              !reported_failure)
     {
         LLRender::setMetalCommandTimingEnabled(false);
+        gGL.queries().setDiagnosticsEnabled(false);
         reported_failure = true;
         LL_WARNS("MetalBenchmark")
             << "Metal benchmark collection stopped without admissible "
@@ -676,6 +759,10 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     LL_PROFILE_GPU_ZONE("Render");
 
     LLPerfStats::RecordSceneTime T (LLPerfStats::StatType_t::RENDER_DISPLAY); // render time capture - This is the main stat for overall rendering.
+
+#if LL_DARWIN
+    if (ALQueryPool::diagnosticsEnabled()) sMetalBenchmarkProvenance = {};
+#endif
 
     // The frame the last pass showed is the main loop's to end (display_end_frame); one left unended ends here, unpaced.
     llassert(sFrameEndOwed == 0);
@@ -979,8 +1066,16 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Update hero probes");
             LL_PROFILE_GPU_ZONE("hero manager")
+#if LL_DARWIN
+            std::optional<ALMetalBenchmarkRecorder::ViewState> before_hero;
+            if (ALQueryPool::diagnosticsEnabled()) before_hero = benchmark_view_state();
+#endif
             gPipeline.mHeroProbeManager.update();
             gPipeline.mHeroProbeManager.renderProbes();
+#if LL_DARWIN
+            if (before_hero) benchmark_camera_restoration(
+                sMetalBenchmarkProvenance.hero_restoration, *before_hero);
+#endif
         }
 
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("display - 1");
@@ -1063,6 +1158,13 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         static LLCullResult result;
         LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
         LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
+#if LL_DARWIN
+        if (ALQueryPool::diagnosticsEnabled() && LLPipeline::isMainWorldPass())
+        {
+            sMetalBenchmarkProvenance.main_view = benchmark_view_state();
+            sMetalBenchmarkProvenance.main_view_captured = true;
+        }
+#endif
         gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
         stop_glerror();
 
@@ -1634,6 +1736,11 @@ static void restore_scene_depth(const std::vector<LLRect>& rects)
 
 void render_hud_attachments()
 {
+#if LL_DARWIN
+    std::optional<ALMetalBenchmarkRecorder::ViewState> before_hud;
+    if (ALQueryPool::diagnosticsEnabled() && LLPipeline::isMainWorldPass())
+        before_hud = benchmark_view_state();
+#endif
     LLPerfStats::RecordSceneTime T ( LLPerfStats::StatType_t::RENDER_HUDS); // render time capture - Primary contributor to HUDs (though these end up in render batches)
     gGL.matrixMode(LLRender::MM_PROJECTION);
     gGL.pushMatrix();
@@ -1755,6 +1862,10 @@ void render_hud_attachments()
     gGL.popMatrix();
 
     LLViewerCamera::setCurrent(saved_camera);
+#if LL_DARWIN
+    if (before_hud) benchmark_camera_restoration(
+        sMetalBenchmarkProvenance.hud_restoration, *before_hud);
+#endif
 }
 
 LLRect get_whole_screen_region()

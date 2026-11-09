@@ -1621,6 +1621,11 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalShadowIndirectCommands> shadow_indirect;
     std::unique_ptr<ALMetalRenderPipeline> spot_shadow_indirect_pipeline;
     std::uint64_t shadow_coalesced_draws = 0;
+    std::uint64_t shadow_source_records = 0;
+    std::uint64_t shadow_encoded_records = 0;
+    std::uint64_t shadow_early_coalesced_records = 0;
+    std::uint64_t opaque_diagnostic_calls = 0;
+    ALMetalWorldPostDiagnostics opaque_diagnostics;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
         spot_shadow_coverage_pipelines;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
@@ -2049,6 +2054,20 @@ ALMetalWorldGBufferRenderer::shadowIndirectStats() const noexcept
     auto stats = mImpl && mImpl->shadow_indirect
         ? mImpl->shadow_indirect->stats() : ALMetalShadowIndirectStats{};
     if (mImpl) stats.direct_coalesced_draws = mImpl->shadow_coalesced_draws;
+    if (mImpl)
+    {
+        stats.source_records = mImpl->shadow_source_records;
+        stats.encoded_records = mImpl->shadow_encoded_records;
+        stats.early_coalesced_records = mImpl->shadow_early_coalesced_records;
+    }
+    return stats;
+}
+
+ALMetalWorldPostDiagnostics
+ALMetalWorldGBufferRenderer::opaquePostDiagnostics() const noexcept
+{
+    auto stats = mImpl ? mImpl->opaque_diagnostics : ALMetalWorldPostDiagnostics{};
+    if (mImpl) stats.encoded_calls = mImpl->opaque_diagnostic_calls;
     return stats;
 }
 
@@ -5848,7 +5867,11 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     std::string* error)
 {
     if (!mImpl || !mImpl->device || scene.width == 0 || scene.height == 0 ||
-        (scene.batch_count != 0 && !scene.batches))
+        (scene.batch_count != 0 && !scene.batches) ||
+        (scene.source_batch_count != 0 &&
+         (scene.source_batch_count < scene.batch_count ||
+          scene.early_merged_source_count != scene.source_batch_count - scene.batch_count)) ||
+        (scene.source_batch_count == 0 && scene.early_merged_source_count != 0))
     {
         setError(error, "Metal spot-shadow scene is incomplete");
         return false;
@@ -6614,6 +6637,10 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         return false;
     }
     mImpl->shadow_coalesced_draws += coalesced_draws;
+    mImpl->shadow_source_records += scene.source_batch_count
+        ? scene.source_batch_count : scene.batch_count;
+    mImpl->shadow_encoded_records += scene.batch_count - coalesced_draws;
+    mImpl->shadow_early_coalesced_records += scene.early_merged_source_count;
     return true;
 }
 
@@ -18876,6 +18903,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         {
             mImpl->brdf_lut_ready = true;
         }
+    }
+    if (ALMetalDevice::commandTimingEnabled())
+    {
+        const auto sequence = ++mImpl->opaque_diagnostic_calls;
+        // Detailed signatures are bounded; ordinary unarmed rendering never
+        // walks these extra records. This snapshot describes encoded inputs,
+        // not visibility or isolated shader/GPU duration.
+        // A prime interval avoids always selecting the same one of six cube
+        // faces. The snapshot's source frame/view remains explicit in logs.
+        if (sequence == 1 || sequence % 127 == 0)
+            mImpl->opaque_diagnostics = alMetalDescribeOpaquePost(scene, sequence);
     }
     return output;
 }

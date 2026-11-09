@@ -45,6 +45,9 @@ struct ALMetalShadowIndirectStats
     std::uint64_t direct_slot_allocations = 0;
     std::uint64_t direct_slot_reuses = 0;
     std::uint64_t direct_coalesced_draws = 0;
+    std::uint64_t source_records = 0;
+    std::uint64_t encoded_records = 0;
+    std::uint64_t early_coalesced_records = 0;
     std::size_t direct_slot_count = 0;
 };
 
