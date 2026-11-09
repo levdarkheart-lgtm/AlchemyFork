@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-09, physical M1 Max / 64 GiB / macOS26.5.2 / Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `46d6227526ef28850e0b306d1dcb0537c7d59f07`.
+**Renderer code checkpoint:** `74ee5d48d97368d92e83ae40ba580516cef1e876`.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -17,6 +17,31 @@ Latest settled native run:9.382155FPS at desired texture bias1, up from prior
 native8.864746FPS at bias4. These different texture workloads do not isolate an
 FPS gain.20FPS is not achieved or proven impossible. After the owner's11hour
 status concern, do not present tests, profiling or CPU relief as the FPS result.
+
+## Active shader-specialization experiment — no viewer running
+
+74ee5d commits validated fragment-bool constants, including optional-default
+specialization and explicit rejection of unsupported vertex constants. Focused
+425assertions/1case and full391587assertions/90cases pass with API+GPU validation
+EACH Release/RWDI. Initial focused134 was fixed and retained in the evidence.
+No production shader/world consumer exists yet; this support is not an FPS gain.
+
+PrivateCM5KIW classic/SSR specialization failed strict bytes55/324, including
+15nativeHDR cases differing by one half unit/channel each. Exploratory timing
+found modern effects about2.7–3.5%, near same-PSO control variation, versus
+17.9–19.8% in classic fixtures. It is NOT admitted: current profile is modern,
+precision/downstream parity remains unverified, and fixture time is not FPS.
+
+Private material-split prototype MxAxT0 has both independent source reviews.
+It preserves the original normal-alpha predicate, masks stencil bit4 while
+preserving water bits1/2, and includes reset/classifier/two lighting draws in
+net timing.97fixtures×4formats cover mixed pixels, packed normals, depth and
+stencil reuse. Compile/link0; correctness78056 completed0 with API+GPU validation.
+Strict319/388pass69fail includes15nativeHDR one-half-unit differences; stencil/
+depth/class/coverage errors0. Exploratory net timing65843 completed0: uniform
+materials5.9–12.5%faster, checkerboardmixed2.7–4.6%slower; NOTadmitted.
+No production shader/world edit or viewer launch. All processes finished. Root owns
+shared files/runtime. [Evidence](archive/CURRENT-base-specialization-experiments-2026-11-09.md).
 
 ## Retained code and verified app — all viewers CLOSED
 
@@ -33,14 +58,16 @@ Both optimized configs pass159assertions/21pressure cases plus29/3capability
 cases. Independent review approved; doctor/configure/build/verify349ARM64/
 deep-strict signature all0. No shader code changed.
 
-App68572, source46d622, canonical
+Last MEASURED app68572, source46d622; current canonical68574, source74ee5d, at
 `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`;
 preserved `/private/tmp/alchemy-metal-68572-quality-baseline.app`.
 Executable `84e49c91677697abf7527c93b21567950c5d525111b85ed3f3b0d189a1bbd155`;
 metallib `8bbfe4c6f3ce45eabd4fb58049cec413178213da480b23020447f01ef864b943`,
-byte-identical to older baseline. Root owns shared source/runtime/docs; all
-agents and build/test/profile processes finished. All temporary user-state plans
-restored. Ninja GPU test binaries remain stale d3trial: rebuild before new claims.
+byte-identical to older baseline. Current68574 executable is
+`c19ea644343a61a4219771dd7beec351c59fc12903da511a21092bf75c7f5bbd`;
+metallib unchanged. Doctor/configure/build/349ARM64/deep-strict signature all0.
+68574 is unlaunched/unmeasured. Both Ninja GPU suites are current74ee5d and pass.
+All temporary user-state plans are restored. Private GPU test is serialized.
 
 ## Latest controlled68572 sample
 
@@ -107,13 +134,12 @@ This does not explain current Ultra cost. Broad parity remains open.
 
 ## Exact next actions
 
-Use preserved68572/bias1 as the next native baseline. Choose a substantial GPU/
-CPU change, not lower texture quality. Next bounded source audit: original
-compile-time view/shadow/SSR variants versus native runtime branches in base/
-IBL/forward shaders and pipeline creation. Determine whether immutable view
-invariants permit function-constant specialization without changing math. Require
-varied output proof and repeatable control before admission; do not assume a
-register-pressure or shader-time cause. Inclusive-label attribution remains open.
+Use preserved68572/bias1 as the next native baseline. Material split has mixed
+performance and remains private; do not enable it generally or repeat small
+variants without new causal evidence. Next implementation must address a
+specific measured GPU cost and preserve full quality. Resolve precise shader/
+resource attribution where inclusive labels cannot. No register-pressure
+diagnosis or FPS forecast follows from specialization.20FPS remains active.
 
 Multi-scene performance, feature/visual parity, prolonged stability, strict no-GL
 and independent build/review evidence remain required. No release claim.

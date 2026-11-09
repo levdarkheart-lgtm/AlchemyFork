@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `46d6227526ef28850e0b306d1dcb0537c7d59f07`;
+**Renderer checkpoint:** Commit `74ee5d48d97368d92e83ae40ba580516cef1e876`;
 latest settled68572:9.382155FPS/bias1. Original6.095519FPS; full parity remains open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
@@ -52,9 +52,11 @@ indexed engineering archives. No release invariant was waived by this rewrite.
 
 ## Current source ownership and latest result
 
-Root owns shared renderer/shaders/tests/CMake/docs/runtime. All agents and
-viewer/build/test/profile processes finished. All temporary user-state plans
-restored. Canonical/preserved68572 source46d622 is the next bias1baseline.
+Root owns shared renderer/shaders/tests/CMake/docs/runtime. All viewers closed
+and temporary user-state plans restored. Preserved68572 source46d622 is the
+next bias1baseline. Canonical68574/source74ee5d is built/verified349/signature0,
+unlaunched/unmeasured, with unchanged production metallib.74ee5d adds fragment
+bool specialization support only; full391587/90 API+GPU checks pass EACH config.
 
 Scope3969405 and resource-aware capacity46d622 preserve original controller,
 manual/divisor/headroom semantics and global/system safeguards. CPU tests pass
@@ -84,13 +86,20 @@ not uniquegroups/savedGPUtime. No shader-line or hardware-infeasibility claim.
 
 ## Immediate executable action
 
-Keep memory-policy quality repairs and use preserved68572/bias1baseline. Rebuild
-stale Ninja GPU test binaries before new source-specific GPU claims. Next bounded
-audit: original compile-time view/shadow/SSR variants versus native runtime
-branches in base/IBL/forward shaders and pipeline creation. Immutable view
-invariants may allow substantial function-constant specialization; this is not
-a measured register-pressure diagnosis. Require varied output proof/repeated
-control before admission. Avoid rejected micro-arithmetic/broad profile loops.
+Private classic/SSRbaseCM5KIW is NOT admitted:55/324 strict differences include
+15nativeHDR one-half-unit differences. Exploratory modern timing2.7–3.5% is near
+control variation; classic17.9–19.8% is not current-profile FPS. Precision and
+downstream parity remain open. Shader/source fixtures and failures retained.
+
+Independently reviewed material-split MxAxT0 preserves actual normal-alpha
+classification and masked stencil4 ownership; net candidate cost includes reset,
+classifier and two specialized lighting draws. Compile/link0; correctness78056 actual0 with
+API+GPUvalidation:319/388strictpass69fail, incl15nativeHDR oneunit differences;
+stencil/class/depth/coverage errors0. Net exploratory timing65843 actual0:
+uniform5.9–12.5%faster, checkerboardmixed2.7–4.6%slower. NOTadmitted. All
+processes quiet; no production world/shader change. Keep memory-policy quality
+repairs and68572/bias1baseline. Next change needs a specific measured GPU cause,
+not minor variants. [Evidence](../../state/archive/CURRENT-base-specialization-experiments-2026-11-09.md).
 
 Deferred non-Ultra correctness edge: native alpha light producer misses the
 RenderLocalLightCountenable guard on count0 transitions; preserve for later fix.
