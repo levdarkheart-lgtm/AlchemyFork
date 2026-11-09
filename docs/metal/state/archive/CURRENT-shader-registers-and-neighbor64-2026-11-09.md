@@ -185,3 +185,51 @@ Identity report `/private/tmp/alchemy-metal-68588-app-identity-20261109.bhf9c188
 SHA67a60a4eaf7025285289ba332744da5bdea0db2519c4ee44d46dcea3fe684b4f.
 No viewer launch. All validation/build/replay/verification processes terminal;
 GPU idle. Agents continue source-only preparation/review for the next capture.
+
+
+## Next diagnostic implemented: selected hero-forward face
+
+Root reviewed/applied the privately prepared six-file extension and parameterized
+capture tests; independent draw_cpu_costs review approved caller/lifecycle
+ownership. Final private patch SHA
+a8d0e03d5c7b8afc3fbc120d231130567931ac2ee70489d42f128b2d0f188f98 in
+`/private/tmp/alchemy-metal-hero-forward-capture-20261109.gztze8bu`.
+Mode enum separates display/main-base/hero-forward. Face1 reservation carries
+frame/owner/epoch and is rechecked against actual hero face/view/target state;
+main/ordinary/snapshot/HUD consumers cannot start it. Only the reserved face
+omits outer batching. Begin immediately before the owned forward call; finish
+after its commit and before target publication, with RAII cancellation on error.
+Default rendering, all six faces, shader math and cadence remain unchanged.
+
+Release build12288 and actual capture test82486 exited0:3,059 assertions/3 cases
+for both selected modes, with API validation and shader validation UNSET. RWDI
+build55464 exited0. Remaining serial capture/normal GPU validation27224 is in
+progress. Runtime newview routing, actual hero command counts, input replay,
+profiling and hidden-work savings are NOT yet verified. No new viewer launch.
+
+
+Hero diagnostic extension committed0d5d49c188f8bfee4dd866adbac757af750340d4.
+Serial validation27224 actual0: RWDI actual capture3,059/3 passes; BOTH normal
+capture-OFF API+GPU suites427,476 assertions/95 cases pass. Source routing is
+independently reviewed; actual newview face routing still requires a live run.
+Build20880 all steps0: preserve normal68588, doctor, configure source recordsON,
+full app build. New diagnostic app68590/full source0d5d49; fresh pinned QA dry-run0.
+Static verification underway; no launch, Midday plan or capture execution yet.
+
+
+Diagnostic68590 independent verification45710 actual0:349 ARM64/0 invalid,
+deep strict signature valid; exe matches QA pin44bd81abdbc6dedbd9a91e1a7fb950b070b4e4a65971f542a1a208dd10d5336f;
+metallib e5ed5a90e76868e2ae141d2b63116cf806b544b349a07e196e52ba916e69e90a,
+optimized source/line flags ON, deployment26.0. Identity packet
+`/private/tmp/alchemy-metal-68590-diagnostic-identity-20261109.eb1x79xe/app-identity.json`,
+SHA09e51c29978684a80ce6b503e94e977b4afc18bc20d8df2a7771b04cd91aac9d.
+
+Installed fresh0d5d49 reversible Midday plan and QA launch each exited0.
+LIVE PID80172, exact68590/source0d5d49. CUA CtrlSuperF fullscreen before saved-login
+Return; LEAP reports logged-in. World AX recheck timed out/reset18sec; root did
+not repeat the heavy query. CUA phase completion summary sent. Fresh start
+observe/verify/gate each0 confirms43 controls/location/exact executable.
+Runtime viewport3456×2168/Ultra6/Preset123, camera-change0. Probes still warming;
+no samples/capture yet. New Midday plan remains ACTIVE until verified shutdown.
+All older plans restored, Translator stopped, no competing build/GPU/profile.
+This run is diagnostic, not a formal FPS comparison or scene-image parity proof.

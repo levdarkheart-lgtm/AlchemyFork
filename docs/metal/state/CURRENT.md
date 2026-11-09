@@ -2,8 +2,8 @@
 
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `4b23c0b34589bc9deee3cec4a86ddee80f34e67c`.
-**Working source:** probe-neighbor repair committed and GPU-validated; normal app built.
+**Renderer code checkpoint:** `0d5d49c188f8bfee4dd866adbac757af750340d4`.
+**Working source:** validated neighbor repair built; hero-forward capture extension under test.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -15,11 +15,16 @@ travel. Prefer Mac shortcuts and fullscreen before login. Preserve Ultra
 3456×2168/Midday, all six hero1024 faces/two cascades, PCSS, reverse-Z, clamp,
 casters and viewer features. No private uploads/releases.
 
-All viewers are CLOSED and all Midday startup plans RESTORED.68584/PID21257
-exact executable, graceful shutdown, run-specific Goodbye and absence verified;
-restore73096 exited0. Xcode replay was stopped, Finished running macOS App
-observed, CUA completion summary sent. Root alone owns shared source/docs/runtime.
-Agents have source-only private tasks; no agent compiler/build/GPU/UI authority.
+Viewer68590/PID80172 is RUNNING, exact source0d5d49 diagnostic app. Fullscreen
+CtrlSuperF BEFORE saved-login Return; LEAP logged_in=true and fresh43-control/
+location/exact-binary observe/verify/gate all0.3456×2168/Ultra6/Preset123;
+new0d5d49 Midday startup plan is ACTIVE, NOT restored until verified shutdown.
+Current capture is waiting for benchmark/disarm; probes are still warming.
+All older plans restored. Translator remains stopped. No builds/GPU tests/Xcode
+replay overlap this run. Root owns source/docs/runtime; agents are quiet.
+CUA world AX recheck timed out/reset; no repeated world AX polling. LEAP/runtime
+metadata verify login; CUA login phase completion summary sent. No scene-image
+parity claim from this launch. Xcode profiling must wait until viewer closes.
 
 Translator remains FULLY STOPPED by explicit user instruction. Its project
 `uv run --no-sync python scripts/service.py stop` exited0; API35823,
@@ -104,7 +109,12 @@ same-PSO control−2.62%, legacy+1.30%, mixed+0.09%. All but the64-rejected
 stress case have paired ranges crossing zero. No general gain or integration.
 Next: measure hidden/overdrawn fragments in one expensive hero forward face
 before implementing current-frame face-local culling. Preserve all six views.
-A private diagnostic-mode patch is being prepared; root must review before use.
+Hero-forward diagnostic mode is now applied and independently reviewed.
+Release build12288 and actual capture82486 passed3059 assertions/3 cases.
+RWDI build55464 and serial validation27224 passed: EACH capture3059/3 and
+normal API+GPU427476/95. Diagnostic app68590/source0d5d49 built20880 after doctor
+and source-recordON configure, all actual0. Independent349 ARM64/0 invalid and deep strict signature actual0; QA dry-run0.
+Actual live warmup is in progress; no hero routing/replay result claimed yet.
 
 ## Retained behavior and open release gates
 

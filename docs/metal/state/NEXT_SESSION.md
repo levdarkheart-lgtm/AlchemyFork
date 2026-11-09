@@ -3,9 +3,8 @@
 Read AGENTS.md and CURRENT.md completely, then relevant skills. Existing
 unbudgeted20FPS Ultra goal is ACTIVE/unmet; do not create a replacement goal.
 Root owns all shared source/docs/runtime. Branch codex/apple-silicon-metal.
-HEAD4b23c0b34589bc9deee3cec4a86ddee80f34e67c commits3 shaderclamps31→64 and
-actual-renderer regression. Root documentation updates remain uncommitted.
-Do not discard them.
+HEAD0d5d49c188f8bfee4dd866adbac757af750340d4 commitshero-forwardcaptureextension.
+Qualityrepair4b23 anddocs3c4aac precede it. RootdocsWIPremain; do notdiscard.
 
 ## Authority and runtime
 
@@ -15,11 +14,20 @@ login. Preserve Ultra3456×2168/Midday, all6 hero1024 faces/2 cascades, PCSS,
 reverse-Z/clamp/casters/features. No private uploads/releases.
 
 Translator FULLY STOPPED via user-requested uv command; NEVER restart/resume.
-All viewers CLOSED, all temporary Midday plans RESTORED.68584/PID21257 graceful
-shutdown/Goodbye/absence and plan restore73096 actual0. Xcode tiny shader replay
-STOPPED; Finished running macOS App observed, CUA completion summary sent.
-No pending manual Xcode handoff. After context restore call
-`await cua.rewriteDocumentation()` before any future CUA work.
+LIVE VIEWER68590/PID80172 source0d5d49 RUNNING. NewMiddayplan ACTIVE/NOTRESTORED:
+artifacts/metal/private-0d5d49-startup-setup-plan-20261109.json. Allolderplans
+RESTORED. NewplanrestoreONLYafterexactPIDquit/Goodbye/absence. Helper
+/private/tmp/alchemy-metal-session-state-20261109.py restore --plan ABSPATH.
+XcodeGPUreplaySTOPPED/Finishedapp; DO NOTstartGPUtests/build/profilewhileviewer
+collects. Allagentprocessesquiet. No pendingmanualXcodehandoff.
+CUAfullscreenCtrlSuperF beforeloginReturn observed; LEAPloggedintrue. WorldAX
+rechecktimedout18sec/kernelreset; avoidrepeatingheavyworldAX/getAppduringworld.
+LoginphaseCUAcompletion_summarysent. Aftercontextrestorecua.rewriteDocumentation
+beforefutureCUA. No sceneimage/parityclaim. Actual43controls/location/binary
+startobserve/verify/gate each0, width3456×2168/Ultra6/Preset123.
+Currentwarming atsamecamera; samplecount0/probesnotfullyready. Waitrealreadiness,
+notarbitrary60seconds. Latestframe2817,incomplete230/fading230/readyfalse, camera
+change0/stable481 atlastread; willadvance. UseCOMPACTJSONstatusfromprovenance.
 
 ## Actual diagnosis and measured baselines
 
@@ -106,13 +114,41 @@ existingcaptureAPI. Reserveexactheroepoch/face atbegin, skipouterbatchONLYthat
 reservation, beginbeforeactualrenderOpaquePostDeferredfreshownedCB, stopafter
 commitbeforetargetpublication/RAIIfailurecleanup. Existingbenchmark/disarm/60
 cooldown/normaleligibilityframestamp; ordinary/main/snapshotmustnotconsumehero.
-Agentdraw_cpu_costsread-onlyreviewingnewpatch/lifecycle/tests. Rootmustreview,
-apply,build,testbeforeanynewcapture. Patchnotyetreceived/applied.
+FINALcombinedprivatepatcha8d0e03d5c7b8afc3fbc120d231130567931ac2ee70489d42f128b2d0f188f98
+at/private/tmp/alchemy-metal-hero-forward-capture-20261109.gztze8bu/hero-forward-capture.patch.
+Rootreviewed/appliedall6source/headerfiles+framecapturetest; independentdrawreviewAPPROVED.
+Releasebuild12288actual0; actualAPIcapture82486actual0:3059assertions/3cases
+(bothselectedpassmodesviaGENERATE, shadervalidationUNSET). RWDIbuild55464actual0.
+Serialfinalvalidation27224actual0: EACHselectedcapture3059/3 andnormalAPI+GPU
+427476/95. Exitrecord/private/tmp/alchemy-metal-hero-forward-final-test-exits-20261109.json.
+Codecommitted0d5d49. Diagnosticapp68590 build20880actual0; preserved68588normal
+at/private/tmp/alchemy-metal-68588-neighbor64-verified.app, doctor0/configureON0/build0.
+SOURCE_RECORDINGCACHENOWON (optimizedlineinfo, min26.0). Shaderd6adunchanged.
+Independentshadowverification45710actual0:349ARM64/0bad/deepstrictsignature0.
+Identitypacket/private/tmp/alchemy-metal-68590-diagnostic-identity-20261109.eb1x79xe/app-identity.json
+SHA09e51c29978684a80ce6b503e94e977b4afc18bc20d8df2a7771b04cd91aac9d.
+NObuild/test/replayrunning; VIEWERPID80172RUNNING ascriticalauthorityabove.
+RootaddedINSTRUMENTATIONmodecontract; docsWIPneedharness/update/commit.
+68588normalappPRESERVED. New68590diagnosticRUNNING; no herorouting/replay/
+profiling/actualfacecountclaimyet. No performanceoptimizationfrommode.
+Fresh0d5d49QAconfigartifacts/metal/private-ultra-0d5d49-hero-forward-capture-qa.json;
+launcher/private/tmp/alchemy-metal-0d5d49-launch-20261109.py dryrunactual0.
+Pinnedexe44bd81abdbc6dedbd9a91e1a7fb950b070b4e4a65971f542a1a208dd10d5336f.
+Parentartifacts/metal/private-0d5d49-hero-forward-capture-20261109 mode0700exists;
+frame-capturechildNOTyetcreated. WARMUP300sec+120frames,256ready/stable120,
+300DIAGNOSTICsamples, then60eligiblecooldown→hero face1. Allvalidationunset.
+NewMiddayplanINSTALLEDactual0, QAlaunchactual0. Helper/private/tmp/alchemy-metal-session-state-20261109.py
+actioninstall/restore --plan ABS --sourceSHA. Prior7b0311planRESTORED.
+Launchcompleted: independentappverify0; NEWplanartifacts/metal/
+private-0d5d49-startup-setup-plan-20261109.json installedsource0d5d49; launch0.
+AfterexactPIDgracefulquit/Goodbye/absence restoreONLYNEWplan. Neverrestorewhilevieweractive.
 
 ## Next executable work
 
-Commitupdateddocs/harness aftercurrentverifiedcheckpoint. Thenreview
-privatehero-forwardcapturepatch, implementandvalidate. Measureactualfragment
+ContinueLIVEwarmup→300diagnosticsamples→60eligiblecooldown→face1capture.
+RequiremetadataSTOPPED/error0/sameframe/1attempt; actualcounts/replayUNKNOWNuntil
+Xcode. Freshendobserve/verify/gate thenexactPIDgracefulquit/Goodbye/absence and
+restoreNEWMiddayplan. ONLYTHENXcodeReplay/Profile exactnewfile. Measureactualfragment
 invocations/earlyvs late depthrejectbeforeGPUhierarchyarchitecture. Keepall6
 faces/cadence/draworder; doNOTenablemain-cameraqueriesincubeviews. Rootmustnot
 launchjustforanotherfailedmicrocase. Mainbase17/105msalonecannotcrediblyget20FPS.

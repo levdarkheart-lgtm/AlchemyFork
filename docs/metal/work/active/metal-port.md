@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `4b23c0b34589bc9deee3cec4a86ddee80f34e67c`;
+**Renderer checkpoint:** Commit `0d5d49c188f8bfee4dd866adbac757af750340d4`;
 latest68581:9.454639FPS; best controlled68579:9.608673.20FPS/full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
@@ -97,6 +97,10 @@ hero-forward capture to measure actual hidden/overdrawn fragment work before
 face-local culling. Do not repeat rejected SH micro-variants.
 [Full checkpoint](../../state/archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
 Main base is~17 of~105ms GPU union; seek larger measured causes as well.
+Selected hero-forward diagnostic0d5d49 now committed: face1 owner/frame/epoch
+isolation, fresh owned command and stop-before-publication, defaultOFF. Both
+actual capture suites3059/3 and normal API+GPU427476/95 pass. App68590 built
+with optimized source records; verification underway. No runtime capture yet.
 
 ## Non-negotiable open gates
 
