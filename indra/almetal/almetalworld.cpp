@@ -18,6 +18,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -1627,6 +1628,12 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::uint64_t shadow_early_coalesced_records = 0;
     std::uint64_t opaque_diagnostic_calls = 0;
     ALMetalWorldPostDiagnostics opaque_diagnostics;
+    const bool opaque_family_split_requested = []()
+    {
+        const char* value = std::getenv("ALCHEMY_METAL_POST_FAMILY_ENCODERS");
+        return value && std::strcmp(value, "1") == 0;
+    }();
+    bool opaque_family_split_saw_timing = false;
     ALMetalWorldConstantStats constant_stats;
     std::unique_ptr<ALMetalProbeWorkloadCapture> probe_workload;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
@@ -15975,6 +15982,61 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
 
+    // Explicit profiling diagnostic: added tile store/load boundaries are
+    // not production performance. Never enable during formal timing samples.
+    const bool request_family_split = mImpl->opaque_family_split_requested;
+    bool split_initial_families = false;
+    if (request_family_split && scene.diagnostic_view_kind == 1u)
+    {
+        const bool timing = ALMetalDevice::commandTimingEnabled();
+        if (timing) mImpl->opaque_family_split_saw_timing = true;
+        split_initial_families = mImpl->opaque_family_split_saw_timing && !timing;
+    }
+    const auto is_pass_boundary = [](const ALMetalWorldSimpleBatch& batch)
+    {
+        return batch.water_haze || batch.atmospheric_haze || batch.water_surface;
+    };
+    const auto post_family = [](const ALMetalWorldSimpleBatch& batch)
+    {
+        using F = ALMetalWorldPostFamily;
+        // Preserve renderer/opaque-census branch precedence; never regroup.
+        if (batch.avatar_alpha) return F::alpha_avatar;
+        if (batch.pre_water_alpha || batch.post_water_alpha)
+        {
+            if (batch.pre_water_pbr) return F::alpha_pbr;
+            if (batch.pre_water_material) return F::alpha_material;
+            if (batch.pre_water_fullbright) return F::alpha_fullbright;
+            return F::alpha_simple;
+        }
+        if (batch.water_exclusion) return F::water_exclusion;
+        if (batch.legacy_glow || batch.pbr_glow) return F::glow;
+        if (batch.impostor_emboss) return F::emboss;
+        if (batch.impostor_shiny) return F::shiny;
+        return F::fullbright;
+    };
+    std::size_t diagnostic_run_end = 0;
+    const auto family_label = [&](std::size_t first)
+    {
+        const auto family = post_family(scene.batches[first]);
+        std::uint64_t indices = 0;
+        diagnostic_run_end = first;
+        while (diagnostic_run_end < scene.batch_count &&
+               !is_pass_boundary(scene.batches[diagnostic_run_end]) &&
+               post_family(scene.batches[diagnostic_run_end]) == family)
+            indices += scene.batches[diagnostic_run_end++].index_count;
+        return std::string("Alchemy DIAGNOSTIC initial ") +
+            ALMetalWorldPostDiagnostics::family_names[static_cast<std::size_t>(family)] +
+            " first=" + std::to_string(first) + " end=" + std::to_string(diagnostic_run_end) +
+            " batches=" + std::to_string(diagnostic_run_end - first) +
+            " indices=" + std::to_string(indices) +
+            " frame=" + std::to_string(scene.diagnostic_frame_index);
+    };
+    std::string initial_encoder_label = "Alchemy world opaque post-deferred encoder";
+    split_initial_families = split_initial_families && scene.batch_count != 0 &&
+        !is_pass_boundary(scene.batches[0]);
+    if (split_initial_families) initial_encoder_label = family_label(0);
+    std::uint64_t diagnostic_initial_family_encoders = split_initial_families ? 1u : 0u;
+
     ALMetalRenderPassConfig pass_config;
     pass_config.colors[0].load = ALMetalLoadAction::load;
     pass_config.colors[0].store = ALMetalStoreAction::store;
@@ -15986,7 +16048,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     auto pass = output->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
         *command, *pass,
-        "Alchemy world opaque post-deferred encoder", error) : nullptr;
+        initial_encoder_label, error) : nullptr;
     if (!encoder)
     {
         return fail_command();
@@ -16133,6 +16195,26 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
          encoded && index < scene.batch_count; ++index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        if (split_initial_families && is_pass_boundary(batch))
+            split_initial_families = false; // Existing owner performs its original boundary.
+        if (split_initial_families && index == diagnostic_run_end)
+        {
+            if (!encoder->end(error)) return fail_command();
+            auto continuation = pass_config;
+            continuation.stencil_load = ALMetalLoadAction::load; // Clear only ONCE above.
+            auto continuation_pass = output->makeRenderPass(continuation, error);
+            encoder = continuation_pass ? ALMetalRenderEncoder::begin(
+                *command, *continuation_pass, family_label(index), error) : nullptr;
+            if (!encoder) return fail_command();
+            encoded = encoder->setViewport(viewport, error) &&
+                encoder->setScissor(scissor, error) &&
+                encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
+                encoder->setTriangleFillMode(ALMetalTriangleFillMode::fill, error) &&
+                encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error) &&
+                bind_forward_resources(*encoder);
+            if (!encoded) return fail_command();
+            ++diagnostic_initial_family_encoders;
+        }
         const bool rigged = batch.skin_palette != nullptr;
         if (batch.water_haze)
         {
@@ -18969,6 +19051,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         // faces. The snapshot's source frame/view remains explicit in logs.
         if (sequence == 1 || sequence % 127 == 0)
             mImpl->opaque_diagnostics = alMetalDescribeOpaquePost(scene, sequence);
+    }
+    if (request_family_split)
+    {
+        // Independent tuple: sparse census fields above retain their own source frame.
+        auto& stats = mImpl->opaque_diagnostics;
+        stats.diagnostic_initial_family_encoders = diagnostic_initial_family_encoders;
+        stats.diagnostic_initial_family_frame = scene.diagnostic_frame_index;
+        stats.diagnostic_initial_family_view_kind = scene.diagnostic_view_kind;
+        stats.diagnostic_initial_family_view_index = scene.diagnostic_view_index;
     }
     return output;
 }

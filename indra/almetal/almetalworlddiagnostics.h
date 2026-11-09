@@ -47,6 +47,12 @@ struct ALMetalWorldPostDiagnostics
     std::uint32_t width = 0, height = 0, flags = 0, probe_count = 0;
     std::uint64_t batch_count = 0, initial_batch_count = 0;
     std::uint64_t auxiliary_items = 0;
+    // Last successful optional encoder diagnostic, independent of the sparse census.
+    // Zero encoders means unsplit. Nonzero counts actual initial family encoders.
+    std::uint64_t diagnostic_initial_family_encoders = 0;
+    std::uint64_t diagnostic_initial_family_frame = 0;
+    std::uint32_t diagnostic_initial_family_view_kind = 0;
+    std::uint32_t diagnostic_initial_family_view_index = 0;
     std::array<std::uint64_t, family_count> batches{}, indices{};
     std::array<std::uint64_t, family_count> initial_batches{};
     // Initial, water-haze, atmospheric-haze, water-surface encoder segments.

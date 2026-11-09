@@ -34,6 +34,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <string>
@@ -16623,6 +16624,138 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(
                            avatar_cloth_normal[
                                avatar_cloth_translated + 1]) - 32768) <= 2);
+        // Optional diagnostic splits must actually occur and preserve the same
+        // mixed production owners. Reuse this fixture's existing input resources;
+        // every standalone call creates/copies a new output, never reuses its result.
+        {
+            struct RestoreDiagnosticEnvironment
+            {
+                bool timing = ALMetalDevice::commandTimingEnabled();
+                bool had = std::getenv("ALCHEMY_METAL_POST_FAMILY_ENCODERS") != nullptr;
+                std::string prior = had ? std::getenv("ALCHEMY_METAL_POST_FAMILY_ENCODERS") : "";
+                RestoreDiagnosticEnvironment()
+                {
+                    REQUIRE(setenv("ALCHEMY_METAL_POST_FAMILY_ENCODERS", "1", 1) == 0);
+                    ALMetalDevice::setCommandTimingEnabled(false);
+                }
+                ~RestoreDiagnosticEnvironment()
+                {
+                    if (had) setenv("ALCHEMY_METAL_POST_FAMILY_ENCODERS", prior.c_str(), 1);
+                    else unsetenv("ALCHEMY_METAL_POST_FAMILY_ENCODERS");
+                    ALMetalDevice::setCommandTimingEnabled(timing);
+                }
+            } restore_diagnostic;
+            auto diagnostic_renderer = createFrameDataRenderer(*device, &error);
+            INFO(error); REQUIRE(diagnostic_renderer);
+            struct DiagnosticPixels
+            {
+                std::array<std::uint16_t, 32 * 32 * 4> color{};
+                std::array<float, 32 * 32> depth{};
+                std::array<std::uint8_t, 32 * 32> stencil{};
+            };
+            const auto snapshot = [&](ALMetalRenderTarget& target)
+            {
+                DiagnosticPixels pixels;
+                REQUIRE(target.colorTexture(0)->readback(*device, 0, 0, {},
+                    pixels.color.data(), 32 * 8, &error));
+                REQUIRE(target.depthStencilTexture()->readback(*device, 0, 0, {},
+                    pixels.depth.data(), 32 * 4, &error));
+                id<MTLDevice> native = (__bridge id<MTLDevice>)device->nativeHandle();
+                id<MTLBuffer> plane = [native newBufferWithLength:256 * 32 options:MTLResourceStorageModeShared];
+                REQUIRE(plane);
+                id<MTLCommandQueue> queue = (__bridge id<MTLCommandQueue>)device->nativeCommandQueue();
+                auto command = [queue commandBuffer];
+                auto blit = [command blitCommandEncoder]; REQUIRE(blit);
+                [blit copyFromTexture:(__bridge id<MTLTexture>)target.depthStencilTexture()->nativeHandle()
+                    sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0)
+                    sourceSize:MTLSizeMake(32,32,1) toBuffer:plane destinationOffset:0
+                    destinationBytesPerRow:256 destinationBytesPerImage:256*32
+                    options:MTLBlitOptionStencilFromDepthStencil];
+                [blit endEncoding]; [command commit]; [command waitUntilCompleted];
+                REQUIRE(command.status == MTLCommandBufferStatusCompleted);
+                for (std::size_t row = 0; row < 32; ++row)
+                    std::memcpy(pixels.stencil.data() + row * 32,
+                        static_cast<const std::uint8_t*>(plane.contents) + row * 256, 32);
+                return pixels;
+            };
+            for (const bool reverse : {false, true}) for (const bool haze : {false, true})
+            {
+                CAPTURE(reverse, haze);
+                ALMetalWorldGBufferScene input_scene = avatar_alpha_base_scene;
+                input_scene.reverse_z = reverse;
+                auto input = renderer->render(input_scene, &error);
+                REQUIRE(input);
+                auto avatar = avatar_alpha_batch;
+                avatar.avatar_cloth = false;
+                avatar.avatar_cull_mode = ALMetalCullMode::back;
+                avatar.avatar_depth_write = false; avatar.avatar_color_write = true;
+                avatar.modelview_projection[12] = -0.75f;
+                auto fullbright = fullbright_batch;
+                fullbright.modelview_projection[12] = -0.5f;
+                auto shiny = shiny_batch;
+                shiny.modelview_projection[12] = 0.5f;
+                std::array<ALMetalWorldSimpleBatch, 8> ordered{{water_exclusion_batch,
+                    fullbright, shiny, avatar, avatar, avatar,
+                    legacy_glow_batch, water_haze_marker}};
+                ordered[4].avatar_depth_write = true; ordered[4].avatar_color_write = false;
+                ALMetalWorldOpaquePostDeferredScene diagnostic_scene{};
+                diagnostic_scene.gbuffer = input.get();
+                diagnostic_scene.composed_lighting = final_light.get();
+                diagnostic_scene.batches = ordered.data();
+                diagnostic_scene.batch_count = haze ? ordered.size() : ordered.size() - 1;
+                diagnostic_scene.width = diagnostic_scene.height = 32;
+                diagnostic_scene.hdr = true; diagnostic_scene.reverse_z = reverse;
+                diagnostic_scene.seed_cutout_coverage = true;
+                diagnostic_scene.reflection_probes = &reflection_probes;
+                diagnostic_scene.alpha_environment = &avatar_alpha_environment;
+                diagnostic_scene.alpha_lighting = &simple_alpha_lighting;
+                diagnostic_scene.water_exclusion_surface = &water_surface;
+                diagnostic_scene.water_haze = haze ? &water_haze : nullptr;
+                diagnostic_scene.diagnostic_view_kind = 1;
+                diagnostic_scene.diagnostic_frame_index = 700 + unsigned(reverse) * 2 + unsigned(haze);
+                const auto render_case = [&](bool timing, std::uint64_t expected)
+                {
+                    ALMetalDevice::setCommandTimingEnabled(timing);
+                    auto result = diagnostic_renderer->renderOpaquePostDeferred(diagnostic_scene, &error);
+                    INFO(error); REQUIRE(result);
+                    CHECK(result->depthStencilTexture() != input->depthStencilTexture());
+                    const auto stats = diagnostic_renderer->opaquePostDiagnostics();
+                    CHECK(stats.diagnostic_initial_family_encoders == expected);
+                    CHECK(stats.diagnostic_initial_family_frame == diagnostic_scene.diagnostic_frame_index);
+                    CHECK(stats.diagnostic_initial_family_view_kind == diagnostic_scene.diagnostic_view_kind);
+                    return snapshot(*result);
+                };
+                if (!reverse && !haze) render_case(false, 0); // env alone never arms a fresh renderer
+                const auto baseline = render_case(true, 0); // latch, but NEVER split while enabled
+                const auto candidate = render_case(false, 5); // five contiguous runs; marker is not sixth
+                CHECK(baseline.color == candidate.color);
+                CHECK(std::memcmp(baseline.depth.data(), candidate.depth.data(), sizeof(baseline.depth)) == 0);
+                CHECK(baseline.stencil == candidate.stencil);
+                CHECK(std::any_of(candidate.stencil.begin(), candidate.stencil.end(),
+                    [](std::uint8_t value) { return (value & 1u) != 0; }));
+                CHECK(std::any_of(candidate.color.begin(), candidate.color.end(),
+                    [](std::uint16_t value) { return value != 0; }));
+                diagnostic_scene.diagnostic_view_kind = 2;
+                const auto hero_unsplit = render_case(false, 0);
+                CHECK(hero_unsplit.color == baseline.color);
+                CHECK(hero_unsplit.stencil == baseline.stencil);
+                CHECK(std::memcmp(hero_unsplit.depth.data(), baseline.depth.data(), sizeof(baseline.depth)) == 0);
+                diagnostic_scene.diagnostic_view_kind = 1;
+                const auto reenabled = render_case(true, 0);
+                CHECK(reenabled.color == baseline.color);
+                CHECK(reenabled.stencil == baseline.stencil);
+                CHECK(std::memcmp(reenabled.depth.data(), baseline.depth.data(), sizeof(baseline.depth)) == 0);
+                if (!reverse && !haze)
+                {
+                    ordered[2].impostor_shiny = false;
+                    ordered[2].impostor_fullbright = true;
+                    const auto no_reflection = render_case(true, 0);
+                    CHECK(no_reflection.color != baseline.color); // visible shared-pack positive control
+                    ordered[2] = shiny;
+                }
+            }
+        }
+
     }
 }
 
