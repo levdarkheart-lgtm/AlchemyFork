@@ -3,7 +3,7 @@
 **Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `5e1ecb76459de8a0bc90dc16da56aec75f1fc02d`.
-**Working source:** covered-shadow draw coalescing validated/committed; normal app build next.
+**Working source:** normal68601 built/verified; covered-shadow live benefit unmeasured.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -18,15 +18,19 @@ prepare/review private source only. User explicitly handed Xcode back to ROOT.
 
 All viewers CLOSED; exact50766 shutdown/Goodbye/absence29248=0, all setup
 plans RESTORED. Translator FULLY STOPPED/NEVERrestart; XcodeGPUreplay STOPPED.
-Root owns shared source/runtime/UI. Normal68597/source6f620 preserved at
+Root owns shared source/runtime/UI. New68601/source77977290c9bd2e3712d547f7b8e75b20c4191eca
+exe f277ea10... built; doctor/configOFF/build/verify91206 each0. Independent
+source/header/library/signature review passed; root349ARM64/0bad. No launch yet.
+Normal68597/source6f620 preserved at
 /private/tmp/alchemy-metal-68597-normal-preserved.app, executable47670056...
-verified before/after copy. Original canonical app still68597; next build below.
+verified before/after copy; source-exact comparison baseline is available.
 Committed5e1ecb: adjacent static covered-shadow triangles with identical full
 shader/buffer/texture/cull state merge in order. Full source validation stays
 before emission; avatar/rigged/terrain/ICB untouched. No shader/math changes.
 Both optimized native API+GPU suites428946/95 PASS; final native draw/commit
 counter tests1747/1 PASS each (test-only96af75). Counters separate covered/opaque.
-Actual live merge fraction and FPS benefit UNKNOWN. Next build/verify/log census.
+Actual live merge fraction and FPS benefit UNKNOWN. Pinned QAconfig/dryrun0;
+no setup plan installed. Next quiet M3/M4 benchmark then live covered census.
 Apple research found no matching published driver bug in bounded official
 sources. Documented binding/residency CPU cost matches profile; argument buffers
 and Metal4 command ownership are concrete candidates (links in archive).
@@ -35,7 +39,8 @@ library61c5.../samePSO,12single-texture coverage/Z pairs +cutoff positivecontrol
 bitwise fullR32/D32 parity. Explicit residency/events/owners/completion retained.
 No timing,8/32-texture,terrain,rigging or full-viewer Metal4 claim. Sourcecb19ab4f.
 Packet/private/tmp/alchemy-metal3-metal4-covered-shadow-20261109.25axBX.
-Next private CPU benchmark prepared separately bytraceagent; no jobs yet.
+Separate privateCPUbenchmark xitJjX source5a36d4e0 prepared, parity-only/timing
+modes, no compilation/GPU/timing yet. Review/freeze manifest before execution.
 Continuous12minCPU evidence:920867samples, main~77ms/frame flat asFPS11.8→10.75;
 mainactive92→79%, Pcores; Nominalthermal720.726s, clocksunknown. GPUgrowth
 attribution remains open. Startup6000allnative1/no fallback; no formal gain.
@@ -114,12 +119,8 @@ Actual735a function-constant fixture:200 strict color/rawD32 pairs PASS;
 TinyactualXcode capture1CB/4draws:245→224registers, BOTH304spill bytes. No spill
 elimination/liveFPS claim. Bothoptimized publictests pass; full paths/archive.
 
-Public renderer regression patch applied after source/peer review: local
-checkerboard raw shadows, complete RGBA16/rawdepth count1vs2 equality,
-rigid/skinned and standard/custom blend, main→probe→main isolation with actual
-PCSS-vs-single-tap positive controls PASS in BOTH optimized suites. Next small
-normal68594 formal result is flat as recorded above.
-[Full evidence/paths](archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
+Public regression suites and prototype evidence are in the
+[archive](archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
 
 Ambient-only sum rewrite REJECTED:200 strict pairs pass but168 timing samples
 show no consistent benefit. Prior SH lifetimes/predecode/named accumulators/

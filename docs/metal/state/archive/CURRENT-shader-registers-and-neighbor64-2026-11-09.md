@@ -660,3 +660,21 @@ present. Sampler supportArgumentBuffersYES is shared by both test backends.
 No performance,8/32texture,rigged/terrain/tessellation/clamp/perspective or full
 viewer Metal4 claim. Future quietCPUbenchmark is a separate source-only packet;
 actual timing and production adoption remain unexecuted.20FPSgoal ACTIVE/unmet.
+
+
+### Normal covered-shadow candidate68601 built
+
+Source77977290c9bd2e3712d547f7b8e75b20c4191eca, renderer5e1ecb/test96af75.
+Normal doctor/configRECORDOFF/fullbuild/verify91206 all0. Packet
+/private/tmp/alchemy-metal-covered-shadow-app-build-20261109.uiuvk2ho.
+ExeSHAf277ea10cbf98cb048e58f6644a6641f3af16f1120f26832c8043199f883a022;
+metallib61c5dcb3fa1677818cd3ef6b069837979a00cf9cf4d56cf1594e46d011d41585
+identical68597. Independent narrow review includes actualdeepstrictcodesign0,
+source/header/version/exe/library/normalflags; root349ARM64/0bad reviewed, not
+rescanned. Report/private/tmp/alchemy-metal-68601-identity-review-20261109.9jc3ukr2/identity-review.json
+SHAcb0759d5795881d7d4c58edc9a29f165cfabf6383be85241b20ac9657d4fc234.
+Pinned privateQAconfig and launcher dryrun0 are ready; no viewerlaunch/setupplan
+installed. Allplansrestored/TranslatorSTOPPED/XcodeGPUreplaySTOPPED/no jobs.
+Metal3/4 quietCPUbenchmark prepared separately/sourceonly atxitJjX, explicit
+validation-only and quiet-timing modes; no timing/speedup claim. Next measure
+CPUcommand cost and actual coveredmergepopulation in separatequiet windows.

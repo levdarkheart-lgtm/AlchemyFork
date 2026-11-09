@@ -129,8 +129,10 @@ noCPUbusyramp. ThermalNominalfulltrace; clocksunknown. GPUspansgrowbutoverlap,
 no criticalpathproof. Covered-shadow5e1ecb implemented; both optimized428946/95 pass, strengthened
 native commandcounter1747/1 bothpass. Liveeligiblefraction/FPSgain unknown.
 Private Metal3/4samePSO/oldMSL3.1 prototype compiled0/API+GPU0,12coverage/Z
-pairs+positivecontrol rawR32/D32exact. No performance/fullviewerclaim. Nextnormal
-appbuild/verify+livecoveredcensus, thenquietM3/M4CPUbenchmark separately.
+pairs+positivecontrol rawR32/D32exact. No performance/fullviewerclaim. Normal68601/source779772 doctor/configOFF/build/verify91206each0; independent
+identity/source/library/deepstrictsignature pass (root349ARM64 reviewed). No
+launch/plan yet; pinnedQA/dryrun0. NextquietM3/M4CPUbenchmark(sourcexitJjX), then
+livecoveredcensus; do not overlapviewer/GPUtimings.
 No formalFPSgain/infeasibilityclaim. Fullcontinuousdetails inNEXT/archive.
 Corrected64parent68588 control prepared/unlaunched. No FPS gain from counters.
 Ambient-only rewrite REJECTED (all timing ranges cross0). Rejected SH/predecode/

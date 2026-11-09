@@ -1,4 +1,4 @@
-# Next session — covered-shadow coalescing validated; build and measure
+# Next session — normal68601 ready; measure covered draws and Metal4 CPU cost
 
 Read AGENTS.md and CURRENT.md completely. The unbudgeted20FPS Ultra goal is
 ACTIVE/unmet. Previous turn made progress: source optimization, native GPU
@@ -42,24 +42,36 @@ Release47183=0,RWDI47338=0,finalfocusedRelease0/RWDI0; no competing GPU jobs.
 Source-only reviews approved twice. Initial reverse-depth fixture issue fixed
 before GPU execution; do not invent an executed red failure.
 
-NEXT after this documentation commit:
-python3 /private/tmp/alchemy-metal-covered-shadow-app-build-20261109.py
-Wrapper records exact source and each doctor/configRECORDOFF/fullbuild/verify
-exit in a new private packet (pointer covered-shadow-app-build-latest-path).
-Do not launch an unverified or unpinned candidate. Then prepare pinned private
-QA config, fresh Midday setup plan, launch exact app/fullscreen/login/fresh43
-control/location/binary gates. First check shadow_covered/probe_shadow_covered
-merged/input counters; if no meaningful eligible population, do not spend a
-long run claiming a speedup. If useful, collect >=300 ready stable frames with
-same quality and compare the source-exact baseline. No profiler/capture/build
-or unrelated GPU work during timing. No blanket FPS forecast from synthetic
-merges. Public scalar oracle uses scene.bulk_draws=false; viewer defaults true.
+Normal68601 candidate BUILT/VERIFIED, not launched. Wrapper91206 terminal0:
+doctor/configRECORDOFF/fullbuild/verify each0. Buildpacket
+/private/tmp/alchemy-metal-covered-shadow-app-build-20261109.uiuvk2ho,
+source77977290c9bd2e3712d547f7b8e75b20c4191eca, exeSHA
+f277ea10cbf98cb048e58f6644a6641f3af16f1120f26832c8043199f883a022.
+Packagedmetallib61c5... isidentical priornormal68597 (noMSLchange).
+Independentnarrowidentity /private/tmp/alchemy-metal-68601-identity-review-20261109.9jc3ukr2/identity-review.json
+SHAcb0759d5795881d7d4c58edc9a29f165cfabf6383be85241b20ac9657d4fc234:
+source/header/exe/plist/library/cacheOFF/flags+deepstrictcodesign verified;
+root349ARM64/0bad report parsed, not rescanned. No runtime changes.
 
-## Preserved baseline and canonical old app
+Prepared artifacts/metal/private-ultra-covered-shadow-qa-20261109.json pins
+candidate68601 and reference/private/tmp/alchemy-metal-68597-normal-preserved.app.
+Launcher/private/tmp/alchemy-metal-covered-shadow-launch-20261109.py dryrun0,
+actualrun candidate-covered-shadow-20261109-01 NOTcreated. No newMiddayplan
+installed. After any privateGPUbenchmarks finish, installFRESH setupplan via
+/private/tmp/alchemy-metal-session-state-20261109.py, launch verifiedcandidate,
+fullscreen BEFORElogin/fresh43controls/location/binarygates. First inspect
+shadow_covered/probe_shadow_covered merged/input counts. If negligible, do not
+claim gain from syntheticmerges. If useful, collect>=300ready/stable frames
+and comparepreserved68597. No profiler/capture/build/unrelatedGPUwork during
+timing. RestoreONLYfreshplan afterverifiedexactviewerexit. Scalaroracle uses
+scene.bulk_draws=false; productiondefaulttrue, no newquality setting.
 
-Canonical app currently normal68597/source6f6207698720bc4455c43f68e007715135643074:
+## Preserved baseline and current candidate
+
+Canonical app is now68601 as above, at
 build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app.
-It is ALSO preserved /private/tmp/alchemy-metal-68597-normal-preserved.app.
+Baseline normal68597/source6f6207698720bc4455c43f68e007715135643074 is preserved
+at/private/tmp/alchemy-metal-68597-normal-preserved.app.
 ExecutableSHA47670056bc6ee2fcb26c5b3b90959ebb384850b28efe3d2c9e983dd4420f75fa;
 normalmetallib61c5dcb3fa1677818cd3ef6b069837979a00cf9cf4d56cf1594e46d011d41585.
 Doctor/config/build/verify25454=0; independent94909=0/349ARM64/deepstrictsignature.
@@ -97,8 +109,13 @@ PRIVATE proof packet /private/tmp/alchemy-metal3-metal4-covered-shadow-20261109.
   before allocator reset. Feedback header guarantees workload completion.
 - No CPU timing,8/32texture,clamp,perspective,rigged/terrain/tessellation or full
   viewer Metal4 claim. Production viewer remains the existing native API path.
-- trace_recheck now prepares SEPARATE quiet CPU benchmark source-only packet;
-  do not mutate the proven25axBX source. N1024/4096, real constoffset changes,
+- trace_recheck prepared SEPARATE quiet CPU benchmark SOURCEONLY packet
+  /private/tmp/alchemy-metal3-metal4-shadow-encoding-20261109.xitJjX. HostSHA
+  5a36d4e0991da61ea6f6a77d03d7034d019f9f49da9c13b48b9c437270747784; manifest
+  8397ee31784f20359381bbab82633f95c1eae50a3353cf557ff17146ac5645a1. ReadREADME/
+  peerreviewbeforecompile. Explicit--parity-only needsAPI/GPUvalidation1; --timing
+  rejectsdebug/capture/HUDenvvars; quietfirstrepeatsstrictnewNparity. No compile/
+  GPU/timingexecuted yet. Do not mutate proven25axBX. N1024/4096, constoffsetchanges,
   native M3 instance1/base0 calls, M4tableupdates, full precommit cost split,
   explicit residency/setup/reset/commit costs, newNparity,7counterbalanced
   ABBAblocks/two targets/samebackend controls. No execution until root release.
