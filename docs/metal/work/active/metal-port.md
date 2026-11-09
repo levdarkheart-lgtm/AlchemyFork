@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `7b03110f71c69455bf45da6626058ad917026998`;
+**Renderer checkpoint:** Commit `4b23c0b34589bc9deee3cec4a86ddee80f34e67c`;
 latest68581:9.454639FPS; best controlled68579:9.608673.20FPS/full parity open.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
@@ -75,16 +75,28 @@ Addedpassboundaries altercost; no shader-duration/unsplit equivalence claim.
 
 ## Immediate executable action
 
-Focusedcapture/replay/profileCOMPLETED:1CB/2draws,31.17msMEDIUMdiagnostic, geometry
-99.68%/216regs/0spill/43.22samplerperfragment. ALUlimiter44.54%,texread6.01%;
-occupancy/perlinecostUNKNOWN. XcodeGPUreplaySTOPPED; allviewersclosed/plansrestored,
-TranslatorSTOPPED. CurrentactualUltraSSR=0, soholdgeneralSSRsharingcandidateprivate.
-ShadowpreparesdistinctPRIVATE SHdecode/loadlifetime experiment preserving4reads/
-math/selection/cap; noGPU/buildbyagents. Rootmustreviewandexecuteactualstrict
-parity+timing/registerproofbeforeproduction. Prior namedaccumulatorsrejected.
-UsercolorquestionexplainedbyXcodeAuto0..0.218plusintermediateHDRstage; sourcefinal
-pipelineorderingoriginal/onegamma, nocolorfix/settingschange. Newcapturedmetrics
-in[focusedrecord](../../state/archive/CURRENT-selected-base-capture-2026-11-09.md).
+SH lifetime candidate REJECTED:224 timings show no consistent gain and actual
+four-draw Xcode profile gives216 registers/0 spills for BOTH variants. Replay
+stopped/Finished app observed. Source-line costs and occupancy remain unknown.
+Diagnostic line metadata/dependency fix479ff is built in68587, independently
+ARM64/signature verified; original build process exit unavailable, log succeeded.
+All viewers closed/plans restored, Translator stays STOPPED. Normal future
+performance builds must set source recording OFF.
+
+Root is correcting confirmed exact-original neighbor traversal: manager/GLSL
+allow64 examined candidates with32 ACCEPTED taps; native3 walkers truncated31.
+Actual forward regression failed exactly late32/64 before fix (9159 other
+assertions passed). Three clamps repaired; green API+GPU run10932 passed9161 assertions, exit0.
+Both full optimized API+GPU suites pass427464/98 each; private12-case
+all-walker expected-color oracle passes. Code4b23c0b345 committed. Normal
+source-recordOFF app68588 built after doctor/configure, all actual0; independent
+349 ARM64/0 invalid and deep strict signature each0. Not launched.
+Scalar-addressing candidate passed strict outputs but also REJECTED for no
+general timing win. No claimed FPS gain from parity repair. Next prepare one
+hero-forward capture to measure actual hidden/overdrawn fragment work before
+face-local culling. Do not repeat rejected SH micro-variants.
+[Full checkpoint](../../state/archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
+Main base is~17 of~105ms GPU union; seek larger measured causes as well.
 
 ## Non-negotiable open gates
 

@@ -130,3 +130,25 @@ retain rejected layered results and actual M1 timestamp capability limits.
 No capture/validation-enabled CSV is performance evidence. Raw captures remain
 private; broad pixel/feature parity, multi-scene performance, prolonged stability,
 strict no-GL and independent build/review evidence remain required.
+
+
+## Register result and restored neighbor-selection contract
+
+The focused profile identifies216 registers and ALU-heavy geometry lighting.
+The new SH lifetime candidate retained216 registers and showed no consistent
+speedup; scalar neighbor addressing also lacked a general win. Both remain
+private. Do not revive the already rejected SH predecode or earlier variants.
+
+A separate source audit confirmed64 examined neighbor candidates in original1eb,
+with only32 ACCEPTED taps. Native31 truncation could omit a late containing
+probe/box. Repair4b23c0b345 preserves the accepted cap, order and bounds. Actual
+forward regression fails late32/64 before repair and passes after; both optimized
+API+GPU suites427464/98 pass, plus12 independent all-walker expected-color cases.
+This restores quality, not a measured FPS gain. Normal app build passed; no new
+live FPS sample. Best controlled9.61FPS remains below20FPS.
+
+Next decision requires an expensive hero-forward capture: actual fragment
+invocations and early/late-depth rejection, not an assumption that mirrors run
+main PCSS. Consider conservative current-frame face-local culling only if it
+can remove substantial measured work, preserving all six views and draw order.
+[Full evidence](../../state/archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).

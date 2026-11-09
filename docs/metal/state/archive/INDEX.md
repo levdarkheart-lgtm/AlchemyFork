@@ -179,3 +179,5 @@ erratum or a new current observation; do not silently rewrite historical claims.
 - [Shiny hero overwrite validation](CURRENT-hero-overwrite-validation-2026-11-09.md) — narrow candidate, GPU reference tests; live acceptance pending.
 
 - [68563 runtime and warmup confound](CURRENT-68563-shiny-runtime-2026-11-09.md) — confirmed shiny GPU saving, incomplete probe initialization prevents settled A/B.
+
+- [Shader registers and 64-neighbor parity](CURRENT-shader-registers-and-neighbor64-2026-11-09.md) — rejected SH lifetime candidate, real register comparison, diagnostic compiler dependency repair and confirmed late-neighbor regression.
