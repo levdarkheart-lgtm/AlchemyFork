@@ -1,3 +1,17 @@
+## Latest owner-driven travel failed — act on actual evidence
+
+Owner logged in68633 and traveled. Repeated UI/movement/resize stalls and actual
+stretched rigged geometry screenshots; missing names can show only distance until
+arrival progresses. Root preserved logs/screenshots/10sTimeProfiler. Owner offered
+to close; root said all captures sufficient, can close. Do NOT launch automatically.
+Read docs/metal/work/active/travel-live-68633.md and its private analysis paths.
+Main loop was active in captured interval (345runloops/max82.18ms gap), which does
+not prove visible publication/input at every reported failure. No permanent
+single-stack deadlock proved. Source flaws: world-completeness blocks freshUI,
+fetched terrain bypasses original placeholders, failed native impostor publish
+still clears needsUpdate, non-original finite skin replacement may stretchmixes.
+Actual bad input/name cause unknown. No new source changes this observation.
+
 # Continue correctness validation — native avatar repairs ready
 
 Read AGENTS.md and CURRENT.md completely. Branch codex/apple-silicon-metal.

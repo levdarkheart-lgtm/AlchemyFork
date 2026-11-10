@@ -3,12 +3,29 @@
 **Observed:** 2026-11-10, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `97dd825aaf428da4a50e6b8bf1659d5b60d62eda`.
-**Running viewer:** 68633 PID95871, Release ARM64, built/verified/signed.
+**Last observed viewer:** 68633 PID95871, Release ARM64, built/verified/signed.
 Owner then authorized closing older68626PID44312 and starting the repaired app.
-Old PID exited; exact68633 login window observed. Owner handles login/travel.
+Old PID exited; owner logged in and drove travel. Live QA subsequently FAILED
+with repeated UI stalls and geometry corruption; owner may close the viewer.
 Owner explicitly requested implementing the four avatar gaps. All prior fixes
 retained. Earlier20FPS goal remains paused; no settings, camera, avatar travel,
 cache/account changes occurred. Restart followed the owner's explicit request.
+
+## Latest live travel observation — FAILED
+
+[Travel findings](../work/active/travel-live-68633.md): owner reported teleport/UI/
+movement/resize stalls, transient missing names and screenshot-proven corrupt
+rigged triangles. Saved logs, both screenshots, weak3-observation sample and a
+real10s CPU trace privately. Owner can close; no further capture required.
+Trace shows5.580 sampled main CPU seconds and345 runloop calls, max82.18ms gap:
+no continuous deadlock captured, but that does not disprove intermittent freezes
+or establish keyboard delivery/visible publication. Main/probe log rows are mixed.
+Confirmed remaining source gaps: UI cannot refresh without current valid world;
+fetched terrain lacks original placeholder contract; native impostor publication
+success is not checked before clearing retry; finite skin fallback differs from
+original and may stretch mixtures. Actual missing terrain member/bad skin operand/
+name-tag cause remain unknown. NO source edits or restarts during observation.
+Earlier GPU tests do not supersede this failed live check. Performance goal paused.
 
 ## Implemented original contracts
 
@@ -103,12 +120,12 @@ cache and logs stayed ignored and were not uploaded. Root owns shared files.
 
 ## Exact next actions
 
-68633 is at login for the owner, who will travel/test. Verify actual native
-completion receipts/ART behavior when requested, with several
-avatars, main/mirror impostors, cache replacement and loading/default-to-ready
-transitions. Also verify earlier Midday/Sunset/Midnight continuity/gamma fixes.
-Remaining terrain/shadow failures need affected geometry/map/depth evidence.
-No automatic performance-goal resumption or unrelated profiling/quality cuts.
+Owner was told captures are sufficient and may close the stuck viewer. Read the
+travel findings and private CPU/trace analysis. Next source work must restore
+independent native UI presentation and original terrain loading semantics, fix
+impostor publication success/retry ownership, and identify the bad skin product
+before a matrix repair. Names still need actual text/value/bounds evidence.
+No automatic restart/travel, performance-goal resumption or quality cuts.
 
 ## Complete-product advancement assessment
 

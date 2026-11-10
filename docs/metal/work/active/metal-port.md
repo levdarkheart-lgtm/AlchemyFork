@@ -34,6 +34,18 @@ Cold cache backup remains private/intact. Terrain/water/shadow discrepancy and
 random attachment spikes remain unresolved. No camera, preference or account/cache changes; restart followed the owner's
 explicit instruction after implementation. Earlier20FPS campaign paused.
 
+## Owner-driven travel — failed live QA
+
+[Runtime findings](travel-live-68633.md): owner reported repeated UI/resize/movement
+stalls, transient missing name text and screenshot-proven rigged corruption.
+Private logs/screenshots/10sCPUtrace saved. Main runloop remained active in the
+captured window; not proof of visible publication or absence of intermittent hang.
+Remaining source gaps: UI depends on complete current world, fetched terrain lacks
+original placeholders, failed impostor publication clears retry, per-joint finite
+fallback differs from original. Exact live bad input/name cause unknown. No source
+change/restart during observation. Owner may close; evidence sufficient. These
+observations supersede any implied live-success claim from backend tests.
+
 ## Work board
 
 | ID | Work | State | Evidence / next boundary |
