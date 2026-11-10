@@ -1,78 +1,120 @@
-# Current engineering state — owner requested stop
+# Current engineering state — HUD and native upload correctness
 
-**Observed:**2026-11-10, physical M1Max/64GiB/macOS26.5.2/Xcode26.6.
-**Branch:**`codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `88528d27a5d0836faddfcbcb0b715fe0c6280ebe`.
-No renderer changes in the final diagnostic pass. Normal68619/source885 retained,
-joining nonpersistent/defaultOFF, no saveduseroverride. Owner requestedwrapup
-unless remaining work was promising after1.5days. No validated20FPS path found;
-stop further engineering/launches/profiling until explicitownerresume.
-20FPS isUNMET; infeasibility/hardwareceiling NOTproved. Do notmarkproductcomplete.
-**Recovery:**[NEXT](NEXT_SESSION.md),[ledger](../work/active/metal-port.md),
-[closeout](archive/CURRENT-20fps-owner-stop-2026-11-10.md),[history](archive/INDEX.md).
+**Observed:** 2026-11-10, M1 Max / 64 GiB / macOS 26.5.2 / Xcode 26.6.
+**Branch:** `codex/apple-silicon-metal`.
+**Renderer code checkpoint:** `d18641c3557996807de03d99a105419161e95dfb`.
+**Current viewer:** 68626, PID 43249, native Release build, API validation enabled.
+The owner authorized this avatar/HUD investigation separately. The earlier 20 FPS
+campaign remains paused; no performance experiments or quality changes were made.
 
-## Runtime and source
+## Implemented from the exact original
 
-No viewer/profiler/build/GPUtest running. Exactcurrent67886SIGTERM/Goodbye/absence
-operation0; OWNcurrent02environmentrestore0. Abortedrestartattempt67268alsoexited/
-restored0. All earlierOWNplansrestored. OSexitcodesunknown/null. CUAphasescompleted.
-TranslatorFULLYSTOPPED/NEVERrestart; Xcodereplaystopped. No avatartravel/qualitycuts.
-Root owns sharedsource/docs/runtime/GPU; agentsstopped/no tasksqueued.
+Reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`. Existing prior repairs
+remain included; both previous source611e1f3a0f and renderer88528d27a5 are ancestors.
+The owner explicitly requested retaining all previous fixes and the latest discovery.
 
-Retained68619 source885/exe
-ff3dec85f76f5f99b3b68738d97be68a52005568256cd3a709ed39c6af0055e9,
-metallib3932018186338255b0523028441e5376393a51c2b3ddbad2ad538f1c530376c2.
-Canonical build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app;
-byteidentical /private/tmp/alchemy-metal-68619-join-off-control.app retained.
-Doctor/configure/build/verify/deepstrict0,349ARM64/0bad, independenta1657b93.
-Backendfulloptimized Release/RWDI API+GPU504300/106 EACH0; focused7969/1+2120/1.
-No privatebenchmark applied. Existingbindingcache/arenas/originalqualityfixes retained.
+- `547daf9c31`: world/UI capture now uses native authority. The old mirror-mode
+  caller left authority false, so fullbright/mask/alpha/bump HUD pools skipped
+  fills while edit outlines still rendered. World color/depth ownership and the
+  original HUD-before-interface order are preserved.
+- `082075249b`: restores the original `LLDrawPoolAlpha::forwardRender` HUD blend,
+  depth and RGBA bracket plus per-draw custom RGB factors. Direct native batches
+  had inherited disabled blending from opaque pools. Also restores explicit
+  AnisoWrap / particle AnisoClamp and texture activity/bind statistics. Opaque
+  and MASK PBR HUDs now have direct native dispatch and the original distinct
+  fragment contract: biased cutoff, emissive ordering, sRGB shading, output alpha0.
+- `08bc61af05`: failed native vertex/index uploads remain on the mapped retry
+  queue. Previously dirty flags survived but the queue entry was discarded.
+  Destruction and shutdown disarm pending raw pointers. This is reproduced and
+  repaired in a real-device test; no production upload failure ties it to the shoe.
+- `d18641c355`: pending HUD textures use the original default/Null placeholder
+  behavior instead of failing the whole world/UI publication. The live68625 log
+  showed `HUD attachment encoder: Metal HUD batch is missing a diffuse texture`.
+  Native texture pointers and activity are resolved without a legacy slot bind.
 
-## Final measured result
+No original fallback renderer, camera/shadow changes, outfit changes or asset
+network rewrite was introduced. No private captures were uploaded.
 
-FreshcurrentjoiningOFF300frames5743–6042:9.745137727FPS,mean102.615276250ms,
-p50102.6484375/p95112.428916,meandraws47115.846667. Ultra3456×2168/Midday/Preset123,
-44start/end/finalgates0, native1/fallback0/bias1/256ready120/mainvisible97,
-fixedcamera/EEP/restorations. Thisis a fresh measurement, not anothercodegain.
-Earlierpairedsame-buildjoiningOFF8.639419→ON5.513778FPS,drawwork−8.16%,source
-population drift prevents exactcodecausality. No defaultONadmission; experimentoff.
-EarlierPBR68614flat9.566vsfreshwater68610 9.581; earlierwater9.785vsfresh68608
-9.257(+5.704%)hasworkloaddriftcaveat. No claim20FPSornewmeaningfulFPSgain.
+## Build and executed checks
 
-Current13strictV2postformalpackets captured6042–6047; CPUmodelactual0. Mainideal
-initialreject4.17%ofmodeledholds,hero21.42%,neighborworkdominates. Sparsebase-only,
-notalpha/water/GPUtime orbit-equivalentCPU/GPUproof. No initial-list admission.
-Originalsaved67611result6.0955FPS hasunresolvedfullquality/populationparity versus
-currentnative; not a speedratio orhardwarecapacity/ceiling proof.
+`tools/metal/doctor.sh`, `tools/metal/build.sh configure`,
+`tools/metal/build.sh build`, `tools/metal/verify_app.sh <canonical app>`, and
+`codesign --verify --deep --strict --verbose=2 <canonical app>` all passed (0).
+The final placeholder build reran configure/build/verify/signature; doctor is
+recorded in the preceding upload-retry build. Native ARM64 and bundled/produced
+metallib identity verified. Code68626 is source `d18641c3557996807de03d99a105419161e95dfb`; later docs commits do not
+change that binary identity.
 
-CurrentpostformalMetalSystemTraceactualrecord/export0, all2518CPU/GPUCBs matched,
-13216encoders/90presents/11783CPUrows. Main7.2s sampledRunning:hero3.517/ordinary.464/
-remaining3.219disjoint. Shadow2.240/GBuffer1.437inclusive; validationleaf17/16ms,
-notdominant. Driverstate/resource/bufferencoding andmanyothercosts distributed.
-Two~.44s annotationpauses retainedprimary; sensitivityseparate. Activeinterval
-presence88.53%viewer/91.89%device inpresentinterior isNOTutilization/criticalpath.
-DWARF/unresolved/profilerlimits retained. No safeverifiedfix thatdoublesFPS found.
-Raw760-file/480MBcloseoutpacket ignored/private, manifestb2bf2045; no privateuploads.
+Focused Release tests, with `MTL_DEBUG_LAYER=1` and `MTL_SHADER_VALIDATION=1`:
+
+- UI/HUD SoA test: 763 assertions / 1 case, exit0, including opaque/MASK PBR
+  raw RGBA/depth, nonwhite colors, biased coverage, U16/U32 and forward/reverse Z.
+- Selection contour test: 4732 assertions / 1 case, exit0.
+- Native vertex-buffer tests: 93 assertions / 2 cases, exit0. Before the retry
+  repair, the new fault-injection test failed 4 byte-equality assertions (43/47
+  passed). After repair, restoring the device and flushing alone recovers exact
+  VB/IB bytes, preserves in-flight generations and safely destroys a pending buffer.
+- First PBR test attempt failed only negative-test validation precedence; fixture
+  corrected in `916ad7e79d`, then all checks above passed.
+
+These are bounded checks, not full viewer parity or a speedup claim. Native UI
+fixtures bypass the pipeline caller; the actual account inspection and owner
+feedback supply the routing/visual evidence. Owner said previous fixes were OK.
+The final placeholder delta is built and launched. At19:24UTC its startup check
+recorded26 success/publication log entries, zero missing-HUD-diffuse messages,
+zero vertex/index upload failures and zero Metal API assertion errors. Two
+informational startup log entries (through ONCE10) reported a generic missing
+buffer/texture mirror before native publication resumed; these are not two-frame
+counts or evidence that all startup waits are removed. Check startup-check.json.
+
+Private ignored evidence directories:
+`artifacts/metal/private-avatar-account-repro-20261110-01/`,
+`private-hud-authority-fix-20261110-01/`, `private-hud-blend-fix-20261110-02/`,
+`private-native-upload-retry-20261110-03/`, `private-hud-placeholder-fix-20261110-04/`.
+The first directory preserves the four owner screenshots and their hashes.
+
+## Runtime and remaining issue
+
+Canonical app: `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
+Executable SHA256: `1050ef5ab4907c1fb15874a4bb216c81b057bc82e03030dfe446dc865570675a`.
+Metallib SHA256: `a155144459e5899d838c35834d31ecd0b4c5ae67e511e26e81523e464cd994f8`.
+Old PIDs72137,90316,26572 exited before their replacements; currentPID43249
+was observed as68626 in the UI. No forced account/destination/profile/environment/
+camera/outfit was passed. User drove login and scene/outfit changes; Codex did not
+move the avatar. All CUA phases completed. Translator stays fully stopped;
+Xcode replay stays stopped. Root owns source/docs/runtime; agents idle/private only.
+
+Random missing shoe and outfit-change screen spikes remain unexplained. Repeated
+Wear restored the shoe before diagnosis. Current logs before this final launch had
+no vertex/index upload, palette, Metal validation or asset-fetch error establishing
+that cause. The buffer retry repair must not be called the proven shoe fix.
+Original/native source comparison found matching attachment membership, legacy/PBR
+rigged routes, selector encoding, palette bytes, geometry rebuild/flush and query
+invalidation. No CPU double-skin or stale-neighbor ticket defect was demonstrated.
+A new recurrence needs tracing the actual attachment through CPU geometry, render
+map, palette and native batch; do not delete original admission rules or speculate.
 
 ## Exact next actions
 
-NONE automatically. Owner askedwrapup; preserve source/evidence and wait for
-explicitresume. Do not startanothercapture, benchmark, build oroptimization.
-UnimplementedCPUcolorclipcandidate andshadowcountwalk remainunmeasured/private.
-Ifownerresumes, readcloseoutfirst; no hardware-infeasibility or20FPSclaim warranted.
-Retain sameprivate location/Preset123/noavatartravel andfullUltra/features iftesting
-resumes. PreferMacshortcuts/fullscreenbeforelogin; neverCUAControlCenter.
+Final68626 startup inspection completed; code and evidence are recorded. Leave
+the viewer running for the owner and preserve current logs.
+If the attachment failure recurs, trace that actual geometry/map/palette/batch.
+The performance campaign remains paused.
 
-Stable7772/waterpushed; owner-triggeredAlpha3/tag26.4.0.68611-alpha3 release+ZIP
-verified. NewlocalPBR/census/joining/diagnosticcode NOTinAlpha3. No newpublication.
+## Paused performance campaign
+
+Prior campaign closure/evidence: [owner stop](archive/CURRENT-20fps-owner-stop-2026-11-10.md).
+Last controlled current-source result was9.745FPS;20FPS remains unmet. No hardware
+ceiling was proved. Keep prior binding caches, bounded lights, rawR32 shadows,
+resource borrowing, memory accounting, arenas, probe and anisotropy repairs.
 
 ## Complete-product advancement assessment
 
 | Milestone | State | Evidence / remaining requirement |
 | --- | --- | --- |
-| M-008 Advanced views/effects | doing | Nativeparitygates retained; fullparity/performance stillopen. |
-| M-012 Native UI automation | complete | Exact-build fullscreen/login/Midday/Preset123/gates executed. |
-| M-014 Ultra20FPS campaign | deferred | Ownerrequestedstop; latest9.745FPS,20FPSunmet,no validatednextfix. |
+| M-008 Advanced views/effects | doing | Native implementation retained; broad original parity remains open. |
+| M-012 Native UI automation | complete | Prior exact-build login flow; current HUD inspection executed. |
+| M-014 Ultra20FPS campaign | deferred | Owner paused it; no new benchmark or performance claim. |
 
-Full parity, multi-scene performance, prolonged stability, strict no-GL and
-independent build/review evidence remain open. Productnotcomplete.
+Full parity, prolonged stability, multi-scene performance, strict no-GL and
+independent build/review evidence remain open. Product is not complete.

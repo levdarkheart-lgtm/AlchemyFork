@@ -1,9 +1,44 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `88528d27a5d0836faddfcbcb0b715fe0c6280ebe`.
+**Renderer checkpoint:** Commit `d18641c3557996807de03d99a105419161e95dfb`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
-[campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
+[paused campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
+
+## Current correctness repair — 2026-11-10
+
+The owner authorized avatar/HUD investigation independently of the paused 20 FPS
+campaign. All attached/enabled HUD fills were absent while edit outlines rendered.
+The first native-authority fix restored fills but exposed wrong transparency and
+sampling. Exact original1eb comparison found dropped HUD forward alpha state,
+stale sampler inheritance, and an opaque/MASK PBR tail that still used retired
+draw calls. These are repaired with original color/coverage/depth contracts.
+A later live log exposed pending HUD diffuse texture invalidating whole composed
+frames; original default/Null placeholder behavior is restored in final68626.
+
+State: **implemented and built**; owner accepted previous fixes and requested
+all retained, including latest discovery. FinalPID43249 sourced18641c355
+was observed launching in UI. Final19:24UTC startup check has26 success/publication
+log entries and zero HUD-diffuse/upload/API assertion errors. Generic UI mirror
+warmup was reported before publication resumed; no zero-wait claim. Root owns source,
+canonical docs, builds and runtime. Agents source-reviewed/private patches only.
+No camera/quality/outfit/asset-network change and no private uploads.
+
+A separate native upload retry defect is reproduced and fixed: failed native
+VB/IB uploads kept Written flags but lost their mapped queue entries. The repair
+keeps retries through subsequent flush, disarms dying entries and clears pending
+raw pointers on shutdown. Pre-fix test failed4 exact byte comparisons; corrected
+native suite passes93/2 with API+GPU validation. No current production failure
+proves this caused the random missing shoe. User repeated Wear restored that
+occurrence; outfit-change spikes also remain unexplained.
+
+Commands/evidence (all private ignored artifacts/metal): doctor/configure/build/
+verify_app/deep strict signature0; UI/HUD763/1 and selection4732/1 API+shader0;
+VB93/2 API+shader0. Direct UI fixtures bypass pipeline caller, so source/actual
+account observation and owner feedback remain essential. Source checkpoints:
+547daf9c31,082075249b,916ad7e79d,08bc61af05,d18641c355. Final evidence directory
+private-hud-placeholder-fix-20261110-04; preceding native-upload-retry03 and HUD
+blend02 preserve failures/reruns/commands/hashes. See CURRENT for full identities.
 
 ## Work board
 
@@ -25,65 +60,44 @@
 | M-014 | Ultra20FPS campaign | deferred | Ownerrequestedstop; finalcurrentOFF9.745FPS/20FPSunmet; no validatednextfix. |
 States describe evidence; a bounded completed item never implies product completion.
 
+
 ## Current implementation boundary
+
 Native Metal owns world, materials, avatars, terrain, shadows, sky/water,
 atmosphere/effects, UI/font/HUD, media textures and presentation. Existing
 network/inventory/simulation/editing/voice features are retained. No fallback
 renderer or general cross-platform framework is authorized.
 
-Retain existing repairs: rawR32 direct shadow slices, bounded local-light
-coverage, resource borrowing, image/global memory accounting, completion-safe
-arenas, per-view probes/cubeSSAO, main visibility queries, Ultra4xanisotropy,
-binding caches, static adjacent covered draw coalescing and64/32 probe traversal.
-NativeD32 changes original raw-depth semantics; no migration/epsilon waiver.
-
-## Current source ownership and latest result
-
-Ownerrequestedwrapupafter1.5days unlessremainingworkwaspromising. No validated
-20FPSpath found. Stopfurtherengineering/launches/profiling untilownerresumes.
-Rootowns sharedsource/docs/runtime/GPU; allagentsstopped/notasksqueued. No viewer/
-profiler/build/GPUtestlive; allOWNplansrestored0 afterexactPID/Goodbye/absence.
-TranslatorFULLYSTOPPED/NEVERrestart; Xcodereplaystopped; no travel/qualitycuts.
-
-Normal68619/source885 retained, joiningnonpersistent/defaultOFF/nosavedoverride.
-Finalsource-identicalOFF300frames5743–6042:9.745137727FPS/102.615276250meanms,
-p50102.6484375/p95112.428916.44start/end/finalgates0/fixedcameraEEP/Ultra3456×2168/
-native1/bias1/ready256stable120. Thisisnotanothercodegain. Earlierjoiningexperiment
-OFF8.639→ON5.514FPS rejectedfor defaultadmission (workloaddriftcaveat); priorbinding
-caches andcorrectness/performancefixes retained. FullbackendoptimizedAPI+GPU
-504300/106EACH0; normalbuild/349ARM64/signature0/identitya1657b93.
-
-All13postformalV2samples strictaudited/model0: initial-onlyidealmain4.17%holds/
-hero21.42%,neighborsdominate; noalpha/water/GPUtimeorFPbit-equivalenceclaim.
-Currentcoupledrecord/export/all3analyses0,2518CBalljoin. CPU7.2s samplemain includes
-hero3.517s;shadow2.240/GBuffer1.437inclusive. Validationleaf17/16msnotdominant;
-encoding/driver/resources/copies/postSort costsdistributed. Profilerannotationpauses
-retainedprimary, sensitivityseparate. No exactcriticalpath/hardwareceiling claim.
-[Finalevidence/closure](../../state/archive/CURRENT-20fps-owner-stop-2026-11-10.md).
+Keep all prior repairs: bounded local lights, rawR32 direct shadow slices,
+resource borrowing, image/global pressure accounting, completion-safe arenas,
+per-view probes/cubeSSAO, main visibility queries, Ultra4xanisotropy, binding
+caches, static adjacent draw coalescing and64/32 probe traversal. Joining stays
+nonpersistent/defaultOFF. New HUD/upload fixes build on source611e1f3a0f/88528d27a5;
+ancestry was explicitly verified. No measured performance improvement claimed.
 
 ## Complete-product checkpoint gate
 
-1. Advancement: fresh current-source workload and coupledCPU/GPU evidence closes
-   unpromisinginitial-list/validationcache leads and prevents defaultjoiningregression.
-2. Preservedcontract: originalfeatures/sixUltra hero/casters/PCSS/rawR32/reverseZ/
-   clamp retained; no fallback/qualitycut/privateupload.
-3. Open:20FPS/fullpixel-featureparity/multi-sceneperformance/prolongedstability/
-   strict no-GL andindependent build/review evidence. Goalnotachieved/productnotcomplete.
+HUD and upload correctness advanced through original-source repairs, bounded
+checks and actual account observations. Random attachment omission, full original
+parity and product performance remain open. No product-completion claim.
 
 ## Immediate executable action
 
-NONE automatically. Owneraskedstop. Preservecode/evidence andwaitforexplicitresume.
-760-file480MBprivatecloseoutpacket hash-indexed/ignored; no uploads/releases.
-Onlyifownerresumes: readcloseoutfirst. Staticcolor-onlymirror-plane postSortculling
-andshadowcountwalk areUNIMPLEMENTED/UNMEASURED, no 20FPSforecast. GPUmirrorclipalready
-implemented; do notmodifycamera/shadowfrusta orreusemainocclusion forfaces/casters.
-Stable7772/waterAlpha3releasedbyowner; newlocalPBR/census/joiningcodeNOTinAlpha3.
+Final68626 startup inspection completed; leave viewer running for owner. For a recurring
+attachment omission/spike, follow actual geometry/map/palette/batch state against
+exact original; the shared update/flush/routing/query checks did not reveal a
+shoe-specific difference. Do not label it fixed merely because re-Wear helped.
+
+The owner-paused performance campaign remains deferred. Prior final9.745FPS and
+trace evidence are archived in CURRENT-20fps-owner-stop-2026-11-10.md. No automatic
+new benchmark/profiling/quality cuts. Translator fully stopped; Xcode replay off.
+All CUA phases completed. No private capture upload/release. Product not complete.
 
 ## Non-negotiable open gates
 
-No retained OpenGL/Vulkan/MoltenVK/Rosetta/translation fallback. Preserve original
-quality and non-rendering functionality. Do not infer parity/FPS from test counts.
-PRODUCT/VALIDATION/PERFORMANCE remain authoritative; no release/public capture
-upload authorized. No travel under this goal. Retain raw private evidence and
-record real commands/exits/source identity at handoff. Ownerrequestedstop;20FPSunmet.
+Full original feature/pixel parity, prolonged stability, multi-scene performance,
+strict source/runtime no-GL and independent release review remain open. Preserve
+open-source non-rendering behavior, voices/media and native Metal ownership.
+Do not infer full product parity or FPS from bounded test counts.
+
 Do not mark feature parity from build/test success alone.

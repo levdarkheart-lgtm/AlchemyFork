@@ -1,66 +1,39 @@
-# STOPPED at owner request — do not continue automatically
+# Continue avatar/HUD correctness; performance goal stays paused
 
-ReadAGENTS.md andCURRENT.md completely. Owneraskedwrapupafter1.5days unlesscurrent
-workwaspromising. No validated20FPSpath found. No furtherengineering/launches/
-profiling untilownerexplicitlyresumes.20FPSUNMET; no hardwareimpossibilityproved.
+Read AGENTS.md and CURRENT.md completely. Branch codex/apple-silicon-metal.
+Renderer checkpoint `d18641c3557996807de03d99a105419161e95dfb`; final68626 built/verified/launched PID43249.
+Root owns shared source/build/runtime/docs; agents idle. Source changes are
+committed; this handoff records the completed build/runtime checks. Do not resume the earlier 20 FPS investigation.
 
-Branchcodex/apple-silicon-metal; renderercheckpoint88528d27a5d0836faddfcbcb0b715fe0c6280ebe.
-LaterHEADdocs-only. No rendererchangesinthefinalmeasurementpass. Source/codeclean;
-normal68619/source885 retained, nonpersistentjoiningOFF/defaultfalse/nosavedoverride.
-Allviewers/profilers/builds/GPUtests stopped, allOWNenvironmentplansrestored0 after
-exactexecutable/SIGTERM/Goodbye/PIDabsenceproof. OSexitcodesunknown/null. Current02
-PID67886completed; interruptedcurrent01PID67268rejectedforserverrestartandrestored.
-CUAallphasescompletiondone. TranslatorFULLYSTOPPED/NEVERrestart; Xcodereplaystopped.
-No privateuploads/qualitycuts/intentionalavatartravel. Allagentsstopped/notaskqueued.
+All previous fixes were retained, as explicitly requested by owner. New work:
+547daf9c31 authoritative world/UI HUD capture;
+082075249b original HUD alpha/depth/blend, explicit sampler/activity and direct
+opaque/MASK PBR HUD shader/dispatch;
+916ad7e79d negative-test setup correction;
+08bc61af05 failed native VB/IB retry queue and teardown;
+d18641c355 pending HUD default/Null placeholders.
 
-## Final facts
+Doctor/configure/Release build/verify/signature passed. UI763/1 + selection4732/1
+API+shader validation passed; native VB93/2 passed after real pre-fix failure4/47.
+These do not imply complete visual parity. Owner said previous fixes were OK;
+latest placeholder correction now included in68626. Four owner screenshots and
+all logs/exits/hashes remain private under ignored artifacts/metal/ paths named
+in CURRENT. No private uploads or publication. Current runtime has API validation
+only, no benchmark flags, no forced location/profile/camera/outfit. User drives.
 
-Freshcurrent68619joiningOFF:300frames5743–6042,9.745137727FPS,
-102.615276250meanms/102.6484375p50/112.428916p95;meandraws47115.846667.
-44start/end/finalgates0/Ultra3456×2168/Midday/Preset123/native1/fallback0/bias1/
-256ready120/mainvisible97/fixedcameraEEP/restorations. EarlierjoiningpairedOFF8.639
-vsON5.514FPS withworkloaddrift=>NOdefaultONadmission. Priorbindingcachesretained.
-NofurtherprovenFPSgain,20FPSnotreached. Sourceexactnormalbuildgates349ARM64/
-signature0/identitya1657b93; fullbackendRelease/RWDI504300/106EACHactualAPI+GPU0.
+Final startup check19:24UTC:26 success/publication log entries, zero missing HUD
+diffuse or VB/IB upload errors, zero API assertion errors. Generic UI buffer/texture
+mirror warmup was logged twice (through ONCE10) then publication resumed; do not
+claim every startup wait fixed. Viewer remains running for owner review.
 
-Postformalall13V2completeframes6042–6047; equal-lastframetagvalidafter-displaytiming
-disarm. CurrentCPUmodelwrapperc360actual0/2.368s,strictall13hashes. MainINITIAL-only
-idealreject4.17%holds/hero21.42%;neighborsdominate. Sparsebaseonly,nocurrentalpha/
-water/GPUtime/FPSinference,FPflagsheuristic. No compactlistadmission.
+Next, if owner reports another missing attachment or spikes,
+trace that actual object's CPU geometry→draw map→native palette/batch; compare
+exact original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45. Re-Wear had already fixed
+this occurrence, so cause is unknown. No production upload error connected it
+to the retry defect. Shared attachment routes/flush/query invalidation matched
+reference in the audit; no speculative reclassification/culling workaround.
 
-Postformal10sMetalSystemTracerecordsession92784terminal0; actualwall159s includes
-setup/symbolization. Viewerfinal44gates0/exactexit0/OWNrestore0 BEFOREexport.
-Export97601terminal0/eightXML+TOC+summary. GenericCLIall3actual0;2518CPU/GPUCBalljoin,
-13216encoders,90presents,11783CPUrows/7200mainRunning. Primarypresentinterior
-viewer/deviceActivepresence88.531/91.894% isNOTutilization/criticalpath;two~.44s
-annotationpausesretainedprimary, sensitivityseparate96.926/98.455%. SampledmainCPU
-7.2s includeshero3.517/ordinary.464/remaining3.219disjoint; shadow2.240/GBuffer1.437
-inclusive. Validationleaf17/16ms isnotdominant; encodingcostspread acrossdriver/
-resource/bufferstate/postSort/copies. No newcacheorverified20FPSpath. DWARFlimitskept.
-
-## Evidence and retained apps
-
-Fullcloseout docs/metal/state/archive/CURRENT-20fps-owner-stop-2026-11-10.md.
-Privateignored artifacts/metal/private-current-profile-closeout-20261110:
-760hash-indexedfiles/480434692logicalbytes,rawtrace,exports,QA/CSV/sidecar,V2,model,
-analysis/tools/identities/exits/originalaudit. PreservationmanifestSHA
-b2bf2045f4c407d251df1cccd9b53f5c56125ac3f5cd712abc56b66db8714f84.
-Originalpaths remain/private/tmp/alchemy-metal-current-probe-measurement-20261110
-andcurrent64-run02-results-20261110. Finalreportsd602c38a/c729b79a/1a8c3908;
-CPUa473e4d2/leaf056da639/currentmodel5afcfeb5/c706484a.
-
-App /private/tmp/alchemy-metal-68619-join-off-control.app byteequalcanonicalnormal;
-exeff3dec85f76f5f99b3b68738d97be68a52005568256cd3a709ed39c6af0055e9,
-lib3932018186338255b0523028441e5376393a51c2b3ddbad2ad538f1c530376c2.
-Canonical build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app.
-Stable7772/waterAlpha3/tag26.4.0.68611-alpha3+ZIPalreadyverified/linksdelivered.
-NewlocalPBR/census/joiningcode NOTinAlpha3, no newpush/release fromcloseout.
-
-Ifexplicitlyresumedonly: possiblecolor-onlystaticnonbridgepostSortmirror-plane
-cull isUNIMPLEMENTED/unmeasured andneedsbounds/FPproof; nativeGPUclip_distance
-alreadycorrect,exactoriginalalsoomitsCPUplane. DoNOTtouchsharedcamera/shadowfrusta.
-Count-onlyshadowwalkd4b12898 remainsprivate/unapplied/unmeasured. No newtaskqueued.
-Original67611saved6.0955FPS hasquality/populationparitygaps; neither20capacity nor
-hardwareceilingproof. Readcloseoutbeforeanyfuturework; preservefullUltra/features,
-sameprivateplace/Preset123/noavatartravel. Fullparity/multiscene/stability/strict
-no-GL/independentbuildreviewremainOPEN. Productnotcomplete.
+Earlier 20 FPS stop remains in archive/CURRENT-20fps-owner-stop-2026-11-10.md.
+No further optimization/profiling unless owner resumes that goal. Translator must
+remain fully stopped; Xcode replay stopped. No avatar travel by Codex. All CUA
+phases completed. Product parity/stability/performance release work stays open.
