@@ -1,8 +1,8 @@
 # Current engineering state
 
 **Observed:** 2026-11-10, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
-**Branch:** `codex/apple-silicon-metal`. **Renderer code checkpoint:** `1407fca9cf9a5daf4413f760155b5cc03a4a073d`.
-**Working source:** direct binding restored by default; new normal build pending.
+**Branch:** `codex/apple-silicon-metal`. **Renderer code checkpoint:** `06d16eb4cb20f4dfe47b4ce71e86e1420eb9e060`.
+**Working source:** exact06d16 direct default; rejected parallel prototype removed.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -20,9 +20,9 @@ analysis. Translator FULLY STOPPED/NEVERrestart; Xcode replay STOPPED.
 
 ALL viewers CLOSED; all three current environment plans restored. Exact68605
 PID166 and controls68601 PID98164/4449 exited with SIGTERM/Goodbye/absence.
-No profiler/GPU test/build running; both restored-default test configurations
-finished0. Canonical68605 is the measured experimental cache build, not the new
-restored default; it is preserved at
+No profiler/GPU test/build running; all native validation/CPU trials ended0.
+The restored-default source matches both completed optimized baseline suites. Canonical68606 is the rebuilt direct-default baseline (ac719b12/3932).
+Experimental68605 is preserved at
 /private/tmp/alchemy-metal-68605-material-table-trial-preserved.app (f3aa/3932,
 deep strictsignature0). Preserved68601/f277/61c5 remains the comparison baseline.
 
@@ -31,7 +31,8 @@ uses material_buffers=false, original non-AB diffuse sampler, and a dedicated
 lazy AB sampler only for explicit experiments. Filtering is unchanged; live
 anisotropy changes retire that sampler safely. BOTH optimized API+GPU suites
 pass435462assertions/102cases (63643all4phases0), packet9lcc2zss. Source review
-passed; normal app still needs rebuild/verify from the new source commit.
+passed; normal68606 doctor/configure/build/verify/signature all0 (39343terminal0).
+Packet ys8mhyv4;349ARM64/0bad, exeac719b12, same3932 shader library. No liveFPStrial.
 
 Normal source1407/68605 built via doctor/configure/build/verify/signature, each0;
 root349 ARM64/0bad. Packet /private/tmp/alchemy-metal-material-table-app-build-20261110.y_8erv9x.
@@ -40,29 +41,25 @@ metallib3932018186338255b0523028441e5376393a51c2b3ddbad2ad538f1c530376c2.
 Normal source recordingOFF/C++23/O3/NDEBUG/arm64/min26.0; independent review
 of actual referenced response files/source stamp/app identity passed.
 
-## Active implementation checkpoint
+## Latest implementation decision
 
-Commit1407 adds immutable8/32-texture covered-shadow material argument buffers
-shared through FrameData across main/probe/hero views. Existing native command
-queue, draw stream, constants, shader coverage/depth math and quality remain.
-Keys use actual retained native views/samplers; completion leases, previous-frame
-TTL,1024slot/4MiB physical caps and direct capacity/allocation choices preserve
-ownership. Count1 stays direct. No productionMetal4 migration.
-Pass-local flat scratch removes per-material map-node allocations. Exact key
-collision equality, first-source order and full input/native validation remain.
+Whole-shadow parallel encoding was implemented and exercised with exact original
+caster/order semantics. Root prepared immutable data; one worker and the main
+thread encoded ordered native children. API/GPU validation passed435842
+assertions/103cases, including failure/retry and two views before one commit.
+Two280-sample quiet trials included complete preparation. Initial parallel CPU
+cost regressed+19.20% at640 draws/+13.39% at4096. A validation-slot cache reduced
+this to+9.71% at640; apparent4096 gain−4.45% overlapped SAMEparallel drift−5.24%.
+No general benefit established: no viewer trial or production admission.
 
-Both optimized native API+GPU suites pass435459assertions/102cases for exact
-helper75dc. Release51506build/FULL24530=0;RWDI23445build/full0. Packet hixepcef.
-Extracted actual-source collision CPU fixture compile/run0. Same actual-renderer
-benchmark hostf5 passed10strictR32/CPUoraclepairs and196quiet samples94009=0.
-Per4096draw precommit: hot8 2.229→1.333ms(−40.21%); hot32 7.233→2.199(−69.60%);
-fresh512 6.466→4.455(−31.10%); once-use4096pressure6.414→7.869(+22.68%).
-All7pressure pairs regress: +1.455ms is a known cost. Separate retirement and
-diagnostic cleanup remain visible; precommit is not whole-viewer CPU/FPS.
-Prior high-fill fixture suggests modest32-slot GPU cost (~4%/~.004ms/pass amid
-control noise). The completed viewer trial demonstrated no FPS gain. Keep the cache opt-in;
-no universal non-regression or release-performance claim.
-[Implementation, failures and evidence](archive/CURRENT-material-argument-buffers-2026-11-10.md).
+Both exact13-file candidates are frozen privately. Root reverse-applied the
+prototype; all `indra` files match06d16. Normal68606 is unchanged. Ninja test
+artifacts still contain the prototype: REBUILD before source-exact reuse.
+Ten raw packets are SHA-verified under ignored
+artifacts/metal/private-whole-shadow-encoding-20261110/.
+[Tests, costs and limits](archive/CURRENT-parallel-shadow-encoding-2026-11-10.md).
+The material cache remains explicit opt-in; its earlier micro wins did not yield
+viewer benefit. [Cache history](archive/CURRENT-material-argument-buffers-2026-11-10.md).
 
 ## Viewer measurements and limits
 
@@ -122,21 +119,21 @@ binding: unsupported target stalled7654s despite a60s timeout; no mode changed.
 
 ## Exact next actions
 
-1. Commit tested direct-default/sampler isolation; normal doctor/configure/build/
-   verify/signature. Current code source differs from experimental68605 binary.
-2. Rebase PRIVATE whole-shadow2ordered-child implementation JWu6Cm and fullmixed
-   fixture uo39l8qz onto that new checkpoint. Do not copy old full source files.
-   Core/bridge/fixture are SOURCE-reviewed, NEVER compiled/GPU-tested; preserve
-   all caster families/ordering/ownership and price complete preparation cost.
-3. Immutable standard probeUBO1 fixture nc81mpp0 passed200strict pairs/168GPU
-   timings0, but no repeatable gain (all paired ranges crosszero). Reject public
-   metadata flag; no rerun/register/FPS claim. Auditv8ggv6hj.
-4. Continue measured general CPU/GPU work toward20FPS with all original features.
+1. Stage-timestamp fixture veybvjku compiled/ran0 with API+GPU validation:
+   eight actual samples/two passes, exact pixels/cancel and clock calibration.
+   Integrate the private bounded/default-off timing helper and native hooks;
+   collect actual frame/view/face/pass intervals after the formal-ready gate.
+   No unsupported per-draw/statistic/utilization sampling or stage-time sums.
+2. Do not revive the rejected parallel prototype or rerun its cost variants.
+   Immutable regular probeUBO1 was also rejected after200strict/168timing pairs.
+3. Continue GPU attribution and general CPU/GPU work toward20FPS, preserving all
+   original features. Completed-command sums and overlapping stage intervals
+   cannot be treated as whole-frame GPU active time.
 
 Retain binding cache/arenas/main occlusion/Ultra4xaniso/bounded lights/directR32/
 borrowed targets/image-global memory accounting/cubeSSAO/per-view probe repair.
-NativeD32 changes raw-depth reference; no migration/epsilon waiver. Whole-shadow
-parallel encoding and ordinary-face batching proposals remain source-only.
+NativeD32 changes raw-depth reference; no migration/epsilon waiver. Parallel
+shadow encoding was GPU-tested but rejected on cost; ordinary-face batching is open.
 
 ## Complete-product advancement assessment
 
@@ -145,7 +142,7 @@ parallel encoding and ordinary-face batching proposals remain source-only.
 | M-004 Resource ownership | doing | Completion-safe material cache validated; actual net frame benefit open. |
 | M-008 Advanced views/effects | doing | All six hero faces retained; mirror GPU/CPU cost remains open. |
 | M-012 Native UI automation | complete | Exact viewer fullscreen/login/camera flow; avoid unsupported system helpers. |
-| M-014 Ultra20FPS campaign | doing |Cache trial9.07vscontrol9.41; direct default restored; larger encoding work pending. |
+| M-014 Ultra20FPS campaign | doing |Direct68606 restored; parallel candidate rejected; stage timing is next. |
 
 Full pixel/feature parity, multi-scene performance, prolonged stability, strict no-GL
 and independent build/review evidence remain OPEN. No OpenGL/Vulkan/Rosetta

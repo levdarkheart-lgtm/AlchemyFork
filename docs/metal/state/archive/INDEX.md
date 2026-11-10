@@ -6,6 +6,7 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| Rejected whole-shadow parallel encoding, restored68606 baseline and actual stage-timestamp validation,2026-11-10 | [CURRENT-parallel-shadow-encoding-2026-11-10.md](CURRENT-parallel-shadow-encoding-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Apple-primary research and unmeasured Game Mode launch/opt-in confound,2026-11-10 | [CURRENT-apple-metal-research-2026-11-10.md](CURRENT-apple-metal-research-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Material-table implementation, full native correctness and unacceptable cold-cost diagnosis,2026-11-10 | [CURRENT-material-argument-buffers-2026-11-10.md](CURRENT-material-argument-buffers-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Focused base-light capture and bounded SSR experiment,2026-11-09 | [CURRENT-selected-base-capture-2026-11-09.md](CURRENT-selected-base-capture-2026-11-09.md) | `docs/metal/state/CURRENT.md` |

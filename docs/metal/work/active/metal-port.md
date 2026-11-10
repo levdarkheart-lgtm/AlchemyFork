@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `1407fca9cf9a5daf4413f760155b5cc03a4a073d`.
+**Renderer checkpoint:** Commit `06d16eb4cb20f4dfe47b4ce71e86e1420eb9e060`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -22,7 +22,7 @@
 | M-011 | Remaining owned GL authority | doing | Native resources/window/rendering; strict remaining-tail audit open. |
 | M-012 | Native UI automation | complete | Exact fullscreen/login/Preset123 flow; unsupported system-helper targeting avoided. |
 | M-013 | RLVa parity | deferred | Owner essential-first ordering; retained functionality still required. |
-| M-014 | Ultra20FPS campaign | doing | Cache trial found noFPSwin; directdefault restored;20FPS unmet. |
+| M-014 | Ultra20FPS campaign | doing | Direct68606 restored; parallel CPU trial rejected;20FPS unmet. |
 
 States describe evidence; a bounded completed item never implies product completion.
 
@@ -65,7 +65,9 @@ Candidate mean draws+2.53%; no isolated regression or FPS gain claim. Allviewers
 CLOSED/exactexits+allplansrestored. Both post-sampleCPU10s traces0; hero~50%main.
 Restored material_buffers=false and ordinarydiffusesamplerABfalse in source;
 optional material sampler is lazy, quality-matched and safely reset onanisotropy.
-BOTHoptimizedAPI+GPU435462/102PASS; sourceapproved, normal rebuild pending.
+BOTHoptimizedAPI+GPU435462/102PASS; sourceapproved, committed06d16eb4cb.
+Normal68606 doctor/configure/build/verify/signature all0;39343terminal0,
+349ARM64/0bad, executableac719b12/library3932; no liveFPScomparison yet.
 
 Earlier admitted68601/source77977290 ready300:9.833798FPS/mean101.690106ms.
 Preserved/private/tmp/alchemy-metal-68601-normal-preserved.app, exef277/lib61c5.
@@ -87,21 +89,24 @@ primary lead. Unsupported ControlCenter CUA inspection stalled; do not retry it.
 
 ## Immediate executable action
 
-Commit tested direct-default/sampler isolation, normalbuild/verify. Rebase private
-whole-shadow2ordered-child implementation+mixedfixture onto newcheckpoint;
-source-reviewed ONLY, no compiler/GPU/performance proof. Rootpreparation/pinning,
-allcasterfamilies/order/cancel/oneparentCB/completecost gates remain mandatory.
-Private immutable regularprobeUBO1 test nc81mpp0 passed200strict/168timings0 but
-allpairedrangescrosszero: reject publicflag, no repeat/register/FPS claim.
-Latestaudits ro6wnbu4/znv_94xq/v8ggv6hj and profiles rf4lnbpm/84up2rjj.
+Standalone stage-timestamp fixture veybvjku compiled/ran0 with actual API+GPU
+validation: eight samples/two passes, exact pixels/cancel and clock calibration.
+Integrate the private explicit bounded timing helper and default-off native
+encoder/frame/view hooks. No renderer hook exists yet; no extra waits/commits
+or unsupported draw/utilization counters. Collect only after formal samples.
 
-Prior continuous CPU evidence (~77ms sampled/frame) predates1407 and is not a new
-CPU floor. Completed-command GPU sums overlap; no causal shader-ms inference.
-Prior hero specialization reduced registers but viewer FPS was flat and spill
-remained. SH/predecode/namedaccumulator/scalarcursor/simplemask/ambient variants
-remain rejected; mainUltraSSR0. Whole-shadow parallel/ordinary-face batching
-proposals remain private source-only, not implemented performance features.
-Full historical tests/captures/failures and exact commands live in indexed archives.
+Parallel shadow prototype was compiled/GPU-tested435842/103, including two views
+before one commit. First full-preparation CPU trial regressed+19%/+13%; bounded
+slot-cache revision still+9.71% at640 and4096 apparent−4.45% overlapped identical
+path drift−5.24%. Both280-sample runs passed parity/provenance/thermal checks.
+Rejected/no viewer trial. Exact13-file prototype removed; `indra` equals06d16.
+Normal68606 preserved/independently verified. Ninja artifacts remain experimental
+and need rebuilding before reuse. Ten private evidence packets are preserved.
+[Complete trial](../../state/archive/CURRENT-parallel-shadow-encoding-2026-11-10.md).
+
+Prior sampledCPU/frame and overlapping completed-command sums are not a current
+CPU floor or causal GPU budget. Closed shader/register/mask/mutability variants
+remain rejected. Full pixel/feature parity and release gates remain open.
 
 ## Non-negotiable open gates
 
