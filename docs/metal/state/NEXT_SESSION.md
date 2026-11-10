@@ -2,7 +2,9 @@
 
 Read AGENTS.md and CURRENT.md completely. Branch codex/apple-silicon-metal.
 Renderer checkpoint2c60e47b0eac61f3a62b504163504516d1729bed; canonical Release
-26.4.0.68643 built, verified ARM64 and signed. Owner closed68638;68643 is CLOSED.
+26.4.0.68643 built, verified ARM64 and signed. Owner closed68638, then explicitly
+requested new launch: exact68643/hash verified, PID48817 viaCUA, now at LOGIN.
+Root performed no login or settings/location changes. CUA phase completed.
 No automatic launch just for source audit. All earlier repairs remain included.
 Translator stopped, Xcode replay off, earlier20FPS goal stays paused.
 No account/cache/settings/camera/location changes during this repair.

@@ -5,8 +5,9 @@
 **Renderer code checkpoint:** `2c60e47b0eac61f3a62b504163504516d1729bed`.
 All previous renderer/HUD/loading/UI/environment/performance repairs retained.
 Earlier20FPS campaign stays paused. Translator stopped; Xcode replay stopped.
-Owner closed68638; process check confirmed no viewer running. New68643 remains
-closed. No account/cache/settings/camera/region changes during these repairs.
+Owner closed68638. At the owner’s next explicit request, exact68643/hash was
+launched viaCUA, PID48817; login window/title observed. No login performed.
+No account/cache/settings/camera/region changes during this launch.
 
 ## Confirmed avatar contract repaired
 
@@ -77,7 +78,7 @@ d497d2122e and2c60e47b0e are local; no new push or release claimed.
 
 ## Exact next actions
 
-Keep68643 closed unless owner requests a launch/test. Next live acceptance must
+68643 is now running at login for the owner. Next live acceptance must
 verify the previously identified avatar and outfit/loading/teleport geometry,
 HUD transparency, UI/movement/resize responsiveness, names and real parcel music.
 Capture exact-build logs; bounded backend success does not close those symptoms.

@@ -24,10 +24,11 @@ parcel playback remains open. [Camera/voice audit](teleport-camera-voice-audit.m
 found no changed teleport interpolation or voice contract; functional voice and
 actual fly-in diagnosis remain open, no guessed changes applied.
 
-Canonical Release68643 source2c60e47 is built/verified/signed and remains closed.
+Canonical Release68643 source2c60e47 is built/verified/signed; owner subsequently
+requested launch. Exact hash/PID48817 and login window verified; no login by root.
 Doctor/configure/build/verify_app/deep signature all0;349 Mach-O files ARM64.
 Private commands/logs/hashes: private-classic-avatar-position-w-20261110-01.
-Owner closed68638; no current viewer process, account/cache/settings/camera
+Owner closed68638;68643 now at login, no account/cache/settings/camera
 changes or performance campaign resumption. Translator stopped; replay off.
 
 [Failed68638 live result](travel-live-68638.md) remains failed; bounded GPU proof
@@ -82,7 +83,7 @@ do not establish visual acceptance, product completion or FPS gains.
 
 ## Immediate executable action
 
-Leave68643 closed pending owner-directed testing. Verify previously corrupt
+68643 runs at login for owner-directed testing. Verify previously corrupt
 avatar, outfit/teleport loading, HUDs, input/resize, names and real parcel music
 with exact-build logs. If camera symptom persists, correlate camera pose and
 published world source-frame/region; original camera code is unchanged. Voice
