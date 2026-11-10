@@ -22,7 +22,7 @@
 | M-011 | Remaining owned GL authority | doing | Native resources/window/rendering; strict remaining-tail audit open. |
 | M-012 | Native UI automation | complete | Exact fullscreen/login/Preset123 flow; unsupported system-helper targeting avoided. |
 | M-013 | RLVa parity | deferred | Owner essential-first ordering; retained functionality still required. |
-| M-014 | Ultra20FPS campaign | doing | 68608 measured9.0695; early-depthstrictfixture underway;20FPS unmet. |
+| M-014 | Ultra20FPS campaign | doing | Water68610 measured9.7853 vsfresh9.2573; addressvariant rejected; PBR FC0 next;20FPS unmet. |
 
 States describe evidence; a bounded completed item never implies product completion.
 
@@ -129,8 +129,18 @@ retain workload caveat. Independent129db056 recommends RETAIN;20FPS unmet.
 Post-formal CPU+baselinecoupledMetaltrace captured/exported0. Matched2461CBs,
 GPUActiveunion87.60% (not utilization); two profiler-metadata pauses retained.
 All viewers/profilers/build/GPUtests stopped. Next bounded GPU address candidate.
-No viewer gain yet. [Water evidence](../../state/archive/CURRENT-water-probe-specialization-2026-11-10.md).
-Separate main-base address candidate/fixtures remain private only.
+[Water evidence](../../state/archive/CURRENT-water-probe-specialization-2026-11-10.md).
+Main-base probe address-space candidate was implemented and compiled0. Actual
+API+GPU40strict+6large pairs passed3319/1 after two fixture-input corrections.
+Quiet168samples passed5521/1, but both dense cases were slower in all7blocks;
+mean GPU+5.205/+5.876%, no CPU gain,162out-of-target rows retained. Rejected;
+all4sourcefiles restored byte-exactly7772, no viewer trial. Ninja test artifacts
+are still experimental and require rebuilding. [Evidence](../../state/archive/CURRENT-probe-address-space-rejection-2026-11-10.md).
+Stable7772 was pushed at owner request; unfinished experiments excluded. The
+owner chose manual existing alpha-workflow dispatch because CLI/browser lacked login.
+Next implement missing PBR color-alpha FC0 specialization after private source/test
+review. Preserve actual bound pack bit4/count>1 guards, main/default/no-shadow paths,
+exact original cube single-tap and shader math. Root owns shared source/GPU.
 
 Parallel shadow prototype was compiled/GPU-tested435842/103, including two views
 before one commit. First full-preparation CPU trial regressed+19%/+13%; bounded

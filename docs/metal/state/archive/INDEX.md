@@ -6,6 +6,7 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| Probe-buffer address-space implementation, strict GPU parity and slower dense-work rejection; stable GitHub push,2026-11-10 | [CURRENT-probe-address-space-rejection-2026-11-10.md](CURRENT-probe-address-space-rejection-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Rejected whole-shadow parallel encoding, restored68606 baseline and actual stage-timestamp validation,2026-11-10 | [CURRENT-parallel-shadow-encoding-2026-11-10.md](CURRENT-parallel-shadow-encoding-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Apple-primary research and unmeasured Game Mode launch/opt-in confound,2026-11-10 | [CURRENT-apple-metal-research-2026-11-10.md](CURRENT-apple-metal-research-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Material-table implementation, full native correctness and unacceptable cold-cost diagnosis,2026-11-10 | [CURRENT-material-argument-buffers-2026-11-10.md](CURRENT-material-argument-buffers-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
