@@ -15776,6 +15776,191 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(unbuilt_water_red > shadowed_water_red);
         CHECK(std::abs(unbuilt_water_red - fallback_water_red) < 0.002f);
 
+        // Water uses the same exact single-tap contract as cube alpha, including
+        // mirror-clipped water. Compare actual renderer outputs and selected PSOs.
+        {
+            struct RestoreWaterProbeTiming
+            {
+                bool saved = ALMetalDevice::commandTimingEnabled();
+                ~RestoreWaterProbeTiming() { ALMetalDevice::setCommandTimingEnabled(saved); }
+            } restore_water_probe_timing;
+            ALMetalDevice::setCommandTimingEnabled(true);
+            struct WaterProbePixels
+            {
+                std::array<std::uint16_t, 32 * 32 * 4> color{};
+                std::array<std::uint32_t, 32 * 32> depth{};
+                std::array<std::uint8_t, 32 * 32> stencil{};
+                bool operator==(const WaterProbePixels&) const = default;
+            };
+            auto checker_descriptor = shadow_descriptor;
+            checker_descriptor.label = "Water probe-shadow specialization checkerboard";
+            auto checker_depth = ALMetalTexture::create(*device, checker_descriptor, &error);
+            REQUIRE(checker_depth);
+            std::array<float, 8 * 8> checker{};
+            for (std::size_t y = 0; y < 8; ++y) for (std::size_t x = 0; x < 8; ++x)
+                checker[y * 8 + x] = ((x + y) & 1u) ? 1.f : 0.25f;
+            auto upload_checker = device->makeCommandBuffer("Water shadow checker upload", &error);
+            REQUIRE(upload_checker);
+            for (std::uint32_t layer = 0; layer < 4; ++layer)
+                REQUIRE(checker_depth->upload(*upload_checker, 0, layer, {},
+                    checker.data(), 8 * sizeof(float), &error));
+            REQUIRE(upload_checker->commitAndWait(&error));
+
+            auto local_scene = opaque_forward_scene;
+            auto local_water = above_water_surface;
+            auto local_probes = reflection_probes;
+            auto local_shadows = directional_shadows;
+            local_probes.constants.config[0] = 2.f;
+            local_shadows.depth_texture = checker_depth.get();
+            local_water.uses_shadows = true;
+            local_scene.water_surface = &local_water;
+            local_scene.reflection_probes = &local_probes;
+            local_scene.alpha_directional_shadows = &local_shadows;
+            local_scene.diagnostic_frame_index = 40000u;
+            local_scene.diagnostic_view_kind = 2u;
+            local_scene.diagnostic_view_index = 5u;
+            CHECK_FALSE(local_scene.probe_water_shadow_specialization);
+            const auto snapshot = [&](ALMetalRenderTarget& target)
+            {
+                WaterProbePixels pixels;
+                REQUIRE(target.colorTexture(0)->readback(*device, 0, 0, {},
+                    pixels.color.data(), 32 * 8, &error));
+                bool finite_color = true;
+                for (auto value : pixels.color) finite_color &= std::isfinite(half_to_float(value));
+                CHECK(finite_color);
+                REQUIRE(target.depthStencilTexture()->readback(*device, 0, 0, {},
+                    pixels.depth.data(), 32 * 4, &error));
+                id<MTLDevice> native = (__bridge id<MTLDevice>)device->nativeHandle();
+                id<MTLBuffer> plane = [native newBufferWithLength:256 * 32 options:MTLResourceStorageModeShared];
+                REQUIRE(plane);
+                id<MTLCommandQueue> queue = (__bridge id<MTLCommandQueue>)device->nativeCommandQueue();
+                id<MTLCommandBuffer> command = [queue commandBuffer];
+                id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder]; REQUIRE(blit);
+                [blit copyFromTexture:(__bridge id<MTLTexture>)target.depthStencilTexture()->nativeHandle()
+                    sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0)
+                    sourceSize:MTLSizeMake(32,32,1) toBuffer:plane destinationOffset:0
+                    destinationBytesPerRow:256 destinationBytesPerImage:256*32
+                    options:MTLBlitOptionStencilFromDepthStencil];
+                [blit endEncoding]; [command commit]; [command waitUntilCompleted];
+                REQUIRE(command.status == MTLCommandBufferStatusCompleted);
+                for (std::size_t row = 0; row < 32; ++row)
+                    std::memcpy(pixels.stencil.data() + row * 32,
+                        static_cast<const std::uint8_t*>(plane.contents) + row * 256, 32);
+                return pixels;
+            };
+            const auto render_water = [&](bool enabled, bool expected_probe)
+            {
+                local_scene.probe_water_shadow_specialization = enabled;
+                ++local_scene.diagnostic_frame_index;
+                auto target = renderer->renderOpaquePostDeferred(local_scene, &error);
+                INFO(error); REQUIRE(target);
+                const auto observed = renderer->opaquePostDiagnostics().water_shadow_pso;
+                CHECK(observed.valid);
+                CHECK(observed.source_frame_index == local_scene.diagnostic_frame_index);
+                CHECK(observed.source_view_kind == local_scene.diagnostic_view_kind);
+                CHECK(observed.source_view_index == local_scene.diagnostic_view_index);
+                CHECK(observed.mirror_clip == local_scene.mirror_clip);
+                CHECK(observed.underwater == local_water.underwater);
+                const std::size_t state = expected_probe ? 2u : 0u;
+                for (std::size_t bucket = 0; bucket < observed.draws.size(); ++bucket)
+                {
+                    const auto expected = bucket == state ? local_water.field.draw_count
+                        : bucket == 3u + state && local_water.waves ? 1u : 0u;
+                    CHECK(observed.draws[bucket] == expected);
+                }
+                return snapshot(*target);
+            };
+            const auto compare_water = [&](bool eligible)
+            {
+                const auto baseline = render_water(false, false);
+                CHECK(render_water(true, eligible) == baseline);
+                return baseline;
+            };
+            for (bool reverse : {false, true}) for (bool waves : {false, true})
+            {
+                CAPTURE(reverse, waves);
+                local_water = waves ? above_water_wave : above_water_surface;
+                local_water.uses_shadows = true;
+                local_scene.alpha_directional_shadows = &local_shadows;
+                local_scene.gbuffer = reverse ? reverse_coverage_result.get() : coverage_result.get();
+                local_scene.reverse_z = reverse;
+                local_shadows.constants.config[2] = reverse ? 1u : 0u;
+                // Keep eye-space shading unchanged while emitting valid native
+                // reverse-Z clip depth for the existing negative-height field.
+                local_water.field.modelview_projection[14] = reverse ? 1.f : 0.f;
+                std::array<std::uint32_t, 32 * 32> input_depth{};
+                REQUIRE(local_scene.gbuffer->depthStencilTexture()->readback(*device, 0, 0, {},
+                    input_depth.data(), 32 * 4, &error));
+                WaterProbePixels unclipped{};
+                for (bool mirror : {false, true})
+                {
+                    CAPTURE(mirror);
+                    local_scene.mirror_clip = mirror;
+                    local_scene.mirror_clip_plane[0] = 1.f;
+                    local_scene.mirror_clip_plane[1] = local_scene.mirror_clip_plane[2] =
+                        local_scene.mirror_clip_plane[3] = 0.f;
+                    local_scene.diagnostic_view_kind = 2u;
+                    local_scene.diagnostic_view_index = 5u;
+                    local_shadows.constants.config[0] = 2;
+                    local_shadows.constants.config[1] = 0x2u;
+                    local_shadows.constants.config[3] = 3u |
+                        ALMetalWorldDirectionalShadowConstants::probe_single_tap;
+                    const auto cube = compare_water(true);
+                    CHECK(render_water(false, false) == cube);
+                    CHECK(render_water(true, true) == cube);
+                    if (!mirror) unclipped = cube;
+                    else
+                    {
+                        bool saw_rejected = false, saw_kept = false;
+                        for (std::size_t y = 0; y < 32; ++y) for (std::size_t x = 0; x < 32; ++x)
+                        {
+                            const auto pixel = y * 32 + x;
+                            if (x < 16)
+                            {
+                                CHECK(cube.depth[pixel] == input_depth[pixel]);
+                                saw_rejected |= unclipped.depth[pixel] != input_depth[pixel];
+                            }
+                            else
+                            {
+                                CHECK(cube.depth[pixel] == unclipped.depth[pixel]);
+                                saw_kept |= cube.depth[pixel] != input_depth[pixel];
+                            }
+                        }
+                        CHECK(saw_rejected); CHECK(saw_kept);
+                    }
+                    local_scene.diagnostic_view_kind = 1u;
+                    local_scene.diagnostic_view_index = 0u;
+                    local_shadows.constants.config[0] = 4;
+                    local_shadows.constants.config[1] = 0xeu;
+                    local_shadows.constants.config[3] = 3u; // Real main PCSS remains runtime.
+                    const auto main = compare_water(false);
+                    CHECK(main.depth == cube.depth);
+                    if (!reverse && !waves && !mirror) CHECK(main.color != cube.color);
+                    local_scene.diagnostic_view_kind = 2u;
+                    local_scene.diagnostic_view_index = 5u;
+                    local_shadows.constants.config[0] = 2;
+                    local_shadows.constants.config[1] = 0x2u;
+                    local_shadows.constants.config[3] |=
+                        ALMetalWorldDirectionalShadowConstants::probe_single_tap;
+                    CHECK(render_water(true, true) == cube); // main -> probe cache isolation.
+                    local_probes.constants.config[0] = 1.f;
+                    compare_water(false); // Default-only remains on its original runtime PSO.
+                    local_probes.constants.config[0] = 2.f;
+                }
+                local_water.uses_shadows = false;
+                local_scene.alpha_directional_shadows = nullptr;
+                compare_water(false);
+            }
+            // Underwater never uses the above-water directional-shadow FS.
+            local_water = underwater_surface;
+            local_water.has_excluded_surface = false;
+            local_scene.alpha_directional_shadows = nullptr;
+            local_scene.gbuffer = coverage_result.get();
+            local_scene.reverse_z = false;
+            compare_water(false);
+        }
+
+
         above_water_surface.uses_shadows = false;
         opaque_forward_scene.alpha_directional_shadows = nullptr;
         directional_shadows.constants.config[1] = 0xeu;

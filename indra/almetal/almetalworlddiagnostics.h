@@ -54,6 +54,18 @@ struct ALMetalWorldSimpleShadowPSOCensus
     std::array<ALMetalWorldEncodedDrawCensus, bucket_count> draws{};
 };
 
+// Latest successful opt-in water PSO observation, not GPU invocations.
+struct ALMetalWorldWaterShadowPSOCensus
+{
+    bool valid = false, mirror_clip = false, underwater = false;
+    bool uses_shadows = false;
+    std::uint64_t source_frame_index = 0, sample_sequence = 0;
+    std::uint32_t source_view_kind = 0, source_view_index = 0;
+    std::uint32_t probe_count = 0, shadow_flags = 0;
+    // Actual selected descriptor: flat/wave x optional bool0 undefined/false/true.
+    std::array<std::uint64_t, 6> draws{};
+};
+
 struct ALMetalWorldPostDiagnostics
 {
     static constexpr std::size_t family_count =
@@ -80,6 +92,7 @@ struct ALMetalWorldPostDiagnostics
     // Latest successfully encoded call per main(1), hero(6), ordinary(6)
     // view. Each entry has its own tuple; these are not synchronized frames.
     std::array<ALMetalWorldSimpleShadowPSOCensus, 13> simple_shadow_psos{};
+    ALMetalWorldWaterShadowPSOCensus water_shadow_pso;
     std::array<std::uint64_t, family_count> batches{}, indices{};
     std::array<std::uint64_t, family_count> initial_batches{};
     // Initial, water-haze, atmospheric-haze, water-surface encoder segments.

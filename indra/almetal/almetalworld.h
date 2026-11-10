@@ -1345,6 +1345,9 @@ struct ALMetalWorldOpaquePostDeferredScene
     // Keep the combined depth plane shader-readable so the completed target
     // can become the next frame's coherent SSR color/depth history pair.
     bool publish_screen_space_reflection_history = false;
+    // Opt into the validated above-water probe single-tap specialization.
+    // The runtime variant remains available for isolated parity comparisons.
+    bool probe_water_shadow_specialization = false;
     bool wireframe = false;
     // Optional CPU-only provenance for bounded diagnostic snapshots.
     // View kind: 0 unknown, 1 main, 2 hero face, 3 ordinary reflection face.

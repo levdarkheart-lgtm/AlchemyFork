@@ -8696,6 +8696,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.composed_light_target)
     {
         ALMetalWorldOpaquePostDeferredScene scene;
+        scene.probe_water_shadow_specialization = true;
         scene.diagnostic_frame_index = gFrameCount;
         scene.diagnostic_view_kind = capture.hero_probe_face_capture ? 2
             : capture.reflection_probe_face_capture ? 3 : isMainWorldPass() ? 1 : 0;
@@ -8980,6 +8981,35 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         }
         else
         {
+            // Report actual specialized water draws once per probe view during
+            // opt-in benchmark collection. This never runs in ordinary play.
+            if (ALMetalDevice::commandTimingEnabled() &&
+                (scene.diagnostic_view_kind == 2u || scene.diagnostic_view_kind == 3u) &&
+                scene.diagnostic_view_index < 6u && scene.reflection_probes &&
+                scene.reflection_probes->constants.config[0] > 1.f &&
+                scene.water_surface && scene.water_surface->uses_shadows &&
+                !scene.water_surface->underwater)
+            {
+                static std::array<bool, 12> reported{};
+                const auto slot = (scene.diagnostic_view_kind - 2u) * 6u +
+                    scene.diagnostic_view_index;
+                if (!reported[slot])
+                {
+                    const auto selected = capture.renderer->opaquePostDiagnostics().water_shadow_pso;
+                    if (selected.valid && selected.source_frame_index == scene.diagnostic_frame_index &&
+                        selected.source_view_kind == scene.diagnostic_view_kind &&
+                        selected.source_view_index == scene.diagnostic_view_index &&
+                        (selected.draws[2] || selected.draws[5]))
+                    {
+                        LL_INFOS("MetalPost") << "Native water probe PSO selected: frame="
+                            << selected.source_frame_index << ", view=" << selected.source_view_kind
+                            << '/' << selected.source_view_index << ", probe_count=" << selected.probe_count
+                            << ", shadow_flags=" << selected.shadow_flags << ", mirror=" << selected.mirror_clip
+                            << ", flat=" << selected.draws[2] << ", wave=" << selected.draws[5] << LL_ENDL;
+                        reported[slot] = true;
+                    }
+                }
+            }
             capture.display_post_target.reset();
             capture.display_post_frame =
                 std::numeric_limits<U32>::max();

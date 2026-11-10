@@ -1713,6 +1713,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::uint64_t opaque_diagnostic_calls = 0;
     ALMetalWorldPostDiagnostics opaque_diagnostics;
     std::array<ALMetalWorldSimpleShadowPSOCensus, 13> simple_shadow_pso_diagnostics{};
+    ALMetalWorldWaterShadowPSOCensus water_shadow_pso_diagnostics;
     const bool opaque_family_split_requested = []()
     {
         const char* value = std::getenv("ALCHEMY_METAL_POST_FAMILY_ENCODERS");
@@ -1880,6 +1881,10 @@ struct ALMetalWorldGBufferRenderer::Impl
         underwater_wave_water_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         above_water_wave_water_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        probe_above_water_flat_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        probe_above_water_wave_pipelines;
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         pre_water_fullbright_pipelines;
     std::array<std::array<
@@ -1994,6 +1999,34 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalTexture> inactive_ssr_color;
     std::unique_ptr<ALMetalTexture> inactive_ssr_depth;
     ALMetalWorldScreenSpaceReflectionConstants inactive_ssr_constants{};
+
+    ALMetalRenderPipeline* probeAboveWaterPipeline(
+        bool hdr, bool waves, std::string* error)
+    {
+        auto& cached = (waves ? probe_above_water_wave_pipelines
+                              : probe_above_water_flat_pipelines)[hdr ? 1u : 0u];
+        if (!cached)
+        {
+            const auto* runtime = (waves ? above_water_wave_water_pipelines
+                                         : above_water_flat_water_pipelines)[hdr ? 1u : 0u].get();
+            if (!runtime)
+            {
+                setError(error, "Probe water requires the original above-water pipeline");
+                return nullptr;
+            }
+            // Copy every actual format/blend/tessellation/entry-point field.
+            // Only immutable shadow filtering mode differs from the runtime PSO.
+            auto descriptor = runtime->descriptor();
+            // Stored pipeline metadata deliberately omits its library pointer.
+            descriptor.library = library.get();
+            descriptor.fragment_bool_constants = {{probe_shadow_function_constant, true}};
+            descriptor.label = waves
+                ? "Alchemy world probe single-tap wave above-water pipeline"
+                : "Alchemy world probe single-tap flat above-water pipeline";
+            cached = ALMetalRenderPipeline::create(*device, descriptor, error);
+        }
+        return cached.get();
+    }
 
     ALMetalRenderPipeline* customPreWaterAlphaPipeline(
         PreWaterAlphaFamily family, bool hdr, bool rigged,
@@ -2197,6 +2230,7 @@ ALMetalWorldGBufferRenderer::opaquePostDiagnostics() const noexcept
     {
         stats.encoded_calls = mImpl->opaque_diagnostic_calls;
         stats.simple_shadow_psos = mImpl->simple_shadow_pso_diagnostics;
+        stats.water_shadow_pso = mImpl->water_shadow_pso_diagnostics;
     }
     return stats;
 }
@@ -16446,6 +16480,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     // inspection or counter initialization occurs in normal unarmed rendering.
     std::optional<ALMetalWorldSimpleShadowPSOCensus> selected_simple_shadow_psos;
     std::size_t selected_simple_shadow_view = 0;
+    std::optional<ALMetalWorldWaterShadowPSOCensus> selected_water_shadow_pso;
     if (ALMetalDevice::commandTimingEnabled() &&
         ((scene.diagnostic_view_kind == 1u && scene.diagnostic_view_index == 0u) ||
          ((scene.diagnostic_view_kind == 2u || scene.diagnostic_view_kind == 3u) &&
@@ -16464,6 +16499,20 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             ? scene.alpha_directional_shadows->constants.config[3] : 0u;
         selected_simple_shadow_view = scene.diagnostic_view_kind == 1u ? 0u
             : 1u + (scene.diagnostic_view_kind - 2u) * 6u + scene.diagnostic_view_index;
+    }
+    if (selected_simple_shadow_psos && has_water_surface)
+    {
+        selected_water_shadow_pso.emplace();
+        auto& census = *selected_water_shadow_pso;
+        census.valid = true;
+        census.source_frame_index = scene.diagnostic_frame_index;
+        census.source_view_kind = scene.diagnostic_view_kind;
+        census.source_view_index = scene.diagnostic_view_index;
+        census.probe_count = selected_simple_shadow_psos->probe_count;
+        census.shadow_flags = selected_simple_shadow_psos->shadow_flags;
+        census.mirror_clip = scene.mirror_clip;
+        census.underwater = scene.water_surface->underwater;
+        census.uses_shadows = scene.water_surface->uses_shadows;
     }
     for (std::size_t index = 0;
          encoded && index < scene.batch_count; ++index)
@@ -16960,6 +17009,24 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         : mImpl->above_water_wave_water_pipelines)
                         [scene.hdr ? 1 : 0].get()
                     : nullptr;
+            // Specialize the flag in the actual bound shadow pack; neither
+            // a cube label nor mirror-clipping state alone proves this mode.
+            // Keep the default-only short walk on its original runtime PSO.
+            const bool probe_water_shadow = scene.probe_water_shadow_specialization &&
+                !water.underwater && water.uses_shadows &&
+                scene.reflection_probes &&
+                scene.reflection_probes->constants.config[0] > 1.f &&
+                scene.alpha_directional_shadows &&
+                (scene.alpha_directional_shadows->constants.config[3] &
+                 ALMetalWorldDirectionalShadowConstants::probe_single_tap) != 0u;
+            if (probe_water_shadow)
+            {
+                flat_water_pipeline = mImpl->probeAboveWaterPipeline(scene.hdr, false, error);
+                if (water.waves)
+                    wave_water_pipeline = mImpl->probeAboveWaterPipeline(scene.hdr, true, error);
+                if (!flat_water_pipeline || (water.waves && !wave_water_pipeline))
+                    return fail_command();
+            }
             encoded =
                 encoder->setViewport(viewport, error) &&
                 encoder->setScissor(scissor, error) &&
@@ -17074,6 +17141,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         3, mImpl->point_clamp_sampler.get(), error);
             }
 
+            const auto record_water_draw = [&](const ALMetalRenderPipeline& pipeline, bool waves)
+            {
+                if (!selected_water_shadow_pso) return;
+                std::size_t constant_state = 0;
+                for (const auto& value : pipeline.descriptor().fragment_bool_constants)
+                    if (value.index == probe_shadow_function_constant)
+                        constant_state = value.value ? 2u : 1u;
+                ++selected_water_shadow_pso->draws[(waves ? 3u : 0u) + constant_state];
+            };
             const auto draw_water_field = [&]()
             {
                 bool drew = encoder->setPipeline(
@@ -17094,14 +17170,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                                 : ALMetalPrimitiveType::triangle,
                             0, draw_command.vertex_count,
                             draw_command.instance_count, error);
+                    if (drew) record_water_draw(*flat_water_pipeline, false);
                 }
                 return drew;
             };
 
             const auto draw_water_patches = [&]()
             {
-                return !water.waves ||
-                    (wave_water_pipeline && water_factor_buffer &&
+                if (!water.waves) return true;
+                const bool drew = wave_water_pipeline && water_factor_buffer &&
                      encoder->setPipeline(
                          *wave_water_pipeline, error) &&
                      mImpl->setVertexData(*encoder, *command,
@@ -17110,7 +17187,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                      encoder->setTessellationFactorBuffer(
                          *water_factor_buffer, 0, 0, error) &&
                      encoder->drawPatches(
-                         4, 0, water.patch_count, 1, 0, error));
+                         4, 0, water.patch_count, 1, 0, error);
+                if (drew) record_water_draw(*wave_water_pipeline, true);
+                return drew;
             };
 
             const ALMetalDepthStencilState* surface_depth = scene.reverse_z
@@ -19370,6 +19449,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         selected_simple_shadow_psos->sample_sequence = mImpl->opaque_diagnostic_calls;
         mImpl->simple_shadow_pso_diagnostics[selected_simple_shadow_view] =
             *selected_simple_shadow_psos;
+    }
+    if (selected_water_shadow_pso)
+    {
+        selected_water_shadow_pso->sample_sequence = mImpl->opaque_diagnostic_calls;
+        mImpl->water_shadow_pso_diagnostics = *selected_water_shadow_pso;
     }
     if (request_family_split)
     {
