@@ -635,6 +635,34 @@ void LLRenderPass::captureMetalHUDBatch(
             texture->setActive();
         }
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        if (texture && (!image || !image->getMetalTexture()))
+        {
+            // Match bindFast/bindDefaultImage while a streamed HUD asset is
+            // unpublished: request it and draw the normal placeholder. One
+            // pending texture must not stall the complete world/UI frame.
+            texture->forceImmediateUpdate();
+            image = texture->getGLTexture();
+            if (!image || !image->getMetalTexture())
+            {
+                if (image)
+                {
+                    image->forceUpdateBindStats();
+                }
+                LLViewerTexture* fallback =
+                    LLViewerFetchedTexture::sDefaultImagep.get();
+                image = fallback ? fallback->getGLTexture() : nullptr;
+                if ((!image || !image->getMetalTexture()) &&
+                    LLViewerTexture::sNullImagep.notNull())
+                {
+                    fallback = LLViewerTexture::sNullImagep.get();
+                    image = fallback->getGLTexture();
+                }
+                if (fallback)
+                {
+                    fallback->setActive();
+                }
+            }
+        }
         if (image)
         {
             image->forceUpdateBindStats();
