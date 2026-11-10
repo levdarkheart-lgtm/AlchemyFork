@@ -19426,6 +19426,31 @@ fragment float4 almetal_hud_pbr_alpha_fragment(
                float4(0.0));
 }
 
+// Exact deferred/pbropaqueF.glsl IS_HUD branch. Keep its cutoff bias,
+// post-coverage emissive sample and zero alpha distinct from PBR blend HUDs.
+fragment float4 almetal_hud_pbr_opaque_fragment(
+    ALMetalHUDPBRVaryings input [[stage_in]],
+    texture2d<float> base_color_texture [[texture(0)]],
+    texture2d<float> emissive_texture [[texture(1)]],
+    sampler color_sampler [[sampler(0)]],
+    constant ALMetalHUDPBRConstants& constants [[buffer(0)]])
+{
+    float4 base_color = base_color_texture.sample(
+        color_sampler, input.base_color_texcoord);
+    base_color.a *= input.color.a;
+    const float bias = 0.001953125; // 1/512, half an 8-bit quantization.
+    if (base_color.a < constants.material.x - bias)
+    {
+        discard_fragment();
+    }
+    float3 color = input.color.rgb * base_color.rgb;
+    float3 emissive = constants.emissive_color.rgb;
+    emissive *= emissive_texture.sample(
+        color_sampler, input.emissive_texcoord).rgb;
+    color += emissive;
+    return float4(almetal_linear_to_srgb(color), 0.0);
+}
+
 fragment float4 almetal_ui_fragment(
     ALMetalUIVaryings input [[stage_in]],
     texture2d<float> diffuse_map [[texture(0)]],

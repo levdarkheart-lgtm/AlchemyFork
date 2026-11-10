@@ -566,19 +566,21 @@ void LLRenderPass::captureMetalHUDBatch(
     bool pbr_alpha,
     F32 minimum_alpha,
     bool force_double_sided,
-    bool fullbright_shiny)
+    bool fullbright_shiny,
+    bool pbr_opaque)
 {
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     ALMetalHUDIndexedBatch batch;
-    batch.shader = pbr_alpha
-        ? ALMetalHUDShader::pbr_alpha
+    batch.shader = pbr_opaque
+        ? ALMetalHUDShader::pbr_opaque
+        : pbr_alpha ? ALMetalHUDShader::pbr_alpha
         : fullbright_shiny
         ? ALMetalHUDShader::fullbright_shiny
         : alpha_pool
         ? ALMetalHUDShader::fullbright_alpha
         : alpha_mask ? ALMetalHUDShader::fullbright_alpha_mask
                      : ALMetalHUDShader::fullbright;
-    batch.minimum_alpha = (alpha_pool || pbr_alpha)
+    batch.minimum_alpha = (alpha_pool || pbr_alpha || pbr_opaque)
         ? minimum_alpha : alpha_mask ? params.mAlphaMaskCutoff : 0.f;
 
     const bool complete_geometry = buffer && params.mCount &&
@@ -626,10 +628,20 @@ void LLRenderPass::captureMetalHUDBatch(
     const auto metal_texture = [](LLViewerTexture* texture)
         -> ALMetalTexture*
     {
+        if (texture)
+        {
+            // Direct native draws still count as visible texture use. Match
+            // bindFast's activity/residency updates without binding a slot.
+            texture->setActive();
+        }
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        if (image)
+        {
+            image->forceUpdateBindStats();
+        }
         return image ? image->getMetalTexture() : nullptr;
     };
-    if (pbr_alpha && params.mGLTFMaterial.notNull())
+    if ((pbr_alpha || pbr_opaque) && params.mGLTFMaterial.notNull())
     {
         LLFetchedGLTFMaterial* material = params.mGLTFMaterial.get();
         LLViewerTexture* base_color = params.mTexture.notNull()
@@ -685,7 +697,9 @@ void LLRenderPass::captureMetalHUDBatch(
 
     // Submit one exact native HUD batch. The caller owns the decision about
     // whether this is diagnostic mirroring or the authoritative draw.
-    gGL.drawMetalHUDIndexedBatch(batch);
+    gGL.drawMetalHUDIndexedBatch(
+        batch, force_double_sided ? ALSamplers::AnisoClamp
+                                  : ALSamplers::AnisoWrap);
 }
 
 void LLRenderPass::captureMetalHUDEmbossBatch(
@@ -700,6 +714,7 @@ void LLRenderPass::captureMetalHUDEmbossBatch(
     {
         LLViewerTexture* fallback =
             LLViewerFetchedTexture::sDefaultImagep.get();
+        bump_texture = fallback;
         bump_image = fallback ? fallback->getGLTexture() : nullptr;
     }
     if (!params.mCount || !buffer || !bump_image ||
@@ -716,6 +731,8 @@ void LLRenderPass::captureMetalHUDEmbossBatch(
         return;
     }
 
+    bump_texture->setActive();
+    bump_image->forceUpdateBindStats();
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(
         LLVertexBuffer::TYPE_VERTEX);

@@ -1171,19 +1171,14 @@ bool LLRender::restoreMetalUITextureCaptureDepth(
 }
 
 bool LLRender::drawMetalHUDIndexedBatch(
-    const ALMetalHUDIndexedBatch& batch)
+    const ALMetalHUDIndexedBatch& batch, ALSampler sampler_key)
 {
     if (!mMetalUICaptureRenderer)
     {
         return false;
     }
     ALMetalHUDIndexedBatch resolved = batch;
-    ALTextureSlot* texture_slot = getTextureSlot(0);
-    ALSamplerDesc sampler = ALSamplerCache::makeDesc(ALSamplers::AnisoWrap);
-    if (texture_slot)
-    {
-        mSamplerCache.describe(texture_slot->mCurrSampler, sampler);
-    }
+    const ALSamplerDesc sampler = ALSamplerCache::makeDesc(sampler_key);
     resolved.sampler = metal_sampler_descriptor(sampler);
     resolved.blend.enabled = LLGLState::isEnabled(GL_BLEND);
     resolved.blend.source_rgb = metal_blend_factor(

@@ -902,6 +902,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_hud_emboss_fragment",
             "almetal_hud_pbr_alpha_vertex",
             "almetal_hud_pbr_alpha_fragment",
+            "almetal_hud_pbr_opaque_fragment",
             "almetal_hud_debug_vertex",
             "almetal_hud_debug_skinned_vertex",
             "almetal_hud_debug_fragment",
@@ -34687,6 +34688,149 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(composed_pixels[center + 1] == 40u);
         CHECK(composed_pixels[center + 2] == 80u);
         CHECK(composed_pixels[center + 3] == 255u);
+
+        // The original pbropaqueF IS_HUD contract is separate from PBR blend:
+        // base alpha only gates MASK, the cutoff has a 1/512 bias, emissive is
+        // added after that gate, and the fragment returns alpha zero. Test
+        // with blend disabled so that alpha zero cannot hide a missing draw.
+        // The scalar PBR vertex ignores the existing packed selector=1.
+        auto opaque_zero_alpha = make_hud_texture(
+            "Alchemy opaque HUD zero-alpha base", {64, 128, 192, 0},
+            ALMetalPixelFormat::rgba8_unorm_srgb);
+        const std::array<std::uint32_t, 4> opaque_indices32_values{
+            {99u, 0u, 1u, 2u}};
+        ALMetalBufferDescriptor opaque_indices32_descriptor =
+            hud_index_descriptor;
+        opaque_indices32_descriptor.length = sizeof(opaque_indices32_values);
+        opaque_indices32_descriptor.label = "Alchemy HUD opaque U32 offset";
+        auto opaque_indices32 = ALMetalBuffer::create(
+            *device, opaque_indices32_descriptor, &error);
+        INFO(error);
+        REQUIRE(opaque_indices32);
+        REQUIRE(opaque_indices32->write(
+            0, opaque_indices32_values.data(),
+            sizeof(opaque_indices32_values), &error));
+
+        using HUDOpaquePixels = std::array<std::uint8_t, 32 * 32 * 4>;
+        using HUDOpaqueDepth = std::array<float, 32 * 32>;
+        const auto render_opaque_hud = [&](float cutoff, bool reverse_z,
+                                           bool index32, bool zero_alpha,
+                                           bool append_behind,
+                                           bool draw_first = true)
+        {
+            ALMetalHUDIndexedBatch opaque = hud_batch;
+            opaque.shader = ALMetalHUDShader::pbr_opaque;
+            opaque.minimum_alpha = cutoff;
+            opaque.blend.enabled = false;
+            opaque.blend.write_mask = ALMetalColorWriteMask::all;
+            opaque.depth.enabled = true;
+            opaque.depth.write_enabled = true;
+            opaque.depth.reverse_z = reverse_z;
+            opaque.depth.compare = reverse_z
+                ? ALMetalCompareFunction::greater_equal
+                : ALMetalCompareFunction::less_equal;
+            opaque.matrices.modelview_projection[14] = reverse_z ? 1.f : 0.f;
+            opaque.textures[0] = zero_alpha
+                ? opaque_zero_alpha.get() : hud_pbr_base.get();
+            opaque.indices = index32 ? opaque_indices32.get() : hud_indices.get();
+            opaque.index_type = index32
+                ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+            opaque.index_offset = index32 ? sizeof(std::uint32_t) : 0;
+            REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+            REQUIRE(hud_renderer->setFrameDepth(
+                depth_source->depthStencilTexture(), &error));
+            REQUIRE(hud_renderer->clearFrameDepthRects(
+                &hud_region, 1, reverse_z ? 0.f : 1.f, &error));
+            if (draw_first)
+            {
+                REQUIRE(hud_renderer->drawHUDIndexed(opaque, &error));
+            }
+            if (append_behind)
+            {
+                ALMetalHUDIndexedBatch behind = opaque;
+                behind.shader = ALMetalHUDShader::fullbright;
+                behind.minimum_alpha = 0.f;
+                behind.depth.write_enabled = false;
+                behind.textures[0] = hud_slot_zero.get();
+                behind.matrices.modelview_projection[14] =
+                    reverse_z ? 0.75f : 0.5f;
+                REQUIRE(hud_renderer->drawHUDIndexed(behind, &error));
+            }
+            REQUIRE(hud_renderer->endFrame(&error));
+            INFO(error);
+            REQUIRE(scheduler->waitUntilIdle(1000, &error));
+            INFO(error);
+            std::pair<HUDOpaquePixels, HUDOpaqueDepth> result{};
+            REQUIRE(hud_renderer->outputTexture()->readback(
+                *device, 0, 0, {}, result.first.data(), 32 * 4, &error));
+            REQUIRE(hud_renderer->outputDepthTexture()->readback(
+                *device, 0, 0, {}, result.second.data(),
+                32 * sizeof(float), &error));
+            return result;
+        };
+        for (bool reverse_z : {false, true})
+        {
+            const auto opaque16 = render_opaque_hud(
+                -1.f, reverse_z, false, false, false);
+            const auto opaque32 = render_opaque_hud(
+                -1.f, reverse_z, true, false, false);
+            CHECK(opaque16.first == opaque32.first);
+            CHECK(std::memcmp(opaque16.second.data(), opaque32.second.data(),
+                              sizeof(HUDOpaqueDepth)) == 0);
+            CHECK(opaque16.first[center + 3] == 0u);
+            CHECK(opaque16.second[16 * 32 + 16] ==
+                  (reverse_z ? 0.5f : 0.25f));
+            for (std::size_t channel = 0; channel < 3; ++channel)
+            {
+                const float linear = hud_srgb_to_linear(
+                    hud_pbr_base_texels[channel] / 255.f) *
+                    hud_srgb_to_linear(hud_colors[0][channel] / 255.f) +
+                    hud_srgb_to_linear(
+                        hud_pbr_emissive_texels[4 + channel] / 255.f) *
+                    hud_emissive_factor[channel];
+                const int expected = static_cast<int>(std::lround(
+                    std::clamp(hud_linear_to_srgb(linear), 0.f, 1.f) * 255.f));
+                CHECK(std::abs(static_cast<int>(
+                    opaque16.first[center + 2 - channel]) - expected) <= 1);
+            }
+            // With no cutoff, alphaMode OPAQUE draws even an alpha-zero map.
+            const auto zero = render_opaque_hud(
+                -1.f, reverse_z, false, true, false);
+            CHECK(zero.first == opaque16.first);
+            CHECK(std::memcmp(zero.second.data(), opaque16.second.data(),
+                              sizeof(HUDOpaqueDepth)) == 0);
+            // The positive side is ABOVE actual coverage, but BELOW coverage
+            // plus 1/512. An unbiased alpha shader would incorrectly discard.
+            const auto mask_bias = render_opaque_hud(
+                hud_coverage + 0.001f, reverse_z, false, false, false);
+            CHECK(mask_bias.first == opaque16.first);
+            CHECK(std::memcmp(mask_bias.second.data(), opaque16.second.data(),
+                              sizeof(HUDOpaqueDepth)) == 0);
+            const auto masked = render_opaque_hud(
+                hud_coverage + 0.003f, reverse_z, false, false, false);
+            CHECK(masked.first[center + 0] == 20u);
+            CHECK(masked.first[center + 1] == 40u);
+            CHECK(masked.first[center + 2] == 80u);
+            CHECK(masked.first[center + 3] == 255u);
+            CHECK(masked.second[16 * 32 + 16] == (reverse_z ? 0.f : 1.f));
+            const auto depth_order = render_opaque_hud(
+                -1.f, reverse_z, false, false, true);
+            CHECK(depth_order.first == opaque16.first);
+            CHECK(std::memcmp(depth_order.second.data(), opaque16.second.data(),
+                              sizeof(HUDOpaqueDepth)) == 0);
+            const auto behind_alone = render_opaque_hud(
+                -1.f, reverse_z, false, false, true, false);
+            CHECK(behind_alone.first != opaque16.first);
+            CHECK(behind_alone.first[center + 2] != 80u);
+        }
+
+        // The old blended PBR mode must still reject the opaque sentinel.
+        ALMetalHUDIndexedBatch invalid_blend_cutoff = hud_batch;
+        invalid_blend_cutoff.minimum_alpha = -1.f;
+        error.clear();
+        CHECK_FALSE(hud_renderer->drawHUDIndexed(invalid_blend_cutoff, &error));
+        CHECK(error == "Metal HUD alpha cutoff must be finite and normalized");
+        CHECK_FALSE(hud_renderer->hasOpenFrame());
 
         hud_batch.textures[1] = hud_slot_one.get();
         hud_batch.index_count = 4;

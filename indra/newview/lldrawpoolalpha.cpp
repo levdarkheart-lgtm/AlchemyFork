@@ -81,6 +81,22 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         return;
     }
 
+    if (LLPipeline::sRenderingHUDs)
+    {
+        // World alpha batches carry their native state in the world renderer.
+        // HUD batches consume this ordered UI transaction's logical state,
+        // matching the original forwardRender bracket instead of inheriting
+        // an opaque pool's disabled blend or depth-write settings.
+        LLGLSPipelineAlpha alpha;
+        LLGLDepthTest depth(GL_TRUE, pre_water ? GL_TRUE : GL_FALSE);
+        gGL.setColorMask(true, true);
+        captureMetalBatches(false, false);
+        gGL.setColorMask(true, false);
+        renderDebugAlpha();
+        gGL.setSceneBlendType(LLRender::BT_ALPHA);
+        return;
+    }
+
     if (pre_water)
     {
         gPipeline.beginMetalWorldPreWaterAlphaPhase();
@@ -197,6 +213,12 @@ void LLDrawPoolAlpha::captureMetalBatches(bool rigged, bool depth_only)
             if (LLPipeline::sRenderingHUDs)
             {
                 LLRenderPass::applyModelMatrix(*info);
+                gGL.blendFunc(
+                    static_cast<LLRender::eBlendFactor>(info->mBlendFuncSrc),
+                    static_cast<LLRender::eBlendFactor>(info->mBlendFuncDst),
+                    LLPipeline::alphaWritesCoverage()
+                        ? LLRender::BF_ONE : LLRender::BF_ZERO,
+                    LLRender::BF_ONE_MINUS_SOURCE_ALPHA);
                 const bool custom_zero_cutoff =
                     !LLPipeline::sImpostorRender &&
                     info->mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA &&

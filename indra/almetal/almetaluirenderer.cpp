@@ -679,7 +679,8 @@ struct ALMetalUIRenderer::Impl
 
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = library.get();
-        const bool pbr = shader == ALMetalHUDShader::pbr_alpha;
+        const bool pbr = shader == ALMetalHUDShader::pbr_alpha ||
+            shader == ALMetalHUDShader::pbr_opaque;
         const bool emboss = shader == ALMetalHUDShader::emboss;
         const bool highlight = shader == ALMetalHUDShader::highlight ||
             shader == ALMetalHUDShader::highlight_skinned;
@@ -695,8 +696,10 @@ struct ALMetalUIRenderer::Impl
             ? "almetal_hud_highlight_skinned_vertex"
             : highlight ? "almetal_hud_highlight_vertex"
                         : "almetal_hud_fullbright_vertex";
-        descriptor.fragment_function = pbr
-            ? "almetal_hud_pbr_alpha_fragment"
+        descriptor.fragment_function =
+            shader == ALMetalHUDShader::pbr_opaque
+            ? "almetal_hud_pbr_opaque_fragment"
+            : pbr ? "almetal_hud_pbr_alpha_fragment"
             : emboss ? "almetal_hud_emboss_fragment"
             : debug ? "almetal_hud_debug_fragment"
             : highlight ? "almetal_hud_highlight_fragment"
@@ -733,6 +736,9 @@ struct ALMetalUIRenderer::Impl
                 break;
             case ALMetalHUDShader::pbr_alpha:
                 descriptor.label = "Alchemy HUD PBR alpha pipeline";
+                break;
+            case ALMetalHUDShader::pbr_opaque:
+                descriptor.label = "Alchemy HUD PBR opaque/mask pipeline";
                 break;
             case ALMetalHUDShader::highlight:
                 descriptor.label = "Alchemy HUD highlight pipeline";
@@ -1600,6 +1606,7 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_hud_emboss_fragment") ||
         !library->hasFunction("almetal_hud_pbr_alpha_vertex") ||
         !library->hasFunction("almetal_hud_pbr_alpha_fragment") ||
+        !library->hasFunction("almetal_hud_pbr_opaque_fragment") ||
         !library->hasFunction("almetal_selection_id_vertex") ||
         !library->hasFunction("almetal_selection_id_skinned_vertex") ||
         !library->hasFunction("almetal_selection_id_fragment") ||
@@ -2151,7 +2158,9 @@ bool ALMetalUIRenderer::drawHUDIndexed(
             return false;
         }
     }
-    const bool pbr = batch.shader == ALMetalHUDShader::pbr_alpha;
+    const bool pbr_opaque = batch.shader == ALMetalHUDShader::pbr_opaque;
+    const bool pbr = batch.shader == ALMetalHUDShader::pbr_alpha ||
+        pbr_opaque;
     if (emboss && batch.texture_count != 1)
     {
         setError(error, "Metal HUD emboss requires one bump texture");
@@ -2207,8 +2216,12 @@ bool ALMetalUIRenderer::drawHUDIndexed(
                  "Metal HUD depth test requires a frame depth backing");
         return false;
     }
+    // LLFetchedGLTFMaterial::bind uses exactly -1 for alphaMode OPAQUE.
+    // All mask/alpha cutoffs retain the normalized public contract.
     if (!std::isfinite(batch.minimum_alpha) ||
-        batch.minimum_alpha < 0.f || batch.minimum_alpha > 1.f)
+        (batch.minimum_alpha < 0.f &&
+         !(pbr_opaque && batch.minimum_alpha == -1.f)) ||
+        batch.minimum_alpha > 1.f)
     {
         setError(error, "Metal HUD alpha cutoff must be finite and normalized");
         return false;

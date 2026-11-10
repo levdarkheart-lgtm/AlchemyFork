@@ -402,12 +402,13 @@ public:
     // Mirror one exact static HUD attachment draw into the native world/UI
     // transaction. alpha_pool selects the blended program whose coverage is
     // texture alpha times streamed vertex alpha; alpha_mask selects the
-    // opaque texture-only mask program.
+    // opaque texture-only mask program. pbr_opaque selects the distinct
+    // glTF opaque/MASK HUD contract, including its biased alpha test.
     static void captureMetalHUDBatch(
         const LLDrawInfo& params, bool batch_textures,
         bool alpha_mask, bool alpha_pool, bool pbr_alpha,
         F32 minimum_alpha, bool force_double_sided = false,
-        bool fullbright_shiny = false);
+        bool fullbright_shiny = false, bool pbr_opaque = false);
     static void captureMetalHUDEmbossBatch(
         const LLDrawInfo& params, LLViewerTexture* bump_texture);
 #endif

@@ -28,6 +28,7 @@
 
 #include "lldrawpool.h"
 #include "lldrawpoolpbropaque.h"
+#include "llfetchedgltfmaterial.h"
 #include "llviewershadermgr.h"
 #include "pipeline.h"
 
@@ -107,8 +108,35 @@ void LLDrawPoolGLTFPBR::renderPostDeferred(S32)
 {
     if (LLPipeline::sRenderingHUDs)
     {
-        gHUDPBROpaqueProgram.bind();
-        pushGLTFBatches(mRenderType);
+#if LL_DARWIN
+        if (!gGL.isMetalUITextureCaptureAuthoritative())
+        {
+            return;
+        }
+        LLGLDisable blend(GL_BLEND);
+        // genDrawInfo deliberately excludes HUDs from multi-material PBR
+        // batching. Preserve this scalar material's original HUD contract;
+        // the geometry still uses its actual U16/U32 index buffer/range.
+        auto* at = gPipeline.beginRenderMap(mRenderType);
+        auto* end = gPipeline.endRenderMap(mRenderType);
+        while (at != end)
+        {
+            LLDrawInfo* info = *at;
+            LLCullResult::increment_iterator(at, end);
+            if (!info)
+            {
+                continue;
+            }
+            const LLFetchedGLTFMaterial* material = info->mGLTFMaterial.get();
+            const F32 minimum_alpha = material &&
+                material->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK
+                ? material->mAlphaCutoff : -1.f;
+            applyModelMatrix(*info);
+            captureMetalHUDBatch(
+                *info, false, false, false, false, minimum_alpha,
+                false, false, true);
+        }
+#endif
     }
     // Alpha-masked PBR does not contribute the opaque emissive replay.
     else if (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR && LLPipeline::sRenderGlow)

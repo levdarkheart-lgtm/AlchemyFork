@@ -130,6 +130,7 @@ enum class ALMetalHUDShader
     highlight_skinned,
     debug,
     debug_skinned,
+    pbr_opaque,
 };
 
 // One indexed static HUD-attachment draw. Unlike immediate-mode UI, volume
@@ -137,7 +138,8 @@ enum class ALMetalHUDShader
 // diffuse texture ladder slots through position.w. Legacy fullbright HUD
 // programs operate in display-encoded space. The PBR alpha permutation
 // instead decodes its glTF color maps, shades in linear light and encodes the
-// result for this display target, matching the two authoritative GLSL paths.
+// result for this display target. Opaque/MASK PBR retains its separate
+// biased cutoff and zero output alpha, matching pbropaqueF IS_HUD.
 struct ALMetalHUDIndexedBatch
 {
     static constexpr std::size_t max_textures = 32;

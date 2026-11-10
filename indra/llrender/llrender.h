@@ -359,8 +359,11 @@ public:
     bool restoreMetalUITextureCaptureDepth(
         S32 x, S32 y, S32 width, S32 height);
     // Append one indexed HUD-attachment volume draw to an active offscreen
-    // capture. GL remains authoritative regardless of the return value.
-    bool drawMetalHUDIndexedBatch(const ALMetalHUDIndexedBatch& batch);
+    // capture, using the draw family's sampler rather than an unrelated UI
+    // texture slot. Failure invalidates the complete native transaction.
+    bool drawMetalHUDIndexedBatch(
+        const ALMetalHUDIndexedBatch& batch,
+        ALSampler sampler = ALSamplers::AnisoWrap);
     bool hasMetalUITextureCapture() const noexcept;
     // Snapshot and asynchronously read one BGRA8 pixel at the current ordered
     // offscreen UI boundary. Request coordinates use the GL-compatible
