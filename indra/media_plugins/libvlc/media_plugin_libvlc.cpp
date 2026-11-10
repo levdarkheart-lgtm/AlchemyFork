@@ -42,6 +42,13 @@ typedef SSIZE_T ssize_t;
 #include "vlc/vlc.h"
 #include "vlc/libvlc_version.h"
 
+#if LL_DARWIN
+#include <mach-o/dyld.h>
+#include <cstdint>
+#include <filesystem>
+#include <vector>
+#endif
+
 #if LL_WINDOWS
 // needed for waveOut call - see below for description
 #include <mmsystem.h>
@@ -174,7 +181,32 @@ void MediaPluginLibVLC::initVLC()
     };
 
 #if LL_DARWIN
-    setenv("VLC_PLUGIN_PATH", "./plugins", 1);
+    // The host is launched from the viewer's Resources directory, while
+    // ViewerInstall packages its modules inside this host's Frameworks.
+    // Resolve the native executable, not the working directory or a shell
+    // command, so relocated bundles and paths containing spaces work alike.
+    std::uint32_t path_size = 0;
+    _NSGetExecutablePath(nullptr, &path_size);
+    std::vector<char> executable_path(path_size);
+    if (path_size == 0 ||
+        _NSGetExecutablePath(executable_path.data(), &path_size) != 0)
+    {
+        LL_WARNS("Media") << "LibVLC cannot resolve its native host executable" << LL_ENDL;
+        mVlcStatus = STATUS_ERROR;
+        setStatus(mVlcStatus);
+        return;
+    }
+    std::error_code path_error;
+    const auto executable = std::filesystem::canonical(executable_path.data(), path_error);
+    const auto plugins = executable.parent_path().parent_path() / "Frameworks" / "plugins";
+    if (path_error || !std::filesystem::is_directory(plugins, path_error) ||
+        path_error || setenv("VLC_PLUGIN_PATH", plugins.c_str(), 1) != 0)
+    {
+        LL_WARNS("Media") << "LibVLC bundled module directory is unavailable" << LL_ENDL;
+        mVlcStatus = STATUS_ERROR;
+        setStatus(mVlcStatus);
+        return;
+    }
 #endif
 
     int vlc_argc = sizeof(vlc_argv) / sizeof(*vlc_argv);
@@ -182,8 +214,9 @@ void MediaPluginLibVLC::initVLC()
 
     if (!mLibVLC)
     {
-        // for the moment, if this fails, the plugin will fail and
-        // the media sub-system will tell the viewer something went wrong.
+        LL_WARNS("Media") << "LibVLC initialization failed before media playback" << LL_ENDL;
+        mVlcStatus = STATUS_ERROR;
+        setStatus(mVlcStatus);
     }
 }
 
@@ -191,9 +224,22 @@ void MediaPluginLibVLC::initVLC()
 //
 void MediaPluginLibVLC::resetVLC()
 {
-    libvlc_media_player_stop(mLibVLCMediaPlayer);
-    libvlc_media_player_release(mLibVLCMediaPlayer);
-    libvlc_release(mLibVLC);
+    if (mLibVLCMediaPlayer)
+    {
+        libvlc_media_player_stop(mLibVLCMediaPlayer);
+        libvlc_media_player_release(mLibVLCMediaPlayer);
+        mLibVLCMediaPlayer = nullptr;
+    }
+    if (mLibVLCMedia)
+    {
+        libvlc_media_release(mLibVLCMedia);
+        mLibVLCMedia = nullptr;
+    }
+    if (mLibVLC)
+    {
+        libvlc_release(mLibVLC);
+        mLibVLC = nullptr;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -266,6 +312,7 @@ void MediaPluginLibVLC::eventCallbacks(const libvlc_event_t* event, void* ptr)
 
     case libvlc_MediaPlayerEncounteredError:
         parent->mVlcStatus = STATUS_ERROR;
+        LL_WARNS("Media") << "LibVLC playback failed; media address omitted" << LL_ENDL;
         break;
 
     case libvlc_MediaPlayerTimeChanged:
@@ -301,6 +348,13 @@ void MediaPluginLibVLC::eventCallbacks(const libvlc_event_t* event, void* ptr)
 //
 void MediaPluginLibVLC::playMedia()
 {
+    if (!mLibVLC)
+    {
+        LL_WARNS("Media") << "LibVLC cannot play media without a valid instance" << LL_ENDL;
+        mVlcStatus = STATUS_ERROR;
+        setStatus(mVlcStatus);
+        return;
+    }
     if (mURL.length() == 0)
     {
         return;
@@ -322,14 +376,16 @@ void MediaPluginLibVLC::playMedia()
     if (!mLibVLCMedia)
     {
         mLibVLCMediaPlayer = 0;
-        setStatus(STATUS_ERROR);
+        mVlcStatus = STATUS_ERROR;
+        setStatus(mVlcStatus);
         return;
     }
 
     mLibVLCMediaPlayer = libvlc_media_player_new_from_media(mLibVLCMedia);
     if (!mLibVLCMediaPlayer)
     {
-        setStatus(STATUS_ERROR);
+        mVlcStatus = STATUS_ERROR;
+        setStatus(mVlcStatus);
         return;
     }
 
@@ -380,7 +436,13 @@ void MediaPluginLibVLC::playMedia()
         libvlc_media_add_option(mLibVLCMedia, "input-repeat=65535");
     }
 
-    libvlc_media_player_play(mLibVLCMediaPlayer);
+    if (libvlc_media_player_play(mLibVLCMediaPlayer) != 0)
+    {
+        LL_WARNS("Media") << "LibVLC could not start its media player; media address omitted" << LL_ENDL;
+        mVlcStatus = STATUS_ERROR;
+        setStatus(mVlcStatus);
+        return;
+    }
 
     // send a "location_changed" message - this informs the media system
     // that a new URL is the 'current' one and is used extensively.
