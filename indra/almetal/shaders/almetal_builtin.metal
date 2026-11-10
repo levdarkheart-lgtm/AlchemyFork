@@ -10120,6 +10120,9 @@ static ALMetalLitPreviewSkinnedVertex almetal_lit_preview_avatar_skin_vertex(
     float encoded_weight,
     const device float4* skin_palette)
 {
+    // Original avatar vertex attributes are vec3: stored SIMD padding W
+    // is not homogeneous position. avatarV.glsl supplies exactly 1.0.
+    position = float4(position.xyz, 1.0);
     const ALMetalLitPreviewAvatarRows rows =
         almetal_lit_preview_avatar_rows(encoded_weight, skin_palette);
 
@@ -10148,6 +10151,9 @@ static ALMetalLitPreviewSkinnedVertex almetal_avatar_cloth_vertex(
     float4 avatar_gravity,
     float4 avatar_cloth_depth)
 {
+    // Original avatar vertex attributes are vec3: stored SIMD padding W
+    // is not homogeneous position. avatarV.glsl supplies exactly 1.0.
+    position = float4(position.xyz, 1.0);
     const ALMetalLitPreviewAvatarRows rows =
         almetal_lit_preview_avatar_rows(encoded_weight, skin_palette);
     const float3 source_normal = normal_value.xyz;
