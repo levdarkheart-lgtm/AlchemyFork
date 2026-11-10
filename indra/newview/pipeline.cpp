@@ -9474,6 +9474,21 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 }
             }
 
+            // Display transfer and bloom suppression follow the effective
+            // EEP probe ambiance, independently of the surface-lighting
+            // classic-mode permutation (colorCorrect/generateBloomHDR).
+            static LLCachedControl<bool> auto_adjust(
+                gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
+            static LLCachedControl<bool> build_no_post(
+                gSavedSettings, "RenderDisablePostProcessing", false);
+            LLSettingsSky::ptr_t sky =
+                LLEnvironment::instance().getCurrentSky();
+            const bool legacy_gamma = sky &&
+                sky->getReflectionProbeAmbiance(auto_adjust()) == 0.f;
+            const bool no_post = gSnapshotNoPost || legacy_gamma ||
+                (build_no_post() && gFloaterTools &&
+                 gFloaterTools->isAvailable());
+
             static LLCachedControl<F32> bloom_strength(
                 gSavedSettings, "RenderBloomStrength", 0.325f);
             static LLCachedControl<F32> bloom_threshold(
@@ -9510,14 +9525,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const F32 native_halation_strength = bloom_halation
                 ? llmax(halation_strength(), 0.f) : 0.f;
             const F32 native_cross_filter_strength =
-                native_bloom_strength > 0.f
+                !no_post && native_bloom_strength > 0.f
                     ? llclamp(cross_filter_strength(), 0.f,
                               CROSS_FILTER_MAX_STRENGTH)
                     : 0.f;
-            const bool clean_plate =
-                gSnapshotNoPost && mMetalWorldSnapshotRequested;
             const bool wants_native_bloom = capture.hdr &&
-                !clean_plate && !cutout_snapshot &&
+                !cutout_snapshot &&
                 exact_dof &&
                 (native_bloom_strength > 0.f ||
                  native_halation_strength > 0.f) &&
@@ -9533,10 +9546,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 bloom.mip_count = mRT->bloomMipCount;
                 bloom.resolution_scale = static_cast<U32>(llclamp(
                     mResourceInputs.mBloomScale, 0, 4));
-                bloom.threshold = bloom_threshold();
+                bloom.threshold = no_post ? 99999.f : bloom_threshold();
                 bloom.knee = llmax(bloom_knee(), 0.f);
-                bloom.firefly_clamp =
-                    llmax(bloom_firefly_clamp(), 0.f);
+                bloom.firefly_clamp = no_post
+                    ? 1e9f : llmax(bloom_firefly_clamp(), 0.f);
                 bloom.scatter = llmax(bloom_scatter(), 0.f);
                 bloom.alpha_glow_boost =
                     llmax(alpha_glow_boost(), 0.f);
@@ -9579,14 +9592,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             // modern or legacy-gamma base permutation. This is intentionally stricter
             // than the GL renderer: every omitted upstream owner must be
             // inactive, or native-only scopes skip this frame.
-            static LLCachedControl<bool> auto_adjust(
-                gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-
-            LLSettingsSky::ptr_t sky =
-                LLEnvironment::instance().getCurrentSky();
-            const bool legacy_gamma = LLRender::sClassicMode;
-            const bool exact_dynamic_exposure = !capture.hdr || clean_plate ||
-                legacy_gamma || !dynamic_exposure ||
+            const bool exact_dynamic_exposure = !capture.hdr || no_post ||
+                !dynamic_exposure ||
                 (mMetalExposureHistoryReady &&
                  capture.exposure_target &&
                  capture.exposure_epoch == mMetalExposureHistoryEpoch &&
@@ -9699,8 +9706,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 ALMetalWorldDisplayPostScene display;
                 display.source = post_source;
                 display.adapted_exposure_texture =
-                    capture.hdr && dynamic_exposure && !legacy_gamma &&
-                        !clean_plate
+                    capture.hdr && dynamic_exposure && !no_post
                     ? capture.exposure_target->colorTexture(0) : nullptr;
                 display.bloom_texture = capture.bloom_target
                     ? capture.bloom_target->colorTexture(0) : nullptr;
@@ -9717,7 +9723,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 display.cross_filter_strength = cross_filter_target
                     ? native_cross_filter_strength : 0.f;
                 display.hdr = capture.hdr;
-                display.bypass_tonemap = capture.hdr && clean_plate;
+                display.bypass_tonemap = capture.hdr && no_post;
                 display.cutout_premultiplied = cutout_snapshot;
                 display.preserve_alpha = capture.hdr && cutout_snapshot;
                 display.legacy_gamma = legacy_gamma;
@@ -9957,6 +9963,45 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         display, &display_error);
                 if (display_target)
                 {
+                    // Report the actual encoded transfer branch, without sky
+                    // identity or a per-frame/per-float log. Bound repeated
+                    // user toggles; this is not GPU completion/publication.
+                    const bool can_auto_adjust = sky->canAutoAdjust();
+                    const bool automatic = auto_adjust();
+                    const bool exposure_tonemap = display.hdr &&
+                        !display.legacy_gamma && !display.bypass_tonemap;
+                    const U32 signature =
+                        (legacy_gamma ? 1u : 0u) |
+                        (can_auto_adjust ? 2u : 0u) |
+                        (automatic ? 4u : 0u) |
+                        (display.hdr ? 8u : 0u) |
+                        (exposure_tonemap ? 16u : 0u) |
+                        (LLRender::sClassicMode ? 32u : 0u) |
+                        (no_post ? 64u : 0u);
+                    static U32 last_signature =
+                        std::numeric_limits<U32>::max();
+                    static U32 reported_signatures = 0;
+                    if (signature != last_signature)
+                    {
+                        last_signature = signature;
+                        if (reported_signatures < 32u)
+                        {
+                            ++reported_signatures;
+                            LL_INFOS("Metal")
+                                << "Native display-transfer policy encoded: frame="
+                                << gFrameCount
+                                << ", can_auto_adjust=" << can_auto_adjust
+                                << ", auto_adjust=" << automatic
+                                << ", effective_probe_ambiance="
+                                << sky->getReflectionProbeAmbiance(automatic)
+                                << ", classic_lighting=" << LLRender::sClassicMode
+                                << ", legacy_gamma=" << legacy_gamma
+                                << ", hdr=" << display.hdr
+                                << ", no_post=" << no_post
+                                << ", exposure_tonemap=" << exposure_tonemap
+                                << LL_ENDL;
+                        }
+                    }
                     // Legacy non-HDR glow extracts from the first RGBA8
                     // display boundary, then waits while AA/CAS modify the
                     // base image. Its additive combine happens after those
