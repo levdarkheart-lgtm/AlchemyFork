@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `c2804f88df2923a9cbc172bc551fad5cd38243eb`.
+**Renderer checkpoint:** Commit `88528d27a5d0836faddfcbcb0b715fe0c6280ebe`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -22,12 +22,10 @@
 | M-011 | Remaining owned GL authority | doing | Native resources/window/rendering; strict remaining-tail audit open. |
 | M-012 | Native UI automation | complete | Exact fullscreen/login/Preset123 flow; unsupported system-helper targeting avoided. |
 | M-013 | RLVa parity | deferred | Owner essential-first ordering; retained functionality still required. |
-| M-014 | Ultra20FPS campaign | doing | Water68610 improved with workload caveat; PBR68614 live9.566vsfresh9.581flat;20FPS unmet. |
-
+| M-014 | Ultra20FPS campaign | doing | Joining OFF8.639→ON5.514FPS, no default admission;20FPS unmet. |
 States describe evidence; a bounded completed item never implies product completion.
 
 ## Current implementation boundary
-
 Native Metal owns world, materials, avatars, terrain, shadows, sky/water,
 atmosphere/effects, UI/font/HUD, media textures and presentation. Existing
 network/inventory/simulation/editing/voice features are retained. No fallback
@@ -41,124 +39,67 @@ NativeD32 changes original raw-depth semantics; no migration/epsilon waiver.
 
 ## Current source ownership and latest result
 
-Root exclusively owns shared source/docs/runtime/GPU. Agents prepare private
-source or read-only analysis; no concurrent uncoordinated shared edits.
-Translator FULLY STOPPED/NEVERrestart; Xcode replay STOPPED; same location only.
+Root owns shared source/docs/runtime/GPU. Agents prepare private source or read-only
+analyses. Translator FULLY STOPPED/NEVERrestart; Xcode replay stopped. Owner away;
+no attendance needed. Same location/Preset123/Midday/Ultra3456×2168 only.
+No viewer/profiler/build/GPUtest running. All OWN trial environment plans restored0
+following exact executable/SIGTERM/Goodbye/PID-absence checks; OSexitcodeunknown.
 
-Material-buffer cache1407 passed native correctness/isolated CPU checks, but
-normal68605 live9.066675vsproper68601 9.410237 did not prove a benefit. Restored
-material_buffers=false/ordinary samplerABfalse in06d16. Both optimized435462/102
-passed, normal68606 doctor/build/349ARM64/signature0, preserved. No cache revival
-without new mechanism. [Evidence](../../state/archive/CURRENT-material-argument-buffers-2026-11-10.md).
+Normal68619/source885 guarded joining remains nonpersistent defaultOFF. Actual
+normal doctor/configure/build/verify/signature0,349ARM64, independentidentitya1657b93.
+Both full optimized Release/RWDI actual API+GPU504300/106 EACH0; focusedwrapper7969/1
+andproduction2120/1 strictpairs/positivecontrols0. Privatecost benchmark stripped
+byte-exactly before normal build. Raw197-file cost packetSHAverified locally.
 
-Earlier admitted68601/source77977290 ready300:9.833798FPS/mean101.690106ms.
-Preserved/private/tmp/alchemy-metal-68601-normal-preserved.app, exef277/lib61c5.
-Fresh68601 trial9.408707FPS/mean106.284533/p50106.109021/p95116.8194 had missing
-start gate and unmeasured CUA stall; exploratory only. End43gates0/exact98164
-SIGTERM/Goodbye/absence/planrestore0. Camera/EEP equal new68605 at frame5046.
-Owner reports fullscreen GameMode notification; leave mode unchanged/drop as
-primary lead. Unsupported ControlCenter CUA inspection stalled; do not retry it.
-[Detailed current evidence](../../state/archive/CURRENT-material-argument-buffers-2026-11-10.md).
+Completed same-build300-frame OFF02/ON03:8.639419→5.513778FPS,115.748528→181.363852ms,
+draws50038.84→45954.67. Actualhero joining but no livebenefit; NO defaultONadmission.
+44rawlive start/endgates0/exactcameraEEP/native1/bias1/ready256stable120. Source
+population/ordinaryowner drift means−36.18% is not precise code-only causality.
+Both actualgated images observed, exact accepted62932/64552 exits/OWNrestores0.
+OFF01/ON02 strict Boolean/integer setup mismatches preserved/excluded; fresh
+accepted OFF0/ONtrue configs pass without helper relaxation. Official provenance
+verified, enforceexit1; independent88a7 actualaudit0.20FPS remainsunmet.
+[Full joining cost/build/native/live record](../../state/archive/CURRENT-indexed-draw-joining-live-2026-11-10.md).
+
+Prior PBR68614/source271 actual300frames9.566138vsfreshwater68610 9.581135flat;
+isolatedGPUwin didnot improveviewer. Earlierwater68610 9.785333vsfresh68608
+9.257293 hasdraw/probedrift caveat. Retain source-exact specializations; no new
+FPSgainclaim. [PBR](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md),
+[water](../../state/archive/CURRENT-water-probe-specialization-2026-11-10.md).
 
 ## Complete-product checkpoint gate
 
-1. **Advancement:** source-exact material cache/ownership integrated, real GPU
-   correctness and bounded complete CPU-cost evidence; normal viewer trial completed with no FPS gain.
-2. **Preserved contract:** original rendering/features/all six hero faces, no
-   quality reduction, no translation/fallback backend; exact original remains1eb.
-3. **Open gates:**20FPS and multi-scene performance, full pixel/feature parity,
-   strict source/runtime GL-zero, prolonged stability and independent release review.
+1. Advancement: strict native joining validation and live trial prevented default
+   admission of an optimization that lowered commands without an observed FPS gain.
+2. Preserved contract: all six Ultra hero faces, original casters/PCSS/rawR32/
+   reverseZ/clamp/features; exact original1eb remains specification, no fallback.
+3. Open:20FPS and multi-scene performance, full pixel/feature parity, strict no-GL,
+   prolonged stability and independent build/review evidence. No hardware ceiling claim.
 
 ## Immediate executable action
 
-6b80 integrates bounded default-off native stage timing, independent samplebuffers
-percommand/completion-safe bufferowners/strict decodecalibration/no waits or
-extra commits. Counterfailure abandons prepared slots before original passretry.
-Controller requires300formalexactreadyframes,60eligible cooldown, then1–3normal
-intervals with main/hero/ordinary/filter tags; logs only after completion.
-Focused41331/2 and full Release+RelWithDebInfo476793/104 API+GPU suites0.
-Normal68608 doctor/configure/build/verify/signature0;349ARM64, exe d8f4cc0a/
-lib39320181, actual O3/NDEBUG/C++23/arm64 flags independently verified.
+Historical CURRENT64 replay COMPLETE/rootreviewed: two13-view walks actual0,
+mainidealinitialreject4.33%/hero19–21%ofmodeledholds, neighborsdominate. Historical
+sparseopaque samples are notcurrentalpha/water/time orGPUbit-equivalence. FPflags
+heuristic. No oldcompactlistadmission (31vsrequired64neighborclamp/projectiongap).
+Next read Shadowagent PRIVATE plan for freshsource885/joiningOFF existing
+post-formal workload sampler and compatible currentCPU/coupledGPUtimeline. No
+launch/profileyet. Verifyactualflags/exactbinary/gates/isolation beforeexecuting.
+Need currentpopulation/criticalpath afterwater/PBR; no speculative shader revival.
 
-68608 formal300readyframes9.069479FPS,mean110.259914/p50109.686104/
-p95120.610834; propercontrol9.410237 butdraws+2.814%, noisolateddelta/gain.
-Both43start/endgates0/exactnative/bias1/ready256stable120. EEPexact; tinycamera
-residuals remain.334resolvedstagepasses/3intervals AFTERformal; base17.4ms,
-mainhaze13.8–18.0/hero5water13.2–15.1 elapsed, notadditiveGPUbusytime.
-Exact57546exit/Goodbye/absence0 and OWNplanrestored0; no viewer/profiler.
-[Fullresult](../../state/archive/CURRENT-stage-timing-runtime-2026-11-10.md).
+Private shadow single-map-walkd4b12898 source-approved but unapplied/unmeasured;
+count cost not isolated, no high-leverage admission. Hero face transactions already
+batch; ordinary total sampledCPU5–7% is not removable batching overhead.
+Closed shader/addressspace/materialAB/parallelshadow variants remain closed.
+Offset-only native buffer setters and mirrorclip are already implemented; haze
+has real feedback contract; hero occlusion intentionally disabled likeoriginal.
+Main-camera visibility must not be reused for cube faces or shadow casters.
+[Other retained experiment history](../../state/archive/INDEX.md).
 
-Read-only postwater SIMPLE early tests passed actual API+GPU11598/1 and six
-1024² pairs11753/1. Quiet224 samples14676/1 showed no convincing win beyond
-same-path drift. Rejected; root froze full tested patch624a611d and restored
-all five files exactly6b80 before the new water candidate. No viewer trial.
-
-Root applied water coref8425015/fixture0122e99e plus required library restoration.
-Corrected API+GPU15425/1 and eight1024² preflights15719/1 passed. Separate quiet
-R1+R4 EACH18642/1/224rows/thermal0: R4 eligible GPU savings15.42–17.17%, all7
-blocks faster in all4 cases, SAME+1.27/−0.35%. Independent raw audit passed;
-CPU gain unproved. Private cost code removed after freezing tested2b48b8e3;
-strict permanent fixture exactly matches validatede68cb9. Generic producer now
-enables only actual guarded mode; bounded opt-in logs report encoded PSOs.
-Both full optimized API+GPU suites482529/104 pass0;15final source hashes match.
-Committedf549a796d2. Normal68610/source8eea built+verified0; independentfc35passed.
-Candidateformal300readyframes9.785333FPS (mean102.193761ms), exactcamera/EEP/43
-gates versus68608; observed+7.893%FPS but draws−1.87%/mainprobes95vs98. No full
-causal claim. Both candidate91508 and freshcontrol92996 exited/Goodbye/absence0+OWNplansrestored0.
-Freshcontrol300readyframes9.257293FPS versuscandidate9.785333 (+5.704%); exact
-camera/EEP/43controls/native/bias1/256ready match. Draws+1.616%,probes95vs100:
-retain workload caveat. Independent129db056 recommends RETAIN;20FPS unmet.
-Post-formal CPU+baselinecoupledMetaltrace captured/exported0. Matched2461CBs,
-GPUActiveunion87.60% (not utilization); two profiler-metadata pauses retained.
-All viewers/profilers/build/GPUtests stopped. Next bounded GPU address candidate.
-[Water evidence](../../state/archive/CURRENT-water-probe-specialization-2026-11-10.md).
-Main-base probe address-space candidate was implemented and compiled0. Actual
-API+GPU40strict+6large pairs passed3319/1 after two fixture-input corrections.
-Quiet168samples passed5521/1, but both dense cases were slower in all7blocks;
-mean GPU+5.205/+5.876%, no CPU gain,162out-of-target rows retained. Rejected;
-all4sourcefiles restored byte-exactly7772, no viewer trial. Ninja test artifacts
-are still experimental and require rebuilding. [Evidence](../../state/archive/CURRENT-probe-address-space-rejection-2026-11-10.md).
-Stable7772 was pushed at owner request; unfinished experiments excluded. The
-owner chose manual existing alpha-workflow dispatch because CLI/browser lacked login.
-PBR FC0 candidate coreb809 and guarded producer/actualreceipts integrated. Actual
-68pairs+6large25379/1 and quiet16828122/1 pass0; GPU mean−13.555/−17.747%, all7
-blocks faster, no CPU/FPS claim. Expanded88strictpairs+6large27593/1 pass0.
-Private benchmark stripped, strictfixture byte-proof7ccb823c. Both optimized fullAPI+GPU suites494211/104 EACH pass0; final15sourcehashesmatch.
-Committed765c305; normal68614/source271 doctor/configure/build/verify/signature0,
-independent5722identity0. Fresh68610baseline300frames9.581135FPS; candidate68614
-300frames9.566138FPS (flat−0.1565%), p50104.361208/p95114.900709ms. Both43start/
-endgates0/exactcamera+EEP/native1/bias1/256ready120; draws+.4043%, probes98→97,
-retain drift caveat.11encodedPBRreceipts; no demonstrated livegain. Both actual
-exactexits/Goodbye/PIDabsence0 and OWNplansrestored0, CUAimages actually observed.
-Officialenforce/provenance1: provenance passes, target/scene count unmet.
-No viewer/profiler/GPUtest/build live. Root/agents audited remaining hero prep costs. Native face-local occlusion is
-not a parity defect and lacks a proved removable population; main-camera state
-must not be reused. Root added default-off ALCHEMY_METAL_DRAW_JOIN_CENSUS: after
-successful encodes,13independent view/phase samples every120frames count ONLY
-necessary geometry adjacency, not full-state eligibility or GPUcost. Query-bearing
-Gbuffers are explicitly gated/unmeasured. No draw/state/resource changes. Normal68616/source1ff build/349ARM64/signature0, independent074cidentity0.
-Completed78formalrows/all26tuples; substantialheroGBufgeometryupperbounds but
-no actualstateeligibility/FPSclaim. ExactPID37648exit/OWNplanrestored0.
-Root integrated default-false actual-native-state indexed joining prototype in
-7wrapper/world/test/CMakefiles committedc2804f88, genericproducerfalse. Actualfocused
-API+GPU7969/1wrapper+2120/1production pass0; strict67pairs/2removalpositives and
-native2/8→1activation. Initialcompile0; updatedfullRelease504300/106 passed0,
-RWDIbuild/full504300/106 also0. PrivatequietcompleteCPU/GPUcost next. No FPSadmissionyet.
-[Census/prototype](../../state/archive/CURRENT-indexed-draw-joining-2026-11-10.md). [Evidence](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md). Preserve actual bound pack bit4/count>1 guards, main/default/no-shadow paths,
-exact original cube single-tap and shader math. Root owns shared source/GPU.
-
-Parallel shadow prototype was compiled/GPU-tested435842/103, including two views
-before one commit. First full-preparation CPU trial regressed+19%/+13%; bounded
-slot-cache revision still+9.71% at640 and4096 apparent−4.45% overlapped identical
-path drift−5.24%. Both280-sample runs passed parity/provenance/thermal checks.
-Rejected/no viewer trial. Exact13-file prototype removed before6b80; no parallel path retained.
-Normal68606 preserved/independently verified. Ninja artifacts remain experimental
-and need rebuilding before reuse. Ten private evidence packets are preserved.
-[Complete trial](../../state/archive/CURRENT-parallel-shadow-encoding-2026-11-10.md).
-
-Prior sampledCPU/frame and overlapping completed-command sums are not a current
-CPU floor or causal GPU budget. Closed shader/register/mask/mutability variants
-remain rejected. Full pixel/feature parity and release gates remain open.
+Stable7772/water is pushed. Owner manual Tag/Build42816862437/42816882219 succeeded;
+Alpha3/tag26.4.0.68611-alpha3 published, ARM64tar.xz/checksum+ZIP13769235298verified.
+Owner links delivered; no further auth/dispatch needed. New local PBR/census/joining
+code is not in Alpha3. No private uploads or publication from this comparison.
 
 ## Non-negotiable open gates
 
