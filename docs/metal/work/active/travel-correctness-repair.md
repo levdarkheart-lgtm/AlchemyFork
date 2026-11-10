@@ -37,6 +37,9 @@ See [failed live evidence](travel-live-68633.md), not an inferred success claim.
   once per pool with strong owners, preserving ready sRGB vs raw placeholders
   and sampler behavior, for classic and PBR. Generated height/composition remain
   exact authoritative maps. Bounded diagnostics identify actual missing roles.
+- Original main display also clears and continues through sky/lighting with
+  zero accepted geometry. Remove the conversion-era nonempty main-view admission;
+  keep all explicit completeness/query/resource checks and downstream validation.
 - Original `generateImpostor` clears the target even for a complete subject that
   emits no geometry. Native now accepts that transparent bake. Native publication
   returns a real validated quartet receipt; failed bakes keep `mNeedsImpostorUpdate`

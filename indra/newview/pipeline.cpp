@@ -17134,15 +17134,11 @@ void LLPipeline::endMetalWorldGBufferCapture()
     capture.impostor_bake = false;
     capture.frame_active = false;
     capture.pass_active = false;
-    // The original clears an impostor even when its subject emits no
-    // geometry (for example while loading). That is a valid transparent
-    // bake, just as a sky-only cube face is a valid empty G-buffer. An
-    // incomplete producer still cannot publish a partial bake.
-    const bool clear_only_scoped_view =
-        (isMetalProbeFaceCaptureActive() || impostor_bake) && capture.complete &&
-        capture.batches.empty();
-    if (!capture.complete ||
-        (capture.batches.empty() && !clear_only_scoped_view))
+    // Original display clears and continues through sky/lighting even when
+    // no geometry is accepted. That is valid for the main view as well as a
+    // sky-only probe or transparent impostor. Draw count is not a completeness
+    // receipt: unsupported/missing producers explicitly invalidate the view.
+    if (!capture.complete)
     {
         const std::size_t incomplete_batch_count =
             capture.batches.size();
