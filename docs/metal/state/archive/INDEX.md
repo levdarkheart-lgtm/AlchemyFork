@@ -6,6 +6,7 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| Final current-source workload/profile,9.745FPS and owner-requested stop with20FPS unmet,2026-11-10 | [CURRENT-20fps-owner-stop-2026-11-10.md](CURRENT-20fps-owner-stop-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Guarded indexed joining: full native gates, private CPU/GPU cost and slower same-build live rejection,2026-11-10 | [CURRENT-indexed-draw-joining-live-2026-11-10.md](CURRENT-indexed-draw-joining-live-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Adjacent indexed draw geometry census and opt-in prototype, no performance claim,2026-11-10 | [CURRENT-indexed-draw-joining-2026-11-10.md](CURRENT-indexed-draw-joining-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | PBR alpha probe-shadow specialization, native/build gates, isolated GPU gain and flat controlled viewer result,2026-11-10 | [CURRENT-pbr-probe-specialization-2026-11-10.md](CURRENT-pbr-probe-specialization-2026-11-10.md) | `docs/metal/state/CURRENT.md` |

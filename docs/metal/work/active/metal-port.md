@@ -22,7 +22,7 @@
 | M-011 | Remaining owned GL authority | doing | Native resources/window/rendering; strict remaining-tail audit open. |
 | M-012 | Native UI automation | complete | Exact fullscreen/login/Preset123 flow; unsupported system-helper targeting avoided. |
 | M-013 | RLVa parity | deferred | Owner essential-first ordering; retained functionality still required. |
-| M-014 | Ultra20FPS campaign | doing | Joining OFF8.639→ON5.514FPS, no default admission;20FPS unmet. |
+| M-014 | Ultra20FPS campaign | deferred | Ownerrequestedstop; finalcurrentOFF9.745FPS/20FPSunmet; no validatednextfix. |
 States describe evidence; a bounded completed item never implies product completion.
 
 ## Current implementation boundary
@@ -39,67 +39,45 @@ NativeD32 changes original raw-depth semantics; no migration/epsilon waiver.
 
 ## Current source ownership and latest result
 
-Root owns shared source/docs/runtime/GPU. Agents prepare private source or read-only
-analyses. Translator FULLY STOPPED/NEVERrestart; Xcode replay stopped. Owner away;
-no attendance needed. Same location/Preset123/Midday/Ultra3456×2168 only.
-No viewer/profiler/build/GPUtest running. All OWN trial environment plans restored0
-following exact executable/SIGTERM/Goodbye/PID-absence checks; OSexitcodeunknown.
+Ownerrequestedwrapupafter1.5days unlessremainingworkwaspromising. No validated
+20FPSpath found. Stopfurtherengineering/launches/profiling untilownerresumes.
+Rootowns sharedsource/docs/runtime/GPU; allagentsstopped/notasksqueued. No viewer/
+profiler/build/GPUtestlive; allOWNplansrestored0 afterexactPID/Goodbye/absence.
+TranslatorFULLYSTOPPED/NEVERrestart; Xcodereplaystopped; no travel/qualitycuts.
 
-Normal68619/source885 guarded joining remains nonpersistent defaultOFF. Actual
-normal doctor/configure/build/verify/signature0,349ARM64, independentidentitya1657b93.
-Both full optimized Release/RWDI actual API+GPU504300/106 EACH0; focusedwrapper7969/1
-andproduction2120/1 strictpairs/positivecontrols0. Privatecost benchmark stripped
-byte-exactly before normal build. Raw197-file cost packetSHAverified locally.
+Normal68619/source885 retained, joiningnonpersistent/defaultOFF/nosavedoverride.
+Finalsource-identicalOFF300frames5743–6042:9.745137727FPS/102.615276250meanms,
+p50102.6484375/p95112.428916.44start/end/finalgates0/fixedcameraEEP/Ultra3456×2168/
+native1/bias1/ready256stable120. Thisisnotanothercodegain. Earlierjoiningexperiment
+OFF8.639→ON5.514FPS rejectedfor defaultadmission (workloaddriftcaveat); priorbinding
+caches andcorrectness/performancefixes retained. FullbackendoptimizedAPI+GPU
+504300/106EACH0; normalbuild/349ARM64/signature0/identitya1657b93.
 
-Completed same-build300-frame OFF02/ON03:8.639419→5.513778FPS,115.748528→181.363852ms,
-draws50038.84→45954.67. Actualhero joining but no livebenefit; NO defaultONadmission.
-44rawlive start/endgates0/exactcameraEEP/native1/bias1/ready256stable120. Source
-population/ordinaryowner drift means−36.18% is not precise code-only causality.
-Both actualgated images observed, exact accepted62932/64552 exits/OWNrestores0.
-OFF01/ON02 strict Boolean/integer setup mismatches preserved/excluded; fresh
-accepted OFF0/ONtrue configs pass without helper relaxation. Official provenance
-verified, enforceexit1; independent88a7 actualaudit0.20FPS remainsunmet.
-[Full joining cost/build/native/live record](../../state/archive/CURRENT-indexed-draw-joining-live-2026-11-10.md).
-
-Prior PBR68614/source271 actual300frames9.566138vsfreshwater68610 9.581135flat;
-isolatedGPUwin didnot improveviewer. Earlierwater68610 9.785333vsfresh68608
-9.257293 hasdraw/probedrift caveat. Retain source-exact specializations; no new
-FPSgainclaim. [PBR](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md),
-[water](../../state/archive/CURRENT-water-probe-specialization-2026-11-10.md).
+All13postformalV2samples strictaudited/model0: initial-onlyidealmain4.17%holds/
+hero21.42%,neighborsdominate; noalpha/water/GPUtimeorFPbit-equivalenceclaim.
+Currentcoupledrecord/export/all3analyses0,2518CBalljoin. CPU7.2s samplemain includes
+hero3.517s;shadow2.240/GBuffer1.437inclusive. Validationleaf17/16msnotdominant;
+encoding/driver/resources/copies/postSort costsdistributed. Profilerannotationpauses
+retainedprimary, sensitivityseparate. No exactcriticalpath/hardwareceiling claim.
+[Finalevidence/closure](../../state/archive/CURRENT-20fps-owner-stop-2026-11-10.md).
 
 ## Complete-product checkpoint gate
 
-1. Advancement: strict native joining validation and live trial prevented default
-   admission of an optimization that lowered commands without an observed FPS gain.
-2. Preserved contract: all six Ultra hero faces, original casters/PCSS/rawR32/
-   reverseZ/clamp/features; exact original1eb remains specification, no fallback.
-3. Open:20FPS and multi-scene performance, full pixel/feature parity, strict no-GL,
-   prolonged stability and independent build/review evidence. No hardware ceiling claim.
+1. Advancement: fresh current-source workload and coupledCPU/GPU evidence closes
+   unpromisinginitial-list/validationcache leads and prevents defaultjoiningregression.
+2. Preservedcontract: originalfeatures/sixUltra hero/casters/PCSS/rawR32/reverseZ/
+   clamp retained; no fallback/qualitycut/privateupload.
+3. Open:20FPS/fullpixel-featureparity/multi-sceneperformance/prolongedstability/
+   strict no-GL andindependent build/review evidence. Goalnotachieved/productnotcomplete.
 
 ## Immediate executable action
 
-Historical CURRENT64 replay COMPLETE/rootreviewed: two13-view walks actual0,
-mainidealinitialreject4.33%/hero19–21%ofmodeledholds, neighborsdominate. Historical
-sparseopaque samples are notcurrentalpha/water/time orGPUbit-equivalence. FPflags
-heuristic. No oldcompactlistadmission (31vsrequired64neighborclamp/projectiongap).
-Next read Shadowagent PRIVATE plan for freshsource885/joiningOFF existing
-post-formal workload sampler and compatible currentCPU/coupledGPUtimeline. No
-launch/profileyet. Verifyactualflags/exactbinary/gates/isolation beforeexecuting.
-Need currentpopulation/criticalpath afterwater/PBR; no speculative shader revival.
-
-Private shadow single-map-walkd4b12898 source-approved but unapplied/unmeasured;
-count cost not isolated, no high-leverage admission. Hero face transactions already
-batch; ordinary total sampledCPU5–7% is not removable batching overhead.
-Closed shader/addressspace/materialAB/parallelshadow variants remain closed.
-Offset-only native buffer setters and mirrorclip are already implemented; haze
-has real feedback contract; hero occlusion intentionally disabled likeoriginal.
-Main-camera visibility must not be reused for cube faces or shadow casters.
-[Other retained experiment history](../../state/archive/INDEX.md).
-
-Stable7772/water is pushed. Owner manual Tag/Build42816862437/42816882219 succeeded;
-Alpha3/tag26.4.0.68611-alpha3 published, ARM64tar.xz/checksum+ZIP13769235298verified.
-Owner links delivered; no further auth/dispatch needed. New local PBR/census/joining
-code is not in Alpha3. No private uploads or publication from this comparison.
+NONE automatically. Owneraskedstop. Preservecode/evidence andwaitforexplicitresume.
+760-file480MBprivatecloseoutpacket hash-indexed/ignored; no uploads/releases.
+Onlyifownerresumes: readcloseoutfirst. Staticcolor-onlymirror-plane postSortculling
+andshadowcountwalk areUNIMPLEMENTED/UNMEASURED, no 20FPSforecast. GPUmirrorclipalready
+implemented; do notmodifycamera/shadowfrusta orreusemainocclusion forfaces/casters.
+Stable7772/waterAlpha3releasedbyowner; newlocalPBR/census/joiningcodeNOTinAlpha3.
 
 ## Non-negotiable open gates
 
@@ -107,5 +85,5 @@ No retained OpenGL/Vulkan/MoltenVK/Rosetta/translation fallback. Preserve origin
 quality and non-rendering functionality. Do not infer parity/FPS from test counts.
 PRODUCT/VALIDATION/PERFORMANCE remain authoritative; no release/public capture
 upload authorized. No travel under this goal. Retain raw private evidence and
-record real commands/exits/source identity at handoff. Goal ACTIVE/unmet.
+record real commands/exits/source identity at handoff. Ownerrequestedstop;20FPSunmet.
 Do not mark feature parity from build/test success alone.
