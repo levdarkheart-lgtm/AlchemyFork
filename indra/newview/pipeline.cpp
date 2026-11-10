@@ -85,6 +85,7 @@
 #include "../almetal/almetaluirenderer.h"
 #include "../almetal/almetalworld.h"
 #include "../almetal/almetalframecapture.h"
+#include "../almetal/almetalstagetiming.h"
 #include "../almetal/almetalshadowindirect.h"
 #include "../almetal/almetalshadowmaterials.h"
 #include "../almetal/almetalshadowcapture.h"
@@ -1800,6 +1801,10 @@ bool LLPipeline::publishMetalHeroProbeRadiance(
         return false;
     }
 
+    std::optional<ALMetalStageTimingScope> stage_scope;
+    if (const auto* parent = ALMetalStageTimingScope::current();
+        parent && parent->window() && parent->frame() == gFrameCount)
+        stage_scope.emplace(parent->window(), gFrameCount, 4, -1);
     std::string error;
     if (!capture.renderer->filterHeroProbeRadiance(
             *capture.hero_probe_source_cube,

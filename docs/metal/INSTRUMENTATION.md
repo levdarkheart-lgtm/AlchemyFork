@@ -165,6 +165,42 @@ fragment invocations and early/late depth rejection in Xcode. Capture success
 alone proves neither useful hidden-work savings nor a faster viewer. These
 capture-enabled collector samples are diagnostic, not formal FPS results.
 
+## Bounded native stage timestamps
+
+`ALCHEMY_METAL_STAGE_TIMING_FRAMES=1`, `2` or `3` requests that many diagnostic
+display intervals. Unset/empty leaves counter work disabled. This requires a
+successfully completed collector with at least300 exact-native, ready-probe
+samples and provenance. After command timing disarms and60 eligible normal
+intervals pass, the next normal entry creates the first counter window. A
+debugger-capture request disables this separate diagnostic.
+
+The persistent main scope starts after the actual `gFrameCount` increment and
+ends at the next normal display entry. It includes `display_end_frame` and the
+ordinary probe update that follows it. Nested hero and ordinary face scopes
+carry their actual face index. View1 is the main interval (including UI), view2
+is a hero face, view3 an ordinary face, and view4 hero-cube radiance publication.
+Pre-increment maintenance, compute, blit and present work are not sampled by
+this render-encoder hook. Snapshot displays temporarily suppress its scope.
+
+Each physical normal render encoder receives a copied descriptor and four
+fresh vertex/fragment boundary indices. Existing attachments and rendering
+remain unchanged; failed diagnostic admission uses the original pass. Sample
+buffers are independent per command and retained through GPU completion by a
+buffer-only owner. Sealed unsubmitted commands are reported unavailable and
+never resolved, even if committed later. No waits or submissions are added.
+Each window admits at most256 passes; excess admission is counted explicitly.
+
+The existing private viewer log receives `Native stage timing pass:` records
+and a final `Native stage timing finished:` summary only after all selected
+intervals have ended and their reports have settled. Records include actual
+frame/view/face, pass label, status, raw samples and clock calibration. An
+unavailable record has no elapsed duration; do not substitute zero. CPU clock
+samples are already nanoseconds; GPU deltas use paired CPU/GPU calibration.
+The M1 Max exposes stage timestamps here, not draw-boundary or utilization
+counters. Vertex/fragment/pass intervals can overlap and include scheduling
+effects: do not add them into GPU busy time or treat these diagnostic frames
+as formal FPS measurements. Keep logs private with the other runtime evidence.
+
 ## Automated quality checks
 Create a reference/candidate image comparison mechanism over deterministic camera/scene captures; report color-space/format/scale, pixel diff distributions and screenshots with sensitive content redacted. Do not use a single global pixel-equality test for temporal rendering; define local tolerances for stochastic/animated effects. Validate asset/UI editing flows separately.
 

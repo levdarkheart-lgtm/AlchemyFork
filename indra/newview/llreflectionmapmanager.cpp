@@ -54,7 +54,9 @@
 #if LL_DARWIN
 #include "../almetal/almetalpbrpreview.h"
 #include "../almetal/almetalresource.h"
+#include "../almetal/almetalstagetiming.h"
 #include "../almetal/almetalworld.h"
+#include <optional>
 #endif
 
 #if LL_WINDOWS
@@ -2070,6 +2072,12 @@ bool LLReflectionMapManager::updateProbeFace(
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     LL_PROFILE_GPU_ZONE("probe update");
+#if LL_DARWIN
+    std::optional<ALMetalStageTimingScope> stage_scope;
+    if (const auto* parent = ALMetalStageTimingScope::current();
+        parent && parent->window() && parent->frame() == gFrameCount)
+        stage_scope.emplace(parent->window(), gFrameCount, 3, static_cast<std::int32_t>(face));
+#endif
     // hacky hot-swap of camera specific render targets
     gPipeline.mRT = &gPipeline.mAuxillaryRT;
 

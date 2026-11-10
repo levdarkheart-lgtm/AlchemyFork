@@ -42,6 +42,11 @@
 #include "llviewerjoystick.h"
 #include "llviewermediafocus.h"
 
+#if LL_DARWIN
+#include "../almetal/almetalstagetiming.h"
+#include <optional>
+#endif
+
 extern bool gCubeSnapshot;
 extern bool gTeleportDisplay;
 
@@ -296,6 +301,12 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     LL_PROFILE_GPU_ZONE("hero probe update");
+#if LL_DARWIN
+    std::optional<ALMetalStageTimingScope> stage_scope;
+    if (const auto* parent = ALMetalStageTimingScope::current();
+        parent && parent->window() && parent->frame() == gFrameCount)
+        stage_scope.emplace(parent->window(), gFrameCount, 2, static_cast<std::int32_t>(face));
+#endif
 
     // hacky hot-swap of camera specific render targets
     gPipeline.mRT = &gPipeline.mHeroProbeRT;

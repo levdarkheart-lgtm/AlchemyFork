@@ -37,6 +37,7 @@
 #if LL_DARWIN
 #include "../almetal/almetaldevice.h"
 #include "../almetal/almetalframecapture.h"
+#include "../almetal/almetalstagetiming.h"
 #endif
 #include "aluniformbuffer.h"
 #include "fsyspath.h"
@@ -99,8 +100,11 @@
 
 #include <filesystem>
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 // [RLVa:KB] - Checked: 2011-05-22 (RLVa-1.3.1a)
 #include "llvisualeffect.h"
 #include "rlvactions.h"
@@ -529,6 +533,7 @@ static void fill_pacing_slack()
 #if LL_DARWIN
 static ALMetalBenchmarkRecorder::Provenance sMetalBenchmarkProvenance;
 static bool sMetalBenchmarkCompletedSuccessfully = false;
+static bool sMetalStageTimingFormalReady = false;
 static std::unique_ptr<ALMetalFrameCapture> sMetalFrameCapture;
 static bool sMetalFrameCaptureMainEligible = false;
 static U64 sMetalFrameCaptureEligibleFrame = 0;
@@ -668,6 +673,205 @@ static void advance_metal_frame_capture(bool normal_display)
     }
 }
 
+struct MetalStageTimingSession
+{
+    bool initialized = false, finished = false;
+    unsigned requested = 0, started = 0, cooldown = 0;
+    std::unique_ptr<ALMetalStageTimingWindow> active;
+    // Outlives display(): ordinary probes run after display_end_frame().
+    // It is destroyed before its active window, including at process teardown.
+    std::unique_ptr<ALMetalStageTimingScope> main_scope;
+    std::vector<std::unique_ptr<ALMetalStageTimingWindow>> sealed;
+    std::vector<ALMetalStageTimingResult> reports;
+};
+
+static MetalStageTimingSession& metal_stage_timing_session()
+{
+    static MetalStageTimingSession session;
+    return session;
+}
+
+static const char* metal_stage_timing_status(ALMetalStageTimingStatus status)
+{
+    switch (status)
+    {
+        case ALMetalStageTimingStatus::complete: return "complete";
+        case ALMetalStageTimingStatus::unsubmitted_at_seal: return "unsubmitted_at_seal";
+        case ALMetalStageTimingStatus::not_encoded: return "not_encoded";
+        case ALMetalStageTimingStatus::gpu_error: return "gpu_error";
+        case ALMetalStageTimingStatus::counter_unavailable: return "counter_unavailable";
+        case ALMetalStageTimingStatus::calibration_unavailable: return "calibration_unavailable";
+    }
+    return "unknown";
+}
+
+static void stop_metal_stage_timing(MetalStageTimingSession& session) noexcept
+{
+    session.main_scope.reset();
+    session.active.reset();
+    session.sealed.clear();
+    session.reports.clear();
+    session.finished = true;
+}
+
+static void advance_metal_stage_timing(bool normal_display) noexcept
+{
+    if (!normal_display) return;
+    auto& session = metal_stage_timing_session();
+    try
+    {
+        if (!session.initialized)
+        {
+            session.initialized = true;
+            const char* value = std::getenv("ALCHEMY_METAL_STAGE_TIMING_FRAMES");
+            if (!value || !*value) return;
+            if (std::strcmp(value, "1") == 0) session.requested = 1;
+            else if (std::strcmp(value, "2") == 0) session.requested = 2;
+            else if (std::strcmp(value, "3") == 0) session.requested = 3;
+            else
+            {
+                LL_WARNS("MetalStageTiming") << "Stage timing expects 1, 2 or 3 intervals" << LL_ENDL;
+                session.finished = true;
+                return;
+            }
+            if (const char* capture = std::getenv(ALMetalFrameCapture::directory_environment);
+                capture && *capture)
+            {
+                LL_WARNS("MetalStageTiming")
+                    << "Stage timing disabled during a debugger-capture request" << LL_ENDL;
+                session.finished = true;
+                return;
+            }
+        }
+        if (!session.requested || session.finished) return;
+
+        // End only at the next normal entry. Neither nested displays nor the
+        // final CSV frame's trailing ordinary-probe work can arm a window.
+        session.main_scope.reset();
+        if (session.active)
+        {
+            std::string error;
+            if (!session.active->seal(&error)) throw std::runtime_error(error);
+            session.sealed.push_back(std::move(session.active));
+        }
+        bool all_finished = true;
+        for (auto& window : session.sealed)
+        {
+            std::vector<ALMetalStageTimingResult> ready;
+            std::string error;
+            if (!window->poll(ready, &error)) throw std::runtime_error(error);
+            for (auto& result : ready) session.reports.push_back(std::move(result));
+            all_finished = all_finished && window->isFinished();
+        }
+        if (session.started == session.requested && all_finished)
+        {
+            std::size_t prepared = 0, rejected = 0, complete = 0;
+            for (const auto& window : session.sealed)
+            {
+                prepared += window->preparedPassCount();
+                rejected += window->rejectedPrepareCount();
+            }
+            // Logging is deferred until every selected interval has ended;
+            // it is not part of the formal samples or the selected windows.
+            for (const auto& result : session.reports)
+            {
+                complete += result.status == ALMetalStageTimingStatus::complete;
+                std::ostringstream row;
+                row << std::setprecision(17)
+                    << "Native stage timing pass: frame=" << result.tag.frame
+                    << " view=" << result.tag.view_kind << " face=" << result.tag.face
+                    << " pass=" << result.pass_index << " sample=" << result.first_sample
+                    << " status=" << metal_stage_timing_status(result.status)
+                    << " label=" << std::quoted(result.tag.label);
+                if (result.elapsed)
+                    row << " vertex_ns=" << result.elapsed->vertex_ns
+                        << " fragment_ns=" << result.elapsed->fragment_ns;
+                if (result.raw_samples)
+                    for (std::size_t i = 0; i < result.raw_samples->size(); ++i)
+                        row << " raw" << i << '=' << (*result.raw_samples)[i];
+                if (result.calibration)
+                    row << " cpu_before_ns=" << result.calibration->cpu_before_ns
+                        << " cpu_after_ns=" << result.calibration->cpu_after_ns
+                        << " gpu_before=" << result.calibration->gpu_before_ticks
+                        << " gpu_after=" << result.calibration->gpu_after_ticks;
+                if (result.gpu_error_code) row << " gpu_error=" << result.gpu_error_code;
+                LL_INFOS("MetalStageTiming") << row.str() << LL_ENDL;
+            }
+            LL_INFOS("MetalStageTiming") << "Native stage timing finished: intervals="
+                << session.started << " prepared=" << prepared << " rejected=" << rejected
+                << " reports=" << session.reports.size() << " complete=" << complete
+                << "; elapsed stage intervals overlap; not GPU busy time or formal FPS"
+                << LL_ENDL;
+            stop_metal_stage_timing(session);
+            return;
+        }
+        if (session.started == session.requested) return;
+        if (sMetalBenchmarkCompletedSuccessfully && !sMetalStageTimingFormalReady)
+            throw std::runtime_error("Stage timing requires at least300 exact ready-probe samples with provenance");
+        const bool ready = !gHeadlessClient && !gPipeline.windowResizePending() &&
+            LLStartUp::getStartupState() >= STATE_STARTED &&
+            !gTeleportDisplay && !gDisconnected &&
+            !LLAppViewer::instance()->logoutRequestSent() && !display_window_hidden() &&
+            sMetalStageTimingFormalReady && !ALMetalDevice::commandTimingEnabled();
+        if (!ready)
+        {
+            if (session.started) throw std::runtime_error("World eligibility ended during stage timing");
+            return;
+        }
+        if (session.cooldown < ALMetalFrameCapture::cooldown_frames)
+        {
+            ++session.cooldown;
+            return;
+        }
+        if (!gViewerWindow || !gViewerWindow->getWindow()) return;
+        ALMetalDevice* device = gViewerWindow->getWindow()->getMetalDevice();
+        if (!device) return;
+        std::string error;
+        session.active = ALMetalStageTimingWindow::create(*device,
+            ALMetalStageTimingWindow::maximum_passes, &error);
+        if (!session.active) throw std::runtime_error(error);
+        ++session.started;
+        // The main scope is installed after display increments gFrameCount.
+    }
+    catch (const std::exception& exception)
+    {
+        stop_metal_stage_timing(session);
+        try
+        {
+            LL_WARNS("MetalStageTiming") << "Optional native stage timing disabled: " << exception.what()
+                << LL_ENDL;
+        }
+        catch (...) {}
+    }
+    catch (...)
+    {
+        stop_metal_stage_timing(session);
+        try { LL_WARNS("MetalStageTiming") << "Optional native stage timing disabled after an unknown diagnostic failure" << LL_ENDL; }
+        catch (...) {}
+    }
+}
+
+static void begin_metal_stage_timing_main(bool normal_display) noexcept
+{
+    if (!normal_display) return;
+    auto& session = metal_stage_timing_session();
+    if (!session.active || session.main_scope) return;
+    try
+    {
+        if (gHeadlessClient || LLStartUp::getStartupState() < STATE_STARTED ||
+            gTeleportDisplay || gDisconnected ||
+            LLAppViewer::instance()->logoutRequestSent() || display_window_hidden())
+        {
+            stop_metal_stage_timing(session);
+            LL_WARNS("MetalStageTiming") << "Stage timing lost world eligibility before main rendering" << LL_ENDL;
+            return;
+        }
+        session.main_scope = std::make_unique<ALMetalStageTimingScope>(
+            session.active.get(), gFrameCount, 1, -1);
+    }
+    catch (...) { stop_metal_stage_timing(session); }
+}
+
 static ALMetalBenchmarkRecorder::Camera benchmark_camera(const LLCamera& source)
 {
     ALMetalBenchmarkRecorder::Camera camera;
@@ -799,6 +1003,7 @@ struct MetalBenchmarkSession
     std::uint64_t previous_native_draw_count = 0;
     bool reported_failure = false;
     bool stopped = false;
+    bool stage_timing_config_eligible = false;
 };
 
 static void stop_interrupted_metal_benchmark_session(MetalBenchmarkSession& session) noexcept
@@ -807,6 +1012,7 @@ static void stop_interrupted_metal_benchmark_session(MetalBenchmarkSession& sess
     {
         session.stopped = true;
         sMetalBenchmarkCompletedSuccessfully = false;
+        sMetalStageTimingFormalReady = false;
         LLRender::setMetalCommandTimingEnabled(false);
         gGL.queries().setDiagnosticsEnabled(false);
         ALProbeReadiness::requestObservation(false);
@@ -860,6 +1066,8 @@ static MetalBenchmarkSession& metal_benchmark_session()
                     : "; non-exact native presentation states are accepted")
             << LL_ENDL;
         const bool collect_provenance = config->collect_provenance;
+        session.stage_timing_config_eligible = config->require_exact_native &&
+            config->require_ready_probes && collect_provenance && config->sample_frames >= 300;
         try
         {
             session.recorder = std::make_shared<ALMetalBenchmarkRecorder>(
@@ -950,6 +1158,8 @@ static void record_metal_benchmark_frame(
     {
         session.stopped = true;
         sMetalBenchmarkCompletedSuccessfully = true;
+        sMetalStageTimingFormalReady = session.stage_timing_config_eligible &&
+            recorder->samplesWritten() >= 300 && recorder->requiresReadyProbes();
         LLRender::setMetalCommandTimingEnabled(false);
         gGL.queries().setDiagnosticsEnabled(false);
         ALProbeReadiness::requestObservation(false);
@@ -963,6 +1173,7 @@ static void record_metal_benchmark_frame(
     {
         session.stopped = true;
         sMetalBenchmarkCompletedSuccessfully = false;
+        sMetalStageTimingFormalReady = false;
         LLRender::setMetalCommandTimingEnabled(false);
         gGL.queries().setDiagnosticsEnabled(false);
         ALProbeReadiness::requestObservation(false);
@@ -1008,6 +1219,10 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         !for_snapshot && !gSnapshot && !gCubeSnapshot &&
         !LLPipeline::sRenderingHUDs && zoom_factor == 1.f && subfield == 0;
     advance_metal_frame_capture(metal_normal_display);
+    advance_metal_stage_timing(metal_normal_display);
+    std::optional<ALMetalStageTimingScope> stage_snapshot_guard;
+    if (!metal_normal_display && ALMetalStageTimingScope::current())
+        stage_snapshot_guard.emplace(nullptr, 0, 0, -1);
 #endif
     LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Render");
     LL_PROFILE_GPU_ZONE("Render");
@@ -1202,6 +1417,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     // commands below belong to this newly incremented main display.
     if (metal_normal_display && sMetalFrameCaptureMainEligible)
         sMetalFrameCaptureEligibleFrame = gFrameCount;
+    begin_metal_stage_timing_main(metal_normal_display);
 #endif
     gRecentFrameCount++;
     if (gFocusMgr.getAppHasFocus())

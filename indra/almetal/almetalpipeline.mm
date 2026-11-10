@@ -9,6 +9,7 @@
  */
 
 #include "almetalpipeline.h"
+#include "almetalstagetiming.h"
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
@@ -925,8 +926,50 @@ std::unique_ptr<ALMetalRenderEncoder> ALMetalRenderEncoder::begin(
             return nullptr;
         }
         id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
-        id<MTLRenderCommandEncoder> encoder = [command
-            renderCommandEncoderWithDescriptor:(__bridge MTLRenderPassDescriptor*)render_pass.nativeHandle()];
+        MTLRenderPassDescriptor* original =
+            (__bridge MTLRenderPassDescriptor*)render_pass.nativeHandle();
+        MTLRenderPassDescriptor* descriptor = original;
+        std::unique_ptr<ALMetalStageTimingWindow::PreparedPass> timed_pass;
+        // No scope is installed during ordinary rendering. The optional
+        // diagnostic copies the descriptor and owns only its counter storage;
+        // it cannot change attachment, shader, submission or wait policy.
+        if (const auto* scope = ALMetalStageTimingScope::current();
+            scope && scope->window())
+        {
+            try
+            {
+                const ALMetalStageTimingTag tag{
+                    scope->frame(), scope->viewKind(), scope->face(), label};
+                timed_pass = scope->window()->prepare(command_buffer, render_pass, tag);
+                if (timed_pass)
+                    if (void* handle = timed_pass->consume(command_buffer))
+                        descriptor = (__bridge MTLRenderPassDescriptor*)handle;
+            }
+            catch (...)
+            {
+                if (timed_pass) timed_pass->abandon();
+                timed_pass.reset();
+                descriptor = original;
+            }
+        }
+        id<MTLRenderCommandEncoder> encoder = nil;
+        @try
+        {
+            encoder = [command renderCommandEncoderWithDescriptor:descriptor];
+        }
+        @catch (NSException* exception)
+        {
+            (void)exception;
+            if (descriptor == original) @throw;
+            // Counter admission is optional. An unchanged original pass must
+            // still be allowed when the diagnostic descriptor is rejected.
+        }
+        if (!encoder && descriptor != original)
+        {
+            timed_pass->abandon();
+            timed_pass.reset();
+            encoder = [command renderCommandEncoderWithDescriptor:original];
+        }
         if (!encoder)
         {
             setError(error, "Metal command buffer could not create a render encoder");
