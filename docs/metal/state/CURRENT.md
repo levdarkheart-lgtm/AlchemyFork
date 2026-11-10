@@ -1,137 +1,121 @@
-# Current engineering state — native multi-avatar repairs
+# Current engineering state — failed-travel correctness repairs
 
 **Observed:** 2026-11-10, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `97dd825aaf428da4a50e6b8bf1659d5b60d62eda`.
-**Last observed viewer:** 68633 PID95871, Release ARM64, built/verified/signed.
-Owner then authorized closing older68626PID44312 and starting the repaired app.
-Old PID exited; owner logged in and drove travel. Live QA subsequently FAILED
-with repeated UI stalls and geometry corruption; owner may close the viewer.
-Owner explicitly requested implementing the four avatar gaps. All prior fixes
-retained. Earlier20FPS goal remains paused; no settings, camera, avatar travel,
-cache/account changes occurred. Restart followed the owner's explicit request.
+**Renderer code checkpoint:** `0cbb48f104ad2f7d6e358266c1abf32d4d487a63` — independent native UI publication,
+terrain placeholders, impostor receipt/retry, affine skin validation and names.
+Owner explicitly requested code fixes against original source and saved logs.
+All earlier HUD, upload, environment, avatar and performance repairs retained.
+Earlier20FPS campaign stays paused. Translator stopped; Xcode replay stopped.
+No launch/login/travel, camera, account/cache/settings changes during this repair.
+The old68633 process was confirmed exited before GPU checks.
 
-## Latest live travel observation — FAILED
+## Concrete repairs and original contracts
 
-[Travel findings](../work/active/travel-live-68633.md): owner reported teleport/UI/
-movement/resize stalls, transient missing names and screenshot-proven corrupt
-rigged triangles. Saved logs, both screenshots, weak3-observation sample and a
-real10s CPU trace privately. Owner can close; no further capture required.
-Trace shows5.580 sampled main CPU seconds and345 runloop calls, max82.18ms gap:
-no continuous deadlock captured, but that does not disprove intermittent freezes
-or establish keyboard delivery/visible publication. Main/probe log rows are mixed.
-Confirmed remaining source gaps: UI cannot refresh without current valid world;
-fetched terrain lacks original placeholder contract; native impostor publication
-success is not checked before clearing retry; finite skin fallback differs from
-original and may stretch mixtures. Actual missing terrain member/bad skin operand/
-name-tag cause remain unknown. NO source edits or restarts during observation.
-Earlier GPU tests do not supersede this failed live check. Performance goal paused.
+Exact original: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`.
+[Implementation and evidence](../work/active/travel-correctness-repair.md).
 
-## Implemented original contracts
+- Native interface no longer requires a complete CURRENT world to render fresh
+  ordered UI/HUD. Retain committed PRE-UI color plus matching depth; never reuse
+  combined old UI. Device/surface/resize/reverse-Z mismatch gets a current-size
+  cleared pair. Snapshots/debug pixels still demand the exact current world.
+- Typed target leases pin pools; native texture aliases survive borrowed-wrapper
+  destruction. Remove redundant early main G-buffer clear (actual native pass
+  clears all attachments); exclude retained depth from subsequent borrowed writes.
+- Reduced/supersampled world size is resampled to full UI size as a coherent
+  pair: BilinearMirror encoded color, PointClamp raw depth, no Z conversion or
+  offscreen row flip. Cached pipeline/pool, completion-pinned source/output;
+  one extra submission only when scaling, none for matching-size retention.
+- Classic/PBR fetched terrain uses original immediate revival, Default then Null
+  placeholders, correct raw/sRGB views and samplers. Strong selected owners reach
+  command completion. Generated height/composition remain exact, with bounded
+  role-specific missing-input diagnostics.
+- Complete empty main views now continue through sky/lighting, as original;
+  explicit completeness/resource/query checks remain. Complete empty impostor bakes produce transparent targets, as original clears
+  even when no subject geometry is emitted. Failed native publication preserves
+  dirty retry and old dimensions/cached values/timestamp; publication requires
+  a validated quartet. First failing producer line survives phase resets.
+- Object skin validation checks the twelve consumed XYZ coefficients, preserving
+  a valid affine transform whose unused W lanes are nonfinite. Actual bad XYZ
+  retains bounded inverse/world/product diagnostics; no arbitrary finite caps or
+  speculative whole-palette policy. Live bad XYZ cause remains unknown.
+- Display-name cache misses stay pending after distance/status lines are added;
+  a stationary avatar can then gain its name without unrelated state changes.
+  This retry bug is also present in pinned original; formats/RLVa policy unchanged.
 
-Exact reference `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`.
-[Detailed implementation and limits](../work/active/avatar-crowd-parity.md).
+## Executed validation and build status
 
-- **GPU cost measurements:** completion-safe native GPUStartTime/GPUEndTime
-  receipt feeds ALGPUTimer and existing avatar ART policy; attachment timings
-  update still-live owners. Pending/errors never publish fabricated zero samples.
-  Requests from UI/autotune queue by UUID. One actual isolated subject per main
-  frame runs after original impostor update and main-camera/CAMERA_WORLD restore.
-  Reuses warmed renderer, separate targets and coherent saved shadows/SSR; current
-  shadow constants are packed before drawing. Complete opaque/forward/alpha work
-  commits once, without a visible impostor publication, GPU wait or UI mutation.
-- **Impostor ownership:** shared ALMetalAvatarResources cache holds one immutable,
-  validated quartet per avatar UUID across main/hero/ordinary owner swaps.
-  Queued batches and native commands retain record leases through completion.
-  Replacement/destruction cannot free earlier consumers; invalid publications
-  keep preceding coherent data. Device/HDR/normal mismatch invalidation remains.
-- **Loading:** original skip behavior now preserves other content when an avatar
-  is not fully loaded and original emits no geometry. The explicit original
-  pass0/particles-disabled debug sphere still lacks its native producer and
-  remains incomplete; no silent omission waiver was introduced.
-- **Body placeholders:** direct joint-mesh capture resolves requested/Default/Null
-  owners without changing UI slots. Immediate update precedes activity changes;
-  original raw placeholder versus sRGB ready-bake sampling preserved, with alpha,
-  depth, invisible-bake/caster rules and world/shadow texture identity unchanged.
-
-Seventeen original policy methods/seven settings blocks matched before repair;
-ranking, full-detail cap, complexity/mute/friends and cadence remain unchanged.
-No cross-avatar skin-palette alias was found. Generic ALQueryPool timing spans
-remain unsupported: avatar callers now use their actual native command receipts.
-GPU result is isolated command execution envelope, not whole-frame/busy-time;
-native pass setup/clear overhead is included, so do not call it identical in
-numerical scope to OpenGL elapsed queries. Max16 bounded completion log entries
-per subject family permit future live verification without avatar identifiers.
-
-## Executed checks and build
-
-Doctor, configure, Release build, verify_app and deep strict codesign all exited0.
-Exact commands/source/hashes: ignored
-`artifacts/metal/private-avatar-parity-repair-20261110-01/build-final.json`.
-verify_app inspected349 Mach-O files with zero invalid non-arm64 slices.
+Canonical Release **26.4.0.68638** built from checkpoint0cbb48f104, verified and
+signed; not launched. Doctor/configure/build/final configure+build/verify_app/
+deep strict codesign all exit0. verify_app checked349 Mach-O files, zero invalid
+non-arm64 slices. Source tree matches committed code, with docs-only handover edits.
 Canonical app: `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-68633 executable SHA256: `5695b820fcd7a7a3252d1dedb4e91dd8cd90a0595a4afb4ec13417e58ffbac83`.
-Metallib SHA256: `a155144459e5899d838c35834d31ecd0b4c5ae67e511e26e81523e464cd994f8` (MSL unchanged).
-Owner-run launch receipt: ignored
-`artifacts/metal/private-avatar-parity-owner-try-20261110-01/launch.json`.
-Exact path/hash/PID checked; no diagnostic/session overrides injected by launch.
-Login screen is not a crowd/region/settings/visual-parity observation.
+Executable SHA256: `6942629c44614828ed327e563536376191c992c0d2af9ead44f2c819fc8c0eb0`.
+Metallib SHA256: `bca357a8868e3c4a82c9e8eb21cc3b27fe783806e83651742e2919b4671c3f0d`.
+Exact source/commands/exits/hashes: private `build-final.json` in the evidence directory.
+Commands/logs: ignored `artifacts/metal/private-travel-correctness-repair-20261110-01/`.
+Root performed builds/GPU runs; independent source review approved all owned
+components and found the earlier main-depth clear, which root corrected.
+This is source/review evidence, not an independent fresh-checkout build.
 
-Actual Release native GPU tests with API+shader validation, all exit0:
+Actual Release tests on this M1 Max; API+shader validation enabled for GPU cases:
 
-| Check | Assertions /cases | Actual scope |
+| Check | Assertions/cases | Result |
 | --- | --- | --- |
-| Command timing + real renderer batch/slot admission |369 /4| Positive native time, queued-delay exclusion, abandonment, no-wait receipt, actual8x8 clear pixels. |
-| ALGPUTimer + UI/buffer regression cases |375 /5| Actual native receipt delivery/failure recovery, previous placeholder/upload behavior. |
-| Two-avatar resource cache |395 /2| Distinct quartets/view swaps, replacement/erase, format/device invalidation, CPU and GPU completion leases, exact4MRT+depth. |
-| Avatar sampling/G-buffer |31498 /1| Real rigid/skinned/forward alpha, independent raw-view oracle, true identity, alpha/cutoff/MRT/depth invariants. |
-| Existing impostor replay |126 /1| Native baked G-buffer rendering retained. |
+| Affine palette/real affineTransform |201/3|pass|
+| Production fetched resolver + classic/PBR terrain GPU |272/1|pass|
+| Empty impostor bake and quartet replay,8 format/Z layouts |17070/1|pass|
+| Retained UI, pool/borrowed lifetime, resize, scale and HUD depth |29130/3|pass|
+| Existing native UI/target/pool/impostor regression cases |17964/4|pass|
+| Existing four-MRT world renderer, including actual clear-only world |31498/1|pass|
 
-Evidence JSON/logs/hashes are in the same private directory. Initial backend
-compile failed on a newly introduced invalid failure-helper name, corrected to
-existing renderer failure handling; rebuild passed. Two fixture input offsets
-were corrected during review before GPU runs. Final committed build passed.
-Agents source-reviewed independently; root ran all builds/GPU checks/integration.
+Initial retained-UI fixture selected an alpha-textured shader without supplying
+an image; corrected to uniform_color and rerun passed. No renderer fault was
+inferred from that fixture failure. The final native scaling shader is packaged in the verified app; the initial
+1101-unit viewer rebuild and final four-unit incremental build both succeeded.
 
-These backend checks do not instantiate the full viewer avatar/cull manager.
-Actual queued profiling/ART effects, loaded/unloaded real avatars and cross-view
-impostor visuals still need live verification. No crowd FPS/parity improvement is
-claimed. New capture-owner restoration does not make inherited generateImpostor
-manual global-state cleanup fully exception-safe.
+These tests do not instantiate the entire viewer manager, actual network fetch,
+CAMetalLayer resize/input loop, or full live teleport/name/rigging paths. No new
+live visual/FPS improvement claim. Existing final grain/dither still evaluates
+at world size before scaling: exact noise/effect-coordinate parity for non1
+render scales remains open. No scene quality cuts or avatar caps introduced.
 
-## Preserved prior work and unresolved observations
+## Preserved evidence and open symptoms
+
+[Failed68633 live travel](../work/active/travel-live-68633.md) and
+[preceding checkpoint](archive/CURRENT-failed-travel-68633-2026-11-10.md).
+Owner saw UI/movement/resize stalls, distance-only names and stretched geometry.
+Saved logs/screenshots/10sCPUtrace remain private. Trace captured345 runloops,
+max82.18ms gap, not a permanent deadlock; that does not prove visible publication
+or keyboard delivery at every reported failure. Earlier bounded tests did not
+supersede this failed live result.
+
+[Prior avatar ownership/profiling repair](../work/active/avatar-crowd-parity.md)
+remains included. Whole-manager native GPU timing/ART dispatch and crowd visuals
+still need live checks; no native profile-completion receipt was observed in the
+failed trial, and request activation was unknown. Original particles-disabled
+loading debug sphere still lacks its native producer.
 
 [Cold-start/environment checkpoint](archive/CURRENT-cold-start-environment-repairs-2026-11-10.md)
-records actual zero-file cache test, main-thread UI ownership, pending UI frame
-publication, correct EEP gamma/no-post policy and completed default-probe reset
-continuity. Those repairs (68630/code76413) are ancestors; visual improvement
-still needs observation. No original viewer launch in the current investigations.
-Original8978files/1703059096bytes cache remains preserved at ignored
+retains earlier EEP gamma/no-post/default-probe continuity fixes. Full sky/interior/
+shadow parity, low-DD terrain/water and all random attachment corruption remain
+unverified beyond the specific confirmed source repairs above.
+Original8978files/1703059096bytes cache remains preserved under ignored
 `artifacts/metal/private-empty-cache-start-20261110-01/original-cache`.
-Do not restore it over the active live cache. Saved account/settings untouched.
-
-Low-DD terrain/water, reported sky/interior/shadow parity and random missing shoe/
-outfit spikes remain unresolved beyond those confirmed source repairs. Original
-terrain uses infinite-far culling; shared far-plane/water rules match. No guessed
-terrain cutoff or shadow quality reduction was introduced. Prior indexed HUD/
-alpha/PBR/upload retry repairs remain included. All CUA phases completed;
-Translator remains fully stopped, Xcode replay remains stopped. Private captures,
-cache and logs stayed ignored and were not uploaded. Root owns shared files.
+Do not restore over active cache; account/settings untouched. No private uploads.
 
 ## Exact next actions
 
-Owner was told captures are sufficient and may close the stuck viewer. Read the
-travel findings and private CPU/trace analysis. Next source work must restore
-independent native UI presentation and original terrain loading semantics, fix
-impostor publication success/retry ownership, and identify the bad skin product
-before a matrix repair. Names still need actual text/value/bounds evidence.
-No automatic restart/travel, performance-goal resumption or quality cuts.
+68638 is built/verified and remains closed. Next owner-driven live trial should
+compare actual loading/teleport, UI input/resize, name arrival, HUD alpha,
+attachments and earlier environment/terrain/water/shadow symptoms. Do not treat
+backend tests as full visual acceptance or resume the paused FPS campaign.
 
 ## Complete-product advancement assessment
 
 | Milestone | State | Evidence /remaining requirement |
 | --- | --- | --- |
-| M-008 Advanced views/effects | doing | Cross-view avatar resource ownership now GPU-tested; live broad parity remains. |
+| M-008 Advanced views/effects | doing | Native loading/UI/avatar correctness mechanisms repaired and GPU-tested; live parity remains. |
 | M-012 Native UI automation | complete | Prior exact-build flow retained; no new CUA phase. |
 | M-014 Ultra20FPS campaign | deferred | Owner-paused; no new FPS or speedup claim. |
 

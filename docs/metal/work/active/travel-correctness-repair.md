@@ -72,8 +72,14 @@ Executed on the M1 Max in Release with Metal API+shader validation for GPU cases
 Initial retained-UI fixture failed because it selected the alpha-textured solid
 shader without a texture; corrected to the nontextured uniform-color shader.
 The corrected GPU run passed. Native source/helper changes and API/shader checks
-were independently reviewed; root performed builds/GPU execution. Additional
-existing UI/pool regressions and the canonical viewer build are being finished.
+were independently reviewed; root performed builds/GPU execution. Existing UI/target/pool/impostor regressions also pass17964 assertions/4cases;
+existing native world four-MRT/clear-only case passes31498 assertions/1case.
+
+Canonical Release26.4.0.68638 built from0cbb48f104ad2f7d6e358266c1abf32d4d487a63.
+Doctor/configure/build/final configure+build/verify_app/deep strict codesign all0;
+349 Mach-O files inspected, none non-ARM64. The broad1101-unit rebuild and final
+four-unit incremental build both passed. Exact app/executable/metallib hashes
+and all commands are in private build-final.json. Viewer remains closed.
 Private exact command/log records are under ignored
 `artifacts/metal/private-travel-correctness-repair-20261110-01/`.
 Backend tests cannot establish full-viewer live teleport/resize/visual success.

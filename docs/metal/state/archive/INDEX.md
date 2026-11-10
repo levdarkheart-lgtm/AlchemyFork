@@ -197,3 +197,5 @@ erratum or a new current observation; do not silently rewrite historical claims.
 - [Avatar/HUD and native upload correctness](CURRENT-avatar-hud-upload-correctness-2026-11-10.md) — exact-original HUD state, pending attachment textures, upload retry tests and build 68626; superseded by the cold-start investigation.
 
 - [Cold startup and environment repairs](CURRENT-cold-start-environment-repairs-2026-11-10.md) — zero-file cache test, UI/default textures, EEP display policy and probe-reset continuity; build68630 prepared without launch, plus the initial multi-avatar findings.
+
+- [Failed owner-driven travel on 68633](CURRENT-failed-travel-68633-2026-11-10.md) — retained exact build/GPU evidence plus the failed live UI/name/geometry test and CPU trace limits, before the subsequent correctness repairs.

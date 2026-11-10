@@ -1,62 +1,62 @@
-## Latest owner-driven travel failed — act on actual evidence
-
-Owner logged in68633 and traveled. Repeated UI/movement/resize stalls and actual
-stretched rigged geometry screenshots; missing names can show only distance until
-arrival progresses. Root preserved logs/screenshots/10sTimeProfiler. Owner offered
-to close; root said all captures sufficient, can close. Do NOT launch automatically.
-Read docs/metal/work/active/travel-live-68633.md and its private analysis paths.
-Main loop was active in captured interval (345runloops/max82.18ms gap), which does
-not prove visible publication/input at every reported failure. No permanent
-single-stack deadlock proved. Source flaws: world-completeness blocks freshUI,
-fetched terrain bypasses original placeholders, failed native impostor publish
-still clears needsUpdate, non-original finite skin replacement may stretchmixes.
-Actual bad input/name cause unknown. No new source changes this observation.
-
-# Continue correctness validation — native avatar repairs ready
+# Continue failed-travel correctness repairs
 
 Read AGENTS.md and CURRENT.md completely. Branch codex/apple-silicon-metal.
-Renderer checkpoint `97dd825aaf428da4a50e6b8bf1659d5b60d62eda`.
-Owner explicitly requested all four multi-avatar gap repairs; implemented and
-committed, prepared build68633. All prior fixes retained. Earlier20FPS goal stays
-PAUSED. Translator fully stopped; Xcode replay off. All CUA phases completed.
-Root owns shared source/build/runtime/docs; agents finished owned work/reviews.
+Renderer checkpoint 0cbb48f104ad2f7d6e358266c1abf32d4d487a63.
+Owner explicitly requested implementation; code committed, canonical app68638
+built/verified/signed and left closed. Do not launch an older app or resume the20FPS campaign.
+Translator fully stopped; Xcode replay off. All previous CUA phases completed.
+Old68633PID95871 was confirmed exited before native GPU tests. No new launch,
+account/cache/settings/camera/region change by root during repair.
 
-Owner subsequently explicitly authorized restart. Closed68626PID44312 viaCmdQ,
-launched exact canonical68633; login screen observed inCUA. NewPID95871, path/
-hash verified in private-avatar-parity-owner-try-20261110-01/launch.json. No launch
-session/diagnostic overrides injected. Owner will log in and try different places;
-do not drive login/travel. No crowd/region/settings/FPS observation yet.
+Read docs/metal/work/active/travel-correctness-repair.md. New code:
+- Native ordered UI can render over retained PRE-UI world color+depth when
+  current world is incomplete. Typed pool leases+native aliases, resize/device/
+  Z compatibility, fresh cleared backing if needed. Early redundant main logical
+  G-buffer clear removed; later borrowed writes exclude retained depth.
+- Reduced/supersampled world resamples to full UI color+depth with original
+  BilinearMirror encoded color and PointClamp raw depth. No Z conversion/flip,
+  cached PSO/pool and completion-pinned command. Matching sizes add no GPU work.
+- Classic/PBR fetched terrain Default/Null/immediate-revival, raw/sRGB and sampler
+  behavior restored; generated height/composition remain authoritative.
+- Complete empty main views continue through sky/lighting as original; explicit
+  completeness/resource/query checks remain. Complete empty impostor bakes clear transparent; failed publication keeps
+  dirty retry and old dimensions/values/time, with exact producer diagnostics.
+- Object skinning validates twelve consumed XYZ fields, preserves valid data
+  with nonfinite unused W. Actual bad XYZ operands get bounded diagnostics.
+- Display-name pending state survives distance/status lines (inherited original
+  bug), allowing stationary avatars to gain newly cached names.
 
-Implementation details and exact limits:
-docs/metal/work/active/avatar-crowd-parity.md.
-- Native GPU completion receipt + ALGPUTimer now supply actual isolated avatar/
-  attachment GPU times. profile requests queue from UI/autotune, dispatch one per
-  main frame AFTER updateImpostors+main-camera restore; current shadow mirror is
-  packed and coherent saved shadow/SSR inputs pinned. Reuses warmed renderer,
-  separate targets, complete transaction, no visible impostor publication/wait.
-- Shared avatar-ID cache spans main/probe owner swaps. Immutable quartet leases
-  survive queued draws, replacement/destruction and actual GPU completion;
-  failed publication preserves old, device/HDR/normal invalidation stays strict.
-- Unloaded avatar skips where original skips. Original particles-disabled debug
-  sphere still lacks a native producer, so that explicit case remains incomplete.
-- Body texture requested/Default/Null ownership and raw-vs-sRGB sampling restored
-  without UI-slot mutation, preserving alpha/depth/caster admission.
+Actual M1 Max Release tests passed: skin201/3; terrain272/1; impostor17070/1;
+retained UI/resize/scale/rawdepth/HUD29130/3; existing UI/pool/impostor17964/4;
+world four-MRT/clear-only31498/1.
+GPU cases used Metal API+shader validation. Initial UI fixture selected textured
+solid_color without a texture; changed to uniform_color and rerun passed.
+Root performed builds/GPU checks; independent agents source-reviewed and caught
+an actual earlier-clear lifetime problem, now fixed. This is not independent
+fresh-checkout build evidence or full live acceptance.
 
-All focused GPU/API+shader checks passed: timing369/4, timer+UI+VB375/5,
-cache395/2, avatar sampling31498/1, existing impostor126/1. Doctor/configure/build/
-verify/signature exact-source records in
-artifacts/metal/private-avatar-parity-repair-20261110-01/build-final.json.
-No real crowd/viewer-manager/ART/visual comparison yet and no FPS gain claim.
-Bounded max16 native avatar/attachment completion logs can verify actual samples.
-Next owner-directed viewer run should test several avatars with full-detail limit
-and profiling enabled, main/mirror impostors, loading/default-to-ready transitions,
-and the earlier Midday/Sunset/Midnight fixes. Do not launch just for source audit.
+Private exact commands/logs under ignored
+artifacts/metal/private-travel-correctness-repair-20261110-01/.
+Doctor/configure/build/final configure+build/verify_app/deep strict codesign all0.
+Verified349 Mach-O files, no invalid nonarm64. Canonical26.4.0.68638 executable
+SHA6942629c44614828ed327e563536376191c992c0d2af9ead44f2c819fc8c0eb0;
+metallib bca357a8868e3c4a82c9e8eb21cc3b27fe783806e83651742e2919b4671c3f0d.
+Exact build-final.json is in that private evidence directory. No source edits
+remain beyond committed0cbb48f104; final handover docs can have a later SHA.
+Next owner-driven travel should exercise UI input/resize, missing-world loading,
+teleport, name arrival, HUD alpha, attachments and earlier lighting/terrain/water.
+No automatic launch just for further source audit. Prior live68633 FAILED:
+see travel-live-68633.md and indexed CURRENT-failed-travel-68633 archive.
+Runloop active in10sCPUtrace did not prove visible publication/input delivery.
 
-Previous cold empty-cache evidence/archive:
-docs/metal/state/archive/CURRENT-cold-start-environment-repairs-2026-11-10.md.
-Original8978files/1703059096bytes cache remains preserved at ignored
+Full sky/interior/shadow/low-DD parity and all geometry spikes remain unverified.
+Actual bad XYZ producer not observed; unused-W repair isn't proof of every spike.
+Non1-scale final grain/dither still evaluates at world size before scaling.
+Original particles-disabled avatar loading sphere lacks native producer. Prior
+native avatar profiling/ART dispatch still needs actual requested live receipts.
+All earlier97dd825 avatar resources/profile/body placeholders, cold-start/EEP/
+probe continuity, HUD/alpha/upload and performance changes remain included.
+
+Original8978files/1703059096bytes cache remains preserved privately under
 artifacts/metal/private-empty-cache-start-20261110-01/original-cache;
-do NOT restore over live cache. Account/settings untouched. Earlier sky/gamma/
-probe continuity repairs68630 are ancestors; full visual result still unverified.
-Terrain/water/shadow screenshot and random shoe/outfit spikes remain unresolved.
-Private artifacts/captures/cache must never be uploaded without authorization.
+do not restore over active cache. Never upload private captures/logs/cache.
