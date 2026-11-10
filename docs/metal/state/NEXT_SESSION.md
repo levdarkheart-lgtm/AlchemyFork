@@ -3,8 +3,19 @@
 Read AGENTS.md and CURRENT.md completely. Branch codex/apple-silicon-metal.
 Renderer checkpoint2c60e47b0eac61f3a62b504163504516d1729bed; canonical Release
 26.4.0.68643 built, verified ARM64 and signed. Owner closed68638, then explicitly
-requested new launch: exact68643/hash verified, PID48817 viaCUA, now at LOGIN.
+requested new launch: exact68643/hash verified, PID48817 viaCUA, initial LOGIN.
 Root performed no login or settings/location changes. CUA phase completed.
+Owner subsequently logged in/traveled to crowdedregion. Reported choppy UI/
+walking/nearby avatars at22–25FPS; owner foundanimatedlimit11, raised40, confirmed
+EVERYTHINGRESPONSIVE. Root captured20sTimeProfiler; no code/settings/restart.
+Read work/active/crowd-live-68643.md. Viewer now RUNNING for owner travel.
+Laterownerclarification: LEFT/RIGHTarrowturn hasfreshnametags/delayedselfbody,
+stillUNRESOLVED; originalselfrotationmatches1eb. Frame-age result follows.
+Ownerreports76avatars andgeometrycorruptionseemsfixed; no controlledparityclaim.
+Pure-data snapshotlaterexecuted: world/presentation/source24524==gFrame24524,
+lastUI24523; actualvisibleworldageunknown. No stalecauseproved. DetachOK/processR.
+Attach/read/detach21.7sdiagnosticpause; notspontaneoushang. Do not repeatattach
+forcontinuoussampling; futureboundedframe/posecensusifneeded. No codechanges.
 No automatic launch just for source audit. All earlier repairs remain included.
 Translator stopped, Xcode replay off, earlier20FPS goal stays paused.
 No account/cache/settings/camera/location changes during this repair.

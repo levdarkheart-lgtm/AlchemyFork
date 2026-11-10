@@ -37,6 +37,15 @@ and [avatar ownership work](avatar-crowd-parity.md) remain included. Potential
 VBO/fence publication seams are private/unapplied, not established live causes.
 Cold cache backup remains private/intact. No release/private upload/new push.
 
+[Latest crowded-region trial](crowd-live-68643.md): owner raised max animated
+avatars11→40 and confirmed UI/walking/nearby-avatar movement responsive. Root
+captured20sCPUtrace, no source/settings/restart changes or formal FPS comparison.
+Earlier cloud/bad-inverse warnings remain separate unclosed correctness evidence.
+Follow-up LEFT/RIGHT turning name-tag/body mismatch remains unresolved; original
+rotation policy unchanged. Capture actual world age before a guessed fix.
+One pure-data sample showed current world; snapshot+detach succeeded. It did not
+capture a controlled bad turn. Avoid repeated disruptive debugger attachments.
+
 ## Work board
 
 | ID | Work | State | Evidence / next boundary |
@@ -83,7 +92,8 @@ do not establish visual acceptance, product completion or FPS gains.
 
 ## Immediate executable action
 
-68643 runs at login for owner-directed testing. Verify previously corrupt
+68643 runs for owner-directed travel. Crowd responsiveness is owner-confirmed
+after animated-avatar limit change; verify previously corrupt
 avatar, outfit/teleport loading, HUDs, input/resize, names and real parcel music
 with exact-build logs. If camera symptom persists, correlate camera pose and
 published world source-frame/region; original camera code is unchanged. Voice

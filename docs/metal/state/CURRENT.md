@@ -6,8 +6,8 @@
 All previous renderer/HUD/loading/UI/environment/performance repairs retained.
 Earlier20FPS campaign stays paused. Translator stopped; Xcode replay stopped.
 Owner closed68638. At the owner’s next explicit request, exact68643/hash was
-launched viaCUA, PID48817; login window/title observed. No login performed.
-No account/cache/settings/camera/region changes during this launch.
+launched viaCUA, PID48817; owner subsequently logged in and traveled. Root made
+no login/account/cache/settings/camera/region changes during this trial.
 
 ## Confirmed avatar contract repaired
 
@@ -76,9 +76,28 @@ vlc-real-host/result.json pins compiled playback host and protocol observations.
 No private logs/screenshots/URLs/cache uploaded. Code commits29d0b148e7,
 d497d2122e and2c60e47b0e are local; no new push or release claimed.
 
+## Latest owner-driven crowd trial
+
+[68643 crowd findings](../work/active/crowd-live-68643.md): owner reported choppy
+UI/walking/nearby avatars despite22–25FPS, found animated-avatar limit11 and
+raised it to40, then confirmed everything responsive. Root made no code/settings
+changes.20sCPUtrace captured19.901mainRunning seconds/21.297sample span with
+substantial sun-shadow CPU ancestry. No formal FPS/GPU comparison or isolated
+causal claim for UI/walking. Earlier cloud/bad-inverse warnings are separate,
+not contemporaneous proof of the sampled symptom. Viewer stays running.
+Owner then clarified LEFT/RIGHT turning still shows current name-tag motion
+with delayed self-body rotation; investigate this distinct unresolved symptom.
+Original turn/update functions match1eb; need actual world source-frame age
+before changing smoothing. Owner reports prior geometry corruption appears
+fixed among roughly76avatars; full visual parity remains open.
+One pure-data debugger sample showed current backing24524/current frame24524,
+last UI24523; its presented world age is unknown. No stale cause proved. Detach
+succeeded, process running; attach/read/detach paused about21.7s, not a viewer
+hang result. Intermittent name/body mismatch remains open, no code change.
+
 ## Exact next actions
 
-68643 is now running at login for the owner. Next live acceptance must
+68643 is running for owner-driven travel. Next live acceptance must
 verify the previously identified avatar and outfit/loading/teleport geometry,
 HUD transparency, UI/movement/resize responsiveness, names and real parcel music.
 Capture exact-build logs; bounded backend success does not close those symptoms.
