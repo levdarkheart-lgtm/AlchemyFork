@@ -206,14 +206,17 @@ struct LLReflectionMapManager::MetalDefaultProbeMirror
                mNativePendingRadiance != nullptr;
     }
 
-    void release()
+    void release(bool keep_published_default = false)
     {
         mStagedSH = {};
-        mPublishedSH = {};
+        if (!keep_published_default)
+        {
+            mPublishedSH = {};
+            mPublishedRadiance.reset();
+        }
         mStagedSHValid = false;
         mNativeStagedSHGeneration = 0;
         mNativeStagedSHSequence = 0;
-        mPublishedRadiance.reset();
         mNativePendingRadiance.reset();
         mNativePendingRadianceGeneration = 0;
         mNativePendingRadianceSequence = 0;
@@ -260,21 +263,40 @@ struct LLReflectionMapManager::MetalProbeArrayMirror
                mNativeSHPending != nullptr;
     }
 
-    void release()
+    void release(bool keep_published_default = false)
     {
-        mSlotGenerations.clear();
-        mPublishedGenerations.clear();
-        mPublishedSHGenerations.clear();
-        mDevice = nullptr;
-        mPublishedRadiance.reset();
-        mPublishedSH.reset();
+        if (keep_published_default)
+        {
+            // Retain only the completed default's logical publication. Every
+            // slot gets a fresh epoch: a pending pre-reset SH result or a
+            // recycled nondefault slot cannot become current by coincidence.
+            for (U64& generation : mSlotGenerations)
+            {
+                if (++generation == 0) ++generation;
+            }
+            std::fill(mPublishedGenerations.begin(),
+                      mPublishedGenerations.end(), 0);
+            std::fill(mPublishedSHGenerations.begin(),
+                      mPublishedSHGenerations.end(), 0);
+            mPublishedGenerations[0] = mSlotGenerations[0];
+            mPublishedSHGenerations[0] = mSlotGenerations[0];
+        }
+        else
+        {
+            mSlotGenerations.clear();
+            mPublishedGenerations.clear();
+            mPublishedSHGenerations.clear();
+            mDevice = nullptr;
+            mPublishedRadiance.reset();
+            mPublishedSH.reset();
+            mCubeCount = 0;
+            mNativeNextSequence = 0;
+        }
         mNativeSourceCube.reset();
         mNativeFilteredCube.reset();
         mNativeStagedSH.reset();
         mNativePackedSH.reset();
         mNativeSHPending.reset();
-        mCubeCount = 0;
-        mNativeNextSequence = 0;
         mNativeCaptureCube = 0;
         mNativeCaptureGeneration = 0;
         mNativeCaptureSequence = 0;
@@ -2575,11 +2597,66 @@ void LLReflectionMapManager::initReflectionMaps()
         mProbeResolution = probe_resolution;
         mMaxProbeLOD = log2f((F32)mProbeResolution) - 1.f; // number of mips - 1
 
+        // Original initReflectionMaps keeps the completed default on a
+        // same-layout sky reset (SL-20498). Bridge the new twelve-face update
+        // with that coherent pair rather than zero-probe bootstrap lighting.
+        bool default_complete = false;
 #if LL_DARWIN
-        // A native environment is useful only as a coherent pair. A layout
-        // change or explicit reset invalidates both halves together.
-        releaseMetalDefaultProbe();
-        releaseMetalProbeArray();
+        MetalProbeArrayMirror& mirror = *mMetalProbeArray;
+        MetalDefaultProbeMirror& default_mirror = *mMetalDefaultProbe;
+        const U32 cube_count = mReflectionProbeCount + 2;
+        const U32 mip_count = llfinite(mMaxProbeLOD) && mMaxProbeLOD >= 0.f
+            ? static_cast<U32>(std::lround(mMaxProbeLOD)) + 1u : 0u;
+        const ALMetalPixelFormat format = mHDR
+            ? ALMetalPixelFormat::rgba16_float
+            : ALMetalPixelFormat::rgba8_unorm;
+        const auto radiance_matches = [&](const ALMetalTexture* texture,
+                                          ALMetalTextureType type,
+                                          U32 count)
+        {
+            if (!texture) return false;
+            const auto& d = texture->descriptor();
+            return d.type == type && d.format == format &&
+                d.width == mProbeResolution && d.height == mProbeResolution &&
+                d.mipmap_level_count == mip_count && d.array_length == count &&
+                alMetalHasUsage(d.usage, ALMetalTextureUsage::shader_read);
+        };
+        const auto* sh = mirror.mPublishedSH
+            ? &mirror.mPublishedSH->descriptor() : nullptr;
+        default_complete = !layout_changed && mDefaultProbe.notNull() &&
+            mDefaultProbe->mComplete && mDefaultProbe->mCubeIndex == 0 &&
+            mirror.mDevice == getViewerMetalDevice() && mirror.mDevice &&
+            mirror.mCubeCount == cube_count && mip_count != 0 &&
+            mirror.mSlotGenerations.size() == cube_count &&
+            mirror.mPublishedGenerations.size() == cube_count &&
+            mirror.mPublishedSHGenerations.size() == cube_count &&
+            mirror.mSlotGenerations[0] != 0 &&
+            mirror.mPublishedGenerations[0] == mirror.mSlotGenerations[0] &&
+            mirror.mPublishedSHGenerations[0] == mirror.mSlotGenerations[0] &&
+            radiance_matches(mirror.mPublishedRadiance.get(),
+                ALMetalTextureType::texture_cube_array, cube_count) &&
+            radiance_matches(default_mirror.mPublishedRadiance.get(),
+                ALMetalTextureType::texture_cube, 1) &&
+            sh && sh->type == ALMetalTextureType::texture_2d &&
+            sh->format == ALMetalPixelFormat::rgba32_uint &&
+            sh->width == LL_SH_PACKED_TEXELS && sh->height == cube_count &&
+            alMetalHasUsage(sh->usage, ALMetalTextureUsage::shader_read);
+
+        // Scratch commands keep their resources through native completion.
+        // Their CPU readback/publication tickets are discarded here, while
+        // fresh epochs reject every nondefault row until it is rebuilt.
+        default_mirror.release(default_complete);
+        mirror.release(default_complete);
+        static U32 reported_resets = 0;
+        if (reported_resets < 32u)
+        {
+            ++reported_resets;
+            LL_INFOS("Metal")
+                << "Native default-probe reset policy: layout_changed="
+                << layout_changed << ", kept_completed_default="
+                << default_complete << ", resolution=" << mProbeResolution
+                << ", hdr=" << mHDR << LL_ENDL;
+        }
 #endif
 
         // reset probe state
@@ -2621,7 +2698,7 @@ void LLReflectionMapManager::initReflectionMaps()
         mDefaultProbe->mDistance = 64.f;
         mDefaultProbe->mRadius = 4096.f;
         mDefaultProbe->mProbeIndex = 0;
-        mDefaultProbe->mComplete = false;
+        mDefaultProbe->mComplete = default_complete;
 
         touch_default_probe(mDefaultProbe);
     }
