@@ -20,6 +20,16 @@ No automatic launch just for source audit. All earlier repairs remain included.
 Translator stopped, Xcode replay off, earlier20FPS goal stays paused.
 No account/cache/settings/camera/location changes during this repair.
 
+Latesttask: originalvsportHiDPI/HDR/Emissive andbright/darkLightboxsceneaudit.
+Read work/active/display-settings-lighting-audit.md. Sourceonlycheck,no codefix:
+HiDPIrestarttoggle+internalHDRwired; physicaloutputSDR. CONFIRMEDbugs: deferred
+opaque/maskPBRemissionignoresRenderEnableEmissiveBufferOFF; GlowONcallbackuses
+GL-onlyisComplete ratherthannative-awareisAvailable. Preserveoriginalalpha/HUD
+emissionexceptions. Lightbox/EEPsource+boundedAEmathmatch1eb; visiblelighting
+complaintSTILLOPEN, needmatchedLook/EEP/exposureevidence,nobrightnessguessing.
+OwnerturnedAEoff; rootdidNOTchangevalues/time/Look. CUACmdPinspectionfailed/
+timedout, refreshedstateLightbox, observationphasecompleted.68643stillrunning.
+
 Read work/active/classic-avatar-position-w.md: exact1eb original supplies XYZ/W1;
 raw polymesh/VBO stored W is padding, often0. Native shared skin/cloth helpers
 incorrectly dotted raw W against joint translations. Restore W1 in two helpers.

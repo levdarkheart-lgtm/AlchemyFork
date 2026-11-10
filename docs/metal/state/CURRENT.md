@@ -97,6 +97,14 @@ hang result. Intermittent name/body mismatch remains open, no code change.
 
 ## Exact next actions
 
+Latest [display settings and lighting audit](../work/active/display-settings-lighting-audit.md)
+found HiDPI restart wiring and internal HDR connected, but deferred PBR emission
+ignores emissive OFF and Glow ON checks GL-only shader completeness. No fixes
+applied during the requested check. Production display remains SDR; scene HDR
+does not enable EDR. Lightbox/EEP CPU paths and bounded Auto Exposure math match
+original; owner bright/dark lighting complaint remains unverified, not dismissed.
+Source/audit/screenshots private; no settings/time/Look change by root.
+
 68643 is running for owner-driven travel. Next live acceptance must
 verify the previously identified avatar and outfit/loading/teleport geometry,
 HUD transparency, UI/movement/resize responsiveness, names and real parcel music.

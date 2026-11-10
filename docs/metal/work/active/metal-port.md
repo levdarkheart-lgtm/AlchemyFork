@@ -46,6 +46,13 @@ rotation policy unchanged. Capture actual world age before a guessed fix.
 One pure-data sample showed current world; snapshot+detach succeeded. It did not
 capture a controlled bad turn. Avoid repeated disruptive debugger attachments.
 
+[Display-settings audit](display-settings-lighting-audit.md) found original HiDPI
+and scene-HDR wiring retained; physical display output stays SDR. Two confirmed
+source defects need repair: deferred PBR emissive OFF is disconnected, and Glow
+ON tests GL-only shader handles. Current check changed no code/settings. Owner
+lighting/Lightbox/Auto Exposure complaint remains visually unverified; bounded
+source math/open callbacks match original. Do not tune brightness from screenshots.
+
 ## Work board
 
 | ID | Work | State | Evidence / next boundary |
