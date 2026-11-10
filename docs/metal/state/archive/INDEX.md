@@ -6,6 +6,7 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| Adjacent indexed draw geometry census and opt-in prototype, no performance claim,2026-11-10 | [CURRENT-indexed-draw-joining-2026-11-10.md](CURRENT-indexed-draw-joining-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | PBR alpha probe-shadow specialization, native/build gates, isolated GPU gain and flat controlled viewer result,2026-11-10 | [CURRENT-pbr-probe-specialization-2026-11-10.md](CURRENT-pbr-probe-specialization-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Probe-buffer address-space implementation, strict GPU parity and slower dense-work rejection; stable GitHub push,2026-11-10 | [CURRENT-probe-address-space-rejection-2026-11-10.md](CURRENT-probe-address-space-rejection-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Rejected whole-shadow parallel encoding, restored68606 baseline and actual stage-timestamp validation,2026-11-10 | [CURRENT-parallel-shadow-encoding-2026-11-10.md](CURRENT-parallel-shadow-encoding-2026-11-10.md) | `docs/metal/state/CURRENT.md` |

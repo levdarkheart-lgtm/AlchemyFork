@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `765c305b5ac4c7b897d6581ea2990de49d1e09f6`.
+**Renderer checkpoint:** Commit `c2804f88df2923a9cbc172bc551fad5cd38243eb`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -136,8 +136,15 @@ not a parity defect and lacks a proved removable population; main-camera state
 must not be reused. Root added default-off ALCHEMY_METAL_DRAW_JOIN_CENSUS: after
 successful encodes,13independent view/phase samples every120frames count ONLY
 necessary geometry adjacency, not full-state eligibility or GPUcost. Query-bearing
-Gbuffers are explicitly gated/unmeasured. No draw/state/resource changes. Pending
-normalbuild and settled census before any joining implementation. [Evidence](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md). Preserve actual bound pack bit4/count>1 guards, main/default/no-shadow paths,
+Gbuffers are explicitly gated/unmeasured. No draw/state/resource changes. Normal68616/source1ff build/349ARM64/signature0, independent074cidentity0.
+Completed78formalrows/all26tuples; substantialheroGBufgeometryupperbounds but
+no actualstateeligibility/FPSclaim. ExactPID37648exit/OWNplanrestored0.
+Root integrated default-false actual-native-state indexed joining prototype in
+7wrapper/world/test/CMakefiles committedc2804f88, genericproducerfalse. Actualfocused
+API+GPU7969/1wrapper+2120/1production pass0; strict67pairs/2removalpositives and
+native2/8→1activation. Initialcompile0; updatedfullRelease504300/106 passed0,
+RWDIbuild/full504300/106 also0. PrivatequietcompleteCPU/GPUcost next. No FPSadmissionyet.
+[Census/prototype](../../state/archive/CURRENT-indexed-draw-joining-2026-11-10.md). [Evidence](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md). Preserve actual bound pack bit4/count>1 guards, main/default/no-shadow paths,
 exact original cube single-tap and shader math. Root owns shared source/GPU.
 
 Parallel shadow prototype was compiled/GPU-tested435842/103, including two views

@@ -1,12 +1,15 @@
 # Current engineering state
 
 **Observed:** 2026-11-10, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
-**Branch:** `codex/apple-silicon-metal`. **Renderer code checkpoint:** `765c305b5ac4c7b897d6581ea2990de49d1e09f6`.
-**Working source:** PBR765/source271eab19 built as normal68614; native/build gates0.
+**Branch:** `codex/apple-silicon-metal`. **Renderer code checkpoint:** `c2804f88df2923a9cbc172bc551fad5cd38243eb`.
+**Working source:** Committed guarded joining c2804f88; source clean, genericproducer remainsfalse.
+PBR765/source271 normal68614 is the last uninstrumented measured candidate.
 Stable7772/water is pushed. New PBR code remains local. Both comparison viewers
 are CLOSED, exact SIGTERM/Goodbye/PID-absence verified, both OWNplans restored0.
-No profiler/build/GPUtest is running. A default-off diagnostic-only adjacency
-census is being prepared; no rendering behavior change or new gain is claimed.
+No viewer/profiler/build live. Initial Release prototype compile0 and
+existing fullRelease default-false API+GPU494211/104 passed0. Both enabledfocused
+gates nowpass0; complete Release AND RelWithDebInfo API+GPU504300/106 EACHpassed0.
+Diagnostic normal68616/source1ff completed, exactexit/OWNenvironmentrestore0.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -90,19 +93,25 @@ do not revive it or the old bulktexture hypothesis.
 
 Retain64examined/32accepted neighbors, per-view packs, arenas/bindings, main
 occlusion, Ultra4xanisotropy, boundedlights/directR32/borrowedtargets/image-global
-budget/cubeSSAO. No nativeD32/epsilon waiver/fallback backend. Independent agents
-are auditing remaining repeated hero CPU/preparation and pass/resource costs.
-Next implementation needs a specific substantial mechanism linked to current
-workload; do not infer live gain from isolated shader tests.
+budget/cubeSSAO. No nativeD32/epsilon waiver/fallback backend. Settled diagnostic68616 has78formal
+rows/all26tuples, heroGBuf779/1791–1792/470/812/191/54geometryadjacency upperbounds.
+No full-state eligibility/CPUtime/FPSclaim. MainGBufquery-gatedunmeasured.
+Root integrated default-false encoder-local actual-state joining prototype;
+genericproducer remainsfalse, no shader changes. Native-command/interop barriers
+and static-queryfree Gbuffer scope source-reviewed. Draw/Trace private strict
+fixtures integrated/source-reviewed: wrapper1ab3 actualAPI+GPU7969/1 and
+productionee089 actualAPI+GPU2120/1 pass0 (67strictpairs+2specialremovalcontrols).
+OriginalGPUsource preserved byteexact by removing72287180insertion.
+Both fulloptimized suites504300/106 EACHactual0; privatequietcost next. Allsourceandruntime ownership root.
+[Complete census/prototype](archive/CURRENT-indexed-draw-joining-2026-11-10.md).
 
 ## GitHub and product gates
 
-Stable7772 includingwaterf549 pushed successfully. CLI/browser unauthenticated;
-connector cannot dispatch. Owner chose manual Tag a Build from another device:
-branchcodex/apple-silicon-metal, channelProject, projectMetal Alpha3,
-tag26.4.0.68611-alpha3. Harness42799555537passed; no packagingrun observed at
-lastcheck. PBR765 is NOT in that pushedalpha. Existing action uses ARM64tar.xz/
-checksum and ZIP-wrapped artifact. Owner is away; no authentication assistance needed.
+Stable7772/water pushed; owner manualTag42816862437 and Build42816882219 both
+COMPLETEDSUCCESS. Alpha3/tag26.4.0.68611-alpha3 published13:26:36UTC. Verified
+ARM64tar.xz214044036bytes+checksum; ZIPartifact13769235298 notexpired. Owner
+links delivered. LocalPBR/census/joining code is NOT in thatalpha. No dispatch/
+auth assistance needed. No private uploads.
 
 Full pixel/feature parity, multi-scene performance, prolonged stability, strict
 no-GL and independent fresh-build release review remain OPEN. Product not complete.
