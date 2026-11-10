@@ -945,6 +945,9 @@ struct ALMetalWorldGBufferScene
     bool reverse_z = false;
     bool stamp_opaque_coverage = false;
     bool wireframe = false;
+    // Opt-in for immutable static ordinary triangle streams only. Native
+    // encoder state changes remain barriers; query/special scopes stay direct.
+    bool join_adjacent_static_draws = false;
     // Eye-space plane used by the authoritative GLSL MIRROR_CLIP variants.
     // Native G-buffer vertices emit the matching Metal clip distance only
     // for hero-mirror cube faces; ordinary world and impostor scenes leave

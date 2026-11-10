@@ -7806,6 +7806,22 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             break;
         }
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        const bool join_static = scene.join_adjacent_static_draws &&
+            scene.visibility_query_count == 0 && !scene.wireframe &&
+            !scene.stamp_opaque_coverage && !batch.terrain && !batch.impostor &&
+            !batch.avatar_rigid && !batch.avatar_skinning && !batch.avatar_cloth &&
+            !batch.avatar_alpha && !batch.skin_palette &&
+            batch.skin_palette_float_count == 0 && batch.skin_joint_count == 0 &&
+            !batch.water_exclusion && !batch.water_haze && !batch.water_surface &&
+            !batch.atmospheric_haze && !batch.pre_water_alpha &&
+            !batch.post_water_alpha && !batch.post_water_depth_only &&
+            !batch.post_water_glow && !batch.legacy_glow && !batch.pbr_glow &&
+            !batch.impostor_emboss;
+        if (!encoder->setIndexedTriangleJoining(join_static, error))
+        {
+            encoded = false;
+            break;
+        }
         if (batch.impostor)
         {
             WorldImpostorConstants constants{};
@@ -8271,7 +8287,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                  *batch.indices, batch.index_offset, 1, error);
     }
 
-    encoded = encoded && encode_visibility_at(scene.batch_count) &&
+    encoded = encoded && encoder->setIndexedTriangleJoining(false, error) &&
+        encode_visibility_at(scene.batch_count) &&
         visibility_index == scene.visibility_query_count;
 
     if (!encoded || !encoder->end(error))

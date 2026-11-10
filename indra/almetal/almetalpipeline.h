@@ -412,6 +412,12 @@ public:
                                      std::size_t instance_stride = 0,
                                      std::string* error = nullptr);
     bool setTessellationFactorScale(float scale, std::string* error = nullptr);
+    // Opt-in only for immutable, side-effect-free indexed triangle streams.
+    // Disabling is also a barrier before externally mutating bound resources.
+    // All actual native state/command changes flush queued triangles first.
+    // Acquiring the private native interop bridge disables joining; controlled
+    // callers must opt in again after leaving that native-command scope.
+    bool setIndexedTriangleJoining(bool enabled, std::string* error = nullptr);
     bool draw(ALMetalPrimitiveType primitive, std::uint32_t vertex_start,
               std::uint32_t vertex_count, std::uint32_t instance_count = 1,
               std::string* error = nullptr);

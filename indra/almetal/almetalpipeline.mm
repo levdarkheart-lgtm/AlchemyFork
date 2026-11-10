@@ -894,6 +894,28 @@ struct ALMetalRenderEncoder::Impl
     std::uint64_t encoded_draws = 0;
     bool tessellation_enabled = false;
     bool tessellation_factor_buffer_set = false;
+    bool indexed_triangle_joining = false;
+    // ARC retains the IBO until native encoding; a released C++ wrapper cannot
+    // invalidate a queued draw. All other resources are already native-bound.
+    id<MTLBuffer> pending_index_buffer = nil;
+    ALMetalIndexType pending_index_type = ALMetalIndexType::uint16;
+    std::size_t pending_index_offset = 0;
+    std::uint32_t pending_index_count = 0;
+
+    void flushPendingIndexed() noexcept
+    {
+        if (!pending_index_buffer) return;
+        [encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                            indexCount:pending_index_count
+                             indexType:pending_index_type == ALMetalIndexType::uint16
+                                 ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32
+                           indexBuffer:pending_index_buffer
+                     indexBufferOffset:pending_index_offset
+                         instanceCount:1];
+        if (count_draws) ++encoded_draws;
+        pending_index_buffer = nil;
+        pending_index_count = 0;
+    }
 };
 
 ALMetalRenderEncoder::ALMetalRenderEncoder(std::unique_ptr<Impl> impl)
@@ -905,6 +927,7 @@ ALMetalRenderEncoder::~ALMetalRenderEncoder()
 {
     if (mImpl && mImpl->encoder && !mImpl->ended)
     {
+        mImpl->flushPendingIndexed();
         [mImpl->encoder endEncoding];
         if (mImpl->count_draws)
             ALMetalDevice::addEncodedDrawCalls(mImpl->encoded_draws);
@@ -1003,6 +1026,7 @@ bool ALMetalRenderEncoder::setPipeline(const ALMetalRenderPipeline& pipeline, st
     void* handle = pipeline.nativeHandle();
     if (mImpl->pipeline != handle)
     {
+        mImpl->flushPendingIndexed();
         [mImpl->encoder setRenderPipelineState:pipeline.mImpl->state];
         mImpl->pipeline = handle;
     }
@@ -1022,6 +1046,7 @@ bool ALMetalRenderEncoder::setDepthStencilState(const ALMetalDepthStencilState* 
     {
         return true;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setDepthStencilState:state ? state->mImpl->state : nil];
     mImpl->depth_stencil = handle;
     return true;
@@ -1039,6 +1064,7 @@ bool ALMetalRenderEncoder::setStencilReferenceValue(
     {
         return true;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setStencilReferenceValue:value];
     mImpl->stencil_reference = value;
     return true;
@@ -1061,6 +1087,7 @@ bool ALMetalRenderEncoder::setVertexBuffer(std::uint32_t index, const ALMetalBuf
         {
             // Constant arenas change ranges within one buffer frequently;
             // keep the existing resource binding and update only its range.
+            mImpl->flushPendingIndexed();
             [mImpl->encoder setVertexBufferOffset:offset atIndex:index];
             previous.offset = offset;
         }
@@ -1072,6 +1099,7 @@ bool ALMetalRenderEncoder::setVertexBuffer(std::uint32_t index, const ALMetalBuf
         setError(error, "Metal vertex buffer belongs to another device");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setVertexBuffer:native_buffer offset:offset atIndex:index];
     mImpl->vertex_buffers[index] = {handle, offset};
     return true;
@@ -1092,6 +1120,7 @@ bool ALMetalRenderEncoder::setFragmentBuffer(std::uint32_t index, const ALMetalB
     {
         if (previous.offset != offset)
         {
+            mImpl->flushPendingIndexed();
             [mImpl->encoder setFragmentBufferOffset:offset atIndex:index];
             previous.offset = offset;
         }
@@ -1103,6 +1132,7 @@ bool ALMetalRenderEncoder::setFragmentBuffer(std::uint32_t index, const ALMetalB
         setError(error, "Metal fragment buffer belongs to another device");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setFragmentBuffer:native_buffer offset:offset atIndex:index];
     mImpl->fragment_buffers[index] = {handle, offset};
     return true;
@@ -1117,6 +1147,7 @@ bool ALMetalRenderEncoder::setVertexBytes(std::uint32_t index, const void* bytes
         if (!bytes || length == 0 || length > 4096) setError(error, "Metal inline vertex data must be 1...4096 bytes");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setVertexBytes:bytes length:length atIndex:index];
     // Inline bytes and explicit buffers share one Metal argument slot.
     mImpl->vertex_buffers[index] = {};
@@ -1132,6 +1163,7 @@ bool ALMetalRenderEncoder::setFragmentBytes(std::uint32_t index, const void* byt
         if (!bytes || length == 0 || length > 4096) setError(error, "Metal inline fragment data must be 1...4096 bytes");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setFragmentBytes:bytes length:length atIndex:index];
     mImpl->fragment_buffers[index] = {};
     return true;
@@ -1152,6 +1184,7 @@ bool ALMetalRenderEncoder::setVertexTexture(std::uint32_t index, const ALMetalTe
         setError(error, "Metal vertex texture belongs to another device");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setVertexTexture:native_texture atIndex:index];
     mImpl->vertex_textures[index] = native_handle;
     return true;
@@ -1172,6 +1205,7 @@ bool ALMetalRenderEncoder::setFragmentTexture(std::uint32_t index, const ALMetal
         setError(error, "Metal fragment texture belongs to another device");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setFragmentTexture:native_texture atIndex:index];
     mImpl->fragment_textures[index] = native_handle;
     return true;
@@ -1202,6 +1236,7 @@ bool ALMetalRenderEncoder::setFragmentTextureLinear(std::uint32_t index,
         setError(error, "Metal fragment texture belongs to another device");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setFragmentTexture:native_texture atIndex:index];
     mImpl->fragment_textures[index] = native_handle;
     return true;
@@ -1231,6 +1266,7 @@ bool ALMetalRenderEncoder::setVertexSampler(std::uint32_t index, const ALMetalSa
         setError(error, "Metal vertex sampler belongs to another device");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setVertexSamplerState:native_sampler atIndex:index];
     mImpl->vertex_samplers[index] = native_handle;
     return true;
@@ -1260,6 +1296,7 @@ bool ALMetalRenderEncoder::setFragmentSampler(std::uint32_t index, const ALMetal
         setError(error, "Metal fragment sampler belongs to another device");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setFragmentSamplerState:native_sampler atIndex:index];
     mImpl->fragment_samplers[index] = native_handle;
     return true;
@@ -1281,6 +1318,7 @@ bool ALMetalRenderEncoder::setViewport(const ALMetalViewport& viewport, std::str
     {
         return true;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setViewport:MTLViewport{viewport.x, viewport.y, viewport.width, viewport.height,
                                             viewport.near_depth, viewport.far_depth}];
     mImpl->viewport = viewport;
@@ -1300,6 +1338,7 @@ bool ALMetalRenderEncoder::setScissor(const ALMetalScissorRect& scissor, std::st
     {
         return true;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setScissorRect:MTLScissorRect{scissor.x, scissor.y, scissor.width, scissor.height}];
     mImpl->scissor = scissor;
     return true;
@@ -1316,6 +1355,7 @@ bool ALMetalRenderEncoder::setCullMode(ALMetalCullMode mode, std::string* error)
     {
         return true;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setCullMode:cullMode(mode)];
     mImpl->cull_mode = mode;
     return true;
@@ -1333,6 +1373,7 @@ bool ALMetalRenderEncoder::setTriangleFillMode(
     {
         return true;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setTriangleFillMode:triangleFillMode(mode)];
     mImpl->fill_mode = mode;
     return true;
@@ -1349,6 +1390,7 @@ bool ALMetalRenderEncoder::setFrontFacingWinding(ALMetalWinding value, std::stri
     {
         return true;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setFrontFacingWinding:winding(value)];
     mImpl->front_winding = value;
     return true;
@@ -1366,6 +1408,7 @@ bool ALMetalRenderEncoder::setDepthClipMode(
     {
         return true;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setDepthClipMode:
         mode == ALMetalDepthClipMode::clamp
             ? MTLDepthClipModeClamp : MTLDepthClipModeClip];
@@ -1389,6 +1432,7 @@ bool ALMetalRenderEncoder::setDepthBias(float constant_bias,
     {
         return true;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setDepthBias:constant_bias
                       slopeScale:slope_scale
                             clamp:clamp];
@@ -1409,6 +1453,7 @@ bool ALMetalRenderEncoder::setVisibilityResultMode(
                  "Metal visibility result offset is unaligned or encoder has ended");
         return false;
     }
+    mImpl->flushPendingIndexed();
     if (mImpl->visibility_mode == mode && mImpl->visibility_offset == offset)
     {
         return true;
@@ -1449,6 +1494,7 @@ bool ALMetalRenderEncoder::setTessellationFactorBuffer(const ALMetalBuffer& buff
         setError(error, "Metal tessellation factor buffer belongs to another device");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setTessellationFactorBuffer:native_buffer
                                           offset:offset
                                   instanceStride:instance_stride];
@@ -1464,7 +1510,24 @@ bool ALMetalRenderEncoder::setTessellationFactorScale(float scale, std::string* 
         setError(error, "Metal tessellation factor scale requires an active pipeline and a positive normal value");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder setTessellationFactorScale:scale];
+    return true;
+}
+
+bool ALMetalRenderEncoder::setIndexedTriangleJoining(bool enabled,
+                                                       std::string* error)
+{
+    if (!mImpl || mImpl->ended)
+    {
+        setError(error, "Metal indexed triangle joining requires an active encoder");
+        return false;
+    }
+    if (mImpl->indexed_triangle_joining != enabled)
+    {
+        mImpl->flushPendingIndexed();
+        mImpl->indexed_triangle_joining = enabled;
+    }
     return true;
 }
 
@@ -1478,6 +1541,7 @@ bool ALMetalRenderEncoder::draw(ALMetalPrimitiveType primitive, std::uint32_t ve
         setError(error, "Metal draw requires an active encoder, pipeline, vertices and instances");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder drawPrimitives:primitiveType(primitive)
                        vertexStart:vertex_start
                        vertexCount:vertex_count
@@ -1506,6 +1570,35 @@ bool ALMetalRenderEncoder::drawIndexed(ALMetalPrimitiveType primitive, std::uint
         setError(error, "Metal index buffer belongs to another device");
         return false;
     }
+    // Still validate each logical request before queueing. Admission belongs
+    // to the caller: immutable inputs and no shader draw-boundary side effects.
+    if (mImpl->indexed_triangle_joining &&
+        primitive == ALMetalPrimitiveType::triangle && instance_count == 1 &&
+        index_count % 3 == 0 &&
+        (!mImpl->visibility_mode ||
+         *mImpl->visibility_mode == ALMetalVisibilityResultMode::disabled))
+    {
+        const std::size_t pending_bytes =
+            static_cast<std::size_t>(mImpl->pending_index_count) * index_size;
+        if (mImpl->pending_index_buffer == native_buffer &&
+            mImpl->pending_index_type == index_type &&
+            mImpl->pending_index_offset <=
+                std::numeric_limits<std::size_t>::max() - pending_bytes &&
+            index_buffer_offset == mImpl->pending_index_offset + pending_bytes &&
+            index_count <= std::numeric_limits<std::uint32_t>::max() -
+                mImpl->pending_index_count)
+        {
+            mImpl->pending_index_count += index_count;
+            return true;
+        }
+        mImpl->flushPendingIndexed();
+        mImpl->pending_index_buffer = native_buffer;
+        mImpl->pending_index_type = index_type;
+        mImpl->pending_index_offset = index_buffer_offset;
+        mImpl->pending_index_count = index_count;
+        return true;
+    }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder drawIndexedPrimitives:primitiveType(primitive)
                                indexCount:index_count
                                 indexType:index_type == ALMetalIndexType::uint16 ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32
@@ -1530,6 +1623,7 @@ bool ALMetalRenderEncoder::drawPatches(std::uint32_t control_point_count,
         setError(error, "Metal patch draw has invalid tessellation state or dimensions");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder drawPatches:control_point_count
                      patchStart:patch_start
                      patchCount:patch_count
@@ -1548,6 +1642,7 @@ bool ALMetalRenderEncoder::end(std::string* error)
         setError(error, "Metal render encoder already ended");
         return false;
     }
+    mImpl->flushPendingIndexed();
     [mImpl->encoder endEncoding];
     if (mImpl->count_draws)
         ALMetalDevice::addEncodedDrawCalls(mImpl->encoded_draws);
@@ -1557,6 +1652,11 @@ bool ALMetalRenderEncoder::end(std::string* error)
 
 void* ALMetalRenderEncoder::nativeHandleForIndirect() const noexcept
 {
+    if (mImpl && !mImpl->ended)
+    {
+        mImpl->flushPendingIndexed();
+        mImpl->indexed_triangle_joining = false;
+    }
     return mImpl && !mImpl->ended
         ? (__bridge void*)mImpl->encoder : nullptr;
 }
@@ -1586,12 +1686,19 @@ bool ALMetalRenderEncoder::canExecuteStaticDraws() const noexcept
 void ALMetalRenderEncoder::invalidateIndirectBufferBindings() noexcept
 {
     if (!mImpl) return;
+    if (!mImpl->ended) mImpl->flushPendingIndexed();
+    mImpl->indexed_triangle_joining = false;
     mImpl->vertex_buffers.fill({});
     mImpl->fragment_buffers.fill({});
 }
 
 void ALMetalRenderEncoder::recordPrevalidatedDraws(std::uint32_t count) noexcept
 {
+    if (mImpl && !mImpl->ended)
+    {
+        mImpl->flushPendingIndexed();
+        mImpl->indexed_triangle_joining = false;
+    }
     if (mImpl && mImpl->count_draws) mImpl->encoded_draws += count;
 }
 

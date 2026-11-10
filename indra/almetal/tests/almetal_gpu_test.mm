@@ -4259,6 +4259,284 @@ TEST_CASE("almetal: ordinary G-buffer binds only populated diffuse slots",
     }
 }
 
+TEST_CASE("almetal: actual G-buffer indexed joining preserves every attachment", "[almetal][gbuffer-join]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device=ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
+        // Arena-backed immutable ranges are essential: setBytes deliberately
+        // remains a hard barrier in the ordinary wrapper contract.
+        auto renderer=createFrameDataRenderer(*device,4u,&error); INFO(error); REQUIRE(renderer);
+        struct RestoreJoinTiming { bool saved=ALMetalDevice::commandTimingEnabled();
+            ~RestoreJoinTiming(){ALMetalDevice::setCommandTimingEnabled(saved);} } restore_timing;
+        ALMetalDevice::setCommandTimingEnabled(false);
+        constexpr unsigned side=64,triangle_count=8,vertex_count=triangle_count*3;
+        struct JoinGeometry
+        {
+            std::array<std::array<float,4>,vertex_count> positions{},normals{},tangents{},weights{};
+            std::array<std::array<float,2>,vertex_count> uv{};
+            std::array<std::array<std::uint8_t,4>,vertex_count> colors{};
+        } geometry;
+        for (unsigned triangle=0;triangle<triangle_count;++triangle)
+        {
+            const float x=-.95f+.5f*float(triangle%4),y=-.85f+.9f*float(triangle/4);
+            const std::array<std::array<float,4>,3> p{{{{x,y,.25f,0}},{{x+.4f,y,.25f,0}},{{x,y+.7f,.25f,0}}}};
+            const std::array<std::array<float,2>,3> uv{{{{.125f,.125f}},{{1.125f,.125f}},{{.125f,1.125f}}}};
+            for (unsigned corner=0;corner<3;++corner)
+            {
+                const unsigned v=triangle*3+corner; geometry.positions[v]=p[corner]; geometry.uv[v]=uv[corner];
+                geometry.normals[v]={0,0,1,0};geometry.tangents[v]={1,0,0,1};geometry.weights[v]={.5f,0,0,0};
+                geometry.colors[v]={std::uint8_t(triangle&1u?80:240),std::uint8_t(160+triangle*8),std::uint8_t(triangle&1u?240:80),255};
+            }
+        }
+        const auto make_vertices=[&](unsigned slots,bool tied)
+        {
+            auto data=geometry;
+            for (unsigned triangle=0;triangle<triangle_count;++triangle) for (unsigned corner=0;corner<3;++corner)
+            {
+                const auto v=triangle*3+corner;
+                if (tied && triangle==1) data.positions[v]=data.positions[corner];
+                const std::int32_t selector=std::int32_t(triangle%slots);
+                std::memcpy(&data.positions[v][3],&selector,sizeof(selector));
+            }
+            ALMetalBufferDescriptor d;d.length=sizeof(data);d.storage=ALMetalStorageMode::shared;
+            auto buffer=ALMetalBuffer::create(*device,d,&error);REQUIRE(buffer);REQUIRE(buffer->write(0,&data,sizeof(data),&error));return buffer;
+        };
+        std::array<std::unique_ptr<ALMetalBuffer>,3> vertices;
+        for (unsigned n=0;n<3;++n) vertices[n]=make_vertices(n==0?1:n==1?2:8,false);
+        auto tied_vertices=make_vertices(2,true),other_vertices=make_vertices(2,false);
+        std::array<std::uint16_t,vertex_count> i16{};std::array<std::uint32_t,vertex_count> i32{};
+        for(unsigned i=0;i<vertex_count;++i)i16[i]=std::uint16_t(i32[i]=i);
+        const auto make_indices=[&](bool wide,bool reverse)
+        {
+            auto a=i16;auto b=i32;
+            if(reverse)for(unsigned i=0;i<3;++i){std::swap(a[i],a[i+3]);std::swap(b[i],b[i+3]);}
+            ALMetalBufferDescriptor d;d.length=wide?sizeof(b):sizeof(a);d.storage=ALMetalStorageMode::shared;
+            auto buffer=ALMetalBuffer::create(*device,d,&error);REQUIRE(buffer);
+            REQUIRE(buffer->write(0,wide?static_cast<const void*>(b.data()):static_cast<const void*>(a.data()),d.length,&error));return buffer;
+        };
+        auto indices16=make_indices(false,false),indices32=make_indices(true,false);
+        auto reverse16=make_indices(false,true),reverse32=make_indices(true,true),other_indices=make_indices(false,false);
+        auto upload=device->makeCommandBuffer("G-buffer join patterned mip uploads",&error);REQUIRE(upload);
+        const auto make_texture=[&](bool srgb,unsigned kind)
+        {
+            ALMetalTextureDescriptor d;d.width=d.height=8;d.mipmap_level_count=4;
+            d.format=srgb?ALMetalPixelFormat::rgba8_unorm_srgb:ALMetalPixelFormat::rgba8_unorm;
+            d.storage=ALMetalStorageMode::private_gpu;d.usage=ALMetalTextureUsage::shader_read;
+            auto texture=ALMetalTexture::create(*device,d,&error);REQUIRE(texture);
+            for(unsigned mip=0;mip<4;++mip)
+            {
+                const unsigned extent=8u>>mip;std::vector<std::uint8_t> pixels(extent*extent*4);
+                for(unsigned y=0;y<extent;++y)for(unsigned x=0;x<extent;++x)
+                {
+                    auto* p=pixels.data()+(y*extent+x)*4;
+                    p[0]=std::uint8_t(kind==1?200-16*x:48+16*x);p[1]=std::uint8_t(64+16*y);p[2]=std::uint8_t(96+24*mip);
+                    p[3]=extent==1?192:std::uint8_t(x<extent/2?32:224);
+                    if(kind==2){p[0]=std::uint8_t(128+24*mip);p[1]=std::uint8_t(128+8*(y&1u));p[2]=255;p[3]=255;}
+                    if(kind==3){p[0]=255;p[1]=std::uint8_t(96+24*mip);p[2]=64;p[3]=255;}
+                    if(kind==4){p[0]=32;p[1]=64;p[2]=std::uint8_t(96+24*mip);p[3]=255;}
+                }
+                REQUIRE(texture->upload(*upload,mip,0,{},pixels.data(),extent*4,&error));
+            }
+            return texture;
+        };
+        auto color_a=make_texture(true,0),color_b=make_texture(true,1),color_linear=make_texture(false,0);
+        auto normal=make_texture(false,2),normal_srgb=make_texture(true,2);
+        auto orm=make_texture(false,3),orm_srgb=make_texture(true,3),emissive=make_texture(true,4);
+        REQUIRE(upload->commitAndWait(&error));
+        ALMetalWorldSimpleBatch prototype;
+        prototype.position_offset=offsetof(JoinGeometry,positions);prototype.normal_offset=offsetof(JoinGeometry,normals);
+        prototype.texcoord_offset=prototype.texcoord1_offset=prototype.texcoord2_offset=offsetof(JoinGeometry,uv);
+        prototype.color_offset=offsetof(JoinGeometry,colors);prototype.tangent_offset=offsetof(JoinGeometry,tangents);
+        prototype.vertex_count=vertex_count;prototype.index_count=3;
+        for(unsigned d=0;d<4;++d)prototype.modelview[d*5]=prototype.modelview_projection[d*5]=1.f;
+        for(unsigned d=0;d<3;++d)prototype.normal_matrix[d][d]=prototype.rigged_normal_matrix[d][d]=1.f;
+        // family0 simple,1 simpleMASK,2 legacy material,3 PBRopaque,4 PBRMASK,5 bump.
+        const auto make_batches=[&](unsigned family,unsigned slots,bool wide,bool tied=false)
+        {
+            std::vector<ALMetalWorldSimpleBatch> result(std::max(slots,2u),prototype);
+            for(unsigned n=0;n<result.size();++n)
+            {
+                auto& b=result[n];b.vertices=tied?tied_vertices.get():vertices[slots==1?0:slots==2?1:2].get();
+                b.indices=wide?indices32.get():indices16.get();b.index_type=wide?ALMetalIndexType::uint32:ALMetalIndexType::uint16;
+                b.index_offset=n*3u*(wide?4u:2u);b.texture_count=slots;
+                for(unsigned s=0;s<slots;++s)b.diffuse_textures[s]=(s&1u)?color_b.get():color_a.get();
+                if(family==1){b.alpha_mask=true;b.alpha_cutoff=.5f;}
+                if(family==2)
+                {
+                    b.material_slot_count=slots;b.material_alpha_mode=0;
+                    for(unsigned s=0;s<slots;++s){auto& m=b.materialSlots()[s];m.normal_texture=normal.get();m.specular_texture=orm.get();m.specular_color[3]=.5f;}
+                }
+                if(family==5)b.normal_texture=normal.get();
+                if(family==3||family==4)
+                {
+                    b.pbr_slot_count=slots;b.alpha_mask=family==4;
+                    for(unsigned s=0;s<slots;++s){auto& m=b.pbrSlots()[s];m.normal_texture=normal.get();m.orm_texture=orm.get();m.emissive_texture=emissive.get();m.emissive_color[0]=.1f;m.roughness_factor=.5f;m.metallic_factor=.25f;m.alpha_cutoff=family==4?.5f:-1.f;}
+                }
+            }
+            return result;
+        };
+        struct JoinPixels
+        {
+            std::array<std::vector<std::uint8_t>,4> mrt;
+            std::vector<std::uint32_t> depth;std::vector<std::uint8_t> stencil;
+            bool operator==(const JoinPixels&) const=default;
+        };
+        const auto read_target=[&](ALMetalRenderTarget& target)
+        {
+            JoinPixels p;
+            for(unsigned slot=0;slot<4;++slot)
+            {
+                const auto f=target.colorTexture(slot)->descriptor().format;
+                const std::size_t bpp=f==ALMetalPixelFormat::rgba16_unorm?8u:4u;
+                REQUIRE((f==ALMetalPixelFormat::rgba16_unorm||f==ALMetalPixelFormat::rgba8_unorm||f==ALMetalPixelFormat::rgba8_unorm_srgb||f==ALMetalPixelFormat::rgb10a2_unorm||f==ALMetalPixelFormat::rg11b10_float));
+                p.mrt[slot].resize(side*side*bpp);REQUIRE(target.colorTexture(slot)->readback(*device,0,0,{},p.mrt[slot].data(),side*bpp,&error));
+            }
+            p.depth.resize(side*side);p.stencil.resize(side*side);
+            REQUIRE(target.depthStencilTexture()->readback(*device,0,0,{},p.depth.data(),side*4,&error));
+            constexpr std::size_t row=256;
+            id<MTLDevice> native=(__bridge id<MTLDevice>)device->nativeHandle();
+            id<MTLBuffer> plane=[native newBufferWithLength:row*side options:MTLResourceStorageModeShared];REQUIRE(plane);
+            auto command=[(__bridge id<MTLCommandQueue>)device->nativeCommandQueue() commandBuffer];auto blit=[command blitCommandEncoder];REQUIRE(blit);
+            [blit copyFromTexture:(__bridge id<MTLTexture>)target.depthStencilTexture()->nativeHandle()
+                sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(side,side,1)
+                toBuffer:plane destinationOffset:0 destinationBytesPerRow:row destinationBytesPerImage:row*side options:MTLBlitOptionStencilFromDepthStencil];
+            [blit endEncoding];[command commit];[command waitUntilCompleted];REQUIRE(command.status==MTLCommandBufferStatusCompleted);
+            for(unsigned y=0;y<side;++y)std::memcpy(p.stencil.data()+y*side,static_cast<const std::uint8_t*>(plane.contents)+y*row,side);
+            return p;
+        };
+        ALMetalWorldGBufferScene scene;scene.width=scene.height=side;scene.hdr=true;scene.normal_hdr=true;
+        scene.clear_color[0]=.1f;scene.clear_color[1]=.2f;scene.clear_color[2]=.3f;scene.clear_color[3]=1.f;
+        std::shared_ptr<ALMetalVisibilityResultBatch> query_result;
+        const auto render=[&](std::vector<ALMetalWorldSimpleBatch>& batches,bool join)
+        {
+            scene.batches=batches.data();scene.batch_count=batches.size();scene.join_adjacent_static_draws=join;
+            query_result.reset();ALMetalDevice::setCommandTimingEnabled(true);
+            const auto before=ALMetalDevice::encodedDrawCallCount();
+            auto target=renderer->render(scene,&error,&query_result);INFO(error);REQUIRE(target);
+            const auto calls=ALMetalDevice::encodedDrawCallCount()-before;ALMetalDevice::setCommandTimingEnabled(false);
+            auto pixels=read_target(*target);return std::make_pair(std::move(pixels),calls);
+        };
+        const auto compare=[&](std::vector<ALMetalWorldSimpleBatch> batches,std::uint64_t expected_off,std::uint64_t expected_on)
+        {
+            const auto off=render(batches,false),on=render(batches,true);
+            CHECK(off.first==on.first);CHECK(off.second==expected_off);CHECK(on.second==expected_on);
+            const std::uint32_t far=scene.reverse_z?0u:0x3f800000u;
+            CHECK(std::any_of(on.first.depth.begin(),on.first.depth.end(),[&](auto x){return x!=far;}));
+            return on.first;
+        };
+        unsigned primary_pairs=0;
+        for(unsigned family=0;family<6;++family)for(unsigned slots:{1u,2u,8u})for(bool wide:{false,true})
+        {
+            CAPTURE(family,slots,wide);
+            scene.reverse_z=((family+(slots==2?1u:0u)+unsigned(wide))&1u)!=0;
+            scene.hdr=slots!=2;scene.normal_hdr=(family&1u)==0;
+            scene.mirror_clip=wide;scene.mirror_clip_plane[0]=1.f;scene.mirror_clip_plane[3]=.75f;
+            auto batches=make_batches(family,slots,wide);
+            compare(batches,batches.size(),1);++primary_pairs;
+        }
+        CHECK(primary_pairs==36u);
+        scene.hdr=scene.normal_hdr=true;scene.reverse_z=false;scene.mirror_clip=false;
+        // Mipped normal/cutout inputs and real per-slot selectors remain live.
+        auto material=make_batches(3,8,false);const auto ordinary=compare(material,8,1);
+        for(auto& b:material)for(unsigned slot=0;slot<8;++slot)for(unsigned map=0;map<4;++map)
+            b.pbrSlots()[slot].texture_transform[map][0]=b.pbrSlots()[slot].texture_transform[map][1]=16.f;
+        const auto minified=compare(material,8,1);CHECK(ordinary.mrt[2]!=minified.mrt[2]);
+        auto last_slot=make_batches(3,8,false);
+        for(auto& b:last_slot)b.diffuse_textures[7]=color_linear.get();
+        const auto changed_last=compare(last_slot,8,1);CHECK(changed_last.mrt[0]!=ordinary.mrt[0]);
+        auto bump=make_batches(5,8,false);const auto bump_base=compare(bump,8,1);
+        for(auto& b:bump)b.texture_matrix[0]=b.texture_matrix[5]=16.f;
+        const auto bump_mipped=compare(bump,8,1);CHECK(bump_base.mrt[2]!=bump_mipped.mrt[2]);
+        auto opaque=make_batches(0,2,false),masked=make_batches(1,2,false);
+        const auto opaque_pixels=compare(opaque,2,1),mask_pixels=compare(masked,2,1);
+        const auto occupied=[](const auto& depth){return std::count_if(depth.begin(),depth.end(),[](auto x){return x!=0x3f800000u;});};
+        CHECK(occupied(mask_pixels.depth)>0);CHECK(occupied(mask_pixels.depth)<occupied(opaque_pixels.depth));
+        // Every actual native-state change must flush before the second draw.
+        for(unsigned change=0;change<15;++change)
+        {
+            CAPTURE(change);auto b=make_batches(change==12?1:change==13?2:change==14?4:change>=7?3:0,2,false);
+            if(change==0)b[1].modelview_projection[12]=.125f;
+            if(change==1){b[1].normal_matrix[2][2]=.8f;b[1].normal_matrix[2][0]=.6f;}
+            if(change==2)b[1].texture_matrix[12]=.25f;
+            if(change==3)b[1].diffuse_textures[1]=color_linear.get();
+            if(change==4)b[1].vertices=other_vertices.get();
+            if(change==5)b[1].indices=other_indices.get();
+            if(change==6)b[1].index_offset=6u*sizeof(std::uint16_t);
+            if(change==7)b[1].pbrSlots()[0].roughness_factor=.75f;
+            if(change==8)b[1].pbrSlots()[1].normal_texture=normal_srgb.get();
+            if(change==9)b[1].pbrSlots()[1].orm_texture=orm_srgb.get();
+            if(change==10)b[1].double_sided=true;
+            if(change==11)b[1].modelview_projection[14]=.125f;
+            if(change==12)b[1].alpha_cutoff=.9f;
+            if(change==13){for(auto& x:b)x.material_alpha_mode=2;b[1].materialSlots()[1].alpha_cutoff=.9f;}
+            if(change==14)b[1].pbrSlots()[1].alpha_cutoff=.9f;
+            // The sRGB-data wrapper maps to the SAME validated native linear
+            // view only when it aliases that view; these independently-owned
+            // textures are distinct native state and therefore flush.
+            compare(b,2,2);
+        }
+        // Opposite image order is visible at equal depth. Joining must retain
+        // original global indexed vertex IDs and primitive order.
+        for(bool wide:{false,true})
+        {
+            auto b=make_batches(0,2,wide,true);const auto first=compare(b,2,1);
+            for(auto& x:b)x.indices=wide?reverse32.get():reverse16.get();
+            const auto reversed=compare(b,2,1);CHECK(first.mrt[0]!=reversed.mrt[0]);
+        }
+        // Actual guard scopes, including visibility at original batch offset.
+        const std::array<float,16> object_palette{{0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0}};
+        for(unsigned guard=0;guard<5;++guard)
+        {
+            CAPTURE(guard);auto b=make_batches(0,2,false);
+            scene.wireframe=guard==0;scene.stamp_opaque_coverage=guard==1;
+            ALMetalWorldVisibilityQuery query;
+            if(guard==2)
+            {
+                for(unsigned d=0;d<4;++d)query.modelview_projection[d*5]=1.f;
+                query.center[2]=.75f;query.half_extent[0]=query.half_extent[1]=query.half_extent[2]=.05f;
+                query.batch_offset=1;query.fan=7;query.count_samples=1;
+                scene.visibility_queries=&query;scene.visibility_query_count=1;
+            }
+            if(guard==3)
+            {
+                // Rigid-avatar path is a genuinely separate excluded shader
+                // family; its accepted source contract is not approximated.
+                b[1].avatar_rigid=true;b[1].alpha_mask=true;b[1].use_vertex_color=false;
+                b[1].alpha_cutoff_bias=false;b[1].alpha_cutoff=.2f;b[1].texture_count=1;
+            }
+            if(guard==4)
+            {
+                b[1].skin_palette=object_palette.data();b[1].skin_palette_float_count=object_palette.size();
+                b[1].skin_joint_count=1;b[1].weight_offset=offsetof(JoinGeometry,weights);
+            }
+            const auto off=render(b,false);std::uint64_t query_off=0;
+            if(guard==2){REQUIRE(query_result);REQUIRE(query_result->wait(0,query_off,&error));}
+            const auto on=render(b,true);CHECK(off.first==on.first);CHECK(off.second==on.second);
+            CHECK(on.second==((guard==1||guard==2)?3u:2u));
+            const std::uint32_t far=scene.reverse_z?0u:0x3f800000u;
+            CHECK(std::any_of(on.first.depth.begin(),on.first.depth.end(),[&](auto bits){return bits!=far;}));
+            if(guard==1)
+            {
+                CHECK(std::all_of(on.first.stencil.begin(),on.first.stencil.end(),[](auto value){return value==0u;}));
+                CHECK(on.first.mrt[0]!=opaque_pixels.mrt[0]);
+                bool alpha_coverage=true;
+                for(std::size_t pixel=0;pixel<side*side;++pixel)alpha_coverage&=on.first.mrt[0][pixel*4+3]==255u;
+                CHECK(alpha_coverage);
+            }
+            if(guard==3||guard==4)
+            {
+                std::vector<ALMetalWorldSimpleBatch> without_special{b[0]};
+                const auto removed=render(without_special,false);CHECK(removed.second==1u);
+                CHECK(on.first.depth!=removed.first.depth);
+            }
+            if(guard==2){std::uint64_t value=0;REQUIRE(query_result);REQUIRE(query_result->wait(0,value,&error));CHECK(value==query_off);}
+            scene.wireframe=scene.stamp_opaque_coverage=false;scene.visibility_queries=nullptr;scene.visibility_query_count=0;
+        }
+    }
+}
+
 TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer", "[almetal]")
 {
     @autoreleasepool
