@@ -7,10 +7,11 @@ committed, prepared build68633. All prior fixes retained. Earlier20FPS goal stay
 PAUSED. Translator fully stopped; Xcode replay off. All CUA phases completed.
 Root owns shared source/build/runtime/docs; agents finished owned work/reviews.
 
-No viewer restart/launch in this task. Existing68626PID44312 remains running,
-confirmed after final build; codeD186. Canonical disk app is now68633, so never
-assign the new executable hash/repairs to the older running process. No cache,
-account, camera, location or graphics preference changes were made.
+Owner subsequently explicitly authorized restart. Closed68626PID44312 viaCmdQ,
+launched exact canonical68633; login screen observed inCUA. NewPID95871, path/
+hash verified in private-avatar-parity-owner-try-20261110-01/launch.json. No launch
+session/diagnostic overrides injected. Owner will log in and try different places;
+do not drive login/travel. No crowd/region/settings/FPS observation yet.
 
 Implementation details and exact limits:
 docs/metal/work/active/avatar-crowd-parity.md.

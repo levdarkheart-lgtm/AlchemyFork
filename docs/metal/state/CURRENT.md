@@ -3,12 +3,12 @@
 **Observed:** 2026-11-10, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `97dd825aaf428da4a50e6b8bf1659d5b60d62eda`.
-**Prepared app:** 68633, Release ARM64, built/verified/signed; NOT launched.
-**Running viewer:** older68626 PID44312, sourceD18641c355, confirmed alive after
-final build. Do not attribute the overwritten disk app's hash to this process.
+**Running viewer:** 68633 PID95871, Release ARM64, built/verified/signed.
+Owner then authorized closing older68626PID44312 and starting the repaired app.
+Old PID exited; exact68633 login window observed. Owner handles login/travel.
 Owner explicitly requested implementing the four avatar gaps. All prior fixes
 retained. Earlier20FPS goal remains paused; no settings, camera, avatar travel,
-cache/account changes or viewer restart occurred in this implementation.
+cache/account changes occurred. Restart followed the owner's explicit request.
 
 ## Implemented original contracts
 
@@ -55,8 +55,10 @@ verify_app inspected349 Mach-O files with zero invalid non-arm64 slices.
 Canonical app: `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
 68633 executable SHA256: `5695b820fcd7a7a3252d1dedb4e91dd8cd90a0595a4afb4ec13417e58ffbac83`.
 Metallib SHA256: `a155144459e5899d838c35834d31ecd0b4c5ae67e511e26e81523e464cd994f8` (MSL unchanged).
-Running68626 launch-pinned SHA256 remains
-`1050ef5ab4907c1fb15874a4bb216c81b057bc82e03030dfe446dc865570675a`.
+Owner-run launch receipt: ignored
+`artifacts/metal/private-avatar-parity-owner-try-20261110-01/launch.json`.
+Exact path/hash/PID checked; no diagnostic/session overrides injected by launch.
+Login screen is not a crowd/region/settings/visual-parity observation.
 
 Actual Release native GPU tests with API+shader validation, all exit0:
 
@@ -101,8 +103,8 @@ cache and logs stayed ignored and were not uploaded. Root owns shared files.
 
 ## Exact next actions
 
-Leave existing live viewer intact. Prepared68633 is ready for the next owner-
-directed run. Verify actual native completion receipts/ART behavior with several
+68633 is at login for the owner, who will travel/test. Verify actual native
+completion receipts/ART behavior when requested, with several
 avatars, main/mirror impostors, cache replacement and loading/default-to-ready
 transitions. Also verify earlier Midday/Sunset/Midnight continuity/gamma fixes.
 Remaining terrain/shadow failures need affected geometry/map/depth evidence.

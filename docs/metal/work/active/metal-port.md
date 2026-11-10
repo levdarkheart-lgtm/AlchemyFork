@@ -21,8 +21,9 @@ new avatar cap, CPU-time surrogate, UI-slot mutation or visible profile target.
 The original particles-disabled loading sphere remains explicitly unsupported;
 other unloaded cases now skip exactly as original. Live visual parity is open.
 
-Build68633 prepared without launch. Existing68626PID44312 stays running olderD186;
-canonical disk app identity differs. API+shader Release checks exit0: timing369/4,
+Build68633 prepared/verified, then launched at owner's explicit restart request.
+Old68626PID44312 closed; exact login window68633PID95871 observed/path-hash verified.
+Owner handles login/travel; no live crowd comparison yet. API+shader Release checks exit0: timing369/4,
 timer+UI+VB375/5, cache395/2, avatar sampling31498/1, impostor126/1. Full build and
 verification exact commands/source/hashes are under ignored
 private-avatar-parity-repair-20261110-01/build-final.json. No crowd FPS claim.
@@ -30,8 +31,8 @@ private-avatar-parity-repair-20261110-01/build-final.json. No crowd FPS claim.
 Earlier cold-cache/UI/EEP/probe-continuity repairs and source investigations are
 preserved in indexed CURRENT-cold-start-environment-repairs-2026-11-10.md.
 Cold cache backup remains private/intact. Terrain/water/shadow discrepancy and
-random attachment spikes remain unresolved. No viewer, camera, preference or
-account/cache changes during this implementation. Earlier20FPS campaign paused.
+random attachment spikes remain unresolved. No camera, preference or account/cache changes; restart followed the owner's
+explicit instruction after implementation. Earlier20FPS campaign paused.
 
 ## Work board
 
@@ -77,8 +78,7 @@ need observation. Build/tests do not establish product completion or FPS gains.
 
 ## Immediate executable action
 
-Leave current live viewer intact; prepared68633 is ready for the next owner-directed
-run. Validate actual native completion receipts and cost limiting with several
+68633 is at login for the owner after explicitly authorized restart. Validate actual native completion receipts and cost limiting with several
 avatars, cross-view impostors and loading transitions, then earlier environment
 switches. Trace unresolved terrain/shadow/attachment geometry/depth as before.
 

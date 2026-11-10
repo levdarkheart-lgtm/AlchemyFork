@@ -5,7 +5,9 @@
 Owner explicitly requested implementing all four audited gaps. Root integrated
 shared pipeline/render-state changes; agents owned device timing, avatar cache,
 body placeholder resolution and focused tests, with independent source review.
-Build68633 is prepared; no viewer launch or live crowd benchmark in this task.
+Build68633 was prepared/verified, then launched at owner's explicit request.
+Old68626 closed; exact68633PID95871 login screen observed. Owner handles login
+and travel. No live crowd/region/settings/FPS comparison yet.
 
 ## Preserved policy
 
