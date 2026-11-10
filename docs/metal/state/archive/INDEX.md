@@ -184,3 +184,7 @@ erratum or a new current observation; do not silently rewrite historical claims.
 - [68563 runtime and warmup confound](CURRENT-68563-shiny-runtime-2026-11-09.md) — confirmed shiny GPU saving, incomplete probe initialization prevents settled A/B.
 
 - [Shader registers and 64-neighbor parity](CURRENT-shader-registers-and-neighbor64-2026-11-09.md) — rejected SH lifetime candidate, real register comparison, diagnostic compiler dependency repair and confirmed late-neighbor regression.
+
+- [68608 bounded stage timing](CURRENT-stage-timing-runtime-2026-11-10.md) — controlled300frames9.0695FPS,334resolvedpasssamples, water/alpha/base priorities; no FPSgain.
+
+- [Water probe specialization candidate](CURRENT-water-probe-specialization-2026-11-10.md) — actual mirror-water hotspot, corrected lazy pipeline ownership and strict GPU parity; cost gate pending.

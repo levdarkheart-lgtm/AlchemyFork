@@ -1,138 +1,128 @@
-# Next session — stage-timestamp validation and bounded GPU attribution
+# Next session — build and measure admitted water specialization
 
 Read AGENTS.md and CURRENT.md completely. Goal20FPS Ultra is ACTIVE/unmet;
-infeasibility is unproved. This turn made concrete progress: committed/rebuilt
-the direct default; compiled/GPU-tested whole-shadow parallel encoding; measured
-and rejected two complete-cost revisions; restored the exact baseline source.
-Do not create a duplicate goal or mark complete/paused/blocked.
+infeasibility unproved. This turn made concrete progress: controlled68608 data,
+rejected early-depth, implemented water specialization, strict GPU and repeated
+quiet mechanism proof, both full native gates and renderer commit. No FPS gain yet.
 
-## Ownership and runtime
+## Source, ownership and authority
 
 Branch codex/apple-silicon-metal. Renderer checkpoint
-06d16eb4cb20f4dfe47b4ce71e86e1420eb9e060. ALL indra source equals this commit.
-There are no uncommitted renderer changes. No viewer/GPU/profiler/build
-running. Prior three viewer sessions ended with exact exits/Goodbye/absence and
-all their environment plans restored. Translator FULLY STOPPED/NEVERrestart;
-Xcode replay STOPPED. Root owns shared source/docs/runtime/GPU. Agents use
-private source/read-only work; never concurrently edit shared renderer files.
+f549a796d2c734222665dd10c836e56c0df352b9. Renderer source CLEAN/committed. HEAD
+may include a later documentation commit: inspect git before relying on it.
+Root owns shared source/docs/runtime/GPU. Agents only private source/review.
+No viewer, profiler, GPU test or build running at this checkpoint. All environment
+plans restored; latest68608 plan restored07:48:55UTC after exact57546 exit.
+Translator FULLY STOPPED/NEVERrestart; Xcode replay STOPPED.
 
 Owner authorizes autonomous quit/build/login/measure at SAME private location
-and Preset123 only; no travel/avatar motion. Preserve Ultra3456×2168/Midday,
-six1024hero faces/two cascades/PCSS/rawR32/reverseZ/clamp/allcasters/features.
-Use Mac shortcuts and fullscreen BEFORE login. No private uploads/releases.
-Owner sees fullscreen GameMode activation banner: leave mode unchanged.
-NEVER bind CUA ControlCenter/com.apple.controlcenter (7654s unsupported-target
-stall despite60s timeout). Exact listed Alchemy app works; AX world queries
-can take30–42s. All prior CUA phases have completion_summary already.
+and Preset123 only. No travel/movement. Preserve Ultra3456×2168/Midday/six1024
+hero faces/two cascades/PCSS/rawR32/reverseZ/clamp/casters/features. Prefer Mac
+shortcuts/fullscreen BEFORE login. Leave GameMode unchanged. NEVER bind CUA
+ControlCenter (prior7654s stall). Latest CUA phase already completion_summary.
 
-## Ready baseline app68606
+## Exact next action
 
-Canonical /Users/dekstroza/Programming/AI/Secondlife/Alchemy/build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app.
-Preserved /private/tmp/alchemy-metal-68606-direct-default-preserved.app.
-Actual source06d16, version26.4.0.68606, executable
-ac719b12a34964c6d34ac7850f24a0e5dc2a70a626216420ad7cac1b221615ec,
-metallib3932018186338255b0523028441e5376393a51c2b3ddbad2ad538f1c530376c2.
-Doctor/configure/build/verify/deepstrictsignature ALL0,39343terminal0;
-349ARM64/0bad. Packet ys8mhyv4, independent identity review zukzcud7/e614f1e3.
-Source recordingOFF/C++23/O3/NDEBUG/arm64/min26.0; actual45responsefiles reviewed.
-Preservation42077terminal0/deepstrictsignature0. No new live FPS run of68606.
+Build/verify a source-exact NORMAL app from the clean committed HEAD, then
+repeat full-screen-before-login/Midday/Preset123 and formal300 ready frames.
+Do NOT run private address/CPU experiments during this comparison. Water scene
+producer is already enabled generically, while backend requires actual bound
+single-tap bit/count>1/above-water/shadows. No shader/math/clip/state change.
+Bounded opt-in logs 'Native water probe PSO selected' prove actual encoded
+flat/wave FC0=true per source view/frame, at most12 view receipts. They do not
+prove GPUcompletion. Normal exact-presentation/readiness gates still required.
 
-Direct source default material_buffers=false; ordinarydiffusesamplerABfalse;
-experimental material sampler remains lazy, quality-identical and safely reset
-on anisotropy change. BOTH baseline optimized API+GPU suites435462/102 PASS;
-all eleven per-file source hashes still match after prototype removal.
-NINJA TEST ARTIFACTS STILL CONTAIN REJECTED PROTOTYPE. REBUILD before reuse.
-Normal68606 app is correct and unchanged; do not confuse the two build trees.
+Normal builder template (read first):
+/private/tmp/alchemy-metal-stage-window-app-build-20261110.b2y1owqh/build.py.
+Create NEW packet/script, pin expected_source to actual clean HEAD, baseline to
+preserved68608 below (d8f4), scrub MTL/ALCHEMY_METAL/PRIVATE/REFERENCE env, and run
+doctor/configure/build/verify/deepstrictsignature. Actual O3/NDEBUG/C++23/arm64/
+recordingOFF/source stamp/embeddedapp/compiler response files must be checked.
+Do not change HEAD/source/settings or start GPU work while build is running.
+Canonical app is STILL baseline68608 until rebuild; never launch it as candidate.
 
-## Exact next executable action
+Candidate QA config can copy43controls/4overrides/exact global target from
+artifacts/metal/private-ultra-stage-timing-qa-20261110.json. Set reference path
+preserved68608 and candidate canonical newly hashed app; keep manual saved login.
+Use prior launch wrapper8148eaef only as reviewed template, NEW run/CSV/plan names,
+new exact hash/version/source, and OMIT stageframes3 (already attributed; no need
+capture after new formal). Warmup300s/120frames, require exact+ready+provenance,
+300 consecutive samples. Start fresh observe/verify/gate BEFORE sample; save
+start-* and end-*; verify/gate need escalation for PID checks. No private location
+output. Repeat controlled baseline afterward if needed to bracket scene drift.
 
-The standalone stage-timestamp fixture is COMPLETE: root compile/nativevalidation
-both0, actualAPI+GPUenabledlogs,8resolvedsamples/twopasses, exactfullRED/BLUE
-pixels/cancel, CPU_ns/Machclockproof. Source926da7bdeb9fbe2a3c8dc9bc81cb89d5e0ad1b0760800ca0d3a2394f132a1a36,
-packet /private/tmp/alchemy-metal-stage-timestamp-validation-run-20261110.veybvjku.
-Result3833ed66/binary424df499. No viewer hook or live timings yet. Do not rerun
-capability/standalone gates without a new defect or source change.
+Install native Midday seed via /private/tmp/alchemy-metal-session-state-20261109.py
+install --plan NEWABSPLAN --source CANDIDATESHA, only after no viewer remains.
+After actual exactexit/Goodbye/PIDabsence restore OWNplan. Do not restore old
+plans again. No actual new plan/launch exists yet.
 
-/root/shadow_contract now owns a NEW PRIVATE minimal explicit
-ALMetalStageTimingWindow helper+GPUtest, based on06d16 (no parallel prototype).
-/root/trace_recheck reviews it. No shared edits/build/hardware by agents. Obtain
-its delivered source packet/manifest, review and integrate helper/CMake/tests.
-Root owns backend hook in ALMetalRenderEncoder::begin plus display/view gates.
-Use a caller-owned bounded window,4freshindices/physicalpass, copieddescriptor,
-buffer-only completion owners(noCB/token cycles), external completion polling,
-strict decode/calibration, and unavailable unsubmitted/cancelled records.
-Failing diagnostics must leave ordinary rendering valid; default off and no
-extra wait/commit. This is next implementation, not a general profiler.
+## Final water evidence
 
-Current query packet /private/tmp/alchemy-metal-counter-capability-run-20261110.j3oo8ios
-compiled/ran0: M1Max only timestamp/GPUTimestamp, stage_boundary=true; all draw/
-dispatch/tile/blit points false, no statistic/utilization sets. It created no
-GPU commands. This REVALIDATES November8/archiveCURRENT-ultra-goal-experiments,
-which already allocated four shared samples. No renderer counter hooks exist.
+Committed5files: world.cpp/world.h/worlddiagnostics.h/strictGPUtest/pipeline.cpp.
+MSL byte-identical080fba9e. Lazy exact flat/wave descriptors restore Impl-owned
+library pointer (stored descriptors intentionally clear it). Fixed max4 PSOs;
+default-only/mainPCSS/underwater/no-shadow retain original pipelines. Mirror
+clipping remains in the original fragment body. Tests count actual selected PSOs.
 
-Important calibration correctness: Apple's sampleTimestamps CPU values are
-ALREADY nanoseconds. Archived real CPU values agree with raw Mach ticks only
-AFTER125/3 conversion. Do NOT multiply Metal CPU samples by the Mach timebase
-again (would inflate timings41.67×). Use Mach brackets only to verify units;
-GPU duration = GPUrawDelta * CPU_nsCalibrationSpan / GPUCalibrationSpan.
-Reject zero/error samples, invalid spans and out-of-bounds resolve data.
-Do not infer global pass order or sum overlapping vertex/fragment/pass spans
-into frame GPU busy time. Actualstageutilization/invocation counters unavailable.
+Corrected API+GPU focused15425assertions/1case passed,29 strictRGBA16/rawD32/
+stencil pairs/24 cache checks. Larger8pairs15719/1 passed after benchmark-only
+state restoration. Quiet R1 and R4 EACH18642/1/224samples/Nominal thermal;
+R4 eligible whole-GPU-command time15.42–17.17% lower,7/7 faster in all4cases,
+all eligible commands8–20ms. SAME controls+1.27/−0.35%, main−.26/default+.46.
+Independent raw auditf1e5a524 verified all schedule/source/binary/library facts.
+Synthetic256 logical/32accepted records share2 physical cubes; no FPS inference.
+CPU gain unproved, mirrored-wave outlier retained (+34.8µs/invocation mean).
 
-The standalone fixture now passes; implement a bounded
-DEFAULT-OFF diagnostic hook in existing native encoder/pass ownership. Preserve
-all attachments/shaders/cadence. Sample main+six hero views with actual frame/
-view/face/pass labels and command completion owners; no waits/extra submissions.
-Follow the existing formal-ready gate so measurements follow300formal frames.
-Do not turn this into a general profiling framework or enable unsupported APIs.
-Then rebuild/verify an exact app and measure currentGPUstage intervals to select
-an actual GPU optimization. The next goal remains FPS improvement, not tooling.
+Private cost fixture/imports removed and strict fixture restored EXACTe68cb9
+(actualfocusedpassing source). Both optimized full API+GPU suites EACH
+482529assertions/104cases PASS0, all15 final source hashes match before commit.
+Commands/exits/preambles/flags in /private/tmp/alchemy-metal-water-admission-20261110.nkscvin4.
+Raw test/cost/failed-run/patch/scripts/audit/full-native evidence SHA-preserved
+43files under ignored artifacts/metal/private-water-shadow-specialization-20261110/.
+Source tests ran precommit6b80+explicitdiff; f549 contains exactly those files.
+No normal candidate build or viewer FPS comparison has executed yet.
 
-## Closed whole-shadow parallel trial
+## Completed baseline and stage attribution
 
-Full core/source-preserving rebase B9lJuH/5780aa70, two-view test PcHZll/0570116c,
-benchmark67b4kh32/35506dcf, optional validation-slotcache nVgDPI/30eeb373.
-All sources independently reviewed; actual Release API+GPU full suites435842/
-103 PASS for both revisions. Bridge100/1, focused rawshadow2210/1 include
-worker failure/retry, ordering, invalidsource/cancel, all representativefamilies
-and two distinct views before one commit. No candidate viewer built/launched;
-RelWithDebInfo notrun because performance admission failed first.
+Canonical /Users/dekstroza/Programming/AI/Secondlife/Alchemy/build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app
+currently68608/source6b80, exe d8f4cc0a397889ec0479dcf6c136b4c194d90a28be2a841c6dc69ddd0d241f51,
+lib3932018186338255b0523028441e5376393a51c2b3ddbad2ad538f1c530376c2.
+Preserved /private/tmp/alchemy-metal-68608-stage-window-preserved.app, signature0.
+Normaldoctor/configure/build/verify/signature0,349ARM64/O3/NDEBUG/C++23/recordingOFF.
+6b80 native focused41331/2 and both full optimized API+GPU476793/104 passed.
 
-Initial280quiet samples: serial→two CPU+19.20%640/+13.39%4096, all7slower.
-Slotcache revision280:640+9.71% all7slower;4096 apparent−4.45% range−6.12..+9.32,
-SAMEparallel−5.24% range−11.32..+9.43. No general win; REJECT. Eachrunpassed
-6268assertions/8strictR32pairs/thermal0/schedule/provenance.140short640rowskept.
-Synthetic12family32×32 streams; generation-per-call differs from viewer cadence.
-Genericcallbackretirementunproven, GPUcontrolsswing: no FPS/GPUbenefitclaim.
-Do NOT rerun these variants or activate a viewer trial.
+Run artifacts/metal/qa-runs/candidate-stage-timing-20261110-01 COMPLETE:
+300 ready frames5008–5307,9.069479205FPS, mean110.259914307/p50109.6861035/
+p95120.610834. Proper68601control02 9.410236877FPS, but new draws+2.814%.
+Both43start/endgates0/native1/bias1/ready256stable120/3456×2168; EEPexact,
+tiny camera residuals. Exact57546SIGTERM/Goodbye/absence0, ownplanrestored0.
+Three POST-formal windows335reports/334complete/1unavailable/9rejected:
+mainbase17.4ms/mainhaze13.8–18.0/hero5water13.2–15.1fragmentelapsed. Overlap/
+backlog means NOT additiveGPUbusy/FPS. Hero5reallymirrorclipped; !mirror
+no-kill proposal rejected before editing. Compute/blit/present/pre++ unsampled.
+Stage/formalaudits preserved under private-stage-and-early-depth-20261110/.
 
-Root froze full final patch63636129baa76c4fcff046ac196800e93078eb4064cacf349ffb005bc8d7c2c7,
-reverse-applycheck/apply0 and source-map comparison0;13-file prototype changes
-removed (ten existing files restored and three prototype files deleted).
-Initialfulltestedpatch2ce2c74d833855a34604c92c8f633da3223b3eb5e79eecb061ba10e41c867d12.
-ALL ten raw packets SHA-verified and preserved in ignored
-artifacts/metal/private-whole-shadow-encoding-20261110/; preservation.json maps
-original paths. See indexed CURRENT-parallel-shadow-encoding-2026-11-10.md.
+## Rejected/private work and remaining gates
 
-## Latest live evidence and limits
+Early-depth passed strict tests but quiet224rows lacked win beyond SAME drift;
+originalhidden workcheap. Rejected/noR32/viewertrial; all5 files restored6b80
+BEFOREwater. Fulltestedpatch624a611d/raw28files preserved. Do not revive.
+Material cache/parallel-shadow and SH/predecode/register/scalar/mask/ambient/
+SSR/immutableUBO variants remain closed. Keep64examined/32accepted probe repair,
+perviewpacks/binding/arenas/mainocclusion/Ultra4aniso/boundedlights/directR32/
+borrowedtargets/image-global budgets/cubeSSAO. No quality cut/nativeD32/waiver.
 
-Earlier68601/source779 ready300:9.833798FPS historical. Proper fresh control02:
-9.410236877FPS, mean106.267250553/p50106.547583/p95116.651958ms. Experimental
-material-cache68605:9.066674534FPS, mean110.294021947/p50110.364396/p95119.195042.
-Bothstart/end43gates0/cameraEEPexact/native1/fallback0/bias1/256ready120.
-Candidate draws+2.53%; no isolated code-regression inference, no gain shown.
-Reference01 exploratory9.408707 lacked startgate; never fabricate one.
-Post-formal10s CPU traces passed; hero~50%active main, shadowparent2.459/2.381s
-inclusive/overlapping, not exactCPUms/frame. Narrow symbols differ with inlining.
-GPUcompleted-CBsumsoverlap/lag, notcriticalpath. Allsixhero publication audited;
-no persistent incomplete capture found. Original67611/exact1eb6.095519FPS remains
-historical; full parity and multi-scene release-performance proof OPEN.
+Trace owns PRIVATE main-base constant→device probe address patch06fa1f22 plus
+strict/cost patch1d28874d (40strictpairs/168samples), both source-approved:
+/private/tmp/alchemy-metal-main-probe-device-rebased-20261110/ and
+/private/tmp/alchemy-metal-main-probe-device-tests-20261110/. Exact6b80 base,
+library fixed, samebuffer1/nine reverse-exact clones; no compile/GPU. DO NOTmix
+before water FPS trial. Root must carefully rebase against new water source.
+Draw CPU audits: GPU-generated static-shadow ICB only2.22% sampled main; VA2
+requires unmeasured runtime support/new paired owners and oppositeface overlap,
+not a small next fix. Bulk-native API previously closed/no win; wrapper-only
+share about1.14% main, feasibility ongoing but no code admitted.
 
-Retain all existing native repairs, especially64examined/32accepted probe
-neighbors, per-view coordinate packs, bound lights, main occlusion, Ultra4xaniso,
-rawR32directslices, arenas/resourceborrowing/image-global budgets/bindingcache.
-Immutable regularprobeUBO1 passed200strict/168timings but no repeatable win:
-closed/no rerun. SH/predecode/mask/ambient/scalarcursor/register variants remain
-closed. No quality reduction/nativeD32 migration/epsilon waiver/fallback backend.
-Fullpixel/featureparity/multisceneperformance/prolongedstability/strictnoGL/
-independentbuild-review release gates remain OPEN. Keep20FPS goal ACTIVE.
+Full pixel/feature parity/multi-scene/stability/strict no-GL/independent review
+remain OPEN. Historical original67611/exact1eb6.095519FPS not parity proof.
+No private uploads/releases. Maintain CURRENT/ledger/harness and honest FPS claims.

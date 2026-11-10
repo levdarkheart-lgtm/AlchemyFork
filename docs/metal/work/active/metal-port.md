@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `06d16eb4cb20f4dfe47b4ce71e86e1420eb9e060`.
+**Renderer checkpoint:** Commit `f549a796d2c734222665dd10c836e56c0df352b9`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -22,7 +22,7 @@
 | M-011 | Remaining owned GL authority | doing | Native resources/window/rendering; strict remaining-tail audit open. |
 | M-012 | Native UI automation | complete | Exact fullscreen/login/Preset123 flow; unsupported system-helper targeting avoided. |
 | M-013 | RLVa parity | deferred | Owner essential-first ordering; retained functionality still required. |
-| M-014 | Ultra20FPS campaign | doing | Direct68606 restored; parallel CPU trial rejected;20FPS unmet. |
+| M-014 | Ultra20FPS campaign | doing | 68608 measured9.0695; early-depthstrictfixture underway;20FPS unmet. |
 
 States describe evidence; a bounded completed item never implies product completion.
 
@@ -89,17 +89,45 @@ primary lead. Unsupported ControlCenter CUA inspection stalled; do not retry it.
 
 ## Immediate executable action
 
-Standalone stage-timestamp fixture veybvjku compiled/ran0 with actual API+GPU
-validation: eight samples/two passes, exact pixels/cancel and clock calibration.
-Integrate the private explicit bounded timing helper and default-off native
-encoder/frame/view hooks. No renderer hook exists yet; no extra waits/commits
-or unsupported draw/utilization counters. Collect only after formal samples.
+6b80 integrates bounded default-off native stage timing, independent samplebuffers
+percommand/completion-safe bufferowners/strict decodecalibration/no waits or
+extra commits. Counterfailure abandons prepared slots before original passretry.
+Controller requires300formalexactreadyframes,60eligible cooldown, then1–3normal
+intervals with main/hero/ordinary/filter tags; logs only after completion.
+Focused41331/2 and full Release+RelWithDebInfo476793/104 API+GPU suites0.
+Normal68608 doctor/configure/build/verify/signature0;349ARM64, exe d8f4cc0a/
+lib39320181, actual O3/NDEBUG/C++23/arm64 flags independently verified.
+
+68608 formal300readyframes9.069479FPS,mean110.259914/p50109.686104/
+p95120.610834; propercontrol9.410237 butdraws+2.814%, noisolateddelta/gain.
+Both43start/endgates0/exactnative/bias1/ready256stable120. EEPexact; tinycamera
+residuals remain.334resolvedstagepasses/3intervals AFTERformal; base17.4ms,
+mainhaze13.8–18.0/hero5water13.2–15.1 elapsed, notadditiveGPUbusytime.
+Exact57546exit/Goodbye/absence0 and OWNplanrestored0; no viewer/profiler.
+[Fullresult](../../state/archive/CURRENT-stage-timing-runtime-2026-11-10.md).
+
+Read-only postwater SIMPLE early tests passed actual API+GPU11598/1 and six
+1024² pairs11753/1. Quiet224 samples14676/1 showed no convincing win beyond
+same-path drift. Rejected; root froze full tested patch624a611d and restored
+all five files exactly6b80 before the new water candidate. No viewer trial.
+
+Root applied water coref8425015/fixture0122e99e plus required library restoration.
+Corrected API+GPU15425/1 and eight1024² preflights15719/1 passed. Separate quiet
+R1+R4 EACH18642/1/224rows/thermal0: R4 eligible GPU savings15.42–17.17%, all7
+blocks faster in all4 cases, SAME+1.27/−0.35%. Independent raw audit passed;
+CPU gain unproved. Private cost code removed after freezing tested2b48b8e3;
+strict permanent fixture exactly matches validatede68cb9. Generic producer now
+enables only actual guarded mode; bounded opt-in logs report encoded PSOs.
+Both full optimized API+GPU suites482529/104 pass0;15final source hashes match.
+Committedf549a796d2. Next normal source-exact app build/verify and FPS trial.
+No viewer gain yet. [Water evidence](../../state/archive/CURRENT-water-probe-specialization-2026-11-10.md).
+Separate main-base address candidate/fixtures remain private only.
 
 Parallel shadow prototype was compiled/GPU-tested435842/103, including two views
 before one commit. First full-preparation CPU trial regressed+19%/+13%; bounded
 slot-cache revision still+9.71% at640 and4096 apparent−4.45% overlapped identical
 path drift−5.24%. Both280-sample runs passed parity/provenance/thermal checks.
-Rejected/no viewer trial. Exact13-file prototype removed; `indra` equals06d16.
+Rejected/no viewer trial. Exact13-file prototype removed before6b80; no parallel path retained.
 Normal68606 preserved/independently verified. Ninja artifacts remain experimental
 and need rebuilding before reuse. Ten private evidence packets are preserved.
 [Complete trial](../../state/archive/CURRENT-parallel-shadow-encoding-2026-11-10.md).
