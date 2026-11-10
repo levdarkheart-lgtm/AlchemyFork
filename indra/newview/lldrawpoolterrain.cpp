@@ -29,6 +29,7 @@
 #include "lldrawpoolterrain.h"
 
 #include "alhexlattice.h"
+#include "almetalfetchedtexture.h"
 #include "alterrainsurfacemaps.h"
 
 #include "llviewercontrol.h"
@@ -94,6 +95,46 @@ namespace
                     F_APPROXIMATELY_ZERO);
         return { density, (F32)raster_segment };
     }
+
+#if LL_DARWIN
+    std::shared_ptr<const ALMetalTerrainFetchedBindings> resolve_terrain_inputs(
+        LLViewerTexture* const* base, LLViewerTexture* blend,
+        LLViewerTexture* overlay, LLViewerTexture* const* normal = nullptr,
+        LLViewerTexture* const* orm = nullptr,
+        LLViewerTexture* const* emissive = nullptr, S32 pbr_detail = 0)
+    {
+        auto result = std::make_shared<ALMetalTerrainFetchedBindings>();
+        const auto resolve = [](LLTexture* texture,
+                                ALMetalFetchedTextureBinding& binding)
+        {
+            alResolveMetalFetchedTexture(texture,
+                LLViewerFetchedTexture::sDefaultImagep.get(),
+                LLViewerTexture::sNullImagep.get(), binding);
+        };
+        for (U32 material = 0; material < 4; ++material)
+        {
+            resolve(base[material], result->base[material]);
+            if (!normal) continue;
+            // Original shader variants do not bind unused detail maps.
+            // Supply valid neutral resources without requesting those assets.
+            resolve(pbr_detail >= TERRAIN_PBR_DETAIL_NORMAL
+                        ? normal[material]
+                        : LLViewerFetchedTexture::sFlatNormalImagep.get(),
+                    result->normal[material]);
+            resolve(pbr_detail >= TERRAIN_PBR_DETAIL_METALLIC_ROUGHNESS
+                        ? orm[material]
+                        : LLViewerFetchedTexture::sWhiteImagep.get(),
+                    result->orm[material]);
+            resolve(pbr_detail >= TERRAIN_PBR_DETAIL_EMISSIVE
+                        ? emissive[material]
+                        : LLViewerFetchedTexture::sWhiteImagep.get(),
+                    result->emissive[material]);
+        }
+        resolve(blend, result->blend);
+        if (overlay) resolve(overlay, result->overlay);
+        return result;
+    }
+#endif
 }
 
 S32 LLDrawPoolTerrain::sPBRDetailMode = 0;
@@ -473,13 +514,15 @@ void LLDrawPoolTerrain::captureMetalReflectionProbe()
                 global_origin.mdV[VY], 1.0 / static_cast<F64>(sDetailScale))) *
                 sDetailScale,
         };
+        const auto fetched = resolve_terrain_inputs(
+            detail_textures, m2DAlphaRampImagep.get(), parcel_overlay);
         for (LLFace* face : mDrawFace)
         {
             gPipeline.captureMetalWorldTerrainBatch(
                 face, detail_textures, m2DAlphaRampImagep.get(),
                 parcel_overlay, sDetailScale, phase, levels.mDensity,
                 smoothing, triplanar, hex, triplanar_blend,
-                tessellation_pinned);
+                tessellation_pinned, fetched);
         }
         gPipeline.endMetalWorldGBufferPass();
         return;
@@ -574,6 +617,10 @@ void LLDrawPoolTerrain::captureMetalReflectionProbe()
         }
     }
 
+    const auto fetched = resolve_terrain_inputs(
+        base_color_textures, blend_texture, parcel_overlay,
+        normal_textures, orm_textures, emissive_textures,
+        gPipeline.shaderInputs().mGlobal.mTerrainPBRDetail);
     for (LLFace* face : mDrawFace)
     {
         gPipeline.captureMetalWorldPBRTerrainBatch(
@@ -585,7 +632,7 @@ void LLDrawPoolTerrain::captureMetalReflectionProbe()
             gPipeline.shaderInputs().mGlobal.mTerrainPBRDetail,
             levels.mDensity, smoothing, triplanar, hex,
             gPipeline.shaderInputs().mLocal.mTerrainPBRNormals,
-            triplanar_blend, tessellation_pinned);
+            triplanar_blend, tessellation_pinned, fetched);
     }
     gPipeline.endMetalWorldGBufferPass();
 #endif
@@ -704,6 +751,8 @@ void LLDrawPoolTerrain::renderFullShaderTextures()
         parcel_overlay = overlayp ? overlayp->getTexture() : nullptr;
     }
     const F32 detail_phase[2] = {offset_x, offset_y};
+    const auto fetched = resolve_terrain_inputs(
+        detail_textures, m2DAlphaRampImagep.get(), parcel_overlay);
     const TessLevels levels = tess_levels();
     static LLCachedControl<F32> triplanar_blend(
         gSavedSettings, "RenderTerrainPBRTriplanarBlendFactor", 8.f);
@@ -719,7 +768,7 @@ void LLDrawPoolTerrain::renderFullShaderTextures()
             gPipeline.shaderInputs().mGlobal.mTerrainPlanarSampleCount == 3,
             gPipeline.shaderInputs().mGlobal.mTerrainHexTiling,
             triplanar_blend,
-            gPipeline.shaderInputs().mLocal.mTerrainTessPinned);
+            gPipeline.shaderInputs().mLocal.mTerrainTessPinned, fetched);
         facep->renderIndexed(LLRender::PATCHES);
     }
     gPipeline.endMetalWorldGBufferPass();
@@ -1025,6 +1074,9 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
     const TessLevels levels = tess_levels();
     static LLCachedControl<F32> triplanar_blend(
         gSavedSettings, "RenderTerrainPBRTriplanarBlendFactor", 8.f);
+    const auto fetched = resolve_terrain_inputs(
+        base_color_textures, blend_texture, parcel_overlay,
+        normal_textures, orm_textures, emissive_textures, sPBRDetailMode);
     gPipeline.beginMetalWorldTerrainPass();
     for (LLFace* facep : mDrawFace)
     {
@@ -1043,7 +1095,7 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
             gPipeline.shaderInputs().mGlobal.mTerrainHexTiling,
             gPipeline.shaderInputs().mLocal.mTerrainPBRNormals,
             triplanar_blend,
-            gPipeline.shaderInputs().mLocal.mTerrainTessPinned);
+            gPipeline.shaderInputs().mLocal.mTerrainTessPinned, fetched);
         facep->renderIndexed(LLRender::PATCHES);
     }
     gPipeline.endMetalWorldGBufferPass();

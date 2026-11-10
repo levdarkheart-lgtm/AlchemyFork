@@ -3789,6 +3789,7 @@ void LLVOAvatar::idleUpdateNameTagText(bool new_name)
         static LLUICachedControl<bool> show_usernames("NameTagShowUsernames", true);
         static LLUICachedControl<bool> show_rez_status("NameTagDebugAVRezState", false);
 
+        bool display_name_pending = false;
         if (LLAvatarName::useDisplayNames())
         {
             LLAvatarName av_name;
@@ -3797,6 +3798,7 @@ void LLVOAvatar::idleUpdateNameTagText(bool new_name)
                 // Force a rebuild at next idle
                 // Note: do not connect a callback on idle().
                 clearNameTag();
+                display_name_pending = true;
             }
 
 // [RLVa:KB] - Checked: RLVa-1.2.2
@@ -3848,6 +3850,11 @@ void LLVOAvatar::idleUpdateNameTagText(bool new_name)
             std::string av_string = LLVOAvatar::rezStatusToString(mLastRezzedStatus);
             addNameTagLine(av_string, name_tag_color, LLFontGL::NORMAL, LLFontGL::getFontSansSerifSmall(), true);
         }
+
+        // Distance/status lines also set mNameIsSet. They must not cancel
+        // the cache-miss retry above: an otherwise stationary avatar could
+        // keep only "4 m" until its loading state or distance changed.
+        if (display_name_pending) mNameIsSet = false;
 
         mNameAway = is_away;
         mNameDoNotDisturb = is_do_not_disturb;

@@ -431,6 +431,13 @@ struct ALMetalWorldSimpleBatch
     float impostor_left[4]{};
     float impostor_up[4]{};
     float impostor_normal_rotation[3][4]{};
+    // Fetched terrain snapshots pin wrappers while queued and through GPU work.
+    std::shared_ptr<const void> terrain_texture_owner;
+    std::array<bool, 4> terrain_diffuse_srgb{{true, true, true, true}};
+    std::array<bool, 4> terrain_emissive_srgb{{true, true, true, true}};
+    bool terrain_blend_wrap = false;
+    bool terrain_overlay_wrap = false;
+    bool terrain_overlay_srgb = true;
     const ALMetalTexture* terrain_height_texture = nullptr;
     const ALMetalTexture* terrain_composition_texture = nullptr;
     const ALMetalTexture* terrain_alpha_ramp_texture = nullptr;

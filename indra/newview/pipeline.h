@@ -71,6 +71,7 @@ class LLCullResult;
 class LLVOAvatar;
 class LLVOPartGroup;
 class LLGLSLShader;
+struct ALMetalTerrainFetchedBindings;
 class LLDrawPoolAlpha;
 class LLSettingsSky;
 class LLViewerJointMesh;
@@ -1160,7 +1161,8 @@ public:
         LLViewerTexture* alpha_ramp, LLViewerTexture* parcel_overlay,
         F32 detail_scale, const F32* detail_phase, F32 tess_density,
         bool smoothing, bool triplanar, bool hex, F32 triplanar_blend,
-        bool tessellation_pinned);
+        bool tessellation_pinned,
+        std::shared_ptr<const ALMetalTerrainFetchedBindings> fetched = {});
     void captureMetalWorldPBRTerrainBatch(
         LLFace* face, LLViewerTexture* const* base_color_textures,
         LLViewerTexture* const* normal_textures,
@@ -1173,7 +1175,8 @@ public:
         const LLColor3* emissive_colors, const F32* minimum_alphas,
         U32 paint_type, S32 pbr_detail, F32 tess_density,
         bool smoothing, bool triplanar, bool hex, bool flat_normals,
-        F32 triplanar_blend, bool tessellation_pinned);
+        F32 triplanar_blend, bool tessellation_pinned,
+        std::shared_ptr<const ALMetalTerrainFetchedBindings> fetched = {});
     void captureMetalWorldAvatarBatch(LLViewerJointMesh& mesh,
                                       LLVertexBuffer* buffer,
                                       LLGLTexture* texture,
@@ -1188,7 +1191,7 @@ public:
         const LLVector3& left, const LLVector3& up,
         const LLMatrix3a& normal_rotation,
         F32 debug_outline_width = 0.f);
-    void publishMetalImpostorBake(LLVOAvatar& avatar);
+    bool publishMetalImpostorBake(LLVOAvatar& avatar);
     void releaseMetalImpostorTextures(const LLUUID& avatar_id);
     void renderMetalWorldLocalLights(
         LLViewerCamera& camera, const LLMatrix4a& modelview,

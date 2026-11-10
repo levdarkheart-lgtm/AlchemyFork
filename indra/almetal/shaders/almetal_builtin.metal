@@ -19588,3 +19588,24 @@ fragment float4 almetal_solid_fragment(
     const float alpha = alpha_map.sample(alpha_sampler, input.texcoord).a * constants.color.a;
     return float4(constants.color.rgb, alpha);
 }
+
+// Keep the world's stored GL row orientation. Only final drawable
+// presentation flips rows; color and raw depth use the same normalized UV.
+struct ALMetalRetainedBackgroundScaleOutput
+{
+    float4 color [[color(0)]];
+    float depth [[depth(any)]];
+};
+
+fragment ALMetalRetainedBackgroundScaleOutput almetal_retained_background_scale_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> world_color [[texture(0)]],
+    texture2d<float> world_depth [[texture(1)]],
+    sampler bilinear_mirror [[sampler(0)]],
+    sampler point_clamp [[sampler(1)]])
+{
+    ALMetalRetainedBackgroundScaleOutput output;
+    output.color = world_color.sample(bilinear_mirror, input.texcoord, level(0.0));
+    output.depth = world_depth.sample(point_clamp, input.texcoord, level(0.0)).r;
+    return output;
+}

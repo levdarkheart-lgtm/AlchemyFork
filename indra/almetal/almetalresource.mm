@@ -1034,6 +1034,14 @@ bool ALMetalVisibilityResultBatch::attachCommand(
     return true;
 }
 
+struct ALMetalTextureAllocationRecord
+{
+    explicit ALMetalTextureAllocationRecord(const ALMetalTextureDescriptor& value)
+    : descriptor(value) {}
+    ~ALMetalTextureAllocationRecord() { recordTextureDestroyed(descriptor); }
+    ALMetalTextureDescriptor descriptor;
+};
+
 struct ALMetalTexture::Impl
 {
     id<MTLDevice> device = nil;
@@ -1041,6 +1049,9 @@ struct ALMetalTexture::Impl
     id<MTLTexture> shader_view = nil;
     id<MTLTexture> linear_view = nil;
     std::mutex linear_view_mutex;
+    // Created lazily only when a second wrapper shares this allocation.
+    // Allocation telemetry retires once, at the last wrapper's destruction.
+    std::shared_ptr<const ALMetalTextureAllocationRecord> allocation_record;
 };
 
 ALMetalTexture::ALMetalTexture(std::unique_ptr<Impl> impl, ALMetalTextureDescriptor descriptor)
@@ -1051,7 +1062,33 @@ ALMetalTexture::ALMetalTexture(std::unique_ptr<Impl> impl, ALMetalTextureDescrip
 
 ALMetalTexture::~ALMetalTexture()
 {
-    recordTextureDestroyed(mDescriptor);
+    if (!mImpl || !mImpl->allocation_record)
+        recordTextureDestroyed(mDescriptor);
+}
+
+std::unique_ptr<ALMetalTexture> ALMetalTexture::retainSharedBacking(
+    const ALMetalTexture& source, std::string* error)
+{
+    if (!source.mImpl || !source.mImpl->texture)
+    {
+        setError(error, "Cannot retain an unavailable Metal texture backing");
+        return nullptr;
+    }
+    auto impl = std::make_unique<Impl>();
+    ALMetalTextureDescriptor descriptor = source.mDescriptor;
+    std::lock_guard<std::mutex> lock(source.mImpl->linear_view_mutex);
+    if (!source.mImpl->allocation_record)
+    {
+        source.mImpl->allocation_record =
+            std::make_shared<ALMetalTextureAllocationRecord>(source.mDescriptor);
+    }
+    impl->allocation_record = source.mImpl->allocation_record;
+    impl->device = source.mImpl->device;
+    impl->texture = source.mImpl->texture;
+    impl->shader_view = source.mImpl->shader_view;
+    impl->linear_view = source.mImpl->linear_view;
+    return std::unique_ptr<ALMetalTexture>(
+        new ALMetalTexture(std::move(impl), std::move(descriptor)));
 }
 
 std::unique_ptr<ALMetalTexture> ALMetalTexture::create(

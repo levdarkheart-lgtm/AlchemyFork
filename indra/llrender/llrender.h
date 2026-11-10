@@ -419,6 +419,12 @@ public:
     // drawable over this frame.
     bool presentMetalTexture(const ALMetalTexture* texture);
     bool setMetalPresentationOpaque(bool opaque);
+    // Window-owned surface identity and resize generation. Borrowed only;
+    // callers must not retain it beyond the installed backend lifetime.
+    const ALMetalSurface* getMetalPresentationSurface() const noexcept
+    {
+        return mMetalUISurface;
+    }
 #endif
 
     // Refreshes renderer state to the cached values

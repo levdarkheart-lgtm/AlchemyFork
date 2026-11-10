@@ -18904,6 +18904,107 @@ TEST_CASE("almetal: avatar impostor replays a coherent baked G-buffer", "[almeta
         CHECK(std::abs(static_cast<int>(output_normal[center + 3]) -
                        43908) <= 2);
 
+        // An unloaded subject can emit no opaque or alpha geometry. Its
+        // real cleared/stamped bake must replay as transparent, including
+        // after the same quartet ownership handoff as a populated bake.
+        {
+            struct EmptyImpostorPixels
+            {
+                std::array<std::vector<std::uint8_t>, 4> colors;
+                std::array<std::uint32_t, 32 * 32> depth{};
+            };
+            const auto empty_snapshot = [&](const ALMetalRenderTarget& target)
+            {
+                EmptyImpostorPixels pixels;
+                for (std::size_t attachment = 0; attachment < 4; ++attachment)
+                {
+                    const auto* texture = target.colorTexture(attachment);
+                    REQUIRE(texture);
+                    const auto row_bytes = 32 * texture->bytesPerPixel();
+                    REQUIRE(row_bytes > 0);
+                    pixels.colors[attachment].resize(32 * row_bytes);
+                    REQUIRE(texture->readback(*device, 0, 0, {},
+                        pixels.colors[attachment].data(), row_bytes, &error));
+                }
+                REQUIRE(target.depthStencilTexture()->readback(*device, 0, 0, {},
+                    pixels.depth.data(), 32 * sizeof(std::uint32_t), &error));
+                return pixels;
+            };
+            for (const bool hdr : {false, true})
+            for (const bool normal_hdr : {false, true})
+            for (const bool reverse : {false, true})
+            {
+                CAPTURE(hdr, normal_hdr, reverse);
+                ALMetalWorldGBufferScene empty_scene;
+                empty_scene.width = empty_scene.height = 32;
+                empty_scene.hdr = hdr;
+                empty_scene.normal_hdr = normal_hdr;
+                empty_scene.reverse_z = reverse;
+                empty_scene.stamp_opaque_coverage = true;
+                std::fill(std::begin(empty_scene.clear_color),
+                          std::end(empty_scene.clear_color), 0.f);
+                auto empty_bake = renderer->render(empty_scene, &error);
+                INFO(error); REQUIRE(empty_bake);
+                const auto baked_pixels = empty_snapshot(*empty_bake);
+                for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+                {
+                    CHECK(baked_pixels.colors[0][pixel * 4 + 3] == 0);
+                    CHECK(baked_pixels.depth[pixel] == (reverse ? 0u : 0x3f800000u));
+                }
+                CHECK(empty_bake->colorTexture(0)->descriptor().format == ALMetalPixelFormat::rgba8_unorm_srgb);
+                CHECK(empty_bake->colorTexture(1)->descriptor().format == ALMetalPixelFormat::rgba8_unorm);
+                CHECK(empty_bake->colorTexture(2)->descriptor().format ==
+                    (normal_hdr ? ALMetalPixelFormat::rgba16_unorm : ALMetalPixelFormat::rgb10a2_unorm));
+                CHECK(empty_bake->colorTexture(3)->descriptor().format ==
+                    (hdr ? ALMetalPixelFormat::rg11b10_float : ALMetalPixelFormat::rgba8_unorm));
+                auto empty_batch = batch;
+                empty_batch.impostor_center[2] = reverse ? 0.5f : 0.f;
+                std::array<std::unique_ptr<ALMetalTexture>, 4> empty_quartet;
+                for (std::size_t attachment = 0; attachment < 4; ++attachment)
+                {
+                    empty_quartet[attachment] = empty_bake->takeColorTexture(attachment);
+                    REQUIRE(empty_quartet[attachment]);
+                    empty_batch.impostor_textures[attachment] = empty_quartet[attachment].get();
+                }
+                auto replay_scene = empty_scene;
+                replay_scene.stamp_opaque_coverage = false;
+                replay_scene.clear_color[0] = 0.125f;
+                replay_scene.clear_color[1] = 0.25f;
+                replay_scene.clear_color[2] = 0.5f;
+                replay_scene.clear_color[3] = 0.375f;
+                auto background = renderer->render(replay_scene, &error);
+                INFO(error); REQUIRE(background);
+                const auto background_pixels = empty_snapshot(*background);
+                replay_scene.batches = &empty_batch;
+                replay_scene.batch_count = 1;
+                auto transparent_replay = renderer->render(replay_scene, &error);
+                INFO(error); REQUIRE(transparent_replay);
+                const auto transparent_pixels = empty_snapshot(*transparent_replay);
+                CHECK(transparent_pixels.colors == background_pixels.colors);
+                CHECK(transparent_pixels.depth == background_pixels.depth);
+
+                // Nonzero source coverage must make this exact billboard
+                // draw: transparent parity above cannot pass on a broken
+                // or culled replay path. All format combinations are real.
+                auto covered_scene = empty_scene;
+                covered_scene.stamp_opaque_coverage = false;
+                covered_scene.clear_color[0] = 0.75f;
+                covered_scene.clear_color[1] = 0.0625f;
+                covered_scene.clear_color[2] = 0.25f;
+                covered_scene.clear_color[3] = 1.f;
+                auto covered_bake = renderer->render(covered_scene, &error);
+                INFO(error); REQUIRE(covered_bake);
+                for (std::size_t attachment = 0; attachment < 4; ++attachment)
+                    empty_batch.impostor_textures[attachment] = covered_bake->colorTexture(attachment);
+                auto covered_replay = renderer->render(replay_scene, &error);
+                INFO(error); REQUIRE(covered_replay);
+                const auto covered_pixels = empty_snapshot(*covered_replay);
+                CHECK(covered_pixels.colors != background_pixels.colors);
+                CHECK(covered_pixels.depth[center / 4] == 0x3f000000u);
+                CHECK(covered_pixels.depth[center / 4] != background_pixels.depth[center / 4]);
+            }
+        }
+
         batch.impostor_textures[3] = nullptr;
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));

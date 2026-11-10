@@ -7166,7 +7166,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                     ALMetalPixelFormat::rg16_float ||
                 (batch.terrain_parcel_overlay_texture &&
                  batch.terrain_parcel_overlay_texture->descriptor().format !=
-                     ALMetalPixelFormat::rgba8_unorm_srgb) ||
+                     ALMetalPixelFormat::rgba8_unorm_srgb &&
+                 !(batch.terrain_overlay_wrap &&
+                   batch.terrain_parcel_overlay_texture->descriptor().format ==
+                       ALMetalPixelFormat::rgba8_unorm)) ||
                 batch.terrain_height_texture->descriptor().width !=
                     batch.terrain_composition_texture->descriptor().width ||
                 batch.terrain_height_texture->descriptor().height !=
@@ -7931,6 +7934,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         }
         if (batch.terrain)
         {
+            if (batch.terrain_texture_owner &&
+                !command->retainUntilCompletion(batch.terrain_texture_owner, error))
+            {
+                encoded = false;
+                break;
+            }
             WorldTerrainConstants constants{};
             std::memcpy(constants.modelview_projection,
                         batch.modelview_projection,
@@ -8018,14 +8027,19 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 encoder->setFragmentSampler(
                     0, mImpl->diffuse_sampler.get(), error) &&
                 encoder->setFragmentSampler(
-                    1, mImpl->point_clamp_sampler.get(), error) &&
+                    1, batch.terrain_overlay_wrap ? mImpl->diffuse_sampler.get()
+                                                  : mImpl->point_clamp_sampler.get(), error) &&
                 encoder->setFragmentSampler(
-                    3, mImpl->ramp_sampler.get(), error);
+                    3, batch.terrain_blend_wrap ? mImpl->diffuse_sampler.get()
+                                                : mImpl->ramp_sampler.get(), error);
             for (std::uint32_t texture = 0;
                  encoded && texture < batch.texture_count; ++texture)
             {
-                encoded = encoder->setFragmentTexture(
-                    texture, batch.diffuse_textures[texture], error);
+                encoded = batch.terrain_diffuse_srgb[texture]
+                    ? encoder->setFragmentTexture(
+                          texture, batch.diffuse_textures[texture], error)
+                    : encoder->setFragmentTextureLinear(
+                          texture, batch.diffuse_textures[texture], error);
             }
             if (encoded && batch.terrain_pbr)
             {
@@ -8042,30 +8056,43 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                             4 + slot, pbr_slot.normal_texture, error) &&
                         encoder->setFragmentTextureLinear(
                             8 + slot, pbr_slot.orm_texture, error) &&
-                        encoder->setFragmentTexture(
-                            12 + slot, pbr_slot.emissive_texture, error);
+                        (batch.terrain_emissive_srgb[slot]
+                            ? encoder->setFragmentTexture(
+                                  12 + slot, pbr_slot.emissive_texture, error)
+                            : encoder->setFragmentTextureLinear(
+                                  12 + slot, pbr_slot.emissive_texture, error));
                 }
                 encoded = encoded &&
                     encoder->setFragmentTexture(
                         16, batch.terrain_height_texture, error) &&
-                    encoder->setFragmentTexture(17, blend, error) &&
-                    encoder->setFragmentTexture(
-                        18, batch.terrain_parcel_overlay_texture
-                            ? batch.terrain_parcel_overlay_texture : blend,
-                        error);
+                    (batch.terrain_blend_wrap
+                        ? encoder->setFragmentTextureLinear(17, blend, error)
+                        : encoder->setFragmentTexture(17, blend, error)) &&
+                    (batch.terrain_overlay_srgb
+                        ? encoder->setFragmentTexture(
+                              18, batch.terrain_parcel_overlay_texture
+                                  ? batch.terrain_parcel_overlay_texture : blend, error)
+                        : encoder->setFragmentTextureLinear(
+                              18, batch.terrain_parcel_overlay_texture
+                                  ? batch.terrain_parcel_overlay_texture : blend, error));
             }
             else if (encoded)
             {
                 encoded =
                     encoder->setFragmentTexture(
                         4, batch.terrain_height_texture, error) &&
-                    encoder->setFragmentTexture(
-                        5, batch.terrain_alpha_ramp_texture, error) &&
-                    encoder->setFragmentTexture(
-                        6, batch.terrain_parcel_overlay_texture
-                            ? batch.terrain_parcel_overlay_texture
-                            : batch.terrain_alpha_ramp_texture,
-                        error);
+                    (batch.terrain_blend_wrap
+                        ? encoder->setFragmentTextureLinear(
+                              5, batch.terrain_alpha_ramp_texture, error)
+                        : encoder->setFragmentTexture(
+                              5, batch.terrain_alpha_ramp_texture, error)) &&
+                    (batch.terrain_overlay_srgb
+                        ? encoder->setFragmentTexture(
+                              6, batch.terrain_parcel_overlay_texture
+                                  ? batch.terrain_parcel_overlay_texture : batch.terrain_alpha_ramp_texture, error)
+                        : encoder->setFragmentTextureLinear(
+                              6, batch.terrain_parcel_overlay_texture
+                                  ? batch.terrain_parcel_overlay_texture : batch.terrain_alpha_ramp_texture, error));
             }
             encoded = encoded &&
                 encoder->setTessellationFactorBuffer(

@@ -7,6 +7,7 @@ set(
   algpubuffer.cpp
   algputimer.cpp
   alimageslot.cpp
+  almetalfetchedtexture.cpp
   alpacingslack.cpp
   alprimitiveplot.cpp
   alquerypool.cpp
@@ -47,6 +48,7 @@ set(
   algpubuffer.h
   algputimer.h
   alimageslot.h
+  almetalfetchedtexture.h
   alpacingslack.h
   alprimitiveplot.h
   alquerypool.h
@@ -168,6 +170,7 @@ if(AL_BUILD_TESTS)
     list(APPEND llrender_native_test_sources
       tests/algpubuffer_test.cpp
       tests/altextureslot_metal_test.cpp
+      tests/alterraintexture_metal_test.cpp
       tests/algputimer_metal_test.cpp
       tests/alquerypool_test.cpp
       tests/alquerypool_diagnostics_test.cpp

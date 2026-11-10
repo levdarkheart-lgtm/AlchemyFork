@@ -39,6 +39,17 @@ class LLJointRiggingInfoTab;
 
 namespace LLSkinningUtil
 {
+    // The skinning palette is affine: the GPU upload packs only each row's
+    // XYZ, and affineTransform's position result consumes those same twelve
+    // values. The four W lanes are not joint deformation coefficients.
+    inline bool isFiniteSkinningMatrix(const LLMatrix4a& matrix)
+    {
+        return matrix.mMatrix[0].isFinite3() &&
+               matrix.mMatrix[1].isFinite3() &&
+               matrix.mMatrix[2].isFinite3() &&
+               matrix.mMatrix[3].isFinite3();
+    }
+
     inline U32 stabilizeMatrixPalette(
         LLMatrix4a* matrices, U32 count, const LLMatrix4a& fallback)
     {
@@ -46,10 +57,7 @@ namespace LLSkinningUtil
         for (U32 joint = 0; matrices && joint < count; ++joint)
         {
             LLMatrix4a& matrix = matrices[joint];
-            if (!matrix.mMatrix[0].isFinite4() ||
-                !matrix.mMatrix[1].isFinite4() ||
-                !matrix.mMatrix[2].isFinite4() ||
-                !matrix.mMatrix[3].isFinite4())
+            if (!isFiniteSkinningMatrix(matrix))
             {
                 matrix = fallback;
                 ++replacements;

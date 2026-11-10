@@ -1829,7 +1829,12 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         {
             gGL.setClearColor(LLColor4::magenta);
         }
-        gPipeline.mRT->deferredScreen.clear();
+        // The native G-buffer pass clears its chosen four attachments and
+        // depth/stencil when it encodes a new world. Clearing the logical
+        // retained target here can overwrite the previous committed world's
+        // depth before we know that this frame has a complete replacement.
+        // Preserve ordered immediate work without that redundant GPU write.
+        gGL.flush();
 
         gGL.setColorMask(true, false);
 

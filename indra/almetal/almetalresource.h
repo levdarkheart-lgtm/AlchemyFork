@@ -342,6 +342,13 @@ public:
         const ALMetalTextureDescriptor& descriptor,
         std::string* error = nullptr);
 
+    // Retain the same native allocation and existing shader views in a new
+    // independent wrapper, without allocating/copying a GPU texture. This
+    // does not prevent a source owner from writing/recycling its backing:
+    // retain that owner's pool lease and exclude subsequent borrowed writes.
+    static std::unique_ptr<ALMetalTexture> retainSharedBacking(
+        const ALMetalTexture& source, std::string* error = nullptr);
+
     // Import one IOSurface plane without a CPU copy. The caller retains its
     // IOSurface reference for at least as long as the returned texture. This
     // is deliberately a narrow macOS ingress boundary for shared media frames;

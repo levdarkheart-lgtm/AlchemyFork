@@ -38,6 +38,7 @@
 #include <boost/unordered/unordered_flat_map.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <mutex>
 
@@ -177,11 +178,12 @@ void LLSkinningUtil::initSkinningMatrixPalette(
     {
         S32 joint_num = skin->mJointNums[j];
         LLJoint *joint = avatar->getJoint(joint_num);
+        const LLMatrix4a* world_matrix = joint ? &joint->getWorldMatrix() : nullptr;
 
-        if (joint)
+        if (world_matrix)
         {
             // bind space to world, straight from the joint's own matrix
-            mat[j].setMulNoAlias(skin->mInvBindMatrix[j], joint->getWorldMatrix());
+            mat[j].setMulNoAlias(skin->mInvBindMatrix[j], *world_matrix);
         }
         else
         {
@@ -201,6 +203,37 @@ void LLSkinningUtil::initSkinningMatrixPalette(
             dump_avatar_and_skin_state("initSkinningMatrixPalette joint not found", avatar, skin);
         }
 
+        if (!isFiniteSkinningMatrix(mat[j]))
+        {
+            // Preserve the first failing operands before stabilization erases
+            // them. Do not expose avatar/asset IDs, matrices or positions.
+            static std::atomic<U32> diagnosed{0};
+            if (diagnosed.load(std::memory_order_relaxed) < 16 &&
+                diagnosed.fetch_add(1, std::memory_order_relaxed) < 16)
+            {
+                const auto finite_w = [](const LLMatrix4a& matrix)
+                {
+                    for (U32 row = 0; row < 4; ++row)
+                    {
+                        if (!LLVector4a(matrix.mMatrix[row].getF32ptr()[3]).isFinite4())
+                            return false;
+                    }
+                    return true;
+                };
+                LL_WARNS("Avatar")
+                    << "Non-finite rigged skin coefficients: joint_index=" << j
+                    << " joint_name=" << skin->mJointNames[j]
+                    << " joint_number=" << joint_num
+                    << " inverse_xyz_finite=" << isFiniteSkinningMatrix(skin->mInvBindMatrix[j])
+                    << " inverse_w_finite=" << finite_w(skin->mInvBindMatrix[j])
+                    << " has_world=" << (world_matrix != nullptr)
+                    << " world_xyz_finite=" << (world_matrix && isFiniteSkinningMatrix(*world_matrix))
+                    << " world_w_finite=" << (world_matrix && finite_w(*world_matrix))
+                    << " product_xyz_finite=0"
+                    << " product_w_finite=" << finite_w(mat[j])
+                    << LL_ENDL;
+            }
+        }
     }
     if (stabilizeMatrixPalette(
             mat, static_cast<U32>(count), fallback) != 0)

@@ -85,6 +85,8 @@
 #include "../almetal/almetaluirenderer.h"
 #include "../almetal/almetalworld.h"
 #include "../almetal/almetalavatarresources.h"
+#include "../almetal/almetalretainedbackground.h"
+#include "../almetal/almetalsurface.h"
 #include "../almetal/almetalframecapture.h"
 #include "../almetal/almetalstagetiming.h"
 #include "../almetal/almetalshadowindirect.h"
@@ -93,6 +95,7 @@
 #include "alhexlattice.h"
 #include "alwaterheightbake.h"
 #include "alterrainsurfacemaps.h"
+#include "almetalfetchedtexture.h"
 #include "llimagegl.h"
 #include "llsurface.h"
 #include "llsurfacepatch.h"
@@ -457,7 +460,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
     std::shared_ptr<ALMetalWorldFrameData> frame_data;
     std::shared_ptr<RendererBuild> renderer_build;
-    std::unique_ptr<ALMetalRenderTarget> target;
+    std::shared_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalRenderTarget> composed_light_target;
     std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
     std::unique_ptr<ALMetalRenderTarget> display_post_target;
@@ -466,8 +469,14 @@ struct LLPipeline::MetalWorldSimpleCapture
     // targets above and below, this lives until the Lightbox clears it or the
     // source dimensions/format change.
     std::unique_ptr<ALMetalRenderTarget> reference_still_target;
-    std::unique_ptr<ALMetalRenderTarget> presentation_target;
+    std::shared_ptr<ALMetalRenderTarget> presentation_target;
     U32 presentation_frame = std::numeric_limits<U32>::max();
+    // Retain only the world prefix, before any HUD or interface draw. A new
+    // interface frame can then be rendered while scene resources load,
+    // without accumulating yesterday's UI into today's backing texture.
+    ALMetalRetainedBackground ui_background;
+    ALMetalRetainedBackground::Lease ui_clear_background;
+    ALMetalRetainedBackground::Lease ui_frame_background;
     // Complete world + ordered UI output. Retaining it here lets the
     // integrated renderer prove and publish the whole transaction without
     // involving the legacy drawable.
@@ -714,6 +723,11 @@ struct LLPipeline::MetalWorldSimpleCapture
 
     void markIncomplete(U32 source_line)
     {
+        if ((impostor_bake || impostor_alpha_active) &&
+            impostor_bake_first_incomplete_line == 0)
+        {
+            impostor_bake_first_incomplete_line = source_line;
+        }
         if (complete)
         {
             first_incomplete_source_line = source_line;
@@ -801,6 +815,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool impostor_bake_attempted = false;
     bool impostor_bake_native_valid = false;
     bool impostor_bake_native_complete = false;
+    U32 impostor_bake_first_incomplete_line = 0;
     U32 failed_frames = 0;
     bool rigged = false;
     bool alpha_mask = false;
@@ -4564,6 +4579,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     capture.impostor_bake = true;
     capture.impostor_profile = for_profile;
     capture.impostor_bake_avatar_id = avatar_id;
+    capture.impostor_bake_first_incomplete_line = 0;
     capture.impostor_bake_native_valid = true;
     capture.impostor_bake_native_complete = false;
 }
@@ -11229,47 +11245,92 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
     {
         return false;
     }
-    // RLVa @setoverlay is an ordinary gUIProgram textured immediate-mode
-    // batch inside render_ui_over_world. The ordered capture already encodes
-    // that shader, its streamed tint/alpha, texture and sampler in place. If
-    // the fetched texture has no Metal mirror (or any other batch is not
-    // reproducible), LLRender marks the entire transaction incomplete and the
-    // previous complete native drawable is retained; do not reject every valid
-    // overlay before that fail-closed owner gets a chance to encode it.
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    const bool world_ui_transaction_eligible =
-        capture.world_ui_chain_snapshot ||
-        capture.world_ui_chain_debug_color ||
-        capture.world_ui_continuous_unlocked ||
-        capture.world_ui_probe_attempts <
-            MetalWorldSimpleCapture::max_world_ui_probe_attempts;
-    if (capture.world_ui_capture_active ||
-        !capture.world_ui_chain_active ||
-        capture.world_ssr_history_warmup ||
-        (!capture.world_ui_chain_snapshot &&
-         !capture.world_ui_chain_debug_color &&
-         capture.world_ui_probe_attempted) ||
-        !world_ui_transaction_eligible ||
-        !capture.presentation_target ||
-        capture.presentation_frame != gFrameCount || !capture.target)
-    {
+    if (capture.world_ui_capture_active || !gAlphaMaskProgram.isAvailable())
         return false;
-    }
 
-    const ALMetalRenderTargetDescriptor& color =
-        capture.presentation_target->descriptor();
-    const ALMetalTexture* background =
-        capture.presentation_target->colorTexture(0);
-    const ALMetalTexture* depth = capture.target->depthStencilTexture();
-    if (!background || !depth || color.width == 0 || color.height == 0 ||
-        color.color_attachment_count != 1 ||
-        color.colors[0].format != ALMetalPixelFormat::bgra8_unorm ||
-        color.width != depth->descriptor().width ||
-        color.height != depth->descriptor().height ||
-        color.width != capture.width || color.height != capture.height ||
-        !gAlphaMaskProgram.isAvailable())
+    const ALMetalTexture* background = nullptr;
+    const ALMetalTexture* depth = nullptr;
+    const bool exact_frame = capture.world_ui_chain_snapshot ||
+        capture.world_ui_chain_debug_color || gSnapshot;
+    if (exact_frame)
     {
-        return false;
+        // Screenshots and pixel diagnostics must describe this exact world,
+        // never the retained prefix of a preceding display frame.
+        if (!capture.world_ui_chain_active || capture.world_ssr_history_warmup ||
+            !capture.presentation_target || !capture.target ||
+            capture.presentation_frame != gFrameCount)
+            return false;
+        background = capture.presentation_target->colorTexture(0);
+        depth = capture.target->depthStencilTexture();
+        if (!background || !depth ||
+            background->descriptor().width != depth->descriptor().width ||
+            background->descriptor().height != depth->descriptor().height)
+            return false;
+    }
+    else
+    {
+        if (!metalWorldPresentationRequested()) return false;
+        const ALMetalSurface* surface = gGL.getMetalPresentationSurface();
+        ALMetalDevice* device = getViewerMetalDevice();
+        if (!surface || !device) return false;
+        const auto& info = surface->info();
+        const ALMetalRetainedBackground::Context context{
+            device, surface, info.generation, info.width, info.height,
+            LLRender::sReverseZ};
+        if (info.width == 0 || info.height == 0) return false;
+
+        // renderFinalize has already committed the world transaction. Keep
+        // its PRE-UI color and matching depth, not last frame's combined UI.
+        std::string error;
+        if (capture.presentation_frame == gFrameCount &&
+            capture.presentation_target && capture.target &&
+            capture.device == device &&
+            !capture.world_ssr_history_warmup)
+        {
+            if (!capture.ui_background.publish(context, gFrameCount,
+                    capture.presentation_target, capture.target, &error))
+            {
+                LL_WARNS_ONCE("Metal")
+                    << "Could not retain the native pre-UI world: " << error
+                    << LL_ENDL;
+            }
+        }
+        capture.ui_frame_background = capture.ui_background.find(context);
+        if (capture.ui_frame_background)
+        {
+            capture.ui_clear_background.reset();
+            if (capture.ui_frame_background->source_frame != gFrameCount)
+            {
+                LL_INFOS_ONCE("Metal")
+                    << "Publishing fresh native UI over the retained pre-UI "
+                       "world while current scene resources are incomplete"
+                    << LL_ENDL;
+            }
+        }
+        else
+        {
+            // A resize/device change invalidates both backing textures as
+            // one pair. Keep publishing fresh controls even before any world
+            // is ready, with far depth so HUD depth brackets remain valid.
+            capture.ui_background.clear();
+            if (!capture.ui_clear_background ||
+                !(capture.ui_clear_background->context == context))
+            {
+                capture.ui_clear_background =
+                    ALMetalRetainedBackground::makeCleared(context, &error);
+            }
+            capture.ui_frame_background = capture.ui_clear_background;
+            if (!capture.ui_frame_background)
+            {
+                LL_WARNS_ONCE("Metal")
+                    << "Could not prepare native UI loading background: "
+                    << error << LL_ENDL;
+                return false;
+            }
+        }
+        background = capture.ui_frame_background->colorTexture();
+        depth = capture.ui_frame_background->depthTexture();
     }
 
     // This transaction owns the HUD fills as well as the interface. HUD draw
@@ -11282,6 +11343,7 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
             LLRender::EMetalUICaptureStorage::FORMAT_NATIVE,
             &capture.world_ui_target))
     {
+        capture.ui_frame_background.reset();
         return false;
     }
     capture.world_ui_target.reset();
@@ -11333,6 +11395,7 @@ void LLPipeline::endMetalWorldUICompositionCapture()
         true, surface_ready, &surface_submitted, &capture_failure,
         &capture_end_state);
     capture.world_ui_capture_active = false;
+    capture.ui_frame_background.reset();
     if (presentation_requested)
     {
         capture.world_ui_presentation_state_frame = gFrameCount;
@@ -16258,17 +16321,17 @@ void LLPipeline::captureMetalWorldImpostorBatch(
     }
 }
 
-void LLPipeline::publishMetalImpostorBake(LLVOAvatar& avatar)
+bool LLPipeline::publishMetalImpostorBake(LLVOAvatar& avatar)
 {
     if (!mMetalWorldSimpleCapture)
     {
-        return;
+        return false;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.device ||
         capture.impostor_bake_avatar_id != avatar.getID())
     {
-        return;
+        return false;
     }
 
     const U32 width = capture.width;
@@ -16343,6 +16406,24 @@ void LLPipeline::publishMetalImpostorBake(LLVOAvatar& avatar)
         }
     }
 
+    if (!native_ready)
+    {
+        // Allocation of the logical LLRenderTarget is not a publication
+        // receipt. Keep the avatar dirty until a complete native quartet
+        // exists; otherwise the reader and producer can suppress each
+        // other's retry indefinitely during attachment loading.
+        static U32 failed_publication_reports = 0;
+        if (failed_publication_reports++ < 16)
+        {
+            LL_WARNS("Metal") << "Native avatar-impostor publication deferred: "
+                << "attempted=" << capture.impostor_bake_attempted
+                << ", valid=" << capture.impostor_bake_native_valid
+                << ", complete=" << capture.impostor_bake_native_complete
+                << ", target=" << bool(capture.impostor_bake_target)
+                << ", first invalidation pipeline.cpp:"
+                << capture.impostor_bake_first_incomplete_line << LL_ENDL;
+        }
+    }
     capture.impostor_bake_target.reset();
     capture.impostor_bake_avatar_id.setNull();
     capture.impostor_bake_attempted = false;
@@ -16350,6 +16431,7 @@ void LLPipeline::publishMetalImpostorBake(LLVOAvatar& avatar)
     capture.impostor_bake_native_complete = false;
     capture.impostor_alpha_active = false;
     capture.impostor_alpha_phase = false;
+    return native_ready;
 }
 
 void LLPipeline::releaseMetalImpostorTextures(const LLUUID& avatar_id)
@@ -16465,12 +16547,27 @@ void LLPipeline::captureMetalWorldTreeBatch(LLFace* face,
     }
 }
 
+static void describe_missing_native_terrain_input(const char* role, U32 slot = 0)
+{
+    // Asset arrival can fail many views in one frame. Keep diagnostics bounded
+    // and name the earliest missing input, without logging asset identities.
+    static U32 last_frame = std::numeric_limits<U32>::max();
+    if (last_frame == std::numeric_limits<U32>::max() ||
+        gFrameCount - last_frame >= 120)
+    {
+        last_frame = gFrameCount;
+        LL_WARNS("Metal") << "Native terrain input unavailable: role=" << role
+                          << ", slot=" << slot << LL_ENDL;
+    }
+}
+
 void LLPipeline::captureMetalWorldTerrainBatch(
     LLFace* face, LLViewerTexture* const* detail_textures,
     LLViewerTexture* alpha_ramp, LLViewerTexture* parcel_overlay,
     F32 detail_scale, const F32* detail_phase, F32 tess_density,
     bool smoothing, bool triplanar, bool hex, F32 triplanar_blend,
-    bool tessellation_pinned)
+    bool tessellation_pinned,
+    std::shared_ptr<const ALMetalTerrainFetchedBindings> fetched)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active ||
@@ -16522,18 +16619,27 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     {
         LLImageGL* image = detail_textures[texture]
             ? detail_textures[texture]->getGLTexture() : nullptr;
-        batch.diffuse_textures[texture] = image
-            ? image->getMetalTexture() : nullptr;
+        batch.diffuse_textures[texture] = fetched
+            ? fetched->base[texture].nativeTexture()
+            : image ? image->getMetalTexture() : nullptr;
+        batch.terrain_diffuse_srgb[texture] =
+            !fetched || !fetched->base[texture].fallback;
     }
     LLImageGL* ramp_image = alpha_ramp->getGLTexture();
     LLImageGL* overlay_image = parcel_overlay
         ? parcel_overlay->getGLTexture() : nullptr;
     batch.terrain_height_texture = maps.getMetalHeightTexture();
     batch.terrain_composition_texture = maps.getMetalCompositionTexture();
-    batch.terrain_alpha_ramp_texture = ramp_image
-        ? ramp_image->getMetalTexture() : nullptr;
-    batch.terrain_parcel_overlay_texture = overlay_image
-        ? overlay_image->getMetalTexture() : nullptr;
+    batch.terrain_texture_owner = fetched;
+    batch.terrain_alpha_ramp_texture = fetched
+        ? fetched->blend.nativeTexture()
+        : ramp_image ? ramp_image->getMetalTexture() : nullptr;
+    batch.terrain_parcel_overlay_texture = fetched
+        ? fetched->overlay.nativeTexture()
+        : overlay_image ? overlay_image->getMetalTexture() : nullptr;
+    batch.terrain_blend_wrap = fetched && fetched->blend.fallback;
+    batch.terrain_overlay_wrap = fetched && fetched->overlay.fallback;
+    batch.terrain_overlay_srgb = !fetched || !fetched->overlay.fallback;
     if (!batch.terrain_height_texture ||
         !batch.terrain_composition_texture ||
         !batch.terrain_alpha_ramp_texture ||
@@ -16545,6 +16651,20 @@ void LLPipeline::captureMetalWorldTerrainBatch(
                         return texture == nullptr;
                     }))
     {
+        if (!batch.terrain_height_texture)
+            describe_missing_native_terrain_input("generated_height");
+        else if (!batch.terrain_composition_texture)
+            describe_missing_native_terrain_input("generated_composition");
+        else if (!batch.terrain_alpha_ramp_texture)
+            describe_missing_native_terrain_input("alpha_ramp");
+        else if (parcel_overlay && !batch.terrain_parcel_overlay_texture)
+            describe_missing_native_terrain_input("parcel_overlay");
+        else for (U32 slot = 0; slot < batch.texture_count; ++slot)
+            if (!batch.diffuse_textures[slot])
+            {
+                describe_missing_native_terrain_input("classic_detail", slot);
+                break;
+            }
         capture.markIncomplete(__LINE__);
         capture.batches.clear();
         return;
@@ -16680,7 +16800,8 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
     const LLColor3* emissive_colors, const F32* minimum_alphas,
     U32 paint_type, S32 pbr_detail, F32 tess_density,
     bool smoothing, bool triplanar, bool hex, bool flat_normals,
-    F32 triplanar_blend, bool tessellation_pinned)
+    F32 triplanar_blend, bool tessellation_pinned,
+    std::shared_ptr<const ALMetalTerrainFetchedBindings> fetched)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active ||
@@ -16746,12 +16867,23 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
     batch.pbr_slot_count = LLVLComposition::ASSET_COUNT;
     for (U32 material = 0; material < batch.texture_count; ++material)
     {
-        batch.diffuse_textures[material] =
-            metal_texture(base_color_textures[material]);
+        batch.diffuse_textures[material] = fetched
+            ? fetched->base[material].nativeTexture()
+            : metal_texture(base_color_textures[material]);
+        batch.terrain_diffuse_srgb[material] =
+            !fetched || !fetched->base[material].fallback;
+        batch.terrain_emissive_srgb[material] =
+            !fetched || !fetched->emissive[material].fallback;
         ALMetalWorldPBRSlot& slot = batch.pbrSlots()[material];
-        slot.normal_texture = metal_texture(normal_textures[material]);
-        slot.orm_texture = metal_texture(orm_textures[material]);
-        slot.emissive_texture = metal_texture(emissive_textures[material]);
+        slot.normal_texture = fetched
+            ? fetched->normal[material].nativeTexture()
+            : metal_texture(normal_textures[material]);
+        slot.orm_texture = fetched
+            ? fetched->orm[material].nativeTexture()
+            : metal_texture(orm_textures[material]);
+        slot.emissive_texture = fetched
+            ? fetched->emissive[material].nativeTexture()
+            : metal_texture(emissive_textures[material]);
         std::memcpy(slot.base_color_factor,
                     base_color_factors[material].mV,
                     sizeof(slot.base_color_factor));
@@ -16773,6 +16905,10 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
             !slot.normal_texture || !slot.orm_texture ||
             !slot.emissive_texture)
         {
+            describe_missing_native_terrain_input(
+                !batch.diffuse_textures[material] ? "pbr_base_color" :
+                !slot.normal_texture ? "pbr_normal" :
+                !slot.orm_texture ? "pbr_orm" : "pbr_emissive", material);
             fail();
             return;
         }
@@ -16781,7 +16917,12 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
 
     batch.terrain_height_texture = maps.getMetalHeightTexture();
     batch.terrain_composition_texture = maps.getMetalCompositionTexture();
-    ALMetalTexture* blend = metal_texture(blend_texture);
+    batch.terrain_texture_owner = fetched;
+    const ALMetalTexture* blend = fetched
+        ? fetched->blend.nativeTexture() : metal_texture(blend_texture);
+    batch.terrain_blend_wrap = fetched && fetched->blend.fallback;
+    batch.terrain_overlay_wrap = fetched && fetched->overlay.fallback;
+    batch.terrain_overlay_srgb = !fetched || !fetched->overlay.fallback;
     if (paint_type == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE)
     {
         batch.terrain_alpha_ramp_texture = blend;
@@ -16790,12 +16931,16 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
     {
         batch.terrain_paint_texture = blend;
     }
-    batch.terrain_parcel_overlay_texture =
-        metal_texture(parcel_overlay);
+    batch.terrain_parcel_overlay_texture = fetched
+        ? fetched->overlay.nativeTexture() : metal_texture(parcel_overlay);
     if (!batch.terrain_height_texture ||
         !batch.terrain_composition_texture || !blend ||
         (parcel_overlay && !batch.terrain_parcel_overlay_texture))
     {
+        describe_missing_native_terrain_input(
+            !batch.terrain_height_texture ? "generated_height" :
+            !batch.terrain_composition_texture ? "generated_composition" :
+            !blend ? "pbr_blend" : "parcel_overlay");
         fail();
         return;
     }
@@ -16989,15 +17134,15 @@ void LLPipeline::endMetalWorldGBufferCapture()
     capture.impostor_bake = false;
     capture.frame_active = false;
     capture.pass_active = false;
-    // A cube face can legitimately contain only sky.  Preserve the strict
-    // non-empty requirement for the visible world and impostor bakes, but
-    // let a complete reflection-probe face encode a clear-only G-buffer so
-    // the ordered sky and post-deferred stages can publish that face.
-    const bool clear_only_probe_face =
-        isMetalProbeFaceCaptureActive() && capture.complete &&
+    // The original clears an impostor even when its subject emits no
+    // geometry (for example while loading). That is a valid transparent
+    // bake, just as a sky-only cube face is a valid empty G-buffer. An
+    // incomplete producer still cannot publish a partial bake.
+    const bool clear_only_scoped_view =
+        (isMetalProbeFaceCaptureActive() || impostor_bake) && capture.complete &&
         capture.batches.empty();
     if (!capture.complete ||
-        (capture.batches.empty() && !clear_only_probe_face))
+        (capture.batches.empty() && !clear_only_scoped_view))
     {
         const std::size_t incomplete_batch_count =
             capture.batches.size();
@@ -17127,10 +17272,22 @@ void LLPipeline::endMetalWorldGBufferCapture()
                            : ALMetalPixelFormat::rgba8_unorm) &&
             descriptor->depth_stencil_format ==
                 ALMetalPixelFormat::depth32_float_stencil8;
+        const auto* surface = gGL.getMetalPresentationSurface();
+        ALMetalRetainedBackground::Lease retained_ui;
+        if (surface)
+        {
+            const auto& info = surface->info();
+            retained_ui = capture.ui_background.find({capture.device, surface,
+                info.generation, info.width, info.height, scene.reverse_z});
+        }
+        const bool retained_depth_in_use = exact_layout && retained_ui &&
+            retained->depthStencilTexture() &&
+            retained_ui->depthTexture()->nativeHandle() ==
+                retained->depthStencilTexture()->nativeHandle();
         const bool previous_uses_retained = exact_layout &&
             capture.target && capture.target->colorTexture(0) ==
                 retained->colorTexture(0);
-        if (exact_layout && !previous_uses_retained)
+        if (exact_layout && !previous_uses_retained && !retained_depth_in_use)
         {
             scene.destination = retained;
         }
@@ -31721,13 +31878,14 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
 
     LLDrawPoolAvatar::sMinimumAlpha = old_alpha;
 
+    bool native_impostor_published = true;
     if (!preview_avatar && !for_profile)
     {
 #if LL_DARWIN
-        publishMetalImpostorBake(*avatar);
+        native_impostor_published = publishMetalImpostorBake(*avatar);
 #endif
         avatar->mImpostor.flush();
-        avatar->setImpostorDim(tdim);
+        if (native_impostor_published) avatar->setImpostorDim(tdim);
     }
 
     // Put the attachment selection back. On the impostor path the flush above has already
@@ -31755,9 +31913,12 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
 
     if (!preview_avatar && !for_profile)
     {
-        avatar->mNeedsImpostorUpdate = false;
-        avatar->cacheImpostorValues();
-        avatar->mLastImpostorUpdateFrameTime = gFrameTimeSeconds;
+        avatar->mNeedsImpostorUpdate = !native_impostor_published;
+        if (native_impostor_published)
+        {
+            avatar->cacheImpostorValues();
+            avatar->mLastImpostorUpdateFrameTime = gFrameTimeSeconds;
+        }
     }
 
     LLVertexBuffer::unbind();

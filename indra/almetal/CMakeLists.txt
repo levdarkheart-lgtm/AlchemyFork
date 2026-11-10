@@ -102,6 +102,7 @@ target_sources(
     almetalpipeline.mm
     almetalprobeworkload.mm
     almetalresource.mm
+    almetalretainedbackground.mm
     almetalshadowindirect.mm
     almetalshadowmaterials.mm
     almetalstagetiming.mm
@@ -123,6 +124,7 @@ target_sources(
       almetalpipeline.h
       almetalprobeworkload.h
       almetalresource.h
+      almetalretainedbackground.h
       almetalshadowindirect.h
       almetalshadowmaterials.h
       almetalstagetiming.h
@@ -160,6 +162,7 @@ set_source_files_properties(
   almetalframe.mm
   almetalpipeline.mm
   almetalresource.mm
+  almetalretainedbackground.mm
   almetalshadowindirect.mm
   almetalshadowmaterials.mm
   almetalstagetiming.mm
@@ -172,6 +175,7 @@ if(AL_BUILD_TESTS)
     almetal_tests
     PROJECT almetal
     SOURCES tests/almetal_command_timing_test.mm
+            tests/almetal_retained_background_test.mm
             tests/almetal_avatar_resources_test.mm tests/almetal_gpu_test.mm tests/almetal_encoder_cache_test.mm
             tests/almetal_indexed_join_test.mm
             tests/almetal_completion_test.mm tests/almetal_world_data_test.mm
@@ -192,6 +196,7 @@ if(AL_BUILD_TESTS)
     RESOURCE_LOCK apple_gpu
   )
   set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_retained_background_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_gpu_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_encoder_cache_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_indexed_join_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
