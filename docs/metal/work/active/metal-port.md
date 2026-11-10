@@ -119,7 +119,16 @@ CPU gain unproved. Private cost code removed after freezing tested2b48b8e3;
 strict permanent fixture exactly matches validatede68cb9. Generic producer now
 enables only actual guarded mode; bounded opt-in logs report encoded PSOs.
 Both full optimized API+GPU suites482529/104 pass0;15final source hashes match.
-Committedf549a796d2. Next normal source-exact app build/verify and FPS trial.
+Committedf549a796d2. Normal68610/source8eea built+verified0; independentfc35passed.
+Candidateformal300readyframes9.785333FPS (mean102.193761ms), exactcamera/EEP/43
+gates versus68608; observed+7.893%FPS but draws−1.87%/mainprobes95vs98. No full
+causal claim. Both candidate91508 and freshcontrol92996 exited/Goodbye/absence0+OWNplansrestored0.
+Freshcontrol300readyframes9.257293FPS versuscandidate9.785333 (+5.704%); exact
+camera/EEP/43controls/native/bias1/256ready match. Draws+1.616%,probes95vs100:
+retain workload caveat. Independent129db056 recommends RETAIN;20FPS unmet.
+Post-formal CPU+baselinecoupledMetaltrace captured/exported0. Matched2461CBs,
+GPUActiveunion87.60% (not utilization); two profiler-metadata pauses retained.
+All viewers/profilers/build/GPUtests stopped. Next bounded GPU address candidate.
 No viewer gain yet. [Water evidence](../../state/archive/CURRENT-water-probe-specialization-2026-11-10.md).
 Separate main-base address candidate/fixtures remain private only.
 

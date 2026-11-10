@@ -154,3 +154,107 @@ under ignored artifacts/metal/private-water-shadow-specialization-20261110/.
 Consult preservation.json for all original/preserved paths and actual filecount.
 Compiled testbundles excluded, with executable/metallib hashes retained. No
 private upload. No whole-viewer FPS improvement or20FPS attainment claimed.
+
+## Source-exact normal68610 and live viewer bracket
+
+Normal app source8eea2c6895c1c907ce513a5c83872a631874a3bc contains rendererf549.
+Doctor/configure/build/verify/deepstrictsignature EACH0,349ARM64. Version68610,
+exe dc30d261ddbef780c6ffb459c2c87f9d08500785a062e1e834d5a4c49b0f2909,
+unchanged39320181metallib. Independentfc35bc85 verified generated/embeddedsource,
+eight actual compile recipes/three referenced responsefiles:O3/NDEBUG/C++23/
+arm64/min26.0; source recordingOFF. Buildpacket qyziw4c0, identityyv_9818f.
+Preserved /private/tmp/alchemy-metal-68610-water-specialization-preserved.app.
+
+Both new sessions used fullscreen BEFORElogin, Midday shortcut, Preset123,
+matching Ultra3456×2168,43 start/end livecontrol gates and300 consecutive samples
+only after full256-probe readiness/streak120. No validation/profiling occurred
+inside either sample. New runpaths candidate-water-specialization-20261110-01
+and reference-water-specialization-20261110-01 under artifacts/metal/qa-runs/.
+
+| Run | FPS | Meanms | p50ms | p95ms | Mean draws | Main-visible probes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+|68608 before|9.069479205|110.259914307|109.6861035|120.610834|51019.15|98|
+|68610 water|9.785333153|102.193761250|101.9975625|113.184916|50066.82|95|
+|68608 after|9.257293251|108.022936390|107.8225625|118.326458|49270.70|100|
+
+Candidate frames4977–5276; freshcontrol9520–9819. Candidate FPS+7.893% versus
+before/+5.704% versus after. Against after: mean−5.396%,p50−5.402%,p95−4.345%,
+draws+1.616%. The two baseline sessions themselves differ+2.071%FPS. Exact
+camera packets/EEP/43 controls match candidate and both68608 sessions. All300
+nativeexact/no fallback, Release/quality6/bias1, ready256/stable120, camera/
+hero/HUD restoration flags pass. Actual encoded specialized water receipts cover
+ten qualifying probe views, including hero5/mirrortrue; not every view needswater.
+
+Independent finalbracketaudit129db056 verified rawCSV/sidecars/controlhashes and
+shutdown/restoration receipts. RETAIN the guarded optimization: strictparity,
+isolatedGPU benefit and directionally positive livebracket supportadmission.
+Probe visibility/population and draw differences prevent attributing the full
+5.7–7.9% session delta to code alone. No20FPS or complete-product claim.
+Both official perf_compare invocations exit1 despite provenancepassing because
+full performance target/three additional scenes remain unmet. RawcomparisonJSON
+private-68610-water-versus-{68608,fresh-68608}-20261110.json preservesdetails.
+
+ExactcandidatePID91508 andcontrol92996 SIGTERM/Goodbye/PIDabsence0. OWN
+private-water-specialization-environment-plan-20261110-01.json and
+private-water-control-environment-plan-20261110-01.json BOTHrestored0; independent
+check confirms original environment/persistence absence. Canonical app remains
+new68610; all viewers/profilers/builds stopped after capture/export.
+
+## Post-formal diagnostics and limits
+
+Candidate10s CPU record/toc/export EACH0,77ft9ki0. Main8.304s sampled active over
+10.554s span, all exported main samples P cores. Hero~50.4%, stable shadow-end
+parent~31%, GBuffer~21%; bindings/draw/resource descendants overlap.58DWARF
+cursor diagnostics limit symbolization; small hex-only leaves retained. No
+exactCPUms/frame or code-causal CPUgain inferred. Oldcontrol02 comparison is a
+separate window; native renderSpotShadow narrowcategory shifts are inlining/
+attribution changes, not sixfold work growth.
+
+AFTER freshcontrol sample/endgate, one MetalSystemTrace requested10s and
+recorded0 (toolsetup/flush wall145s), baseline6b80/PID92996, NOT68610 GPUdata.
+All eight schemas plus submission summary exported0. Actual time-profile table
+is nonempty:11839 target rows/7231 running main samples.2461 CPU submissions
+match2461 GPU commandbuffers;12511 native encoders resolve with no target ID gaps.
+Within85 request events'10.138706s interior, target exported Active union8.881046s
+(87.60%), deviceActive9.271732s(91.45%). These are interval unions, not hardware
+utilization or normal-frameGPU time. Present requests are not scanout events.
+
+Two~0.48s pauses coincide with459/478ms workers doing
+IOGPUMemoryInfo::getAnnotationListAndEmitResourceInfo, Metal buffer annotations
+and CFString formatting via signpost enablement. Main-running samples inside
+those pauses are11/1ms. Profiler resource-metadata collection is directly
+observed; the exact main wait/lock is unproved. Do not label these as normal
+viewer CPU encoding or silently remove them to repair FPS. Full-window and
+explicit sensitivity analyses must remain separate. Capture result is a new
+coupled diagnostic, not proof of a20FPS hardware limit.
+
+Actual pipeline tags retain mainbase/haze/hero-water/publication as substantial
+GPU contexts; their intervals overlap and cannot be summed. Native driver
+resource-list tracking is not duplicate app useResources: independent caller
+audit places it under direct draws/binds. Current CPU-only cache/ICB/VA/Metal4
+feasibility audits do not admit another implementation. Metal4 lacks current
+fixed-function tessellation, so no all-pass swap or feature reduction is allowed.
+Next bounded candidate is the source-approved, still-unexecuted main-base probe
+constant→device address experiment, preserving the same buffer/math/order.
+
+New build/identity/audits/CPU exports and both finalized rawtrace bundles are
+hash-preserved under artifacts/metal/private-water-viewer-comparison-20261110/.
+Original viewer runs/CSVs/sidecars remain ignored and local. Coupled exports/
+analysis are under /private/tmp/alchemy-metal-68608-coupled-cpu-gpu-20261110/;
+copy final reports/exports before the next substantial handoff. All release
+parity/multiscene/stability/strict no-GL/independent review gates remainOPEN.
+
+## Final coupled interpretation and next implementation
+
+Independent FINAL50977be23d1974802361ac57b557ebd992ad48825b80933592d2465f59d157c4
+is complete. Primary full-window unions stay87.60%viewer/91.45%device. Explicit
+sensitivity excluding only the two named metadata intervals gives96.85%/98.47%
+tracedActive. In that sensitivity range, only15.886ms viewer/11.183ms device
+gaps lack known already-submitted commandbuffers with later execution. Pending
+submission is not proof of runnableGPUwork; dependencies remain unknown. This
+weakens ordinary CPU-feed starvation as the explanation for most tracedgaps and
+supports the next boundedGPU probe-address experiment. No exactcriticalpath,
+GPUutilization, repairedFPS or20FPS hardware ceiling is inferred. Analysis is
+finished; all finalizedexports/reports were hash-preserved with the rawtraces.
+No furthercapture is needed before nativecompile/strictparity/cost of the
+prepared06fa1f22 implementation plus1d28874d fixture.

@@ -3,7 +3,7 @@
 **Observed:** 2026-11-10, physical M1 Max/64 GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`. **Renderer code checkpoint:** `f549a796d2c734222665dd10c836e56c0df352b9`.
 **Working source:** committed water specialization/strict tests/guarded producer.
-Renderer source is clean. Normal app still6b80 until the pending rebuild.
+Renderer source is clean. Canonical app68610/source8eea; active control68608.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -21,11 +21,11 @@ ControlCenter: the unsupported target previously stalled7654s.
 
 ## Runtime and current decision
 
-All viewers are CLOSED; every session environment plan has been restored.
-Latest68608 PID57546 exited with SIGTERM/Goodbye/PID absence; own plan restored0
-at07:48:55UTC. No viewer, profiler, GPU test or build is running. BOTH full optimized native
-suites ended0 (nkscvin4),482529assertions/104cases each; all15 final source hashes
-match. Normal water-candidate app has not yet been built.
+All viewers are CLOSED; both new sessions exited with SIGTERM/Goodbye/PIDabsence
+and OWN environment plans restored0. No profiler/build/GPU test is running.
+Normal68610/source8eea is canonical and preserved; independent identityfc35passed.
+Both full optimized native suites passed482529/104. Fresh baseline comparison
+completed; CPU/GPU timeline exports and independent analysis are finalized.
 
 6b80 adds bounded, default-off stage timing. Native focused41331/2 and both
 optimized full API+GPU suites476793/104 passed. Normal68608 doctor/configure/
@@ -75,19 +75,26 @@ Full tested patch624a611d and raw evidence remain preserved. Ninja artifacts
 were subsequently rebuilt for the NEW water candidate. Do not revive early
 fragment tests without a new mechanism. [Detailed rejection](archive/CURRENT-stage-timing-runtime-2026-11-10.md).
 
-Root applied water coref8425015 +fixture0122e99e and restored the Impl-owned
-library when cloning sanitized pipeline descriptors. Actual corrected API+GPU
-15425/1 passed. Eight1024² preflights passed15719/1 after fixing benchmark-only
-state restoration. Quiet R1 and R4 EACH passed18642/1,224 rows/thermal0. R4
-eligible GPU savings15.42–17.17%, all seven blocks faster in each of four cases;
-SAME controls+1.27/−0.35%. Independent raw audit passed. CPU gain is not proved.
+Committed waterf549 passed both full suites and source-exact normal68610 build.
+Exact source8eea2c6895c1c907ce513a5c83872a631874a3bc, exe dc30d261ddbef780c6ffb459c2c87f9d08500785a062e1e834d5a4c49b0f2909,
+same39320181library. Preserved /private/tmp/alchemy-metal-68610-water-specialization-preserved.app.
+The repeated isolated GPU savings15.42–17.17% are verified; CPU gain is unproved.
 
-Private cost code is frozen and removed; permanent fixture is byte-identical
-to the15425-assertion passing source. Generic producer now enables the guarded
-mode; bounded opt-in logs prove actual encoded selection per view. Mirror/math/
-state/main/default/underwater behavior preserved. Both native suites passed.
-Next: source-exact normal build/verify and controlled FPS comparison. No FPS
-gain claimed. [Actual data and limits](archive/CURRENT-water-probe-specialization-2026-11-10.md).
+68610 formal300 frames4977–5276:9.785333153FPS,mean102.19376125/p50101.9975625/
+p95113.184916. Fresh68608 control9520–9819:9.257293251FPS,mean108.02293639/
+p50107.8225625/p95118.326458. Candidate+5.704%FPS versus fresh (+7.893% before).
+Exactcamera/EEP/43controls/native/bias1/256ready match. Draws+1.616% versusfresh,
+main-visible probes95vs100 (98before): retain workload caveat, not code-only proof.
+Independent audit129db056 recommends RETAIN;20FPS remains unmet. Both plans restored.
+
+Candidate post-formal CPU:main8.304s/10.554s,hero~50%/shadowparent31%/GBuf21%,
+overlapping with symbolization limits. Baseline post-formal coupled trace record/
+eight exports0: real CPU samples and2461 matchedCPU/GPU CBs. Target Activeunion
+87.60% of matched10.139s, not utilization. Two~0.48s gaps coincide with profiler
+resource-metadata workers; do not optimize them as normal frame stalls. Final50977
+finds mostly submitted work pending in remaining gaps; GPU probe code is next. Allraw
+traces preserved under ignored private-water-viewer-comparison-20261110/.
+[Complete results](archive/CURRENT-water-probe-specialization-2026-11-10.md).
 
 A separate main-base constant→device probe-address experiment is PRIVATE only;
 it preserves bytes/math/order and uses the same buffer. Mixed uniform loads
