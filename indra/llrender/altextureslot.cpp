@@ -55,6 +55,73 @@ static const GLenum sGLTextureType[] =
 namespace
 {
 #if LL_DARWIN
+    // The virtual viewer fallback can bind another LLTexture. Keep its existing
+    // policy, but reject a missing-default cycle without allocating a side cache.
+    struct NativeUIFallback
+    {
+        const LLTexture* texture;
+        const NativeUIFallback* previous;
+        static thread_local const NativeUIFallback* current;
+        explicit NativeUIFallback(const LLTexture* value)
+            : texture(value), previous(current) { current = this; }
+        ~NativeUIFallback() { current = previous; }
+        static bool contains(const LLTexture* value)
+        {
+            for (auto* item = current; item; item = item->previous)
+                if (item->texture == value) return true;
+            return false;
+        }
+    };
+    thread_local const NativeUIFallback* NativeUIFallback::current = nullptr;
+
+    bool bind_native_ui_sampled(ALTextureSlot& slot, LLTexture* texture,
+                                LLImageGL* image, ALSampler key,
+                                bool fast)
+    {
+        // Preserve the capture's unsupported-slot guard: no other unit may
+        // overwrite slot zero or silently make an incomplete capture publish.
+        if (slot.getIndex() != 0 || !texture)
+            return gGL.bindMetalUITextureCapture(slot.getIndex(), image, key);
+
+        if (!image || !image->getMetalTexture())
+        {
+            // A fetched texture tests DELETED in forceImmediateUpdate();
+            // setActive() can clear that state, so request revival first.
+            texture->forceImmediateUpdate();
+            image = texture->getGLTexture();
+        }
+        texture->setActive();
+        if (!image || !image->getMetalTexture())
+        {
+            if (image) image->forceUpdateBindStats();
+            if (NativeUIFallback::contains(texture))
+            {
+                gGL.invalidateMetalUITextureCapture(
+                    "native UI default texture fallback was cyclic");
+                return false;
+            }
+            // Flush the preceding geometry before clearing its binding.
+            // A virtual fallback returning true without binding anything
+            // must not accidentally reuse that preceding ready image.
+            gGL.unbindMetalUITextureCapture(slot.getIndex());
+            NativeUIFallback fallback(texture);
+            const bool complete = texture->bindDefaultImage(slot.getIndex());
+            image = slot.getCurrImage();
+            if (!complete || !image || !image->getMetalTexture())
+            {
+                gGL.invalidateMetalUITextureCapture(
+                    "native UI default texture fallback was not ready");
+                return false;
+            }
+            // Original bindFast reapplies its caller's sampler after the
+            // default bind; bindImpl returns the default binder's sampler.
+            return !fast || gGL.bindMetalUITextureCapture(
+                slot.getIndex(), image, key);
+        }
+        image->forceUpdateBindStats();
+        return gGL.bindMetalUITextureCapture(slot.getIndex(), image, key);
+    }
+
     bool matches_native_type(const ALMetalTexture& texture,
                              ALTextureSlot::eTextureType type) noexcept
     {
@@ -167,19 +234,15 @@ void ALTextureSlot::bindFast(LLTexture* texture, ALSampler key)
 {
     // getGLTexture() is virtual and this is the per-draw path, so it is resolved once and the
     // sampler is chosen from the result rather than re-fetching.
-    LLImageGL* gl_tex = texture->getGLTexture();
+    LLImageGL* gl_tex = texture ? texture->getGLTexture() : nullptr;
 #if LL_DARWIN
     if (gGL.isMetalUITextureCaptureAuthoritative())
     {
-        texture->setActive();
-        gGL.bindMetalUITextureCapture(mIndex, gl_tex, key);
-        if (gl_tex)
-        {
-            gl_tex->forceUpdateBindStats();
-        }
+        bind_native_ui_sampled(*this, texture, gl_tex, key, true);
         return;
     }
 #endif
+    if (mIndex < 0 || !texture || !gl_tex) return;
     bindFastImpl(texture, gl_tex, gGL.getSampler(key));
 }
 
@@ -226,13 +289,24 @@ bool ALTextureSlot::bindSampled(LLImageGL* texture, ALSampler key, bool forceBin
     if (gGL.isMetalUITextureCaptureAuthoritative())
     {
         (void)forceBind;
-        const bool complete =
-            gGL.bindMetalUITextureCapture(mIndex, texture, key);
-        if (texture)
+        if (mIndex != 0 || !texture)
+            return gGL.bindMetalUITextureCapture(mIndex, texture, key);
+        if (!texture->getMetalTexture())
         {
-            texture->forceUpdateBindStats();
+            // Original raw-image bind substitutes the global ready default.
+            // Check readiness and identity before delegation to prevent a
+            // missing default from recursively substituting itself.
+            LLImageGL* fallback = LLImageGL::sDefaultGLTexture;
+            if (!fallback || fallback == texture || !fallback->getMetalTexture())
+            {
+                gGL.invalidateMetalUITextureCapture(
+                    "native UI raw default texture was not ready");
+                return false;
+            }
+            texture = fallback;
         }
-        return complete;
+        texture->forceUpdateBindStats();
+        return gGL.bindMetalUITextureCapture(mIndex, texture, key);
     }
     if (texture && texture->getMetalTexture())
     {
@@ -256,15 +330,9 @@ bool ALTextureSlot::bindImpl(LLTexture* texture, bool forceBind, ALSampler key)
     if (gGL.isMetalUITextureCaptureAuthoritative())
     {
         (void)forceBind;
-        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-        const bool complete =
-            gGL.bindMetalUITextureCapture(mIndex, image, key);
-        if (texture && image)
-        {
-            texture->setActive();
-            image->forceUpdateBindStats();
-        }
-        return complete;
+        return bind_native_ui_sampled(
+            *this, texture, texture ? texture->getGLTexture() : nullptr,
+            key, false);
     }
 #endif
     if (mIndex < 0 || !texture)
