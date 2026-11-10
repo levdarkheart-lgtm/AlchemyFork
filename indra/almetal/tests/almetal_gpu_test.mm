@@ -34827,6 +34827,8 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         // The old blended PBR mode must still reject the opaque sentinel.
         ALMetalHUDIndexedBatch invalid_blend_cutoff = hud_batch;
         invalid_blend_cutoff.minimum_alpha = -1.f;
+        invalid_blend_cutoff.depth.enabled = false;
+        invalid_blend_cutoff.depth.write_enabled = false;
         error.clear();
         CHECK_FALSE(hud_renderer->drawHUDIndexed(invalid_blend_cutoff, &error));
         CHECK(error == "Metal HUD alpha cutoff must be finite and normalized");
