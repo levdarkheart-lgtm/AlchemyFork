@@ -1,8 +1,8 @@
-# PBR alpha probe-shadow specialization — native gates passed
+# PBR alpha probe-shadow specialization — isolated gain, live FPS flat
 
 Observed2026-11-10 on physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
-Code checkpoint765c305b5ac4c7b897d6581ea2990de49d1e09f6. This admits a normal
-viewer build and controlled trial; no new viewer FPS improvement is established.
+Code checkpoint765c305b5ac4c7b897d6581ea2990de49d1e09f6. Normal68614 and its controlled live trial completed; no new viewer FPS improvement
+is established.
 
 ## Original behavior and implementation
 
@@ -94,15 +94,88 @@ build-release/full-release/build-rwdi/full-rwdi EACH actual0. Release and
 RelWithDebInfo EACH passed494211 assertions/104cases with both actual validation
 preambles, using [almetal]~[frame-capture-gpu]. All15 recorded final source hashes
 were rechecked against current files before the coherent code commit765c305.
-No build/GPU/profiler/viewer process remains from these gates. Complete commands,
-logs, source, failures and raw samples are preserved locally under ignored
-artifacts/metal/private-pbr-alpha-fc0-20261110/; no private upload.
+Complete commands, logs, source, failures and raw samples are preserved locally
+under ignored artifacts/metal/private-pbr-alpha-fc0-20261110/; the later normal
+build, independent identity and admission supplements were also copied there.
+No private upload.
 
-## Next gate and product scope
+## Source-exact normal viewer build
 
-Build normal source-exact app with doctor/configure/build/verify/signature checks,
-independently verify actual flags/identity, then repeat fullscreen/Midday/Preset123
-Ultra3456×2168 at the SAME location. Compare with preserved68610 water baseline.
-Native strict/micro cost admits that trial, not a claimed FPS gain or20FPS success.
+Normal68614/source271eab19d538a3ee2c8ed0fe93d792247a35ab76 completed actual
+doctor/configure/build/verify/deep-strict signature ALL0,349ARM64/0bad.
+Canonical build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app;
+exe ddff27521a7a83d7279654e64d266cc2a3fd3e6113e1c45c54287828f459d2e8,
+unchanged normal metallib39320181. Actual normal commands/exits are in
+/private/tmp/alchemy-metal-pbr-fc0-normal-build-20261110.cxu7qwy0, copied to the
+private evidence directory. Independent identity5722b400 verifies generated and
+embedded source,8actual O3/NDEBUG/C++23/ARM64 compile recipes,3referenced response
+files, MSL3.1/fast-math/source-recording OFF and signature0. One initial identity
+script path error was corrected; the completed audit0 is retained.
+Preserved /private/tmp/alchemy-metal-68614-pbr-specialization-preserved.app;
+copy/executable hash/deep-strict signature0.
+
+## Controlled live comparison — no demonstrated gain
+
+Both runs used private-ultra-pbr-fc0-qa-20261110.json SHA
+2da3db3c72c766d5901f09c1324f63515d30a5a798ce7e4ea676105f1b57d777,
+fullscreen BEFORE login, Midday/Preset123, Ultra3456x2168,300s warmup and120
+ready frames before300formal consecutive samples. No profiler, GPU test, build,
+family/stage/workload capture or validation competed with formal collection.
+Translator remained stopped and Xcode replay stopped. Both start/end fresh
+observe/verify/gate operations passed0 and43active controls matched.
+
+| Normal build | Source | Formal frames | FPS | Mean ms | p50 ms | Nearest p95 ms |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+|68610 water control|8eea2c6895c1c907ce513a5c83872a631874a3bc|4993–5292|9.581135|104.371773|104.685521|115.578083|
+|68614 PBR candidate|271eab19d538a3ee2c8ed0fe93d792247a35ab76|5016–5315|9.566138|104.535388|104.361208|114.900709|
+
+Candidate mean FPS−0.1565%; p50−0.310% and p95−0.586%. This is effectively flat,
+not a live performance improvement or proof of regression. Main/end camera and
+EEP/sun are exactly equal; all300samples native requested/attempted/exact1 and
+fallback0, bias1,256ready/stable120, cameraChangeDelta0 and restoration flags true.
+Mean draws50808.9733→51014.41 (+0.4043%); main-visible probes98→97. These small
+workload differences and sequential-run drift limit causal attribution. The fresh
+68610 control was itself2.087% below the earlier9.7853 water run. Completion-window
+GPU sums overlap and are not additive GPU frame time.
+
+Actual11bounded encoded PBR-specialized probe receipts confirm selection, not
+GPU completion or fragment coverage. They are startupframes232–303/count2or5,
+hero faces0–4 and all6ordinaryfaces; the once/view logger does not measure
+settled formal-window population. An independent parser initially used the wrong
+log label; corrected exact-source label finds all11 and preserves old reports. Sparse census does not establish the
+population of every expensive hero face. Actual window screenshots were observed
+only after fresh gates; the same patio/forest/avatar/chair/mirror arrangement and
+10FPS HUD were visible. This qualitative check is not full pixel parity. No
+standalone screenshot file was returned. One baseline CUA screenshot timed out at
+30s; retry with60s succeeded. All CUA phases received completion summaries.
+
+Raw runs: artifacts/metal/qa-runs/reference-pbr-fc0-20261110-01 and
+candidate-pbr-fc0-20261110-01. CSVs:
+artifacts/metal/private-68610-pbr-control-before-20261110-01.csv and
+private-68614-pbr-fc0-20261110-01.csv plus sibling provenance. Fresh start/end
+observed/verified JSON and actual exit records are preserved in each run.
+Official perf_compare.py --enforce --require-provenance completed exit1:
+provenance passes, no p95 regression, but p50 target and three-scene requirement
+are unmet. Output artifacts/metal/private-pbr-fc0-live-comparison-20261110.json.
+
+Baseline exactPID18036 and candidate exactPID18623 each received SIGTERM only
+after executable verification, followed by actual PID absence and Goodbye proof.
+Their actual OS exit codes were not observed. Exit operation receipts are0.
+Each OWN environment plan was restored0 AFTER exit; no plan remains active.
+Never restore these completed plans again. No viewer/profiler/build/GPUtest is live.
+
+Independent completed audit actual0: JSON120742d331b3931c443fbb1e6554fb97f19c4b18773a25a5bcdeac2c73f30aa4,
+findings e9735b0434a0c770cbd21d4d64db9c61af967e2f4d6e2d27ab51f2fcf38d347e,
+parser39ef5dbc; private copy retained. Parser also adapted to the actual candidate
+end-exit envelope while requiring exactly allthree zero exits; no tolerance
+relaxation or native gate failure. Audit confirms flat result.
+
+## Decision and product scope
+
+Keep the bounded, strict-equivalent specialization for its repeated affected-GPU
+benefit; do not report it as a viewer FPS gain. New code remains local and is not
+in pushed stable7772/water. Further work needs a substantial measured mechanism;
+an isolated shader improvement alone has not solved this workload.
 Full pixel/feature parity, multi-scene performance, prolonged stability, strict
-no-GL and independent fresh-build release review remain open. Goal20FPS ACTIVE.
+no-GL and independent fresh-build release review remain open. Goal20FPS ACTIVE,
+unmet and not proved infeasible.

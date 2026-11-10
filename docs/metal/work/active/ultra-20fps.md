@@ -152,3 +152,21 @@ invocations and early/late-depth rejection, not an assumption that mirrors run
 main PCSS. Consider conservative current-frame face-local culling only if it
 can remove substantial measured work, preserving all six views and draw order.
 [Full evidence](../../state/archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
+
+## Latest completed comparison — PBR68614 flat,20FPS unmet
+
+Retained water specializationf549 measured9.7853 versus fresh68608 9.2573FPS
+(+5.704%, draw/probe workload caveat). The next PBR probe-shadow specialization765
+passed both full optimized API+GPU494211/104 suites, source-exact normal68614
+build/349ARM64/signature and independent optimized-source identity checks.
+Affected synthetic GPU workload improved13.55–17.75% in all7blocks, with exact
+outputs. The controlled live300-frame pair did NOT improve FPS: fresh68610
+9.581135→68614 9.566138 (−0.1565%, effectively flat), p50104.686→104.361ms,
+p95115.578→114.901ms.43start/endcontrols, exactcamera/EEP/native/bias1/readiness
+match; draws+.4043%, mainprobes98→97 limit attribution. Both viewers exited and
+OWNenvironment plans restored0. No live FPS admission from the isolated test.
+The bounded specialization is retained for its affected-workload benefit.
+Next work must identify substantial repeated hero preparation/rendering work;
+all previously rejected shader/cache/parallel variants stay closed absent a new
+mechanism. Goal ACTIVE/unmet, hardware infeasibility unproved.
+[Complete evidence](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md).

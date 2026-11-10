@@ -22,7 +22,7 @@
 | M-011 | Remaining owned GL authority | doing | Native resources/window/rendering; strict remaining-tail audit open. |
 | M-012 | Native UI automation | complete | Exact fullscreen/login/Preset123 flow; unsupported system-helper targeting avoided. |
 | M-013 | RLVa parity | deferred | Owner essential-first ordering; retained functionality still required. |
-| M-014 | Ultra20FPS campaign | doing | Water68610 measured9.7853 vsfresh9.2573; addressvariant rejected; PBR FC0 next;20FPS unmet. |
+| M-014 | Ultra20FPS campaign | doing | Water68610 improved with workload caveat; PBR68614 live9.566vsfresh9.581flat;20FPS unmet. |
 
 States describe evidence; a bounded completed item never implies product completion.
 
@@ -142,7 +142,14 @@ PBR FC0 candidate coreb809 and guarded producer/actualreceipts integrated. Actua
 68pairs+6large25379/1 and quiet16828122/1 pass0; GPU mean−13.555/−17.747%, all7
 blocks faster, no CPU/FPS claim. Expanded88strictpairs+6large27593/1 pass0.
 Private benchmark stripped, strictfixture byte-proof7ccb823c. Both optimized fullAPI+GPU suites494211/104 EACH pass0; final15sourcehashesmatch.
-Committed765c305, normalbuild/verify and livecomparison next. [Evidence](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md). Preserve actual bound pack bit4/count>1 guards, main/default/no-shadow paths,
+Committed765c305; normal68614/source271 doctor/configure/build/verify/signature0,
+independent5722identity0. Fresh68610baseline300frames9.581135FPS; candidate68614
+300frames9.566138FPS (flat−0.1565%), p50104.361208/p95114.900709ms. Both43start/
+endgates0/exactcamera+EEP/native1/bias1/256ready120; draws+.4043%, probes98→97,
+retain drift caveat.11encodedPBRreceipts; no demonstrated livegain. Both actual
+exactexits/Goodbye/PIDabsence0 and OWNplansrestored0, CUAimages actually observed.
+Officialenforce/provenance1: provenance passes, target/scene count unmet.
+No viewer/profiler/GPUtest/build live. Root/agents auditing remaining hero prep costs. [Evidence](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md). Preserve actual bound pack bit4/count>1 guards, main/default/no-shadow paths,
 exact original cube single-tap and shader math. Root owns shared source/GPU.
 
 Parallel shadow prototype was compiled/GPU-tested435842/103, including two views

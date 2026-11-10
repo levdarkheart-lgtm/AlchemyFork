@@ -6,7 +6,7 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
-| PBR alpha probe-shadow specialization, strict HDR/non-HDR/depth guards, complete native suites and positive isolated GPU cost,2026-11-10 | [CURRENT-pbr-probe-specialization-2026-11-10.md](CURRENT-pbr-probe-specialization-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
+| PBR alpha probe-shadow specialization, native/build gates, isolated GPU gain and flat controlled viewer result,2026-11-10 | [CURRENT-pbr-probe-specialization-2026-11-10.md](CURRENT-pbr-probe-specialization-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Probe-buffer address-space implementation, strict GPU parity and slower dense-work rejection; stable GitHub push,2026-11-10 | [CURRENT-probe-address-space-rejection-2026-11-10.md](CURRENT-probe-address-space-rejection-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Rejected whole-shadow parallel encoding, restored68606 baseline and actual stage-timestamp validation,2026-11-10 | [CURRENT-parallel-shadow-encoding-2026-11-10.md](CURRENT-parallel-shadow-encoding-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Apple-primary research and unmeasured Game Mode launch/opt-in confound,2026-11-10 | [CURRENT-apple-metal-research-2026-11-10.md](CURRENT-apple-metal-research-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
