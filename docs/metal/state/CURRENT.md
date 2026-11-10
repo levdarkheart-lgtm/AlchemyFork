@@ -10,6 +10,19 @@ Earlier20FPS campaign stays paused. Translator stopped; Xcode replay stopped.
 No launch/login/travel, camera, account/cache/settings changes during this repair.
 The old68633 process was confirmed exited before GPU checks.
 
+## Latest owner-run — continuous corruption persists
+
+[68638 live findings](../work/active/travel-live-68638.md): owner explicitly
+requested launch/log observation, then screen inspection. Exact canonical app/
+hash verified, PID27603 launched viaCUA; owner logged in. Two actual screenshots
+show different giant triangle arrangements; owner says junk keeps dancing every
+frame. This live geometry result is FAILED. Fresh native UI/publication receipts
+continue, but no nonfinite skin operand/fallback warning appears while corruption
+is visible. Earlier empty/terrain/impostor source fixes do not prove its cause.
+Initial12 cloud-loading warnings later stop; no corresponding Metal error found.
+Logs/receipts are private and not frame counts. Root made no settings/camera/cache
+or source/build changes during trial. Viewer remains running; FPS goal paused.
+
 ## Concrete repairs and original contracts
 
 Exact original: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`.
@@ -46,7 +59,7 @@ Exact original: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`.
 ## Executed validation and build status
 
 Canonical Release **26.4.0.68638** built from checkpoint0cbb48f104, verified and
-signed; not launched. Doctor/configure/build/final configure+build/verify_app/
+signed; subsequently launched at the owner’s explicit request. Doctor/configure/build/final configure+build/verify_app/
 deep strict codesign all exit0. verify_app checked349 Mach-O files, zero invalid
 non-arm64 slices. Source tree matches committed code, with docs-only handover edits.
 Canonical app: `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
@@ -106,9 +119,11 @@ Do not restore over active cache; account/settings untouched. No private uploads
 
 ## Exact next actions
 
-68638 is built/verified and remains closed. Next owner-driven live trial should
-compare actual loading/teleport, UI input/resize, name arrival, HUD alpha,
-attachments and earlier environment/terrain/water/shadow symptoms. Do not treat
+68638 PID27603 is running for the owner. Preserve the current failing scene and
+identify the exact native draw and vertex/index/weight/palette/transform inputs
+producing moving triangles against original source. Quiet finite/error logs do
+not identify it. Read-only source audit remains in progress; no cause established.
+Other input/resize/HUD/environment/terrain/water/shadow acceptance remains open. Do not treat
 backend tests as full visual acceptance or resume the paused FPS campaign.
 
 ## Complete-product advancement assessment

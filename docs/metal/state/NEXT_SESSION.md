@@ -1,3 +1,18 @@
+# Latest68638 live trial FAILED — viewer running
+
+Owner explicitly requested starting viewer/log observation, then screen inspection.
+Exact68638/hash verified and launched viaCUA, PID27603; owner logged in and drives.
+Root saw TWO different arrangements of giant skin-colored/dark triangles. Owner
+clarified continuous dancing junk, not a frozen covering frame. New full logs
+through22:12:27UTC have ZERO badXYZ operand receipts and ZERO oldfinitefallback
+warnings during visible corruption; native UI/publication receipts continue.
+No cause proved. Read travel-live-68638.md and ignored private-68638-owner-log-watch-
+20261110-01 evidence. Earlier tests/sourcefixes do not supersede this failed live
+result. No agent settings/camera/cache/source/build/restart changes during trial.
+Keep scene intact; identify offending actual draw/GPU inputs. Do not gate/hide
+geometry or resume pausedFPS campaign. All CUA phases completed. Root/docs only;
+draw_cpu_costs read-only finite-input source investigation still pending.
+
 # Continue failed-travel correctness repairs
 
 Read AGENTS.md and CURRENT.md completely. Branch codex/apple-silicon-metal.

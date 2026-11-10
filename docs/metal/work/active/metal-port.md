@@ -37,6 +37,16 @@ mechanism proof, not live acceptance. Prior [avatar repairs](avatar-crowd-parity
 and [cold startup/environment checkpoint](../../state/archive/CURRENT-cold-start-environment-repairs-2026-11-10.md)
 remain included. Cold cache backup private/intact. Translator stopped, replay off.
 
+## Latest68638 owner-driven trial — failed geometry
+
+[Live findings](travel-live-68638.md): exact68638PID27603 launched after explicit
+owner request, owner logged in. Two CUA screenshots show different large corrupt
+triangle arrangements; owner confirms continuously dancing junk. New logs have
+no nonfinite palette/fallback receipts while visible; UI publication receipts
+continue. No cause proved; no source/settings/camera/cache changes during trial.
+Viewer running for owner. Read-only draw/input investigation pending; isolated
+passing GPU checks are not live visual acceptance. EarlierFPS campaign paused.
+
 ## Work board
 
 | ID | Work | State | Evidence / next boundary |
@@ -82,9 +92,9 @@ Build/tests do not establish product completion or FPS gains.
 
 ## Immediate executable action
 
-Canonical68638 is ready from source0cbb48f104, verified/signed and left closed.
-Next owner-driven travel should validate actual loading/teleport/UI input/resize,
-name arrival, HUD alpha, attachments and earlier lighting/terrain/water symptoms. Earlier20FPS campaign remains paused;
+68638PID27603 runs for the owner with continuous corrupt geometry. Preserve the
+scene; identify actual draw and finite GPU-input corruption against original
+source. Other live input/HUD/environment/terrain/water/shadow acceptance remains open. Earlier20FPS campaign remains paused;
 last controlled9.745FPS is not a new result. No uploads/releases or quality cuts.
 
 ## Non-negotiable open gates
