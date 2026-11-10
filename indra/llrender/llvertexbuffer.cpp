@@ -1042,10 +1042,25 @@ void LLVertexBuffer::unbind()
     sSetupBuffer = nullptr;
 }
 
+// list of mapped buffers
+// NOTE: must not be LLPointer<LLVertexBuffer> to avoid breaking non-ref-counted LLVertexBuffer instances
+static std::vector<LLVertexBuffer*> sMappedBuffers;
+
 //static
 void LLVertexBuffer::cleanupClass()
 {
     unbind();
+
+#if LL_DARWIN
+    // Shutdown discards unpublished CPU stores. The queue is non-owning;
+    // disarm its entries before the backend and pool disappear so neither a
+    // later flush nor a surviving buffer's destructor can retry them there.
+    for (LLVertexBuffer* buffer : sMappedBuffers)
+    {
+        buffer->mMapped = false;
+    }
+    sMappedBuffers.clear();
+#endif
 
     // Which attribute arrays are enabled is vertex-array-object state, and the next
     // context's VAO starts with none. Left as it was, setupClientArrays would take its first
@@ -1086,9 +1101,6 @@ void LLVertexBuffer::touchContents()
     mContentStamp = sContentStamps.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
-// list of mapped buffers
-// NOTE: must not be LLPointer<LLVertexBuffer> to avoid breaking non-ref-counted LLVertexBuffer instances
-static std::vector<LLVertexBuffer*> sMappedBuffers;
 
 #if LL_DARWIN
 static ALMetalDevice* sMetalDevice = nullptr;
@@ -1198,13 +1210,26 @@ void LLVertexBuffer::flushBuffers()
     collect_retired_metal_buffers();
 #endif
     // must only be called from main thread
-    for (auto& buffer : sMappedBuffers)
+    std::size_t retry_count = 0;
+    for (LLVertexBuffer* buffer : sMappedBuffers)
     {
         buffer->_unmapBuffer();
+#if LL_DARWIN
+        // A failed native upload leaves its CPU store dirty. Keep the entry
+        // queued so the next flush retries without requiring another write.
+        // Destruction disarms mMapped before flushing: never requeue a dying
+        // buffer even when its last publication failed.
+        if (buffer->mMapped &&
+            (buffer->mVerticesWritten || buffer->mIndicesWritten))
+        {
+            sMappedBuffers[retry_count++] = buffer;
+            continue;
+        }
+#endif
         buffer->mMapped = false;
     }
 
-    sMappedBuffers.resize(0);
+    sMappedBuffers.resize(retry_count);
 }
 
 //static
