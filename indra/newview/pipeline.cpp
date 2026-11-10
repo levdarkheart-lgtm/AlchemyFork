@@ -1228,6 +1228,40 @@ static void describe_metal_draw_join_upper_bound(
         << ", adjacent_pairs_upper_bound=" << adjacent_pairs_upper_bound
         << LL_ENDL;
 }
+
+// Count actual CPU-encoded commands for each view, not fragment work or GPU
+// completion. Sampling both trial modes identically keeps the measurement
+// bounded; query/coverage/outline draws remain explicit auxiliary work.
+static void describe_metal_gbuffer_draw_encoding(
+    const ALMetalWorldGBufferScene& scene, U32 view_kind, U32 face,
+    U64 encoded_draws)
+{
+    if (!ALMetalDevice::commandTimingEnabled() || view_kind < 1 || view_kind > 3 ||
+        (view_kind == 1 ? face != 0 : face >= 6))
+    {
+        return;
+    }
+    const U32 slot = view_kind == 1 ? 0 : 1 + (view_kind - 2) * 6 + face;
+    static std::array<U32, 13> previous_frames{};
+    U32& previous = previous_frames[slot];
+    if (previous != 0 && gFrameCount - previous < 120) return;
+    previous = gFrameCount;
+    const auto outlines = scene.batch_count == 0 ? std::ptrdiff_t{0} :
+        std::count_if(scene.batches, scene.batches + scene.batch_count,
+            [](const ALMetalWorldSimpleBatch& batch)
+            {
+                return batch.impostor && batch.impostor_debug_outline;
+            });
+    LL_INFOS("MetalPost") << "Native G-buffer draw encoding: frame=" << gFrameCount
+        << ", view=" << view_kind << '/' << face
+        << ", joining_requested=" << scene.join_adjacent_static_draws
+        << ", source_batches=" << scene.batch_count
+        << ", encoded_draws=" << encoded_draws
+        << ", queries=" << scene.visibility_query_count
+        << ", outline_batches=" << outlines
+        << ", stamp_coverage=" << scene.stamp_opaque_coverage
+        << ", wireframe=" << scene.wireframe << LL_ENDL;
+}
 #endif
 
 LLPipeline::LLPipeline() :
@@ -16944,6 +16978,12 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.reverse_z = capture.reverse_z;
     scene.stamp_opaque_coverage = impostor_bake;
     scene.wireframe = capture.wireframe;
+    // CPU mechanism tests are positive, while GPU results depend on the
+    // workload. Keep this nonpersistent trial control off by default until
+    // a controlled viewer comparison establishes an end-to-end benefit.
+    static LLCachedControl<bool> join_static_draws(
+        gSavedSettings, "RenderMetalJoinStaticDraws", false);
+    scene.join_adjacent_static_draws = join_static_draws();
     if (scene.wireframe)
     {
         constexpr F32 gray = 0.5f;
@@ -17042,10 +17082,26 @@ void LLPipeline::endMetalWorldGBufferCapture()
         }
     }
     std::shared_ptr<ALMetalVisibilityResultBatch> visibility_results;
+    const bool count_native_draws = ALMetalDevice::commandTimingEnabled();
+    const U64 native_draws_before = count_native_draws
+        ? ALMetalDevice::encodedDrawCallCount() : 0;
     auto target = capture.renderer->render(
         scene, &error, &visibility_results);
     if (target && !impostor_bake)
     {
+        if (count_native_draws)
+        {
+            const U64 native_draws_after = ALMetalDevice::encodedDrawCallCount();
+            if (native_draws_after >= native_draws_before)
+            {
+                describe_metal_gbuffer_draw_encoding(
+                    scene, capture.hero_probe_face_capture ? 2 :
+                        capture.reflection_probe_face_capture ? 3 : isMainWorldPass() ? 1 : 0,
+                    capture.hero_probe_face_capture ? capture.hero_probe_face :
+                        capture.reflection_probe_face_capture ? capture.reflection_probe_face : 0,
+                    native_draws_after - native_draws_before);
+            }
+        }
         describe_metal_draw_join_upper_bound(
             scene.batches, scene.batch_count, false,
             capture.hero_probe_face_capture ? 2 :
