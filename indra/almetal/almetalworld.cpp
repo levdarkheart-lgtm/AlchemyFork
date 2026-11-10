@@ -1713,6 +1713,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::uint64_t opaque_diagnostic_calls = 0;
     ALMetalWorldPostDiagnostics opaque_diagnostics;
     std::array<ALMetalWorldSimpleShadowPSOCensus, 13> simple_shadow_pso_diagnostics{};
+    std::array<ALMetalWorldPBRShadowPSOCensus, 13> pbr_shadow_pso_diagnostics{};
     ALMetalWorldWaterShadowPSOCensus water_shadow_pso_diagnostics;
     const bool opaque_family_split_requested = []()
     {
@@ -1900,6 +1901,9 @@ struct ALMetalWorldGBufferRenderer::Impl
         pre_water_material_pipelines;
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         pre_water_pbr_pipelines;
+    // Lazily created only for the explicit experiment: HDR x coverage x rigged.
+    std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
+        probe_pre_water_pbr_pipelines;
     std::vector<PreWaterAlphaPipelineEntry>
         custom_pre_water_alpha_pipelines;
     std::array<PostWaterDepthPipelines, 2>
@@ -2028,6 +2032,30 @@ struct ALMetalWorldGBufferRenderer::Impl
         return cached.get();
     }
 
+    ALMetalRenderPipeline* probePBRAlphaPipeline(
+        bool hdr, bool coverage, bool rigged, std::string* error)
+    {
+        auto& cached = probe_pre_water_pbr_pipelines[hdr ? 1u : 0u]
+            [coverage ? 1u : 0u][rigged ? 1u : 0u];
+        if (!cached)
+        {
+            const auto* runtime = pre_water_pbr_pipelines[hdr ? 1u : 0u]
+                [coverage ? 1u : 0u][rigged ? 1u : 0u].get();
+            if (!runtime)
+            {
+                setError(error, "Probe PBR alpha requires the original pipeline");
+                return nullptr;
+            }
+            auto descriptor = runtime->descriptor();
+            // Stored descriptors deliberately clear the borrowed library pointer.
+            descriptor.library = library.get();
+            descriptor.fragment_bool_constants = {{probe_shadow_function_constant, true}};
+            descriptor.label = "Alchemy world probe single-tap PBR alpha pipeline";
+            cached = ALMetalRenderPipeline::create(*device, descriptor, error);
+        }
+        return cached.get();
+    }
+
     ALMetalRenderPipeline* customPreWaterAlphaPipeline(
         PreWaterAlphaFamily family, bool hdr, bool rigged,
         SimpleShadowMode shadows,
@@ -2098,6 +2126,11 @@ struct ALMetalWorldGBufferRenderer::Impl
                     : "almetal_world_pbr_vertex";
                 descriptor.fragment_function =
                     "almetal_world_pre_water_pbr_fragment";
+                if (shadows == SimpleShadowMode::probe_single_tap)
+                {
+                    descriptor.fragment_bool_constants = {
+                        {probe_shadow_function_constant, true}};
+                }
                 break;
         }
         descriptor.label =
@@ -2230,6 +2263,7 @@ ALMetalWorldGBufferRenderer::opaquePostDiagnostics() const noexcept
     {
         stats.encoded_calls = mImpl->opaque_diagnostic_calls;
         stats.simple_shadow_psos = mImpl->simple_shadow_pso_diagnostics;
+        stats.pbr_shadow_psos = mImpl->pbr_shadow_pso_diagnostics;
         stats.water_shadow_pso = mImpl->water_shadow_pso_diagnostics;
     }
     return stats;
@@ -16481,6 +16515,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::optional<ALMetalWorldSimpleShadowPSOCensus> selected_simple_shadow_psos;
     std::size_t selected_simple_shadow_view = 0;
     std::optional<ALMetalWorldWaterShadowPSOCensus> selected_water_shadow_pso;
+    std::optional<ALMetalWorldPBRShadowPSOCensus> selected_pbr_shadow_psos;
     if (ALMetalDevice::commandTimingEnabled() &&
         ((scene.diagnostic_view_kind == 1u && scene.diagnostic_view_index == 0u) ||
          ((scene.diagnostic_view_kind == 2u || scene.diagnostic_view_kind == 3u) &&
@@ -16499,6 +16534,19 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             ? scene.alpha_directional_shadows->constants.config[3] : 0u;
         selected_simple_shadow_view = scene.diagnostic_view_kind == 1u ? 0u
             : 1u + (scene.diagnostic_view_kind - 2u) * 6u + scene.diagnostic_view_index;
+    }
+    if (selected_simple_shadow_psos && has_pre_water_pbr)
+    {
+        selected_pbr_shadow_psos.emplace();
+        auto& census = *selected_pbr_shadow_psos;
+        const auto& source = *selected_simple_shadow_psos;
+        census.valid = true;
+        census.source_frame_index = source.source_frame_index;
+        census.source_view_kind = source.source_view_kind;
+        census.source_view_index = source.source_view_index;
+        census.probe_count = source.probe_count;
+        census.shadow_pack_present = source.shadow_pack_present;
+        census.shadow_flags = source.shadow_flags;
     }
     if (selected_simple_shadow_psos && has_water_surface)
     {
@@ -17328,6 +17376,19 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     : probe_simple_shadow
                     ? Impl::SimpleShadowMode::probe_single_tap
                     : Impl::SimpleShadowMode::runtime;
+            const bool probe_pbr_shadow = scene.probe_pbr_shadow_specialization &&
+                batch.pre_water_pbr && batch.pre_water_shadows &&
+                !batch.avatar_alpha && !batch.post_water_depth_only &&
+                probe_environment &&
+                scene.reflection_probes->constants.config[0] > 1.f &&
+                scene.alpha_directional_shadows &&
+                (scene.alpha_directional_shadows->constants.config[3] &
+                 ALMetalWorldDirectionalShadowConstants::probe_single_tap) != 0u;
+            // Preserve the existing custom-PBR cache identity for every
+            // unqualified draw; only the new probe mode adds a distinct entry.
+            const auto pbr_shadow_mode = probe_pbr_shadow
+                ? Impl::SimpleShadowMode::probe_single_tap
+                : Impl::SimpleShadowMode::none;
             ALMetalRenderPipeline* alpha_pipeline = nullptr;
             if (batch.avatar_alpha)
             {
@@ -17354,7 +17415,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             {
                 alpha_pipeline = mImpl->customPreWaterAlphaPipeline(
                     alpha_family, scene.hdr, rigged,
-                    simple_shadow_mode,
+                    batch.pre_water_pbr ? pbr_shadow_mode : simple_shadow_mode,
                     batch.pre_water_alpha_writes_coverage,
                     batch.pre_water_source_rgb,
                     batch.pre_water_destination_rgb, error);
@@ -17385,6 +17446,13 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                           [scene.hdr ? 1 : 0]
                           [batch.pre_water_alpha_writes_coverage ? 1 : 0]
                           [rigged ? 1 : 0].get();
+            }
+
+            if (probe_pbr_shadow && standard_blend)
+            {
+                alpha_pipeline = mImpl->probePBRAlphaPipeline(
+                    scene.hdr, batch.pre_water_alpha_writes_coverage, rigged, error);
+                if (!alpha_pipeline) return fail_command();
             }
 
             const bool writes_depth = batch.avatar_alpha
@@ -17668,6 +17736,28 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         selected.colors[0].destination_rgb != ALMetalBlendFactor::one_minus_source_alpha;
                     auto& counts = selected_simple_shadow_psos->draws[
                         (avatar ? 6u : 0u) + (custom ? 3u : 0u) + constant_state];
+                    ++counts.batches;
+                    counts.vertices += batch.vertex_count;
+                    counts.indices += batch.index_count;
+                }
+            }
+            if (encoded && selected_pbr_shadow_psos)
+            {
+                const auto& selected = alpha_pipeline->descriptor();
+                if (selected.fragment_function == "almetal_world_pre_water_pbr_fragment" &&
+                    selected.colors[0].write_mask != ALMetalColorWriteMask::none)
+                {
+                    std::size_t constant_state = 0;
+                    for (const auto& value : selected.fragment_bool_constants)
+                        if (value.index == probe_shadow_function_constant)
+                            constant_state = value.value ? 2u : 1u;
+                    const bool skinned = selected.vertex_function ==
+                        "almetal_world_pbr_skinned_vertex";
+                    const bool custom =
+                        selected.colors[0].source_rgb != ALMetalBlendFactor::source_alpha ||
+                        selected.colors[0].destination_rgb != ALMetalBlendFactor::one_minus_source_alpha;
+                    auto& counts = selected_pbr_shadow_psos->draws[
+                        (skinned ? 6u : 0u) + (custom ? 3u : 0u) + constant_state];
                     ++counts.batches;
                     counts.vertices += batch.vertex_count;
                     counts.indices += batch.index_count;
@@ -19449,6 +19539,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         selected_simple_shadow_psos->sample_sequence = mImpl->opaque_diagnostic_calls;
         mImpl->simple_shadow_pso_diagnostics[selected_simple_shadow_view] =
             *selected_simple_shadow_psos;
+    }
+    if (selected_pbr_shadow_psos)
+    {
+        selected_pbr_shadow_psos->sample_sequence = mImpl->opaque_diagnostic_calls;
+        mImpl->pbr_shadow_pso_diagnostics[selected_simple_shadow_view] =
+            *selected_pbr_shadow_psos;
     }
     if (selected_water_shadow_pso)
     {

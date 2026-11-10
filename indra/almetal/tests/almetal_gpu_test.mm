@@ -14171,6 +14171,455 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         pre_water_pbr_slot.orm_texture = pbr_orm_texture.get();
         simple_alpha_lighting.local_lights[0] = {};
 
+        // Verify actual PBR-alpha probe-shadow pipeline specialization.
+        // Both arms use the same production library, resources and shader body.
+        {
+            auto pbr_renderer = ALMetalWorldGBufferRenderer::create(*device, 4u, &error);
+            INFO(error); REQUIRE(pbr_renderer);
+            auto pbr_data = ALMetalWorldFrameData::create(*device, &error); REQUIRE(pbr_data);
+            pbr_data->beginFrame(70000); pbr_renderer->setFrameData(pbr_data);
+            struct RestorePBRTiming
+            {
+                bool saved = ALMetalDevice::commandTimingEnabled();
+                ~RestorePBRTiming() { ALMetalDevice::setCommandTimingEnabled(saved); }
+            } restore_pbr_timing;
+            ALMetalDevice::setCommandTimingEnabled(false);
+
+            // Three cached immutable SoA buffers exercise scalar, indexed2 and
+            // indexed8. The packed selector31 must clamp to the populated tail.
+            std::array<std::unique_ptr<ALMetalBuffer>,3> pbr_vertices;
+            for (unsigned mode=0; mode<3; ++mode)
+            {
+                auto bytes = vertex_bytes;
+                const std::array<std::array<float,4>,3> p{{
+                    {{-1.f,-1.f,.25f,0.f}},{{3.f,-1.f,.25f,0.f}},{{-1.f,3.f,.25f,0.f}}}};
+                std::memcpy(bytes.data(),p.data(),sizeof(p));
+                const std::int32_t selector = mode ? 31 : 0;
+                for (unsigned v=0; v<3; ++v)
+                    std::memcpy(bytes.data()+v*sizeof(p[0])+3*sizeof(float),&selector,sizeof(selector));
+                const std::array<std::array<float,2>,3> uv{{{{0.f,0.f}},{{2.f,0.f}},{{0.f,2.f}}}};
+                std::memcpy(bytes.data()+texcoord_offset,uv.data(),sizeof(uv));
+                const std::array<std::array<std::uint8_t,4>,3> tint{{
+                    {{255,255,255,192}},{{255,255,255,192}},{{255,255,255,192}}}};
+                std::memcpy(bytes.data()+color_offset,tint.data(),sizeof(tint));
+                pbr_vertices[mode]=ALMetalBuffer::create(*device,vertex_descriptor,&error); REQUIRE(pbr_vertices[mode]);
+                REQUIRE(pbr_vertices[mode]->write(0,bytes.data(),bytes.size(),&error));
+            }
+            auto pbr_shadow_descriptor=shadow_descriptor;
+            pbr_shadow_descriptor.label="PBR actual-pipeline checkerboard shadows";
+            auto pbr_shadow_texture=ALMetalTexture::create(*device,pbr_shadow_descriptor,&error); REQUIRE(pbr_shadow_texture);
+            std::array<float,64> pbr_checker{};
+            for (unsigned y=0;y<8;++y) for (unsigned x=0;x<8;++x)
+                pbr_checker[y*8+x]=((x+y)&1u)?1.f:.25f;
+            auto pbr_upload=device->makeCommandBuffer("PBR checkerboard upload",&error); REQUIRE(pbr_upload);
+            for (unsigned layer=0;layer<4;++layer)
+                REQUIRE(pbr_shadow_texture->upload(*pbr_upload,0,layer,{},pbr_checker.data(),8*sizeof(float),&error));
+            REQUIRE(pbr_upload->commitAndWait(&error));
+            auto pbr_probes=reflection_probes;
+            auto pbr_shadows=directional_shadows;
+            pbr_shadows.depth_texture=pbr_shadow_texture.get();
+            auto pbr_environment=alpha_environment;
+            pbr_environment.light_direction[0]=pbr_environment.light_direction[1]=0.f;
+            pbr_environment.light_direction[2]=1.f;
+            for (unsigned c=0;c<3;++c)
+            {
+                pbr_environment.atmos_sunlit[c]=pbr_environment.atmos_sunlit_linear[c]=1.f;
+                pbr_environment.atmos_amblit[c]=.05f;
+            }
+            pbr_environment.atmos_sunlit[3]=pbr_environment.atmos_sunlit_linear[3]=1.f;
+            auto pbr_lighting=simple_alpha_lighting;
+            for (auto& light:pbr_lighting.local_lights) light={};
+            pbr_lighting.sun_direction[0]=pbr_lighting.sun_direction[1]=0.f;
+            pbr_lighting.sun_direction[2]=1.f;
+            pbr_lighting.parameters[2]=1.f; pbr_lighting.parameters[3]=0.f;
+            auto pbr_batch=pre_water_pbr;
+            ALMetalWorldOpaquePostDeferredScene pbr_scene{};
+            pbr_scene.hdr=true; pbr_scene.width=pbr_scene.height=32;
+            pbr_scene.reflection_probes=&pbr_probes;
+            pbr_scene.alpha_environment=&pbr_environment;
+            pbr_scene.alpha_lighting=&pbr_lighting;
+            pbr_scene.alpha_directional_shadows=&pbr_shadows;
+            pbr_scene.batches=&pbr_batch; pbr_scene.batch_count=1;
+            pbr_scene.diagnostic_frame_index=71000;
+
+            const auto make_pbr_input=[&](std::uint32_t size,bool reverse,bool hdr=true)
+            {
+                ALMetalWorldGBufferScene source{};
+                source.width=source.height=size; source.hdr=hdr; source.normal_hdr=true; source.reverse_z=reverse;
+                auto target=pbr_renderer->render(source,&error); INFO(error); REQUIRE(target);
+                REQUIRE(target->colorTexture(0)->descriptor().format==ALMetalPixelFormat::rgba8_unorm_srgb);
+                REQUIRE(target->colorTexture(1)->descriptor().format==ALMetalPixelFormat::rgba8_unorm);
+                REQUIRE(target->colorTexture(2)->descriptor().format==ALMetalPixelFormat::rgba16_unorm);
+                REQUIRE(target->colorTexture(3)->descriptor().format==(hdr
+                    ?ALMetalPixelFormat::rg11b10_float:ALMetalPixelFormat::rgba8_unorm));
+                ALMetalRenderPassConfig seed;
+                for (auto& color:seed.colors) { color.load=ALMetalLoadAction::load; color.store=ALMetalStoreAction::store; }
+                seed.depth_load=ALMetalLoadAction::load; seed.depth_store=ALMetalStoreAction::store;
+                seed.stencil_load=ALMetalLoadAction::clear; seed.stencil_store=ALMetalStoreAction::store; seed.clear_stencil=3;
+                auto pass=target->makeRenderPass(seed,&error);
+                auto command=device->makeCommandBuffer("PBR G-buffer stencil seed",&error);
+                auto encoder=pass&&command ? ALMetalRenderEncoder::begin(*command,*pass,"PBR stencil seed",&error):nullptr;
+                REQUIRE(encoder); REQUIRE(encoder->end(&error)); REQUIRE(command->commitAndWait(&error));
+                return target;
+            };
+            const auto make_pbr_light=[&](std::uint32_t size,bool hdr=true)
+            {
+                ALMetalRenderTargetDescriptor descriptor; descriptor.width=descriptor.height=size;
+                descriptor.color_attachment_count=1; descriptor.colors[0].format=hdr
+                    ?ALMetalPixelFormat::rgba16_float:ALMetalPixelFormat::rgba8_unorm;
+                auto target=ALMetalRenderTarget::create(*device,descriptor,&error); REQUIRE(target);
+                ALMetalRenderPassConfig clear;
+                clear.colors[0].load=ALMetalLoadAction::clear; clear.colors[0].store=ALMetalStoreAction::store;
+                clear.colors[0].clear={.25,.125,.0625,.5};
+                auto pass=target->makeRenderPass(clear,&error);
+                auto command=device->makeCommandBuffer("PBR composed-light seed",&error);
+                auto encoder=pass&&command ? ALMetalRenderEncoder::begin(*command,*pass,"PBR composed-light seed",&error):nullptr;
+                REQUIRE(encoder); REQUIRE(encoder->end(&error)); REQUIRE(command->commitAndWait(&error)); return target;
+            };
+            struct PBRPixels
+            {
+                std::vector<std::uint16_t> color;
+                std::vector<std::uint32_t> depth;
+                std::vector<std::uint8_t> stencil;
+                bool operator==(const PBRPixels&) const=default;
+            };
+            const auto read_pbr_target=[&](ALMetalRenderTarget& target)
+            {
+                const auto width=target.descriptor().width,height=target.descriptor().height;
+                const auto format=target.colorTexture(0)->descriptor().format;
+                REQUIRE((format==ALMetalPixelFormat::rgba16_float||format==ALMetalPixelFormat::rgba8_unorm));
+                const std::size_t bpp=format==ALMetalPixelFormat::rgba16_float?8u:4u;
+                PBRPixels result; result.color.resize(width*height*bpp/sizeof(std::uint16_t));
+                result.depth.resize(width*height); result.stencil.resize(width*height);
+                REQUIRE(target.colorTexture(0)->readback(*device,0,0,{},result.color.data(),width*bpp,&error));
+                if (format==ALMetalPixelFormat::rgba16_float)
+                    REQUIRE(std::all_of(result.color.begin(),result.color.end(),[](auto half){return (half&0x7c00u)!=0x7c00u;}));
+                REQUIRE(target.depthStencilTexture()->readback(*device,0,0,{},result.depth.data(),width*4,&error));
+                const std::size_t row=(width+255u)&~std::size_t(255u);
+                id<MTLDevice> native=(__bridge id<MTLDevice>)device->nativeHandle();
+                id<MTLBuffer> plane=[native newBufferWithLength:row*height options:MTLResourceStorageModeShared]; REQUIRE(plane);
+                id<MTLCommandQueue> queue=(__bridge id<MTLCommandQueue>)device->nativeCommandQueue();
+                auto command=[queue commandBuffer]; auto blit=[command blitCommandEncoder]; REQUIRE(blit);
+                [blit copyFromTexture:(__bridge id<MTLTexture>)target.depthStencilTexture()->nativeHandle()
+                    sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(width,height,1)
+                    toBuffer:plane destinationOffset:0 destinationBytesPerRow:row destinationBytesPerImage:row*height
+                    options:MTLBlitOptionStencilFromDepthStencil];
+                [blit endEncoding]; [command commit]; [command waitUntilCompleted];
+                REQUIRE(command.status==MTLCommandBufferStatusCompleted);
+                for (unsigned y=0;y<height;++y) std::memcpy(result.stencil.data()+y*width,
+                    static_cast<const std::uint8_t*>(plane.contents)+y*row,width);
+                return result;
+            };
+            // Snapshot all source MRTs and depth/stencil, without treating the
+            // source albedo format as the final HDR output format.
+            const auto snapshot_pbr_input=[&](ALMetalRenderTarget& target)
+            {
+                std::vector<std::uint8_t> result;
+                const auto width=target.descriptor().width,height=target.descriptor().height;
+                for (unsigned slot=0;slot<4;++slot)
+                {
+                    const auto format=target.colorTexture(slot)->descriptor().format;
+                    const std::size_t bpp=(format==ALMetalPixelFormat::rgba16_unorm||format==ALMetalPixelFormat::rgba16_float)?8:4;
+                    const auto offset=result.size(); result.resize(offset+width*height*bpp);
+                    REQUIRE(target.colorTexture(slot)->readback(*device,0,0,{},result.data()+offset,width*bpp,&error));
+                }
+                std::vector<std::uint32_t> depths(width*height);
+                REQUIRE(target.depthStencilTexture()->readback(*device,0,0,{},depths.data(),width*4,&error));
+                const auto offset=result.size(); result.resize(offset+depths.size()*4);
+                std::memcpy(result.data()+offset,depths.data(),depths.size()*4);
+                // Full source stencil is independently checked against seed3;
+                // copied output stencil also participates in every A/B compare.
+                const std::size_t row=(width+255u)&~std::size_t(255u);
+                id<MTLDevice> native=(__bridge id<MTLDevice>)device->nativeHandle();
+                id<MTLBuffer> plane=[native newBufferWithLength:row*height options:MTLResourceStorageModeShared]; REQUIRE(plane);
+                auto command=[(__bridge id<MTLCommandQueue>)device->nativeCommandQueue() commandBuffer];
+                auto blit=[command blitCommandEncoder]; REQUIRE(blit);
+                [blit copyFromTexture:(__bridge id<MTLTexture>)target.depthStencilTexture()->nativeHandle()
+                    sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(width,height,1)
+                    toBuffer:plane destinationOffset:0 destinationBytesPerRow:row destinationBytesPerImage:row*height options:MTLBlitOptionStencilFromDepthStencil];
+                [blit endEncoding]; [command commit]; [command waitUntilCompleted]; REQUIRE(command.status==MTLCommandBufferStatusCompleted);
+                const auto base=result.size(); result.resize(base+width*height);
+                for (unsigned y=0;y<height;++y) std::memcpy(result.data()+base+y*width,static_cast<const std::uint8_t*>(plane.contents)+y*row,width);
+                REQUIRE(std::all_of(result.begin()+base,result.end(),[](auto byte){return byte==3u;}));
+                return result;
+            };
+            auto pbr_input_forward=make_pbr_input(32,false),pbr_input_reverse=make_pbr_input(32,true);
+            auto pbr_light=make_pbr_light(32);
+            pbr_scene.gbuffer=pbr_input_forward.get(); pbr_scene.composed_lighting=pbr_light.get();
+            std::vector<std::uint16_t> pbr_background(32*32*4);
+            REQUIRE(pbr_light->colorTexture(0)->readback(*device,0,0,{},pbr_background.data(),32*8,&error));
+            const auto pbr_expected_bucket=[](bool rigged,bool custom,bool specialized)
+                { return (rigged?6u:0u)+(custom?3u:0u)+(specialized?2u:0u); };
+            const auto select_pbr=[&](unsigned slots,bool rigged,bool custom,bool coverage,bool probe,unsigned probe_count,bool reverse)
+            {
+                REQUIRE((slots==1u||slots==2u||slots==8u));
+                pbr_batch=pre_water_pbr;
+                pbr_batch.vertices=pbr_vertices[slots==1?0:slots==2?1:2].get();
+                pbr_batch.pre_water_alpha=false; pbr_batch.post_water_alpha=true;
+                pbr_batch.pre_water_shadows=true; pbr_batch.pre_water_alpha_writes_coverage=coverage;
+                pbr_batch.pre_water_minimum_alpha=0.f; pbr_batch.double_sided=true;
+                pbr_batch.texture_count=pbr_batch.pbr_slot_count=slots;
+                for (unsigned slot=0;slot<slots;++slot)
+                {
+                    auto& material=pbr_batch.pbrSlots()[slot]; material=pre_water_pbr_slot;
+                    pbr_batch.diffuse_textures[slot]=tree_diffuse.get();
+                    material.normal_texture=flat_normal.get(); material.orm_texture=pbr_orm_texture.get();
+                    material.emissive_texture=diffuse.get();
+                    material.emissive_color[0]=slot+1u==slots?.1f:.7f;
+                    material.emissive_color[1]=material.emissive_color[2]=0.f;
+                    material.roughness_factor=.5f; material.metallic_factor=.25f;
+                    material.base_color_factor[0]=slot+1u==slots?1.f:.25f;
+                }
+                std::fill(std::begin(pbr_batch.modelview),std::end(pbr_batch.modelview),0.f);
+                std::fill(std::begin(pbr_batch.modelview_projection),std::end(pbr_batch.modelview_projection),0.f);
+                for (unsigned d=0;d<4;++d) pbr_batch.modelview[d*5]=pbr_batch.modelview_projection[d*5]=1.f;
+                pbr_batch.modelview[14]=-2.f;
+                for (unsigned c=0;c<3;++c) for (unsigned r=0;r<4;++r)
+                    pbr_batch.normal_matrix[c][r]=pbr_batch.rigged_normal_matrix[c][r]=(c==r?1.f:0.f);
+                pbr_batch.skin_palette=rigged?alpha_skin_palette.data():nullptr;
+                pbr_batch.skin_palette_float_count=rigged?alpha_skin_palette.size():0;
+                pbr_batch.skin_joint_count=rigged?1u:0u; pbr_batch.weight_offset=rigged?weight_offset:0;
+                pbr_batch.pre_water_source_rgb=custom?ALMetalBlendFactor::one:ALMetalBlendFactor::source_alpha;
+                pbr_batch.pre_water_destination_rgb=custom?ALMetalBlendFactor::one:ALMetalBlendFactor::one_minus_source_alpha;
+                pbr_environment.water_plane[0]=pbr_environment.water_plane[1]=0.f;
+                pbr_environment.water_plane[2]=1.f; pbr_environment.water_plane[3]=3.f;
+                pbr_environment.water_fog[2]=-1.f;
+                pbr_scene.reverse_z=reverse; pbr_scene.mirror_clip=false;
+                pbr_scene.hero_probe=nullptr; pbr_scene.screen_space_reflections=nullptr;
+                pbr_scene.alpha_directional_shadows=&pbr_shadows;
+                pbr_scene.diagnostic_view_kind=probe?2u:1u; pbr_scene.diagnostic_view_index=probe?1u:0u;
+                ++pbr_scene.diagnostic_frame_index;
+                pbr_shadows.constants=directional_shadows.constants;
+                pbr_shadows.constants.config[0]=4u; pbr_shadows.constants.config[1]=0xeu;
+                pbr_shadows.constants.config[2]=reverse?1u:0u;
+                pbr_shadows.constants.config[3]=3u|(probe?ALMetalWorldDirectionalShadowConstants::probe_single_tap:0u);
+                for (auto& matrix:pbr_shadows.constants.shadow_matrix)
+                {
+                    std::fill(std::begin(matrix),std::end(matrix),0.f);
+                    matrix[12]=matrix[13]=matrix[14]=.5f; matrix[15]=1.f;
+                }
+                pbr_shadows.constants.resolution[2]=float(pbr_scene.width); pbr_shadows.constants.resolution[3]=float(pbr_scene.height);
+                pbr_shadows.constants.parameters[3]=float(pbr_scene.height);
+                pbr_probes.constants=reflection_probes.constants;
+                auto& pack=pbr_probes.constants; pack.config[0]=float(probe_count);
+                for (auto& bucket:pack.ref_bucket) bucket[0]=1;
+                for (unsigned i=1;i<256;++i)
+                {
+                    pack.ref_sphere[i][0]=pack.ref_sphere[i][1]=0.f; pack.ref_sphere[i][2]=-2.f; pack.ref_sphere[i][3]=10.f;
+                    pack.ref_params[i][0]=pack.ref_params[i][1]=pack.ref_params[i][2]=1.f; pack.ref_params[i][3]=-4096.f;
+                    pack.ref_index[i][0]=0; pack.ref_index[i][1]=-1; pack.ref_index[i][2]=0; pack.ref_index[i][3]=1;
+                }
+                pack.ref_index[1][1]=0; pack.ref_index[1][2]=31;
+                for (unsigned n=0;n<31;++n) pack.ref_neighbor[n]=int(n+2);
+            };
+            const auto read_pbr=[&](bool candidate,bool specialized,bool rigged,bool custom,bool probe,unsigned count,bool expect_draw=true)
+            {
+                pbr_scene.probe_pbr_shadow_specialization=candidate;
+                ++pbr_scene.diagnostic_frame_index;
+                ALMetalDevice::setCommandTimingEnabled(true);
+                auto target=pbr_renderer->renderOpaquePostDeferred(pbr_scene,&error); INFO(error); REQUIRE(target);
+                const auto census=pbr_renderer->opaquePostDiagnostics().pbr_shadow_psos[probe?2u:0u];
+                REQUIRE(census.valid); CHECK(census.source_frame_index==pbr_scene.diagnostic_frame_index);
+                CHECK(census.source_view_kind==pbr_scene.diagnostic_view_kind); CHECK(census.source_view_index==pbr_scene.diagnostic_view_index);
+                CHECK(census.shadow_flags==(pbr_scene.alpha_directional_shadows?pbr_shadows.constants.config[3]:0u));
+                CHECK(census.probe_count==count); CHECK(census.shadow_pack_present==(pbr_scene.alpha_directional_shadows!=nullptr));
+                const unsigned expected=pbr_expected_bucket(rigged,custom,specialized);
+                for (unsigned b=0;b<census.bucket_count;++b)
+                {
+                    const bool hit=expect_draw&&b==expected;
+                    CHECK(census.draws[b].batches==(hit?1u:0u));
+                    CHECK(census.draws[b].vertices==(hit?pbr_batch.vertex_count:0u));
+                    CHECK(census.draws[b].indices==(hit?pbr_batch.index_count:0u));
+                }
+                ALMetalDevice::setCommandTimingEnabled(false);
+                return read_pbr_target(*target);
+            };
+            const auto forward_before=snapshot_pbr_input(*pbr_input_forward),reverse_before=snapshot_pbr_input(*pbr_input_reverse);
+            unsigned pbr_pairs=0;
+            for (bool reverse:{false,true}) for (bool rigged:{false,true})
+            for (unsigned slots:{1u,2u,8u}) for (bool custom:{true,false}) for (bool coverage:{false,true})
+            {
+                CAPTURE(reverse,rigged,slots,custom,coverage);
+                pbr_scene.gbuffer=reverse?pbr_input_reverse.get():pbr_input_forward.get();
+                select_pbr(slots,rigged,custom,coverage,true,256,reverse);
+                // Specialization-first custom creation catches a collapsed key.
+                const auto selected=read_pbr(true,true,rigged,custom,true,256);
+                const auto runtime=read_pbr(false,false,rigged,custom,true,256);
+                CHECK(selected==runtime); ++pbr_pairs;
+                CHECK(runtime.color!=pbr_background);
+                CHECK(std::all_of(runtime.stencil.begin(),runtime.stencil.end(),[](auto s){return s==0u;}));
+                // A single scalar last-slot uses the identical selected maps.
+                if (slots!=1u)
+                {
+                    pbr_batch.pbrSlots()[0]=pbr_batch.pbrSlots()[slots-1];
+                    pbr_batch.diffuse_textures[0]=pbr_batch.diffuse_textures[slots-1];
+                    pbr_batch.texture_count=pbr_batch.pbr_slot_count=1;
+                    const auto scalar=read_pbr(false,false,rigged,custom,true,256);
+                    CHECK(scalar==runtime);
+                }
+            }
+            // Guard/call-order and PCSS contrast controls on both blend caches.
+            for (bool rigged:{false,true}) for (bool custom:{true,false})
+            {
+                pbr_scene.gbuffer=pbr_input_forward.get();
+                select_pbr(8,rigged,custom,true,false,256,false);
+                const auto main_before=read_pbr(true,false,rigged,custom,false,256);
+                select_pbr(8,rigged,custom,true,true,256,false);
+                const auto probe=read_pbr(true,true,rigged,custom,true,256);
+                select_pbr(8,rigged,custom,true,false,256,false);
+                const auto main_after=read_pbr(true,false,rigged,custom,false,256);
+                CHECK(main_before==main_after); CHECK(main_before.color!=probe.color);
+                const auto main_runtime=read_pbr(false,false,rigged,custom,false,256); CHECK(main_runtime==main_after); ++pbr_pairs;
+                select_pbr(8,rigged,custom,true,true,1,false);
+                const auto default_on=read_pbr(true,false,rigged,custom,true,1);
+                const auto default_off=read_pbr(false,false,rigged,custom,true,1); CHECK(default_on==default_off); ++pbr_pairs;
+                select_pbr(8,rigged,custom,true,true,256,false);
+                pbr_batch.pre_water_shadows=false; pbr_scene.alpha_directional_shadows=nullptr;
+                const auto unshadowed_on=read_pbr(true,false,rigged,custom,true,256);
+                const auto unshadowed_off=read_pbr(false,false,rigged,custom,true,256); CHECK(unshadowed_on==unshadowed_off); ++pbr_pairs;
+            }
+            // Branch edges retain exact coverage, mirror clipping and cascade math.
+            for (unsigned edge=0;edge<8;++edge)
+            {
+                pbr_scene.gbuffer=pbr_input_forward.get(); select_pbr(2,false,false,true,true,256,false);
+                if (edge==0) { pbr_batch.pre_water_alpha=true; pbr_batch.post_water_alpha=false; pbr_environment.water_plane[3]=-1.f; }
+                if (edge==1)
+                {
+                    pbr_batch.pre_water_alpha=true; pbr_batch.post_water_alpha=false;
+                    pbr_environment.water_plane[3]=-1.f;
+                    pbr_batch.pre_water_minimum_alpha=.004f;
+                    for (unsigned slot=0;slot<pbr_batch.texture_count;++slot)
+                        pbr_batch.diffuse_textures[slot]=zero_alpha_diffuse.get();
+                }
+                if (edge==2) { pbr_scene.mirror_clip=true; pbr_scene.mirror_clip_plane[0]=1.f; pbr_scene.mirror_clip_plane[3]=0.f; }
+                if (edge==3) { pbr_shadows.constants.config[0]=2; }
+                if (edge==4) { pbr_shadows.constants.config[1]=0xfu; }
+                if (edge==5) { pbr_shadows.constants.shadow_clip[0]=1.f; pbr_shadows.constants.shadow_clip[1]=2.f; }
+                if (edge==6) { pbr_shadows.constants.parameters[1]=.01f; for (auto& m:pbr_shadows.constants.shadow_matrix) {m[0]=m[5]=.05f; m[2]=.125f;} }
+                if (edge==7) { pbr_environment.water_plane[3]=-3.f; }
+                const auto on=read_pbr(true,true,false,false,true,256);
+                const auto off=read_pbr(false,false,false,false,true,256); CHECK(on==off); ++pbr_pairs;
+                if (edge==1||edge==7)
+                {
+                    std::vector<std::uint16_t> background(32*32*4);
+                    REQUIRE(pbr_light->colorTexture(0)->readback(*device,0,0,{},background.data(),32*8,&error));
+                    CHECK(off.color==background);
+                    if (edge==1)
+                        CHECK(std::all_of(off.depth.begin(),off.depth.end(),
+                            [](auto bits){return bits==0x3f800000u;}));
+                }
+            }
+            // Non-HDR standard/custom PSOs are separate cached objects. Keep
+            // rawRGBA8 bytes, rawD32 and compactS8 exact on both depth conventions.
+            auto pbr_ldr_forward=make_pbr_input(32,false,false);
+            auto pbr_ldr_reverse=make_pbr_input(32,true,false);
+            auto pbr_ldr_light=make_pbr_light(32,false);
+            const auto ldr_forward_before=snapshot_pbr_input(*pbr_ldr_forward);
+            const auto ldr_reverse_before=snapshot_pbr_input(*pbr_ldr_reverse);
+            std::vector<std::uint16_t> pbr_ldr_background(32*32*2);
+            REQUIRE(pbr_ldr_light->colorTexture(0)->readback(*device,0,0,{},
+                pbr_ldr_background.data(),32*4,&error));
+            unsigned nonhdr_pairs=0;
+            for (bool reverse:{false,true}) for (bool rigged:{false,true})
+            for (bool custom:{true,false}) for (bool coverage:{false,true})
+            {
+                CAPTURE(reverse,rigged,custom,coverage);
+                pbr_scene.hdr=false;
+                pbr_scene.gbuffer=reverse?pbr_ldr_reverse.get():pbr_ldr_forward.get();
+                pbr_scene.composed_lighting=pbr_ldr_light.get();
+                select_pbr(8,rigged,custom,coverage,true,256,reverse);
+                const auto on=read_pbr(true,true,rigged,custom,true,256);
+                const auto off=read_pbr(false,false,rigged,custom,true,256);
+                CHECK(on==off); ++nonhdr_pairs;
+                REQUIRE(off.color.size()==32u*32u*2u);
+                CHECK(off.color!=pbr_ldr_background);
+                CHECK(std::all_of(off.stencil.begin(),off.stencil.end(),[](auto v){return v==0u;}));
+            }
+            CHECK(nonhdr_pairs==16u);
+            CHECK(snapshot_pbr_input(*pbr_ldr_forward)==ldr_forward_before);
+            CHECK(snapshot_pbr_input(*pbr_ldr_reverse)==ldr_reverse_before);
+
+            // The protected DoF replay must stay on its dedicated no-color
+            // depth PSO even with a valid dense probe pack and actual bit4.
+            // A preceding offscreen fullbright post-alpha draw admits the
+            // existing ordered depth-replay phase without any PBR-color draw.
+            unsigned depth_guard_pairs=0;
+            for (bool hdr:{false,true}) for (bool reverse:{false,true})
+            {
+                CAPTURE(hdr,reverse);
+                pbr_scene.hdr=hdr;
+                pbr_scene.gbuffer=hdr
+                    ? (reverse?pbr_input_reverse.get():pbr_input_forward.get())
+                    : (reverse?pbr_ldr_reverse.get():pbr_ldr_forward.get());
+                pbr_scene.composed_lighting=hdr?pbr_light.get():pbr_ldr_light.get();
+                select_pbr(8,false,false,false,true,256,reverse);
+                pbr_batch.post_water_depth_only=true;
+                pbr_batch.pre_water_minimum_alpha=.004f;
+                auto first=pbr_batch;
+                first.post_water_depth_only=false;
+                first.pre_water_pbr=false; first.pre_water_fullbright=true;
+                first.pre_water_shadows=false; first.pbr_slot_count=0;
+                first.texture_count=1; first.double_sided=false;
+                first.pre_water_minimum_alpha=0.f;
+                first.modelview_projection[12]+=8.f;
+                std::array<ALMetalWorldSimpleBatch,2> replay{{first,pbr_batch}};
+                pbr_scene.batches=replay.data(); pbr_scene.batch_count=replay.size();
+                const auto on=read_pbr(true,false,false,false,true,256,false);
+                const auto off=read_pbr(false,false,false,false,true,256,false);
+                CHECK(on==off); ++depth_guard_pairs;
+                CHECK(off.color==(hdr?pbr_background:pbr_ldr_background));
+                const std::uint32_t far=reverse?0u:0x3f800000u;
+                CHECK(std::any_of(off.depth.begin(),off.depth.end(),[&](auto bits){return bits!=far;}));
+                CHECK(std::all_of(off.stencil.begin(),off.stencil.end(),[](auto v){return v==0u;}));
+                // The only PBR draw in this call is depth-only: every actual
+                // COLOR-fragment descriptor bin is explicitly zero above.
+            }
+            CHECK(depth_guard_pairs==4u);
+            CHECK(snapshot_pbr_input(*pbr_input_forward)==forward_before);
+            CHECK(snapshot_pbr_input(*pbr_input_reverse)==reverse_before);
+            CHECK(snapshot_pbr_input(*pbr_ldr_forward)==ldr_forward_before);
+            CHECK(snapshot_pbr_input(*pbr_ldr_reverse)==ldr_reverse_before);
+            pbr_scene.hdr=true; pbr_scene.gbuffer=pbr_input_forward.get();
+            pbr_scene.composed_lighting=pbr_light.get();
+            pbr_scene.batches=&pbr_batch; pbr_scene.batch_count=1;
+
+            CHECK(pbr_pairs==68u);
+            CHECK(snapshot_pbr_input(*pbr_input_forward)==forward_before);
+            CHECK(snapshot_pbr_input(*pbr_input_reverse)==reverse_before);
+            // An unarmed render and a rejected scene must retain the previous
+            // successful selected-descriptor observation.
+            pbr_scene.gbuffer=pbr_input_forward.get();
+            select_pbr(8,false,false,true,true,256,false);
+            const auto guard_pixels=read_pbr(true,true,false,false,true,256);
+            const auto guard_census=pbr_renderer->opaquePostDiagnostics().pbr_shadow_psos[2];
+            ALMetalDevice::setCommandTimingEnabled(false);
+            ++pbr_scene.diagnostic_frame_index;
+            auto unarmed_target=pbr_renderer->renderOpaquePostDeferred(pbr_scene,&error);
+            INFO(error);REQUIRE(unarmed_target);
+            CHECK(read_pbr_target(*unarmed_target)==guard_pixels);
+            const auto unarmed_census=pbr_renderer->opaquePostDiagnostics().pbr_shadow_psos[2];
+            CHECK(unarmed_census.valid==guard_census.valid);
+            CHECK(unarmed_census.source_frame_index==guard_census.source_frame_index);
+            CHECK(unarmed_census.sample_sequence==guard_census.sample_sequence);
+            auto invalid_scene=pbr_scene;invalid_scene.width=0;
+            error.clear();ALMetalDevice::setCommandTimingEnabled(true);
+            CHECK_FALSE(pbr_renderer->renderOpaquePostDeferred(invalid_scene,&error));
+            CHECK_FALSE(error.empty());ALMetalDevice::setCommandTimingEnabled(false);
+            const auto failed_census=pbr_renderer->opaquePostDiagnostics().pbr_shadow_psos[2];
+            CHECK(failed_census.valid==guard_census.valid);
+            CHECK(failed_census.source_frame_index==guard_census.source_frame_index);
+            CHECK(failed_census.sample_sequence==guard_census.sample_sequence);
+            for (unsigned bucket=0;bucket<guard_census.bucket_count;++bucket)
+            {
+                CHECK(unarmed_census.draws[bucket].batches==guard_census.draws[bucket].batches);
+                CHECK(unarmed_census.draws[bucket].vertices==guard_census.draws[bucket].vertices);
+                CHECK(unarmed_census.draws[bucket].indices==guard_census.draws[bucket].indices);
+                CHECK(failed_census.draws[bucket].batches==guard_census.draws[bucket].batches);
+                CHECK(failed_census.draws[bucket].vertices==guard_census.draws[bucket].vertices);
+                CHECK(failed_census.draws[bucket].indices==guard_census.draws[bucket].indices);
+            }
+        }
+
         // Forward material families bind only their populated texture prefix.
         // Compare every indexed selection with its scalar equivalent, then
         // prime stale tails within one encoder and across a haze restart.

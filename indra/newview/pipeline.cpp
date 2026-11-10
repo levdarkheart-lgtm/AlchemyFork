@@ -8696,6 +8696,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.composed_light_target)
     {
         ALMetalWorldOpaquePostDeferredScene scene;
+        scene.probe_pbr_shadow_specialization = true;
         scene.probe_water_shadow_specialization = true;
         scene.diagnostic_frame_index = gFrameCount;
         scene.diagnostic_view_kind = capture.hero_probe_face_capture ? 2
@@ -8981,6 +8982,41 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         }
         else
         {
+            // Observe actual PBR color PSOs once per probe view in an opt-in
+            // benchmark. Ordinary play never reads this diagnostic snapshot.
+            if (ALMetalDevice::commandTimingEnabled() &&
+                (scene.diagnostic_view_kind == 2u || scene.diagnostic_view_kind == 3u) &&
+                scene.diagnostic_view_index < 6u && scene.reflection_probes &&
+                scene.reflection_probes->constants.config[0] > 1.f &&
+                scene.alpha_directional_shadows &&
+                (scene.alpha_directional_shadows->constants.config[3] &
+                 ALMetalWorldDirectionalShadowConstants::probe_single_tap) != 0u)
+            {
+                static std::array<bool, 12> reported_pbr{};
+                const auto slot = (scene.diagnostic_view_kind - 2u) * 6u +
+                    scene.diagnostic_view_index;
+                if (!reported_pbr[slot])
+                {
+                    const auto selected = capture.renderer->opaquePostDiagnostics()
+                        .pbr_shadow_psos[1u + slot];
+                    if (selected.valid && selected.source_frame_index == scene.diagnostic_frame_index &&
+                        selected.source_view_kind == scene.diagnostic_view_kind &&
+                        selected.source_view_index == scene.diagnostic_view_index &&
+                        (selected.draws[2].batches || selected.draws[5].batches ||
+                         selected.draws[8].batches || selected.draws[11].batches))
+                    {
+                        LL_INFOS("MetalPost") << "Native PBR probe PSO selected: frame="
+                            << selected.source_frame_index << ", view=" << selected.source_view_kind
+                            << '/' << selected.source_view_index << ", probe_count=" << selected.probe_count
+                            << ", shadow_flags=" << selected.shadow_flags
+                            << ", rigid_standard=" << selected.draws[2].batches
+                            << ", rigid_custom=" << selected.draws[5].batches
+                            << ", skinned_standard=" << selected.draws[8].batches
+                            << ", skinned_custom=" << selected.draws[11].batches << LL_ENDL;
+                        reported_pbr[slot] = true;
+                    }
+                }
+            }
             // Report actual specialized water draws once per probe view during
             // opt-in benchmark collection. This never runs in ordinary play.
             if (ALMetalDevice::commandTimingEnabled() &&

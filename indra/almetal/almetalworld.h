@@ -1345,6 +1345,9 @@ struct ALMetalWorldOpaquePostDeferredScene
     // Keep the combined depth plane shader-readable so the completed target
     // can become the next frame's coherent SSR color/depth history pair.
     bool publish_screen_space_reflection_history = false;
+    // Experimental color-alpha PBR specialization; the runtime PSO remains
+    // the default and the renderer rechecks the actual bound shadow pack.
+    bool probe_pbr_shadow_specialization = false;
     // Opt into the validated above-water probe single-tap specialization.
     // The runtime variant remains available for isolated parity comparisons.
     bool probe_water_shadow_specialization = false;

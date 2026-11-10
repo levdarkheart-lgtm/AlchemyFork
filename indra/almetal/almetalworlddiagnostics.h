@@ -54,6 +54,25 @@ struct ALMetalWorldSimpleShadowPSOCensus
     std::array<ALMetalWorldEncodedDrawCensus, bucket_count> draws{};
 };
 
+// Latest successful color-writing PBR-alpha draws per view. Descriptor
+// selection is observed after encoding; counts are not GPU invocations.
+struct ALMetalWorldPBRShadowPSOCensus
+{
+    static constexpr std::size_t bucket_count = 12;
+    // Actual vertex function x RGB blend x optional bool0 undefined/false/true.
+    static constexpr std::array<const char*, bucket_count> bucket_names{
+        "rigid.standard.undefined", "rigid.standard.false", "rigid.standard.true",
+        "rigid.custom.undefined", "rigid.custom.false", "rigid.custom.true",
+        "skinned.standard.undefined", "skinned.standard.false", "skinned.standard.true",
+        "skinned.custom.undefined", "skinned.custom.false", "skinned.custom.true"};
+    bool valid = false, shadow_pack_present = false;
+    std::uint64_t source_frame_index = 0, sample_sequence = 0;
+    std::uint32_t source_view_kind = 0, source_view_index = 0;
+    // Source scene pack metadata; an unshadowed draw can bind its fallback.
+    std::uint32_t probe_count = 0, shadow_flags = 0;
+    std::array<ALMetalWorldEncodedDrawCensus, bucket_count> draws{};
+};
+
 // Latest successful opt-in water PSO observation, not GPU invocations.
 struct ALMetalWorldWaterShadowPSOCensus
 {
@@ -92,6 +111,7 @@ struct ALMetalWorldPostDiagnostics
     // Latest successfully encoded call per main(1), hero(6), ordinary(6)
     // view. Each entry has its own tuple; these are not synchronized frames.
     std::array<ALMetalWorldSimpleShadowPSOCensus, 13> simple_shadow_psos{};
+    std::array<ALMetalWorldPBRShadowPSOCensus, 13> pbr_shadow_psos{};
     ALMetalWorldWaterShadowPSOCensus water_shadow_pso;
     std::array<std::uint64_t, family_count> batches{}, indices{};
     std::array<std::uint64_t, family_count> initial_batches{};
