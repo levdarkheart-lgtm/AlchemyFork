@@ -58,6 +58,20 @@ enum class ALMetalCommandStatus
     unknown,
 };
 
+enum class ALMetalCommandTimingStatus
+{
+    pending,
+    ready,
+    failed,
+};
+
+struct ALMetalCommandGPUTime
+{
+    double start_seconds = 0.0;
+    double end_seconds = 0.0;
+    std::uint64_t elapsed_nanoseconds = 0;
+};
+
 // Retains the native completion identity without retaining its C++ command
 // wrapper. Resource arenas can poll this after a standalone wrapper has gone
 // away; neither polling nor destruction waits for the GPU. An uncommitted
@@ -67,6 +81,15 @@ class ALMetalCommandCompletion final
 public:
     ~ALMetalCommandCompletion();
     bool isComplete() const noexcept;
+
+    // Poll this command's native GPU execution interval after completion.
+    // Queue delay and CPU encoding/commit time are excluded. The interval is
+    // the whole command's GPU envelope, not GPU-busy or individual draw time.
+    // This does not
+    // submit, wait, install callbacks or depend on global timing telemetry.
+    // Abandonment, native failure or unusable timestamps fail closed; output
+    // is cleared unless ready. The ticket can outlive its command wrapper.
+    ALMetalCommandTimingStatus gpuTime(ALMetalCommandGPUTime& output) const noexcept;
 
 private:
     struct Impl;

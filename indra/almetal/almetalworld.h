@@ -364,6 +364,9 @@ struct ALMetalWorldSimpleBatch
     bool double_sided = false;
     bool avatar_rigid = false;
     bool avatar_skinning = false;
+    // The original slow default-image bind samples its placeholder as raw
+    // encoded RGB; ready avatar bakes use the sRGB view.
+    bool avatar_diffuse_srgb = true;
     bool avatar_cloth = false;
     bool avatar_alpha = false;
     // Hair and skirt meshes deliberately replay the same geometry with
@@ -373,6 +376,8 @@ struct ALMetalWorldSimpleBatch
     bool avatar_depth_write = true;
     bool avatar_color_write = true;
     bool impostor = false;
+    // Pins this avatar's immutable quartet until queued draws are encoded.
+    std::shared_ptr<const void> impostor_texture_owner;
     // Develop > Impostors draws a white additive outline immediately before
     // this billboard. Metal has no wide-line state, so retain the live GL
     // width and expand the four billboard edges in screen space.
@@ -2191,6 +2196,10 @@ public:
     bool commitCommandBatch(std::string* error = nullptr);
     void cancelCommandBatch();
     bool commandBatchActive() const;
+    // Profiling only starts when it can submit without waiting for a prior
+    // graph. The completion receipt outlives this renderer and its wrapper.
+    bool commandBatchSlotAvailable(std::size_t max_pending = 2) const noexcept;
+    std::shared_ptr<const ALMetalCommandCompletion> commandBatchCompletion() const;
     ALMetalRenderTargetPoolStats renderTargetPoolStats() const noexcept;
     ALMetalShadowIndirectStats shadowIndirectStats() const noexcept;
     ALMetalWorldConstantStats constantStats() const noexcept;

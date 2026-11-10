@@ -278,10 +278,16 @@ LLVOAvatar* LLDrawPoolAvatar::getMetalAvatar(S32 pass) const
     }
     if (!avatar->isFullyLoaded())
     {
-        // The retained pass can substitute an immediate-mode debug sphere.
-        // Until that diagnostic has a direct native producer, retain the full
-        // GL face instead of publishing a probe with the marker omitted.
-        gPipeline.invalidateMetalReflectionProbeScene();
+        // Original renderAvatars skips an unloaded avatar. Only pass zero
+        // with particles disabled emits the diagnostic sphere that this direct
+        // capture cannot yet reproduce; only that omitted geometry invalidates
+        // the whole native face.
+        if (pass == 0 &&
+            (!gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_PARTICLES) ||
+             LLViewerPartSim::getMaxPartCount() <= 0))
+        {
+            gPipeline.invalidateMetalReflectionProbeScene();
+        }
         return nullptr;
     }
 

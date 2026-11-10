@@ -80,6 +80,7 @@ class LLVertexBuffer;
 class LLVolumeFace;
 #if LL_DARWIN
 class ALMetalDevice;
+class ALMetalCommandCompletion;
 class ALMetalRenderTarget;
 class ALMetalTexture;
 class ALMetalTextureReadbackRing;
@@ -335,6 +336,10 @@ public:
     // Gives each attachment a profile timed its GPU time once its frame has been read, waiting for nothing. Once a
     // frame, after the pool retires.
     void readAttachmentTimes();
+#if LL_DARWIN
+    // Submit one requested avatar profile after current main shadows exist.
+    void processMetalAvatarProfiles();
+#endif
 
     // generate an impostor for the given avatar
     //  preview_avatar - if true, a preview window render is being performed
@@ -1021,7 +1026,7 @@ public:
                                    bool direct_alpha = false);
     void beginMetalWorldImpostorPass();
     void beginMetalImpostorBakeCapture(
-        const LLUUID& avatar_id, U32 width, U32 height);
+        const LLUUID& avatar_id, U32 width, U32 height, bool for_profile = false);
     void beginMetalImpostorAlphaCapture(const LLUUID& avatar_id);
     void beginMetalImpostorFullbrightPass(bool rigged, bool alpha_mask);
     void beginMetalImpostorShinyPass(bool rigged);
@@ -1173,7 +1178,8 @@ public:
                                       LLVertexBuffer* buffer,
                                       LLGLTexture* texture,
                                       U32 start, U32 end,
-                                      U32 count, U32 offset);
+                                      U32 count, U32 offset,
+                                      bool diffuse_srgb = true);
     void setMetalWorldAvatarAlphaState(bool cull, bool front,
                                        bool depth_write,
                                        bool color_write);
@@ -1910,6 +1916,18 @@ public:
 
     // The attachments profileAvatar() timed, with their spans of gGL's pool, until readAttachmentTimes() has them.
     std::vector<std::pair<LLPointer<LLViewerObject>, ALQuerySpan>> mAttachmentSpans;
+#if LL_DARWIN
+    struct MetalAvatarProfileRequest
+    {
+        LLUUID avatar_id;
+        LLUUID attachment_id; // null means the complete avatar
+    };
+    std::vector<MetalAvatarProfileRequest> mMetalAvatarProfileRequests;
+    std::vector<std::pair<LLPointer<LLViewerObject>,
+        std::shared_ptr<const ALMetalCommandCompletion>>> mMetalAttachmentProfiles;
+    std::shared_ptr<const ALMetalCommandCompletion> profileMetalAvatar(
+        LLVOAvatar& avatar, LLViewerObject* attachment);
+#endif
 
     // The water's layout around the main camera and its map of cell heights, laid out at the start of each main frame.
     ALWaterSurface              mWaterSurface;

@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
@@ -17933,6 +17934,159 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             opaque_forward_scene, &error);
         INFO(error);
         REQUIRE(avatar_alpha_result);
+
+        // Ready body bakes decode sRGB, while bindDefaultImage's slow
+        // AnisoWrap substitute samples its encoded RGB without decoding.
+        // An identical-byte linear texture is an independent native-view
+        // oracle for that substitute; alpha and raster depth must not change.
+        {
+            const std::array<std::uint8_t, 4> body_pixel{{128, 64, 32, 128}};
+            auto body_descriptor = diffuse_descriptor;
+            body_descriptor.label = "Avatar sampling sRGB bake or placeholder";
+            auto body_srgb = ALMetalTexture::create(*device, body_descriptor, &error);
+            REQUIRE(body_srgb);
+            body_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+            body_descriptor.label = "Avatar sampling identical encoded linear oracle";
+            auto body_linear = ALMetalTexture::create(*device, body_descriptor, &error);
+            REQUIRE(body_linear);
+            auto body_upload = device->makeCommandBuffer("Avatar sampling upload", &error);
+            REQUIRE(body_upload);
+            REQUIRE(body_srgb->upload(*body_upload, 0, 0, {}, body_pixel.data(), 4, &error));
+            REQUIRE(body_linear->upload(*body_upload, 0, 0, {}, body_pixel.data(), 4, &error));
+            REQUIRE(body_upload->commitAndWait(&error));
+
+            struct AvatarSamplingPixels
+            {
+                std::vector<std::vector<std::uint8_t>> colors;
+                std::array<std::uint32_t, 32 * 32> depth{};
+            };
+            const auto body_snapshot = [&](const ALMetalRenderTarget& target)
+            {
+                AvatarSamplingPixels pixels;
+                for (std::uint32_t attachment = 0;
+                     attachment < target.descriptor().color_attachment_count; ++attachment)
+                {
+                    const auto* texture = target.colorTexture(attachment);
+                    REQUIRE(texture);
+                    const auto row_bytes = 32 * texture->bytesPerPixel();
+                    REQUIRE(row_bytes > 0);
+                    pixels.colors.emplace_back(32 * row_bytes);
+                    REQUIRE(texture->readback(*device, 0, 0, {},
+                        pixels.colors.back().data(), row_bytes, &error));
+                }
+                REQUIRE(target.depthStencilTexture());
+                REQUIRE(target.depthStencilTexture()->readback(*device, 0, 0, {},
+                    pixels.depth.data(), 32 * sizeof(std::uint32_t), &error));
+                return pixels;
+            };
+            const auto body_encode = [](float linear)
+            {
+                const float encoded = linear <= 0.0031308f
+                    ? 12.92f * linear : 1.055f * std::pow(linear, 1.f / 2.4f) - 0.055f;
+                return static_cast<int>(std::lround(encoded * 255.f));
+            };
+            const auto body_half = [](const AvatarSamplingPixels& pixels, std::size_t component)
+            {
+                std::uint16_t value;
+                std::memcpy(&value, pixels.colors[0].data() + component * sizeof(value), sizeof(value));
+                return value;
+            };
+            CHECK(ALMetalWorldSimpleBatch{}.avatar_diffuse_srgb);
+            for (const bool skinned : {false, true})
+            {
+                CAPTURE(skinned);
+                auto body_batch = batch;
+                body_batch.avatar_rigid = !skinned;
+                body_batch.avatar_skinning = skinned;
+                if (!skinned)
+                {
+                    body_batch.weight_offset = 0;
+                    body_batch.skin_palette = nullptr;
+                    body_batch.skin_palette_float_count = 0;
+                    body_batch.skin_joint_count = 0;
+                }
+                auto body_scene = scene;
+                body_scene.batches = &body_batch;
+                const auto body_gbuffer = [&](bool srgb, const ALMetalTexture* texture)
+                {
+                    body_batch.avatar_diffuse_srgb = srgb;
+                    body_batch.diffuse_textures[0] = texture;
+                    auto target = renderer->render(body_scene, &error);
+                    INFO(error); REQUIRE(target);
+                    return body_snapshot(*target);
+                };
+                const auto decoded = body_gbuffer(true, body_srgb.get());
+                const auto raw = body_gbuffer(false, body_srgb.get());
+                const auto raw_oracle = body_gbuffer(true, body_linear.get());
+                const auto decoded_again = body_gbuffer(true, body_srgb.get());
+                CHECK(decoded.colors == decoded_again.colors);
+                CHECK(raw.colors == raw_oracle.colors);
+                CHECK(decoded.depth == raw.depth);
+                CHECK(decoded.depth == raw_oracle.depth);
+                CHECK(decoded.depth == decoded_again.depth);
+                const auto sample = skinned ? avatar_translated : center;
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    CHECK(std::abs(int(decoded.colors[0][sample + channel]) - body_pixel[channel]) <= 1);
+                    CHECK(std::abs(int(raw.colors[0][sample + channel]) -
+                        body_encode(body_pixel[channel] / 255.f)) <= 1);
+                    CHECK(raw.colors[0][sample + channel] > decoded.colors[0][sample + channel]);
+                }
+                for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+                    CHECK(decoded.colors[0][pixel * 4 + 3] == raw.colors[0][pixel * 4 + 3]);
+                for (std::size_t attachment = 1; attachment < 4; ++attachment)
+                    CHECK(decoded.colors[attachment] == raw.colors[attachment]);
+                CHECK(std::bit_cast<float>(raw.depth[sample / 4]) == 0.625f);
+
+                // Texture alpha is not sRGB encoded: both views cross the
+                // same cutout threshold and leave the identical clear depth.
+                body_batch.alpha_cutoff = 0.51f;
+                const auto rejected_decoded = body_gbuffer(true, body_srgb.get());
+                const auto rejected_raw = body_gbuffer(false, body_srgb.get());
+                CHECK(rejected_decoded.colors == rejected_raw.colors);
+                CHECK(rejected_decoded.depth == rejected_raw.depth);
+                CHECK(rejected_raw.depth[sample / 4] != raw.depth[sample / 4]);
+
+                auto body_forward_batch = avatar_alpha_batch;
+                body_forward_batch.avatar_rigid = !skinned;
+                body_forward_batch.avatar_skinning = skinned;
+                body_forward_batch.pre_water_alpha_writes_coverage = true;
+                if (!skinned)
+                {
+                    body_forward_batch.weight_offset = 0;
+                    body_forward_batch.skin_palette = nullptr;
+                    body_forward_batch.skin_palette_float_count = 0;
+                    body_forward_batch.skin_joint_count = 0;
+                }
+                auto body_forward_scene = opaque_forward_scene;
+                body_forward_scene.batches = &body_forward_batch;
+                const auto body_forward = [&](bool srgb, const ALMetalTexture* texture)
+                {
+                    body_forward_batch.avatar_diffuse_srgb = srgb;
+                    body_forward_batch.diffuse_textures[0] = texture;
+                    auto target = renderer->renderOpaquePostDeferred(body_forward_scene, &error);
+                    INFO(error); REQUIRE(target);
+                    return body_snapshot(*target);
+                };
+                const auto forward_decoded = body_forward(true, body_srgb.get());
+                const auto forward_raw = body_forward(false, body_srgb.get());
+                const auto forward_oracle = body_forward(true, body_linear.get());
+                const auto forward_again = body_forward(true, body_srgb.get());
+                CHECK(forward_raw.colors == forward_oracle.colors);
+                CHECK(forward_decoded.colors == forward_again.colors);
+                CHECK(forward_decoded.depth == forward_raw.depth);
+                CHECK(forward_raw.depth == forward_oracle.depth);
+                CHECK(forward_decoded.depth == forward_again.depth);
+                CHECK(std::abs(half_to_float(body_half(forward_raw, sample)) -
+                    half_to_float(body_half(forward_decoded, sample))) > 0.01f);
+                for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+                    CHECK(body_half(forward_decoded, pixel * 4 + 3) ==
+                          body_half(forward_raw, pixel * 4 + 3));
+                CHECK(half_to_float(body_half(forward_raw, sample + 3)) > 0.5f);
+                CHECK(half_to_float(body_half(forward_raw, sample + 3)) < 1.f);
+                CHECK(std::bit_cast<float>(forward_raw.depth[sample / 4]) == 0.625f);
+            }
+        }
 
         // Transparent hair and skirts submit the same mesh two or three
         // times. Prove the native sidecar retains the GL owner's per-draw

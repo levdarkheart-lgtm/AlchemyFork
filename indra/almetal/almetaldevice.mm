@@ -123,6 +123,50 @@ bool ALMetalCommandCompletion::isComplete() const noexcept
            status == MTLCommandBufferStatusError;
 }
 
+ALMetalCommandTimingStatus ALMetalCommandCompletion::gpuTime(
+    ALMetalCommandGPUTime& output) const noexcept
+{
+    output = {};
+    if (!mImpl || !mImpl->command_buffer ||
+        mImpl->abandoned.load(std::memory_order_acquire))
+    {
+        return ALMetalCommandTimingStatus::failed;
+    }
+    const MTLCommandBufferStatus status = mImpl->command_buffer.status;
+    if (status == MTLCommandBufferStatusError)
+    {
+        return ALMetalCommandTimingStatus::failed;
+    }
+    if (status != MTLCommandBufferStatusCompleted)
+    {
+        return ALMetalCommandTimingStatus::pending;
+    }
+
+    // Metal exposes these values only after completion. Reading the retained
+    // command directly avoids a completion-handler publication race and any
+    // owner -> ticket -> command -> callback ownership cycle.
+    const double start = mImpl->command_buffer.GPUStartTime;
+    const double end = mImpl->command_buffer.GPUEndTime;
+    if (!std::isfinite(start) || !std::isfinite(end) ||
+        !(start > 0.0) || !(end > start))
+    {
+        return ALMetalCommandTimingStatus::failed;
+    }
+    const double nanoseconds = std::round((end - start) * 1'000'000'000.0);
+    // The strict upper bound also avoids converting rounded 2^64 to uint64_t
+    // on platforms where double cannot represent UINT64_MAX exactly.
+    if (!std::isfinite(nanoseconds) || !(nanoseconds > 0.0) ||
+        !(nanoseconds < static_cast<double>(
+            std::numeric_limits<std::uint64_t>::max())))
+    {
+        return ALMetalCommandTimingStatus::failed;
+    }
+    output.start_seconds = start;
+    output.end_seconds = end;
+    output.elapsed_nanoseconds = static_cast<std::uint64_t>(nanoseconds);
+    return ALMetalCommandTimingStatus::ready;
+}
+
 struct ALMetalCommandBuffer::Impl
 {
     id<MTLDevice> device = nil;

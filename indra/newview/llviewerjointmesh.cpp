@@ -56,6 +56,7 @@
 
 #include <algorithm>
 #include <array>
+#include <iterator>
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
@@ -83,6 +84,68 @@ LLViewerJointMesh::~LLViewerJointMesh()
 }
 
 const S32 NUM_AXES = 3;
+
+#if LL_DARWIN
+namespace
+{
+    struct AvatarCaptureDiffuse
+    {
+        LLPointer<LLGLTexture> texture;
+        bool srgb = true;
+    };
+
+    AvatarCaptureDiffuse resolve_avatar_capture_diffuse(LLGLTexture* requested)
+    {
+        const auto ready = [](LLGLTexture* texture)
+        {
+            if (!texture) return false;
+            LLImageGL* image = texture->getGLTexture();
+            if (!image || !image->getMetalTexture())
+            {
+                // setActive clears DELETED, which the fetched texture's
+                // immediate-update path must see before attempting revival.
+                texture->forceImmediateUpdate();
+                image = texture->getGLTexture();
+            }
+            texture->setActive();
+            if (image) image->forceUpdateBindStats();
+            return image && image->getMetalTexture();
+        };
+
+        AvatarCaptureDiffuse result{requested, true};
+        if (!requested || ready(requested)) return result;
+
+        // LLViewerTexture::bindDefaultImage's viewer-owned Default/Null
+        // images are the original slow-bind substitutes. Resolve their
+        // actual owners without touching a logical/UI texture slot. Never
+        // recurse through a missing default or accept a previous binding.
+        LLPointer<LLGLTexture> defaults[] = {
+            LLViewerFetchedTexture::sDefaultImagep.get(),
+            LLViewerTexture::sNullImagep.get(),
+        };
+        for (std::size_t index = 0; index < std::size(defaults); ++index)
+        {
+            LLGLTexture* fallback = defaults[index].get();
+            if (!fallback || fallback == requested ||
+                (index != 0 && fallback == defaults[0].get()))
+            {
+                continue;
+            }
+            if (ready(fallback))
+            {
+                result.texture = fallback;
+                // Slow bindDefaultImage selects raw AnisoWrap, rather than
+                // retaining the body's requested sRGB-decode sampler.
+                result.srgb = false;
+                return result;
+            }
+        }
+        // Preserve the original owner when no substitute is usable. The
+        // capture validator must reject the draw, not silently omit it.
+        return result;
+    }
+}
+#endif
 
 // register layoud
 // rotation X 0-n
@@ -430,20 +493,23 @@ void LLViewerJointMesh::captureMetalWorldAvatarShape(bool is_dummy)
         }
     }
 
+    const AvatarCaptureDiffuse sampled =
+        resolve_avatar_capture_diffuse(diffuse);
+
     // A manual test GL name has no native texture owner. Passing a null
     // texture deliberately fails the native face closed while the complete GL
     // fallback retains the upload-preview behavior.
     const U32 start = mMesh->mFaceVertexOffset;
     const U32 end = start + mMesh->mFaceVertexCount - 1;
     gPipeline.captureMetalWorldAvatarBatch(
-        *this, mFace->getVertexBuffer(), diffuse, start, end,
-        mMesh->mFaceIndexCount, mMesh->mFaceIndexOffset);
+        *this, mFace->getVertexBuffer(), sampled.texture.get(), start, end,
+        mMesh->mFaceIndexCount, mMesh->mFaceIndexOffset, sampled.srgb);
     const F32 draw_alpha = mTestImageName
         ? 1.f
         : (is_dummy ? LLVOAvatar::getDummyColor().mV[VW]
                     : mColor.mV[VW]);
     gPipeline.captureMetalSpotShadowAvatarBatch(
-        *this, mFace->getVertexBuffer(), diffuse, start, end,
+        *this, mFace->getVertexBuffer(), sampled.texture.get(), start, end,
         mMesh->mFaceIndexCount, mMesh->mFaceIndexOffset,
         mMesh->hasWeights(), draw_alpha);
 #else

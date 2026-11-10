@@ -84,6 +84,7 @@
 #include "../almetal/almetaltextureops.h"
 #include "../almetal/almetaluirenderer.h"
 #include "../almetal/almetalworld.h"
+#include "../almetal/almetalavatarresources.h"
 #include "../almetal/almetalframecapture.h"
 #include "../almetal/almetalstagetiming.h"
 #include "../almetal/almetalshadowindirect.h"
@@ -441,17 +442,6 @@ struct LLPipeline::MetalWorldSimpleCapture
 {
     static constexpr U32 max_failed_frames = 120;
     static constexpr U32 max_world_ui_probe_attempts = 3;
-
-    struct ImpostorTextures
-    {
-        std::array<std::unique_ptr<ALMetalTexture>, 4> textures;
-        const ALMetalDevice* device = nullptr;
-        U32 width = 0;
-        U32 height = 0;
-        bool normal_hdr = false;
-        bool hdr = false;
-        bool ready = false;
-    };
 
     struct RendererBuild
     {
@@ -894,7 +884,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 impostor_directional_shadow_frame = std::numeric_limits<U32>::max();
     bool impostor_legacy_alpha_uses_shadows = false;
     LLUUID impostor_bake_avatar_id;
-    std::unordered_map<LLUUID, ImpostorTextures> impostor_textures;
+    std::shared_ptr<ALMetalAvatarResources> avatar_resources =
+        std::make_shared<ALMetalAvatarResources>();
+    bool impostor_profile = false;
+    const MetalWorldSimpleCapture* profile_source = nullptr;
 };
 
 static bool metalWorldPresentationRequested()
@@ -1733,6 +1726,9 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     {
         mMetalWorldSimpleCapture =
             std::make_unique<MetalWorldSimpleCapture>();
+        if (mMetalProbeWorldSimpleCapture)
+            mMetalWorldSimpleCapture->avatar_resources =
+                mMetalProbeWorldSimpleCapture->avatar_resources;
     }
     mMetalHeroWorldCaptureActive = true;
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
@@ -1973,6 +1969,9 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     {
         mMetalWorldSimpleCapture =
             std::make_unique<MetalWorldSimpleCapture>();
+        if (mMetalProbeWorldSimpleCapture)
+            mMetalWorldSimpleCapture->avatar_resources =
+                mMetalProbeWorldSimpleCapture->avatar_resources;
     }
     mMetalReflectionWorldCaptureActive = true;
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
@@ -2162,6 +2161,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     {
         mMetalWorldSimpleCapture =
             std::make_unique<MetalWorldSimpleCapture>();
+        if (mMetalProbeWorldSimpleCapture)
+            mMetalWorldSimpleCapture->avatar_resources =
+                mMetalProbeWorldSimpleCapture->avatar_resources;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     ALMetalDevice* device = getViewerMetalDevice();
@@ -2572,7 +2574,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_directional_shadow_frame =
             std::numeric_limits<U32>::max();
         capture.impostor_bake_avatar_id.setNull();
-        capture.impostor_textures.clear();
+        capture.avatar_resources->discardIncompatible(
+            *device, hdrEnabled(), LLRender::sGBufferNormHDR);
         capture.attempted = false;
         capture.local_lighting_attempted = false;
         capture.local_lighting_failed_frames = 0;
@@ -3029,6 +3032,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.avatar_palettes.clear();
     capture.width = capture_width;
     capture.height = capture_height;
+    if (capture.normal_hdr != LLRender::sGBufferNormHDR ||
+        capture.hdr != hdrEnabled())
+        capture.avatar_resources->discardIncompatible(
+            *capture.device, hdrEnabled(), LLRender::sGBufferNormHDR);
     capture.normal_hdr = LLRender::sGBufferNormHDR;
     capture.hdr = hdrEnabled();
     capture.reverse_z = LLRender::sReverseZ;
@@ -4325,7 +4332,7 @@ void LLPipeline::beginMetalWorldImpostorPass()
 }
 
 void LLPipeline::beginMetalImpostorBakeCapture(
-    const LLUUID& avatar_id, U32 width, U32 height)
+    const LLUUID& avatar_id, U32 width, U32 height, bool for_profile)
 {
     if (width == 0 || height == 0)
     {
@@ -4335,6 +4342,9 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     {
         mMetalWorldSimpleCapture =
             std::make_unique<MetalWorldSimpleCapture>();
+        if (mMetalProbeWorldSimpleCapture)
+            mMetalWorldSimpleCapture->avatar_resources =
+                mMetalProbeWorldSimpleCapture->avatar_resources;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (capture.frame_active)
@@ -4478,7 +4488,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_directional_shadow_frame =
             std::numeric_limits<U32>::max();
         capture.impostor_bake_avatar_id.setNull();
-        capture.impostor_textures.clear();
+        capture.avatar_resources->discardIncompatible(
+            *device, hdrEnabled(), LLRender::sGBufferNormHDR);
         capture.attempted = false;
         capture.local_lighting_attempted = false;
         capture.local_lighting_failed_frames = 0;
@@ -4539,6 +4550,10 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     capture.avatar_palettes.clear();
     capture.width = width;
     capture.height = height;
+    if (capture.normal_hdr != LLRender::sGBufferNormHDR ||
+        capture.hdr != hdrEnabled())
+        capture.avatar_resources->discardIncompatible(
+            *capture.device, hdrEnabled(), LLRender::sGBufferNormHDR);
     capture.normal_hdr = LLRender::sGBufferNormHDR;
     capture.hdr = hdrEnabled();
     capture.reverse_z = LLRender::sReverseZ;
@@ -4547,6 +4562,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     capture.frame_active = true;
     capture.pass_active = false;
     capture.impostor_bake = true;
+    capture.impostor_profile = for_profile;
     capture.impostor_bake_avatar_id = avatar_id;
     capture.impostor_bake_native_valid = true;
     capture.impostor_bake_native_complete = false;
@@ -11567,7 +11583,7 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
         scene.normal_hdr = capture.normal_hdr;
         scene.hdr = capture.hdr;
         scene.reverse_z = capture.reverse_z;
-        scene.stamp_opaque_coverage = true;
+        scene.stamp_opaque_coverage = !capture.impostor_profile;
         scene.reflection_probes = has_shiny
             ? &capture.impostor_reflection_probes : nullptr;
         scene.hero_probe = has_shiny && hero_active
@@ -14067,9 +14083,11 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
         return true;
     };
 
+    const MetalWorldSimpleCapture& source = capture.profile_source
+        ? *capture.profile_source : capture;
     const ALMetalTextureDescriptor* direct =
-        capture.direct_directional_shadow_texture
-            ? &capture.direct_directional_shadow_texture->descriptor()
+        source.direct_directional_shadow_texture
+            ? &source.direct_directional_shadow_texture->descriptor()
             : nullptr;
     bool direct_complete = direct &&
         direct->type == ALMetalTextureType::texture_2d_array &&
@@ -14079,10 +14097,10 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
     for (U32 cascade = 0; direct_complete && cascade < 4; ++cascade)
     {
         direct_complete = (unbuilt & (1u << cascade)) != 0 ||
-            capture.direct_directional_shadow_valid[cascade];
+            source.direct_directional_shadow_valid[cascade];
     }
     return direct_complete &&
-        publish(capture.direct_directional_shadow_texture.get());
+        publish(source.direct_directional_shadow_texture.get());
 }
 
 void LLPipeline::countMetalShadowBatches(
@@ -15920,7 +15938,8 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
 
 void LLPipeline::captureMetalWorldAvatarBatch(
     LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
-    LLGLTexture* texture, U32 start, U32 end, U32 count, U32 offset)
+    LLGLTexture* texture, U32 start, U32 end, U32 count, U32 offset,
+    bool diffuse_srgb)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active ||
@@ -15998,6 +16017,7 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     batch.alpha_cutoff_bias = false;
     batch.alpha_cutoff = avatar_alpha
         ? 0.f : LLDrawPoolAvatar::sMinimumAlpha;
+    batch.avatar_diffuse_srgb = diffuse_srgb;
     batch.avatar_rigid = !capture.avatar_skinned;
     batch.avatar_skinning = capture.avatar_skinned;
     batch.avatar_cloth = capture.avatar_cloth;
@@ -16178,20 +16198,11 @@ void LLPipeline::captureMetalWorldImpostorBatch(
         capture.avatar_palettes.clear();
         return;
     }
-    const auto textures_it = capture.impostor_textures.find(avatar.getID());
-    const bool has_textures =
-        textures_it != capture.impostor_textures.end() &&
-        textures_it->second.ready &&
-        textures_it->second.device == capture.device &&
-        textures_it->second.normal_hdr == capture.normal_hdr &&
-        textures_it->second.hdr == capture.hdr &&
-        std::all_of(
-            textures_it->second.textures.begin(),
-            textures_it->second.textures.end(),
-            [](const std::unique_ptr<ALMetalTexture>& texture)
-            {
-                return texture != nullptr;
-            });
+    ALMetalAvatarResources::Key key{};
+    std::copy_n(avatar.getID().mData, key.size(), key.begin());
+    auto textures = capture.avatar_resources->find(
+        key, *capture.device, capture.hdr, capture.normal_hdr);
+    const bool has_textures = static_cast<bool>(textures);
     if (!has_textures)
     {
         capture.markIncomplete(__LINE__);
@@ -16204,8 +16215,6 @@ void LLPipeline::captureMetalWorldImpostorBatch(
         return;
     }
 
-    const MetalWorldSimpleCapture::ImpostorTextures& textures =
-        textures_it->second;
     const LLMatrix4a& modelview =
         LLViewerCamera::getCurrent().getModelview();
     LLMatrix4a modelview_projection;
@@ -16214,13 +16223,14 @@ void LLPipeline::captureMetalWorldImpostorBatch(
 
     ALMetalWorldSimpleBatch batch;
     batch.impostor = true;
+    batch.impostor_texture_owner = textures;
     batch.impostor_debug_outline = debug_outline;
     batch.impostor_debug_line_width = debug_outline_width;
     for (std::size_t texture = 0;
          texture < batch.impostor_textures.size(); ++texture)
     {
         batch.impostor_textures[texture] =
-            textures.textures[texture].get();
+            textures->textures[texture].get();
     }
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
@@ -16311,16 +16321,22 @@ void LLPipeline::publishMetalImpostorBake(LLVOAvatar& avatar)
             });
         if (native_ready)
         {
-            MetalWorldSimpleCapture::ImpostorTextures& published =
-                capture.impostor_textures[avatar.getID()];
+            ALMetalAvatarResources::Record published;
             published.textures = std::move(textures);
             published.device = capture.device;
             published.width = width;
             published.height = height;
             published.normal_hdr = capture.normal_hdr;
             published.hdr = capture.hdr;
-            published.ready = true;
-            LL_DEBUGS("Metal")
+            ALMetalAvatarResources::Key key{};
+            std::copy_n(avatar.getID().mData, key.size(), key.begin());
+            std::string publication_error;
+            native_ready = capture.avatar_resources->publish(
+                key, std::move(published), &publication_error);
+            if (!native_ready)
+                LL_WARNS("Metal") << "Could not publish avatar impostor: "
+                    << publication_error << LL_ENDL;
+            if (native_ready) LL_DEBUGS("Metal")
                 << "Published native avatar-impostor G-buffer "
                 << avatar.getID() << " at " << width << "x" << height
                 << " without a legacy render-target readback" << LL_ENDL;
@@ -16338,9 +16354,16 @@ void LLPipeline::publishMetalImpostorBake(LLVOAvatar& avatar)
 
 void LLPipeline::releaseMetalImpostorTextures(const LLUUID& avatar_id)
 {
+    ALMetalAvatarResources::Key key{};
+    std::copy_n(avatar_id.mData, key.size(), key.begin());
+    for (const auto* owner :
+         { &mMetalWorldSimpleCapture, &mMetalProbeWorldSimpleCapture })
+    {
+        if (!*owner) continue;
+        (*owner)->avatar_resources->erase(key);
+    }
     if (mMetalWorldSimpleCapture)
     {
-        mMetalWorldSimpleCapture->impostor_textures.erase(avatar_id);
         if (mMetalWorldSimpleCapture->impostor_bake_avatar_id == avatar_id)
         {
             mMetalWorldSimpleCapture->impostor_bake_target.reset();
@@ -17024,7 +17047,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.normal_hdr = capture.normal_hdr;
     scene.hdr = capture.hdr;
     scene.reverse_z = capture.reverse_z;
-    scene.stamp_opaque_coverage = impostor_bake;
+    scene.stamp_opaque_coverage = impostor_bake && !capture.impostor_profile;
     scene.wireframe = capture.wireframe;
     // CPU mechanism tests are positive, while GPU results depend on the
     // workload. Keep this nonpersistent trial control off by default until
@@ -19543,6 +19566,8 @@ void LLPipeline::releaseAllRenderResources()
     mWaterPrimitives.release();
     mWaterPatchPrimitives.release();
     mAttachmentSpans.clear();
+    mMetalAvatarProfileRequests.clear();
+    mMetalAttachmentProfiles.clear();
 
     mGLResourcesLive = false;
 }
@@ -30909,102 +30934,104 @@ void LLPipeline::renderRiggedGroups(LLRenderPass* pass, U32 type, bool texture)
 
 void LLPipeline::profileAvatar(LLVOAvatar* avatar, bool profile_attachments)
 {
-    if (profile_attachments ? !mAttachmentSpans.empty() : avatar->isProfilePending())
-    { // the last profile's times are still on their way; another would throw them away
+    if (!avatar || avatar->isDead() || !avatar->mDrawable || avatar->isTooSlow())
         return;
-    }
 
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-
-    // don't continue to profile an avatar that is known to be too slow
-    llassert(!avatar->isTooSlow());
-
-    LLGLSLShader* cur_shader = LLGLSLShader::sCurBoundShaderPtr;
-
-    // Scissoring OFF for the duration. This is reached from LLFloaterPerformance::draw(),
-    // i.e. from inside gViewerWindow->draw(), where the UI has the scissor test enabled and
-    // clipped to its dirty rectangle. Inherited, that rectangle clips the avatar render AND
-    // the target clear below -- so the GPU timing this function exists to measure was taken
-    // on a partially clipped draw, which is the one thing it must not be.
-    LLGLDisable no_scissor(GL_SCISSOR_TEST);
-
-    // The depth and colour state display() gives a world render. No caller has it: the UI's
-    // LLGLSUIDefault turns depth testing and depth writes off, and the autotune caller runs
-    // from the main loop's work queue, outside display(), where neither is on. Without it
-    // the clear below leaves depth alone and the opaque pools draw untested, so the time
-    // measured is not the avatar's.
-    LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_LEQUAL);
-    LLGLSColorMask color_mask(true, true);
-
-    // The globals generateImpostor overwrites are saved here rather than there, because the
-    // display() path repairs them itself immediately afterwards and this path does not: it
-    // returns into the middle of a UI draw. sCull in particular is left pointing at
-    // generateImpostor's function-static cull result, which the next updateCull would
-    // otherwise be the first thing to notice.
-    LLCullResult* saved_cull = sCull;
-    const LLCamera saved_camera = LLViewerCamera::getCurrent();
-
-    mRT->deferredScreen.bindTarget();
-    mRT->deferredScreen.clear();
-
+    // The original may be called while a floater is drawing. Queue the same
+    // isolated subjects for the next main-view boundary instead of changing
+    // the active world/UI transaction or measuring CPU collection as GPU time.
+    const auto enqueue = [this, avatar](const LLUUID& attachment_id)
+    {
+        const auto duplicate = std::find_if(
+            mMetalAvatarProfileRequests.begin(), mMetalAvatarProfileRequests.end(),
+            [&](const MetalAvatarProfileRequest& request)
+            {
+                return request.avatar_id == avatar->getID() &&
+                    request.attachment_id == attachment_id;
+            });
+        if (duplicate == mMetalAvatarProfileRequests.end())
+            mMetalAvatarProfileRequests.push_back({avatar->getID(), attachment_id});
+    };
     if (!profile_attachments)
     {
-        // profile entire avatar all at once and readback asynchronously
-        avatar->placeProfileQuery();
-
-        LLTimer cpu_timer;
-
-        generateImpostor(avatar, false, true);
-
-        avatar->mCPURenderTime = (F32)cpu_timer.getElapsedTimeF32() * 1000.f;
-
-        // read by the avatar's idleUpdate() once its frame has been
-        avatar->endProfileQuery();
+        if (!avatar->isProfilePending()) enqueue(LLUUID::null);
+        return;
     }
-    else
+    if (!mMetalAttachmentProfiles.empty()) return;
+    for (const auto& entry : avatar->mAttachmentPoints)
+        for (const auto& attached : entry.second->mAttachedObjects)
+            if (attached && !attached->isDead()) enqueue(attached->getID());
+}
+
+std::shared_ptr<const ALMetalCommandCompletion> LLPipeline::profileMetalAvatar(
+    LLVOAvatar& avatar, LLViewerObject* attachment)
+{
+    if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->renderer ||
+        mMetalWorldSimpleCapture->device != getViewerMetalDevice() ||
+        mMetalWorldSimpleCapture->frame_active ||
+        isMetalProbeFaceCaptureActive() || mRT != &mMainRT ||
+        !avatar.isFullyLoaded() ||
+        !mMetalWorldSimpleCapture->renderer->commandBatchSlotAvailable() ||
+        !mRT->deferredScreen.isComplete())
+        return {};
+
+    gGL.flush();
+    LLGLDisable no_scissor(GL_SCISSOR_TEST);
+    LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_LEQUAL);
+    LLGLSColorMask color_mask(true, true);
+    LLCullResult* saved_cull = sCull;
+    const LLCamera saved_camera = LLViewerCamera::getCurrent();
+    LLGLSLShader* saved_shader = LLGLSLShader::sCurBoundShaderPtr;
+
+    // Borrow the already-warmed renderer, but give this measurement entirely
+    // separate per-view targets/state. No main/probe publication is replaced.
+    auto profile = std::make_unique<MetalWorldSimpleCapture>();
+    profile->device = mMetalWorldSimpleCapture->device;
+    profile->avatar_resources = mMetalWorldSimpleCapture->avatar_resources;
+    profile->profile_source = mMetalWorldSimpleCapture.get();
+    profile->impostor_screen_space_reflections =
+        mMetalWorldSimpleCapture->impostor_screen_space_reflections;
+    profile->renderer = std::move(mMetalWorldSimpleCapture->renderer);
+    auto saved = std::move(mMetalWorldSimpleCapture);
+    mMetalWorldSimpleCapture = std::move(profile);
+    auto restore = [this, saved = std::move(saved), saved_cull,
+                    saved_camera, saved_shader](void*) mutable
     {
-        // profile attachments one at a time, each in a span of gGL's pool, read by readAttachmentTimes() once their
-        // frame has been
-        ALQueryPool& queries = gGL.queries();
-        LLVOAvatar::attachment_map_t::iterator iter;
-        LLVOAvatar::attachment_map_t::iterator begin = avatar->mAttachmentPoints.begin();
-        LLVOAvatar::attachment_map_t::iterator end = avatar->mAttachmentPoints.end();
-
-        for (iter = begin;
-            iter != end;
-            ++iter)
-        {
-            LLViewerJointAttachment* attachment = iter->second;
-            for (LLViewerJointAttachment::attachedobjs_vec_t::iterator attachment_iter = attachment->mAttachedObjects.begin();
-                attachment_iter != attachment->mAttachedObjects.end();
-                ++attachment_iter)
-            {
-                LLViewerObject* attached_object = attachment_iter->get();
-                if (attached_object)
-                {
-                    ALQuerySpan span = queries.beginSpan();
-                    generateImpostor(avatar, false, true, attached_object);
-                    queries.endSpan(span);
-                    mAttachmentSpans.emplace_back(attached_object, span);
-                }
-            }
-        }
-    }
-
-    mRT->deferredScreen.flush();
-
-    sCull = saved_cull;
-    LLViewerCamera::setCurrent(saved_camera);
-
-    // generateImpostor's clear colour is its own business everywhere else, because display()
-    // sets one before each clear it cares about. Nothing does that on the way back into a UI
-    // draw, so put it back to the ambient here.
-    gGL.setClearColor(LLColor4::transparent);
-
-    if (cur_shader)
-    {
-        cur_shader->bind();
-    }
+        auto& measured = *mMetalWorldSimpleCapture;
+        measured.renderer->cancelCommandBatch();
+        saved->renderer = std::move(measured.renderer);
+        saved->renderer->setFrameData(saved->frame_data);
+        mMetalWorldSimpleCapture = std::move(saved);
+        sCull = saved_cull;
+        LLViewerCamera::setCurrent(saved_camera);
+        if (saved_shader) saved_shader->bind();
+        else if (LLGLSLShader::sCurBoundShaderPtr)
+            LLGLSLShader::sCurBoundShaderPtr->unbind();
+        gGL.setClearColor(LLColor4::transparent);
+    };
+    std::unique_ptr<void, decltype(restore)> restore_scope(this, std::move(restore));
+    auto& measured = *mMetalWorldSimpleCapture;
+    std::string error;
+    if (!measured.renderer->beginCommandBatch(
+            attachment ? "Alchemy native attachment GPU profile"
+                       : "Alchemy native complete-avatar GPU profile", &error))
+        return {};
+    auto completion = measured.renderer->commandBatchCompletion();
+    // This queued profile runs just after the current main sun shadows,
+    // before the later world lighting pass normally refreshes this mirror.
+    // Original profiling samples those retained main-view shadow matrices.
+    packDeferredConstants();
+    LLTimer cpu_timer;
+    generateImpostor(&avatar, false, true, attachment);
+    const F32 cpu_ms = cpu_timer.getElapsedTimeF32() * 1000.f;
+    if (!completion || !measured.impostor_bake_attempted ||
+        !measured.impostor_bake_native_valid ||
+        !measured.impostor_bake_native_complete ||
+        !measured.impostor_bake_target ||
+        !measured.renderer->commitCommandBatch(&error))
+        return {};
+    if (!attachment) avatar.mCPURenderTime = cpu_ms;
+    return completion;
 }
 
 void LLPipeline::drawFarPlaneQuad(U32 depth_func, const LLColor4* color)
@@ -31116,25 +31143,61 @@ void LLPipeline::clearSceneMap()
 
 void LLPipeline::readAttachmentTimes()
 {
-    if (mAttachmentSpans.empty())
+    std::erase_if(mMetalAttachmentProfiles, [](const auto& timed)
     {
+        ALMetalCommandGPUTime time;
+        const auto status = timed.second->gpuTime(time);
+        if (status == ALMetalCommandTimingStatus::pending) return false;
+        if (status == ALMetalCommandTimingStatus::ready &&
+            timed.first && !timed.first->isDead())
+        {
+            timed.first->mGPURenderTime = time.elapsed_nanoseconds / 1000000.f;
+            static U32 reported_native_profiles = 0;
+            if (reported_native_profiles < 16)
+            {
+                ++reported_native_profiles;
+                LL_INFOS("AvatarRenderPipeline")
+                    << "Native attachment GPU profile completed: gpu_ms="
+                    << timed.first->mGPURenderTime << LL_ENDL;
+            }
+        }
+        return true;
+    });
+}
+
+void LLPipeline::processMetalAvatarProfiles()
+{
+    // At most one isolated subject per main frame. Requests made before the
+    // renderer warms remain queued; no synchronous compilation or GPU wait.
+    if (mMetalAvatarProfileRequests.empty() || !isMainWorldPass()) return;
+    const auto request = mMetalAvatarProfileRequests.front();
+    auto* object = gObjectList.findObject(request.avatar_id);
+    LLVOAvatar* avatar = object && object->isAvatar()
+        ? static_cast<LLVOAvatar*>(object) : nullptr;
+    LLViewerObject* attachment = request.attachment_id.isNull() ? nullptr
+        : gObjectList.findObject(request.attachment_id);
+    if (!avatar || avatar->isDead() || avatar->isTooSlow() ||
+        (!request.attachment_id.isNull() &&
+         (!attachment || attachment->isDead() || attachment->getAvatar() != avatar)) ||
+        (request.attachment_id.isNull() && avatar->isProfilePending()))
+    {
+        mMetalAvatarProfileRequests.erase(mMetalAvatarProfileRequests.begin());
         return;
     }
-    const ALQueryPool& queries = gGL.queries();
-    std::erase_if(mAttachmentSpans, [&queries](const auto& timed)
+    auto completion = profileMetalAvatar(*avatar, attachment);
+    if (!completion)
     {
-        U64 nanoseconds = 0;
-        switch (queries.result(timed.second, nanoseconds))
-        {
-        case ALQueryPool::Status::Ready:
-            timed.first->mGPURenderTime = nanoseconds / 1000000.f;
-            return true;
-        case ALQueryPool::Status::Expired:
-            return true;
-        default:
-            return false;
-        }
-    });
+        // A loading subject cannot monopolize profiling of every other avatar.
+        std::rotate(mMetalAvatarProfileRequests.begin(),
+                    mMetalAvatarProfileRequests.begin() + 1,
+                    mMetalAvatarProfileRequests.end());
+        return;
+    }
+    if (attachment)
+        mMetalAttachmentProfiles.emplace_back(attachment, std::move(completion));
+    else
+        avatar->mGPUTimer.attachNativeCompletion(std::move(completion));
+    mMetalAvatarProfileRequests.erase(mMetalAvatarProfileRequests.begin());
 }
 
 #if LL_DARWIN
@@ -31556,7 +31619,8 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
     // and those are exactly what light the billboard afterwards. Narrowed AFTER the G-buffer
     // pass, which needs all of them, and restored at the end of the function because the
     // preview path draws into a target its caller still owns.
-    LLRenderTarget* bake_target = LLRenderTarget::getCurrentBoundTarget();
+    LLRenderTarget* bake_target = for_profile
+        ? nullptr : LLRenderTarget::getCurrentBoundTarget();
     auto forward_only_attachments = [bake_target]()
     {
         if (bake_target)
@@ -31617,9 +31681,9 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
         }
     };
 
-    if (preview_avatar || for_profile)
+    if (preview_avatar)
     {
-        // previews and profiles don't care about imposters
+        // Preview targets are supplied by the dynamic texture owner.
         renderGeomDeferred(camera);
         stamp_opaque_coverage();
         forward_only_attachments();
@@ -31627,9 +31691,12 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
     }
     else
     {
-        avatar->mImpostor.clear();
+        if (!for_profile) avatar->mImpostor.clear();
 #if LL_DARWIN
-        beginMetalImpostorBakeCapture(avatar->getID(), resX, resY);
+        beginMetalImpostorBakeCapture(avatar->getID(),
+            for_profile ? mRT->deferredScreen.getWidth() : resX,
+            for_profile ? mRT->deferredScreen.getHeight() : resY,
+            for_profile);
 #endif
         renderGeomDeferred(camera);
 

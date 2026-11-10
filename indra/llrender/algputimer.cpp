@@ -28,6 +28,12 @@
 
 #include "llrender.h"
 
+#if LL_DARWIN
+#include "almetaldevice.h"
+#endif
+
+#include <utility>
+
 ALQueryPool& ALGPUTimer::pool() const
 {
     return mPool ? *mPool : gGL.queries();
@@ -35,7 +41,7 @@ ALQueryPool& ALGPUTimer::pool() const
 
 bool ALGPUTimer::begin()
 {
-    if (mOpen || mPending)
+    if (mOpen || isPending())
     {
         return false;
     }
@@ -54,8 +60,42 @@ void ALGPUTimer::end()
     }
 }
 
+bool ALGPUTimer::attachNativeCompletion(
+    std::shared_ptr<const ALMetalCommandCompletion> completion)
+{
+#if LL_DARWIN
+    if (mOpen || isPending() || !completion)
+    {
+        return false;
+    }
+    mNativeCompletion = std::move(completion);
+    return true;
+#else
+    return false;
+#endif
+}
+
 bool ALGPUTimer::poll(U64& nanoseconds, bool wait)
 {
+    nanoseconds = 0;
+#if LL_DARWIN
+    if (mNativeCompletion)
+    {
+        ALMetalCommandGPUTime timing;
+        const auto status = mNativeCompletion->gpuTime(timing);
+        if (status == ALMetalCommandTimingStatus::pending)
+        {
+            return false;
+        }
+        mNativeCompletion.reset();
+        if (status == ALMetalCommandTimingStatus::ready)
+        {
+            nanoseconds = timing.elapsed_nanoseconds;
+            return true;
+        }
+        return false;
+    }
+#endif
     if (!mPending)
     {
         return false;

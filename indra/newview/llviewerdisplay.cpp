@@ -1678,6 +1678,11 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
                 gGL.matrixMode(LLRender::MM_MODELVIEW);
                 gGL.loadMatrix(saved_camera.getModelview());
                 gViewerWindow->setup3DViewport();
+#if LL_DARWIN
+                // updateImpostors restores CAMERA_WORLD; its caller restores
+                // the main camera/matrix stacks before any isolated profile.
+                gPipeline.processMetalAvatarProfiles();
+#endif
 
                 LLGLState::checkStates();
             }

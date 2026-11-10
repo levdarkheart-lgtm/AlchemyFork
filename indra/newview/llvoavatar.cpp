@@ -12967,6 +12967,15 @@ void LLVOAvatar::readProfileQuery()
     {
         mGPURenderTime = time_elapsed / 1000000.f;
 
+        static U32 reported_native_profiles = 0;
+        if (reported_native_profiles < 16)
+        {
+            ++reported_native_profiles;
+            LL_INFOS("AvatarRenderPipeline")
+                << "Native complete-avatar GPU profile completed: gpu_ms="
+                << mGPURenderTime << ", cpu_ms=" << mCPURenderTime << LL_ENDL;
+        }
+
         setDebugText(llformat("%d", (S32)(mGPURenderTime * 1000.f)));
     }
 }

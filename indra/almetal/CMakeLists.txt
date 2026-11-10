@@ -95,6 +95,7 @@ target_sources(
   almetal
   PRIVATE
     almetaldevice.mm
+    almetalavatarresources.cpp
     almetalframe.mm
     almetalframecapture.mm
     almetalpbrpreview.cpp
@@ -115,6 +116,7 @@ target_sources(
     FILE_SET HEADERS
     FILES
       almetaldevice.h
+      almetalavatarresources.h
       almetalframe.h
       almetalframecapture.h
       almetalpbrpreview.h
@@ -169,7 +171,8 @@ if(AL_BUILD_TESTS)
   al_add_test_binary(
     almetal_tests
     PROJECT almetal
-    SOURCES tests/almetal_gpu_test.mm tests/almetal_encoder_cache_test.mm
+    SOURCES tests/almetal_command_timing_test.mm
+            tests/almetal_avatar_resources_test.mm tests/almetal_gpu_test.mm tests/almetal_encoder_cache_test.mm
             tests/almetal_indexed_join_test.mm
             tests/almetal_completion_test.mm tests/almetal_world_data_test.mm
             tests/almetal_borrowed_target_test.mm
@@ -188,6 +191,7 @@ if(AL_BUILD_TESTS)
     LIBRARIES almetal
     RESOURCE_LOCK apple_gpu
   )
+  set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_gpu_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_encoder_cache_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_indexed_join_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

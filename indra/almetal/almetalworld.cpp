@@ -2393,6 +2393,27 @@ bool ALMetalWorldGBufferRenderer::commandBatchActive() const
     return mImpl && static_cast<bool>(mImpl->command_batch);
 }
 
+bool ALMetalWorldGBufferRenderer::commandBatchSlotAvailable(
+    std::size_t max_pending) const noexcept
+{
+    if (!mImpl || !mImpl->device || mImpl->command_batch) return false;
+    std::size_t pending = 0;
+    for (const auto& command : mImpl->pending_command_batches)
+    {
+        const auto status = command->status();
+        if (status == ALMetalCommandStatus::error) return false;
+        if (status != ALMetalCommandStatus::completed) ++pending;
+    }
+    return pending < std::max<std::size_t>(max_pending, 1);
+}
+
+std::shared_ptr<const ALMetalCommandCompletion>
+ALMetalWorldGBufferRenderer::commandBatchCompletion() const
+{
+    return mImpl && mImpl->command_batch
+        ? mImpl->command_batch->completionToken() : nullptr;
+}
+
 ALMetalRenderTargetPoolStats
 ALMetalWorldGBufferRenderer::renderTargetPoolStats() const noexcept
 {
@@ -7824,6 +7845,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         }
         if (batch.impostor)
         {
+            if (batch.impostor_texture_owner &&
+                !command->retainUntilCompletion(batch.impostor_texture_owner, error))
+            {
+                encoded = false;
+                break;
+            }
             WorldImpostorConstants constants{};
             std::memcpy(constants.modelview_projection,
                         batch.modelview_projection,
@@ -8229,9 +8256,13 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
              encoded && texture_index < batch.texture_count;
              ++texture_index)
         {
-            encoded = encoder->setFragmentTexture(
-                static_cast<std::uint32_t>(texture_index),
-                batch.diffuse_textures[texture_index], error);
+            encoded = avatar && !batch.avatar_diffuse_srgb
+                ? encoder->setFragmentTextureLinear(
+                      static_cast<std::uint32_t>(texture_index),
+                      batch.diffuse_textures[texture_index], error)
+                : encoder->setFragmentTexture(
+                      static_cast<std::uint32_t>(texture_index),
+                      batch.diffuse_textures[texture_index], error);
         }
         if (encoded && material)
         {
@@ -17728,9 +17759,13 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                  !batch.pre_water_pbr &&
                  texture < batch.texture_count; ++texture)
             {
-                encoded = encoder->setFragmentTexture(
-                    static_cast<std::uint32_t>(texture),
-                    batch.diffuse_textures[texture], error);
+                encoded = batch.avatar_alpha && !batch.avatar_diffuse_srgb
+                    ? encoder->setFragmentTextureLinear(
+                          static_cast<std::uint32_t>(texture),
+                          batch.diffuse_textures[texture], error)
+                    : encoder->setFragmentTexture(
+                          static_cast<std::uint32_t>(texture),
+                          batch.diffuse_textures[texture], error);
             }
             encoded = encoded && encoder->drawIndexed(
                 ALMetalPrimitiveType::triangle, batch.index_count,
