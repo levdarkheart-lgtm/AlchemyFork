@@ -49,3 +49,13 @@ session intact for now. Remaining shadow/low-DD issue needs affected geometry,
 map publication and pre-water depth, not speculative culling/quality reductions.
 Random missing shoe/outfit spikes also remain unknown, re-Wear restored occurrence.
 Full evidence/limits in CURRENT. Private artifacts/captures/cache must not upload.
+
+Latest owner asked multiple-avatar comparison. Docs-only source audit in
+docs/metal/work/active/avatar-crowd-parity.md: 17 policy methods match1eb, but native
+ART timer never opens, impostor UUID cache is capture-local and missing to swapped
+probe owner, unloaded avatars over-invalidate whole probe faces, and pending body
+textures bypass original placeholder behavior. None repaired/built this follow-up.
+Private minimal admission patch /private/tmp/alchemy-metal-avatar-loading-admission-20261110.mtpkw_z9/avatar-loading-admission.patch
+is reviewed/apply-check0, not integrated or executed. Root found no palette alias.
+Crowd visual/FPS parity remains unverified; do not conflate geometry-complexity
+limits with the missing GPU-time policy. No viewer actions for this question.

@@ -51,6 +51,16 @@ Historical HUD/upload routing, original alpha/sampler/PBR and retry fixes plus
 executed checks are preserved in the indexed avatar-hud-upload checkpoint.
 All private artifacts/caches remain ignored; no upload/release. See CURRENT.
 
+## Multi-avatar follow-up — source audit only
+
+[Detailed comparison](avatar-crowd-parity.md) preserves exact original ranking,
+full-detail limits and complexity rules. Remaining concrete native gaps: absent
+ART GPU timing, view-local impostor publication, excessive unloaded-avatar probe
+invalidation and missing body-bake default-image substitution. No source repair,
+viewer action, build or benchmark was performed for this follow-up; build68630
+does not address them. Private admission patch is reviewed but unintegrated.
+No cross-avatar palette alias was found; crowd parity stays unverified.
+
 ## Work board
 
 | ID | Work | State | Evidence / next boundary |

@@ -114,6 +114,17 @@ EEP display policy and default-probe reset preservation. Private captures/cache
 backup remain ignored and were not uploaded. All CUA phases completed.
 Translator remains fully stopped; Xcode replay remains stopped.
 
+## Multi-avatar source follow-up
+
+[Crowd comparison](../work/active/avatar-crowd-parity.md): ranking, full-detail
+limits, complexity/mute rules and update cadence match exact original (17 methods).
+Confirmed remaining gaps: GPU ART timestamp spans have no native producer;
+published impostor textures are capture-local and unavailable to the swapped
+reflection owner; unloaded avatars can invalidate an entire reflection face
+where original merely skips them; direct pending body bakes miss default-image
+fallback. None is repaired in 68630. No palette cross-avatar alias found.
+This audit changed docs only, no launch/build/crowd test or FPS claim.
+
 ## Exact next actions
 
 Keep existing live session intact while reporting the confirmed source repairs.
