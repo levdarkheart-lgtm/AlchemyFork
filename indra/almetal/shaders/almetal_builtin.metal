@@ -3060,6 +3060,40 @@ fragment float almetal_world_spot_shadow_coverage_single_fragment(
         texture.sample(texture_sampler, input.texcoord).a, 0u, constants);
 }
 
+struct ALMetalWorldSpotShadowMaterial8
+{
+    array<texture2d<float>, 8> textures [[id(0)]];
+    sampler texture_sampler [[id(8)]];
+};
+
+struct ALMetalWorldSpotShadowMaterial32
+{
+    array<texture2d<float>, 32> textures [[id(0)]];
+    sampler texture_sampler [[id(32)]];
+};
+
+fragment float almetal_world_spot_shadow_coverage_eight_material_fragment(
+    ALMetalWorldSpotShadowVaryings input [[stage_in]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(0)]],
+    constant ALMetalWorldSpotShadowMaterial8& material [[buffer(1)]])
+{
+    const uint index = min(input.texture_index, 7u);
+    return almetal_world_spot_shadow_coverage_depth(input,
+        material.textures[index].sample(material.texture_sampler, input.texcoord).a,
+        index, constants);
+}
+
+fragment float almetal_world_spot_shadow_coverage_material_fragment(
+    ALMetalWorldSpotShadowVaryings input [[stage_in]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(0)]],
+    constant ALMetalWorldSpotShadowMaterial32& material [[buffer(1)]])
+{
+    const uint index = min(input.texture_index, 31u);
+    return almetal_world_spot_shadow_coverage_depth(input,
+        material.textures[index].sample(material.texture_sampler, input.texcoord).a,
+        index, constants);
+}
+
 fragment float almetal_world_spot_shadow_coverage_eight_fragment(
     ALMetalWorldSpotShadowVaryings input [[stage_in]],
     array<texture2d<float>, 8> textures [[texture(0)]],

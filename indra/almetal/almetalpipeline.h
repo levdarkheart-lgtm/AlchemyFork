@@ -303,6 +303,7 @@ struct ALMetalSamplerDescriptor
     ALMetalSamplerAddressMode address_r = ALMetalSamplerAddressMode::repeat;
     std::uint32_t max_anisotropy = 1;
     bool normalized_coordinates = true;
+    bool support_argument_buffers = false;
     std::string label;
 };
 
@@ -320,6 +321,7 @@ public:
 
     void* nativeHandle() const noexcept;
     std::uint32_t maxAnisotropy() const noexcept;
+    bool supportsArgumentBuffers() const noexcept;
 
 private:
     struct Impl;
@@ -437,6 +439,7 @@ private:
     void invalidateIndirectBufferBindings() noexcept;
     void recordPrevalidatedDraws(std::uint32_t count) noexcept;
     friend class ALMetalShadowIndirectCommands;
+    friend class ALMetalShadowMaterials;
 };
 
 class ALMetalComputeEncoder final

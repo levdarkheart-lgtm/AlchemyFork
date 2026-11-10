@@ -14,6 +14,7 @@
 #include "../almetalpipeline.h"
 #include "../almetalresource.h"
 #include "../almetalshadowindirect.h"
+#include "../almetalshadowmaterials.h"
 #include "../almetalsculptpreview.h"
 #include "../almetalsurface.h"
 #include "../almetalterrainpaint.h"
@@ -3939,6 +3940,7 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                                            std::uint64_t static_covered_inputs = 6)
             {
                 join_scene.bulk_draws = false;
+                join_scene.material_buffers = false;
                 const auto scalar_draws_before = ALMetalDevice::encodedDrawCallCount();
                 REQUIRE(render_spot_shadow(join_scene, 0));
                 CHECK(ALMetalDevice::encodedDrawCallCount() - scalar_draws_before == joins.size());
@@ -3946,7 +3948,9 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                 REQUIRE(retained->readback(*device, 0, 0, {}, scalar_bits.data(),
                                           32 * sizeof(std::uint32_t), &error));
                 const auto before = renderer->shadowIndirectStats();
+                const auto materials_before = renderer->shadowMaterialStats();
                 join_scene.bulk_draws = true;
+                join_scene.material_buffers = true;
                 const auto merged_draws_before = ALMetalDevice::encodedDrawCallCount();
                 REQUIRE(render_spot_shadow(join_scene, 1));
                 CHECK(ALMetalDevice::encodedDrawCallCount() - merged_draws_before == physical_draws);
@@ -3954,6 +3958,17 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                 REQUIRE(retained->readback(*device, 0, 1, {}, merged_bits.data(),
                                           32 * sizeof(std::uint32_t), &error));
                 const auto after = renderer->shadowIndirectStats();
+                const auto materials_after = renderer->shadowMaterialStats();
+                if (std::any_of(joins.begin(), joins.end(), [](const auto& batch)
+                    {
+                        return !batch.terrain && !batch.avatar && batch.texture_count > 1 &&
+                            batch.coverage != ALMetalWorldSpotShadowCoverage::opaque;
+                    }))
+                {
+                    CHECK(materials_after.buffer_bind_calls > materials_before.buffer_bind_calls);
+                    CHECK(materials_after.capacity_fallbacks == 0);
+                    CHECK(materials_after.allocation_fallbacks == 0);
+                }
                 CHECK(merged_bits == scalar_bits);
                 CHECK(after.covered_input_draws - before.covered_input_draws == static_covered_inputs);
                 CHECK(after.covered_coalesced_draws - before.covered_coalesced_draws == 6 - physical_draws);
@@ -4070,6 +4085,20 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
                 CHECK(retained_after == retained_before);
             }
             error.clear();
+            // Standalone owners lack the external FrameData generation hook.
+            // Direct-only/empty valid calls must still age former materials.
+            renderer->setFrameData({});
+            configure_joins(ALMetalWorldSpotShadowCoverage::legacy_mask, 8, false, false);
+            join_scene.bulk_draws = true;
+            join_scene.material_buffers = true;
+            REQUIRE(render_spot_shadow(join_scene, 0));
+            CHECK(renderer->shadowMaterialStats().cached_tables > 0);
+            auto empty_shadow = join_scene;
+            empty_shadow.batches = nullptr;
+            empty_shadow.batch_count = 0;
+            REQUIRE(render_spot_shadow(empty_shadow, 1));
+            REQUIRE(render_spot_shadow(empty_shadow, 1));
+            CHECK(renderer->shadowMaterialStats().cached_tables == 0);
         }
     }
 }

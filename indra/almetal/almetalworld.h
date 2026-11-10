@@ -293,6 +293,9 @@ struct ALMetalWorldSpotShadowScene
     // both switches off selects the original scalar reference encoder.
     bool indirect_draws = false;
     bool bulk_draws = true;
+    // Immutable material tables preserve the existing indexed draws. The
+    // direct binding choice remains available for controlled equivalence tests.
+    bool material_buffers = true;
     // Optional producer census. Zero source count means not supplied.
     std::uint64_t source_batch_count = 0;
     std::uint64_t early_merged_source_count = 0;
@@ -2111,6 +2114,9 @@ struct ALMetalWorldFrameDataStats
     std::size_t retired_pages = 0;
 };
 
+class ALMetalShadowMaterials;
+struct ALMetalShadowMaterialStats;
+
 // Immutable draw data shared by main, ordinary probe and hero renderers. Each
 // frame owns its published ranges until every referencing command completes.
 class ALMetalWorldFrameData final
@@ -2124,6 +2130,9 @@ public:
                  std::size_t length, ALMetalWorldDataSlice& slice,
                  std::string* error = nullptr, bool deduplicate = true);
     ALMetalWorldFrameDataStats stats() const noexcept;
+    ALMetalShadowMaterials* shadowMaterials(
+        const ALMetalShaderLibrary& library, std::string* error = nullptr);
+    ALMetalShadowMaterialStats shadowMaterialStats() const noexcept;
 private:
     struct Impl;
     explicit ALMetalWorldFrameData(std::unique_ptr<Impl> impl);
@@ -2157,6 +2166,7 @@ public:
         std::string* error = nullptr);
     std::uint32_t anisotropy() const noexcept;
     void setFrameData(std::shared_ptr<ALMetalWorldFrameData> data);
+    ALMetalShadowMaterialStats shadowMaterialStats() const noexcept;
 
     // Group a caller-owned sequence of dependent world encoders into one
     // command buffer. Standalone calls retain their existing immediate

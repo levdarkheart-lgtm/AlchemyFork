@@ -783,6 +783,7 @@ struct ALMetalSamplerState::Impl
     id<MTLDevice> device = nil;
     id<MTLSamplerState> state = nil;
     std::uint32_t max_anisotropy = 1;
+    bool support_argument_buffers = false;
 };
 
 ALMetalSamplerState::ALMetalSamplerState(std::unique_ptr<Impl> impl)
@@ -820,6 +821,7 @@ std::unique_ptr<ALMetalSamplerState> ALMetalSamplerState::create(
         native_descriptor.rAddressMode = samplerAddressMode(descriptor.address_r);
         native_descriptor.maxAnisotropy = descriptor.max_anisotropy;
         native_descriptor.normalizedCoordinates = descriptor.normalized_coordinates;
+        native_descriptor.supportArgumentBuffers = descriptor.support_argument_buffers;
         id<MTLDevice> native_device = (__bridge id<MTLDevice>)device.nativeHandle();
         id<MTLSamplerState> state = [native_device newSamplerStateWithDescriptor:native_descriptor];
         if (!state)
@@ -831,6 +833,7 @@ std::unique_ptr<ALMetalSamplerState> ALMetalSamplerState::create(
         impl->device = native_device;
         impl->state = state;
         impl->max_anisotropy = descriptor.max_anisotropy;
+        impl->support_argument_buffers = descriptor.support_argument_buffers;
         return std::unique_ptr<ALMetalSamplerState>(new ALMetalSamplerState(std::move(impl)));
     }
 }
@@ -838,6 +841,11 @@ std::unique_ptr<ALMetalSamplerState> ALMetalSamplerState::create(
 std::uint32_t ALMetalSamplerState::maxAnisotropy() const noexcept
 {
     return mImpl ? mImpl->max_anisotropy : 1;
+}
+
+bool ALMetalSamplerState::supportsArgumentBuffers() const noexcept
+{
+    return mImpl && mImpl->support_argument_buffers;
 }
 
 void* ALMetalSamplerState::nativeHandle() const noexcept

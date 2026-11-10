@@ -1,4 +1,4 @@
-# Next session — 68601 measured9.83FPS; validate material argument-buffer comparator
+# Next session — tested material cache; controlled viewer trial next
 
 Read AGENTS.md and CURRENT.md completely. The unbudgeted20FPS Ultra goal is
 ACTIVE/unmet. Previous turn made progress: source optimization, native GPU
@@ -7,20 +7,156 @@ Do not create a new goal, mark complete, or declare hardware infeasibility.
 
 ## Ownership and runtime
 
-- Branch: codex/apple-silicon-metal. Root owns ALL shared source/docs/runtime,
-  builds, GPU experiments and UI. Agents prepare/review private files only.
-- ALLviewersCLOSED.68601 PID73462/source77977290/exe f277ea10 ranfullscreen
-  beforelogin, freshstart/end43controls/location/exactbinary gates0. Completed
-  300readyframes, SIGTERM/Goodbye/absence+planrestore0; ALLplansrestored.
-  Media subprocesses also exited before privateGPU tests. TranslatorFULLYSTOPPED;
-  NEVER restart/resume it. Xcode GPU replay STOPPED. No competingGPU/profile/build.
-- Same private location/numericPreset123 ONLY. No travel or avatar movement.
-  Preserve Ultra3456×2168/Midday/six hero1024faces/two cascades/PCSS/raw-depth/
-  reverseZ/clamp/alpha/caster behavior. Prefer Mac shortcuts/fullscreen BEFORE
-  login. Autonomous quit/build/login/measure is already authorized.
-- No private uploads, releases, cache wiping or unrequested system changes.
+- Branch codex/apple-silicon-metal; HEAD d0c9e2c3c241faee7d183dd72c46d09ffc8cb0ff.
+  Root owns ALL public source/docs/runtime/GPU. Working tree has root's
+  UNCOMMITTED material-table integration, new helper/tests and documentation.
+  Do not discard it or launch the old canonical app as the new implementation.
+- ALL viewers CLOSED; 68601 exact73462 SIGTERM/Goodbye/PIDabsence+restore0.
+  ALL setup plans restored. Translator FULLY STOPPED/NEVERrestart; Xcode replay
+  STOPPED. All build/GPU/benchmark jobs below TERMINAL; no viewer running.
+- Same private location/numericPreset123 ONLY, no travel/avatar movement.
+  Preserve Ultra3456×2168/Midday/six hero1024faces/two cascades/PCSS/rawR32/
+  reverseZ/clamp/casters/allfeatures. Prefer Mac shortcuts/fullscreen BEFORE
+  login. Autonomous quit/build/login/measure already authorized.
+- No private uploads/releases/cache wipes/unrequested system changes.
 
-## Current implementation and exact next build
+## Immediate executable work — new integration, not yet a viewer FPS result
+
+Root applied new almetalshadowmaterials.h/.mm and
+almetal_shadow_materials_test.mm, with standard project license headers.
+Shared edits: almetalpipeline.h/.mm sampler support_argument_buffers default
+false +tracked supportsArgumentBuffers()/private encoder friend; world diffuse
+sampler opts in without changing Ultra4 filtering, other samplers unchanged.
+New actual8/32 covered fragment resource ABI atbuffer1 calls unchanged coverage
+helper; direct1/8/32 functions retained for one-slot/capacity/reference choices.
+Actual new MSL080fba9efdb270d58f41c5a1ccc21bbace3b9d9eb52ee5d16d380fcf39e2363e;
+Release library3932018186338255b0523028441e5376393a51c2b3ddbad2ad538f1c530376c2.
+
+FrameData shares cache across main/probe/hero and advances generation. Lazy
+creation copies current generation. Compact8/32 nonavatar/nonterrain requests
+prepare/retain before encoder; same original draw stream/constant/palette
+bindings, PSO uses actual prepared table choice; once/encoder indirectresource
+Read/Fragment declaration. Count1 stays direct, capacity/allocation pressure
+preserves direct rendering. Actual native views/sampler key immutable tables;
+previous-frame TTL and1024slot/4MiB physical caps include inflight slots.
+No command ownership cycle. Standalone age advances on ALL admitted calls,
+including empty/material-disabled views, with a renderer regression.
+Scene.material_buffers defaults true; false is direct equivalence oracle.
+World covered/coalescing tests compare false/direct vs true/table and assert
+actual material bind calls. Logged shared counters must not be summed twice;
+bind-call census includes encoder-cache hits, not guaranteed native setters.
+
+ACTUAL validation packet:
+/private/tmp/alchemy-metal-shadow-material-integration-validation-20261110.a06ti1jw.
+Required doctor0 outside sandbox; first sandboxdoctor1/sysctlblocked retained.
+Initial build30756 failed modulecache permission; native67762 failed Werror
+missingbraces. Fixed; final Release build87038=0 (retry2 includes finalsource).
+Helper1354assertions/5cases0; integratedshadow1927/1=0;
+FULL Release90856=0 and FULL RelWithDebInfo52314=0:430654assertions/100cases
+EACH, native API+GPUvalidationON. RWDIbuild17717=0. All jobs TERMINAL.
+Those earlier integration source hashes precede the later miss/pressure
+repairs below; do NOT treat them as current-source proof. No live FPS gain claim.
+
+Earlier actual-renderer CPU benchmark Rc4uL9 completed:
+/private/tmp/alchemy-metal-shadow-materials-cpu-20261110.Rc4uL9.
+It measures actual renderSpotShadow/material_buffers false/true in commandbatch
+including validation, cache/preparation/misses/arena/retention/declaration/draw,
+commit/wait separately. 4hot8/32, cold512, cap4096 and1slot bypass+controls,
+10actualR32/CPUoraclepairs,196quietpaired samples, retain slowR1cases too.
+Peer caught teardown carryover; FrameData detach/retire outside scope fixed.
+Finalsource d151bf7c8304ea7eb4fc3c58ef320329630e5a877a35df6e2dd923b748560e29
+actuallycompiled0/API+GPUvalidation0/10strictR32+CPUoraclepairs; quiet196timings0.
+Complete4096draw CPUprecommit hot8:2.271091→1.430929ms(−37%);hot32:7.297896→
+2.212375(−70%), all7pairedwins. BUTcold5126.429978→13.960938ms(+117%) and
+cap4096:6.509313→84.217522ms(+1194%), all7pairedregressions. NO VIEWERBUILD
+until cold repaired. Allslowcasesretained;1slotcontrolsflat. Teardownoutside
+precommit includesdiagnosticemptybegin/cancel; notpureproductioncleanupcost.
+Original linkedarchive preservedlibalmetal-before-miss-fix.a, exactsources
+before-miss-fix-source and originalprivateexe retained. Strictparser51osey2g
+passed196schedule/thermal/cachecaps; finalprovenancecheckinprogress.
+
+AppliedSOURCE-reviewed miss-fastpath xnI3FM patch6d92262d; helper08d6f134:
+temporaryperprepareencoderfamilyreuseAFTERadmission, allslotscached scanbypass,
+capacity/allocationperfamilylatchesfornewmisses. Cachedhits/validation/counters
+unchanged. Newvalidationpacket/private/tmp/alchemy-metal-shadow-material-miss-validation-20261110.8z5m0_du:
+FinalRelease11289/FULL50161 andRWDI14993/FULL7329 each0,434648assertions/101
+cases EACH. Native-work v2 1dece62b proves4tables/family share1encoder,
+cachedfull0encoder/0scans, genuinelyGPU-heldevictedslotsboundedscans/exactpixels.
+
+UNCHANGEDd151 CPUfixture relinkedandran AGAIN inRc4uL9/miss-fastpath-1:
+compile0/10productionR32+CPUoraclepairs0/196quiettimings0 (92821terminal0).
+Hot8:2.247358→1.358813ms(−39.54%);hot32:7.219209→2.324302(−67.80%).
+Cold512:6.506406→5.014407(−22.93%)FIXED;cap4096:6.621458→14.833458(+124%)
+STILLBLOCKSADMISSION,all7pairedregress. Single/control rangescrosszero.
+No viewerbuild/newFPSclaim. Newexe4e60af65/archiveece1509a/bundle39320181
+independentlyverified; old/newraw/source/exe/archives preserved. Newseries has
+source-snapshot +libalmetal-before-pressure-policy.a. Parser51osey2g proof.
+
+NEXT PRIVATEpressurepolicy shadowimplements/trace+draw review: UNIQUE NEW
+8/32keys excludingcachedhits/count1; ifnewCount>maxslots ANDallnewreferences1,
+routeALLNEW direct BEFOREtableallocation; cachedhitsstillargument. Frame/view
+agnostic working-set/reusepolicy; no geometry/order/quality change. Validate
+ALLinputsbeforecachewrites/retention. Strongpromote nativeview/samplerIDs into
+temporaryunion BEFOREmemoization/query; validateeachdistinctunknownobjectONCE,
+not32permaterial. BuildEntryrefsfrompinnedunion ONLYifadmitted; cachedEntry
+IDs alreadystrong/validated. OOMslowvalidationpreserved. RootAPPLIED reviewedpressurepatchd50a15a5 +tests96002ef9; nativehelper
+56350f04 andtestd496333d matchapprovedpatches. Releasebuild27856=0, focused
+6159/7PASS, FULL44174=0:435459assertions/102cases. RWDIbuild31677=0, FULL71862
+terminal0:SAME435459/102. DrawfinalpressureCPUfixtureversion:
+SAME4096draws/keys; nowexpects0newtables/0argbinds/4096directcapacityfallbacks
+insteadold1024partialallocations. Do NOTsilentlyresizeorreuseoldpreflight.
+Newpublictests coveremptycachepressure/mixedcachedhits/lateinvalid inputs.
+Pressure-policy-1 ACTUALLY compiled/validated/timed0 via
+/private/tmp/alchemy-metal-full-renderer-cpu-pressure-run-20261110.py, host
+f5d9885e/exe1134e112/archivef8b932d9/bundle39320181. Quiet38778terminal0.
+TenstrictR32/oraclepairs0; strictparser gNjOWihR passes all196samples.
+Hot8:2.245716→1.361354ms(−39.38%);hot32:7.204188→2.262188(−68.60%);
+cold512:6.481479→4.437063(−31.54%). Capacity6.450644→8.207958(+27.24%),
+all7pairedregress even0tables/0binds/all4096direct. Controls crosszero.
+512arm separatelyhas1.625msretirement+1.385msdiagnosticcleanup per2-passCB;
+these are notpureproductionlifecycle andcannotbehidden behindprecommitwin.
+Verifiedsummary4cdf5e22/proofa11bfe14/compare59367e69; originalrawsunchanged.
+Flat scratch75dc/patch1aead APPLIED afterroot+trace source reviews. Replaces
+onlypass-localuniquemap/nodeallocations withreservedcontiguousrecords+flat
+collision-safeindex/fullKeyequality/first-sourceorder; nativevalidation/policy/
+owners/counters unchanged. PrivatepacketWOiDIA; CPU64forcedbucketcollisions+
+onefull-hashcollision/pointer/order/bounds fixture compile/run0 fromEXACTsource.
+Optionalmax_size theoreticalguards were NOT integrated; actual75dc approved.
+Newvalidationhixepcef Releasebuild51506=0/FULL24530=0;RWDI23445build/full0;
+BOTH435459assertions/102cases. SAMEhostf5 inRc4uL9/flat-scratch-1 compiled/
+validated26026=0/10strictpairs, quiet94009=0/196samples. Hot8:2.228688→
+1.332558ms(−40.21%);hot32:7.232687→2.198511(−69.60%);cold512:6.465614→
+4.454803(−31.10%);cap4096:6.413687→7.868563(+22.68%/+1.455ms),all7regress.
+Controls crosszero. RootDECISION: enoughforCONTROLLEDVIEWERTRIAL withbaseline
+preserved, notuniformmicrobenchmarknon-regression/releasepromotion. Remaining
+coldcost cannotbezero andlive materialmix/neteffectstillunknown; further
+micro-iterations alone cannotestablish end-to-end value. Known32GPUminified
+stratumrisk andseparateretire/diagnosticcleanupcost remainopen. NoFPSclaim.
+Allinput/measure/calibration/schedule sourceunchangedfromd151 excepttwoexpected
+capacityoutcomes+comment. Needcompletecostpass beforecodecommit/viewerbuild.
+Use newly built Release libalmetal.a +39320181 metallib in private appbundle,
+NOT old canonical61c5. Clean no competing build/viewer/GPU during timings.
+Then assess COMPLETE renderer CPU cost +GPU penalty, commit coherent candidate,
+run tools/metal/doctor.sh/build.sh/verify_app and controlled300ready viewer.
+
+Canonical viewer is STILL old68601/source77977290/exef277ea10/lib61c5;
+PRESERVED exact/deepstrictsignature0 at
+/private/tmp/alchemy-metal-68601-normal-preserved.app (53637terminal0).
+Record artifacts/metal/private-68601-preserve-20261110.json. Use it as new
+baseline when building table candidate; earlier68597 baseline also preserved.
+Do not compare new code against an unchanged old executable or call old full
+suite evidence proof of new performance.20FPSunmet/noinfeasibilityproof.
+
+Freshuser-requested Apple research addeda concreteGameMode confound:
+macOS26 issue153127050 says directbinaryspawn maynotactivateGameMode; current
+QA usesPopen(binary), andoriginal/current/canonical InfoPlist gamecategory
+existsbutLSSupportsGameMode absent. CtrlSuperF isactualnativefullscreen.
+ActualGameMode status duringoldruns andissuepersistenceon26.5.2 UNKNOWN.
+RecordactualGameMode menu/status inthenextnormalfullscreenrun BEFOREchanges;
+do notclaimdriverbug/rootcause/FPSbenefit. No launch/Info/systemchange yet.
+Seeindexed CURRENT-apple-metal-research-2026-11-10.md forprimaryURLs.
+
+## Earlier covered-shadow baseline — measured and preserved
 
 Renderer5e1ecb76459de8a0bc90dc16da56aec75f1fc02d implements conservative adjacent
 STATIC COVERED shadow-draw coalescing. Test-only96af75c0d978b1c61c64b2b74ef9aa239ba376bc
@@ -90,7 +226,7 @@ The68597 baseline already contains selected-PSO census4e833, so new covered
 candidate versus68597 isolates this CPU change better than older31-neighbor
 best68579. Actual assets/pose/thermal variation still require paired controls.
 
-## Apple research and Metal4 proof — new actionable direction
+## Earlier Apple research and Metal4 proof
 
 Bounded primary research report:
 /private/tmp/alchemy-metal-primary-performance-research-20261109.md
@@ -144,7 +280,7 @@ PRIVATE proof packet /private/tmp/alchemy-metal3-metal4-covered-shadow-20261109.
   Independentparser /private/tmp/alchemy-metal4-material-parser-20261109.ZFV27thx,
   summarySHA4c4bd444fb67ab254421db43322a7816641e782bc82e02eabef27ce50d9fbf14,
   provenanceSHA569249ee91a765d8b780c7c5217dc5897c7dd872bce28e4b27c0ed69dbd04c70.
-- NEXT: trace_recheck preparing NEWprivateMetal3argument-buffer comparator
+- Historical next step (executed above): privateMetal3argument-buffer comparator
   source only. Append1/8/32coverage wrappers withresourceABIbuffer1, preserve
   byteidenticalcurrentvertex/608Bconstants/coverage-depth math; per-material
   immutabletables +once-perencoder unique useResources +strongowners. Strict

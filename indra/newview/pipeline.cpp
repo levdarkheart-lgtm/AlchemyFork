@@ -86,6 +86,7 @@
 #include "../almetal/almetalworld.h"
 #include "../almetal/almetalframecapture.h"
 #include "../almetal/almetalshadowindirect.h"
+#include "../almetal/almetalshadowmaterials.h"
 #include "../almetal/almetalshadowcapture.h"
 #include "alhexlattice.h"
 #include "alwaterheightbake.h"
@@ -2127,6 +2128,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             const ALMetalShadowIndirectStats indirect = capture.renderer
                 ? capture.renderer->shadowIndirectStats()
                 : ALMetalShadowIndirectStats{};
+            const ALMetalShadowMaterialStats shadow_materials = capture.renderer
+                ? capture.renderer->shadowMaterialStats()
+                : ALMetalShadowMaterialStats{};
             const ALMetalShadowIndirectStats probe_indirect =
                 mMetalProbeWorldSimpleCapture &&
                     mMetalProbeWorldSimpleCapture->renderer
@@ -2198,6 +2202,15 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << indirect.early_coalesced_records
                 << ", shadow_covered=" << indirect.covered_coalesced_draws
                 << '/' << indirect.covered_input_draws << " merged/input draws"
+                << ", shadow_materials=" << shadow_materials.table_creates << " tables/"
+                << shadow_materials.cache_hits << " hits/"
+                << shadow_materials.buffer_bind_calls << " bind calls/"
+                << shadow_materials.capacity_fallbacks << " capacity/"
+                << shadow_materials.allocation_fallbacks << " allocation fallbacks, slots="
+                << shadow_materials.cached_tables << '/'
+                << shadow_materials.allocated_slots << '/'
+                << shadow_materials.evicted_inflight_slots << " cached/allocated/retired, bytes="
+                << shadow_materials.allocated_buffer_bytes
                 << ", probe_shadow_direct=" << probe_indirect.direct_executed_draws
                 << '/' << probe_indirect.direct_prepared_draws << " draws, "
                 << probe_indirect.direct_executions << " runs, "

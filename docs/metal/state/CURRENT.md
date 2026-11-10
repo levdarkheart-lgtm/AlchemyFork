@@ -1,8 +1,8 @@
 # Current engineering state
 
-**Observed:** 2026-11-09, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
+**Observed:** 2026-11-10, physical M1 Max/64GiB/macOS26.5.2/Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`. **Renderer code checkpoint:** `5e1ecb76459de8a0bc90dc16da56aec75f1fc02d`.
-**Working source:** normal68601 measured9.8338FPS; material-table CPU mechanism verified.
+**Working source:** tested material tables + flat preparation; viewer trial pending.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -40,24 +40,31 @@ Allnative1/fallback0/256ready/bias1. About2% above priorbest9.63558FPS; earlier
 Apple research found no matching published driver bug in bounded official
 sources. Documented binding/residency CPU cost matches profile; argument buffers
 and Metal4 command ownership are concrete candidates (links in archive).
-PRIVATE M1 Metal3/4 prototype compiled0 and native API+GPU0: same currentMSL3.1
-library61c5.../samePSO,12single-texture coverage/Z pairs +cutoff positivecontrol,
-bitwise fullR32/D32 parity. Explicit residency/events/owners/completion retained.
-No8/32-texture,terrain,rigging or full-viewer Metal4 claim. Sourcecb19ab4f.
-Packet/private/tmp/alchemy-metal3-metal4-covered-shadow-20261109.25axBX.
-Separate privateCPUbenchmark xitJjX source5a36d4e0 compiled0; actualAPI/GPU
-validation-only0 (4strict fullR32/D32pairs), quiettiming0/168samples.
-FIXED-TEXTURE native cached API experiment found NO WIN:1024draw precommit
-107.459us M3 vs113.894us M4 (+5.99%);4096draw387.270vs404.291us (+4.40%).
-All7 paired4096blocks slower; short scopes limit small-effect precision.
-Independent strict schedule/parser report shTjM2Y0/timing-summary.json SHA03f54b35.
-Changing-material frBX0a host34f04741 actuallycompiled0/API+GPUvalidation0,
-24strict fullR32/D32+CPUoracle pairs; quiet168timings0/allthermal0. Per4096draw
-encode8slots1.183785→.478506ms(−59.58%);32slots3.657612→.602937ms(−83.52%),
-all7paired wins/controls small. Fourrecurringmaterials change EVERYdraw;
-prebuilt tables/residency/aniso1 are a binding-stress case, NOT viewerFPS.
-No productionMetal4 switch. Next exact-M3argument-buffer comparator preserves
-existing queue/batch/cancellation ownership; private source prep only.
+PRIVATE M3/M4 same-oldPSO/61c5 proof compiled0/API+GPU0/12strictdepthpairs.
+FixedtextureCPUcaseNOwin (M4+4–6%); changing-material stress frBX0a passed
+24strictpairs/168timings,8/32slot CPUencode−59.6%/−83.5%. These price stable
+prebuilt tables, notrealviewer materialmix/FPS. Fullpaths/hashes in archive.
+No productionMetal4 switch. M3argumentBmrgf1 actuallycompiled0/API+GPU0,
+24strictpairs/168quietCPUtimings0;8slots−59.93%/32slots−87.18%,all7pairedwins.
+Hf64pq full2048²GPUgate85strictpairs0,2×252quiettimings0: modestprobable32slot
+GPUcost amidcontrolnoise (repeat+4.28%median/~.004ms/pass); NOT GPU-nonregression.
+Rootintegrated sharedFrameData materialcache/nativehelper/new8/32resourceABI,
+sampleropt-in/directoracle/lifetime tests. No shippingFPSgain claim. Release
+finalnativeBOTHconfigs434648assertions/101casesPASS inclactualworkbounds.
+InitialfullCPU1960hot8−37%/32−70%, cold512+117%/cap4096+1194%rejected.
+Missfixmetadatareuse/capacitylatches applied; exactretest1960nowhot8−39.54%/
+32−67.80%, cold5126.506→5.014ms(−22.93%), cap4096still6.621→14.833(+124%).
+All7pairedcapacityregress; no viewerbuild/promotion. Source/library/exe preserved.
+NEXT privatecapacitypolicy: whenNEWunique8/32keys exceedmaxslots ANDallonce,
+skipNEWtableallocation/use direct, keepcachedhits. Validateallnativeobjects
+onceperstrongunion beforecachewrites; per-entryrefs onlyforadmittedtables.
+Pressurepolicy/testsAPPLIED; BOTHconfigs435459/102PASS (44174/71862 each0).
+Flat scratch75dc APPLIED; BOTHfull435459/102PASS,collisionCPU0/nativepairs10/10.
+Actual196retest0:hot8−40.21%/32−69.60%,cold512−31.10%,but4096once-only
+6.414→7.869ms(+22.68%/+1.455ms),all7regress. ControlledviewerTRIAL next,
+not universalnon-regression/releasepromotion; no newFPSclaim.
+Fresh Apple research found GameMode launch/opt-in uncertainties; see
+[research](archive/CURRENT-apple-metal-research-2026-11-10.md). Actual state unknown.
 Continuous12minCPU evidence:920867samples, main~77ms/frame flat asFPS11.8→10.75;
 mainactive92→79%, Pcores; Nominalthermal720.726s, clocksunknown. GPUgrowth
 attribution remains open. Startup6000allnative1/no fallback; no formal gain.
@@ -90,15 +97,10 @@ mainhaze15.91 overlap: DO NOT ADD. Old CPU trace has no matched frame counts;
 no77ms CPU floor. Focused mainbase216 registers/0spill,7.177M fragments,
 37.46B ALU, ALUlim44.54%; mainbase occupancy still unknown.
 
-New0d5d49 hero face1 capture7506:1CB/4render/4blit/833draws/1024²RGBA16F,
-nonempty raw-cube preview. Profile15.74ms MEDIUM is one face, NOTliveFPS.
-Simple-shadow alpha58.02%/245registers/304spill bytes; water20.39%/254/96;
-PBR alpha15.22%/254/80, legacy alpha1.21%/254/32. Haze FS only1.79%/64/0;
-589-draw haze ENCODER77.867% includes later alpha. Encoder occupancy4.19%,
-High registers/spill correlate with low occupancy; causality still requiresA/B.
-CallStack baseprobes71.05%/holds28.93% is inclusive/optimized attribution, not
-literal call edges/instruction time. Static spill bytes are not memorytraffic.
-Private profile JSON/capture paths and full counters are in NEXT/archive.
+Oldhero face1:1CB/4render/4blit/833draws/1024²;15.74msMEDIUM is NOTliveFPS.
+Simplealpha58%/245regs/304spill,water20%/254/96,PBR15%/254/80;occupancy4.19%.
+Haze encoder77.9% includeslateralpha; hazeFSonly1.79%. CallStack71/29%probe/
+holds is inclusive/optimized; staticspillbytes nottraffic. Fullcounters/archive.
 
 ## Active implementation checkpoint
 
@@ -114,13 +116,11 @@ metadata; full history/verified hashes in the archive. Normal builds recordOFF.
 
 Committed735a folds EXISTING probe single-tap branch with boolconstant0;
 actualvalidatedshadowbit4/probecount>1 selects PSO, runtime main/avatar preserved.
-Source approved twice; no math/quality change. MSL920d2e2d927b94a43cd396478bfa3776bc2edccaf5e5dd3ef8eb10bbbfcb1fa1.
 Actualfixture200strict color/rawD32 pairs PASS;168timings heavy23.2–31.8%lower,
 controls cross0. Xcode1CB/4draws245→224registers/BOTH304spill: no spill removal.
 Public optimized tests pass; actual viewer result flat, not synthetic gain.
 
-Public regression suites and prototype evidence are in the
-[archive](archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
+Material evidence: [archive](archive/CURRENT-material-argument-buffers-2026-11-10.md).
 
 Ambient-only sum rewrite REJECTED:200 strict pairs pass but168 timing samples
 show no consistent benefit. Prior SH lifetimes/predecode/named accumulators/
@@ -152,9 +152,8 @@ gamma remains, no proven look defect/settings change from that observation.
 
 Full pixel/feature parity, multi-scene performance, prolonged stability,
 strict no-GL and independent build/review evidence remain OPEN.20FPS unmet;
-infeasibility unproved. Next: validate private M3argument-buffer resource ABI
-against unchanged covered shader math and actualchanging-material workload,
-then integrate only a measured winner with current batch/lifetime guarantees.
-Whole-shadowparallel two-child proposal is source-only. Fresh68597paired control
-still needed to isolate covered-coalescing FPS. Corrected64-parent68588 remains
-but UNLAUNCHED; prior best68579 has31-neighbor behavior, so not a pure A/B.
+infeasibility unproved. Next: commit tested material candidate, normalbuild/verify,
+then controlled viewer trial against preserved68601; actual materialmix unknown.
+Record GameMode status separately before any launch/opt-in change.
+Whole-shadowparallel source-only; fresh68597control stillneeded forcausalFPS.
+Corrected64-parent68588 UNLAUNCHED; oldbest68579 has31neighbors, notpureA/B.

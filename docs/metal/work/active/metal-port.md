@@ -144,18 +144,31 @@ schedule/parity/thermal. NEWchanging-materialfrBX0a actualcompile0/API+GPU0,
 24strictpairs, quiet168samples0:8slots−59.58%CPUencode/32slots−83.52%,all7paired
 wins. Bindingstressfourrecurringmaterials EVERYdraw/prebuilttables/aniso1,
 notliveFPS. No shippingMetal4 switch; mid-shadowAPI split breaks currentbatch
-ownership. NextprivateM3argumentbuffer ABI comparator preservesnativequeue/
-retention/cancel; prepare shaderresource-only clone and strictsameoutput tests.
+ownership. M3argumentBmrgf1actualcompile0/API+GPU0/24pairs/168CPUtimings0,
+8slots−59.93%/32slots−87.18%nativeencode(all7paired); cachecoststillneedspricing.
+Hf64pq85full2048²strictpairs0;2×252quietGPUtimings0 showprobablemodest32slot
+cost (~.004ms/pass/repeatmedian+4.28%), notGPU-nonregression. Rootworkingdiff
+integrates sharedFrameData cache/new8/32resourceABI/nativeowner+samplerflag,
+boundedcoldretirement/directoracle/publictests; Releasefinalbuild87038=0.
+Firstsandboxmodulecacheblocked, firstnativeWerrorbracesfixed; currentfulltests
+PASS430654/100BOTHconfigs. Helper1354/5+world1927/1PASS; standaloneagingtestpass.
+FullCPUfixtureRc4uL9 compile0/10nativeoraclepairs0/196quiettimings0: hot8−37%/
+32−70%, cold512+117%/cap4096+1194%CPU rejected. Missfix+workboundsnowBOTHfull
+434648/101PASS; unchanged196retesthot8−39.54%/32−67.8%,cold512−22.93%,
+butcap4096still+124%UNACCEPTABLE. PressurepolicyAPPLIED;BOTH435459/102PASS,
+196CPUretiming0:hot8−39.38%/32−68.60%,cold512−31.54%,cap4096still+27.24%.
+Flat75dc nowBOTH435459/102PASS+196CPU0:hot8−40.21%/32−69.60%,cold512−31.10%,
+cap4096+22.68%(+1.455ms). ControlledviewerTRIAL next; GameMode state unknown
+([research](../../state/archive/CURRENT-apple-metal-research-2026-11-10.md)).
 Whole-shadow2orderedchild proposal remains source-only. Fresh68597pairedcontrol
 still required for causalcoveredFPS. No overlappingviewer/GPUtimings.
 No formalFPSgain/infeasibilityclaim. Fullcontinuousdetails inNEXT/archive.
-Corrected64parent68588 control prepared/unlaunched. No FPS gain from counters.
 Ambient-only rewrite REJECTED (all timing ranges cross0). Rejected SH/predecode/
 cursor/simplemask remain rejected. PBR/water source-only fixtures may prepare;
 no combined optimization before current controlled viewer comparison.
 Ordinary SCENE batching proposal/tests remain private/uncompiled, preserve
 scene-before-publication/generation/failure ordering.
-[Full checkpoint](../../state/archive/CURRENT-shader-registers-and-neighbor64-2026-11-09.md).
+[Full checkpoint](../../state/archive/CURRENT-material-argument-buffers-2026-11-10.md).
 
 ## Non-negotiable open gates
 

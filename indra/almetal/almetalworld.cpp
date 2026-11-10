@@ -10,6 +10,7 @@
 
 #include "almetalworld.h"
 #include "almetalshadowindirect.h"
+#include "almetalshadowmaterials.h"
 
 #include "../newview/SMAAAreaTex.h"
 #include "../newview/SMAASearchTex.h"
@@ -22,6 +23,7 @@
 #include <cstring>
 #include <deque>
 #include <limits>
+#include <new>
 #include <functional>
 #include <string_view>
 #include <unordered_map>
@@ -1320,6 +1322,7 @@ struct ALMetalWorldFrameData::Impl
     std::vector<std::unique_ptr<Page>> available;
     std::unordered_multimap<std::uint64_t, Entry> entries;
     ALMetalWorldFrameDataStats statistics;
+    std::unique_ptr<ALMetalShadowMaterials> shadow_materials;
 };
 
 ALMetalWorldFrameData::ALMetalWorldFrameData(std::unique_ptr<Impl> impl)
@@ -1345,6 +1348,7 @@ void ALMetalWorldFrameData::beginFrame(std::uint64_t generation)
     if (mImpl->initialized && mImpl->generation == generation) return;
     mImpl->initialized = true;
     mImpl->generation = generation;
+    if (mImpl->shadow_materials) mImpl->shadow_materials->beginFrame(generation);
     mImpl->entries.clear();
     for (auto& page : mImpl->active)
         mImpl->retired.push_back(std::move(page));
@@ -1363,6 +1367,26 @@ void ALMetalWorldFrameData::beginFrame(std::uint64_t generation)
     }
     // Retain a bounded spare working set after a transient heavy frame.
     if (mImpl->available.size() > 32) mImpl->available.resize(32);
+}
+
+ALMetalShadowMaterials* ALMetalWorldFrameData::shadowMaterials(
+    const ALMetalShaderLibrary& library, std::string* error)
+{
+    if (!mImpl->shadow_materials)
+    {
+        mImpl->shadow_materials = ALMetalShadowMaterials::create(
+            *mImpl->device, library, error);
+        if (!mImpl->shadow_materials) return nullptr;
+        if (mImpl->initialized)
+            mImpl->shadow_materials->beginFrame(mImpl->generation);
+    }
+    return mImpl->shadow_materials.get();
+}
+
+ALMetalShadowMaterialStats ALMetalWorldFrameData::shadowMaterialStats() const noexcept
+{
+    return mImpl->shadow_materials
+        ? mImpl->shadow_materials->stats() : ALMetalShadowMaterialStats{};
 }
 
 bool ALMetalWorldFrameData::publish(
@@ -1699,6 +1723,10 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalProbeWorkloadCapture> probe_workload;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
         spot_shadow_coverage_pipelines;
+    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
+        spot_shadow_material_pipelines;
+    std::unique_ptr<ALMetalShadowMaterials> standalone_shadow_materials;
+    std::uint64_t standalone_shadow_material_generation = 0;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
         spot_shadow_avatar_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2079,6 +2107,7 @@ bool createWorldAnisotropicSamplers(
     sampler.address_t = ALMetalSamplerAddressMode::repeat;
     sampler.address_r = ALMetalSamplerAddressMode::repeat;
     sampler.max_anisotropy = max_anisotropy;
+    sampler.support_argument_buffers = true;
     sampler.label = "Alchemy world diffuse anisotropic wrap sampler";
     auto diffuse = ALMetalSamplerState::create(device, sampler, error);
     if (!diffuse)
@@ -2086,6 +2115,7 @@ bool createWorldAnisotropicSamplers(
         return false;
     }
 
+    sampler.support_argument_buffers = false;
     sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
     sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
     sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
@@ -2123,6 +2153,13 @@ void ALMetalWorldGBufferRenderer::setFrameData(
     std::shared_ptr<ALMetalWorldFrameData> data)
 {
     mImpl->frame_data = std::move(data);
+}
+
+ALMetalShadowMaterialStats ALMetalWorldGBufferRenderer::shadowMaterialStats() const noexcept
+{
+    if (mImpl->frame_data) return mImpl->frame_data->shadowMaterialStats();
+    return mImpl->standalone_shadow_materials
+        ? mImpl->standalone_shadow_materials->stats() : ALMetalShadowMaterialStats{};
 }
 
 ALMetalShadowIndirectStats
@@ -2617,6 +2654,17 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             {
                 return nullptr;
             }
+        }
+        constexpr std::array<const char*, 2> material_fragments{{
+            "almetal_world_spot_shadow_coverage_eight_material_fragment",
+            "almetal_world_spot_shadow_coverage_material_fragment",
+        }};
+        for (std::size_t slots = 0; slots < material_fragments.size(); ++slots)
+        {
+            descriptor.fragment_function = material_fragments[slots];
+            impl->spot_shadow_material_pipelines[rigged][slots] =
+                ALMetalRenderPipeline::create(device, descriptor, error);
+            if (!impl->spot_shadow_material_pipelines[rigged][slots]) return nullptr;
         }
     }
 
@@ -6311,6 +6359,17 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         }
     }
 
+    // Standalone owners have no external frame callback. Age their material
+    // cache on every admitted shadow invocation, including empty/direct-only
+    // views, so a former material cannot pin streamed images indefinitely.
+    if (!mImpl->frame_data)
+    {
+        ++mImpl->standalone_shadow_material_generation;
+        if (mImpl->standalone_shadow_materials)
+            mImpl->standalone_shadow_materials->beginFrame(
+                mImpl->standalone_shadow_material_generation);
+    }
+
     std::size_t bulk_draw_count = 0;
     std::erase_if(bulk_runs, [&](ShadowRun& run)
     {
@@ -6487,6 +6546,60 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             return false;
         }
     }
+    // Material tables retain the exact native views and sampler. Prepare all
+    // applicable records only after whole-scene admission, before any clear
+    // or draw can modify the destination. The shared frame owner reuses them
+    // across main, ordinary-probe and hero-shadow views.
+    std::unique_ptr<ALMetalShadowMaterials::Pass> shadow_material_pass;
+    constexpr std::size_t no_material = std::numeric_limits<std::size_t>::max();
+    std::vector<std::size_t> material_requests;
+    if (command && scene.material_buffers)
+    {
+        try
+        {
+            std::vector<ALMetalShadowMaterialRequest> requests;
+            for (std::size_t i = 0; i < scene.batch_count; ++i)
+            {
+                const auto& batch = scene.batches[i];
+                if (batch.terrain || batch.avatar || batch.texture_count <= 1 ||
+                    batch.coverage == ALMetalWorldSpotShadowCoverage::opaque)
+                    continue;
+                if (material_requests.empty())
+                    material_requests.assign(scene.batch_count, no_material);
+                material_requests[i] = requests.size();
+                requests.push_back({batch.coverageData().textures.data(),
+                    batch.texture_count, mImpl->diffuse_sampler.get()});
+            }
+            if (!requests.empty())
+            {
+                ALMetalShadowMaterials* materials = nullptr;
+                if (mImpl->frame_data)
+                    materials = mImpl->frame_data->shadowMaterials(*mImpl->library, error);
+                else
+                {
+                    if (!mImpl->standalone_shadow_materials)
+                        mImpl->standalone_shadow_materials = ALMetalShadowMaterials::create(
+                            *mImpl->device, *mImpl->library, error);
+                    materials = mImpl->standalone_shadow_materials.get();
+                    if (materials)
+                        materials->beginFrame(mImpl->standalone_shadow_material_generation);
+                }
+                if (!materials || !(shadow_material_pass = materials->prepare(
+                        *command, requests, error)))
+                {
+                    mImpl->finishCommandBuffer(owned_command, false, error);
+                    return false;
+                }
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            // Optional CPU table preparation must not remove valid casters.
+            // Source admission is already complete; preserve direct emission.
+            shadow_material_pass.reset();
+            material_requests.clear();
+        }
+    }
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy direct spot-shadow encoder", error)
                            : nullptr;
@@ -6511,7 +6624,8 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             scene.depth_clamp ? ALMetalDepthClipMode::clamp
                               : ALMetalDepthClipMode::clip,
             error) &&
-        encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error);
+        encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
+        (!shadow_material_pass || shadow_material_pass->declareResources(*encoder, error));
     std::size_t next_bulk_run = 0;
     for (std::size_t index = 0;
          encoded && index < scene.batch_count; ++index)
@@ -6682,6 +6796,10 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                 1, error);
             continue;
         }
+        const std::size_t material_request = material_requests.empty()
+            ? no_material : material_requests[index];
+        const bool material_table = shadow_material_pass &&
+            shadow_material_pass->usesArgumentBuffer(material_request);
         encoded =
             encoder->setCullMode(
                 batch.double_sided ? ALMetalCullMode::none
@@ -6689,9 +6807,12 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                 error) &&
             encoder->setPipeline(
                 *(covered
-                    ? mImpl->spot_shadow_coverage_pipelines[
-                          rigged ? 1 : 0][batch.texture_count == 1 ? 0 :
-                              (batch.texture_count <= 8 ? 1 : 2)]
+                    ? (material_table
+                        ? mImpl->spot_shadow_material_pipelines[
+                              rigged ? 1 : 0][batch.texture_count <= 8 ? 0 : 1]
+                        : mImpl->spot_shadow_coverage_pipelines[
+                              rigged ? 1 : 0][batch.texture_count == 1 ? 0 :
+                                  (batch.texture_count <= 8 ? 1 : 2)])
                     : mImpl->spot_shadow_pipelines[rigged ? 1 : 0]),
                 error) &&
             encoder->setVertexBuffer(
@@ -6708,10 +6829,12 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                     2, *batch.vertices, batch.texcoord_offset, error) &&
                 encoder->setVertexBuffer(
                     3, *batch.vertices, batch.color_offset, error) &&
-                encoder->setFragmentSampler(
-                    0, mImpl->diffuse_sampler.get(), error);
+                (material_table
+                    ? shadow_material_pass->bind(*encoder, material_request, error)
+                    : encoder->setFragmentSampler(
+                          0, mImpl->diffuse_sampler.get(), error));
             for (std::size_t texture = 0;
-                 encoded && texture < (batch.texture_count == 1 ? 1u :
+                 encoded && !material_table && texture < (batch.texture_count == 1 ? 1u :
                      (batch.texture_count <= 8 ? 8u : 32u));
                  ++texture)
             {
