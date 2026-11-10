@@ -1,96 +1,115 @@
-# Multi-avatar source comparison — 2026-11-10
+# Native multi-avatar correctness repair — 2026-11-10
 
-Candidate code: `76413f2fcf76e528fcfe3740635111dcd4a54ea8` (docs HEAD
-`663d30c9b2`). Reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`.
-This is a source audit, not a crowd benchmark or visual-parity result. No viewer
-launch, settings change, source repair, build or GPU execution in this audit.
-Prepared build 68630 does not fix the gaps below. Root owns integration; agents
-performed independent read-only comparisons and prepared one private small patch.
+**Implemented checkpoint:** `97dd825aaf428da4a50e6b8bf1659d5b60d62eda`.
+**Original contract:** `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`.
+Owner explicitly requested implementing all four audited gaps. Root integrated
+shared pipeline/render-state changes; agents owned device timing, avatar cache,
+body placeholder resolution and focused tests, with independent source review.
+Build68633 is prepared; no viewer launch or live crowd benchmark in this task.
 
-## Preserved crowd policies
+## Preserved policy
 
-Seventeen avatar methods were compared byte-for-byte with the exact reference,
-including pixel-area ranking, update period/needs-update, visibility, complexity,
-visual muting and updateImpostors. Seven relevant settings blocks match.
-The original and native rank visible avatars by screen area, reserve self rank 1,
-apply the configured maximum full-detail avatars and simplify others using baked
-impostors. Registered RenderAvatarMaxNonImpostors is 12; saved/profile overrides
-can differ, and zero or the slider's unlimited value disables that limit.
-Do not claim all avatars are always rendered in full in Metal.
+Seventeen avatar policy methods and seven settings blocks matched exact original
+before implementation: screen-area ranking, self rank1, configured full-detail
+limit, visibility/complexity/mute/friends rules and update cadence remain unchanged.
+Registered maximum full-detail avatars is12; effective saved settings can differ.
+No cross-avatar skin-palette alias was demonstrated. Independent palettes, cloth
+copies and byte-validated immutable frame-data reuse remain intact.
 
-Each avatar has its own draw pool and skin cache. Native classic mesh palettes
-use independent owned arrays; cloth data is copied per batch. Frame-data palette
-deduplication compares actual payload bytes, including view rebase origin. No
-cross-avatar pose/palette alias was established in this bounded inspection.
+## GPU profiling now has an actual native producer
 
-## Confirmed missing GPU-cost input
+The original profiles an isolated complete avatar or selected attachment and
+polls GPU timestamps without waiting. Native generic ALQueryPool spans were
+invalid, leaving the avatar's derived GPU-time field at0 and ART thresholds
+without measurements. Generic query spans remain unsupported; the avatar caller
+now uses an explicit native completion receipt for the actual measured work.
 
-Original ALQueryPool::beginSpan/result supplied asynchronous timestamp/elapsed
-measurements. Native `indra/llrender/alquerypool.cpp:222` always returns an invalid
-span, and its span result always expires. ALGPUTimer therefore never opens.
-`LLVOAvatar::readProfileQuery` cannot populate the derived avatar GPU render-time
-field (initialized to zero in llvoavatar.h); `updateTooSlow` still compares that
-field against positive ART thresholds. GPU-time-based simplification and avatar/
-attachment profiling lack their native measurement producer. Geometry-complexity,
-mute/friends and rank limits remain separate and functioning source policies.
-This matters when the time-based policy is selected; current session settings
-and the size of any FPS impact were not measured.
+- ALMetalCommandCompletion::gpuTime polls the retained command's GPUStartTime/
+  GPUEndTime only after successful completion; pending, abandonment, errors and
+  invalid timestamp pairs cannot publish fabricated zero-success samples.
+- ALGPUTimer accepts that native completion and delivers it once through the
+  existing LLVOAvatar::readProfileQuery/updateTooSlow path. Attachment results
+  use the same receipt and update only still-live object owners.
+- profileAvatar queues UUID-scoped requests, including calls made during UI draw.
+  One subject is dispatched per main frame after updateImpostors restores
+  CAMERA_WORLD and its caller restores main camera/matrices/viewport. Dead or
+  detached subjects are removed; a loading one rotates instead of blocking all.
+- The profiler borrows the warmed renderer with a separate temporary capture;
+  current shadow resources and coherent SSR history remain pinned by the saved
+  owner. packDeferredConstants refreshes current main shadow matrices before
+  profiling. Exact original uses those main matrices even with its profile
+  camera; no new shadow rebase was invented.
+- Actual full-resolution opaque, opaque-forward and alpha writers run in one
+  command buffer. Completeness is required before commit/measurement. The target
+  is never published as the avatar's visible impostor. Main/probe owner, renderer,
+  frame-data, camera/cull and shader are restored on ordinary return paths.
+- Admission checks command slots without waiting; no new synchronous PSO build,
+  CPU timing substituted for GPU time, or repeated GPU completion wait occurs.
 
-Restoring generic timer calls alone is insufficient: profileAvatar's isolated
-avatar/attachment work must actually be encoded natively, associated with the
-correct owner, and measured asynchronously without a main-thread GPU wait.
+The measured value is an isolated native command's GPU execution envelope,
+excluding pre-command queue delay. It is not whole-frame time or busy-time.
+Its native pass setup/clear overhead is included; it is not numerically identical
+in scope/cost to an OpenGL elapsed query around retained draw calls. Geometry and
+lighting features are preserved. Max16 bounded completion receipts per subject
+family permit later live verification without logging avatar identities.
 
-## Confirmed view-local impostor ownership mismatch
+## Impostor publication belongs to avatars across views
 
-Original generateImpostor stores its complete G-buffer in avatar->mImpostor;
-the same avatar-owned bake is read in main and reflection views. Native published
-textures instead live in MetalWorldSimpleCapture::impostor_textures, keyed by
-avatar UUID but owned by each capture independently (pipeline.cpp:897).
-publishMetalImpostorBake stores only in the current capture (:16315), while
-ordinary/hero face entry swaps the main and probe capture owners (:1731/:1971).
-captureMetalWorldImpostorBatch looks only in the active owner's map (:16181).
-The reflection pool loop reaches that reader for enabled avatar/control-avatar
-pools and complete logical impostors. It cannot find a valid main-owner bake in
-the other map: it clears the collected view and requests another avatar bake.
-Re-baking on the normal scheduler does not share that publication with the probe
-owner. View/bake HDR and normal-format settings use the same existing latches;
-the missing cross-view owner, not a demonstrated conversion need, is the issue.
-Avatar destruction also erases only the active map (:16343).
+ALMetalAvatarResources owns one validated immutable native four-texture record
+per16-byte avatar ID. Main, hero and ordinary capture owners share that cache.
+Per-owner initialization prunes only genuinely incompatible device/HDR/normal
+records; a new probe owner cannot erase a valid main publication. Same-device
+format transitions also reconcile at the normal/bake format boundary.
 
-The repair boundary is one avatar-owned native published cache, with format/device
-invalidation and complete-generation lifetime, visible to every rendering view.
-Retain per-avatar UUID ownership; do not substitute a global last-avatar texture.
-Actual affected reflection pixels and runtime failure counts remain unobserved.
+The actual pipeline uses this cache for publish/find/erase. Lookup validates the
+requested device/formats. Each queued impostor batch holds a strong record lease;
+the native command retains it through completion. Replacement/destruction/cache
+reset therefore cannot free an earlier consumer's textures. Rejected quartet
+publication keeps the preceding coherent record. Avatar destruction erases both
+capture references to the same logical cache. No global last-avatar slot exists.
 
-## Confirmed unloaded-avatar admission mismatch
+## Loading and placeholder behavior
 
-Original LLDrawPoolAvatar::renderAvatars skips a not-fully-loaded avatar. It draws
-a debug sphere only for pass zero with particles disabled or max particles <= 0.
-Native getMetalAvatar (:279) unconditionally invalidates the entire active direct
-reflection transaction for every unloaded avatar, including cases where the
-original produces no geometry. Other completed avatars/world content are then
-withheld too. invalidateMetalReflectionProbeScene is probe-scoped, so this finding
-does not establish that this particular call rejects the ordinary main view.
-A private reviewed patch narrows invalidation to the original debug-sphere case;
-it is NOT integrated or executed. No small existing viewer-manager test exercises
-this admission boundary, and backend shader tests would not establish it.
+getMetalAvatar now skips a not-fully-loaded avatar where original renderAvatars
+produces no geometry, preserving other avatars and world content in that view.
+The original pass0/particles-disabled debug-sphere case remains explicitly
+incomplete because its direct native diagnostic producer is still absent. This
+repair does not silently waive that unsupported geometry or publish its omission.
 
-## Pending body texture boundary
+Direct joint-mesh capture resolves original requested -> Default -> Null texture
+owners without touching UI slots. Immediate updates precede activity changes;
+actual selected owners/activity/stats are preserved for world and shadow capture.
+Fallback placeholders use the original slow-bind raw sampling, while ready bakes
+retain sRGB decode. Alpha, depth, authored invisible bakes and caster admission
+remain unchanged. If every candidate is unready, existing completeness rejection
+remains. This is separate from the earlier generic UI/HUD fallback repairs.
 
-Original LLViewerJointMesh::drawShape binds the selected texture through the
-standard immediate-update/default-image path. Direct captureMetalWorldAvatarShape
-does not bind it, and captureMetalWorldAvatarBatch rejects a missing native image,
-clearing the current collected view. This is reachable with RenderUnloadedAvatar
-enabled and pending baked textures; default is false. Ready-avatar streaming stats
-elsewhere do not restore the draw-local placeholder contract. This is distinct
-from the UI/HUD texture fallback repairs already in 68630 and is not repaired here.
+## Executed checks and limits
 
-## Validation limits and next implementation boundaries
+Ignored local evidence: `artifacts/metal/private-avatar-parity-repair-20261110-01/`.
+Exact commands, exits and binary hashes are in JSON alongside the actual logs.
+Tests are Release on M1 Max with API and shader validation:
 
-Native multi-avatar visual/performance parity remains unverified. No measured
-claim is made that any gap explains a particular live FPS or screenshot.
-Repair shared native impostor publication and original unloaded-avatar skip/
-placeholder semantics first; verify two independent avatar bakes in main and
-reflection views, destruction/replacement, and one unfinished avatar among ready
-ones. Restore native isolated GPU profiling as a separate ownership/timing task.
-The paused 20 FPS campaign is not resumed by this correctness audit.
+| Executed native check | Result |
+| --- | --- |
+| Command timing incl. real renderer batch/slot gating | 369 assertions /4cases, exit0 |
+| ALGPUTimer + previous UI/vertex-buffer regressions | 375 /5, exit0 |
+| Two-avatar cache/view/replacement/destruction/completion lifetime | 395 /2, exit0 |
+| G-buffer + rigid/skinned/forward-avatar raw/sRGB sampling | 31498 /1, exit0 |
+| Existing impostor G-buffer replay | 126 /1, exit0 |
+
+The first backend build exposed a newly introduced invalid failure-helper name;
+corrected to the existing renderer's failure path, then rebuilt successfully.
+Two fixture rigid-input offsets were corrected during source review before GPU
+execution. No failed GPU result is relabeled as a successful run.
+
+Doctor/configure/Release build/verify_app/deep strict signature are recorded in
+build-final.json for the committed source. No MSL source change was made.
+Actual viewer-manager queue dispatch, two real avatars across main/mirror views,
+loading/default-to-ready transitions and ART behavior still need live verification.
+Backend tests exercise the actual cache/timing/rendering primitives; they do not
+instantiate the whole viewer's avatar/cull manager or establish crowd FPS parity.
+Inherited generateImpostor global-state cleanup is not fully exception-safe; the
+new capture-owner restoration does not constitute a global exception audit.
+All previous correctness/performance fixes remain included. The owner-paused
+20FPS campaign is not resumed, and no FPS improvement is claimed here.

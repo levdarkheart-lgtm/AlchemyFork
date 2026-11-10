@@ -1,65 +1,37 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `76413f2fcf76e528fcfe3740635111dcd4a54ea8`.
+**Renderer checkpoint:** Commit `97dd825aaf428da4a50e6b8bf1659d5b60d62eda`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [paused campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
 ## Current correctness work — 2026-11-10
 
-Owner requested fully empty startup then exact-original source comparison for UI
-stalls, lighting/sky/shadow mismatch, environment-switch blink and low-DD terrain.
-Prior 20 FPS goal remains paused. Earlier HUD/upload/performance repairs retained.
-Root exclusively owns shared source, integration, builds, runtime and canonical docs;
-agents produced private patches/read-only reviews, no competing shared edits.
+Owner requested implementation of all four audited avatar gaps. Code97dd825aaf
+restores native isolated GPU profiling, cross-view per-avatar impostor ownership,
+original unloaded-avatar skip semantics and body default-image sampling. Root
+integrated shared files; agents owned independent components/tests and reviewed.
+All prior HUD/upload/environment/performance fixes remain included.
 
-**Implemented/committed and built, live improvement pending:**
+[Implementation/evidence](avatar-crowd-parity.md): actual native timing receipts,
+queued one-subject-per-main-frame profiling with warmed renderer/current lighting,
+strong immutable quartet leases across view swaps and GPU completion, exact
+Default/Null/raw sampling and original per-avatar policies. No quality reduction,
+new avatar cap, CPU-time surrogate, UI-slot mutation or visible profile target.
+The original particles-disabled loading sphere remains explicitly unsupported;
+other unloaded cases now skip exactly as original. Live visual parity is open.
 
-- b75e79cb73: restore original ALTextureSlot pending/default-image semantics for
-  generic native UI fast/slow/raw binding. Cold log showed ready world blocked by
-  missing UI texture19:34:31–38, success19:34:42. Actual native RED/GREEN test:
-  pre-fix pending exit42; repaired pending+VB suite201 assertions/3 cases exit0.
-- 0ef3e16a0b: restore original effective sky probe ambiance==0 display gamma,
-  independent of surface classic flag, plus consistent original no-post exposure,
-  tonemap/bloom/streak policy retaining alpha glow. Actual reported sky eligibility
-  remains unknown. Backend display1824/1 + bloom67/1 pass, caller source reviewed.
-- 76413f2fcf: retain completed default radiance/SH across compatible sky resets,
-  as original. Strict layout/device/generation guards; advance epochs, clear
-  nondefault receipts/pending tickets. Backend ordinary134/1 and hero589/1 pass;
-  actual LLReflectionMapManager reset/replacement and visual transitions untested.
+Build68633 prepared without launch. Existing68626PID44312 stays running olderD186;
+canonical disk app identity differs. API+shader Release checks exit0: timing369/4,
+timer+UI+VB375/5, cache395/2, avatar sampling31498/1, impostor126/1. Full build and
+verification exact commands/source/hashes are under ignored
+private-avatar-parity-repair-20261110-01/build-final.json. No crowd FPS claim.
 
-All native tests used API+shader validation. Doctor/configure/Release build/
-verify_app/deep strict codesign0; build68630 ready, **NOT launched**. Exact commands,
-exits/source/hashes in private-cold-start-lighting-repairs-20261110-04/build.json.
-Prepared canonical disk app differs from still-running68626PID44312/sourceD186;
-its prior binary identity was pinned at launch. Do not assign new fixes to it.
-Cold launch occurred ONCE from zero files at SAME active cache path;8978 original
-files/1.70GB preserved privately. Account/settings untouched, no driver-cache purge.
-No original viewer launch or subsequent restart solely for source inspection.
-
-Original and native UI/world use main thread. Native pending publication explains
-one actual stale-display mechanism; no hard canvas deadlock or stale-size bug
-proved. The later five-second CPU sample started AFTER UI recovery. PSOs completed
-~50s before the reported freeze. Cache byte sizing policy matches original.
-Sun/projector source audits found no additional concrete defect. Original terrain
-culls with infinite far reach; shared water/far-plane code unchanged. Native terrain
-factors>=1, no DD height fade. Missing cube-only raster-span cap cannot explain
-MAIN terrain loss. Affected geometry/map/depth evidence is still missing; no
-speculative cutoff or quality reduction applied. Random shoe/outfit spikes unknown.
-
-Historical HUD/upload routing, original alpha/sampler/PBR and retry fixes plus
-executed checks are preserved in the indexed avatar-hud-upload checkpoint.
-All private artifacts/caches remain ignored; no upload/release. See CURRENT.
-
-## Multi-avatar follow-up — source audit only
-
-[Detailed comparison](avatar-crowd-parity.md) preserves exact original ranking,
-full-detail limits and complexity rules. Remaining concrete native gaps: absent
-ART GPU timing, view-local impostor publication, excessive unloaded-avatar probe
-invalidation and missing body-bake default-image substitution. No source repair,
-viewer action, build or benchmark was performed for this follow-up; build68630
-does not address them. Private admission patch is reviewed but unintegrated.
-No cross-avatar palette alias was found; crowd parity stays unverified.
+Earlier cold-cache/UI/EEP/probe-continuity repairs and source investigations are
+preserved in indexed CURRENT-cold-start-environment-repairs-2026-11-10.md.
+Cold cache backup remains private/intact. Terrain/water/shadow discrepancy and
+random attachment spikes remain unresolved. No viewer, camera, preference or
+account/cache changes during this implementation. Earlier20FPS campaign paused.
 
 ## Work board
 
@@ -98,23 +70,21 @@ ancestry was explicitly verified. No measured performance improvement claimed.
 
 ## Complete-product checkpoint gate
 
-Native UI loading, EEP display policy and probe continuity now follow confirmed
-original contracts. Build/native primitive checks passed; live correction of the
-reported lighting/blink/terrain/shadow symptoms is not yet established. Broader
-parity, stability and performance remain open. No product-completion claim.
+Avatar resource ownership, loading and GPU-cost measurement now have actual native
+implementations and bounded GPU proof. Whole viewer-manager dispatch, controlled
+crowd visuals/ART behavior, broader original parity/stability/performance still
+need observation. Build/tests do not establish product completion or FPS gains.
 
 ## Immediate executable action
 
-Report concrete source repairs and leave current live session intact. Prepared
-68630 awaits the next owner-directed run: observe actual environment transitions,
-encoded/reset receipts and completed replacement. Then compare remaining actual
-sky/interior/shadow/terrain behavior against exact original; trace affected
-geometry/map/palette/depth instead of speculative admission changes.
+Leave current live viewer intact; prepared68633 is ready for the next owner-directed
+run. Validate actual native completion receipts and cost limiting with several
+avatars, cross-view impostors and loading transitions, then earlier environment
+switches. Trace unresolved terrain/shadow/attachment geometry/depth as before.
 
-The owner-paused performance campaign remains deferred. Prior final9.745FPS and
-trace evidence are archived in CURRENT-20fps-owner-stop-2026-11-10.md. No automatic
-new benchmark/profiling/quality cuts. Translator fully stopped; Xcode replay off.
-All CUA phases completed. No private capture upload/release. Product not complete.
+20FPS campaign remains owner-paused (last controlled9.745FPS); no automatic new
+benchmark or quality cuts. Translator fully stopped, Xcode replay off. All CUA
+phases closed. No private uploads/releases. Product not complete.
 
 ## Non-negotiable open gates
 

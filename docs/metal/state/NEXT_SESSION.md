@@ -1,61 +1,47 @@
-# Continue cold-start and environment correctness
+# Continue correctness validation — native avatar repairs ready
 
 Read AGENTS.md and CURRENT.md completely. Branch codex/apple-silicon-metal.
-Renderer checkpoint `76413f2fcf76e528fcfe3740635111dcd4a54ea8`.
-Earlier 20 FPS goal remains PAUSED. Translator fully stopped, Xcode replay off.
-Root owns shared source/build/runtime/docs. All CUA phases completed; agents idle.
-Owner asked source comparison and questioned launches: do not restart solely for
-code inspection. No original viewer was launched in this cold-cache investigation.
+Renderer checkpoint `97dd825aaf428da4a50e6b8bf1659d5b60d62eda`.
+Owner explicitly requested all four multi-avatar gap repairs; implemented and
+committed, prepared build68633. All prior fixes retained. Earlier20FPS goal stays
+PAUSED. Translator fully stopped; Xcode replay off. All CUA phases completed.
+Root owns shared source/build/runtime/docs; agents finished owned work/reviews.
 
-Prepared build **68630 is built/verified, NOT launched**. Canonical disk app is
-68630; running **68626 PID44312** remains older source d18641c355, confirmed alive
-after build. Its launch identity is pinned in private launch.json; do not mistake
-the overwritten app's disk hash for running binary identity. Current owner drives.
+No viewer restart/launch in this task. Existing68626PID44312 remains running,
+confirmed after final build; codeD186. Canonical disk app is now68633, so never
+assign the new executable hash/repairs to the older running process. No cache,
+account, camera, location or graphics preference changes were made.
 
-Three source repairs are committed and included in 68630:
+Implementation details and exact limits:
+docs/metal/work/active/avatar-crowd-parity.md.
+- Native GPU completion receipt + ALGPUTimer now supply actual isolated avatar/
+  attachment GPU times. profile requests queue from UI/autotune, dispatch one per
+  main frame AFTER updateImpostors+main-camera restore; current shadow mirror is
+  packed and coherent saved shadow/SSR inputs pinned. Reuses warmed renderer,
+  separate targets, complete transaction, no visible impostor publication/wait.
+- Shared avatar-ID cache spans main/probe owner swaps. Immutable quartet leases
+  survive queued draws, replacement/destruction and actual GPU completion;
+  failed publication preserves old, device/HDR/normal invalidation stays strict.
+- Unloaded avatar skips where original skips. Original particles-disabled debug
+  sphere still lacks a native producer, so that explicit case remains incomplete.
+- Body texture requested/Default/Null ownership and raw-vs-sRGB sampling restored
+  without UI-slot mutation, preserving alpha/depth/caster admission.
 
-- b75e79cb73: pending generic 2D UI texture uses original immediate/default fallback
-  instead of rejecting whole world/UI publication. Native RED/GREEN test actual
-  pre-fix exit42, after201 assertions/3 cases exit0 including VB tests.
-- 0ef3e16a0b: original effective-ambiance==0 display gamma and coherent no-post
-  exposure/tonemap/bloom/streak policy. Legal explicit-zero sky can be nonclassic;
-  actual reported sky eligibility unknown. Native display1824/1,bloom67/1 pass.
-- 76413f2fcf: original same-layout reset retains completed default probe pair until
-  replacement. Advance epochs, clear nondefault receipts/pending tickets; strict
-  layout/device checks. Ordinary134/1 and hero589/1 primitive tests pass, but actual
-  manager reset/live visual transitions are NOT exercised by these tests.
+All focused GPU/API+shader checks passed: timing369/4, timer+UI+VB375/5,
+cache395/2, avatar sampling31498/1, existing impostor126/1. Doctor/configure/build/
+verify/signature exact-source records in
+artifacts/metal/private-avatar-parity-repair-20261110-01/build-final.json.
+No real crowd/viewer-manager/ART/visual comparison yet and no FPS gain claim.
+Bounded max16 native avatar/attachment completion logs can verify actual samples.
+Next owner-directed viewer run should test several avatars with full-detail limit
+and profiling enabled, main/mirror impostors, loading/default-to-ready transitions,
+and the earlier Midday/Sunset/Midnight fixes. Do not launch just for source audit.
 
-Doctor/configure/Release build/verify_app/deep strict signature all0; exact commands,
-source and hashes in artifacts/metal/private-cold-start-lighting-repairs-20261110-04/build.json.
-All prior HUD/upload/binding/light/shadow/resource/streamer/probe/aniso repairs kept.
-Source audits found no further confirmed sun/projector/terrain defect. Shared water/
-far-plane and infinite terrain culling match original; native terrain factors>=1
-and no DD height fade. Missing cube-only tessellation cap cannot explain MAIN loss.
-Do not claim screenshot/shadow/terrain parity from build/test success.
-
-Cold run was real zero-file SAME cache path: whole original cache preserved in
-artifacts/metal/private-empty-cache-start-20261110-01/original-cache (8978 files,
-1703059096 bytes). Do not restore over live cache. Account/settings untouched.
-Cold UI failure log19:34:31–38: pending UI mirror blocked whole publication despite
-ready world; success19:34:42, PSOs completed~50s earlier. Original ALSO renders UI
-on main thread. Later5s sample starts after recovery; not proof of prior deadlock.
-Cache sizing matches original. No stale canvas-size defect demonstrated.
-
-Next actual viewer run should observe Midday/Sunset/Midnight transitions, actual
-encoded EEP policy and reset preservation receipts (bounded32 each), then verify
-replacement/current publication. Owner has not seen 68630 yet. Source mechanism
-is proved; blink/lighting visual improvement remains UNVERIFIED. Keep current
-session intact for now. Remaining shadow/low-DD issue needs affected geometry,
-map publication and pre-water depth, not speculative culling/quality reductions.
-Random missing shoe/outfit spikes also remain unknown, re-Wear restored occurrence.
-Full evidence/limits in CURRENT. Private artifacts/captures/cache must not upload.
-
-Latest owner asked multiple-avatar comparison. Docs-only source audit in
-docs/metal/work/active/avatar-crowd-parity.md: 17 policy methods match1eb, but native
-ART timer never opens, impostor UUID cache is capture-local and missing to swapped
-probe owner, unloaded avatars over-invalidate whole probe faces, and pending body
-textures bypass original placeholder behavior. None repaired/built this follow-up.
-Private minimal admission patch /private/tmp/alchemy-metal-avatar-loading-admission-20261110.mtpkw_z9/avatar-loading-admission.patch
-is reviewed/apply-check0, not integrated or executed. Root found no palette alias.
-Crowd visual/FPS parity remains unverified; do not conflate geometry-complexity
-limits with the missing GPU-time policy. No viewer actions for this question.
+Previous cold empty-cache evidence/archive:
+docs/metal/state/archive/CURRENT-cold-start-environment-repairs-2026-11-10.md.
+Original8978files/1703059096bytes cache remains preserved at ignored
+artifacts/metal/private-empty-cache-start-20261110-01/original-cache;
+do NOT restore over live cache. Account/settings untouched. Earlier sky/gamma/
+probe continuity repairs68630 are ancestors; full visual result still unverified.
+Terrain/water/shadow screenshot and random shoe/outfit spikes remain unresolved.
+Private artifacts/captures/cache must never be uploaded without authorization.
