@@ -589,9 +589,12 @@ void MediaPluginLibVLC::receiveMessage(const std::string& message_string)
                 {
                     if (mPixels == iter->second.mAddress)
                     {
-                        libvlc_media_player_stop(mLibVLCMediaPlayer);
-                        libvlc_media_player_release(mLibVLCMediaPlayer);
-                        mLibVLCMediaPlayer = 0;
+                        if (mLibVLCMediaPlayer)
+                        {
+                            libvlc_media_player_stop(mLibVLCMediaPlayer);
+                            libvlc_media_player_release(mLibVLCMediaPlayer);
+                            mLibVLCMediaPlayer = nullptr;
+                        }
 
                         mPixels = NULL;
                         mTextureSegmentName.clear();
