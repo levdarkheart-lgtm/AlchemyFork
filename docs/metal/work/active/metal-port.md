@@ -1,44 +1,55 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `d18641c3557996807de03d99a105419161e95dfb`.
+**Renderer checkpoint:** Commit `76413f2fcf76e528fcfe3740635111dcd4a54ea8`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [paused campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
-## Current correctness repair — 2026-11-10
+## Current correctness work — 2026-11-10
 
-The owner authorized avatar/HUD investigation independently of the paused 20 FPS
-campaign. All attached/enabled HUD fills were absent while edit outlines rendered.
-The first native-authority fix restored fills but exposed wrong transparency and
-sampling. Exact original1eb comparison found dropped HUD forward alpha state,
-stale sampler inheritance, and an opaque/MASK PBR tail that still used retired
-draw calls. These are repaired with original color/coverage/depth contracts.
-A later live log exposed pending HUD diffuse texture invalidating whole composed
-frames; original default/Null placeholder behavior is restored in final68626.
+Owner requested fully empty startup then exact-original source comparison for UI
+stalls, lighting/sky/shadow mismatch, environment-switch blink and low-DD terrain.
+Prior 20 FPS goal remains paused. Earlier HUD/upload/performance repairs retained.
+Root exclusively owns shared source, integration, builds, runtime and canonical docs;
+agents produced private patches/read-only reviews, no competing shared edits.
 
-State: **implemented and built**; owner accepted previous fixes and requested
-all retained, including latest discovery. FinalPID43249 sourced18641c355
-was observed launching in UI. Final19:24UTC startup check has26 success/publication
-log entries and zero HUD-diffuse/upload/API assertion errors. Generic UI mirror
-warmup was reported before publication resumed; no zero-wait claim. Root owns source,
-canonical docs, builds and runtime. Agents source-reviewed/private patches only.
-No camera/quality/outfit/asset-network change and no private uploads.
+**Implemented/committed and built, live improvement pending:**
 
-A separate native upload retry defect is reproduced and fixed: failed native
-VB/IB uploads kept Written flags but lost their mapped queue entries. The repair
-keeps retries through subsequent flush, disarms dying entries and clears pending
-raw pointers on shutdown. Pre-fix test failed4 exact byte comparisons; corrected
-native suite passes93/2 with API+GPU validation. No current production failure
-proves this caused the random missing shoe. User repeated Wear restored that
-occurrence; outfit-change spikes also remain unexplained.
+- b75e79cb73: restore original ALTextureSlot pending/default-image semantics for
+  generic native UI fast/slow/raw binding. Cold log showed ready world blocked by
+  missing UI texture19:34:31–38, success19:34:42. Actual native RED/GREEN test:
+  pre-fix pending exit42; repaired pending+VB suite201 assertions/3 cases exit0.
+- 0ef3e16a0b: restore original effective sky probe ambiance==0 display gamma,
+  independent of surface classic flag, plus consistent original no-post exposure,
+  tonemap/bloom/streak policy retaining alpha glow. Actual reported sky eligibility
+  remains unknown. Backend display1824/1 + bloom67/1 pass, caller source reviewed.
+- 76413f2fcf: retain completed default radiance/SH across compatible sky resets,
+  as original. Strict layout/device/generation guards; advance epochs, clear
+  nondefault receipts/pending tickets. Backend ordinary134/1 and hero589/1 pass;
+  actual LLReflectionMapManager reset/replacement and visual transitions untested.
 
-Commands/evidence (all private ignored artifacts/metal): doctor/configure/build/
-verify_app/deep strict signature0; UI/HUD763/1 and selection4732/1 API+shader0;
-VB93/2 API+shader0. Direct UI fixtures bypass pipeline caller, so source/actual
-account observation and owner feedback remain essential. Source checkpoints:
-547daf9c31,082075249b,916ad7e79d,08bc61af05,d18641c355. Final evidence directory
-private-hud-placeholder-fix-20261110-04; preceding native-upload-retry03 and HUD
-blend02 preserve failures/reruns/commands/hashes. See CURRENT for full identities.
+All native tests used API+shader validation. Doctor/configure/Release build/
+verify_app/deep strict codesign0; build68630 ready, **NOT launched**. Exact commands,
+exits/source/hashes in private-cold-start-lighting-repairs-20261110-04/build.json.
+Prepared canonical disk app differs from still-running68626PID44312/sourceD186;
+its prior binary identity was pinned at launch. Do not assign new fixes to it.
+Cold launch occurred ONCE from zero files at SAME active cache path;8978 original
+files/1.70GB preserved privately. Account/settings untouched, no driver-cache purge.
+No original viewer launch or subsequent restart solely for source inspection.
+
+Original and native UI/world use main thread. Native pending publication explains
+one actual stale-display mechanism; no hard canvas deadlock or stale-size bug
+proved. The later five-second CPU sample started AFTER UI recovery. PSOs completed
+~50s before the reported freeze. Cache byte sizing policy matches original.
+Sun/projector source audits found no additional concrete defect. Original terrain
+culls with infinite far reach; shared water/far-plane code unchanged. Native terrain
+factors>=1, no DD height fade. Missing cube-only raster-span cap cannot explain
+MAIN terrain loss. Affected geometry/map/depth evidence is still missing; no
+speculative cutoff or quality reduction applied. Random shoe/outfit spikes unknown.
+
+Historical HUD/upload routing, original alpha/sampler/PBR and retry fixes plus
+executed checks are preserved in the indexed avatar-hud-upload checkpoint.
+All private artifacts/caches remain ignored; no upload/release. See CURRENT.
 
 ## Work board
 
@@ -77,16 +88,18 @@ ancestry was explicitly verified. No measured performance improvement claimed.
 
 ## Complete-product checkpoint gate
 
-HUD and upload correctness advanced through original-source repairs, bounded
-checks and actual account observations. Random attachment omission, full original
-parity and product performance remain open. No product-completion claim.
+Native UI loading, EEP display policy and probe continuity now follow confirmed
+original contracts. Build/native primitive checks passed; live correction of the
+reported lighting/blink/terrain/shadow symptoms is not yet established. Broader
+parity, stability and performance remain open. No product-completion claim.
 
 ## Immediate executable action
 
-Final68626 startup inspection completed; leave viewer running for owner. For a recurring
-attachment omission/spike, follow actual geometry/map/palette/batch state against
-exact original; the shared update/flush/routing/query checks did not reveal a
-shoe-specific difference. Do not label it fixed merely because re-Wear helped.
+Report concrete source repairs and leave current live session intact. Prepared
+68630 awaits the next owner-directed run: observe actual environment transitions,
+encoded/reset receipts and completed replacement. Then compare remaining actual
+sky/interior/shadow/terrain behavior against exact original; trace affected
+geometry/map/palette/depth instead of speculative admission changes.
 
 The owner-paused performance campaign remains deferred. Prior final9.745FPS and
 trace evidence are archived in CURRENT-20fps-owner-stop-2026-11-10.md. No automatic

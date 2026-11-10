@@ -193,3 +193,5 @@ erratum or a new current observation; do not silently rewrite historical claims.
 - [68608 bounded stage timing](CURRENT-stage-timing-runtime-2026-11-10.md) — controlled300frames9.0695FPS,334resolvedpasssamples, water/alpha/base priorities; no FPSgain.
 
 - [Water probe specialization candidate](CURRENT-water-probe-specialization-2026-11-10.md) — actual mirror-water hotspot, corrected lazy pipeline ownership and strict GPU parity; cost gate pending.
+
+- [Avatar/HUD and native upload correctness](CURRENT-avatar-hud-upload-correctness-2026-11-10.md) — exact-original HUD state, pending attachment textures, upload retry tests and build 68626; superseded by the cold-start investigation.

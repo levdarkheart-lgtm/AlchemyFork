@@ -1,39 +1,51 @@
-# Continue avatar/HUD correctness; performance goal stays paused
+# Continue cold-start and environment correctness
 
 Read AGENTS.md and CURRENT.md completely. Branch codex/apple-silicon-metal.
-Renderer checkpoint `d18641c3557996807de03d99a105419161e95dfb`; final68626 built/verified/launched PID43249.
-Root owns shared source/build/runtime/docs; agents idle. Source changes are
-committed; this handoff records the completed build/runtime checks. Do not resume the earlier 20 FPS investigation.
+Renderer checkpoint `76413f2fcf76e528fcfe3740635111dcd4a54ea8`.
+Earlier 20 FPS goal remains PAUSED. Translator fully stopped, Xcode replay off.
+Root owns shared source/build/runtime/docs. All CUA phases completed; agents idle.
+Owner asked source comparison and questioned launches: do not restart solely for
+code inspection. No original viewer was launched in this cold-cache investigation.
 
-All previous fixes were retained, as explicitly requested by owner. New work:
-547daf9c31 authoritative world/UI HUD capture;
-082075249b original HUD alpha/depth/blend, explicit sampler/activity and direct
-opaque/MASK PBR HUD shader/dispatch;
-916ad7e79d negative-test setup correction;
-08bc61af05 failed native VB/IB retry queue and teardown;
-d18641c355 pending HUD default/Null placeholders.
+Prepared build **68630 is built/verified, NOT launched**. Canonical disk app is
+68630; running **68626 PID44312** remains older source d18641c355, confirmed alive
+after build. Its launch identity is pinned in private launch.json; do not mistake
+the overwritten app's disk hash for running binary identity. Current owner drives.
 
-Doctor/configure/Release build/verify/signature passed. UI763/1 + selection4732/1
-API+shader validation passed; native VB93/2 passed after real pre-fix failure4/47.
-These do not imply complete visual parity. Owner said previous fixes were OK;
-latest placeholder correction now included in68626. Four owner screenshots and
-all logs/exits/hashes remain private under ignored artifacts/metal/ paths named
-in CURRENT. No private uploads or publication. Current runtime has API validation
-only, no benchmark flags, no forced location/profile/camera/outfit. User drives.
+Three source repairs are committed and included in 68630:
 
-Final startup check19:24UTC:26 success/publication log entries, zero missing HUD
-diffuse or VB/IB upload errors, zero API assertion errors. Generic UI buffer/texture
-mirror warmup was logged twice (through ONCE10) then publication resumed; do not
-claim every startup wait fixed. Viewer remains running for owner review.
+- b75e79cb73: pending generic 2D UI texture uses original immediate/default fallback
+  instead of rejecting whole world/UI publication. Native RED/GREEN test actual
+  pre-fix exit42, after201 assertions/3 cases exit0 including VB tests.
+- 0ef3e16a0b: original effective-ambiance==0 display gamma and coherent no-post
+  exposure/tonemap/bloom/streak policy. Legal explicit-zero sky can be nonclassic;
+  actual reported sky eligibility unknown. Native display1824/1,bloom67/1 pass.
+- 76413f2fcf: original same-layout reset retains completed default probe pair until
+  replacement. Advance epochs, clear nondefault receipts/pending tickets; strict
+  layout/device checks. Ordinary134/1 and hero589/1 primitive tests pass, but actual
+  manager reset/live visual transitions are NOT exercised by these tests.
 
-Next, if owner reports another missing attachment or spikes,
-trace that actual object's CPU geometry→draw map→native palette/batch; compare
-exact original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45. Re-Wear had already fixed
-this occurrence, so cause is unknown. No production upload error connected it
-to the retry defect. Shared attachment routes/flush/query invalidation matched
-reference in the audit; no speculative reclassification/culling workaround.
+Doctor/configure/Release build/verify_app/deep strict signature all0; exact commands,
+source and hashes in artifacts/metal/private-cold-start-lighting-repairs-20261110-04/build.json.
+All prior HUD/upload/binding/light/shadow/resource/streamer/probe/aniso repairs kept.
+Source audits found no further confirmed sun/projector/terrain defect. Shared water/
+far-plane and infinite terrain culling match original; native terrain factors>=1
+and no DD height fade. Missing cube-only tessellation cap cannot explain MAIN loss.
+Do not claim screenshot/shadow/terrain parity from build/test success.
 
-Earlier 20 FPS stop remains in archive/CURRENT-20fps-owner-stop-2026-11-10.md.
-No further optimization/profiling unless owner resumes that goal. Translator must
-remain fully stopped; Xcode replay stopped. No avatar travel by Codex. All CUA
-phases completed. Product parity/stability/performance release work stays open.
+Cold run was real zero-file SAME cache path: whole original cache preserved in
+artifacts/metal/private-empty-cache-start-20261110-01/original-cache (8978 files,
+1703059096 bytes). Do not restore over live cache. Account/settings untouched.
+Cold UI failure log19:34:31–38: pending UI mirror blocked whole publication despite
+ready world; success19:34:42, PSOs completed~50s earlier. Original ALSO renders UI
+on main thread. Later5s sample starts after recovery; not proof of prior deadlock.
+Cache sizing matches original. No stale canvas-size defect demonstrated.
+
+Next actual viewer run should observe Midday/Sunset/Midnight transitions, actual
+encoded EEP policy and reset preservation receipts (bounded32 each), then verify
+replacement/current publication. Owner has not seen 68630 yet. Source mechanism
+is proved; blink/lighting visual improvement remains UNVERIFIED. Keep current
+session intact for now. Remaining shadow/low-DD issue needs affected geometry,
+map publication and pre-water depth, not speculative culling/quality reductions.
+Random missing shoe/outfit spikes also remain unknown, re-Wear restored occurrence.
+Full evidence/limits in CURRENT. Private artifacts/captures/cache must not upload.
