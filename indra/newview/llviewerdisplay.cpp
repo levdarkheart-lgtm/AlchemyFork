@@ -2488,7 +2488,7 @@ void render_ui(F32 zoom_factor, int subfield)
         if (metal_world_ui_probe)
         {
             // Retire any final immediate-mode batch while the offscreen
-            // capture is still active. GL still receives every draw.
+            // native composition capture is still active.
             gGL.flush();
             gPipeline.endMetalWorldUICompositionCapture();
         }

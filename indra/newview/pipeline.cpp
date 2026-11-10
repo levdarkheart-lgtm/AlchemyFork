@@ -11169,12 +11169,12 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
         return false;
     }
     // RLVa @setoverlay is an ordinary gUIProgram textured immediate-mode
-    // batch inside render_ui_over_world. The ordered capture already mirrors
+    // batch inside render_ui_over_world. The ordered capture already encodes
     // that shader, its streamed tint/alpha, texture and sampler in place. If
     // the fetched texture has no Metal mirror (or any other batch is not
-    // reproducible), LLRender marks the entire transaction incomplete and GL
-    // remains authoritative for this frame; do not reject every valid overlay
-    // before that fail-closed owner gets a chance to encode it.
+    // reproducible), LLRender marks the entire transaction incomplete and the
+    // previous complete native drawable is retained; do not reject every valid
+    // overlay before that fail-closed owner gets a chance to encode it.
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     const bool world_ui_transaction_eligible =
         capture.world_ui_chain_snapshot ||
@@ -11211,10 +11211,13 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
         return false;
     }
 
+    // This transaction owns the HUD fills as well as the interface. HUD draw
+    // pools require native authority; mirror mode captures selection outlines
+    // but silently skips the attached HUD surfaces.
     if (!gGL.beginMetalUITextureCapture(
             ALMetalPixelFormat::bgra8_unorm, &gAlphaMaskProgram,
             background, depth, &gDebugProgram,
-            LLRender::EMetalUICaptureMode::GL_MIRROR,
+            LLRender::EMetalUICaptureMode::NATIVE_AUTHORITATIVE,
             LLRender::EMetalUICaptureStorage::FORMAT_NATIVE,
             &capture.world_ui_target))
     {
