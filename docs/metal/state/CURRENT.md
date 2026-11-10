@@ -5,7 +5,8 @@
 **Working source:** PBR765/source271eab19 built as normal68614; native/build gates0.
 Stable7772/water is pushed. New PBR code remains local. Both comparison viewers
 are CLOSED, exact SIGTERM/Goodbye/PID-absence verified, both OWNplans restored0.
-No profiler/build/GPUtest is running.
+No profiler/build/GPUtest is running. A default-off diagnostic-only adjacency
+census is being prepared; no rendering behavior change or new gain is claimed.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 

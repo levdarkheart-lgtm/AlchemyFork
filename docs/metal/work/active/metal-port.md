@@ -45,29 +45,11 @@ Root exclusively owns shared source/docs/runtime/GPU. Agents prepare private
 source or read-only analysis; no concurrent uncoordinated shared edits.
 Translator FULLY STOPPED/NEVERrestart; Xcode replay STOPPED; same location only.
 
-1407 caches immutable8/32 covered-shadow material bindings across views through
-FrameData. Actual native IDs/strong leases prevent ABA/inflight writes; TTL and
-1024slot/4MiB bounds include retired slots. Count1/capacity/allocation keep direct
-binding. Shader coverage/depth/constant math and draw order are unchanged.
-Flat pass-local registry preserves complete key equality, validation and order.
-Both optimized API+GPU suites435459assertions/102cases PASS; actual collision
-fixture0; actual renderer10strictR32pairs+196quiet timing samples0. Warm8/32
-precommit−40.21%/−69.60%,512cold−31.10%;4096once-use pressure+22.68%/+1.455ms.
-Separate retirement/diagnostic cleanup and probable modest32-slot GPU cost remain.
-This admits a controlled trial, not universal non-regression or release promotion.
-
-Normal68605/source1407 doctor/configure/build/verify/signature each0,349ARM64;
-independent exact source/exe/library/compiler flags review passed. Source recording
-OFF/C++23/O3/NDEBUG/arm64/min26.0. New executablef3aa9190/library39320181.
-Candidate68605 completed300readyframes:9.066675FPS; propercontrol68601:
-9.410237FPS, bothstart/end43gates0/camera+EEPexact/256ready120/bias1/native1.
-Candidate mean draws+2.53%; no isolated regression or FPS gain claim. Allviewers
-CLOSED/exactexits+allplansrestored. Both post-sampleCPU10s traces0; hero~50%main.
-Restored material_buffers=false and ordinarydiffusesamplerABfalse in source;
-optional material sampler is lazy, quality-matched and safely reset onanisotropy.
-BOTHoptimizedAPI+GPU435462/102PASS; sourceapproved, committed06d16eb4cb.
-Normal68606 doctor/configure/build/verify/signature all0;39343terminal0,
-349ARM64/0bad, executableac719b12/library3932; no liveFPScomparison yet.
+Material-buffer cache1407 passed native correctness/isolated CPU checks, but
+normal68605 live9.066675vsproper68601 9.410237 did not prove a benefit. Restored
+material_buffers=false/ordinary samplerABfalse in06d16. Both optimized435462/102
+passed, normal68606 doctor/build/349ARM64/signature0, preserved. No cache revival
+without new mechanism. [Evidence](../../state/archive/CURRENT-material-argument-buffers-2026-11-10.md).
 
 Earlier admitted68601/source77977290 ready300:9.833798FPS/mean101.690106ms.
 Preserved/private/tmp/alchemy-metal-68601-normal-preserved.app, exef277/lib61c5.
@@ -149,7 +131,13 @@ endgates0/exactcamera+EEP/native1/bias1/256ready120; draws+.4043%, probes98→97
 retain drift caveat.11encodedPBRreceipts; no demonstrated livegain. Both actual
 exactexits/Goodbye/PIDabsence0 and OWNplansrestored0, CUAimages actually observed.
 Officialenforce/provenance1: provenance passes, target/scene count unmet.
-No viewer/profiler/GPUtest/build live. Root/agents auditing remaining hero prep costs. [Evidence](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md). Preserve actual bound pack bit4/count>1 guards, main/default/no-shadow paths,
+No viewer/profiler/GPUtest/build live. Root/agents audited remaining hero prep costs. Native face-local occlusion is
+not a parity defect and lacks a proved removable population; main-camera state
+must not be reused. Root added default-off ALCHEMY_METAL_DRAW_JOIN_CENSUS: after
+successful encodes,13independent view/phase samples every120frames count ONLY
+necessary geometry adjacency, not full-state eligibility or GPUcost. Query-bearing
+Gbuffers are explicitly gated/unmeasured. No draw/state/resource changes. Pending
+normalbuild and settled census before any joining implementation. [Evidence](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md). Preserve actual bound pack bit4/count>1 guards, main/default/no-shadow paths,
 exact original cube single-tap and shader math. Root owns shared source/GPU.
 
 Parallel shadow prototype was compiled/GPU-tested435842/103, including two views

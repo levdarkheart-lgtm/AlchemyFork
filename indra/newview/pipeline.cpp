@@ -1154,6 +1154,80 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         mScopeSampleTimer.getElapsedTimeF32() >= llmax(interval(), 0.f);
     return due && sScopeCapture && canCaptureMetalWorldPresentation();
 }
+
+// Necessary geometry conditions only, NOT a merge predicate. The original
+// registerFace already combines many compatible faces; measure the remaining
+// upper bound before introducing another renderer batching path. No native
+// draw, state, resource or query is changed by this opt-in CPU census.
+static void describe_metal_draw_join_upper_bound(
+    const ALMetalWorldSimpleBatch* batches, std::size_t count,
+    bool forward, U32 view_kind, U32 face, std::size_t queries)
+{
+    static const bool enabled = []
+    {
+        const char* value = std::getenv("ALCHEMY_METAL_DRAW_JOIN_CENSUS");
+        return value && value[0] == '1' && value[1] == '\0';
+    }();
+    if (!enabled || view_kind < 1 || view_kind > 3 ||
+        (view_kind == 1 ? face != 0 : face >= 6))
+    {
+        return;
+    }
+    const U32 slot = view_kind == 1 ? 0 :
+        1 + (view_kind - 2) * 6 + face;
+    static std::array<std::array<U32, 13>, 2> previous_frames{};
+    U32& previous = previous_frames[forward ? 1 : 0][slot];
+    if (previous != 0 && gFrameCount - previous < 120)
+    {
+        return;
+    }
+    previous = gFrameCount;
+    const auto in_scope = [forward](const ALMetalWorldSimpleBatch& batch)
+    {
+        return batch.vertices && batch.indices && batch.vertex_count != 0 &&
+            batch.index_count != 0 && batch.index_count % 3 == 0 &&
+            !batch.terrain && !batch.impostor && !batch.avatar_rigid &&
+            !batch.avatar_skinning && !batch.avatar_cloth && !batch.avatar_alpha &&
+            !batch.skin_palette && batch.skin_palette_float_count == 0 &&
+            batch.skin_joint_count == 0 &&
+            (!forward || (!batch.pre_water_alpha && !batch.post_water_alpha &&
+                !batch.post_water_depth_only && !batch.post_water_glow &&
+                !batch.water_exclusion && !batch.water_haze &&
+                !batch.atmospheric_haze && !batch.water_surface &&
+                !batch.legacy_glow && !batch.pbr_glow && !batch.impostor_emboss));
+    };
+    U64 static_batches = 0;
+    U64 adjacent_pairs_upper_bound = 0;
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        const auto& batch = batches[index];
+        if (!in_scope(batch)) continue;
+        ++static_batches;
+        // A query event uses the ORIGINAL logical batch offset. Leave the
+        // entire query-bearing scene out of the proposed first merge scope.
+        if (queries != 0 || index == 0 || !in_scope(batches[index - 1])) continue;
+        const auto& prior = batches[index - 1];
+        const std::size_t stride = prior.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        const std::size_t bytes = static_cast<std::size_t>(prior.index_count) * stride;
+        if (batch.vertices == prior.vertices && batch.indices == prior.indices &&
+            batch.index_type == prior.index_type &&
+            prior.index_offset <= std::numeric_limits<std::size_t>::max() - bytes &&
+            batch.index_offset == prior.index_offset + bytes &&
+            batch.index_count <= std::numeric_limits<U32>::max() - prior.index_count)
+        {
+            ++adjacent_pairs_upper_bound;
+        }
+    }
+    LL_INFOS("MetalPost") << "Native draw-join upper bound: frame=" << gFrameCount
+        << ", view=" << view_kind << '/' << face
+        << ", phase=" << (forward ? "forward" : "gbuffer")
+        << ", batches=" << count << ", static_batches=" << static_batches
+        << ", queries=" << queries
+        << ", query_gated=" << (queries != 0)
+        << ", state_equality_checked=0"
+        << ", adjacent_pairs_upper_bound=" << adjacent_pairs_upper_bound
+        << LL_ENDL;
+}
 #endif
 
 LLPipeline::LLPipeline() :
@@ -8982,6 +9056,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         }
         else
         {
+            describe_metal_draw_join_upper_bound(
+                scene.batches, scene.batch_count, true,
+                scene.diagnostic_view_kind, scene.diagnostic_view_index, 0);
             // Observe actual PBR color PSOs once per probe view in an opt-in
             // benchmark. Ordinary play never reads this diagnostic snapshot.
             if (ALMetalDevice::commandTimingEnabled() &&
@@ -16967,6 +17044,16 @@ void LLPipeline::endMetalWorldGBufferCapture()
     std::shared_ptr<ALMetalVisibilityResultBatch> visibility_results;
     auto target = capture.renderer->render(
         scene, &error, &visibility_results);
+    if (target && !impostor_bake)
+    {
+        describe_metal_draw_join_upper_bound(
+            scene.batches, scene.batch_count, false,
+            capture.hero_probe_face_capture ? 2 :
+                capture.reflection_probe_face_capture ? 3 : isMainWorldPass() ? 1 : 0,
+            capture.hero_probe_face_capture ? capture.hero_probe_face :
+                capture.reflection_probe_face_capture ? capture.reflection_probe_face : 0,
+            scene.visibility_query_count);
+    }
     if (!target)
     {
         settle_visibility_results(nullptr);
