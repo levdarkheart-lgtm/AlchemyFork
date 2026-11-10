@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `f549a796d2c734222665dd10c836e56c0df352b9`.
+**Renderer checkpoint:** Commit `765c305b5ac4c7b897d6581ea2990de49d1e09f6`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [campaign](ultra-20fps.md), [archive index](../../state/archive/INDEX.md).
 
@@ -138,8 +138,11 @@ all4sourcefiles restored byte-exactly7772, no viewer trial. Ninja test artifacts
 are still experimental and require rebuilding. [Evidence](../../state/archive/CURRENT-probe-address-space-rejection-2026-11-10.md).
 Stable7772 was pushed at owner request; unfinished experiments excluded. The
 owner chose manual existing alpha-workflow dispatch because CLI/browser lacked login.
-Next implement missing PBR color-alpha FC0 specialization after private source/test
-review. Preserve actual bound pack bit4/count>1 guards, main/default/no-shadow paths,
+PBR FC0 candidate coreb809 and guarded producer/actualreceipts integrated. Actual
+68pairs+6large25379/1 and quiet16828122/1 pass0; GPU mean−13.555/−17.747%, all7
+blocks faster, no CPU/FPS claim. Expanded88strictpairs+6large27593/1 pass0.
+Private benchmark stripped, strictfixture byte-proof7ccb823c. Both optimized fullAPI+GPU suites494211/104 EACH pass0; final15sourcehashesmatch.
+Committed765c305, normalbuild/verify and livecomparison next. [Evidence](../../state/archive/CURRENT-pbr-probe-specialization-2026-11-10.md). Preserve actual bound pack bit4/count>1 guards, main/default/no-shadow paths,
 exact original cube single-tap and shader math. Root owns shared source/GPU.
 
 Parallel shadow prototype was compiled/GPU-tested435842/103, including two views

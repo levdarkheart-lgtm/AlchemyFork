@@ -1,10 +1,10 @@
 # Current engineering state
 
 **Observed:** 2026-11-10, physical M1 Max/64 GiB/macOS26.5.2/Xcode26.6.
-**Branch:** `codex/apple-silicon-metal`. **Renderer code checkpoint:** `f549a796d2c734222665dd10c836e56c0df352b9`.
-**Working source:** retained waterf549; all four rejected probe-address prototype
-files restored exactly to7772. Renderer source is clean. Stable7772 is pushed.
-Canonical app68610/source8eea remains preserved; all viewers are closed.
+**Branch:** `codex/apple-silicon-metal`. **Renderer code checkpoint:** `765c305b5ac4c7b897d6581ea2990de49d1e09f6`.
+**Working source:** PBR specialization765c305 committed after both full native
+suites passed. Water68610 remains the measured baseline; new candidate unmeasured.
+Stable7772 is pushed;765c305 is local. Canonical68610 preserved, all viewers closed.
 **Recovery:** [NEXT](NEXT_SESSION.md), [ledger](../work/active/metal-port.md),
 [campaign](../work/active/ultra-20fps.md), [history](archive/INDEX.md).
 
@@ -24,11 +24,12 @@ ControlCenter: the unsupported target previously stalled7654s.
 
 ## Runtime and current decision
 
-All viewers are CLOSED; both new sessions exited with SIGTERM/Goodbye/PIDabsence
-and OWN environment plans restored0. No profiler/build/GPU test is running.
-Normal68610/source8eea is canonical and preserved; independent identityfc35passed.
-Both full optimized native suites passed482529/104. Fresh baseline comparison
-completed; CPU/GPU timeline exports and independent analysis are finalized.
+All viewers are CLOSED; both earlier sessions exited with SIGTERM/Goodbye/
+PIDabsence and OWN environment plans restored0. No profiler/GPU test is running.
+PBR final Release AND RelWithDebInfo full API+GPU suites EACH passed494211/104,
+all four build/run exits0 and final15source hashes rechecked. All jobs terminal.
+Next source-exact normal build/identity verification then controlled viewer trial.
+Normal68610/source8eea remains canonical/preserved. No new viewer FPS result.
 
 6b80 adds bounded, default-off stage timing. Native focused41331/2 and both
 optimized full API+GPU suites476793/104 passed. Normal68608 doctor/configure/
@@ -110,8 +111,16 @@ no viewer trial. Ninja artifacts remain experimental: rebuild before reuse.
 Next candidate is the missing PBR color-alpha probe-shadow FC0 specialization:
 standard/custom PBR PSOs omit it despite calling the same helper as water/simple.
 Exact original1eb uses cube single-tap. Existing hero stages/census support PBR-alpha
-before light-map (latter median0.021ms). Shadow/Trace prepare private core/strict+
-cost packets; root alone integrates/runs GPU. No PBR gain established yet. A no-mirror water-discard specialization was rejected BEFORE editing:
+before light-map (latter median0.021ms). Core b809d9e0 is integrated with the guarded generic producer and bounded12view
+actual-descriptor receipts (pipeline e4786d49). Actual68pairs+6large API+GPU25379/1
+and quiet168samples28122/1 passed0; same39320181library. Dense rigid/skinned GPU
+mean−13.555/−17.747%, all7blocksfaster beyond SAME controls. No CPU/FPS gain yet.
+Expanded16nonHDR+4protecteddepth pairs passed27593/1; private benchmark stripped
+with exact strict-preservation proof, permanentGPUtest7ccb823c. Both fulloptimized API+GPU suites
+494211/104 EACH passed0 in private
+/private/tmp/alchemy-metal-pbr-fc0-admission-20261110.ln3y_bxk. Source peerreview
+passed. Committed765c305; next normalbuild/verify and controlledviewertrial.
+[Complete evidence](archive/CURRENT-pbr-probe-specialization-2026-11-10.md). A no-mirror water-discard specialization was rejected BEFORE editing:
 the measured hero5 really has mirror clipping enabled.
 
 ## Retained diagnosis and closed work
