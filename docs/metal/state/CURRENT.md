@@ -1,140 +1,105 @@
-# Current engineering state — failed-travel correctness repairs
+# Current engineering state — classic-avatar and music repairs
 
 **Observed:** 2026-11-10, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `0cbb48f104ad2f7d6e358266c1abf32d4d487a63` — independent native UI publication,
-terrain placeholders, impostor receipt/retry, affine skin validation and names.
-Owner explicitly requested code fixes against original source and saved logs.
-All earlier HUD, upload, environment, avatar and performance repairs retained.
+**Renderer code checkpoint:** `2c60e47b0eac61f3a62b504163504516d1729bed`.
+All previous renderer/HUD/loading/UI/environment/performance repairs retained.
 Earlier20FPS campaign stays paused. Translator stopped; Xcode replay stopped.
-No launch/login/travel, camera, account/cache/settings changes during this repair.
-The old68633 process was confirmed exited before GPU checks.
+Owner closed68638; process check confirmed no viewer running. New68643 remains
+closed. No account/cache/settings/camera/region changes during these repairs.
 
-## Latest owner-run — continuous corruption persists
+## Confirmed avatar contract repaired
 
-[68638 live findings](../work/active/travel-live-68638.md): owner explicitly
-requested launch/log observation, then screen inspection. Exact canonical app/
-hash verified, PID27603 launched viaCUA; owner logged in. Two actual screenshots
-show different giant triangle arrangements; owner says junk keeps dancing every
-frame. This live geometry result is FAILED. Fresh native UI/publication receipts
-continue, but no nonfinite skin operand/fallback warning appears while corruption
-is visible. Earlier empty/terrain/impostor source fixes do not prove its cause.
-Initial12 cloud-loading warnings later stop; no corresponding Metal error found.
-Logs/receipts are private and not frame counts. Root made no settings/camera/cache
-or source/build changes during trial. Viewer remains running; FPS goal paused.
+[Shader repair and actual GPU proof](../work/active/classic-avatar-position-w.md).
+Exact original `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` declares classic-avatar
+positions vec3 and explicitly constructs vec4(XYZ,1). Poly-mesh loading/morph/VBO
+copying never guarantees stored SIMD padding W1. Native shared skin/cloth
+helpers instead consumed raw float4 padding, omitting or scaling translations.
+Repair restores W1 at those two helper entries, covering main opaque/mask,
+forward alpha, cloth and preview consumers. Rigid/spot-shadow already normalized.
+No object-skin change, palette clamp, hidden geometry or occlusion workaround.
 
-## Concrete repairs and original contracts
+Owner screenshots show skin/head fans originating from one avatar with coherent
+clothing. This is a confirmed matching shader defect, but not proof that every
+live attachment/loading artifact shares its cause. The previous68638 live result
+remains [failed](../work/active/travel-live-68638.md), now preserved in the
+[indexed archive](archive/CURRENT-continuous-avatar-corruption-68638-2026-11-10.md).
 
-Exact original: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`.
-[Implementation and evidence](../work/active/travel-correctness-repair.md).
+Actual M1 Max Release API+shader-validation tests:
 
-- Native interface no longer requires a complete CURRENT world to render fresh
-  ordered UI/HUD. Retain committed PRE-UI color plus matching depth; never reuse
-  combined old UI. Device/surface/resize/reverse-Z mismatch gets a current-size
-  cleared pair. Snapshots/debug pixels still demand the exact current world.
-- Typed target leases pin pools; native texture aliases survive borrowed-wrapper
-  destruction. Remove redundant early main G-buffer clear (actual native pass
-  clears all attachments); exclude retained depth from subsequent borrowed writes.
-- Reduced/supersampled world size is resampled to full UI size as a coherent
-  pair: BilinearMirror encoded color, PointClamp raw depth, no Z conversion or
-  offscreen row flip. Cached pipeline/pool, completion-pinned source/output;
-  one extra submission only when scaling, none for matching-size retention.
-- Classic/PBR fetched terrain uses original immediate revival, Default then Null
-  placeholders, correct raw/sRGB views and samplers. Strong selected owners reach
-  command completion. Generated height/composition remain exact, with bounded
-  role-specific missing-input diagnostics.
-- Complete empty main views now continue through sky/lighting, as original;
-  explicit completeness/resource/query checks remain. Complete empty impostor bakes produce transparent targets, as original clears
-  even when no subject geometry is emitted. Failed native publication preserves
-  dirty retry and old dimensions/cached values/timestamp; publication requires
-  a validated quartet. First failing producer line survives phase resets.
-- Object skin validation checks the twelve consumed XYZ coefficients, preserving
-  a valid affine transform whose unused W lanes are nonfinite. Actual bad XYZ
-  retains bounded inverse/world/product diagnostics; no arbitrary finite caps or
-  speculative whole-palette policy. Live bad XYZ cause remains unknown.
-- Display-name cache misses stay pending after distance/status lines are added;
-  a stationary avatar can then gain its name without unrelated state changes.
-  This retry bug is also present in pinned original; formats/RLVa policy unchanged.
+| Check | Result |
+| --- | --- |
+| Same classic pose fixture with exact previous68638 metallib | exit42;256 assertions,10 failures |
+| Repaired shader, independent original-style CPU affine oracle | exit0;256 assertions/1case |
+| Existing four-MRT world/avatar-impostor regressions | exit0;48568 assertions/2cases |
 
-## Executed validation and build status
+Pose fixture covers indexed geometry,15 distinct joint affine transforms,
+fractional endpoint weights, W0/arbitrary padding, all4 MRTs/rawD32, both Z modes
+and nonzero cloth wind. Initial fixture used wrong shadow target type; corrected
+reruns above are decisive. Independent source reviews approved shader/test.
+Potential dirty-VBO publication/fence seams remain private/unapplied, not proved
+live causes; do not silently integrate them into this narrow repair.
 
-Canonical Release **26.4.0.68638** built from checkpoint0cbb48f104, verified and
-signed; subsequently launched at the owner’s explicit request. Doctor/configure/build/final configure+build/verify_app/
-deep strict codesign all exit0. verify_app checked349 Mach-O files, zero invalid
-non-arm64 slices. Source tree matches committed code, with docs-only handover edits.
-Canonical app: `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-Executable SHA256: `6942629c44614828ed327e563536376191c992c0d2af9ead44f2c819fc8c0eb0`.
-Metallib SHA256: `bca357a8868e3c4a82c9e8eb21cc3b27fe783806e83651742e2919b4671c3f0d`.
-Exact source/commands/exits/hashes: private `build-final.json` in the evidence directory.
-Commands/logs: ignored `artifacts/metal/private-travel-correctness-repair-20261110-01/`.
-Root performed builds/GPU runs; independent source review approved all owned
-components and found the earlier main-depth clear, which root corrected.
-This is source/review evidence, not an independent fresh-checkout build.
+## Parcel music repaired; camera and voice audited
 
-Actual Release tests on this M1 Max; API+shader validation enabled for GPU cases:
+[Music host repair](../work/active/parcel-music-host-repair.md). Actual68638 music
+requests reached LibVLC child then exited1. Its inherited ./plugins path does not
+match nested packaged modules. Exact-library A/B: old relative path gives NULL
+initialization; canonical absolute module path succeeds. Repair resolves native
+executable location, validates modules, reports init/play failures and guards
+cleanup. Original settings, volume/backend/arguments retained.
+Actual rebuilt dedicated host passed local3s silent WAV playback, volume0:
+hello/init→Playing→13 time updates→Done→normal exit0, empty stderr, no audio-output
+errors or parent signals. Remote parcel/audible playback remains unverified.
 
-| Check | Assertions/cases | Result |
-| --- | --- | --- |
-| Affine palette/real affineTransform |201/3|pass|
-| Production fetched resolver + classic/PBR terrain GPU |272/1|pass|
-| Empty impostor bake and quartet replay,8 format/Z layouts |17070/1|pass|
-| Retained UI, pool/borrowed lifetime, resize, scale and HUD depth |29130/3|pass|
-| Existing native UI/target/pool/impostor regression cases |17964/4|pass|
-| Existing four-MRT world renderer, including actual clear-only world |31498/1|pass|
+[Camera and voice source audit](../work/active/teleport-camera-voice-audit.md):
+teleport/reset/interpolation handlers match original; no guessed camera change.
+Native retained world imagery can produce held-frame/jump behavior; continuous
+fly-in cause is not proved. Voice client/channel/WebRTC/ADM/device contracts and
+permission/package requirements match original. ARM64 in-process WebRTC and
+microphone entitlement are present in68643. No voice-specific incorrect port
+found; microphone/TCC, actual calls and audible/spatial voice are untested.
 
-Initial retained-UI fixture selected an alpha-textured shader without supplying
-an image; corrected to uniform_color and rerun passed. No renderer fault was
-inferred from that fixture failure. The final native scaling shader is packaged in the verified app; the initial
-1101-unit viewer rebuild and final four-unit incremental build both succeeded.
+## Exact build and evidence
 
-These tests do not instantiate the entire viewer manager, actual network fetch,
-CAMetalLayer resize/input loop, or full live teleport/name/rigging paths. No new
-live visual/FPS improvement claim. Existing final grain/dither still evaluates
-at world size before scaling: exact noise/effect-coordinate parity for non1
-render scales remains open. No scene quality cuts or avatar caps introduced.
-
-## Preserved evidence and open symptoms
-
-[Failed68633 live travel](../work/active/travel-live-68633.md) and
-[preceding checkpoint](archive/CURRENT-failed-travel-68633-2026-11-10.md).
-Owner saw UI/movement/resize stalls, distance-only names and stretched geometry.
-Saved logs/screenshots/10sCPUtrace remain private. Trace captured345 runloops,
-max82.18ms gap, not a permanent deadlock; that does not prove visible publication
-or keyboard delivery at every reported failure. Earlier bounded tests did not
-supersede this failed live result.
-
-[Prior avatar ownership/profiling repair](../work/active/avatar-crowd-parity.md)
-remains included. Whole-manager native GPU timing/ART dispatch and crowd visuals
-still need live checks; no native profile-completion receipt was observed in the
-failed trial, and request activation was unknown. Original particles-disabled
-loading debug sphere still lacks its native producer.
-
-[Cold-start/environment checkpoint](archive/CURRENT-cold-start-environment-repairs-2026-11-10.md)
-retains earlier EEP gamma/no-post/default-probe continuity fixes. Full sky/interior/
-shadow parity, low-DD terrain/water and all random attachment corruption remain
-unverified beyond the specific confirmed source repairs above.
-Original8978files/1703059096bytes cache remains preserved under ignored
-`artifacts/metal/private-empty-cache-start-20261110-01/original-cache`.
-Do not restore over active cache; account/settings untouched. No private uploads.
+Canonical Release **26.4.0.68643** built from checkpoint2c60e47 with clean source.
+Doctor/configure/build/verify_app/deep strict codesign all exit0. ARM64 inspection
+checked349 Mach-O files, zero invalid slices. Root ran build/GPU/audio checks;
+peers source-reviewed. This is not an independent fresh-checkout release build.
+App: `build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
+Executable SHA256: `421fc603583e07f54a397baa5d38d51c814c18303bfd13d3a92fba5f13170790`.
+Metallib SHA256: `52d5aec4853511526cc5198f077fdb289d566c602271464f57c3f6174314e36c`.
+Ignored evidence: `artifacts/metal/private-classic-avatar-position-w-20261110-01/`.
+Its final-build-identity.json pins exact source, artifacts and command receipts;
+vlc-real-host/result.json pins compiled playback host and protocol observations.
+No private logs/screenshots/URLs/cache uploaded. Code commits29d0b148e7,
+d497d2122e and2c60e47b0e are local; no new push or release claimed.
 
 ## Exact next actions
 
-68638 PID27603 is running for the owner. Preserve the current failing scene and
-identify the exact native draw and vertex/index/weight/palette/transform inputs
-producing moving triangles against original source. Quiet finite/error logs do
-not identify it. Read-only source audit remains in progress; no cause established.
-Other input/resize/HUD/environment/terrain/water/shadow acceptance remains open. Do not treat
-backend tests as full visual acceptance or resume the paused FPS campaign.
+Keep68643 closed unless owner requests a launch/test. Next live acceptance must
+verify the previously identified avatar and outfit/loading/teleport geometry,
+HUD transparency, UI/movement/resize responsiveness, names and real parcel music.
+Capture exact-build logs; bounded backend success does not close those symptoms.
+If camera fly-in persists, correlate actual camera pose with published world
+source-frame/region before changing original interpolation policy. Voice needs
+an attended functional test before parity is claimed. No current source proof
+justifies voice or camera changes. Do not resume the pausedFPS campaign.
 
 ## Complete-product advancement assessment
 
 | Milestone | State | Evidence /remaining requirement |
 | --- | --- | --- |
-| M-008 Advanced views/effects | doing | Native loading/UI/avatar correctness mechanisms repaired and GPU-tested; live parity remains. |
+| M-008 Advanced views/effects | doing | Original avatar shader contract repaired with failing-old/passing-new GPU proof; live parity remains. |
 | M-012 Native UI automation | complete | Prior exact-build flow retained; no new CUA phase. |
 | M-014 Ultra20FPS campaign | deferred | Owner-paused; no new FPS or speedup claim. |
 
+Prior loading/UI/terrain/impostor/name repairs remain included; see
+[correctness report](../work/active/travel-correctness-repair.md). Full sky/interior/
+shadow/low-DD parity, crowd ART, original loading-sphere producer, non1-scale
+final-noise coordinates and prolonged stability remain open. Cold cache backup
+8978files/1703059096bytes remains private/intact; do not restore over active cache.
 [Paused campaign](archive/CURRENT-20fps-owner-stop-2026-11-10.md): last controlled
-current-source9.745FPS;20FPS remains unmet, no hardware ceiling proved.
-Full parity, prolonged stability, multi-scene performance, strict no-GL and
-independent build/review evidence remain open. Product is not complete.
+current-source9.745FPS;20FPS unmet, no hardware ceiling proved. Full parity,
+multi-scene performance, strict no-GL and independent build/review evidence remain
+open release gates. Product is not complete.

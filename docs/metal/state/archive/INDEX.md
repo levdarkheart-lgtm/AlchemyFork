@@ -6,6 +6,7 @@ reload the chronological history.
 
 | Coverage | Archive | Superseded by |
 | --- | --- | --- |
+| Failed68638 owner travel with moving avatar triangles, before confirmed shader repair,2026-11-10 | [CURRENT-continuous-avatar-corruption-68638-2026-11-10.md](CURRENT-continuous-avatar-corruption-68638-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Final current-source workload/profile,9.745FPS and owner-requested stop with20FPS unmet,2026-11-10 | [CURRENT-20fps-owner-stop-2026-11-10.md](CURRENT-20fps-owner-stop-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Guarded indexed joining: full native gates, private CPU/GPU cost and slower same-build live rejection,2026-11-10 | [CURRENT-indexed-draw-joining-live-2026-11-10.md](CURRENT-indexed-draw-joining-live-2026-11-10.md) | `docs/metal/state/CURRENT.md` |
 | Adjacent indexed draw geometry census and opt-in prototype, no performance claim,2026-11-10 | [CURRENT-indexed-draw-joining-2026-11-10.md](CURRENT-indexed-draw-joining-2026-11-10.md) | `docs/metal/state/CURRENT.md` |

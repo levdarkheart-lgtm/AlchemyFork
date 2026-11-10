@@ -1,51 +1,40 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `0cbb48f104ad2f7d6e358266c1abf32d4d487a63`.
+**Renderer checkpoint:** Commit `2c60e47b0eac61f3a62b504163504516d1729bed`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [paused campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
 ## Current correctness work — 2026-11-10
 
-Owner explicitly requested code fixes following failed68633 travel QA. Renderer
-checkpoint `0cbb48f104`; all prior repairs retained. Root integrates/builds/docs;
-independent agents source-reviewed owned components and actual regression tests.
-[Implementation/evidence](travel-correctness-repair.md): fresh native ordered UI
-uses a retained PRE-UI color/depth pair while the current world is incomplete;
-resize/device/Z mismatch uses cleared backing. Full UI-size color/raw-depth
-resampling supports reduced/supersampled world targets. Early redundant main
-G-buffer clear removed; borrowed writes exclude retained depth. Fetched classic/
-PBR terrain restores original revival/Default/Null/raw/sRGB sampling, without
-substituting generated maps. Complete empty main views retain original sky/lighting progression.
-Impostor failures retain retry, complete empty bakes
-publish transparent data. Object palette validation ignores unused W lanes while
-preserving every valid coefficient. Pending display names retry despite distance
-lines. Actual bad XYZ inputs and full live regression results remain unknown.
+Owner requested actual original-source repairs after failed68638 travel. Root
+integrated and built; independent agents source-reviewed separate contracts.
+[Classic-avatar repair](classic-avatar-position-w.md): original position vec3 is
+explicitly XYZ/W1. Native shared skin/cloth helpers used raw stored padding W,
+which is not homogeneous position. Two helper normalizations restore original
+translation behavior without hiding geometry or changing object skinning.
+Actual old68638 library fails10/256 assertions; repaired shader passes256/1.
+Existing world/impostor regressions pass48568/2. GPU API+shader validation used.
 
-Actual Release tests: skin201/3, terrain272/1, impostor17070/1, retained UI/resize/
-scale/HUD29130/3, existing UI/pool/impostor17964/4 all passed. GPU runs used API+
-shader validation on M1 Max. One UI fixture shader-selection error corrected
-before passing rerun. Canonical Release68638 built/verified/signed, left closed; doctor/configure/
-build/verify/deep strict signature all0,349 Mach-O files all ARM64.
-No viewer launch, camera/profile/account/cache changes or FPS campaign resumption.
-Private exact commands/logs under private-travel-correctness-repair-20261110-01.
+[Music repair](parcel-music-host-repair.md): inherited relative LibVLC module path
+fails initialization in actual bundle. Canonical native-executable-derived path
+succeeds. Rebuilt real playback host passed local3s silent WAV atvolume0 through
+Playing/time updates/Done/normal exit0, no audio-output errors. Remote/audible
+parcel playback remains open. [Camera/voice audit](teleport-camera-voice-audit.md)
+found no changed teleport interpolation or voice contract; functional voice and
+actual fly-in diagnosis remain open, no guessed changes applied.
 
-[Failed live travel](travel-live-68633.md) still governs visual status. Owner saw
-UI/movement/resize stalls, missing names and stretched geometry. Trace's active
-runloop does not disprove intermittent visible freeze. New backend tests are
-mechanism proof, not live acceptance. Prior [avatar repairs](avatar-crowd-parity.md)
-and [cold startup/environment checkpoint](../../state/archive/CURRENT-cold-start-environment-repairs-2026-11-10.md)
-remain included. Cold cache backup private/intact. Translator stopped, replay off.
+Canonical Release68643 source2c60e47 is built/verified/signed and remains closed.
+Doctor/configure/build/verify_app/deep signature all0;349 Mach-O files ARM64.
+Private commands/logs/hashes: private-classic-avatar-position-w-20261110-01.
+Owner closed68638; no current viewer process, account/cache/settings/camera
+changes or performance campaign resumption. Translator stopped; replay off.
 
-## Latest68638 owner-driven trial — failed geometry
-
-[Live findings](travel-live-68638.md): exact68638PID27603 launched after explicit
-owner request, owner logged in. Two CUA screenshots show different large corrupt
-triangle arrangements; owner confirms continuously dancing junk. New logs have
-no nonfinite palette/fallback receipts while visible; UI publication receipts
-continue. No cause proved; no source/settings/camera/cache changes during trial.
-Viewer running for owner. Read-only draw/input investigation pending; isolated
-passing GPU checks are not live visual acceptance. EarlierFPS campaign paused.
+[Failed68638 live result](travel-live-68638.md) remains failed; bounded GPU proof
+is not full live acceptance. Earlier [travel repairs](travel-correctness-repair.md)
+and [avatar ownership work](avatar-crowd-parity.md) remain included. Potential
+VBO/fence publication seams are private/unapplied, not established live causes.
+Cold cache backup remains private/intact. No release/private upload/new push.
 
 ## Work board
 
@@ -84,18 +73,21 @@ ancestry was explicitly verified. No measured performance improvement claimed.
 
 ## Complete-product checkpoint gate
 
-Specific loading, UI/depth lifetime, scaled composition, name retry and affine
-palette defects are repaired with actual native pixel/ownership tests. Whole
-viewer input/resize/teleport/crowd/ART and prior shadow/sky/low-DD visual parity
-remain unverified. Non1-scale final grain/dither coordinate parity is open.
-Build/tests do not establish product completion or FPS gains.
+Original classic-avatar shader ABI and packaged LibVLC initialization defects
+are repaired with actual failing-old/passing-new GPU and actual-host playback
+proof. Prior loading/UI/depth/terrain/name repairs retained. Whole-viewer travel,
+input/resize/HUD/crowd/ART/music/voice and shadow/sky/low-DD parity remain open.
+Non1-scale final grain/dither coordinate parity remains open. Build/test counts
+do not establish visual acceptance, product completion or FPS gains.
 
 ## Immediate executable action
 
-68638PID27603 runs for the owner with continuous corrupt geometry. Preserve the
-scene; identify actual draw and finite GPU-input corruption against original
-source. Other live input/HUD/environment/terrain/water/shadow acceptance remains open. Earlier20FPS campaign remains paused;
-last controlled9.745FPS is not a new result. No uploads/releases or quality cuts.
+Leave68643 closed pending owner-directed testing. Verify previously corrupt
+avatar, outfit/teleport loading, HUDs, input/resize, names and real parcel music
+with exact-build logs. If camera symptom persists, correlate camera pose and
+published world source-frame/region; original camera code is unchanged. Voice
+requires attended functionality before parity. No speculative camera/voice fix.
+Earlier20FPS campaign remains paused; last controlled9.745FPS is not a new result.
 
 ## Non-negotiable open gates
 

@@ -52,9 +52,15 @@ Root executed all builds/GPU runs; peers source-reviewed the repair and fixture.
 
 Exact commands/logs/hashes and three owner screenshots are preserved under ignored
 `artifacts/metal/private-classic-avatar-position-w-20261110-01/`.
-Canonical app rebuild/verify and live visual confirmation are next. The isolated
-GPU result proves the shader ABI defect and repair, not full live mesh/hierarchy,
-teleport/loading or all rendering parity. Earlier repairs remain included.
+Canonical Release26.4.0.68643 includes this repair at source
+`2c60e47b0eac61f3a62b504163504516d1729bed`. Doctor/configure/build/verify_app and
+deep strict signature checks all exited0;349 Mach-O files passed ARM64 inspection.
+The existing world/avatar-impostor GPU regressions passed48568 assertions/2cases
+with Metal API+shader validation. Exact build/identity receipts are in the same
+private directory. Viewer remains closed after the owner stopped68638.
+The isolated GPU result proves the shader ABI defect and repair, not full live
+mesh/hierarchy, teleport/loading or all rendering parity. Live confirmation of
+the identified avatar remains open. Earlier repairs remain included.
 
 ## Independent additional owner requests
 
@@ -62,9 +68,11 @@ Teleport camera CPU handlers, interpolation and startup reset paths match exact
 original source. Retained native presentation may hold a prior image, but that is
 not proof of the reported continuous fly-in/zoom; no guessed camera change made.
 
-Parcel music requests reach LibVLC, but the actual playback child exits code1.
-Audio-only initialization, package module paths and host failures are under
-investigation. This is separate from user volume and the avatar shader repair.
+Parcel music requests reached LibVLC but its actual playback child exited code1.
+The packaged-module path defect is now repaired and the rebuilt actual host
+passed local silent playback: [music repair](parcel-music-host-repair.md).
+Camera and voice source audits are recorded in
+[teleport and voice](teleport-camera-voice-audit.md).
 
 The possible dirty-buffer publication boundary repair remains private/unapplied;
 it was not proved to cause these live triangles. No broad renderer changes are

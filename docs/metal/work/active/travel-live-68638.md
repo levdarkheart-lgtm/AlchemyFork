@@ -63,3 +63,12 @@ Read-only source audit is in progress; no new cause or repair is established.
 Do not add magnitude caps, omit avatars/HUDs or declare visual acceptance from
 quiet logs or the previous isolated GPU tests. No source edits/build/restart
 occurred during this observation. Viewer remains running for the owner.
+
+## Subsequent repair checkpoint
+
+The preceding sections preserve the failed live observation as recorded. The
+owner later closed68638. Source comparison then found a specific classic-avatar
+position-W shader ABI defect; [repair and GPU red/green evidence](classic-avatar-position-w.md)
+are included in new verified build68643. This supersedes the investigation's
+"no cause established" status for that defect, but does not convert68638's failed
+live result into a pass or prove all loading/attachment artifacts repaired.
