@@ -232,3 +232,71 @@ still regresses. Only actual material-transition/cache distributions and total
 frame measurements can determine net value. This is not release promotion or
 a uniform non-regression claim. Preserve baseline/quality and reject a measured
 whole-viewer regression. No new live FPS result exists yet.
+
+## Normal68605 build and live comparison
+
+Committed source1407fca9cf9a5daf4413f760155b5cc03a4a073d. Root normal-build
+wrapper80023 terminal0: tools/metal/doctor.sh, build.sh configure, build.sh build,
+verify_app.sh and deep strict codesign each0.349ARM64/0bad. Candidate68605
+executablef3aa9190ec08aa41656ee21147b167ad7cb101f68a60f9230fe82e57d7f2298e,
+normalmetallib39320181. Normal source recordingOFF/C++23/O3/NDEBUG/arm64/min26.0.
+Independent review checked source/header/actualbinary plus all four referenced
+incremental response files. Packet y_8erv9x; independentreviewSHAa037a4e3.
+
+Fresh68601 exploratory reference:300frames9623–9922,9.408706692FPS,
+mean106.284533333/p50106.109021/p95116.8194ms; allnative1/fallback0,ready256/
+stable120,bias1, camera/EEP/restorations pass.43 END controls match prior. There
+was no pre-sample gate, and unsupported CUA inspection stalled through sampling;
+do not claim fully admitted paired evidence. Main-visible probes96vsold98 and
+draws−1.99%. Exact98164 graceful shutdown/Goodbye/absence/planrestore0 at04:08.
+Auditpacket s90p5x7s/summarySHA9bf4175132dade4642e5506b96b5aae169eb04374daa34527a8af9499563537c.
+
+Candidate68605 PID166 LIVE: fullscreen before login, Midday shortcut/Preset123
+applied through CUA, floaterclosed. Fresh STARTobserve/verify/gate each0 before
+sampling. Atframe5046 camera+EEP exactly match freshreference; wait256ready/
+stable120 then300samples. Current plan remains ACTIVE. No candidateFPSresult yet.
+Owner reports fullscreenGameMode activation notification; leave mode unchanged,
+stop chasing nonactivation. CUAphases completed; no build/GPU/profile concurrency.
+
+## Completed comparison and direct-default decision
+
+Candidate68605 captured300frames6661–6960:9.066674534FPS, mean110.294021947ms,
+p50110.3643955/p95119.195042. Fresh start/end43-control/location/binary gates0;
+allnative1/fallback0/bias1/256ready120/restorations pass. Exact166 gracefulexit/
+Goodbye/absence and its planrestore0 completed04:37. Auditznv_94xq/7ba814ce.
+
+Repeated68601 control02 had proper start/end43gates0 and300frames9604–9903:
+9.410236877FPS/mean106.267250553/p50106.547583/p95116.651958. Camera/EEP/controls
+exact to candidate; mainvisible98both. Candidate mean draws50880.38vs49622.72
+(+2.53%), so do not attribute all observed FPS−3.65% to this code. Nevertheless,
+both controls9.4087/9.4102 bracket candidate9.0667 and show no FPS benefit.
+4449 exactSIGTERM/Goodbye/absence/planrestore0 completed05:07. Allplansrestored.
+Auditro6wnbu4/control2-auditSHA cc7c16f7e0e46bd330a86cea7853cf9aa046e58176f76dd8060bbca235e94055.
+Hero transaction auditvVgTDH/57226182 recordsallsixfaces inbothformalwindows;
+startupfailuresstopbeforefirstsixfacepublication. Encoding logs are not a full
+GPUcompletion/pixelparity proof. Candidate app is preserved/deepstrict0 at
+/private/tmp/alchemy-metal-68605-material-table-trial-preserved.app, f3aa/3932.
+
+Postformal10s CPU traces record/TOC/export each0: rf4lnbpm(candidate43351) and
+84up2rjj(control25920), streamanalysis actual0. Candidate7904main samples/
+7.904CPU-s/10.641span; control7705/7.705/10.4556. Hero~50%mainactiveboth;
+stableparentendMetalSpotShadowCapture2.459vs2.381s. NarrowrenderSpotShadow
+symbol0.373vs2.351s differs with optimized attribution and cannot establish a
+sixfold cost change. No exact sampledCPUms/frame; inclusive scopes overlap.
+
+Root restored direct binding bydefault (material_buffers=false) and ordinary
+diffuse sampler supportArgumentBuffers=false. Experimental cache remains opt-in;
+its quality-matched dedicated sampler is lazy, optional failure keeps direct
+draws, anisotropy changes safely reset it while oldtables retain nativeleases.
+New physical regression rerenders after anisotropychange and requiresnewkey.
+Source-reviewed worldcpp613a33d2/worldh07d0611d/GPUtested23bcbe. Packet9lcc2zss,
+wrapper63643 ALL4phases0: BOTHoptimized API+GPU435462assertions/102casesPASS.
+Normal rebuilt source commit/identity is the next executable step, not claimed.
+
+Separate immutable standardprobeUBO1 experiment nc81mpp0 usedsame393library/
+entrypoint/FC0/Ultra4samplers inbotharms; onlyqualifiedbuffer1metadata changed.
+Rootproof/compile/validation44949=0/200strictcolor+rawD32pairs,quiet20399=0/
+168counterbalancedGPUtimings. Allpairedrangescrosszero; acceptedrigidmedian
++6.82%,skin−1.38%,samePSOcontrol−1.41%, othercasesmixed. REJECTpublicflag and
+do not repeat/register/FPSclaim. Frozen1407epochpredatesdirect-defaultrepair.
+Auditv8ggv6hj/summarySHA8ef7dd28b9dd47efaa91313a0c015674eecd1d76d4834ded54026ae51f0acf49.

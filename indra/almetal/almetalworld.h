@@ -293,9 +293,9 @@ struct ALMetalWorldSpotShadowScene
     // both switches off selects the original scalar reference encoder.
     bool indirect_draws = false;
     bool bulk_draws = true;
-    // Immutable material tables preserve the existing indexed draws. The
-    // direct binding choice remains available for controlled equivalence tests.
-    bool material_buffers = true;
+    // Material tables remain opt-in until whole-view measurements establish
+    // a benefit over the existing encoder-local direct binding cache.
+    bool material_buffers = false;
     // Optional producer census. Zero source count means not supplied.
     std::uint64_t source_batch_count = 0;
     std::uint64_t early_merged_source_count = 0;

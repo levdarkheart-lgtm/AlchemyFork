@@ -4093,6 +4093,12 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
             join_scene.material_buffers = true;
             REQUIRE(render_spot_shadow(join_scene, 0));
             CHECK(renderer->shadowMaterialStats().cached_tables > 0);
+            const auto tables_before_anisotropy =
+                renderer->shadowMaterialStats().table_creates;
+            REQUIRE(renderer->setAnisotropy(
+                renderer->anisotropy() == 4 ? 8 : 4, &error));
+            REQUIRE(render_spot_shadow(join_scene, 0));
+            CHECK(renderer->shadowMaterialStats().table_creates > tables_before_anisotropy);
             auto empty_shadow = join_scene;
             empty_shadow.batches = nullptr;
             empty_shadow.batch_count = 0;

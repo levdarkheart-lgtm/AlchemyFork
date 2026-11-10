@@ -1,5 +1,12 @@
 # Apple Metal research — 2026-11-10
 
+Later owner observation: fullscreen sessions always displayed the Game Mode
+activation notification. That is direct evidence for the sessions observed;
+the earlier missing-key/direct-launch research does not prove nonactivation.
+Leave Game Mode unchanged and de-prioritize this lead. An attempted read-only
+ControlCenter CUA binding stalled7654seconds/error10005 despite a60second tool
+timeout; no setting changed. Do not repeat unsupported system-helper binding.
+
 User requested an additional search for Metal/M1 Max issues. Bounded Apple
 documentation, release-note and developer-forum searches did not find a
 published driver bug matching the measured resource-list/state-encoding cost.

@@ -1973,6 +1973,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalDepthStencilState>
         reverse_underwater_excluded_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
+    std::unique_ptr<ALMetalSamplerState> shadow_material_sampler;
     std::unique_ptr<ALMetalSamplerState> probe_sampler;
     std::unique_ptr<ALMetalSamplerState> point_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> point_repeat_sampler;
@@ -2084,6 +2085,24 @@ struct ALMetalWorldGBufferRenderer::Impl
 
 namespace
 {
+ALMetalSamplerDescriptor worldDiffuseSamplerDescriptor(
+    std::uint32_t max_anisotropy, bool support_argument_buffers)
+{
+    ALMetalSamplerDescriptor sampler;
+    sampler.min_filter = ALMetalSamplerFilter::linear;
+    sampler.mag_filter = ALMetalSamplerFilter::linear;
+    sampler.mip_filter = ALMetalSamplerMipFilter::linear;
+    sampler.address_s = ALMetalSamplerAddressMode::repeat;
+    sampler.address_t = ALMetalSamplerAddressMode::repeat;
+    sampler.address_r = ALMetalSamplerAddressMode::repeat;
+    sampler.max_anisotropy = max_anisotropy;
+    sampler.support_argument_buffers = support_argument_buffers;
+    sampler.label = support_argument_buffers
+        ? "Alchemy covered shadow material anisotropic wrap sampler"
+        : "Alchemy world diffuse anisotropic wrap sampler";
+    return sampler;
+}
+
 bool createWorldAnisotropicSamplers(
     const ALMetalDevice& device,
     std::uint32_t max_anisotropy,
@@ -2099,16 +2118,7 @@ bool createWorldAnisotropicSamplers(
         return false;
     }
 
-    ALMetalSamplerDescriptor sampler;
-    sampler.min_filter = ALMetalSamplerFilter::linear;
-    sampler.mag_filter = ALMetalSamplerFilter::linear;
-    sampler.mip_filter = ALMetalSamplerMipFilter::linear;
-    sampler.address_s = ALMetalSamplerAddressMode::repeat;
-    sampler.address_t = ALMetalSamplerAddressMode::repeat;
-    sampler.address_r = ALMetalSamplerAddressMode::repeat;
-    sampler.max_anisotropy = max_anisotropy;
-    sampler.support_argument_buffers = true;
-    sampler.label = "Alchemy world diffuse anisotropic wrap sampler";
+    auto sampler = worldDiffuseSamplerDescriptor(max_anisotropy, false);
     auto diffuse = ALMetalSamplerState::create(device, sampler, error);
     if (!diffuse)
     {
@@ -2227,6 +2237,9 @@ bool ALMetalWorldGBufferRenderer::setAnisotropy(
         return false;
     }
     mImpl->max_anisotropy = max_anisotropy;
+    // Recreate the optional material sampler with the new filtering settings
+    // on its next use. Pending material tables own their previous sampler.
+    mImpl->shadow_material_sampler.reset();
     return true;
 }
 
@@ -6564,11 +6577,21 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                 if (batch.terrain || batch.avatar || batch.texture_count <= 1 ||
                     batch.coverage == ALMetalWorldSpotShadowCoverage::opaque)
                     continue;
+                if (!mImpl->shadow_material_sampler)
+                {
+                    std::string sampler_error;
+                    mImpl->shadow_material_sampler = ALMetalSamplerState::create(
+                        *mImpl->device, worldDiffuseSamplerDescriptor(
+                            mImpl->max_anisotropy, true), &sampler_error);
+                    // Optional admission failure preserves every direct draw.
+                    // Whole-scene validation has already completed above.
+                    if (!mImpl->shadow_material_sampler) break;
+                }
                 if (material_requests.empty())
                     material_requests.assign(scene.batch_count, no_material);
                 material_requests[i] = requests.size();
                 requests.push_back({batch.coverageData().textures.data(),
-                    batch.texture_count, mImpl->diffuse_sampler.get()});
+                    batch.texture_count, mImpl->shadow_material_sampler.get()});
             }
             if (!requests.empty())
             {
