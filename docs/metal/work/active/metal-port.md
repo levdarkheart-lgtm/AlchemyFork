@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `066d9d4e53`; root registrations/staging WIP
+**Integrated checkpoint:** Commit `e75e69794b`; registered native staging/cleanup
 and exact isolated ownership are recorded in CURRENT.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
@@ -13,7 +13,8 @@ removal, with original-viewer source inspection before every rendering fix.
 Keep viewer, appearance utility and all native windows closed; no screenshot
 comparison. The separate20FPS campaign remains deferred.
 
-Latest: [native raster/float/reflection and fixture admission](native-raster-and-legacy-fixture-admission.md).
+Latest: [native finalization/preview/media closure](native-finalization-and-media-closure.md),
+extending [raster/float/reflection and fixture admission](native-raster-and-legacy-fixture-admission.md).
 This extends [Scene Monitor/UI/RenderInfo](native-scene-ui-and-render-info.md),
 [target/query/font invariants](native-target-query-invariants.md),
 [cache/coverage](native-pipeline-cache-and-coverage.md),
@@ -54,9 +55,12 @@ reflection1964/3 and affected UI36441/11 passed API/shader validation;
 exact source/WIP/binary hashes are in float-reflection-registered-validation.json.
 Exact commands/hashes/failures and source maps are in the latest note.
 
-Last verified full canonical viewer remains d9f624ea464d3ba3c305d7656bf9533f6e65a8dd,
-Release26.4.0d68755: doctor/configure/build/verify0,349ARM64/zero invalid slices,
-deepcodesign0 and main viewer forbidden imports0. Optional utility newer WIP
+Last verified full canonical viewer0fe112ee902172c4983e5d277cfba08ded41751b,
+Release26.4.0d68778: doctor/configure/build/verify0,349ARM64/zero invalid slices,
+deepcodesign0, main viewer forbidden imports0, zeroGLSL and exact native shader/
+notice resources in fresh stage. native-fixture-canonical-validation.json pins
+binary/source hashes. Newer915 metadata/test-mode cleanup requires rebuild.
+Optional utility0fe-predecessor+explicit staging WIP
 build/static/lookup/dependency checks0, exact resources and96character files,
 zeroGLSL; final receipt in the latest note. Neither executable launched.
 All349 prior bundle imports audited; foreign VLC/CEF links/capabilities remain
@@ -91,19 +95,30 @@ M-012 remains complete; M-014 remains deferred. No release-readiness claim.
 
 ## Immediate executable action
 
+Frozen0fe doctor/configure/full build73684/static verification0,349ARM64,
+deepcodesign/imports0 and fresh native resource hashes/zeroGLSL. Old app with
+273GLSL files preserved. Tools49 and four content models0; production strict
+3504/0blockers/0errors. Including tests4094 has2negative window-flag assertions
+flagged; retain assertions, no all-source strict claim or window execution.
+Reviewed test-mode5dc6dd54f3 and metadata9150c33dfc integrated; configure17387
+exited0: all607actual CTest commands/properties are exact. Full native alrender
+565814/137passed API/shader validation. e75 excludes exactly3unusedVLCGL modules
+after335→332callback/frame/provenance/fresh-copy controls; actual app needs
+fresh staging in grouped full build. Exact commands/hashes in current note.
 Root run56044 exited0. Native replacement gates closed; integrated reflection
 harness97d0b8a20e, pipeline leaf49fa6b4401 and120GLSL assets066d9d4e53.
-Root registration/IDE/install boundaries updated in WIP; exact original asset
+Root registration/IDE/install boundaries committed0fe; exact original asset
 hashes and notice gates are in glsl-root-retirement-gates.json.
 Live finalization remains separate and must preserve actual
 reference-capture/lens-fit/callback/epoch/SSR/native scope owners.
 
 Root owns canonical registrations/docs/assets/integration. rlva_port owns
 isolated pipeline.cpp/h, actual-body finalize config and native CPU/GPU tests.
-menu_port owns isolated obsolete GL test-mode plumbing in shared test helper/
-top-level option/report/CI/upstream docs/sanitizers. gl_tail_audit owns eleven
-now-unused bloom/DoF shader metadata graphs in isolated llviewershadermgr.cpp/h;
-optional utility fresh staging/lookup/dependency validation is complete.
+menu_port owns media plugin direct lifecycle leaks/order with actual-method CPU
+controls; gl_tail_audit owns missing-destination image preview retry with actual
+caller/generator bodies and real low-level native GPU resource tests. Root owns
+registrations. LLRender ABI remains frozen until previewchild source/proof fixed.
+Optional utility validation is complete.
 No overlapping shared renderer edits.
 
 After final staging review, verify fresh native viewer/utility stages. Keep

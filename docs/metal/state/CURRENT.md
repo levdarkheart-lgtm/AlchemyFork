@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `066d9d4e53` (newer than the verified viewer app).
+**Renderer code checkpoint:** `e75e69794b` (newer than the verified viewer app).
 The remaining-feature/OpenGL-removal goal remains active. No viewer, appearance
 utility or native window launch; no screenshots, menu invocation or user-cache
 operation. Device-only tests submit actual Metal commands. A separate Foundation
@@ -11,7 +11,8 @@ remains deferred.
 
 ## Current implementation
 
-[Latest raster/float/reflection and fixture admission](../work/active/native-raster-and-legacy-fixture-admission.md)
+[Latest finalization/preview/media closure](../work/active/native-finalization-and-media-closure.md)
+extends [raster/float/reflection and fixture admission](../work/active/native-raster-and-legacy-fixture-admission.md), which
 extends [Scene Monitor/UI/RenderInfo](../work/active/native-scene-ui-and-render-info.md),
 [target/query/font](../work/active/native-target-query-invariants.md) and
 [cache/coverage](../work/active/native-pipeline-cache-and-coverage.md).
@@ -45,7 +46,7 @@ removed only after original invariant mapping. Native manual hidden-window
 fixture remains compile-only and is not executed. Registered companion gates
 passed; old reflection harness and120GLSL assets are now retired.
 Complete shader/embedded-algorithm notices are tracked in
-`indra/almetal/THIRD_PARTY_NOTICES.txt`; root WIP stages them with native assets.
+`indra/almetal/THIRD_PARTY_NOTICES.txt`; committed native staging preserves them.
 
 ## Observed validation
 
@@ -65,15 +66,21 @@ reflection1964/3 and affected UI36441/11 passed API/shader validation.
 Exact argv/source/WIP/binary hashes and logs:
 `float-reflection-registered-validation.json`.
 
-Root doctor initially hit sandbox sysctl denial; host-capability retry exited0:
-`raster-native-doctor-host.log`. Required full newer viewer build/verification
-is pending; no performance or release-readiness claim.
+Root doctor/configure/full build for frozen0fe all exited0 (session73684).
+Old app stage with273GLSL files preserved by rename before configure recreated
+the bundle. Never count that preserved stage as current packaging evidence.
+Root tools49 and all four lens/dirt/exposure/SH models passed. Production strict
+source3504files/0blockers/0errors; including tests4094files has2negative
+SDL_WINDOW_OPENGL==0 assertions flagged, not an all-source strict pass. Keep
+both native-window assertions; the window case was not executed.
 
-**Last verified canonical viewer source d9f624ea464d3ba3c305d7656bf9533f6e65a8dd,
-version26.4.0d68755**. Doctor/configure/build0,349Mach-O/zero invalid ARM64
-slices, deep strict codesign0, main-viewer forbidden imports0. Exact source/
-binary hashes: `viewport-canonical-source.json` /
-`viewport-canonical-identities.json`. Newer code is not represented by that app.
+**Last verified canonical viewer source0fe112ee902172c4983e5d277cfba08ded41751b,
+version26.4.0d68778**. Doctor/configure/build/verify0,349Mach-O/zero invalid
+ARM64 slices, deep strict codesign0, main-viewer forbidden imports0. Fresh app
+has zeroGLSL/no shader subtree and exact MSL/metallib/notices. Receipt:
+native-fixture-canonical-validation.json; binary SHA2561cee92cdc76050b8daae4e2c2799117a2d23240460488f382c9a958ad9b4ebcf.
+Newer915 shader-metadata/test-mode cleanup requires affected rebuild; current
+configure may update bundle metadata, so prior verification is source-pinned.
 Optional appearance utility rebuilt from459→066+explicit root WIP hashes;
 fresh native stage has no GLSL, exact MSL/metallib/notices+96character files,
 ARM64/strict signature/imports0. Foundation-only lookup and extracted actual
@@ -81,38 +88,42 @@ Ninja shader/notice rebuild edges passed; final receipt:
 /private/tmp/alchemy-native-appearance-resource-validation-20261111/validation-receipt.json.
 Neither actual executable ran.
 
-Foreign VLC/CEF OpenGL links remain separately audited. Three VLC windowed
-output/converter exclusions are candidates, not applied. Keep actual screen
-input, VT decoder and required CEF capability payloads. Runtime loading/backend
-selection remains unobserved; no whole-bundle no-GL claim.
+Foreign VLC/CEF links remain separate. Exact three VLC windowed-output/converter
+exclusions integratede75 after335→332module CPU callback/frame/provenance and
+fresh install controls. New actual app fresh-stage verification remains pending.
+Keep screen/VT/CVPX/CEF capabilities. No whole-bundle native-only claim.
 
 ## Exact next actions
 
-Root owns canonical integration/CMake/docs. Current8WIP paths are ours:
-almetal/alrender/appearance/LLUI/newview registrations, builtin notice hook,
-viewer and utility native-asset staging. No user changes discarded.
+Root owns canonical integration/CMake/docs. Native registrations, notice hook,
+viewer/utility staging and GLSL packaging cleanup committed0fe112ee90.
+Reviewed test-mode5dc6dd54f3 and eleven dead shader metadata graphs9150c33dfc
+are integrated after0fe static verification. No user changes discarded.
 1. Root run56044 exited0; companion CPU117/2+GPU1964/3 gates passed.
    Reflection harness97d0b8a20e, pipeline dead leaves49fa6b4401 and GLSL
    assets066d9d4e53 are integrated. Stale alrender target/GLSL IDE/install
-   boundaries and AL_TEST_SHADER_DIR are removed in root WIP.
-2. Update this snapshot with results and commit coherent registration/staging
-   work. Preserve exact source/WIP/binary hashes in the receipts.
+   boundaries and AL_TEST_SHADER_DIR are removed and committed.
+2. Configure17387 exited0; all607actual CTest commands/properties are exact
+   before/after obsolete mode cleanup. Full native alrender565814/137passed
+   API/shader validation. Grouped full build/verification follows live fixes.
 3. Review live finalization closure; preserve actual native owners before
    retiring still-called legacy traversal and persistent resource storage.
-4. Verify a fresh viewer native stage, since install does not prune old files.
-   Exact120asset/notice hashes and reader gates: glsl-root-retirement-gates.json.
-5. Required full app build/static verify/sign/import checks after frozen source.
-   Keep viewer/utility/windows closed.
+4. Recreate actual app stage for VLC exclusion because install cannot prune
+   stale modules; verify332remaining exact modules and346ARM64 files expected.
+   Exact receipt/source maps and pending caller fixes are in the latest note.
+5. Record actual results, then review isolated commits and rebuild affected
+   targets after integration. Keep viewer/utility/windows closed.
 
 Exclusive isolated owners: rlva_port pipeline.cpp/h, new
 pipeline_finalize_config.inl and CPU/GPU finalization tests: preserve native
 reference one-shot/drop/resize, lens-fit preflight, callbacks, scope/statistics,
 exposure epochs and SSR eligibility before retiring the live legacy traversal.
 Original-mapped nonHDR DoF/scope gates are under investigation.
-menu_port obsolete GL test-mode CMake/CI/docs/sanitizer plumbing only; root
-retains actual target registrations/shared renderer files. gl_tail_audit owns
-isolated llviewershadermgr.cpp/h eleven now-unused bloom/DoF metadata graphs;
-preserve native reload/settings/aggregate semantics. Utility validation is done.
+menu_port owns isolated media_plugin_libvlc.cpp +lifecycle.inl/CPU tests for
+inherited overwrite/cleanup leaks and stop-before-layout ordering. Preserve guards,
+events/seek/repeat/volume; no host/window. gl_tail_audit owns image preview caller
+retry after failed initial texture allocation, actual-body inls and new native
+GPU test. Root registers tests; LLRender ABI frozen until child GPU proof.
 
 ## Complete-product advancement assessment
 

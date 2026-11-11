@@ -2,7 +2,7 @@
 
 Observed 2026-11-11, Apple M1 Max64GiB, macOS26.5.2, Xcode26.6.
 Original behavioral reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`.
-Branch: `codex/apple-silicon-metal`; root checkpoint `066d9d4e53`.
+Branch: `codex/apple-silicon-metal`; root checkpoint `0fe112ee90`.
 No viewer, appearance utility, SDL/native window or screenshot execution.
 Device-only native GPU tests are distinct from feature/menu invocation.
 This note extends [the previous implementation record](native-scene-ui-and-render-info.md).
@@ -171,6 +171,15 @@ exclusion candidates only. Keep actual screen input, VT decoder and complete
 required CEF capability payloads. Plugin enumeration can load unused modules;
 callback vmem/window-none does not alone establish no GL loading. No foreign
 runtime backend claim or whole-bundle native-only result.
+
+Root committed all registrations/native notice/staging/IDE/install cleanup0fe.
+For a genuinely fresh app stage, preserved the entire old app by rename before
+configure:273stale GLSL files, receipt native-fixture-fresh-stage.json. Source
+was clean0fe at freeze. Required doctor/configure0; full tools/metal/build.sh
+currently runs as73684,1302actions, native-fixture-canonical-build.log. Root
+tools49passed; content models12622/source audit79931 in progress. Keep source
+frozen, then verify actual new app slices/deepcodesign/imports/native resources
+and absence of GLSL. These are pending, not a successful app result.
 
 Latest verified full canonical viewer remains d9f624ea46, Release26.4.0d68755:
 doctor/configure/build/verify0,349ARM64/zero invalid, deepcodesign0 and main-viewer
