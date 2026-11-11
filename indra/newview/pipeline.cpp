@@ -18933,7 +18933,9 @@ void LLPipeline::applyRenderInputs(const ALRenderInputRequests::Application& tak
 
     mApplyingChanges = taken.mChanges;
     const bool reload = steps.mPrograms != Programs::Kept;
-    if (steps.mPrograms == Programs::Rebuilt && (mShadersLoaded || mMetalShaderReloadPending))
+    const bool rebuild_native = steps.mPrograms == Programs::Rebuilt &&
+        (mShadersLoaded || mMetalShaderReloadPending);
+    if (rebuild_native)
     {
         std::string shader_error;
         if (!reloadMetalShaders(&shader_error))
@@ -18957,6 +18959,13 @@ void LLPipeline::applyRenderInputs(const ALRenderInputRequests::Application& tak
         mRenderInputRequests.mark(ALRenderInputRequests::Change::Programs);
         mApplyingChanges = 0;
         return;
+    }
+    if (rebuild_native)
+    {
+        // Independent utility/preview owners consume this revision lazily at
+        // their next valid operation. Do not discard generated images or
+        // publish a new revision for failed or ordinary settings reloads.
+        ALMetalShaderLibrary::requestBuiltinReload();
     }
     if (steps.mReconcile)
     {
