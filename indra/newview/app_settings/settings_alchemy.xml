@@ -2259,7 +2259,7 @@
         <key>AlchemyRenderDisableCompute</key>
         <map>
             <key>Comment</key>
-            <string>Use no compute shaders even where the GPU has them (OpenGL 4.3): everything built on compute takes its other path or is off. For diagnosing a driver. Change triggers a shader rebuild.</string>
+            <string>Disable optional compute optimizations for diagnosis. Native Metal disables water-wave depth culling; waves continue to render. Exposure, BRDF and probe processing use compute independently. SSAO uses fragment passes. Reloads render policy.</string>
             <key>Persist</key>
             <integer>1</integer>
             <key>Type</key>

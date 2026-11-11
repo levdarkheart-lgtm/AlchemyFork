@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `3b5a6456e5`; original-mapped native repairs.
+**Integrated checkpoint:** Commit `83567e407d`; original-mapped native repairs.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -9,10 +9,13 @@
 
 Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal,
 with original-viewer inspection before fixes. No viewer, utility, host or native
-window launch; no screenshots. Owner-stopped20FPS campaign remains deferred.
+window launch so far; no screenshots. Owner now authorizes launching the exact
+fresh viewer after checks for their manual confirmation. Utility execution and
+screenshot comparisons are not requested. Owner-stopped20FPS campaign remains deferred.
 Reference source1eb44bbd1bdc76d0100c75699bad1fb337e8cb45.
 
 Latest: [native finalization/preview/media closure](native-finalization-and-media-closure.md),
+and [settings/resource tail](native-settings-and-resource-tail.md),
 extending [raster/float/reflection and fixture admission](native-raster-and-legacy-fixture-admission.md),
 [Scene Monitor/UI/RenderInfo](native-scene-ui-and-render-info.md),
 [target/query/font](native-target-query-invariants.md),
@@ -49,6 +52,16 @@ remain separate from shared exact-far coverage. Matching root GPU controls pass.
 Legacy3b5 removes displaced seed/copy/VB/program after that native companion
 passed; exact stream boundaries remain. Later runtime parity stays open.
 
+Phase d78cc2d779 retires34 skipped descriptions/three dead copies while preserving
+physical plans/native owners/full-input publication; c65e5d588e removes unused
+describes. Snapshot4f5 restores forced-failure native admission after184 CPU
+checks expose16 baseline failures, with unchanged caller/RAII recovery boundaries.
+Preview7f6633a3fe and heroce65f508a4 retire proven dead branches/wrapper, with live
+native preview/profile/debug owners preserved. Water6473c5c77d restores normal
+filter setting; 83567e407d restores original optional Compute-culling gate and
+waves remain. 2c16d75147 removes only redundant resource Compute copy; actual
+shader/local setting latch and full resource-input publication stay live.
+
 ## Work board
 
 | ID | Work | State | Evidence / next boundary |
@@ -56,7 +69,7 @@ passed; exact stream boundaries remain. Later runtime parity stays open.
 | M-001 | Reproducible ARM64 reference/build | doing | Canonical builds pass; independent fresh-checkout release remains. |
 | M-002 | GL inventory and release audit | doing | Owned source/static gates pass; foreign/runtime remain. |
 | M-003 | Native presentation/lifecycle | doing | Original native finalization/leases; prolonged stability open. |
-| M-004 | Resource/transfer/sync ownership | doing | Native owners validated; phase descriptions remain to retire. |
+| M-004 | Resource/transfer/sync ownership | doing | Native owners retained;34dead phase descriptions retired. |
 | M-005 | MSL/binding behavior | doing | Original formats/math/stencil advance; broader parity open. |
 | M-006 | UI/fonts/HUD/media | doing | Native bounded tests pass; full behavior/stability open. |
 | M-007 | World/material/shadow correctness | doing | Float/reflection repairs; broad original parity open. |
@@ -90,7 +103,13 @@ Root SMAA build82307/2552/4+world105889/23+reload2304/8 pass.
 Root alpha build64115/focused10665/17+world105890/23+reload2304/8 pass.
 Exact source/WIP/argv/binary hashes: native-{pool-cutout,smaa,cutout-alpha}-
 registered-validation.json. Counts overlap; do not sum.
-Legacy child462/15 and three syntax TUs pass; matching root tests remain.
+Matching legacy/root policy652/20 and phase-resource1894/40 pass after builds
+57228/57070 exit0. Snapshot actual-body CPU184checks passes after16 baseline
+failures; Release textual syntax0 and exact source peer clear.
+Child normal389/2 exposes17 baseline failures then passes API/shader; optional
+water caller policy352/1 exposes6 baseline flags then passes. Preview three/hero
+two/compute-copy six Release checks0; compute-copy CPU1893/41 and physical-plan
+projection pass. Root matching combined build/affected checks remain pending.
 
 Production ae2 strict3504/910info/0blockers/0errors. Earlier all-source4094 has
 two negative window-flag assertions flagged; retain them, no all-source pass.
@@ -100,21 +119,22 @@ native dependency-edge proof passed without launch; refresh matching final core.
 
 ## Immediate executable action
 
-Root owns canonical CMake/docs/integration. Register both new GPU files, commit
-the simple-pool stale-comment correction/evidence, freeze source. Required full
-app/optional utility build/static and affected registered checks follow.
-
-menu_port exclusively implements the isolated34phase-description retirement in
-plan/inputs/pipeline/tests from3b5. Preserve full input-equality/native-setting
-publication, actual BloomShape, live preview size, physical pack/shadow/noise/
-manager plans and MainGBuffer/history/scope/reset/retry keys. No GPU-core or
-GBuffer/Screen retirement. gl_tail_audit read-only audits remaining Debug/
-Developer/source preview subtree; rlva_port read-only audits remaining original
-RLVa render owners. No concurrent uncoordinated renderer edits.
+Root owns canonical CMake/docs/integration. All agent source trees frozen and
+released; no live GPU/build processes. Root water test registration/Compute debug
+comment/docs are WIP. Commit freeze; run build-native-settings-stage.py for exact
+doctor/configure/full-app commands, then verify-native-finalize-stage.py with
+native-settings-phase-canonical build-state/prefix. Separate optional utility
+refresh-native-appearance-stage.py builds/statically verifies current resources,
+96character files and imports without execution. Run matching resource/input/
+native policy, focused water/cutout/SMAA, world/water-cull/reload checks and strict
+source/harness. Preserve all original physical/native ownership/publication keys.
+After checks pass, launch the exact fresh viewer for requested owner confirmation;
+record process/build identity, without a screenshot/full-parity claim. Bounded
+RLVa wiring audit has no new confirmed omission; actual command behavior remains.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
-actual executables/windows closed. Keep prior evidence source-pinned.
+utility unexecuted; viewer launch now authorized after checks. Keep prior evidence source-pinned.
 
 ## Non-negotiable open gates
 

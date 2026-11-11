@@ -2,15 +2,18 @@
 
 **Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `3b5a6456e5` (newer than the verified viewer app).
+**Renderer code checkpoint:** `83567e407d` (newer than the verified viewer app).
 The remaining-feature/OpenGL-removal goal is active. No viewer, appearance
-utility, actual plugin host or native window launched; no screenshots.
+utility, actual plugin host or native window launched so far; no screenshots.
+Owner now authorizes launching the exact fresh viewer after checks for their
+manual confirmation. Utility execution and screenshot comparisons are not requested.
 Device-only Metal tests and separate CPU/Foundation probes are bounded evidence.
 The owner-stopped20FPS campaign remains deferred.
 
 ## Current implementation
 
 [Latest finalization/preview/media closure](../work/active/native-finalization-and-media-closure.md)
+and [settings/resource tail](../work/active/native-settings-and-resource-tail.md)
 extends [raster/float/reflection and fixture admission](../work/active/native-raster-and-legacy-fixture-admission.md),
 [Scene Monitor/UI/RenderInfo](../work/active/native-scene-ui-and-render-info.md),
 [target/query/font](../work/active/native-target-query-invariants.md) and
@@ -39,7 +42,17 @@ with original BilinearMirror and one final alpha quantization. The old early-U8
 workaround/PSO axis is removed. Root focused/world/reload tests pass.
 Legacy cutout retirement3b5a6456e5 removes duplicate seed/copy/VB/program graphs;
 real before-alpha/end and pre-read stream boundaries remain. Native pixel duties
-are already owned by the validated renderer. drawFarPlaneQuad/gDebug remain.
+are already owned by the validated renderer. Live gDebug remains.
+
+Phase retirement d78cc2d779 removes34 skipped descriptions and three dead input
+copies; physical plans/native owners/full-input publication remain. c65e5d588e
+removes the unused describes helper. Snapshot4f5f23251b restores the original
+forced-allocation-failure admission/recovery boundary without an mFullSize guard.
+Preview7f6633a3fe removes the unreachable true branch/flag/far-quad; native preview/
+ordinary/profile specialization stays exact. Heroce65f508a4 removes an uncalled
+wrapper; live debug owners remain. Water6473c5c77d restores point/aniso normals;
+83567e407d restores optional Compute culling gate while waves remain. 2c16d75147
+removes only redundant resource Compute copy; real shader/local latch stays live.
 
 ## Observed validation
 
@@ -63,8 +76,13 @@ SMAA matching build82307 exited0; registered2552/4, world105889/23 and reload
 2304/8 passed at dd+test registration. native-smaa-registered-validation.json.
 Alpha matching build64115 exited0; root10665/17 focused, world105890/23 and
 reload2304/8 passed at b20+registrations. native-cutout-alpha-registered-validation.json.
-Counts overlap. Legacy helper child462/15 and three Release syntax TUs pass;
-matching root build/tests after retirement remain pending.
+Counts overlap. Matching legacy/root policy652/20 and phase-resource1894/40 pass;
+resource/policy builds57228/57070 exit0. Snapshot actual-body CPU184 checks expose
+16 baseline failures then pass; Release textual syntax0 and source peer clear.
+Water normal child389/2 exposes17 baseline failures then passes API/shader;
+caller gate actual policy352/1 exposes6 baseline flags then passes. Preview three
+Release checks, hero two and compute-copy six/CPU1893/41 pass; peers clear.
+Matching combined root full build/static and affected checks remain pending.
 
 Production ae2 strict3504files/910info/0blockers/0errors passed. Earlier tests
 4094files flags two negative SDL_WINDOW_OPENGL==0 assertions; retain both, no
@@ -77,21 +95,21 @@ No actual utility or viewer executable ran.
 
 ## Exact next actions
 
-Root owns canonical CMake/docs/integration. Two GPU test registrations and
-the simple-pool obsolete-comment correction are root WIP; no user edits.
-1. Freeze registrations/evidence and run required doctor/configure/full-app
-   build/static checks after legacy retirement, plus policy/resource tests.
-   Refresh optional appearance utility with matching current core/resources.
-2. menu_port exclusively implements isolated34phase-description retirement:
-   plan/inputs/pipeline/tests. Preserve all native settings/full input-equality
-   publication, BloomShape, PREVIEW_SIZE, physical packs/shadows/noise/managers,
-   MainGBuffer history/scope keys and retry/reset ownership. No GBuffer/Screen
-   retirement or World/MSL change. Integrate only after source peer/tests.
-3. gl_tail_audit read-only audits remaining original-active Debug/Developer
-   graphics controls and preview=true/impostor subtree; rlva_port read-only
-   maps remaining original RLVa render commands/owners. No shared-source edits.
-4. Record exact results/next boundary. Keep viewer/utility/hosts/windows closed.
-   Full runtime setting, stability and performance parity remains unverified.
+Root owns canonical CMake/docs/integration; no user edits. All three agent source
+trees are frozen/released; GPU slot free. New water test registration and Compute
+debug comment are root WIP with these docs.
+1. Commit source/evidence freeze, then run required doctor/configure/full-app
+   build via artifacts/metal/feature-completion-20261111/build-native-settings-stage.py.
+   Statically verify exact stage with verify-native-finalize-stage.py and fresh
+   native-settings-phase-canonical build-state/prefix. No product run by scripts.
+2. Refresh optional utility through refresh-native-appearance-stage.py; separate
+   build/cache, strict static/native resources/96character bytes, no utility run.
+3. Run matching affected resource/input/native policy, focused water/cutout/SMAA,
+   world/water-cull/reload checks, strict owned-source and harness. Record exact
+   source/commands/exits/binary hashes; do not use earlier app as current artifact.
+4. Once checks pass, launch the exact fresh viewer for the owner to confirm.
+   Keep screenshots unrequested; record process/build identity, not parity claims.
+   Full feature/stability/performance and ordinary exhausted-frame policy remain open.
 
 ## Complete-product advancement assessment
 
