@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `d2d0380309` (matches the last verified viewer app).
+**Renderer code checkpoint:** `53825c5035` (newer than the last verified viewer app).
 The remaining-feature/OpenGL-removal goal remains active. No viewer, appearance
 utility or native window launch; no screenshots, menu invocation or user-cache
 operation. Device-only tests submit actual Metal commands. A separate Foundation
@@ -60,6 +60,10 @@ Eight obsolete fixed-target IDs/instances and the unreachable DownRes tail are
 retired. Original SSR intent/reset keys and fixed history initialization are
 preserved. Explicit native stream flushes retain the old clear boundary for
 current SSR and initial/off-to-on reconciliation, without a duplicate target.
+The prewarm-only transient pool and three orphan uniform identities are retired.
+Native Bloom requests use actual post-source geometry, including snapshots.
+Cutout coverage now uses original authored far-depth pins through its own vertex;
+other shared exact-far coverage stays unchanged. Root matching rebuild is pending.
 
 ## Observed validation
 
@@ -126,14 +130,15 @@ Root owns canonical integration/CMake/docs. Registrations committeddc6f505a0a.
 2. Frozen d2d full build/static verification and affected registered tests pass.
    Preserve native-finalize-canonical-* and native-fixed-resource-registered
    receipts; do not relaunch executables or rerun identical GPU binaries.
-3. Review queued uniform5b0b8e136d plus the isolated pool/cutout repairs, then
-   integrate a coherent batch and rebuild matching headers/resources.
-4. gl_tail_audit owns the isolated transient pool retirement and original Bloom
-   shape policy, including actual snapshot source size. menu_port owns only
-   three orphan reserved-uniform identities in llshadermgr/tests. rlva_port
-   owns a separate native cutout far-depth pin repair. Its legacy seed/copy
-   trace is read-only; snapshot matrix reopened for this numeric gap. No shared
-   uncoordinated edits; keep the separate native Metal target pool.
+3. Uniformf65325c1af/pool18a35acb8d/cutout53825c5035 integrated after pinned
+   source peers. Child CPU2941/45 and GPU cutout1230/1 pass; CMake updates
+   remove dead entries/register the cutout case. Freeze/commit and run required
+   full build, matching CPU/resource/LLRender and affected shader/GPU tests.
+4. gl_tail_audit privately traces/retires legacy cutout copy/seed and orphan
+   triangle/copy-program graph, preserving real stream/state duties. menu_port
+   read-only mapped34phase IDs and indirect lifecycle uses. RLVa owns native
+   SMAA stencil/alternate-size metrics; gl_tail also probes late-alpha precision.
+   snapshot broader parity stays open. No shared uncoordinated edits.
 5. Record exact results and next source boundary. Keep viewer, utility, actual
    plugin hosts and windows closed; no screenshots or runtime parity claim.
 

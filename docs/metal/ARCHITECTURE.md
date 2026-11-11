@@ -20,7 +20,7 @@ This document is an **engineering hypothesis grounded in upstream source**, not 
 | `indra/llrender/llglslshader.cpp`, `llshadermgr.*` | GLSL variants, uniforms, `LLGLSLShader` | MSL shader libraries, pipeline state cache, argument/buffer/texture/sampler binding, variant and error diagnostics |
 | `indra/newview/llviewershadermgr.cpp` and `app_settings/shaders/` | GLSL program assembly, shared snippets | Native `.metal` implementations plus deterministic variant/binding metadata; preserve algorithms, validate output |
 | `indra/newview/pipeline.cpp`, `lldrawpool*.cpp`, `llviewerdisplay.cpp` | GL pass graph, render state, material/avatar draw calls | Direct Metal rendering and compute passes, PBR, avatar, transparent objects, probes, shadows, HDR and presentation |
-| `indra/alrender/` | Resource/kernel policy plus retained transient prewarming; the duplicate GL depth-pyramid owner is removed | Retain pure policies; native owners control actual GPU allocation/commands and synchronization |
+| `indra/alrender/` | Resource/kernel policy and native transaction descriptions; duplicate GL depth-pyramid/transient owners are removed | Retain pure policies; native owners control actual GPU allocation/commands and synchronization |
 | `indra/llrender/llfontgl.cpp`, `indra/llui/` render call sites | Glyph/UI drawing using GL-style interfaces | Native Metal text/2D/widget/selection rendering without replacing widget logic |
 | media texture and snapshot/picking paths | GL texture upload/readback | Metal texture ingress, CPU-GPU readback, color/alpha and synchronization correctness |
 
@@ -51,9 +51,9 @@ Compatibility class/state names do not establish retained OpenGL execution.
 
 The native finalizer owns exposure, lens, callbacks, scopes and typed SSR/
 reference histories. Eight displaced fixed targets are retired. Pure
-ALLightMapBlur kernel policy remains; the retained transient pool still
-allocates unused Metal targets during prewarm and is being retired after its
-live Bloom shape dependency is replaced. The separate ALMetalRenderTargetPool
+ALLightMapBlur kernel policy remains. Newer53825c5035 retires the unused
+retained transient prewarm pool after replacing its live Bloom dependency with
+actual native source geometry. The separate ALMetalRenderTargetPool
 remains a live native GPU owner.
 
 ## Key semantic traps

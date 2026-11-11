@@ -4,8 +4,7 @@
 # pipeline's render resources and programs are built from and when they
 # change, the far plane, the water's field, wave heights and stencil bits,
 # the light map's blur, the depth under the HUD,
-# snapshot cutouts and whether a spot light's shadow map is drawn again; and
-# the pool that lends the frame's short-lived render targets by description.
+# snapshot cutouts and whether a spot light's shadow map is drawn again.
 # Whatever reads settings or the scene hands these their inputs as values.
 
 set(
@@ -17,8 +16,6 @@ set(
   alrenderresourceplan.cpp
   alshaderinputs.cpp
   alspotshadowcache.cpp
-  altransienttargetpool.cpp
-  altransienttargets.cpp
   alwaterfield.cpp
   alwaterheightbake.cpp
 )
@@ -36,8 +33,6 @@ set(
   alrenderresourceplan.h
   alshaderinputs.h
   alspotshadowcache.h
-  altransienttargetpool.h
-  altransienttargets.h
   alwaterfield.h
   alwaterheightbake.h
 )
@@ -64,7 +59,7 @@ if(AL_BUILD_TESTS)
   )
 
   # The suites that need no GL: the render resources' plan and the changes
-  # that ask for it again, the transient target pool's policy, what the programs are built from, the far plane
+  # that ask for it again, what the programs are built from, the far plane
   # and the constants its shaders share, the water's field and the wave
   # heights a normal map's slopes integrate to, snapshot cutouts, the spot
   # shadows' cache, and how a display pass ends its frame.
@@ -81,7 +76,6 @@ if(AL_BUILD_TESTS)
       tests/alfxaa_native_invariants_test.mm
       tests/alshaderinputs_test.cpp
       tests/alspotshadowcache_test.cpp
-      tests/altransienttargetpool_test.cpp
       tests/alwaterfield_test.cpp
       tests/alwaterheightbake_test.cpp
     LIBRARIES alrender almetal

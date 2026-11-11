@@ -335,6 +335,38 @@ configure. Exact source/status/argv/progress: native-finalize-canonical-build-st
 Current app verification and affected registered tests are recorded above.
 Viewer/utility/hosts/windows remain closed throughout.
 
+## Latest source integration — matching rebuild pending
+
+Canonical f65325c1af/18a35acb8d/53825c5035 integrate the frozen uniform, pool
+and cutout commits above. Root CMake removes exactly four retired pool source/
+header entries and the pool-only test entry, retaining the spot-shadow case;
+almetal registers almetal_cutout_coverage_test.mm with its own PCH exclusion.
+The new full matching build and tests are pending; last verified app remains d2d.
+
+Pool receipt: /private/tmp/alchemy-native-transient-retirement-validation-20261111/
+validation-receipt.json. Actual policy450/14 and combined plan/policy2941/45,
+four Release checks and final pinned source peer pass. All211680bounded old/new
+description tuples match. Seventeen critical bodies/cases/failure branches stay
+exact; no low-level Bloom/shader change. Cutout receipt:
+/private/tmp/alchemy-native-cutout-depth-pin-validation-20261111/validation-receipt.json.
+Same1230GPU assertions fail12before and pass after; final source peer0, original
+shared vertex/other PSOs/seed order/blend/depth unchanged. Tests are device-only.
+
+New source-mapped gaps remain explicit rather than hidden by dead-code removal.
+gl_tail owns private legacy cutout traversal cleanup, retaining the real before-
+alpha/end stream boundary and tracing next viewport consumers. Its alpha-copy
+trace found native RGBA8 display alpha is quantized before final scaling, while
+original final copy filters raw F16 alpha once; bounded device reproduction is
+pending before any semantics retirement. RLVa owns separate world/MSL SMAA work:
+original-active stencil optimization is unported, and alternate sample metrics
+use sample dimensions instead of original output dimensions. Hardware mask and
+unequal-size controls are required. Phase-ID census is read-only;34phase IDs
+are unconsumed, but native setting equality/publication must survive retirement.
+References: /private/tmp/alchemy-native-phase-resource-audit-20261111.json,
+/private/tmp/alchemy-smaa-stencil-reference-audit-20261111.json and
+/private/tmp/alchemy-cutout-legacy-owner-census-20261111.json. No overlapping
+world/pipeline ownership; root retains CMake/docs/integration.
+
 Full original parity, stability, runtime native-only, independent release evidence
 and measured multi-scene performance remain open. Earlier lighting/self-turn/
 camera/voice notes and owner-stopped20FPS campaign remain unchanged. Keep goal

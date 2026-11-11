@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `d2d0380309`; registered native staging/cleanup
+**Integrated checkpoint:** Commit `53825c5035`; registered native staging/cleanup
 and exact isolated ownership are recorded in CURRENT.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
@@ -110,7 +110,7 @@ M-012 remains complete; M-014 remains deferred. No release-readiness claim.
 
 ## Immediate executable action
 
-Current sourced2d0380309 matches full-app static verification above.
+Current source53825c5035 is newer than full-app static verification above.
 Four CMake registrations committeddc6f505a0a; prior registered groups pass.
 Tools49/four content models passed at the prior unchanged-tool state. Current
 production strict3508/910info/0blockers/0errors passes. Earlier tests4094 retains two negative window-flag
@@ -124,20 +124,24 @@ still owners. Child actual plan/policy2697/43, two Release syntax TUs and peer
 review pass. Explicit flush follow-up integratedd2d: child439/13 and combined
 2733/44, Release syntax0 and independent peer0. The actual-body recorder proves
 dispatch/order, not real GPU geometry. Tangent XML cleanup is integrated.
-gl_tail_audit now owns isolated prewarm/pool retirement and original Bloom source
-shape policy, including snapshot overrides. menu_port owns three orphan uniform
-identities/table entries and affected metadata expectation (frozen5b0b8e136d);
-rlva_port owns only native cutout far-depth pin/shader tests, after read-only
-legacy seed/copy trace. Snapshot row reopened for the numeric parity gap.
-Separate native Metal pool stays.
+Uniformf65325c1af/pool18a35acb8d/cutout53825c5035 are integrated after final
+source peers. Child actual CPU2941/45, bounded503-entry manager1011checks and
+cutout GPU1230/1 pass; root matching rebuild remains pending. Two root CMake
+files remove dead entries/register the new test. gl_tail_audit privately owns
+legacy cutout copy/seed and triangle/copy-program retirement with real stream/
+state duties preserved; menu_port read-only maps remaining phase-description
+consumers/lifecycle before further cleanup. RLVa now owns native SMAA stencil/
+alternate-size metrics; gl_tail independently probes late-alpha precision.
+Snapshot broader parity remains open. Separate native Metal pool stays.
 No concurrent uncoordinated shared renderer edits.
 
 Clean frozen d2d doctor/configure/full build63895 and fresh static checks0.
 Previous335-plugin app preserved by rename. Registered policy629/18 and full
 alrender565511/137 pass API/shader validation where applicable. Almetal binary
 is byte-identicale6ee03ec7f to prior reference/world GPU passes, explicitly reused.
-Next: review/integrate the frozen uniform patch and pending pool/cutout fixes,
-then rebuild matching headers/resources. Keep exact fresh-app/module evidence;
+Next: commit registrations/evidence, then rebuild matching headers/resources
+through required wrapper and run affected registered tests/static checks.
+Keep exact d2d fresh-app/module evidence;
 screen/VT/CVPX/CEF functionality and foreign/runtime audit remain open.
 Keep all actual executables/windows closed. Optional utility was validated
 separately without launch; do not count it as a full viewer build.
