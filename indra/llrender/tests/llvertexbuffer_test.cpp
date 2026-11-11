@@ -30,41 +30,21 @@
 namespace
 {
 unsigned buffer_gl_calls = 0;
-void APIENTRY bufferNameTrap(GLsizei count, GLuint* names)
-{
-    ++buffer_gl_calls;
-    for (GLsizei index = 0; index < count; ++index) names[index] = 1;
-}
-void APIENTRY bufferDeleteTrap(GLsizei, const GLuint*) { ++buffer_gl_calls; }
 void APIENTRY bufferBindTrap(GLenum, GLuint) { ++buffer_gl_calls; }
-void APIENTRY bufferDataTrap(GLenum, GLsizeiptr, const void*, GLenum) { ++buffer_gl_calls; }
-void APIENTRY bufferSubDataTrap(GLenum, GLintptr, GLsizeiptr, const void*) { ++buffer_gl_calls; }
 
 struct BufferGLTraps
 {
-    PFNGLGENBUFFERSPROC generate = glGenBuffers;
-    PFNGLDELETEBUFFERSPROC destroy = glDeleteBuffers;
     PFNGLBINDBUFFERPROC bind = glBindBuffer;
-    PFNGLBUFFERDATAPROC data = glBufferData;
-    PFNGLBUFFERSUBDATAPROC sub_data = glBufferSubData;
     unsigned previous_calls = buffer_gl_calls;
 
     BufferGLTraps()
     {
         buffer_gl_calls = 0;
-        glGenBuffers = bufferNameTrap;
-        glDeleteBuffers = bufferDeleteTrap;
         glBindBuffer = bufferBindTrap;
-        glBufferData = bufferDataTrap;
-        glBufferSubData = bufferSubDataTrap;
     }
     ~BufferGLTraps()
     {
-        glGenBuffers = generate;
-        glDeleteBuffers = destroy;
         glBindBuffer = bind;
-        glBufferData = data;
-        glBufferSubData = sub_data;
         buffer_gl_calls = previous_calls;
     }
 };

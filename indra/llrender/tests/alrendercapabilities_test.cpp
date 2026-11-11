@@ -26,18 +26,6 @@ namespace
 {
 unsigned diagnostic_gl_queries = 0;
 
-const GLubyte* APIENTRY diagnosticStringTrap(GLenum)
-{
-    ++diagnostic_gl_queries;
-    static const GLubyte stale[] = "stale GL diagnostic query";
-    return stale;
-}
-
-const GLubyte* APIENTRY diagnosticStringIndexTrap(GLenum, GLuint)
-{
-    return diagnosticStringTrap(0);
-}
-
 void APIENTRY diagnosticIntegerTrap(GLenum, GLint* value)
 {
     ++diagnostic_gl_queries;
@@ -47,25 +35,18 @@ void APIENTRY diagnosticIntegerTrap(GLenum, GLint* value)
 struct DiagnosticStateScope
 {
     ALRenderCapabilities capabilities = gRenderCapabilities;
-    PFNGLGETSTRINGPROC get_string = glGetString;
-    PFNGLGETSTRINGIPROC get_string_index = glGetStringi;
     PFNGLGETINTEGERVPROC get_integer = glGetIntegerv;
     unsigned previous_queries = diagnostic_gl_queries;
 
     DiagnosticStateScope()
     {
         diagnostic_gl_queries = 0;
-        // These are CPU sentinels, not graphics calls. An old GL diagnostics
-        // path fails counted assertions rather than dereferencing an absent
-        // driver entrypoint on a machine with no GL context.
-        glGetString = diagnosticStringTrap;
-        glGetStringi = diagnosticStringIndexTrap;
+        // The remaining query entrypoint is a CPU sentinel: a diagnostic
+        // path must not read GL limits on a machine with no GL context.
         glGetIntegerv = diagnosticIntegerTrap;
     }
     ~DiagnosticStateScope()
     {
-        glGetString = get_string;
-        glGetStringi = get_string_index;
         glGetIntegerv = get_integer;
         diagnostic_gl_queries = previous_queries;
         gRenderCapabilities = capabilities;
@@ -163,7 +144,6 @@ TEST_CASE("LLGLManager diagnostics report native capabilities without OpenGL que
     manager.mGLVersionString = "stale GL version";
     manager.mVRAM = 17;
     manager.mGLMaxTextureSize = 512;
-    manager.mGLExtensions.insert("stale_GL_extension");
 
     LLSD debug_info;
     debug_info["unrelated_debug_data"] = "preserved";

@@ -62,27 +62,17 @@ void ll_close_fail_log();
 
 class LLSD;
 
-// The viewer's floor: a GL 4.1 context with immutable texture storage (core in 4.2, or
-// GL_ARB_texture_storage) and GL_EXT_texture_sRGB_decode. LLGLManager::initGL refuses a context
-// below it, so nothing past initGL adapts to less: deprecated formats are re-expressed through
-// GL_TEXTURE_SWIZZLE_RGBA, every texture is allocated by glTexStorage*, sRGB decode is a sampler
-// decision, and the shader backend compiles GLSL 4.00 or later.
-//
-// Biased down by 0.01 like the other version checks in this file, because mGLVersion is
-// assembled as major + minor * 0.1f and 4.1f is not exactly representable.
+// Historical version convention retained by legacy callers and CPU tests.
+// The original GL version was major + minor * 0.1f, biased down by 0.01 for
+// floating-point comparisons. Native renderer admission belongs to the Metal
+// device owner; native capabilities are published through ALRenderCapabilities.
 const F32 GL_MINIMUM_VERSION = 4.09f;
 
-// Manage GL extensions...
+// Retained CPU compatibility metadata and native diagnostic reporting.
 class LLGLManager
 {
 public:
     LLGLManager();
-
-    bool initGL();
-    void shutdownGL();
-
-    void initWGL(); // Initializes WGL extensions
-    void initEGL(); // Initializes EGL extensions (Linux, Wayland and X11 alike)
 
     std::string getRawGLString(); // For sending to simulator
 
@@ -94,7 +84,7 @@ public:
         return !tessellated || !mIsApple;
     }
 
-    // Whether a GL version, as initGL assembles it from GL_VERSION, meets the floor (GL_MINIMUM_VERSION).
+    // Original version-floor predicate, retained for existing CPU callers.
     static bool meetsVersionFloor(F32 gl_version);
 
     // Intel's drivers outside macOS short of GL 4.6: chiefly Haswell and Broadwell on Windows, which
@@ -107,51 +97,24 @@ public:
     bool mIsDisabled;
 
     // OpenGL limits
-    S32 mMaxSamples;
     S32 mNumTextureImageUnits;
-    S32 mMaxSampleMaskWords;
-    S32 mMaxColorTextureSamples;
-    S32 mMaxDepthTextureSamples;
-    S32 mMaxIntegerSamples;
     S32 mGLMaxVertexRange;
     S32 mGLMaxIndexRange;
     S32 mGLMaxTextureSize;
     F32 mMaxAnisotropy = 0.f;
     S32 mMaxUniformBlockSize = 0;
     S32 mMaxVaryingVectors = 0;
-    LLVector2 mAliasedLineRange = LLVector2(1.f, 1.f);
-
-    // What a context may have past the floor (GL_MINIMUM_VERSION). What the floor includes --
-    // GL 4.1, immutable texture storage, sRGB decode -- every context past initGL has, so it
-    // has no flag.
 
     bool mHasAnisotropic = false;
-    // Direct state access (glBindTextureUnit, glCreateSamplers, glTextureStorage*, ...).
-    // Core in 4.5, also reachable as GL_ARB_direct_state_access. Only true once the entry
-    // points have actually resolved, so callers may trust it directly.
-    //
-    // NOTE: DSA entry points that take a texture name require the texture's target to
-    // already be established -- glBindTextureUnit on a name straight out of glGenTextures
-    // is INVALID_OPERATION. Allocation paths that bind-to-create must keep using
-    // glBindTexture until they are ported to glCreateTextures.
-    bool mHasDirectStateAccess = false;
     // Clip control (glClipControl for GL_ZERO_TO_ONE depth range). Core in 4.5, also
     // reachable as GL_ARB_clip_control. Gates the reverse-Z depth path; only true once
     // the entry point has actually resolved, so callers may trust it directly. Absent on
     // macOS GL 4.1, which stays forward-Z.
     bool mHasClipControl = false;
-    // GL_EXT_depth_bounds_test: passing a fragment only where the depth already stored under it lies in a range.
-    // Never core. Only true once glDepthBoundsEXT has resolved.
-    bool mHasDepthBoundsTest = false;
-    // glTextureBarrier: core in 4.5, also GL_ARB_texture_barrier and GL_NV_texture_barrier, which macOS's 4.1 context
-    // may lack. Only true once the entry point has resolved, so callers may trust it directly. See
-    // LLRender::textureBarrier.
-    bool mHasTextureBarrier = false;
 
     // Vendor-specific extensions
     bool mHasAMDAssociations = false;
     bool mHasNVXGpuMemoryInfo = false;
-    bool mHasATIMemInfo = false;
 
     bool mIsAMD;
     bool mIsNVIDIA;
@@ -160,9 +123,6 @@ public:
     // True for any Mesa driver (radeonsi, iris, llvmpipe, zink, ...). Detected
     // from the GL_VERSION string; used to gate Mesa-specific workarounds.
     bool mIsMesa = false;
-    // True for Mesa's d3d12 driver: GLOn12, Microsoft's GL over D3D12 and the only GL on
-    // Windows on Arm. Detected from its "D3D12 (<adapter>)" GL_RENDERER.
-    bool mIsD3D12 = false;
     // True when GL draws on the CPU: Mesa's llvmpipe, softpipe or swrast, or WARP behind
     // WSL's d3d12. What Mesa falls back to when the hardware driver does not load.
     // Detected from GL_RENDERER, on Linux only.
@@ -171,14 +131,10 @@ public:
     // hints to the render pipe
     U32 mDownScaleMethod = 0; // see settings.xml RenderDownScaleMethod
 
-    // Whether the context meets the floor (GL_MINIMUM_VERSION). False once initGL has refused it, and
-    // mUnmetRequirement then names what it lacks: "OpenGL 4.1", or the extension it does not have.
+    // Compatibility requirement metadata still read by startup error handling.
     bool mHasRequirements;
     std::string mUnmetRequirement;
 
-    S32 mDriverVersionMajor;
-    S32 mDriverVersionMinor;
-    S32 mDriverVersionRelease;
     F32 mGLVersion; // e.g = 1.4
     S32 mGLSLVersionMajor;
     S32 mGLSLVersionMinor;
@@ -204,18 +160,9 @@ public:
     std::string mGLVendorString;
     std::string mGLRendererString;
 
-    // GL_VENDOR, GL_RENDERER and GL_VERSION as reported, less the kernel's DRM version and
-    // release radeonsi and r600 put in the renderer on Linux. Keys what a driver update must
-    // invalidate and a kernel update must not: the benchmark result and program binaries.
+    // Retained legacy driver identity for existing metadata consumers.
+    // Native identity is reported from ALRenderCapabilities.
     std::string mGLIdentity;
-
-    // GL Extension String
-    std::set<std::string> mGLExtensions;
-
-private:
-    void reloadExtensionsString();
-    void initExtensions();
-    void initGLStates();
 };
 
 extern LLGLManager gGLManager;
@@ -431,10 +378,6 @@ public:
 };
 
 #include "llglstates.h"
-
-void init_glstates();
-
-void parse_gl_version( S32* major, S32* minor, S32* release, std::string* vendor_specific, std::string* version_string );
 
 extern bool gClothRipple;
 extern bool gHeadlessClient;
