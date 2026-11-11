@@ -1871,6 +1871,7 @@ if(AL_BUILD_VIEWER)
     lutcube.h
     noise.h
     pipeline.h
+    pipeline_lens_config.inl
     rlvactions.h
     rlvcommon.h
     rlvdefines.h
@@ -2574,6 +2575,7 @@ if(AL_BUILD_TESTS)
       tests/aldaycyclelandmarks_test.cpp
       tests/alfeedback_test.cpp
       tests/alfeedbackoutbox_test.cpp
+      tests/allens_policy_test.cpp
       tests/algradehistory_test.cpp
       tests/almetalbenchmark_test.cpp
       tests/almetalbenchmark_provenance_test.cpp

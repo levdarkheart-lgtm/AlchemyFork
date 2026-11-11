@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `a272c2b365` (newer than the verified app below).
+**Renderer code checkpoint:** `8bb61bb34d` (newer than the verified app below).
 The remaining-feature/OpenGL-removal goal stays active. No viewer or appearance
 utility launch, menu invocation, screenshot, signed-in state or user-cache
 operation. Offscreen tests submit actual Metal commands. The owner-stopped
@@ -47,34 +47,21 @@ TextureView reports tracked Metal buffer wrapper bytes, not driver memory.
 
 ## Observed validation
 
-Root receipts: `artifacts/metal/feature-completion-20261111/`.
-Frame-fence fix integrated f75d9e306f. Registered CTest native fences2157/9
+Receipts: `artifacts/metal/feature-completion-20261111/`. Native fences2157/9
 and packaged indexed-join7969/1 pass API+shader validation. almetal_tests now
 owns its offline metallib in a target-local bundle; CTest directly executes
 the CLI binary. Generated resource rules also track shader-only updates.
-Frozen source9918621da8 (renderer0b) registered Release llrender:
-**96864assertions/384cases**,383passed/one known CPAL multi-palette skip;
-separate native Font/UI **1862/61**0, alrender **556641/132**0, affected native
-Metal **73523/38**0, API+shader validation. API-only cache **5905/6**0,
-instrumented **882/1**0 and selective **98/1**0. Existing native CAS/DoF/final
-presentation/SSR-history **4487/4**0 is an overlapping admission filter.
-New integrated silhouette registered21566/4passes API+shader validation; child
-38636/5with unchanged impostor replay passes. Uniform8130/19CPU/native UI and
-378/4actual-owner tests pass; exact CPU/layout proofs, eight Release checks0.
-Buffer typed119/4 and stencil167/10pass with native validation. Viewport child
-49366/9passes with existing post/retained-background owners, matching scene
-headers and textual viewer syntax0. Original mask red1080/9249; raw-row red
-238/322. Superseded inactive-grain/inverted-oracle fixtures are recorded, not
-used as final evidence. Matching-header frozen d9/renderer1f full registered
-Release suites passed: llrender98965assertions/389cases (388pass/one known CPAL
-skip), Font/UI1862/61, alrender556641/132 and affected Metal106377/50, all0
-with API+shader validation. See viewport-test-validation.json.
-Latest root strict production source audit:3504files/0blockers/0errors/
-1170informational. Frozen9918 including excluded legacy tests had486blockers;
-also two deliberate SDL no-OpenGL negative assertions.
-Lexical source-zero does not prove runtime or whole-feature parity. Tools39/
-harness32files0. Stale configuration and missing test-bundle resource results
-are excluded explicitly in scene-ui-test-validation.json, then corrected.
+Matching-header frozen d9/renderer1f full registered Release suites passed:
+llrender98965assertions/389cases(one known CPAL skip), Font/UI1862/61,
+alrender556641/132 and affected Metal106377/50, API+shader validation.
+See viewport-test-validation.json. Newer HUD/lens aggregate results are below.
+Earlier cache API5905/6, instrumented882/1, selective98/1 and silhouette/
+uniform/buffer/stencil/viewport source proofs remain in the latest work note.
+Original viewport mask red1080/9249 and raw-row red238/322 repaired; superseded
+inactive-grain/inverted-oracle fixtures are not final evidence. Stale build/
+missing bundle-resource results were corrected and explicitly excluded.
+Lexical source-zero does not prove runtime or whole-feature parity. Root
+tools49/harness32files0; exact old checkpoints remain in the work notes.
 
 **Last verified canonical source d9f624ea464d3ba3c305d7656bf9533f6e65a8dd,
 version26.4.0d68755**. Doctor/configure/build0,
@@ -83,8 +70,7 @@ GL/CGL/SDL_GL imports0. Optional appearance Release build/ARM64/signature/import
 Exact hashes/source: viewport-canonical-identities.json/viewport-canonical-source.json.
 All349 Mach-O imports audited: foreign VLC screen/vout/caopengllayer/glconv and
 CEF contain GL links; videotoolbox has a CV compatibility-key import. These
-are recorded separately, not a whole-bundle no-GL pass. Trace actual media
-consumer/selection policy before removal. Neither executable was launched.
+are recorded separately, not a whole-bundle no-GL pass. Neither executable launched.
 CEF Libraries/libvulkan.dylib is also shipped; its own LC_ID_DYLIB is not an
 import. Dynamic third-party renderer selection remains unobserved.
 Newer finalizer/test/tool admissions are not represented by that app.
@@ -92,35 +78,66 @@ No performance or release-readiness claim.
 
 ## Exact next actions and ownership
 
-Root owns CMake/docs/integration and the isolated HUD bridge at
-`/private/tmp/alchemy-native-hud-depth-admission-20261111`: alhuddepth.h,
-llrender.cpp and llviewerdisplay.cpp plus a new native fixture. Actual original
+Root owns CMake/docs/integration. Integrated8bb61bb34d (child5940153141) restores
+the HUD bridge in alhuddepth.h, llrender.cpp and llviewerdisplay.cpp plus a new
+native fixture, retiring the old seven-case GL fixture. Actual original
 clear/restore callers still used always-false isComplete; availability-only
 fix then exposes inverted rectangle rows (100/803fail). Native clear/restore,
-correct raw lower-row coordinates and explicit pre-operation flush pass the
-initial803/2 actual GPU tests. Expand original seven-case invariants before
-integration. No viewer/window execution.
+correct raw lower-row coordinates and explicit pre-operation flush pass9595/9
+actual GPU tests, mapping all original seven-case invariants. Removing only
+the flush fails100/818 assertions in the corrected producer-flush control.
+Initial no-order control omitted final producer flush and stayed green; it is
+superseded, never final ordering proof. Viewer textual Release syntax0 and
+independent source/lifetime review0. Root registered Release rebuild0;
+llrender302803/426(425pass/one known CPAL skip), Font/UI1862/61 and
+alrender556674/132 all0 under API+shader validation. Exact commands and binary
+hashes: hud-lens-render-validation.json. Latest strict production source audit:
+3505files/0blockers/0errors/1141informational. Including excluded old tests:
+4099files/232blocking findings, not a strict pass or production runtime result.
+No viewer/window execution.
 
 rlva_port exclusively owns isolated pipeline.cpp/h and new lens policy tests.
 Two actual CPU config methods also used always-false isComplete: original
-positive controls fail10/36, availability fix passes69/3. Retire the displaced
-legacy generator before enabling config; preserve native epoch/hold/sky/reset
-history. Verify original-supported nonHDR flare/dirt through real GPU owners.
+positive controls fail10/36. Integrateda54314153d (child2707f854c0) corrects native
+availability and retires the displaced generator, preserving epoch/hold/sky/
+reset history; actual registered CPU73/3passes, existing HDR GPU1846/2passes.
+NonHDR admission remains consistently excluded pending its original-mapped
+float linear screen closure. Original Screen is alwaysRGBA16F; native8bit
+screen cannot exceed original luminance threshold2. Native display also rejects
+nonHDR flare; actual28assertion probe exposed both issues. RLVa owns isolated
+pipeline, almetalworld.cpp/h, exact llreflectionmapmanager.cpp callsites and
+two existing native test files. Preserve explicit HDR-dependent SSR/probe/
+refraction/display formats instead of inferring HDR from a float input.
 
 gl_tail_audit owns isolated remaining alrender legacy fixture admission except
-HUD. menu_port audits foreign media imports/consumer policy read-only.
+HUD, plus appearance's three ordered morph-alpha cases and the proven orphan
+ALOnDemandTarget graph. Native pool/VB122/4, FXAA8993/1 and morph13203/3 are
+initial child passes; final strengthened source/proofs/retirement pending.
+menu_port owns isolated migration of28LLUI text/surface/diff native cases,
+with shared process-lifetime offscreen font/UI fixture; root owns CMake.
+Root next maps the last nine llrender GL-state cases against original/live
+native owners. General target scissored clears are not proven: encodeClear
+currently uses whole-attachment load actions. Trace current consumers before
+mapping a displaced architecture or implementing missing live behavior.
 All canonical shared-file edits remain root-owned; agents use separate trees.
 
 Integrated88ff446002 removes four uncalled finalizers and CPU CAS include;
 ab128e02e5 admits five native CAS/DoF legacy-invariant cases;9ac375d389 admits
 24image/four hardware tessellation cases and a compile-only manual hidden-window
 fixture. Root registration/slot identity assertions and removal of obsolete
-timing-only SSR benchmark/helper are pending commit. Registered build0;
+timing-only SSR benchmark/helper committed8dcbbced4d. Registered build0;
 image/tessellation194243/28 and postchain170713/5 pass API+shader validation.
 a272c2b365 admits eight CPU GLSL readers and both
 lens content tools against native source; exact default metric/preset preservation,
-49tool tests0 and two original-mapped Python model corrections are child-proven.
-Root tools/harness rerun follows documentation update.
+49tool tests0 and two original-mapped Python model corrections are proven;
+root CPU364/9, tools49/harness32files0. Foreign audit complete/read-only:
+/private/tmp/alchemy-foreign-media-audit-20261111/audit.json identifies three
+windowed VLC GL output/converter plugin exclusion candidates, backed by actual
+ARM64 callback disassembly forcing vmem/window-none and339module importer census.
+Keep VT decoder/CV compatibility key, screen input(CoreGraphics-only actual
+symbols but stale framework link), and required complete CEF capability assets.
+Runtime selection/loading remains unknown; no whole-bundle no-GL claim.
+Root packaging changes require fresh staging and callback regression validation.
 
 Finished trees (silhouette8c/75,uniform81fd,buffer8818,stencil9720,viewport7ee)
 must not be reapplied. Receipts and exact original maps are in the latest note.

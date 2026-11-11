@@ -99,7 +99,6 @@ if(AL_BUILD_TESTS)
     alrender_gl_tests
     PROJECT alrender
     SOURCES
-      tests/alhuddepth_gl_test.cpp
       tests/alondemandtarget_gl_test.cpp
       tests/alspotshadowcache_gl_test.cpp
       tests/altransienttargetpool_gl_test.cpp

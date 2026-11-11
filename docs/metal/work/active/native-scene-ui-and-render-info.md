@@ -294,11 +294,56 @@ models fail7assertions; fixed controls pass. Native GPU flare/dirt1846/2passes.
 Source checks are bounded drift contracts, not algebraic equivalence proofs.
 Receipt /private/tmp/alchemy-native-lens-content-validation-20261111/validation-receipt.json.
 
-New actual-caller regressions remain isolated: HUD helper isComplete alwaysfalse
+New actual-caller regressions: HUD helper isComplete alwaysfalse
 skips depth clear; availability-only then flips asymmetric rows (100/803fail).
 Native-only clear/restore with lower-row coordinates and pre-operation flush
-passes initial803/2GPU. Root expands original invariants before integration.
-Actual lens CPU methods fail10/36positive assertions; correct native availability
-passes69/3. RLVa owns pipeline history/generator retirement and nonHDR flare/dirt
-positive admission. No global shader-status replacement is authorized. Original
-hold/sky/reset/history and native device/epoch/frame admission must survive.
+passes initial803/2GPU. Integrated8bb61bb34d (child5940153141) expands to9595/9
+actual GPU assertions/cases, maps all seven old fixture invariants and retires
+the displaced GL fixture. Queued draws explicitly flushed at fixture final
+producer boundary; original no-order mutant then fails100/818assertions. Earlier
+green no-order control omitted that boundary and is superseded for ordering
+proof. Both conventions, asymmetric lower rows, translated/clipped/disjoint/
+empty rects, nearer HUD conditional restore, exact scene-depth equality and
+unavailable identity covered. Sole viewer HUD caller is inside exact retained
+world color/depth composition; no bake color-only transaction invokes it.
+Viewer textual Release syntax0; independent source/lifetime review0. Receipt
+/private/tmp/alchemy-native-hud-depth-validation-20261111/validation-receipt.json.
+
+Actual lens CPU methods fail10/36positive assertions; integrateda54314153d
+(child2707f854c0) corrects two availability gates, retires old generator/caller/
+GL-only validity flags, transfers disabled main-view clear before history
+selection, and resets native history independent of old RT completeness.
+Hold, sun/moon and native epoch/device/frame guards retained. Registered
+actual CPU73/3passes after Release build0, existing native HDR1846/2passes.
+Extracted actual method bodies share one production inl; only viewer input
+facade is scoped in test. Math body preservation proof and full original map:
+/private/tmp/alchemy-lens-policy-cpu-validation-20261111.json. Root registration
+and exact pending nonHDR gap are in CURRENT. All nonHDR admission guards remain
+consistent until that closure; no new whole-frame rejection introduced.
+
+Actual nonHDR probe exposed two further inherited defects: native scene8bit
+cannot exceed original luminance threshold2 (exact zero state is correct);
+original linear Screen alwaysRGBA16F even when HDRfalse. Native display rejects
+nonHDR flare despite kernel support. RLVa now maps central float screen PSOs,
+output/input descriptors and explicit HDR-dependent SSR/probe/refraction/display
+boundaries before changing them. No threshold changes or fabricated positive
+RGBA8 state oracle. Initial28assertion/twofailure probe preserved. No global
+shader-status replacement. Full feature remains active, not complete.
+
+Root HUD/lens registration build0 and full matching-header Release suites0:
+llrender302803assertions/426cases(425pass/one known CPAL skip), Font/UI1862/61,
+alrender556674/132; API+shader validation. hud-lens-render-validation.json pins
+actual commands/source/binary hashes. Registered lens CPU73/3 build/run0.
+Production strict audit3505files/0blockers/0errors/1141informational; excluded
+historical tests still232blocking inventory findings across4099files, not a
+whole-source strict pass. Both reports/logs are hud-lens-{source-audit,test-inventory}.
+
+Foreign read-only policy audit /private/tmp/alchemy-foreign-media-audit-20261111/audit.json:
+actual ARM64 VLC callback implementation forces vmem/window-none, same original
+API;339module import census has zero direct importers for proposed three windowed
+GL output/converter exclusions. Plugin enumeration can load unselected modules;
+no runtime no-load/context claim. Preserve VT decode/CV compatibility attribute,
+CoreGraphics screen input (unused legacy OpenGL framework link needs dependency
+source rebuild, not feature deletion), and full required CEF/Vulkan/SwiftShader/
+ICD capability set while actual browser backend remains unobserved. Root owns
+future packaging/fresh-stage/callback validation. No viewer/media playback launch.

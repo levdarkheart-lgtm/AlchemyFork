@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `a272c2b365`; current uncommitted admissions
+**Integrated checkpoint:** Commit `8bb61bb34d`; current uncommitted admissions
 and isolated live HUD/lens fixes are identified in CURRENT.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
@@ -132,11 +132,22 @@ shader validation. Exact viewport-* receipts are in the artifact directory.
 Newer88ff dead finalizers, ab128 native CAS/DoF admission,9ac375 image/tessellation
 admission and a272 native CPU shader/tool readers are integrated. Root is
 registering those fixtures and retiring only their displaced GL test mechanics.
-Actual live isComplete guards still disable HUD depth and lens config: root
-owns isolated HUD rect/order/restore fix; RLVa owns isolated pipeline lens
-policy/history fix and positive CPU/nonHDR GPU tests. gl_tail owns remaining
-alrender legacy fixture invariants except HUD; menu audits foreign media policy
-read-only. Shader asset/packaging retirement follows remaining reader admission.
+Live isComplete guards repaired:8bb61bb34d HUD native bracket9595/9GPU passes;
+no-order control100/818failures, viewer textual syntax0 and source review0.
+a54314153d lens policy/history actual registered CPU73/3passes, existing HDR
+flare/dirt1846/2passes. NonHDR feature remains excluded until original always-
+float screen/input contract and explicit HDR-dependent conversion boundaries
+are repaired; RLVa owns isolated pipeline/world/header/probe callsite closure
+and physical positive/negative tests. Current root Release renderer rebuild0;
+llrender302803/426(one known skip), Font/UI1862/61 and alrender556674/132 all0
+with API+shader validation. Production strict3505files/0blockers/0errors;
+excluded old tests still232blocking inventory findings. gl_tail owns remaining
+alrender/appearance fixture invariants and orphan on-demand graph; menu owns
+28LLUI native case admission. Root maps nine remaining llrender state cases;
+partial target-clear native semantics need actual consumer proof. Foreign
+read-only audit complete; three VLC windowed output/converter exclusions are
+candidates, keep screen/VT/CEF capabilities. Shader asset/packaging retirement
+follows remaining reader admission, fresh staging and appropriate validation.
 No whole-bundle no-GL claim: VLC/CEF links and shipped foreign capability payloads
 are separate recorded work. CURRENT/latest note pin exact ownership and limits.
 Goal stays active; bounded build/test success never establishes full parity.
