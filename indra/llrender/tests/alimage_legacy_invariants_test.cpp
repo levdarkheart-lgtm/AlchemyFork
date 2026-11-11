@@ -165,8 +165,9 @@ TEST_CASE_METHOD(NativeImages, "LLImageGL: a partial setSubImage leaves the text
 
         // Native subimage publication must leave the caller's logical slot
         // and sampled image ownership intact while changing only the rectangle.
-        gGL.getTextureSlot(0)->bind(img.get());
-        const U32 token_before=gGL.getTextureSlot(0)->getCurrTexture();
+        REQUIRE(gGL.getTextureSlot(0)->bind(img.get()));
+        REQUIRE(gGL.getTextureSlot(0)->getCurrImage()==img.get());
+        REQUIRE(gGL.getTextureSlot(0)->getCurrMetalTexture()==img->getMetalTexture());
         const auto* native_before=img->getMetalTexture();
         REQUIRE(native_before);
         // Partial-rect upload — this is the path that used to
@@ -178,7 +179,8 @@ TEST_CASE_METHOD(NativeImages, "LLImageGL: a partial setSubImage leaves the text
         LLPointer<LLImageRaw> patch = makeRaw(32, 32, 4, /*fill=*/0xFF);
         CHECK(img->uploadMetalSubImage(patch->getData(), patch->getWidth(), patch->getHeight(), 4, 4, 8, 8));
 
-        CHECK(gGL.getTextureSlot(0)->getCurrTexture()==token_before);
+        CHECK(gGL.getTextureSlot(0)->getCurrImage()==img.get());
+        CHECK(gGL.getTextureSlot(0)->getCurrMetalTexture()==img->getMetalTexture());
         CHECK(img->getMetalTexture()==native_before);
         CHECK(readTexelRGBA(img,5,5)==0xffffffffu);
         CHECK(readTexelRGBA(img,0,0)==0x80808080u);

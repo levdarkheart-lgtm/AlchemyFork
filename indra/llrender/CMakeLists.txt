@@ -183,6 +183,8 @@ if(AL_BUILD_TESTS)
       tests/alinfiniteprojection_metal_test.mm
       tests/alrendertarget_native_test.mm
       tests/alimage_native_coverage_test.cpp
+      tests/alimage_legacy_invariants_test.cpp
+      tests/almetal_tessellation_invariants_test.mm
       tests/alprimitiveplot_test.cpp
     )
   endif()
@@ -210,6 +212,7 @@ if(AL_BUILD_TESTS)
   if(DARWIN)
     target_link_libraries(llrender_tests PRIVATE almetal)
     set_source_files_properties(tests/alvertex_label_metal_test.mm
+                                tests/almetal_tessellation_invariants_test.mm
                                 tests/alframefences_metal_test.mm
                                 tests/alinfiniteprojection_metal_test.mm
                                 tests/alrendertarget_native_test.mm
@@ -230,18 +233,14 @@ if(AL_BUILD_TESTS)
     target_link_libraries(llrender_font_ui_tests PRIVATE almetal)
   endif()
 
-  # Historical driver fixtures excluded by the native-only configuration.
-  # Preserve each meaningful invariant in native tests before retiring it.
-  al_add_test_binary(
-    llrender_gl_fresh_tests
-    PROJECT llrender
-    SOURCES
-      tests/llimagegl_test.cpp
-    LIBRARIES llrender ll::icu
-    SUPPORT llrender_test_checks llcommon_test_checks
-    DEFINES ${font_defines} ${startup_texture_defines}
-    GL
-  )
+  if(DARWIN)
+    # Compile the live hidden-window lifecycle invariant without registering
+    # or linking it into any routinely executed test binary. It creates an
+    # actual window when run, so offscreen renderer suites must not invoke it.
+    add_library(llrender_manual_window_compile OBJECT tests/alwindowsdlheadless_test.cpp)
+    target_link_libraries(llrender_manual_window_compile PRIVATE al::flags al_test_support llrender)
+    target_include_directories(llrender_manual_window_compile PRIVATE ${INDRA_SOURCE_DIR}/test)
+  endif()
 
   # Remaining historical shared-context fixtures. Native target/query/buffer,
   # font/UI, projection, sphere and frame-fence invariants are registered above.
@@ -250,8 +249,6 @@ if(AL_BUILD_TESTS)
     PROJECT llrender
     SOURCES
       tests/alrenderstate_gl_test.cpp
-      tests/altessellation_gl_test.cpp
-      tests/alwindowsdlheadless_test.cpp
     LIBRARIES llrender
     SUPPORT llrender_test_checks llcommon_test_checks
     DEFINES ${font_defines}

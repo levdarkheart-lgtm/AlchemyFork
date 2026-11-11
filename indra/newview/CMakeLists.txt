@@ -2735,23 +2735,6 @@ if(AL_BUILD_TESTS)
       "AL_LSL_DEFINITIONS_DIR=\"${LSL_DEFINITIONS_DIR}\""
   )
 
-  # The retained post chain's passes held against what they replaced: the
-  # viewer's own shader files read from the source tree, on llrender's shared
-  # hidden window. The passes are timed there too, by the GPU's own clock.
-  al_add_test_binary(
-    newview_gl_tests
-    PROJECT ${test_project}
-    SOURCES
-      tests/alcasfold_gl_test.cpp
-      tests/aldof_gl_test.cpp
-    BENCH_SOURCES tests/alcasfold_bench.cpp tests/aldof_bench.cpp tests/alssrhistory_bench.cpp
-    LIBRARIES llrender
-    SUPPORT llrender_test_checks llcommon_test_checks
-    INCLUDES ${INDRA_SOURCE_DIR}/llprimitive
-    DEFINES "AL_TEST_SHADER_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/app_settings/shaders\""
-    GL
-  )
-
   # Linden's tests that stand in for parts of the viewer, llui and llxml by
   # hand, each in its own way, so that no two could share a binary: a
   # binary each, until one set of fakes replaces their stubs. Most take

@@ -243,6 +243,62 @@ are retained as superseded controls, not final proof. Final matching-header
 background cases, non-square input/window mask, active translated noise, depth,
 invalid-policy atomicity; textual viewer syntax0 and peer no blockers. Receipt
 /private/tmp/alchemy-native-postchain-admission-validation-20261111/validation-receipt.json.
-No viewer, window or snapshot workflow executed. Root registered full suites/
-new canonical app still required at1f; source strict3504files/0blockers/0errors/
-1170informational. Goal active; exact further owners are in CURRENT.
+No viewer, window or snapshot workflow executed. Frozen d9/renderer1f registered
+full suites and canonical app are now verified; source strict3504files/
+0blockers/0errors/1170informational. Goal active; further owners are in CURRENT.
+
+## Subsequent admission and live-caller audit
+
+Frozen d9f624ea464d3ba3c305d7656bf9533f6e65a8dd Release26.4.0d68755:
+doctor/configure/build/verify0,349Mach-O/0invalidARM64 and deepstrictcodesign0.
+Main viewer forbidden framework/graphics API imports0; optional appearance
+Release build/static checks0. Viewer SHA256
+`a9823d27163e63eba0b35aabb88004cc1857fc763a12929d960bb671cf7536a4`,
+metallib `e0337cf1984d56b4796b300dbccb63c4e39b40e84574ca444d7d75c303bd4451`.
+Matching-header llrender98965/389(388pass/one known CPAL skip), Font/UI1862/61,
+alrender556641/132 and affected Metal106377/50 all0, API+shader validation.
+Exact command/hash/exit receipts: viewport-canonical-source.json,
+viewport-canonical-identities.json, viewport-test-validation.json and
+viewport-appearance-static.json under artifacts/metal/feature-completion-20261111.
+Foreign VLC/CEF links remain separate; CEF libvulkan own ID is not an import.
+No executable launch or measured performance claim.
+
+Integrated88ff446002 (childadcd0055b6) removes only four zero-caller finalizers
+applyCAS/applyFXAA/compositeBloomHDR/bindScreenToTexture and sole CPU CASF
+include.193deletions; all remaining source bytes identical1f. Original callers
+and current typed native owners mapped; Release syntax0, independent review.
+Receipt /private/tmp/alchemy-native-finalizer-tail-validation-20261111/validation-receipt.json.
+
+ab128e02e5 (childb8 postchain admission) replaces six obsolete CAS/DoF fixture/
+benchmark files with five actual native cases preserving original source-size,
+sharpened center, blur/glow tag, disabled near blur and shaped impulse invariants.
+9ac375d389 (child708895c8e4) replaces old image/tessellation fixture mechanics
+with24native image cases551assertions and four real hardware tessellation cases
+193688assertions. M1 hardware barycentrics recover actual raster triangles;
+bounded post-tessellation GPU writes prove outer edge mapping. No nominal count
+or CPU grid substitute. Hidden-window lifecycle is live for appearance utility;
+its adapted manual fixture compiles but is never executed/registered routinely.
+Root strengthens slot test with actual logical/native image identity, then
+registers new cases: actual194243/28 image/tessellation and170713/5 postchain
+pass API+shader validation. Build also compiles manual window fixture without
+running it. Obsolete SSR benchmark measured GL copy timing only and
+had no product assertions; existing real native color/depth SSR-history case
+preserves behavior. No performance equivalence claim.
+
+a272c2b365 (child254f199fac) admits all eight alfarplane CPU GLSL asset reads and
+both lens content scripts against actual native source/payload ABI.364/9CPU,
+49tool tests and both default scripts0 in isolated receipt; default preset/
+metric bytes unchanged. Two original/native model bugs corrected: six omitted
+radius*mscale factors and inclusive step(hash,density) boundary. Actual old
+models fail7assertions; fixed controls pass. Native GPU flare/dirt1846/2passes.
+Source checks are bounded drift contracts, not algebraic equivalence proofs.
+Receipt /private/tmp/alchemy-native-lens-content-validation-20261111/validation-receipt.json.
+
+New actual-caller regressions remain isolated: HUD helper isComplete alwaysfalse
+skips depth clear; availability-only then flips asymmetric rows (100/803fail).
+Native-only clear/restore with lower-row coordinates and pre-operation flush
+passes initial803/2GPU. Root expands original invariants before integration.
+Actual lens CPU methods fail10/36positive assertions; correct native availability
+passes69/3. RLVa owns pipeline history/generator retirement and nonHDR flare/dirt
+positive admission. No global shader-status replacement is authorized. Original
+hold/sky/reset/history and native device/epoch/frame admission must survive.

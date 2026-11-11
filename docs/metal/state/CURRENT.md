@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `1f357c900e7ff42128f1de25ca999a93dbd37148`.
+**Renderer code checkpoint:** `a272c2b365` (newer than the verified app below).
 The remaining-feature/OpenGL-removal goal stays active. No viewer or appearance
 utility launch, menu invocation, screenshot, signed-in state or user-cache
 operation. Offscreen tests submit actual Metal commands. The owner-stopped
@@ -65,7 +65,10 @@ Buffer typed119/4 and stencil167/10pass with native validation. Viewport child
 49366/9passes with existing post/retained-background owners, matching scene
 headers and textual viewer syntax0. Original mask red1080/9249; raw-row red
 238/322. Superseded inactive-grain/inverted-oracle fixtures are recorded, not
-used as final evidence. Current1f full registered rebuild/runs are pending.
+used as final evidence. Matching-header frozen d9/renderer1f full registered
+Release suites passed: llrender98965assertions/389cases (388pass/one known CPAL
+skip), Font/UI1862/61, alrender556641/132 and affected Metal106377/50, all0
+with API+shader validation. See viewport-test-validation.json.
 Latest root strict production source audit:3504files/0blockers/0errors/
 1170informational. Frozen9918 including excluded legacy tests had486blockers;
 also two deliberate SDL no-OpenGL negative assertions.
@@ -73,38 +76,51 @@ Lexical source-zero does not prove runtime or whole-feature parity. Tools39/
 harness32files0. Stale configuration and missing test-bundle resource results
 are excluded explicitly in scene-ui-test-validation.json, then corrected.
 
-**Last verified canonical source9918621da8fc7bbc3de3edbd63d33150c8e00d1a,
-version26.4.0d68744**. Doctor/configure/build0,
+**Last verified canonical source d9f624ea464d3ba3c305d7656bf9533f6e65a8dd,
+version26.4.0d68755**. Doctor/configure/build0,
 349Mach-O/zero invalid ARM64 slices, deep strict codesign0, forbidden framework/
 GL/CGL/SDL_GL imports0. Optional appearance Release build/ARM64/signature/imports0.
-Exact hashes/source: scene-ui-canonical-identities.json/scene-ui-canonical-source.json.
+Exact hashes/source: viewport-canonical-identities.json/viewport-canonical-source.json.
 All349 Mach-O imports audited: foreign VLC screen/vout/caopengllayer/glconv and
 CEF contain GL links; videotoolbox has a CV compatibility-key import. These
 are recorded separately, not a whole-bundle no-GL pass. Trace actual media
 consumer/selection policy before removal. Neither executable was launched.
-New1f source is newer than that app; frozen canonical/appearance rebuild next.
+CEF Libraries/libvulkan.dylib is also shipped; its own LC_ID_DYLIB is not an
+import. Dynamic third-party renderer selection remains unobserved.
+Newer finalizer/test/tool admissions are not represented by that app.
 No performance or release-readiness claim.
 
 ## Exact next actions and ownership
 
-Root owns CMake/docs/integration. Source1f is FROZEN for full matching-header
-native tests, doctor/configure/canonical build/verify/import/signature and
-optional appearance checks. Record exact final docs/source SHA before app build.
-Agents continue isolated only; integrate after frozen receipts, then continue.
+Root owns CMake/docs/integration and the isolated HUD bridge at
+`/private/tmp/alchemy-native-hud-depth-admission-20261111`: alhuddepth.h,
+llrender.cpp and llviewerdisplay.cpp plus a new native fixture. Actual original
+clear/restore callers still used always-false isComplete; availability-only
+fix then exposes inverted rectangle rows (100/803fail). Native clear/restore,
+correct raw lower-row coordinates and explicit pre-operation flush pass the
+initial803/2 actual GPU tests. Expand original seven-case invariants before
+integration. No viewer/window execution.
 
-menu_port: `/private/tmp/alchemy-native-finalizer-tail-cleanup-20261111`,base1f;
-exclusive pipeline.cpp/h in child only. Original/current census before removing
-four uncalled legacy finalizers (CAS/FXAA/bloom composite/bindScreenToTexture)
-and CPU CAS include. Preserve actual native viewport and all live traversal.
+rlva_port exclusively owns isolated pipeline.cpp/h and new lens policy tests.
+Two actual CPU config methods also used always-false isComplete: original
+positive controls fail10/36, availability fix passes69/3. Retire the displaced
+legacy generator before enabling config; preserve native epoch/hold/sky/reset
+history. Verify original-supported nonHDR flare/dirt through real GPU owners.
 
-rlva_port: `/private/tmp/alchemy-native-postchain-legacy-admission-20261111`,base1f;
-new native legacy-post admission test and exact old newview CAS/DoF fixtures/
-benchmarks only. Preserve all four original case invariants or explicitly map
-obsolete folding mechanics to the native two-pass architecture. No asset edits.
+gl_tail_audit owns isolated remaining alrender legacy fixture admission except
+HUD. menu_port audits foreign media imports/consumer policy read-only.
+All canonical shared-file edits remain root-owned; agents use separate trees.
 
-gl_tail_audit: isolated base1f; initial read-only census of remaining legacy
-llimagegl/tessellation/hidden-context tests, then exact native invariant admission.
-No production/header/CMake changes or window execution. Root owns registration.
+Integrated88ff446002 removes four uncalled finalizers and CPU CAS include;
+ab128e02e5 admits five native CAS/DoF legacy-invariant cases;9ac375d389 admits
+24image/four hardware tessellation cases and a compile-only manual hidden-window
+fixture. Root registration/slot identity assertions and removal of obsolete
+timing-only SSR benchmark/helper are pending commit. Registered build0;
+image/tessellation194243/28 and postchain170713/5 pass API+shader validation.
+a272c2b365 admits eight CPU GLSL readers and both
+lens content tools against native source; exact default metric/preset preservation,
+49tool tests0 and two original-mapped Python model corrections are child-proven.
+Root tools/harness rerun follows documentation update.
 
 Finished trees (silhouette8c/75,uniform81fd,buffer8818,stencil9720,viewport7ee)
 must not be reapplied. Receipts and exact original maps are in the latest note.

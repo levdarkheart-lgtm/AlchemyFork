@@ -1,7 +1,8 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `1f357c900e7ff42128f1de25ca999a93dbd37148`.
+**Integrated checkpoint:** Commit `a272c2b365`; current uncommitted admissions
+and isolated live HUD/lens fixes are identified in CURRENT.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -123,19 +124,21 @@ M-012 stays complete; M-014 remains deferred. No release readiness claim.
 
 ## Immediate executable action
 
-Frozen9918 app verification complete; code1f is newer and now FROZEN for full
-native/appearance/canonical rebuild and static verification. Integrated native
-fencesf75/registered2157/9, bundled shader lookup7969/1; silhouetteb741/a922
-registered21566/4; zero-reader uniform6a405, buffer/schema c69, stencil3d1/1f357
-cleanup and final viewport65c2. Viewport mask red1080/9249 and raw-row238/322
-repaired, matching-header native49366/9passed; actual pixel/depth/origin oracles,
-snapshot lease/source syntax and independent review retained. CPU payload math
-and typed water/SMAA ownership preserved. Full current1f test rebuild running.
-Root integration/CMake/docs; isolated menu owns four dead finalizers, RLVa owns
-old CAS/DoF invariant admission, gl_tail owns remaining image/tessellation/GL
-context-only fixture census/admission. Root source stays unchanged until frozen
-app receipts; child work continues. Foreign VLC/CEF import consumers and GLSL
-asset retirement remain. CURRENT/latest note pin evidence and exact ownership.
+Frozen d9/renderer1f canonical26.4.0d68755 and optional appearance Release
+build/static verification passed:349ARM64/zero invalid, deepcodesign0 and main
+viewer forbidden imports0. Matching-header llrender98965/389(one known skip),
+Font/UI1862/61, alrender556641/132 and affected Metal106377/50 all0 under API+
+shader validation. Exact viewport-* receipts are in the artifact directory.
+Newer88ff dead finalizers, ab128 native CAS/DoF admission,9ac375 image/tessellation
+admission and a272 native CPU shader/tool readers are integrated. Root is
+registering those fixtures and retiring only their displaced GL test mechanics.
+Actual live isComplete guards still disable HUD depth and lens config: root
+owns isolated HUD rect/order/restore fix; RLVa owns isolated pipeline lens
+policy/history fix and positive CPU/nonHDR GPU tests. gl_tail owns remaining
+alrender legacy fixture invariants except HUD; menu audits foreign media policy
+read-only. Shader asset/packaging retirement follows remaining reader admission.
+No whole-bundle no-GL claim: VLC/CEF links and shipped foreign capability payloads
+are separate recorded work. CURRENT/latest note pin exact ownership and limits.
 Goal stays active; bounded build/test success never establishes full parity.
 Keep viewer and appearance utility closed.
 
