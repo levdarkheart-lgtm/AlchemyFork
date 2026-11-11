@@ -2063,8 +2063,6 @@
   <string>Renderiza reflexões em espaço de tela para considerar melhor objetos dinâmicos com probes de reflexão.</string>
   <key>RenderShaderCacheEnabled</key>
   <string>Ativar cache de shaders binários.</string>
-  <key>RenderShaderCacheVersion</key>
-  <string>Hash de versão atual do cache de shaders.</string>
   <key>RenderShaderLODThreshold</key>
   <string>Fração da distância de desenho que define a troca para um LOD de shader diferente.</string>
   <key>RenderShaderLightingMaxLevel</key>

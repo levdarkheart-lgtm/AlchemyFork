@@ -18938,6 +18938,11 @@ void LLPipeline::applyRenderInputs(const ALRenderInputRequests::Application& tak
     const bool reload = steps.mPrograms != Programs::Kept;
     const bool rebuild_native = steps.mPrograms == Programs::Rebuilt &&
         (mShadersLoaded || mMetalShaderReloadPending);
+    if (reload)
+    {
+        if (ALMetalDevice* device = getViewerMetalDevice())
+            LLViewerShaderMgr::configureNativePipelineCache(*device);
+    }
     if (rebuild_native)
     {
         std::string shader_error;

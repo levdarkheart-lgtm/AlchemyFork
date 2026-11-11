@@ -691,8 +691,8 @@ public:
     // Implemented in the application to actually update out of date uniforms for a particular shader
     virtual void updateShaderUniforms(LLGLSLShader * shader) = 0; // Pure Virtual
 
-    // Explicitly purge the historical on-disk shader cache. The application
-    // renderer owner separately invalidates native pipelines and resources.
+    // Purge app-owned native archives and historical disk entries, invalidating
+    // archive writers first. Renderer-owned native PSO rebuild is separate.
     void clearShaderCache();
 
     //global (reserved slot) shader parameters

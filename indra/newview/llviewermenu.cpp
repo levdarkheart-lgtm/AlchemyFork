@@ -2373,7 +2373,8 @@ class LLAdvancedPurgeShaderCache : public view_listener_t
 {
     bool handleEvent(const LLSD& userdata)
     {
-        // Every program is built again with the frame's other changes, from source now that its binary is gone.
+        // Rebuild native libraries and pipelines at the frame boundary after
+        // invalidating the app-owned archive and purging its disk entries.
         LLViewerShaderMgr::instance()->clearShaderCache();
         gPipeline.markRenderInputsDirty(ALRenderInputRequests::Change::Programs);
         return true;
@@ -8831,7 +8832,7 @@ class LLToggleShaderControl : public view_listener_t
         bool checked = gSavedSettings.getBOOL( control_name );
         gSavedSettings.setBOOL( control_name, !checked );
         LLPipeline::refreshCachedSettings();
-        // The programs are built from the binary cache, or not, as the setting now says.
+        // Apply the native archive policy before rebuilding affected pipelines.
         gPipeline.markRenderInputsDirty(ALRenderInputRequests::Change::Programs);
         return !checked;
     }

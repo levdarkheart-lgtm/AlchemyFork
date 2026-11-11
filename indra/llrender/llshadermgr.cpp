@@ -31,6 +31,9 @@
 #include "llshadermgr.h"
 #include "algpubuffer.h"
 #include "lldir.h"
+#if LL_DARWIN
+#include "almetalpipelinecache.h"
+#endif
 
 #include <set>
 
@@ -58,9 +61,15 @@ LLShaderMgr * LLShaderMgr::instance()
 
 void LLShaderMgr::clearShaderCache()
 {
-    // Explicit cache-purge callers retain the historical directory cleanup.
-    // Native pipeline invalidation belongs to the application's renderer owner.
+    // Invalidate live archive writers before purging files, so teardown cannot
+    // restore pre-purge state. Actual PSO replacement remains renderer-owned.
     const std::string shader_cache = gDirUtilp->getExpandedFilename(LL_PATH_CACHE, "shader_cache");
+#if LL_DARWIN
+    std::string error;
+    if (!ALMetalPipelineCache::clearDirectory(shader_cache, &error))
+        LL_WARNS("ShaderCache") << "Could not clear native pipeline cache: "
+                                << error << LL_ENDL;
+#endif
     LL_INFOS("ShaderMgr") << "Removing shader cache at " << shader_cache << LL_ENDL;
     gDirUtilp->deleteFilesInDir(shader_cache, "*");
 }

@@ -195,6 +195,8 @@
 #include "llviewerparcelmgr.h"
 #include "llviewerregion.h"
 #include "llviewershadermgr.h"
+#include "almetaldevice.h"
+#include "almetalpipelinecache.h"
 #include "llviewerstats.h"
 #include "llvoavatarself.h"
 #include "llvopartgroup.h"
@@ -2318,6 +2320,7 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     ALMetalFrameScheduler* metal_frames = mWindow->getMetalFrameScheduler();
     if (metal_device && metal_frames)
     {
+        LLViewerShaderMgr::configureNativePipelineCache(*metal_device);
         LLVertexBuffer::setMetalDevice(metal_device);
         LLVertexBuffer::setMetalBufferAuthority(true);
         LLImageGL::setMetalDevice(metal_device);
@@ -2844,6 +2847,15 @@ void LLViewerWindow::shutdownGL()
     ALUniformBuffer::cleanupClass();
 
     LL_INFOS() << "LLVertexBuffer cleaned." << LL_ENDL ;
+#if LL_DARWIN
+    if (ALMetalDevice* device = mWindow ? mWindow->getMetalDevice() : nullptr)
+    {
+        std::string error;
+        if (!device->pipelineCache().flush(&error))
+            LL_WARNS("ShaderCache") << "Could not save native pipeline cache: "
+                                    << error << LL_ENDL;
+    }
+#endif
 }
 
 // shutdownViews() and shutdownGL() need to be called first

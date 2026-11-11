@@ -35,6 +35,8 @@
 #include "llshadermgr.h"
 #include "llmaterial.h"
 
+class ALMetalDevice;
+
 class LLViewerShaderMgr: public LLShaderMgr
 {
 public:
@@ -50,6 +52,10 @@ public:
     // singleton pattern implementation
     static LLViewerShaderMgr * instance();
     static void releaseInstance();
+
+    // Apply the app-owned native cache policy before initial PSOs or reload.
+    // Cache failures remain optional and never suppress native rendering.
+    static void configureNativePipelineCache(ALMetalDevice& device);
 
     void initAttribsAndUniforms(void) override;
     /// Configures native pass identities and variants from the pipeline's latched inputs.

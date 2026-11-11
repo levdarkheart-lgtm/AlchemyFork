@@ -33,6 +33,11 @@
 #include "alrendercapabilities.h"
 #include "aluniformbuffer.h"
 #include "llviewershadermgr.h"
+#include "almetaldevice.h"
+#include "almetalpipelinecache.h"
+#include "llappviewer.h"
+#include "lldir.h"
+#include "llversioninfo.h"
 
 #include "alwatersurface.h"
 #include "llviewercontrol.h"
@@ -60,6 +65,22 @@ using std::make_pair;
 using std::string;
 
 bool                LLViewerShaderMgr::sInitialized = false;
+
+void LLViewerShaderMgr::configureNativePipelineCache(ALMetalDevice& device)
+{
+    LLAppViewer* app = LLAppViewer::instance();
+    ALMetalPipelineCachePolicy policy;
+    policy.enabled = gSavedSettings.getBOOL("RenderShaderCacheEnabled");
+    policy.read_only = !app || app->isSecondInstance();
+    policy.directory = gDirUtilp->getExpandedFilename(LL_PATH_CACHE, "shader_cache");
+    policy.application_version = LLVersionInfo::instance().getVersion();
+    std::string error;
+    if (!device.pipelineCache().configure(policy, &error))
+    {
+        LL_WARNS("ShaderCache") << "Native pipeline cache unavailable: "
+                                << error << LL_ENDL;
+    }
+}
 
 LLVector4           gShinyOrigin;
 
