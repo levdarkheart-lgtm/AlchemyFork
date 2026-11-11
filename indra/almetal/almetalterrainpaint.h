@@ -51,6 +51,8 @@ public:
         const ALMetalTerrainPaintBatch& batch,
         std::string* error = nullptr);
 
+    std::uint64_t shaderReloadGeneration() const noexcept;
+
 private:
     struct Impl;
     explicit ALMetalTerrainPaintRenderer(std::unique_ptr<Impl> impl);

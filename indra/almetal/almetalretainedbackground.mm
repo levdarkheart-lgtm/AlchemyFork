@@ -58,10 +58,37 @@ struct ALMetalRetainedBackground::ScaleState
     std::unique_ptr<ALMetalSamplerState> color_sampler, depth_sampler;
     std::unique_ptr<ALMetalDepthStencilState> depth_state;
     std::shared_ptr<ALMetalRenderTargetPool> pool;
+    std::uint64_t shader_generation = 0;
+
+    bool reloadShaders(std::string* error)
+    {
+        const auto generation = ALMetalShaderLibrary::builtinReloadGeneration();
+        if (shader_generation == generation) return true;
+        auto candidate_library = ALMetalShaderLibrary::loadBuiltin(*device, error);
+        if (!candidate_library) return false;
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = candidate_library.get();
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function = "almetal_retained_background_scale_fragment";
+        descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
+        descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+        descriptor.label = "Alchemy retained world normalized color/depth scale";
+        auto candidate = ALMetalRenderPipeline::create(*device, descriptor, error);
+        if (!candidate) return false;
+        library = std::move(candidate_library);
+        pipeline = std::move(candidate);
+        shader_generation = generation;
+        return true;
+    }
 };
 
 ALMetalRetainedBackground::ALMetalRetainedBackground() = default;
 ALMetalRetainedBackground::~ALMetalRetainedBackground() = default;
+
+std::uint64_t ALMetalRetainedBackground::shaderReloadGeneration() const noexcept
+{
+    return mScale ? mScale->shader_generation : 0;
+}
 
 ALMetalRetainedBackground::Lease ALMetalRetainedBackground::retain(
     const Context& context, std::uint64_t source_frame,
@@ -137,16 +164,7 @@ ALMetalRetainedBackground::Lease ALMetalRetainedBackground::resample(
         {
             auto state = std::make_unique<ScaleState>();
             state->device = context.device;
-            state->library = ALMetalShaderLibrary::loadBuiltin(*context.device, error);
-            if (!state->library) return {};
-            ALMetalRenderPipelineDescriptor pipeline;
-            pipeline.library = state->library.get();
-            pipeline.vertex_function = "almetal_resample_vertex";
-            pipeline.fragment_function = "almetal_retained_background_scale_fragment";
-            pipeline.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
-            pipeline.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
-            pipeline.label = "Alchemy retained world normalized color/depth scale";
-            state->pipeline = ALMetalRenderPipeline::create(*context.device, pipeline, error);
+            if (!state->reloadShaders(error)) return {};
             ALMetalSamplerDescriptor sampler;
             sampler.min_filter = sampler.mag_filter = ALMetalSamplerFilter::linear;
             sampler.mip_filter = ALMetalSamplerMipFilter::none;
@@ -169,6 +187,8 @@ ALMetalRetainedBackground::Lease ALMetalRetainedBackground::resample(
                 !state->depth_state || !state->pool) return {};
             mScale = std::move(state);
         }
+        // Keep the target pool and published leases across a shader-only reload.
+        if (!mScale->reloadShaders(error)) return {};
         ALMetalRenderTargetDescriptor d;
         d.width = context.width; d.height = context.height;
         d.colors[0].format = ALMetalPixelFormat::bgra8_unorm;

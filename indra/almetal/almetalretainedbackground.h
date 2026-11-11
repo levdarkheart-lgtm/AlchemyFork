@@ -59,6 +59,7 @@ public:
                  std::string* error = nullptr);
     Lease find(const Context& context) const noexcept;
     void clear() noexcept { mRecord.reset(); }
+    std::uint64_t shaderReloadGeneration() const noexcept;
 
     // One current-size immutable clear target for UI/HUD while no compatible
     // world exists. Commits its clear on the same native queue, never waits,

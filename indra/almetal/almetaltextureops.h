@@ -74,6 +74,7 @@ public:
     }
 
     static bool supports(ALMetalPixelFormat format) noexcept;
+    std::uint64_t shaderReloadGeneration() const noexcept;
 
 private:
     struct Impl;
@@ -102,6 +103,8 @@ public:
                 float normal_scale,
                 bool darkness,
                 std::string* error = nullptr);
+
+    std::uint64_t shaderReloadGeneration() const noexcept;
 
 private:
     struct Impl;

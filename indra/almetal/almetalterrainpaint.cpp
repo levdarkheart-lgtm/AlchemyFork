@@ -39,6 +39,7 @@ struct ALMetalTerrainPaintRenderer::Impl
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalRenderPipeline> pipeline;
     std::unique_ptr<ALMetalSamplerState> sampler;
+    std::uint64_t shader_generation = 0;
 };
 
 ALMetalTerrainPaintRenderer::ALMetalTerrainPaintRenderer(std::unique_ptr<Impl> impl)
@@ -48,12 +49,18 @@ ALMetalTerrainPaintRenderer::ALMetalTerrainPaintRenderer(std::unique_ptr<Impl> i
 
 ALMetalTerrainPaintRenderer::~ALMetalTerrainPaintRenderer() = default;
 
+std::uint64_t ALMetalTerrainPaintRenderer::shaderReloadGeneration() const noexcept
+{
+    return mImpl ? mImpl->shader_generation : 0;
+}
+
 std::unique_ptr<ALMetalTerrainPaintRenderer> ALMetalTerrainPaintRenderer::create(
     const ALMetalDevice& device,
     std::string* error)
 {
     auto impl = std::make_unique<Impl>();
     impl->device = &device;
+    impl->shader_generation = ALMetalShaderLibrary::builtinReloadGeneration();
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library ||
         !impl->library->hasFunction("almetal_terrain_paint_vertex") ||
@@ -140,6 +147,13 @@ std::unique_ptr<ALMetalTexture> ALMetalTerrainPaintRenderer::render(
     {
         setError(error, "Metal terrain paint geometry range exceeds its buffers");
         return nullptr;
+    }
+
+    if (mImpl->shader_generation != ALMetalShaderLibrary::builtinReloadGeneration())
+    {
+        auto candidate = create(*mImpl->device, error);
+        if (!candidate) return nullptr;
+        mImpl = std::move(candidate->mImpl);
     }
 
     ALMetalTextureDescriptor destination_descriptor = source_descriptor;

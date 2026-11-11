@@ -218,20 +218,14 @@ struct ALMetalTextureResampler::Impl
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalSamplerState> sampler;
     std::vector<Pipeline> pipelines;
+    std::uint64_t shader_generation = 0;
 
-    ALMetalRenderPipeline* pipeline(ALMetalPixelFormat format, bool flip_y,
-                                    std::string* error)
+    std::unique_ptr<ALMetalRenderPipeline> makePipeline(
+        const ALMetalShaderLibrary& shader_library,
+        ALMetalPixelFormat format, bool flip_y, std::string* error)
     {
-        for (Pipeline& entry : pipelines)
-        {
-            if (entry.format == format && entry.flip_y == flip_y)
-            {
-                return entry.state.get();
-            }
-        }
-
         ALMetalRenderPipelineDescriptor descriptor;
-        descriptor.library = library.get();
+        descriptor.library = &shader_library;
         descriptor.vertex_function = "almetal_resample_vertex";
         descriptor.fragment_function = flip_y
             ? "almetal_resample_flip_y_fragment"
@@ -240,7 +234,46 @@ struct ALMetalTextureResampler::Impl
         descriptor.label = flip_y
             ? "Alchemy exact texture-row-flip pipeline"
             : "Alchemy bilinear texture-resample pipeline";
-        auto state = ALMetalRenderPipeline::create(*device, descriptor, error);
+        return ALMetalRenderPipeline::create(*device, descriptor, error);
+    }
+
+    ALMetalRenderPipeline* pipeline(ALMetalPixelFormat format, bool flip_y,
+                                    std::string* error)
+    {
+        const auto generation = ALMetalShaderLibrary::builtinReloadGeneration();
+        if (shader_generation != generation)
+        {
+            auto candidate_library = ALMetalShaderLibrary::loadBuiltin(*device, error);
+            if (!candidate_library) return nullptr;
+            std::vector<Pipeline> candidates;
+            bool requested = false;
+            for (const Pipeline& entry : pipelines)
+            {
+                auto state = makePipeline(*candidate_library, entry.format, entry.flip_y, error);
+                if (!state) return nullptr;
+                candidates.push_back({entry.format, entry.flip_y, std::move(state)});
+                requested |= entry.format == format && entry.flip_y == flip_y;
+            }
+            if (!requested)
+            {
+                auto state = makePipeline(*candidate_library, format, flip_y, error);
+                if (!state) return nullptr;
+                candidates.push_back({format, flip_y, std::move(state)});
+            }
+            // Previously encoded native commands retain their pipeline states.
+            // Publish the complete used variant set only after every build succeeds.
+            library = std::move(candidate_library);
+            pipelines = std::move(candidates);
+            shader_generation = generation;
+        }
+        for (Pipeline& entry : pipelines)
+        {
+            if (entry.format == format && entry.flip_y == flip_y)
+            {
+                return entry.state.get();
+            }
+        }
+        auto state = makePipeline(*library, format, flip_y, error);
         if (!state)
         {
             return nullptr;
@@ -257,12 +290,18 @@ ALMetalTextureResampler::ALMetalTextureResampler(std::unique_ptr<Impl> impl)
 
 ALMetalTextureResampler::~ALMetalTextureResampler() = default;
 
+std::uint64_t ALMetalTextureResampler::shaderReloadGeneration() const noexcept
+{
+    return mImpl ? mImpl->shader_generation : 0;
+}
+
 std::unique_ptr<ALMetalTextureResampler> ALMetalTextureResampler::create(
     const ALMetalDevice& device,
     std::string* error)
 {
     auto impl = std::make_unique<Impl>();
     impl->device = &device;
+    impl->shader_generation = ALMetalShaderLibrary::builtinReloadGeneration();
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library)
     {
@@ -404,6 +443,7 @@ struct ALMetalNormalMapGenerator::Impl
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalSamplerState> sampler;
     std::unique_ptr<ALMetalRenderPipeline> pipeline;
+    std::uint64_t shader_generation = 0;
 };
 
 ALMetalNormalMapGenerator::ALMetalNormalMapGenerator(
@@ -414,12 +454,18 @@ ALMetalNormalMapGenerator::ALMetalNormalMapGenerator(
 
 ALMetalNormalMapGenerator::~ALMetalNormalMapGenerator() = default;
 
+std::uint64_t ALMetalNormalMapGenerator::shaderReloadGeneration() const noexcept
+{
+    return mImpl ? mImpl->shader_generation : 0;
+}
+
 std::unique_ptr<ALMetalNormalMapGenerator>
 ALMetalNormalMapGenerator::create(const ALMetalDevice& device,
                                   std::string* error)
 {
     auto impl = std::make_unique<Impl>();
     impl->device = &device;
+    impl->shader_generation = ALMetalShaderLibrary::builtinReloadGeneration();
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library)
     {
@@ -496,6 +542,13 @@ bool ALMetalNormalMapGenerator::encode(
                  "Metal normal-map usage must permit source sampling and "
                  "destination rendering");
         return false;
+    }
+
+    if (mImpl->shader_generation != ALMetalShaderLibrary::builtinReloadGeneration())
+    {
+        auto candidate = create(*mImpl->device, error);
+        if (!candidate) return false;
+        mImpl = std::move(candidate->mImpl);
     }
 
     struct alignas(16) Constants
