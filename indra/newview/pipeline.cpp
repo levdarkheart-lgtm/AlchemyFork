@@ -9537,8 +9537,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     ? llclamp(cross_filter_strength(), 0.f,
                               CROSS_FILTER_MAX_STRENGTH)
                     : 0.f;
-            const bool wants_native_bloom = wantsMetalBloom(
-                exact_dof, native_bloom_strength, native_halation_strength);
+            // Snapshot overrides and DoF feed their actual already-scaled
+            // native post source, independently of the window's resource plan.
+            const U32 requested_bloom_mips = requestedMetalBloomMipCount(
+                exact_dof, native_bloom_strength, native_halation_strength,
+                post_source ? post_source->descriptor().width : 0,
+                post_source ? post_source->descriptor().height : 0);
+            const bool wants_native_bloom = requested_bloom_mips >= 3;
             capture.bloom_target.reset();
             capture.bloom_frame = std::numeric_limits<U32>::max();
             std::unique_ptr<ALMetalRenderTarget> cross_filter_target;
@@ -9546,7 +9551,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             {
                 ALMetalWorldBloomScene bloom;
                 bloom.source = post_source;
-                bloom.mip_count = mRT->bloomMipCount;
+                bloom.mip_count = requested_bloom_mips;
                 bloom.resolution_scale = static_cast<U32>(llclamp(
                     mResourceInputs.mBloomScale, 0, 4));
                 bloom.threshold = no_post ? 99999.f : bloom_threshold();
@@ -18766,20 +18771,6 @@ bool LLPipeline::reloadMetalShaders(std::string* error)
 
 void LLPipeline::applyRenderInputs()
 {
-    // A frame starts here, with every transient target the last one acquired back in the pool. Debug GL poisons each
-    // as it is released, and names each for whoever acquires it. Nothing is trimmed until the user is logged in: the
-    // login's frames draw no world, and the world's first frame takes what the reconcile readied for it rather than
-    // building it mid-pass.
-    mTransientTargets.setValidation(gDebugGL);
-    mTransientTargets.holdTrimming(LLStartUp::getStartupState() < STATE_STARTED);
-    mTransientTargets.beginFrame();
-    if (mTransientTargets.namesRecorded())
-    {
-        LL_INFOS("RenderResources") << "Transient targets over the frame after the reconcile, "
-                                    << (mTransientTargets.lastFrame().mBytes >> 20) << " MiB:\n"
-                                    << mTransientTargets.describe() << LL_ENDL;
-    }
-
     // Nothing is applied to resources that are not there. Before the pipeline's first load, and while a context is
     // lost, the load that comes next (loadRenderInputs) applies whatever was marked until then.
     if (!mInitialized || !mGLResourcesLive)
@@ -18958,7 +18949,7 @@ LLRenderTarget* LLPipeline::resourceTarget(ALRenderResourcePlan::Id id)
     using Plan = ALRenderResourcePlan;
     using Slot = Plan::Slot;
 
-    // The pool's, acquired by the passes that use them.
+    // Phase-only descriptions are metadata; their actual native transactions own the targets.
     if (Plan::isTransient(id))
     {
         return nullptr;
@@ -19121,96 +19112,6 @@ void LLPipeline::ensureResources(const ALRenderResourcePlan& plan, const ALRende
 
 }
 
-void LLPipeline::prewarmTransients(const ALRenderResourcePlan& plan, const ALRenderResourcePlan::IdSet& ids,
-                                   ResourceChanges& changes)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-    using Plan = ALRenderResourcePlan;
-    using Id   = Plan::Id;
-
-    // Nearly every target the pool holds is the main view's size, and a pooled target over a depth the reconcile built
-    // again could be matched by nothing.
-    const std::optional<ALRenderTargetDesc>& gbuffer = plan.desc(Id::MainGBuffer);
-    mTransientTargets.setMainSize(gbuffer ? gbuffer->width : 0, gbuffer ? gbuffer->height : 0);
-    mTransientTargets.dropStaleDepth();
-
-    // Each is given back before the next is asked for, so a description several resources share is built once. One
-    // whose depth another transient resource shares is held until that one has it.
-    Plan::IdSet owners;
-    for (size_t i = 0; i < Plan::ID_COUNT; ++i)
-    {
-        const Plan::Resource& resource = plan[(Id)i];
-        if (Plan::isPrewarmed((Id)i) && resource.mDesc && resource.mDepthFrom && Plan::isTransient(*resource.mDepthFrom))
-        {
-            owners.set((size_t)*resource.mDepthFrom);
-        }
-    }
-
-    ALTransientTargets                          scope(mTransientTargets);
-    std::array<LLRenderTarget*, Plan::ID_COUNT> held{};
-    for (const bool sharers : { false, true })
-    {
-        for (size_t i = 0; i < Plan::ID_COUNT; ++i)
-        {
-            const Id              id       = (Id)i;
-            const Plan::Resource& resource = plan[id];
-            if (!ids.test(i) || !Plan::isPrewarmed(id) || !resource.mDesc || resource.mDepthFrom.has_value() != sharers)
-            {
-                continue;
-            }
-
-            LLRenderTarget* target = nullptr;
-            if (!resource.mDepthFrom)
-            {
-                target = scope.acquire(*resource.mDesc, Plan::name(id));
-            }
-            else if (LLRenderTarget* owner = Plan::isTransient(*resource.mDepthFrom) ? held[(size_t)*resource.mDepthFrom]
-                                                                                    : resourceTarget(*resource.mDepthFrom))
-            {
-                target = scope.acquire(*resource.mDesc, *owner, Plan::name(id));
-            }
-
-            if (!target)
-            {
-                changes.mFailed.set(i);
-                continue;
-            }
-            changes.mPooled.set(i);
-            if (owners.test(i))
-            {
-                held[i] = target;
-            }
-            else
-            {
-                scope.release(target);
-            }
-        }
-    }
-}
-
-LLRenderTarget* LLPipeline::acquireResource(ALTransientTargets& scope, ALRenderResourcePlan::Id id, std::string_view name,
-                                            LLRenderTarget* depth_from)
-{
-    const ALRenderResourcePlan::Resource& resource = mResourcePlan[id];
-    if (!resource.mDesc)
-    {
-        return nullptr;
-    }
-    if (name.empty())
-    {
-        name = ALRenderResourcePlan::name(id);
-    }
-    if (!resource.mDepthFrom)
-    {
-        return scope.acquire(*resource.mDesc, name);
-    }
-    // Nothing over an owner left unbuilt, as a render size that fits nothing leaves the G-buffer.
-    LLRenderTarget* owner = ALRenderResourcePlan::isTransient(*resource.mDepthFrom) ? depth_from
-                                                                                     : resourceTarget(*resource.mDepthFrom);
-    return owner && owner->hasDepthAttachment()
-        ? scope.acquire(*resource.mDesc, *owner, name) : nullptr;
-}
-
 // static
 ALShaderInputs LLPipeline::shaderInputsFromSettings()
 {
@@ -19331,7 +19232,6 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
 
     ResourceChanges changes;
     ensureResources(plan, IdSet().set(), changes);
-    prewarmTransients(plan, IdSet().set(), changes);
 
     // Storage kept whose contents an input makes is filled again where that input changed; storage built just now was
     // filled as it was built.
@@ -19366,7 +19266,6 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
                 target->release();
             }
         }
-        mTransientTargets.clear();
     };
     const auto retry_at = [&](U32 width, U32 height)
     {
@@ -19381,9 +19280,7 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
         changes.mBuilt &= ~retried;
         changes.mKept &= ~retried;
         changes.mFailed &= ~retried;
-        changes.mPooled &= ~retried;
         ensureResources(plan, retried, changes);
-        prewarmTransients(plan, retried, changes);
         return !short_of_size();
     };
 
@@ -19409,17 +19306,11 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
         {
             // Nothing the size sizes is kept, whatever the last attempt managed.
             release_render_sized();
-            changes.mFailed |= (changes.mBuilt | changes.mKept | changes.mPooled) & retried;
+            changes.mFailed |= (changes.mBuilt | changes.mKept) & retried;
             changes.mBuilt &= ~retried;
             changes.mKept &= ~retried;
-            changes.mPooled &= ~retried;
             LL_WARNS() << "Unable to allocate screen buffer at any resolution!" << LL_ENDL;
         }
-
-        // Each attempt emptied the pool, a change of the main size freeing every target in it, the capture packs'
-        // with the rest: they are readied again, so that one that cannot be built is known now and not mid-capture.
-        changes.mPooled &= retried;
-        prewarmTransients(plan, ~retried, changes);
     }
 
     // What each pack's passes keep about its targets.
@@ -19443,13 +19334,6 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
         {
             rt.width  = gbuffer ? gbuffer->width : 0;
             rt.height = gbuffer ? gbuffer->height : 0;
-        }
-
-        // The pyramid is as deep as the levels the pool could build, from the first.
-        rt.bloomMipCount = 0;
-        while (rt.bloomMipCount < BLOOM_MAX_MIPS && changes.mPooled.test((size_t)Plan::bloomMip(pack, rt.bloomMipCount)))
-        {
-            ++rt.bloomMipCount;
         }
     }
 
@@ -19664,7 +19548,6 @@ void LLPipeline::releaseAllRenderResources()
 void LLPipeline::releaseRenderTargets()
 {
     using Plan = ALRenderResourcePlan;
-    mTransientTargets.clear();
     for (size_t i = 0; i < Plan::ID_COUNT; ++i)
     {
         const Plan::Id id = (Plan::Id)i;
@@ -19676,11 +19559,6 @@ void LLPipeline::releaseRenderTargets()
         {
             releaseResourceTexture(id);
         }
-    }
-
-    for (RenderTargetPack* rt : { &mMainRT, &mAuxillaryRT, &mHeroProbeRT })
-    {
-        rt->bloomMipCount = 0;
     }
 
     mToneCurveLutDirty   = true;
@@ -19772,13 +19650,6 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
     const ResourceChanges changes = reconcileResources(requested);
     mGLResourcesLive   = true;
     mResourcesFullSize = changes.mFullSize;
-
-    // Which resource each pooled target serves over the next whole frame, for the log; not for a resize that built what
-    // it asked, which is logged at debug level alone and comes every frame of a window's drag.
-    if (!resized_as_asked(cause, changes))
-    {
-        mTransientTargets.recordNames();
-    }
 
     std::string changed;
     if (first_resources)
@@ -19897,8 +19768,7 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
                                                    : std::string_view(", built at no size"))
          << "; changed: " << (changed.empty() ? std::string_view("nothing") : changed)
          << "; built: " << built << "; freed: " << (freed.empty() ? std::string_view("nothing") : freed) << "; kept "
-         << changes.mKept.count() << "; pooled " << changes.mPooled.count() << ", "
-         << (mTransientTargets.stats().mBytes >> 20) << " MiB"
+         << changes.mKept.count()
          << (changes.mFailed.any() ? "; failed: " + resource_names(changes.mFailed) : std::string())
          << "; invalidated: " << (invalidated.empty() ? std::string_view("nothing") : invalidated);
     // A window dragged by its edge, or a panel sliding beside the world view, resizes it every frame: a resize that
@@ -22953,10 +22823,7 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
             LL_PROFILE_PLOT("water patches", (int64_t)mWaterSurface.patchCount());
             LL_PROFILE_PLOT("water waves cm", (int64_t)(mWaterSurface.maxDisplacement() * 100.f));
             LL_PROFILE_PLOT("render target MB", (int64_t)(LLRenderTarget::sBytesAllocated >> 20));
-            // The pool's share of those, and how the last frame's acquisitions found it.
-            LL_PROFILE_PLOT("transient target MB", (int64_t)(mTransientTargets.lastFrame().mBytes >> 20));
-            LL_PROFILE_PLOT("transient target hits", (int64_t)mTransientTargets.lastFrame().mHits);
-            LL_PROFILE_PLOT("transient target misses", (int64_t)mTransientTargets.lastFrame().mMisses);
+
         }
     }
 

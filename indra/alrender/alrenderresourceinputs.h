@@ -72,6 +72,38 @@ struct ALRenderResourceInputs
     bool mGlowHDR = false;       ///< RenderGlowHDR
     F32  mDeferredNoise = 4.f;   ///< RenderDeferredNoise, which the deferred noise map's contents are made from
 
+    static constexpr U32 BLOOM_MAX_MIPS = 7;
+    struct BloomShape
+    {
+        U32 mWidth = 0;
+        U32 mHeight = 0;
+        U32 mMipCount = 0;
+    };
+
+    /// Requested bloom geometry for an already-scaled native post source.
+    /// This is not allocation readiness. HDR/pack/post eligibility is the
+    /// caller's policy, and the native renderer owns fallible GPU allocation.
+    constexpr BloomShape bloomShape(U32 width, U32 height) const
+    {
+        if (width == 0 || height == 0) return {};
+        constexpr U32 numerator[5] = { 1, 3, 1, 1, 1 };
+        constexpr U32 denominator[5] = { 1, 4, 2, 4, 8 };
+        const U32 scale = (U32)std::clamp(mBloomScale, 0, 4);
+        BloomShape shape{
+            std::max(1u, (U32)((U64)width * numerator[scale] / denominator[scale])),
+            std::max(1u, (U32)((U64)height * numerator[scale] / denominator[scale])),
+        };
+        const U32 requested = (U32)std::clamp(mBloomMips, 3, (S32)BLOOM_MAX_MIPS);
+        for (U32 mip = 0; mip < requested; ++mip)
+        {
+            ++shape.mMipCount;
+            if (std::max(1u, shape.mWidth >> mip) == 1 &&
+                std::max(1u, shape.mHeight >> mip) == 1)
+                break;
+        }
+        return shape;
+    }
+
     /// The appearance bake's scratch target (LLAvatarAppearanceDefines::SCRATCH_TEX_WIDTH and _HEIGHT).
     U32 mBakeWidth = 2048;
     U32 mBakeHeight = 2048;

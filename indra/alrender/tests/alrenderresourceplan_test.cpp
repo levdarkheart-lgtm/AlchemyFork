@@ -25,8 +25,6 @@
 #include "linden_common.h"
 
 #include "../alrenderresourceplan.h"
-#include "../altransienttargetpool.h"
-#include "../altransienttargets.h"
 
 #include "llrendertarget.h"
 
@@ -1040,7 +1038,7 @@ namespace
               names(sun_shadows({ Pack::Main, Pack::Probe, Pack::Hero }) | of({ Id::SpotShadow0, Id::SpotShadow1 })));
     }
 
-    TEST_CASE("alrenderresourceplan: the passes acquire what lives for one phase of a frame from the pool", "[alrenderresourceplan]")
+    TEST_CASE("alrenderresourceplan: the retained allocator skips native-owned phase descriptions", "[alrenderresourceplan]")
     {
         const IdSet transient = in_packs({ Pack::Main, Pack::Probe, Pack::Hero },
                                          { Slot::PostPing, Slot::PostPong }) |
@@ -1049,7 +1047,7 @@ namespace
                                      Id::Preview, Id::Bake });
         CHECK(names(Plan::idsWhere(Plan::isTransient)) == names(transient));
 
-        // What holds anything across frames, or between the phases of one, is built to keep.
+        // Persistent and native shadow/noise identities are not these skipped phase descriptions.
         for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::MainSun0, Id::SpotShadow0, Id::Noise })
         {
             INFO(Plan::name(id));
@@ -1057,20 +1055,9 @@ namespace
         }
     }
 
-    TEST_CASE("alrenderresourceplan: the reconcile readies every transient target but the previews' and the bakes'",
+    TEST_CASE("alrenderresourceplan: preview and bake descriptions are independent",
               "[alrenderresourceplan]")
     {
-        // A preview or a bake draws only while one is open or changing, so nothing builds their targets before one
-        // does, and a frame without one holds neither.
-        const IdSet on_demand = of({ Id::Preview, Id::Bake });
-        CHECK(names(Plan::idsWhere(Plan::isPrewarmed)) == names(Plan::idsWhere(Plan::isTransient) & ~on_demand));
-        for (Id id : { Id::Preview, Id::Bake })
-        {
-            INFO(Plan::name(id));
-            CHECK(Plan::isTransient(id));
-            CHECK_FALSE(Plan::isPrewarmed(id));
-        }
-
         // Neither shares a depth, nor has a depth shared: each is acquired alone, against nothing the reconcile builds.
         const Plan plan = Plan::make(defaults());
         for (Id id : { Id::Preview, Id::Bake })
@@ -1086,141 +1073,76 @@ namespace
         }
     }
 
-    // A pool's backing that builds nothing: what a frame holds is worked out from the descriptions alone, as the pool
-    // counts them.
-    struct CountingBacking final : ALTransientTargetPool::Backing
+    TEST_CASE("alrenderresourceplan: requested bloom shape preserves original scale clamps and one-texel stop",
+              "[alrenderresourceplan][bloom-shape]")
     {
-        bool build(LLRenderTarget&, const ALTransientTargetPool::Key&, std::string_view) override { return true; }
-        void rename(LLRenderTarget&, std::string_view) override {}
-        void poison(LLRenderTarget&, const ALTransientTargetPool::Key&) override {}
-        void free(LLRenderTarget&) override {}
-        U64  depthSerial(const LLRenderTarget&) const override { return 1; }
-    };
-
-    // The main view's targets through one frame at @a in, acquired and given back in the order the pipeline's passes
-    // take them, over a pool that keeps what each frame left it. What the pool holds once a frame finds everything it
-    // needs there, and which targets served which resources.
-    struct WorkingSet
-    {
-        U64 mPersistent = 0; ///< the G-buffer and the screen, built to keep
-        U64 mPooled     = 0; ///< what the pool holds
-        U64 mOneEach    = 0; ///< the same resources, each a target of its own
-        U32 mTargets    = 0;
-        U32 mLastMisses = 0; ///< acquisitions the last frame had to build for
-    };
-
-    // CameraDoFResScale's default, the fraction of the screen depth of field's blur covers each way.
-    constexpr F32 DOF_RES_SCALE = 0.7f;
-
-    WorkingSet main_view_frame(const Inputs& in, bool dof = false)
-    {
-        const Plan plan = Plan::make(in);
-        CountingBacking       backing;
-        ALTransientTargetPool pool(backing);
-        LLRenderTarget        gbuffer; // stands in for main.gbuffer, whose depth the screen's description shares
-
-        const auto acquire = [&](ALTransientTargets& scope, Id id, std::string_view name = {}) -> LLRenderTarget*
+        Inputs in = defaults();
+        constexpr U32 widths[] = {9, 6, 4, 2, 1};
+        constexpr U32 heights[] = {5, 3, 2, 1, 1};
+        constexpr U32 levels[] = {4, 3, 3, 2, 1};
+        for (S32 scale = 0; scale < 5; ++scale)
         {
-            const Plan::Resource& resource = plan[id];
-            REQUIRE(resource.mDesc);
-            const std::string_view label = name.empty() ? Plan::name(id) : name;
-            return resource.mDepthFrom ? scope.acquire(*resource.mDesc, gbuffer, label) : scope.acquire(*resource.mDesc, label);
-        };
-
-        WorkingSet set;
-        for (int frame = 0; frame < 2; ++frame)
+            CAPTURE(scale); in.mBloomScale = scale;
+            const auto shape = in.bloomShape(9, 5);
+            CHECK(shape.mWidth == widths[scale]);
+            CHECK(shape.mHeight == heights[scale]);
+            CHECK(shape.mMipCount == levels[scale]);
+        }
+        in.mBloomScale = -10;
+        CHECK(in.bloomShape(9, 5).mMipCount == 4);
+        in.mBloomScale = 99;
+        CHECK(in.bloomShape(9, 5).mMipCount == 1);
+        in.mBloomScale = 0; in.mBloomMips = -10;
+        CHECK(in.bloomShape(64, 64).mMipCount == 3);
+        in.mBloomMips = 99;
+        CHECK(in.bloomShape(64, 64).mMipCount == 7);
+        CHECK(in.bloomShape(1, 1).mMipCount == 1);
+        CHECK(in.bloomShape(1, 16).mMipCount == 5);
+        CHECK(in.bloomShape(16, 1).mMipCount == 5);
+        for (const auto shape : {in.bloomShape(0, 16), in.bloomShape(16, 0), in.bloomShape(0, 0)})
         {
-            pool.beginFrame();
+            CHECK(shape.mWidth == 0); CHECK(shape.mHeight == 0); CHECK(shape.mMipCount == 0);
+        }
+    }
 
-            // renderFinalize: depth of field's defocused scene, in the screen's description, and its blur at
-            // CameraDoFResScale in bloom level 0's format (the post chain's without HDR), given back before the bloom
-            // pyramid; then the pyramid, the post chain's first target, and its other only where a pass after
-            // colorCorrect draws into one: antialiasing, or the legacy glow's combine without HDR. At the defaults none
-            // does, as the blit sharpens the frame itself. All but the blur held until the frame is presented.
-            LLRenderTarget* defocused = nullptr;
-            LLRenderTarget* bloom0    = nullptr;
+    TEST_CASE("alrenderresourceplan: requested bloom descriptions retain main preview HDR and applied-size policy",
+              "[alrenderresourceplan][bloom-shape]")
+    {
+        for (bool hdr : {false, true}) for (bool preview : {false, true}) for (bool probes : {false, true})
+        {
+            CAPTURE(hdr, preview, probes);
+            Inputs in = defaults(); in.mWidth = 9; in.mHeight = 5;
+            in.mHDR = hdr; in.mMaterialPreview = preview; in.mProbes = probes;
+            in.mProbeResolution = 3; in.mProbeSuperSample = 3;
+            in.mBloomScale = 1; in.mBloomMips = 5;
+            const Plan plan = Plan::make(in);
+            for (const auto pack : {Pack::Main, Pack::Probe, Pack::Hero})
             {
-                ALTransientTargets post(pool);
-                if (dof)
+                const bool requested = hdr && (pack == Pack::Main || (pack == Pack::Probe && preview));
+                U32 count = 0;
+                for (U32 mip = 0; mip < Plan::BLOOM_MAX_MIPS; ++mip)
                 {
-                    defocused = acquire(post, Id::MainScreen, "dof.out");
-                    const ALRenderTargetDesc& screen = *plan.desc(Id::MainScreen);
-                    const ALRenderTargetDesc& like   = *plan.desc(in.mHDR ? Plan::bloomMip(Pack::Main, 0) : Id::MainPostPong);
-                    ALTransientTargets        effect(pool);
-                    effect.acquire(ALRenderTargetDesc{ .width  = llmax(1u, (U32)(screen.width * DOF_RES_SCALE)),
-                                                       .height = llmax(1u, (U32)(screen.height * DOF_RES_SCALE)),
-                                                       .color  = { like.color[0] } },
-                                   "dof.blur");
+                    const auto& desc = plan.desc(Plan::bloomMip(pack, mip));
+                    CHECK(desc.has_value() == (requested && mip < 3));
+                    if (desc)
+                    {
+                        CHECK(desc->width == std::max(1u, 6u >> mip));
+                        CHECK(desc->height == std::max(1u, (pack == Pack::Main ? 3u : 6u) >> mip));
+                        ++count;
+                    }
                 }
-                for (U32 mip = 0; mip < Plan::BLOOM_MAX_MIPS && plan.wants(Plan::bloomMip(Pack::Main, mip)); ++mip)
-                {
-                    LLRenderTarget* level = acquire(post, Plan::bloomMip(Pack::Main, mip));
-                    bloom0 = mip == 0 ? level : bloom0;
-                }
-                acquire(post, Id::MainPostPing);
-                if (in.mFSAAType != 0 || !in.mHDR)
-                {
-                    acquire(post, Id::MainPostPong);
-                }
+                CHECK(count == (requested ? 3u : 0u));
             }
-
-            set.mLastMisses       = pool.stats().mMisses;
         }
-
-        set.mPooled  = pool.stats().mBytes;
-        set.mTargets = pool.stats().mTargets;
-        set.mPersistent = LLRenderTarget::bytesFor(*plan.desc(Id::MainGBuffer)) + LLRenderTarget::bytesFor(*plan.desc(Id::MainScreen));
-        set.mOneEach    = set.mPersistent;
-        for (Id id : { Id::MainPostPing, Id::MainPostPong })
-        {
-            set.mOneEach += plan.wants(id) ? LLRenderTarget::bytesFor(*plan.desc(id)) : 0;
-        }
-        for (U32 mip = 0; mip < Plan::BLOOM_MAX_MIPS && plan.wants(Plan::bloomMip(Pack::Main, mip)); ++mip)
-        {
-            set.mOneEach += LLRenderTarget::bytesFor(*plan.desc(Plan::bloomMip(Pack::Main, mip)));
-        }
-        return set;
-    }
-
-    TEST_CASE("alrenderresourceplan: the main view's working set at 1440p defaults, worked out from the descriptions",
-              "[alrenderresourceplan]")
-    {
-        // 2560x1440 at the defaults: HDR, reverse-Z, the emissive buffer, bloom at full scale with five levels, shadow
-        // detail 2, SSAO and transparent water. 36 B/px kept: the G-buffer's 20 and its 8 of depth and stencil, and the
-        // screen's 8.
-        constexpr U64 PIXELS = 2560ull * 1440ull;
-        const WorkingSet set = main_view_frame(defaults());
-        CHECK(set.mPersistent == 36 * PIXELS);
-
-        UNSCOPED_INFO("a frame finds what it needs where the last one left it");
-        CHECK(set.mLastMisses == 0);
-
-        // Bloom mips 0 and 2 to 4, mip 1 with the sky behind, and the post chain's first: 4 + 1 + 0.33 + 4 B/px.
-        CHECK(set.mTargets == 6);
-        CHECK(set.mPooled == 34387200);
-        // Each planned retained GL resource with its own target: 49.3 B/px, 173.4 MiB.
-        CHECK(set.mOneEach == 181843200);
-        CHECK(set.mPersistent + set.mPooled == 167097600); // 159.4 MiB
-
-        // With antialiasing the post chain's other target is drawn into, and pooled beside the first: 4 B/px more.
-        Inputs fxaa    = defaults();
-        fxaa.mFSAAType = 1;
-        const WorkingSet antialiased = main_view_frame(fxaa);
-        CHECK(antialiased.mTargets == set.mTargets + 1);
-        CHECK(antialiased.mPooled - set.mPooled == 4 * PIXELS);
-    }
-
-    // Depth of field adds two targets to what the frame holds: its defocused scene, in the screen's description, which
-    // no other target of the frame's has, and its blur, of its own size.
-    TEST_CASE("alrenderresourceplan: the main view's working set with depth of field", "[alrenderresourceplan]")
-    {
-        const WorkingSet off = main_view_frame(defaults());
-        const WorkingSet on  = main_view_frame(defaults(), true);
-        CHECK(on.mLastMisses == 0);
-        CHECK(on.mTargets == off.mTargets + 2);
-        // 2560x1440 of RGBA16F, and 1792x1008 of R11F_G11F_B10F.
-        CHECK(on.mPooled - off.mPooled == 29491200 + 7225344);
-        CHECK(on.mPersistent + on.mPooled == 203814144); // 194.4 MiB
+        Inputs in = defaults(); in.mWidth = 9; in.mHeight = 5;
+        in.mResolutionDivisor = 2; in.mBloomScale = 1;
+        const Plan plan = Plan::make(in);
+        REQUIRE(plan.desc(Id::MainBloom0)); REQUIRE(plan.desc(Id::MainBloom1));
+        CHECK(plan.desc(Id::MainBloom0)->width == 3);
+        CHECK(plan.desc(Id::MainBloom0)->height == 1);
+        CHECK(plan.desc(Id::MainBloom1)->width == 1);
+        CHECK(plan.desc(Id::MainBloom1)->height == 1);
+        CHECK_FALSE(plan.wants(Id::MainBloom2));
     }
 
     TEST_CASE("alrenderresourceplan: every resource has its own debugger label", "[alrenderresourceplan]")

@@ -276,15 +276,18 @@ bool LLPipeline::wantsMetalDepthOfField(const DepthOfFieldConfig& dof) const
         isMainWorldPass() && mRT == &mMainRT;
 }
 
-bool LLPipeline::wantsMetalBloom(
-    bool exact_dof, F32 bloom_strength, F32 halation_strength) const
+U32 LLPipeline::requestedMetalBloomMipCount(
+    bool exact_dof, F32 bloom_strength, F32 halation_strength,
+    U32 source_width, U32 source_height) const
 {
     const bool cutout_snapshot = sCutoutRender && mMetalWorldSnapshotRequested;
-    return mMetalWorldSimpleCapture && mMetalWorldSimpleCapture->hdr &&
+    const auto requested = mResourceInputs.bloomShape(source_width, source_height);
+    const bool eligible = mMetalWorldSimpleCapture && mMetalWorldSimpleCapture->hdr &&
         !cutout_snapshot && exact_dof &&
         (bloom_strength > 0.f || halation_strength > 0.f) &&
         isMainWorldPass() && mRT == &mMainRT &&
-        mRT->bloomMipCount >= 3 && canCaptureMetalWorldPresentation();
+        requested.mMipCount >= 3 && canCaptureMetalWorldPresentation();
+    return eligible ? requested.mMipCount : 0;
 }
 
 bool LLPipeline::metalScopeSourceCurrent(U32 width, U32 height) const

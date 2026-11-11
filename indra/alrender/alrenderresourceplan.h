@@ -35,8 +35,8 @@
 /// What each of the pipeline's render resources is for a set of inputs: a description where the resource is wanted,
 /// nothing where it is not, and for a target that takes its depth from another, which. A pure function of the inputs;
 /// LLPipeline::reconcileResources makes persistent retained targets what the plan says, but for Metal-only shadow maps
-/// and the transient ones (isTransient). Native shadow generation consumes the descriptions directly; transient
-/// passes acquire targets by description from a pool shared by lifetime (ALTransientTargetPool).
+/// and phase-only descriptions (isTransient). Native shadow generation consumes descriptions directly; native
+/// transactions own their actual short-lived resources independently of these retained-plan identities.
 ///
 /// Three packs of targets render a view each (LLPipeline::RenderTargetPack): Main, the world view at the render size;
 /// Probe, a reflection probe's face at the probe resolution times its supersample; Hero, a mirror's face at the hero
@@ -78,7 +78,7 @@ public:
     static constexpr U32 SUN_CASCADES = 4;
     /// A capture's sun cascades, unless a probe's renders them all (ALRenderResourceInputs::mProbeAllCascades).
     static constexpr U32 CAPTURE_SUN_CASCADES = 2;
-    static constexpr U32 BLOOM_MAX_MIPS = 7;
+    static constexpr U32 BLOOM_MAX_MIPS = ALRenderResourceInputs::BLOOM_MAX_MIPS;
 
     // The fixed sizes, which the pipeline's passes read from here.
     static constexpr U32 PREVIEW_SIZE = 512;
@@ -204,23 +204,19 @@ public:
     /// Whether it is sized from the main view's render size, so that a resize, a snapshot and a retry at a lower size
     /// rebuild it, and its failing to build halves that size.
     static bool followsRenderSize(Id id);
-    /// Whether failing to build it halves the render size: every target the render size sizes but the bloom pyramid,
-    /// which is as deep as the levels that were built, and the shadow maps, which are left unbuilt and their shadows
-    /// undrawn. A fixed-size target or a capture pack's failing leaves the size alone, and a retry at a lower size
-    /// builds nothing but what the size sizes.
+    /// The render-sized description class excluding bloom and shadow maps.
+    /// Only failures of retained targets actually built by ensureResources drive a size retry;
+    /// phase-only descriptions (isTransient) are skipped and cannot contribute a failure.
     static bool drivesRenderSize(Id id);
     /// Whether it is a shadow map: a pack's sun cascade or one of the spot lights' pair.
     static bool isShadowMap(Id id);
     /// Whether it is a standalone texture of the pipeline's own rather than a render target.
     static bool isTexture(Id id);
-    /// Whether the passes that use it acquire it from the transient pool for as long as they need it, rather than the
-    /// reconcile building it to keep: a target that lives for one phase of a frame, and holds nothing across frames. A
+    /// Whether the retained allocator skips the phase-only identity, whose actual resources are owned by native
+    /// transactions: a target that lives for one phase of a frame, and holds nothing across frames. A
     /// pack's bloom pyramid and post chain are, as are SMAA's edges and blend weights, the legacy glow, and the targets the UI previews and the
     /// appearance bakes draw into.
     static bool isTransient(Id id);
-    /// Whether the reconcile readies it in the pool for the next frame to find: every transient resource but the
-    /// previews' and the bakes' targets, which only a dynamic texture with something to draw acquires.
-    static bool isPrewarmed(Id id);
     /// Whether only the GLTF material preview renders through it: the probe pack's post targets and bloom, which the
     /// probes' captures never read, and which are planned only while a preview is alive.
     static bool forMaterialPreview(Id id);

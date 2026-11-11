@@ -103,10 +103,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     // The HDR bloom pyramid's base is the pack's size times one of five fractions, each level half the one before, to a
     // single texel at most. Halation carries its warmth in alpha, which needs RGBA16F; without it the pyramid takes the
     // half-bandwidth R11F_G11F_B10F.
-    static constexpr U32 BLOOM_SCALE_NUM[5] = { 1, 3, 1, 1, 1 };
-    static constexpr U32 BLOOM_SCALE_DEN[5] = { 1, 4, 2, 4, 8 };
-    const U32 bloom_mips   = (U32)std::clamp(in.mBloomMips, 3, (S32)BLOOM_MAX_MIPS);
-    const U32 bloom_scale  = (U32)std::clamp(in.mBloomScale, 0, 4);
     const U32 bloom_format = in.mBloomHalation ? GL_RGBA16F : GL_R11F_G11F_B10F;
 
     struct PackShape
@@ -139,18 +135,13 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
 
             if (hdr)
             {
-                const U32 base_width  = std::max(1u, shape.width * BLOOM_SCALE_NUM[bloom_scale] / BLOOM_SCALE_DEN[bloom_scale]);
-                const U32 base_height = std::max(1u, shape.height * BLOOM_SCALE_NUM[bloom_scale] / BLOOM_SCALE_DEN[bloom_scale]);
-                for (U32 mip = 0; mip < bloom_mips; ++mip)
+                const auto shape_requested = in.bloomShape(shape.width, shape.height);
+                for (U32 mip = 0; mip < shape_requested.mMipCount; ++mip)
                 {
-                    const U32 width  = std::max(1u, base_width >> mip);
-                    const U32 height = std::max(1u, base_height >> mip);
+                    const U32 width = std::max(1u, shape_requested.mWidth >> mip);
+                    const U32 height = std::max(1u, shape_requested.mHeight >> mip);
                     plan.at(bloomMip(pack, mip)).mDesc =
                         ALRenderTargetDesc{ .width = width, .height = height, .color = { bloom_format } };
-                    if (width == 1 && height == 1)
-                    {
-                        break;
-                    }
                 }
             }
         }
@@ -389,11 +380,6 @@ bool ALRenderResourcePlan::describes(const ALRenderTargetDesc& desc) const
 {
     return std::any_of(mResources.begin(), mResources.end(),
                        [&desc](const Resource& resource) { return resource.mDesc == desc && !resource.mDepthFrom; });
-}
-
-bool ALRenderResourcePlan::isPrewarmed(Id id)
-{
-    return isTransient(id) && id != Id::Preview && id != Id::Bake;
 }
 
 // static

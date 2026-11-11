@@ -46,8 +46,6 @@
 #include "alrenderresourceplan.h"
 #include "alshaderinputs.h"
 #include "alspotshadowcache.h"
-#include "altransienttargetpool.h"
-#include "altransienttargets.h"
 #include "alwatersurface.h"
 #include "llrendertarget.h"
 #include "llreflectionmapmanager.h"
@@ -108,8 +106,6 @@ bool setup_hud_matrices(const LLRect& screen_region); // specify portion of scre
 class LLPipeline
 {
 public:
-    static constexpr U32 BLOOM_MAX_MIPS = ALRenderResourcePlan::BLOOM_MAX_MIPS;
-
     LLPipeline();
     ~LLPipeline();
 
@@ -169,8 +165,6 @@ public:
         ALRenderResourcePlan::IdSet mKept;
         ALRenderResourcePlan::IdSet mFreed;
         ALRenderResourcePlan::IdSet mFailed;
-        /// The transient resources the pool holds one of, or built one of, for the frames to acquire.
-        ALRenderResourcePlan::IdSet mPooled;
         bool mMainSize       = false; ///< the main G-buffer's size
         bool mGBufferFormats = false; ///< the main G-buffer's colour formats
         bool mDepthFormat    = false; ///< the main G-buffer's depth format
@@ -236,15 +230,9 @@ private:
     void            releaseResourceTexture(ALRenderResourcePlan::Id id);
 
     // Builds, keeps or frees each of @a ids as @a plan says, depth owners first, and records which in @a changes. The
-    // transient resources are the pool's, which prewarmTransients readies.
+    // phase-only description identities are skipped; native transactions own their intermediates.
     void ensureResources(const ALRenderResourcePlan& plan, const ALRenderResourcePlan::IdSet& ids,
                          ResourceChanges& changes);
-    // Readies the pool for @a plan's transient resources among @a ids that it prewarms (isPrewarmed): everything it
-    // holds dropped where the main size changed, and what shares a depth built again since, and one of each
-    // description built where it holds none, so that a description that cannot be built drives the render size down
-    // as a persistent target's does and the next frame finds them. Records which in @a changes.
-    void prewarmTransients(const ALRenderResourcePlan& plan, const ALRenderResourcePlan::IdSet& ids,
-                           ResourceChanges& changes);
     // One of the pipeline's standalone textures, with its contents. The fork publishes the noise resources for
     // Metal; legacy GL identities intentionally remain unbuilt.
     void createResourceTexture(ALRenderResourcePlan::Id id);
@@ -1717,8 +1705,6 @@ public:
         LLRenderTarget          screen;
         LLRenderTarget          deferredScreen;
 
-        // HDR bloom depth requested by the plan; native post owns its pyramid.
-        U32                         bloomMipCount = 0;
     };
 
     // main full resoltuion render target
@@ -1733,18 +1719,6 @@ public:
 
     // currently used render target pack
     RenderTargetPack* mRT;
-
-    // The frame's short-lived targets, lent by description to the passes and effects that use them: the plan's
-    // transient resources (ALRenderResourcePlan::isTransient) and the scratch an effect takes in a resource's
-    // description. Each is a pass's from its acquisition to its scope's end, and the next pass's after that.
-    ALTransientTargetPool mTransientTargets;
-
-    // A target of the description the plan gives @a id, from @a scope, named @a name or else as the plan names it: the
-    // transient resource itself, or scratch in a resource's description. Null where the plan wants none, or none can be
-    // built. One sharing a persistent resource's depth is attached to it; one sharing a transient resource's, to
-    // @a depth_from, the target the caller acquired for it.
-    LLRenderTarget* acquireResource(ALTransientTargets& scope, ALRenderResourcePlan::Id id, std::string_view name = {},
-                                    LLRenderTarget* depth_from = nullptr);
 
     // What each spot map holds, so that one whose light and casters are as they were is not drawn again.
 
@@ -1910,7 +1884,8 @@ private:
     F32 lensDistortionFitScale(const LensDistortFit::Inputs& inputs);
     bool configureMetalPresentationLens(ALMetalWorldPresentationScene& presentation);
     bool wantsMetalDepthOfField(const DepthOfFieldConfig& dof) const;
-    bool wantsMetalBloom(bool exact_dof, F32 bloom_strength, F32 halation_strength) const;
+    U32 requestedMetalBloomMipCount(bool exact_dof, F32 bloom_strength, F32 halation_strength,
+                                    U32 source_width, U32 source_height) const;
     bool wantsMetalScreenSpaceReflections() const;
     bool hasMetalScreenSpaceReflectionHistory() const;
     bool metalScopeSourceCurrent(U32 width, U32 height) const;

@@ -135,7 +135,7 @@ struct FinalizePolicyPipeline
     U64 mMetalExposureHistoryEpoch = 7;
     U64 mMetalLensFlareHistoryEpoch = 7;
     bool mMetalLensFlareHistoryReady = false;
-    struct ViewInput { U32 bloomMipCount = 6; } mMainRT, other_rt;
+    struct ViewInput {} mMainRT, other_rt;
     ViewInput* mRT = &mMainRT;
     scene_pixel_cb_t mScenePixelCallback;
     S32 mScenePixelX = 0, mScenePixelY = 0;
@@ -153,7 +153,7 @@ struct FinalizePolicyPipeline
     F32 lensDistortionFitScale(const LensDistortFit::Inputs& inputs);
     bool configureMetalPresentationLens(ALMetalWorldPresentationScene& presentation);
     bool wantsMetalDepthOfField(const DepthOfFieldConfig& dof) const;
-    bool wantsMetalBloom(bool, F32, F32) const;
+    U32 requestedMetalBloomMipCount(bool, F32, F32, U32, U32) const;
     bool wantsMetalScreenSpaceReflections() const;
     bool hasMetalScreenSpaceReflectionHistory() const;
     void clearSceneMap();
@@ -385,26 +385,26 @@ TEST_CASE("Native HDR bloom follows presentation readiness independently of scop
 {
     FinalizeCase f; auto& p = f.pipeline;
     p.scopes_open = false;
-    CHECK(p.wantsMetalBloom(true, 1.f, 0.f));
-    CHECK(p.wantsMetalBloom(true, 0.f, 1.f));
-    CHECK_FALSE(p.wantsMetalBloom(true, 0.f, 0.f));
-    CHECK_FALSE(p.wantsMetalBloom(false, 1.f, 1.f));
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 8, 6));
+    CHECK_FALSE(p.requestedMetalBloomMipCount(true, std::numeric_limits<F32>::quiet_NaN(), 0.f, 8, 6));
+    CHECK_FALSE(p.requestedMetalBloomMipCount(true, 0.f, std::numeric_limits<F32>::quiet_NaN(), 8, 6));
+    CHECK(p.requestedMetalBloomMipCount(true, 0.f, 1.f, 8, 6));
+    CHECK_FALSE(p.requestedMetalBloomMipCount(true, 0.f, 0.f, 8, 6));
+    CHECK_FALSE(p.requestedMetalBloomMipCount(false, 1.f, 1.f, 8, 6));
     p.presentation_eligible = false;
-    CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f)); p.presentation_eligible = true;
+    CHECK_FALSE(p.requestedMetalBloomMipCount(true, 1.f, 1.f, 8, 6)); p.presentation_eligible = true;
     p.scopes_open = true;
-    CHECK(p.wantsMetalBloom(true, 1.f, 0.f));
-    p.mMainRT.bloomMipCount = 2;
-    CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f));
-    p.mMainRT.bloomMipCount = 3;
-    CHECK(p.wantsMetalBloom(true, 1.f, 1.f));
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 8, 6));
+    CHECK_FALSE(p.requestedMetalBloomMipCount(true, 1.f, 1.f, 2, 2));
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 1.f, 4, 4) == 3);
     p.mMetalWorldSimpleCapture->hdr = false;
-    CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f)); p.mMetalWorldSimpleCapture->hdr = true;
-    p.main = false; CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f)); p.main = true;
-    p.mRT = &p.other_rt; CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f)); p.mRT = &p.mMainRT;
+    CHECK_FALSE(p.requestedMetalBloomMipCount(true, 1.f, 1.f, 8, 6)); p.mMetalWorldSimpleCapture->hdr = true;
+    p.main = false; CHECK_FALSE(p.requestedMetalBloomMipCount(true, 1.f, 1.f, 8, 6)); p.main = true;
+    p.mRT = &p.other_rt; CHECK_FALSE(p.requestedMetalBloomMipCount(true, 1.f, 1.f, 8, 6)); p.mRT = &p.mMainRT;
     p.sCutoutRender = p.mMetalWorldSnapshotRequested = true;
-    CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f));
+    CHECK_FALSE(p.requestedMetalBloomMipCount(true, 1.f, 1.f, 8, 6));
     p.sCutoutRender = p.mMetalWorldSnapshotRequested = false;
-    p.mMetalWorldSimpleCapture.reset(); CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f));
+    p.mMetalWorldSimpleCapture.reset(); CHECK_FALSE(p.requestedMetalBloomMipCount(true, 1.f, 1.f, 8, 6));
 }
 
 TEST_CASE("Native SSR isolation retires warm history until a new ordinary publication",
@@ -724,4 +724,27 @@ TEST_CASE("Native scene history clearing retains the pre-cutout immediate bounda
     p.clearSceneMap(); CHECK(finalize_flush.calls == 2);
     p.mResourcePlan = {};
     p.clearSceneMap(); CHECK(finalize_flush.calls == 2);
+}
+
+TEST_CASE("Native bloom requests use actual post dimensions independently of window geometry",
+          "[native-finalize-policy][native-bloom-shape]")
+{
+    FinalizeCase f; auto& p = f.pipeline;
+    p.mResourceInputs.mBloomMips = 7;
+    p.mResourceInputs.mWidth = p.mResourceInputs.mHeight = 2;
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 64, 64) == 7);
+    p.mResourceInputs.mWidth = p.mResourceInputs.mHeight = 1024;
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 2, 2) == 0);
+    p.mResourceInputs.mResolutionDivisor = 4;
+    p.mResourceInputs.mResolutionMultiplier = 2.f;
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 8, 6) == 4);
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 0, 6) == 0);
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 8, 0) == 0);
+    p.mResourceInputs.mBloomScale = 4;
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 8, 6) == 0);
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 64, 64) == 4);
+    p.mResourceInputs.mBloomMips = -1;
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 64, 64) == 3);
+    p.mResourceInputs.mBloomMips = 99;
+    CHECK(p.requestedMetalBloomMipCount(true, 1.f, 0.f, 64, 64) == 4);
 }
