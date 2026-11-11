@@ -572,12 +572,16 @@ if(AL_BUILD_TESTS)
   set_target_properties(llui_test_fakes PROPERTIES FOLDER "Tests/llui")
 
   # What llui's test binaries set up for the process, put back after every
-  # case, and give the state guard to check: once for the binary with no GL,
-  # once for the one that draws.
+  # case, and give the native state guard to check. The excluded historical
+  # GL binary must not leave an orphan GL fixture object in the native build.
   add_library(llui_test_checks OBJECT tests/llui_test_checks.cpp)
-  add_library(llui_gl_test_checks OBJECT tests/llui_test_checks.cpp)
-  target_compile_definitions(llui_gl_test_checks PRIVATE LLUI_TEST_GL=1)
-  foreach(checks llui_test_checks llui_gl_test_checks)
+  set(llui_checks llui_test_checks)
+  if(NOT DARWIN)
+    add_library(llui_gl_test_checks OBJECT tests/llui_test_checks.cpp)
+    target_compile_definitions(llui_gl_test_checks PRIVATE LLUI_TEST_GL=1)
+    list(APPEND llui_checks llui_gl_test_checks)
+  endif()
+  foreach(checks ${llui_checks})
     target_link_libraries(${checks} PRIVATE al::flags al_test_support llui)
     target_compile_definitions(
       ${checks}
