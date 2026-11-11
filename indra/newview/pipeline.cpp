@@ -17324,7 +17324,10 @@ void LLPipeline::endMetalWorldGBufferCapture()
     // a controlled viewer comparison establishes an end-to-end benefit.
     static LLCachedControl<bool> join_static_draws(
         gSavedSettings, "RenderMetalJoinStaticDraws", false);
-    scene.join_adjacent_static_draws = !impostor_bake && join_static_draws();
+    // Moving the stamp must not enable joining that its previous presence
+    // excluded. Profile bakes did not stamp and retain their prior toggle.
+    scene.join_adjacent_static_draws =
+        !(impostor_bake && !capture.impostor_profile) && join_static_draws();
     if (scene.wireframe)
     {
         constexpr F32 gray = 0.5f;
