@@ -146,7 +146,9 @@ public:
     // Bind an already-owned native resource. The caller retains its lifetime;
     // the slot records only the identity, dimension and sampler required by a
     // Metal encoder. This is the cutover path for resources which have no
-    // LLImageGL wrapper, such as the legacy sky cube.
+    // LLImageGL wrapper, such as the legacy sky cube. Immediate UI callers keep
+    // the wrapper alive through flush/end capture; encoded commands retain the
+    // native allocation. Image-owned display lists reject raw bindings.
     bool bindNative(ALMetalTexture* texture, eTextureType type, ALSampler key,
                     bool forceBind = false);
 

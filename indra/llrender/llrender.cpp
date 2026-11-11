@@ -80,6 +80,45 @@ LLRender::MetalCommandTiming LLRender::metalCommandTiming()
 #if LL_DARWIN
 namespace
 {
+    // UI MSL samples texture2d<float>. Integer/depth payloads and layered or
+    // multisampled resources require a different shader contract.
+    bool native_ui_texture_supported(const ALMetalTexture* texture)
+    {
+        if (!texture) return false;
+        const auto& desc = texture->descriptor();
+        if (desc.type != ALMetalTextureType::texture_2d ||
+            desc.sample_count != 1 ||
+            !alMetalHasUsage(desc.usage, ALMetalTextureUsage::shader_read))
+            return false;
+        switch (desc.format)
+        {
+            case ALMetalPixelFormat::invalid:
+            case ALMetalPixelFormat::r8_sint:
+            case ALMetalPixelFormat::r8_uint:
+            case ALMetalPixelFormat::rg8_sint:
+            case ALMetalPixelFormat::rg8_uint:
+            case ALMetalPixelFormat::rgba8_sint:
+            case ALMetalPixelFormat::rgba8_uint:
+            case ALMetalPixelFormat::r16_sint:
+            case ALMetalPixelFormat::r16_uint:
+            case ALMetalPixelFormat::rg16_sint:
+            case ALMetalPixelFormat::rg16_uint:
+            case ALMetalPixelFormat::rgba16_sint:
+            case ALMetalPixelFormat::rgba16_uint:
+            case ALMetalPixelFormat::r32_sint:
+            case ALMetalPixelFormat::r32_uint:
+            case ALMetalPixelFormat::rg32_sint:
+            case ALMetalPixelFormat::rg32_uint:
+            case ALMetalPixelFormat::rgba32_sint:
+            case ALMetalPixelFormat::rgba32_uint:
+            case ALMetalPixelFormat::rgb10a2_uint:
+            case ALMetalPixelFormat::depth32_float:
+            case ALMetalPixelFormat::depth32_float_stencil8:
+                return false;
+            default:
+                return true;
+        }
+    }
     U32 metal_ui_capture_cache_index(
         ALMetalPixelFormat format, bool linear_storage)
     {
@@ -1023,6 +1062,31 @@ bool LLRender::bindMetalUITextureCapture(
     mMetalUICaptureSampler = ALSamplerCache::makeDesc(sampler);
     mMetalUICaptureTextureBound = true;
     return image->getMetalTexture() != nullptr;
+}
+
+bool LLRender::bindMetalUITextureCaptureNative(
+    S32 slot_index, ALMetalTexture* texture, ALTextureSlot::eTextureType type,
+    ALSampler sampler)
+{
+    if (!mMetalUICaptureAuthoritative || !mMetalUICaptureRenderer)
+        return false;
+    if (slot_index != 0 || type != ALTextureSlot::TT_TEXTURE ||
+        !native_ui_texture_supported(texture) || mBufferDataList)
+    {
+        invalidateMetalUITextureCapture(
+            "authoritative raw texture bind requires a sampled slot-zero 2D resource outside image display lists");
+        return false;
+    }
+    // Submit queued vertices with their preceding resource and sampler first.
+    flush();
+    ALTextureSlot& slot = mTextureSlots[0];
+    slot.mCurrTexture = 1; // logical binding, never an API object name
+    slot.mCurrTexType = ALTextureSlot::TT_TEXTURE;
+    slot.mCurrImage = nullptr;
+    slot.mCurrNativeTexture = texture;
+    mMetalUICaptureSampler = ALSamplerCache::makeDesc(sampler);
+    mMetalUICaptureTextureBound = true;
+    return true;
 }
 
 bool LLRender::unbindMetalUITextureCapture(S32 slot_index)
@@ -2554,7 +2618,13 @@ void LLRender::flush()
                 // marks an empty list valid and every later replay vanishes.
                 LLPointer<LLVertexBuffer> native_buffer =
                     genBuffer(attribute_mask, count);
-                if (mBufferDataList)
+                if (mBufferDataList && mMetalUICaptureTextureBound &&
+                    mTextureSlots[0].mCurrNativeTexture)
+                {
+                    invalidateMetalUITextureCapture(
+                        "raw native texture cannot be retained by an image UI display list");
+                }
+                else if (mBufferDataList)
                 {
                     ALTextureSlot* texture_slot = gGL.getTextureSlot(0);
                     mBufferDataList->emplace_back(
@@ -2573,7 +2643,14 @@ void LLRender::flush()
             else
             {
                 LLVertexBuffer* vb = nullptr;
-                if (mBufferDataList)
+                if (mBufferDataList && mTextureSlots[0].mCurrTexture != 0 &&
+                    mTextureSlots[0].mCurrNativeTexture)
+                {
+                    invalidateMetalUITextureCapture(
+                        "raw native texture cannot be retained by an image UI display list");
+                    vb = genBuffer(attribute_mask, count);
+                }
+                else if (mBufferDataList)
                 {
                     vb = genBuffer(attribute_mask, count);
                     ALTextureSlot* texture_slot = gGL.getTextureSlot(0);
@@ -2768,7 +2845,8 @@ bool LLRender::drawBoundMetalUIBuffer(
                           ? mMetalUICaptureTextureBound
                           : texture_slot && texture_slot->mCurrTexture != 0,
                       indexed, indexed ? count : 0, indexed ? first : 0,
-                      indexed ? 0 : first);
+                      indexed ? 0 : first,
+                      texture_slot ? texture_slot->mCurrNativeTexture : nullptr);
     return capture ? mMetalUICaptureBatches == captured_batches + 1 : replaced;
 }
 
@@ -2776,7 +2854,7 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                  LLImageGL* image, const ALSamplerDesc& sampler,
                                  bool texture_bound, bool indexed,
                                  U32 index_count, U32 indices_offset,
-                                 U32 first_vertex)
+                                 U32 first_vertex, ALMetalTexture* native_texture)
 {
     const bool capture = mMetalUICaptureRenderer != nullptr;
     const bool authoritative = capture && mMetalUICaptureAuthoritative;
@@ -2869,7 +2947,7 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     ALMetalBuffer* metal_buffer = buffer->getMetalVertexBuffer();
     ALMetalBuffer* metal_indices = indexed
         ? buffer->getMetalIndexBuffer() : nullptr;
-    ALMetalTexture* metal_texture = image ? image->getMetalTexture() : nullptr;
+    ALMetalTexture* metal_texture = image ? image->getMetalTexture() : native_texture;
     const bool needs_texture = metal_shader == ALMetalUIShader::textured ||
                                metal_shader == ALMetalUIShader::solid_color ||
                                metal_shader == ALMetalUIShader::alpha_mask_textured;
@@ -2879,6 +2957,12 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                              metal_shader == ALMetalUIShader::alpha_mask_solid;
     const bool needs_texcoord =
         metal_shader != ALMetalUIShader::uniform_color;
+    if (needs_texture && native_texture &&
+        !native_ui_texture_supported(native_texture))
+    {
+        return fallback(MetalUIFallbackReason::mirror,
+                        "raw UI texture is not a sampled float 2D resource");
+    }
     const U32 required = LLVertexBuffer::MAP_VERTEX |
         (needs_texcoord ? LLVertexBuffer::MAP_TEXCOORD0 : 0) |
         (needs_color ? LLVertexBuffer::MAP_COLOR : 0);

@@ -291,7 +291,8 @@ public:
                            LLImageGL* image, const ALSamplerDesc& sampler,
                            bool texture_bound, bool indexed = false,
                            U32 index_count = 0, U32 indices_offset = 0,
-                           U32 first_vertex = 0);
+                           U32 first_vertex = 0,
+                           ALMetalTexture* native_texture = nullptr);
     // Submit with the current texture/sampler and shader state. For indexed
     // draws count/first are index elements; otherwise they are vertex elements.
     // Returns actual native admission, never authority/fallback suppression.
@@ -323,6 +324,12 @@ public:
     // Record slot-zero sampled-image state without allocating or binding a GL
     // texture/sampler. Used only while an authoritative capture is active.
     bool bindMetalUITextureCapture(S32 slot, LLImageGL* image, ALSampler sampler);
+    // Borrow an explicitly owned sampled 2D resource through flush/end capture.
+    // Encoded commands retain the native allocation; image display lists cannot
+    // retain this raw binding and reject it rather than record an unowned pointer.
+    bool bindMetalUITextureCaptureNative(
+        S32 slot, ALMetalTexture* texture, ALTextureSlot::eTextureType type,
+        ALSampler sampler);
     bool unbindMetalUITextureCapture(S32 slot);
     // Keep capture-only alpha-test state local to the native transaction.
     void setMetalUITextureCaptureMinimumAlpha(

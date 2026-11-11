@@ -432,6 +432,16 @@ bool ALTextureSlot::bindNative(ALMetalTexture* texture, eTextureType type,
                                ALSampler key, bool forceBind)
 {
 #if LL_DARWIN
+    if (gGL.mBufferDataList)
+    {
+        gGL.invalidateMetalUITextureCapture(
+            "raw native texture cannot be retained by an image UI display list");
+        return false;
+    }
+    if (gGL.isMetalUITextureCaptureAuthoritative())
+    {
+        return gGL.bindMetalUITextureCaptureNative(mIndex, texture, type, key);
+    }
     if (mIndex < 0 || !texture || !matches_native_type(*texture, type))
     {
         return false;
