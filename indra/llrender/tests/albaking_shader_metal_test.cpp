@@ -63,7 +63,6 @@ TEST_CASE("Appearance shader loader configures native metadata without a GL comp
     REQUIRE_FALSE(gGLManager.mInited);
     REQUIRE_FALSE(gAlphaMaskProgram.isAvailable());
     REQUIRE(gAlphaMaskProgram.mShaderFiles.empty());
-    REQUIRE(glBindBuffer == nullptr);
     BakingLoaderScope manager;
     std::string error;
     auto device = ALMetalDevice::create(&error);

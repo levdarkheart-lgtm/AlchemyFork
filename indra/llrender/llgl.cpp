@@ -103,20 +103,11 @@ PFNWGLDXUNLOCKOBJECTSNVPROC wglDXUnlockObjectsNV = nullptr;
 
 PFNGLTEXPARAMETERIPROC glTexParameteri = nullptr;
 PFNGLTEXPARAMETERIVPROC glTexParameteriv = nullptr;
-PFNGLDRAWARRAYSPROC glDrawArrays = nullptr;
-PFNGLDRAWELEMENTSPROC glDrawElements = nullptr;
 PFNGLTEXSUBIMAGE2DPROC glTexSubImage2D = nullptr;
 PFNGLDELETETEXTURESPROC glDeleteTextures = nullptr;
 PFNGLGENTEXTURESPROC glGenTextures = nullptr;
-PFNGLDRAWRANGEELEMENTSPROC glDrawRangeElements = nullptr;
-PFNGLBINDBUFFERPROC glBindBuffer = nullptr;
-PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = nullptr;
-PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = nullptr;
-PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = nullptr;
-PFNGLVERTEXATTRIBIPOINTERPROC glVertexAttribIPointer = nullptr;
 PFNGLGENERATEMIPMAPPROC glGenerateMipmap = nullptr;
 PFNGLTEXSTORAGE2DPROC glTexStorage2D = nullptr;
-PFNGLOBJECTLABELPROC glObjectLabel = nullptr;
 
 LLGLManager gGLManager;
 

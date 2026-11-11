@@ -595,6 +595,16 @@ std::size_t ALMetalBuffer::length() const noexcept
     return mDescriptor.length;
 }
 
+void ALMetalBuffer::setLabel(const std::string& label)
+{
+    if (mDescriptor.label == label) return;
+    mDescriptor.label = label;
+    @autoreleasepool
+    {
+        if (mImpl && mImpl->buffer) mImpl->buffer.label = toNSString(label);
+    }
+}
+
 ALMetalStorageMode ALMetalBuffer::storageMode() const noexcept
 {
     return mDescriptor.storage;

@@ -88,6 +88,9 @@ public:
     std::size_t length() const noexcept;
     ALMetalStorageMode storageMode() const noexcept;
     void* mappedBytes() const noexcept;
+    // Debugger/capture annotation only; never changes storage or submits work.
+    // An empty label clears the annotation.
+    void setLabel(const std::string& label);
 
     bool write(std::size_t offset, const void* bytes, std::size_t length,
                std::string* error = nullptr);

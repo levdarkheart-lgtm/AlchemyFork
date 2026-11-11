@@ -375,11 +375,24 @@ bool LLVertexBuffer::validateRange(U32 start, U32 end, U32 count, U32 indices_of
     return vertices_fit && indices_fit;
 }
 
-#if LL_PROFILER_ENABLE_RENDER_DOC
-void LLVertexBuffer::setLabel(const char* label) {
-    LL_LABEL_OBJECT_GL(GL_BUFFER, mGLBuffer, strlen(label), label);
+namespace
+{
+std::string bufferLabel(const std::string& label, const char* role)
+{
+    return label.empty() ? std::string() : label + role;
 }
+}
+
+void LLVertexBuffer::setLabel(const char* label)
+{
+    const char* value = label ? label : "";
+    if (mLabel == value) return;
+    mLabel = value;
+#if LL_DARWIN
+    if (mMetalBuffer) mMetalBuffer->setLabel(bufferLabel(mLabel, " vertex data"));
+    if (mMetalIndices) mMetalIndices->setLabel(bufferLabel(mLabel, " index data"));
 #endif
+}
 
 void LLVertexBuffer::clone(LLVertexBuffer& target) const
 {
@@ -600,6 +613,9 @@ static bool upload_metal_buffer(
     {
         return false;
     }
+    // A completed generation may have been labelled for an earlier pass.
+    // Preserve the current logical diagnostic when it is reused.
+    next->setLabel(label);
 
     retired.emplace_back(
         std::move(current), gGL.frameFences().frame());
@@ -710,7 +726,6 @@ void LLVertexBuffer::genBuffer(U32 size)
     if (sNativeStorage)
     {
         llassert(mSize == 0);
-        llassert(mGLBuffer == 0);
         llassert(mMappedData == nullptr);
 
         mSize = size;
@@ -726,7 +741,6 @@ void LLVertexBuffer::genIndices(U32 size)
     if (sNativeStorage)
     {
         llassert(mIndicesSize == 0);
-        llassert(mGLIndices == 0);
         llassert(mMappedIndexData == nullptr);
         mIndicesSize = size;
         sNativeStorage->allocate(mIndicesSize, mMappedIndexData);
@@ -735,7 +749,7 @@ void LLVertexBuffer::genIndices(U32 size)
 
 bool LLVertexBuffer::createGLBuffer(U32 size)
 {
-    if (mGLBuffer || mMappedData)
+    if (mMappedData)
     {
         destroyGLBuffer();
     }
@@ -750,7 +764,7 @@ bool LLVertexBuffer::createGLBuffer(U32 size)
     genBuffer(size);
 
 #if LL_DARWIN
-    mMetalBuffer = allocate_metal_buffer(size, "Alchemy vertex data");
+    mMetalBuffer = allocate_metal_buffer(size, bufferLabel(mLabel, " vertex data").c_str());
     mMetalBufferInitialized = false;
     if (sMetalDevice && !mMetalBuffer)
     {
@@ -767,7 +781,7 @@ bool LLVertexBuffer::createGLBuffer(U32 size)
 
 bool LLVertexBuffer::createGLIndices(U32 size)
 {
-    if (mGLIndices || mMappedIndexData)
+    if (mMappedIndexData)
     {
         destroyGLIndices();
     }
@@ -782,7 +796,7 @@ bool LLVertexBuffer::createGLIndices(U32 size)
     genIndices(size);
 
 #if LL_DARWIN
-    mMetalIndices = allocate_metal_buffer(size, "Alchemy index data");
+    mMetalIndices = allocate_metal_buffer(size, bufferLabel(mLabel, " index data").c_str());
     mMetalIndicesInitialized = false;
     if (sMetalDevice && !mMetalIndices)
     {
@@ -818,7 +832,7 @@ void LLVertexBuffer::destroyGLBuffer()
     }
     mMetalBufferInitialized = false;
 #endif
-    if (mGLBuffer || mMappedData)
+    if (mMappedData)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
         if (sNativeStorage)
@@ -827,7 +841,6 @@ void LLVertexBuffer::destroyGLBuffer()
         }
 
         mSize = 0;
-        mGLBuffer = 0;
         mMappedData = nullptr;
     }
 }
@@ -853,7 +866,7 @@ void LLVertexBuffer::destroyGLIndices()
     }
     mMetalIndicesInitialized = false;
 #endif
-    if (mGLIndices || mMappedIndexData)
+    if (mMappedIndexData)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
         if (sNativeStorage)
@@ -862,7 +875,6 @@ void LLVertexBuffer::destroyGLIndices()
         }
 
         mIndicesSize = 0;
-        mGLIndices = 0;
         mMappedIndexData = nullptr;
     }
 }
@@ -987,7 +999,7 @@ void LLVertexBuffer::_unmapBuffer()
             std::string error;
             vertices_uploaded = upload_metal_buffer(
                 mMetalBuffer, mRetiredMetalBuffers, mMetalBufferInitialized,
-                mMappedData, mSize, "Alchemy vertex data", error);
+                mMappedData, mSize, bufferLabel(mLabel, " vertex data").c_str(), error);
             if (!vertices_uploaded)
                 LL_WARNS("Metal") << "Could not upload vertex data: " << error << LL_ENDL;
         }
@@ -1008,7 +1020,7 @@ void LLVertexBuffer::_unmapBuffer()
             std::string error;
             indices_uploaded = upload_metal_buffer(
                 mMetalIndices, mRetiredMetalIndices, mMetalIndicesInitialized,
-                mMappedIndexData, mIndicesSize, "Alchemy index data", error);
+                mMappedIndexData, mIndicesSize, bufferLabel(mLabel, " index data").c_str(), error);
             if (!indices_uploaded)
                 LL_WARNS("Metal") << "Could not upload index data: " << error << LL_ENDL;
         }

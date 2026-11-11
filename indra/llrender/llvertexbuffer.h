@@ -39,10 +39,9 @@
 #include <vector>
 #include <list>
 #include <memory>
+#include <string>
 #include <utility>
 #include "llmatrix4a.h"
-
-#define LL_MAX_VERTEX_ATTRIB_LOCATION 64
 
 //============================================================================
 // NOTES
@@ -301,17 +300,16 @@ public:
     // Always check allocation bounds; gDebugGL additionally diagnoses failures.
     bool validateRange(U32 start, U32 end, U32 count, U32 offset) const;
 
-    #if LL_PROFILER_ENABLE_RENDER_DOC
+    // Annotate the native stores and subsequent publication generations.
+    // Empty/null clears the diagnostic label; no GPU work is submitted.
     void setLabel(const char* label);
-    #endif
 
     void clone(LLVertexBuffer& target) const;
 
 protected:
-    U32     mGLBuffer = 0;      // GL VBO handle
-    U32     mGLIndices = 0;     // GL IBO handle
     U32     mNumVerts = 0;      // Number of vertices allocated
     U32     mNumIndices = 0;    // Number of indices allocated
+    std::string mLabel = "Alchemy";
     U32     mIndicesType = GL_UNSIGNED_SHORT; // type of indices in index buffer
     U32     mIndicesStride = 2;     // size of each index in bytes
     U32     mOffsets[TYPE_MAX]; // byte offsets into mMappedData of each attribute
@@ -380,11 +378,7 @@ public:
     static U32 sVertexCount;
 };
 
-#if LL_PROFILER_ENABLE_RENDER_DOC
-#define LL_LABEL_VERTEX_BUFFER(buf, name) buf->setLabel(name)
-#else
-#define LL_LABEL_VERTEX_BUFFER(buf, name)
-#endif
+#define LL_LABEL_VERTEX_BUFFER(buf, name) (buf)->setLabel(name)
 
 
 #endif // LL_LLVERTEXBUFFER_H

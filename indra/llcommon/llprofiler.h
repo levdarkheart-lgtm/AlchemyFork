@@ -84,9 +84,6 @@
 #   pragma GCC diagnostic push
 #endif
 
-        // Enable RenderDoc labeling
-        //#define LL_PROFILER_ENABLE_RENDER_DOC 0
-
     #define LL_PROFILER_FRAME_END                   FrameMark
     #define LL_PROFILER_SET_THREAD_NAME( name )     tracy::SetThreadName( name );
     #define LL_PROFILE_ZONE_NAMED(name)             ZoneNamedN( ___tracy_scoped_zone, name, true );
@@ -173,12 +170,6 @@
 #define LL_PROFILE_MESSAGE(text) TracyMessageL(text)
 #else
 #define LL_PROFILE_MESSAGE(text) do { (void)(text); } while (0)
-#endif
-
-#if LL_PROFILER_ENABLE_RENDER_DOC
-#define LL_LABEL_OBJECT_GL(type, name, length, label) glObjectLabel(type, name, length, label)
-#else
-#define LL_LABEL_OBJECT_GL(type, name, length, label)
 #endif
 
 #include "llprofilercategories.h"
