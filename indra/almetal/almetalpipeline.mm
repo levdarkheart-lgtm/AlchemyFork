@@ -967,6 +967,8 @@ struct ALMetalRenderEncoder::Impl
     bool indirect_pipeline = false;
     bool count_draws = false;
     std::uint64_t encoded_draws = 0;
+    std::uint64_t render_info_epoch = 0;
+    ALMetalRenderInfo render_info;
     bool tessellation_enabled = false;
     bool tessellation_factor_buffer_set = false;
     bool indexed_triangle_joining = false;
@@ -976,6 +978,33 @@ struct ALMetalRenderEncoder::Impl
     ALMetalIndexType pending_index_type = ALMetalIndexType::uint16;
     std::size_t pending_index_offset = 0;
     std::uint32_t pending_index_count = 0;
+
+    static void addCount(std::uint64_t& destination, std::uint64_t value,
+                         bool& known) noexcept
+    {
+        if (value > std::numeric_limits<std::uint64_t>::max() - destination)
+        {
+            destination = std::numeric_limits<std::uint64_t>::max();
+            known = false;
+        }
+        else destination += value;
+    }
+
+    void recordDirect(std::uint64_t calls, std::uint64_t elements,
+                      bool elements_known = true) noexcept
+    {
+        if (render_info_epoch == 0) return;
+        addCount(render_info.draw_calls, calls, render_info.draw_calls_known);
+        render_info.input_elements_known &= elements_known;
+        addCount(render_info.input_elements, elements, render_info.input_elements_known);
+    }
+
+    void publishCounts() noexcept
+    {
+        if (count_draws) ALMetalDevice::addEncodedDrawCalls(encoded_draws);
+        ALMetalDevice::publishRenderInfo(render_info_epoch, render_info);
+        render_info_epoch = 0;
+    }
 
     void flushPendingIndexed() noexcept
     {
@@ -988,6 +1017,7 @@ struct ALMetalRenderEncoder::Impl
                      indexBufferOffset:pending_index_offset
                          instanceCount:1];
         if (count_draws) ++encoded_draws;
+        recordDirect(1, pending_index_count);
         pending_index_buffer = nil;
         pending_index_count = 0;
     }
@@ -1004,8 +1034,7 @@ ALMetalRenderEncoder::~ALMetalRenderEncoder()
     {
         mImpl->flushPendingIndexed();
         [mImpl->encoder endEncoding];
-        if (mImpl->count_draws)
-            ALMetalDevice::addEncodedDrawCalls(mImpl->encoded_draws);
+        mImpl->publishCounts();
         mImpl->ended = true;
     }
 }
@@ -1080,6 +1109,7 @@ std::unique_ptr<ALMetalRenderEncoder> ALMetalRenderEncoder::begin(
         impl->timed_pass = std::move(timed_pass);
         impl->command_buffer = command_buffer.nativeHandle();
         impl->count_draws = ALMetalDevice::commandTimingEnabled();
+        impl->render_info_epoch = ALMetalDevice::renderInfoEpoch();
         return std::unique_ptr<ALMetalRenderEncoder>(new ALMetalRenderEncoder(std::move(impl)));
     }
 }
@@ -1626,6 +1656,7 @@ bool ALMetalRenderEncoder::draw(ALMetalPrimitiveType primitive, std::uint32_t ve
                        vertexCount:vertex_count
                      instanceCount:instance_count];
     if (mImpl->count_draws) ++mImpl->encoded_draws;
+    mImpl->recordDirect(1, std::uint64_t(vertex_count) * instance_count);
     return true;
 }
 
@@ -1685,6 +1716,7 @@ bool ALMetalRenderEncoder::drawIndexed(ALMetalPrimitiveType primitive, std::uint
                         indexBufferOffset:index_buffer_offset
                             instanceCount:instance_count];
     if (mImpl->count_draws) ++mImpl->encoded_draws;
+    mImpl->recordDirect(1, std::uint64_t(index_count) * instance_count);
     return true;
 }
 
@@ -1711,6 +1743,11 @@ bool ALMetalRenderEncoder::drawPatches(std::uint32_t control_point_count,
                   instanceCount:instance_count
                    baseInstance:base_instance];
     if (mImpl->count_draws) ++mImpl->encoded_draws;
+    const auto patch_elements = std::uint64_t(control_point_count) * patch_count;
+    const bool elements_known = patch_elements <=
+        std::numeric_limits<std::uint64_t>::max() / instance_count;
+    mImpl->recordDirect(1, elements_known ? patch_elements * instance_count :
+        std::numeric_limits<std::uint64_t>::max(), elements_known);
     return true;
 }
 
@@ -1723,8 +1760,7 @@ bool ALMetalRenderEncoder::end(std::string* error)
     }
     mImpl->flushPendingIndexed();
     [mImpl->encoder endEncoding];
-    if (mImpl->count_draws)
-        ALMetalDevice::addEncodedDrawCalls(mImpl->encoded_draws);
+    mImpl->publishCounts();
     mImpl->ended = true;
     return true;
 }
@@ -1771,14 +1807,31 @@ void ALMetalRenderEncoder::invalidateIndirectBufferBindings() noexcept
     mImpl->fragment_buffers.fill({});
 }
 
-void ALMetalRenderEncoder::recordPrevalidatedDraws(std::uint32_t count) noexcept
+void ALMetalRenderEncoder::recordPrevalidatedDraws(
+    std::uint32_t count, std::uint64_t input_elements) noexcept
 {
     if (mImpl && !mImpl->ended)
     {
         mImpl->flushPendingIndexed();
         mImpl->indexed_triangle_joining = false;
     }
-    if (mImpl && mImpl->count_draws) mImpl->encoded_draws += count;
+    if (!mImpl || mImpl->ended) return;
+    if (mImpl->count_draws) mImpl->encoded_draws += count;
+    mImpl->recordDirect(count, input_elements);
+}
+
+void ALMetalRenderEncoder::recordIndirectSubmission(std::uint32_t command_slots) noexcept
+{
+    if (!mImpl || mImpl->ended) return;
+    mImpl->flushPendingIndexed();
+    mImpl->indexed_triangle_joining = false;
+    // Preserve the independent benchmark collector's populated-range census.
+    if (mImpl->count_draws) mImpl->encoded_draws += command_slots;
+    if (mImpl->render_info_epoch == 0) return;
+    auto& counts = mImpl->render_info;
+    counts.draw_calls_known = counts.input_elements_known = false;
+    Impl::addCount(counts.indirect_submissions, 1, counts.draw_calls_known);
+    Impl::addCount(counts.indirect_command_slots, command_slots, counts.draw_calls_known);
 }
 
 struct ALMetalComputeEncoder::Impl

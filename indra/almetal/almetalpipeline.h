@@ -452,7 +452,9 @@ private:
     bool canExecuteIndirect() const noexcept;
     bool canExecuteStaticDraws() const noexcept;
     void invalidateIndirectBufferBindings() noexcept;
-    void recordPrevalidatedDraws(std::uint32_t count) noexcept;
+    void recordPrevalidatedDraws(std::uint32_t count,
+                                std::uint64_t input_elements) noexcept;
+    void recordIndirectSubmission(std::uint32_t command_slots) noexcept;
     friend class ALMetalShadowIndirectCommands;
     friend class ALMetalShadowMaterials;
 };

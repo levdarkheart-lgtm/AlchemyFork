@@ -21063,6 +21063,8 @@ void LLPipeline::resetFrameStats()
     mNumVisibleFaces = 0;
     LLRender::sDrawCalls    = 0;
     LLRender::sDrawElements = 0;
+    static LLCachedControl<bool> show_render_info(gSavedSettings, "DebugShowRenderInfo", false);
+    ALMetalDevice::beginRenderInfoFrame(show_render_info);
 
     if (mOldRenderDebugMask != mRenderDebugMask)
     {

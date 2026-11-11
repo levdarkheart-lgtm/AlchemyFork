@@ -21,6 +21,7 @@
 #include <string>
 
 class ALMetalPipelineCache;
+class ALMetalRenderEncoder;
 
 struct ALMetalDeviceInfo
 {
@@ -47,6 +48,22 @@ struct ALMetalCommandTiming
     std::uint64_t completed = 0;
     std::uint64_t timed = 0;
     std::uint64_t gpu_time_nanoseconds = 0;
+};
+
+// Per-frame CPU encoding census, independent of command timing. Direct draws
+// report submitted vertex/index elements (including instances), not primitives
+// executed by the GPU. Unknown indirect contents are never added as exact work.
+struct ALMetalRenderInfo
+{
+    std::uint64_t draw_calls = 0;
+    std::uint64_t input_elements = 0;
+    std::uint64_t indirect_submissions = 0;
+    std::uint64_t indirect_command_slots = 0;
+    // With unknown indirect work, the numeric fields above are direct-only
+    // subtotals. An arithmetic overflow saturates its field and clears its flag.
+    bool draw_calls_known = true;
+    bool input_elements_known = true;
+    bool enabled = false;
 };
 
 enum class ALMetalCommandStatus
@@ -183,6 +200,14 @@ public:
     static std::uint64_t encodedDrawCallCount() noexcept;
     static void addEncodedDrawCalls(std::uint64_t count) noexcept;
 
+    // Start a new optional RenderInfo frame. Encoder-local counts publish once
+    // at endEncoding, even if the command is later abandoned. No GPU query,
+    // submission, wait or timing collection is enabled. Reset invalidates old
+    // encoders so they cannot repopulate a newer frame. All native render
+    // emissions share this unit, including UI, HUD and internal copy passes.
+    static void beginRenderInfoFrame(bool enabled) noexcept;
+    static ALMetalRenderInfo renderInfo() noexcept;
+
     // Default-off development telemetry for explicit benchmark collection.
     // submitted/completed/timed and GPU duration are process-wide monotonic
     // counters for commands committed while enabled. GPU duration is read
@@ -201,6 +226,10 @@ public:
     bool waitUntilIdle(std::string* error = nullptr) const;
 
 private:
+    static std::uint64_t renderInfoEpoch() noexcept;
+    static void publishRenderInfo(std::uint64_t epoch,
+                                  const ALMetalRenderInfo& counts) noexcept;
+    friend class ALMetalRenderEncoder;
     struct Impl;
     explicit ALMetalDevice(std::unique_ptr<Impl> impl, ALMetalDeviceInfo info);
     std::unique_ptr<Impl> mImpl;

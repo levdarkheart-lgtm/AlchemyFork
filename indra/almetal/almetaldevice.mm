@@ -32,6 +32,33 @@ namespace
     std::atomic<std::uint64_t> encoded_draw_calls{0};
     std::atomic<bool> command_timing_enabled{false};
 
+    std::atomic<std::uint64_t> render_info_epoch{0};
+    struct RenderInfoState
+    {
+        std::mutex mutex;
+        std::uint64_t generation = 0;
+        ALMetalRenderInfo counts;
+    };
+
+    RenderInfoState& renderInfoState()
+    {
+        // Publication is synchronous at CPU encoder end; no completion
+        // callback owns this census or needs a process-lifetime heap sink.
+        static RenderInfoState state;
+        return state;
+    }
+
+    void addRenderInfoCount(std::uint64_t& destination, std::uint64_t value,
+                            bool& known) noexcept
+    {
+        if (value > std::numeric_limits<std::uint64_t>::max() - destination)
+        {
+            destination = std::numeric_limits<std::uint64_t>::max();
+            known = false;
+        }
+        else destination += value;
+    }
+
     struct CommandTimingState
     {
         std::mutex mutex;
@@ -491,6 +518,48 @@ void ALMetalDevice::addEncodedDrawCalls(std::uint64_t count) noexcept
     {
         encoded_draw_calls.fetch_add(count, std::memory_order_relaxed);
     }
+}
+
+void ALMetalDevice::beginRenderInfoFrame(bool enabled) noexcept
+{
+    auto& state = renderInfoState();
+    std::lock_guard lock(state.mutex);
+    if (++state.generation == 0) ++state.generation;
+    state.counts = {};
+    state.counts.enabled = enabled;
+    render_info_epoch.store(enabled ? state.generation : 0,
+                            std::memory_order_release);
+}
+
+ALMetalRenderInfo ALMetalDevice::renderInfo() noexcept
+{
+    auto& state = renderInfoState();
+    std::lock_guard lock(state.mutex);
+    return state.counts;
+}
+
+std::uint64_t ALMetalDevice::renderInfoEpoch() noexcept
+{
+    return render_info_epoch.load(std::memory_order_acquire);
+}
+
+void ALMetalDevice::publishRenderInfo(std::uint64_t epoch,
+                                     const ALMetalRenderInfo& counts) noexcept
+{
+    if (epoch == 0) return;
+    auto& state = renderInfoState();
+    std::lock_guard lock(state.mutex);
+    if (!state.counts.enabled || epoch != state.generation) return;
+    auto& total = state.counts;
+    total.draw_calls_known &= counts.draw_calls_known;
+    total.input_elements_known &= counts.input_elements_known;
+    addRenderInfoCount(total.draw_calls, counts.draw_calls, total.draw_calls_known);
+    addRenderInfoCount(total.input_elements, counts.input_elements,
+                       total.input_elements_known);
+    addRenderInfoCount(total.indirect_submissions, counts.indirect_submissions,
+                       total.draw_calls_known);
+    addRenderInfoCount(total.indirect_command_slots, counts.indirect_command_slots,
+                       total.draw_calls_known);
 }
 
 void ALMetalDevice::setCommandTimingEnabled(bool enabled) noexcept

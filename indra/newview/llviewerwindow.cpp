@@ -713,8 +713,29 @@ public:
                 ypos += y_inc;
             }
 
-            addText(xpos, ypos, llformat("%d Render Calls (%.0f elements each)", LLRender::sDrawCalls,
-                                         LLRender::sDrawCalls ? (F64)LLRender::sDrawElements / LLRender::sDrawCalls : 0.0));
+            // These are actual native encoding emissions, independent of
+            // timing, commit and GPU completion. The accepted UI subtotal has
+            // a distinct logical unit and is not added to this native census.
+            const auto native_draws = ALMetalDevice::renderInfo();
+            if (native_draws.enabled && native_draws.draw_calls_known &&
+                native_draws.input_elements_known)
+            {
+                addText(xpos, ypos, llformat("%llu Encoded Render Calls (%.0f elements each)",
+                    static_cast<unsigned long long>(native_draws.draw_calls), native_draws.draw_calls
+                        ? F64(native_draws.input_elements) / native_draws.draw_calls : 0.0));
+            }
+            else
+            {
+                addText(xpos, ypos, "Encoded Render Calls/elements: unavailable");
+                ypos += y_inc;
+                addText(xpos, ypos, llformat("%llu direct calls; %llu indirect ranges / %llu slots",
+                    static_cast<unsigned long long>(native_draws.draw_calls),
+                    static_cast<unsigned long long>(native_draws.indirect_submissions),
+                    static_cast<unsigned long long>(native_draws.indirect_command_slots)));
+            }
+            ypos += y_inc;
+            addText(xpos, ypos, llformat("%u UI batches accepted (%llu input elements)",
+                LLRender::sDrawCalls, static_cast<unsigned long long>(LLRender::sDrawElements)));
             ypos += y_inc;
 
             addText(xpos, ypos, llformat("%d/%d Objects Active", gObjectList.getNumActiveObjects(), gObjectList.getNumObjects()));

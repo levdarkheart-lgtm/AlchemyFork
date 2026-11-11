@@ -427,7 +427,9 @@ bool ALMetalShadowIndirectCommands::execute(
         mImpl->pool->statistics.resource_declarations += resources.size();
     }
     [native executeCommandsInBuffer:prepared.slot->buffer withRange:NSMakeRange(first, count)];
-    encoder.recordPrevalidatedDraws(static_cast<std::uint32_t>(count));
+    // A range submission does not expose post-reset/GPU-modified ICB contents.
+    // Keep its range metadata distinct from exact direct draw/element totals.
+    encoder.recordIndirectSubmission(static_cast<std::uint32_t>(count));
     encoder.invalidateIndirectBufferBindings();
     ++mImpl->pool->statistics.executions;
     mImpl->pool->statistics.executed_draws += count;
@@ -518,6 +520,7 @@ bool ALMetalShadowIndirectCommands::executeDirect(
     id<MTLBuffer> __unsafe_unretained positions = nil;
     id<MTLBuffer> __unsafe_unretained constants = nil;
     std::size_t position_offset = 0, constant_offset = 0;
+    std::uint64_t input_elements = 0;
     for (std::size_t i = first; i < first + count; ++i)
     {
         const auto& draw = prepared.direct_slot->draws[i];
@@ -551,8 +554,11 @@ bool ALMetalShadowIndirectCommands::executeDirect(
             indexCount:draw.index_count indexType:draw.index_type
             indexBuffer:(__bridge id<MTLBuffer>)draw.indices
             indexBufferOffset:draw.index_offset instanceCount:1 baseVertex:0 baseInstance:0];
+        // prepareDirect bounds count by maximum_draw_count (16384), so this
+        // sum of uint32 index counts fits uint64 without a GPU readback.
+        input_elements += draw.index_count;
     }
-    encoder.recordPrevalidatedDraws(static_cast<std::uint32_t>(count));
+    encoder.recordPrevalidatedDraws(static_cast<std::uint32_t>(count), input_elements);
     encoder.invalidateIndirectBufferBindings();
     ++mImpl->pool->statistics.direct_executions;
     mImpl->pool->statistics.direct_executed_draws += count;
