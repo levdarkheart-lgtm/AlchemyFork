@@ -27300,30 +27300,31 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         CHECK(channel10(packed[1], 2) == 0u);
         CHECK((packed[1] >> 30u) == 2u);
 
-        // Snapshot cutouts take the same HDR color path but cross an RGBA8
-        // boundary so coverage is not reduced to RGB10_A2's two alpha bits.
-        // The premultiplied half-coverage source must therefore remain 128,
-        // not the ordinary target's quantized 170.
-        scene.preserve_alpha = true;
-        auto precise_cutout_output = renderer->renderDisplayPost(
-            scene, &error);
+        // Original HDR color stays RGB10_A2; the independent late copy reads
+        // raw F16 coverage, avoiding the intermediate's two alpha bits.
+        CHECK(cutout_output->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgb10a2_unorm);
+        ALMetalWorldPresentationScene cutout_presentation;
+        cutout_presentation.source = cutout_output.get();
+        cutout_presentation.cutout_coverage_texture = hdr_source->colorTexture(0);
+        auto precise_cutout_output = renderer->renderPresentationPost(
+            cutout_presentation, &error);
         INFO(error);
         REQUIRE(precise_cutout_output);
         CHECK(precise_cutout_output->descriptor().colors[0].format ==
-              ALMetalPixelFormat::rgba8_unorm);
+              ALMetalPixelFormat::bgra8_unorm);
         std::array<std::uint8_t, 8> precise_cutout_pixels{};
         REQUIRE(precise_cutout_output->colorTexture(0)->readback(
             *device, 0, 0, {}, precise_cutout_pixels.data(),
             sizeof(precise_cutout_pixels), &error));
         INFO(error);
-        CHECK(std::abs(static_cast<int>(precise_cutout_pixels[4]) -
+        CHECK(std::abs(static_cast<int>(precise_cutout_pixels[6]) -
                        static_cast<int>(std::lround(
-                           srgb(0.5f) * 0.5f * 255.f))) <= 1);
+                           channel10(packed[1], 0) * (255.f / 1023.f)))) <= 1);
         CHECK(precise_cutout_pixels[5] == 0u);
-        CHECK(precise_cutout_pixels[6] == 0u);
+        CHECK(precise_cutout_pixels[4] == 0u);
         CHECK(std::abs(static_cast<int>(precise_cutout_pixels[7]) - 128) <=
               1);
-        scene.preserve_alpha = false;
 
         // Static and adapted exposure multiply before the same Reinhard
         // branch as tonemapUtilF.glsl, then the RGB10_A2 target quantizes the

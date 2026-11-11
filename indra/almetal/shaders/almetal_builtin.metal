@@ -15500,10 +15500,15 @@ static float3 almetal_world_presentation_preview(float3 color, uint mode)
         linear, float3(0.0), float3(1.0)));
 }
 
+// Optional constant1 is used only by the original late cutout alpha copy.
+// Keep the ordinary presentation and its color math as a separate PSO.
+constant bool almetal_world_presentation_cutout_coverage [[function_constant(1)]];
+
 fragment float4 almetal_world_presentation_fragment(
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> source [[texture(0)]],
     texture2d<float> reference [[texture(1)]],
+    texture2d<float> cutout_coverage [[texture(2)]],
     sampler mirror_sampler [[sampler(0)]],
     constant ALMetalWorldPresentationConstants& constants [[buffer(0)]])
 {
@@ -15553,6 +15558,17 @@ fragment float4 almetal_world_presentation_fragment(
         const float line = 1.0 - smoothstep(
             0.0, width, abs(input.texcoord.x - seam));
         color.rgb = mix(color.rgb, float3(1.0), line * 0.75);
+    }
+    const bool copy_coverage =
+        is_function_constant_defined(almetal_world_presentation_cutout_coverage)
+            ? almetal_world_presentation_cutout_coverage : false;
+    if (copy_coverage)
+    {
+        // Original copyCutoutCoverageToAlpha runs after display, using raw
+        // Screen coverage at untransformed final UVs. Filter F16 before the
+        // output attachment performs its single alpha quantization.
+        color.a = cutout_coverage.sample(
+            mirror_sampler, input.texcoord, level(0.0)).a;
     }
     return float4(clamp(color.rgb, float3(0.0), float3(1.0)), color.a);
 }

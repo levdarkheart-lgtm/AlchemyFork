@@ -35,6 +35,8 @@ namespace
 {
     // Matches almetal_probe_shadow_single_tap in almetal_builtin.metal.
     constexpr std::uint32_t probe_shadow_function_constant = 0;
+    // Matches almetal_world_presentation_cutout_coverage in the same module.
+    constexpr std::uint32_t presentation_cutout_function_constant = 1;
 
     void setError(std::string* destination, const std::string& message)
     {
@@ -1785,12 +1787,13 @@ struct ALMetalWorldGBufferRenderer::Impl
         local_light_accumulation_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         projector_light_pipelines;
-    std::array<std::array<std::array<
-        std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>, 2>
+    std::array<std::array<
+        std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>
         display_post_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         rlv_sphere_pipelines;
-    std::unique_ptr<ALMetalRenderPipeline> presentation_post_pipeline;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        presentation_post_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> lens_flare_state_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> lens_dirt_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -3405,20 +3408,30 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         }
     }
 
-    ALMetalRenderPipelineDescriptor presentation_descriptor;
-    presentation_descriptor.library = impl->library.get();
-    presentation_descriptor.vertex_function = "almetal_resample_vertex";
-    presentation_descriptor.fragment_function =
-        "almetal_world_presentation_fragment";
-    presentation_descriptor.colors[0].format =
-        ALMetalPixelFormat::bgra8_unorm;
-    presentation_descriptor.label =
-        "Alchemy world final presentation pipeline";
-    impl->presentation_post_pipeline = ALMetalRenderPipeline::create(
-        device, presentation_descriptor, error);
-    if (!impl->presentation_post_pipeline)
+    for (std::size_t coverage = 0; coverage < 2; ++coverage)
     {
-        return nullptr;
+        ALMetalRenderPipelineDescriptor presentation_descriptor;
+        presentation_descriptor.library = impl->library.get();
+        presentation_descriptor.vertex_function = "almetal_resample_vertex";
+        presentation_descriptor.fragment_function =
+            "almetal_world_presentation_fragment";
+        presentation_descriptor.colors[0].format =
+            ALMetalPixelFormat::bgra8_unorm;
+        presentation_descriptor.label = coverage
+            ? "Alchemy world final presentation with raw cutout coverage"
+            : "Alchemy world final presentation pipeline";
+        if (coverage)
+        {
+            presentation_descriptor.fragment_bool_constants = {
+                {presentation_cutout_function_constant, true}};
+        }
+        impl->presentation_post_pipelines[coverage] =
+            ALMetalRenderPipeline::create(
+                device, presentation_descriptor, error);
+        if (!impl->presentation_post_pipelines[coverage])
+        {
+            return nullptr;
+        }
     }
 
     constexpr std::array<ALMetalPixelFormat, 2> emissive_formats{{
@@ -4030,35 +4043,28 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 {{"almetal_world_display_post_bloom_fragment",
                   "almetal_world_display_post_bloom_exposure_fragment"}},
             }};
-        for (std::size_t preserve_alpha = 0;
-             preserve_alpha < 2; ++preserve_alpha)
+        descriptor.colors[0].format = hdr
+            ? ALMetalPixelFormat::rgb10a2_unorm
+            : ALMetalPixelFormat::rgba8_unorm;
+        for (std::size_t bloom = 0;
+             bloom < display_functions.size(); ++bloom)
         {
-            descriptor.colors[0].format = hdr && !preserve_alpha
-                ? ALMetalPixelFormat::rgb10a2_unorm
-                : ALMetalPixelFormat::rgba8_unorm;
-            for (std::size_t bloom = 0;
-                 bloom < display_functions.size(); ++bloom)
+            for (std::size_t dynamic = 0;
+                 dynamic < display_functions[bloom].size(); ++dynamic)
             {
-                for (std::size_t dynamic = 0;
-                     dynamic < display_functions[bloom].size(); ++dynamic)
+                descriptor.fragment_function =
+                    display_functions[bloom][dynamic];
+                descriptor.label = std::string("Alchemy ") +
+                    (hdr ? "HDR " : "") +
+                    (bloom ? "bloom " : "") +
+                    (dynamic ? "dynamic-exposure " : "") +
+                    "world display-post pipeline";
+                impl->display_post_pipelines[hdr][bloom][dynamic] =
+                    ALMetalRenderPipeline::create(
+                        device, descriptor, error);
+                if (!impl->display_post_pipelines[hdr][bloom][dynamic])
                 {
-                    descriptor.fragment_function =
-                        display_functions[bloom][dynamic];
-                    descriptor.label = std::string("Alchemy ") +
-                        (hdr ? "HDR " : "") +
-                        (preserve_alpha ? "alpha-preserving " : "") +
-                        (bloom ? "bloom " : "") +
-                        (dynamic ? "dynamic-exposure " : "") +
-                        "world display-post pipeline";
-                    impl->display_post_pipelines
-                        [hdr][preserve_alpha][bloom][dynamic] =
-                            ALMetalRenderPipeline::create(
-                                device, descriptor, error);
-                    if (!impl->display_post_pipelines
-                            [hdr][preserve_alpha][bloom][dynamic])
-                    {
-                        return nullptr;
-                    }
+                    return nullptr;
                 }
             }
         }
@@ -10245,8 +10251,6 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         scene.lens_dirt_flare_response > 2.f ||
         (scene.lens_dirt_strength > 0.f &&
          !scene.lens_dirt_texture) ||
-        (scene.preserve_alpha &&
-         (!scene.hdr || !scene.cutout_premultiplied)) ||
         !validWorldColorGrade(scene.color_grade) ||
         (scene.bloom_texture == nullptr) !=
             (scene.bloom_strength == 0.f &&
@@ -10352,19 +10356,15 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = source.width;
     output_descriptor.height = source.height;
-    output_descriptor.colors[0].format = scene.hdr && !scene.preserve_alpha
+    output_descriptor.colors[0].format = scene.hdr
         ? ALMetalPixelFormat::rgb10a2_unorm
         : ALMetalPixelFormat::rgba8_unorm;
-    output_descriptor.colors[0].label = scene.hdr && !scene.preserve_alpha
+    output_descriptor.colors[0].label = scene.hdr
         ? "Alchemy HDR world RGB10_A2 post color"
-        : (scene.preserve_alpha
-            ? "Alchemy HDR world alpha-preserving RGBA8 post color"
-            : "Alchemy world RGBA8 post color");
-    output_descriptor.label = scene.preserve_alpha
-        ? "Alchemy native HDR cutout display-post target"
-        : (scene.hdr
-            ? "Alchemy native HDR world display-post target"
-            : "Alchemy native world display-post target");
+        : "Alchemy world RGBA8 post color";
+    output_descriptor.label = scene.hdr
+        ? "Alchemy native HDR world display-post target"
+        : "Alchemy native world display-post target";
     auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
     if (!output)
@@ -10513,7 +10513,7 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         encoder->setCullMode(ALMetalCullMode::none, error) &&
         encoder->setPipeline(
             *mImpl->display_post_pipelines
-                [scene.hdr ? 1 : 0][scene.preserve_alpha ? 1 : 0]
+                [scene.hdr ? 1 : 0]
                 [bloom][dynamic_exposure], error) &&
         encoder->setFragmentTexture(
             0, scene.source->colorTexture(0), error);
@@ -10946,6 +10946,22 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
             return nullptr;
         }
     }
+    if (scene.cutout_coverage_texture)
+    {
+        const auto& coverage = scene.cutout_coverage_texture->descriptor();
+        if (coverage.type != ALMetalTextureType::texture_2d ||
+            coverage.width != source.width || coverage.height != source.height ||
+            coverage.format != ALMetalPixelFormat::rgba16_float ||
+            coverage.array_length != 1 || coverage.mipmap_level_count != 1 ||
+            coverage.sample_count != 1 ||
+            coverage.storage == ALMetalStorageMode::memoryless ||
+            !sampleableTexture(scene.cutout_coverage_texture))
+        {
+            setError(error,
+                     "Metal world presentation cutout coverage is incompatible");
+            return nullptr;
+        }
+    }
 
     WorldPresentationConstants constants{};
     constants.lens_primary[0] = scene.lens_distortion_amount;
@@ -11041,18 +11057,25 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
         0, 0, output_width, output_height};
     const ALMetalTexture* reference = scene.reference_mode != 0
         ? scene.reference_texture : scene.source->colorTexture(0);
-    const bool encoded =
+    bool encoded =
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
-        encoder->setPipeline(*mImpl->presentation_post_pipeline, error) &&
+        encoder->setPipeline(*mImpl->presentation_post_pipelines[
+            scene.cutout_coverage_texture ? 1u : 0u], error) &&
         encoder->setFragmentTexture(
             0, scene.source->colorTexture(0), error) &&
         encoder->setFragmentTexture(1, reference, error) &&
         encoder->setFragmentSampler(
             0, mImpl->linear_mirror_sampler.get(), error) &&
         encoder->setFragmentBytes(
-            0, &constants, sizeof(constants), error) &&
+            0, &constants, sizeof(constants), error);
+    if (encoded && scene.cutout_coverage_texture)
+    {
+        encoded = encoder->setFragmentTexture(
+            2, scene.cutout_coverage_texture, error);
+    }
+    encoded = encoded &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     const bool ended = encoder->end(error);
     if (!mImpl->finishCommandBuffer(

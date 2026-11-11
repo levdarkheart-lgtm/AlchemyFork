@@ -1488,10 +1488,6 @@ struct ALMetalWorldDisplayPostScene
     float lens_dirt_flare_response = 1.f;
     ALMetalWorldColorGrade color_grade;
     bool cutout_premultiplied = false;
-    // HDR cutouts retain eight bits of coverage instead of crossing the
-    // ordinary RGB10_A2 display boundary, whose two alpha bits are not an
-    // adequate snapshot mask. HDR math and tonemapping remain unchanged.
-    bool preserve_alpha = false;
     // Non-HDR only: colorCorrectF applies output dither at this first 8-bit
     // boundary. HDR defers its 10-bit dither until final presentation.
     float dither_amount = 0.f;
@@ -1570,6 +1566,10 @@ struct ALMetalWorldPresentationScene
     std::uint32_t output_width = 0;
     std::uint32_t output_height = 0;
     float viewport_origin[2] = {0.f, 0.f};
+    // Original cutout final alpha copy: sample this same-sized raw RGBA16F
+    // coverage at untransformed final UVs, then quantize once in the output.
+    // Null preserves the ordinary post-source alpha/pane/lens behavior.
+    const ALMetalTexture* cutout_coverage_texture = nullptr;
 };
 
 // Per-frame flare visibility and temporal state. The source is the sharp
