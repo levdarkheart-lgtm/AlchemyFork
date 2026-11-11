@@ -35,13 +35,6 @@ option(
 )
 option(AL_BUILD_DOCS "Add the doc target that generates the API documentation with Doxygen" OFF)
 cmake_dependent_option(
-  AL_ENABLE_GL_TESTS
-  "Run the tests that stand up a GL context on a hidden window; off, they are built and registered disabled"
-  ON
-  "AL_BUILD_TESTS"
-  OFF
-)
-cmake_dependent_option(
   AL_BUILD_FUZZERS
   "Build the libFuzzer targets on LL's LSL compiler and VM: Clang, with address in AL_SANITIZERS; see doc/TESTING.md"
   OFF

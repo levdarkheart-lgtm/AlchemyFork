@@ -7,28 +7,10 @@
 #   deadlock:<function>
 #
 # A suppression is for code that is not ours and that the tsan triplet cannot
-# build instrumented, such as the system's GL driver under the gl tests, and
-# says above it what it hides, why it cannot be fixed here, and where it was
-# reported upstream. A race in our own code is fixed, not listed, and one in
+# build instrumented. Each says above it what it hides, why it cannot be
+# fixed here, and where it was reported upstream. A race in our own code is
+# fixed, not listed, and one in
 # a port the Alchemy registry carries is patched there.
-
-# Mesa's llvmpipe, the GL the gl tests run on in CI and on a host without a
-# GPU: libgallium, built by the distribution, uninstrumented. Its threads
-# order their work through futexes TSan cannot see, so each time Mesa
-# destroyed a mutex or condition variable an llvmpipe thread had used, TSan
-# reported a race between the two, from Mesa on both sides: 49 reports in
-# the gl tests of one run. This hides a race with Mesa in either stack.
-# called_from_lib, which would have TSan ignore what Mesa calls instead,
-# leaves it half of Mesa's locking to see: it then reports lock-order
-# inversions through the LLVM llvmpipe compiles with, and runs hang. Not a
-# bug to report: Mesa is not built for TSan.
-race:libgallium
-
-# The rest of the GPU's own driver, on a viewer run that draws with it:
-# radeonsi's threads map buffers through libdrm's amdgpu, which makes a
-# buffer's mutex on one thread and locks it on another, publishing it in
-# ways TSan cannot see. The distribution's, uninstrumented, as above.
-race:libdrm_amdgpu.so
 
 # The GTK SDL brings into a Wayland viewer through libdecor's GTK plugin,
 # which draws the window's frame where the compositor leaves it to the

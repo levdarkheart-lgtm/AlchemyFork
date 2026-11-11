@@ -54,8 +54,6 @@ jobs:
       SANITIZER: ${{ matrix.job == 'fuzz' && 'asan' || matrix.job }}
       FUZZERS: ${{ matrix.job == 'fuzz' }}
       BUILD_DIRECTORY: build-Linux-ninja-os-${{ matrix.job == 'fuzz' && 'asan' || matrix.job }}
-      # The tests that render on a hidden window, on Mesa's llvmpipe.
-      LIBGL_ALWAYS_SOFTWARE: 1
       LOGFAIL: DEBUG
       master_message_template_checkout: ${{ github.workspace }}/.master-message-template
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
@@ -125,7 +123,6 @@ jobs:
           cmake -S indra --preset "ninja-os-$SANITIZER" \
             -DVCPKG_INSTALL_OPTIONS=--clean-after-build \
             -DAL_BUILD_VIEWER:BOOL=OFF \
-            -DAL_ENABLE_GL_TESTS:BOOL=ON \
             -DAL_REQUIRE_LSCRIPT:BOOL=ON \
             -DAL_BUILD_FUZZERS:BOOL="$FUZZERS" \
             "-DAL_TEMPLATE_VERIFIER_MASTER_URL=file://$master_message_template_checkout/message_template.msg"

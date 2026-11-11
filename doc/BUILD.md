@@ -312,7 +312,6 @@ Options are defined in [`indra/CMakeLists.txt`](../indra/CMakeLists.txt). The mo
 | `AL_BUILD_VIEWER`          | ON      | Build the viewer executable                                           |
 | `AL_BUILD_APPEARANCE_UTILITY` | OFF     | Build the appearance utility                                          |
 | `AL_BUILD_TESTS`         | OFF     | Build and run unit + integration tests                                |
-| `AL_ENABLE_GL_TESTS`     | ON      | Run the tests that render on a hidden window; off, they are built and registered disabled (needs `AL_BUILD_TESTS`) |
 | `AL_REQUIRE_LSCRIPT`     | OFF     | Fail to configure when LL's LSL compiler (`indra/lscript`, a test-only reference needing bison 3, flex and Python with `yaml` and `llsd`) cannot be built, rather than leave it out; CI's test rows set it (needs `AL_BUILD_TESTS`) |
 | `AL_BUILD_FUZZERS`       | OFF     | Build the libFuzzer drivers on LL's LSL compiler and Script Studio's analysis: Clang with `address` in `AL_SANITIZERS`; see [`TESTING.md`](TESTING.md#fuzzing) (needs `AL_BUILD_TESTS`) |
 | `AL_BUILD_DOCS`          | OFF     | Add the `doc` target (API documentation with Doxygen)                 |
@@ -430,7 +429,7 @@ Four tests drive a Python peer (`llleap`, `llprocess`, `llsdserialize`, `llcoreh
 
 LL's LSL compiler (`indra/lscript`), restored as a reference for the script tests, is built only with tests on. Its lexer, grammar, newer event nodes and library table are written at build time by lsl-definitions' own generator, which needs Python with `PyYAML` and `llsd` (both in `requirements.txt`), and then put through `bison`, 3.0 or later, and `flex`. macOS's own bison is 2.3: `brew install bison flex`, which Homebrew keeps off the path and configure looks for where it puts them. Where any of them is missing, configure leaves the library out and the configuration report says what it needs. Nothing else in the build runs Python.
 
-The `llrender` suites render on a hidden SDL window with the platform's own GL -- WGL on Windows, EGL on Linux, and where Linux has no display SDL's offscreen driver over Mesa (set `LIBGL_ALWAYS_SOFTWARE=1` for llvmpipe on a machine with no GPU). A host with no GL 4.1 to give, such as a CI runner without a graphics driver, configures with `-DAL_ENABLE_GL_TESTS=OFF`: those suites still build, and CTest reports them as not run rather than failed. They carry the label `gl`, so `ctest -LE gl` skips them for one run.
+Renderer tests use native Metal resources offscreen on Apple Silicon, without an OpenGL context or a separate GL test option. The native hidden-window lifecycle fixture is compile-only and is not part of routine test execution.
 
 Build, then run with CTest:
 

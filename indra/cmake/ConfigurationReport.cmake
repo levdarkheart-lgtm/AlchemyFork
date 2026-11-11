@@ -20,7 +20,6 @@ set(
   AL_BUILD_VIEWER
   AL_BUILD_APPEARANCE_UTILITY
   AL_BUILD_TESTS
-  AL_ENABLE_GL_TESTS
   AL_TEST_PER_CASE
   AL_BUILD_DOCS
   AL_VCPKG_INSTALL
@@ -348,9 +347,6 @@ function(al_configuration_report)
   if(AL_BUILD_TESTS)
     _al_count_tests("${INDRA_SOURCE_DIR}" test_count)
     set(tests "on, ${test_count} registered")
-    if(NOT AL_ENABLE_GL_TESTS)
-      string(APPEND tests "; the GL suites disabled")
-    endif()
     if(AL_TEST_PER_CASE)
       string(APPEND tests "; Catch2 test cases one entry each, found when ctest runs")
     endif()

@@ -81,7 +81,7 @@ The **state guard** compares a set of process facts after every case with what t
   - **Each library's:** registered in an object library, `<library>_test_checks`, which a binary takes in `SUPPORT`. llcommon's watch the live thread pools and work queues and LLError's default level. llui's watch focus, capture, the floater view and the colour table, and also clear what a frame leaves (popovers, the mortician).
 - **Put back what you change, by RAII,** so a failed `REQUIRE` puts it back too.
 - **Process-lifetime state a case is allowed to make**, such as a cache filled once or a worker thread made once, is accepted with `ll_test::StateGuard::accept()` as it is made.
-- **Process-wide fixtures have one owner and an explicit end.** The headless UI (`ll_test::HeadlessUI::get()`) and the shared GL context (`ll_test::sharedHeadlessGL()`) are one per process. Each ends through `ll_test::Teardown::add`, run by the main while APR and the log are still up, and never in static destruction.
+- **Process-wide fixtures have one owner and an explicit end.** The headless UI (`ll_test::HeadlessUI::get()`) and the native UI session (`ll_test::uiMetal()`) are one per process. Each ends through `ll_test::Teardown::add`, run by the main while APR and the log are still up, and never in static destruction.
 
 ### Other harness pieces
 
@@ -96,7 +96,7 @@ The **state guard** compares a set of process facts after every case with what t
 al_add_test_binary(<name> PROJECT <project> SOURCES <test file>...
                    [UNIT <file>...] [LIBRARIES <target>...] [SUPPORT <object library>...]
                    [INCLUDES <dir>...] [DEFINES <define>...] [ENVIRONMENT <VAR=value>...]
-                   [GL] [PYTHON] [ISA_TIER <tier>] [RESOURCE_LOCK <name>...] [LAUNCHER <command>...]
+                   [PYTHON] [ISA_TIER <tier>] [RESOURCE_LOCK <name>...] [LAUNCHER <command>...]
                    [RERUN <run> RERUN_SOURCES <file>... RERUN_ENVIRONMENT <VAR=value>...]
                    [BENCH_SOURCES <file>...] [COMBINED])
 ```
@@ -105,7 +105,7 @@ A binary is a link set. Its files share their libraries, their fakes and their d
 
 - **`UNIT`** compiles the library's own files into the binary in place of linking the library, for a test that stubs what they call. Such a test is a binary of its own.
 - **`SUPPORT`** names object libraries linked whole: fakes and checks. A case or listener in a static archive would be dropped by the linker.
-- **`GL`** labels the entries `gl`, registers them disabled with `-DAL_ENABLE_GL_TESTS=OFF`, and holds Mesa's llvmpipe to AVX2 (`GALLIUM_OVERRIDE_CPU_CAPS=avx`): llvmpipe compiles the shaders for the host's CPU, and LLVM 21's AVX-512 code for AMD's Zen 4 leaves a NaN in `reflectionprobe_gl`'s screen-space reflection. A GL binary run by hand on llvmpipe wants the same. **`PYTHON`** gives them the interpreter, and registers them disabled without one that has `llsd`.
+- **`PYTHON`** gives entries the interpreter, and registers them disabled without one that has `llsd`.
 - **`ISA_TIER`** builds the binary at an x86-64 tier, and it skips on a host below it.
 - **`RERUN`** runs some files a second time with more environment. alscript's SLua tests run again under Luau's new solver, as `alscript_tests_newsolver/<file stem>`, with `AL_TEST_LUAU_SOLVER=new`.
 - **`<binary>/stray_cases`** fails when a case belongs to no file's entry, such as one written in a header.
@@ -154,10 +154,10 @@ ctest --test-dir build-Linux-ninja-os-asan -C RelWithDebInfo -LE benchmark --out
 - **A report fails its entry,** whatever the process's exit code. UBSan reports and carries on, and the process exits 0. Every sanitizer ends a report with a `SUMMARY:` line, which the entry fails on. A child process's report counts where its output is the entry's.
 - **Options:** each entry puts the build's `ASAN_OPTIONS`, `UBSAN_OPTIONS` or `TSAN_OPTIONS` before what the shell holds, so the shell's win: `ASAN_OPTIONS=detect_leaks=0 ctest ...` leaves leaks out. Timeouts are three times as long under ASan, ten times under ThreadSanitizer.
 - **Coroutines:** Boost.Context switches the coroutines' stacks, and tells ASan and ThreadSanitizer of each switch only when built for `ucontext` with `BOOST_USE_ASAN` or `BOOST_USE_TSAN`. The `-asan` and `-tsan` triplets build their ports so ([`alchemy-sanitizer.cmake`](../indra/cmake/triplets/alchemy-sanitizer.cmake)), and `llcoros.cpp` will not compile against any other. ASan still warns, once a process, that it does not fully support `swapcontext`; with the switches told it, the warning is expected.
-- **Leaks:** LeakSanitizer, ASan's own, looks for leaks as each process ends, and a leak fails the entry as any report does. What a library keeps for the process in its globals is not a leak, so the gl fixture (`llheadlessgl_fixture.h`) keeps every library loaded until the end (`LL::pinLoadedLibraries`, [`alsanitizer.h`](../indra/llcommon/alsanitizer.h)): SDL unloads the GL driver with its last window, and an unloaded library's globals hold nothing.
+- **Leaks:** LeakSanitizer, ASan's own, looks for leaks as each process ends, and a leak fails the entry as any report does. What a library keeps for the process in its globals is not a leak. The viewer's sanitizer diagnostics keep loaded libraries available until the end (`LL::pinLoadedLibraries`, [`alsanitizer.h`](../indra/llcommon/alsanitizer.h)).
 - **Left out:** the SIMD assembly probe (`alsimd_asm_probe`), whose listing the sanitizers' checks fill past every ceiling. The harness's own entries whose case crashes on purpose (`CRASHES` in [`indra/test/CMakeLists.txt`](../indra/test/CMakeLists.txt)) leave the crash to Catch2's handler, whose replay they check: there the sanitizers do not take `SIGSEGV`, and ThreadSanitizer does not report the handler's allocations. Those options come after the shell's.
 - **Turned off:** Tracy, which replaces `operator new` and `delete`, Sentry, whose handler takes the signals a sanitizer reports through, WebRTC, and the CEF plugin: CEF's prebuilt Chromium frees through glibc's own `__libc_free` what glibc allocated through the sanitizer's `malloc`, and its process falls over at start.
-- **Suppressions** are in [`indra/test/sanitizers/`](../indra/test/sanitizers/), for code that is not ours: a port's headers, the system's GL driver. Each says what it hides and why it cannot be fixed here. A report in our own code is fixed, not suppressed, and one in a port the Alchemy registry carries is patched there, unless it is no fault, as SDL's PipeWire lock order is not. LL's LSL compiler in `indra/lscript` is the exception: it is a reference, never shipped, and may be suppressed where a fix would change what it does.
+- **Suppressions** are in [`indra/test/sanitizers/`](../indra/test/sanitizers/), for code that is not ours: a port's headers or a system library. Each says what it hides and why it cannot be fixed here. A report in our own code is fixed, not suppressed, and one in a port the Alchemy registry carries is patched there, unless it is no fault, as SDL's PipeWire lock order is not. LL's LSL compiler in `indra/lscript` is the exception: it is a reference, never shipped, and may be suppressed where a fix would change what it does.
 - **The viewer** goes from start to a world, logs out and shuts down with no report under either, headless on software GL and in a window on the GPU's own driver. A sanitized tree builds it with `-DAL_BUILD_VIEWER=ON`, and it runs from the staged tree, in a profile of its own, quitting itself after a time (`QuitAfterSeconds`); give it the options and suppressions the tests have:
 
   ```
@@ -170,7 +170,7 @@ ctest --test-dir build-Linux-ninja-os-asan -C RelWithDebInfo -LE benchmark --out
       bin/alchemy-bin --quitafter 30
   ```
 
-  It reaches the login screen in seconds under ASan, a minute or two under ThreadSanitizer, whose run wants `TSAN_OPTIONS=suppressions=...tsan.supp` and a longer `--quitafter`. Like the gl fixture, a viewer LeakSanitizer checks keeps its libraries loaded once its window is made. UBSan shares ASan's runtime, and a `log_path` in `UBSAN_OPTIONS` takes ASan's and LeakSanitizer's reports too.
+  It reaches the login screen in seconds under ASan, a minute or two under ThreadSanitizer, whose run wants `TSAN_OPTIONS=suppressions=...tsan.supp` and a longer `--quitafter`. A viewer LeakSanitizer checks keeps its libraries loaded once its window is made. UBSan shares ASan's runtime, and a `log_path` in `UBSAN_OPTIONS` takes ASan's and LeakSanitizer's reports too.
 
   - **Into a world:** the run logs in with the login a profile remembers. Copy `bin_conf.dat` into the run's `user_settings` from a profile that logged in with its password and its multi-factor token remembered; its key is the machine's, so the copy opens on that machine only. `--autologin` alone stops at the login screen, which RLVa always shows, so a LEAP plugin presses Log In through the panel's event API, given as `--leap "bash click-login.sh $ALCHEMYNEXT_USER_DIR/logs/Alchemy.log"`:
 

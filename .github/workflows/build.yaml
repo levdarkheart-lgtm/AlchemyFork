@@ -504,12 +504,6 @@ jobs:
       # A test row has LL's LSL compiler (indra/lscript), whose tests hold
       # the script tools to it, or fails to configure saying what it lacks,
       # rather than leaving the library out with a line in the report.
-      # The tests that render on a hidden window need a GL 4.1 context. The
-      # Linux runner gets one from Mesa's llvmpipe through SDL's offscreen
-      # driver; the Windows runner has no GPU driver, and macOS is unproven,
-      # so they build those suites and register them disabled.
-      AL_ENABLE_GL_TESTS: ${{ startsWith(matrix.runner, 'ubuntu-') }}
-      LIBGL_ALWAYS_SOFTWARE: 1
       # Build Config
       BUILD_ARCH: ${{ matrix.arch }}
       BUILD_CONFIG: ${{ matrix.configuration }}
@@ -628,7 +622,6 @@ jobs:
             -DAL_BUILD_APPEARANCE_UTILITY:BOOL="$AL_BUILD_APPEARANCE_UTILITY" \
             -DAL_BUILD_TESTS:BOOL="$BUILD_TESTS" \
             -DAL_REQUIRE_LSCRIPT:BOOL="$BUILD_TESTS" \
-            -DAL_ENABLE_GL_TESTS:BOOL="$AL_ENABLE_GL_TESTS" \
             -DAL_BUILD_PACKAGE:BOOL=ON \
             -DAL_USE_VELOPACK:BOOL=ON \
             -DAL_USE_LTO:BOOL="$AL_USE_LTO" \

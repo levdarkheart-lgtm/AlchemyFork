@@ -8,17 +8,6 @@
 # -- and says above it what it hides, why it cannot be fixed here, and where
 # it was reported upstream. A leak in our own code is fixed, not listed, and
 # one in a port the Alchemy registry carries is patched there.
-#
-# The gl tests keep every library loaded until the process ends
-# (llheadlessgl_fixture.h): an unloaded driver's globals hold nothing, and
-# all it keeps for the process would read as leaked. Mesa's llvmpipe, which
-# the tests draw with, leaks nothing then.
-
-# NVIDIA's EGL driver, on a host that has it: libglvnd loads every vendor's
-# EGL library it finds, so it is loaded beside Mesa even where the tests draw
-# on llvmpipe, and its initialisation (NvGlEglApiInit) keeps blocks nothing
-# holds once it is done. Closed source and the system's; not on CI's runners.
-leak:libnvidia-eglcore
 
 # fontconfig, vcpkg's port: a pattern holds its array of elements as an
 # offset from itself (elts_offset, fcint.h), not a pointer, so LeakSanitizer,

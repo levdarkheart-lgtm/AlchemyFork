@@ -77,7 +77,7 @@ endif()
 # al_add_test_binary(<name> PROJECT <project> SOURCES <test file>... [UNIT <file>...]
 #                    [LIBRARIES <target>...] [SUPPORT <object library>...]
 #                    [INCLUDES <dir>...] [DEFINES <define>...] [ENVIRONMENT <VAR=value>...]
-#                    [GL] [PYTHON] [ISA_TIER <tier>] [RESOURCE_LOCK <name>...] [LAUNCHER <command>...]
+#                    [PYTHON] [ISA_TIER <tier>] [RESOURCE_LOCK <name>...] [LAUNCHER <command>...]
 #                    [RERUN <run> RERUN_SOURCES <test file>... RERUN_ENVIRONMENT <VAR=value>...]
 #                    [BENCH_SOURCES <benchmark file>...] [COMBINED])
 #
@@ -117,11 +117,8 @@ endif()
 # each test case is an entry of its own instead, found when ctest runs, with
 # the environment and labels a file's entry would have.
 #
-# ENVIRONMENT sets variables for the runs, VAR=value each. GL, PYTHON and
-# ISA_TIER mean what they mean to al_add_test: a GL binary is labelled gl,
-# registered disabled without AL_ENABLE_GL_TESTS and run with Mesa's llvmpipe
-# held to AVX2, a PYTHON binary is given the interpreter and registered
-# disabled without one that has llsd, and an
+# ENVIRONMENT sets variables for the runs, VAR=value each. A PYTHON binary
+# is given the interpreter and registered disabled without one that has llsd. An
 # ISA_TIER binary is built at that x86-64 tier, named <name>_<tier>, labelled
 # isa, and skips on a host below it -- or below the tree's own tier, since it
 # links the tree's libraries, built at that one. RESOURCE_LOCK names what the binary's
@@ -150,7 +147,7 @@ function(al_add_test_binary name)
   cmake_parse_arguments(
     PARSE_ARGV 1
     arg
-    "GL;PYTHON;COMBINED"
+    "PYTHON;COMBINED"
     "PROJECT;ISA_TIER;RERUN"
     "SOURCES;UNIT;LIBRARIES;SUPPORT;INCLUDES;DEFINES;ENVIRONMENT;RESOURCE_LOCK;LAUNCHER;RERUN_SOURCES;RERUN_ENVIRONMENT;BENCH_SOURCES"
   )
@@ -165,13 +162,6 @@ function(al_add_test_binary name)
       FATAL_ERROR
       "al_add_test_binary(${name}): unexpected arguments: ${arg_UNPARSED_ARGUMENTS}"
     )
-  endif()
-  # The Apple Silicon product has no OpenGL context or linked GL runtime.
-  # Legacy GL suites are migration coverage for other platforms and must not
-  # keep a test-only fallback backend alive in a Darwin build.
-  if(arg_GL AND DARWIN)
-    message(STATUS "Skipping legacy GL test target ${name} for Metal-only Darwin")
-    return()
   endif()
   if(arg_RERUN_SOURCES AND NOT arg_RERUN)
     message(FATAL_ERROR "al_add_test_binary(${name}): RERUN_SOURCES needs RERUN to name the run")
@@ -285,20 +275,6 @@ function(al_add_test_binary name)
     else()
       set(disabled TRUE)
     endif()
-  endif()
-  if(arg_GL)
-    list(APPEND labels gl)
-    if(NOT AL_ENABLE_GL_TESTS)
-      set(disabled TRUE)
-    endif()
-    # Mesa's llvmpipe, the Linux runners' GL, compiles the shaders for the
-    # host's CPU, and LLVM 21's AVX-512 code for AMD's Zen 4 (znver4) leaves
-    # a NaN in the green of reflectionprobe_gl's screen-space reflection. Its
-    # AVX2 code for the same CPU does not, nor its code for Zen 3 or for
-    # Intel's AVX-512 CPUs. Clearing AVX-512 from what Mesa sees of the CPU
-    # holds llvmpipe to AVX2 on every host; a driver that compiles for a GPU
-    # draws nothing differently.
-    list(APPEND environment "GALLIUM_OVERRIDE_CPU_CAPS=avx")
   endif()
   math(EXPR timeout "${timeout} * ${AL_TEST_TIMEOUT_SCALE}")
 
@@ -434,8 +410,7 @@ function(al_add_test_binary name)
     # leaves the hidden cases out, as the files' entries do, and one that
     # matches nothing exits 2. The ISA gate is not asked: nothing runs, and a
     # listing already needs the binary to start on any host. Disabled where
-    # the files' entries are: a run starts its checks whatever it matches,
-    # and a GL binary's make the context the host has none of.
+    # the files' entries are: a run starts its checks whatever it matches.
     math(EXPR stray_timeout "60 * ${AL_TEST_TIMEOUT_SCALE}")
     set(strays)
     foreach(stem IN LISTS stems)
