@@ -19653,3 +19653,61 @@ fragment ALMetalRetainedBackgroundScaleOutput almetal_retained_background_scale_
     output.depth = world_depth.sample(point_clamp, input.texcoord, level(0.0)).r;
     return output;
 }
+
+// Original 1eb44 interface/twotexturecompareF + onetexturefilterF. The
+// sampled window bytes and 4x4 Bayer values are deliberately not sRGB-decoded.
+struct ALMetalSceneMonitorConstants
+{
+    uint crop_width, crop_height;
+    float tolerance;
+    uint padding;
+};
+
+kernel void almetal_scene_monitor_difference(
+    constant ALMetalSceneMonitorConstants& config [[buffer(0)]],
+    texture2d<float, access::read> previous [[texture(0)]],
+    texture2d<float, access::read> current [[texture(1)]],
+    texture2d<float, access::write> difference [[texture(2)]],
+    uint2 pixel [[thread_position_in_grid]])
+{
+    // The original capture cropped (0,0,width,height) from the window; the
+    // comparison then sampled those captures with PointClamp into its target.
+    const uint2 size(difference.get_width(), difference.get_height());
+    const uint2 crop(config.crop_width, config.crop_height);
+    const uint2 source = min(uint2((float2(pixel) + 0.5f) * float2(crop) /
+                                  float2(size)), crop - 1u);
+    // Both original captures were RGB8. Recover their exact stored bytes
+    // before subtraction: normalized-format conversion and a fast reciprocal
+    // expression can differ by an ulp at an otherwise equal Bayer cutoff.
+    const uint3 previous_byte = uint3(round(previous.read(source).rgb * 255.f));
+    const uint3 current_byte = uint3(round(current.read(source).rgb * 255.f));
+    const uint3 delta = max(previous_byte, current_byte) - min(previous_byte, current_byte);
+    constexpr uint bayer[16] = {
+        1, 9, 3, 11, 13, 5, 15, 7, 4, 12, 2, 10, 16, 8, 14, 6};
+    // Raw BayerByte/255 * (255/17) compared with ByteDelta/255 is exactly
+    // ByteDelta < BayerByte*15. Keep strict less-than without an epsilon.
+    const uint threshold = bayer[(pixel.y & 3u) * 4u + (pixel.x & 3u)] * 15u;
+    const float3 filtered = select(float3(delta) / 255.f, float3(0.f), delta < threshold);
+    // Original RGB8 captures sample alpha one, so their alpha difference is zero.
+    difference.write(float4(filtered, 0.f), pixel);
+}
+
+kernel void almetal_scene_monitor_filter(
+    constant ALMetalSceneMonitorConstants& config [[buffer(0)]],
+    device atomic_uint& changed_samples [[buffer(1)]],
+    texture2d<float> difference [[texture(0)]],
+    texture2d<float, access::write> filtered [[texture(1)]],
+    sampler bilinear_mirror [[sampler(0)]],
+    uint2 pixel [[thread_position_in_grid]],
+    uint lane [[thread_index_in_simdgroup]])
+{
+    const float2 uv = (float2(pixel) + 0.5f) /
+        float2(filtered.get_width(), filtered.get_height());
+    const float3 delta = difference.sample(bilinear_mirror, uv, level(0.f)).rgb;
+    const bool changed = delta.r + delta.g + delta.b >= config.tolerance;
+    // Discarded pixels are transparent in the view's ordinary native UI draw.
+    filtered.write(changed ? float4(delta, 0.95f) : float4(0.f), pixel);
+    // Count pixels rather than raster samples; do not invent a second face.
+    const uint count = simd_sum(uint(changed));
+    if (lane == 0u) atomic_fetch_add_explicit(&changed_samples, count, memory_order_relaxed);
+}
