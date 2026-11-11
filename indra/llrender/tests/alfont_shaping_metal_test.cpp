@@ -1,7 +1,7 @@
 /**
- * @file alfontshaping_gl_test.cpp
+ * @file alfont_shaping_metal_test.cpp
  * @brief Shaping that rasterizes: the monospace kerning path renders
- *        glyphs through the atlas, so it needs a GL context.
+ *        glyphs through the native atlas.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -31,7 +31,7 @@
 #include "../llfontregistry.h"  // EFontHinting full definition
 
 #include "llfonttest_helpers.h"
-#include "llheadlessgl_fixture.h"
+#include "llfontmetal_fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -45,16 +45,7 @@ namespace
 {
     using namespace ll_test;
 
-    // GL-backed group: monospace shaping ends up rendering glyphs through
-    // getGlyphInfoByIndex → renderAndCreateGlyph → atlas → gGL.bind on
-    // the kerning path (the GPOS case below). Wrapped in a separate fixture that
-    // pulls in the headless GL context so the rasterizer can
-    // satisfy the bind.
-    struct alfontshaping_gl_data
-    {
-        std::unique_ptr<ll_test::HeadlessGL> gl = std::make_unique<ll_test::HeadlessGL>();
-        ll_test::FontStateScope font_scope;
-    };
+    struct alfontshaping_native_data : NativeFont {};
 
 
     // Strict-monospace (ligatures off): shape "AB" through DejaVuSansMono.
@@ -63,7 +54,7 @@ namespace
     // produces one glyph per codepoint with bit-exact FT mXAdvance and
     // zero positioning offsets — same contract the retired bypass
     // enforced. Pins the cell-alignment invariant.
-    TEST_CASE_METHOD(alfontshaping_gl_data, "ALFontShapingGL: strict monospace shapes AB to equal FT cell advances and no offsets", "[ALFontShapingGL]")
+    TEST_CASE_METHOD(alfontshaping_native_data, "ALFontShapingNative: strict monospace shapes AB to equal FT cell advances and no offsets", "[ALFontShapingNative][native-font-ui-admission]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSansMono.woff2";
         if (!fileExists(path))
@@ -95,7 +86,7 @@ namespace
     // Routes through HB with the kFixedWidthLigaturesOk feature plan
     // (kern off, ligatures allowed). Cell alignment invariant on the
     // pre-ligation columns still holds.
-    TEST_CASE_METHOD(alfontshaping_gl_data, "ALFontShapingGL: monospace with ligatures allowed keeps AV on equal cell advances", "[ALFontShapingGL]")
+    TEST_CASE_METHOD(alfontshaping_native_data, "ALFontShapingNative: monospace with ligatures allowed keeps AV on equal cell advances", "[ALFontShapingNative][native-font-ui-admission]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSansMono.woff2";
         if (!fileExists(path))
@@ -121,7 +112,7 @@ namespace
     // advances. A regression that disabled GPOS unconditionally would
     // make these equal for every pair. DejaVuSans's GPOS kerns several
     // of them (AV among them), so none kerning fails the case.
-    TEST_CASE_METHOD(alfontshaping_gl_data, "ALFontShapingGL: GPOS kerning reaches HB shaping for some Latin pair in DejaVuSans", "[ALFontShapingGL]")
+    TEST_CASE_METHOD(alfontshaping_native_data, "ALFontShapingNative: GPOS kerning reaches HB shaping for some Latin pair in DejaVuSans", "[ALFontShapingNative][native-font-ui-admission]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
         if (!fileExists(path))

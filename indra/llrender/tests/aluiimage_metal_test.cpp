@@ -1,5 +1,5 @@
 /**
- * @file lluiimage_test.cpp
+ * @file aluiimage_metal_test.cpp
  * @brief LLUIImage's display-list cache holds an image's shape, not its place.
  *
  * An image is drawn at many positions -- every icon in a list, every
@@ -30,9 +30,7 @@
 
 #include "linden_common.h"
 
-#include "../llglheaders.h"
-
-#include "llheadlessgl_fixture.h"
+#include "llfontmetal_fixture.h"
 
 #include "../llgltexture.h"
 #include "../lluiimage.h"
@@ -42,6 +40,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstring>
+#include <array>
+#include <algorithm>
+#include <initializer_list>
 #include <vector>
 
 namespace ll_test
@@ -54,9 +55,10 @@ namespace ll_test
             return image.mDisplayLists.size();
         }
 
-        // Every vertex position the image's recordings hold, read back from GL:
-        // the upload streams straight to the buffer and keeps no copy on this
-        // side, so the buffer itself is the only place the vertices are.
+        static bool collectionEnabled() { return LLUIImage::sEnableDisplayListsCollection; }
+
+        // Read the actual published native vertex allocation, preserving the
+        // original buffer-readback invariant without a driver binding query.
         static std::vector<LLVector3> positions(const LLUIImage& image)
         {
             std::vector<LLVector3> out;
@@ -71,10 +73,13 @@ namespace ll_test
                     }
                     data.mVB->setBuffer();
                     std::vector<F32> floats(static_cast<size_t>(data.mCount) * stride / sizeof(F32));
-                    glGetBufferSubData(GL_ARRAY_BUFFER,
-                                       data.mVB->getOffset(LLVertexBuffer::TYPE_VERTEX),
-                                       data.mCount * stride,
-                                       floats.data());
+                    REQUIRE(data.mVB->hasPublishedMetalVertexBuffer());
+                    const ALMetalBuffer* buffer = data.mVB->getMetalVertexBuffer();
+                    REQUIRE(buffer);
+                    std::string error;
+                    REQUIRE(buffer->read(data.mVB->getOffset(LLVertexBuffer::TYPE_VERTEX),
+                                         floats.data(), data.mCount * stride, &error));
+                    INFO(error);
                     for (U32 i = 0; i < data.mCount; ++i)
                     {
                         const F32* v = floats.data() + static_cast<size_t>(i) * stride / sizeof(F32);
@@ -90,34 +95,56 @@ namespace ll_test
 
 namespace
 {
-    struct lluiimage_data
+    struct lluiimage_data : ll_test::NativeFontUI
     {
-        // One context for the binary: standing it up is the expensive part,
-        // and LLImageGL's class state does not survive a re-init.
-        static ll_test::HeadlessGL& gl()
-        {
-            return ll_test::sharedHeadlessGL();
-        }
-
+        bool previous_collection = ll_test::UIImageProbe::collectionEnabled();
+        bool ui_matrix = false;
         lluiimage_data()
         {
-            gl();
+            initRenderer();
+            REQUIRE(gGL.beginMetalUITextureCapture(ALMetalPixelFormat::rgba8_unorm,
+                &gUIProgram, nullptr, nullptr, nullptr,
+                LLRender::EMetalUICaptureMode::NATIVE_AUTHORITATIVE));
+            gGL.pushUIMatrix(); gGL.loadUIIdentity(); ui_matrix = true;
             LLUIImage::enableDisplayListsCollection(true);
         }
-
         ~lluiimage_data()
         {
-            // Drops every recording, and the references the cleanup list holds.
+            if (gGL.hasMetalUITextureCapture()) gGL.endMetalUITextureCapture(false);
             LLUIImage::cleanupClass();
+            LLUIImage::enableDisplayListsCollection(previous_collection);
+            if (ui_matrix) gGL.popUIMatrix();
         }
-
         static LLPointer<LLGLTexture> makeTexture(U16 width, U16 height)
         {
             LLPointer<LLImageRaw> raw = new LLImageRaw(width, height, 4);
             std::memset(raw->getData(), 0xFF, static_cast<size_t>(width) * height * 4);
-            LLPointer<LLGLTexture> texture = new LLGLTexture(raw, /*usemipmaps=*/false);
-            texture->createGLTexture(0, raw);
+            LLPointer<LLGLTexture> texture = new LLGLTexture(/*usemipmaps=*/false);
+            REQUIRE(texture->createMetalTexture(0, raw));
+            REQUIRE(texture->getGLTexture()->getMetalTexture());
+            CHECK_FALSE(texture->hasGLTexture());
             return texture;
+        }
+        struct Rectangle
+        {
+            S32 x, y, width, height;
+            std::array<U8, 4> color{255,255,255,255};
+        };
+        void requirePixels(std::initializer_list<Rectangle> rectangles)
+        {
+            std::string error;
+            LLRender::EMetalUICaptureEndState state{};
+            auto output = gGL.endMetalUITextureCapture(true, false, nullptr, &error, &state);
+            INFO(error); REQUIRE(state == LLRender::EMetalUICaptureEndState::COMPLETE);
+            REQUIRE(output);
+            std::vector<U8> actual(WIDTH * HEIGHT * 4), expected(actual.size(), 0);
+            REQUIRE(output->readback(*device, 0, 0, {}, actual.data(), WIDTH * 4, &error));
+            for (const auto& r : rectangles)
+                for (S32 y = r.y; y < r.y + r.height; ++y)
+                    for (S32 x = r.x; x < r.x + r.width; ++x)
+                        std::copy(r.color.begin(), r.color.end(),
+                            expected.begin() + (static_cast<std::size_t>(y) * WIDTH + x) * 4);
+            CHECK(actual == expected);
         }
 
         // A recording's bounds are the image's size, from the origin.
@@ -145,7 +172,7 @@ namespace
 
     // One recording serves every position the image is drawn at. A floater
     // being dragged is this test run at frame rate.
-    TEST_CASE_METHOD(lluiimage_data, "LLUIImage: one recording serves every position but not every size or colour", "[LLUIImage]")
+    TEST_CASE_METHOD(lluiimage_data, "LLUIImage: one recording serves every position but not every size or colour", "[LLUIImage][native-font-ui-admission]")
     {
         LLPointer<LLGLTexture> texture = makeTexture(4, 4);
         LLPointer<LLUIImage> image = new LLUIImage("probe", texture.get());
@@ -172,12 +199,14 @@ namespace
         image->draw(10, 10, 8, 8, LLColor4::red);
         UNSCOPED_INFO("another colour is another recording");
         CHECK(ll_test::UIImageProbe::recordings(*image) == (size_t)3);
+        requirePixels({{10,10,16,8}, {100,50,8,8}, {40,50,8,8},
+                       {10,10,8,8,{255,0,0,255}}});
     }
 
     // The recording holds the image's shape and nothing of where it was made:
     // drawn under a UI offset and away from the origin, its vertices still
     // span exactly [0, width] x [0, height].
-    TEST_CASE_METHOD(lluiimage_data, "LLUIImage: a plain image's recording spans its size from the origin", "[LLUIImage]")
+    TEST_CASE_METHOD(lluiimage_data, "LLUIImage: a plain image's recording spans its size from the origin", "[LLUIImage][native-font-ui-admission]")
     {
         LLPointer<LLGLTexture> texture = makeTexture(4, 4);
         LLPointer<LLUIImage> image = new LLUIImage("probe", texture.get());
@@ -191,11 +220,12 @@ namespace
         UNSCOPED_INFO("a plain image is one quad");
         REQUIRE(verts.size() == (size_t)6);
         require_extent(verts, 8.f, 6.f);
+        requirePixels({{40,50,8,6}});
     }
 
     // The nine-slice path works out its own placement from the UI offset, so
     // it is checked apart from the plain quad.
-    TEST_CASE_METHOD(lluiimage_data, "LLUIImage: a nine-slice image's recording spans its size from the origin", "[LLUIImage]")
+    TEST_CASE_METHOD(lluiimage_data, "LLUIImage: a nine-slice image's recording spans its size from the origin", "[LLUIImage][native-font-ui-admission]")
     {
         LLPointer<LLGLTexture> texture = makeTexture(16, 16);
         LLPointer<LLUIImage> image = new LLUIImage("probe", texture.get());
@@ -210,5 +240,6 @@ namespace
         UNSCOPED_INFO("nine slices are eighteen triangles");
         REQUIRE(verts.size() == (size_t)54);
         require_extent(verts, 32.f, 24.f);
+        requirePixels({{40,50,32,24}});
     }
 }

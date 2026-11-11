@@ -1,5 +1,5 @@
 /**
- * @file llfontregistry_gl_test.cpp
+ * @file alfont_registry_metal_test.cpp
  * @brief LLFontRegistry paths that allocate: createFont making an atlas,
  *        getFont caching the LLFontGL, destroyGL releasing textures.
  *
@@ -35,7 +35,7 @@
 #include "llsd.h"
 
 #include "llfonttest_helpers.h"
-#include "llheadlessgl_fixture.h"
+#include "llfontmetal_fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -48,21 +48,17 @@ bool init_from_xml(LLFontRegistry* registry, LLPointer<LLXMLNode> node);
 namespace ll_test
 {
 
-    // A fixture that owns a local LLFontRegistry with
-    // create_gl_textures=true over the GL context llheadlessgl_fixture.h
-    // stands up. The pure-CPU suite in llfontregistry_test.cpp keeps its
-    // own create_gl_textures=false fixture and pays for no GL. Both keep
-    // their names and namespace, outside the anonymous one:
-    // llfontregistry.h friends them by name.
+    // Keep this friend-mediated fixture's historic spelling: LLFontRegistry
+    // grants it access to parse/reload state. Storage and the font manager are native.
 
     namespace
     {
         // Smallest fonts.xml fragment that resolves an "Inter" descriptor
         // at size "Small" to InterVariable.woff2 — enough to reach
-        // createFont's GL-allocating path. No <use> / inherit / overrides
-        // so the GL fixture's loadXml can skip resolveFontReferences (a
+        // createFont's native atlas path. No <use> / inherit / overrides
+        // so the native fixture's loadXml can skip resolveFontReferences (a
         // private method that the existing pure-CPU friend covers but
-        // the GL fixture doesn't).
+        // this fixture doesn't).
         constexpr const char* kInterXml =
             "<fonts>"
             "  <font_size name='Small' size='12.0'/>"
@@ -72,11 +68,23 @@ namespace ll_test
             "</fonts>";
     }
 
-    struct llfontregistry_gl_data
+    struct RegistryFontState
     {
-        std::unique_ptr<ll_test::HeadlessGL> gl = std::make_unique<ll_test::HeadlessGL>();
+        F32 vert = LLFontGL::sVertDPI, horiz = LLFontGL::sHorizDPI;
+        F32 scale_x = LLFontGL::sScaleX, scale_y = LLFontGL::sScaleY;
+        std::string app_dir = LLFontGL::sAppDir;
+        ~RegistryFontState()
+        {
+            LLFontGL::sVertDPI = vert; LLFontGL::sHorizDPI = horiz;
+            LLFontGL::sScaleX = scale_x; LLFontGL::sScaleY = scale_y;
+            LLFontGL::sAppDir = app_dir;
+        }
+    };
 
-        LLFontRegistry reg{ /*create_gl_textures=*/true };
+    struct llfontregistry_gl_data : NativeFont
+    {
+        RegistryFontState font_state;
+        LLFontRegistry reg{ /*create_gl_textures=*/false, /*create_metal_textures=*/true };
 
         llfontregistry_gl_data()
         {
@@ -124,13 +132,13 @@ namespace ll_test
             return reg.mFontMap.find(desc) != reg.mFontMap.end();
         }
 
-        // Mirror of llfontregistry_data::simulateReload for the GL fixture.
+        // Mirror of llfontregistry_data::simulateReload for the native fixture.
         // Wipes the parse-time state and mFontMap so a follow-up loadXml
         // re-builds templates from scratch — i.e. the same teardown the
         // production reload() does before re-parsing fonts.xml. Skips the
         // mFallbackInstanceCache pin/restore (the test re-creates everything
-        // from scratch) and ALFontShaping::clearCache (the GL bring-up here
-        // doesn't go through real shaping pipelines).
+        // from scratch) and ALFontShaping::clearCache (these registry cases
+        // do not shape text runs).
         void simulateReload()
         {
             // Drop heads first — they own LLFontGL pointers we own (the
@@ -150,10 +158,10 @@ namespace ll_test
         }
     };
 
-    // A registry with the explicit GL atlas backend must produce a head whose
+    // A registry with the native atlas backend must produce a head whose
     // bitmap cache, after rasterizing the ASCII range, has at least one
-    // grayscale page bound to a live GL texture.
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: createFont with GL textures backs the ASCII atlas with a live texture", "[LLFontRegistry-GL]")
+    // grayscale page backed by a published native texture.
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: createFont with native textures backs the ASCII atlas with a live texture", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         if (!interFontPresent())
         {
@@ -176,13 +184,15 @@ namespace ll_test
 
         LLImageGL* page = cache->getImageGL(EFontGlyphType::Grayscale, 0);
         REQUIRE(page != nullptr);
-        CHECK(page->getTexName() != 0);
+        REQUIRE(page->getMetalTexture());
+        CHECK_FALSE(page->getHasGLTexture());
+        CHECK(page->getTexName() == 0);
     }
 
     // getFont(desc) must return the same LLFontGL pointer on a repeat
     // call — the registry caches by descriptor and a second hit must
     // not re-create or re-rasterize the head.
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: getFont returns the cached LLFontGL on a repeat call", "[LLFontRegistry-GL]")
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: getFont returns the cached LLFontGL on a repeat call", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         if (!interFontPresent())
         {
@@ -199,14 +209,14 @@ namespace ll_test
         CHECK(first == second);
     }
 
-    // destroyGL must drop GL textures and reset the face's bitmap cache
+    // destroyGL must drop native textures and reset the face's bitmap cache
     // without removing registry entries — the LLFontGL pointer stays
     // valid (so widget caches don't dangle) and getFont still hits.
     // Reset semantics: ALFontFace::destroyGL → resetBitmapCache clears
     // the LLImageGL vector entirely, so post-destroyGL the page count
     // is 0 (not "page count preserved with texname=0"). The next render
     // through the face re-allocates fresh atlas pages.
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: destroyGL empties the atlas but keeps the registry's LLFontGL", "[LLFontRegistry-GL]")
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: destroyGL empties the atlas but keeps the registry's LLFontGL", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         if (!interFontPresent())
         {
@@ -227,7 +237,9 @@ namespace ll_test
         REQUIRE(cache->getNumBitmaps(EFontGlyphType::Grayscale) >= 1u);
         LLImageGL* page = cache->getImageGL(EFontGlyphType::Grayscale, 0);
         REQUIRE(page != nullptr);
-        CHECK(page->getTexName() != 0);
+        REQUIRE(page->getMetalTexture());
+        CHECK_FALSE(page->getHasGLTexture());
+        CHECK(page->getTexName() == 0);
 
         reg.destroyGL();
 
@@ -241,7 +253,7 @@ namespace ll_test
     // size. Indirect because LLFontFreetype::mPointSize is private —
     // ascender height is FreeType metrics * pointSize/units_per_EM, so
     // doubling the point size doubles the ascender (within rounding).
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: a reload at twice the point size roughly doubles the ascender", "[LLFontRegistry-GL]")
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: a reload at twice the point size roughly doubles the ascender", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         if (!interFontPresent())
         {
@@ -291,7 +303,7 @@ namespace ll_test
     // verify the head's freetype actually changed AND the point size moved.
     // Pins both halves of the loop: file swap on override change, AND
     // size routing through the head-face <use> chain.
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: clearing an override reloads the head with another file and size", "[LLFontRegistry-GL]")
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: clearing an override reloads the head with another file and size", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         const std::string od_path = std::string(kFontDir) + "OpenDyslexic-Regular.otf";
         const std::string inter_path = std::string(kFontDir) + "InterVariable.woff2";
@@ -356,7 +368,7 @@ namespace ll_test
     // and find the DejaVu fallback — its getAscenderHeight() reflects
     // 8pt rendering, not 16pt. Every <size> is an absolute pin (no
     // force keyword needed).
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: a fallback family's <size> pins its files below the head's size", "[LLFontRegistry-GL]")
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: a fallback family's <size> pins its files below the head's size", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         const std::string inter_path = std::string(kFontDir) + "InterVariable.woff2";
         const std::string dejavu_path = std::string(kFontDir) + "DejaVuSans.woff2";
@@ -422,7 +434,7 @@ namespace ll_test
     // back-to-back override swap, with no leftover state from the first
     // source. Mirrors the picker workflow of moving between two custom
     // UI fonts that each declare their own preferred size.
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: an override swap between pinned sources reloads at the new pin", "[LLFontRegistry-GL]")
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: an override swap between pinned sources reloads at the new pin", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         const std::string od_path = std::string(kFontDir) + "OpenDyslexic-Regular.otf";
         const std::string inter_path = std::string(kFontDir) + "InterVariable.woff2";
@@ -483,7 +495,7 @@ namespace ll_test
     // the next getFont silently returned the cached NULL and widgets
     // dereferenced it; the fix at llfontregistry.cpp:1555-1567 only
     // inserts on success. This test pins that contract.
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: a font whose files all fail to load is not cached as NULL", "[LLFontRegistry-GL]")
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: a font whose files all fail to load is not cached as NULL", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         // No file presence check needed — the whole point is that the
         // file is missing.
@@ -510,7 +522,7 @@ namespace ll_test
     // (FreeType point→pixel conversion goes through DPI). Pins the
     // fast-DPI path that LLFontGL::initClass takes when fonts.xml +
     // overrides are unchanged but only the scale moved.
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: reloadForDpiChange at twice the DPI roughly doubles the ascender", "[LLFontRegistry-GL]")
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: reloadForDpiChange at twice the DPI roughly doubles the ascender", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         if (!interFontPresent())
         {
@@ -545,7 +557,7 @@ namespace ll_test
     // must not drop in-use atlas pages on a short-interval invocation.
     // Pin: after generating ASCII glyphs, a sweep doesn't reduce page
     // count.
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: sweepGlyphCaches keeps in-use atlas pages", "[LLFontRegistry-GL]")
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: sweepGlyphCaches keeps in-use atlas pages", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         if (!interFontPresent())
         {
@@ -592,7 +604,7 @@ namespace ll_test
     // Post-fix: heads have no mGlyphInfoMap; lookup goes through the
     // face's findGlyphInfo, which misses post-eviction and falls through
     // to addShapedGlyphFromFont to re-rasterize on a fresh sheet.
-    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: heads sharing an evicted fallback re-rasterize onto a live sheet", "[LLFontRegistry-GL]")
+    TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistryNative: heads sharing an evicted fallback re-rasterize onto a live sheet", "[LLFontRegistryNative][native-font-ui-admission]")
     {
         const std::string emoji_path  = std::string(kFontDir) + "Noto-COLRv1.ttf";
         const std::string dejavu_path = std::string(kFontDir) + "DejaVuSans.woff2";

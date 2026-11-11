@@ -1,7 +1,7 @@
 /**
- * @file alfontcolrv1_gl_test.cpp
+ * @file alfont_colrv1_metal_test.cpp
  * @brief The COLRv1 painter through the LLFontFreetype / LLFontBitmapCache /
- *        LLImageGL pipeline, on a GL context.
+ *        LLImageGL pipeline, through native Metal atlas storage.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -34,7 +34,7 @@
 #include "../llimagegl.h"
 
 #include "llfonttest_helpers.h"
-#include "llheadlessgl_fixture.h"
+#include "llfontmetal_fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -47,26 +47,42 @@ namespace
 {
     using namespace ll_test;
 
-    // -------------------------------------------------------------
-    // GL-backed group: COLRv1 painter integrated with the LLFontFreetype
-    // / LLFontBitmapCache / LLImageGL pipeline. Each test's own HeadlessGL
-    // context is what the addGlyph path's gGL.bind plus the
-    // setSubImageBGRA → LLImageGL upload land on.
-    // -------------------------------------------------------------
-
-    struct alfontcolrv1_render_data
+    struct alfontcolrv1_render_data : NativeFont
     {
-        std::unique_ptr<ll_test::HeadlessGL> gl = std::make_unique<ll_test::HeadlessGL>();
-        ll_test::FontStateScope font_scope;
+        void requireNativePage(const LLFontBitmapCache& cache,
+                               EFontGlyphType type, U32 index)
+        {
+            LLImageRaw* raw = cache.getImageRaw(type, index);
+            LLImageGL* page = cache.getImageGL(type, index);
+            REQUIRE(raw); REQUIRE(page); REQUIRE(page->getMetalTexture());
+            CHECK_FALSE(page->getHasGLTexture()); CHECK(page->getTexName() == 0);
+            LLPointer<LLImageRaw> actual = new LLImageRaw;
+            REQUIRE(page->readBackRaw(0, actual, false));
+            REQUIRE(actual->getWidth() == raw->getWidth());
+            REQUIRE(actual->getHeight() == raw->getHeight());
+            REQUIRE(actual->getComponents() == raw->getComponents());
+            REQUIRE(actual->getDataSize() == raw->getDataSize());
+            CHECK(std::memcmp(actual->getData(), raw->getData(), raw->getDataSize()) == 0);
+            bool covered = false, palette_color = false;
+            for (S32 pixel = 0; pixel < raw->getWidth() * raw->getHeight(); ++pixel)
+            {
+                const U8* rgba = actual->getData() + pixel * actual->getComponents();
+                covered |= rgba[actual->getComponents() - 1] != 0;
+                if (type == EFontGlyphType::Color)
+                    palette_color |= rgba[3] != 0 && (rgba[0] != rgba[1] || rgba[1] != rgba[2]);
+            }
+            CHECK(covered);
+            if (type == EFontGlyphType::Color) CHECK(palette_color);
+        }
     };
 
 
     // End-to-end: requesting a Color glyph for the fire emoji on
     // Noto-COLRv1 must route through renderColrV1Glyph → painter →
     // setSubImageBGRA → Color atlas. Verify the returned info has
-    // Color glyph type and the cache's Color page has a live GL
-    // texture name.
-    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: a Color fire emoji is painted onto a live Color atlas page", "[ALFontColrV1Render]")
+    // Color glyph type and the cache's Color page has exact native
+    // pixels matching its producer buffer.
+    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: a Color fire emoji is painted onto a live Color atlas page", "[ALFontColrV1Render][native-font-ui-admission]")
     {
         const std::string path = std::string(kFontDir) + "Noto-COLRv1.ttf";
         if (!fileExists(path))
@@ -86,14 +102,14 @@ namespace
 
         LLImageGL* page = cache->getImageGL(EFontGlyphType::Color, 0);
         REQUIRE(page != nullptr);
-        CHECK(page->getTexName() != 0);
+        requireNativePage(*cache, gi->mGlyphType, 0);
     }
 
     // Several COLRv1 emojis in a row share the Color atlas — a single
     // 1024² Color sheet has plenty of room for many small color
     // bitmaps. Pins that the painter+atlas integration doesn't
     // allocate an extra sheet per glyph.
-    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: three COLRv1 emoji share one Color atlas sheet", "[ALFontColrV1Render]")
+    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: three COLRv1 emoji share one Color atlas sheet", "[ALFontColrV1Render][native-font-ui-admission]")
     {
         const std::string path = std::string(kFontDir) + "Noto-COLRv1.ttf";
         if (!fileExists(path))
@@ -118,7 +134,7 @@ namespace
     // the same LLFontGlyphInfo pointer pins the head's char_glyph
     // info cache (so each render call doesn't rebuild the painter
     // input on every frame).
-    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: a repeat Color lookup returns the same cached LLFontGlyphInfo", "[ALFontColrV1Render]")
+    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: a repeat Color lookup returns the same cached LLFontGlyphInfo", "[ALFontColrV1Render][native-font-ui-admission]")
     {
         const std::string path = std::string(kFontDir) + "Noto-COLRv1.ttf";
         if (!fileExists(path))
@@ -138,7 +154,7 @@ namespace
     // buffer captured before the rasterize would invalidate. Pins
     // the global-generation contract that LLFontBitmapCache holds
     // for COLRv1 atlases too — not just Grayscale.
-    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: the first Color raster advances the bitmap cache's generation", "[ALFontColrV1Render]")
+    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: the first Color raster advances the bitmap cache's generation", "[ALFontColrV1Render][native-font-ui-admission]")
     {
         const std::string path = std::string(kFontDir) + "Noto-COLRv1.ttf";
         if (!fileExists(path))
@@ -166,7 +182,7 @@ namespace
     // doesn't accumulate state across calls (e.g., a regression that
     // grew the staging buffer on every call would still produce a
     // valid bitmap but mWidth/mHeight could drift).
-    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: one painter paints the same glyph twice at the same size", "[ALFontColrV1Render]")
+    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: one painter paints the same glyph twice at the same size", "[ALFontColrV1Render][native-font-ui-admission]")
     {
         const std::string path = std::string(kFontDir) + "Noto-COLRv1.ttf";
         if (!fileExists(path))
@@ -197,7 +213,7 @@ namespace
     // change in renderGlyph drops the bitmap_type==Color restriction, so
     // Grayscale lookups on COLRv1 faces produce a luminance-shaded mask
     // in the LA atlas instead of an empty / outline-only glyph.
-    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: a Grayscale lookup on a COLRv1 face paints into the Grayscale atlas", "[ALFontColrV1Render]")
+    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: a Grayscale lookup on a COLRv1 face paints into the Grayscale atlas", "[ALFontColrV1Render][native-font-ui-admission]")
     {
         const std::string path = std::string(kFontDir) + "Noto-COLRv1.ttf";
         if (!fileExists(path))
@@ -216,7 +232,7 @@ namespace
         CHECK(cache->getNumBitmaps(EFontGlyphType::Grayscale) >= 1u);
         LLImageGL* page = cache->getImageGL(EFontGlyphType::Grayscale, 0);
         REQUIRE(page != nullptr);
-        CHECK(page->getTexName() != 0);
+        requireNativePage(*cache, gi->mGlyphType, 0);
     }
 
     // Force-monochrome static is wired in at the LLFontGL render-call layer:
@@ -227,7 +243,7 @@ namespace
     // routing those call sites go on to ask for works while it's set. The
     // static is put back however the case ends, so it doesn't perturb
     // sibling tests.
-    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: with sForceMonochromeEmoji set a Grayscale lookup paints Grayscale", "[ALFontColrV1Render]")
+    TEST_CASE_METHOD(alfontcolrv1_render_data, "ALFontColrV1Render: with sForceMonochromeEmoji set a Grayscale lookup paints Grayscale", "[ALFontColrV1Render][native-font-ui-admission]")
     {
         const std::string path = std::string(kFontDir) + "Noto-COLRv1.ttf";
         if (!fileExists(path))
