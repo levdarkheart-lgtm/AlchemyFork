@@ -706,6 +706,292 @@ static const char* metal_stage_timing_status(ALMetalStageTimingStatus status)
     return "unknown";
 }
 
+// Manual Developer profile is separate from the formal benchmark diagnostics.
+// Its scope matches original1eb44 initProfile/finishProfile: main + hero + UI
+// inside display(), excluding the ordinary probes submitted after display().
+struct MetalFrameProfileSession
+{
+    std::unique_ptr<ALMetalStageTimingWindow> window;
+    std::vector<ALMetalStageTimingResult> results;
+    LLSD stats;
+    std::string filename;
+    U64 pending_since = 0;
+    U64 frame = 0;
+    bool awaiting_submission = false;
+};
+
+static MetalFrameProfileSession& metal_frame_profile_session()
+{
+    static MetalFrameProfileSession session;
+    return session;
+}
+
+static void write_metal_frame_profile(const LLSD& stats, const std::string& filename)
+{
+    llofstream output(filename);
+    if (!output) LL_WARNS("ShaderProfile") << "Couldn't write to " << std::quoted(filename) << LL_ENDL;
+    else
+    {
+        output << LlsdToJson(stats);
+        LL_INFOS("ShaderProfile") << "Native frame profile: " << stats["native_frame_profile"]["status"]
+            << " (dumped to " << std::quoted(filename) << ")" << LL_ENDL;
+    }
+}
+
+static void finish_metal_frame_profile(MetalFrameProfileSession& session, const char* status)
+{
+    auto& profile = session.stats["native_frame_profile"];
+    profile["status"] = status;
+    profile["prepared_encoders"] = LLSD::Integer(session.window->preparedPassCount());
+    profile["rejected_encoders"] = LLSD::Integer(session.window->rejectedPrepareCount());
+    profile["pending_encoders"] = LLSD::Integer(session.window->pendingPassCount());
+    profile["passes"] = LLSD::emptyArray();
+    unsigned complete = 0;
+    for (const auto& result : session.results)
+    {
+        complete += result.status == ALMetalStageTimingStatus::complete;
+        LLSD row = LLSD::emptyMap();
+        row["frame"] = LLSD::Real(result.tag.frame);
+        row["view"] = LLSD::Integer(result.tag.view_kind);
+        row["face"] = result.tag.face;
+        row["label"] = result.tag.label;
+        row["pass_index"] = LLSD::Integer(result.pass_index);
+        row["kind"] = result.compute ? "compute" : "render";
+        row["status"] = metal_stage_timing_status(result.status);
+        row["mixed_pipeline_encoder"] = result.pipelines.size() > 1;
+        row["omitted_pipeline_bindings"] = LLSD::Integer(result.omitted_pipelines);
+        row["bound_pipelines"] = LLSD::emptyArray();
+        for (const auto& identity : result.pipelines)
+        {
+            LLSD pipeline;
+            pipeline["vertex"] = identity.vertex;
+            pipeline["fragment"] = identity.fragment;
+            pipeline["compute"] = identity.compute;
+            pipeline["native_pipeline_identity"] = std::to_string(identity.native_pipeline);
+            row["bound_pipelines"].append(pipeline);
+        }
+        if (result.elapsed)
+        {
+            if (result.compute) row["compute_encoder_ns"] = result.elapsed->compute_ns;
+            else
+            {
+                row["vertex_stage_ns"] = result.elapsed->vertex_ns;
+                row["fragment_stage_ns"] = result.elapsed->fragment_ns;
+            }
+        }
+        if (result.raw_samples)
+        {
+            row["timestamp_ticks"] = LLSD::emptyArray();
+            for (unsigned sample = 0; sample < (result.compute ? 2u : 4u); ++sample)
+                row["timestamp_ticks"].append(std::to_string((*result.raw_samples)[sample]));
+        }
+        if (result.calibration)
+        {
+            row["calibration"]["cpu_before_ns"] = std::to_string(result.calibration->cpu_before_ns);
+            row["calibration"]["cpu_after_ns"] = std::to_string(result.calibration->cpu_after_ns);
+            row["calibration"]["gpu_before_ticks"] = std::to_string(result.calibration->gpu_before_ticks);
+            row["calibration"]["gpu_after_ticks"] = std::to_string(result.calibration->gpu_after_ticks);
+        }
+        if (result.gpu_error_code) row["gpu_error"] = std::to_string(result.gpu_error_code);
+        profile["passes"].append(row);
+    }
+    profile["measured_encoders"] = LLSD::Integer(complete);
+    profile["unavailable_encoders"] = LLSD::Integer(session.results.size() - complete);
+    write_metal_frame_profile(session.stats, session.filename);
+    session.window.reset();
+    session.results.clear();
+    session.awaiting_submission = false;
+}
+
+static void poll_metal_frame_profile();
+
+static void seal_metal_frame_profile()
+{
+    auto& session = metal_frame_profile_session();
+    if (!session.window || session.window->isSealed()) return;
+    session.awaiting_submission = false;
+    session.stats["native_frame_profile"]["status"] = "pending_gpu_results";
+    std::string error;
+    if (!session.window->seal(&error)) session.stats["native_frame_profile"]["error"] = error;
+    session.pending_since = LLTimer::getTotalTime();
+    write_metal_frame_profile(session.stats, session.filename);
+    poll_metal_frame_profile();
+}
+
+static void poll_metal_frame_profile()
+{
+    auto& session = metal_frame_profile_session();
+    if (!session.window || !session.window->isSealed()) return;
+    std::vector<ALMetalStageTimingResult> ready;
+    std::string error;
+    if (!session.window->poll(ready, &error))
+    {
+        session.stats["native_frame_profile"]["error"] = error;
+        finish_metal_frame_profile(session, "resolution_unavailable");
+        return;
+    }
+    for (auto& result : ready) session.results.push_back(std::move(result));
+    if (session.window->isFinished())
+        finish_metal_frame_profile(session, session.stats["native_frame_profile"]["cancelled"].asBoolean()
+            ? "cancelled" : "resolved");
+    else if (gDisconnected || LLAppViewer::instance()->logoutRequestSent() ||
+             LLTimer::getTotalTime() - session.pending_since > 10000000)
+        finish_metal_frame_profile(session, "pending_gpu_results_unavailable");
+}
+
+class MetalFrameProfileDisplay final
+{
+public:
+    explicit MetalFrameProfileDisplay(bool normal) noexcept
+    {
+      try
+      {
+        if (!normal) return;
+        poll_metal_frame_profile();
+        mRequested = std::exchange(gShaderProfileFrame, false);
+        if (!mRequested) return;
+        mStats = LLSD::emptyMap();
+        getProfileStatsContext(mStats);
+        mFilename = getProfileStatsFilename();
+        auto& profile = mStats["native_frame_profile"];
+        profile["status"] = "requested";
+        profile["backend"] = "Metal";
+        profile["scope"] = "display main, hero and UI; ordinary probes excluded";
+        profile["measurement"] = "physical render-stage and compute-encoder elapsed intervals";
+        profile["limitations"] = "Overlapping intervals are not summed; no GPU busy time, utilization or per-pipeline duration. Bound MSL identities describe each encoder, including mixed encoders. Blits and raw clear-only encoders are excluded.";
+        profile["per_pipeline_gpu_time"] = "unavailable: no per-draw timestamps collected";
+        profile["fragment_invocations"] = "unavailable: no statistics counter samples collected";
+        profile["clipper_invocations"] = "unavailable: no statistics counter samples collected";
+        // Reserve the existing context/filename mechanism immediately. A later
+        // request cannot overwrite this asynchronously resolving report.
+        write_metal_frame_profile(mStats, mFilename);
+      }
+      catch (...)
+      {
+        mRequested = false;
+        try { LL_WARNS("ShaderProfile") << "Native frame profile setup unavailable" << LL_ENDL; } catch (...) {}
+      }
+    }
+    void begin() noexcept
+    {
+        try { beginImpl(); }
+        catch (...)
+        {
+            mScope.reset();
+            if (mOwnsWindow) metal_frame_profile_session().window.reset();
+            mRequested = false;
+            try
+            {
+                mStats["native_frame_profile"]["status"] = "profile_setup_unavailable";
+                write_metal_frame_profile(mStats, mFilename);
+            }
+            catch (...) {}
+        }
+    }
+    void complete() noexcept { mCompleted = true; }
+    ~MetalFrameProfileDisplay()
+    {
+        if (!mRequested) return;
+        try
+        {
+            if (!mScope)
+            {
+                mStats["native_frame_profile"]["status"] = "display_ended_before_profile_scope";
+                write_metal_frame_profile(mStats, mFilename); return;
+            }
+            // Restore TLS at display exit. If the UI's final submission is
+            // deferred, display_end_frame temporarily reinstalls this owner
+            // around that submission, then seals before ordinary probes run.
+            mScope.reset();
+            auto& session = metal_frame_profile_session();
+            session.stats["native_frame_profile"]["cancelled"] = !mCompleted;
+            if (mCompleted && sFrameEndOwed != 0)
+            {
+                session.awaiting_submission = true;
+                session.stats["native_frame_profile"]["status"] = "awaiting_display_submission";
+                write_metal_frame_profile(session.stats, session.filename);
+            }
+            else seal_metal_frame_profile();
+        }
+        catch (...)
+        {
+            mScope.reset();
+            if (mOwnsWindow) metal_frame_profile_session().window.reset();
+            try { LL_WARNS("ShaderProfile") << "Native frame profile unavailable after diagnostic failure" << LL_ENDL; } catch (...) {}
+        }
+    }
+private:
+    void beginImpl()
+    {
+        if (!mRequested) return;
+        auto& session = metal_frame_profile_session();
+        auto unavailable = [this](const char* reason)
+        {
+            mStats["native_frame_profile"]["status"] = reason;
+            write_metal_frame_profile(mStats, mFilename); mRequested = false;
+        };
+        const bool capture_pending = sMetalFrameCapture &&
+            sMetalFrameCapture->stats().state != ALMetalFrameCapture::State::stopped &&
+            sMetalFrameCapture->stats().state != ALMetalFrameCapture::State::failed;
+        if (session.window || metal_stage_timing_session().active || capture_pending ||
+            ALMetalStageTimingScope::current() || ALMetalDevice::commandTimingEnabled())
+        { unavailable("busy_with_existing_gpu_diagnostic"); return; }
+        if (gHeadlessClient || gDisconnected || gTeleportDisplay || display_window_hidden() ||
+            LLAppViewer::instance()->logoutRequestSent() || !gViewerWindow || !gViewerWindow->getWindow())
+        { unavailable("world_or_device_unavailable"); return; }
+        auto* device = gViewerWindow->getWindow()->getMetalDevice();
+        if (!device) { unavailable("world_or_device_unavailable"); return; }
+        const auto capabilities = ALMetalStageTimingWindow::capabilities(*device);
+        auto& profile = mStats["native_frame_profile"];
+        profile["capabilities"]["stage_boundary"] = capabilities.stage_boundary;
+        profile["capabilities"]["draw_boundary"] = capabilities.draw_boundary;
+        profile["capabilities"]["dispatch_boundary"] = capabilities.dispatch_boundary;
+        profile["capabilities"]["timestamps"] = capabilities.timestamps;
+        profile["capabilities"]["statistics"] = capabilities.statistics;
+        std::string error;
+        auto window = ALMetalStageTimingWindow::create(*device,
+            ALMetalStageTimingWindow::maximum_passes, &error, true);
+        if (!window)
+        {
+            profile["error"] = error;
+            unavailable("gpu_counters_unavailable"); return;
+        }
+        session.stats = mStats; session.filename = mFilename;
+        session.results.clear(); session.window = std::move(window);
+        session.frame = gFrameCount + 1;
+        mOwnsWindow = true;
+        mScope = std::make_unique<ALMetalStageTimingScope>(session.window.get(), session.frame, 1, -1);
+    }
+    bool mRequested = false, mCompleted = false, mOwnsWindow = false;
+    LLSD mStats;
+    std::string mFilename;
+    std::unique_ptr<ALMetalStageTimingScope> mScope;
+};
+
+class MetalFrameProfileSubmission final
+{
+public:
+    MetalFrameProfileSubmission() noexcept
+    {
+        auto& session = metal_frame_profile_session();
+        if (session.window && session.awaiting_submission && !session.window->isSealed())
+            mScope.emplace(session.window.get(), session.frame, 1, -1);
+    }
+    ~MetalFrameProfileSubmission()
+    {
+        if (!mScope) return;
+        mScope.reset();
+        try { seal_metal_frame_profile(); }
+        catch (...)
+        {
+            metal_frame_profile_session().window.reset();
+            try { LL_WARNS("ShaderProfile") << "Native frame profile submission unavailable" << LL_ENDL; } catch (...) {}
+        }
+    }
+private:
+    std::optional<ALMetalStageTimingScope> mScope;
+};
+
 static void stop_metal_stage_timing(MetalStageTimingSession& session) noexcept
 {
     session.main_scope.reset();
@@ -1200,6 +1486,9 @@ void display_end_frame()
         fill_pacing_slack();
     }
     LLPerfStats::RecordSceneTime T(LLPerfStats::StatType_t::RENDER_DISPLAY);
+#if LL_DARWIN
+    MetalFrameProfileSubmission profile_submission;
+#endif
     gGL.endFrame(frames_ahead);
 }
 
@@ -1224,6 +1513,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     std::optional<ALMetalStageTimingScope> stage_snapshot_guard;
     if (!metal_normal_display && ALMetalStageTimingScope::current())
         stage_snapshot_guard.emplace(nullptr, 0, 0, -1);
+    MetalFrameProfileDisplay metal_frame_profile(metal_normal_display);
 #endif
     LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Render");
     LL_PROFILE_GPU_ZONE("Render");
@@ -1239,6 +1529,9 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     if (sFrameEndOwed != 0)
     {
         sFrameEndOwed = 0;
+#if LL_DARWIN
+        MetalFrameProfileSubmission profile_submission;
+#endif
         gGL.endFrame();
     }
 
@@ -1389,10 +1682,9 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         return;
     }
 
-    if (gShaderProfileFrame)
-    {
-        LLGLSLShader::initProfile();
-    }
+#if LL_DARWIN
+    metal_frame_profile.begin();
+#endif
 
     //LLGLState::verify(false);
 
@@ -1954,25 +2246,9 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
     gShiftFrame = false;
 
-    if (gShaderProfileFrame)
-    {
-        gShaderProfileFrame = false;
-        LLSD stats = LLSD::emptyMap();
-        getProfileStatsContext(stats);
-        LLGLSLShader::finishProfile(stats);
-
-        auto report_name = getProfileStatsFilename();
-        llofstream outf(report_name);
-        if (! outf)
-        {
-            LL_WARNS() << "Couldn't write to " << std::quoted(report_name) << LL_ENDL;
-        }
-        else
-        {
-            outf << LlsdToJson(stats);
-            LL_INFOS() << "(also dumped to " << std::quoted(report_name) << ")" << LL_ENDL;
-        }
-    }
+#if LL_DARWIN
+    metal_frame_profile.complete();
+#endif
 }
 
 void getProfileStatsContext(LLSD& stats)

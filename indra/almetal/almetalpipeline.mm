@@ -677,6 +677,7 @@ struct ALMetalComputePipeline::Impl
 {
     id<MTLDevice> device = nil;
     id<MTLComputePipelineState> state = nil;
+    std::string function;
 };
 
 ALMetalComputePipeline::ALMetalComputePipeline(std::unique_ptr<Impl> impl)
@@ -718,6 +719,7 @@ std::unique_ptr<ALMetalComputePipeline> ALMetalComputePipeline::create(
         auto impl = std::make_unique<Impl>();
         impl->device = native_device;
         impl->state = state;
+        impl->function = descriptor.function;
         return std::unique_ptr<ALMetalComputePipeline>(new ALMetalComputePipeline(std::move(impl)));
     }
 }
@@ -876,6 +878,7 @@ struct ALMetalRenderEncoder::Impl
     };
     id<MTLDevice> device = nil;
     id<MTLRenderCommandEncoder> encoder = nil;
+    std::unique_ptr<ALMetalStageTimingWindow::PreparedPass> timed_pass;
     void* command_buffer = nullptr;
     // The exact OpenGL renderer caches texture and sampler identity per slot.
     // Keep the narrower Metal equivalent per encoder so repeated material
@@ -1015,6 +1018,7 @@ std::unique_ptr<ALMetalRenderEncoder> ALMetalRenderEncoder::begin(
         auto impl = std::make_unique<Impl>();
         impl->device = (__bridge id<MTLDevice>)command_buffer.nativeDevice();
         impl->encoder = encoder;
+        impl->timed_pass = std::move(timed_pass);
         impl->command_buffer = command_buffer.nativeHandle();
         impl->count_draws = ALMetalDevice::commandTimingEnabled();
         return std::unique_ptr<ALMetalRenderEncoder>(new ALMetalRenderEncoder(std::move(impl)));
@@ -1043,6 +1047,9 @@ bool ALMetalRenderEncoder::setPipeline(const ALMetalRenderPipeline& pipeline, st
         [mImpl->encoder setRenderPipelineState:pipeline.mImpl->state];
         mImpl->pipeline = handle;
     }
+    if (mImpl->timed_pass)
+        mImpl->timed_pass->recordPipeline(pipeline.mDescriptor.vertex_function,
+            pipeline.mDescriptor.fragment_function, {}, reinterpret_cast<std::uintptr_t>(pipeline.nativeHandle()));
     return true;
 }
 
@@ -1720,6 +1727,7 @@ struct ALMetalComputeEncoder::Impl
     id<MTLDevice> device = nil;
     id<MTLComputeCommandEncoder> encoder = nil;
     id<MTLComputePipelineState> pipeline = nil;
+    std::unique_ptr<ALMetalStageTimingWindow::PreparedPass> timed_pass;
     bool ended = false;
 };
 
@@ -1750,7 +1758,29 @@ std::unique_ptr<ALMetalComputeEncoder> ALMetalComputeEncoder::begin(
             return nullptr;
         }
         id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
-        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        std::unique_ptr<ALMetalStageTimingWindow::PreparedPass> timed_pass;
+        if (const auto* scope = ALMetalStageTimingScope::current(); scope && scope->window())
+        {
+            try
+            {
+                timed_pass = scope->window()->prepareCompute(command_buffer,
+                    {scope->frame(), scope->viewKind(), scope->face(), label});
+            }
+            catch (...) { timed_pass.reset(); }
+        }
+        id<MTLComputeCommandEncoder> encoder = nil;
+        if (timed_pass)
+        {
+            @try
+            {
+                if (void* handle = timed_pass->consume(command_buffer))
+                    encoder = [command computeCommandEncoderWithDescriptor:
+                        (__bridge MTLComputePassDescriptor*)handle];
+            }
+            @catch (NSException*) {}
+            if (!encoder) { timed_pass->abandon(); timed_pass.reset(); }
+        }
+        if (!encoder) encoder = [command computeCommandEncoder];
         if (!encoder)
         {
             setError(error, "Metal command buffer could not create a compute encoder");
@@ -1760,6 +1790,7 @@ std::unique_ptr<ALMetalComputeEncoder> ALMetalComputeEncoder::begin(
         auto impl = std::make_unique<Impl>();
         impl->device = (__bridge id<MTLDevice>)command_buffer.nativeDevice();
         impl->encoder = encoder;
+        impl->timed_pass = std::move(timed_pass);
         return std::unique_ptr<ALMetalComputeEncoder>(new ALMetalComputeEncoder(std::move(impl)));
     }
 }
@@ -1773,6 +1804,8 @@ bool ALMetalComputeEncoder::setPipeline(const ALMetalComputePipeline& pipeline, 
     }
     [mImpl->encoder setComputePipelineState:pipeline.mImpl->state];
     mImpl->pipeline = pipeline.mImpl->state;
+    if (mImpl->timed_pass) mImpl->timed_pass->recordPipeline({}, {}, pipeline.mImpl->function,
+        reinterpret_cast<std::uintptr_t>(pipeline.nativeHandle()));
     return true;
 }
 

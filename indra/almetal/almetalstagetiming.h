@@ -78,6 +78,20 @@ struct ALMetalStageTimingElapsed
 {
     double vertex_ns = 0;
     double fragment_ns = 0;
+    double compute_ns = 0;
+};
+
+struct ALMetalStageTimingPipeline
+{
+    std::string vertex, fragment, compute;
+    std::uintptr_t native_pipeline = 0; // Report-local PSO identity, never dereferenced.
+    bool operator==(const ALMetalStageTimingPipeline&) const = default;
+};
+
+struct ALMetalStageTimingCapabilities
+{
+    bool stage_boundary = false, draw_boundary = false, dispatch_boundary = false;
+    bool timestamps = false, statistics = false;
 };
 
 struct ALMetalStageTimingResult
@@ -87,6 +101,11 @@ struct ALMetalStageTimingResult
     std::size_t first_sample = 0; // Local to this record's command sample buffer.
     ALMetalStageTimingStatus status = ALMetalStageTimingStatus::counter_unavailable;
     std::int64_t gpu_error_code = 0;
+    bool compute = false;
+    // Executable identities used in this physical encoder, NOT independently
+    // timed shaders. A mixed encoder's duration cannot be assigned to each.
+    std::vector<ALMetalStageTimingPipeline> pipelines;
+    std::size_t omitted_pipelines = 0;
     std::optional<std::array<std::uint64_t, 4>> raw_samples;
     std::optional<ALMetalStageTimingCalibration> calibration;
     // Present ONLY for complete. These are elapsed stage intervals, never a
@@ -116,6 +135,8 @@ public:
         // counter range may then be resolved; the command's buffer lease stays.
         void abandon() noexcept;
         std::size_t firstSampleIndex() const noexcept;
+        void recordPipeline(const std::string& vertex, const std::string& fragment,
+                            const std::string& compute = {}, std::uintptr_t native_pipeline = 0) noexcept;
     private:
         struct Impl;
         explicit PreparedPass(std::unique_ptr<Impl> impl);
@@ -125,7 +146,8 @@ public:
 
     static std::unique_ptr<ALMetalStageTimingWindow> create(
         const ALMetalDevice& device, std::size_t max_passes = maximum_passes,
-        std::string* error = nullptr) noexcept;
+        std::string* error = nullptr, bool frame_profile = false) noexcept;
+    static ALMetalStageTimingCapabilities capabilities(const ALMetalDevice& device) noexcept;
     ~ALMetalStageTimingWindow();
     ALMetalStageTimingWindow(const ALMetalStageTimingWindow&) = delete;
     ALMetalStageTimingWindow& operator=(const ALMetalStageTimingWindow&) = delete;
@@ -136,6 +158,10 @@ public:
     std::unique_ptr<PreparedPass> prepare(ALMetalCommandBuffer& command,
         const ALMetalRenderPass& pass, const ALMetalStageTimingTag& tag,
         std::string* error = nullptr) noexcept;
+    // Manual profile only: sample the physical compute encoder's start/end.
+    // Existing render-stage diagnostics retain their original admission scope.
+    std::unique_ptr<PreparedPass> prepareCompute(ALMetalCommandBuffer& command,
+        const ALMetalStageTimingTag& tag, std::string* error = nullptr) noexcept;
     // Ends admission. Not-yet-committed commands are explicitly unavailable,
     // even if their caller commits later. Their sample buffers remain owned by
     // their command, but this window will never resolve those samples.
@@ -153,5 +179,8 @@ public:
 private:
     struct Impl;
     explicit ALMetalStageTimingWindow(std::unique_ptr<Impl> impl);
+    std::unique_ptr<PreparedPass> prepareImpl(ALMetalCommandBuffer& command,
+        const ALMetalRenderPass* pass, const ALMetalStageTimingTag& tag,
+        bool compute, std::string* error) noexcept;
     std::unique_ptr<Impl> mImpl;
 };
