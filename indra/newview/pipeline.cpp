@@ -24917,7 +24917,7 @@ void LLPipeline::setRenderDebugFeatureControl(U32 bit, bool value)
     }
     else
     {
-        gPipeline.mRenderDebugFeatureMask &= !bit;
+        gPipeline.mRenderDebugFeatureMask &= ~bit;
     }
 }
 
