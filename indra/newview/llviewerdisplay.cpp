@@ -758,7 +758,9 @@ static void finish_metal_frame_profile(MetalFrameProfileSession& session, const 
         row["pass_index"] = LLSD::Integer(result.pass_index);
         row["kind"] = result.compute ? "compute" : "render";
         row["status"] = metal_stage_timing_status(result.status);
-        row["mixed_pipeline_encoder"] = result.pipelines.size() > 1;
+        row["pipeline_identity_complete"] = result.omitted_pipelines == 0;
+        if (result.pipelines.size() > 1 || result.omitted_pipelines == 0)
+            row["mixed_pipeline_encoder"] = result.pipelines.size() > 1;
         row["omitted_pipeline_bindings"] = LLSD::Integer(result.omitted_pipelines);
         row["bound_pipelines"] = LLSD::emptyArray();
         for (const auto& identity : result.pipelines)

@@ -447,7 +447,7 @@ std::unique_ptr<ALMetalShaderLibrary> ALMetalShaderLibrary::compileSource(
             setError(error, describeError(native_error));
             return nullptr;
         }
-        library.label = toNSString(label);
+        if (NSString* native_label = toNSString(label)) library.label = native_label;
         auto impl = std::make_unique<Impl>();
         impl->device = native_device;
         impl->library = library;
@@ -597,7 +597,8 @@ std::unique_ptr<ALMetalRenderPipeline> ALMetalRenderPipeline::create(
         }
 
         MTLRenderPipelineDescriptor* native_descriptor = [[MTLRenderPipelineDescriptor alloc] init];
-        native_descriptor.label = toNSString(descriptor.label);
+        // Labels are optional diagnostics; leave native defaults intact when absent.
+        if (NSString* native_label = toNSString(descriptor.label)) native_descriptor.label = native_label;
         native_descriptor.vertexFunction = vertex;
         native_descriptor.fragmentFunction = fragment;
         native_descriptor.rasterSampleCount = descriptor.sample_count;
@@ -765,7 +766,7 @@ std::unique_ptr<ALMetalDepthStencilState> ALMetalDepthStencilState::create(
             return nullptr;
         }
         MTLDepthStencilDescriptor* native_descriptor = [[MTLDepthStencilDescriptor alloc] init];
-        native_descriptor.label = toNSString(descriptor.label);
+        if (NSString* native_label = toNSString(descriptor.label)) native_descriptor.label = native_label;
         native_descriptor.depthCompareFunction = compareFunction(descriptor.depth_compare);
         native_descriptor.depthWriteEnabled = descriptor.depth_write_enabled;
         if (descriptor.stencil_enabled)
@@ -827,7 +828,7 @@ std::unique_ptr<ALMetalSamplerState> ALMetalSamplerState::create(
         // common for descriptors assembled from production GL sampler state.
         if (!descriptor.label.empty())
         {
-            native_descriptor.label = toNSString(descriptor.label);
+            if (NSString* native_label = toNSString(descriptor.label)) native_descriptor.label = native_label;
         }
         native_descriptor.minFilter = samplerFilter(descriptor.min_filter);
         native_descriptor.magFilter = samplerFilter(descriptor.mag_filter);
@@ -1014,7 +1015,7 @@ std::unique_ptr<ALMetalRenderEncoder> ALMetalRenderEncoder::begin(
             setError(error, "Metal command buffer could not create a render encoder");
             return nullptr;
         }
-        encoder.label = toNSString(label);
+        if (NSString* native_label = toNSString(label)) encoder.label = native_label;
         auto impl = std::make_unique<Impl>();
         impl->device = (__bridge id<MTLDevice>)command_buffer.nativeDevice();
         impl->encoder = encoder;
@@ -1786,7 +1787,7 @@ std::unique_ptr<ALMetalComputeEncoder> ALMetalComputeEncoder::begin(
             setError(error, "Metal command buffer could not create a compute encoder");
             return nullptr;
         }
-        encoder.label = toNSString(label);
+        if (NSString* native_label = toNSString(label)) encoder.label = native_label;
         auto impl = std::make_unique<Impl>();
         impl->device = (__bridge id<MTLDevice>)command_buffer.nativeDevice();
         impl->encoder = encoder;
