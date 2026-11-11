@@ -113,6 +113,8 @@ private:
 #endif
 }
 
+#include "image_preview_native.inl"
+
 const S32 PREVIEW_BORDER_WIDTH = 2;
 const S32 PREVIEW_RESIZE_HANDLE_SIZE = S32(RESIZE_HANDLE_WIDTH * OO_SQRT2) + PREVIEW_BORDER_WIDTH;
 const S32 PREVIEW_HPAD = PREVIEW_RESIZE_HANDLE_SIZE;
@@ -796,46 +798,7 @@ void LLImagePreviewAvatar::setPreviewTarget(const std::string& joint_name, const
     mNeedsUpdate = true;
 }
 
-LLViewerDynamicTexture::ETargetlessRenderResult
-LLImagePreviewAvatar::renderWithoutTarget()
-{
-#if LL_DARWIN
-    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
-    {
-        return ETargetlessRenderResult::PENDING;
-    }
 
-    bool rendered = false;
-    {
-        LLScopedImagePreviewCameraState saved_state;
-        mOrigin.set(0, 0);
-        rendered = render();
-    }
-
-    const bool published = rendered && mMetalPreview &&
-        mGLTexturep->adoptMetalRenderTextureAuthoritative(
-            std::move(mMetalPreview), LLGLTexture::DYNAMIC_TEX);
-    mMetalPreview.reset();
-    mMetalPreviewDescriptor.reset();
-    if (!published)
-    {
-        mNeedsUpdate = true;
-        LL_DEBUGS("Metal")
-            << "Avatar image preview remains pending; its prior native "
-               "result is unchanged"
-            << LL_ENDL;
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    mNeedsUpdate = false;
-    LL_INFOS_ONCE("Metal")
-        << "Avatar image previews are targetless native Metal producers"
-        << LL_ENDL;
-    return ETargetlessRenderResult::COMPLETED;
-#else
-    return ETargetlessRenderResult::PENDING;
-#endif
-}
 
 //-----------------------------------------------------------------------------
 // update()
@@ -1124,46 +1087,7 @@ void LLImagePreviewSculpted::setPreviewTarget(LLImageRaw* imagep, F32 distance)
     mNeedsUpdate = true;
 }
 
-LLViewerDynamicTexture::ETargetlessRenderResult
-LLImagePreviewSculpted::renderWithoutTarget()
-{
-#if LL_DARWIN
-    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
-    {
-        return ETargetlessRenderResult::PENDING;
-    }
 
-    bool rendered = false;
-    {
-        LLScopedImagePreviewCameraState saved_state;
-        mOrigin.set(0, 0);
-        rendered = render();
-    }
-
-    const bool published = rendered && mMetalPreview &&
-        mGLTexturep->adoptMetalRenderTextureAuthoritative(
-            std::move(mMetalPreview), LLGLTexture::DYNAMIC_TEX);
-    mMetalPreview.reset();
-    mMetalPreviewDescriptor.reset();
-    if (!published)
-    {
-        mNeedsUpdate = true;
-        LL_DEBUGS("Metal")
-            << "Sculpt image preview remains pending; its prior native "
-               "result is unchanged"
-            << LL_ENDL;
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    mNeedsUpdate = false;
-    LL_INFOS_ONCE("Metal")
-        << "Sculpt image previews are targetless native Metal producers"
-        << LL_ENDL;
-    return ETargetlessRenderResult::COMPLETED;
-#else
-    return ETargetlessRenderResult::PENDING;
-#endif
-}
 
 
 //-----------------------------------------------------------------------------

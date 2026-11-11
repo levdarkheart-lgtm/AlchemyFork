@@ -76,35 +76,8 @@ S8 LLViewerDynamicTexture::getType() const
 //-----------------------------------------------------------------------------
 // generateMetalTexture()
 //-----------------------------------------------------------------------------
-void LLViewerDynamicTexture::generateMetalTexture()
-{
-    if (mComponents < 1 || mComponents > 4)
-    {
-        LL_ERRS() << "Bad number of components in dynamic texture: "
-                  << mComponents << LL_ENDL;
-    }
+#include "dynamic_texture_native.inl"
 
-    // Keep the established logical image wrapper: UI sampling and native
-    // publication consume its Metal object. The native creation path leaves
-    // LLImageGL::mTexName at zero, so a successful targetless render never
-    // allocates an OpenGL texture. Native-backed subclasses remain pending if
-    // that Metal storage cannot be created; they do not manufacture retained
-    // backing as a recovery renderer.
-    LLViewerTexture::generateGLTexture();
-    LLPointer<LLImageRaw> raw_image =
-        new LLImageRaw(mFullWidth, mFullHeight, mComponents);
-    raw_image->clear();
-    const bool created =
-        createMetalTexture(0, raw_image, LLGLTexture::DYNAMIC_TEX);
-    llassert(mGLTexturep.notNull() && !mGLTexturep->getHasGLTexture());
-    if (!created)
-    {
-        LL_WARNS("Metal")
-            << "Could not create native dynamic-texture backing; native "
-               "publication will remain pending"
-            << LL_ENDL;
-    }
-}
 #endif
 
 //-----------------------------------------------------------------------------
