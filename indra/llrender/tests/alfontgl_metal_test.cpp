@@ -1,16 +1,9 @@
 /**
- * @file llfontgl_test.cpp
- * @brief Smoke test for the headless GL harness.
+ * @file alfontgl_metal_test.cpp
+ * @brief Default-font layout, atlas ownership and actual native Metal rendering.
  *
- * Brings up a real GL context on LLWindowManager's hidden window, runs
- * LLFontGL::initClass through the explicit-fonts.xml-path overload,
- * and verifies the GL-backed atlas pipeline produces a live texture.
- *
- * The context is the binary's shared one (see llheadlessgl_fixture.h),
- * and so is LLFontGL's registry: the first case to call initClass makes
- * it, and it stays for every case after, llfonttextcache's too, since
- * LLFontGL's getters cache the fonts it holds. A case leaves the fonts,
- * their DPI and their scale as it found them.
+ * One device-only session retains the original binary's shared registry lifetime.
+ * Layout/capture/pixel oracles are retained from the original viewer tests.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -40,7 +33,7 @@
 #include "../llimagegl.h"
 #include "../alfontshaping.h"
 
-#include "llheadlessgl_fixture.h"
+#include "llfontmetal_fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -75,30 +68,15 @@ namespace
 
 namespace
 {
-    // The shared GL context. Catch2 makes a fixture per test case, but
-    // per-fixture HeadlessGL recreation poisons LLFontGL's per-getter
-    // static fontp caches after ~10 cycles (the per-test new GL
-    // context invalidates LLImageGL textures the fontps reference).
-    // Sharing the GL context for the binary's lifetime keeps font
-    // state coherent across all tests.
-    //
-    // It binds gUIProgram, so the render group can drive gGL.beginList /
-    // flush against a real shader. Layout-only tests (which
-    // never issue a draw) still work fine — the bound shader is harmless
-    // when no draw call is in flight.
-    struct llfontgl_data
+    struct llfontgl_data : ll_test::SharedNativeFontCase
     {
-        ll_test::HeadlessGL& gl = ll_test::sharedHeadlessGL();
-        llfontgl_data() = default;
-        ~llfontgl_data() = default;
     };
 
-
     // initClass through the explicit-path overload should bring up a
-    // working font registry under a real GL context. loadDefaultFonts
+    // working font registry under a real Metal device. loadDefaultFonts
     // (called from initClass) returns true only if every required
     // family resolved through to a usable LLFontFreetype.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: initClass from an explicit fonts.xml brings up a working registry", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: initClass from an explicit fonts.xml brings up a working registry", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
         {
@@ -111,17 +89,17 @@ namespace
                             /*app_dir=*/kAppDir,
                             /*fonts_xml_path=*/kFontsXml,
                             /*font_overrides=*/LLSD(),
-                            /*create_gl_textures=*/true);
+                            /*create_gl_textures=*/false, /*create_metal_textures=*/true);
 
         CHECK(LLFontGL::loadDefaultFonts());
         CHECK(LLFontGL::getFontSansSerif() != nullptr);
     }
 
     // After ASCII rasterization, the SansSerif font's bitmap cache
-    // should have at least one greyscale page with a live GL texture.
-    // Catches the silent-no-op failure mode where the GL context is
-    // healthy but createGLTexture skipped the upload.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: ASCII glyphs land on a grayscale atlas page with a live GL texture", "[LLFontGL]")
+    // should have at least one greyscale page with a live native texture.
+    // Catches the silent-no-op failure mode where the Metal device is
+    // healthy but the atlas upload was skipped.
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: ASCII glyphs land on a grayscale atlas page with a live native texture", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
         {
@@ -134,7 +112,7 @@ namespace
         // standalone) or warns + bails (test<1> ran first). Either way
         // the assertions below operate against a working registry.
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
 
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
@@ -153,19 +131,20 @@ namespace
 
         LLImageGL* page = cache->getImageGL(EFontGlyphType::Grayscale, 0);
         REQUIRE(page != nullptr);
-        CHECK(page->getTexName() != 0);
+        CHECK(page->getMetalTexture() != nullptr);
+        CHECK_FALSE(page->getHasGLTexture());
     }
 
     // getFontMonospace resolves and reports fixed-width through its
     // underlying freetype. Pins the registry's monospace family
     // routing — a regression that resolved Monospace to a
     // proportional fallback would surface here.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getFontMonospace resolves to a fixed-width face", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getFontMonospace resolves to a fixed-width face", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* mono = LLFontGL::getFontMonospace();
         REQUIRE(mono != nullptr);
         const LLFontFreetype* ft = mono->getFontFreetype();
@@ -177,12 +156,12 @@ namespace
     // getFontSansSerifBig resolves with positive line-height.
     // Captures the registry's size-suffix routing — Big size must
     // produce a freetype whose metrics scale up from the base.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getFontSansSerifBig has a taller line than getFontSansSerifSmall", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getFontSansSerifBig has a taller line than getFontSansSerifSmall", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* small = LLFontGL::getFontSansSerifSmall();
         LLFontGL* big   = LLFontGL::getFontSansSerifBig();
         REQUIRE(small != nullptr);
@@ -200,12 +179,12 @@ namespace
     // pointer on second call. Pins the per-getter static cache —
     // a regression that re-resolved on every call would change the
     // pointer (and waste a registry lookup per UI label render).
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getFontSansSerif returns the same font on every call", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getFontSansSerif returns the same font on every call", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* a = LLFontGL::getFontSansSerif();
         LLFontGL* b = LLFontGL::getFontSansSerif();
         REQUIRE(a != nullptr);
@@ -215,12 +194,12 @@ namespace
     // generateASCIIglyphs is idempotent — repeat calls don't allocate
     // additional atlas sheets. Pins the head-cache lookup that makes
     // the second call a fast no-op.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a second generateASCIIglyphs adds no atlas sheets", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a second generateASCIIglyphs adds no atlas sheets", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -239,12 +218,12 @@ namespace
 
     // getFontByName returns the same instance for the same legacy
     // name string. Pins the legacy-name routing in the registry.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getFontByName returns the same instance for the same legacy name", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getFontByName returns the same instance for the same legacy name", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* a = LLFontGL::getFontByName("SANSSERIF");
         LLFontGL* b = LLFontGL::getFontByName("SANSSERIF");
         REQUIRE(a != nullptr);
@@ -256,12 +235,12 @@ namespace
     // are recently used. Pins 169390b593 (cache-sweep moved off
     // hot path) and 7c05b2de82 (collectGarbage safe at any frame
     // boundary).
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: collectGarbage leaves glyphs in use and their atlas page alone", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: collectGarbage leaves glyphs in use and their atlas page alone", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
         const LLFontFreetype* ft = font->getFontFreetype();
@@ -295,18 +274,19 @@ namespace
         UNSCOPED_INFO("page 0 still present after a sweep");
         REQUIRE(page != nullptr);
         UNSCOPED_INFO("page 0 still has a live GL texture");
-        CHECK(page->getTexName() != 0);
+        CHECK(page->getMetalTexture() != nullptr);
+        CHECK_FALSE(page->getHasGLTexture());
     }
 
     // Re-calling initClass after the registry is up is a no-op
     // (warns + bails). The registry pointer must remain stable so
     // LLFontGL's static fontp caches don't dangle.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a second initClass leaves the fonts already resolved in place", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a second initClass leaves the fonts already resolved in place", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* before = LLFontGL::getFontSansSerif();
         REQUIRE(before != nullptr);
 
@@ -314,7 +294,7 @@ namespace
         // guard short-circuits, so the registry stays the same and
         // getter caches keep returning the same pointer.
         LLFontGL::initClass(72.f, 0.5f, 0.5f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* after = LLFontGL::getFontSansSerif();
         CHECK(after == before);
     }
@@ -322,19 +302,19 @@ namespace
     // A second initClass through the explicit-path overload is ignored
     // whole: the fonts already made keep the DPI and scale they were made
     // at, which every later layout and measurement reads.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a second initClass leaves the DPI and scale the fonts were made at", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a second initClass leaves the DPI and scale the fonts were made at", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         const F32 horiz_dpi = LLFontGL::sHorizDPI;
         const F32 vert_dpi  = LLFontGL::sVertDPI;
         const F32 scale_x   = LLFontGL::sScaleX;
         const F32 scale_y   = LLFontGL::sScaleY;
 
         LLFontGL::initClass(72.f, 0.5f, 0.5f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         CHECK(LLFontGL::sHorizDPI == horiz_dpi);
         CHECK(LLFontGL::sVertDPI == vert_dpi);
         CHECK(LLFontGL::sScaleX == scale_x);
@@ -344,12 +324,12 @@ namespace
     // Static getter family — every named getter must resolve to a
     // non-null LLFontGL after a successful initClass. Smoke check
     // that the default fonts.xml covers all the families exposed.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: every named font getter resolves after initClass", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: every named font getter resolves after initClass", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         CHECK(LLFontGL::getFontSansSerif()           != nullptr);
         CHECK(LLFontGL::getFontSansSerifSmall()      != nullptr);
         CHECK(LLFontGL::getFontSansSerifSmallBold()  != nullptr);
@@ -365,12 +345,12 @@ namespace
 
     // getWidthF32: the whole-string overload defaults to the text's length;
     // a getWidthF32Bytes call with an explicit budget matches it.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getWidthF32 of a whole string equals getWidthF32Bytes of all of it", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getWidthF32 of a whole string equals getWidthF32Bytes of all of it", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
         const std::string s = "Hello";
@@ -386,12 +366,12 @@ namespace
     // render()'s halign math at llfontgl.cpp:354-372 — the alignment
     // calc relies on accumulated width strictly increasing with
     // character count for the same string.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a string grows wider with each character added", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a string grows wider with each character added", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
         const F32 w1 = font->getWidthF32(std::string("A"));
@@ -406,12 +386,12 @@ namespace
     // computes this for the truncation path (llfontgl.cpp:459 references
     // the dots constant). A regression where '.' rasterized to a 0-width
     // glyph would silently break ellipsis sizing.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getWidthF32 gives the ellipsis dots a positive width", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getWidthF32 gives the ellipsis dots a positive width", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
         const F32 w = font->getWidthF32(std::string("...."));
@@ -420,12 +400,12 @@ namespace
 
     // maxDrawableBytes boundary: zero pixel budget fits nothing,
     // F32_MAX fits all, mid-budget fits a partial prefix.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: maxDrawableBytes fits none or all or the prefix the budget holds", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: maxDrawableBytes fits none or all or the prefix the budget holds", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
         const std::string s = "Hello";
@@ -449,12 +429,12 @@ namespace
     // byteFromPixelOffset round-trip: for each prefix length i, the
     // pixel offset corresponding to the prefix's width must invert to
     // i. Width accumulation and pixel->offset lookup must agree.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: byteFromPixelOffset inverts getWidthF32Bytes at every character start", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: byteFromPixelOffset inverts getWidthF32Bytes at every character start", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
         const std::string s = "Hello";
@@ -494,12 +474,12 @@ namespace
     // width measurement boundary — a regression that shaped "a你"
     // against DejaVu only (replacing 你 with notdef) would diverge.
     // Skip if the default fallback chain doesn't cover U+4F60.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a mixed-script string is as wide as its parts", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a mixed-script string is as wide as its parts", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -523,7 +503,7 @@ namespace
     // the new tokenizer-based parser splits on '|' and matches whole
     // tokens. NORMAL has its own dedicated string ("NORMAL", no leading
     // pipe), so the round-trip pins both edge cases at once.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getStringFromStyle round-trips and the parser matches whole tokens", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: getStringFromStyle round-trips and the parser matches whole tokens", "[LLFontGL][native-font-default]")
     {
         const U8 cases[] = {
             LLFontGL::NORMAL,
@@ -566,12 +546,12 @@ namespace
     // selection rect's right edge across the cluster's interior —
     // observed as drag-select highlight flicker on ZWJ flags / family
     // emoji where 🐶 (1 codepoint) is unaffected.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: byteFromPixelOffset never lands inside a ZWJ emoji cluster", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: byteFromPixelOffset never lands inside a ZWJ emoji cluster", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -628,12 +608,12 @@ namespace
     // width. Sweep the budget across a string with a ZWJ cluster in it and
     // hold every answer to the promise llfontgl.h makes -- a character start,
     // and where the text shapes, a cluster start.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: firstDrawableByte never lands inside a character or a ZWJ cluster", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: firstDrawableByte never lands inside a character or a ZWJ cluster", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -680,12 +660,12 @@ namespace
     // set of positions a full sweep can return has to be exactly the set of
     // character starts: anything missing is a character the backward walk
     // stepped over, and anything extra is an offset inside one.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: firstDrawableByte sweeps through every character start and no other", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: firstDrawableByte sweeps through every character start and no other", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -721,12 +701,12 @@ namespace
     // hold even the last character still has to name a place to draw from --
     // that character, clipped -- because returning nothing would leave a
     // caller scrolling a field it can never make progress in.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: firstDrawableByte on empty text and at zero and unlimited budgets", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: firstDrawableByte on empty text and at zero and unlimited budgets", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -760,12 +740,12 @@ namespace
     // maxDrawableBytes over text where a character is not a byte. The ASCII
     // test beside this one cannot tell a byte count from a character count, a
     // glyph count or a cluster count -- they are the same number there.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: maxDrawableBytes over text where a character is not a byte", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: maxDrawableBytes over text where a character is not a byte", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -804,12 +784,12 @@ namespace
     // takes an offset to start at, and byteFromPixelOffset reports back
     // relative to it -- LLLineEditor::calcCursorPos adds its scroll position
     // to the result, so an absolute answer would double it.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: measuring and hit-testing from begin_offset answer relative to it", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: measuring and hit-testing from begin_offset answer relative to it", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -847,12 +827,12 @@ namespace
 
     // The two wrap styles that are not ANYWHERE. maxDrawableBytes was rewritten
     // onto UAX #14 in this work and only its default was ever exercised.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: the word-boundary wrap styles retreat to a break", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: the word-boundary wrap styles retreat to a break", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -903,12 +883,12 @@ namespace
     // them proves nothing. What proves it is that a small budget over a long
     // string -- where the window is a fraction of the text -- agrees with the
     // same question asked over a string short enough that no window applies.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: maxDrawableBytes on long text fits what getWidthF32Bytes says fits", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: maxDrawableBytes on long text fits what getWidthF32Bytes says fits", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -990,27 +970,22 @@ namespace
     // ===================================================================
     // Render-output group: fixture brings up gUIProgram (needs_render=true)
     // so LLFontGL::render() completes end-to-end against the
-    // framebuffer; tests verify pixel-level invariants via glReadPixels.
-    // Shared static HeadlessGL — per-test recreation poisons LLFontGL's
-    // static fontp cache after a few cycles (see vertexbuffer fixture).
-    // ===================================================================
-
+    // framebuffer; tests verify pixel-level invariants via native readback.
+    // Shared native device/registry: supported viewer reloads preserve font objects.
     inline void ensureRenderLLFontGL()
     {
         static bool initialized = false;
         if (initialized || !fileExists(kFontsXml))
             return;
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL::loadDefaultFonts();
         initialized = true;
     }
 
-    struct llfontgl_render_data
+    struct llfontgl_render_data : ll_test::SharedNativeFontCase
     {
-        ll_test::HeadlessGL& gl = ll_test::sharedHeadlessGL();
-        llfontgl_render_data() { ensureRenderLLFontGL(); }
-        ~llfontgl_render_data() = default;
+        llfontgl_render_data() : SharedNativeFontCase(true) { ensureRenderLLFontGL(); }
     };
 
 
@@ -1024,12 +999,12 @@ namespace
     // Counted in cache mutations, which rise once per insert, so the number is
     // exactly "how many runs had to be shaped". Timing would not survive a
     // build machine; this does.
-    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a reflow costs no shapes at the same width and few in a drag", "[LLFontGL]")
+    TEST_CASE_METHOD(llfontgl_data, "LLFontGL: a reflow costs no shapes at the same width and few in a drag", "[LLFontGL][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         REQUIRE(font != nullptr);
 
@@ -1112,8 +1087,8 @@ namespace
     // First end-to-end render() call with LEFT/BASELINE places glyph
     // pixels into the framebuffer at the requested x. Pins the full
     // chain: shape → atlas → vertex buffer → drawArrays → fragment
-    // output → glReadPixels.
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes of one character emits one textured quad", "[LLFontGLRender]")
+    // output → native capture/readback.
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes of one character emits one textured quad", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
@@ -1152,7 +1127,9 @@ namespace
         {
             INFO("the quad carries an atlas texture");
             REQUIRE_FALSE(capture.empty());
-            CHECK(capture.front().mTexName != 0);
+            REQUIRE(capture.front().mTexImage);
+            CHECK(capture.front().mTexImage->getMetalTexture());
+            CHECK(capture.front().mTextureBound);
         }
     }
 
@@ -1162,7 +1139,7 @@ namespace
     // verification is brittle in this test setup (stub shader / state
     // accumulation); this pins crash-free traversal of all three
     // halign branches at llfontgl.cpp:354-372.
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes draws every byte whatever the horizontal alignment", "[LLFontGLRender]")
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes draws every byte whatever the horizontal alignment", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
@@ -1189,7 +1166,7 @@ namespace
     // BASELINE, and BOTTOM without crashing; return value matches
     // requested char count for each. Pins the valign switch in
     // LLFontGL::renderBytes.
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes draws every byte whatever the vertical alignment", "[LLFontGLRender]")
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes draws every byte whatever the vertical alignment", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
@@ -1219,7 +1196,7 @@ namespace
     // Style flip across renders: render with NORMAL style, then BOLD.
     // Both must succeed. Pins style propagation through render() —
     // 00f3a4e93d's regression invalidation gate.
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes draws every byte whatever the style", "[LLFontGLRender]")
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes draws every byte whatever the style", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
@@ -1249,7 +1226,7 @@ namespace
     // to be gUIProgram, which the fixture ensures. Pins shadow
     // rendering doesn't crash; visible-shadow geometry verification is
     // out of scope for this fixture (no production shadow shader).
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes draws every byte whatever the shadow", "[LLFontGLRender]")
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes draws every byte whatever the shadow", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
@@ -1283,11 +1260,11 @@ namespace
     // re-assert the batch's own texture (flush_batch in LLFontGL::render).
     //
     // Captured display lists record the texture bound at flush time
-    // (LLVertexBufferData::mTexName), which makes the misdirection
+    // (LLVertexBufferData::mTexImage), which makes the misdirection
     // directly observable: render a Latin prefix plus a never-yet-
     // rasterized emoji and require the prefix batch to carry the
     // grayscale atlas texture its UVs were built against.
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: mid-render glyph rasterization keeps the pending batch's texture", "[LLFontGLRender]")
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: mid-render glyph rasterization keeps the pending batch's texture", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
@@ -1336,7 +1313,8 @@ namespace
         LLImageGL* latin_img = latin_cache->getImageGL(latin_entry.first, (U32)latin_entry.second);
         UNSCOPED_INFO("latin atlas page live");
         REQUIRE(latin_img != nullptr);
-        const U32 latin_tex = latin_img->getTexName();
+        const LLImageGL* latin_tex = latin_img;
+        REQUIRE(latin_tex->getMetalTexture());
 
         const LLFontGlyphInfo* emoji_gi = head->getGlyphInfo(emoji_cp, EFontGlyphType::Color);
         {
@@ -1350,7 +1328,8 @@ namespace
         LLImageGL* emoji_img = emoji_cache->getImageGL(emoji_entry.first, (U32)emoji_entry.second);
         UNSCOPED_INFO("emoji atlas page live");
         REQUIRE(emoji_img != nullptr);
-        const U32 emoji_tex = emoji_img->getTexName();
+        const LLImageGL* emoji_tex = emoji_img;
+        REQUIRE(emoji_tex->getMetalTexture());
 
         UNSCOPED_INFO("string spans two distinct atlas textures");
         CHECK(latin_tex != emoji_tex);
@@ -1360,13 +1339,13 @@ namespace
         // glyph stream switches to the emoji's atlas — exactly the batch
         // the mid-render upload used to misdirect.
         UNSCOPED_INFO("prefix batch carries its own atlas texture");
-        CHECK(capture.front().mTexName == latin_tex);
+        CHECK(capture.front().mTexImage == latin_tex);
         // And every batch in the capture must reference one of the two
         // atlas pages this string actually draws from.
         for (const LLVertexBufferData& entry : capture)
         {
             UNSCOPED_INFO("batch texture is one of the string's atlas pages");
-            REQUIRE((entry.mTexName == latin_tex || entry.mTexName == emoji_tex));
+            REQUIRE((entry.mTexImage == latin_tex || entry.mTexImage == emoji_tex));
         }
     }
 
@@ -1374,7 +1353,7 @@ namespace
     // a codepoint count, a glyph count or a cluster count, and every existing
     // assertion about it is over ASCII. Three characters of three bytes each
     // tell the four apart: nine, and nothing else.
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes counts bytes rather than characters", "[LLFontGLRender]")
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes counts bytes rather than characters", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
@@ -1421,7 +1400,7 @@ namespace
     // a per-glyph clip can paint a base and drop the mark that belongs to it.
     // That is not a clipped syllable, it is a different syllable, and the
     // count reported back calls the whole cluster undrawn either way.
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes clips whole clusters and counts what it drew", "[LLFontGLRender]")
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes clips whole clusters and counts what it drew", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
@@ -1512,7 +1491,7 @@ namespace
     // right_x is the observable end of the drawn run, so LEFT-aligned it is the
     // origin plus the width. That is what pins the shared sum against the
     // independent walk.
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes ends a run exactly where getWidthF32Bytes measures it", "[LLFontGLRender]")
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderBytes ends a run exactly where getWidthF32Bytes measures it", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
@@ -1564,7 +1543,7 @@ namespace
     // to be read after the dots are measured. Read before, the first
     // ellipsized string of a session trips a tripwire for a walk that has not
     // started yet, which on the login screen is every session.
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: an ellipsized draw on a cold cache shapes the dots mid-draw", "[LLFontGLRender]")
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: an ellipsized draw on a cold cache shapes the dots mid-draw", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
@@ -1604,21 +1583,18 @@ namespace
     // A string placed by placeGlyphs and drawn by renderGlyphs lands on the
     // pixels renderUTF8 puts it on, whichever way it is aligned; and runs
     // drawn in one call by renderGlyphRuns are the runs drawn apiece.
-    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderGlyphs matches renderUTF8 and renderGlyphRuns matches renderGlyphs", "[LLFontGLRender]")
+    TEST_CASE_METHOD(llfontgl_render_data, "LLFontGLRender: renderGlyphs matches renderUTF8 and renderGlyphRuns matches renderGlyphs", "[LLFontGLRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not found");
-        const S32  w     = ll_test::HeadlessGL::WIDTH;
-        const S32  h     = ll_test::HeadlessGL::HEIGHT;
+        const S32  w     = ll_test::NativeFontUI::WIDTH;
+        const S32  h     = ll_test::NativeFontUI::HEIGHT;
         const auto frame = [&](const std::function<void()>& draw) {
             gl.clearFramebuffer();
-            glEnable(GL_BLEND);
             gGL.setSceneBlendType(LLRender::BT_ALPHA);
             draw();
             gGL.flush();
-            glDisable(GL_BLEND);
-            glFinish();
-            return ll_test::readFramebufferRGBA(w, h);
+            return gl.readFramebufferRGBA(w, h);
         };
         const auto lit = [](const std::vector<U8>& px) {
             for (size_t i = 0; i < px.size(); i += 4)

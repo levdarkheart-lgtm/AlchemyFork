@@ -1,11 +1,11 @@
 /**
- * @file llfonttextcache_test.cpp
+ * @file alfonttextcache_metal_test.cpp
  * @brief Tests for LLFontTextCache, which keeps what one piece of text
  *        costs to draw and to measure.
  *
  * Its lifecycle (construct, reset, destroy) and its static toggles; its
  * width slots, held against the font's own measurement; and its draws,
- * through the shared context's UI program. Which way a draw went -- a
+ * through the shared device's native UI pipeline. Which way a draw went -- a
  * replay, a recolor in place, or a rebuild -- is private to the cache,
  * and is read off LLFontTextCache::regenCount(), which only a rebuild
  * moves, and off the pixels the draw left.
@@ -35,11 +35,33 @@
 #include "../llfonttextcache.h"
 #include "../llfontgl.h"
 
-#include "llheadlessgl_fixture.h"
+#include "llfontmetal_fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdio>
+
+namespace ll_test
+{
+    // Retain the original friend-mediated shadow/foreground geometry oracle.
+    struct VertexBufferProbe
+    {
+        struct CaptureCounts { size_t shadow_quads = 0, foreground_quads = 0; };
+        static CaptureCounts count(const LLFontTextCache& buf)
+        {
+            CaptureCounts counts;
+            for (const LLVertexBufferData& entry : buf.mShadowBufferList)
+                counts.shadow_quads += entry.mCount / 6;
+            for (const LLVertexBufferData& entry : buf.mForegroundBufferList)
+                counts.foreground_quads += entry.mCount / 6;
+            return counts;
+        }
+    };
+    struct FontStateScope
+    {
+        ~FontStateScope() { ALFontShaping::clearCache(); }
+    };
+}
 
 namespace
 {
@@ -66,15 +88,8 @@ namespace
 
 namespace
 {
-    // Shared GL context + LLFontGL bring-up. One per binary. Catch2
-    // creates a fresh fixture per test case; per-fixture HeadlessGL
-    // creation poisons LLFontGL's process-static fontp cache, since
-    // each test's GL context destroys the LLImageGL textures the
-    // fontps reference (LLFontManager::cleanupClass + LLImageGL::
-    // cleanupClass in HeadlessGL dtor). Sharing the GL context across
-    // tests keeps all that state coherent for the binary's lifetime.
-    // Both groups take it with gUIProgram bound (the smoke tests don't
-    // drive rendering, but having it bound is harmless for them).
+    // Retain the original shared registry session, now backed by a real Metal
+    // device and authoritative native capture rather than a hidden window.
     inline void ensureLLFontGLLoaded()
     {
         static bool initialized = false;
@@ -83,7 +98,7 @@ namespace
         if (!fileExists(kFontsXml))
             return;
         LLFontGL::initClass(96.f, 1.f, 1.f, kAppDir, kFontsXml,
-                            LLSD(), /*create_gl_textures=*/true);
+                            LLSD(), /*create_gl_textures=*/false, /*create_metal_textures=*/true);
         LLFontGL::loadDefaultFonts();
         initialized = true;
     }
@@ -108,14 +123,8 @@ namespace
         }
     }
 
-    // Fixture: minimal — just gates the static toggles and ensures the
-    // shared GL fixture is up. The actual HeadlessGL instance lives in
-    // ll_test::sharedHeadlessGL() and stays alive for the whole
-    // binary, so font/atlas state stays coherent across tests.
-    struct llfonttextcache_data
+    struct llfonttextcache_data : ll_test::SharedNativeFontCase
     {
-        ll_test::HeadlessGL& gl = ll_test::sharedHeadlessGL();
-
         llfonttextcache_data()
         {
             LLFontTextCache::enableBufferCollection(true);
@@ -135,14 +144,14 @@ namespace
     // that surface as a crash in ~LLFontTextCache trying to free
     // a garbage list. There is nothing to ask of it: the case passes by
     // returning, and a crash in the destructor is its failure.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: a default-constructed cache destroys cleanly", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: a default-constructed cache destroys cleanly", "[LLFontTextCache][native-font-default]")
     {
         LLFontTextCache vb;
     }
 
     // reset() on a freshly-constructed buffer must be a safe no-op. The case
     // passes by returning.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: reset on a fresh cache is safe to call twice", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: reset on a fresh cache is safe to call twice", "[LLFontTextCache][native-font-default]")
     {
         LLFontTextCache vb;
         vb.reset();
@@ -156,7 +165,7 @@ namespace
     // is rebuilt; with the colour-only fast path on, a colour change is
     // recolored in place rather than rebuilt. What the fast path does when it
     // is off is the render group's to check.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: enableBufferCollection and enableColorOnlyRegen toggle off and on", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: enableBufferCollection and enableColorOnlyRegen toggle off and on", "[LLFontTextCache][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -202,7 +211,7 @@ namespace
     // way that breaks construction, reset or destruction. The case passes by
     // returning; that one cache's reset leaves another's answers alone is
     // checked in the width group.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: four caches in flight at once each reset cleanly", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: four caches in flight at once each reset cleanly", "[LLFontTextCache][native-font-default]")
     {
         LLFontTextCache a;
         LLFontTextCache b;
@@ -222,7 +231,7 @@ namespace
 
     // First call computes; second call with identical params is a cache
     // hit and returns the same value. Both must equal fontp->getWidthF32.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes matches the font and repeats its answer", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes matches the font and repeats its answer", "[LLFontTextCache][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -244,7 +253,7 @@ namespace
     // Cache miss when geometry differs: changing max_chars between
     // calls forces recompute. The cache key includes max_chars at
     // llfonttextcache.cpp:517.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes recomputes for a new max_chars and repeats for the same", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes recomputes for a new max_chars and repeats for the same", "[LLFontTextCache][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -263,7 +272,7 @@ namespace
 
     // Cache miss when LLFontGL::sScaleX changes between calls. Pins
     // mLastScaleX in the cache key (llfonttextcache.cpp:519).
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes recomputes when LLFontGL::sScaleX changes", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes recomputes when LLFontGL::sScaleX changes", "[LLFontTextCache][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -290,7 +299,7 @@ namespace
     // cache holds is measured again. Whether it was is read off the shaper,
     // which a measurement asks and an answer from the cache's own slot does
     // not -- so with the shape cache emptied, a measurement shows as a shape.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes measures again after a generation tick and agrees", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes measures again after a generation tick and agrees", "[LLFontTextCache][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -349,7 +358,7 @@ namespace
 
     // reset() clears the cache — next call recomputes. Pins
     // llfonttextcache.cpp:480-493.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes after reset() still agrees with the font", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes after reset() still agrees with the font", "[LLFontTextCache][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -374,7 +383,7 @@ namespace
     // state in instance A doesn't affect instance B. The two hold different
     // texts over the same span, and width slots are keyed on the span, so a
     // slot the two shared would hand one of them the other's width.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: one cache's reset leaves another's width unchanged", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: one cache's reset leaves another's width unchanged", "[LLFontTextCache][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -410,7 +419,7 @@ namespace
     // count, a character count and a glyph count are the same number, so a
     // cache keyed in the wrong one of them hits and misses identically on all
     // of them and every assertion still passes.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes keys its cache on bytes over multi-byte text", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: getWidthBytes keys its cache on bytes over multi-byte text", "[LLFontTextCache][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -455,7 +464,7 @@ namespace
     // at one end or the other. Two long strings differing only in the middle
     // read as the same text, deliberately, and this is the whole of what that
     // bound gives up.
-    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: ALFontCacheKey tells recorded text apart by length and both ends", "[LLFontTextCache]")
+    TEST_CASE_METHOD(llfonttextcache_data, "LLFontTextCache: ALFontCacheKey tells recorded text apart by length and both ends", "[LLFontTextCache][native-font-default]")
     {
         ALFontCacheKey key;
         UNSCOPED_INFO("the first text asked about is the one recorded");
@@ -490,16 +499,13 @@ namespace
 
     // ===================================================================
     // Render-path tests — exercise LLFontTextCache::render() through
-    // a real compiled gUIProgram. The fixture ctor binds the stub UI
-    // shader so beginList → flush → drawArrays completes against the
-    // framebuffer.
+    // the native gUIProgram identity. The fixture submits beginList → flush →
+    // typed-buffer draws to an authoritative device-only capture.
     // ===================================================================
 
-    struct llfonttextcache_render_data
+    struct llfonttextcache_render_data : ll_test::SharedNativeFontCase
     {
-        ll_test::HeadlessGL& gl = ll_test::sharedHeadlessGL();
-
-        llfonttextcache_render_data()
+        llfonttextcache_render_data() : SharedNativeFontCase(true)
         {
             LLFontTextCache::enableBufferCollection(true);
             LLFontTextCache::enableColorOnlyRegen(true);
@@ -515,8 +521,8 @@ namespace
 
     // First render() populates the buffer cache and returns the
     // character count rendered. Pins genBuffers + drawBuffer end-to-end
-    // through the stub UI shader.
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: renderBytes on a fresh cache returns the bytes it drew", "[LLFontTextCacheRender]")
+    // through the native UI pipeline.
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: renderBytes on a fresh cache returns the bytes it drew", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -539,7 +545,7 @@ namespace
     // call has nothing to rebuild and nothing to recolor, and the atlas is
     // not touched. The global generation counter must NOT advance across the
     // repeat, and the rebuild count must not move.
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: a repeated identical render replays and allocates nothing", "[LLFontTextCacheRender]")
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: a repeated identical render replays and allocates nothing", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -578,7 +584,7 @@ namespace
     // generation counter doesn't advance (no atlas mutation), the call
     // returns the same character count, and the text comes out in the new
     // colour -- which a replay of the white capture would not.
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: a color change alone recolors in place without rebuilding or allocating", "[LLFontTextCacheRender]")
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: a color change alone recolors in place without rebuilding or allocating", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -606,9 +612,8 @@ namespace
 
         // Over a black frame, red text leaves only red; anything with green or
         // blue in it is the white the geometry was captured in.
-        glFinish();
-        const std::vector<U8> px = ll_test::readFramebufferRGBA(ll_test::HeadlessGL::WIDTH,
-                                                                ll_test::HeadlessGL::HEIGHT);
+        const std::vector<U8> px = gl.readFramebufferRGBA(ll_test::NativeFontUI::WIDTH,
+                                                                ll_test::NativeFontUI::HEIGHT);
         size_t red = 0;
         size_t not_red = 0;
         for (size_t i = 0; i + 3 < px.size(); i += 4)
@@ -640,7 +645,7 @@ namespace
     // (nothing about geometry change touches the atlas), but the buffer
     // cache has to rebuild, and the run it draws ends where the second
     // position puts it (right_x) rather than where the first capture did.
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: a render moved to another x rebuilds there and allocates nothing", "[LLFontTextCacheRender]")
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: a render moved to another x rebuilds there and allocates nothing", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -679,7 +684,7 @@ namespace
     // a same-geometry color-change call falls through to genBuffers
     // (full regen), where with it on the change is recolored in place.
     // The fixture puts the flag back whatever happens here.
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: with enableColorOnlyRegen off a color change rebuilds every byte", "[LLFontTextCacheRender]")
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: with enableColorOnlyRegen off a color change rebuilds every byte", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -714,7 +719,7 @@ namespace
     // index stream. Pins 00f3a4e93d (style invalidation in the cache's
     // geometry check); where the registry has a bold face the flip also
     // changes the font drawing it, which rebuilds as well.
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: a style flip from NORMAL to BOLD rebuilds and keeps the count", "[LLFontTextCacheRender]")
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: a style flip from NORMAL to BOLD rebuilds and keeps the count", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -747,7 +752,7 @@ namespace
     // outer's on_pass_boundary callback and routed its shadow batch
     // into mForegroundBufferList — visible as off-color shadow tinting
     // in the recolor fast path. Fix renders the ellipsis with NO_SHADOW.
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: an ellipsized DROP_SHADOW_SOFT render adds no shadow quads for the dots", "[LLFontTextCacheRender]")
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: an ellipsized DROP_SHADOW_SOFT render adds no shadow quads for the dots", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -799,7 +804,7 @@ namespace
     // Sanity check on chars_drawn: when use_ellipses=true triggers
     // truncation, render's return value reports only the visible
     // pre-ellipsis character count, not including the appended "...".
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: an ellipsized render counts the visible bytes and not the dots", "[LLFontTextCacheRender]")
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: an ellipsized render counts the visible bytes and not the dots", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -850,7 +855,7 @@ namespace
     // floater drag or a resize replays the capture under a new transform. That
     // was not true while the origin was added into the vertices: everything
     // visible in a moving container was reshaped every frame.
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: moving text does not rebuild it", "[LLFontTextCacheRender]")
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: moving text does not rebuild it", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -925,7 +930,7 @@ namespace
     // and a scroll list draws a cell per column whether or not it holds
     // anything. Such a piece of text reshaped itself on every frame it stayed
     // on screen, and the count is the only place it showed.
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: text that shapes to no geometry stops rebuilding too", "[LLFontTextCacheRender]")
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: text that shapes to no geometry stops rebuilding too", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
@@ -994,7 +999,7 @@ namespace
     // box, the ellipsis fit, the auto-resize. Without the other half being
     // dropped alongside, the draw was told nothing had moved and replayed a
     // capture whose glyphs had been rebuilt underneath it.
-    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: a resolution change a measurement saw still rebuilds the draw", "[LLFontTextCacheRender]")
+    TEST_CASE_METHOD(llfonttextcache_render_data, "LLFontTextCacheRender: a resolution change a measurement saw still rebuilds the draw", "[LLFontTextCacheRender][native-font-default]")
     {
         if (!fileExists(kFontsXml))
             SKIP("fonts.xml not present in test data dir");
