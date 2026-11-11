@@ -1656,6 +1656,9 @@ struct ALMetalWorldSMAAEdgeScene
     float predication_threshold = 0.002f;
     float predication_scale = 2.f;
     float predication_strength = 0.4f;
+    // Mark initial-threshold survivors in a retained private stencil mask,
+    // matching RenderSMAAUseStencil. Local contrast can later zero their RG.
+    bool use_stencil = false;
 };
 
 // Second pass of the production SMAA 1x chain. It consumes the exact RGBA8
@@ -1663,6 +1666,8 @@ struct ALMetalWorldSMAAEdgeScene
 // The resulting weights are not displayable until neighborhood blending.
 struct ALMetalWorldSMAAWeightScene
 {
+    // A stencil-bearing edge target also supplies the exact hardware mask.
+    // The returned weight target remains color-only and does not borrow it.
     const ALMetalRenderTarget* edges = nullptr;
     std::uint32_t quality = 0;
 };
@@ -1695,6 +1700,7 @@ struct ALMetalWorldSMAAScene
     float predication_threshold = 0.002f;
     float predication_scale = 2.f;
     float predication_strength = 0.4f;
+    bool use_stencil = false;
 };
 
 // The production HDR bloom owner. It reproduces the world

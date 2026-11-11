@@ -468,7 +468,7 @@ namespace
     {
         // x = predication threshold, y = scale, z = strength.
         float predication[4]{};
-        // x = quality index, y = predication enabled.
+        // x = quality; y bit0 = predication, bit1 = stencil; zw = output size.
         std::uint32_t config[4]{};
     };
     static_assert(sizeof(WorldSMAAEdgeConstants) == 32);
@@ -1811,9 +1811,13 @@ struct ALMetalWorldGBufferRenderer::Impl
     // render-pipeline attachment formats are immutable.
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> cas_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> fxaa_pipelines;
-    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+    // Stencil attachment variant x predication variant.
+    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
         smaa_edge_pipelines;
-    std::unique_ptr<ALMetalRenderPipeline> smaa_weight_pipeline;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        smaa_weight_pipelines;
+    std::unique_ptr<ALMetalDepthStencilState> smaa_mark_edges;
+    std::unique_ptr<ALMetalDepthStencilState> smaa_test_edges;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         smaa_neighborhood_pipelines;
     // format (R11G11B10F/RGBA16F) x shaped x near-blur.
@@ -3169,40 +3173,75 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         "almetal_world_smaa_edge_fragment",
         "almetal_world_smaa_edge_predicated_fragment",
     }};
-    for (std::size_t predication = 0;
-         predication < smaa_edge_functions.size(); ++predication)
+    for (std::size_t stencil = 0; stencil < 2; ++stencil)
     {
-        ALMetalRenderPipelineDescriptor smaa_edge_descriptor;
-        smaa_edge_descriptor.library = impl->library.get();
-        smaa_edge_descriptor.vertex_function = "almetal_resample_vertex";
-        smaa_edge_descriptor.fragment_function =
-            smaa_edge_functions[predication];
-        smaa_edge_descriptor.colors[0].format =
+        const ALMetalPixelFormat depth_format = stencil
+            ? ALMetalPixelFormat::depth32_float_stencil8
+            : ALMetalPixelFormat::invalid;
+        for (std::size_t predication = 0;
+             predication < smaa_edge_functions.size(); ++predication)
+        {
+            ALMetalRenderPipelineDescriptor smaa_edge_descriptor;
+            smaa_edge_descriptor.library = impl->library.get();
+            smaa_edge_descriptor.vertex_function = "almetal_resample_vertex";
+            smaa_edge_descriptor.fragment_function =
+                smaa_edge_functions[predication];
+            smaa_edge_descriptor.colors[0].format =
+                ALMetalPixelFormat::rgba8_unorm;
+            smaa_edge_descriptor.depth_stencil_format = depth_format;
+            smaa_edge_descriptor.label = predication
+                ? "Alchemy world predicated SMAA edge pipeline"
+                : "Alchemy world SMAA edge pipeline";
+            impl->smaa_edge_pipelines[stencil][predication] =
+                ALMetalRenderPipeline::create(
+                    device, smaa_edge_descriptor, error);
+            if (!impl->smaa_edge_pipelines[stencil][predication])
+            {
+                return nullptr;
+            }
+        }
+
+        ALMetalRenderPipelineDescriptor smaa_weight_descriptor;
+        smaa_weight_descriptor.library = impl->library.get();
+        smaa_weight_descriptor.vertex_function = "almetal_resample_vertex";
+        smaa_weight_descriptor.fragment_function =
+            "almetal_world_smaa_weight_fragment";
+        smaa_weight_descriptor.colors[0].format =
             ALMetalPixelFormat::rgba8_unorm;
-        smaa_edge_descriptor.label = predication
-            ? "Alchemy world predicated SMAA edge pipeline"
-            : "Alchemy world SMAA edge pipeline";
-        impl->smaa_edge_pipelines[predication] =
+        smaa_weight_descriptor.depth_stencil_format = depth_format;
+        smaa_weight_descriptor.label =
+            "Alchemy world SMAA blending-weight pipeline";
+        impl->smaa_weight_pipelines[stencil] =
             ALMetalRenderPipeline::create(
-                device, smaa_edge_descriptor, error);
-        if (!impl->smaa_edge_pipelines[predication])
+                device, smaa_weight_descriptor, error);
+        if (!impl->smaa_weight_pipelines[stencil])
         {
             return nullptr;
         }
     }
 
-    ALMetalRenderPipelineDescriptor smaa_weight_descriptor;
-    smaa_weight_descriptor.library = impl->library.get();
-    smaa_weight_descriptor.vertex_function = "almetal_resample_vertex";
-    smaa_weight_descriptor.fragment_function =
-        "almetal_world_smaa_weight_fragment";
-    smaa_weight_descriptor.colors[0].format =
-        ALMetalPixelFormat::rgba8_unorm;
-    smaa_weight_descriptor.label =
-        "Alchemy world SMAA blending-weight pipeline";
-    impl->smaa_weight_pipeline = ALMetalRenderPipeline::create(
-        device, smaa_weight_descriptor, error);
-    if (!impl->smaa_weight_pipeline)
+    ALMetalDepthStencilDescriptor smaa_stencil;
+    smaa_stencil.depth_compare = ALMetalCompareFunction::always;
+    smaa_stencil.depth_write_enabled = false;
+    smaa_stencil.stencil_enabled = true;
+    smaa_stencil.front_stencil.compare = ALMetalCompareFunction::always;
+    smaa_stencil.front_stencil.depth_stencil_pass =
+        ALMetalStencilOperation::replace;
+    smaa_stencil.front_stencil.read_mask = 0xffu;
+    smaa_stencil.front_stencil.write_mask = 0xffu;
+    smaa_stencil.back_stencil = smaa_stencil.front_stencil;
+    smaa_stencil.label = "Alchemy SMAA initial edge stencil mark";
+    impl->smaa_mark_edges = ALMetalDepthStencilState::create(
+        device, smaa_stencil, error);
+    smaa_stencil.front_stencil.compare = ALMetalCompareFunction::equal;
+    smaa_stencil.front_stencil.depth_stencil_pass =
+        ALMetalStencilOperation::keep;
+    smaa_stencil.front_stencil.write_mask = 0u;
+    smaa_stencil.back_stencil = smaa_stencil.front_stencil;
+    smaa_stencil.label = "Alchemy SMAA blending-weight stencil test";
+    impl->smaa_test_edges = ALMetalDepthStencilState::create(
+        device, smaa_stencil, error);
+    if (!impl->smaa_mark_edges || !impl->smaa_test_edges)
     {
         return nullptr;
     }
@@ -11552,6 +11591,11 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
         ALMetalPixelFormat::rgba8_unorm;
     output_descriptor.colors[0].label =
         "Alchemy world SMAA RGBA8 edges";
+    if (scene.use_stencil)
+    {
+        output_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+    }
     output_descriptor.label = "Alchemy native world SMAA edge target";
     auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
@@ -11565,7 +11609,12 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
     constants.predication[1] = scene.predication_scale;
     constants.predication[2] = scene.predication_strength;
     constants.config[0] = scene.quality;
-    constants.config[1] = scene.predication_texture ? 1u : 0u;
+    constants.config[1] = (scene.predication_texture ? 1u : 0u) |
+        (scene.use_stencil ? 2u : 0u);
+    // Original SMAA_RT_METRICS comes from the output, even when SamplePath
+    // supplies an image with unrelated dimensions.
+    constants.config[2] = input.width;
+    constants.config[3] = input.height;
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
     ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
         "Alchemy native world SMAA edges", owned_command, error);
@@ -11577,6 +11626,13 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.colors[0].clear = {0.f, 0.f, 0.f, 0.f};
+    pass_config.depth_load = ALMetalLoadAction::dont_care;
+    if (scene.use_stencil)
+    {
+        pass_config.stencil_load = ALMetalLoadAction::clear;
+        pass_config.stencil_store = ALMetalStoreAction::store;
+        pass_config.clear_stencil = 0;
+    }
     auto pass = output->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world SMAA edge encoder", error)
@@ -11597,11 +11653,17 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
         encoder->setPipeline(
-            *mImpl->smaa_edge_pipelines[predication], error) &&
+            *mImpl->smaa_edge_pipelines[scene.use_stencil][predication], error) &&
         encoder->setFragmentTexture(
             0, edge_source, error) &&
         encoder->setFragmentSampler(
             0, mImpl->linear_clamp_sampler.get(), error);
+    if (encoded && scene.use_stencil)
+    {
+        encoded = encoder->setDepthStencilState(
+            mImpl->smaa_mark_edges.get(), error) &&
+            encoder->setStencilReferenceValue(1u, error);
+    }
     if (encoded && scene.predication_texture)
     {
         encoded = encoder->setFragmentTexture(
@@ -11650,6 +11712,9 @@ ALMetalWorldGBufferRenderer::renderSMAABlendWeights(
         return nullptr;
     }
 
+    const bool use_stencil = input.depth_stencil_format ==
+        ALMetalPixelFormat::depth32_float_stencil8;
+
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = input.width;
     output_descriptor.height = input.height;
@@ -11663,6 +11728,24 @@ ALMetalWorldGBufferRenderer::renderSMAABlendWeights(
     if (!output)
     {
         return nullptr;
+    }
+
+    // Only this pass borrows the edge mask. Keep the published weight owner
+    // color-only so it never gains a dangling dependency on the edge wrapper.
+    std::unique_ptr<ALMetalRenderTarget> stencil_target;
+    if (use_stencil)
+    {
+        auto descriptor = output_descriptor;
+        descriptor.colors[0].texture = output->colorTexture(0);
+        descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        descriptor.depth_stencil_texture = scene.edges->depthStencilTexture();
+        stencil_target = ALMetalRenderTarget::create(
+            *mImpl->device, descriptor, error);
+        if (!stencil_target)
+        {
+            return nullptr;
+        }
     }
 
     WorldSMAAWeightConstants constants{};
@@ -11679,7 +11762,14 @@ ALMetalWorldGBufferRenderer::renderSMAABlendWeights(
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.colors[0].clear = {0.f, 0.f, 0.f, 0.f};
-    auto pass = output->makeRenderPass(pass_config, error);
+    pass_config.depth_load = ALMetalLoadAction::dont_care;
+    if (use_stencil)
+    {
+        pass_config.stencil_load = ALMetalLoadAction::load;
+        pass_config.stencil_store = ALMetalStoreAction::store;
+    }
+    auto pass = (stencil_target ? stencil_target.get() : output.get())
+        ->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world SMAA weight encoder", error)
         : nullptr;
@@ -11693,11 +11783,11 @@ ALMetalWorldGBufferRenderer::renderSMAABlendWeights(
         static_cast<double>(input.height), 0.0, 1.0,
     };
     const ALMetalScissorRect scissor{0, 0, input.width, input.height};
-    const bool encoded =
+    bool encoded =
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
-        encoder->setPipeline(*mImpl->smaa_weight_pipeline, error) &&
+        encoder->setPipeline(*mImpl->smaa_weight_pipelines[use_stencil], error) &&
         encoder->setFragmentTexture(
             0, scene.edges->colorTexture(0), error) &&
         encoder->setFragmentTexture(
@@ -11707,7 +11797,14 @@ ALMetalWorldGBufferRenderer::renderSMAABlendWeights(
         encoder->setFragmentSampler(
             0, mImpl->linear_clamp_sampler.get(), error) &&
         encoder->setFragmentBytes(
-            0, &constants, sizeof(constants), error) &&
+            0, &constants, sizeof(constants), error);
+    if (encoded && use_stencil)
+    {
+        encoded = encoder->setDepthStencilState(
+            mImpl->smaa_test_edges.get(), error) &&
+            encoder->setStencilReferenceValue(1u, error);
+    }
+    encoded = encoded &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     const bool ended = encoder->end(error);
     if (!mImpl->finishCommandBuffer(
@@ -11840,6 +11937,7 @@ ALMetalWorldGBufferRenderer::renderSMAA(
     edge_scene.predication_threshold = scene.predication_threshold;
     edge_scene.predication_scale = scene.predication_scale;
     edge_scene.predication_strength = scene.predication_strength;
+    edge_scene.use_stencil = scene.use_stencil;
     auto edges = renderSMAAEdges(edge_scene, error);
     if (!edges)
     {

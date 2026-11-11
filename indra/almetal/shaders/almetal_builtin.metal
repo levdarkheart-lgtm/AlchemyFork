@@ -15805,10 +15805,10 @@ static float4 almetal_world_smaa_edges(
     texture2d<float> source,
     sampler source_sampler,
     float2 position,
-    float2 threshold)
+    float2 threshold,
+    float2 metric,
+    bool use_stencil)
 {
-    const float2 metric = 1.0 / float2(
-        source.get_width(), source.get_height());
     const float3 center = almetal_world_smaa_color(
         source, source_sampler, position);
     const float3 left = almetal_world_smaa_color(
@@ -15824,6 +15824,12 @@ static float4 almetal_world_smaa_edges(
     float2 edges = step(threshold, delta.xy);
     if (dot(edges, float2(1.0)) == 0.0)
     {
+        // The original discard precedes local contrast adaptation. A later
+        // zero RG result still survives and must mark the initial-edge mask.
+        if (use_stencil)
+        {
+            discard_fragment();
+        }
         return float4(0.0);
     }
 
@@ -15861,7 +15867,8 @@ fragment float4 almetal_world_smaa_edge_fragment(
     const uint quality = min(constants.config.x, 3u);
     return almetal_world_smaa_edges(
         source, source_sampler, input.texcoord,
-        float2(almetal_world_smaa_thresholds[quality]));
+        float2(almetal_world_smaa_thresholds[quality]),
+        1.0 / float2(constants.config.zw), (constants.config.y & 2u) != 0u);
 }
 
 fragment float4 almetal_world_smaa_edge_predicated_fragment(
@@ -15873,8 +15880,7 @@ fragment float4 almetal_world_smaa_edge_predicated_fragment(
     constant ALMetalWorldSMAAEdgeConstants& constants [[buffer(0)]])
 {
     const uint quality = min(constants.config.x, 3u);
-    const float2 metric = 1.0 / float2(
-        source.get_width(), source.get_height());
+    const float2 metric = 1.0 / float2(constants.config.zw);
     const float center = predication.sample(
         predication_sampler, input.texcoord, level(0.0));
     const float left = predication.sample(
@@ -15890,7 +15896,8 @@ fragment float4 almetal_world_smaa_edge_predicated_fragment(
         almetal_world_smaa_thresholds[quality] *
         (1.0 - constants.predication.z * predicated_edges);
     return almetal_world_smaa_edges(
-        source, source_sampler, input.texcoord, threshold);
+        source, source_sampler, input.texcoord, threshold, metric,
+        (constants.config.y & 2u) != 0u);
 }
 
 constant uint almetal_world_smaa_search_steps[4] = {4u, 8u, 16u, 32u};
