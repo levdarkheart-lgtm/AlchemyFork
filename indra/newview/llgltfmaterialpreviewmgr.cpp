@@ -757,8 +757,7 @@ bool LLGLTFPreviewTexture::render()
                 !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
                 !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
                 !buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT) ||
-                !buffer->getMetalVertexBuffer() ||
-                !buffer->getMetalIndexBuffer())
+                !buffer->prepareMetalBuffers(true))
             {
                 metal_preview_eligible = false;
                 metal_preview_batches.clear();

@@ -818,8 +818,7 @@ bool LLVisualParamHint::render()
                         buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4) &&
-                        buffer->getMetalVertexBuffer() &&
-                        buffer->getMetalIndexBuffer();
+                        buffer->prepareMetalBuffers(true);
                     if (!complete)
                     {
                         break;
@@ -950,8 +949,7 @@ bool LLVisualParamHint::render()
                     buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
                     buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) &&
                     buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
-                    buffer->getMetalVertexBuffer() &&
-                    buffer->getMetalIndexBuffer();
+                    buffer->prepareMetalBuffers(true);
                 if (!complete)
                 {
                     break;
