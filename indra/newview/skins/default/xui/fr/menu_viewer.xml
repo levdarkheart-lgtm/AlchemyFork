@@ -286,7 +286,6 @@
 		</menu>
 		<menu label="Rendu" name="Rendering">
 			<menu_item_check label="Axes" name="Axes"/>
-			<menu_item_check label="Tangente" name="Tangent Basis"/>
 			<menu_item_call label="Base des infos de la texture sélectionnée" name="Selected Texture Info Basis"/>
 			<menu_item_call label="Infos sur les matériaux sélectionnés" name="Selected Material Info"/>
 			<menu_item_check label="Filaire" name="Wireframe"/>

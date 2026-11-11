@@ -309,7 +309,6 @@
 		</menu>
 		<menu label="Rendering" name="Rendering">
 			<menu_item_check label="Achsen" name="Axes"/>
-			<menu_item_check label="Tangentenbasis" name="Tangent Basis"/>
 			<menu_item_call label="Texturinfo für ausgewähltes Objekt" name="Selected Texture Info Basis"/>
 			<menu_item_call label="Ausgewählte Materialinfos" name="Selected Material Info"/>
 			<menu_item_check label="Wireframe" name="Wireframe"/>

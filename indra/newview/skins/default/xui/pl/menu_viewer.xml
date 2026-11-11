@@ -278,7 +278,6 @@
 		</menu>
 		<menu label="Renderowanie" name="Rendering">
 			<menu_item_check label="Osie" name="Axes" />
-			<menu_item_check label="Podstawy stycznych" name="Tangent Basis" />
 			<menu_item_call label="Bazowe informacje wybranych tekstur" name="Selected Texture Info Basis" />
 			<menu_item_call label="Informacje o zaznaczonym materiale" name="Selected Material Info" />
 			<menu_item_check label="Tryb obrazu szkieletowego" name="Wireframe" />

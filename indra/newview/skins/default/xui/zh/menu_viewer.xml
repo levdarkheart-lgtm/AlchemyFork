@@ -283,7 +283,6 @@
 		</menu>
 		<menu label="呈像" name="Rendering">
 			<menu_item_check label="軸" name="Axes"/>
-			<menu_item_check label="切線基礎" name="Tangent Basis"/>
 			<menu_item_call label="已選取材質資訊基礎" name="Selected Texture Info Basis"/>
 			<menu_item_call label="所選材料資訊" name="Selected Material Info"/>
 			<menu_item_check label="線框" name="Wireframe"/>

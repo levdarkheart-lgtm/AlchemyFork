@@ -302,7 +302,6 @@
 			<menu_item_check name="Debug Metal" label="Debug Metal"/>
 			<menu_item_check name="Object-Object Occlusion" label="Occlusione oggetto-oggetto"/>
 			<menu_item_call name="Selected Texture Info Basis" label="Informazioni base sulla struttura selezionata"/>
-			<menu_item_check name="Tangent Basis" label="Base tangente"/>
 		</menu>
 		<menu label="Rete" name="Network">
 			<menu_item_check label="Metti in pausa" name="AgentPause"/>

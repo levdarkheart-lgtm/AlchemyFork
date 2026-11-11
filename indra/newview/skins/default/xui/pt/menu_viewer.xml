@@ -302,7 +302,6 @@
 			<menu_item_check name="Debug Metal" label="Depurar Metal"/>
 			<menu_item_check name="Object-Object Occlusion" label="Oclusão Objeto-Objeto"/>
 			<menu_item_call name="Selected Texture Info Basis" label="Base de Informações da Textura Selecionada"/>
-			<menu_item_check name="Tangent Basis" label="Base da Tangente"/>
 		</menu>
 		<menu label="Rede" name="Network">
 			<menu_item_check label="Pausar avatar" name="AgentPause"/>

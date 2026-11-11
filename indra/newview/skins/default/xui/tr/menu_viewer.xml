@@ -283,7 +283,6 @@
 		</menu>
 		<menu label="İşleme" name="Rendering">
 			<menu_item_check label="Eksenler" name="Axes"/>
-			<menu_item_check label="Tanjant Temeli" name="Tangent Basis"/>
 			<menu_item_call label="Seçilen Doku Bilgi Temeli" name="Selected Texture Info Basis"/>
 			<menu_item_call label="Seçilen Malzeme Bilgisi" name="Selected Material Info"/>
 			<menu_item_check label="Telkafes" name="Wireframe"/>

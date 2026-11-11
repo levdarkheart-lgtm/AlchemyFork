@@ -427,7 +427,6 @@
 		</menu>
 		<menu label="レンダリング" name="Rendering">
 			<menu_item_check label="軸" name="Axes"/>
-			<menu_item_check label="接線基準" name="Tangent Basis"/>
 			<menu_item_call label="選択されたテクスチャ情報基準" name="Selected Texture Info Basis"/>
 			<menu_item_call label="選択したマテリアルの情報" name="Selected Material Info"/>
 			<menu_item_check label="ワイヤーフレーム" name="Wireframe"/>

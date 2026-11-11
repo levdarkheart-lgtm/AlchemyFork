@@ -2393,8 +2393,6 @@
   <string>Mostra/oculta o botão de captura na bandeja inferior.</string>
   <key>ShowStartLocation</key>
   <string>Exibir o menu de local de início na tela de login.</string>
-  <key>ShowTangentBasis</key>
-  <string>Renderizar normal e binormal (depuração de bump mapping).</string>
   <key>ShowTunedART</key>
   <string>Mostrar o tempo de renderização atual, não o tempo pré-ajuste, na exibição do avatar.</string>
   <key>ShowTutorial</key>
