@@ -926,6 +926,27 @@ bool LLPipeline::metalWorldPresentationCurrent() const
             gFrameCount;
 }
 
+std::shared_ptr<const ALMetalRenderTarget>
+LLPipeline::acquireMetalSceneMonitorFrame() const
+{
+    if (!mMetalWorldSimpleCapture || !gViewerWindow || gDisconnected ||
+        gSnapshot || sCutoutRender || mRT != &mMainRT || !isMainWorldPass() ||
+        mMetalHeroWorldCaptureActive || mMetalReflectionWorldCaptureActive)
+        return {};
+    const auto& capture = *mMetalWorldSimpleCapture;
+    if (!capture.renderer || capture.renderer->commandBatchActive() ||
+        !capture.complete || capture.world_ssr_history_warmup ||
+        capture.world_ui_chain_snapshot || !capture.presentation_target ||
+        capture.presentation_frame != gFrameCount ||
+        capture.device != getViewerMetalDevice())
+        return {};
+    const auto* color = capture.presentation_target->colorTexture(0);
+    if (!color || color->descriptor().format != ALMetalPixelFormat::bgra8_unorm ||
+        color->width() == 0 || color->height() == 0)
+        return {};
+    return capture.presentation_target;
+}
+
 LLPipeline::MetalWorldPresentationState
 LLPipeline::metalWorldPresentationStateCurrent() const
 {

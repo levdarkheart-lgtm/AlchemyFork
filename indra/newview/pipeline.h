@@ -564,6 +564,9 @@ public:
     // until every ordered family has an exact native owner.
     bool beginMetalWorldUICompositionCapture();
     void endMetalWorldUICompositionCapture();
+    // Retain this frame's submitted pre-UI presentation owner for Scene
+    // Monitor. Incomplete, historical and alternate-view frames are absent.
+    std::shared_ptr<const ALMetalRenderTarget> acquireMetalSceneMonitorFrame() const;
     // Arms one ordinary color or depth snapshot for native world/UI capture.
     // A tiled caller may read one exact current-frame transaction after each
     // subfield render; it remains responsible for rejecting the aggregate if
