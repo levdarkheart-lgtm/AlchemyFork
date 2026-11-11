@@ -9222,10 +9222,20 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             // bootstrap.
             const LensFlareStateConfig native_flare_state =
                 lensFlareStateConfig();
-            const bool main_lens_flare = capture.hdr &&
-                native_flare_state.enabled && isMainWorldPass() &&
+            const bool main_lens_flare_view = isMainWorldPass() &&
                 mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
                 !mMetalReflectionWorldCaptureActive && !sCutoutRender;
+            // Original generateLensFlareState cleared a disabled effect but
+            // held history for clean plates. The native history owner must
+            // apply that policy even though its displaced GL pass is gone.
+            if (main_lens_flare_view && !native_flare_state.hold &&
+                !native_flare_state.enabled &&
+                (capture.lens_flare_state_target || mMetalLensFlareHistoryReady))
+            {
+                clearLensFlareState();
+            }
+            const bool main_lens_flare = capture.hdr && main_lens_flare_view &&
+                native_flare_state.enabled;
             const bool use_lens_flare_history =
                 capture.lens_flare_state_target &&
                 capture.lens_flare_state_epoch ==
@@ -9801,7 +9811,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 std::copy(chromatic.offset_b.begin(),
                           chromatic.offset_b.end(),
                           display.chromatic_aberration_offset_b);
-                if (capture.hdr && flare.enabled)
+                if (capture.hdr && flare.enabled && !cutout_snapshot)
                 {
                     display.lens_flare_state_texture =
                         capture.lens_flare_state_target->colorTexture(0);
@@ -9843,7 +9853,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     display.lens_flare_starburst_falloff =
                         flare.starburst_falloff;
                 }
-                if (capture.hdr && dirt.enabled)
+                if (capture.hdr && dirt.enabled && !cutout_snapshot)
                 {
                     display.lens_dirt_texture =
                         capture.lens_dirt_target->colorTexture(0);
@@ -19912,8 +19922,6 @@ void LLPipeline::releaseRenderTargets()
         rt->bloomMipCount = 0;
     }
 
-    mLensFlareStateValid = false;
-    mLensFlareStateClearPending = false;
     mToneCurveLutDirty   = true;
     mToneCurveLutLoaded  = false;
 #if LL_DARWIN
@@ -20254,10 +20262,7 @@ void LLPipeline::resetExposureHistory()
         gGL.setClearColor(LLColor4::transparent);
         mExposureMap.flush();
     }
-    if (mLensFlareState[0].isComplete())
-    {
-        clearLensFlareState();
-    }
+    clearLensFlareState();
 #if LL_DARWIN
     ++mMetalExposureHistoryEpoch;
     if (mMetalExposureHistoryEpoch == 0)
@@ -26368,17 +26373,6 @@ void LLPipeline::generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool
 
 void LLPipeline::clearLensFlareState()
 {
-    // Only [0] is ever read as history: the swap in generateLensFlareState
-    // makes it last frame's target before anything samples it, and [1] is
-    // fully overwritten by the draw before it is read.
-    if (mLensFlareState[0].isComplete())
-    {
-        mLensFlareState[0].bindTarget();
-        mLensFlareState[0].clear();
-        mLensFlareState[0].flush();
-    }
-    mLensFlareStateValid = false;
-    mLensFlareStateClearPending = false;
 #if LL_DARWIN
     ++mMetalLensFlareHistoryEpoch;
     if (mMetalLensFlareHistoryEpoch == 0)
@@ -26396,311 +26390,7 @@ void LLPipeline::clearLensFlareState()
 #endif
 }
 
-LLPipeline::LensFlareStateConfig LLPipeline::lensFlareStateConfig()
-{
-    static LLCachedControl<F32> strength_setting(
-        gSavedSettings, "RenderLensFlareStrength", 0.f);
-    static LLCachedControl<F32> occlusion_scale_setting(
-        gSavedSettings, "RenderLensFlareOcclusionScale", 1.f);
-    static LLCachedControl<F32> fade_time_setting(
-        gSavedSettings, "RenderLensFlareFadeTime", 0.35f);
-
-    LensFlareStateConfig config;
-    config.hold = suppressesLensAndPrintEffects();
-    config.enabled = !config.hold && strength_setting() > 0.f &&
-        gLensFlareStateProgram.isComplete();
-    config.sun_up = LLEnvironment::instance().getIsSunUp();
-    if (!config.enabled)
-    {
-        return config;
-    }
-
-    LLEnvironment& environment = LLEnvironment::instance();
-    LLSettingsSky::ptr_t sky = environment.getCurrentSky();
-    if (!sky)
-    {
-        config.enabled = false;
-        return config;
-    }
-
-    if (config.sun_up != mLensFlareSunUp)
-    {
-        // The native chain is built while another GL target may still be
-        // bound, so invalidate its history now but defer the GL clear to
-        // generateLensFlareState's established safe pass boundary.
-        mLensFlareSunUp = config.sun_up;
-        mLensFlareStateClearPending = true;
-#if LL_DARWIN
-        ++mMetalLensFlareHistoryEpoch;
-        if (mMetalLensFlareHistoryEpoch == 0)
-        {
-            ++mMetalLensFlareHistoryEpoch;
-        }
-        mMetalLensFlareHistoryReady = false;
-        if (mMetalWorldSimpleCapture)
-        {
-            mMetalWorldSimpleCapture->lens_flare_state_target.reset();
-            mMetalWorldSimpleCapture->lens_flare_state_frame =
-                std::numeric_limits<U32>::max();
-            mMetalWorldSimpleCapture->lens_flare_state_epoch = 0;
-        }
-#endif
-    }
-
-    const LLVector4 light_dir = config.sun_up ? mSunDir : mMoonDir;
-    LLVector4a sun_eye;
-    LLVector4a sun_clip;
-    LLViewerCamera::getCurrent().getModelview().rotate(
-        LLVector4a(light_dir.mV[0], light_dir.mV[1],
-                   light_dir.mV[2], 0.f), sun_eye);
-    LLViewerCamera::getCurrent().getProjection().transform4(
-        sun_eye, sun_clip);
-    if (sun_clip[3] > 0.f)
-    {
-        const LLVector2 sun_ndc(
-            sun_clip[0] / sun_clip[3], sun_clip[1] / sun_clip[3]);
-        const LLVector2 sun_uv =
-            sun_ndc * 0.5f + LLVector2(0.5f, 0.5f);
-        constexpr F32 margin = 0.2f;
-        config.edge_visibility =
-            llclamp((sun_uv.mV[VX] + margin) / margin, 0.f, 1.f) *
-            llclamp(((1.f + margin) - sun_uv.mV[VX]) / margin,
-                    0.f, 1.f) *
-            llclamp((sun_uv.mV[VY] + margin) / margin, 0.f, 1.f) *
-            llclamp(((1.f + margin) - sun_uv.mV[VY]) / margin,
-                    0.f, 1.f);
-        mLensFlareSunUV = sun_uv;
-    }
-    config.sun_uv = {
-        mLensFlareSunUV.mV[VX], mLensFlareSunUV.mV[VY]};
-
-    F32 disk_radius = 0.5f;
-    if (gSky.mVOSkyp.notNull())
-    {
-        disk_radius = (config.sun_up ? gSky.mVOSkyp->getSun()
-                                     : gSky.mVOSkyp->getMoon())
-                          .getDiskRadius();
-    }
-    const F32 body_scale = llmax(
-        config.sun_up ? sky->getSunScale() : sky->getMoonScale(), 0.01f);
-    const F32 enlargement =
-        1.f + (1.f - light_dir.mV[VZ]) * 0.25f;
-    const F32 half_tan = HEAVENLY_BODY_FACTOR * disk_radius *
-        body_scale * enlargement;
-    const LLViewerCamera* camera = LLViewerCamera::getInstance();
-    const F32 fov_y = llclamp(camera->getView(),
-                              0.01f, F_PI - 0.01f);
-    config.occlusion_radius = llmin(
-        0.5f * half_tan / tanf(fov_y * 0.5f) *
-            llmax(camera->getZoomFactor(), 1.f) *
-            llclamp(occlusion_scale_setting(), 0.25f, 2.f),
-        0.3f);
-    config.fade_time = llclamp(fade_time_setting(), 0.1f, 1.f);
-    return config;
-}
-
-// Sun coverage, colour and the temporally filtered flare drive, into a 2x1
-// target the colour-correct programs read through uLensFlareStateMap. The
-// only place the flare's visibility changes, at a bounded rate; the filter
-// and the reasons for it are in lensFlareStateF.glsl. Runs right before
-// colorCorrect, against the frame's final depth, in both the HDR and
-// non-HDR paths.
-void LLPipeline::generateLensFlareState(LLRenderTarget* src)
-{
-    // Color correction applies the flare only to the main world target.
-    // Auxiliary, reflection and hero-probe passes must therefore hold this
-    // global temporal history: advancing it for an image that never consumes
-    // the flare would silently break the main world's matching Metal history.
-    if (!isMainWorldPass() || mRT != &mMainRT)
-    {
-        return;
-    }
-
-    const LensFlareStateConfig config = lensFlareStateConfig();
-    if (mLensFlareStateClearPending)
-    {
-        if (mLensFlareState[0].isComplete())
-        {
-            mLensFlareState[0].bindTarget();
-            mLensFlareState[0].clear();
-            mLensFlareState[0].flush();
-        }
-        mLensFlareStateValid = false;
-        mLensFlareStateClearPending = false;
-    }
-    if (config.hold)
-    {
-        // A clean-plate render: colorCorrect zeroes the strength for this
-        // frame, so hold the history rather than clear it, or the flare would
-        // blink out and fade back in after every no-post snapshot.
-        return;
-    }
-
-    if (!config.enabled)
-    {
-        // Switched off, or nothing to run it with: leave no history behind,
-        // or a stale drive would flash back on the frame the flare returns.
-        if (mLensFlareStateValid)
-        {
-            clearLensFlareState();
-        }
-        return;
-    }
-
-    LL_PROFILE_GPU_ZONE("lens flare state");
-
-    // Ping-pong by swapping handles: [1] becomes last frame's state, the
-    // history this frame reads, and [0] is fully overwritten below.
-    mLensFlareState[0].swapFBORefs(mLensFlareState[1]);
-
-    mLensFlareState[0].bindTarget();
-    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
-
-    LLGLSLShader& shader = gLensFlareStateProgram;
-    shader.bind();
-    const S32 diffuse_channel = shader.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, ALSamplers::PointMirror);
-    const S32 depth_channel   = shader.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen);
-    const S32 state_channel   = shader.bindTexture(LLShaderMgr::LENS_FLARE_STATE_MAP, &mLensFlareState[1], ALSamplers::PointClamp);
-
-    shader.uniform1f(LLShaderMgr::DT, gFrameIntervalSeconds);
-    shader.uniform2f(LLShaderMgr::SCREEN_RESOLUTION, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
-    shader.uniform2f(LLShaderMgr::LENS_FLARE_SUN_POS,
-                     config.sun_uv[0], config.sun_uv[1]);
-    shader.uniform1f(LLShaderMgr::LENS_FLARE_SUN_VISIBILITY,
-                     config.edge_visibility);
-    shader.uniform1f(LLShaderMgr::LENS_FLARE_OCCLUSION_RADIUS,
-                     config.occlusion_radius);
-    shader.uniform1f(LLShaderMgr::LENS_FLARE_FADE_TIME,
-                     config.fade_time);
-
-    mScreenTriangleVB->setBuffer();
-    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-    if (state_channel > -1)
-    {
-        gGL.getTextureSlot(state_channel)->unbind();
-    }
-    if (depth_channel > -1)
-    {
-        gGL.getTextureSlot(depth_channel)->unbind();
-    }
-    if (diffuse_channel > -1)
-    {
-        gGL.getTextureSlot(diffuse_channel)->unbind();
-    }
-    shader.unbind();
-    mLensFlareState[0].flush();
-    mLensFlareStateValid = true;
-#if LL_DARWIN
-    MetalWorldSimpleCapture* capture = mMetalWorldSimpleCapture.get();
-    mMetalLensFlareHistoryReady = capture &&
-        capture->lens_flare_state_target &&
-        capture->lens_flare_state_epoch == mMetalLensFlareHistoryEpoch;
-#endif
-}
-
-LLPipeline::LensFlareConfig
-LLPipeline::lensFlareConfig(bool world_frame) const
-{
-    static LLCachedControl<F32> strength_setting(
-        gSavedSettings, "RenderLensFlareStrength", 0.f);
-    static LLCachedControl<F32> streak_length_setting(
-        gSavedSettings, "RenderLensFlareStreakLength", 0.5f);
-    static LLCachedControl<F32> streak_falloff_setting(
-        gSavedSettings, "RenderLensFlareStreakFalloff", 1.5f);
-    static LLCachedControl<F32> streak_thickness_setting(
-        gSavedSettings, "RenderLensFlareStreakThickness", 0.08f);
-    static LLCachedControl<F32> streak_intensity_setting(
-        gSavedSettings, "RenderLensFlareStreakIntensity", 1.f);
-    static LLCachedControl<LLColor3> streak_tint_setting(
-        gSavedSettings, "RenderLensFlareStreakTint",
-        LLColor3(0.6f, 0.7f, 1.f));
-    static LLCachedControl<F32> chromatic_spread_setting(
-        gSavedSettings, "RenderLensFlareChromaticSpread", 0.08f);
-    static LLCachedControl<F32> glow_radius_setting(
-        gSavedSettings, "RenderLensFlareGlowRadius", 0.12f);
-    static LLCachedControl<F32> glow_falloff_setting(
-        gSavedSettings, "RenderLensFlareGlowFalloff", 8.f);
-    static LLCachedControl<F32> glow_setting(
-        gSavedSettings, "RenderLensFlareGlow", 1.f);
-    static LLCachedControl<F32> ghost_setting(
-        gSavedSettings, "RenderLensFlareGhost", 0.f);
-    static LLCachedControl<S32> ghost_count_setting(
-        gSavedSettings, "RenderLensFlareGhostCount", 4);
-    static LLCachedControl<F32> ghost_spacing_setting(
-        gSavedSettings, "RenderLensFlareGhostSpacing", 0.3f);
-    static LLCachedControl<F32> halo_setting(
-        gSavedSettings, "RenderLensFlareHalo", 0.f);
-    static LLCachedControl<F32> halo_radius_setting(
-        gSavedSettings, "RenderLensFlareHaloRadius", 0.5f);
-    static LLCachedControl<F32> halo_width_setting(
-        gSavedSettings, "RenderLensFlareHaloWidth", 0.15f);
-    static LLCachedControl<F32> starburst_setting(
-        gSavedSettings, "RenderLensFlareStarburst", 0.f);
-    static LLCachedControl<S32> starburst_spikes_setting(
-        gSavedSettings, "RenderLensFlareStarburstSpikes", 4);
-    static LLCachedControl<F32> starburst_sharpness_setting(
-        gSavedSettings, "RenderLensFlareStarburstSharpness", 24.f);
-    static LLCachedControl<F32> starburst_length_setting(
-        gSavedSettings, "RenderLensFlareStarburstLength", 0.25f);
-
-    LensFlareConfig config;
-    config.strength = suppressesLensAndPrintEffects() || !world_frame ||
-            !gLensFlareStateProgram.isComplete()
-        ? 0.f : llclamp(strength_setting(), 0.f, 1.f);
-    config.enabled = config.strength > 0.f;
-    config.sun_uv = {
-        mLensFlareSunUV.mV[VX], mLensFlareSunUV.mV[VY]};
-    config.streak_length = llclamp(
-        streak_length_setting(), 0.01f, 2.f);
-    config.streak_falloff = llclamp(
-        streak_falloff_setting(), 0.1f, 10.f);
-    config.streak_width = llmax(
-        llclamp(streak_thickness_setting(), 0.f, 1.f) * 0.05f,
-        0.001f);
-    config.streak_intensity = llclamp(
-        streak_intensity_setting(), 0.f, 5.f);
-    const LLColor3 streak_tint = linearColor3(streak_tint_setting());
-    std::copy_n(streak_tint.mV, 3, config.streak_tint.begin());
-    config.chromatic_spread = llclamp(
-        chromatic_spread_setting(), 0.f, 1.f) * 0.1f;
-    config.glow_radius = llclamp(glow_radius_setting(), 0.01f, 0.5f);
-    config.glow_falloff = llclamp(glow_falloff_setting(), 1.f, 30.f);
-    config.glow = llclamp(glow_setting(), 0.f, 5.f);
-    config.ghost = llclamp(ghost_setting(), 0.f, 5.f);
-    config.ghost_count = static_cast<U32>(
-        llclamp(ghost_count_setting(), 0, 8));
-    config.ghost_spacing = llclamp(
-        ghost_spacing_setting(), 0.1f, 1.f);
-    config.halo = llclamp(halo_setting(), 0.f, 5.f);
-    config.halo_radius = llclamp(halo_radius_setting(), 0.01f, 1.f);
-    config.halo_width = llclamp(halo_width_setting(), 0.01f, 0.5f);
-    config.starburst = llclamp(starburst_setting(), 0.f, 5.f);
-    config.starburst_spikes = static_cast<U32>(
-        llclamp(starburst_spikes_setting(), 1, 32));
-    config.starburst_sharpness = llclamp(
-        starburst_sharpness_setting(), 1.f, 256.f);
-    config.starburst_falloff = 4.f /
-        (llclamp(starburst_length_setting(), 0.f, 1.f) + 0.05f);
-
-    const bool sun_up = LLEnvironment::instance().getIsSunUp();
-    const LLColor4 light_color = linearColor3(
-        sun_up ? mSunDiffuse : mMoonDiffuse);
-    std::copy_n(light_color.mV, 3, config.light_color.begin());
-    if (LLSettingsSky::ptr_t sky =
-            LLEnvironment::instance().getCurrentSky())
-    {
-        static LLCachedControl<bool> should_auto_adjust(
-            gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-        static LLCachedControl<F32> auto_adjust_hdr_scale(
-            gSavedSettings, "RenderSkyAutoAdjustHDRScale", 2.f);
-        config.sky_hdr_scale = sky->getReflectionProbeAmbiance() != 0.f
-            ? sqrtf(sky->getGamma()) * 2.f
-            : sky->canAutoAdjust() && should_auto_adjust
-                ? static_cast<F32>(auto_adjust_hdr_scale) : 1.f;
-    }
-    return config;
-}
+#include "pipeline_lens_config.inl"
 
 LLPipeline::ChromaticAberrationConfig
 LLPipeline::chromaticAberrationConfig() const
@@ -28173,9 +27863,6 @@ void LLPipeline::renderFinalize()
 
         generateExposure(&mLuminanceMap, &mExposureMap);
     }
-
-    // Lens flare sun state (see lensFlareStateF.glsl), in both HDR paths.
-    generateLensFlareState(&mRT->screen);
 
     // Read any pending scene probe here, while the buffer still holds linear
     // radiance and is still sharp. One line later it has been white balanced,

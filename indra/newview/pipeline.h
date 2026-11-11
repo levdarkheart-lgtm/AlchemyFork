@@ -603,7 +603,6 @@ public:
     void copySceneDepth(LLRenderTarget& dst);
     void generateLuminance(LLRenderTarget* src, LLRenderTarget* dst);
     void generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool use_history = true);
-    void generateLensFlareState(LLRenderTarget* src);
     void clearLensFlareState();
     // What generateBloomHDR makes for colorCorrect to composite, each held by the scope it was given until that ends.
     struct Bloom
@@ -631,9 +630,9 @@ public:
         F32 anisotropy = 0.f;
     };
     ChromaticAberrationConfig chromaticAberrationConfig() const;
-    // The spatial/state inputs computed once for both the authoritative GL
-    // history pass and its synchronized native mirror. hold preserves history
-    // for clean-plate frames; enabled means both backends advance it.
+    // CPU spatial/state inputs for the native flare history. hold preserves
+    // history for clean-plate frames; enabled follows the loaded semantic pass.
+    // The capture owner independently validates native resources and encoding.
     struct LensFlareStateConfig
     {
         bool enabled = false;
@@ -645,8 +644,8 @@ public:
         F32 fade_time = 0.35f;
     };
     LensFlareStateConfig lensFlareStateConfig();
-    // Shader-ready flare appearance shared by colorCorrect and the native
-    // display boundary. All user-facing mappings and clamps live here.
+    // Shader-ready flare appearance for the display boundary. All user-facing
+    // mappings and clamps live in the CPU configuration owner.
     struct LensFlareConfig
     {
         bool enabled = false;
@@ -1810,9 +1809,7 @@ public:
     // lens flare sun state, 2x1, swapped each frame: [0] is this frame's, [1]
     // last frame's. Layout in lensFlareStateF.glsl.
     LLRenderTarget          mLensFlareState[2];
-    bool                    mLensFlareStateValid = false;
     bool                    mLensFlareSunUp = true;    // which body the history describes
-    bool                    mLensFlareStateClearPending = false;
 
     // downres scratch space for GPU downscaling of textures
     LLRenderTarget          mDownResMap;
@@ -2005,7 +2002,7 @@ public:
     LLVector4           mTransformedSunDir;
     LLVector4           mTransformedMoonDir;
 
-    // Sun (or moon) on screen this frame in UV, from generateLensFlareState.
+    // Sun (or moon) on screen this frame in UV, from lensFlareStateConfig.
     LLVector2           mLensFlareSunUV = LLVector2(0.5f, 0.5f);
 
     bool                    mInitialized;
