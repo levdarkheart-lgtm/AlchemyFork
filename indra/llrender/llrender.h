@@ -41,7 +41,6 @@
 #include "llmatrix4a.h"
 #include "alsamplerstate.h"  // mSamplerCache -- this context's sampler objects
 #include "alframefences.h"
-#include "alimageslot.h"
 #include "alquerypool.h"
 #include "altextureslot.h"
 #include "aluniformbuffer.h"
@@ -687,13 +686,8 @@ public:
 
     ALTextureSlot* getTextureSlot(U32 index);
 
-    // The image unit `index`, or a slot that binds nothing past AL_NUM_IMAGE_SLOTS.
-    ALImageSlot* getImageSlot(U32 index);
-
-    // Drop these texture names, about to be deleted in this context, from every slot's
-    // bind cache, the image slots' included. Deleting a bound texture returns that binding to 0, and GL may hand the
-    // name out again; a slot still caching it would take the new texture for bound already
-    // and skip the bind.
+    // Forget retired texture identities in the semantic sampled-resource
+    // cache so reusing an identity cannot suppress a later binding change.
     void forgetTextures(S32 count, const U32* names);
 
     U32 getCurrentTexUnitIndex(void) const { return mCurrTextureUnitIndex; }
@@ -866,8 +860,6 @@ private:
     // torn down together and by the same thread.
     ALSamplerCache mSamplerCache;
     ALTextureSlot           mDummySlot;
-    std::array<ALImageSlot, AL_NUM_IMAGE_SLOTS> mImageSlots;
-    ALImageSlot             mDummyImageSlot;
     std::array<LLLightState, LL_NUM_LIGHT_UNITS> mLightState;
 
     eBlendFactor mCurrBlendColorSFactor;

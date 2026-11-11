@@ -407,7 +407,7 @@ TEST_CASE("Render targets own, clear, mip and share native Metal attachments",
     CHECK(LLRenderTarget::sBytesAllocated == bytes_before);
 }
 
-TEST_CASE("Image slots retain writable Metal subresources without OpenGL",
+TEST_CASE("Render targets retain writable Metal subresources without OpenGL",
           "[alrenderstate][metal-cutover]")
 {
     REQUIRE_FALSE(gGLManager.mInited);
@@ -424,7 +424,7 @@ TEST_CASE("Image slots retain writable Metal subresources without OpenGL",
     LLImageGL::setMetalDevice(device.get());
 
     LLRenderTarget target;
-    target.setLabel("Native ALImageSlot target");
+    target.setLabel("Native writable render target");
     REQUIRE(target.allocate(8, 8, GL_R32F, false, false,
                             ALTextureSlot::TT_TEXTURE,
                             LLRenderTarget::MIPS_MANUAL));
@@ -433,36 +433,18 @@ TEST_CASE("Image slots retain writable Metal subresources without OpenGL",
     REQUIRE(alMetalHasUsage(texture->descriptor().usage,
                             ALMetalTextureUsage::shader_write));
 
-    ALImageSlot slot(3);
-    ALImageSlot::sImageBinds = 0;
-    REQUIRE(slot.bind(&target, 0, ALImageSlot::WRITE_ONLY, 1));
-    CHECK(slot.getCurrTexture() == 1u);
-    CHECK(slot.getCurrMetalTexture() == texture);
-    CHECK(slot.getCurrLevel() == 1u);
-    CHECK(slot.getCurrAccess() == ALImageSlot::WRITE_ONLY);
-    CHECK(ALImageSlot::sImageBinds == 1u);
+    CHECK(texture->descriptor().mipmap_level_count == 4u);
 
-    REQUIRE(slot.bind(&target, 0, ALImageSlot::WRITE_ONLY, 1));
-    CHECK(ALImageSlot::sImageBinds == 1u);
-    REQUIRE(slot.bind(&target, 0, ALImageSlot::READ_WRITE, 1));
-    CHECK(ALImageSlot::sImageBinds == 2u);
-
-    // A raw compatibility name cannot replace a valid typed binding.
-    CHECK_FALSE(slot.bindManual(0x1234u, 0, false, 0,
-                                ALImageSlot::READ_ONLY, GL_R32F));
-    CHECK(slot.getCurrMetalTexture() == texture);
-    CHECK(ALImageSlot::sImageBinds == 2u);
-
-    CHECK_FALSE(slot.bind(&target, 0, ALImageSlot::WRITE_ONLY,
-                          texture->descriptor().mipmap_level_count));
-    CHECK(slot.getCurrMetalTexture() == texture);
-
-    slot.refreshState();
-    CHECK(ALImageSlot::sImageBinds == 2u);
-    slot.unbind();
-    CHECK(slot.getCurrTexture() == 0u);
-    CHECK(slot.getCurrMetalTexture() == nullptr);
-    CHECK(ALImageSlot::sImageBinds == 3u);
+    LLRenderTarget srgb;
+    REQUIRE(srgb.allocate(8, 8, GL_SRGB8_ALPHA8));
+    REQUIRE(srgb.getMetalColorTexture(0));
+    CHECK_FALSE(alMetalHasUsage(srgb.getMetalColorTexture(0)->descriptor().usage,
+                               ALMetalTextureUsage::shader_write));
+    LLRenderTarget depth;
+    REQUIRE(depth.allocate(8, 8, 0, true));
+    REQUIRE(depth.getMetalDepthTexture());
+    CHECK_FALSE(alMetalHasUsage(depth.getMetalDepthTexture()->descriptor().usage,
+                               ALMetalTextureUsage::shader_write));
 
     target.release();
 }

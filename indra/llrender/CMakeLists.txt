@@ -5,7 +5,6 @@ set(
   alframefences.cpp
   algpubuffer.cpp
   algputimer.cpp
-  alimageslot.cpp
   almetalfetchedtexture.cpp
   alpacingslack.cpp
   alprimitiveplot.cpp
@@ -45,7 +44,6 @@ set(
   alframefences.h
   algpubuffer.h
   algputimer.h
-  alimageslot.h
   almetalfetchedtexture.h
   alpacingslack.h
   alprimitiveplot.h
@@ -258,8 +256,6 @@ if(AL_BUILD_TESTS)
   # - ALQueryPool: each kind's names kept to its target, a held target
   #   refused, results read once their frame has ended, spans, release and
   #   conditional draws;
-  # - ALImageSlot: what a unit issues, re-issues and forgets as LLRender keeps
-  #   it, and integer images;
   # - LLVertexBuffer: what a buffer draws straight after an upload, after a
   #   second upload and after a new size, and that an upload sends only the
   #   stores its map wrote; and LLRenderSphere's buffer drawn under the debug
@@ -271,7 +267,6 @@ if(AL_BUILD_TESTS)
       tests/alframefences_gl_test.cpp
       tests/algpubuffer_gl_test.cpp
       tests/algputimer_gl_test.cpp
-      tests/alimageslot_gl_test.cpp
       tests/alinfiniteprojection_gl_test.cpp
       tests/alquerypool_gl_test.cpp
       tests/alrenderstate_gl_test.cpp

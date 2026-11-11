@@ -487,11 +487,6 @@ LLRender::LLRender()
         mTextureSlots[i].mIndex = i;
     }
 
-    for (U32 i = 0; i < AL_NUM_IMAGE_SLOTS; ++i)
-    {
-        mImageSlots[i].mIndex = i;
-    }
-
     for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; ++i)
     {
         mLightState[i].mIndex = i;
@@ -569,12 +564,6 @@ void LLRender::resetCachedState()
         slot.mCurrNativeTexture = nullptr;
     }
     mCurrTextureUnitIndex = 0;
-
-    // The same for image units.
-    for (ALImageSlot& slot : mImageSlots)
-    {
-        slot.reset();
-    }
 
     // Start with all channels writable. Blend factors are marked unknown so
     // initialization establishes the requested alpha contract explicitly.
@@ -2396,17 +2385,6 @@ ALTextureSlot* LLRender::getTextureSlot(U32 index)
         LL_DEBUGS() << "Non-existing texture unit layer requested: " << index << LL_ENDL;
         return &mDummySlot;
     }
-}
-
-ALImageSlot* LLRender::getImageSlot(U32 index)
-{
-    if (index < mImageSlots.size())
-    {
-        return &mImageSlots[index];
-    }
-
-    LL_DEBUGS() << "Non-existing image unit requested: " << index << LL_ENDL;
-    return &mDummyImageSlot;
 }
 
 void LLRender::forgetTextures(S32 count, const U32* names)
