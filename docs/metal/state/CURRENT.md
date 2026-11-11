@@ -2,10 +2,12 @@
 
 **Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `d28b0477a038e42b5a593d0d5350588d48c62343`.
+**Renderer code checkpoint:** `7162dd92f86dc1df099bf2c27d53b8fdc070d2eb`.
 Benchmark registration and displaced shader cleanup are validated.
 [Native source-tail evidence](../work/active/native-opengl-tail-removal.md)
 records removals, exact CPU vocabulary and source-gate limits.
+[Ongoing target/query/font admission](../work/active/native-target-query-invariants.md)
+records newer implementation and actual regressions; goal stays active.
 The remaining-feature/OpenGL-removal goal stays active. No viewer or appearance
 utility launch, menu action, screenshot or signed-in state change. Offscreen
 test executables create Metal devices and submit GPU work. The separate20FPS
@@ -63,7 +65,7 @@ unlabelled regression passes. Preserve the initial failure receipt.
 Optional appearance Release build after utility/vertex changes exits0.
 
 **Last verified canonical app is source `d28b0477a038e42b5a593d0d5350588d48c62343`, version
-26.4.0d68712**. Doctor/configure/build0,349 Mach-O files/zero
+26.4.0d68712**, older than current source. Doctor/configure/build0,349 Mach-O files/zero
 invalid ARM64 slices, deep strict codesign0. Viewer/utility imports contain no
 OpenGL framework or GL/CGL/SDL_GL undefined imports. The earlier failed link65
 and restoration of native `LLViewerShaderMgr::built` are retained.
@@ -81,7 +83,7 @@ runtime contexts, linking or foreign subprocess behavior.
 
 ## Exact next actions and ownership
 
-Root owns integration, CMake, documentation, tests and canonical builds. Current
+Root owns integration, CMake, documentation, tests and canonical builds. Earlier
 image/label/profiler/wrapper/Win32/water/cache/policy changes are integrated.
 Native cache dd9372cd69 + policy53e3599a36 include actual persistence/retry/
 disable/purge/instrumentation proof. Frozen final native builds0; full llrender
@@ -89,18 +91,31 @@ disable/purge/instrumentation proof. Frozen final native builds0; full llrender
 targeted native GPU93869/220. Cache API5905/60, global instrumentation882/10,
 selective98/10. Historical filters overlap. No launches or user cache actions.
 
+Native font registry/COLRv1/shaping/UIImage24 integrated eb0d2a9618/154165dfc8,
+276assertions0. FontGL/TextCache61 integrated bdfc3f86c8/fb7c4873a3 in separate
+llrender_font_ui_tests:1862assertions0. Original2D helpers four native cases:
+76assertions0; exact57600-pixel outline oracle retained. Dead ALImageSlot graph
+removed bd13164b70 after exact live format predicate moved657da5ce23;
+target-usage/font filter447/340. Timer ef34b9c424 native5666/30 and dead
+attachment-span storage f2db7c729e removed; actual native profiles preserved.
+These are bounded overlapping receipts, not a current full-suite aggregate.
+
 Agent `menu_port`: `/private/tmp/alchemy-native-depth-target-test-admission-20261111`,
 branch `codex/native-depth-target-test-admission`, based28. Own llrendertarget.*,
-minimal native relabel APIs and projection/target native tests. Reproduce/fix
-shared-depth color replacement/content loss and stale actual texture labels.
+native transactional attachment/relabel APIs and projection/target tests.
+Actual red baselines confirm shared-depth rebase, addColorAttachment and
+allocateDepth lose existing pixels/identity, and setLabel leaves native labels stale.
 
-Agent `gl_tail_audit`: `/private/tmp/alchemy-native-font-ui-test-admission-20261111`,
-branch `codex/native-font-ui-test-admission`, based28; native registry/COLRv1/
-shaping/UIImage24cases green276assertions pending final foundation/integration.
-Agent `rlva_port`: `/private/tmp/alchemy-native-font-ui-cache-coverage-20261111`;
-shared fixture69a6cda5f2, LLFontGL38/TextCache23 native case admission in separate
-shared-session binary. Root owns CMake/docs/LLRender and dead ALImageSlot graph;
-retain sole live format predicate in menu agent's target owner before removal.
+Agent `gl_tail_audit`: `/private/tmp/alchemy-native-query-pool-cleanup-20261111`,
+basef2db7c729e. Own alquerypool.* and native/old query suites. Release/reacquire
+ticket alias red: CPU3fail; actualGPU15fail incl staleattach replacing clipped0
+with visible1. Restore original generation invalidation; retain visibility/diagnostics.
+Agent `rlva_port`: `/private/tmp/alchemy-native-scene-monitor-20261111`,
+basebd13164b70 + root frame-owner1c77fa745a/7162dd92f8. Own SceneMonitor,
+bounded native service/test and additive MSL. Preserve original byte/dither/
+filter/normalization/state semantics with actual retained pre-UI leases.
+Root owns pipeline/display/CMake/docs/LLRender and pending native sphere test.
+No current source full-app verification yet; rebuild after these repairs.
 CURRENT/linked work notes retain prior committed worktree provenance.
 
 Prior utility/preview/vertex/FrameProfile/manager/batching/GLTF worktrees are

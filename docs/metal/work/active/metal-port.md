@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `d28b0477a038e42b5a593d0d5350588d48c62343`.
+**Renderer checkpoint:** Commit `7162dd92f86dc1df099bf2c27d53b8fdc070d2eb`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -39,6 +39,14 @@ CPAL multi-palette skip),alrender556639/132,targeted GPU93869/22 all0. Cache API
 5905/6,global instrumentation882/1,selective98/1 all0. Tools39/harness32files0;
 strict source3509files/0blockers/0errors/1188informational. Filters overlap.
 No launches. Exact commands/failures in latest note.
+[New target/query/font invariants](native-target-query-invariants.md): native
+font/UI24cases276assertions0, defaultFont/TextCache61cases1862assertions0 in
+separate registered process,2Dhelper4cases76assertions0. Dead image-slot state
+removed after exact live format predicate relocated; usage/font447/340.
+Native timer-only receipt owner5666/30; displaced attachment spans removed.
+Original-mapped target identity/content/label failures and query ticket reuse
+bug are under repair. SceneMonitor native port active. Current code is newer
+than the last canonical d28 build; no full current app verification claimed.
 
 Earlier verified bounded checkpoints below remain included; their older build
 and inventory counts do not supersede the current observations above.
@@ -107,14 +115,15 @@ M-012 stays complete; M-014 remains deferred. No release readiness claim.
 
 ## Immediate executable action
 
-Native cache and admitted atlas/FreeType/image/vertex tests are integrated and
-frozen app verified. Continue new original-mapped target defects: menu_port owns
-llrendertarget.* plus minimal actual native relabel APIs/projection/target tests.
-Root removes unused ALImageSlot recording graph after its sole live predicate
-moves to the target owner. gl_tail_audit admits registry/COLRv1/shaping/UIImage24
-cases; rlva_port admits FontGL/TextCache61 in separate native shared session.
-CURRENT pins exact worktrees/exclusive owners. Integrate tests and fixes, then
-freeze/rebuild canonical app after production changes; goal remains active.
+Native cache, font/UI89case admission and dead image-slot/timer/span cleanup
+are integrated, individually tested; historical d28 app remains last verified.
+menu_port owns transactional native target attachment preservation/labels and
+projection/target tests. gl_tail_audit owns query generation bug/invariant
+admission/dead generic-query APIs. rlva_port owns native SceneMonitor service/
+state/MSL; root provides exact normalized pre-UI lease getter and owns shared
+pipeline/display/CMake/docs. Native sphere range admission pending in root.
+CURRENT pins worktrees/exclusive owners. Integrate actual GPU tests/repairs,
+then freeze/rebuild canonical and appearance apps; goal stays active.
 Keep viewer and appearance utility closed.
 
 ## Non-negotiable open gates
