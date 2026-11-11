@@ -560,8 +560,8 @@ void LLFace::renderSelected(LLViewerTexture *imagep, const LLColor4& color,
             if (vertex_buffer)
             {
 #if LL_DARWIN
-                // The ordered native world transaction is the sole selection
-                // highlight owner. GLTF selection buffers have already baked
+                // The ordered native world or HUD transaction owns selection
+                // highlights. GLTF selection buffers have already baked
                 // the chosen material channel into TEXCOORD0.
                 const U32 metal_texcoord_type =
                     vertex_buffer == mVertexBufferGLTF.get()

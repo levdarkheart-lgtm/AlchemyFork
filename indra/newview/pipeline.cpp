@@ -12625,71 +12625,6 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
     }
 }
 
-void LLPipeline::captureMetalWorldHighlightBatch(
-    LLVertexBuffer* buffer, U32 index_count, U32 index_start,
-    LLViewerTexture* texture, const LLColor4& color, U32 texcoord_type)
-{
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->frame_active ||
-        !mMetalWorldSimpleCapture->world_post_deferred_active ||
-        mMetalWorldSimpleCapture->world_post_deferred_phase)
-    {
-        return;
-    }
-
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-    if (!capture.complete || !buffer || index_count == 0 ||
-        texcoord_type < LLVertexBuffer::TYPE_TEXCOORD0 ||
-        texcoord_type > LLVertexBuffer::TYPE_TEXCOORD3 || !image ||
-        !image->getMetalTexture() ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer())
-    {
-        capture.markIncomplete(__LINE__);
-        capture.batches.clear();
-        capture.highlight_batches.clear();
-        return;
-    }
-
-    const auto texcoord_attribute =
-        static_cast<LLVertexBuffer::AttributeType>(texcoord_type);
-    if (!buffer->hasDataType(texcoord_attribute))
-    {
-        capture.markIncomplete(__LINE__);
-        capture.batches.clear();
-        capture.highlight_batches.clear();
-        return;
-    }
-
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
-
-    ALMetalWorldHighlightBatch batch;
-    batch.vertices = buffer->getMetalVertexBuffer();
-    batch.position_offset = buffer->getOffset(
-        LLVertexBuffer::TYPE_VERTEX);
-    batch.texcoord_offset = buffer->getOffset(texcoord_attribute);
-    batch.vertex_count = buffer->getNumVerts();
-    batch.indices = buffer->getMetalIndexBuffer();
-    batch.index_offset = static_cast<std::size_t>(index_start) *
-                         buffer->getIndexStride();
-    batch.index_type = buffer->getIndexStride() == 4
-        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
-    batch.index_count = index_count;
-    batch.texture = image->getMetalTexture();
-    std::memcpy(batch.modelview_projection,
-                modelview_projection.getF32ptr(),
-                sizeof(batch.modelview_projection));
-    std::memcpy(batch.texture_matrix,
-                gGL.getTextureMatrix().getF32ptr(),
-                sizeof(batch.texture_matrix));
-    std::memcpy(batch.color, color.mV, sizeof(batch.color));
-    capture.highlight_batches.push_back(batch);
-}
-
 void LLPipeline::captureMetalDebugAlphaBatch(
     const LLDrawInfo& params, LLViewerTexture* texture,
     const LLColor4& color)
@@ -22723,57 +22658,7 @@ void LLPipeline::renderSelectedFaces(const LLColor4& color,
     }
 }
 
-void LLPipeline::renderHighlights()
-{
-    assertInitialized();
-
-    if (hasRenderDebugFeatureMask(RENDER_DEBUG_FEATURE_SELECTED))
-    {
-        if (sRenderHighlightTextureChannel == LLRender::DIFFUSE_MAP ||
-            sRenderHighlightTextureChannel == LLRender::BASECOLOR_MAP ||
-            sRenderHighlightTextureChannel == LLRender::METALLIC_ROUGHNESS_MAP ||
-            sRenderHighlightTextureChannel == LLRender::GLTF_NORMAL_MAP ||
-            sRenderHighlightTextureChannel == LLRender::EMISSIVE_MAP ||
-            sRenderHighlightTextureChannel == LLRender::NUM_TEXTURE_CHANNELS)
-        {
-            static const LLColor4 highlight_selected_color(1.f, 1.f, 1.f, 0.5f);
-            renderSelectedFaces(
-                highlight_selected_color,
-                LLVertexBuffer::TYPE_TEXCOORD0);
-        }
-
-        // Paint 'em red!
-        static const LLColor4 highlight_face_color(1.f, 0.f, 0.f, 0.5f);
-        for (auto facep : mHighlightFaces)
-        {
-            facep->renderSelected(
-                LLViewerTexture::sNullImagep, highlight_face_color,
-                LLVertexBuffer::TYPE_TEXCOORD0);
-        }
-    }
-
-    // Contains a list of the faces of objects that are physical or
-    // have touch-handlers.
-    mHighlightFaces.clear();
-
-    if (hasRenderDebugFeatureMask(RENDER_DEBUG_FEATURE_SELECTED))
-    {
-        if (sRenderHighlightTextureChannel == LLRender::NORMAL_MAP)
-        {
-            static const LLColor4 highlight_normal_color(1.0f, 0.5f, 0.5f, 0.5f);
-            renderSelectedFaces(
-                highlight_normal_color,
-                LLVertexBuffer::TYPE_TEXCOORD1);
-        }
-        else if (sRenderHighlightTextureChannel == LLRender::SPECULAR_MAP)
-        {
-            static const LLColor4 highlight_specular_color(0.0f, 0.3f, 1.0f, 0.8f);
-            renderSelectedFaces(
-                highlight_specular_color,
-                LLVertexBuffer::TYPE_TEXCOORD2);
-        }
-    }
-}
+#include "pipeline_highlight_native.inl"
 
 //debug use
 U32 LLPipeline::sCurRenderPoolType = 0 ;

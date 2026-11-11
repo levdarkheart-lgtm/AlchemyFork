@@ -1873,6 +1873,7 @@ if(AL_BUILD_VIEWER)
     pipeline.h
     pipeline_lens_config.inl
     pipeline_finalize_config.inl
+    pipeline_highlight_native.inl
     llreflectionmapmanager_config.inl
     dynamic_texture_native.inl
     image_preview_native.inl
