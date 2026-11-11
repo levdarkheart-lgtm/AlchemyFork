@@ -1,6 +1,32 @@
 #include <metal_stdlib>
 using namespace metal;
 
+struct ALMetalBenchmarkVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+};
+
+// Original1eb44 interface/benchmarkV.glsl: the same oversized triangle
+// and UV equation, with clip Y inverted for Metal's upper-left row origin.
+vertex ALMetalBenchmarkVaryings almetal_benchmark_vertex(uint vertex_id [[vertex_id]])
+{
+    constexpr float2 positions[] = {float2(-1, 1), float2(-1, -3), float2(3, 1)};
+    const float2 position = positions[vertex_id];
+    ALMetalBenchmarkVaryings output;
+    output.position = float4(position.x, -position.y, 0.0, 1.0);
+    output.texcoord = position * 0.5 + 0.5;
+    return output;
+}
+
+// Original benchmarkF.glsl performs one RGBA8 lookup per passing sample.
+fragment float4 almetal_benchmark_fragment(
+    ALMetalBenchmarkVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]], sampler point_wrap [[sampler(0)]])
+{
+    return source.sample(point_wrap, input.texcoord);
+}
+
 struct ALMetalTestVertex
 {
     packed_float2 position;

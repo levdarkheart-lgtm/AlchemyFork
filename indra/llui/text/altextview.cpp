@@ -5115,7 +5115,7 @@ void ALTextView::drawSquiggles(const Squiggle* squiggles, size_t count)
         return;
     }
     LLImageGL* wave = squiggleTexture();
-    if (!wave || !wave->getHasGLTexture())
+    if (!wave || !wave->getMetalTexture())
     {
         return;
     }

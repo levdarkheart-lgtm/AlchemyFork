@@ -36,6 +36,8 @@
 #include "llgl.h"
 #include "llrender.h"
 #include "llglheaders.h"
+#include "llimagegl.h"
+#include "almetaltexturebenchmark.h"
 #include "llparcel.h"
 #include "llui.h"
 
@@ -71,8 +73,6 @@
 // [/RLVa:KB]
 
 #include <vector>
-
-#include <fmt/format.h>
 
 // Height of the yellow selection highlight posts for land
 constexpr F32 PARCEL_POST_HEIGHT = 0.666f;
@@ -873,262 +873,43 @@ void LLSky::renderSunMoonBeacons(const LLVector3& pos_agent, const LLVector3& di
 
 }
 
-//-----------------------------------------------------------------------------
-// gpu_benchmark() helper classes
-//-----------------------------------------------------------------------------
-
-// This struct is used to ensure that once we call initProfile(), it will
-// definitely be matched by a corresponding call to finishProfile(). It's
-// a struct rather than a class simply because every member is public.
-struct ShaderProfileHelper
-{
-    // The benchmark turns samples drawn into bandwidth, so it counts the samples themselves.
-    ShaderProfileHelper()
-    {
-        LLGLSLShader::initProfile(true);
-    }
-    ~ShaderProfileHelper()
-    {
-        LLGLSLShader::finishProfile();
-    }
-};
-
-// This helper class is used to ensure that each generateTextures() call
-// is matched by a corresponding deleteTextures() call. It also handles
-// the bindManual() calls using those textures.
-class TextureHolder
-{
-public:
-    TextureHolder(U32 unit, U32 size) :
-        texUnit(gGL.getTextureSlot(unit)),
-        source(size)            // preallocate vector
-    {
-        // takes (count, pointer)
-        // &vector[0] gets pointer to contiguous array
-        LLImageGL::generateTextures(static_cast<S32>(source.size()), &source[0]);
-    }
-
-    ~TextureHolder()
-    {
-        // unbind
-        if (texUnit)
-        {
-                texUnit->unbind();
-        }
-        // ensure that we delete these textures regardless of how we exit
-        LLImageGL::deleteTextures(static_cast<S32>(source.size()), &source[0]);
-    }
-
-    bool bind(U32 index)
-    {
-        if (texUnit) // should always be there with dummy (-1), but just in case
-        {
-            // Point filtering with no mips is the point of the benchmark -- it forces
-            // cache misses. Passed as a sampler so it applies to the sampling binds too.
-            return texUnit->bindManual(ALTextureSlot::TT_TEXTURE, source[index],
-                                       gGL.getSampler(ALSamplers::PointWrap));
-        }
-        return false;
-    }
-
-private:
-    // capture which ALTextureSlot we're going to use
-    ALTextureSlot* texUnit;
-
-    // use std::vector for implicit resource management
-    std::vector<U32> source;
-};
-
-class ShaderBinder
-{
-public:
-    ShaderBinder(LLGLSLShader& shader) :
-        mShader(shader)
-    {
-        mShader.bind();
-    }
-    ~ShaderBinder()
-    {
-        mShader.unbind();
-    }
-
-private:
-    LLGLSLShader& mShader;
-};
-
-
-F32 shader_timer_benchmark(std::vector<LLRenderTarget> & dest, TextureHolder & texHolder, U32 textures_count, LLVertexBuffer * buff, F32 &seconds)
-{
-    // run GPU timer benchmark
-
-    //number of samples to take
-    const S32 samples = 64;
-
-    {
-        ShaderProfileHelper initProfile;
-        dest[0].bindTarget();
-        gBenchmarkProgram.bind();
-        for (S32 c = 0; c < samples; ++c)
-        {
-            for (U32 i = 0; i < textures_count; ++i)
-            {
-                texHolder.bind(i);
-                buff->setBuffer();
-                buff->drawArrays(LLRender::TRIANGLES, 0, 3);
-            }
-        }
-        gBenchmarkProgram.unbind();
-        dest[0].flush();
-    }
-
-    F32 ms = gBenchmarkProgram.mTimeElapsed / 1000000.f;
-    seconds = ms / 1000.f;
-
-    F64 samples_drawn = (F64)gBenchmarkProgram.mSamplesDrawn;
-    F64 gpixels_drawn = samples_drawn / 1000000000.0;
-    F32 samples_sec = (F32)(gpixels_drawn / seconds);
-    return samples_sec * 4;  // 4 bytes per sample
-}
-
-//-----------------------------------------------------------------------------
-// gpu_benchmark()
-//  returns measured memory bandwidth of GPU in gigabytes per second
-//-----------------------------------------------------------------------------
+// The manual Developer action retains the original fixed sampling workload.
+// Its native owner never binds viewer render state or changes GPU classification.
 F32 gpu_benchmark()
 {
-    if (!gBenchmarkProgram.isAvailable())
+    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    if (!device)
     {
-        LLViewerShaderMgr::instance()->initAttribsAndUniforms();
-
-        gBenchmarkProgram.mName = "Benchmark Shader";
-        gBenchmarkProgram.mFeatures.attachNothing = true;
-        gBenchmarkProgram.mShaderFiles.clear();
-        gBenchmarkProgram.mShaderFiles.push_back(std::make_pair("interface/benchmarkV.glsl", GL_VERTEX_SHADER));
-        gBenchmarkProgram.mShaderFiles.push_back(std::make_pair("interface/benchmarkF.glsl", GL_FRAGMENT_SHADER));
-        gBenchmarkProgram.mShaderLevel = 1;
-        if (!gBenchmarkProgram.createShader())
-        {
-            return -1.f;
-        }
-    }
-
-    LLGLDisable blend(GL_BLEND);
-
-    //measure memory bandwidth by:
-    // - allocating a batch of textures and render targets
-    // - rendering those textures to those render targets
-    // - recording time taken
-    // - taking the median time for a given number of samples
-
-    //resolution of textures/render targets
-    const U32 res = 1024;
-
-    //number of textures
-    const U32 count = 32;
-
-    //time limit, allocation operations shouldn't take longer then 30 seconds, same for actual benchmark.
-    const F32 time_limit = 30;
-
-    std::vector<LLRenderTarget> dest(count);
-    for (U32 i = 0; i < count; ++i)
-    {
-        char label[32];
-        const auto result = fmt::format_to_n(label, sizeof(label), "benchmark{}", i);
-        dest[i].setLabel(std::string_view(label, (size_t)(result.out - label)));
-    }
-    TextureHolder texHolder(0, count);
-    std::vector<F32> results;
-
-    //build a random texture
-    U8* pixels = new U8[res*res*4];
-
-    for (U32 i = 0; i < res*res*4; ++i)
-    {
-        pixels[i] = (U8) ll_rand(256);
-    }
-
-    gGL.setColorMask(true, true);
-    LLGLDepthTest depth(GL_FALSE);
-
-    LLTimer alloc_timer;
-    alloc_timer.start();
-    for (U32 i = 0; i < count; ++i)
-    {
-        //allocate render targets and textures
-        if (!dest[i].allocate(res, res, GL_RGBA8))
-        {
-            LL_WARNS("Benchmark") << "Failed to allocate render target." << LL_ENDL;
-            // abandon the benchmark test
-            delete[] pixels;
-            return -1.f;
-        }
-        dest[i].bindTarget();
-        dest[i].clear();
-        dest[i].flush();
-
-        if (!texHolder.bind(i))
-        {
-            // can use a dummy value mDummySlot = new ALTextureSlot(-1);
-            LL_WARNS("Benchmark") << "Failed to bind tex unit." << LL_ENDL;
-            // abandon the benchmark test
-            delete[] pixels;
-            return -1.f;
-        }
-        LLImageGL::allocateTexture2D(GL_TEXTURE_2D, GL_RGBA8, res, res, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-        // Mipless point filtering (to cause cache misses) comes from the sampler
-        // TexHolder::bind selects; nothing to set on the texture object.
-
-        if (alloc_timer.getElapsedTimeF32() > time_limit)
-        {
-            // abandon the benchmark test
-            LL_WARNS("Benchmark") << "Allocation operation took longer then 30 seconds, stopping." << LL_ENDL;
-            delete[] pixels;
-            return -1.f;
-        }
-    }
-
-    delete [] pixels;
-
-    //make a dummy triangle to draw with
-    LLPointer<LLVertexBuffer> buff = new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX);
-
-    if (!buff->allocateBuffer(3, 0))
-    {
-        LL_WARNS("Benchmark") << "Failed to allocate buffer during benchmark." << LL_ENDL;
-        // abandon the benchmark test
+        LL_WARNS("Benchmark") << "Developer benchmark unavailable without a native Metal device"
+                              << LL_ENDL;
         return -1.f;
     }
-
-    LLStrider<LLVector3> v;
-
-    if (! buff->getVertexStrider(v))
+    std::vector<U8> pixels(ALMetalTextureBenchmark::source_bytes);
+    for (U8& value : pixels) value = static_cast<U8>(ll_rand(256));
+    std::string error;
+    auto benchmark = ALMetalTextureBenchmark::create(*device, pixels, &error);
+    if (!benchmark)
     {
-        LL_WARNS("Benchmark") << "GL LLVertexBuffer::getVertexStrider() returned false, "
-                   << "buff->getMappedData() is"
-                   << (buff->getMappedData()? " not" : "")
-                   << " NULL" << LL_ENDL;
-        // abandon the benchmark test
+        LL_WARNS("Benchmark") << "Developer benchmark unavailable: " << error << LL_ENDL;
         return -1.f;
     }
-
-    // generate dummy triangle
-    v[0].set(-1, 1, 0);
-    v[1].set(-1, -3, 0);
-    v[2].set(3, 1, 0);
-
-    buff->unmapBuffer();
-
-    LLGLSLShader::unbind();
-
-    // run GPU timer benchmark twice
-    F32 seconds = 0;
-    F32 gbps = shader_timer_benchmark(dest, texHolder, count, buff.get(), seconds);
-
-    LL_INFOS("Benchmark") << "Memory bandwidth, 1st run is " << llformat("%.3f", gbps) << " GB/sec according to ARB_timer_query, total time " << seconds << " seconds" << LL_ENDL;
-
-    gbps = shader_timer_benchmark(dest, texHolder, count, buff.get(), seconds);
-
-    LL_INFOS("Benchmark") << "Memory bandwidth, final run is " << llformat("%.3f", gbps) << " GB/sec according to ARB_timer_query, total time " << seconds << " seconds" << LL_ENDL;
-
-    return gbps;
+    ALMetalTextureBenchmarkResult result;
+    for (U32 index = 0; index < ALMetalTextureBenchmark::run_count; ++index)
+    {
+        auto run = benchmark->encodeRun(&error);
+        if (!run || !run->commit(&error) || !run->wait(result, &error))
+        {
+            LL_WARNS("Benchmark") << "Developer benchmark failed: " << error << LL_ENDL;
+            return -1.f;
+        }
+        LL_INFOS("Benchmark") << "Texture sampled throughput, "
+            << (index == 0 ? "first" : "final") << " run: "
+            << llformat("%.3f", result.gigabytes_per_second)
+            << " GB/sec over the dedicated native command GPU envelope, "
+            << (double(result.gpu_time.elapsed_nanoseconds) / 1'000'000'000.0)
+            << " seconds, " << result.samples_drawn << " passing samples, "
+            << result.sampled_bytes << " sampled bytes. This does not measure physical DRAM traffic."
+            << LL_ENDL;
+    }
+    return static_cast<F32>(result.gigabytes_per_second);
 }
