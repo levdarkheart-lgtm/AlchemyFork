@@ -813,8 +813,9 @@ private:
     U64 mMetalUICaptureRendererCreations = 0;
     U64 mMetalUICaptureRendererReuses = 0;
     U32 mMetalUICaptureCacheIndex = METAL_UI_CAPTURE_CACHE_SIZE;
-    U32 mMetalUICaptureDepthWidth = 0;
-    U32 mMetalUICaptureDepthHeight = 0;
+    // Known retained backing dimensions, independent of its current viewport.
+    U32 mMetalUICaptureTargetWidth = 0;
+    U32 mMetalUICaptureTargetHeight = 0;
     LLGLSLShader* mMetalUICaptureAlphaShader = nullptr;
     LLGLSLShader* mMetalUICaptureUniformColorShader = nullptr;
     F32 mMetalUICaptureMinimumAlpha = 0.004f;

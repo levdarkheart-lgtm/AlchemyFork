@@ -105,6 +105,10 @@ struct ALMetalUIBatch
     ALMetalUIMatrices matrices{};
     ALMetalUIBlendState blend{};
     ALMetalUIDepthState depth{};
+    // Logical polygon offset, as requested by the original viewer: negative
+    // moves toward the camera. The encoder reverses its sign for reverse Z.
+    float depth_bias_slope = 0.f;
+    float depth_bias_units = 0.f;
     ALMetalCullMode cull_mode = ALMetalCullMode::none;
     ALMetalViewport viewport{};
     ALMetalScissorRect scissor{};
@@ -177,6 +181,7 @@ struct ALMetalHUDIndexedBatch
     float minimum_alpha = 0.004f;
     // Semantic GL polygon-offset terms. The encoder translates these to
     // Metal's depth-bias sign for the active forward/reverse-Z convention.
+    // The same original logical offset sign as ALMetalUIBatch above.
     float depth_bias_slope = 0.f;
     float depth_bias_units = 0.f;
     bool double_sided = false;

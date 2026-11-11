@@ -178,6 +178,7 @@ if(AL_BUILD_TESTS)
       tests/aluiimage_metal_test.cpp
       tests/alnative_ui_texture_binding_test.cpp
       tests/alhuddepth_metal_test.cpp
+      tests/alraster_state_metal_test.cpp
       tests/alscenemonitor_ui_metal_test.cpp
       tests/alrender2dutils_metal_test.cpp
       tests/alrendersphere_metal_test.cpp
@@ -243,16 +244,4 @@ if(AL_BUILD_TESTS)
     target_include_directories(llrender_manual_window_compile PRIVATE ${INDRA_SOURCE_DIR}/test)
   endif()
 
-  # Remaining historical shared-context fixtures. Native target/query/buffer,
-  # font/UI, projection, sphere and frame-fence invariants are registered above.
-  al_add_test_binary(
-    llrender_gl_shared_tests
-    PROJECT llrender
-    SOURCES
-      tests/alrenderstate_gl_test.cpp
-    LIBRARIES llrender
-    SUPPORT llrender_test_checks llcommon_test_checks
-    DEFINES ${font_defines}
-    GL
-  )
 endif()

@@ -1995,6 +1995,12 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
         setError(error, "Metal UI batch is missing geometry or target dimensions");
         return false;
     }
+    if (!std::isfinite(batch.depth_bias_slope) ||
+        !std::isfinite(batch.depth_bias_units))
+    {
+        setError(error, "Metal UI depth bias must be finite");
+        return false;
+    }
     if (batch.depth.write_enabled && !batch.depth.enabled)
     {
         setError(error, "Metal UI depth writes require depth testing");
@@ -2061,7 +2067,10 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
     ALMetalRenderEncoder& encoder = *mImpl->encoder;
     if (!encoder.setPipeline(*pipeline, error) ||
         !encoder.setDepthStencilState(depth, error) ||
-        !encoder.setDepthBias(0.f, 0.f, 0.f, error) ||
+        !encoder.setDepthBias(
+            (batch.depth.reverse_z ? -1.f : 1.f) * batch.depth_bias_units,
+            (batch.depth.reverse_z ? -1.f : 1.f) * batch.depth_bias_slope,
+            0.f, error) ||
         !encoder.setVertexBuffer(0, *batch.vertices, batch.position_offset, error))
     {
         return false;
@@ -2376,9 +2385,9 @@ bool ALMetalUIRenderer::drawHUDIndexed(
         encoder.setPipeline(*pipeline, error) &&
         encoder.setDepthStencilState(depth, error) &&
         encoder.setDepthBias(
-            (batch.depth.reverse_z ? 1.f : -1.f) *
+            (batch.depth.reverse_z ? -1.f : 1.f) *
                 batch.depth_bias_units,
-            (batch.depth.reverse_z ? 1.f : -1.f) *
+            (batch.depth.reverse_z ? -1.f : 1.f) *
                 batch.depth_bias_slope,
             0.f, error) &&
         encoder.setVertexBuffer(

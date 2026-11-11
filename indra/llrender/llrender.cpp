@@ -835,8 +835,8 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     mMetalUICaptureRendererReuses = 0;
     mMetalUICaptureCacheIndex = METAL_UI_CAPTURE_CACHE_SIZE;
     mMetalUICaptureUsesDepth = false;
-    mMetalUICaptureDepthWidth = 0;
-    mMetalUICaptureDepthHeight = 0;
+    mMetalUICaptureTargetWidth = 0;
+    mMetalUICaptureTargetHeight = 0;
     mMetalUICaptureFirstFailure.clear();
     mMetalUIReplacementEnabled = true;
     mMetalUISurfaceFrameSubmitted = false;
@@ -898,8 +898,8 @@ bool LLRender::beginMetalUITextureCapture(
     }
     mMetalUICapturePixel.reset();
     mMetalUICaptureUsesDepth = false;
-    mMetalUICaptureDepthWidth = 0;
-    mMetalUICaptureDepthHeight = 0;
+    mMetalUICaptureTargetWidth = 0;
+    mMetalUICaptureTargetHeight = 0;
     const bool linear_storage =
         storage == EMetalUICaptureStorage::LINEAR_STORAGE &&
         alMetalLinearFormat(format) != format;
@@ -963,8 +963,13 @@ bool LLRender::beginMetalUITextureCapture(
     mMetalUICaptureUsesDepth = depth != nullptr;
     if (depth)
     {
-        mMetalUICaptureDepthWidth = depth->descriptor().width;
-        mMetalUICaptureDepthHeight = depth->descriptor().height;
+        mMetalUICaptureTargetWidth = depth->descriptor().width;
+        mMetalUICaptureTargetHeight = depth->descriptor().height;
+    }
+    else if (background)
+    {
+        mMetalUICaptureTargetWidth = background->descriptor().width;
+        mMetalUICaptureTargetHeight = background->descriptor().height;
     }
     if (authoritative)
     {
@@ -1126,8 +1131,8 @@ bool LLRender::updateMetalUITextureCaptureDepth(
                             << reason << LL_ENDL;
         return false;
     };
-    if (!mMetalUICaptureUsesDepth || mMetalUICaptureDepthWidth == 0 ||
-        mMetalUICaptureDepthHeight == 0)
+    if (!mMetalUICaptureUsesDepth || mMetalUICaptureTargetWidth == 0 ||
+        mMetalUICaptureTargetHeight == 0)
     {
         return reject("capture has no retained depth backing");
     }
@@ -1136,8 +1141,8 @@ bool LLRender::updateMetalUITextureCaptureDepth(
         return reject("depth rectangle has non-positive area");
     }
 
-    const std::int64_t target_width = mMetalUICaptureDepthWidth;
-    const std::int64_t target_height = mMetalUICaptureDepthHeight;
+    const std::int64_t target_width = mMetalUICaptureTargetWidth;
+    const std::int64_t target_height = mMetalUICaptureTargetHeight;
     const std::int64_t source_left = x;
     const std::int64_t source_bottom = y;
     const std::int64_t source_right = source_left + width;
@@ -1237,12 +1242,12 @@ bool LLRender::drawMetalHUDIndexedBatch(
         mMetalUICaptureComplete = false;
         return false;
     }
-    resolved.target_width = mMetalUICaptureUsesDepth
-        ? mMetalUICaptureDepthWidth
+    resolved.target_width = mMetalUICaptureTargetWidth != 0
+        ? mMetalUICaptureTargetWidth
         : static_cast<U32>(
               llmax(viewport_width, mViewport[0] + viewport_width));
-    resolved.target_height = mMetalUICaptureUsesDepth
-        ? mMetalUICaptureDepthHeight
+    resolved.target_height = mMetalUICaptureTargetHeight != 0
+        ? mMetalUICaptureTargetHeight
         : static_cast<U32>(
               llmax(viewport_height, mViewport[1] + viewport_height));
     resolved.viewport = {
@@ -1712,8 +1717,8 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     mMetalUICaptureFirstFailure.clear();
     mMetalUICaptureComplete = false;
     mMetalUICaptureUsesDepth = false;
-    mMetalUICaptureDepthWidth = 0;
-    mMetalUICaptureDepthHeight = 0;
+    mMetalUICaptureTargetWidth = 0;
+    mMetalUICaptureTargetHeight = 0;
     mMetalUICapturePixel.reset();
     if (mMetalUICaptureAuthoritative)
     {
@@ -2791,8 +2796,15 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     {
         return fallback(MetalUIFallbackReason::viewport);
     }
-    const U32 target_width = static_cast<U32>(llmax(viewport_width, mViewport[0] + viewport_width));
-    const U32 target_height = static_cast<U32>(llmax(viewport_height, mViewport[1] + viewport_height));
+    // A bounded viewport maps geometry within the retained attachments; it
+    // does not resize them. Only producers without a retained backing infer
+    // their output size from the viewport, as before.
+    const U32 target_width = capture && mMetalUICaptureTargetWidth != 0
+        ? mMetalUICaptureTargetWidth
+        : static_cast<U32>(llmax(viewport_width, mViewport[0] + viewport_width));
+    const U32 target_height = capture && mMetalUICaptureTargetHeight != 0
+        ? mMetalUICaptureTargetHeight
+        : static_cast<U32>(llmax(viewport_height, mViewport[1] + viewport_height));
 
     ALMetalUIBatch batch;
     batch.vertices = metal_buffer;
@@ -2925,6 +2937,15 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
             capture_batch.depth.reverse_z = sReverseZ;
             capture_batch.depth.compare = metal_compare_function(
                 LLGLDepthTest::remap(LLGLDepthTest::depthFunction()));
+            if (capture_batch.depth.enabled &&
+                LLGLState::isEnabled(GL_POLYGON_OFFSET_FILL) &&
+                (primitive == ALMetalUIPrimitive::triangles ||
+                 primitive == ALMetalUIPrimitive::triangle_strip ||
+                 primitive == ALMetalUIPrimitive::triangle_fan))
+            {
+                capture_batch.depth_bias_slope = mPolygonOffsetFactor;
+                capture_batch.depth_bias_units = mPolygonOffsetUnits;
+            }
         }
         std::string error;
         if (!mMetalUICaptureRenderer->draw(capture_batch, &error))
@@ -3261,10 +3282,12 @@ void LLRender::setPolygonOffset(F32 factor, F32 units)
 {
     if (mPolygonOffsetFactor != factor || mPolygonOffsetUnits != units)
     {
+        // The original driver kept the old offset until after flush. Native
+        // batches read these logical values while flushing, so update them
+        // only after geometry queued under the old offset has been encoded.
+        flush();
         mPolygonOffsetFactor = factor;
         mPolygonOffsetUnits = units;
-        flush();
-
     }
 }
 
