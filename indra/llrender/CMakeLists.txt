@@ -177,6 +177,10 @@ if(AL_BUILD_TESTS)
       tests/alimagegl_metal_test.cpp
       tests/alfont_atlas_metal_test.cpp
       tests/alfont_freetype_metal_test.cpp
+      tests/alfont_colrv1_metal_test.cpp
+      tests/alfont_registry_metal_test.cpp
+      tests/alfont_shaping_metal_test.cpp
+      tests/aluiimage_metal_test.cpp
       tests/alimage_native_coverage_test.cpp
       tests/alprimitiveplot_test.cpp
     )
@@ -217,9 +221,6 @@ if(AL_BUILD_TESTS)
     llrender_gl_fresh_tests
     PROJECT llrender
     SOURCES
-      tests/alfontcolrv1_gl_test.cpp
-      tests/alfontshaping_gl_test.cpp
-      tests/llfontregistry_gl_test.cpp
       tests/llimagegl_test.cpp
     LIBRARIES llrender ll::icu
     SUPPORT llrender_test_checks llcommon_test_checks
@@ -282,7 +283,6 @@ if(AL_BUILD_TESTS)
       tests/llrender2dutils_gl_test.cpp
       tests/llrendertarget_gl_test.cpp
       tests/llrendersphere_gl_test.cpp
-      tests/lluiimage_test.cpp
     LIBRARIES llrender
     SUPPORT llrender_test_checks llcommon_test_checks
     DEFINES ${font_defines}
