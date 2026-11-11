@@ -16,6 +16,7 @@ The owner-stopped20FPS campaign remains deferred.
 [Latest finalization/preview/media closure](../work/active/native-finalization-and-media-closure.md)
 and [settings/resource tail](../work/active/native-settings-and-resource-tail.md)
 plus [post-launch corrections](../work/active/native-post-launch-corrections.md)
+and [HUD selection/preview followup](../work/active/native-hud-selection-and-preview-retry.md)
 extends [raster/float/reflection and fixture admission](../work/active/native-raster-and-legacy-fixture-admission.md),
 [Scene Monitor/UI/RenderInfo](../work/active/native-scene-ui-and-render-info.md),
 [target/query/font](../work/active/native-target-query-invariants.md) and
@@ -130,11 +131,18 @@ closed.114fedf245 pushed normally to private origin codex/apple-silicon-metal;
 remote SHA verified. CLI/keyring works. Tag a Build43094454819 failed before any
 step: GitHub says recent account payments failed or spending limit needs increase.
 No tag/build/release was created by that action. No billing/security changes.
-Owner instead requests ZIP+SHA for manual upload. Deliver the verified files;
-no further CI dispatch or publishing. Keep source114 and artifact receipts pinned.
+Owner instead requested ZIP+SHA; verified files delivered for manual upload.
+No further CI dispatch or publishing. Keep source114 and receipts pinned.
 Exact release job route, if later needed: Project / `Metal Alpha 4`, existing
 versioned-alpha tag ref. Generic defaults select the wrong job. Preserve passed
-app; no viewer screenshot/login/restart. Full-product gates below remain open.
+app; no viewer screenshot/login/restart. Continuation finds selected HUD faces
+drop at closed world-only highlight admission; menu owns isolated fix/new test
+and GPU slot. RLVa owns model/BVH/sculpt buffer retry/current-publication fixes
+and actual model-helper proof, CPU/compile until GPU release. GL-tail peers
+previews; root owns CMake/matrix/docs/integration. New note records original
+mapping and bounded RLVa/upload closures. No canonical code changes yet; all
+delivered stages immutable. Integrate reviewed red/green fixes, build/check
+isolated, create a new artifact version. Full-product gates remain open.
 
 ## Complete-product advancement assessment
 

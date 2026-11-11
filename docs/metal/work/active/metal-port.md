@@ -10,13 +10,14 @@
 Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal,
 with original-viewer inspection before fixes. No viewer, utility, host or native
 window launch initially. Owner subsequently requested ready viewer launch for
-their confirmation; exact fresh26.4.0d68817 now runs as PID90460. No login action
+their confirmation; fresh26.4.0d68817 was observed as PID90460. No login action
 or screenshot by agent; utility unexecuted. Owner-stopped20FPS campaign remains deferred.
 Reference source1eb44bbd1bdc76d0100c75699bad1fb337e8cb45.
 
 Latest: [native finalization/preview/media closure](native-finalization-and-media-closure.md),
 and [settings/resource tail](native-settings-and-resource-tail.md),
 plus [post-launch corrections](native-post-launch-corrections.md),
+and [HUD selection/preview followup](native-hud-selection-and-preview-retry.md),
 extending [raster/float/reflection and fixture admission](native-raster-and-legacy-fixture-admission.md),
 [Scene Monitor/UI/RenderInfo](native-scene-ui-and-render-info.md),
 [target/query/font](native-target-query-invariants.md),
@@ -143,13 +144,19 @@ Root owns docs/handoff; agents released, all build/GPU/check handles closed.
 Validated114 pushed normally to private origin feature branch; remote SHA exact.
 CLI works. Tag a Build43094454819 rejected before steps for account payments/
 spending-limit restriction; no tag/release/build created, no billing changes.
-Owner replaces CI delivery with ZIP+SHA for manual upload. Deliver the verified
+Owner replaces CI delivery with ZIP+SHA for manual upload. Delivered the verified
 Alchemy_Metal_Alpha_4_26_4_0_68825_arm64.zip and .zip.sha256 from
 artifacts/metal/releases/26.4.0.68825-alpha4/. No upload/publishing by agent.
 If later needed, dedicated action inputs are Project / `Metal Alpha 4` on an
 existing exact version-alpha4 tag. No further dispatch now. Owner-passed f254
-app remains untouched. Original1eb gate applies to any future concrete defect;
-no whole-product completion claim or new viewer operation.
+app remains untouched. New audit finds HUD selected faces drop at closed world-
+only highlight admission. Menu owns isolated pipeline/HUD fix/new test and GPU
+slot; RLVa owns3preview cpp files/private model helper/existing test for omitted
+setBuffer/current-store gates, CPU/compile until GPU release. Root owns CMake/
+matrix/docs/integration; GL-tail peers previews. Original1eb mapping and actual
+red/green proof precede integration, isolated matching build/check and new artifact
+version. No canonical code changes yet, delivered stages immutable; no new
+viewer operation or whole-product completion claim.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
