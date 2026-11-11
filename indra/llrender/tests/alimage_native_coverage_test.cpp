@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
@@ -32,6 +33,8 @@
 
 namespace
 {
+#include "../llimagegl_upload_native.inl"
+
     // The worker is joined and its native completion/publication queue drained before
     // any lambda-captured image, atomics or callback results leave the test scope.
     struct WorkerScope
@@ -2072,4 +2075,120 @@ namespace
                           [](U8 byte) { return byte == 0xaa; }));
     }
 
+}
+
+// These CPU cases execute the same private format/staging functions as the native
+// upload call. They do not create a device, image, queue, window or renderer.
+TEST_CASE("Native RGB8 upload honors source channels and opaque storage", "[image-upload-layout]")
+{
+    for (const U32 primary : {GL_RGB, GL_RGBA, GL_BGRA})
+    for (const bool swap_bytes : {false, true})
+    for (const auto size : {std::array<U32, 2>{3, 2}, {1, 1}, {2, 3}})
+    for (const std::size_t padding : {std::size_t(0), std::size_t(5)})
+    {
+        CAPTURE(primary, swap_bytes, size[0], size[1], padding);
+        const std::size_t components = primary == GL_RGB ? 3 : 4;
+        const std::size_t row_bytes = size[0] * components + padding;
+        // The leading pixel also models the pointer offset supplied for a subregion.
+        std::vector<U8> source(components + row_bytes * size[1], 0xe7);
+        U8* pixels = source.data() + components;
+        std::vector<U8> expected;
+        for (U32 row = 0; row < size[1]; ++row)
+        for (U32 column = 0; column < size[0]; ++column)
+        {
+            const U8 red = static_cast<U8>(10 + row * 30 + column * 3);
+            const U8 green = static_cast<U8>(red + 1);
+            const U8 blue = static_cast<U8>(red + 2);
+            U8* pixel = pixels + row * row_bytes + column * components;
+            pixel[0] = primary == GL_BGRA ? blue : red;
+            pixel[1] = green;
+            pixel[2] = primary == GL_BGRA ? red : blue;
+            if (components == 4) pixel[3] = static_cast<U8>(31 + row + column);
+            // BGRA native storage retains the source BGR byte order, not an RGB shuffle.
+            expected.insert(expected.end(), {pixel[0], pixel[1], pixel[2], 255});
+        }
+        const auto original = source;
+        const auto format = metal_upload_format(GL_RGB8, primary, GL_UNSIGNED_BYTE);
+        CHECK(format.format == (primary == GL_BGRA ? ALMetalPixelFormat::bgra8_unorm
+                                                   : ALMetalPixelFormat::rgba8_unorm));
+        const U8* upload = nullptr;
+        std::size_t upload_row_bytes = 0;
+        std::vector<U8> converted;
+        const bool prepared = prepare_metal_upload_pixels(
+            format, primary, GL_UNSIGNED_BYTE, swap_bytes, size[0], size[1], pixels,
+            row_bytes, upload, upload_row_bytes, converted);
+        CHECK(prepared);
+        CHECK(source == original);
+        if (!prepared) continue;
+        REQUIRE(upload);
+        CHECK(upload_row_bytes == size[0] * 4);
+        for (U32 row = 0; row < size[1]; ++row)
+        for (U32 byte = 0; byte < size[0] * 4; ++byte)
+            CHECK(upload[row * upload_row_bytes + byte] == expected[row * size[0] * 4 + byte]);
+    }
+}
+
+TEST_CASE("Native upload keeps alpha and existing scalar conversions", "[image-upload-layout]")
+{
+    // Accelerated CEF uses RGBA8 storage with BGRA bytes, unlike RGB8 software/media.
+    const std::array<U8, 8> bgra{30, 20, 10, 7, 60, 50, 40, 99};
+    for (const bool swap_bytes : {false, true})
+    {
+        const auto format = metal_upload_format(GL_RGBA8, GL_BGRA, GL_UNSIGNED_BYTE);
+        REQUIRE(format.format == ALMetalPixelFormat::bgra8_unorm);
+        const U8* upload = nullptr;
+        std::size_t row_bytes = 0;
+        std::vector<U8> converted;
+        REQUIRE(prepare_metal_upload_pixels(format, GL_BGRA, GL_UNSIGNED_BYTE,
+            swap_bytes, 2, 1, bgra.data(), 8, upload, row_bytes, converted));
+        CHECK(upload == bgra.data());
+        CHECK(row_bytes == 8);
+        CHECK(converted.empty());
+        CHECK(std::equal(bgra.begin(), bgra.end(), upload));
+    }
+    // Packed BGRA and its existing whole-word swap must not become byte-swap no-ops.
+    {
+        const auto format = metal_upload_format(GL_RGB8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV);
+        const U8* upload = nullptr;
+        std::size_t row_bytes = 0;
+        std::vector<U8> converted;
+        REQUIRE(prepare_metal_upload_pixels(format, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV,
+            true, 2, 1, bgra.data(), 8, upload, row_bytes, converted));
+        const std::vector<U8> expected{7, 10, 20, 30, 99, 40, 50, 60};
+        CHECK(converted == expected);
+        CHECK(row_bytes == 8);
+    }
+    // The existing float-to-half path handles source scalar swapping before conversion.
+    for (const bool swap_bytes : {false, true})
+    {
+        const std::array<F32, 4> values{1.f, -2.f, .5f, 0.f};
+        std::array<U8, sizeof(values)> bytes{};
+        std::memcpy(bytes.data(), values.data(), bytes.size());
+        if (swap_bytes)
+            for (std::size_t offset = 0; offset < bytes.size(); offset += sizeof(F32))
+                std::reverse(bytes.begin() + offset, bytes.begin() + offset + sizeof(F32));
+        const auto format = metal_upload_format(GL_RG16F, GL_RG, GL_FLOAT);
+        const U8* upload = nullptr;
+        std::size_t row_bytes = 0;
+        std::vector<U8> converted;
+        REQUIRE(prepare_metal_upload_pixels(format, GL_RG, GL_FLOAT, swap_bytes,
+            2, 1, bytes.data(), bytes.size(), upload, row_bytes, converted));
+        const std::array<U16, 4> expected{0x3c00u, 0xc000u, 0x3800u, 0x0000u};
+        REQUIRE(converted.size() == sizeof(expected));
+        CHECK(std::memcmp(upload, expected.data(), sizeof(expected)) == 0);
+        CHECK(row_bytes == sizeof(expected));
+    }
+    // Default three-channel sRGB images still use the same RGB expansion byte contract.
+    {
+        const auto format = metal_upload_format(GL_SRGB8, GL_RGB, GL_UNSIGNED_BYTE);
+        REQUIRE(format.format == ALMetalPixelFormat::rgba8_unorm_srgb);
+        const std::array<U8, 3> source{19, 87, 211};
+        const U8* upload = nullptr;
+        std::size_t row_bytes = 0;
+        std::vector<U8> converted;
+        REQUIRE(prepare_metal_upload_pixels(format, GL_RGB, GL_UNSIGNED_BYTE, false,
+            1, 1, source.data(), 3, upload, row_bytes, converted));
+        CHECK(converted == std::vector<U8>{19, 87, 211, 255});
+        CHECK(row_bytes == 4);
+    }
 }
