@@ -1068,6 +1068,14 @@ bool LLRender::bindMetalUITextureCaptureNative(
     S32 slot_index, ALMetalTexture* texture, ALTextureSlot::eTextureType type,
     ALSampler sampler)
 {
+    return bindMetalUITextureCaptureNative(
+        slot_index, texture, type, ALSamplerCache::makeDesc(sampler));
+}
+
+bool LLRender::bindMetalUITextureCaptureNative(
+    S32 slot_index, ALMetalTexture* texture, ALTextureSlot::eTextureType type,
+    const ALSamplerDesc& sampler)
+{
     if (!mMetalUICaptureAuthoritative || !mMetalUICaptureRenderer)
         return false;
     if (slot_index != 0 || type != ALTextureSlot::TT_TEXTURE ||
@@ -1084,7 +1092,7 @@ bool LLRender::bindMetalUITextureCaptureNative(
     slot.mCurrTexType = ALTextureSlot::TT_TEXTURE;
     slot.mCurrImage = nullptr;
     slot.mCurrNativeTexture = texture;
-    mMetalUICaptureSampler = ALSamplerCache::makeDesc(sampler);
+    mMetalUICaptureSampler = sampler;
     mMetalUICaptureTextureBound = true;
     return true;
 }

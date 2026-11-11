@@ -7,6 +7,7 @@
  * $/LicenseInfo$
  */
 #include "llfontmetal_fixture.h"
+#include "../llrendertarget.h"
 #include <array>
 #include <cstring>
 
@@ -303,4 +304,50 @@ TEST_CASE("Retained image UI replay keeps its image while an unrelated raw textu
     REQUIRE(slot->bindNative(unrelated.get(), ALTextureSlot::TT_TEXTURE, ALSamplers::BilinearWrap));
     list.front().drawWithMatrix();
     ui.checkStripe(ui.finish(), 0, width, {255,255,0,255});
+}
+
+TEST_CASE("Native UI render-target binding preserves default and resolved custom samplers",
+          "[native_ui_target_binding][almetal]")
+{
+    NativeUI ui;
+    LLGLDisable blend(GL_BLEND), cull(GL_CULL_FACE), scissor(GL_SCISSOR_TEST);
+    LLGLDepthTest depth(GL_FALSE);
+    LLRenderTarget target;
+    REQUIRE(target.allocate(2, 2, GL_RGBA8, true));
+    auto* color = const_cast<ALMetalTexture*>(target.getMetalColorTexture());
+    REQUIRE(color);
+    std::string error;
+    auto command = ui.device->makeCommandBuffer("native UI target asymmetric colors", &error);
+    REQUIRE(command);
+    REQUIRE(color->upload(*command, 0, 0, {}, first_pixels.data(), 8, &error));
+    REQUIRE(command->commitAndWait(&error));
+    auto custom = ALSamplerCache::makeDesc(ALSamplers::PointWrap);
+    custom.mWrapT = ALSamplerAddressMode::clamp_to_edge;
+    const U32 custom_sampler = gGL.getSampler(custom);
+    REQUIRE(custom_sampler != 0);
+    auto* slot = gGL.getTextureSlot(0);
+    ui.begin();
+    REQUIRE(slot->bind(&target)); // Target default is BilinearMirror.
+    ui.quad(0, 16, .5f, .5f);
+    REQUIRE(slot->bind(&target, false, gGL.getSampler(ALSamplers::PointClamp)));
+    ui.quad(16, 32, 1.25f);
+    REQUIRE(slot->bind(&target, false, custom_sampler));
+    ui.quad(32, 48, 1.25f, 1.25f);
+    const auto pixels = ui.finish();
+    ui.checkStripe(pixels, 0, 16, {128,128,64,255});
+    ui.checkStripe(pixels, 16, 32, {0,255,0,255});
+    // Independent S-repeat/T-clamp cannot be reconstructed as one mask mode.
+    ui.checkStripe(pixels, 32, 48, {0,0,255,255});
+
+    // World metadata binding remains valid for depth; ordinary UI's float
+    // colour shader intentionally cannot consume the target's depth contract.
+    REQUIRE(slot->bind(&target, true));
+    CHECK(slot->getCurrMetalTexture() == target.getMetalDepthTexture());
+    slot->unbind();
+    ui.begin();
+    CHECK_FALSE(slot->bind(&target, true));
+    ui.rejected();
+    ui.begin();
+    CHECK_FALSE(slot->bind(&target, false, 0xffffffffu));
+    ui.rejected();
 }

@@ -330,6 +330,9 @@ public:
     bool bindMetalUITextureCaptureNative(
         S32 slot, ALMetalTexture* texture, ALTextureSlot::eTextureType type,
         ALSampler sampler);
+    bool bindMetalUITextureCaptureNative(
+        S32 slot, ALMetalTexture* texture, ALTextureSlot::eTextureType type,
+        const ALSamplerDesc& sampler);
     bool unbindMetalUITextureCapture(S32 slot);
     // Keep capture-only alpha-test state local to the native transaction.
     void setMetalUITextureCaptureMinimumAlpha(

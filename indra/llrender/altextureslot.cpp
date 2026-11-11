@@ -492,13 +492,21 @@ bool ALTextureSlot::bind(LLCubeMap* cubeMap, ALSampler key)
 // texture identity for the resource itself.
 bool ALTextureSlot::bind(LLRenderTarget* renderTarget, bool bindDepth, U32 sampler)
 {
-    if (mIndex < 0 || !renderTarget) return false;
+    const bool authoritative = gGL.isMetalUITextureCaptureAuthoritative();
+    if (mIndex < 0 || !renderTarget)
+    {
+        if (authoritative)
+            gGL.invalidateMetalUITextureCapture("native UI render target was absent");
+        return false;
+    }
 
     ALMetalTexture* texture = const_cast<ALMetalTexture*>(bindDepth
         ? renderTarget->getMetalDepthTexture()
         : renderTarget->getMetalColorTexture(0));
     if (!texture || !matches_native_type(*texture, renderTarget->getUsage()))
     {
+        if (authoritative)
+            gGL.invalidateMetalUITextureCapture("native UI render target attachment was absent or incompatible");
         llassert(!bindDepth || renderTarget->hasDepthAttachment());
         return false;
     }
@@ -506,6 +514,21 @@ bool ALTextureSlot::bind(LLRenderTarget* renderTarget, bool bindDepth, U32 sampl
     sampler = sampler ? sampler : (bindDepth
         ? renderTarget->getDefaultDepthSampler()
         : renderTarget->getDefaultColorSampler(0));
+    if (authoritative)
+    {
+        // UI shares raw colour-texture admission (depth/integer/layered inputs
+        // fail closed). Ordinary world binding below keeps its typed contract.
+        // Resolve the complete cached descriptor: a custom sampler may address
+        // S and T differently, which no single ALSampler mask can represent.
+        ALSamplerDesc desc;
+        if (!gGL.describeSampler(sampler, desc))
+        {
+            gGL.invalidateMetalUITextureCapture("native UI render target sampler was not available");
+            return false;
+        }
+        return gGL.bindMetalUITextureCaptureNative(
+            mIndex, texture, renderTarget->getUsage(), desc);
+    }
     if (mCurrNativeTexture != texture || mCurrImage ||
         mCurrTexType != renderTarget->getUsage() || mCurrSampler != sampler)
     {
