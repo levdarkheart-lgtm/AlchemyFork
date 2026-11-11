@@ -244,10 +244,7 @@ if(AL_BUILD_TESTS)
   #   blocks and dispatches), integer textures through reserved samplers,
   #   what the debug validator says of images and stencil reads, and which
   #   shader objects a program owns and which the manager does;
-  # - LLRender::drawArraysInstanced: attribute-less instanced geometry, placed
-  #   by the matrices the draw syncs;
-  # - ALGPUBuffer's store, LLRender's indirect buffer bindings over its
-  #   lifetime, and the readback and stream rings;
+  # - the historical ALGPUBuffer store, readback and stream rings;
   # - ALUniformBuffer's persistently mapped rings: the store each makes, how
   #   it is mapped, what the GPU reads where a slice is bound, and the scratch
   #   ring's segments reused once the frame each was left in has finished;
@@ -274,7 +271,6 @@ if(AL_BUILD_TESTS)
       tests/algputimer_gl_test.cpp
       tests/alimageslot_gl_test.cpp
       tests/alinfiniteprojection_gl_test.cpp
-      tests/alinstanceddraw_gl_test.cpp
       tests/alquerypool_gl_test.cpp
       tests/alrenderstate_gl_test.cpp
       tests/altessellation_gl_test.cpp
