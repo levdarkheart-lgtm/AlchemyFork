@@ -369,6 +369,9 @@ public:
     // formats without a supported linear view.
     void* nativeLinearHandle() const noexcept;
     const ALMetalTextureDescriptor& descriptor() const noexcept;
+    // Update diagnostic metadata and the actual native backing/views. Empty
+    // explicitly clears a label; storage and allocation identity stay intact.
+    void setLabel(const std::string& label);
     std::uint32_t width(std::uint32_t mip_level = 0) const noexcept;
     std::uint32_t height(std::uint32_t mip_level = 0) const noexcept;
     std::size_t bytesPerPixel() const noexcept;
@@ -633,6 +636,16 @@ public:
         const ALMetalRenderTargetDescriptor& descriptor,
         std::string* error = nullptr);
 
+    // Stage an ordinary single-sample target using matching previous
+    // attachments as borrowed inputs. Only after successful allocation are
+    // matching owned attachments transferred; failure leaves previous usable.
+    // Pooled/parent-owned graphs are deliberately outside this transaction.
+    static std::unique_ptr<ALMetalRenderTarget> rebuildPreservingAttachments(
+        const ALMetalDevice& device,
+        const ALMetalRenderTargetDescriptor& descriptor,
+        ALMetalRenderTarget& previous,
+        std::string* error = nullptr);
+
     // Carry a scene's existing depth through a color-only target without a
     // depth allocation or copy. The returned wrapper owns color_owner, so
     // pooled color attachments return to their pool only when the wrapper
@@ -645,6 +658,9 @@ public:
         std::string* error = nullptr);
 
     const ALMetalRenderTargetDescriptor& descriptor() const noexcept;
+    // Rename this owner and only the attachments it owns. Borrowed textures,
+    // including shared depth, retain their producer's names.
+    void setLabel(const std::string& label);
     const ALMetalTexture* colorTexture(std::uint32_t index) const noexcept;
     // Transfers one resolved color attachment out of the target. The caller
     // must not create another render pass from this target afterwards.

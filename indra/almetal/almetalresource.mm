@@ -1389,6 +1389,23 @@ const ALMetalTextureDescriptor& ALMetalTexture::descriptor() const noexcept
     return mDescriptor;
 }
 
+void ALMetalTexture::setLabel(const std::string& label)
+{
+    if (mDescriptor.label == label) return;
+    @autoreleasepool
+    {
+        NSString* value = [[NSString alloc] initWithBytes:label.data()
+            length:label.size() encoding:NSUTF8StringEncoding];
+        if (!value) return;
+        mDescriptor.label = label;
+        if (!mImpl) return;
+        std::lock_guard<std::mutex> lock(mImpl->linear_view_mutex);
+        mImpl->texture.label = value;
+        if (mImpl->shader_view) mImpl->shader_view.label = value;
+        if (mImpl->linear_view) mImpl->linear_view.label = value;
+    }
+}
+
 std::uint32_t ALMetalTexture::width(std::uint32_t mip_level) const noexcept
 {
     return mip_level < mDescriptor.mipmap_level_count ? mipDimension(mDescriptor.width, mip_level) : 0;
@@ -2712,6 +2729,68 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::create(
         new ALMetalRenderTarget(std::move(impl), descriptor));
 }
 
+std::unique_ptr<ALMetalRenderTarget> ALMetalRenderTarget::rebuildPreservingAttachments(
+    const ALMetalDevice& device, const ALMetalRenderTargetDescriptor& descriptor,
+    ALMetalRenderTarget& previous, std::string* error)
+{
+    if (!previous.mImpl || previous.mPool || previous.mImpl->color_owner ||
+        descriptor.sample_count != 1 || previous.mDescriptor.sample_count != 1 ||
+        descriptor.width != previous.mDescriptor.width ||
+        descriptor.height != previous.mDescriptor.height)
+    {
+        setError(error, "Attachment preservation requires matching ordinary unpooled single-sample targets");
+        return nullptr;
+    }
+    for (std::uint32_t i = 0; i < descriptor.color_attachment_count && i < AL_METAL_MAX_COLOR_ATTACHMENTS; ++i)
+    {
+        const auto& color = descriptor.colors[i];
+        if (!color.texture || color.texture != previous.colorTexture(i)) continue;
+        const auto& held = color.texture->descriptor();
+        if (held.type != ALMetalTextureType::texture_2d || color.texture_slice != 0 ||
+            held.format != color.format || held.width != descriptor.width || held.height != descriptor.height ||
+            held.mipmap_level_count != descriptor.mipmap_level_count || held.sample_count != 1 ||
+            !alMetalHasUsage(held.usage, ALMetalTextureUsage::render_target) ||
+            (color.shader_read && !alMetalHasUsage(held.usage, ALMetalTextureUsage::shader_read)) ||
+            (color.shader_write && !alMetalHasUsage(held.usage, ALMetalTextureUsage::shader_write)))
+        {
+            setError(error, "Preserved color attachment does not satisfy the new descriptor");
+            return nullptr;
+        }
+    }
+    if (descriptor.depth_stencil_texture && previous.mImpl->depth_stencil &&
+        descriptor.depth_stencil_texture == previous.mImpl->depth_stencil.get())
+    {
+        const auto& held = descriptor.depth_stencil_texture->descriptor();
+        if (held.type != ALMetalTextureType::texture_2d || held.format != descriptor.depth_stencil_format ||
+            held.width != descriptor.width || held.height != descriptor.height || held.sample_count != 1 ||
+            held.mipmap_level_count != 1 ||
+            !alMetalHasUsage(held.usage, ALMetalTextureUsage::render_target) ||
+            (descriptor.depth_stencil_shader_read && !alMetalHasUsage(held.usage, ALMetalTextureUsage::shader_read)))
+        {
+            setError(error, "Preserved depth attachment does not satisfy the new descriptor");
+            return nullptr;
+        }
+    }
+    auto replacement = create(device, descriptor, error);
+    if (!replacement) return nullptr;
+    for (std::uint32_t i = 0; i < descriptor.color_attachment_count; ++i)
+    {
+        if (previous.mImpl->colors[i] && descriptor.colors[i].texture == previous.mImpl->colors[i].get())
+        {
+            replacement->mImpl->colors[i] = std::move(previous.mImpl->colors[i]);
+            replacement->mImpl->borrowed_colors[i] = nullptr;
+            replacement->mDescriptor.colors[i].texture = nullptr;
+        }
+    }
+    if (previous.mImpl->depth_stencil && descriptor.depth_stencil_texture == previous.mImpl->depth_stencil.get())
+    {
+        replacement->mImpl->depth_stencil = std::move(previous.mImpl->depth_stencil);
+        replacement->mImpl->borrowed_depth_stencil = nullptr;
+        replacement->mDescriptor.depth_stencil_texture = nullptr;
+    }
+    return replacement;
+}
+
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalRenderTarget::attachBorrowedDepth(
     const ALMetalDevice& device,
@@ -2770,6 +2849,25 @@ ALMetalRenderTarget::attachBorrowedDepth(
 const ALMetalRenderTargetDescriptor& ALMetalRenderTarget::descriptor() const noexcept
 {
     return mDescriptor;
+}
+
+void ALMetalRenderTarget::setLabel(const std::string& label)
+{
+    mDescriptor.label = label;
+    if (!mImpl) return;
+    if (mImpl->color_owner) mImpl->color_owner->setLabel(label);
+    for (std::uint32_t i = 0; i < mDescriptor.color_attachment_count; ++i)
+    {
+        if (mImpl->colors[i])
+        {
+            mDescriptor.colors[i].label = label.empty() ? "" : label + ".color" + std::to_string(i);
+            mImpl->colors[i]->setLabel(mDescriptor.colors[i].label);
+        }
+        if (mImpl->multisample_colors[i])
+            mImpl->multisample_colors[i]->setLabel(label.empty() ? "" : label + ".multisample" + std::to_string(i));
+    }
+    if (mImpl->depth_stencil)
+        mImpl->depth_stencil->setLabel(label.empty() ? "" : label + ".depth");
 }
 
 const ALMetalTexture* ALMetalRenderTarget::colorTexture(std::uint32_t index) const noexcept

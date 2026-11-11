@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -44,6 +45,23 @@ extern S32 gGLViewport[4];
 
 namespace
 {
+ALMetalClearColor clear_color(const LLColor4& color, U32 format)
+{
+    F64 value[4];
+    for (U32 c = 0; c < 4; ++c)
+    {
+        value[c] = color.mV[c];
+        if (LLImageGL::isIntegerFormat(format))
+        {
+            const F64 rounded = std::isfinite(value[c]) ? std::round(value[c]) : 0.0;
+            value[c] = LLImageGL::isSignedIntegerFormat(format)
+                ? llclamp(rounded, F64(std::numeric_limits<S32>::min()), F64(std::numeric_limits<S32>::max()))
+                : llclamp(rounded, 0.0, F64(std::numeric_limits<U32>::max()));
+        }
+    }
+    return {value[0], value[1], value[2], value[3]};
+}
+
 bool is_image_format(U32 format)
 {
     switch (format)
@@ -469,16 +487,11 @@ LLRenderTarget::EnsureResult LLRenderTarget::ensure(
         return EnsureResult::Failed;
     }
 
-    bool built = false;
     if (mExternalColor || held != desc())
     {
-        if (!build(held))
-        {
-            return EnsureResult::Failed;
-        }
-        built = true;
+        return build(held, &depth_from) ? EnsureResult::Built : EnsureResult::Failed;
     }
-    if (!built && sharesDepth() && mSharedDepthOwner == &depth_from &&
+    if (sharesDepth() && mSharedDepthOwner == &depth_from &&
         mSharedDepthSerial == depth_from.getDepthSerial())
     {
         return EnsureResult::Kept;
@@ -487,7 +500,7 @@ LLRenderTarget::EnsureResult LLRenderTarget::ensure(
     return mMetalTarget ? EnsureResult::Built : EnsureResult::Failed;
 }
 
-bool LLRenderTarget::build(const ALRenderTargetDesc& description)
+bool LLRenderTarget::build(const ALRenderTargetDesc& description, const LLRenderTarget* depth_from)
 {
     release();
     mResX = description.width;
@@ -505,6 +518,22 @@ bool LLRenderTarget::build(const ALRenderTargetDesc& description)
     mStencil = description.stencil;
     mDepthFormat = description.depth == ALRenderTargetDesc::Depth::D32F
         ? DEPTH_FMT_32F : DEPTH_FMT_24;
+    if (depth_from)
+    {
+        mUseDepth = true;
+        mOwnDepth = false;
+        mStencil = depth_from->mStencil;
+        mDepthFormat = depth_from->mDepthFormat;
+        mSharedDepthOwner = depth_from;
+        mSharedDepthSerial = depth_from->mDepthSerial;
+        std::string error;
+        mSharedDepthTexture = ALMetalTexture::retainSharedBacking(*depth_from->getMetalDepthTexture(), &error);
+        if (!mSharedDepthTexture)
+        {
+            release();
+            return false;
+        }
+    }
     if (!rebuildMetalTarget())
     {
         release();
@@ -513,7 +542,7 @@ bool LLRenderTarget::build(const ALRenderTargetDesc& description)
     return true;
 }
 
-bool LLRenderTarget::rebuildMetalTarget()
+bool LLRenderTarget::rebuildMetalTarget(bool preserve_colors, bool preserve_depth)
 {
     ALMetalDevice* device = LLImageGL::getMetalDevice();
     if (!device || (!mExternalColor && mInternalFormat.empty() && !mUseDepth))
@@ -536,7 +565,8 @@ bool LLRenderTarget::rebuildMetalTarget()
         native.colors[index].format = metal_color_format(format);
         native.colors[index].shader_read = true;
         native.colors[index].shader_write = is_image_format(format);
-        native.colors[index].texture = index == 0 ? mExternalColor : nullptr;
+        native.colors[index].texture = index == 0 && mExternalColor ? mExternalColor
+            : preserve_colors && mMetalTarget ? mMetalTarget->colorTexture(index) : nullptr;
         native.colors[index].label = native.label + ".color" + std::to_string(index);
         if (native.colors[index].format == ALMetalPixelFormat::invalid)
         {
@@ -552,10 +582,11 @@ bool LLRenderTarget::rebuildMetalTarget()
             ? ALMetalPixelFormat::depth32_float_stencil8
             : ALMetalPixelFormat::depth32_float;
         native.depth_stencil_shader_read = true;
-        if (!mOwnDepth)
+        if (mOwnDepth && preserve_depth && mMetalTarget)
+            native.depth_stencil_texture = mMetalTarget->depthStencilTexture();
+        else if (!mOwnDepth)
         {
-            native.depth_stencil_texture = mSharedDepthOwner
-                ? mSharedDepthOwner->getMetalDepthTexture() : nullptr;
+            native.depth_stencil_texture = mSharedDepthTexture.get();
             if (!native.depth_stencil_texture)
             {
                 LL_WARNS("RenderTarget") << "Target '" << mLabel
@@ -567,7 +598,10 @@ bool LLRenderTarget::rebuildMetalTarget()
     }
 
     std::string error;
-    auto replacement = ALMetalRenderTarget::create(*device, native, &error);
+    const bool kept_depth = mOwnDepth && native.depth_stencil_texture;
+    auto replacement = preserve_colors && mMetalTarget
+        ? ALMetalRenderTarget::rebuildPreservingAttachments(*device, native, *mMetalTarget, &error)
+        : ALMetalRenderTarget::create(*device, native, &error);
     if (!replacement)
     {
         LL_WARNS("RenderTarget") << "Could not build target '" << mLabel
@@ -584,10 +618,12 @@ bool LLRenderTarget::rebuildMetalTarget()
         sBytesAllocated = 0;
     }
     mMetalTarget = std::move(replacement);
+    if (mOwnDepth) mSharedDepthTexture.reset();
+    setLabel(mLabel);
     mAllocatedBytes = allocatedBytes();
     const U64 available = std::numeric_limits<U32>::max() - sBytesAllocated;
     sBytesAllocated += static_cast<U32>(llmin(mAllocatedBytes, available));
-    if (mOwnDepth)
+    if (mOwnDepth && !kept_depth)
     {
         mDepthSerial = ++sLastDepthSerial;
     }
@@ -654,7 +690,7 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
         return false;
     }
     mInternalFormat.push_back(color_fmt);
-    if (!rebuildMetalTarget())
+    if (!rebuildMetalTarget(true, true))
     {
         mInternalFormat.pop_back();
         return false;
@@ -670,16 +706,23 @@ bool LLRenderTarget::allocateDepth()
     {
         return false;
     }
+    const bool previous_use_depth = mUseDepth;
+    const bool previous_own_depth = mOwnDepth;
+    const LLRenderTarget* previous_owner = mSharedDepthOwner;
+    const U64 previous_serial = mSharedDepthSerial;
     mUseDepth = true;
     mOwnDepth = true;
     mSharedDepthOwner = nullptr;
     mSharedDepthSerial = 0;
-    if (!rebuildMetalTarget())
+    if (!rebuildMetalTarget(true))
     {
-        mUseDepth = false;
-        mOwnDepth = false;
+        mUseDepth = previous_use_depth;
+        mOwnDepth = previous_own_depth;
+        mSharedDepthOwner = previous_owner;
+        mSharedDepthSerial = previous_serial;
         return false;
     }
+    mSharedDepthTexture.reset();
     return true;
 }
 
@@ -709,7 +752,9 @@ void LLRenderTarget::attachSharedDepth(const LLRenderTarget& owner)
     mSharedDepthOwner = &owner;
     mSharedDepthSerial = owner.mDepthSerial;
     mDepthSerial = 0;
-    if (!rebuildMetalTarget())
+    std::string error;
+    mSharedDepthTexture = ALMetalTexture::retainSharedBacking(*owner.getMetalDepthTexture(), &error);
+    if (!mSharedDepthTexture || !rebuildMetalTarget(true))
     {
         release();
     }
@@ -718,6 +763,7 @@ void LLRenderTarget::attachSharedDepth(const LLRenderTarget& owner)
 void LLRenderTarget::setLabel(std::string_view label)
 {
     mLabel.assign(label);
+    if (mMetalTarget) mMetalTarget->setLabel(mLabel);
 }
 
 void LLRenderTarget::release()
@@ -734,6 +780,7 @@ void LLRenderTarget::release()
     }
     mAllocatedBytes = 0;
     mMetalTarget.reset();
+    mSharedDepthTexture.reset();
     mExternalColor = nullptr;
     mExternalFormat = 0;
     mInternalFormat.clear();
@@ -798,8 +845,7 @@ bool LLRenderTarget::encodeClear(U32 mask, const LLColor4& color,
                 selected.bind = true;
                 selected.load = ALMetalLoadAction::clear;
                 selected.store = ALMetalStoreAction::store;
-                selected.clear = {color.mV[0], color.mV[1],
-                                  color.mV[2], color.mV[3]};
+                selected.clear = clear_color(color, getInternalFormat(attachment));
             }
         }
         else
@@ -814,8 +860,7 @@ bool LLRenderTarget::encodeClear(U32 mask, const LLColor4& color,
                 selected.bind = true;
                 selected.load = ALMetalLoadAction::clear;
                 selected.store = ALMetalStoreAction::store;
-                selected.clear = {color.mV[0], color.mV[1],
-                                  color.mV[2], color.mV[3]};
+                selected.clear = clear_color(color, getInternalFormat(static_cast<U32>(attachment)));
             }
         }
     }
@@ -1132,16 +1177,6 @@ void LLRenderTarget::setDrawBuffers(U32 count)
     }
 }
 
-void LLRenderTarget::setDrawOutput(U32 output)
-{
-    llassert(sBoundTarget == this);
-    llassert(getNumTextures());
-    output = llmin(output, static_cast<U32>(mDrawBuffers.size() - 1));
-    gGL.flush();
-    mDrawBuffers.fill(-1);
-    mDrawBuffers[output] = 0;
-}
-
 bool LLRenderTarget::isBoundInStack() const
 {
     LLRenderTarget* current = sBoundTarget;
@@ -1168,8 +1203,11 @@ void LLRenderTarget::swapFBORefs(LLRenderTarget& other)
     llassert(!mExternalColor && !other.mExternalColor);
 
     std::swap(mMetalTarget, other.mMetalTarget);
+    std::swap(mSharedDepthTexture, other.mSharedDepthTexture);
     std::swap(mSharedDepthOwner, other.mSharedDepthOwner);
     std::swap(mDepthSerial, other.mDepthSerial);
     std::swap(mSharedDepthSerial, other.mSharedDepthSerial);
     std::swap(mAllocatedBytes, other.mAllocatedBytes);
+    setLabel(mLabel);
+    other.setLabel(other.mLabel);
 }

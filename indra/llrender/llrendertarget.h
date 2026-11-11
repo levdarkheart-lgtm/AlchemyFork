@@ -27,8 +27,6 @@
 #ifndef LL_LLRENDERTARGET_H
 #define LL_LLRENDERTARGET_H
 
-// LLRenderTarget is unavailible on the mapserver since it uses FBOs.
-
 #include "alrendertargetdesc.h"
 #include "llgl.h"
 #include "llrender.h"
@@ -82,8 +80,8 @@ public:
     // Combined depth+stencil is selected automatically when stencil is requested.
     enum eDepthFormat : U32
     {
-        DEPTH_FMT_24 = 0,   // GL_DEPTH_COMPONENT24 / GL_DEPTH24_STENCIL8
-        DEPTH_FMT_32F,      // GL_DEPTH_COMPONENT32F / GL_DEPTH32F_STENCIL8
+        DEPTH_FMT_24 = 0,   // Retained logical choice; Metal uses D32F, optionally with stencil.
+        DEPTH_FMT_32F,
     };
 
     // Whether this target's colour attachments carry a mip chain, and who fills it.
@@ -100,7 +98,7 @@ public:
     // What ensure did.
     enum class EnsureResult : U8
     {
-        Kept,   // The target already matched: no GL call was made, and every name is the one it had.
+        Kept,   // The target already matched: its native storage and contents were kept.
         Built,  // The target was built from the description.
         Failed, // The target could not be built, and is released.
     };
@@ -128,12 +126,12 @@ public:
     // Make this target what `desc` describes, with a depth attachment of its own where the description has one.
     //
     // A target that already is what `desc` describes, and holds nothing else -- no shared depth, no lent texture --
-    // returns Kept, without a GL call. Any other is released and built from the description, as allocate and
-    // addColorAttachment would build it, and returns Built. The size is held to the context's largest texture before
+    // returns Kept, without an allocation. Any other is released and built from the description, as allocate and
+    // addColorAttachment would build it, and returns Built. The size is held to the device's largest texture before
     // comparing, as allocate holds it, so a description past that size is kept rather than built again on every call.
     //
     // A description no target can be built from -- no size, no attachment, a format after a 0 in the colour list,
-    // stencil without depth, generated mips of an integer first attachment or of none -- and one GL cannot build, return
+    // stencil without depth, generated mips of an integer first attachment or of none -- and one Metal cannot build, return
     // Failed and leave the target released.
     EnsureResult ensure(const ALRenderTargetDesc& desc);
 
@@ -145,7 +143,7 @@ public:
     // by a serial each depth build takes, not by the texture name, which GL hands out again once a texture is deleted.
     // So building a depth owner again re-points its sharers without building their colour again.
     //
-    // Kept means no GL call; Built that the colour was built, the depth attached, or both. A description that cannot
+    // Kept means no allocation or rebase; Built that the colour was built, the depth attached, or both. A description that cannot
     // be built, one with depth of its own or a size other than depth_from's, and a depth_from with no depth of its
     // own, return Failed and leave this target released.
     EnsureResult ensure(const ALRenderTargetDesc& desc, const LLRenderTarget& depth_from);
@@ -162,11 +160,11 @@ public:
     // colour/depth storage.
     static U64 bytesFor(const ALRenderTargetDesc& desc);
 
-    // The name debuggers and the GL debug output show for this target: its framebuffer is labelled `label`, the
-    // colour attachments it allocated `label.color0` on, and the depth it allocated `label.depth`. The label is kept
-    // across builds and given to what each builds, so an owner names its target once; set on a built target, it
-    // names what the target holds now. Empty leaves the target unnamed. Objects are labelled under debug GL (gDebugGL)
-    // alone; the label is kept either way.
+    // The native target group's diagnostic label and its owned attachments:
+    // `label.color0` on and `label.depth`. Labels survive rebuilds and swaps;
+    // setting one on a built owner updates actual native resource labels.
+    // Borrowed textures retain their producer's labels. Empty clears names.
+    // Metal diagnostics keep these available independently of legacy gDebugGL.
     void setLabel(std::string_view label);
     const std::string& getLabel() const { return mLabel; }
 
@@ -233,14 +231,6 @@ public:
     // own G-buffer, so without this its normal and ORM attachments are corrupted wherever
     // blended geometry drew, and those are what light the billboard afterwards.
     void setDrawBuffers(U32 count = 0);
-
-    // Take the fragment shader's output `output` (frag_data[output]) into the first colour attachment and
-    // discard every other output. Asserts that this target is currently bound and has a colour attachment;
-    // the next bindTarget restores the one-to-one mapping.
-    //
-    // How a single-attachment target hosts a pass written for a G-buffer: the sky writes its colour to the
-    // emissive output, frag_data[3], when that buffer is on.
-    void setDrawOutput(U32 output);
 
     //get X resolution
     U32 getWidth() const { return mResX; }
@@ -344,6 +334,8 @@ protected:
     // mInternalFormat; 0 otherwise.
     U32 mExternalFormat = 0;
     ALMetalTexture* mExternalColor = nullptr;
+    // Shared depth outlives the producer's next build until this owner rebases.
+    std::unique_ptr<ALMetalTexture> mSharedDepthTexture;
     std::unique_ptr<ALMetalRenderTarget> mMetalTarget;
     const LLRenderTarget* mSharedDepthOwner = nullptr;
     U64 mAllocatedBytes = 0;
@@ -362,16 +354,16 @@ protected:
 
     ALTextureSlot::eTextureType mUsage;
 
-    // The colour attachment each draw buffer writes, -1 for none, as bindTarget, setDrawBuffers and setDrawOutput
+    // The colour attachment each draw buffer writes, -1 for none, as bindTarget and setDrawBuffers
     // last set them: the buffers clearColorBuffers clears, one at a time.
     std::array<S8, 4> mDrawBuffers = { -1, -1, -1, -1 };
 
     // Release what the target holds and allocate what `desc` describes, depth included. False leaves it released.
-    bool build(const ALRenderTargetDesc& desc);
+    bool build(const ALRenderTargetDesc& desc, const LLRenderTarget* depth_from = nullptr);
 
-    // Replace the native target from the current description without ever
-    // creating a parallel GL texture or framebuffer.
-    bool rebuildMetalTarget();
+    // Stage a target from the current description. Attachment growth/rebase
+    // may transfer matching native storage only after successful allocation.
+    bool rebuildMetalTarget(bool preserve_colors = false, bool preserve_depth = false);
     U64 allocatedBytes() const;
     bool encodeClear(U32 mask, const LLColor4& color, F64 depth, U32 stencil,
                      bool all_colors = false);
