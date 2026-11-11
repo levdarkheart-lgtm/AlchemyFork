@@ -176,3 +176,73 @@ lens mask is computed before resize, unlike original window-pixel evaluation.
 Private postchain tree owns only its test file; production fix must wait for
 shared pipeline/world/MSL owner release. Full parity/stability/runtime no-GL/
 independent release review/performance gates remain open.
+
+## Silhouette, uniform, buffer, stencil and final-viewport integration
+
+Code1f357c900e7ff42128f1de25ca999a93dbd37148 supersedes the pending work above.
+b741e156ab/a92290a0f1 integrate child8c40fc6/75a497: original conditional
+RGB/alpha stamp at its CPU policy boundary, normalized depth pin .999995/.000005,
+both implicit stamps removed, zero-forward-batch admission, borrowed CPU fill
+copied during encode and exact prior normal/profile join eligibility retained.
+Initial native alpha already existed; no missing-alpha regression claimed.
+Child21566/4 plus unchanged impostor replay38636/5 pass; root registered21566/4
+passes in actual native test bundle. Three reviews no blockers. Exact source
+and receipt /private/tmp/alchemy-native-avatar-coverage-validation-20261111/
+validation-receipt.json. Original replay ignores vertex tint, so none invented.
+
+6a4058d209 (child81fddbb17b) removes ALUniformBuffer's zero-reader native binding
+table/rings, producers, packed-light/matrix shadows and dead hash counters,
+mode setting/listener/five feature-table rows, four obsolete class/test files
+and exact stale helper hooks. Preserve CPU Environment/Deferred/NativeShadow
+layouts/math, pack-before-compaction, actual light/SUN_UP routing, native matrix
+assembly/stacks and368-byte MatricesUBOData. First-bind CPU initialization now
+has an explicit release-reset guard. Child8130/19CPU+native UI and378/4native
+arena/completion/G-buffer owner cases pass; eight Release checks,14matched
+objects/link0, ten exact body/schema proofs, independent review clean.
+Receipts /private/tmp/alchemy-native-uniform-retirement-{validation,original-map}-20261111.json
+and cpu-body-proof.json with the same prefix. No native constant arena removed.
+
+c69d0fcc78 (child881822c95d) follows that zero-producer dependency: retires
+ALGPUBuffer and its old4native cases, preserves five historical meaningful
+storage invariants in three direct ALMetalBuffer cases (actual uploads/partial
+word fill/read/static+self copy/coherent publication/GPU retirement). Wrapper
+flags/move mechanics have no product owner. Remove empty zero-reader storage
+metadata/capacity, preserve reserved prefix and all8CPU uniform indices.
+TextureView shows accurately labeled tracked Metal buffer wrapper bytes,
+excluding raw staging/post-wrapper leases; never device-wide allocation bytes.
+Actual119/4with reserved metadata passes, five Release checks/link0, peer clean.
+Manifest /private/tmp/alchemy-native-buffer-owner-validation-20261111.json.
+
+3d1c751d7c/1f357c900e (child972042f5fa) remove dead ALGLStencil/ALWaterStencil,
+seven LLRender recording fields/accessors/setters and exact13legacy helper
+save/restore/member lines; zero remaining class/API readers. Original driver
+setters had real GL calls; native water/exclusion/SMAA now own typed immutable
+states/reference values. Keep those implementations, masks and actual GPU
+fixtures untouched. Child167/10native state tests pass: nine bodies byte-exact,
+one exact seven-assertion prune; two excluded driver cases/helpers retired and
+all surviving non-stencil bodies/projections proven. Manifest under
+/private/tmp/alchemy-native-stencil-foundation-validation-20261111/.
+
+65c2dac883 (child7ee520c634) repairs actual prior final-viewport errors.
+Original renderFinalize10825/10904 uses final WorldViewRaw dimensions/origin;
+native previously ran effects at render resolution then resized their result.
+Actual flat-color original hard-mask oracle red1080/9249failures (936at8x6,
+144at64x48,32x24controlpasses), exact baseline source recovered/hash-verified.
+Explicit output dimensions default to source when bothzero; matching192-byte
+CPU/MSL constants carry viewport size/origin. Evaluate lens/print/seam before
+UI resize. Independent final-color/world-depth sizes normalize through existing
+BilinearMirror/PointClamp owners; exact snapshot lease survives UI end for
+current normalized depth readback and releases on cancel. Cutouts remain color.
+
+Peer review also caught an inherited Y inversion: offscreen rawrow0 is GLlower
+row (resample_vertex/present_gl_rows), flipped only at CAMetalLayer. Corrected
+positive-origin crop oracle red238/322, then native input.position.xy+origin
+fixes print noise. Initial inactive-grain and inverted-oracle green fixtures
+are retained as superseded controls, not final proof. Final matching-header
+49366/9native GPU cases pass, including four existing post and three retained
+background cases, non-square input/window mask, active translated noise, depth,
+invalid-policy atomicity; textual viewer syntax0 and peer no blockers. Receipt
+/private/tmp/alchemy-native-postchain-admission-validation-20261111/validation-receipt.json.
+No viewer, window or snapshot workflow executed. Root registered full suites/
+new canonical app still required at1f; source strict3504files/0blockers/0errors/
+1170informational. Goal active; exact further owners are in CURRENT.

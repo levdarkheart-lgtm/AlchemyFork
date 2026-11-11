@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `f75d9e306ffd1371582ff40b8662bf7944aabee6`.
+**Renderer code checkpoint:** `1f357c900e7ff42128f1de25ca999a93dbd37148`.
 The remaining-feature/OpenGL-removal goal stays active. No viewer or appearance
 utility launch, menu invocation, screenshot, signed-in state or user-cache
 operation. Offscreen tests submit actual Metal commands. The owner-stopped
@@ -37,7 +37,13 @@ counts, SDL/dependency and CPU-vocabulary repairs. Target growth/rebase retains
 attachment identity/data/depth lifetime, integer clears round correctly, labels
 follow native resources and release invalidates query generations. Dead ambient
 image slots, generic query/timer/span APIs and unconsumed GPU stream removed.
-Native buffer storage bodies remain unchanged with stronger tests.
+RLVa silhouette b741/a922 restores conditional original fill/pin/order and exact
+profile join eligibility. Native final viewport65c2 fixes scaled lens masks and
+inverted print-noise Y; independent color/depth normalization preserves snapshot
+depth through readback. Unconsumed uniform6a405 and generic bufferc69 graphs,
+empty storage metadata and dead stencil scopes/fields are removed. Actual CPU
+environment/deferred/shadow/matrix layouts/math and typed native owners remain.
+TextureView reports tracked Metal buffer wrapper bytes, not driver memory.
 
 ## Observed validation
 
@@ -52,19 +58,22 @@ separate native Font/UI **1862/61**0, alrender **556641/132**0, affected native
 Metal **73523/38**0, API+shader validation. API-only cache **5905/6**0,
 instrumented **882/1**0 and selective **98/1**0. Existing native CAS/DoF/final
 presentation/SSR-history **4487/4**0 is an overlapping admission filter.
-Integrated Scene Monitor **513/7**0 and buffer **108/4**0. Raw UI/target child
-**8007/9**0, real Scene Monitor result/UI child **80/1**0. RenderInfo/join/
-indirect/timing child **11455/16**0; actual source/Release/link checks0 and peer
-reviews clean. Exact reds/precision limits are in the latest note. Root viewer
-Scene Monitor/shader-manager/target Release syntax0.
-Latest root strict production source audit:3509files/0blockers/0errors/
-1177informational. Including excluded legacy tests:4109files/486blocking/
-0errors; also includes two deliberate SDL no-OpenGL negative assertions.
+New integrated silhouette registered21566/4passes API+shader validation; child
+38636/5with unchanged impostor replay passes. Uniform8130/19CPU/native UI and
+378/4actual-owner tests pass; exact CPU/layout proofs, eight Release checks0.
+Buffer typed119/4 and stencil167/10pass with native validation. Viewport child
+49366/9passes with existing post/retained-background owners, matching scene
+headers and textual viewer syntax0. Original mask red1080/9249; raw-row red
+238/322. Superseded inactive-grain/inverted-oracle fixtures are recorded, not
+used as final evidence. Current1f full registered rebuild/runs are pending.
+Latest root strict production source audit:3504files/0blockers/0errors/
+1170informational. Frozen9918 including excluded legacy tests had486blockers;
+also two deliberate SDL no-OpenGL negative assertions.
 Lexical source-zero does not prove runtime or whole-feature parity. Tools39/
 harness32files0. Stale configuration and missing test-bundle resource results
 are excluded explicitly in scene-ui-test-validation.json, then corrected.
 
-**Verified canonical source9918621da8fc7bbc3de3edbd63d33150c8e00d1a,
+**Last verified canonical source9918621da8fc7bbc3de3edbd63d33150c8e00d1a,
 version26.4.0d68744**. Doctor/configure/build0,
 349Mach-O/zero invalid ARM64 slices, deep strict codesign0, forbidden framework/
 GL/CGL/SDL_GL imports0. Optional appearance Release build/ARM64/signature/imports0.
@@ -73,51 +82,33 @@ All349 Mach-O imports audited: foreign VLC screen/vout/caopengllayer/glconv and
 CEF contain GL links; videotoolbox has a CV compatibility-key import. These
 are recorded separately, not a whole-bundle no-GL pass. Trace actual media
 consumer/selection policy before removal. Neither executable was launched.
+New1f source is newer than that app; frozen canonical/appearance rebuild next.
 No performance or release-readiness claim.
 
 ## Exact next actions and ownership
 
-Root owns integration/CMake/docs. Frozen9918 verification is complete; fence
-and test-bundle packaging integrated. Review silhouette8c40fc6 then release
-pipeline for uniform closure. Root isolated test-only tree
-/private/tmp/alchemy-native-postchain-admission-20261111 proves a new final
-viewport defect: original hard lens mask at32x24 passes at1x but native world
-post then resize fails1080/9249assertions at reduced/oversampled sizes. Preserve
-the exact oracle and fix final window effects after shared-owner release.
+Root owns CMake/docs/integration. Source1f is FROZEN for full matching-header
+native tests, doctor/configure/canonical build/verify/import/signature and
+optional appearance checks. Record exact final docs/source SHA before app build.
+Agents continue isolated only; integrate after frozen receipts, then continue.
 
-menu_port: `/private/tmp/alchemy-native-rlva-feature-admission-20261111`;
-fresh native silhouette work based0b. Exclusive pipeline.cpp/h, almetalworld.cpp/h
-and minimal coverage MSL/test. Source confirms original @setcam_avdist/muted/
-complexity impostor stamp can write CPU fill RGB (.05 silhouette), while native
-stamp loses RGB fill. Initial G-buffer stamp already covers empty forward
-scenes; zero-batch composite admission is required to move stamping to the
-original policy point, not a separately observed lost-alpha defect. Child
-21566assertions/fourcases0; review/integration pending. No invented replay tint.
-Other audited RLVa camera/texture/privacy/overlay policies retain original
-consumers; inherited PBR limitation is not a new native regression.
+menu_port: `/private/tmp/alchemy-native-finalizer-tail-cleanup-20261111`,base1f;
+exclusive pipeline.cpp/h in child only. Original/current census before removing
+four uncalled legacy finalizers (CAS/FXAA/bloom composite/bindScreenToTexture)
+and CPU CAS include. Preserve actual native viewport and all live traversal.
 
-rlva_port: `/private/tmp/alchemy-native-uniform-upload-retirement-20261111`,
-base32894 plus RenderInfo ancestor. Exclusive LLRender, ALUniformBuffer,
-environment/control/settings/shader-manager and viewer-window uniform hooks.
-Retire unconsumed GPU binding/rings after zero-reader proof; preserve actual
-CPU environment/deferred/shadow data, matrix ABI/stacks/math and live light state.
-Five exact obsolete setting feature-table rows approved. **Pipeline files held
-for menu_port**; no uniform pipeline edits until silhouette owner freezes.
-ALGPUBuffer full retirement is a separately mapped follow-up, not yet done.
+rlva_port: `/private/tmp/alchemy-native-postchain-legacy-admission-20261111`,base1f;
+new native legacy-post admission test and exact old newview CAS/DoF fixtures/
+benchmarks only. Preserve all four original case invariants or explicitly map
+obsolete folding mechanics to the native two-pass architecture. No asset edits.
 
-gl_tail_audit: `/private/tmp/alchemy-native-frame-fences-coverage-20261111`.
-Frame-fence495efc818c ready: original12cases mapped to native9cases; actual
-2318/20with scheduler/completion/slack0. Red2157/9 found one2vs3 query-call
-undercount; two increments only, timeline unchanged. Next own ALGPUBuffer
-aftermath in isolated9918 tree; coordinate LLRender hooks with uniform owner.
-Preserve CPU uniform schema; replace Buffers diagnostic with accurately labeled
-tracked native wrapper bytes, never device-wide allocated bytes.
+gl_tail_audit: isolated base1f; initial read-only census of remaining legacy
+llimagegl/tessellation/hidden-context tests, then exact native invariant admission.
+No production/header/CMake changes or window execution. Root owns registration.
 
-Dead ALGLStencil/ALWaterStencil recording graph has zero production consumers;
-native typed water/exclusion/SMAA owners remain. Foundation cleanup deferred
-behind live silhouette repair; coordinate LLRender removal with uniform owner.
-Earlier integrated worktrees must not be reapplied. Exact implementation and
-evidence provenance is in the linked notes.
+Finished trees (silhouette8c/75,uniform81fd,buffer8818,stencil9720,viewport7ee)
+must not be reapplied. Receipts and exact original maps are in the latest note.
+Foreign VLC/CEF import consumer/policy audit and remaining GLSL assets follow.
 
 ## Complete-product advancement assessment
 
@@ -126,7 +117,7 @@ evidence provenance is in the linked notes.
 | M-008 | doing | Native views/effects/resources advance; broader parity remains. |
 | M-011 | doing | Source/import gates advance; dead native emulation and runtime gates remain. |
 | M-012 | complete | Prior native UI automation evidence retained; no launch this goal. |
-| M-013 | doing | Native sphere repaired; live silhouette stamp gap under repair. |
+| M-013 | doing | Native sphere and silhouette repaired; broader original parity remains. |
 | M-014 | deferred | Owner-stopped20FPS campaign remains deferred. |
 
 Full original feature parity, prolonged stability, strict no-GL source/runtime,

@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `f75d9e306ffd1371582ff40b8662bf7944aabee6`.
+**Renderer checkpoint:** Commit `1f357c900e7ff42128f1de25ca999a93dbd37148`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -123,20 +123,20 @@ M-012 stays complete; M-014 remains deferred. No release readiness claim.
 
 ## Immediate executable action
 
-Frozen9918 verification is complete; root owns integration/CMake/docs. Native
-fence495efc818c integrated asf75d9e306f (original12case map, actual2318/20pass,
-bounded two-counter fix), registered2157/9pass. Target-local almetal_tests bundle
-resource ownership registered indexed-join7969/1pass; direct CLI CTest only.
-Review RLVa
-silhouette fill (menu owns pipeline/world/MSL; child21566/4pass). Release pipeline
-ownership to rlva for CPU-preserving zero-reader uniform closure, then gl_tail's
-ALGPUBuffer/schema/native-byte diagnostic cleanup. Dead stencil graph follows.
-Root isolated postchain test-only tree proves original window-viewport lens
-mask mismatch at reduced/oversampled world sizes:1080failed/9249assertions;
-fix after shared-owner release with unchanged pixel oracle. Trace foreign
-VLC/CEF module consumers separately. CURRENT pins exact ownership and receipts.
-Existing native postchain4487/4pass is not the missing final-viewport invariant.
-Goal stays active; build/test counts do not imply complete feature parity.
+Frozen9918 app verification complete; code1f is newer and now FROZEN for full
+native/appearance/canonical rebuild and static verification. Integrated native
+fencesf75/registered2157/9, bundled shader lookup7969/1; silhouetteb741/a922
+registered21566/4; zero-reader uniform6a405, buffer/schema c69, stencil3d1/1f357
+cleanup and final viewport65c2. Viewport mask red1080/9249 and raw-row238/322
+repaired, matching-header native49366/9passed; actual pixel/depth/origin oracles,
+snapshot lease/source syntax and independent review retained. CPU payload math
+and typed water/SMAA ownership preserved. Full current1f test rebuild running.
+Root integration/CMake/docs; isolated menu owns four dead finalizers, RLVa owns
+old CAS/DoF invariant admission, gl_tail owns remaining image/tessellation/GL
+context-only fixture census/admission. Root source stays unchanged until frozen
+app receipts; child work continues. Foreign VLC/CEF import consumers and GLSL
+asset retirement remain. CURRENT/latest note pin evidence and exact ownership.
+Goal stays active; bounded build/test success never establishes full parity.
 Keep viewer and appearance utility closed.
 
 ## Non-negotiable open gates
