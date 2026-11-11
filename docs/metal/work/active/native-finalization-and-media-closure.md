@@ -9,6 +9,29 @@ Metal tests are distinct evidence, never live viewer/menu parity.
 
 ## Current full application checkpoint
 
+Frozen clean source `ae2c601e0b805fe167bdb80dcef4cec7af226bd9` passes required
+doctor/configure/full build (session2519), fresh-stage verify_app, strict deep
+signature and main/owned-media-host direct import/framework checks, all0.
+Release26.4.0d68801 has346ARM64 Mach-O files,332exact VLC module names/bytes
+from prior335 minus the three exclusions, zeroGLSL/no old shader subtree and
+exact native MSL/metallib/notices. Verified d2d app preserved by rename first.
+Viewer SHA2561f5f8373bbd362638c4998e92b036adf752020f9fba9af6a79026cc79f38f920;
+MSLe0fdbfd7d818feafba7af9b1cbe65129e6c35ec08a5d8149a95aad995a0b35a2;
+metallibb3bd96e1332c4361d4c12f26d3d4314532bbc7e0f0395658b2e60aa204140335.
+Notice hash remains17bacda8956823fc0f740ff8bffa26b6215363eb69f2b50f5dff7f979bfeea75.
+Exact source/status/argv/exits/resources: native-pool-cutout-canonical-
+{build-state,validation}.json and corresponding logs.
+
+Matching policy640/19, full alrender564631/120, full LLRender335391/442
+(441passed/one known CPAL skip), focused5861/8, world105889/23 and reload2304/8
+pass. GPU groups use API/shader validation. Receipt:
+native-pool-cutout-registered-validation.json. Production strict3504/910info/
+0blockers/0errors: native-pool-cutout-strict-source.json. Counts overlap.
+Source-pinned observation only: later configure can change bundle metadata/
+resources before a full rebuild. No product executable ran.
+
+## Prior d2d full application checkpoint
+
 Frozen clean source `d2d03803091c17d56977df3c905519894684fbec` passed required
 doctor/configure/full build through the same wrapper/env below (session63895).
 The previous335-plugin app was preserved by rename before configure recreated
@@ -366,6 +389,61 @@ References: /private/tmp/alchemy-native-phase-resource-audit-20261111.json,
 /private/tmp/alchemy-smaa-stencil-reference-audit-20261111.json and
 /private/tmp/alchemy-cutout-legacy-owner-census-20261111.json. No overlapping
 world/pipeline ownership; root retains CMake/docs/integration.
+
+## SMAA and final cutout precision admission
+
+SMAA core bfff8e8373 (child316b0b331c) and caller dd796eabdd (a0c963cc9f)
+restore original RenderSMAAUseStencil and output-sized alternate sample metrics.
+The retained private edge D32F/S8 marks initial threshold survivors, including
+later contrast-suppressed RGzero; weights load/test/keep that mask through a
+temporary pass view, publishing color-only weights. Neighborhood stays intact.
+Exact original mark/test/discard/matrix and variable-size SamplePath maps:
+/private/tmp/alchemy-native-smaa-stencil-validation-20261111/validation-receipt.json
+and /private/tmp/alchemy-smaa-stencil-reference-audit-20261111.json.
+Unchanged-core baseline756/4 has78failures; fixed2552/4 passes API/shader.
+Hardware mask observation, independent stencil clear blocking nonzero weights,
+unequal-source analytic offsets, output equality, cancel/retry and encoded mask
+lease controls distinguish real execution from a no-op flag. Root registered
+build82307 and2552/4+world105889/23+reload2304/8 pass:
+native-smaa-registered-validation.json. One actual production caller reads the
+applied native input; no live setting action is claimed.
+
+Alpha initial1ad08 baseline64/1 has4physical failures: native early U8 coverage
+quantization differs from original rawF16 BilinearMirror final-copy control.
+Core5fa7c0df52 (d09172ef3f) and caller b20f03e40e (a82c74b918) restore HDR10/
+SDR8 post color and optional raw F16 final coverage, without changing192B
+constants or existing RGB math. A separate function-constant PSO samples raw
+coverage at original untransformed final UV after lens/pane/print RGB work.
+Invalid source shape/format/mip/usage/MSAA/array fails closed. The obsolete
+preserve_alpha field and HDRRGBA8 PSO axis are removed after exact reader audit.
+Caller supplies the current sharp local target only for cutout; it survives
+through optional batch commit before moving to the capture owner.
+
+Intermediate1540/4 success retained the old HDR8 workaround and is explicitly
+superseded. Final2252/5 passes API/shader, including asymmetric rows, unchanged
+RGB/effects, original HDR10 RGB+F16alpha independent resample controls, positive
+wrong-premature-U8 RGB difference, invalid input/held output, cancellation and
+encoded source retirement. Exact unchanged giant prefix/suffix outside the
+approved outdated HDR8 block is proven. Receipts:
+/private/tmp/alchemy-native-cutout-alpha-validation-20261111/validation-receipt.json,
+/private/tmp/alchemy-hdr-cutout-display-format-audit-20261111.json and
+/private/tmp/alchemy-native-cutout-alpha-caller-validation-20261111/validation-receipt.json.
+Root matching build64115 and focused10665/17+world105890/23+reload2304/8 pass:
+native-cutout-alpha-registered-validation.json. No actual snapshot/Scope invoked.
+
+Only after that native companion passed, legacy3b5a6456e5 (afe3eb3437) retires
+duplicate seed/copy calls, their sole triangle/VB/program graph and temporary
+state churn. Original once positions retain unbind/flush then MODELVIEW; the
+native RGBA read retains a pre-read unbind. Copy-only viewport has no next native
+consumer and is omitted. drawFarPlaneQuad/gDebug/preview subtree stay. Child
+actual-body recorder462/15 and three Release syntax TUs pass; recorder proves
+dispatch/order, not actual shader/GPU state. Peer/source/queue maps:
+/private/tmp/alchemy-native-cutout-legacy-validation-20261111/validation-receipt.json.
+Root corrects only the stale helper-name comment in lldrawpoolsimple.cpp.
+Full matching app/utility build after this closure remains pending. menu_port
+now exclusively implements the independent34phase-description retirement;
+RLVa and gl_tail perform read-only remaining-feature audits. No overlapping
+World/MSL/pipeline edits; root owns canonical CMake/docs/integration.
 
 Full original parity, stability, runtime native-only, independent release evidence
 and measured multi-scene performance remain open. Earlier lighting/self-turn/

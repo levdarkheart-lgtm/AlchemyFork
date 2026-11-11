@@ -43,7 +43,7 @@ void LLDrawPoolGlow::renderPostDeferred(S32 pass)
 
     // This pass writes only glow, into the alpha channel. In a cutout frame
     // that channel is the subject's coverage, and the coverage seeded after
-    // the opaque pools (LLPipeline::seedCutoutCoverageFromDepth) writes over
+    // the opaque pools (native ordered cutout coverage) writes over
     // whatever this put there, so it would be work for nothing.
     //
     // RenderGlow off is decided here rather than at registration, so the faces stay registered and
