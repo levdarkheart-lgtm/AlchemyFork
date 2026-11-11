@@ -506,6 +506,13 @@ void LLPipeline::clearSceneMap()
         capture->impostor_screen_space_reflections = {};
         capture->impostor_ssr_history_target.reset();
     }
+    // Binding the former scene target drained immediate work before the
+    // isolation caller raised cutout. Preserve that ordering without a
+    // duplicate attachment, mask/depth change or viewport mutation.
+    if (mResourcePlan.usesScreenSpaceReflections())
+    {
+        gGL.flush();
+    }
 }
 
 
@@ -561,6 +568,13 @@ void LLPipeline::reconcileNativeHistoryState(
          mResourceInputs.mHDR != hdr))
     {
         clearSceneMap();
+        // On first resources or SSR enable, the old target was already built
+        // even though the previous plan had no SSR intent. Drain once for that
+        // newly eligible next plan before the caller publishes it.
+        if (!mResourcePlan.usesScreenSpaceReflections())
+        {
+            gGL.flush();
+        }
     }
     // Every applied plan has a main G-buffer description; releaseRenderTargets
     // restores the empty plan. The old fixed exposure/flare descriptors built

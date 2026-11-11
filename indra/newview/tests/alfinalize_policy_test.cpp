@@ -82,6 +82,18 @@ struct FinalizePixelReader
         return succeeds;
     }
 };
+// Named observation of the immediate-stream boundary only. This does not
+// encode, submit or claim a native GPU draw; actual policy bodies call it.
+struct FinalizeFlushBoundary
+{
+    unsigned calls = 0;
+    std::function<void()> observe;
+    void flush()
+    {
+        ++calls;
+        if (observe) observe();
+    }
+} finalize_flush;
 struct FinalizePolicyPipeline
 {
     using LensDistortFit = LLPipeline::LensDistortFit;
@@ -162,6 +174,7 @@ struct FinalizePolicyPipeline
 #pragma push_macro("gFrameCount")
 #pragma push_macro("gViewerWindow")
 #pragma push_macro("ALMetalRenderTarget")
+#pragma push_macro("gGL")
 #define LLPipeline FinalizePolicyPipeline
 #define LLCachedControl FinalizeCachedControl
 #define gSavedSettings finalize_settings
@@ -169,7 +182,9 @@ struct FinalizePolicyPipeline
 #define gFrameCount finalize_frame
 #define gViewerWindow (&finalize_window)
 #define ALMetalRenderTarget FinalizeSource
+#define gGL finalize_flush
 #include "../pipeline_finalize_config.inl"
+#pragma pop_macro("gGL")
 #pragma pop_macro("ALMetalRenderTarget")
 #pragma pop_macro("gViewerWindow")
 #pragma pop_macro("gFrameCount")
@@ -185,6 +200,7 @@ struct FinalizeCase
     FinalizeCase()
     {
         LLRender::sClassicMode = false;
+        finalize_flush = {};
         finalize_cube_snapshot = false; finalize_frame = 7;
         finalize_window = FinalizeWindow{};
         // Instantiate the real static control caches before resetting them.
@@ -197,6 +213,7 @@ struct FinalizeCase
     }
     ~FinalizeCase()
     {
+        finalize_flush = {};
         LLRender::sClassicMode = classic;
         finalize_cube_snapshot = false;
         for (const auto& name : control_names)
@@ -645,6 +662,7 @@ TEST_CASE("Native resource history invalidation preserves the original reconcili
         // Execute the actual native reconciliation policy with actual applied
         // plan metadata. The named captures model owner presence, not a GPU.
         p.reconcileNativeHistoryState(after, event.after.mHDR, event.recreated);
+        CHECK(finalize_flush.calls == (event.scene_reset ? 1u : 0u));
         CHECK(!main.impostor_ssr_history_target == event.scene_reset);
         CHECK(!probe.impostor_ssr_history_target == event.scene_reset);
         CHECK(!main.exposure_target == event.exposure_reset);
@@ -655,4 +673,55 @@ TEST_CASE("Native resource history invalidation preserves the original reconcili
         CHECK(p.mMetalExposureHistoryReady == !event.exposure_reset);
         CHECK(p.mMetalLensFlareHistoryReady == !event.exposure_reset);
     }
+}
+
+TEST_CASE("Native scene history clearing retains the pre-cutout immediate boundary",
+          "[native-finalize-policy][native-resource-flush]")
+{
+    FinalizeCase f; auto& p = f.pipeline;
+    ALRenderResourceInputs inputs; inputs.mWidth = 8; inputs.mHeight = 6;
+    inputs.mSSR = inputs.mProbes = true;
+    p.mResourcePlan = ALRenderResourcePlan::make(inputs);
+    p.mMetalProbeWorldSimpleCapture =
+        std::make_unique<FinalizePolicyPipeline::MetalWorldSimpleCapture>();
+    FinalizeHistoryTexture color, depth;
+    color.dimensions.width = depth.dimensions.width = 8;
+    color.dimensions.height = depth.dimensions.height = 6;
+    color.dimensions.format = ALMetalPixelFormat::rg11b10_float;
+    depth.dimensions.format = ALMetalPixelFormat::r32_float;
+    for (auto* capture : {p.mMetalWorldSimpleCapture.get(), p.mMetalProbeWorldSimpleCapture.get()})
+    {
+        capture->impostor_ssr_history_target = std::make_unique<int>(1);
+        capture->impostor_screen_space_reflections = {&color, &depth};
+    }
+    std::vector<bool> caller_cutout_at_flush;
+    finalize_flush.observe = [&]
+    {
+        caller_cutout_at_flush.push_back(p.sCutoutRender);
+        for (const auto* capture : {p.mMetalWorldSimpleCapture.get(), p.mMetalProbeWorldSimpleCapture.get()})
+        {
+            CHECK_FALSE(capture->impostor_ssr_history_target);
+            CHECK_FALSE(capture->impostor_screen_space_reflections.scene_color);
+            CHECK_FALSE(capture->impostor_screen_space_reflections.scene_depth);
+        }
+    };
+    // Actual Scope caller sequence: native payload/owner retirement and the
+    // immediate boundary occur before the caller raises cutout. This executes
+    // clearSceneMap's actual body, not the viewer Scope constructor or a GPU.
+    p.clearSceneMap();
+    p.sCutoutRender = true;
+    CHECK(finalize_flush.calls == 1);
+    CHECK(caller_cutout_at_flush == std::vector<bool>{false});
+    finalize_flush.observe = {};
+    p.sCutoutRender = false;
+    inputs.mSSR = false; p.mResourcePlan = ALRenderResourcePlan::make(inputs);
+    p.clearSceneMap(); CHECK(finalize_flush.calls == 1);
+    inputs.mSSR = true; inputs.mProbes = false;
+    p.mResourcePlan = ALRenderResourcePlan::make(inputs);
+    p.clearSceneMap(); CHECK(finalize_flush.calls == 1);
+    inputs.mProbes = true; p.mResourcePlan = ALRenderResourcePlan::make(inputs);
+    p.mMetalWorldSimpleCapture.reset(); p.mMetalProbeWorldSimpleCapture.reset();
+    p.clearSceneMap(); CHECK(finalize_flush.calls == 2);
+    p.mResourcePlan = {};
+    p.clearSceneMap(); CHECK(finalize_flush.calls == 2);
 }
