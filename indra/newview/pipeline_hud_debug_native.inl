@@ -151,8 +151,7 @@ void LLPipeline::captureMetalTextureAnimBatch(
     if (!capture.complete || !buffer || params.mCount == 0 ||
         params.mCount % 3 != 0 ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4) ||
         capture.render_debug_order ==
@@ -241,8 +240,7 @@ void LLPipeline::captureMetalUpdateTypeFace(
     if (!capture.complete || face.getIndicesCount() % 3 != 0 ||
         face.getIndicesStart() < 0 ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4) ||
         capture.render_debug_order ==

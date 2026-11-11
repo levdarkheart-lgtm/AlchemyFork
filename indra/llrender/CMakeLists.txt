@@ -182,6 +182,7 @@ if(AL_BUILD_TESTS)
       tests/alhuddepth_metal_test.cpp
       tests/alhud_selection_metal_test.cpp
       tests/alhud_diagnostics_metal_test.cpp
+      tests/alpipeline_buffer_publication_metal_test.cpp
       tests/alraster_state_metal_test.cpp
       tests/alscenemonitor_ui_metal_test.cpp
       tests/alrender2dutils_metal_test.cpp

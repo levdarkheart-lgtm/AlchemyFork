@@ -423,3 +423,60 @@ TEST_CASE("Actual world selected-face recording preserves the caller's glow alph
         }
     }
 }
+
+TEST_CASE("Actual world selected-face capture retries before retaining vertex and index versions",
+          "[almetal][native-hud-selection][pipeline-buffer-publication]")
+{
+    Selection f;
+    SelectionPipelineInput::sRenderingHUDs=false;
+    auto& world=*f.pipeline.mMetalWorldSimpleCapture;
+    world.frame_active=world.world_post_deferred_active=true;
+    for(bool vertex:{false,true})
+    {
+        auto face=f.face();
+        world.complete=true;world.highlight_batches.clear();
+        const auto* old_vertex=face.buffer->getMetalVertexBuffer();
+        const auto* old_index=face.buffer->getMetalIndexBuffer();
+        struct MissingPublisher
+        {
+            ALMetalDevice* device;
+            explicit MissingPublisher(ALMetalDevice* d):device(d){LLVertexBuffer::setMetalDevice(nullptr);}
+            ~MissingPublisher(){LLVertexBuffer::setMetalDevice(device);}
+        };
+        {
+            MissingPublisher missing(f.device.get());
+            if(vertex)
+            {
+                LLStrider<LLVector3> positions;REQUIRE(face.buffer->getVertexStrider(positions));
+                positions[0].mV[0]=9.f;
+            }
+            else
+            {
+                const U16 indices[]{0,0,0,2,1,0,3,2,0};face.buffer->setIndexData(indices);
+            }
+            LLVertexBuffer::flushBuffers();LLVertexBuffer::flushBuffers();
+            REQUIRE(face.buffer->getMetalVertexBuffer());REQUIRE(face.buffer->getMetalIndexBuffer());
+            face.renderSelected(&f.image,LLColor4(1,1,1,.5f),LLVertexBuffer::TYPE_TEXCOORD0);
+            CHECK_FALSE(world.complete);CHECK(world.highlight_batches.empty());
+        }
+        world.complete=true;world.highlight_batches.clear();
+        face.renderSelected(&f.image,LLColor4(1,1,1,.5f),LLVertexBuffer::TYPE_TEXCOORD0);
+        REQUIRE(world.complete);REQUIRE(world.highlight_batches.size()==1);
+        // A later original setBuffer cannot repair handles already copied by
+        // an unfixed native capture; the current store must be prepared first.
+        face.buffer->setBuffer();
+        const auto& batch=world.highlight_batches[0];
+        CHECK(batch.vertices==face.buffer->getMetalVertexBuffer());
+        CHECK(batch.indices==face.buffer->getMetalIndexBuffer());
+        CHECK((vertex?batch.vertices!=old_vertex:batch.indices!=old_index));
+        ALMetalBufferDescriptor desc;desc.length=16;desc.label="Captured world selection store proof";
+        auto copy=ALMetalBuffer::create(*f.device,desc,&f.error);REQUIRE(copy);
+        auto command=f.device->makeCommandBuffer("Captured world selection version copy",&f.error);REQUIRE(command);
+        const auto* source=vertex?batch.vertices:batch.indices;
+        REQUIRE(copy->copyFrom(*command,*source,0,0,16,&f.error));REQUIRE(command->commitAndWait(&f.error));
+        if(vertex)
+        { std::array<F32,4> values;REQUIRE(copy->read(0,values.data(),16,&f.error));CHECK(values[0]==9.f); }
+        else
+        { std::array<U16,8> values;REQUIRE(copy->read(0,values.data(),16,&f.error));CHECK(values[3]==2); }
+    }
+}

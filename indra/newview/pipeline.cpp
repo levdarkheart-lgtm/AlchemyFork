@@ -3077,8 +3077,7 @@ void LLPipeline::captureMetalWorldHDRISkyBatch(
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.hdri_sky_complete || !buffer ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         buffer->getNumVerts() == 0 || buffer->getNumIndices() < 3 ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4))
@@ -3253,8 +3252,7 @@ void LLPipeline::captureMetalWorldSplitSkyBatch(
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.split_sky_complete || !buffer ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         buffer->getNumVerts() == 0 || buffer->getNumIndices() < 3 ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4))
@@ -3395,8 +3393,7 @@ void LLPipeline::captureMetalWorldWindLightSkyBatch(
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.windlight_sky_complete || !buffer ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         buffer->getNumVerts() == 0 || buffer->getNumIndices() < 3 ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4))
@@ -3511,41 +3508,6 @@ void LLPipeline::beginMetalWorldWindLightStars(
     capture.windlight_stars_active = true;
 }
 
-void LLPipeline::captureMetalWorldWindLightStarBatch(
-    LLVertexBuffer* buffer,
-    const LLMatrix4a& modelview_projection)
-{
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->windlight_stars_active)
-    {
-        return;
-    }
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (!capture.windlight_stars_complete || !buffer ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-        !buffer->getMetalVertexBuffer() ||
-        buffer->getNumVerts() < 3 || buffer->getNumVerts() % 3 != 0)
-    {
-        capture.windlight_stars_complete = false;
-        capture.windlight_star_batch = {};
-        return;
-    }
-
-    ALMetalWorldStarBatch& batch = capture.windlight_star_batch;
-    batch.vertices = buffer->getMetalVertexBuffer();
-    batch.position_offset =
-        buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
-    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
-    batch.texcoord_offset =
-        buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
-    batch.vertex_count = buffer->getNumVerts();
-    std::memcpy(batch.modelview_projection,
-                modelview_projection.getF32ptr(),
-                sizeof(batch.modelview_projection));
-}
-
 void LLPipeline::endMetalWorldWindLightStars()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -3620,8 +3582,7 @@ void LLPipeline::captureMetalWorldWindLightHeavenlyBody(
     if (!capture.windlight_heavenly_bodies_complete || !face || !buffer ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() || !metal_a || !metal_b ||
+        !buffer->prepareMetalBuffers(true) || !metal_a || !metal_b ||
         face->getGeomCount() < 3 || face->getIndicesCount() < 3 ||
         face->getIndicesStart() < 0 ||
         static_cast<U32>(face->getGeomIndex()) +
@@ -3724,7 +3685,7 @@ void LLPipeline::captureMetalWorldWindLightMeteorBatch(
          !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL)) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-        !buffer->getMetalVertexBuffer() || buffer->getNumVerts() < 3 ||
+        !buffer->prepareMetalBuffers(false) || buffer->getNumVerts() < 3 ||
         buffer->getNumVerts() % 3 != 0)
     {
         capture.windlight_meteors_complete = false;
@@ -3811,8 +3772,7 @@ void LLPipeline::captureMetalWorldWindLightAuroraBatch(
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.windlight_aurora_complete || !buffer ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() || buffer->getNumVerts() < 3 ||
+        !buffer->prepareMetalBuffers(true) || buffer->getNumVerts() < 3 ||
         buffer->getNumIndices() < 3 ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4))
@@ -3968,8 +3928,7 @@ void LLPipeline::captureMetalWorldWindLightCloudBatch(
     if (!capture.windlight_clouds_complete || !buffer ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() || buffer->getNumVerts() < 3 ||
+        !buffer->prepareMetalBuffers(true) || buffer->getNumVerts() < 3 ||
         buffer->getNumIndices() < 3 ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4))
@@ -5538,8 +5497,7 @@ void LLPipeline::captureMetalTexelDensityFace(
         geom_first > buffer->getNumVerts() ||
         geom_count > buffer->getNumVerts() - geom_first ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         (buffer->getIndexStride() != sizeof(U16) &&
          buffer->getIndexStride() != sizeof(U32)) ||
         !color_finite)
@@ -5642,8 +5600,7 @@ void LLPipeline::captureMetalBatchSizeBatch(
     const bool rigged = params.mAvatar != nullptr;
     if (!buffer || params.mCount == 0 || params.mCount % 3 != 0 ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4) ||
         (rigged &&
@@ -5885,7 +5842,7 @@ void LLPipeline::beginMetalOcclusionCapture()
 }
 
 void LLPipeline::captureMetalOcclusionGeometry(
-    const LLVertexBuffer& buffer)
+    LLVertexBuffer& buffer)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -5903,8 +5860,7 @@ void LLPipeline::captureMetalOcclusionGeometry(
 
     if (!capture.complete ||
         !buffer.hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer.getMetalVertexBuffer() ||
-        !buffer.getMetalIndexBuffer() ||
+        !buffer.prepareMetalBuffers(true) ||
         (buffer.getIndexStride() != 2 &&
          buffer.getIndexStride() != 4) ||
         buffer.getNumIndices() % 3 != 0 ||
@@ -6114,8 +6070,7 @@ void LLPipeline::captureMetalOctreeGeometry(
     if (!capture.complete || face.getIndicesStart() < 0 ||
         face.getIndicesCount() % 3 != 0 ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4) ||
         !color_valid ||
@@ -6730,8 +6685,7 @@ void LLPipeline::captureMetalNormalBufferFace(
         !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
         (with_tangents &&
          !buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT)) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         (buffer->getIndexStride() != sizeof(U16) &&
          buffer->getIndexStride() != sizeof(U32)) ||
         !std::isfinite(draw_length) ||
@@ -7267,8 +7221,7 @@ void LLPipeline::captureMetalLightDebugFace(
         face.getIndicesCount() % 3 != 0 ||
         face.getIndicesStart() < 0 ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4) ||
         !color_valid)
@@ -12238,200 +12191,7 @@ void LLPipeline::captureMetalReflectionProbePostDeferred()
     capture.pass_active = false;
 }
 
-void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
-                                               bool batch_textures)
-{
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->frame_active ||
-        !mMetalWorldSimpleCapture->pass_active)
-    {
-        return;
-    }
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (!capture.complete || !params.mCount)
-    {
-        return;
-    }
-    // Legacy glow has a deliberately smaller vertex contract and is captured
-    // directly by its native draw-pool enumerator.
-    if (capture.legacy_glow)
-    {
-        return;
-    }
-    LLVertexBuffer* buffer = params.mVertexBuffer.get();
-    if (capture.water_exclusion)
-    {
-        if (!buffer ||
-            !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-            !buffer->getMetalVertexBuffer() ||
-            !buffer->getMetalIndexBuffer())
-        {
-            capture.markIncomplete(__LINE__);
-            capture.batches.clear();
-            return;
-        }
-        LLMatrix4a modelview;
-        LLMatrix4a modelview_projection;
-        buildMetalWorldDrawMatrices(
-            params, modelview, modelview_projection);
-        // Build directly in the retained vector. A failed field/resource
-        // check below clears the transaction before returning, so no partial
-        // record can reach the renderer.
-        ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
-        batch.vertices = buffer->getMetalVertexBuffer();
-        batch.position_offset = buffer->getOffset(
-            LLVertexBuffer::TYPE_VERTEX);
-        batch.vertex_count = buffer->getNumVerts();
-        batch.indices = buffer->getMetalIndexBuffer();
-        batch.index_offset = static_cast<std::size_t>(params.mOffset) *
-                             buffer->getIndexStride();
-        batch.index_type = buffer->getIndexStride() == 4
-            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
-        batch.index_count = params.mCount;
-        batch.water_exclusion = true;
-        std::memcpy(batch.modelview_projection,
-                    modelview_projection.getF32ptr(),
-                    sizeof(batch.modelview_projection));
-        std::memcpy(batch.modelview, modelview.getF32ptr(),
-                    sizeof(batch.modelview));
-        return;
-    }
-    const bool indexed_textures =
-        batch_textures && params.mTextureList.size() > 1;
-    const std::size_t texture_count = indexed_textures
-        ? params.mTextureList.size() : 1;
-    if (!buffer || texture_count >
-            ALMetalWorldSimpleBatch::max_diffuse_textures ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        (!capture.impostor_fullbright &&
-         !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL)) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
-        (indexed_textures &&
-         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX)) ||
-        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
-    {
-        capture.markIncomplete(__LINE__);
-        capture.batches.clear();
-        return;
-    }
-
-    LLMatrix4a modelview;
-    LLMatrix4a inverse_modelview;
-    LLMatrix4a modelview_projection;
-    if (!buildMetalWorldDrawMatrices(
-            params, modelview, inverse_modelview,
-            modelview_projection))
-    {
-        capture.markIncomplete(__LINE__);
-        capture.batches.clear();
-        return;
-    }
-
-    ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
-    batch.vertices = buffer->getMetalVertexBuffer();
-    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
-    batch.normal_offset = buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL)
-        ? buffer->getOffset(LLVertexBuffer::TYPE_NORMAL) : 0;
-    batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
-    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
-    batch.vertex_count = buffer->getNumVerts();
-    batch.indices = buffer->getMetalIndexBuffer();
-    batch.index_offset = static_cast<std::size_t>(params.mOffset) *
-                         buffer->getIndexStride();
-    batch.index_type = buffer->getIndexStride() == 4
-        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
-    batch.index_count = params.mCount;
-    batch.impostor_fullbright = capture.impostor_fullbright;
-    batch.impostor_shiny = capture.impostor_shiny;
-    batch.impostor_emboss = capture.impostor_emboss;
-    batch.alpha_mask = capture.alpha_mask;
-    batch.alpha_cutoff = capture.alpha_mask
-        ? params.mAlphaMaskCutoff : 0.f;
-    batch.texture_count = static_cast<U32>(texture_count);
-    for (std::size_t index = 0; index < texture_count; ++index)
-    {
-        LLViewerTexture* texture = indexed_textures
-            ? params.mTextureList[index].get() : params.mTexture.get();
-        if (!texture)
-        {
-            texture = LLViewerFetchedTexture::sWhiteImagep.get();
-        }
-        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-        ALMetalTexture* metal_texture = image
-            ? image->getMetalTexture() : nullptr;
-        if (!metal_texture)
-        {
-            // Preserve streamed-texture substitution without consulting a GL
-            // object name: native publication readiness is authoritative.
-            LLViewerFetchedTexture* fallback =
-                LLViewerFetchedTexture::sDefaultImagep.get();
-            LLImageGL* fallback_image = fallback
-                ? fallback->getGLTexture() : nullptr;
-            metal_texture = fallback_image
-                ? fallback_image->getMetalTexture() : nullptr;
-        }
-        batch.diffuse_textures[index] = metal_texture;
-        if (!batch.diffuse_textures[index])
-        {
-            capture.markIncomplete(__LINE__);
-            capture.batches.clear();
-            return;
-        }
-    }
-    std::memcpy(batch.modelview_projection,
-                modelview_projection.getF32ptr(),
-                sizeof(batch.modelview_projection));
-    std::memcpy(batch.modelview, modelview.getF32ptr(),
-                sizeof(batch.modelview));
-
-    const F32* inverse = inverse_modelview.getF32ptr();
-    const F32* modelview_values = modelview.getF32ptr();
-    for (U32 column = 0; column < 3; ++column)
-    {
-        batch.normal_matrix[column][0] = inverse[0 * 4 + column];
-        batch.normal_matrix[column][1] = inverse[1 * 4 + column];
-        batch.normal_matrix[column][2] = inverse[2 * 4 + column];
-        batch.rigged_normal_matrix[column][0] =
-            modelview_values[column * 4 + 0];
-        batch.rigged_normal_matrix[column][1] =
-            modelview_values[column * 4 + 1];
-        batch.rigged_normal_matrix[column][2] =
-            modelview_values[column * 4 + 2];
-    }
-    if (!indexed_textures && params.mTextureMatrix &&
-        (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
-    {
-        std::memcpy(batch.texture_matrix, params.mTextureMatrix->mMatrix,
-                    sizeof(batch.texture_matrix));
-    }
-    if (capture.rigged)
-    {
-        if (!params.mAvatar || !params.mSkinInfo ||
-            !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
-        {
-            capture.markIncomplete(__LINE__);
-            capture.batches.clear();
-            return;
-        }
-        const LLVOAvatar::MatrixPaletteCache& palette =
-            params.mAvatar->updateSkinInfoMatrixPalette(params.mSkinInfo);
-        const U32 joint_count =
-            static_cast<U32>(palette.mMatrixPalette.size());
-        if (joint_count == 0 || palette.mGLMp.size() !=
-                4 + static_cast<std::size_t>(joint_count) * 12)
-        {
-            capture.markIncomplete(__LINE__);
-            capture.batches.clear();
-            return;
-        }
-        batch.weight_offset = buffer->getOffset(
-            LLVertexBuffer::TYPE_WEIGHT4);
-        batch.skin_palette = palette.mGLMp.data();
-        batch.skin_palette_float_count = palette.mGLMp.size();
-        batch.skin_joint_count = joint_count;
-    }
-}
+#include "pipeline_buffer_publication_native.inl"
 
 void LLPipeline::captureMetalDebugAlphaBatch(
     const LLDrawInfo& params, LLViewerTexture* texture,
@@ -12471,8 +12231,7 @@ void LLPipeline::captureMetalDebugAlphaBatch(
         !image->getMetalTexture() ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4) ||
         (rigged &&
@@ -12619,8 +12378,7 @@ void LLPipeline::captureMetalWorldBumpBatch(
             !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
             !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
             !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD1) ||
-            !buffer->getMetalVertexBuffer() ||
-            !buffer->getMetalIndexBuffer() ||
+            !buffer->prepareMetalBuffers(true) ||
             (capture.rigged &&
              (!params.mAvatar || !params.mSkinInfo ||
               !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))))
@@ -12912,8 +12670,7 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
         !buffer->hasDataType(LLVertexBuffer::TYPE_EMISSIVE) ||
         ((indexed_materials || indexed_textures) &&
          !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX)) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer())
+        !buffer->prepareMetalBuffers(true))
     {
         capture.markIncomplete(__LINE__);
         capture.batches.clear();
@@ -14229,7 +13986,7 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     if (!buffer ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
+        !buffer->prepareMetalBuffers(true))
     {
         capture.spot_shadow_first_incomplete_source_line = __LINE__;
         capture.spot_shadow_capture_complete = false;
@@ -14344,7 +14101,7 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
         !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
         ((indexed_materials || indexed_textures) &&
          !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX)) ||
-        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
+        !buffer->prepareMetalBuffers(true))
     {
         capture.spot_shadow_first_incomplete_source_line = __LINE__;
         capture.spot_shadow_capture_complete = false;
@@ -14505,7 +14262,7 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
         !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
         (indexed_materials &&
          !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX)) ||
-        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         (!indexed_materials && params.mGLTFMaterial.isNull()))
     {
         capture.spot_shadow_first_incomplete_source_line = __LINE__;
@@ -14674,8 +14431,7 @@ void LLPipeline::captureMetalSpotShadowTreeBatch(
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() || !native_texture ||
+        !buffer->prepareMetalBuffers(true) || !native_texture ||
         buffer->getNumVerts() == 0 || buffer->getNumIndices() == 0 ||
         (buffer->getIndexStride() != 2 && buffer->getIndexStride() != 4))
     {
@@ -14740,7 +14496,7 @@ void LLPipeline::captureMetalSpotShadowTerrainBatch(
     const ALMetalTexture* height_texture = surface
         ? surface->getSurfaceMaps().getMetalHeightTexture() : nullptr;
     if (!face || !patch || !surface || !region || !buffer ||
-        !height_texture || !buffer->getMetalVertexBuffer() ||
+        !height_texture || !buffer->prepareMetalBuffers(false) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         face->getGeomCount() != LLVOSurfacePatch::PATCH_CORNERS ||
         face->getGeomIndex() + LLVOSurfacePatch::PATCH_CORNERS >
@@ -14966,7 +14722,7 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
         !std::isfinite(draw_alpha) || draw_alpha < 0.f || draw_alpha > 1.f ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         (covered && (!image || !native_texture)) ||
         (skinned && !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT)) ||
         (capture.spot_shadow_avatar_cloth &&
@@ -15675,7 +15431,7 @@ void LLPipeline::captureMetalWorldAvatarBatch(
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer() ||
+        !buffer->prepareMetalBuffers(true) ||
         !image->getMetalTexture() ||
         (capture.avatar_skinned &&
          !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT)) ||
@@ -16157,8 +15913,7 @@ void LLPipeline::captureMetalWorldTreeBatch(LLFace* face,
         !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer() || !image->getMetalTexture() ||
+        !buffer->prepareMetalBuffers(true) || !image->getMetalTexture() ||
         buffer->getNumVerts() == 0 || buffer->getNumIndices() == 0)
     {
         capture.markIncomplete(__LINE__);
@@ -16262,7 +16017,7 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
     if (!face || !detail_textures || !alpha_ramp || !detail_phase ||
         !patch || !surface || !region || !buffer ||
-        !buffer->getMetalVertexBuffer() ||
+        !buffer->prepareMetalBuffers(false) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         face->getGeomCount() != LLVOSurfacePatch::PATCH_CORNERS ||
         face->getGeomIndex() + LLVOSurfacePatch::PATCH_CORNERS >
@@ -16505,7 +16260,7 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
         !base_color_factors || !metallic_factors ||
         !roughness_factors || !emissive_colors || !minimum_alphas ||
         !patch || !surface || !region || !buffer ||
-        !buffer->getMetalVertexBuffer() ||
+        !buffer->prepareMetalBuffers(false) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         face->getGeomCount() != LLVOSurfacePatch::PATCH_CORNERS ||
         face->getGeomIndex() + LLVOSurfacePatch::PATCH_CORNERS >

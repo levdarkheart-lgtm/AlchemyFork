@@ -109,8 +109,7 @@ void LLPipeline::captureMetalWorldHighlightBatch(
         texcoord_type > LLVertexBuffer::TYPE_TEXCOORD3 || !image ||
         !image->getMetalTexture() ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer())
+        !buffer->prepareMetalBuffers(true))
     {
         capture.markIncomplete(__LINE__);
         capture.batches.clear();

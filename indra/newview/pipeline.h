@@ -443,7 +443,7 @@ public:
     // geometry is captured during spatial traversal; selected-group filled
     // bounds are appended by the later pipeline-level annotation loop.
     void beginMetalOcclusionCapture();
-    void captureMetalOcclusionGeometry(const LLVertexBuffer& buffer);
+    void captureMetalOcclusionGeometry(LLVertexBuffer& buffer);
     void captureMetalOcclusionBounds(
         const LLVector4a& center, const LLVector4a& half_extent);
     void endMetalOcclusionCapture();
