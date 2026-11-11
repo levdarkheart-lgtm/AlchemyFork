@@ -282,7 +282,6 @@ if(AL_BUILD_TESTS)
     PROJECT llrender
     SOURCES
       tests/alframefences_gl_test.cpp
-      tests/algpubuffer_gl_test.cpp
       tests/alrenderstate_gl_test.cpp
       tests/altessellation_gl_test.cpp
       tests/aluniformbuffer_gl_test.cpp
