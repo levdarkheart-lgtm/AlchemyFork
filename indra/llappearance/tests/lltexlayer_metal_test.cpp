@@ -1,45 +1,23 @@
 /**
- * @file lltexlayer_gl_test.cpp
- * @brief Native ordered appearance morph-mask readback on the hidden window.
- *
- * $LicenseInfo:firstyear=2026&license=viewerlgpl$
- * Alchemy Viewer Source Code
- * Copyright (C) 2026, Rye <rye@alchemyviewer.org>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation;
- * version 2.1 of the License only.
- * $/LicenseInfo$
+ * @file lltexlayer_metal_test.cpp
+ * @brief Exact native ordered morph-alpha checkpoints and encoded bake bytes.
+ * Copyright (C)2026, Alchemy Viewer Project
+ * Licensed under the GNU Lesser General Public License version2.1 only.
  */
-
 #include "linden_common.h"
-
 #include "../lltexlayer.h"
-
-#include "llgl.h"
 #include "llimage.h"
 #include "llimagegl.h"
 #include "llrender.h"
 #include "llrender2dutils.h"
-#include "../../llrender/tests/llheadlessgl_fixture.h"
-
-#if LL_DARWIN
+#include "../../llrender/tests/llfontmetal_fixture.h"
 #include "../../almetal/almetalresource.h"
-#endif
-
 #include <catch2/catch_test_macros.hpp>
-
 #include <algorithm>
 #include <array>
 #include <vector>
-
-#if LL_WINDOWS
-#include "llwin32headers.h"
-#else
 #include <sys/mman.h>
 #include <unistd.h>
-#endif
 
 namespace
 {
@@ -63,29 +41,17 @@ namespace
         explicit GuardedBuffer(size_t size)
         : mSize(size)
         {
-#if LL_WINDOWS
-            SYSTEM_INFO info;
-            GetSystemInfo(&info);
-            const size_t page = info.dwPageSize;
-#else
             const size_t page = (size_t)sysconf(_SC_PAGESIZE);
-#endif
+
             const size_t usable = (size + page - 1) / page * page;
             mMapped = usable + page;
-#if LL_WINDOWS
-            mBase = static_cast<U8*>(VirtualAlloc(
-                nullptr, mMapped, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
-            DWORD old_protection = 0;
-            mGuarded = mBase && VirtualProtect(
-                mBase + usable, page, PAGE_NOACCESS, &old_protection);
-#else
             void* mapped = mmap(
                 nullptr, mMapped, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
             mBase = mapped == MAP_FAILED ? nullptr : static_cast<U8*>(mapped);
             mGuarded = mBase &&
                 mprotect(mBase + usable, page, PROT_NONE) == 0;
-#endif
+
             if (mBase)
             {
                 mData = mBase + usable - size;
@@ -96,11 +62,8 @@ namespace
         {
             if (mBase)
             {
-#if LL_WINDOWS
-                VirtualFree(mBase, 0, MEM_RELEASE);
-#else
                 munmap(mBase, mMapped);
-#endif
+
             }
         }
 
@@ -119,7 +82,6 @@ namespace
         bool mGuarded = false;
     };
 
-#if LL_DARWIN
     struct CaptureGuard
     {
         ~CaptureGuard()
@@ -132,32 +94,11 @@ namespace
         bool active = false;
     };
 
-    struct MetalBackendGuard
-    {
-        ~MetalBackendGuard()
-        {
-            gGL.setMetalBackend(nullptr, nullptr, nullptr);
-            LLImageGL::setMetalDevice(nullptr);
-            LLVertexBuffer::setMetalDevice(nullptr);
-        }
-    };
-
     TEST_CASE("lltexlayer: ordered Metal capture returns exact morph alpha",
-              "[lltexlayer_gl][almetal]")
+              "[almetal][native-morph-alpha]")
     {
-        ll_test::HeadlessGL context(
-            /*needs_vbos=*/true, /*needs_imagegl=*/true,
-            /*needs_llrender=*/true, /*needs_render=*/true);
-        LLWindow* window = context.window();
-        REQUIRE(window);
-        REQUIRE(window->getMetalDevice());
-        REQUIRE(window->getMetalFrameScheduler());
-        LLVertexBuffer::setMetalDevice(window->getMetalDevice());
-        LLImageGL::setMetalDevice(window->getMetalDevice());
-        gGL.setMetalBackend(
-            window->getMetalDevice(), window->getMetalFrameScheduler(),
-            window->getMetalSurface());
-        MetalBackendGuard metal_backend;
+        ll_test::NativeFontUI context;
+        context.initRenderer();
 
         LLPointer<LLImageRaw> raw =
             new LLImageRaw(TARGET_W, TARGET_H, 4);
@@ -174,12 +115,11 @@ namespace
             }
         }
         LLPointer<LLImageGL> texture = new LLImageGL(false);
-        REQUIRE(texture->createGLTexture(0, raw.get()));
+        REQUIRE(texture->createMetalTexture(0, raw.get()));
         REQUIRE(texture->getMetalTexture());
 
         gUIProgram.bind();
         gGL.setViewport(0, 0, TARGET_W, TARGET_H);
-        glViewport(0, 0, TARGET_W, TARGET_H);
         gGL.setColorMask(true, true);
         gGL.setSceneBlendType(LLRender::BT_REPLACE);
         gGL.color4f(1.f, 1.f, 1.f, 1.f);
@@ -226,7 +166,7 @@ namespace
     }
 
     TEST_CASE("lltexlayer: native alpha readback rejects short scratch",
-              "[lltexlayer_gl][almetal]")
+              "[almetal][native-morph-alpha]")
     {
         std::vector<U8> scratch(
             LLTexLayer::alphaReadbackScratchBytes(LAYER_W, LAYER_H) - 1);
@@ -240,21 +180,10 @@ namespace
     }
 
     TEST_CASE("lltexlayer: authoritative Metal capture needs no GL backing",
-              "[lltexlayer_gl][almetal]")
+              "[almetal][native-morph-alpha]")
     {
-        ll_test::HeadlessGL context(
-            /*needs_vbos=*/true, /*needs_imagegl=*/true,
-            /*needs_llrender=*/true, /*needs_render=*/true);
-        LLWindow* window = context.window();
-        REQUIRE(window);
-        REQUIRE(window->getMetalDevice());
-        REQUIRE(window->getMetalFrameScheduler());
-        LLVertexBuffer::setMetalDevice(window->getMetalDevice());
-        LLImageGL::setMetalDevice(window->getMetalDevice());
-        gGL.setMetalBackend(
-            window->getMetalDevice(), window->getMetalFrameScheduler(),
-            window->getMetalSurface());
-        MetalBackendGuard metal_backend;
+        ll_test::NativeFontUI context;
+        context.initRenderer();
 
         LLPointer<LLImageRaw> raw =
             new LLImageRaw(TARGET_W, TARGET_H, 4);
@@ -278,32 +207,6 @@ namespace
         gUIProgram.bind();
         gGL.flush();
 
-        struct PhysicalState
-        {
-            GLint program = 0;
-            GLint array_buffer = 0;
-            GLint element_buffer = 0;
-            GLint texture = 0;
-            GLint sampler = 0;
-            std::array<GLint, 4> viewport{};
-            std::array<GLboolean, 4> color_mask{};
-            GLboolean blend = GL_FALSE;
-            GLboolean depth = GL_FALSE;
-        } before, after;
-        const auto read_physical_state = [](PhysicalState& state)
-        {
-            glGetIntegerv(GL_CURRENT_PROGRAM, &state.program);
-            glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &state.array_buffer);
-            glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,
-                          &state.element_buffer);
-            glGetIntegerv(GL_TEXTURE_BINDING_2D, &state.texture);
-            glGetIntegerv(GL_SAMPLER_BINDING, &state.sampler);
-            glGetIntegerv(GL_VIEWPORT, state.viewport.data());
-            glGetBooleanv(GL_COLOR_WRITEMASK, state.color_mask.data());
-            state.blend = glIsEnabled(GL_BLEND);
-            state.depth = glIsEnabled(GL_DEPTH_TEST);
-        };
-        read_physical_state(before);
         LLGLSLShader* const logical_shader =
             LLGLSLShader::sCurBoundShaderPtr;
         const U32 logical_program = LLGLSLShader::sCurBoundShader;
@@ -373,7 +276,7 @@ namespace
             0, 0, static_cast<U32>(TARGET_W), static_cast<U32>(TARGET_H)};
         std::string error;
         REQUIRE(completed->readback(
-            *window->getMetalDevice(), 0, 0, region,
+            *context.device, 0, 0, region,
             readback.data(), (size_t)TARGET_W * 4, &error));
         INFO(error);
         for (S32 y = 0; y < TARGET_H; ++y)
@@ -392,16 +295,6 @@ namespace
             }
         }
 
-        read_physical_state(after);
-        CHECK(after.program == before.program);
-        CHECK(after.array_buffer == before.array_buffer);
-        CHECK(after.element_buffer == before.element_buffer);
-        CHECK(after.texture == before.texture);
-        CHECK(after.sampler == before.sampler);
-        CHECK(after.viewport == before.viewport);
-        CHECK(after.color_mask == before.color_mask);
-        CHECK(after.blend == before.blend);
-        CHECK(after.depth == before.depth);
         CHECK(LLGLSLShader::sCurBoundShaderPtr == logical_shader);
         CHECK(LLGLSLShader::sCurBoundShader == logical_program);
         CHECK(gUIProgram.getMinimumAlpha() == logical_minimum_alpha);
@@ -412,5 +305,4 @@ namespace
 
         LLGLSLShader::unbind();
     }
-#endif
 }
