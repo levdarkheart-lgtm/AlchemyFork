@@ -1,6 +1,6 @@
 /**
- * @file altextview_gl_test.cpp
- * @brief What the text view draws, read back from llrender's hidden window
+ * @file altextview_metal_test.cpp
+ * @brief What the text view draws, read back from native offscreen Metal
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -24,9 +24,7 @@
 
 #include "linden_common.h"
 
-#include "llglheaders.h"
-
-#include "aluigl_fixture.h"
+#include "aluimetal_fixture.h"
 
 #include "alcodeeditor.h"
 #include "altextruler.h"
@@ -56,21 +54,20 @@ namespace
         using ALTextView::squiggleMiddle;
     };
 
-    constexpr S32 W = ll_test::HeadlessGL::WIDTH;
-    constexpr S32 H = ll_test::HeadlessGL::HEIGHT;
+    constexpr S32 W = ll_test::NativeUISession::WIDTH;
+    constexpr S32 H = ll_test::NativeUISession::HEIGHT;
 
     // White drawn over black, blended by its alpha, and read back: how
     // much of each pixel it covered, 0 to 255, bottom row first.
     std::vector<S32> coverage(const std::function<void()>& draw)
     {
-        ll_test::uiGL().clearFramebuffer();
-        glEnable(GL_BLEND);
+        ll_test::uiMetal().clearFramebuffer();
+        LLGLEnable blend(GL_BLEND);
         gGL.setSceneBlendType(LLRender::BT_ALPHA);
         draw();
         gGL.flush();
-        glDisable(GL_BLEND);
-        glFinish();
-        const std::vector<U8> rgba = ll_test::readFramebufferRGBA(W, H);
+        ll_test::uiMetal().finishFrame();
+        const std::vector<U8> rgba = ll_test::readNativeUIFramebufferRGBA(W, H);
         std::vector<S32>      out(static_cast<size_t>(W) * H);
         for (size_t i = 0; i < out.size(); ++i)
         {
@@ -153,17 +150,16 @@ namespace
     // what is drawn past its edges lands where it can be seen.
     std::vector<U8> drawnAt(LLView& view)
     {
-        ll_test::uiGL().clearFramebuffer();
-        glEnable(GL_BLEND);
+        ll_test::uiMetal().clearFramebuffer();
+        LLGLEnable blend(GL_BLEND);
         gGL.setSceneBlendType(LLRender::BT_ALPHA);
         LLUI::pushMatrix();
         LLUI::translate(static_cast<F32>(view.getRect().mLeft), static_cast<F32>(view.getRect().mBottom));
         view.draw();
         LLUI::popMatrix();
         gGL.flush();
-        glDisable(GL_BLEND);
-        glFinish();
-        return ll_test::readFramebufferRGBA(W, H);
+        ll_test::uiMetal().finishFrame();
+        return ll_test::readNativeUIFramebufferRGBA(W, H);
     }
 
     // How many pixels of a stretch of the window, rows [bottom, top) and
@@ -185,21 +181,22 @@ namespace
 
 namespace
 {
-    struct altextview_gl_data
+    struct altextview_metal_data
     {
+        ll_test::NativeUICase native_frame;
         // Focus as the case found it, whatever it leaves it on.
         ll_test::FocusScope  focus;
         // The views a case made, dying when it ends however it ends: a
         // failed REQUIRE skips whatever comes after it.
         std::vector<LLView*> views;
 
-        altextview_gl_data()
+        altextview_metal_data()
         {
-            ll_test::uiGL();
-            ll_test::installWhiteTexture();
+            ll_test::uiMetal();
+            ll_test::installNativeWhiteTexture();
         }
 
-        ~altextview_gl_data()
+        ~altextview_metal_data()
         {
             for (LLView* view : views)
             {
@@ -274,7 +271,7 @@ namespace
     // A squiggle is one quad over a texture of one wave, and covers what
     // the wave works out to: pixel for pixel, each texel's middle falling
     // on a pixel's, and as much of them all told.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: a squiggle covers what its wave works out to pixel for pixel", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: a squiggle covers what its wave works out to pixel for pixel", "[altextview_metal]")
     {
         const LLRect           all(0, H, W, 0);
         const std::vector<S32> was = expectedAll(40.f, 140.f, 128, 1.f);
@@ -305,7 +302,7 @@ namespace
 
     // What is outside the clip is not drawn, and what is inside is drawn as
     // it would have been: the wave stays where the squiggle began.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: a squiggle's clip cuts it without moving the wave inside", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: a squiggle's clip cuts it without moving the wave inside", "[altextview_metal]")
     {
         const std::vector<S32> whole   = coverage([] { Painter::drawSquiggle(33.f, 200.f, 100, LLColor4::white, LLRect(0, H, W, 0)); });
         const std::vector<S32> clipped = coverage([] { Painter::drawSquiggle(33.f, 200.f, 100, LLColor4::white, LLRect(80, H, 120, 0)); });
@@ -336,7 +333,7 @@ namespace
     // Where the UI is scaled, the wave is made with as many texels to a
     // point as the scale has pixels, and covers what the wave works out to
     // there.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: under a UI scale a squiggle covers what its wave works out to", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: under a UI scale a squiggle covers what its wave works out to", "[altextview_metal]")
     {
         LLVector2& scale = LLUI::getScaleFactor();
         const LLVector2 was_scale = scale;
@@ -365,9 +362,9 @@ namespace
     // The map draws each line's runs from what it read last, and reads a
     // line again when it changes -- a space made a tab moves the runs after
     // it, though no token does -- and not otherwise.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: the scroll map reads a line again only when it changes", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: the scroll map reads a line again only when it changes", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -388,14 +385,13 @@ namespace
         const S32  map_left = W - view->scrollMapWidth();
         // Every channel of the map's pixels, as the view draws them.
         const auto map_of = [&]() {
-            ll_test::uiGL().clearFramebuffer();
-            glEnable(GL_BLEND);
+            ll_test::uiMetal().clearFramebuffer();
+            LLGLEnable blend(GL_BLEND);
             gGL.setSceneBlendType(LLRender::BT_ALPHA);
             view->draw();
             gGL.flush();
-            glDisable(GL_BLEND);
-            glFinish();
-            const std::vector<U8> rgba = ll_test::readFramebufferRGBA(W, H);
+            ll_test::uiMetal().finishFrame();
+            const std::vector<U8> rgba = ll_test::readNativeUIFramebufferRGBA(W, H);
             std::vector<U8>       map;
             for (S32 y = 0; y < H; ++y)
             {
@@ -421,9 +417,9 @@ namespace
     // of a line and a squiggle each change only the pixels of the line they
     // are on.
     // And the frame is a handful of draws.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: the code editor draws its rows in passes each landing on its own line", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: the code editor draws its rows in passes each landing on its own line", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -448,14 +444,13 @@ namespace
         editor->setSelectionColor(LLUIColor(LLColor4(0.2f, 0.4f, 0.9f, 0.6f)));
 
         const auto frame = [&]() {
-            ll_test::uiGL().clearFramebuffer();
-            glEnable(GL_BLEND);
+            ll_test::uiMetal().clearFramebuffer();
+            LLGLEnable blend(GL_BLEND);
             gGL.setSceneBlendType(LLRender::BT_ALPHA);
             editor->draw();
             gGL.flush();
-            glDisable(GL_BLEND);
-            glFinish();
-            return ll_test::readFramebufferRGBA(W, H);
+            ll_test::uiMetal().finishFrame();
+            return ll_test::readNativeUIFramebufferRGBA(W, H);
         };
         // Every pixel that differs between two frames lies within a line's
         // band, a few pixels either way -- `below` more under it -- and
@@ -520,7 +515,7 @@ namespace
         editor->draw();
         gGL.flush();
         gGL.endList();
-        glFinish();
+        ll_test::uiMetal().finishFrame();
         UNSCOPED_INFO("the frame is a handful of draws");
         CHECK(capture.size() <= 25);
     }
@@ -528,9 +523,9 @@ namespace
     // The preview of the lines under the mouse on the map is drawn over the
     // text beside the map: to its left where the map is on the right, to its
     // right where it is on the left -- not off the view past it.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: the map's preview is drawn over the text beside the map on either side", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: the map's preview is drawn over the text beside the map on either side", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -554,14 +549,13 @@ namespace
         REQUIRE(map != nullptr);
         // Every pixel of the view, as it draws.
         const auto drawn = [&]() {
-            ll_test::uiGL().clearFramebuffer();
-            glEnable(GL_BLEND);
+            ll_test::uiMetal().clearFramebuffer();
+            LLGLEnable blend(GL_BLEND);
             gGL.setSceneBlendType(LLRender::BT_ALPHA);
             view->draw();
             gGL.flush();
-            glDisable(GL_BLEND);
-            glFinish();
-            return ll_test::readFramebufferRGBA(W, H);
+            ll_test::uiMetal().finishFrame();
+            return ll_test::readNativeUIFramebufferRGBA(W, H);
         };
         // How many pixels between two columns differ between two frames.
         const auto changed = [&](const std::vector<U8>& a, const std::vector<U8>& b, S32 from, S32 to) {
@@ -593,7 +587,7 @@ namespace
     // A row's squiggle is under its text: nothing at or above the baseline,
     // where a period's foot stands, and only the fade in the pixel under
     // it; the line itself lower still.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: a row's squiggle draws nothing at or above its text's baseline", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: a row's squiggle draws nothing at or above its text's baseline", "[altextview_metal]")
     {
         const S32              text_top = 150;
         const S32              ascent   = 12;
@@ -629,9 +623,9 @@ namespace
     // the frame with the two the other way round. A selection besides the
     // main one is washed as it is, on its own line only. And every caret
     // in sight is the one draw.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: other carets and selections are drawn as the main one is in one draw", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: other carets and selections are drawn as the main one is in one draw", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -655,14 +649,13 @@ namespace
         view->setFocus(true);
 
         const auto frame = [&]() {
-            ll_test::uiGL().clearFramebuffer();
-            glEnable(GL_BLEND);
+            ll_test::uiMetal().clearFramebuffer();
+            LLGLEnable blend(GL_BLEND);
             gGL.setSceneBlendType(LLRender::BT_ALPHA);
             view->draw();
             gGL.flush();
-            glDisable(GL_BLEND);
-            glFinish();
-            return ll_test::readFramebufferRGBA(W, H);
+            ll_test::uiMetal().finishFrame();
+            return ll_test::readNativeUIFramebufferRGBA(W, H);
         };
         // Every pixel that differs between two frames lies within a line's
         // band, and some do.
@@ -720,7 +713,7 @@ namespace
         view->draw();
         gGL.flush();
         gGL.endList();
-        glFinish();
+        ll_test::uiMetal().finishFrame();
         const size_t with_many = capture.size();
         capture.clear();
         view->singleSelection();
@@ -728,16 +721,16 @@ namespace
         view->draw();
         gGL.flush();
         gGL.endList();
-        glFinish();
+        ll_test::uiMetal().finishFrame();
         UNSCOPED_INFO("twelve carets cost what one does");
         CHECK(with_many == capture.size());
     }
     // A gap: its tint across the text and nothing else in it, the line
     // under it drawn as far down as the gap is tall, and the rows below
     // the text drawn too.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: a gap is tinted across the text and moves the lines below it down", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: a gap is tinted across the text and moves the lines below it down", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -753,14 +746,13 @@ namespace
         ALTextView* view = keep(LLUICtrlFactory::create<ALTextView>(p));
         view->setFont(LLFontGL::getFontMonospace());
         const auto frame = [&]() {
-            ll_test::uiGL().clearFramebuffer();
-            glEnable(GL_BLEND);
+            ll_test::uiMetal().clearFramebuffer();
+            LLGLEnable blend(GL_BLEND);
             gGL.setSceneBlendType(LLRender::BT_ALPHA);
             view->draw();
             gGL.flush();
-            glDisable(GL_BLEND);
-            glFinish();
-            return ll_test::readFramebufferRGBA(W, H);
+            ll_test::uiMetal().finishFrame();
+            return ll_test::readNativeUIFramebufferRGBA(W, H);
         };
         // How many pixels in a band of the view's rows, from a row's top
         // down so many rows, are lit in a channel over a floor.
@@ -810,9 +802,9 @@ namespace
     // What goes by row is cut at the text's edge: a code editor scrolled
     // half a row has its top row's number in the gutter cut there, not
     // drawn above the editor; and an atom's view on that row cut too.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: a row's gutter number and atom view are cut at the text's top edge", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: a row's gutter number and atom view are cut at the text's top edge", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -863,9 +855,9 @@ namespace
 
     // The ruler's marks cost what one does, however many lines have one: a
     // comparison marks every line it changed, and a gap's mark with them.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: the ruler's marks cost what one does however many lines have one", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: the ruler's marks cost what one does however many lines have one", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -891,7 +883,7 @@ namespace
             view->draw();
             gGL.flush();
             gGL.endList();
-            glFinish();
+            ll_test::uiMetal().finishFrame();
             return capture.size();
         };
         const LLColor4 changed(0.9f, 0.6f, 0.1f, 1.f);
@@ -921,9 +913,9 @@ namespace
     // as a line under a link and a style on every line costs what one of
     // each does: a comparison's side tints most of its lines, and a log may
     // underline a name on each.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: tints and underlines on every line cost what one line's do", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: tints and underlines on every line cost what one line's do", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -948,7 +940,7 @@ namespace
             view->draw();
             gGL.flush();
             gGL.endList();
-            glFinish();
+            ll_test::uiMetal().finishFrame();
             return capture.size();
         };
         const LLColor4 tint(0.2f, 0.6f, 0.2f, 0.5f);
@@ -1005,9 +997,9 @@ namespace
     // text is lexed to its end: an edit that changes how every line after
     // it starts -- a string left open at the top -- has the lines in sight
     // lexed in the frame after it, and of the rest a slice, not the whole.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: fold blocks are found again once the text is lexed to its end", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: fold blocks are found again once the text is lexed to its end", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -1028,10 +1020,10 @@ namespace
         editor->setText(text);
         const S32  last  = editor->document().lineCount() - 1;
         const auto frame = [&]() {
-            ll_test::uiGL().clearFramebuffer();
+            ll_test::uiMetal().clearFramebuffer();
             editor->draw();
             gGL.flush();
-            glFinish();
+            ll_test::uiMetal().finishFrame();
         };
         editor->highlighter().tokens(last);
         frame();
@@ -1051,9 +1043,9 @@ namespace
     // What is being composed is underlined under its own text on each row
     // its line wraps it over: on the first, from where it starts to the
     // row's end; on the next, from the row's start to where it ends.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: preedit text is underlined under itself on each row it wraps over", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: preedit text is underlined under itself on each row it wraps over", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -1075,14 +1067,13 @@ namespace
         view->setFont(LLFontGL::getFontMonospace());
         view->setWordWrap(true);
         const auto frame = [&]() {
-            ll_test::uiGL().clearFramebuffer();
-            glEnable(GL_BLEND);
+            ll_test::uiMetal().clearFramebuffer();
+            LLGLEnable blend(GL_BLEND);
             gGL.setSceneBlendType(LLRender::BT_ALPHA);
             view->draw();
             gGL.flush();
-            glDisable(GL_BLEND);
-            glFinish();
-            return ll_test::readFramebufferRGBA(W, H);
+            ll_test::uiMetal().finishFrame();
+            return ll_test::readNativeUIFramebufferRGBA(W, H);
         };
         // Laid out by a frame, as it is drawn.
         frame();
@@ -1155,9 +1146,9 @@ namespace
     // The preview of the lines under the mouse on the map numbers them as
     // the view does, from its first line's number: a notecard's from 0, an
     // expansion's from past its envelope.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: the map's preview numbers its lines from the view's line number base", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: the map's preview numbers its lines from the view's line number base", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -1185,14 +1176,13 @@ namespace
         ALTextRuler* map = editor->findChild<ALTextRuler>("ruler");
         REQUIRE(map != nullptr);
         const auto drawn = [&]() {
-            ll_test::uiGL().clearFramebuffer();
-            glEnable(GL_BLEND);
+            ll_test::uiMetal().clearFramebuffer();
+            LLGLEnable blend(GL_BLEND);
             gGL.setSceneBlendType(LLRender::BT_ALPHA);
             editor->draw();
             gGL.flush();
-            glDisable(GL_BLEND);
-            glFinish();
-            return ll_test::readFramebufferRGBA(W, H);
+            ll_test::uiMetal().finishFrame();
+            return ll_test::readNativeUIFramebufferRGBA(W, H);
         };
         // How many pixels left of the map, where the preview is, differ
         // between two frames.
@@ -1225,9 +1215,9 @@ namespace
     // that gap from the start draws, though the text, and so the lines in
     // sight, are as they were. A text with no grammar, whose lines' tokens
     // never change.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: a gap put between the lines moves the map's rows below it down", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: a gap put between the lines moves the map's rows below it down", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -1260,14 +1250,13 @@ namespace
             std::vector<U8> map;
             for (S32 pass = 0; pass < 2; ++pass)
             {
-                ll_test::uiGL().clearFramebuffer();
-                glEnable(GL_BLEND);
+                ll_test::uiMetal().clearFramebuffer();
+                LLGLEnable blend(GL_BLEND);
                 gGL.setSceneBlendType(LLRender::BT_ALPHA);
                 view->draw();
                 gGL.flush();
-                glDisable(GL_BLEND);
-                glFinish();
-                const std::vector<U8> rgba = ll_test::readFramebufferRGBA(W, H);
+                ll_test::uiMetal().finishFrame();
+                const std::vector<U8> rgba = ll_test::readNativeUIFramebufferRGBA(W, H);
                 map.clear();
                 for (S32 y = 0; y < H; ++y)
                 {
@@ -1296,9 +1285,9 @@ namespace
     // line's note -- and the arrows for its tabs cost what one line's do,
     // however many lines have them: a script with a name before every
     // argument has a hint on most rows.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: hints and notes and tab arrows on every line cost what one line's do", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: hints and notes and tab arrows on every line cost what one line's do", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -1321,7 +1310,7 @@ namespace
             editor->draw();
             gGL.flush();
             gGL.endList();
-            glFinish();
+            ll_test::uiMetal().finishFrame();
             return capture.size();
         };
         // Twelve calls, the first so many of them tabbed in, each of those
@@ -1362,9 +1351,9 @@ namespace
     // A selection that goes on past a line's end is drawn a little past the
     // line's last glyph, as a match that does is: as far however far in the
     // text's first line starts.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: a selection past a line's end is drawn a little past its last glyph", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: a selection past a line's end is drawn a little past its last glyph", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -1387,14 +1376,13 @@ namespace
             return indent;
         });
         view->setSelection(ALTextRange(ALTextPos(1, 2), ALTextPos(2, 0)));
-        ll_test::uiGL().clearFramebuffer();
-        glEnable(GL_BLEND);
+        ll_test::uiMetal().clearFramebuffer();
+        LLGLEnable blend(GL_BLEND);
         gGL.setSceneBlendType(LLRender::BT_ALPHA);
         view->draw();
         gGL.flush();
-        glDisable(GL_BLEND);
-        glFinish();
-        const std::vector<U8> rgba = ll_test::readFramebufferRGBA(W, H);
+        ll_test::uiMetal().finishFrame();
+        const std::vector<U8> rgba = ll_test::readNativeUIFramebufferRGBA(W, H);
         // Across the middle of the second line's row, from its last glyph
         // on: how many columns the band reaches.
         const LLRect text = view->textRect();
@@ -1415,9 +1403,9 @@ namespace
     // while nothing moves, and again once the fonts are loaded again under
     // the same font: its caret and its choices are measured in the faces
     // its text is drawn in.
-    TEST_CASE_METHOD(altextview_gl_data, "altextview_gl: a modal keymap's band is read once and again after a font reload", "[altextview_gl]")
+    TEST_CASE_METHOD(altextview_metal_data, "altextview_metal: a modal keymap's band is read once and again after a font reload", "[altextview_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -1433,10 +1421,10 @@ namespace
         keymap->asked = &asked;
         view->setModalKeymap(std::move(keymap));
         const auto frame = [&]() {
-            ll_test::uiGL().clearFramebuffer();
+            ll_test::uiMetal().clearFramebuffer();
             view->draw();
             gGL.flush();
-            glFinish();
+            ll_test::uiMetal().finishFrame();
         };
         frame();
         const S32 once = asked;

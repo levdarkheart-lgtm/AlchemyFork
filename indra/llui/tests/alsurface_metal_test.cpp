@@ -1,6 +1,6 @@
 /**
- * @file alsurface_gl_test.cpp
- * @brief A surface's ground and frame, and the tab strip's tabs, read back from llrender's hidden window.
+ * @file alsurface_metal_test.cpp
+ * @brief A surface's ground and frame, and the tab strip's tabs, read back from native offscreen Metal.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -24,9 +24,7 @@
 
 #include "linden_common.h"
 
-#include "llglheaders.h"
-
-#include "aluigl_fixture.h"
+#include "aluimetal_fixture.h"
 
 #include "alsurface.h"
 #include "altabstrip.h"
@@ -43,21 +41,20 @@
 
 namespace
 {
-    constexpr S32 W = ll_test::HeadlessGL::WIDTH;
-    constexpr S32 H = ll_test::HeadlessGL::HEIGHT;
+    constexpr S32 W = ll_test::NativeUISession::WIDTH;
+    constexpr S32 H = ll_test::NativeUISession::HEIGHT;
 
     // What is drawn over black, read back: each pixel's red, bottom row
     // first.
     std::vector<S32> drawn(const std::function<void()>& draw)
     {
-        ll_test::uiGL().clearFramebuffer();
-        glEnable(GL_BLEND);
+        ll_test::uiMetal().clearFramebuffer();
+        LLGLEnable blend(GL_BLEND);
         gGL.setSceneBlendType(LLRender::BT_ALPHA);
         draw();
         gGL.flush();
-        glDisable(GL_BLEND);
-        glFinish();
-        const std::vector<U8> rgba = ll_test::readFramebufferRGBA(W, H);
+        ll_test::uiMetal().finishFrame();
+        const std::vector<U8> rgba = ll_test::readNativeUIFramebufferRGBA(W, H);
         std::vector<S32>      out(static_cast<size_t>(W) * H);
         for (size_t i = 0; i < out.size(); ++i)
         {
@@ -71,16 +68,17 @@ namespace
 
 namespace
 {
-    struct alsurface_gl_data
+    struct alsurface_metal_data
     {
-        alsurface_gl_data()
+        ll_test::NativeUICase native_frame;
+        alsurface_metal_data()
         {
-            ll_test::uiGL();
-            ll_test::installWhiteTexture();
+            ll_test::uiMetal();
+            ll_test::installNativeWhiteTexture();
         }
     };
 
-    TEST_CASE_METHOD(alsurface_gl_data, "alsurface_gl: draw frames the edge pixels and fills the rest even at the corner", "[alsurface_gl]")
+    TEST_CASE_METHOD(alsurface_metal_data, "alsurface_metal: draw frames the edge pixels and fills the rest even at the corner", "[alsurface_metal]")
     {
         for (const LLRect& rect : { LLRect(0, 10, 20, 0), LLRect(30, 40, 50, 20) })
         {
@@ -111,9 +109,9 @@ namespace
         }
     }
 
-    TEST_CASE_METHOD(alsurface_gl_data, "alsurface_gl: a strip's first tab is framed at its left edge as at its right", "[alsurface_gl]")
+    TEST_CASE_METHOD(alsurface_metal_data, "alsurface_metal: a strip's first tab is framed at its left edge as at its right", "[alsurface_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
@@ -143,9 +141,9 @@ namespace
         strip->die();
     }
 
-    TEST_CASE_METHOD(alsurface_gl_data, "alsurface_gl: only an attached strip's shown tab has no bottom edge", "[alsurface_gl]")
+    TEST_CASE_METHOD(alsurface_metal_data, "alsurface_metal: only an attached strip's shown tab has no bottom edge", "[alsurface_metal]")
     {
-        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(/*gl_textures=*/true);
+        ll_test::HeadlessUI& ui = ll_test::HeadlessUI::get(false, true);
         if (!ui.ok())
         {
             SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");

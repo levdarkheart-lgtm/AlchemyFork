@@ -1,6 +1,6 @@
 /**
- * @file aldiffview_gl_test.cpp
- * @brief What a comparison draws over its sides, read back from llrender's hidden window.
+ * @file aldiffview_metal_test.cpp
+ * @brief What a comparison draws over its sides, read back from native offscreen Metal.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -25,9 +25,7 @@
 #include "linden_common.h"
 
 #include "llfonttextcache.h"
-#include "llglheaders.h"
-
-#include "aluigl_fixture.h"
+#include "aluimetal_fixture.h"
 
 #include "alcodeeditor.h"
 #include "aldiffview.h"
@@ -45,20 +43,19 @@
 
 namespace
 {
-    constexpr S32 W = ll_test::HeadlessGL::WIDTH;
-    constexpr S32 H = ll_test::HeadlessGL::HEIGHT;
+    constexpr S32 W = ll_test::NativeUISession::WIDTH;
+    constexpr S32 H = ll_test::NativeUISession::HEIGHT;
 
     // The view drawn over black, read back: RGBA, bottom row first.
     std::vector<U8> drawn(LLView& view)
     {
-        ll_test::uiGL().clearFramebuffer();
-        glEnable(GL_BLEND);
+        ll_test::uiMetal().clearFramebuffer();
+        LLGLEnable blend(GL_BLEND);
         gGL.setSceneBlendType(LLRender::BT_ALPHA);
         view.draw();
         gGL.flush();
-        glDisable(GL_BLEND);
-        glFinish();
-        return ll_test::readFramebufferRGBA(W, H);
+        ll_test::uiMetal().finishFrame();
+        return ll_test::readNativeUIFramebufferRGBA(W, H);
     }
 
     // How many pixels of a band, rows [bottom, top] and columns [left,
@@ -86,18 +83,19 @@ namespace
 
 namespace
 {
-    struct aldiffview_gl_data
+    struct aldiffview_metal_data
     {
+        ll_test::NativeUICase native_frame;
         ALDiffView* view = nullptr;
 
-        aldiffview_gl_data()
+        aldiffview_metal_data()
         {
-            ll_test::uiGL();
+            ll_test::uiMetal();
             // What a rect without a texture of its own is drawn with.
-            ll_test::installWhiteTexture();
+            ll_test::installNativeWhiteTexture();
         }
 
-        ~aldiffview_gl_data()
+        ~aldiffview_metal_data()
         {
             gFocusMgr.setKeyboardFocus(nullptr);
             if (view)
@@ -130,7 +128,7 @@ namespace
         ALDiffView& make()
         {
             // The fonts' glyphs in textures, once there is a context.
-            if (!ll_test::HeadlessUI::get(/*gl_textures=*/true).ok())
+            if (!ll_test::HeadlessUI::get(false, true).ok())
             {
                 SKIP("no UI: LLUI_TEST_APP_DIR does not point at the source tree");
             }
@@ -181,7 +179,7 @@ namespace
         }
     };
 
-    TEST_CASE_METHOD(aldiffview_gl_data, "aldiffview_gl: the change holding the caret is outlined across each side", "[aldiffview_gl]")
+    TEST_CASE_METHOD(aldiffview_metal_data, "aldiffview_metal: the change holding the caret is outlined across each side", "[aldiffview_metal]")
     {
         ALDiffView& d = make();
         d.right()->setFocus(true);
@@ -208,7 +206,7 @@ namespace
         CHECK(count(plain, b.left + 4, b.right - 4, b.top - 2, b.top + 1, yellow) < (b.right - b.left) / 4);
     }
 
-    TEST_CASE_METHOD(aldiffview_gl_data, "aldiffview_gl: a folded run's gap row says how many lines it stands for and goes once the run opens", "[aldiffview_gl]")
+    TEST_CASE_METHOD(aldiffview_metal_data, "aldiffview_metal: a folded run's gap row says how many lines it stands for and goes once the run opens", "[aldiffview_metal]")
     {
         ALDiffView& d = make();
         CHECK(d.foldedCount() == 1);
@@ -275,7 +273,7 @@ namespace
         }
     }
 
-    TEST_CASE_METHOD(aldiffview_gl_data, "aldiffview_gl: a bracketed range draws a band across a wider gap between the sides", "[aldiffview_gl]")
+    TEST_CASE_METHOD(aldiffview_metal_data, "aldiffview_metal: a bracketed range draws a band across a wider gap between the sides", "[aldiffview_metal]")
     {
         ALDiffView& d = make();
         const S32   narrow = d.right()->getRect().mLeft - d.left()->getRect().mRight;
@@ -300,7 +298,7 @@ namespace
         CHECK(d.right()->getRect().mLeft - d.left()->getRect().mRight == narrow);
     }
 
-    TEST_CASE_METHOD(aldiffview_gl_data, "aldiffview_gl: the caret on an LSL line edges the SLua it became and its own row", "[aldiffview_gl]")
+    TEST_CASE_METHOD(aldiffview_metal_data, "aldiffview_metal: the caret on an LSL line edges the SLua it became and its own row", "[aldiffview_metal]")
     {
         ALDiffView& d = make();
         d.setTexts("default\n{\n    if (a) b();\n    c();\n}", "if a then\n    b()\nend\nc()", { { 2, 2, 0, 2 }, { 3, 3, 3, 3 } });
@@ -331,7 +329,7 @@ namespace
         CHECK(count(plain, edge, edge + ALDiffView::LINKED_EDGE, block.bottom + 1, block.top - 1, blue) == 0);
     }
 
-    TEST_CASE_METHOD(aldiffview_gl_data, "aldiffview_gl: a merge conflict is edged on each side but ours's own change is not", "[aldiffview_gl]")
+    TEST_CASE_METHOD(aldiffview_metal_data, "aldiffview_metal: a merge conflict is edged on each side but ours's own change is not", "[aldiffview_metal]")
     {
         ALDiffView&       d      = make();
         const std::string base   = "zero\none\ntwo\nthree\nfour\nfive\nsix\nseven";
@@ -358,7 +356,7 @@ namespace
         CHECK(count(merged, own.left, own.left + edge, own.bottom + 1, own.top - 1, orange) == 0);
     }
 
-    TEST_CASE_METHOD(aldiffview_gl_data, "aldiffview_gl: range bands draw in the same number of batches however many there are", "[aldiffview_gl]")
+    TEST_CASE_METHOD(aldiffview_metal_data, "aldiffview_metal: range bands draw in the same number of batches however many there are", "[aldiffview_metal]")
     {
         ALDiffView& d      = make();
         const S32   narrow = d.right()->getRect().mLeft - d.left()->getRect().mRight;

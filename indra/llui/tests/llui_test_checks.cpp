@@ -41,8 +41,8 @@
 #include "alheadlessui_fixture.h"
 #include "alteststateguard.h"
 #include "aluistatescope.h"
-#if LLUI_TEST_GL
-#include "aluigl_fixture.h"
+#if LLUI_TEST_METAL
+#include "aluimetal_fixture.h"
 #endif
 
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
@@ -108,12 +108,10 @@ namespace
         void testRunStarting(Catch::TestRunInfo const&) override
         {
             // The UI up before the first case, as the viewer has it before it
-            // builds a view, so that no case is the one that made it. The GL
-            // tests' fonts put their glyphs in textures, in the shared
-            // context.
-#if LLUI_TEST_GL
-            ll_test::uiGL();
-            ll_test::HeadlessUI::get(/*gl_textures=*/true);
+            // builds a view, so that no case is the one that made it. Native
+            // tests share one device/font/UI session for the process.
+#if LLUI_TEST_METAL
+            ll_test::uiMetal();
 #else
             ll_test::HeadlessUI::get();
 #endif

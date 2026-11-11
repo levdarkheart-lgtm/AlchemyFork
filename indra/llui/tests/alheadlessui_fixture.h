@@ -84,6 +84,7 @@ namespace ll_test
     class HeadlessUI
     {
     public:
+        // With `metal_textures`, glyphs have actual native Metal backing.
         // With `gl_textures`, the fonts put their glyphs in GL textures, for
         // a caller that has a context up and draws; the first call decides.
         // A later call that asks for the other is an error rather than
@@ -96,21 +97,22 @@ namespace ll_test
         // changes -- the directory object, the floater view, the root view,
         // the fonts -- is the state the guard compares with from then on, so
         // the case that first asked is not blamed for it.
-        static HeadlessUI& get(bool gl_textures = false)
+        static HeadlessUI& get(bool gl_textures = false, bool metal_textures = false)
         {
-            static HeadlessUI* made = [gl_textures]
+            static HeadlessUI* made = [gl_textures, metal_textures]
             {
-                HeadlessUI* ui = new HeadlessUI(gl_textures);
+                HeadlessUI* ui = new HeadlessUI(gl_textures, metal_textures);
                 ll_test::Teardown::add([ui] { delete ui; });
                 ll_test::StateGuard::accept();
                 return ui;
             }();
             HeadlessUI& ui = *made;
-            if (gl_textures != ui.mGLTextures)
+            if (gl_textures != ui.mGLTextures || metal_textures != ui.mMetalTextures)
             {
                 LL_ERRS("HeadlessUI") << "HeadlessUI::get(gl_textures=" << gl_textures
                                       << ") after the process's UI was made with gl_textures="
-                                      << ui.mGLTextures << LL_ENDL;
+                                      << ui.mGLTextures << ", metal_textures=" << ui.mMetalTextures
+                                      << "; requested metal_textures=" << metal_textures << LL_ENDL;
             }
             return ui;
         }
@@ -132,10 +134,11 @@ namespace ll_test
         }
 
     private:
-        explicit HeadlessUI(bool gl_textures)
+        explicit HeadlessUI(bool gl_textures, bool metal_textures)
         :   mDir(LLUI_TEST_APP_DIR),
             mConfig("config"),
-            mGLTextures(gl_textures)
+            mGLTextures(gl_textures),
+            mMetalTextures(metal_textures)
         {
             const std::string fonts_xml = mDir.add(std::string(LLUI_TEST_APP_DIR), "skins/default/xui/en/fonts.xml");
             if (std::string(LLUI_TEST_APP_DIR).empty() || !LLFile::isfile(fonts_xml))
@@ -158,7 +161,7 @@ namespace ll_test
 
             LLFontManager::initClass();
             LLFontGL::initClass(96.f, 1.f, 1.f, LLUI_TEST_APP_DIR, fonts_xml, LLSD(),
-                                gl_textures);
+                                gl_textures, metal_textures);
 
             // A floater reaches for the floater view while it is being built
             // -- to fit itself on a screen this has none of -- and reads its
@@ -193,6 +196,7 @@ namespace ll_test
         LLDir* mPreviousDir { nullptr };
         LLControlGroup mConfig;
         const bool mGLTextures;
+        const bool mMetalTextures;
         bool mOk { false };
     };
 
