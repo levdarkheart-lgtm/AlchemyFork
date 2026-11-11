@@ -283,7 +283,6 @@ void handle_force_parcel_to_content();
 void handle_claim_public_land();
 
 void handle_god_request_avatar_geometry();    // Hack for easy testing of new avatar geometry
-void reload_vertex_shader();
 void handle_disconnect_viewer();
 
 void force_error_breakpoint();
@@ -2096,21 +2095,6 @@ class LLAdvancedAnimResetAll : public view_listener_t
     bool handleEvent(const LLSD& userdata)
     {
         set_all_animation_time_factors(1.f);
-        return true;
-    }
-};
-
-
-//////////////////////////
-// RELOAD VERTEX SHADER //
-//////////////////////////
-
-
-class LLAdvancedReloadVertexShader : public view_listener_t
-{
-    bool handleEvent(const LLSD& userdata)
-    {
-        reload_vertex_shader();
         return true;
     }
 };
@@ -9370,11 +9354,6 @@ class LLToolsEditLinkedParts : public view_listener_t
     }
 };
 
-void reload_vertex_shader()
-{
-    //THIS WOULD BE AN AWESOME PLACE TO RELOAD SHADERS... just a thought    - DaveP
-}
-
 void handle_dump_avatar_local_textures()
 {
     gAgentAvatarp->dumpLocalTextures();
@@ -10841,7 +10820,6 @@ void initialize_menus()
 
     // Advanced > Character (toplevel)
     view_listener_t::addMenu(new LLAdvancedForceParamsToDefault(), "Advanced.ForceParamsToDefault");
-    view_listener_t::addMenu(new LLAdvancedReloadVertexShader(), "Advanced.ReloadVertexShader");
     view_listener_t::addMenu(new LLAdvancedToggleAnimationInfo(), "Advanced.ToggleAnimationInfo");
     view_listener_t::addMenu(new LLAdvancedCheckAnimationInfo(), "Advanced.CheckAnimationInfo");
     view_listener_t::addMenu(new LLAdvancedToggleShowLookAt(), "Advanced.ToggleShowLookAt");
