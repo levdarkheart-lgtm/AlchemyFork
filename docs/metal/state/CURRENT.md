@@ -2,9 +2,9 @@
 
 **Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `114fedf245` (built/tested; manual Alpha4 ZIP verified).
+**Renderer code checkpoint:** `8ce7e33f71` (identified fixes integrated; combined build pending).
 **Owner-passed viewer:** `f254feb048`,26.4.0d68817; provisional “pass...for now”.
-The latest fixes are built/tested/packaged. Owner superseded the earlier
+Alpha4 source114 is built/tested/packaged; newer previews are source-tested. Owner superseded the earlier
 no-launch instruction and requested the ready viewer for manual confirmation.
 Fresh26.4.0d68817 launched with open -na; exact new executable PID90460 was
 confirmed alive. No login action or screenshots by the agent; utility unexecuted.
@@ -37,25 +37,16 @@ HDR/SDR changes. Preview first-allocation retry and VLC lifecycle/order are fixe
 Eight fixed targets and the prewarm-only transient pool are retired. Native
 Bloom shape uses actual post-source dimensions, including snapshot overrides.
 
-SMAA bfff8e8373/dd796eabdd honors the original stencil setting and output-sized
-alternate-image metrics. Root matching GPU mask/world/reload tests pass.
-Cutout far-depth pins are original-matched. Alpha 5fa7c0df52/b20f03e40e restores
-HDR10/SDR8 post color plus raw F16 coverage filtered at final untransformed UVs,
-with original BilinearMirror and one final alpha quantization. The old early-U8
-workaround/PSO axis is removed. Root focused/world/reload tests pass.
-Legacy cutout retirement3b5a6456e5 removes duplicate seed/copy/VB/program graphs;
-real before-alpha/end and pre-read stream boundaries remain. Native pixel duties
-are already owned by the validated renderer. Live gDebug remains.
+SMAA bfff8/dd796 restores original stencil and output-sized sample metrics.
+Alpha5fa7/b20 restores HDR10/SDR8 color/rawF16 final coverage with BilinearMirror
+and one quantization; early-U8 workaround retired. Root focused/world/reload pass.
+Cutout3b5 retires duplicate graphs; exact stream boundaries/live gDebug remain.
 
-Phase retirement d78cc2d779 removes34 skipped descriptions and three dead input
-copies; physical plans/native owners/full-input publication remain. c65e5d588e
-removes the unused describes helper. Snapshot4f5f23251b restores the original
-forced-allocation-failure admission/recovery boundary without an mFullSize guard.
-Preview7f6633a3fe removes the unreachable true branch/flag/far-quad; native preview/
-ordinary/profile specialization stays exact. Heroce65f508a4 removes an uncalled
-wrapper; live debug owners remain. Water6473c5c77d restores point/aniso normals;
-83567e407d restores optional Compute culling gate while waves remain. 2c16d75147
-removes only redundant resource Compute copy; real shader/local latch stays live.
+Phase d78/c65 retires34 skipped descriptions/three dead copies/unused helper;
+physical plans/native owners/full inputs remain. Snapshot4f5 restores forced-
+failure admission/recovery without mFullSize guard. Preview7f66/Heroce65 retire
+proven dead branches/wrapper; live specializations remain. Water6473/8356 restores
+normal filtering/optional Compute culling;2c16 removes only redundant input copy.
 
 Post-launch source audit found additional issues; earlier completion assessment
 was premature. Integrated9838 fixes inherited feature-mask off clearing all bits;
@@ -75,11 +66,8 @@ remain separate; no whole-bundle native-only claim. ZeroGLSL/no old shader tree;
 exact native MSL/metallib/notices. Previous stages preserved by rename.
 Receipt: native-settings-phase-canonical-{build-state,validation}.json.
 Viewer SHA256285c561302672cb9fab2fe4ab4ef402297796ca2272b579765d57b3abd4ab1eb.
-First full compile31819 exited0 but task staging renamed the configure-generated
-Info.plist into backup. Static check caught it; preserve pre-plist-repair evidence.
-Corrected rename-before-configure, rebuilt/signed fresh stage and verified it.
-No source change or test weakening. Current app matches f254; later rebuilds
-must not overwrite it while the owner is testing.
+Prior Info.plist staging defect and repair evidence remain in the linked note.
+Keep owner-passed f254 app untouched.
 
 Matching root77976: policy652/20, full alrender563966/115, focused water/cutout/
 SMAA11054/19, world105890/23, water-cull250/1 and reload2304/8 all pass. GPU
@@ -126,23 +114,35 @@ hashes and identity. No viewer launch or upload. Passed f254 binary unchanged.
 
 ## Exact next actions
 
-Root owns canonical integration/docs; agents released, all build/check handles
-closed.114fedf245 pushed normally to private origin codex/apple-silicon-metal;
-remote SHA verified. CLI/keyring works. Tag a Build43094454819 failed before any
-step: GitHub says recent account payments failed or spending limit needs increase.
-No tag/build/release was created by that action. No billing/security changes.
-Owner instead requested ZIP+SHA; verified files delivered for manual upload.
-No further CI dispatch or publishing. Keep source114 and receipts pinned.
-Exact release job route, if later needed: Project / `Metal Alpha 4`, existing
-versioned-alpha tag ref. Generic defaults select the wrong job. Preserve passed
-app; no viewer screenshot/login/restart. Continuation finds selected HUD faces
-drop at closed world-only highlight admission; menu owns isolated fix/new test
-and GPU slot. RLVa owns model/BVH/sculpt buffer retry/current-publication fixes
-and actual model-helper proof, CPU/compile until GPU release. GL-tail peers
-previews; root owns CMake/matrix/docs/integration. New note records original
-mapping and bounded RLVa/upload closures. No canonical code changes yet; all
-delivered stages immutable. Integrate reviewed red/green fixes, build/check
-isolated, create a new artifact version. Full-product gates remain open.
+Root owns canonical integration/docs; child source released and GPU jobs closed.
+114 and later handoff6bf pushed normally to private origin feature branch; new
+fixes await combined validation/push. CLI/keyring works. Tag a Build43094454819
+failed before steps for account payments/spending limit; no tag/build/release
+created or billing changes. Owner requested manual ZIP+SHA instead. Delivered
+68825/114 stays immutable; no further CI dispatch/upload/publishing.
+
+HUD selected faces208 and diagnostics578 restore original native capture/blend/
+mask duties. Actual6case18150 and3case61654 checks pass after813/15baseline
+failures, with independent peers/production syntax checks. Diagnostic shader-
+validation property was not directly probed; full selectedTE/HUD scenes unrun.
+Preview39 restores3current-store gates: actual helper1494/1 and combined3354/7
+API/GPU pass after13baseline failures. LLVB4a6 adds per-buffer prepare, preserving
+vertex-only draws and independent buffers; actual19875/4API/GPU pass. Consumers
+cc788/ef0/175 cover previews, UI/HUD/outline and31pipeline owners (5vertex-only).
+Actual cached-UI82335/5pass after2baseline failures; pipeline306/5pass after35.
+Final8ce7 integrates child8bfb:4preview destination retries and early bake metadata
+bootstrap. Actual old bodies2123/10 expose5failures; fixed3991/10 and combined
+7357/18API/GPU pass. CPU reset12/1,6productionReleaseTUs and independent peer
+pass. Healthy images/metadata-valid bake adoption remain allocation-independent.
+Full scene/physical OOM testing unexecuted; no new identified code fix pending.
+
+Next: freeze docs, doctor/configure/full build as Alpha4 in isolated followup
+tree; preserve old Alpha4 before configure and keep owner-passed f254 untouched.
+Run matching full LLRender/alrender, affected policy/static/strict source checks,
+then normal feature-branch push and new versioned ZIP+SHA with extraction/signature
+verification. No viewer/window/utility launch or screenshots. Research files
+under docs/metal/research are untracked concurrent work; preserve/exclude them.
+All detailed source/peer/failure receipts are in the linked followup note.
 
 ## Complete-product advancement assessment
 

@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `114fedf245`; combined build/tests/manual ZIP verified.
+**Integrated checkpoint:** Commit `8ce7e33f71`; identified fixes integrated, combined build pending.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -101,9 +101,7 @@ viewer+owned media host direct imports0,332exact VLC modules/zeroGLSL/exact nati
 resources/notices. Prior stages preserved. Receipt:
 native-settings-phase-canonical-validation.json. Binary SHA256
 285c561302672cb9fab2fe4ab4ef402297796ca2272b579765d57b3abd4ab1eb.
-First compile31819 succeeded but task rename-after-configure lost fresh Info.plist;
-static check caught it. Preserve pre-plist-repair logs/state. Rename-before-
-configure and fresh rebuild/sign corrected packaging; source unchanged.
+Prior Info.plist staging defect/repair logs preserved; rename before configure.
 
 Root77976 policy652/20, full alrender563966/115, focused11054/19, world105890/23,
 water-cull250/1 and reload2304/8 all pass. GPU logs confirm API/GPU validation.
@@ -140,27 +138,37 @@ Evidence: followup-* and manual-alpha-* receipts under feature-completion-202611
 
 ## Immediate executable action
 
-Root owns docs/handoff; agents released, all build/GPU/check handles closed.
-Validated114 pushed normally to private origin feature branch; remote SHA exact.
-CLI works. Tag a Build43094454819 rejected before steps for account payments/
-spending-limit restriction; no tag/release/build created, no billing changes.
-Owner replaces CI delivery with ZIP+SHA for manual upload. Delivered the verified
-Alchemy_Metal_Alpha_4_26_4_0_68825_arm64.zip and .zip.sha256 from
-artifacts/metal/releases/26.4.0.68825-alpha4/. No upload/publishing by agent.
-If later needed, dedicated action inputs are Project / `Metal Alpha 4` on an
-existing exact version-alpha4 tag. No further dispatch now. Owner-passed f254
-app remains untouched. New audit finds HUD selected faces drop at closed world-
-only highlight admission. Menu owns isolated pipeline/HUD fix/new test and GPU
-slot; RLVa owns3preview cpp files/private model helper/existing test for omitted
-setBuffer/current-store gates, CPU/compile until GPU release. Root owns CMake/
-matrix/docs/integration; GL-tail peers previews. Original1eb mapping and actual
-red/green proof precede integration, isolated matching build/check and new artifact
-version. No canonical code changes yet, delivered stages immutable; no new
-viewer operation or whole-product completion claim.
+Root owns integration/docs; all child source released and GPU jobs closed.
+114 and handoff6bf pushed normally to private origin; CLI works. Action43094454819
+failed before steps for payments/spending-limit restrictions; no tag/build/release
+or billing changes. Owner requested manual ZIP+SHA: delivered68825/114 preserved.
+No further CI dispatch/upload/publishing; owner-passed f254 stays untouched.
+
+Integrated39preview gates: actual helper1494/1 and combined3354/7API/GPU pass
+after13baseline failures. HUD208 selected faces18150/6pass after813failures,
+original alpha/blend/order negatives retained. HUD578 diagnostics61654/3pass
+after15failures; API enabled/validation env recorded, shader property unprobed.
+LLVB4a6 per-buffer retry preserves unrelated buffers and vertex-only owners;
+19875/4API/GPU pass. Preview/UI/HUD/outline/pipeline consumerscc788/ef0/175
+qualify before handle capture: cached UI82335/5pass after2baseline failures;
+pipeline306/5pass after35. Original owner/filter/layout projections and peers pass.
+Final8ce7 integrates child8bfb/five private CMake sources: four preview destination
+retries plus early bake metadata bootstrap. Actual old bodies expose5failures;
+fixed3991/10, combined7357/18API/GPU, CPU reset12/1 and6ReleaseTUs pass; peer
+no blockers. Scheduler/generator unchanged; valid-metadata bake can still adopt
+without old backing. Detailed source hashes/receipts in linked followup note.
+No identified coding fix remains; full scene/physical OOM evidence stays unverified.
+
+Freeze docs; doctor/configure/full build final Alpha4 in isolated followup tree,
+preserving old Alpha4 before configure and original f254 in place. Run matching
+full LLRender/alrender, affected policy/static/strict checks, normal feature-branch
+push, fresh versioned ZIP+SHA and exact extraction/signature verification. Keep
+concurrent untracked docs/metal/research files excluded/untouched. No viewer/
+window/utility launch or screenshots; full-product completion remains unclaimed.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
-utility unexecuted; owner-requested viewer now running. Keep prior evidence source-pinned.
+utility unexecuted; prior f254 launch observation stays source-pinned.
 
 ## Non-negotiable open gates
 
