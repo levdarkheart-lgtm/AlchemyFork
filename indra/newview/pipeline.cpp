@@ -9504,7 +9504,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 
             // Display transfer and bloom suppression follow the effective
             // EEP probe ambiance, independently of the surface-lighting
-            // classic-mode surface-lighting variant.
+            // classic-mode variant.
             static LLCachedControl<bool> auto_adjust(
                 gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
             static LLCachedControl<bool> build_no_post(
@@ -9557,13 +9557,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     ? llclamp(cross_filter_strength(), 0.f,
                               CROSS_FILTER_MAX_STRENGTH)
                     : 0.f;
-            const bool wants_native_bloom = capture.hdr &&
-                !cutout_snapshot &&
-                exact_dof &&
-                (native_bloom_strength > 0.f ||
-                 native_halation_strength > 0.f) &&
-                isMainWorldPass() && mRT == &mMainRT &&
-                canCaptureMetalScopeSample(false);
+            const bool wants_native_bloom = wantsMetalBloom(
+                exact_dof, native_bloom_strength, native_halation_strength);
             capture.bloom_target.reset();
             capture.bloom_frame = std::numeric_limits<U32>::max();
             std::unique_ptr<ALMetalRenderTarget> cross_filter_target;

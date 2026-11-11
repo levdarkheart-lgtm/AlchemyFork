@@ -95,20 +95,22 @@ struct FinalizePolicyPipeline
     LensDistortFit mLensDistortFit;
     bool mReferenceStillWanted = false;
     bool sCutoutRender = false, main = true, hdr = true, suppress = false, scope_eligible = true;
+    bool scopes_open = true, presentation_eligible = true, mMetalWorldSnapshotRequested = false;
     bool mMetalHeroWorldCaptureActive = false, mMetalReflectionWorldCaptureActive = false;
     bool mMetalExposureHistoryReady = false;
     U64 mMetalExposureHistoryEpoch = 7;
     U64 mMetalLensFlareHistoryEpoch = 7;
     bool mMetalLensFlareHistoryReady = false;
-    int mMainRT = 0, other_rt = 0;
-    int* mRT = &mMainRT;
+    struct ViewInput { U32 bloomMipCount = 6; } mMainRT, other_rt;
+    ViewInput* mRT = &mMainRT;
     scene_pixel_cb_t mScenePixelCallback;
     S32 mScenePixelX = 0, mScenePixelY = 0;
     bool mScenePixelPending = false;
     bool isMainWorldPass() const { return main; }
     bool hdrEnabled() const { return hdr; }
     bool suppressesLensAndPrintEffects() const { return suppress; }
-    bool canCaptureMetalScopeSample(bool) const { return scope_eligible; }
+    bool canCaptureMetalWorldPresentation() const { return presentation_eligible; }
+    bool canCaptureMetalScopeSample(bool) const { return scopes_open && scope_eligible && presentation_eligible; }
     bool consumeReferenceStillRequest();
     std::unique_ptr<FinalizeSource> captureReferenceStill(const FinalizeSource& source);
     void publishReferenceStill(std::unique_ptr<FinalizeSource> pending);
@@ -117,6 +119,7 @@ struct FinalizePolicyPipeline
     F32 lensDistortionFitScale(const LensDistortFit::Inputs& inputs);
     bool configureMetalPresentationLens(ALMetalWorldPresentationScene& presentation);
     bool wantsMetalDepthOfField(const DepthOfFieldConfig& dof) const;
+    bool wantsMetalBloom(bool, F32, F32) const;
     bool metalScopeSourceCurrent(U32, U32) const;
     void updateNativeExposureReadiness();
     void resetExposureHistory();
@@ -300,6 +303,33 @@ TEST_CASE("Native DoF admission preserves both display modes and ordinary view g
     }
     dof.enabled = false; CHECK_FALSE(p.wantsMetalDepthOfField(dof));
     dof.enabled = true; p.mMetalWorldSimpleCapture.reset(); CHECK_FALSE(p.wantsMetalDepthOfField(dof));
+}
+
+TEST_CASE("Native HDR bloom follows presentation readiness independently of scope enable",
+          "[native-finalize-policy][native-bloom-policy]")
+{
+    FinalizeCase f; auto& p = f.pipeline;
+    p.scopes_open = false;
+    CHECK(p.wantsMetalBloom(true, 1.f, 0.f));
+    CHECK(p.wantsMetalBloom(true, 0.f, 1.f));
+    CHECK_FALSE(p.wantsMetalBloom(true, 0.f, 0.f));
+    CHECK_FALSE(p.wantsMetalBloom(false, 1.f, 1.f));
+    p.presentation_eligible = false;
+    CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f)); p.presentation_eligible = true;
+    p.scopes_open = true;
+    CHECK(p.wantsMetalBloom(true, 1.f, 0.f));
+    p.mMainRT.bloomMipCount = 2;
+    CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f));
+    p.mMainRT.bloomMipCount = 3;
+    CHECK(p.wantsMetalBloom(true, 1.f, 1.f));
+    p.mMetalWorldSimpleCapture->hdr = false;
+    CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f)); p.mMetalWorldSimpleCapture->hdr = true;
+    p.main = false; CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f)); p.main = true;
+    p.mRT = &p.other_rt; CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f)); p.mRT = &p.mMainRT;
+    p.sCutoutRender = p.mMetalWorldSnapshotRequested = true;
+    CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f));
+    p.sCutoutRender = p.mMetalWorldSnapshotRequested = false;
+    p.mMetalWorldSimpleCapture.reset(); CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f));
 }
 
 TEST_CASE("Native scene pixel callbacks rearm and retain lower-row scaled coordinates",
