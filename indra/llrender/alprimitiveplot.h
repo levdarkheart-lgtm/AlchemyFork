@@ -30,10 +30,10 @@
 /// The primitives a set of draws generates in a frame, summed and plotted as one Tracy track. Each span of draws between
 /// begin() and end() runs inside its own Primitives query of gGL's pool. plot(), once a frame before the frame's first
 /// span, reads the spans issued FRAMES - 1 frames before the last, which the pool still holds: a frame whose results are
-/// not all in, or one a span of which the pool refused, is left out of the track, and a frame that issued none plots 0.
+/// not all in, or one a span of which the pool refused, is left out of the track. An available counter with no spans
+/// plots 0; an unavailable counter emits no numeric sample.
 /// A frame with more spans than SPANS draws the rest uncounted. Nothing is issued without Tracy, or while no profiler
-/// is connected, and a frame is left out while the pool holds the target, as a shader profile counting primitives
-/// generated holds it (LLGLSLShader::initProfile).
+/// is connected, and a frame is left out while the pool holds the target.
 class ALPrimitivePlot
 {
 public:

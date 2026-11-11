@@ -27,12 +27,19 @@
 #include "alprimitiveplot.h"
 
 #include "llgl.h"
-#include "llglheaders.h"
 #include "llrender.h"
 
 void ALPrimitivePlot::plot()
 {
 #if LL_PROFILER_CONFIGURATION >= LL_PROFILER_CONFIG_TRACY
+    // An absent native counter is not an observed zero. In particular the
+    // native water owner opens no legacy query spans, so the empty ring must
+    // not publish zeros for work this pool cannot measure.
+    if (!ALQueryPool::supports(ALQueryKind::Primitives))
+    {
+        release();
+        return;
+    }
     // The slot after the last is the oldest, and becomes this frame's.
     mFrame = (mFrame + 1) % FRAMES;
     Frame& frame = mFrames[mFrame];
