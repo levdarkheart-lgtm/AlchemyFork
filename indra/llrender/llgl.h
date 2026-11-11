@@ -102,7 +102,6 @@ public:
     S32 mGLMaxIndexRange;
     S32 mGLMaxTextureSize;
     F32 mMaxAnisotropy = 0.f;
-    S32 mMaxUniformBlockSize = 0;
     S32 mMaxVaryingVectors = 0;
 
     bool mHasAnisotropic = false;
