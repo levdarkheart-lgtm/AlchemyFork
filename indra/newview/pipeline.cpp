@@ -18859,6 +18859,18 @@ bool LLPipeline::beginSizeOverride(U32 width, U32 height)
     mMetalSizeOverrideWidth = 0;
     mMetalSizeOverrideHeight = 0;
 
+    // The original snapshot rebuild declined its requested size when this
+    // allocation-failure control was enabled. Native captures own their
+    // targets directly, but must retain the same admission/recovery boundary.
+    static LLCachedControl<bool> simulate_failure(gSavedSettings, "SimulateFBOFailure", false);
+    if (simulate_failure())
+    {
+        LL_WARNS("Snapshot")
+            << "Simulated render-target allocation failure rejected native snapshot size "
+            << width << 'x' << height << LL_ENDL;
+        return false;
+    }
+
     const LLWindow* window = gViewerWindow
         ? gViewerWindow->getWindow() : nullptr;
     const ALMetalDevice* device = window

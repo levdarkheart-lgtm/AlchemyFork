@@ -16034,7 +16034,7 @@
   <key>SimulateFBOFailure</key>
   <map>
     <key>Comment</key>
-    <string>[DEBUG] Make allocateScreenBuffer return false.  Used to test error handling.</string>
+    <string>[DEBUG] Simulate render-target allocation failure to test error handling.</string>
     <key>Persist</key>
     <integer>0</integer>
     <key>Type</key>
