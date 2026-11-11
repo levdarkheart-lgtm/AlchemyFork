@@ -105,6 +105,8 @@ bool ALFrameFences::wait(U32 frame, U64 timeout_ns, bool* stalled)
     }
 
     const U64 submission = mSubmissions[frame % FRAMES];
+    ++mCalls;
+    ++mFrameCalls;
     if (!mScheduler->isSubmissionComplete(submission))
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Metal frame completion stall");
