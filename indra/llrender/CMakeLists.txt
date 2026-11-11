@@ -180,6 +180,7 @@ if(AL_BUILD_TESTS)
       tests/aluniformbuffer_test.cpp
       tests/llvertexbuffer_test.cpp
       tests/alvertex_range_test.cpp
+      tests/alvertex_draw_metal_test.cpp
     )
   endif()
   al_add_test_binary(

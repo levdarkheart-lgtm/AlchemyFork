@@ -111,14 +111,6 @@ void LLRenderSphere::renderGGL()
 
     if (LLGLSLShader::sCurBoundShaderPtr->mAttributeMask == LLVertexBuffer::MAP_VERTEX)
     { // shader expects only vertex positions in vertex buffer, use fast path
-#if LL_DARWIN
-        // The ordered world/UI capture cannot observe LLVertexBuffer's direct
-        // indexed GL draw. Mirror the exact position-only sphere while keeping
-        // the authoritative GL draw below unchanged.
-        gGL.captureMetalUIIndexedBuffer(
-            mVertexBuffer.get(), LLRender::TRIANGLES,
-            mVertexBuffer->getNumIndices(), 0);
-#endif
         mVertexBuffer->setBuffer();
         mVertexBuffer->draw(LLRender::TRIANGLES, mVertexBuffer->getNumIndices(), 0);
     }

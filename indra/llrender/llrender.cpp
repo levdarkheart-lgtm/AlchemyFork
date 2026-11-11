@@ -2909,7 +2909,8 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     const U32 required = LLVertexBuffer::MAP_VERTEX |
         (needs_texcoord ? LLVertexBuffer::MAP_TEXCOORD0 : 0) |
         (needs_color ? LLVertexBuffer::MAP_COLOR : 0);
-    if (!metal_buffer || (indexed && !metal_indices) ||
+    if (!metal_buffer || !buffer->hasPublishedMetalVertexBuffer() ||
+        (indexed && (!metal_indices || !buffer->hasPublishedMetalIndexBuffer())) ||
         (needs_texture && !metal_texture) ||
         (buffer->getTypeMask() & required) != required)
     {
@@ -3104,12 +3105,6 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     return true;
 }
 
-bool LLRender::captureMetalUIIndexedBuffer(
-    LLVertexBuffer* buffer, U32 mode, U32 index_count, U32 indices_offset)
-{
-    return mMetalUICaptureRenderer &&
-        drawBoundMetalUIBuffer(buffer, mode, index_count, true, indices_offset);
-}
 #endif
 
 void LLRender::resetStriders(S32 count)

@@ -324,9 +324,6 @@ public:
     // Returns actual native admission, never authority/fallback suppression.
     bool drawBoundMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                 bool indexed = false, U32 first = 0);
-    // Indexed sphere capture; uses the same current native binding state.
-    bool captureMetalUIIndexedBuffer(LLVertexBuffer* buffer, U32 mode,
-                                     U32 index_count, U32 indices_offset);
 
     // Parallel offscreen capture for GL-owned immediate-mode render-texture
     // producers by default. A single unsupported batch fails the complete
