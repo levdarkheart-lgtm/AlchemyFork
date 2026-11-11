@@ -70,10 +70,6 @@ public:
 
     void renderProbes();
 
-    // debug display, called from llspatialpartition if reflection
-    // probe debug display is active
-    void renderDebug();
-
     // call once at startup to allocate cubemap arrays
     void initReflectionMaps();
 

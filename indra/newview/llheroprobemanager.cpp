@@ -442,19 +442,6 @@ void LLHeroProbeManager::updateUniforms()
     mHeroData.heroMaxLod = mMaxProbeLOD;
 }
 
-void LLHeroProbeManager::renderDebug()
-{
-    gDebugProgram.bind();
-
-    for (auto& probe : mProbes)
-    {
-        renderReflectionProbe(probe);
-    }
-
-    gDebugProgram.unbind();
-}
-
-
 void LLHeroProbeManager::initReflectionMaps()
 {
     U32 count = LL_MAX_HERO_PROBE_COUNT;
