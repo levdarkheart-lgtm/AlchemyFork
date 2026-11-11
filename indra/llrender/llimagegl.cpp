@@ -54,7 +54,6 @@
 #include <chrono>
 #include <bit>
 #include <thread>
-#include <boost/unordered_map.hpp>
 
 extern LL_COMMON_API bool on_main_thread();
 
@@ -65,14 +64,6 @@ extern LL_COMMON_API bool on_main_thread();
 //----------------------------------------------------------------------------
 const F32 MIN_TEXTURE_LIFETIME = 10.f;
 
-constexpr int DELETE_DELAY = 3; // number of frames to wait before deleting textures
-static std::vector<U32> sFreeList[DELETE_DELAY+1];
-// The GL context the names in a thread's pool were generated on: each
-// thread's pool is emptied when it is next asked after the context went,
-// since a name of the old context is nobody's on the new one -- a core
-// profile refuses to bind it -- and the pool is thread-local, so no one
-// thread can empty the others'.
-static std::atomic<U32> sTextureNameGeneration{ 1 };
 constexpr U8 METAL_UPLOAD_PENDING = 0;
 constexpr U8 METAL_UPLOAD_COMMITTED = 1;
 constexpr U8 METAL_UPLOAD_FAILED = 2;
@@ -204,15 +195,9 @@ void LLImageGL::touchContents()
 }
 
 
-// texture memory accounting (for macOS)
-static LLMutex sTexMemMutex;
-static boost::unordered_map<U32, U64> sTextureAllocs;
-// Changed under sTexMemMutex, and read by getTextureBytesAllocated without it.
-static std::atomic<U64> sTextureBytes{0};
 #if LL_DARWIN
-// Native-authoritative LLImageGL storage is not represented by a GL name, so it
-// has a separate process-wide contribution. A dual-backed migration resource is
-// deliberately represented only by sTextureBytes until Metal becomes authoritative.
+// Logical bytes owned by published native images, including complete mip chains.
+// Pending replacement storage is accounted only when it publishes.
 static std::atomic<U64> sMetalTextureBytes{0};
 
 static U64 metal_texture_bytes(const ALMetalTexture& texture) noexcept
@@ -250,88 +235,14 @@ static U64 metal_texture_bytes(const ALMetalTexture& texture) noexcept
 }
 #endif
 
-// track a texture alloc on the currently bound texture.
-// asserts that no currently tracked alloc exists
-void LLImageGLMemory::alloc_tex_image(U32 width, U32 height, U32 intformat, U32 count, bool has_mips)
-{
-    U32 texUnit = gGL.getCurrentTexUnitIndex();
-    llassert(texUnit == 0); // allocations should always be done on tex unit 0
-    U32 texName = gGL.getTextureSlot(texUnit)->getCurrTexture();
-    U64 size = LLImageGL::dataFormatVRAMBytes(intformat, width, height);
-    if (has_mips)
-    {
-        // Sum the mip pyramid down to 1x1 the same way getMipBytes does,
-        // so non-power-of-two and non-square cases stay exact rather than
-        // relying on the 4/3 geometric-series approximation.
-        S32 w = (S32)width;
-        S32 h = (S32)height;
-        while (w > 1 && h > 1)
-        {
-            w >>= 1; if (w == 0) w = 1;
-            h >>= 1; if (h == 0) h = 1;
-            size += LLImageGL::dataFormatVRAMBytes(intformat, w, h);
-        }
-    }
-    size *= count;
-
-    llassert(size >= 0);
-
-    sTexMemMutex.lock();
-
-    // it is a precondition that no existing allocation exists for this texture
-    llassert(sTextureAllocs.find(texName) == sTextureAllocs.end());
-
-    sTextureAllocs[texName] = size;
-    sTextureBytes += size;
-
-    sTexMemMutex.unlock();
-}
-
-// track texture free on given texName
-void LLImageGLMemory::free_tex_image(U32 texName)
-{
-    sTexMemMutex.lock();
-    auto iter = sTextureAllocs.find(texName);
-    if (iter != sTextureAllocs.end()) // sometimes a texName will be "freed" before allocated (e.g. the first allocation on a given texName)
-    {
-        llassert(iter->second <= sTextureBytes); // sTextureBytes MUST NOT go below zero
-
-        sTextureBytes -= iter->second;
-
-        sTextureAllocs.erase(iter);
-    }
-
-    sTexMemMutex.unlock();
-}
-
-// track texture free on given texNames
-void LLImageGLMemory::free_tex_images(U32 count, const U32* texNames)
-{
-    for (U32 i = 0; i < count; ++i)
-    {
-        free_tex_image(texNames[i]);
-    }
-}
-
-// track texture free on currently bound texture
-void LLImageGLMemory::free_cur_tex_image()
-{
-    U32 texUnit = gGL.getCurrentTexUnitIndex();
-    llassert(texUnit == 0); // frees should always be done on tex unit 0
-    U32 texName = gGL.getTextureSlot(texUnit)->getCurrTexture();
-    free_tex_image(texName);
-}
-
-using namespace LLImageGLMemory;
-
 // static
 U64 LLImageGL::getTextureBytesAllocated()
 {
-    U64 bytes = sTextureBytes.load(std::memory_order_relaxed);
 #if LL_DARWIN
-    bytes += sMetalTextureBytes.load(std::memory_order_relaxed);
+    return sMetalTextureBytes.load(std::memory_order_relaxed);
+#else
+    return 0;
 #endif
-    return bytes;
 }
 
 // static
@@ -431,12 +342,6 @@ void LLImageGL::cleanupClass()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     LLImageGLThread::deleteSingleton();
-    // The names pooled on this context are the context's; the next one
-    // starts afresh.
-    sTextureNameGeneration.fetch_add(1, std::memory_order_relaxed);
-
-    const bool gl_alive = gGLManager.mInited;
-
     // Uploads handed over and never published. Their thread is gone, so discard the
     // staged native generation and its callbacks.
     for (PendingPublish& pending : sPendingPublishes)
@@ -447,22 +352,6 @@ void LLImageGL::cleanupClass()
     }
     sPendingPublishes.clear();
 
-    // Drain the deferred-delete ring so leftover texture names don't dangle
-    // in sTextureAllocs across re-init (the test fixture calls cleanupClass
-    // between tests). Always clear the C++ bookkeeping; only issue
-    // glDeleteTextures if GL is still around.
-    for (S32 i = 0; i < DELETE_DELAY + 1; ++i)
-    {
-        if (!sFreeList[i].empty())
-        {
-            free_tex_images((GLsizei)sFreeList[i].size(), sFreeList[i].data());
-            if (gl_alive)
-            {
-                glDeleteTextures((GLsizei)sFreeList[i].size(), sFreeList[i].data());
-            }
-            sFreeList[i].resize(0);
-        }
-    }
 
 }
 
@@ -537,97 +426,6 @@ U32 LLImageGL::integerPixelFormat(S32 internal_format)
 {
     return integer_format_info(internal_format).mPixelFormat;
 }
-
-// Whether an internal format is *sized*, i.e. legal for glTexStorage2D. Unsized
-// formats (GL_RGBA, GL_RGB, GL_RED, the legacy GL_LUMINANCE family, generic
-// GL_COMPRESSED_*) let the driver choose the actual storage, which immutable
-// allocation cannot express -- glTexStorage2D rejects them with GL_INVALID_ENUM.
-//
-// Whitelist rather than blacklist: an unrecognised format trips the assertion below
-// rather than being quietly handed to glTexStorage2D.
-static bool isSizedInternalFormat(S32 intformat)
-{
-    switch (intformat)
-    {
-    case GL_R8:
-    case GL_RG8:
-    case GL_RGB8:
-    case GL_RGBA8:
-    case GL_SRGB8:
-    case GL_SRGB8_ALPHA8:
-    case GL_RGB10_A2:
-    case GL_R11F_G11F_B10F:
-    case GL_RGBA16:
-    case GL_R16F:
-    case GL_RG16F:
-    case GL_RGB16F:
-    case GL_RGBA16F:
-    case GL_R32F:
-    case GL_RG32F:
-    case GL_RGB32F:
-    case GL_RGBA32F:
-    // Depth and depth-stencil, as used by render target attachments. GL_DEPTH_COMPONENT
-    // on its own is unsized and is correctly rejected below.
-    case GL_DEPTH_COMPONENT16:
-    case GL_DEPTH_COMPONENT24:
-    case GL_DEPTH_COMPONENT32:
-    case GL_DEPTH_COMPONENT32F:
-    case GL_DEPTH24_STENCIL8:
-    case GL_DEPTH32F_STENCIL8:
-    // Block-compressed formats are sized and glTexStorage2D accepts them; their uploads
-    // just have to go through glCompressedTexSubImage2D rather than glTexSubImage2D.
-    case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
-    case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT:
-    case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
-    case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT:
-    case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
-    case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT:
-        return true;
-    default:
-        // Every integer format is sized.
-        return LLImageGL::isIntegerFormat(intformat);
-    }
-}
-
-// The preconditions glTexStorage2D imposes, asserted rather than branched on.
-//
-// There is no mutable path any more. Immutable storage is required alongside GL 4.1 (see
-// LLGLManager::initExtensions), so nothing here chooses between two ways of allocating --
-// it catches a call site that would violate the requirement. Both cases below used to
-// report and silently fall back to glTexImage2D; a session exercising the render paths hit
-// neither, which is what made removing the fallback possible.
-//
-// Warned as well as asserted, because llassert compiles out unless SHOW_ASSERT is defined
-// and a plain Release build does not define it -- so on the builds that actually ship, the
-// assertion alone would say nothing and the only symptom would be a GL error and a texture
-// that never got storage. The warning is once-per-site and costs nothing on the path where
-// the invariant holds.
-//
-// The failure is deliberately not degraded: a texture that cannot be allocated immutably
-// cannot be expressed in D3D11/12 or Vulkan either, so there is nothing to fall back to.
-static void assertStorageAllocatable(U32 target, S32 intformat)
-{
-    // A non-2D target needs its own storage owner and must not arrive at the
-    // generic 2D allocator.
-    if (target != GL_TEXTURE_2D)
-    {
-        LL_WARNS_ONCE("RenderInit") << "Non-2D target 0x" << std::hex << target << std::dec
-                                    << " reached the 2D allocator."
-                                    << LL_ENDL;
-        llassert(false);
-    }
-
-    // glTexStorage2D cannot express a format that lets the driver pick the storage, and
-    // D3D11 has no unsized formats at all. Name a sized one (GL_RGBA8, not GL_RGBA).
-    if (!isSizedInternalFormat(intformat))
-    {
-        LL_WARNS_ONCE("RenderInit") << "Internal format 0x" << std::hex << intformat << std::dec
-                                    << " is unsized, so glTexStorage2D cannot express it. Name "
-                                    << "a sized format (GL_RGBA8, not GL_RGBA)." << LL_ENDL;
-        llassert(false);
-    }
-}
-
 
 //static
 S32 LLImageGL::dataFormatBits(S32 dataformat)
@@ -847,8 +645,6 @@ void LLImageGL::destroyGL()
     {
         gGL.getTextureSlot(stage)->unbind();
     }
-    // What follows is a new context, whose names these were not.
-    sTextureNameGeneration.fetch_add(1, std::memory_order_relaxed);
 }
 
 //static
@@ -907,12 +703,8 @@ LLImageGL::LLImageGL(const LLImageRaw* imageraw, bool usemipmaps/* = true*/)
 
 LLImageGL::~LLImageGL()
 {
-    // Always run the C++ bookkeeping (sImageList/sCount/freePickMask)
-    // even if GL is gone. The previous gate on gGLManager.mInited left
-    // stale `this` pointers in sImageList when an LLImageGL outlived GL
-    // teardown — a later iteration (e.g. dirtyTexOptions) would UAF.
-    // cleanup() is C++-safe on its own: destroyGLTexture is gated on
-    // mIsDisabled, and deleteTextures no-ops when mInited is false.
+    // Native resource retirement and C++ bookkeeping remain valid during
+    // renderer shutdown; image ownership may outlive the live renderer.
     cleanup();
     sImageList.erase(this);
     freePickMask();
@@ -987,15 +779,7 @@ void LLImageGL::init(bool usemipmaps)
 
 void LLImageGL::cleanup()
 {
-    if (!gGLManager.mIsDisabled)
-    {
-        destroyGLTexture();
-    }
-#if LL_DARWIN
-    clearMetalTextureAccounting();
-    mMetalTexture.reset();
-    mPendingMetalTexture.reset();
-#endif
+    destroyGLTexture();
     freePickMask();
     discardPendingAlpha();
 
@@ -1229,15 +1013,9 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
     // replacement brackets this call with beginUpload(): build into pending native
     // storage and keep the lower-resolution GL/Metal generation authoritative until the
     // upload has committed and publishMetalTextureAuthoritative() performs the handoff.
-    if (!staged_upload && mTexName != 0)
-    {
-        free_tex_image(mTexName);
-    }
     if (!staged_upload)
     {
         destroyGLTexture();
-        mStorageAllocated = false;
-        mStorage = StorageDesc();
     }
     else
     {
@@ -1360,13 +1138,7 @@ bool LLImageGL::createMetalTexture(
 
     // Publish only a complete native generation: stale GL/native storage is retired before
     // the replacement allocation, and any encode/commit failure clears the partial result.
-    if (mTexName != 0)
-    {
-        free_tex_image(mTexName);
-    }
     destroyGLTexture();
-    mStorageAllocated = false;
-    mStorage = StorageDesc();
     mCurrentDiscardLevel = discard_level;
     mHasMipMaps = true;
     mMipLevels = expected_levels;
@@ -1854,10 +1626,7 @@ bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
 
     mPendingMetalTexture.reset();
     mMetalTexture = std::move(texture);
-    if (mTexName == 0)
-    {
-        mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
-    }
+    mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
     updateMetalTextureAccounting();
     touchContents();
     return true;
@@ -1873,16 +1642,9 @@ bool LLImageGL::adoptMetalRenderTextureAuthoritative(
     }
 
     const ALMetalTextureDescriptor descriptor = mMetalTexture->descriptor();
-    if (mTexName != 0)
-    {
-        free_tex_image(mTexName);
-        LLImageGL::deleteTextures(1, &mTexName);
-        mTexName = 0;
-    }
+    mTexName = 0;
 
     mGLTextureCreated = false;
-    mStorageAllocated = false;
-    mStorage = StorageDesc();
     mHasMipMaps = descriptor.mipmap_level_count > 1;
     mMipLevels = static_cast<S32>(descriptor.mipmap_level_count);
     mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
@@ -1970,17 +1732,14 @@ void LLImageGL::discardMetalTexture() noexcept
         clearMetalTextureAccounting();
         mMetalTexture.reset();
         mPendingMetalTexture.reset();
-        if (mTexName == 0)
-        {
-            mTextureMemory = S64Bytes(0);
-        }
+        mTextureMemory = S64Bytes(0);
         touchContents();
     }
 }
 
 void LLImageGL::updateMetalTextureAccounting() noexcept
 {
-    const U64 desired = mTexName == 0 && mMetalTexture
+    const U64 desired = mMetalTexture
         ? metal_texture_bytes(*mMetalTexture)
         : 0;
     if (desired > mAccountedMetalTextureBytes)
@@ -2050,10 +1809,7 @@ bool LLImageGL::prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& comma
         destination.reset();
         if (&destination == &mMetalTexture)
         {
-            if (mTexName == 0)
-            {
-                mTextureMemory = S64Bytes(0);
-            }
+            mTextureMemory = S64Bytes(0);
             updateMetalTextureAccounting();
         }
         report_unsupported_metal_texture(getStorageInternalFormat(), mFormatPrimary, mFormatType);
@@ -2445,292 +2201,14 @@ bool LLImageGL::preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 heig
 }
 #endif
 
-// Whether to break an upload into sub_image_lines slices. This is latency smoothing,
-// not throughput: it only ever applies on the main thread, where one large
-// glTexSubImage2D can stall long enough to cost a frame. Off-thread uploads issue a
-// single call.
-//
-// The compressed guard is structural, not a driver workaround: sub_image_lines slices
-// by scanline stride, which is meaningless for block-compressed data. (The comment that
-// used to be here blamed an NVIDIA/Win10 glTexSubImage2D bug, long since fixed -- but the
-// guard would still be required without it.) Raw-name callers can pass a genuinely
-// block-compressed texture; the allocation paths always pass false, since driver-side
-// generic compression is gone.
-static bool should_stagger_image_set(bool compressed)
-{
-#if LL_LINUX
-    // Only NVIDIA's own driver slices. AMD and Intel were taken out on purpose
-    // (2dcb7ae22c, March 2025), and the drivers that report neither -- nouveau, zink
-    // on NVK, llvmpipe -- have not sliced since 1727c4d264. featuretable_linux.txt
-    // gives all of those threaded texture uploads instead, so a large upload leaves
-    // the main thread rather than stalling it.
-    return !compressed && on_main_thread() && gGLManager.mIsNVIDIA;
-#elif LL_DARWIN
-    return !compressed && on_main_thread() && gGLManager.mIsAMD;
-#else
-    // Setting media textures off-thread seems faster when not using sub_image_lines (Nvidia/Windows 10) -Cosmic,2023-03-31
-    return !compressed && on_main_thread() && !gGLManager.mIsIntel;
-#endif
-}
-
-// Equivalent to calling glSetSubImage2D(target, miplevel, x_offset, y_offset, width, height, pixformat, pixtype, src), assuming the total width of the image is data_width
-// However, instead there are multiple calls to glSetSubImage2D on smaller slices of the image
-static void sub_image_lines(U32 target, S32 miplevel, S32 x_offset, S32 y_offset, S32 width, S32 height, U32 pixformat, U32 pixtype, const U8* src, S32 data_width)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-
-    LL_PROFILE_ZONE_NUM(width);
-    LL_PROFILE_ZONE_NUM(height);
-
-    const U32 line_width = data_width * pixel_bytes(pixformat, pixtype);
-    const U32 y_offset_end = y_offset + height;
-
-    if (width == data_width && height % 32 == 0)
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("subimage - batched lines");
-
-        // full width, batch multiple lines at a time
-        // set batch size based on width
-        U32 batch_size = 32;
-
-        if (width > 1024)
-        {
-            batch_size = 8;
-        }
-        else if (width > 512)
-        {
-            batch_size = 16;
-        }
-
-        // full width texture, do 32 lines at a time
-        for (U32 y_pos = y_offset; y_pos < y_offset_end; y_pos += batch_size)
-        {
-            // If this keeps crashing, pass down data_size, looks like it is using
-            // imageraw->getData(); for data, but goes way over allocated size limit
-            glTexSubImage2D(target, miplevel, x_offset, y_pos, width, batch_size, pixformat, pixtype, src);
-            src += line_width * batch_size;
-        }
-    }
-    else
-    {
-        // partial width or strange height
-        for (U32 y_pos = y_offset; y_pos < y_offset_end; y_pos += 1)
-        {
-            // If this keeps crashing, pass down data_size, looks like it is using
-            // imageraw->getData(); for data, but goes way over allocated size limit
-            glTexSubImage2D(target, miplevel, x_offset, y_pos, width, 1, pixformat, pixtype, src);
-            src += line_width;
-        }
-    }
-}
-
-// static
-void LLImageGL::generateTextures(S32 numTextures, U32 *textures)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-    static constexpr U32 pool_size = 1024;
-    // pool of texture names, on the heap: as a thread_local array it was 4 KB of static TLS, which
-    // glibc takes out of the stack of every thread, those that never make a texture too
-    static thread_local std::unique_ptr<U32[]> name_pool;
-    static thread_local U32 name_count = 0; // number of available names in the pool
-    static thread_local U32 name_generation = 0; // the context the pool was filled on
-
-    const U32 generation = sTextureNameGeneration.load(std::memory_order_relaxed);
-    if (name_generation != generation)
-    {
-        name_count      = 0;
-        name_generation = generation;
-    }
-    if (name_count == 0)
-    {
-        LL_PROFILE_ZONE_NAMED("iglgt - reup pool");
-        // pool is emtpy, refill it
-        if (!name_pool)
-        {
-            name_pool = std::make_unique<U32[]>(pool_size);
-        }
-        glGenTextures(pool_size, name_pool.get());
-        name_count = pool_size;
-    }
-
-    if ((U32)numTextures <= name_count)
-    {
-        //copy teture names off the end of the pool
-        memcpy(textures, name_pool.get() + name_count - numTextures, sizeof(U32) * numTextures);
-        name_count -= numTextures;
-    }
-    else
-    {
-        LL_PROFILE_ZONE_NAMED("iglgt - pool miss");
-        glGenTextures(numTextures, textures);
-    }
-}
-
 // static
 void LLImageGL::updateClass()
 {
     sFrameCount++;
 
-    // wait a few frames before actually deleting the textures to avoid
-    // synchronization issues with the GPU
-    U32 idx = (sFrameCount+DELETE_DELAY) % (DELETE_DELAY+1);
-
-    if (!sFreeList[idx].empty())
-    {
-        gGL.forgetTextures((S32)sFreeList[idx].size(), sFreeList[idx].data());
-        free_tex_images((GLsizei) sFreeList[idx].size(), sFreeList[idx].data());
-        glDeleteTextures((GLsizei)sFreeList[idx].size(), sFreeList[idx].data());
-        sFreeList[idx].resize(0);
-    }
-
     publishUploads();
 }
 
-// static
-void LLImageGL::deleteTextures(S32 numTextures, const U32 *textures)
-{
-    if (gGLManager.mInited)
-    {
-        LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-        U32 idx = sFrameCount % (DELETE_DELAY+1);
-        for (S32 i = 0; i < numTextures; ++i)
-        {
-            sFreeList[idx].push_back(textures[i]);
-        }
-    }
-}
-
-// static
-void LLImageGL::resolveUploadFormat(S32& intformat, U32& pixformat, U32& pixtype,
-                                    const void*& pixels, S32 width, S32 height)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-    // Deprecated source formats are re-expressed as R8 / RG8 and read back through the
-    // texture's swizzle attribute.
-    //
-    // The upload paths do not write GL_TEXTURE_SWIZZLE_RGBA themselves — overwriting it is
-    // destructive when the bound texture already has a custom swizzle (e.g. an LLImageGL
-    // whose resolveDeprecatedFormat recorded a specific source mask,
-    // or any caller that set up its own swizzle before this call). The format rewrite
-    // here still happens so the allocation gets the right backing storage; applying the
-    // swizzle is the caller's responsibility. LLImageGL applies it to every name it creates,
-    // from mDeprecatedSourceFormat. Direct callers that pass GL_ALPHA / GL_LUMINANCE /
-    // GL_LUMINANCE_ALPHA must apply the matching swizzle themselves before uploading.
-    if (pixformat == GL_ALPHA)
-    { //GL_ALPHA → R8; caller-set {0,0,0,R} swizzle is required for {0,0,0,A} sample semantics
-        pixformat = GL_RED;
-        intformat = GL_R8;
-    }
-
-    if (pixformat == GL_LUMINANCE)
-    { //GL_LUMINANCE → R8; caller-set {R,R,R,1} swizzle is required for {L,L,L,1} sample semantics
-        pixformat = GL_RED;
-        intformat = GL_R8;
-    }
-
-    if (pixformat == GL_LUMINANCE_ALPHA)
-    { //GL_LUMINANCE_ALPHA → RG8; caller-set {R,R,R,G} swizzle is required for {L,L,L,A} sample semantics
-        pixformat = GL_RG;
-        intformat = GL_RG8;
-    }
-}
-
-// Upload one level into a texture that already has storage. Same format resolution as the
-// allocating paths, but a sub-image write, which is what makes it legal on immutable
-// storage. Does no VRAM accounting -- allocateTextureStorage recorded the whole object
-// when it created the storage.
-void LLImageGL::setManualSubImage(U32 target, S32 miplevel, S32 width, S32 height, U32 pixformat, U32 pixtype, const void* pixels)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-
-    if (pixels == nullptr)
-    {
-        // storage already exists and there is nothing to write into it
-        return;
-    }
-
-    S32 intformat = 0; // resolved but unused; storage was fixed at allocation
-    resolveUploadFormat(intformat, pixformat, pixtype, pixels, width, height);
-
-    stop_glerror();
-    {
-        LL_PROFILE_ZONE_NAMED("glTexSubImage2D");
-        LL_PROFILE_ZONE_NUM(width);
-        LL_PROFILE_ZONE_NUM(height);
-
-        if (should_stagger_image_set(false))
-        {
-            sub_image_lines(target, miplevel, 0, 0, width, height, pixformat, pixtype, (const U8*)pixels, width);
-        }
-        else
-        {
-            glTexSubImage2D(target, miplevel, 0, 0, width, height, pixformat, pixtype, pixels);
-        }
-    }
-    stop_glerror();
-}
-
-// Opt a freshly-allocated texture out of the sRGB transfer function.
-//
-// GL applies it on every read of an sRGB-format texture unless told otherwise, so without
-// this the decode is decided by the internal format and nothing else -- see
-// ALSampler::SRGBDecode for why that is the wrong way round for this renderer.
-//
-// The samplers already skip it, and a sampler object overrides the texture when one is
-// bound, so this is what makes a bind with sampler 0 behave the same way rather than
-// quietly linearising. Harmless on a non-sRGB format: the state exists but nothing reads it.
-static void skipSRGBDecode(U32 target)
-{
-    glTexParameteri(target, GL_TEXTURE_SRGB_DECODE_EXT, GL_SKIP_DECODE_EXT);
-}
-
-// Allocate a 2D texture on the currently-bound name and upload level 0.
-//
-// This owns the whole texture: call it exactly once per texture object. The result cannot
-// then be resized or reformatted -- build a new texture instead. That is the contract
-// glTexStorage2D imposes, and the one D3D11 requires of every resource.
-//
-// levels is the mip level COUNT (see calcMipLevelCount). Storage is allocated for all of
-// them, so the caller can fill levels 1+ with setManualSubImage.
-//
-// pixels may be null to allocate without uploading.
-void LLImageGL::allocateTexture2D(U32 target, S32 intformat, S32 width, S32 height,
-                                  U32 pixformat, U32 pixtype, const void* pixels, S32 levels)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-
-    levels = llmax(1, levels);
-
-    resolveUploadFormat(intformat, pixformat, pixtype, pixels, width, height);
-
-    free_cur_tex_image();
-
-    assertStorageAllocatable(target, intformat);
-
-    {
-        LL_PROFILE_ZONE_NAMED("glTexStorage2D");
-        glTexStorage2D(target, levels, intformat, width, height);
-        skipSRGBDecode(target);
-
-        if (pixels != nullptr)
-        {
-            if (should_stagger_image_set(false))
-            {
-                sub_image_lines(target, 0, 0, 0, width, height, pixformat, pixtype, (const U8*)pixels, width);
-            }
-            else
-            {
-                glTexSubImage2D(target, 0, 0, 0, width, height, pixformat, pixtype, pixels);
-            }
-        }
-    }
-
-    alloc_tex_image(width, height, intformat, 1, levels > 1);
-    stop_glerror();
-}
-
-//create an empty GL texture: just create a texture name
-//the texture is assiciate with some image by calling glTexImage outside LLImageGL
 bool LLImageGL::setImageMetadata(S32 discard_level, const LLImageRaw* imageraw)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -2824,17 +2302,9 @@ void LLImageGL::publishMetalTextureAuthoritative()
     llassert(mUploadInFlight);
     llassert(mPendingMetalTexture);
 
-    // The pending native generation is complete. Retire the transitional GL
-    // object only at this publication boundary so allocation/encoding failure
-    // leaves the previously visible generation intact.
-    if (mTexName != 0)
-    {
-        free_tex_image(mTexName);
-        LLImageGL::deleteTextures(1, &mTexName);
-        mTexName = 0;
-    }
-    mStorageAllocated = false;
-    mStorage = StorageDesc();
+    // The pending native generation is complete. Allocation/encoding failure
+    // leaves the previously visible generation intact until this boundary.
+    mTexName = 0;
     mGLTextureCreated = false;
     syncTexName(0);
 }
@@ -3076,20 +2546,17 @@ void LLImageGL::checkUploadBegun() const
 
 void LLImageGL::syncTexName(LLGLuint texname)
 {
-    bool publish = texname != 0;
+    // The retained API accepts only the native publication sentinel. Integer
+    // names cannot name a Metal resource.
+    llassert(texname == 0);
+    (void)texname;
+    bool publish = false;
 #if LL_DARWIN
-    publish = publish || mPendingMetalTexture != nullptr;
+    publish = mPendingMetalTexture != nullptr;
 #endif
     if (publish)
     {
-        if (texname != 0 && mTexName != 0 && mTexName != texname)
-        {
-            LLImageGL::deleteTextures(1, &mTexName);
-        }
-        if (texname != 0)
-        {
-            mTexName = texname;
-        }
+        mTexName = 0;
 
         // Marked bound as it publishes, so it is not thrown out before anything draws it.
         mLastBindTime = sLastFrameTime;
@@ -3101,7 +2568,7 @@ void LLImageGL::syncTexName(LLGLuint texname)
         {
             mMetalTexture = std::move(mPendingMetalTexture);
         }
-        if (mTexName == 0 && mMetalTexture)
+        if (mMetalTexture)
         {
             mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
         }
@@ -3392,7 +2859,6 @@ void LLImageGL::destroyGLTexture()
             mTextureMemory = (S64Bytes)0;
         }
 
-        LLImageGL::deleteTextures(1, &mTexName);
         mCurrentDiscardLevel = -1 ; //invalidate mCurrentDiscardLevel.
         mTexName = 0;
         mGLTextureCreated = false ;
@@ -3640,34 +3106,6 @@ void LLImageGL::calcAlphaChannelOffsetAndStride()
     }
 }
 
-// static
-void LLImageGL::applySwizzleForDeprecatedFormat(ALTextureSlot::eTextureType type, U32 original_format)
-{
-    // Swizzle table is owned here; legacy raw-name producers
-    // identify the format they originally asked for and let this routine
-    // pick the matching mask. Keeps GL_TEXTURE_SWIZZLE_RGBA and the
-    // mask-component constants out of the call sites.
-    LLGLint mask[4];
-    switch (original_format)
-    {
-    case GL_ALPHA:
-        // Original meaning: byte goes to alpha, (R,G,B) read as (0,0,0).
-        mask[0] = GL_ZERO; mask[1] = GL_ZERO; mask[2] = GL_ZERO; mask[3] = GL_RED;
-        break;
-    case GL_LUMINANCE:
-        // Original meaning: byte replicated to RGB, alpha = 1.
-        mask[0] = GL_RED;  mask[1] = GL_RED;  mask[2] = GL_RED;  mask[3] = GL_ONE;
-        break;
-    case GL_LUMINANCE_ALPHA:
-        // Original meaning: first byte replicated to RGB, second byte → alpha.
-        mask[0] = GL_RED;  mask[1] = GL_RED;  mask[2] = GL_RED;  mask[3] = GL_GREEN;
-        break;
-    default:
-        return;  // not a format we re-express via swizzle
-    }
-    glTexParameteriv(ALTextureSlot::getInternalType(type), GL_TEXTURE_SWIZZLE_RGBA, mask);
-}
-
 // The format of an image without an explicit one, from its component count. Worked out
 // once a count: beginUpload does it on the main thread before an upload is posted, so the
 // upload on LLImageGLThread finds it done and writes none of what the main thread reads.
@@ -3729,12 +3167,8 @@ void LLImageGL::resolveComponentFormat(S8 components)
 
 void LLImageGL::resolveDeprecatedFormat()
 {
-    // resolveUploadFormat rewrites the deprecated source/internal formats locally (so the
-    // allocation gets the right backing storage), but its rewrites don't propagate to
-    // LLImageGL's mFormatPrimary / mFormatInternal members. Subsequent native uploads,
-    // readBackRaw, and scaleDown read those members, so rewrite them at format-resolution
-    // time and remember the original format for the matching native or legacy swizzle.
-    //
+    // Resolve storage metadata once for native upload, readback and scale-down,
+    // retaining the source semantics for the native descriptor's swizzle.
     switch (mFormatPrimary)
     {
     case GL_ALPHA:
@@ -4175,70 +3609,11 @@ void LLImageGL::resetCurTexSizebar()
     sCurTexPickSize = -1 ;
 }
 
-// The internal format glTexStorage* should be handed. Block-compressed textures carry
-// their (sized) compressed format in mFormatPrimary rather than mFormatInternal, which is
-// the convention the glCompressedTexImage2D calls already follow.
+// Storage-format metadata for native image bindings and attachment producers.
+// Block-compressed textures keep their sized format in mFormatPrimary.
 S32 LLImageGL::getStorageInternalFormat() const
 {
     return isCompressed() ? mFormatPrimary : mFormatInternal;
-}
-
-// Allocate backing storage for the currently-bound texture at the given level-0 size,
-// and record the VRAM accounting for it. Callers replacing an existing texture are
-// responsible for releasing the old accounting (free_tex_image) themselves.
-void LLImageGL::allocateTextureStorage(S32 width, S32 height, bool has_mips)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-
-    mMipLevels = has_mips ? calcMipLevelCount(width, height) : 1;
-
-    assertStorageAllocatable(mTarget, getStorageInternalFormat());
-
-    {
-        LL_PROFILE_ZONE_NAMED("glTexStorage2D");
-        // Dimensions, format and level count are fixed for the lifetime of this texture
-        // object. Every later write must be a sub-image, and any change of size or format
-        // must create a new texture -- see scaleDown.
-        glTexStorage2D(mTarget, mMipLevels, getStorageInternalFormat(), width, height);
-        skipSRGBDecode(mTarget);
-        mStorageAllocated = true;
-        mStorage.mWidth  = width;
-        mStorage.mHeight = height;
-        mStorage.mLevels = mMipLevels;
-        mStorage.mFormat = getStorageInternalFormat();
-    }
-
-    alloc_tex_image(width, height, mFormatInternal, 1, has_mips);
-#if LL_DARWIN
-    // While both resources exist during migration, the GL allocation is the
-    // image's one logical budget entry.
-    clearMetalTextureAccounting();
-#endif
-}
-
-bool LLImageGL::storageFits(S32 width, S32 height) const
-{
-    // Nothing allocated yet: setImage allocates it at this size.
-    if (!mStorageAllocated || mStorage.mLevels == 0)
-    {
-        return true;
-    }
-
-    return mStorage.mWidth == width
-        && mStorage.mHeight == height
-        && mStorage.mFormat == getStorageInternalFormat()
-        && mStorage.mLevels == (mUseMipMaps ? calcMipLevelCount(width, height) : 1);
-}
-
-// static
-void LLImageGL::generateMipmaps(U32 target)
-{
-    // See the header comment: clearing the sampler makes the texture object's own
-    // SKIP_DECODE (written at allocation) govern the mip filter's colour space, instead of
-    // whatever sampler the last draw left on the slot. bindSampler dedups, so this is free
-    // when the slot is already sampler-less.
-    gGL.getTextureSlot(0)->bindSampler(0);
-    glGenerateMipmap(target);
 }
 
 bool LLImageGL::scaleDown(S32 desired_discard)

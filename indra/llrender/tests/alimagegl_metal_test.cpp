@@ -8,6 +8,7 @@
  */
 #include "linden_common.h"
 #include "../alrendercapabilities.h"
+#include "../llgl.h"
 #include "../llimagegl.h"
 #include "../../almetal/almetaldevice.h"
 #include "../../almetal/almetalresource.h"
@@ -148,4 +149,38 @@ TEST_CASE("Native compressed readback retains published block bytes and row pitc
     CHECK(LLImageGL::getTextureBytesAllocated() == baseline + bc3.size());
     image = nullptr;
     CHECK(LLImageGL::getTextureBytesAllocated() == baseline);
+}
+
+TEST_CASE("Native image destruction retires published and pending ownership while rendering is disabled",
+          "[alimagegl][almetal][publication][lifetime]")
+{
+    NativeImages f;
+    struct RestoreDisabled
+    {
+        bool previous = gGLManager.mIsDisabled;
+        ~RestoreDisabled() { gGLManager.mIsDisabled = previous; }
+    } restore;
+    const U64 baseline = LLImageGL::getTextureBytesAllocated();
+    const S32 baseline_images = LLImageGL::sCount;
+    const auto baseline_native = alMetalResourceAllocationStats();
+    for (bool disabled : {false, true})
+    {
+        const std::array<U8, 8 * 8 * 4> old_pixels{};
+        const std::array<U8, 4 * 4 * 4> pending_pixels{};
+        LLPointer<LLImageGL> image = new LLImageGL(8, 8, 4, false);
+        REQUIRE(image->createMetalTexture(0, old_pixels.data()));
+        image->beginUpload();
+        REQUIRE(image->setSize(4, 4, 4, 0));
+        REQUIRE(image->createMetalTexture(0, pending_pixels.data()));
+        CHECK(LLImageGL::sCount == baseline_images + 1);
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline + old_pixels.size());
+        REQUIRE(f.device->waitUntilIdle(&f.error)); // Exceptional test teardown only.
+        gGLManager.mIsDisabled = disabled;
+        image = nullptr;
+        CHECK(LLImageGL::sCount == baseline_images);
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline);
+        CHECK(alMetalResourceAllocationStats().texture_bytes_live ==
+            baseline_native.texture_bytes_live);
+        CHECK(gGLManager.mIsDisabled == disabled);
+    }
 }

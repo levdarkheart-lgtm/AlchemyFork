@@ -58,18 +58,6 @@ class ALMetalTexture;
 #define BYTES_TO_MEGA_BYTES(x) ((x) >> 20)
 #define MEGA_BYTES_TO_BYTES(x) ((x) << 20)
 
-namespace LLImageGLMemory
-{
-    // width/height are the level-0 dimensions. If has_mips is true,
-    // the recorded size includes the full mip pyramid down to 1x1
-    // (driver-padded via dataFormatVRAMBytes per level). count covers
-    // array slices / cube faces, each of which gets its own pyramid.
-    void alloc_tex_image(U32 width, U32 height, U32 intformat, U32 count, bool has_mips = false);
-    void free_tex_image(U32 texName);
-    void free_tex_images(U32 count, const U32* texNames);
-    void free_cur_tex_image();
-}
-
 //============================================================================
 // NOTE: thread-safe refcount rather than plain LLRefCount because native upload
 // publication takes a worker reference which is released on the main thread.
@@ -96,10 +84,8 @@ public:
     // publish; cleanup discards anything still pending.
     static void finishUploads();
 
-    // Get an estimate of how many bytes have been allocated in vram for
-    // textures. Allocations recorded via alloc_tex_image with has_mips=true
-    // include the full mip pyramid (driver-padded via dataFormatVRAMBytes);
-    // single-level allocations cover level 0 only.
+    // Estimate logical bytes owned by published native images, including every
+    // allocated mip, array slice, cube face and multisample plane.
     //
     // NOTE: viewer consumers (llviewertexture.cpp, lltextureview.cpp)
     // historically scaled this by 2x via a /512 divisor instead of /1024
@@ -113,10 +99,6 @@ public:
     // streamed images, render targets, buffers, staging and driver-visible
     // resources. Returns zero when no native device is active.
     static U64 getDeviceBytesAllocated();
-
-    // These 2 functions replace glGenTextures() and glDeleteTextures()
-    static void generateTextures(S32 numTextures, U32 *textures);
-    static void deleteTextures(S32 numTextures, const U32 *textures);
 
     // Size calculation
     //
@@ -197,8 +179,8 @@ protected:
     // Rewrite mFormatPrimary/mFormatInternal from deprecated forms
     // (GL_LUMINANCE / GL_ALPHA / GL_LUMINANCE_ALPHA) to their core-profile-
     // valid equivalents (GL_RED + R8 with a {R,R,R,1} swizzle, etc.). Records
-    // the source semantics so native descriptors and remaining legacy raw-name
-    // producers can apply the matching swizzle. No-op for non-deprecated formats.
+    // the source semantics so native descriptors apply the matching swizzle.
+    // No-op for non-deprecated formats.
     //
     // Must run AFTER calcAlphaChannelOffsetAndStride: the alpha layout
     // calc keys on the deprecated names (GL_LUMINANCE_ALPHA stride=2 etc).
@@ -213,42 +195,8 @@ public:
     bool setSize(S32 width, S32 height, S32 ncomponents, S32 discard_level = -1);
     void setComponents(S32 ncomponents) { mComponents = (S8)ncomponents ;}
 
-    // Allocate a 2D texture on the currently-bound name and upload level 0. This owns the
-    // whole texture: call it exactly once per texture object, and build a new texture
-    // rather than resizing or reformatting this one -- that is what glTexStorage2D
-    // requires, and what D3D11/12 and Vulkan require of every resource. pixels may be null
-    // to allocate only. levels is the mip level COUNT; storage is allocated for all of
-    // them, so levels 1+ can be filled with setManualSubImage.
-    static void allocateTexture2D(U32 target, S32 intformat, S32 width, S32 height,
-                                  U32 pixformat, U32 pixtype, const void *pixels,
-                                  S32 levels = 1);
-
-    // Upload one level into a texture that already has storage. Allocates nothing and does
-    // no VRAM accounting, which is what makes it legal on immutable storage. The caller
-    // must have allocated with a compatible format and size.
-    static void setManualSubImage(U32 target, S32 miplevel, S32 width, S32 height, U32 pixformat, U32 pixtype, const void *pixels);
-
-    // Generate the mip chain of the texture bound on SLOT 0, under the texture's own
-    // sRGB-decode state. Always use this instead of a bare glGenerateMipmap: mip generation
-    // follows the slot's TEXTURE_SRGB_DECODE -- sampler first if one is bound, else the
-    // texture's (EXT_texture_sRGB_decode issue 10) -- so a bare call mips sRGB-stored data
-    // raw or decoded depending on whatever sampler the last draw left behind. This clears
-    // the slot's sampler first, making the texture's SKIP_DECODE (written at allocation)
-    // govern deterministically.
-    static void generateMipmaps(U32 target);
-
-    // Apply the GL_TEXTURE_SWIZZLE_RGBA mask that re-expresses a deprecated
-    // source format on the currently-bound texture as samplable RGBA.
-    // `original_format` is one of GL_ALPHA, GL_LUMINANCE, GL_LUMINANCE_ALPHA;
-    // anything else is a no-op. Centralizes the swizzle table so callers
-    // outside llrender don't need to know the GL_RED/GL_GREEN/GL_ZERO/GL_ONE
-    // mask layout (or even that GL_TEXTURE_SWIZZLE_RGBA exists).
-    //
-    // Legacy raw-name producers use this to express deprecated source formats.
-    static void applySwizzleForDeprecatedFormat(ALTextureSlot::eTextureType type, U32 original_format);
-
     // Publish decoded-image geometry, format and discard state without creating
-    // GPU storage. Any obsolete GL or Metal backing is released.
+    // GPU storage. Any obsolete native backing is released.
     bool setImageMetadata(S32 discard_level, const LLImageRaw* imageraw);
 
     // Main thread: run fn once the native worker upload has published, or
@@ -296,8 +244,8 @@ public:
     bool isAlphaOnly() const { return (mUploadInFlight ? mPublished.mDeprecatedSourceFormat : mDeprecatedSourceFormat) == GL_ALPHA; }
     LLGLenum getFormatType() const { return mUploadInFlight ? mPublished.mFormatType : mFormatType; }
 
-    // Internal format to hand glTexStorage*. Block-compressed textures keep their sized
-    // compressed format in mFormatPrimary rather than mFormatInternal.
+    // Native storage-format metadata. Block-compressed textures keep their sized
+    // format in mFormatPrimary rather than mFormatInternal.
     S32 getStorageInternalFormat() const;
 
     bool getHasGLTexture() const { return mTexName != 0; }
@@ -402,26 +350,6 @@ public:
     mutable F64  mLastBindTime; // last time this was bound, by discard level
 
 private:
-    // Resolve the GL formats and pixel data an upload will actually use: deprecated
-    // format rewriting (GL_ALPHA/GL_LUMINANCE -> R8/RG8, read back through the
-    // texture's swizzle). In/out parameters are rewritten in place.
-    //
-    // Split out because allocation and upload need the resolved format
-    // independently: glTexStorage2D has to be given the internal format before
-    // any pixels are written. Resolution is deterministic, so resolving once for the
-    // allocation and again per upload yields consistent formats.
-    static void resolveUploadFormat(S32& intformat, U32& pixformat, U32& pixtype,
-                                    const void*& pixels, S32 width, S32 height);
-
-    // Allocate backing storage for the currently-bound texture at the given level-0
-    // size, and record its VRAM accounting. Sets mMipLevels. Callers replacing an
-    // existing texture must release the old accounting themselves.
-    void allocateTextureStorage(S32 width, S32 height, bool has_mips);
-
-    // Whether an upload of this level-0 size, in the current format, can be written into
-    // the storage the current texture object already has rather than needing a new one.
-    bool storageFits(S32 width, S32 height) const;
-
     void freePickMask();
     bool isCompressed() const;
 
@@ -548,21 +476,6 @@ private:
     std::unique_ptr<ALMetalTexture> mPendingMetalTexture;
     U64 mAccountedMetalTextureBytes = 0;
 #endif
-    // Whether mTexName has had its storage allocated yet. Storage is always immutable
-    // (glTexStorage2D), so it can be allocated exactly once: every upload afterwards is a
-    // sub-image write, and any size or format change has to build a new texture object.
-    // Set by allocateTextureStorage and reset whenever a fresh name is bound.
-    bool     mStorageAllocated = false;
-    // What allocateTextureStorage gave it, so a later upload can tell whether it still
-    // fits.
-    struct StorageDesc
-    {
-        S32 mWidth  = 0;
-        S32 mHeight = 0;
-        S32 mLevels = 0;
-        S32 mFormat = 0;
-    };
-    StorageDesc mStorage;
     U16      mWidth;
     U16      mHeight;
     S8       mCurrentDiscardLevel;
@@ -587,12 +500,11 @@ protected:
     LLGLint  mFormatInternal; // = GL internalformat
     LLGLenum mFormatPrimary;  // = GL format (pixel data format)
     LLGLenum mFormatType;
-    bool     mFormatSwapBytes;// if true, use glPixelStorei(GL_UNPACK_SWAP_BYTES, 1)
+    bool     mFormatSwapBytes; // source byte-order metadata
 
     // The original (deprecated) source format the caller asked for, when
-    // resolveDeprecatedFormat() rewrote it. Used at texture-creation time
-    // to apply the corresponding GL_TEXTURE_SWIZZLE_RGBA mask via
-    // applySwizzleForDeprecatedFormat. 0 = no rewrite happened.
+    // resolveDeprecatedFormat() rewrote it. Native descriptors apply the
+    // corresponding channel swizzle. 0 = no rewrite happened.
     LLGLenum mDeprecatedSourceFormat;
 
     // STATICS
