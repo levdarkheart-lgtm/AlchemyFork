@@ -2148,7 +2148,7 @@ TEST_CASE("Native upload keeps alpha and existing scalar conversions", "[image-u
     }
     // Packed BGRA and its existing whole-word swap must not become byte-swap no-ops.
     {
-        const auto format = metal_upload_format(GL_RGB8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV);
+        const auto format = metal_upload_format(GL_RGBA8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV);
         const U8* upload = nullptr;
         std::size_t row_bytes = 0;
         std::vector<U8> converted;
