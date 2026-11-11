@@ -78,7 +78,6 @@ LLGLSLShader    gOneTextureFilterProgram;
 LLGLSLShader    gDebugProgram;
 LLGLSLShader    gClipProgram;
 LLGLSLShader    gAlphaMaskProgram;
-LLGLSLShader    gBenchmarkProgram;
 LLGLSLShader    gCopyProgram;
 LLGLSLShader    gCopyDepthProgram;
 LLGLSLShader    gDrawColorProgram;
@@ -1466,15 +1465,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gClipProgram.mShaderFiles.push_back(make_pair("interface/clipF.glsl", GL_FRAGMENT_SHADER));
         gClipProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         built(gClipProgram.createShader(), gClipProgram);
-    }
-
-    {
-        gBenchmarkProgram.mName = "Benchmark Shader";
-        gBenchmarkProgram.mShaderFiles.clear();
-        gBenchmarkProgram.mShaderFiles.push_back(make_pair("interface/benchmarkV.glsl", GL_VERTEX_SHADER));
-        gBenchmarkProgram.mShaderFiles.push_back(make_pair("interface/benchmarkF.glsl", GL_FRAGMENT_SHADER));
-        gBenchmarkProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gBenchmarkProgram.createShader(), gBenchmarkProgram);
     }
 
     {

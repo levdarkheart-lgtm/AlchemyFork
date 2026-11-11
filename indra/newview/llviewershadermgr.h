@@ -109,7 +109,6 @@ extern LLGLSLShader         gOcclusionCubeProgram;
 extern LLGLSLShader         gGlowCombineProgram;
 extern LLGLSLShader         gDebugProgram;
 extern LLGLSLShader         gClipProgram;
-extern LLGLSLShader         gBenchmarkProgram;
 extern LLGLSLShader         gCopyProgram;
 extern LLGLSLShader         gCopyDepthProgram;
 extern LLGLSLShader         gDrawColorProgram;

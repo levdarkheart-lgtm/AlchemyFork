@@ -109,6 +109,7 @@ target_sources(
     almetalsculptpreview.cpp
     almetalsurface.mm
     almetalterrainpaint.cpp
+    almetaltexturebenchmark.mm
     almetaltextureops.cpp
     almetaluirenderer.cpp
     almetalworld.cpp
@@ -132,6 +133,7 @@ target_sources(
       almetalsculptpreview.h
       almetalsurface.h
       almetalterrainpaint.h
+      almetaltexturebenchmark.h
       almetaltextureops.h
       almetaluirenderer.h
       almetalworld.h
@@ -167,6 +169,7 @@ set_source_files_properties(
   almetalshadowmaterials.mm
   almetalstagetiming.mm
   almetalsurface.mm
+  almetaltexturebenchmark.mm
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
 
@@ -191,6 +194,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_shadow_materials_test.mm
             tests/almetal_stage_timing_test.mm
             tests/almetal_frame_profile_test.mm
+            tests/almetal_benchmark_test.mm
             tests/almetal_shadow_capture_test.mm
             tests/almetal_shadow_gather_test.mm
             tests/almetal_world_diagnostics_test.cpp
@@ -219,6 +223,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_shadow_materials_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_stage_timing_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_frame_profile_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_benchmark_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_gather_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_gbuffer_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
