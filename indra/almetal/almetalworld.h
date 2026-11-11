@@ -1578,6 +1578,12 @@ struct ALMetalWorldPresentationScene
     bool dither_animated = true;
     std::uint32_t preview_mode = 0;
     std::uint32_t frame_id = 0;
+    // Original final window viewport. Both zero preserves source-size output
+    // for offscreen/snapshot callers. Post effects run at these pixels before
+    // UI composition, independently of the world's rendering resolution.
+    std::uint32_t output_width = 0;
+    std::uint32_t output_height = 0;
+    float viewport_origin[2] = {0.f, 0.f};
 };
 
 // Per-frame flare visibility and temporal state. The source is the sharp

@@ -137,14 +137,17 @@ bool ALMetalRetainedBackground::publish(
     if (!validContext(context) || !color || !depth ||
         color_owner->descriptor().color_attachment_count != 1 ||
         color->descriptor().width == 0 || color->descriptor().height == 0 ||
+        depth->descriptor().width == 0 || depth->descriptor().height == 0 ||
         !validTexture(color, context, false, color->descriptor().width, color->descriptor().height) ||
-        !validTexture(depth, context, true, color->descriptor().width, color->descriptor().height))
+        !validTexture(depth, context, true, depth->descriptor().width, depth->descriptor().height))
     {
         fail(error, "World UI background requires a coherent native color/depth pair");
         return false;
     }
     const bool scale = color->descriptor().width != context.width ||
-        color->descriptor().height != context.height;
+        color->descriptor().height != context.height ||
+        depth->descriptor().width != context.width ||
+        depth->descriptor().height != context.height;
     auto candidate = scale
         ? resample(context, source_frame, std::move(color_owner), std::move(depth_owner), error)
         : retain(context, source_frame, std::move(color_owner), std::move(depth_owner), error);

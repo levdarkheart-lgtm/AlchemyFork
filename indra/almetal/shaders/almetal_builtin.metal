@@ -15238,6 +15238,7 @@ struct ALMetalWorldPresentationConstants
     float4 grain_tint_dither;
     uint4 config;
     uint4 noise;
+    float4 viewport;
 };
 
 static float2 almetal_world_presentation_lens_uv(
@@ -15499,8 +15500,7 @@ fragment float4 almetal_world_presentation_fragment(
     sampler mirror_sampler [[sampler(0)]],
     constant ALMetalWorldPresentationConstants& constants [[buffer(0)]])
 {
-    const float2 dimensions = float2(
-        source.get_width(), source.get_height());
+    const float2 dimensions = constants.viewport.xy;
     float2 pane_uv = input.texcoord;
     bool from_reference = false;
     if (constants.config.x == 1u)
@@ -15527,10 +15527,10 @@ fragment float4 almetal_world_presentation_fragment(
     color.rgb = almetal_world_presentation_cvd(
         color.rgb, constants.config.y, constants.effects.x);
 
-    // GL's gl_FragCoord counts from the lower-left; Metal positions count
-    // from the top. Preserve the authored screen-space noise location.
-    const float2 gl_position = float2(
-        input.position.x, dimensions.y - input.position.y);
+    // This offscreen target stores GL lower rows first, just like its source.
+    // Only the final CAMetalLayer presentation flips those rows. Fragment
+    // position already has the original gl_FragCoord pixel convention here.
+    const float2 gl_position = input.position.xy + constants.viewport.zw;
     color.rgb = almetal_world_presentation_grain(
         color.rgb, gl_position, constants, dimensions.y);
     color.rgb = almetal_world_presentation_dither(

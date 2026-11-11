@@ -53,6 +53,8 @@ public:
     // Caller has committed the coherent pre-UI world. Target leases pin pool
     // ownership; independent texture wrappers pin borrowed native storage.
     // Caller must exclude these native handles from future borrowed writes.
+    // Final display color can already be window-sized while world depth is
+    // still at rendering resolution. Normalize each with its original sampler.
     bool publish(const Context& context, std::uint64_t source_frame,
                  std::shared_ptr<const ALMetalRenderTarget> color_owner,
                  std::shared_ptr<const ALMetalRenderTarget> depth_owner,

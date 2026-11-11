@@ -10461,11 +10461,19 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         ALMetalWorldPresentationScene presentation;
                         presentation.source =
                             capture.display_post_target.get();
+                        // Original final blit evaluates screen-space effects
+                        // at the final viewport, including snapshot overrides.
+                        const LLRect& final_viewport = gViewerWindow->getWorldViewRectRaw();
+                        presentation.output_width = llmax(final_viewport.getWidth(), 0);
+                        presentation.output_height = llmax(final_viewport.getHeight(), 0);
+                        presentation.viewport_origin[0] = final_viewport.mLeft;
+                        presentation.viewport_origin[1] = final_viewport.mBottom;
                         const bool suppress_effects =
                             suppressesLensAndPrintEffects();
                         bool exact_presentation =
-                            !wants_reference_capture ||
-                            static_cast<bool>(pending_reference_still);
+                            presentation.output_width != 0 && presentation.output_height != 0 &&
+                            (!wants_reference_capture ||
+                             static_cast<bool>(pending_reference_still));
 
                         static LLCachedControl<F32> distort_amount(
                             gSavedSettings, "RenderLensDistortionAmount",
@@ -11299,8 +11307,9 @@ bool LLPipeline::readMetalWorldSnapshotDepth(
     }
     const MetalWorldSimpleCapture& capture =
         *mMetalWorldSimpleCapture;
-    const ALMetalTexture* texture = capture.target
-        ? capture.target->depthStencilTexture() : nullptr;
+    const auto& normalized = capture.ui_frame_background;
+    const ALMetalTexture* texture = normalized && normalized->source_frame == gFrameCount
+        ? normalized->depthTexture() : nullptr;
     ALMetalDevice* device = getViewerMetalDevice();
     if (!capture.world_ui_chain_snapshot ||
         capture.world_ui_capture_active || !texture || !device ||
@@ -11325,6 +11334,8 @@ bool LLPipeline::readMetalWorldSnapshotDepth(
 void LLPipeline::cancelMetalWorldSnapshotCapture()
 {
     mMetalWorldSnapshotRequested = false;
+    if (mMetalWorldSimpleCapture)
+        mMetalWorldSimpleCapture->ui_frame_background.reset();
 }
 
 bool LLPipeline::beginMetalWorldUICompositionCapture()
@@ -11354,10 +11365,21 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
             return false;
         background = capture.presentation_target->colorTexture(0);
         depth = capture.target->depthStencilTexture();
-        if (!background || !depth ||
-            background->descriptor().width != depth->descriptor().width ||
-            background->descriptor().height != depth->descriptor().height)
-            return false;
+        if (!background || !depth) return false;
+        // Exact snapshots/debug frames cannot reuse a preceding world. Their
+        // final color is viewport-sized; normalize the independent world depth
+        // with PointClamp before the ordered UI/HUD capture and depth readback.
+        ALMetalRetainedBackground current;
+        const ALMetalRetainedBackground::Context context{
+            capture.device, &capture, 1, background->width(), background->height(),
+            LLRender::sReverseZ};
+        std::string error;
+        if (!current.publish(context, gFrameCount,
+                capture.presentation_target, capture.target, &error)) return false;
+        capture.ui_frame_background = current.find(context);
+        if (!capture.ui_frame_background) return false;
+        background = capture.ui_frame_background->colorTexture();
+        depth = capture.ui_frame_background->depthTexture();
     }
     else
     {
@@ -11488,7 +11510,9 @@ void LLPipeline::endMetalWorldUICompositionCapture()
         true, surface_ready, &surface_submitted, &capture_failure,
         &capture_end_state);
     capture.world_ui_capture_active = false;
-    capture.ui_frame_background.reset();
+    // Snapshot depth is read after this submission. Retain its exact normalized
+    // pre-UI depth until cancel, rather than reading reduced world coordinates.
+    if (!capture.world_ui_chain_snapshot) capture.ui_frame_background.reset();
     if (presentation_requested)
     {
         capture.world_ui_presentation_state_frame = gFrameCount;

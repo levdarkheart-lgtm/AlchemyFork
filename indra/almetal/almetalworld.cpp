@@ -358,8 +358,9 @@ namespace
         float grain_tint_dither[4];
         std::uint32_t config[4];
         std::uint32_t noise[4];
+        float viewport[4];
     };
-    static_assert(sizeof(WorldPresentationConstants) == 176);
+    static_assert(sizeof(WorldPresentationConstants) == 192);
 
     struct alignas(16) WorldLensFlareStateConstants
     {
@@ -11040,6 +11041,8 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
             values[2] >= 0.f && values[2] <= 1.f;
     };
     if (!mImpl || !mImpl->device || !scene.source ||
+        (scene.output_width == 0) != (scene.output_height == 0) ||
+        !finite(scene.viewport_origin, 2) ||
         scene.reference_mode > 2 || scene.cvd_mode > 3 ||
         scene.grain_style > 3 || scene.preview_mode > 7 ||
         (scene.dither_bits != 8 && scene.dither_bits != 10) ||
@@ -11195,10 +11198,16 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
     constants.noise[1] = scene.grain_animated ? 1u : 0u;
     constants.noise[2] = scene.dither_bits;
     constants.noise[3] = scene.dither_animated ? 1u : 0u;
+    const auto output_width = scene.output_width ? scene.output_width : source.width;
+    const auto output_height = scene.output_height ? scene.output_height : source.height;
+    constants.viewport[0] = static_cast<float>(output_width);
+    constants.viewport[1] = static_cast<float>(output_height);
+    constants.viewport[2] = scene.viewport_origin[0];
+    constants.viewport[3] = scene.viewport_origin[1];
 
     ALMetalRenderTargetDescriptor output_descriptor;
-    output_descriptor.width = source.width;
-    output_descriptor.height = source.height;
+    output_descriptor.width = output_width;
+    output_descriptor.height = output_height;
     output_descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
     output_descriptor.colors[0].label =
         "Alchemy final BGRA8 presentation color";
@@ -11229,10 +11238,10 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
         return nullptr;
     }
     const ALMetalViewport viewport{
-        0.0, 0.0, static_cast<double>(source.width),
-        static_cast<double>(source.height), 0.0, 1.0};
+        0.0, 0.0, static_cast<double>(output_width),
+        static_cast<double>(output_height), 0.0, 1.0};
     const ALMetalScissorRect scissor{
-        0, 0, source.width, source.height};
+        0, 0, output_width, output_height};
     const ALMetalTexture* reference = scene.reference_mode != 0
         ? scene.reference_texture : scene.source->colorTexture(0);
     const bool encoded =
