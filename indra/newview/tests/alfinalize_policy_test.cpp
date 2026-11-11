@@ -88,12 +88,32 @@ struct FinalizeFlushBoundary
 {
     unsigned calls = 0;
     std::function<void()> observe;
+    std::vector<std::string> stream_events;
+    LLRender::eMatrixMode matrix_mode = LLRender::MM_PROJECTION;
+    bool shader_bound = true;
     void flush()
     {
         ++calls;
+        stream_events.emplace_back("flush");
         if (observe) observe();
     }
+    void matrixMode(LLRender::eMatrixMode mode)
+    {
+        stream_events.emplace_back("matrix-mode");
+        matrix_mode = mode;
+    }
 } finalize_flush;
+// This named recorder proves actual policy call order only. The real shader
+// lifecycle owns flush-before-unbind semantics; no GPU draw is simulated here.
+struct FinalizeShaderBoundary
+{
+    static void unbind()
+    {
+        finalize_flush.flush();
+        finalize_flush.shader_bound = false;
+        finalize_flush.stream_events.emplace_back("unbind");
+    }
+};
 struct FinalizePolicyPipeline
 {
     using LensDistortFit = LLPipeline::LensDistortFit;
@@ -156,6 +176,7 @@ struct FinalizePolicyPipeline
     U32 requestedMetalBloomMipCount(bool, F32, F32, U32, U32) const;
     bool wantsMetalScreenSpaceReflections() const;
     bool hasMetalScreenSpaceReflectionHistory() const;
+    void prepareCutoutAlphaStream();
     void clearSceneMap();
     void reconcileNativeHistoryState(const ALRenderResourcePlan& plan, bool hdr, bool render_sized_recreated);
     bool metalScopeSourceCurrent(U32, U32) const;
@@ -175,6 +196,7 @@ struct FinalizePolicyPipeline
 #pragma push_macro("gViewerWindow")
 #pragma push_macro("ALMetalRenderTarget")
 #pragma push_macro("gGL")
+#pragma push_macro("LLGLSLShader")
 #define LLPipeline FinalizePolicyPipeline
 #define LLCachedControl FinalizeCachedControl
 #define gSavedSettings finalize_settings
@@ -183,7 +205,9 @@ struct FinalizePolicyPipeline
 #define gViewerWindow (&finalize_window)
 #define ALMetalRenderTarget FinalizeSource
 #define gGL finalize_flush
+#define LLGLSLShader FinalizeShaderBoundary
 #include "../pipeline_finalize_config.inl"
+#pragma pop_macro("LLGLSLShader")
 #pragma pop_macro("gGL")
 #pragma pop_macro("ALMetalRenderTarget")
 #pragma pop_macro("gViewerWindow")
@@ -220,6 +244,30 @@ struct FinalizeCase
             finalize_settings.getControl(name)->resetToDefault(true);
     }
 };
+}
+
+TEST_CASE("Cutout alpha policy retains the ordered opaque stream boundary",
+          "[native-finalize-policy][cutout-stream-boundary]")
+{
+    FinalizeCase f;
+    for (auto initial_mode : {LLRender::MM_PROJECTION, LLRender::MM_MODELVIEW})
+    {
+        finalize_flush = {};
+        finalize_flush.matrix_mode = initial_mode;
+        bool observed_bound_before_unbind = false;
+        finalize_flush.observe = [&]
+        {
+            observed_bound_before_unbind = finalize_flush.shader_bound;
+            CHECK(finalize_flush.matrix_mode == initial_mode);
+        };
+        f.pipeline.prepareCutoutAlphaStream();
+        CHECK(observed_bound_before_unbind);
+        CHECK(finalize_flush.calls == 1);
+        CHECK_FALSE(finalize_flush.shader_bound);
+        CHECK(finalize_flush.matrix_mode == LLRender::MM_MODELVIEW);
+        CHECK(finalize_flush.stream_events ==
+              std::vector<std::string>{"flush", "unbind", "matrix-mode"});
+    }
 }
 
 TEST_CASE("Native reference request is consumed once at an ordinary copy attempt",

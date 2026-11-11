@@ -6068,9 +6068,9 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
 
                     if (cutout)
                     {
-                        // The colour is the subject premultiplied by its
-                        // coverage; the coverage itself goes into alpha here.
-                        gPipeline.copyCutoutCoverageToAlpha();
+                        // Retain the original final-copy stream boundary
+                        // before reading the native presentation's RGBA.
+                        LLGLSLShader::unbind();
                     }
 
                     if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR)

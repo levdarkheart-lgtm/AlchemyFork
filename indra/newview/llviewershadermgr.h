@@ -113,7 +113,6 @@ extern LLVector4            gShinyOrigin;
 extern LLGLSLShader         gOcclusionProgram;
 extern LLGLSLShader         gOcclusionCubeProgram;
 extern LLGLSLShader         gDebugProgram;
-extern LLGLSLShader         gCopyProgram;
 extern LLGLSLShader         gCopyDepthProgram;
 
 

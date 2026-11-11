@@ -1410,19 +1410,6 @@ void LLPipeline::init()
     mDeferredVB = new LLVertexBuffer(DEFERRED_VB_MASK);
     mDeferredVB->allocateBuffer(8, 0);
 
-    {
-        mScreenTriangleVB = new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX);
-        mScreenTriangleVB->allocateBuffer(3, 0);
-        LLStrider<LLVector3> vert;
-        mScreenTriangleVB->getVertexStrider(vert);
-
-        vert[0].set(-1, 1, 0);
-        vert[1].set(-1, -3, 0);
-        vert[2].set(3, 1, 0);
-
-        mScreenTriangleVB->unmapBuffer();
-    }
-
     //
     // Update all settings to trigger a cached settings refresh
     //
@@ -18736,7 +18723,6 @@ void LLPipeline::cleanup()
     mInitialized = false;
 
     mDeferredVB = NULL;
-    mScreenTriangleVB = nullptr;
 
     mCubeVB = NULL;
 
@@ -23023,12 +23009,11 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
     // do water haze just before pre water alpha
     U32 water_haze_pass = LLDrawPool::POOL_ALPHA_PRE_WATER;
 
-    // A cutout's coverage is seeded once every opaque pool has laid down its
-    // depth -- fullbright, shiny and alpha-masked fullbright draw here, after
-    // lighting, and would otherwise be left uncovered -- and before the first
-    // blended pool adds to it.
-    U32 cutout_seed_pass = LLDrawPool::POOL_ALPHA_PRE_WATER;
-    bool done_cutout_seed = !cullingToCutoutSubject();
+    // Preserve the original immediate-stream/shader boundary after opaque
+    // pools and before the first blended pool (or at the end if none exists).
+    // Native coverage is encoded separately with the ordered world batches.
+    const U32 cutout_stream_pass = LLDrawPool::POOL_ALPHA_PRE_WATER;
+    bool done_cutout_stream = !cullingToCutoutSubject();
 
     calcNearbyLights(camera);
 
@@ -23087,10 +23072,10 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             done_atmospherics = true;
         }
 
-        if (cur_type >= cutout_seed_pass && !done_cutout_seed)
+        if (cur_type >= cutout_stream_pass && !done_cutout_stream)
         {
-            seedCutoutCoverageFromDepth();
-            done_cutout_seed = true;
+            prepareCutoutAlphaStream();
+            done_cutout_stream = true;
         }
 
         if (cur_type >= water_haze_pass && !done_water_haze)
@@ -23181,9 +23166,9 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
         stop_glerror();
     }
 
-    if (!done_cutout_seed)
+    if (!done_cutout_stream)
     {
-        seedCutoutCoverageFromDepth();
+        prepareCutoutAlphaStream();
     }
 
     gGLLastMatrix = NULL;
@@ -28588,52 +28573,6 @@ void LLPipeline::drawFarPlaneQuad(U32 depth_func, const LLColor4* color)
     gGL.matrixMode(LLRender::MM_MODELVIEW);
     gGL.popMatrix();
 }
-
-void LLPipeline::seedCutoutCoverageFromDepth()
-{
-    LL_PROFILE_GPU_ZONE("cutout coverage seed");
-
-    LLGLDisable blend(GL_BLEND);
-
-    // Nothing covers the background, so it is cleared to nothing, colour and
-    // alpha both. Lighting left it the sky's emissive copy (magenta, with the
-    // emissive buffer on) or black; the blended geometry drawn over it next has
-    // to be composited over black for the colour to come out premultiplied by
-    // the coverage accumulated alongside it.
-    {
-        LLGLSColorMask mask(true, true);
-        drawFarPlaneQuad(GL_LEQUAL, &LLColor4::transparent);
-    }
-
-    // Opaque geometry covers its texel whole. The alpha pool's blend adds to
-    // this (alphaWritesCoverage), so a blended surface over opaque stays at 1
-    // and over the background becomes its own coverage.
-    {
-        LLGLSColorMask mask(false, true);
-        drawFarPlaneQuad(GL_GREATER, &LLColor4::white);
-    }
-}
-
-void LLPipeline::copyCutoutCoverageToAlpha()
-{
-    LL_PROFILE_GPU_ZONE("cutout coverage copy");
-
-    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
-    LLGLDisable blend(GL_BLEND);
-    LLGLSColorMask mask(false, true);
-
-    // Across the whole frame, sampled as the final blit sampled the colour, so
-    // the two agree texel for texel whatever the scene target's resolution.
-    const LLRect& rect = gViewerWindow->getWorldViewRectRaw();
-    gGL.setViewport(rect.mLeft, rect.mBottom, rect.getWidth(), rect.getHeight());
-
-    gCopyProgram.bind();
-    gCopyProgram.bindTexture(LLShaderMgr::DIFFUSE_MAP, &mRT->screen);
-    mScreenTriangleVB->setBuffer();
-    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-    gCopyProgram.unbind();
-}
-
 
 void LLPipeline::readAttachmentTimes()
 {

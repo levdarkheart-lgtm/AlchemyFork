@@ -94,7 +94,6 @@ LLGLSLShader    gOcclusionProgram;
 LLGLSLShader    gOcclusionCubeProgram;
 LLGLSLShader    gDebugProgram;
 LLGLSLShader    gAlphaMaskProgram;
-LLGLSLShader    gCopyProgram;
 LLGLSLShader    gCopyDepthProgram;
 
 //object shaders
@@ -1111,15 +1110,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gDebugProgram.mShaderFiles.push_back(make_pair("interface/debugF.glsl", GL_FRAGMENT_SHADER));
         gDebugProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         built(gDebugProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDebugProgram);
-    }
-
-    {
-        gCopyProgram.mName = "Copy Shader";
-        gCopyProgram.mShaderFiles.clear();
-        gCopyProgram.mShaderFiles.push_back(make_pair("interface/copyV.glsl", GL_VERTEX_SHADER));
-        gCopyProgram.mShaderFiles.push_back(make_pair("interface/copyF.glsl", GL_FRAGMENT_SHADER));
-        gCopyProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gCopyProgram.createShader(), gCopyProgram);
     }
 
     {

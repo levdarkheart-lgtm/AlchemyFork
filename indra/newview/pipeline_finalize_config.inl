@@ -27,6 +27,15 @@
  * $/LicenseInfo$
  */
 
+// The original cutout seed quads drained the immediate stream and left no
+// shader bound, with MODELVIEW selected. Keep that real CPU boundary at its
+// original pool position; native coverage does not need duplicate geometry.
+void LLPipeline::prepareCutoutAlphaStream()
+{
+    LLGLSLShader::unbind();
+    gGL.matrixMode(LLRender::MM_MODELVIEW);
+}
+
 // Production method bodies are also compiled by the focused CPU policy test.
 // No viewer instance or Metal resource is constructed by that test.
 
