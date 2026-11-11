@@ -450,6 +450,16 @@ set(INDRA_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 # Set up common variables
 include(Variables)
 
+if(NOT DARWIN OR NOT ARCH STREQUAL "arm64")
+  message(FATAL_ERROR "Alchemy Metal supports native Apple Silicon macOS only")
+endif()
+if(CMAKE_OSX_ARCHITECTURES AND NOT CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+  message(FATAL_ERROR "Alchemy Metal requires a single arm64 architecture")
+endif()
+if(AL_BUILD_DULLAHAN_EXAMPLE)
+  message(FATAL_ERROR "The dependency's OpenGL example is not part of the native Metal product")
+endif()
+
 if(DARWIN)
   enable_language(OBJC OBJCXX)
 endif()
