@@ -1152,6 +1152,15 @@ void LLVertexBuffer::setBuffer()
     }
 }
 
+#if LL_DARWIN
+bool LLVertexBuffer::prepareMetalBuffers(bool require_indices)
+{
+    setBuffer();
+    return hasPublishedMetalVertexBuffer() &&
+        (!require_indices || hasPublishedMetalIndexBuffer());
+}
+#endif
+
 void LLVertexBuffer::setPositionData(const LLVector4a* data)
 {
     flush_vbo(GL_ARRAY_BUFFER, 0, sizeof(LLVector4a) * getNumVerts()-1, (U8*) data, mMappedData);

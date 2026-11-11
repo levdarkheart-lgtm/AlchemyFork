@@ -270,6 +270,9 @@ public:
     U32 getOffset(AttributeType type) const { return mOffsets[type]; }
 
 #if LL_DARWIN
+    // Retry this buffer's queued stores before capturing native handles.
+    // Nonindexed draws require only the current vertex store.
+    bool prepareMetalBuffers(bool require_indices);
     ALMetalBuffer* getMetalVertexBuffer() const noexcept { return mMetalBuffer.get(); }
     ALMetalBuffer* getMetalIndexBuffer() const noexcept { return mMetalIndices.get(); }
     // Raw getters above also expose allocated/prior generations to resource
