@@ -65,10 +65,6 @@ namespace LL
             vec2 mScale = vec2(1.f, 1.f);
             S32 mTexCoord = INVALID_INDEX;
 
-            // get the texture transform as a packed array of vec4's
-            // dst MUST point to at least 2 vec4's
-            void getPacked(vec4* dst) const;
-
             const TextureTransform& operator=(const Value& src);
             void serialize(JsonWriter& dst) const;
         };

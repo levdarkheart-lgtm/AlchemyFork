@@ -1111,12 +1111,6 @@ void Material::Unlit::serialize(JsonWriter& dst) const
     // no members and object has already been created, nothing to do
 }
 
-void TextureTransform::getPacked(vec4* packed) const
-{
-    packed[0] = vec4(mScale.mV[0], mScale.mV[1], mRotation, mOffset.mV[0]);
-    packed[1] = vec4(mOffset.mV[1], 0.f, 0.f, 0.f);
-}
-
 const TextureTransform& TextureTransform::operator=(const Value& src)
 {
     mPresent = true;
