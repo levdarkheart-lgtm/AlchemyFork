@@ -253,3 +253,31 @@ TEST_CASE("Native vertex entry points fail UI ranges closed without replaying ty
     CHECK_FALSE(LLVertexBuffer::isMetalBufferAuthority());
     LLVertexBuffer::setMetalDevice(f.device.get());
 }
+
+TEST_CASE("Native direct vertex draws drain earlier pending immediate geometry",
+          "[llvertexbuffer][almetal][native-draw]")
+{
+    Fixture f; f.init();
+    LLGLDisable blend(GL_BLEND), cull(GL_CULL_FACE), scissor(GL_SCISSOR_TEST);
+    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
+    auto image = f.image(); auto buffer = f.buffer();
+    for (U32 entry = 0; entry < 4; ++entry)
+    {
+        f.begin(image, false);
+        // Both draws share every binding and matrix. The earlier immediate
+        // triangle has white vertex colour (green255 after texturing); the
+        // later buffer has green128. No intervening state change can flush
+        // the three vertices retained by LLRender::end for TRIANGLES.
+        gGL.color4ub(255, 255, 255, 255);
+        gGL.begin(LLRender::TRIANGLES);
+        gGL.texCoord2f(.25f, .5f); gGL.vertex3f(-1.f, -1.f, 0.f);
+        gGL.texCoord2f(.25f, .5f); gGL.vertex3f(3.f, -1.f, 0.f);
+        gGL.texCoord2f(.25f, .5f); gGL.vertex3f(-1.f, 3.f, 0.f);
+        gGL.end();
+        if (entry == 0) buffer->drawRange(LLRender::TRIANGLES, 3, 5, 3, 3);
+        if (entry == 1) buffer->drawRangeFast(LLRender::TRIANGLES, 3, 5, 3, 3);
+        if (entry == 2) buffer->draw(LLRender::TRIANGLES, 3, 3);
+        if (entry == 3) buffer->drawArrays(LLRender::TRIANGLES, 3, 3);
+        Fixture::check(f.finish());
+    }
+}

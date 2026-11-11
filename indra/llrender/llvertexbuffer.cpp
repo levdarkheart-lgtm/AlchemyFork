@@ -396,6 +396,9 @@ void LLVertexBuffer::clone(LLVertexBuffer& target) const
 void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
 {
     if (count == 0) return;
+    // LLRender::end keeps triangle/line/point streams pending. Its flush
+    // admits through drawBuffer directly, so this cannot recurse into us.
+    gGL.flush();
     if (!validateRange(start, end, count, indices_offset))
     {
         gGL.invalidateMetalUITextureCapture("Vertex buffer indexed draw exceeds its allocation");
@@ -427,6 +430,7 @@ void LLVertexBuffer::draw(U32 mode, U32 count, U32 indices_offset) const
 void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
 {
     if (count == 0) return;
+    gGL.flush();
     if (first >= mNumVerts || count > mNumVerts - first)
     {
         gGL.invalidateMetalUITextureCapture("Vertex buffer array draw exceeds its allocation");
