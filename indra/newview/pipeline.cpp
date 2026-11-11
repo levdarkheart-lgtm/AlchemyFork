@@ -9731,7 +9731,6 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 display.hdr = capture.hdr;
                 display.bypass_tonemap = capture.hdr && no_post;
                 display.cutout_premultiplied = cutout_snapshot;
-                display.preserve_alpha = capture.hdr && cutout_snapshot;
                 display.legacy_gamma = legacy_gamma;
                 display.legacy_gamma_exponent = sky->getGamma();
                 static LLCachedControl<F32> exposure(
@@ -10360,6 +10359,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         ALMetalWorldPresentationScene presentation;
                         presentation.source =
                             capture.display_post_target.get();
+                        // Original late alpha copy reads sharp float coverage.
+                        presentation.cutout_coverage_texture =
+                            cutout_snapshot ? target->colorTexture(0) : nullptr;
                         // Original final blit evaluates screen-space effects
                         // at the final viewport, including snapshot overrides.
                         const LLRect& final_viewport = gViewerWindow->getWorldViewRectRaw();
