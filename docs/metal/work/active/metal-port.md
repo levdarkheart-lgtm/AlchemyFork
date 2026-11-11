@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `30ef2ccb694ee3030ff059ec00f084de3fe7c748`.
+**Renderer checkpoint:** Commit `696c43ba78`; canonical build in progress.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -12,22 +12,17 @@ No viewer launch or screenshot comparison. The separate20FPS campaign remains
 deferred. Follow original source contracts before each fix.
 
 [Current work and command receipts](remaining-feature-port.md).
-Latest: [native shader ownership cleanup](native-shader-owner-cleanup.md)
-removes the dormant compiler/linker/binary cache/reflection/uniform upload and
-shader/query/resource entrypoints. Native pass/variant/CPU data contracts remain.
-Remove write-only schema registration and unused buffer-name state. Actual
-world/UI Metal libraries/PSOs reload on forced rebuild, retaining targets,
-histories and old material leases. Failed reload/configuration requeues safely.
-Diagnostics use actual Metal identity or unavailable state without GL queries.
-Native/optional utility builds0; Metal-validated tests35550assertions/32cases.
-First canonical link failed because root removed the still-needed native loader
-failure helper; restored from original source in30ef2ccb69. Corrected frozen
-configure/build0, canonical Release68655 verified349ARM64/0invalid, deepcodesign0;
-viewer/utility have no OpenGL framework or GL/CGL/SDL_GL undefined imports.
-Strict source audit remains failed1441findings/2406files,159GL-call
-syntax matches. Root owns final integration/build/evidence. Independent utility
-and preview reload worktrees/owners are pinned in CURRENT; their changes are not
-integrated. Current reload coverage is world/UI, not every application shader.
+Latest: [native feature/resource completion](native-feature-resource-completion.md)
+integrates utility/preview reload, native vertex allocation/upload/direct draws,
+actual capacity-based batching, GL manager/state cleanup, write-only GLTF sink
+removal, native About/report identity, Developer Frame Profile and native fixed
+texture benchmark. Native draw regressions67598assertions/42cases and combined
+FrameProfile/utility/preview regressions60425/12 pass with Metal validation.
+Registered benchmark target and GPU integration run0,19123assertions/10cases.
+Canonical app remains older30ef2ccb69/68655; current frozen696c43ba78 build
+is in progress, handle14238. CURRENT pins isolated image readback/helper
+cleanup, vertex labels and displaced profiler/primitive-counter work.
+No launches. Exact commands/failures in latest note.
 
 Earlier verified bounded checkpoints below remain included; their older build
 and inventory counts do not supersede the current observations above.
@@ -96,15 +91,12 @@ M-012 stays complete; M-014 remains deferred. No release readiness claim.
 
 ## Immediate executable action
 
-Integrate isolated utility/preview reload and vertex allocation/upload cleanup
-commits after reviewing exact diffs and running GPU tests. Root alone wires the
-central builtin revision announcement and CMake; preserve generated/external
-images and pending resources. Developer Frame Profile is being implemented in
-its isolated worktree using actual Metal encoder measurements and honest
-unavailable counters. Runtime M1 probe confirms only stage-boundary timestamps,
-no per-draw/dispatch sampling or statistics. Continue remaining GL manager/
-vertex-draw/image tails. No viewer or utility launches.
-CURRENT pins exact worktree paths, branches and exclusive owners. Keep viewer closed.
+Complete registered benchmark GPU validation and remove displaced benchmark
+metadata/GLSL, freeze source and run canonical configure/build/verify/import/
+codesign checks. Integrate tested isolated image publication/helper cleanup and
+native vertex labels independently. Continue concrete original-mapped menu/
+RLVa/GL-source defects. CURRENT pins exact worktrees and exclusive owners.
+Keep viewer and appearance utility closed.
 
 ## Non-negotiable open gates
 

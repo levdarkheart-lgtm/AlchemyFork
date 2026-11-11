@@ -1,5 +1,10 @@
 # Native shader ownership and Developer reload — 2026-11-11
 
+Follow-up: [native feature/resource completion](native-feature-resource-completion.md)
+now integrates utility/preview reload and native Developer measurements, vertex
+and manager cleanup. Its receipts and CURRENT supersede the older next actions
+below. The app identity in this note remains exact for30ef2ccb69 only.
+
 **Source base:** `a2f8b2f4c2cd3b2c902c2895014be62bcdb91595`.
 **Implementation:** `a05a38d31054a4c98da2af9239e372bab0c9cfae`, corrected native
 loader helper in `30ef2ccb694ee3030ff059ec00f084de3fe7c748`.
