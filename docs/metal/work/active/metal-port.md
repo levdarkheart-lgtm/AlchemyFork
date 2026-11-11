@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `e75e69794b`; registered native staging/cleanup
+**Integrated checkpoint:** Commit `84747519cd`; registered native staging/cleanup
 and exact isolated ownership are recorded in CURRENT.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
@@ -31,7 +31,7 @@ UI/font/HUD/media ownership and all original-mapped repairs from those notes.
 Network, inventory, editing, simulation and voice behavior remain in scope.
 No retained fallback renderer, translation backend or general graphics layer.
 
-New integrated work through e3e8ed5b35:
+Integrated native foundation and original-mapped repairs:
 - Original polygon-offset/queued-flush behavior and actual retained-target
   viewport extent repaired, with actual red controls and native pixel tests.
 - Always-float Screen restores nonHDR highlight/flare/dirt behavior. Explicit
@@ -44,7 +44,15 @@ New integrated work through e3e8ed5b35:
 - Three unused lighting/composition APIs and13 unused shader-program metadata
   graphs retired after reader/body preservation audits.
 - Full original shader/embedded-algorithm notices tracked. Native viewer and
-  optional utility shader/notice staging is root WIP; fresh utility build0.
+  optional utility shader/notice staging is committed; fresh utility build0.
+
+Latest integrated repairs through a6f071bf92 preserve actual finalization,
+SDR DoF/scopes, lens preflight and reference/callback/epoch ownership while
+retiring the displaced GL post traversal. Bloom works with Scopes closed.
+Cutout isolation retires native SSR history without withholding valid probe
+lighting. Reference storage is always RGB10_A2 and survives HDR/SDR changes.
+Preview retry and VLC lifecycle leaks/order are repaired. Dead LLRender metadata
+and original-inert tangent menu/settings/locales are removed after reader audits.
 
 Root registered validations: resource+FXAA9140/5, morph13203/3,
 native LLUI73292/28, CPU LLUI4821716/1516, llrender333661/438(one known CPAL
@@ -55,11 +63,17 @@ reflection1964/3 and affected UI36441/11 passed API/shader validation;
 exact source/WIP/binary hashes are in float-reflection-registered-validation.json.
 Exact commands/hashes/failures and source maps are in the latest note.
 
+New matching-ABI llrender335386/442(one CPAL skip), VLC CPU1267/11,
+Font/UI1862/61, native LLUI73292/28, morph13203/3 and Metal UI36441/11 passed.
+Reference checkpoint fcd+four CMake WIP: CPU374/16, native format173/4,
+finalization2286/2, SSR2172/1 and world105889/23 passed, API/shader validation
+for GPU groups. Exact argv/hashes: native-reference-registered-validation.json.
+
 Last verified full canonical viewer0fe112ee902172c4983e5d277cfba08ded41751b,
 Release26.4.0d68778: doctor/configure/build/verify0,349ARM64/zero invalid slices,
 deepcodesign0, main viewer forbidden imports0, zeroGLSL and exact native shader/
 notice resources in fresh stage. native-fixture-canonical-validation.json pins
-binary/source hashes. Newer915 metadata/test-mode cleanup requires rebuild.
+binary/source hashes. Newer integrated source requires a fresh full rebuild.
 Optional utility0fe-predecessor+explicit staging WIP
 build/static/lookup/dependency checks0, exact resources and96character files,
 zeroGLSL; final receipt in the latest note. Neither executable launched.
@@ -95,38 +109,33 @@ M-012 remains complete; M-014 remains deferred. No release-readiness claim.
 
 ## Immediate executable action
 
-Frozen0fe doctor/configure/full build73684/static verification0,349ARM64,
-deepcodesign/imports0 and fresh native resource hashes/zeroGLSL. Old app with
-273GLSL files preserved. Tools49 and four content models0; production strict
-3504/0blockers/0errors. Including tests4094 has2negative window-flag assertions
-flagged; retain assertions, no all-source strict claim or window execution.
-Reviewed test-mode5dc6dd54f3 and metadata9150c33dfc integrated; configure17387
-exited0: all607actual CTest commands/properties are exact. Full native alrender
-565814/137passed API/shader validation. e75 excludes exactly3unusedVLCGL modules
-after335→332callback/frame/provenance/fresh-copy controls; actual app needs
-fresh staging in grouped full build. Exact commands/hashes in current note.
-Root run56044 exited0. Native replacement gates closed; integrated reflection
-harness97d0b8a20e, pipeline leaf49fa6b4401 and120GLSL assets066d9d4e53.
-Root registration/IDE/install boundaries committed0fe; exact original asset
-hashes and notice gates are in glsl-root-retirement-gates.json.
-Live finalization remains separate and must preserve actual
-reference-capture/lens-fit/callback/epoch/SSR/native scope owners.
+Current source84747519cd is newer than frozen0fe full-app verification above.
+Four CMake registrations are root WIP; all corresponding registered tests pass.
+Tools49/four content models and production strict3504/0blockers/0errors passed
+at the prior checkpoint. Including tests4094 retains two negative window-flag
+assertions flagged by the scanner; no all-source pass or window execution.
+Obsolete-mode configure preserved all607actual CTest commands/properties;
+native alrender565814/137passed after fixture retirement.
 
-Root owns canonical registrations/docs/assets/integration. rlva_port owns
-isolated pipeline.cpp/h, actual-body finalize config and native CPU/GPU tests.
-menu_port owns media plugin direct lifecycle leaks/order with actual-method CPU
-controls; gl_tail_audit owns missing-destination image preview retry with actual
-caller/generator bodies and real low-level native GPU resource tests. Root owns
-registrations. LLRender ABI remains frozen until previewchild source/proof fixed.
-Optional utility validation is complete.
-No overlapping shared renderer edits.
+Root integrates/reviews/docs/CMake. Eight fixed targets/DownRes tail are now
+retired84747519cd, preserving logical SSR intent/reset keys, native pressure and
+still owners. Child actual plan/policy2697/43, two Release syntax TUs and peer
+review pass. gl_tail_audit owns the narrow follow-up to retain clearSceneMap's
+old target-block flush explicitly; rlva_port is read-only peer. Its tangent XML
+cleanup is integrated. menu_port's read-only census proves prewarm allocations
+have no pass consumer; replace live Bloom mip-count/resolution-failure coupling
+before any later removal. Separate native Metal pool stays. No concurrent
+uncoordinated shared renderer edits.
 
-After final staging review, verify fresh native viewer/utility stages. Keep
-notice/source hashes and metallib dependency tracking. Do not interpret
-existing-stage stale assets as newly packaged files. Three VLC windowed-output
-exclusions remain proposals; keep actual screen/VT/CEF functionality and record
-foreign import/runtime unknowns. Required frozen full viewer build/static
-verification follows coherent integration; no executable launch.
+Next: integrate the explicit flush follow-up, rebuild appropriate registered
+policy/resource tests, commit registrations/evidence, then freeze source.
+Preserve the current app by rename before doctor/configure/full build/static
+verification. Verify fresh332VLC modules, expected346ARM64 files, strict signing,
+main-viewer imports and exact native shader/notices/zeroGLSL. The three VLC
+exclusions are integrated, but install cannot prune stale files. Keep screen/
+VT/CVPX/CEF functionality; foreign/runtime native-only evidence remains open.
+Keep all actual executables/windows closed. Optional utility was validated
+separately without launch; do not count it as a full viewer build.
 
 ## Non-negotiable open gates
 

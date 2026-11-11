@@ -170,6 +170,7 @@ if(AL_BUILD_TESTS)
       tests/alvertex_label_metal_test.mm
       tests/alvertex_publication_metal_test.cpp
       tests/alimagegl_metal_test.cpp
+      tests/alimage_preview_native_test.cpp
       tests/alfont_atlas_metal_test.cpp
       tests/alfont_freetype_metal_test.cpp
       tests/alfont_colrv1_metal_test.cpp

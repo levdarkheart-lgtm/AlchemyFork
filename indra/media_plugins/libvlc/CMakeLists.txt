@@ -15,6 +15,7 @@ target_sources(
     ${CMAKE_SOURCE_DIR}/llplugin/slplugin/slplugin.cpp
     ${CMAKE_SOURCE_DIR}/llplugin/slplugin/slplugin_static.cpp
     media_plugin_libvlc.cpp
+    media_plugin_libvlc_lifecycle.inl
 )
 
 if(DARWIN)
@@ -22,6 +23,20 @@ if(DARWIN)
   set_source_files_properties(
     ${CMAKE_SOURCE_DIR}/llplugin/slplugin/slplugin-objc.mm
     PROPERTIES SKIP_PRECOMPILE_HEADERS TRUE
+  )
+endif()
+
+if(AL_BUILD_TESTS)
+  include(ALAddTestBinary)
+  # The real lifecycle bodies and LLPluginMessage run against named backend
+  # doubles. This target neither links libVLC nor launches the plugin host.
+  al_add_test_binary(
+    media_plugin_libvlc_tests
+    PROJECT media_plugin_libvlc
+    SOURCES tests/alvlc_lifecycle_test.cpp
+    LIBRARIES llplugin llcommon
+    SUPPORT llcommon_test_checks
+    INCLUDES "$<TARGET_PROPERTY:unofficial::libvlc::libvlc,INTERFACE_INCLUDE_DIRECTORIES>"
   )
 endif()
 

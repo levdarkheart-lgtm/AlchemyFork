@@ -105,65 +105,137 @@ EXCLUDE cannot prune a stale bundle: required grouped full build must recreate
 the actual app stage and verify all three absent. No complete host/media/
 stream/audio/HW/URI/screen/CEF-runtime or whole-bundle no-GL claim.
 
-## Live finalization — implementation in progress
+## Integrated native finalization
 
-rlva_port exclusively owns isolated pipeline.cpp/h, pipeline_finalize_config.inl,
-newview/tests/alfinalize_policy_test.cpp and a new almetal GPU admission file.
-Actual method-body CPU baseline71assertions/6cases fails5targeted assertions:
-reference one-shot consumption2, changed lens-fit preflight1, SDR DoF1, SDR scope1.
-Callback/rearm/coordinate/exposure/guard controls already pass. Final commit,
-GPU controls and registered root validation remain pending.
-
-Retain renderFinalize as the short CPU/viewport/diagnostic boundary. Move the
-actual lens-fit solver to native preflight, reference request consumption to the
-actual copy attempt, and valid still availability to the committed native owner.
-Preserve exposure fixed-EV/reset tail, callbacks/scopes/statistics, noPost/cutout/
-hold behavior, generation epochs, SSR eligibility and actual physics debug pass
-ownership before removing the still-called legacy rendering graph/storage.
+Integrated67a9b960ef retains renderFinalize as the short CPU/viewport/diagnostic
+boundary, preserving exposure fixed-EV/reset, callback/rearm/coordinates,
+statistics, semantic flush/unbind and original three-pass physics debug call.
+The original dense lens-fit solver now runs in native preflight with the final
+viewport aspect. SDR DoF and scopes retain actual native backing/device/geometry
+guards without the incorrectly ported HDR-only gates. Scope dimensions come
+from the planned scaled main view; real asynchronous cadence/readback persists.
+The still-called displaced GL luminance/exposure/color/SSR/final-blit traversal,
+orphan histogram VB and six aliases are retired after those duties are retained.
 
 Original reference copy happens after AA/CAS/debug, before lens/print/final blit.
 A committed offscreen still remains valid if a later presentation validation
 fails. An initial hypothesis requiring final_presentation_available was corrected
 by that source trace before integration: not an executed viewer bug. Standalone
 copy commits before return; failed batched commit cancels pending publication.
-One-shot-at-attempt semantics remain a separate real defect.
+One-shot requests are consumed at the actual copy attempt. Same-size committed
+old owners survive failed/canceled recapture until a successful replacement;
+explicit clear/dimension invalidation remains. Initial CPU baseline71/6 had
+five targeted failures; recapture-hold control127/8 had four. Fixed127/8 passed.
+Actual GPU checks cover linear SDR DoF, scopes before print, raw scene pixels,
+reference cancellation, leases and invalid later print controls, independently
+of CPU actual-body facade coverage. Source/peer proofs:
+/private/tmp/alchemy-finalization-live-validation-20261111.json and
+/private/tmp/alchemy-finalization-peer-review-gl-tail-20261111.json.
 
-## Preview retry — implementation in progress
+## Integrated preview retry
 
-gl_tail_audit found original-mapped caller failure: native Avatar/Sculpted
+Integratedea12ba4c0a repairs the original-mapped caller failure: Avatar/Sculpted
 renderWithoutTarget returns PENDING for a missing texture, while its generator
 runs only in the constructor. A recoverable first allocation/backend failure
 therefore never retries. Original dynamictexture postRender regenerated an
 absent destination before publication after successful render.
 
-Approved exclusive llfloaterimagepreview.cpp/h, lldynamictexture.cpp generator
-only if necessary, new image_preview_native.inl and dynamic_texture_native.inl,
-and llrender/tests/alimage_preview_native_test.cpp. Existing caller/generator
-bodies are extracted byte-identically before edits, then real LLGLTexture/
-LLImageGL/ALMetalLitPreviewRenderer/GPU tests exercise retry/publication/
-retention with named camera/scene/identity facade boundaries. No allocation or
-adoption algorithm is copied/mocked. Root owns registration; native preview
-renderer implementation is outside current scope without another proven defect.
-LLRender ABI remains frozen while child uses matching canonical archives.
+Actual caller/generator bodies were byte-proven before adding only the two
+retry calls. Real LLGLTexture/LLImageGL/ALMetalLitPreviewRenderer/GPU tests use
+named camera/scene/identity facade boundaries; no full floater/avatar/sculpt
+construction or viewer invocation is claimed. Baseline1176/4 fails two retry
+checks; fixed1726/4 passes. Failed render/adoption preserves old bytes/identity/
+stamp/dirty state; successful retry replaces once. A copy encoded before
+replacement commits after owner destruction, proving an actual native lease.
+Receipt: /private/tmp/alchemy-native-image-preview-validation-20261111/
+validation-receipt.json. Registered root full llrender coverage below matches
+the later LLRender layout rather than mixing child archives.
 
-## Media ownership — implementation in progress
+## Integrated media ownership
 
-menu_port found inherited original/current leaks: playMedia stops then overwrites
+Integrated3120dc7994 repairs inherited original/current leaks: playMedia stops then overwrites
 player/media without releasing old owners, repeated init can overwrite instance,
 empty destructor and partial shm_remove cleanup leave ownership incomplete.
 size_change changes callback-visible dimensions/pixels before stop, contrary to
 the intended old-layout stop boundary. Exact original/current source trace
 precedes fixes; this is within the goal's discovered-issue repair scope.
 
-Approved exclusive media_plugin_libvlc.cpp, new narrow lifecycle.inl and
-tests/alvlc_lifecycle_test.cpp, with root CMake ownership. Actual init/reset/
-play/destructor/size-change/cleanup bodies are first byte-proven then executed
-under explicitly named path/environment/libVLC factory/refcount/order doubles,
-using real LLPluginMessage values. Preserve empty-URI guards, event/seek/repeat/
-volume/status semantics and stop before changing callback-visible layout.
-Real frame/data callbacks stay intact. Production ownership validation is
-separate from the real standalone libVLC playback above. Final source/red→green
-receipt/registered tests pending; no actual plugin host execution.
+releaseMedia now stops/releases/nulls player before media; reset/destruction
+also release the instance, idempotently. Resize captures seek before stop and
+stops/releases before changing callback-visible dimensions/pixels. Active shared
+memory removal stops callbacks before erasing/nulling backing. Empty URI and
+failed Darwin setup guards, ten event/frame/data/volume/title bodies and seek/
+repeat semantics remain. Actual method bodies execute with named path/env/
+libVLC factory/refcount/order doubles and real LLPluginMessage; no real libVLC
+or host is linked to the lifecycle test. Final same-test baseline1089/11 fails
+71assertions/seven cases; fixed1267/11 passes. Separate real callback playback
+above validates the packaging boundary, not this facade's ownership execution.
+Receipt: /private/tmp/alchemy-vlc-lifecycle-validation-20261111/validation-receipt.json.
+
+## Bloom, SSR isolation and original reference storage
+
+Integrated5f1baee092 removes Bloom's accidental dependence on sScopeCapture.
+Actual native world-presentation eligibility and original minimum three usable
+Bloom mips remain; strengths, shader math and higher cutout guards are unchanged.
+Actual policy baseline140/9 has three failures; fixed140/9 passes. Receipt:
+/private/tmp/alchemy-bloom-admission-validation-20261111.json.
+
+Integrated24f96a956f/0c39d845be maps original ALRenderIsolation.clearSceneMap
+to both actual native history owners before their swaps. Cutout base/forward/
+impostor paths cannot consume/publish SSR history. Missing/cleared history uses
+valid current probe lighting; the prior warmup-withholds-presentation policy was
+incorrect and is removed without weakening current-frame/device validation.
+Actual policy baseline165/10 has12failures; fixed165/10 passes. Device-only
+native base lighting/history tests cover legacy/PBR, HDR/SDR and normal/reverse
+Z: red history retires, absent equals real black+far history bit-exactly, old
+submitted work survives, and only a new green publication restores reflections.
+These low-level GPU checks do not invoke production ALRenderIsolation itself.
+Receipts: /private/tmp/alchemy-ssr-isolation-validation-20261111.json and
+/private/tmp/alchemy-native-ssr-isolation-validation-20261111/validation-receipt.json.
+
+Integrated3948f43537/6ce8831a2a/fcd276692e restores original RGB10_A2 still
+storage for HDR and SDR and dimension-only invalidation across display changes.
+HDR raw copies remain exact; SDR converts through the existing point-clamp
+resample shader into RGB10_A2. All256component values/packed alpha, format/
+shape/usage controls and eight presentation-format/layout combinations pass.
+A real MTLSharedEvent gates commands until source/reference/renderer destruction,
+then exact output proves in-flight storage/pipeline retention. Baseline125/4
+fails11assertions; fixed173/4 passes. Actual policy baseline184/11 fails7;
+fixed184/11 passes using valid RGBA8 display and F16 sharp-source descriptors.
+Receipts: /private/tmp/alchemy-native-reference-format-validation-20261111/
+validation-receipt.json and /private/tmp/alchemy-reference-format-policy-validation-20261111.json.
+
+## Registered integration and dead metadata
+
+Root registered builds exited0: caller-preview-lifecycle, native-finalize,
+native-bloom-ssr and native-reference-format registered-build.log files in the
+artifact directory. At fcd plus four CMake registrations, actual CPU
+finalization/lens/reflection374/16, format173/4, finalization2286/2, SSR2172/1
+and world105889/23 pass. The world filter includes the actual final print-chain
+case with updated original ten-bit expectations. GPU groups use API/shader
+validation. Initial sandbox no-device failure is preserved separately; host
+device rerun passes. Exact source/WIP/argv/binary hashes/logs:
+native-reference-registered-validation.json. Counts overlap; do not sum.
+
+Integrated1d51dd50f9 removes only dead LLRender patch/point metadata, its single
+terrain setter/pass override and three metadata assertions. Original setters
+called glPatchParameteri/glPointSize; actual native terrain/shadow/water consume
+explicit drawPatches(4). Pipeline loadMatrix always flushes before terrain's
+deferred pass, and inherited pass bodies are empty. Font point-size state stays.
+Three actual Release textual syntax TUs and exact live-body/reader proofs pass:
+/private/tmp/alchemy-native-final-render-state-validation-20261111/preservation.json.
+Matching root ABI full llrender335386/442(441passed/one known CPAL skip),
+VLC1267/11, Font/UI1862/61, native LLUI73292/28, morph13203/3 and affected
+Metal UI36441/11 pass. Receipts: caller-preview-lifecycle-registered-validation.json
+and native-finalize-registered-validation.json. No hidden-window case runs.
+
+Integrateda6f071bf92 removes only original-inert ShowTangentBasis setting,
+English menu item, ten locale overlays and Portuguese comment:13XML/33deletions.
+Original source has only storage/CheckControl/ToggleControl readers, no render
+consumer. All retained XML projections are exact;12menu files parse and1498
+retained settings remain unique. Other four enum/API/menu graphs remain intact.
+Independent menu peer found no blockers. Receipt:
+/private/tmp/alchemy-inert-developer-menu-validation-20261111.json.
 
 ## Remaining native tail
 
@@ -174,16 +246,34 @@ proven suppressed native feature in that scope; this is not whole-feature parity
 Receipt: /private/tmp/alchemy-live-feature-gate-audit-20261111/
 live-feature-gate-audit.json. That audit led to the concrete preview retry defect.
 
-Root has inspected unused LLRender patch/point metadata but has not edited it.
-setPointSize/getPointSize have only one test consumer; preserve distinct font
-point-size fields. mPatchVertices has no native consumer, but its setter has a
-live legacy terrain call plus a test. Original setter drove GL_PATCH_VERTICES;
-actual native terrain/shadows and water drawPatches(4) consume explicit constants.
-Before retiring that setter/call, preserve the pre-pool flush guarantee:
-pipeline calls loadMatrix before beginDeferredPass and loadMatrix always flushes.
-Existing four hardware tessellation cases cover actual native control points,
-winding, subdivision/edge coverage and generated triangle barycentrics. This
-cleanup follows the preview matching-ABI freeze and requires affected rebuilds.
+Integrated84747519cd retires exactly eight fixed targets:
+SSRScene, DownRes, ExposureMeter/Histogram/Exposure/Last and LensFlareA/B.
+Logical SSR intent is independent of physical descriptor changes. Actual
+reconciliation preserves applied size/depth/HDR/enable/retry invalidation;
+fixed exposure/flare reset only on initialization/recreation, with separate
+explicit HDR reset unchanged. Original actual allocation-event fragment400/12
+and replacement403/12 have216identical check cells across24events. Child combined
+plan/policy2697/43, two Release syntax TUs, strict source3508/910info/0blocking/
+0errors and independent source-hash-pinned peer pass. Native pressure/create
+prefix and13live methods are byte-identical. Receipt:
+/private/tmp/alchemy-native-fixed-resource-validation-20261111/validation-receipt.json.
+Postfreeze review caught the removed target block's implicit gGL.flush; gl_tail
+owns a narrow explicit semantic-flush follow-up, with rlva_port read-only peer.
+No exposed pending-geometry runtime bug is claimed. Root build awaits that fix.
+
+Independent transient census:
+/private/tmp/alchemy-native-transient-pool-audit-20261111.json.
+prewarmTransients is the only product ALTransientTargets scope; acquireResource
+has no caller. Prewarming allocates real Metal textures that no pass consumes.
+However its success bits still drive native Bloom mip count, and unused post
+target failures can force resolution reduction. Replace those live policies
+before deleting the graph; preserve the separate live ALMetalRenderTargetPool.
+No transient removal is integrated or assigned yet.
+Root owns CMake/docs/integration and required fresh full-app verification.
+Current tested native registrations are four CMake WIP files; no user edits.
+Before full build, preserve the old app by rename so exact VLC exclusions are
+observed rather than masked by stale installed modules. Viewer/utility/hosts/
+windows remain closed throughout.
 
 Full original parity, stability, runtime native-only, independent release evidence
 and measured multi-scene performance remain open. Earlier lighting/self-turn/

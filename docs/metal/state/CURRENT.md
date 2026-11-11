@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `e75e69794b` (newer than the verified viewer app).
+**Renderer code checkpoint:** `84747519cd` (newer than the verified viewer app).
 The remaining-feature/OpenGL-removal goal remains active. No viewer, appearance
 utility or native window launch; no screenshots, menu invocation or user-cache
 operation. Device-only tests submit actual Metal commands. A separate Foundation
@@ -48,6 +48,18 @@ passed; old reflection harness and120GLSL assets are now retired.
 Complete shader/embedded-algorithm notices are tracked in
 `indra/almetal/THIRD_PARTY_NOTICES.txt`; committed native staging preserves them.
 
+Native finalization now preserves original lens preflight, SDR DoF/scopes,
+one-shot reference/callback ownership and exposure duties without traversing
+the displaced GL post chain. Bloom admission no longer depends on Scopes.
+SSR cutout isolation retires actual native history and permits valid probe-only
+lighting while history rebuilds. Reference copies always store RGB10_A2 and
+survive HDR/SDR changes, matching original source. Preview allocation retries
+and VLC player/media/instance cleanup are repaired. Dead LLRender patch/point
+metadata and the original-inert tangent setting/menu graph are removed.
+Eight obsolete fixed-target IDs/instances and the unreachable DownRes tail are
+retired. Original SSR intent/reset keys and fixed history initialization are
+preserved; an explicit replacement for the old target's flush is under review.
+
 ## Observed validation
 
 Evidence directory: `artifacts/metal/feature-completion-20261111/`.
@@ -66,6 +78,15 @@ reflection1964/3 and affected UI36441/11 passed API/shader validation.
 Exact argv/source/WIP/binary hashes and logs:
 `float-reflection-registered-validation.json`.
 
+New registered Release builds exited0. Matching LLRender ABI: full llrender
+335386/442(441passed/one known CPAL skip), VLC actual-body CPU1267/11,
+Font/UI1862/61, native LLUI73292/28, morph13203/3 and Metal UI36441/11 passed.
+At fcd276692e plus four CMake registrations: CPU finalization/lens/reflection
+374/16, reference format173/4, finalization2286/2, SSR2172/1 and world105889/23
+passed. GPU groups used API/shader validation; filters overlap. Initial sandbox
+no-device failure is preserved separately, followed by host-device passes.
+Exact argv/source/binary hashes: native-reference-registered-validation.json.
+
 Root doctor/configure/full build for frozen0fe all exited0 (session73684).
 Old app stage with273GLSL files preserved by rename before configure recreated
 the bundle. Never count that preserved stage as current packaging evidence.
@@ -79,8 +100,8 @@ version26.4.0d68778**. Doctor/configure/build/verify0,349Mach-O/zero invalid
 ARM64 slices, deep strict codesign0, main-viewer forbidden imports0. Fresh app
 has zeroGLSL/no shader subtree and exact MSL/metallib/notices. Receipt:
 native-fixture-canonical-validation.json; binary SHA2561cee92cdc76050b8daae4e2c2799117a2d23240460488f382c9a958ad9b4ebcf.
-Newer915 shader-metadata/test-mode cleanup requires affected rebuild; current
-configure may update bundle metadata, so prior verification is source-pinned.
+Newer source requires a fresh full build; configure may update bundle metadata,
+so prior verification is source-pinned.
 Optional appearance utility rebuilt from459→066+explicit root WIP hashes;
 fresh native stage has no GLSL, exact MSL/metallib/notices+96character files,
 ARM64/strict signature/imports0. Foundation-only lookup and extracted actual
@@ -95,35 +116,23 @@ Keep screen/VT/CVPX/CEF capabilities. No whole-bundle native-only claim.
 
 ## Exact next actions
 
-Root owns canonical integration/CMake/docs. Native registrations, notice hook,
-viewer/utility staging and GLSL packaging cleanup committed0fe112ee90.
-Reviewed test-mode5dc6dd54f3 and eleven dead shader metadata graphs9150c33dfc
-are integrated after0fe static verification. No user changes discarded.
-1. Root run56044 exited0; companion CPU117/2+GPU1964/3 gates passed.
-   Reflection harness97d0b8a20e, pipeline dead leaves49fa6b4401 and GLSL
-   assets066d9d4e53 are integrated. Stale alrender target/GLSL IDE/install
-   boundaries and AL_TEST_SHADER_DIR are removed and committed.
-2. Configure17387 exited0; all607actual CTest commands/properties are exact
-   before/after obsolete mode cleanup. Full native alrender565814/137passed
-   API/shader validation. Grouped full build/verification follows live fixes.
-3. Review live finalization closure; preserve actual native owners before
-   retiring still-called legacy traversal and persistent resource storage.
-4. Recreate actual app stage for VLC exclusion because install cannot prune
-   stale modules; verify332remaining exact modules and346ARM64 files expected.
-   Exact receipt/source maps and pending caller fixes are in the latest note.
-5. Record actual results, then review isolated commits and rebuild affected
-   targets after integration. Keep viewer/utility/windows closed.
-
-Exclusive isolated owners: rlva_port pipeline.cpp/h, new
-pipeline_finalize_config.inl and CPU/GPU finalization tests: preserve native
-reference one-shot/drop/resize, lens-fit preflight, callbacks, scope/statistics,
-exposure epochs and SSR eligibility before retiring the live legacy traversal.
-Original-mapped nonHDR DoF/scope gates are under investigation.
-menu_port owns isolated media_plugin_libvlc.cpp +lifecycle.inl/CPU tests for
-inherited overwrite/cleanup leaks and stop-before-layout ordering. Preserve guards,
-events/seek/repeat/volume; no host/window. gl_tail_audit owns image preview caller
-retry after failed initial texture allocation, actual-body inls and new native
-GPU test. Root registers tests; LLRender ABI frozen until child GPU proof.
+Root owns canonical integration/CMake/docs. Four test/IDE CMake registrations
+are the only implementation WIP; their pre-cleanup builds/tests passed.
+1. Eight fixed targets are integrated84747519cd, original/event source review0.
+   Child actual plan/policy2697/43 and two Release syntax TUs pass. gl_tail_audit
+   owns a narrow follow-up preserving clearSceneMap's old implicit flush as an
+   explicit semantic boundary; rlva_port supplies independent read-only review.
+2. Commit registrations/evidence; rebuild affected policy/resource tests with
+   matching headers after that follow-up. Tangent XML cleanup is integrated
+   a6f071bf92. No shared-file concurrent edits.
+3. Freeze source, preserve the old app stage, then run required doctor/configure/
+   full build/static verification. Fresh staging must prove332VLC modules and
+   expected346ARM64 files; install cannot prune the old three excluded modules.
+4. menu_port's read-only census proves transient prewarm allocations are unused
+   by passes; replace their live Bloom count/resolution-failure gate before
+   removal. Keep the separate native Metal target pool. No new patch assigned.
+5. Record exact results and next source boundary. Keep viewer, utility, actual
+   plugin hosts and windows closed; no screenshots or runtime parity claim.
 
 ## Complete-product advancement assessment
 

@@ -1872,7 +1872,10 @@ if(AL_BUILD_VIEWER)
     noise.h
     pipeline.h
     pipeline_lens_config.inl
+    pipeline_finalize_config.inl
     llreflectionmapmanager_config.inl
+    dynamic_texture_native.inl
+    image_preview_native.inl
     rlvactions.h
     rlvcommon.h
     rlvdefines.h
@@ -2565,6 +2568,7 @@ if(AL_BUILD_TESTS)
       tests/alfeedbackoutbox_test.cpp
       tests/allens_policy_test.cpp
       tests/alreflection_policy_test.cpp
+      tests/alfinalize_policy_test.cpp
       tests/algradehistory_test.cpp
       tests/almetalbenchmark_test.cpp
       tests/almetalbenchmark_provenance_test.cpp
