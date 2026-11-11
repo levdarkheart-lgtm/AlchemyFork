@@ -193,10 +193,11 @@ public:
     // and SH row from one completed default-probe generation are available.
     bool fillMetalDefaultProbe(ALMetalPBRPreviewEnvironment& environment) const;
 
-    // Fill the live native probe array only when every cube slot referenced
-    // by the current selection pack has a Metal generation for its current
-    // GL owner. Old generations remain usable while that same probe refreshes;
-    // a recycled slot fails closed until its new owner has been mirrored.
+    // Fill native shading only when every sampled cube slot has a generation
+    // for its current logical owner. Coverage None samples only default zero;
+    // the complete pack remains available to debug and management consumers.
+    // A same-owner refresh keeps the preceding generation; recycled slots
+    // fail closed until their new owners have been mirrored.
     bool fillMetalReflectionProbes(ALMetalWorldReflectionProbes& probes);
 
     // Snapshot the live selection pack for native owners that inspect probe
@@ -211,6 +212,13 @@ public:
 private:
     friend class LLPipeline;
     friend class LLHeroProbeManager;
+
+#if LL_DARWIN
+    // Ordinary shading applies the original REFMAP_LEVEL policy separately
+    // from the complete selection snapshot used by debug volumes.
+    bool fillMetalReflectionProbeShadingConstants(
+        ALMetalWorldReflectionProbeConstants& constants) const;
+#endif
 
     // initialize mCubeFree array to default values
     void initCubeFree();

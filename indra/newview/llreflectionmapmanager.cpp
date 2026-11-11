@@ -284,6 +284,9 @@ struct LLReflectionMapManager::MetalProbeArrayMirror
 };
 #endif
 
+// CPU settings and snapshots shared with their focused native policy test.
+#include "llreflectionmapmanager_config.inl"
+
 LLReflectionMapManager::LLReflectionMapManager()
 {
     mDynamicProbeCount = LL_MAX_REFLECTION_PROBE_COUNT;
@@ -1073,17 +1076,17 @@ bool LLReflectionMapManager::fillMetalReflectionProbes(
         return false;
     }
     const MetalProbeArrayMirror& mirror = *mMetalProbeArray;
-    const S32 count = mProbeData.refmapCount;
-    if (!mirror.mPublishedRadiance || count < 0 ||
-        count > static_cast<S32>(
-            ALMetalWorldReflectionProbeConstants::max_probe_count))
+    ALMetalWorldReflectionProbeConstants constants;
+    if (!mirror.mPublishedRadiance ||
+        !fillMetalReflectionProbeShadingConstants(constants))
     {
         LL_INFOS_ONCE("Metal")
             << "Metal reflection-probe pack is warming: radiance="
             << static_cast<bool>(mirror.mPublishedRadiance)
-            << ", probe_count=" << count << LL_ENDL;
+            << ", probe_count=" << mProbeData.refmapCount << LL_ENDL;
         return false;
     }
+    const S32 count = static_cast<S32>(constants.config[0]);
     bool complete_sh = mirror.mPublishedSH != nullptr;
     for (S32 index = 0; index < count; ++index)
     {
@@ -1132,50 +1135,7 @@ bool LLReflectionMapManager::fillMetalReflectionProbes(
     probes.radiance_texture = mirror.mPublishedRadiance.get();
     probes.irradiance_texture = complete_sh
         ? mirror.mPublishedSH.get() : nullptr;
-    return fillMetalReflectionProbeConstants(probes.constants);
-}
-
-bool LLReflectionMapManager::fillMetalReflectionProbeConstants(
-    ALMetalWorldReflectionProbeConstants& constants) const
-{
-    const S32 count = mProbeData.refmapCount;
-    if (count < 0 ||
-        count > static_cast<S32>(
-            ALMetalWorldReflectionProbeConstants::max_probe_count))
-    {
-        return false;
-    }
-
-    static_assert(sizeof(LLMatrix4) == sizeof(float) * 16);
-    constants = {};
-    memcpy(constants.ref_box, mProbeData.refBox,
-           sizeof(constants.ref_box));
-    memcpy(constants.ref_sphere, mProbeData.refSphere,
-           sizeof(constants.ref_sphere));
-    memcpy(constants.ref_params, mProbeData.refParams,
-           sizeof(constants.ref_params));
-    memcpy(constants.ref_index, mProbeData.refIndex,
-           sizeof(constants.ref_index));
-    memcpy(constants.ref_neighbor, mProbeData.refNeighbor,
-           sizeof(constants.ref_neighbor));
-    memcpy(constants.ref_bucket, mProbeData.refBucket,
-           sizeof(constants.ref_bucket));
-
-    // setEnvMat uploads the transpose of the current view rotation. Spell
-    // the resulting columns out for MSL's column-major multiply.
-    const F32* matrix =
-        LLViewerCamera::getCurrent().getModelview().getF32ptr();
-    constants.env_matrix[0][0] = matrix[0];
-    constants.env_matrix[0][1] = matrix[4];
-    constants.env_matrix[0][2] = matrix[8];
-    constants.env_matrix[1][0] = matrix[1];
-    constants.env_matrix[1][1] = matrix[5];
-    constants.env_matrix[1][2] = matrix[9];
-    constants.env_matrix[2][0] = matrix[2];
-    constants.env_matrix[2][1] = matrix[6];
-    constants.env_matrix[2][2] = matrix[10];
-    constants.config[0] = static_cast<F32>(count);
-    constants.config[1] = mMaxProbeLOD;
+    probes.constants = constants;
     return true;
 }
 #endif
@@ -1690,14 +1650,6 @@ void LLReflectionMapManager::update()
         oldestOccluded->autoAdjustOrigin();
         oldestOccluded->mLastUpdateTime = gFrameTimeSeconds;
     }
-}
-
-void LLReflectionMapManager::refreshSettings()
-{
-    mRenderReflectionProbeDetail = gSavedSettings.getS32("RenderReflectionProbeDetail");
-    mRenderReflectionProbeLevel = gSavedSettings.getS32("RenderReflectionProbeLevel");
-    mRenderReflectionProbeCount = gSavedSettings.getU32("RenderReflectionProbeCount");
-    mRenderReflectionProbeDynamicAllocation = gSavedSettings.getS32("RenderReflectionProbeDynamicAllocation");
 }
 
 LLReflectionMap* LLReflectionMapManager::addProbe(LLSpatialGroup* group)
