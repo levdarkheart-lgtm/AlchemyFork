@@ -294,7 +294,7 @@ public:
     // swizzle, so getPrimaryFormat() cannot tell it from a luminance source;
     // the format it was asked for can.
     bool isAlphaOnly() const { return (mUploadInFlight ? mPublished.mDeprecatedSourceFormat : mDeprecatedSourceFormat) == GL_ALPHA; }
-    LLGLenum getFormatType() const { return mFormatType; }
+    LLGLenum getFormatType() const { return mUploadInFlight ? mPublished.mFormatType : mFormatType; }
 
     // Internal format to hand glTexStorage*. Block-compressed textures keep their sized
     // compressed format in mFormatPrimary rather than mFormatInternal.

@@ -3249,6 +3249,8 @@ bool LLImageGL::readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compre
     // Preserve the old compressed_ok contract without a GL metadata query. The
     // Metal descriptor is authoritative, and BC block layout is known from the
     // published image format.
+    const LLGLenum primary_format = getPrimaryFormat();
+    const LLGLenum format_type = getFormatType();
     if (mMetalTexture->isCompressed())
     {
         if (!compressed_ok)
@@ -3258,7 +3260,7 @@ bool LLImageGL::readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compre
                                << LL_ENDL;
             return false;
         }
-        const S64 storage_bytes = dataFormatBytes(mFormatPrimary, width, height);
+        const S64 storage_bytes = dataFormatBytes(primary_format, width, height);
         if (storage_bytes <= 0 ||
             storage_bytes > static_cast<S64>(std::numeric_limits<S32>::max()))
         {
@@ -3275,9 +3277,14 @@ bool LLImageGL::readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compre
             return false;
         }
         std::string metal_error;
+        // Upload helpers intentionally use the new build format. Readback
+        // instead pairs the published BC layout with its actual native owner.
+        const std::size_t row_bytes =
+            ((static_cast<std::size_t>(width) + mMetalTexture->blockWidth() - 1) /
+             mMetalTexture->blockWidth()) * mMetalTexture->bytesPerBlock();
         if (!mMetalTexture->readback(
                 *sImageMetalDevice, mip_level, 0, {}, imageraw->getData(),
-                metalSourceBytesPerRow(static_cast<U32>(width)), &metal_error))
+                row_bytes, &metal_error))
         {
             LL_WARNS("Metal") << "Could not read back compressed LLImageGL Metal mirror: "
                                << metal_error << LL_ENDL;
@@ -3287,12 +3294,11 @@ bool LLImageGL::readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compre
         return true;
     }
 
-    const LLGLenum primary_format = getPrimaryFormat();
-    const U32 host_pixel_bytes = pixel_bytes(primary_format, mFormatType);
+    const U32 host_pixel_bytes = pixel_bytes(primary_format, format_type);
     if (host_pixel_bytes != static_cast<U32>(ncomponents))
     {
         LL_WARNS("Metal") << "LLImageGL byte readback cannot represent format 0x"
-                           << std::hex << primary_format << " type 0x" << mFormatType
+                           << std::hex << primary_format << " type 0x" << format_type
                            << std::dec << " in " << ncomponents << " byte components"
                            << LL_ENDL;
         return false;
@@ -3301,7 +3307,7 @@ bool LLImageGL::readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compre
     const bool direct = metal_pixel_bytes == static_cast<std::size_t>(ncomponents);
     const bool expanded_rgb = ncomponents == 3 &&
                               primary_format == GL_RGB &&
-                              mFormatType == GL_UNSIGNED_BYTE &&
+                              format_type == GL_UNSIGNED_BYTE &&
                               metal_pixel_bytes == 4;
     if (!direct && !expanded_rgb)
     {
