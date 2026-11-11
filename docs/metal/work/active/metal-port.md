@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `71f0a584038012fc6b03c29336936a5735fba692`.
+**Renderer checkpoint:** Commit `a5425524eeb85e340d491a818a91d4b0f375c105`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -12,6 +12,15 @@ No viewer launch or screenshot comparison. The separate20FPS campaign remains
 deferred. Follow original source contracts before each fix.
 
 [Current work and command receipts](remaining-feature-port.md).
+Follow-up: [native buffer visualization](debug-buffer-visualization.md) now
+owns modes0–6 in the original post order, retaining spatial meter/SMAA sources.
+[Optional baking loader](appearance-native-loader.md) now configures native
+AlphaMask without shared GL compilation; initialization failure cleanup is
+checked. Remove displaced visualization GLSL and dead texture introspection.
+Canonical Release68651 and optional Release utility build0. ARM64 bundle349/0
+and deep strict codesign0. Metal-validated tests59386/11 +959/18 pass; no apps
+launched. Strict source audit still fails1783findings/2406files (333call syntax).
+Older bounded fixes and receipts follow; they remain included.
 Native sphere ownership replaces its displaced GL execution; current-view
 parameter sampling restores original per-execution policy. Typed overlay order
 is retained. [RLVa mapping](rlva-native-owner-cleanup.md).
@@ -41,7 +50,7 @@ Strict GL inventory still fails1792findings/2406files. No performance claim.
 | M-005 | MSL/binding behavior | doing | Original math preserved; material resource ABI validated; full parity open. |
 | M-006 | UI/fonts/HUD/media | doing | Native implementation retained; full feature/stability proof remains. |
 | M-007 | World/material/shadow correctness | doing | Raw depth/PCSS/casters/reverseZ retained; broad original parity remains. |
-| M-008 | Advanced views/effects | doing | Preserve six Ultra hero faces; reflected-content parity/performance open. |
+| M-008 | Advanced views/effects | doing | Native buffer views and real intermediate ownership validated; full parity remains. |
 | M-009 | Feature/stability/native-only release | doing | Feature matrix, prolonged stability and independent release review remain. |
 | M-010 | M1 Max measured optimization | doing | Controlled baselines/captures collected; multi-scene contract unmet. |
 | M-011 | Remaining owned GL authority | doing | Native resources/window/rendering; strict remaining-tail audit open. |
@@ -60,18 +69,20 @@ No fallback renderer or general graphics framework is authorized.
 
 ## Complete-product checkpoint gate
 
-M-008/M-011/M-013 advance through corrected setting/policy consumption and
-removal of displaced GL execution, with bounded physical GPU evidence.
+M-008/M-011 advance through real buffer-view consumers and removal of the
+utility's live shared GL compiler dependency; M-013 prior fixes remain included.
+Bounded physical GPU evidence does not establish whole-feature/runtime parity.
 This does not establish complete Debug/Developer menus or RLVa parity.
 M-012 stays complete; M-014 remains deferred. No release readiness claim.
 
 ## Immediate executable action
 
-Implement native RenderBufferVisualization modes0–6:
-the current presentation gate rejects all selected buffers and the displaced
-GLSL visualization is still their only consumer. Trace original attachment,
-luminance mip8 and SMAA-edge/weight lifetimes and scope/reference/UI order.
-Continue dormant GLSL compiler/linker/binary-cache removal after that boundary.
+Remove dormant GLSL compiler/linker/binary-cache code from the native shader
+manager/program boundary. The optional utility no longer consumes GL compilation.
+Preserve native metadata/variants/uniform state and cache-purge/reload semantics;
+enumerate all remaining consumers before API removal, then remove shader-only
+GL pointers after their last uses. Build viewer/utility and run native metadata,
+UI/world regressions plus strict audit. No viewer or utility launches.
 The detailed work note records exact paths and tests. Keep viewer closed.
 
 ## Non-negotiable open gates

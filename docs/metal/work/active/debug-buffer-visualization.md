@@ -1,6 +1,7 @@
 # Native Developer buffer visualization
 
 **Source base:** `8de5f88ce9d76030a9d4c4b26b073ddb8c7599a8`, 2026-11-11.
+**Implementation checkpoint:** `a5425524eeb85e340d491a818a91d4b0f375c105`.
 Owner goal remains active. No viewer launches or screenshots are authorized.
 
 ## Original contract inspected before implementation
@@ -59,7 +60,8 @@ M1 Max/64GiB/macOS26.5.2/Xcode26.6. Ignored evidence:
 Doctor/configure, native test builds and both full/final incremental app builds
 exit0. Release bundle26.4.0d68651 is built from base8de5f88ce9 plus this checkpoint's
 changes, never launched. Deep strict codesign verification exits0. ARM64 slice
-inspection is recorded in `debug-buffer-verify-app.log`.
+inspection exits0 with349 Mach-O files/zero invalid slices, recorded in
+`debug-buffer-verify-app.log`.
 
 With `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1`, the six new cases plus existing
 exposure/SMAA/display-post regressions pass59386assertions/11cases in

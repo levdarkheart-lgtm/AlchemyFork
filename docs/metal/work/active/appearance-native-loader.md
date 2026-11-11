@@ -1,6 +1,7 @@
 # Appearance utility native loader and failure cleanup
 
 **Source base:** `8de5f88ce9d76030a9d4c4b26b073ddb8c7599a8`, 2026-11-11.
+**Implementation checkpoint:** `a5425524eeb85e340d491a818a91d4b0f375c105`.
 This optional open-source executable is retained functionality, not dead code.
 `AL_BUILD_APPEARANCE_UTILITY` is off in the canonical viewer build, on in the
 existing `build-Darwin-ninja-os-arm64-appearance` tree. It was not launched.
