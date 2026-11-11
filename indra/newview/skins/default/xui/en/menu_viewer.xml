@@ -3749,20 +3749,21 @@ function="World.EnvPreset"
              label="Randomize Framerate"
              name="Randomize Framerate">
                 <menu_item_check.on_check
-                 function="Advanced.CheckRandomizeFramerate"
+                 function="CheckControl"
                  parameter="Randomize Framerate" />
                 <menu_item_check.on_click
-                 function="Advanced.ToggleRandomizeFramerate" />
+                 function="ToggleControl"
+                 parameter="Randomize Framerate" />
             </menu_item_check>
             <menu_item_check
              label="Periodic Slow Frame"
              name="Periodic Slow Frame">
                 <menu_item_check.on_check
-                 function="Advanced.CheckPeriodicSlowFrame"
-                 parameter="points" />
+                 function="CheckControl"
+                 parameter="Periodic Slow Frame" />
                 <menu_item_check.on_click
-                 function="Advanced.TogglePeriodicSlowFrame"
-                 parameter="points" />
+                 function="ToggleControl"
+                 parameter="Periodic Slow Frame" />
             </menu_item_check>
           <menu_item_call
              label="Frame Profile"

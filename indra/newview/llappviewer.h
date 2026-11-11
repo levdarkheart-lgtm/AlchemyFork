@@ -478,8 +478,6 @@ extern std::string gLastVersionChannel;
 extern LLVector3 gWindVec;
 extern LLVector3 gRelativeWindVec;
 
-extern bool gRandomizeFramerate;
-extern bool gPeriodicSlowFrame;
 extern bool gDoDisconnect;
 
 extern bool gSimulateMemLeak;
