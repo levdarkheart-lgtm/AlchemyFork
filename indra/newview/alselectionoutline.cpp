@@ -468,7 +468,7 @@ bool ALSelectionOutline::drawMetalIds(const View& view, S32 width, S32 height, b
         LLFace*         face   = draw.mFace;
         LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
         if (!buffer || !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) || !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-            !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
+            !buffer->prepareMetalBuffers(true))
         {
             return false;
         }

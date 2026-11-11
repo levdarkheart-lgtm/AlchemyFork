@@ -2749,6 +2749,12 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     {
         return fallback(MetalUIFallbackReason::primitive);
     }
+    // Retained UI replay reaches this owner without the original caller's
+    // setBuffer. Publish pending stores before copying a native generation.
+    if (!buffer->prepareMetalBuffers(indexed))
+    {
+        return fallback(MetalUIFallbackReason::mirror);
+    }
     ALMetalBuffer* metal_buffer = buffer->getMetalVertexBuffer();
     ALMetalBuffer* metal_indices = indexed
         ? buffer->getMetalIndexBuffer() : nullptr;

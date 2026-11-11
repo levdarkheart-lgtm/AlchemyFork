@@ -376,3 +376,61 @@ TEST_CASE("Native UI admits only current published vertex and required index sto
         Fixture::check(f.finish());
     }
 }
+
+TEST_CASE("Retained native UI replays the original final buffer publication retry",
+          "[llvertexbuffer][almetal][native-draw-retry]")
+{
+    Fixture f; f.init();
+    LLGLDisable blend(GL_BLEND), cull(GL_CULL_FACE), scissor(GL_SCISSOR_TEST);
+    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
+    auto image = f.image();
+    auto buffer = f.buffer();
+    f.begin(image, true);
+    const ALSamplerDesc sampler = ALSamplerCache::makeDesc(ALSamplers::PointClamp);
+    LLVertexBufferData retained(buffer, LLRender::TRIANGLES, buffer->getNumVerts(),
+        image, true, sampler, gGL.getModelviewMatrix(), gGL.getProjectionMatrix(),
+        gGL.getTextureMatrix());
+    bool with_matrix = false;
+    SECTION("draw retries before taking the native generation") {}
+    SECTION("drawWithMatrix retries before taking the native generation")
+    { with_matrix = true; }
+    const auto replay = [&]
+    {
+        if (with_matrix) retained.drawWithMatrix();
+        else retained.draw();
+    };
+    replay();
+    const auto previous_output = f.finish();
+    Fixture::check(previous_output);
+    auto* previous_vertices = buffer->getMetalVertexBuffer();
+    auto* previous_indices = buffer->getMetalIndexBuffer();
+    U64 pending_stamp = 0;
+    {
+        struct MissingPublisher
+        {
+            ALMetalDevice* device;
+            explicit MissingPublisher(ALMetalDevice* d) : device(d)
+            { LLVertexBuffer::setMetalDevice(nullptr); }
+            ~MissingPublisher() { LLVertexBuffer::setMetalDevice(device); }
+        } missing(f.device.get());
+        std::array<LLColor4U, 3> colors;
+        for (auto& color : colors) color.set(255, 64, 255, 255);
+        buffer->setColorData(colors.data(), 3, 3);
+        LLVertexBuffer::flushBuffers();
+        LLVertexBuffer::flushBuffers();
+        pending_stamp = buffer->getContentStamp();
+        CHECK_FALSE(buffer->hasPublishedMetalVertexBuffer());
+        CHECK(buffer->hasPublishedMetalIndexBuffer());
+        CHECK(buffer->getMetalVertexBuffer() == previous_vertices);
+        f.begin(image, true); replay(); f.finish(false);
+    }
+    // No new CPU write or global flush happens after restoring the publisher.
+    // Original LLVertexBufferData called setBuffer immediately before drawing.
+    f.begin(image, true); replay();
+    const auto updated_output = f.finish();
+    Fixture::check(updated_output, false, 64);
+    CHECK(updated_output != previous_output);
+    CHECK(buffer->hasPublishedMetalVertexBuffer());
+    CHECK(buffer->getContentStamp() == pending_stamp);
+    CHECK(buffer->getMetalIndexBuffer() == previous_indices);
+}

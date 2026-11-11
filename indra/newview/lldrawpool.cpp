@@ -587,8 +587,7 @@ void LLRenderPass::captureMetalHUDBatch(
         buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
         buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
         buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) &&
-        buffer->getMetalVertexBuffer() &&
-        buffer->getMetalIndexBuffer();
+        buffer->prepareMetalBuffers(true);
     if (complete_geometry)
     {
         batch.vertices = buffer->getMetalVertexBuffer();
@@ -750,8 +749,7 @@ void LLRenderPass::captureMetalHUDEmbossBatch(
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD1) ||
-        !buffer->getMetalVertexBuffer() ||
-        !buffer->getMetalIndexBuffer())
+        !buffer->prepareMetalBuffers(true))
     {
         // Submit the invalid descriptor so the authoritative capture records
         // a fail-closed reason instead of silently omitting HUD geometry.
