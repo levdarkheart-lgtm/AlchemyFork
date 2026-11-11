@@ -477,6 +477,11 @@ if(TARGET media_plugin_libvlc)
       COMPONENT plugins
       FILES_MATCHING
       PATTERN "*.dylib"
+      # Video callbacks select vmem/window-none. Exclude only windowed GL
+      # outputs and their GL converter; keep decoders and CPU converters.
+      PATTERN "libvout_macosx_plugin.dylib" EXCLUDE
+      PATTERN "libcaopengllayer_plugin.dylib" EXCLUDE
+      PATTERN "libglconv_cvpx_plugin.dylib" EXCLUDE
     )
   endif()
 endif()
