@@ -317,9 +317,14 @@ public:
     bool drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                            LLImageGL* image, const ALSamplerDesc& sampler,
                            bool texture_bound, bool indexed = false,
-                           U32 index_count = 0, U32 indices_offset = 0);
-    // Mirror one already-materialized indexed debug/UI draw into an active
-    // offscreen capture. GL always remains authoritative for this call.
+                           U32 index_count = 0, U32 indices_offset = 0,
+                           U32 first_vertex = 0);
+    // Submit with the current texture/sampler and shader state. For indexed
+    // draws count/first are index elements; otherwise they are vertex elements.
+    // Returns actual native admission, never authority/fallback suppression.
+    bool drawBoundMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
+                                bool indexed = false, U32 first = 0);
+    // Indexed sphere capture; uses the same current native binding state.
     bool captureMetalUIIndexedBuffer(LLVertexBuffer* buffer, U32 mode,
                                      U32 index_count, U32 indices_offset);
 

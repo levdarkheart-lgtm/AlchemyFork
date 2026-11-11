@@ -2745,17 +2745,6 @@ LLVertexBuffer* LLRender::genBuffer(U32 attribute_mask, S32 count)
         return nullptr;
     }
 
-    // Non-Apple path uses glBufferSubData inside setXxxData, so the VBO
-    // must already be bound. On Apple, the VBO is lazily created in
-    // _unmapBuffer (LLAppleVBOPool); calling setBuffer() here would bind
-    // mGLBuffer == 0 and then setupVertexBuffer would issue
-    // glVertexAttribPointer with a non-null offset against no bound
-    // GL_ARRAY_BUFFER — GL_INVALID_OPERATION in core profile.
-    if (!gGLManager.mIsApple)
-    {
-        vb->setBuffer();
-    }
-
     vb->setPositionData(mVerticesp.get());
 
     if (attribute_mask & LLVertexBuffer::MAP_TEXCOORD0)
@@ -2778,6 +2767,13 @@ LLVertexBuffer* LLRender::genBuffer(U32 attribute_mask, S32 count)
 
 void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
 {
+    drawBoundMetalUIBuffer(vb, mode, count);
+}
+
+#if LL_DARWIN
+bool LLRender::drawBoundMetalUIBuffer(
+    LLVertexBuffer* buffer, U32 mode, U32 count, bool indexed, U32 first)
+{
     ALTextureSlot* texture_slot = getTextureSlot(0);
     ALSamplerDesc sampler = mMetalUICaptureAuthoritative
         ? mMetalUICaptureSampler
@@ -2789,19 +2785,25 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
     // Metal is the only product renderer. A failed batch is accounted by the
     // native renderer and fails closed; the production buffer deliberately
     // has no GL storage to replay from.
-    drawMetalUIBuffer(vb, mode, count,
+    const bool capture = mMetalUICaptureRenderer != nullptr;
+    const U64 captured_batches = mMetalUICaptureBatches;
+    const bool replaced = drawMetalUIBuffer(
+                      buffer, mode, indexed && buffer ? buffer->getNumVerts() : count,
                       texture_slot ? texture_slot->mCurrImage : nullptr,
                       sampler,
                       mMetalUICaptureAuthoritative
                           ? mMetalUICaptureTextureBound
-                          : texture_slot && texture_slot->mCurrTexture != 0);
+                          : texture_slot && texture_slot->mCurrTexture != 0,
+                      indexed, indexed ? count : 0, indexed ? first : 0,
+                      indexed ? 0 : first);
+    return capture ? mMetalUICaptureBatches == captured_batches + 1 : replaced;
 }
 
-#if LL_DARWIN
 bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                  LLImageGL* image, const ALSamplerDesc& sampler,
                                  bool texture_bound, bool indexed,
-                                 U32 index_count, U32 indices_offset)
+                                 U32 index_count, U32 indices_offset,
+                                 U32 first_vertex)
 {
     const bool capture = mMetalUICaptureRenderer != nullptr;
     const bool authoritative = capture && mMetalUICaptureAuthoritative;
@@ -2848,7 +2850,8 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         // when this batch invalidated the Metal transaction.
         return authoritative;
     };
-    if (!buffer || count == 0)
+    if (!buffer || count == 0 || first_vertex > buffer->getNumVerts() ||
+        count > buffer->getNumVerts() - first_vertex)
     {
         return fallback(MetalUIFallbackReason::incomplete_batch);
     }
@@ -2932,9 +2935,12 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
 
     ALMetalUIBatch batch;
     batch.vertices = metal_buffer;
-    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
-    batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
-    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
+        static_cast<std::size_t>(first_vertex) * LLVertexBuffer::sTypeSize[LLVertexBuffer::TYPE_VERTEX];
+    batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0) +
+        static_cast<std::size_t>(first_vertex) * LLVertexBuffer::sTypeSize[LLVertexBuffer::TYPE_TEXCOORD0];
+    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR) +
+        static_cast<std::size_t>(first_vertex) * LLVertexBuffer::sTypeSize[LLVertexBuffer::TYPE_COLOR];
     batch.indices = metal_indices;
     if (indexed)
     {
@@ -3101,16 +3107,8 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
 bool LLRender::captureMetalUIIndexedBuffer(
     LLVertexBuffer* buffer, U32 mode, U32 index_count, U32 indices_offset)
 {
-    if (!mMetalUICaptureRenderer || !buffer)
-    {
-        return false;
-    }
-    ALSamplerDesc sampler = ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
-    const U64 captured_batches = mMetalUICaptureBatches;
-    drawMetalUIBuffer(
-        buffer, mode, buffer->getNumVerts(), nullptr, sampler, false,
-        true, index_count, indices_offset);
-    return mMetalUICaptureBatches == captured_batches + 1;
+    return mMetalUICaptureRenderer &&
+        drawBoundMetalUIBuffer(buffer, mode, index_count, true, indices_offset);
 }
 #endif
 
