@@ -39,25 +39,6 @@ class ALMetalDevice;
 // layouts reserve these first eight points.
 constexpr U32 AL_NUM_STORAGE_BINDINGS = 8;
 
-// Same four-word layout as MTLDrawPrimitivesIndirectArguments.
-struct ALDrawArraysIndirectCommand
-{
-    U32 mCount         = 0;
-    U32 mInstanceCount = 0;
-    U32 mFirst         = 0;
-    U32 mBaseInstance  = 0;
-};
-static_assert(sizeof(ALDrawArraysIndirectCommand) == 16, "Metal indirect draw arguments are four uints");
-
-// Same three-word layout as MTLDispatchThreadgroupsIndirectArguments.
-struct ALDispatchIndirectCommand
-{
-    U32 mGroupsX = 0;
-    U32 mGroupsY = 0;
-    U32 mGroupsZ = 0;
-};
-static_assert(sizeof(ALDispatchIndirectCommand) == 12, "Metal indirect dispatch arguments are three uints");
-
 // A native Metal buffer the GPU reads and writes. STREAM and READBACK stores use
 // coherent shared Apple Silicon memory; other stores use private GPU memory and
 // ordered blit commands for upload, fill, copy and synchronous exceptional

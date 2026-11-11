@@ -734,8 +734,8 @@ void LLRender::shutdown()
                            << stats.sampler_states << " sampler states; "
                            << mMetalUIFallbackBatches << " of "
                            << mMetalUIAttemptedBatches
-                           << " eligible UI batches used GL fallback" << LL_ENDL;
-        LL_INFOS("Metal") << "Native UI fallback breakdown: incomplete="
+                           << " eligible UI batches were rejected" << LL_ENDL;
+        LL_INFOS("Metal") << "Native UI rejection breakdown: incomplete="
                            << sMetalUIFallbackReasons[static_cast<std::size_t>(
                                   MetalUIFallbackReason::incomplete_batch)]
                            << ", shader="
@@ -1092,7 +1092,7 @@ bool LLRender::updateMetalUITextureCaptureDepth(
                 "retained-depth bracket: " + reason;
         }
         mMetalUICaptureComplete = false;
-        LL_DEBUGS("Metal") << "Offscreen immediate-mode depth bracket retained GL: "
+        LL_DEBUGS("Metal") << "Offscreen immediate-mode depth bracket failed: "
                             << reason << LL_ENDL;
         return false;
     };
@@ -1270,7 +1270,7 @@ bool LLRender::drawMetalHUDIndexedBatch(
                 "HUD attachment encoder: " + error;
         }
         mMetalUICaptureComplete = false;
-        LL_DEBUGS("Metal") << "Offscreen HUD attachment capture retained GL: "
+        LL_DEBUGS("Metal") << "Offscreen HUD attachment capture failed: "
                             << error << LL_ENDL;
         return false;
     }
@@ -1441,7 +1441,7 @@ bool LLRender::drawMetalSelectionIDs(
         }
         mMetalUICaptureComplete = false;
         LL_DEBUGS("Metal")
-            << "Offscreen selection-id capture retained GL: "
+            << "Offscreen selection-id capture failed: "
             << error << LL_ENDL;
         return false;
     }
@@ -1485,7 +1485,7 @@ bool LLRender::drawMetalSelectionContour(
                 "selection-contour encoder: " + error;
         }
         mMetalUICaptureComplete = false;
-        LL_DEBUGS("Metal") << "Offscreen selection-contour capture retained GL: " << error << LL_ENDL;
+        LL_DEBUGS("Metal") << "Offscreen selection-contour capture failed: " << error << LL_ENDL;
         return false;
     }
     mMetalUICaptureBatches += (scene.contour_enabled || scene.glow_radius != 0u ? 3u : 0u) + (scene.glow_radius != 0u ? 2u : 0u) +
@@ -1515,7 +1515,7 @@ void LLRender::invalidateMetalUITextureCapture(const char* reason)
     }
     mMetalUICaptureComplete = false;
     LL_DEBUGS("Metal")
-        << "Offscreen UI capture retained GL for "
+        << "Offscreen UI capture invalidated by "
         << (reason ? reason : "an unsupported draw family")
         << LL_ENDL;
 }
@@ -3078,7 +3078,7 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
             LL_DEBUGS("Metal")
                 << (authoritative
                         ? "Authoritative native immediate-mode capture failed: "
-                        : "Offscreen immediate-mode capture retained GL: ")
+                        : "Offscreen immediate-mode capture failed: ")
                 << error << LL_ENDL;
         }
         else
@@ -3514,95 +3514,6 @@ void LLRender::applyDepthConvention()
 {
     // Native render-pass descriptors and projection helpers consume sReverseZ
     // directly. There is no ambient driver convention to mutate.
-}
-
-void LLRender::drawArraysInstanced(eGeomModes mode, U32 first, U32 count, U32 instances)
-{
-    // An input left in the program would read whatever buffer the last vertex buffer left on its array.
-    llassert(LLGLSLShader::sCurBoundShaderPtr && LLGLSLShader::sCurBoundShaderPtr->mAttributeMask == 0);
-    flush();
-#if LL_DARWIN
-    invalidateMetalUITextureCapture("an unsupported instanced draw");
-#endif
-    LL_WARNS_ONCE("Metal")
-        << "Skipped an instanced draw with no native encoder (mode "
-        << mode << ", first " << first << ", count " << count
-        << ", instances " << instances << ')' << LL_ENDL;
-}
-
-void LLRender::drawArraysIndirect(eGeomModes mode, const ALGPUBuffer& buffer, size_t offset)
-{
-    // An input left in the program would read whatever buffer the last vertex buffer left on its array.
-    llassert(LLGLSLShader::sCurBoundShaderPtr && LLGLSLShader::sCurBoundShaderPtr->mAttributeMask == 0);
-    // GL reads the command at an offset a whole number of GLuints in, and all four of its words.
-    llassert(offset % sizeof(U32) == 0);
-    if (!buffer.isAllocated() || offset + sizeof(ALDrawArraysIndirectCommand) > buffer.size())
-    {
-        llassert(false);
-        return;
-    }
-    flush();
-#if LL_DARWIN
-    invalidateMetalUITextureCapture("an unsupported indirect draw");
-#endif
-    LL_WARNS_ONCE("Metal")
-        << "Skipped an indirect draw with no native encoder (mode "
-        << mode << ", offset " << offset << ')' << LL_ENDL;
-}
-
-void LLRender::textureBarrier()
-{
-    // Native pass boundaries and encoder ownership provide texture ordering.
-    // Draining queued geometry preserves the public ordering contract.
-    flush();
-}
-
-void LLRender::memoryBarrier(U32 barriers)
-{
-    llassert(sCompute);
-    if (barriers == 0)
-    {
-        return;
-    }
-    // Native compute owners encode resource dependencies explicitly. Drain
-    // queued geometry so callers retain their ordering boundary.
-    flush();
-}
-
-void LLRender::dispatchCompute(U32 groups_x, U32 groups_y, U32 groups_z)
-{
-    llassert(sCompute);
-    llassert(LLGLSLShader::sCurBoundShaderPtr && LLGLSLShader::sCurBoundShaderPtr->isCompute());
-    if (groups_x == 0 || groups_y == 0 || groups_z == 0)
-    {
-        return;
-    }
-    flush();
-#if LL_DARWIN
-    invalidateMetalUITextureCapture("an unsupported compute dispatch");
-#endif
-    LL_WARNS_ONCE("Metal")
-        << "Skipped a compute dispatch with no native encoder ("
-        << groups_x << 'x' << groups_y << 'x' << groups_z << ')' << LL_ENDL;
-}
-
-void LLRender::dispatchComputeIndirect(const ALGPUBuffer& buffer, size_t offset)
-{
-    llassert(sCompute);
-    llassert(LLGLSLShader::sCurBoundShaderPtr && LLGLSLShader::sCurBoundShaderPtr->isCompute());
-    llassert(offset % sizeof(U32) == 0);
-    if (!buffer.isAllocated() || offset + sizeof(ALDispatchIndirectCommand) > buffer.size())
-    {
-        llassert(false);
-        return;
-    }
-    flush();
-#if LL_DARWIN
-    invalidateMetalUITextureCapture("an unsupported indirect compute dispatch");
-#endif
-    LL_WARNS_ONCE("Metal")
-        << "Skipped an indirect compute dispatch with no native encoder (offset "
-        << offset << ')' << LL_ENDL;
 }
 
 void LLRender::setScissor(S32 x, S32 y, S32 width, S32 height)

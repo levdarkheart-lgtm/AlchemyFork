@@ -2,10 +2,7 @@
  * @file llrender.h
  * @brief LLRender definition
  *
- *  This class acts as a wrapper for OpenGL calls.
- *  The goal of this class is to minimize the number of api calls due to legacy rendering
- *  code, to define an interface for a multiple rendering API abstraction of the UI
- *  rendering, and to abstract out direct rendering calls in a way that is cleaner and easier to maintain.
+ *  Logical render state and immediate geometry consumed by native Metal owners.
  *
  * $LicenseInfo:firstyear=2001&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -43,7 +40,6 @@
 #include "llglheaders.h"
 #include "llmatrix4a.h"
 #include "alsamplerstate.h"  // mSamplerCache -- this context's sampler objects
-#include "algpubuffer.h"     // AL_NUM_STORAGE_BINDINGS -- the storage binding points this context keeps
 #include "alframefences.h"
 #include "alimageslot.h"
 #include "alquerypool.h"
@@ -240,28 +236,6 @@ public:
         NUM_MATRIX_MODES
     };
 
-    // Memory barrier bits, GL's own values, so a caller states exactly which later reads must see
-    // earlier shader writes.
-    enum eBarrier : U32
-    {
-        BARRIER_VERTEX_ATTRIB      = GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT,
-        BARRIER_ELEMENT_ARRAY      = GL_ELEMENT_ARRAY_BARRIER_BIT,
-        BARRIER_UNIFORM            = GL_UNIFORM_BARRIER_BIT,
-        BARRIER_TEXTURE_FETCH      = GL_TEXTURE_FETCH_BARRIER_BIT,
-        BARRIER_IMAGE              = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT,
-        BARRIER_COMMAND            = GL_COMMAND_BARRIER_BIT,
-        BARRIER_PIXEL_BUFFER       = GL_PIXEL_BUFFER_BARRIER_BIT,
-        BARRIER_TEXTURE_UPDATE     = GL_TEXTURE_UPDATE_BARRIER_BIT,
-        BARRIER_BUFFER_UPDATE      = GL_BUFFER_UPDATE_BARRIER_BIT,
-        BARRIER_FRAMEBUFFER        = GL_FRAMEBUFFER_BARRIER_BIT,
-        BARRIER_TRANSFORM_FEEDBACK = GL_TRANSFORM_FEEDBACK_BARRIER_BIT,
-        BARRIER_ATOMIC_COUNTER     = GL_ATOMIC_COUNTER_BARRIER_BIT,
-        BARRIER_STORAGE            = GL_SHADER_STORAGE_BARRIER_BIT,
-        BARRIER_CLIENT_MAPPED      = GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT,
-        BARRIER_QUERY_BUFFER       = GL_QUERY_BUFFER_BARRIER_BIT,
-        BARRIER_ALL                = GL_ALL_BARRIER_BITS,
-    };
-
     LLRender();
     ~LLRender();
     bool init(bool needs_vertex_buffer);
@@ -312,7 +286,7 @@ public:
     // backend ownership; never interrupt an active UI transaction.
     bool reloadMetalShaders(std::string* error = nullptr);
 
-    // Mirror one already-materialized immediate/captured UI draw. Public only
+    // Encode one already-materialized immediate/captured UI draw. Public only
     // because LLVertexBufferData replays outside LLRender::drawBuffer.
     bool drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                            LLImageGL* image, const ALSamplerDesc& sampler,
@@ -325,11 +299,10 @@ public:
     bool drawBoundMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                 bool indexed = false, U32 first = 0);
 
-    // Parallel offscreen capture for GL-owned immediate-mode render-texture
-    // producers by default. A single unsupported batch fails the complete
-    // target closed and end returns no texture. NATIVE_AUTHORITATIVE is the
-    // cutover form: supported calls update only the logical state consumed by
-    // Metal, captured draws suppress GL, and failure never invokes a fallback.
+    // Offscreen capture for immediate-mode render-texture producers. A single
+    // unsupported batch fails the complete target closed and end returns no
+    // texture. NATIVE_AUTHORITATIVE uses capture-local texture and alpha state;
+    // both modes encode native resources.
     // Optional retained color/depth inputs turn this into a world/UI
     // composition capture. They are borrowed until end capture returns. The
     // live surface is never affected and existing texture producers pass no
@@ -352,9 +325,7 @@ public:
     // texture/sampler. Used only while an authoritative capture is active.
     bool bindMetalUITextureCapture(S32 slot, LLImageGL* image, ALSampler sampler);
     bool unbindMetalUITextureCapture(S32 slot);
-    // Keep capture-only alpha-test state out of LLGLSLShader's retained GL
-    // uniform cache so the native transaction cannot desynchronize it from
-    // the physical program.
+    // Keep capture-only alpha-test state local to the native transaction.
     void setMetalUITextureCaptureMinimumAlpha(
         const LLGLSLShader* shader, F32 minimum);
     // Mirror GL's localized HUD depth bracket into an active retained-depth
@@ -388,16 +359,16 @@ public:
         S32 x, S32 y, S32 width, S32 height,
         U8* rgba, size_t bytes_per_row);
     // Encode the selection owner's private face-id/depth pass into the active
-    // ordered world/UI capture. GL remains authoritative until the later
-    // contour/glow passes complete the transaction.
+    // ordered world/UI capture. The later contour/glow passes complete the
+    // native transaction.
     bool drawMetalSelectionIDs(const ALMetalSelectionIDScene& scene);
     // Consume the current native selection ids into the default optimized
     // contour/rim and append it to the ordered offscreen transaction.
     bool drawMetalSelectionContour(
         const ALMetalSelectionContourScene& scene);
-    // Record one GL-owned draw family that an active offscreen transaction
-    // did not reproduce. This is a no-op outside a capture; the authoritative
-    // GL draw continues and end capture discards the incomplete native frame.
+    // Reject a draw family that the active offscreen transaction cannot
+    // encode. This is a no-op outside a capture; end capture discards the
+    // incomplete native frame.
     void invalidateMetalUITextureCapture(const char* reason);
     // When present_surface is true, a complete BGRA8 capture appends its
     // drawable copy to the still-open offscreen command buffer and commits
@@ -409,18 +380,15 @@ public:
         std::string* failure = nullptr,
         EMetalUICaptureEndState* end_state = nullptr);
 
-    // A startup frame can replace the GL window presentation only when every
-    // eligible UI batch was encoded. The surface stays transparent for any
-    // incomplete frame so the GL fallback remains visible underneath it.
+    // A startup frame has complete native coverage only when every eligible
+    // UI batch was encoded.
     bool metalUIFrameHasCompleteCoverage() const noexcept;
-    // Enable direct native UI replacement on the presentation surface. During
-    // world fallback this is a transparent Metal overlay above the GL scene;
-    // an active ordered offscreen capture suspends direct replacement so that
-    // exactly one renderer owns the surface submission for that frame.
+    // Enable direct native UI rendering on the presentation surface. An active
+    // ordered offscreen capture suspends direct rendering so that exactly one
+    // renderer owns the surface submission for that frame.
     void setMetalUIReplacementEnabled(bool enabled) noexcept;
     // Submit one already-complete BGRA8 world/UI texture to the native surface.
-    // Success means the drawable command was committed, so the caller may
-    // suppress exactly this frame's GL swap. The ordinary endFrame call still
+    // Success means the drawable command was committed. The ordinary endFrame call still
     // performs renderer housekeeping but does not submit a second clear
     // drawable over this frame.
     bool presentMetalTexture(const ALMetalTexture* texture);
@@ -688,33 +656,6 @@ public:
     // Compatibility boundary for retained call sites. It drains queued work;
     // native target owners encode attachment clears in their pass descriptors.
     void clear(U32 mask);
-
-    // Retained instanced-draw entry point. Until its native encoder owner is
-    // supplied, it drains queued work and fails closed with a diagnostic.
-    void drawArraysInstanced(eGeomModes mode, U32 first, U32 count, U32 instances);
-
-    // Retained indirect-draw entry point. The command is validated, then the
-    // operation fails closed until a native encoder owner is supplied.
-    void drawArraysIndirect(eGeomModes mode, const ALGPUBuffer& buffer, size_t offset);
-
-    // End queued work at a texture dependency boundary. Native encoder/pass
-    // ownership expresses the resource dependency itself.
-    void textureBarrier();
-
-    // ---- Compute ---------------------------------------------------------------------------------------------------
-    // Everything here needs sCompute and asserts it.
-
-    // Make later reads of the kinds in `barriers` (eBarrier bits, or-ed) see what shaders wrote before it -- storage
-    // buffers, images and atomics are not ordered against anything else. What is batched is drawn first.
-    void memoryBarrier(U32 barriers);
-
-    // Retained compute entry point. Zero groups do nothing; non-zero work
-    // fails closed until a native compute encoder owner is supplied.
-    void dispatchCompute(U32 groups_x, U32 groups_y, U32 groups_z);
-
-    // Retained indirect-compute entry point. The command is validated, then
-    // the operation fails closed until a native compute owner is supplied.
-    void dispatchComputeIndirect(const ALGPUBuffer& buffer, size_t offset);
 
     // ---- Frames ----------------------------------------------------------------------------------------------------
 

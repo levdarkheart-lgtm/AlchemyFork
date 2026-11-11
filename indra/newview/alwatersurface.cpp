@@ -37,16 +37,13 @@
 #include "llcamera.h"
 #include "lldrawpoolwater.h"
 #include "llenvironment.h"
-#include "llglslshader.h"
 #include "llimage.h"
 #include "llimagegl.h"
 #include "llregionhandle.h"
 #include "llrender.h"
-#include "llshadermgr.h"
 #include "llviewercontrol.h"
 #include "llviewercamera.h"
 #include "llviewerregion.h"
-#include "llviewershadermgr.h"
 #include "llviewertexture.h"
 #include "llworld.h"
 #include "pipeline.h"
@@ -236,28 +233,6 @@ void ALWaterSurface::release()
     {
         stats.mHeights = nullptr;
     }
-}
-
-void ALWaterSurface::bind(LLGLSLShader& shader) const
-{
-    if (mCellMap.notNull())
-    {
-        const S32 channel = shader.enableTexture(LLShaderMgr::WATER_CELL_MAP);
-        if (channel > -1)
-        {
-            gGL.getTextureSlot(channel)->bindSampled(mCellMap.get(), ALSamplers::PointClamp);
-        }
-        shader.uniform4fv(LLShaderMgr::WATER_CELL_SQUARE, 1, mSquare.mV);
-    }
-    else
-    {
-        // No cells: the square has none a side, so every point is past it.
-        const LLVector4 none(0.f, 0.f, REGION_WIDTH_METERS, 0.f);
-        shader.uniform4fv(LLShaderMgr::WATER_CELL_SQUARE, 1, none.mV);
-    }
-    shader.uniform1f(LLShaderMgr::WATER_DEFAULT_HEIGHT, mDefaultHeight);
-
-    shader.uniform4f(LLShaderMgr::WATER_RINGS, (F32)mLayout.mHalf, (F32)mLayout.mRings, (F32)mLayout.mRim, mVoidDrawn ? 1.f : 0.f);
 }
 
 #if LL_DARWIN
@@ -629,27 +604,6 @@ bool ALWaterSurface::fillMetalWaterWaves(
     return true;
 }
 #endif
-
-void ALWaterSurface::draw(LLGLSLShader& shader, bool patched) const
-{
-    if (mCellMap.isNull())
-    {
-        return;
-    }
-    // The fringe only where the patches are drawn with the field, bindWaves having set their rectangle.
-    const ALWaterField::PatchRect rect = patched && mWavesDrawn ? ALWaterField::patchRect(mLayout) : ALWaterField::PatchRect();
-    for (const ALWaterField::Draw& draw : ALWaterField::fieldDraws(mLayout, rect))
-    {
-        if (draw.mInstances <= 0)
-        {
-            continue;
-        }
-        shader.uniform1i(LLShaderMgr::WATER_LAYOUT, (S32)draw.mPart);
-        gGL.drawArraysInstanced(draw.mStrip ? LLRender::TRIANGLE_STRIP : LLRender::TRIANGLES, 0, (U32)draw.mVertices,
-                                (U32)draw.mInstances);
-        ++gPipeline.mWaterDraws;
-    }
-}
 
 bool ALWaterSurface::rim(const LLVector3& eye, LLVector2& lo, LLVector2& hi) const
 {

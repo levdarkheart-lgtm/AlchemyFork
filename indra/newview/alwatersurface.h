@@ -37,7 +37,6 @@
 #include <vector>
 
 class LLCamera;
-class LLGLSLShader;
 class LLImageGL;
 class LLImageRaw;
 class LLVector3;
@@ -49,7 +48,7 @@ struct ALMetalWorldWaterSurface;
 
 /// The water's field for the frame: ALWaterField's layout around the main camera, and the cell map the water's shaders
 /// read the heights from, ALWaterField::MAP_SIZE texels a side of RG32F (height, flags) as fillCells lays them out.
-/// The water is drawn from these alone (draw), with no vertex buffer, object or spatial partition.
+/// Native water passes draw from these snapshots, with no viewer vertex buffer, object or spatial partition.
 /// The map is refilled when what it holds changes -- the loaded regions, their water heights, the agent region's
 /// height that empty cells take, or the square under the camera -- which a key of those, compared each frame, finds
 /// without a trigger at each place they change.
@@ -70,16 +69,6 @@ public:
     /// Releases the renderer textures: the cell map and the maps' heights. What the maps' pixels gave is kept, and their
     /// heights are uploaded again when next wanted.
     void release();
-
-    /// Binds the cell map and sets the uniforms environment/waterSurface.glsl reads on `shader`, bound: the square,
-    /// the rings, the agent region's height, and whether the void is drawn (RENDER_TYPE_VOIDWATER). Before the first
-    /// update with an agent region, every point takes the agent region's height.
-    void bind(LLGLSLShader& shader) const;
-
-    /// Draws the field with `shader`, bound and bound to the field (bind): ALWaterField::fieldDraws, instances whose
-    /// vertices the vertex stage places (water_vertex). With `patched`, where the waves' patches are drawn too
-    /// (bindWaves with them drawn), the cells beside them are drawn as the fringe. Nothing before the first update.
-    void draw(LLGLSLShader& shader, bool patched) const;
 
     /// Whether the water is drawn with waves this frame: AlchemyRenderWaterWaves where tessellation is, a cell within
     /// the reach, and a map whose heights have landed. Probe and hero captures draw the field flat; the main native

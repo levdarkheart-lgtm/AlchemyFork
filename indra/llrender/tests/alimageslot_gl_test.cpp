@@ -2,7 +2,7 @@
  * @file alimageslot_gl_test.cpp
  * @brief ALImageSlot on the hidden window: what a unit issues to GL and what GL then holds, a redundant bind issuing
  *        nothing, refreshState putting back what was changed behind LLRender's back, forgetTextures dropping a
- *        deleted name, the formats an image cannot take, and integer textures loaded and stored as images.
+ *        deleted name, and the formats an image cannot take.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -70,34 +70,8 @@ namespace
             return state;
         }
 
-        // Each texel of the r32ui image at unit 0 loaded, tripled, offset by its place and stored back.
-        const char* kUintKernel =
-            "#version 430\n"
-            "layout(local_size_x = 8, local_size_y = 8) in;\n"
-            "layout(binding = 0, r32ui) uniform uimage2D target;\n"
-            "void main()\n"
-            "{\n"
-            "    ivec2 p = ivec2(gl_GlobalInvocationID.xy);\n"
-            "    if (any(greaterThanEqual(p, imageSize(target))))\n"
-            "    {\n"
-            "        return;\n"
-            "    }\n"
-            "    uint v = imageLoad(target, p).r;\n"
-            "    imageStore(target, p, uvec4(v * 3u + uint(p.x + p.y * 100), 0u, 0u, 0u));\n"
-            "}\n";
-
-        // An R32UI texture's level 0, as GL holds it.
-        std::vector<U32> readUints(U32 texture, U32 width, U32 height)
-        {
-            std::vector<U32> texels((size_t)width * height, 0x55555555u);
-            gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, texture);
-            glGetTexImage(GL_TEXTURE_2D, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, texels.data());
-            gGL.getTextureSlot(0)->unbind();
-            return texels;
-        }
-
-    // The program and texture slots the tests change, and compute's switch, go back with mGL; the image units are
-    // unbound here.
+    // The texture slots the tests change and compute's switch go back with mGL;
+    // the image units are unbound here.
     struct alimageslot_data
     {
         ~alimageslot_data()
@@ -108,12 +82,6 @@ namespace
             }
             mTarget.release();
             mOther.release();
-            mUint.release();
-            if (mKernel)
-            {
-                glUseProgram(0);
-                glDeleteProgram(mKernel);
-            }
         }
 
         // Compute in use, an R32F target with a mip level beyond the first and an RGBA16F one without, or the case
@@ -132,8 +100,6 @@ namespace
         ll_test::SharedGLScope mGL;
         LLRenderTarget mTarget;
         LLRenderTarget mOther;
-        LLRenderTarget mUint;
-        GLuint mKernel = 0;
     };
 
 
@@ -310,68 +276,4 @@ namespace
         CHECK(glGetError() == GLenum(GL_NO_ERROR));
     }
 
-    // An R32UI target and an R32UI image, each the r32ui image of a kernel that loads every texel, changes it and
-    // stores it back. The target's texels start where LLRenderTarget::clear put them and the image's where its upload
-    // did, and both come back changed exactly, past what a float could carry.
-    TEST_CASE_METHOD(alimageslot_data, "alimageslot_gl: a kernel changes R32UI target and image texels exactly", "[alimageslot_gl]")
-    {
-        require_targets();
-        constexpr U32 W = 13;
-        constexpr U32 H = 7;
-
-        const GLuint cs = ll_test::compileTestShader(GL_COMPUTE_SHADER, kUintKernel);
-        UNSCOPED_INFO("kernel compiles");
-        REQUIRE(cs != 0);
-        mKernel = glCreateProgram();
-        glAttachShader(mKernel, cs);
-        glLinkProgram(mKernel);
-        glDeleteShader(cs);
-        GLint linked = GL_FALSE;
-        glGetProgramiv(mKernel, GL_LINK_STATUS, &linked);
-        UNSCOPED_INFO("kernel links");
-        REQUIRE(linked == GL_TRUE);
-
-        REQUIRE(mUint.allocate(W, H, GL_R32UI));
-        mUint.bindTarget();
-        gGL.setClearColor(LLColor4(5.f, 0.f, 0.f, 0.f));
-        mUint.clear();
-        mUint.flush();
-
-        ALImageSlot* slot = gGL.getImageSlot(0);
-        glUseProgram(mKernel);
-        CHECK(slot->bind(&mUint, 0, ALImageSlot::READ_WRITE));
-        CHECK(unitState(0).mFormat == GL_R32UI);
-        glDispatchCompute((W + 7) / 8, (H + 7) / 8, 1);
-        gGL.memoryBarrier(LLRender::BARRIER_TEXTURE_UPDATE);
-        const std::vector<U32> target = readUints(mUint.getTexture(), W, H);
-
-        std::vector<U32> values((size_t)W * H);
-        for (size_t i = 0; i < values.size(); ++i)
-        {
-            values[i] = 0x01000001u + (U32)i * 0x101u;
-        }
-        LLPointer<LLImageGL> image = new LLImageGL(W, H, 1, /*usemipmaps=*/false);
-        image->setExplicitFormat(GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
-        REQUIRE(image->createGLTexture(0, reinterpret_cast<const U8*>(values.data())));
-        CHECK(slot->bind(image.get(), ALImageSlot::READ_WRITE));
-        CHECK(unitState(0).mFormat == GL_R32UI);
-        glDispatchCompute((W + 7) / 8, (H + 7) / 8, 1);
-        gGL.memoryBarrier(LLRender::BARRIER_TEXTURE_UPDATE);
-        const std::vector<U32> held = readUints(image->getTexName(), W, H);
-        glUseProgram(0);
-        slot->unbind();
-
-        for (U32 y = 0; y < H; ++y)
-        {
-            for (U32 x = 0; x < W; ++x)
-            {
-                CAPTURE(x, y);
-                const size_t i = (size_t)y * W + x;
-                REQUIRE(target[i] == 5u * 3u + x + y * 100u);
-                UNSCOPED_INFO("the image");
-                REQUIRE(held[i] == values[i] * 3u + x + y * 100u);
-            }
-        }
-        CHECK(glGetError() == GLenum(GL_NO_ERROR));
-    }
 }

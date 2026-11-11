@@ -1,7 +1,7 @@
 /**
  * @file algpubuffer_gl_test.cpp
  * @brief ALGPUBuffer on the hidden window: what its store holds after each way of writing it, what it accounts, how
- *        a move leaves it, which stores are mapped; LLRender's indirect draw binding over a buffer's life; and the
+ *        a move leaves it, which stores are mapped; and the
  *        rings and ALGPUStream's regions round the ring, reused by the frames they were read in.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
@@ -30,9 +30,7 @@
 #include "../algpubuffer.h"
 #include "../llgl.h"
 #include "../llglheaders.h"
-#include "../llglslshader.h"
 #include "../llrender.h"
-#include "../llshadermgr.h"
 
 #include "llheadlessgl_fixture.h"
 
@@ -46,16 +44,6 @@
 namespace
 {
         constexpr U32 WORDS = 64;
-
-        // A point at the centre, from no vertex arrays.
-        const char* kVertex =
-            "#version 400\n"
-            "void main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }\n";
-
-        const char* kFragment =
-            "#version 400\n"
-            "out vec4 frag_color;\n"
-            "void main() { frag_color = vec4(1.0); }\n";
 
         std::vector<U32> pattern(U32 count, U32 base)
         {
@@ -79,13 +67,6 @@ namespace
             return words;
         }
 
-        GLint indirectBinding()
-        {
-            GLint name = -1;
-            glGetIntegerv(GL_DRAW_INDIRECT_BUFFER_BINDING, &name);
-            return name;
-        }
-
         // Whether clearRange clears on the GPU, as it does where GL 4.3's clear resolved, for a store of any flags.
         // Elsewhere it uploads the pattern, which only a DYNAMIC or STREAM store takes.
         bool clearsOnGPU()
@@ -93,8 +74,8 @@ namespace
             return glClearBufferSubData || (gGLManager.mHasDirectStateAccess && glClearNamedBufferSubData);
         }
 
-    // The program the tests bind, and compute's switch, go back with mGL. The rings keep their frames by the case's own
-    // frame fences.
+    // Compute's switch goes back with mGL. The rings keep their frames by the
+    // case's own frame fences.
     struct algpubuffer_data
     {
         algpubuffer_data()
@@ -104,36 +85,10 @@ namespace
 
         ~algpubuffer_data()
         {
-            LLGLSLShader::unbind();
-            mProgram.unload();
             mFrames.release();
         }
 
-        // A program that draws a point and declares no inputs, bound, for the indirect draws.
-        void require_program()
-        {
-            const GLuint vs = ll_test::compileTestShader(GL_VERTEX_SHADER, kVertex);
-            const GLuint fs = ll_test::compileTestShader(GL_FRAGMENT_SHADER, kFragment);
-            {
-                INFO("shaders compile");
-                REQUIRE(vs);
-                REQUIRE(fs);
-            }
-            mProgram.mProgramObject = glCreateProgram();
-            mProgram.mName = "indirect point (test)";
-            mProgram.attachObject(vs);
-            mProgram.attachObject(fs);
-            const bool linked = mProgram.mapAttributes();
-            glDeleteShader(vs);
-            glDeleteShader(fs);
-            REQUIRE(linked);
-            REQUIRE(mProgram.mapUniforms());
-            mProgram.bind();
-        }
-
         ll_test::SharedGLScope mGL;
-        ll_test::TestShaderMgr mShaders;
-        LLGLSLShader mProgram;
         ALFrameFences mFrames;
     };
 
@@ -254,50 +209,6 @@ namespace
         other.release();
         UNSCOPED_INFO("all returned");
         CHECK(ALGPUBuffer::sBytesAllocated == before);
-        CHECK(glGetError() == GLenum(GL_NO_ERROR));
-    }
-
-    // LLRender binds an indirect draw's buffer once and keeps it bound; after refreshState it binds it again, since
-    // what is bound is no longer known; and a buffer's release forgets its name, so a new buffer that GL hands the
-    // same name is bound rather than taken for bound already.
-    TEST_CASE_METHOD(algpubuffer_data, "algpubuffer_gl: LLRender keeps an indirect draw's buffer bound and rebinds when it must", "[algpubuffer_gl]")
-    {
-        require_program();
-        ALDrawArraysIndirectCommand command;
-        command.mCount = 1;
-        command.mInstanceCount = 1;
-
-        ALGPUBuffer first;
-        REQUIRE(first.allocate(sizeof(command), 0, &command, "draw (test)"));
-        gGL.drawArraysIndirect(LLRender::POINTS, first, 0);
-        UNSCOPED_INFO("bound for the draw");
-        CHECK(indirectBinding() == (GLint)first.getGLName());
-        gGL.drawArraysIndirect(LLRender::POINTS, first, 0);
-        UNSCOPED_INFO("still bound");
-        CHECK(indirectBinding() == (GLint)first.getGLName());
-
-        // Behind LLRender's back.
-        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-        gGL.refreshState();
-        gGL.drawArraysIndirect(LLRender::POINTS, first, 0);
-        UNSCOPED_INFO("bound again after refreshState");
-        CHECK(indirectBinding() == (GLint)first.getGLName());
-        UNSCOPED_INFO("after refreshState");
-        CHECK(glGetError() == GLenum(GL_NO_ERROR));
-
-        const U32 name = first.getGLName();
-        first.release();
-        UNSCOPED_INFO("deleting it unbound it");
-        CHECK(indirectBinding() == 0);
-        ALGPUBuffer second;
-        REQUIRE(second.allocate(sizeof(command), 0, &command, "draw again (test)"));
-        if (second.getGLName() != name)
-        {
-            SKIP("GL did not hand the released name out again");
-        }
-        gGL.drawArraysIndirect(LLRender::POINTS, second, 0);
-        UNSCOPED_INFO("the reused name is bound");
-        CHECK(indirectBinding() == (GLint)second.getGLName());
         CHECK(glGetError() == GLenum(GL_NO_ERROR));
     }
 

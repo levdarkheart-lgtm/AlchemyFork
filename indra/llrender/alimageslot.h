@@ -42,7 +42,7 @@ constexpr U32 AL_NUM_IMAGE_SLOTS = 8;
 // nothing. Metal compute encoders consume the recorded resource explicitly;
 // there is no ambient driver image-unit state to restore.
 //
-// Shader writes through a unit reach later reads only past the barrier for that kind of read: LLRender::memoryBarrier.
+// Native encoder owners order shader writes before dependent reads.
 class ALImageSlot
 {
     friend class LLRender;
