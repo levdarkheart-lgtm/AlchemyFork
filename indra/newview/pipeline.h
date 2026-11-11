@@ -379,7 +379,6 @@ public:
     // plane, so a march through it finds nothing.
     void clearSceneMap();
 
-    void bindScreenToTexture();
     void renderFinalize();
 #if LL_DARWIN
     enum class MetalWorldPresentationState : U8
@@ -744,11 +743,6 @@ public:
     // shader it needs built. It makes none at zero bloom and halation strength.
     bool bloomHDRReady() const;
     Bloom generateBloomHDR(LLRenderTarget* src, ALTransientTargets& scope);
-    void compositeBloomHDR(LLRenderTarget* scene, const Bloom& bloom);
-    // The post chain's passes after colorCorrect: each draws @a src into @a dst and returns true, or draws nothing and
-    // returns false where it has nothing to draw with, so the caller goes on reading @a src.
-    bool applyCAS(LLRenderTarget* src, LLRenderTarget* dst);
-    bool applyFXAA(LLRenderTarget* src, LLRenderTarget* dst);
     // Optional retained handles for the debug visualization selector. The
     // native display transaction owns SMAA and does not publish transitional
     // GL edge/weight targets into this post chain.

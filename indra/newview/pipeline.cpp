@@ -179,27 +179,6 @@
 
 #include "llerror.h"
 
-#if LL_CLANG
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-function"
-#pragma clang diagnostic ignored "-Wunused-variable"
-#elif LL_GNUC
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#pragma GCC diagnostic ignored "-Wrestrict"
-#endif
-#ifndef LL_WINDOWS
-#define A_GCC 1
-#endif
-#define A_CPU 1
-#include "app_settings/shaders/class1/deferred/CASF.glsl" // This is also C++
-#if LL_CLANG
-#pragma clang diagnostic pop
-#elif LL_GNUC
-#pragma GCC diagnostic pop
-#endif
-
 extern bool gSnapshot;
 bool gShiftFrame = false;
 
@@ -25840,11 +25819,6 @@ void apply_cube_face_rotation(U32 face)
     }
 }
 
-void LLPipeline::bindScreenToTexture()
-{
-
-}
-
 void LLPipeline::requestScenePixel(S32 x, S32 y, scene_pixel_cb_t callback)
 {
     if (!callback)
@@ -27765,167 +27739,6 @@ LLPipeline::Bloom LLPipeline::generateBloomHDR(LLRenderTarget* src, ALTransientT
     // alongside the pyramid, so there is no composite pass here to write them
     // into mip 0.
     return bloom;
-}
-
-// Composite the bloom pyramid (mBloomMip[0]) additively into the pre-tonemap
-// scene buffer. Halation rides in the alpha channel and is tinted at composite.
-// The main render path folds this into colorCorrectF (BLOOM_COMPOSITE). This
-// function has never had a caller anywhere in the tree; it is kept as a
-// standalone equivalent, but note it is no longer equivalent -- cross-filter
-// streaks are composited only in colorCorrectF, so this path would drop them.
-void LLPipeline::compositeBloomHDR(LLRenderTarget* scene, const Bloom& bloom)
-{
-    LL_PROFILE_GPU_ZONE("bloom hdr composite");
-
-    if (bloom.mMipCount < 3 || !gBloomCompositeProgram.isComplete())
-    {
-        return;
-    }
-
-    static LLCachedControl<F32> bloom_strength(gSavedSettings, "RenderBloomStrength", 0.325f);
-    static LLCachedControl<F32> halation_strength(gSavedSettings, "RenderBloomHalationStrength", 0.0f);
-    static LLCachedControl<LLColor3> halation_tint(gSavedSettings, "RenderBloomHalationTint", LLColor3(1.0f, 0.35f, 0.15f));
-
-    LLGLDepthTest depth(GL_FALSE);
-    LLGLDisable cull(GL_CULL_FACE);
-    LLGLEnable blend(GL_BLEND);
-    gGL.setSceneBlendType(LLRender::BT_ADD);
-
-    scene->bindTarget();
-
-    gBloomCompositeProgram.bind();
-    gBloomCompositeProgram.bindTexture(LLShaderMgr::BLOOM_SAMPLER, bloom.mMips[0], ALSamplers::BilinearMirror);
-    gBloomCompositeProgram.uniform1f(LLShaderMgr::BLOOM_STRENGTH, llmax(bloom_strength(), 0.0f));
-    gBloomCompositeProgram.uniform1f(LLShaderMgr::HALATION_STRENGTH, llmax(halation_strength(), 0.0f));
-    const LLColor3& tint = halation_tint();
-    gBloomCompositeProgram.uniform3f(LLShaderMgr::HALATION_TINT, tint.mV[0], tint.mV[1], tint.mV[2]);
-
-    mScreenTriangleVB->setBuffer();
-    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-    gBloomCompositeProgram.unbind();
-
-    scene->flush();
-
-    gGL.setSceneBlendType(LLRender::BT_ALPHA);
-}
-
-bool LLPipeline::applyCAS(LLRenderTarget* src, LLRenderTarget* dst)
-{
-#if LL_DARWIN
-    // Darwin's complete CAS transaction is native. Keep the retained GL
-    // implementation available only to the platforms that still own it.
-    (void)src;
-    (void)dst;
-    return false;
-#else
-    static LLCachedControl<F32> cas_sharpness(gSavedSettings, "RenderCASSharpness", 0.4f);
-    LL_PROFILE_GPU_ZONE("cas");
-    if (cas_sharpness == 0.0f || !gCASProgram.isComplete())
-    {
-        return false;
-    }
-
-    // Bind setup:
-    dst->bindTarget();
-
-    gCASProgram.bind();
-
-    {
-        varAU4(const0);
-        varAU4(const1);
-        CasSetup(const0, const1,
-            cas_sharpness(),             // Sharpness tuning knob (0.0 to 1.0).
-            (AF1)src->getWidth(), (AF1)src->getHeight(),  // Input size.
-            (AF1)dst->getWidth(), (AF1)dst->getHeight()); // Output size.
-
-        gCASProgram.uniform4uiv(LLShaderMgr::CAS_PARAM_0, 1, const0);
-        gCASProgram.uniform4uiv(LLShaderMgr::CAS_PARAM_1, 1, const1);
-
-        gCASProgram.uniform2f(LLShaderMgr::OUT_SCREEN_RES, (AF1)dst->getWidth(), (AF1)dst->getHeight());
-    }
-
-    gCASProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, ALSamplers::PointMirror);
-
-    // Draw
-    gPipeline.mScreenTriangleVB->setBuffer();
-    gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-    gCASProgram.unbind();
-
-    dst->flush();
-    return true;
-#endif
-}
-
-bool LLPipeline::applyFXAA(LLRenderTarget* src, LLRenderTarget* dst)
-{
-    LL_PROFILE_GPU_ZONE("FXAA");
-#if LL_DARWIN
-    // Darwin's complete FXAA transaction is native. Keep the retained GL
-    // implementation available only to the platforms that still own it.
-    (void)src;
-    (void)dst;
-    return false;
-#else
-    {
-        llassert(!gCubeSnapshot);
-        bool multisample = mResourceInputs.mFSAAType == 1 && gFXAAProgram[0].isComplete();
-        if (!multisample)
-        {
-            return false;
-        }
-
-        {
-            LL_PROFILE_GPU_ZONE("aa");
-            S32 width = dst->getWidth();
-            S32 height = dst->getHeight();
-
-            dst->bindTarget();
-
-            static LLCachedControl<U32> aa_quality(gSavedSettings, "RenderFSAASamples", 0U);
-            U32 fsaa_quality = std::clamp(aa_quality(), 0U, 3U);
-
-            LLGLSLShader* shader = &gFXAAProgram[fsaa_quality];
-            shader->bind();
-
-            // Straight from the source, with no luma baked into an intermediate first: FXAA computes
-            // each tap's luma from its colour (FXAA_LUMA_FROM_RGB), so it reads the post chain's
-            // target at that target's precision, RGB10_A2 under HDR.
-            S32 channel = shader->enableTexture(LLShaderMgr::DIFFUSE_MAP);
-            if (channel > -1)
-            {
-                src->bindTexture(0, channel, ALSamplers::BilinearMirror);
-            }
-
-            // The destination is an FBO; bindTarget already set its viewport.
-            // Forcing the full world-view viewport here makes RenderResolutionDivisor
-            // write only the lower-left fraction of the reduced-size target.
-
-            F32 scale_x = (F32)width / src->getWidth();
-            F32 scale_y = (F32)height / src->getHeight();
-            shader->uniform2f(LLShaderMgr::FXAA_TC_SCALE, scale_x, scale_y);
-            shader->uniform2f(LLShaderMgr::FXAA_RCP_SCREEN_RES, 1.f / width * scale_x, 1.f / height * scale_y);
-            shader->uniform4f(LLShaderMgr::FXAA_RCP_FRAME_OPT, -0.5f / width * scale_x, -0.5f / height * scale_y,
-                0.5f / width * scale_x, 0.5f / height * scale_y);
-            shader->uniform4f(LLShaderMgr::FXAA_RCP_FRAME_OPT2, -2.f / width * scale_x, -2.f / height * scale_y,
-                2.f / width * scale_x, 2.f / height * scale_y);
-
-            {
-                LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
-                S32 depth_channel = shader->getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
-                gGL.getTextureSlot(depth_channel)->bind(&mRT->deferredScreen, true);
-
-                mScreenTriangleVB->setBuffer();
-                mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            }
-
-            shader->unbind();
-            dst->flush();
-        }
-    }
-    return true;
-#endif
 }
 
 LLPipeline::DepthOfFieldConfig LLPipeline::depthOfFieldConfig() const
