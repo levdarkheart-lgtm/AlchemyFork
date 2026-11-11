@@ -1,7 +1,6 @@
 /**
  * @file algpubuffer.h
- * @brief Native Metal buffer storage for shader data, indirect commands,
- *        readback and streaming rings.
+ * @brief Native Metal buffer storage for renderer data.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -29,9 +28,7 @@
 
 #include <cstddef>
 #include <memory>
-#include <vector>
 
-class ALFrameFences;
 class ALMetalBuffer;
 class ALMetalDevice;
 
@@ -78,9 +75,6 @@ public:
 
     bool   isAllocated() const { return mBuffer != nullptr; }
     size_t size() const { return mSize; }
-    // Temporary compile boundary for legacy consumers that are unreachable in
-    // the Metal product. A native allocation never has a GL object name.
-    U32    getGLName() const { return 0; }
     ALMetalBuffer* getMetalBuffer() { return mBuffer.get(); }
     const ALMetalBuffer* getMetalBuffer() const { return mBuffer.get(); }
     U32    getFlags() const { return mFlags; }
@@ -123,64 +117,4 @@ private:
     size_t mSize   = 0;
     U32    mFlags  = 0;
     U8*    mMapped = nullptr;
-};
-
-// Data the CPU writes for the GPU every frame, without waiting on an upload or on the GPU: a ring of regions in one
-// STREAM buffer. map() gives the next region to write, publish() hands it to the GPU, and the GPU has it until the ring
-// comes round to it again, `regions` publishes later, and until the frame its reads were issued in has finished
-// (ALFrameFences); only a GPU that many frames behind, or a ring mapped round within one frame, makes map() wait. Where
-// persistent maps did not resolve, map() gives memory of its own and publish() uploads it.
-//
-// A published region's reads -- binds, draws, dispatches -- are issued before the next map(), which notes the frame
-// they were issued in, or are noted with noteRead() in the frame they are issued, as a user that keeps what it
-// published for later frames does: the region stays as published until the ring comes round to it, `regions` maps on.
-// Neither call lays or polls a fence while the GPU keeps up.
-//
-// Frame completion comes from the renderer's Metal scheduler (gGL's frame
-// timeline unless another is provided). Non-copyable.
-class ALGPUStream
-{
-public:
-    explicit ALGPUStream(ALFrameFences* frames = nullptr) : mFrameFences(frames) {}
-    ~ALGPUStream();
-
-    ALGPUStream(const ALGPUStream&) = delete;
-    ALGPUStream& operator=(const ALGPUStream&) = delete;
-
-    // Replaces what this held: `regions` regions of up to `bytes` each.
-    bool allocate(size_t bytes, U32 regions = 3, const char* label = nullptr);
-    void release();
-
-    bool   isAllocated() const { return mStore.isAllocated(); }
-    size_t getRegionSize() const { return mRegionBytes; }
-    // The buffer a published region lies in, for LLRender::bindStorageBuffer and the indirect calls.
-    const ALGPUBuffer& getBuffer() const { return mStore; }
-
-    // Where the next region's bytes go, getRegionSize() of them. Notes the frame the region published last was read in.
-    U8* map();
-
-    // Hand the GPU the `bytes` written since map(). Returns where they start in getBuffer(): a multiple of
-    // the native 256-byte storage/constant slice alignment.
-    size_t publish(size_t bytes);
-
-    // The region publish() placed at `offset` is read again in this frame, after a later map(): the ring writes it
-    // again only once this frame has finished. Every read, in every frame, is noted so.
-    void noteRead(size_t offset);
-
-    // map() calls that found their region still in use by the GPU, and waited.
-    U32 getStalls() const { return mStalls; }
-
-private:
-    ALFrameFences& frames() const;
-
-    ALFrameFences*     mFrameFences  = nullptr; // gGL's where null
-    ALGPUBuffer        mStore;
-    std::vector<U32>   mReadIn;            // per region, the frame its last reads were issued in, 0 for none
-    std::vector<U8>    mStaging;           // what map() gives where mStore is not mapped
-    size_t             mRegionBytes  = 0;
-    size_t             mRegionStride = 0;
-    S32                mPublished    = -1; // the region published last, its frame not yet noted
-    S32                mWriting      = -1; // the region map() gave, not yet published
-    U32                mNext         = 0;  // the region the next map() gives
-    U32                mStalls       = 0;
 };

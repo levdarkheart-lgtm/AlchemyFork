@@ -15,10 +15,9 @@
 
 #include "catch2/catch_test_macros.hpp"
 
-#include "alframefences.h"
 #include "algpubuffer.h"
 #include "almetaldevice.h"
-#include "almetalframe.h"
+#include "almetalresource.h"
 
 #include <algorithm>
 #include <cstring>
@@ -83,8 +82,9 @@ TEST_CASE("ALGPUBuffer uses native Metal storage for transfer and readback",
                                 ALGPUBuffer::DYNAMIC,
                                 initial.data(), "native private words"));
         CHECK(buffer.isAllocated());
-        CHECK(buffer.getGLName() == 0);
-        CHECK(buffer.getMetalBuffer() != nullptr);
+        REQUIRE(buffer.getMetalBuffer());
+        CHECK(buffer.getMetalBuffer()->nativeHandle());
+        CHECK(buffer.size() == WORDS * sizeof(U32));
         CHECK(buffer.getMapped() == nullptr);
         CHECK(buffer.getFlags() == U32(ALGPUBuffer::DYNAMIC));
         CHECK(ALGPUBuffer::sBytesAllocated ==
@@ -102,8 +102,12 @@ TEST_CASE("ALGPUBuffer uses native Metal storage for transfer and readback",
         std::fill(expected.begin() + 20, expected.begin() + 32, 0xaabbccddu);
         CHECK(readAll(buffer) == expected);
 
-        buffer.clear(0);
-        CHECK(readAll(buffer) == std::vector<U32>(WORDS, 0));
+        std::vector<U32> part(4);
+        REQUIRE(buffer.read(23 * sizeof(U32), part.data(), part.size() * sizeof(U32)));
+        CHECK(part == std::vector<U32>(expected.begin() + 23, expected.begin() + 27));
+
+        buffer.clear(7);
+        CHECK(readAll(buffer) == std::vector<U32>(WORDS, 7));
     }
     CHECK(ALGPUBuffer::sBytesAllocated == bytes_before);
 }
@@ -125,7 +129,7 @@ TEST_CASE("ALGPUBuffer copies native stores and moves ownership",
     REQUIRE(source.allocate(source_words.size() * sizeof(U32), 0,
                             source_words.data(), "native copy source"));
     REQUIRE(target.allocate(zeroes.size() * sizeof(U32),
-                            ALGPUBuffer::DYNAMIC, zeroes.data(),
+                            0, zeroes.data(),
                             "native copy target"));
 
     target.copyFrom(source, 4 * sizeof(U32), 32 * sizeof(U32),
@@ -139,15 +143,41 @@ TEST_CASE("ALGPUBuffer copies native stores and moves ownership",
     std::copy(expected.begin() + 32, expected.begin() + 42,
               expected.begin());
     CHECK(readAll(target) == expected);
+    CHECK(readAll(source) == source_words);
 
+    const ALMetalBuffer* original = target.getMetalBuffer();
+    const void* native = original->nativeHandle();
     ALGPUBuffer moved(std::move(target));
     CHECK_FALSE(target.isAllocated());
+    CHECK(target.size() == 0);
+    CHECK(target.getMetalBuffer() == nullptr);
     CHECK(moved.isAllocated());
+    CHECK(moved.getMetalBuffer() == original);
+    CHECK(moved.getMetalBuffer()->nativeHandle() == native);
     CHECK(readAll(moved) == expected);
-    moved.release();
+
+    ALGPUBuffer other;
+    REQUIRE(other.allocate(2 * WORDS * sizeof(U32)));
+    CHECK(ALGPUBuffer::sBytesAllocated == bytes_before + 4 * WORDS * sizeof(U32));
+    other = std::move(moved);
     CHECK_FALSE(moved.isAllocated());
+    CHECK(moved.size() == 0);
+    CHECK(moved.getMetalBuffer() == nullptr);
+    CHECK(other.getMetalBuffer() == original);
+    CHECK(other.getMetalBuffer()->nativeHandle() == native);
+    CHECK(readAll(other) == expected);
+    CHECK(ALGPUBuffer::sBytesAllocated == bytes_before + 2 * WORDS * sizeof(U32));
+    other.clear(0xa5a5a5a5u);
+    CHECK(readAll(other) == std::vector<U32>(WORDS, 0xa5a5a5a5u));
+    other.release();
+    CHECK_FALSE(other.isAllocated());
+    CHECK(other.size() == 0);
+    CHECK(other.getMetalBuffer() == nullptr);
+    CHECK(other.getMapped() == nullptr);
     CHECK(ALGPUBuffer::sBytesAllocated ==
           bytes_before + source_words.size() * sizeof(U32));
+    source.release();
+    CHECK(ALGPUBuffer::sBytesAllocated == bytes_before);
 }
 
 TEST_CASE("ALGPUBuffer streaming and readback stores map coherent shared memory",
@@ -160,25 +190,49 @@ TEST_CASE("ALGPUBuffer streaming and readback stores map coherent shared memory"
     MetalBufferDeviceScope device_scope(device.get());
 
     const auto words = pattern(900);
-    ALGPUBuffer stream;
-    REQUIRE(stream.allocate(words.size() * sizeof(U32),
-                            ALGPUBuffer::STREAM |
-                                ALGPUBuffer::FLUSH_EXPLICIT,
-                            nullptr, "native stream"));
-    REQUIRE(stream.getMapped());
-    std::memcpy(stream.getMapped(), words.data(), words.size() * sizeof(U32));
-    stream.flushMapped(0, words.size() * sizeof(U32));
-    CHECK(readAll(stream) == words);
+    for (U32 flags : { U32(ALGPUBuffer::STREAM),
+                      U32(ALGPUBuffer::STREAM | ALGPUBuffer::FLUSH_EXPLICIT) })
+    {
+        INFO(flags);
+        ALGPUBuffer stream;
+        REQUIRE(stream.allocate(words.size() * sizeof(U32), flags,
+                                nullptr, "native stream"));
+        REQUIRE(stream.getMapped());
+        CHECK(stream.getMetalBuffer()->storageMode() == ALMetalStorageMode::shared);
+        stream.upload(0, words.data(), words.size() * sizeof(U32));
 
-    ALGPUBuffer readback;
-    REQUIRE(readback.allocate(words.size() * sizeof(U32),
-                              ALGPUBuffer::READBACK, words.data(),
-                              "native readback"));
-    REQUIRE(readback.getMapped());
-    CHECK(readAll(readback) == words);
+        ALGPUBuffer gpu_copy;
+        REQUIRE(gpu_copy.allocate(words.size() * sizeof(U32)));
+        gpu_copy.copyFrom(stream, 0, 0, words.size() * sizeof(U32));
+        CHECK(readAll(gpu_copy) == words);
+
+        auto expected = words;
+        const std::vector<U32> replacement(8, 9000);
+        std::memcpy(stream.getMapped() + 16 * sizeof(U32), replacement.data(),
+                    replacement.size() * sizeof(U32));
+        stream.flushMapped(16 * sizeof(U32), replacement.size() * sizeof(U32));
+        std::copy(replacement.begin(), replacement.end(), expected.begin() + 16);
+        gpu_copy.copyFrom(stream, 0, 0, expected.size() * sizeof(U32));
+        CHECK(readAll(gpu_copy) == expected);
+
+        ALGPUBuffer readback;
+        REQUIRE(readback.allocate(words.size() * sizeof(U32),
+                                  ALGPUBuffer::READBACK, nullptr,
+                                  "native readback"));
+        REQUIRE(readback.getMapped());
+        CHECK(readback.getMetalBuffer()->storageMode() == ALMetalStorageMode::shared);
+        auto command = device->makeCommandBuffer("native mapped readback copy", &error);
+        REQUIRE(command);
+        REQUIRE(readback.getMetalBuffer()->copyFrom(*command, *gpu_copy.getMetalBuffer(),
+                                                   0, 0, expected.size() * sizeof(U32), &error));
+        REQUIRE(command->commit(&error));
+        REQUIRE(command->waitUntilCompleted(&error));
+        CHECK(std::memcmp(readback.getMapped(), expected.data(),
+                          expected.size() * sizeof(U32)) == 0);
+        CHECK(readAll(readback) == expected);
+    }
 }
-
-TEST_CASE("ALGPUStream refuses to overwrite a region used by the open Metal frame",
+TEST_CASE("ALGPUBuffer queued native copies retain storage beyond wrapper and backend retirement",
           "[algpubuffer][almetal]")
 {
     std::string error;
@@ -186,35 +240,40 @@ TEST_CASE("ALGPUStream refuses to overwrite a region used by the open Metal fram
     INFO(error);
     REQUIRE(device);
     MetalBufferDeviceScope device_scope(device.get());
+    const U64 bytes_before = ALGPUBuffer::sBytesAllocated;
+    const auto expected = pattern(7000);
 
-    auto scheduler = ALMetalFrameScheduler::create(*device, 2, &error);
-    INFO(error);
-    REQUIRE(scheduler);
-    ALFrameFences fences;
-    fences.setMetalScheduler(scheduler.get());
-
-    ALGPUStream stream(&fences);
-    REQUIRE(stream.allocate(4 * sizeof(U32), 2, "native stream ring"));
-    auto frame = scheduler->beginFrame("native stream ring frame", UINT32_MAX,
-                                       &error);
-    INFO(error);
-    REQUIRE(frame);
-
-    REQUIRE(stream.map());
-    const size_t first = stream.publish(4 * sizeof(U32));
-    REQUIRE(stream.map());
-    const size_t second = stream.publish(4 * sizeof(U32));
-    CHECK(first != second);
-
-    // Both regions are now recorded as read by the still-open logical frame.
-    // Reusing the first before its command buffer is committed must fail rather
-    // than corrupt the data the GPU is about to consume.
-    CHECK(stream.map() == nullptr);
-
-    REQUIRE(scheduler->submit(*frame, &error));
-    fences.endFrame();
-    REQUIRE(stream.map());
-    CHECK(stream.publish(4 * sizeof(U32)) == first);
-
-    fences.release();
+    ALMetalBufferDescriptor descriptor;
+    descriptor.length = expected.size() * sizeof(U32);
+    descriptor.label = "native retained buffer result";
+    auto result = ALMetalBuffer::create(*device, descriptor, &error);
+    REQUIRE(result);
+    auto command = device->makeCommandBuffer("native buffer owner retirement", &error);
+    REQUIRE(command);
+    {
+        ALGPUBuffer source;
+        REQUIRE(source.allocate(descriptor.length, ALGPUBuffer::STREAM,
+                                expected.data(), "native retiring stream"));
+        U8* mapped = source.getMapped();
+        REQUIRE(mapped);
+        const ALMetalBuffer* original = source.getMetalBuffer();
+        ALGPUBuffer moved(std::move(source));
+        CHECK(moved.getMapped() == mapped);
+        CHECK(moved.getMetalBuffer() == original);
+        CHECK(moved.getFlags() == U32(ALGPUBuffer::STREAM));
+        CHECK(source.getMapped() == nullptr);
+        REQUIRE(result->copyFrom(*command, *moved.getMetalBuffer(),
+                                 0, 0, descriptor.length, &error));
+        CHECK_FALSE(command->isCommitted());
+        // Native command ownership protects the encoded source. Retiring the
+        // renderer device binding cannot prevent the wrapper releasing bytes.
+        ALGPUBuffer::setMetalDevice(nullptr);
+    }
+    CHECK(ALGPUBuffer::sBytesAllocated == bytes_before);
+    REQUIRE(command->commitAndWait(&error));
+    CHECK(command->status() == ALMetalCommandStatus::completed);
+    std::vector<U32> actual(expected.size());
+    REQUIRE(result->read(0, actual.data(), descriptor.length, &error));
+    CHECK(actual == expected);
+    ALGPUBuffer::setMetalDevice(device.get());
 }

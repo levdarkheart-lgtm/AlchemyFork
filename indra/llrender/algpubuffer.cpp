@@ -1,6 +1,6 @@
 /**
  * @file algpubuffer.cpp
- * @brief Native Metal buffer storage and rings for GPU/CPU data exchange.
+ * @brief Native Metal buffer storage for GPU/CPU data exchange.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -26,10 +26,8 @@
 
 #include "algpubuffer.h"
 
-#include "alframefences.h"
 #include "almetaldevice.h"
 #include "almetalresource.h"
-#include "llrender.h"
 
 #include <cstring>
 #include <string>
@@ -40,17 +38,11 @@ U64 ALGPUBuffer::sBytesAllocated = 0;
 namespace
 {
     ALMetalDevice* sMetalDevice = nullptr;
-    constexpr size_t METAL_BUFFER_OFFSET_ALIGNMENT = 256;
 
     // Whether [offset, offset + bytes) lies in a store of `size` bytes, without the sum wrapping.
     bool in_range(size_t offset, size_t bytes, size_t size)
     {
         return offset <= size && bytes <= size - offset;
-    }
-
-    size_t round_up(size_t value, size_t multiple)
-    {
-        return (value + multiple - 1) / multiple * multiple;
     }
 
     void warn_failure(const char* operation, const char* label,
@@ -333,142 +325,4 @@ bool ALGPUBuffer::read(size_t offset, void* out, size_t bytes) const
         return false;
     }
     return true;
-}
-
-//-----------------------------------------------------------------------------
-// ALGPUStream
-//-----------------------------------------------------------------------------
-
-ALGPUStream::~ALGPUStream()
-{
-    release();
-}
-
-bool ALGPUStream::allocate(size_t bytes, U32 regions, const char* label)
-{
-    release();
-    if (bytes == 0 || regions == 0)
-    {
-        llassert(false);
-        return false;
-    }
-
-    // Metal buffer offsets used for constant/storage slices are kept at the
-    // conservative 256-byte alignment shared by supported Apple GPUs.
-    const size_t stride = round_up(round_up(bytes, sizeof(U32)),
-                                   METAL_BUFFER_OFFSET_ALIGNMENT);
-    if (!mStore.allocate(stride * regions, ALGPUBuffer::STREAM, nullptr, label))
-    {
-        return false;
-    }
-    mReadIn.assign(regions, 0);
-    if (!mStore.getMapped())
-    {
-        mStaging.resize(bytes);
-    }
-    mRegionBytes  = bytes;
-    mRegionStride = stride;
-    return true;
-}
-
-ALFrameFences& ALGPUStream::frames() const
-{
-    return mFrameFences ? *mFrameFences : gGL.frameFences();
-}
-
-void ALGPUStream::release()
-{
-    mReadIn.clear();
-    mStaging.clear();
-    mStore.release();
-    mRegionBytes  = 0;
-    mRegionStride = 0;
-    mPublished    = -1;
-    mWriting      = -1;
-    mNext         = 0;
-    mStalls       = 0;
-}
-
-U8* ALGPUStream::map()
-{
-    if (!mStore.isAllocated())
-    {
-        llassert(false);
-        return nullptr;
-    }
-
-    // A region mapped and not yet published is the one to write still.
-    if (mWriting < 0)
-    {
-        // Every read of the region published last was issued before this call, in this frame or an earlier one.
-        ALFrameFences& fences = frames();
-        if (mPublished >= 0)
-        {
-            mReadIn[mPublished] = fences.frame();
-            mPublished = -1;
-        }
-
-        const U32 region = mNext;
-        // Finished already, unless the GPU is as many frames behind as there are regions, or the ring came round
-        // within the frame. An ended frame is safe to wait out however long the
-        // GPU takes. A still-open frame cannot be waited on because its command
-        // buffer is not committed; fail closed and let the caller retry after
-        // the frame boundary rather than overwrite storage the GPU will read.
-        if (!fences.isComplete(mReadIn[region]))
-        {
-            if (mReadIn[region] >= fences.frame())
-            {
-                LL_WARNS_ONCE("GPUBuffer")
-                    << "A stream ring exhausted its regions within one Metal frame; refusing to overwrite an in-use region"
-                    << LL_ENDL;
-                return nullptr;
-            }
-            bool stalled = false;
-            fences.waitFinished(mReadIn[region], &stalled);
-            if (stalled)
-            {
-                ++mStalls;
-            }
-        }
-        mReadIn[region] = 0;
-        mWriting = (S32)region;
-        mNext = (mNext + 1) % (U32)mReadIn.size();
-    }
-
-    return mStore.getMapped() ? mStore.getMapped() + (size_t)mWriting * mRegionStride : mStaging.data();
-}
-
-size_t ALGPUStream::publish(size_t bytes)
-{
-    llassert(mWriting >= 0 && bytes <= mRegionBytes);
-    if (mWriting < 0)
-    {
-        return 0;
-    }
-    bytes = llmin(bytes, mRegionBytes);
-
-    const size_t offset = (size_t)mWriting * mRegionStride;
-    if (!mStore.getMapped() && bytes > 0)
-    {
-        mStore.upload(offset, mStaging.data(), bytes);
-    }
-    mPublished = mWriting;
-    mWriting   = -1;
-    return offset;
-}
-
-void ALGPUStream::noteRead(size_t offset)
-{
-    if (mRegionStride == 0)
-    {
-        return;
-    }
-    const size_t region = offset / mRegionStride;
-    // The region published last is noted by the next map(), in its frame or a later one; one being written is not
-    // published.
-    if (region >= mReadIn.size() || (S32)region == mPublished || (S32)region == mWriting)
-    {
-        return;
-    }
-    mReadIn[region] = frames().frame();
 }
