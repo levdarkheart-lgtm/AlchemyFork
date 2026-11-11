@@ -39,7 +39,11 @@ struct FinalizeWindow
 struct FinalizeSource
 {
     ALMetalRenderTargetDescriptor dimensions;
-    FinalizeSource() { dimensions.width = 8; dimensions.height = 6; }
+    explicit FinalizeSource(ALMetalPixelFormat format = ALMetalPixelFormat::rgba8_unorm)
+    {
+        dimensions.width = 8; dimensions.height = 6;
+        dimensions.colors[0].format = format;
+    }
     const ALMetalRenderTargetDescriptor& descriptor() const { return dimensions; }
 };
 struct FinalizeHistoryTexture
@@ -65,6 +69,9 @@ struct FinalizePixelReader
         }
         auto result = std::make_unique<FinalizeSource>();
         result->dimensions = source.descriptor();
+        // The renderer's original-mapped contract is RGB10_A2 for either
+        // display source format. Exact conversion is tested by its GPU owner.
+        result->dimensions.colors[0].format = ALMetalPixelFormat::rgb10a2_unorm;
         return result;
     }
     bool readSceneColorPixel(const FinalizeSource&, U32 px, U32 py,
@@ -99,7 +106,8 @@ struct FinalizePolicyPipeline
         U64 lens_flare_state_epoch = 7;
         U32 display_post_frame = 7, depth_of_field_frame = 7;
         std::unique_ptr<FinalizePixelReader> renderer = std::make_unique<FinalizePixelReader>();
-        std::unique_ptr<FinalizeSource> opaque_post_deferred_target = std::make_unique<FinalizeSource>();
+        std::unique_ptr<FinalizeSource> opaque_post_deferred_target =
+            std::make_unique<FinalizeSource>(ALMetalPixelFormat::rgba16_float);
         std::unique_ptr<FinalizeSource> display_post_target = std::make_unique<FinalizeSource>();
     };
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture = std::make_unique<MetalWorldSimpleCapture>();
@@ -323,6 +331,38 @@ TEST_CASE("Native DoF admission preserves both display modes and ordinary view g
     }
     dof.enabled = false; CHECK_FALSE(p.wantsMetalDepthOfField(dof));
     dof.enabled = true; p.mMetalWorldSimpleCapture.reset(); CHECK_FALSE(p.wantsMetalDepthOfField(dof));
+}
+
+TEST_CASE("Native reference retains packed storage across display format changes",
+          "[native-finalize-policy][native-reference-format-policy]")
+{
+    FinalizeCase f; auto& p = f.pipeline; auto& c = *p.mMetalWorldSimpleCapture;
+    FinalizeSource source;
+    source.dimensions.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+    p.mReferenceStillWanted = true;
+    auto pending = p.captureReferenceStill(source);
+    REQUIRE(pending);
+    CHECK(pending->descriptor().colors[0].format == ALMetalPixelFormat::rgb10a2_unorm);
+    const auto* packed = pending.get();
+    p.publishReferenceStill(std::move(pending));
+    for (const auto format : {ALMetalPixelFormat::rgba8_unorm,
+                              ALMetalPixelFormat::rgb10a2_unorm,
+                              ALMetalPixelFormat::rgba8_unorm})
+    {
+        source.dimensions.colors[0].format = format;
+        p.hdr = c.hdr = format == ALMetalPixelFormat::rgb10a2_unorm;
+        CHECK_FALSE(p.captureReferenceStill(source));
+        CHECK(p.hasReferenceStill());
+        CHECK(c.reference_still_target.get() == packed);
+        CHECK(c.renderer->reference_copies == 1);
+    }
+    c.renderer->reference_succeeds = false; p.mReferenceStillWanted = true;
+    CHECK_FALSE(p.captureReferenceStill(source));
+    CHECK_FALSE(p.mReferenceStillWanted);
+    CHECK(c.reference_still_target.get() == packed);
+    source.dimensions.height += 1;
+    CHECK_FALSE(p.captureReferenceStill(source));
+    CHECK_FALSE(p.hasReferenceStill());
 }
 
 TEST_CASE("Native HDR bloom follows presentation readiness independently of scope enable",

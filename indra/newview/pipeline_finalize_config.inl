@@ -56,8 +56,7 @@ std::unique_ptr<ALMetalRenderTarget> LLPipeline::captureReferenceStill(
     {
         const auto& still_desc = capture.reference_still_target->descriptor();
         if (still_desc.width != source_desc.width ||
-            still_desc.height != source_desc.height ||
-            still_desc.colors[0].format != source_desc.colors[0].format)
+            still_desc.height != source_desc.height)
         {
             capture.reference_still_target.reset();
         }
