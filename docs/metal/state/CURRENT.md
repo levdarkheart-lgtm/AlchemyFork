@@ -42,41 +42,53 @@ Native buffer storage bodies remain unchanged with stronger tests.
 ## Observed validation
 
 Root receipts: `artifacts/metal/feature-completion-20261111/`.
-Last full registered llrender at f36: **88827assertions/375cases**,374passed/one
-known CPAL multi-palette skip; separate native Font/UI **1862/61**0, API+shader
-validation. Current0b final test build/run is the next root gate; historical
-overlapping filters are not a current aggregate.
+Frozen source9918621da8 (renderer0b) registered Release llrender:
+**96864assertions/384cases**,383passed/one known CPAL multi-palette skip;
+separate native Font/UI **1862/61**0, alrender **556641/132**0, affected native
+Metal **73523/38**0, API+shader validation. API-only cache **5905/6**0,
+instrumented **882/1**0 and selective **98/1**0. Existing native CAS/DoF/final
+presentation/SSR-history **4487/4**0 is an overlapping admission filter.
 Integrated Scene Monitor **513/7**0 and buffer **108/4**0. Raw UI/target child
 **8007/9**0, real Scene Monitor result/UI child **80/1**0. RenderInfo/join/
 indirect/timing child **11455/16**0; actual source/Release/link checks0 and peer
 reviews clean. Exact reds/precision limits are in the latest note. Root viewer
 Scene Monitor/shader-manager/target Release syntax0.
-Latest root strict source audit:3507files/0blockers/0errors/1186informational
-before Scene Monitor integration; lexical source-zero does not prove runtime,
-linking, subprocess safety or whole-feature parity. Harness32files0.
+Latest root strict production source audit:3509files/0blockers/0errors/
+1177informational. Including excluded legacy tests:4109files/486blocking/
+0errors; also includes two deliberate SDL no-OpenGL negative assertions.
+Lexical source-zero does not prove runtime or whole-feature parity. Tools39/
+harness32files0. Stale configuration and missing test-bundle resource results
+are excluded explicitly in scene-ui-test-validation.json, then corrected.
 
-**Last verified canonical app remains source d28b0477a038e42b5a593d0d5350588d48c62343,
-version26.4.0d68712**, older than current code. Doctor/configure/build0,
+**Verified canonical source9918621da8fc7bbc3de3edbd63d33150c8e00d1a,
+version26.4.0d68744**. Doctor/configure/build0,
 349Mach-O/zero invalid ARM64 slices, deep strict codesign0, forbidden framework/
 GL/CGL/SDL_GL imports0. Optional appearance Release build/ARM64/signature/imports0.
-Exact hashes/source: final-feature-identities.json/final-feature-build-source.json.
-Current0b needs a frozen canonical and appearance build/verification. Neither
-executable was launched. No performance or release-readiness claim.
+Exact hashes/source: scene-ui-canonical-identities.json/scene-ui-canonical-source.json.
+All349 Mach-O imports audited: foreign VLC screen/vout/caopengllayer/glconv and
+CEF contain GL links; videotoolbox has a CV compatibility-key import. These
+are recorded separately, not a whole-bundle no-GL pass. Trace actual media
+consumer/selection policy before removal. Neither executable was launched.
+No performance or release-readiness claim.
 
 ## Exact next actions and ownership
 
-Root owns integration/CMake/docs and frozen canonical verification. Finish0b
-registered native suites, then doctor/configure/build/verify/import/signature
-and optional appearance checks. Keep source frozen during those builds;
-agents continue only in isolated worktrees. Integrate their new source after
-frozen-build receipts. Do not stop at that bounded green gate.
+Root owns integration/CMake/docs. Frozen9918 verification is complete; integrate
+frame-fence495efc818c and target-local native test-bundle resource packaging,
+then silhouette and uniform closures in order. Root isolated test-only tree
+/private/tmp/alchemy-native-postchain-admission-20261111 proves a new final
+viewport defect: original hard lens mask at32x24 passes at1x but native world
+post then resize fails1080/9249assertions at reduced/oversampled sizes. Preserve
+the exact oracle and fix final window effects after shared-owner release.
 
 menu_port: `/private/tmp/alchemy-native-rlva-feature-admission-20261111`;
 fresh native silhouette work based0b. Exclusive pipeline.cpp/h, almetalworld.cpp/h
 and minimal coverage MSL/test. Source confirms original @setcam_avdist/muted/
 complexity impostor stamp can write CPU fill RGB (.05 silhouette), while native
-stamp writes alpha only and skips zero-forward-batch scenes. Prove/fix exact
-original stamp boundary, bothZ/edges/attachments; no invented replay tint.
+stamp loses RGB fill. Initial G-buffer stamp already covers empty forward
+scenes; zero-batch composite admission is required to move stamping to the
+original policy point, not a separately observed lost-alpha defect. Child
+21566assertions/fourcases0; review/integration pending. No invented replay tint.
 Other audited RLVa camera/texture/privacy/overlay policies retain original
 consumers; inherited PBR limitation is not a new native regression.
 
@@ -90,9 +102,12 @@ for menu_port**; no uniform pipeline edits until silhouette owner freezes.
 ALGPUBuffer full retirement is a separately mapped follow-up, not yet done.
 
 gl_tail_audit: `/private/tmp/alchemy-native-frame-fences-coverage-20261111`.
-Own ALFrameFences.cpp/h and old/new fence tests; map all12 original cases to
-actual scheduler/gated GPU completion/pacing/release. Possible missing native
-query-call diagnostic requires red proof before fix; preserve timeline behavior.
+Frame-fence495efc818c ready: original12cases mapped to native9cases; actual
+2318/20with scheduler/completion/slack0. Red2157/9 found one2vs3 query-call
+undercount; two increments only, timeline unchanged. Next own ALGPUBuffer
+aftermath in isolated9918 tree; coordinate LLRender hooks with uniform owner.
+Preserve CPU uniform schema; replace Buffers diagnostic with accurately labeled
+tracked native wrapper bytes, never device-wide allocated bytes.
 
 Dead ALGLStencil/ALWaterStencil recording graph has zero production consumers;
 native typed water/exclusion/SMAA owners remain. Foundation cleanup deferred

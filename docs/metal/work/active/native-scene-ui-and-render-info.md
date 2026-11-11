@@ -99,7 +99,8 @@ Overflow saturates/marks unknown. Function-static state follows synchronous
 encoder owners; no speculative heap lifetime sink or timing-sink change.
 Child actual11455assertions/16cases0 includes six new counter cases and existing
 join/indirect/timing, API/shader validation. Seven ReleaseTUs/link0, peer reviews
-clean. Final root registered rebuild/run still required at0b checkpoint.
+clean. Frozen root9918 affected Metal73523/38 and llrender96864/384 pass
+(383passed/one known CPAL skip), separate Font/UI1862/61pass.
 
 ## Buffer tail and receipts
 
@@ -124,9 +125,44 @@ target-followup-receipt.json in same directory,
 /private/tmp/alchemy-native-render-info-validation-20261111.json,
 /private/tmp/alchemy-native-gpu-buffer-validation-20261111/validation-receipt.json.
 
-Historical filters overlap and are not summed. Last verified canonical app is
-still d28/26.4.0d68712; frozen0b native suites/canonical/appearance build and
-import/signature/architecture checks are next. Goal is not complete: actual
-RLVa silhouette RGB/zero-forward stamp gap is under repair, unconsumed uniform/
-stencil graphs and old fence invariant admission remain; full parity/stability/
-runtime no-GL/independent release review/performance gates remain open.
+## Frozen canonical verification and corrected fixtures
+
+Frozen source9918621da8fc7bbc3de3edbd63d33150c8e00d1a includes renderer0b and
+one shared-depth test assertion correction: wrappers differ but retain the
+same nativeHandle. Initial one-failure alrender log is preserved; final
+556641assertions/132cases0. Doctor/configure/canonical build/verify/deep strict
+codesign0, version26.4.0d68744,349ARM64/zero invalid slices, viewer imports0.
+Optional appearance Release build/ARM64/signature/imports0; no launch.
+ViewerSHA256 e2ba381f3e2bdb85efc32a198bd9ce6fce9e838b743bd532b7a41cd6074abf8e;
+metallib5491d075dc49ae016bd5844ae3cbf131ba2b17f8bb36f3489ef5dcaa413003ad;
+appearance8d8518f72f7ba3562e9b4fc6c0a24144429e29815c487a3f4ed1ca4b0dfd1ba4.
+Exact source/commands/hashes: scene-ui-canonical-source.json,
+scene-ui-canonical-identities.json, scene-ui-appearance-static.json.
+
+All349Mach-O files also inspected for imports: foreign VLC screen/vout/
+caopengllayer/glconv and CEF retain GL framework/API links; videotoolbox imports
+a CV OpenGL-compatibility key. This is a concrete foreign-module audit tail,
+not an owned-viewer failure or whole-bundle no-GL proof. Trace actual media
+selection/consumers before removal; preserve media functionality.
+
+Root tests were rebuilt in Release and pinned in scene-ui-test-identities.json.
+Two accidentally selected older RelWithDebInfo runs are excluded. Current
+Release indexed-join requires an actual NSBundle metallib; unbundled run37/38
+passed, then the identical executable plus exact offline asset in an offscreen
+CLI test bundle passed73523/38. No source assertion weakened. Add target-local
+CMake bundle resource ownership to prevent this recurring packaging error.
+API-only cache5905/6, instrumented882/1 and selective98/1 all0; actual disk
+render/compute hits1/1 withzero misses. Test receipt scene-ui-test-validation.json.
+Strict production source3509files/0blockers/0errors/1177informational; including
+excluded old tests4109files/486blockers/0errors (also two deliberate no-GL
+negative assertions). Source results never substitute for runtime proof.
+
+Historical filters overlap and are not summed. Goal remains active: live RLVa
+RGB fill is under repair (initial G-buffer already supplies alpha to empty
+forward bakes; previous alpha-gap claim corrected), zero-reader uniform/stencil
+graphs remain, fence fix awaits integration. Root original final-viewport oracle
+also now proves1080failed/9249assertions at world/output size mismatch: native
+lens mask is computed before resize, unlike original window-pixel evaluation.
+Private postchain tree owns only its test file; production fix must wait for
+shared pipeline/world/MSL owner release. Full parity/stability/runtime no-GL/
+independent release review/performance gates remain open.

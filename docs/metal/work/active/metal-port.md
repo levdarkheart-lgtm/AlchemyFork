@@ -47,9 +47,14 @@ Native timer-only receipt owner5666/30; displaced attachment spans removed.
 Target/depth f75461d142 and query ac4a125458 fixes are integrated with actualGPU
 regressions. Native sphere/cached draw diagnostics restored f36e8aabdb. Full
 registered llrender88827assertions/375cases(374pass/one known palette skip),
-separate Font/UI1862/61 both0 under Metal API/shader validation. SceneMonitor
-native port active; ALGPUBuffer invariant admission follows. Current code is newer
-than the last canonical d28 build; no full current app verification claimed.
+separate Font/UI1862/61 both0 under Metal API/shader validation.
+[Latest Scene Monitor/UI/RenderInfo evidence](native-scene-ui-and-render-info.md)
+supersedes that checkpoint: frozen9918621da8 includes renderer0b; Release
+llrender96864/384(383passed/one CPAL skip), Font/UI1862/61, alrender556641/132,
+affected Metal73523/38 all0. Canonical26.4.0d68744 doctor/configure/build/verify/
+deepcodesign0;349ARM64/zero invalid, viewer forbidden imports0. Appearance
+build/ARM64/signature/imports0. All349Mach-O imports inspected: foreign VLC/CEF
+GL links are recorded separately and require consumer/policy audit. No launch.
 
 Earlier verified bounded checkpoints below remain included; their older build
 and inventory counts do not supersede the current observations above.
@@ -118,21 +123,18 @@ M-012 stays complete; M-014 remains deferred. No release readiness claim.
 
 ## Immediate executable action
 
-Native cache, font/UI89case admission and dead image-slot/timer/span cleanup
-are integrated, individually tested; historical d28 app remains last verified.
-Target/query/native sphere/accepted UI diagnostic fixes are integrated with a
-passing full renderer suite. menu_port owns ALGPUBuffer native admission and
-dead stream/stub cleanup. gl_tail_audit audits typed-world RenderInfo counters
-read-only before proposing a concrete owner. rlva_port owns native SceneMonitor
-service/state/MSL; root provides exact normalized pre-UI lease getter and owns
-shared pipeline/display/CMake/docs. SceneMonitor integration remains next.
-CURRENT pins worktrees/exclusive owners. Integrate actual GPU tests/repairs,
-Native Scene Monitor/raw UI/RenderInfo integrated through0b219b9728; see
-[latest evidence](native-scene-ui-and-render-info.md). Complete final native
-suites and frozen canonical/appearance verification, then continue actual
-RLVa silhouette stamp repair (menu owns pipeline/world/MSL), unconsumed GPU
-uniform retirement (rlva owns LLRender/env/control/window; pipeline held), and
-original12case fence admission (gl_tail owns fences). Goal stays active.
+Frozen9918 verification is complete; root owns integration/CMake/docs. Integrate
+native fence495efc818c (original12case map, actual2318/20pass, bounded two-counter
+fix) and target-local almetal_tests bundle resources, then reviewed RLVa
+silhouette fill (menu owns pipeline/world/MSL; child21566/4pass). Release pipeline
+ownership to rlva for CPU-preserving zero-reader uniform closure, then gl_tail's
+ALGPUBuffer/schema/native-byte diagnostic cleanup. Dead stencil graph follows.
+Root isolated postchain test-only tree proves original window-viewport lens
+mask mismatch at reduced/oversampled world sizes:1080failed/9249assertions;
+fix after shared-owner release with unchanged pixel oracle. Trace foreign
+VLC/CEF module consumers separately. CURRENT pins exact ownership and receipts.
+Existing native postchain4487/4pass is not the missing final-viewport invariant.
+Goal stays active; build/test counts do not imply complete feature parity.
 Keep viewer and appearance utility closed.
 
 ## Non-negotiable open gates
