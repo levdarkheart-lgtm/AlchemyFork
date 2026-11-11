@@ -96,6 +96,7 @@ struct ALMetalLitPreviewRenderer::Impl
     };
 
     const ALMetalDevice* device = nullptr;
+    std::uint64_t shader_generation = 0;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::array<PipelineSet, 2> pipelines;
     std::unique_ptr<ALMetalDepthStencilState> depth_state;
@@ -123,6 +124,7 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
 {
     auto impl = std::make_unique<Impl>();
     impl->device = &device;
+    impl->shader_generation = ALMetalShaderLibrary::builtinReloadGeneration();
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library ||
         !impl->library->hasFunction("almetal_resample_vertex") ||
@@ -518,6 +520,31 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         new ALMetalLitPreviewRenderer(std::move(impl)));
 }
 
+std::uint64_t ALMetalLitPreviewRenderer::shaderGeneration() const noexcept
+{
+    return mImpl ? mImpl->shader_generation : 0;
+}
+
+bool ALMetalLitPreviewRenderer::refreshShaders(std::string* error)
+{
+    if (mImpl->shader_generation == ALMetalShaderLibrary::builtinReloadGeneration())
+    {
+        return true;
+    }
+
+    // Original1eb44's global object/avatar/physics programs were rebuilt by
+    // Purge Shader Cache without destroying published preview textures. Stage
+    // every format/geometry PSO before changing this independent native owner.
+    auto replacement = create(*mImpl->device, error);
+    if (!replacement) return false;
+    mImpl->library.swap(replacement->mImpl->library);
+    mImpl->pipelines.swap(replacement->mImpl->pipelines);
+    mImpl->shader_generation = replacement->mImpl->shader_generation;
+    // Sphere buffers, sampler/depth policy and external output owners remain
+    // live. Submitted commands retain their old native pipelines/resources.
+    return true;
+}
+
 std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
     const ALMetalLitPreviewBatch& batch,
     std::string* error)
@@ -541,6 +568,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
         setError(error, "Metal lit preview scene is incomplete");
         return nullptr;
     }
+    if (!refreshShaders(error)) return nullptr;
 
     const ALMetalTextureDescriptor& template_descriptor = scene.destination_template
         ? scene.destination_template->descriptor() : *scene.destination_descriptor;

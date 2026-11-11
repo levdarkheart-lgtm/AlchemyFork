@@ -218,6 +218,10 @@ public:
         const ALMetalDevice& device,
         std::string* error = nullptr);
 
+    // Built-in revision actually loaded by this owner. A purge is consumed
+    // lazily at the next render, before creating any command encoder.
+    std::uint64_t shaderGeneration() const noexcept;
+
     std::unique_ptr<ALMetalTexture> render(
         const ALMetalLitPreviewBatch& batch,
         std::string* error = nullptr);
@@ -228,5 +232,6 @@ public:
 private:
     struct Impl;
     explicit ALMetalLitPreviewRenderer(std::unique_ptr<Impl> impl);
+    bool refreshShaders(std::string* error);
     std::unique_ptr<Impl> mImpl;
 };

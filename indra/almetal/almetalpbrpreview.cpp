@@ -144,6 +144,7 @@ namespace
 struct ALMetalPBRPreviewRenderer::Impl
 {
     const ALMetalDevice* device = nullptr;
+    std::uint64_t shader_generation = 0;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalRenderPipeline> shade_pipeline;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
@@ -184,6 +185,7 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
 {
     auto impl = std::make_unique<Impl>();
     impl->device = &device;
+    impl->shader_generation = ALMetalShaderLibrary::builtinReloadGeneration();
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library ||
         !impl->library->hasFunction("almetal_pbr_preview_vertex") ||
@@ -459,6 +461,48 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
         new ALMetalPBRPreviewRenderer(std::move(impl)));
 }
 
+std::uint64_t ALMetalPBRPreviewRenderer::shaderGeneration() const noexcept
+{
+    return mImpl ? mImpl->shader_generation : 0;
+}
+
+std::uint64_t ALMetalPBRPreviewRenderer::brdfLutGeneration() const noexcept
+{
+    return mImpl && mImpl->brdf_lut_ready ? mImpl->shader_generation : 0;
+}
+
+bool ALMetalPBRPreviewRenderer::refreshShaders(std::string* error)
+{
+    if (mImpl->shader_generation == ALMetalShaderLibrary::builtinReloadGeneration())
+    {
+        return true;
+    }
+
+    // Original1eb44 rebuilt the shared PBR-alpha/post programs used by material
+    // previews. This owner has its own immutable Metal PSOs: publish a complete
+    // replacement only, preserving caller-owned preview images and samplers.
+    auto replacement = create(*mImpl->device, error);
+    if (!replacement) return false;
+    auto& next = *replacement->mImpl;
+    mImpl->library.swap(next.library);
+    mImpl->shade_pipeline.swap(next.shade_pipeline);
+    mImpl->brdf_lut_pipeline.swap(next.brdf_lut_pipeline);
+    mImpl->exposure_pipeline.swap(next.exposure_pipeline);
+    mImpl->post_pipelines.swap(next.post_pipelines);
+    mImpl->bloom_extract_pipelines.swap(next.bloom_extract_pipelines);
+    mImpl->bloom_downsample_pipelines.swap(next.bloom_downsample_pipelines);
+    mImpl->bloom_upsample_pipelines.swap(next.bloom_upsample_pipelines);
+    mImpl->cross_filter_pipeline.swap(next.cross_filter_pipeline);
+    mImpl->cross_filter_add_pipeline.swap(next.cross_filter_add_pipeline);
+    // The LUT is produced by a shader, so it cannot keep old-generation data.
+    // Old in-flight commands retain their former LUT/PSOs; this command writes
+    // the fresh LUT before sampling it through tracked texture dependencies.
+    mImpl->brdf_lut.swap(next.brdf_lut);
+    mImpl->brdf_lut_ready = false;
+    mImpl->shader_generation = next.shader_generation;
+    return true;
+}
+
 std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     const ALMetalPBRPreviewScene& scene,
     std::string* error)
@@ -470,6 +514,7 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         setError(error, "Metal PBR preview scene is incomplete");
         return nullptr;
     }
+    if (!refreshShaders(error)) return nullptr;
 
     const ALMetalTextureDescriptor& output_template =
         *scene.destination_descriptor;
