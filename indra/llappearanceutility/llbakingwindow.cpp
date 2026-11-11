@@ -60,51 +60,52 @@ LLBakingWindow::LLBakingWindow(S32 width, S32 height, ALWindowBackend backend)
         throw LLAppException(RV_UNABLE_TO_INIT_GL);
     }
 
-#if LL_DARWIN
-    // Validate the window-owned native backend before bringing up render
-    // singletons. A constructor exception does not run this class's
-    // destructor, so reclaim the window explicitly on this failure path.
-    if (!mWindow->getMetalDevice() || !mWindow->getMetalFrameScheduler())
+    try
     {
-        LLWindowManager::destroyWindow(mWindow);
-        mWindow = nullptr;
-        throw LLAppException(
-            RV_UNABLE_TO_INIT_GL,
-            " Native Metal appearance backend is unavailable.");
+        // Validate the window-owned native backend before bringing up render
+        // singletons. The catch below also reclaims a window whose renderer
+        // or shader initialization fails after borrowed pointers are installed.
+        if (!mWindow->getMetalDevice() || !mWindow->getMetalFrameScheduler())
+        {
+            throw LLAppException(
+                RV_UNABLE_TO_INIT_GL,
+                " Native Metal appearance backend is unavailable.");
+        }
+        LLVertexBuffer::setMetalDevice(mWindow->getMetalDevice());
+        LLVertexBuffer::setMetalBufferAuthority(true);
+        LLImageGL::setMetalDevice(mWindow->getMetalDevice());
+        LLImageGL::setMetalTextureAuthority(true);
+        gGL.setMetalBackend(
+            mWindow->getMetalDevice(),
+            mWindow->getMetalFrameScheduler(),
+            mWindow->getMetalSurface());
+        LLVertexBuffer::initClass(mWindow);
+
+        if (!gGL.initMetal(true))
+        {
+            throw LLAppException(
+                RV_UNABLE_TO_INIT_GL,
+                " Native Metal renderer initialization failed.");
+        }
+        if (!LLBakingShaderMgr::sInitialized)
+        { //immediately initialize shaders
+            LLBakingShaderMgr* shader_mgr = LLBakingShaderMgr::instance();
+            LLBakingShaderMgr::sInitialized = true;
+            if (!shader_mgr->setShaders())
+            {
+                throw LLAppException(
+                    RV_UNABLE_TO_INIT_GL,
+                    " Native Metal appearance shader initialization failed.");
+            }
+        }
+
+        LLImageGL::initClass(mWindow, LLGLTexture::MAX_GL_IMAGE_CATEGORY, true, false);
     }
-#endif
-
-#if LL_DARWIN
-    LLVertexBuffer::setMetalDevice(mWindow->getMetalDevice());
-    LLVertexBuffer::setMetalBufferAuthority(true);
-    LLImageGL::setMetalDevice(mWindow->getMetalDevice());
-    LLImageGL::setMetalTextureAuthority(true);
-    gGL.setMetalBackend(
-        mWindow->getMetalDevice(),
-        mWindow->getMetalFrameScheduler(),
-        mWindow->getMetalSurface());
-#endif
-
-    LLVertexBuffer::initClass(mWindow);
-
-#if LL_DARWIN
-    if (!gGL.initMetal(true))
+    catch (...)
     {
-        throw LLAppException(
-            RV_UNABLE_TO_INIT_GL,
-            " Native Metal renderer initialization failed.");
+        cleanup();
+        throw;
     }
-#else
-    gGL.init(true);
-#endif
-
-    if (!LLBakingShaderMgr::sInitialized)
-    { //immediately initialize shaders
-        LLBakingShaderMgr::sInitialized = true;
-        LLBakingShaderMgr::instance()->setShaders();
-    }
-
-    LLImageGL::initClass(mWindow, LLGLTexture::MAX_GL_IMAGE_CATEGORY, true, false);
 
     // mWindow->show();
     // mWindow->bringToFront();
@@ -114,13 +115,21 @@ LLBakingWindow::LLBakingWindow(S32 width, S32 height, ALWindowBackend backend)
 
 LLBakingWindow::~LLBakingWindow()
 {
-#if LL_DARWIN
+    cleanup();
+}
+
+void LLBakingWindow::cleanup()
+{
+    if (LLBakingShaderMgr::sInitialized)
+    {
+        LLBakingShaderMgr::instance()->unloadShaders();
+        LLBakingShaderMgr::sInitialized = false;
+    }
     gGL.setMetalBackend(nullptr, nullptr, nullptr);
     LLImageGL::setMetalTextureAuthority(false);
     LLImageGL::setMetalDevice(nullptr);
     LLVertexBuffer::setMetalBufferAuthority(false);
     LLVertexBuffer::setMetalDevice(nullptr);
-#endif
     if (mWindow)
     {
         LLWindowManager::destroyWindow(mWindow);

@@ -38,7 +38,8 @@ public:
 
     void swapBuffers();
 private:
-    LLWindow*       mWindow;
+    void cleanup();
+    LLWindow*       mWindow = nullptr;
 };
 
 #endif /* LL_LLBAKINGWINDOW_H */

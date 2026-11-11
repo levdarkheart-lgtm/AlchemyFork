@@ -1,5 +1,10 @@
 # Remaining feature port — 2026-11-11
 
+Follow-up: [native buffer visualization](debug-buffer-visualization.md) and the
+[appearance utility loader](appearance-native-loader.md) now implement the next
+two identified native ownership boundaries. Their later receipts supersede the
+debug-buffer next action and older build identity below.
+
 **Source base:** `bccbb7be48000fab91b43688bc585f2f9ab474cf`.
 **Implementation checkpoint:** `71f0a584038012fc6b03c29336936a5735fba692`.
 **Host:** M1 Max / 64 GiB / macOS26.5.2 / Xcode26.6; ARM64 native.

@@ -184,7 +184,6 @@ extern LLGLSLShader         gExposureProgramNoFade;
 extern LLGLSLShader         gExposureHistogramProgram;
 extern LLGLSLShader         gLuminanceProgram;
 extern LLGLSLShader         gLensFlareStateProgram;
-extern LLGLSLShader         gDeferredBufferVisualProgram;
 extern LLGLSLShader         gBlitWithEffectsProgram;
 #if !LL_DARWIN
 extern LLGLSLShader         gBlitWithEffectsSharpenProgram;

@@ -369,8 +369,6 @@ public:
 // [/RLVa:KB]
 //  bool getMask(const LLVector2 &tc);
 
-    void checkTexSize(bool forced = false) const ;
-
     // NO sampling state here, and none coming back.
     //
     // A texture carries data plus facts about itself (dimensions, format, swizzle, whether it

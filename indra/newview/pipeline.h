@@ -799,7 +799,6 @@ public:
     std::optional<ALRenderTargetDesc> mDoFBlurDesc;
 #endif
     DepthOfFieldFocus mDepthOfFieldFocus;
-    void visualizeBuffers(LLRenderTarget* src, LLRenderTarget* dst, U32 bufferIndex);
 
     /// Take a point-sampled copy of the presented frame for the scopes floater
     /// and read it back asynchronously. Does nothing unless sScopeCapture is

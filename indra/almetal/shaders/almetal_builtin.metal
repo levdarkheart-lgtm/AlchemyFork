@@ -93,6 +93,15 @@ fragment float4 almetal_resample_fragment(
     return source.sample(source_sampler, input.texcoord);
 }
 
+fragment float4 almetal_world_debug_buffer_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant float& mip_level [[buffer(0)]])
+{
+    return source.sample(source_sampler, input.texcoord, level(mip_level));
+}
+
 fragment float4 almetal_resample_flip_y_fragment(
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> source [[texture(0)]])

@@ -1677,11 +1677,19 @@ struct ALMetalWorldSMAANeighborhoodScene
     const ALMetalRenderTarget* weights = nullptr;
 };
 
-// Complete production SMAA 1x transaction. No intermediate is published:
+struct ALMetalWorldSMAAIntermediates
+{
+    std::unique_ptr<ALMetalRenderTarget> edges;
+    std::unique_ptr<ALMetalRenderTarget> weights;
+};
+
+// Complete production SMAA 1x transaction. No intermediate is published on failure:
 // failure of any stage returns null so the caller can retain its existing
 // display owner.
 struct ALMetalWorldSMAAScene
 {
+    // Optional diagnostic ownership, published only after the complete chain.
+    ALMetalWorldSMAAIntermediates* intermediates = nullptr;
     const ALMetalRenderTarget* source = nullptr;
     const ALMetalTexture* edge_source_texture = nullptr;
     const ALMetalTexture* predication_texture = nullptr;
@@ -1748,6 +1756,8 @@ struct ALMetalWorldLegacyGlowScene
 // (scale, adapted EV, target EV, 1) layout as exposureF.glsl.
 struct ALMetalWorldExposureScene
 {
+    // Optional ownership of the actual spatial meter, independent of adapted EV.
+    std::unique_ptr<ALMetalRenderTarget>* meter_output = nullptr;
     const ALMetalRenderTarget* source = nullptr;
     const ALMetalTexture* normal = nullptr;
     const ALMetalTexture* previous = nullptr;
@@ -1761,6 +1771,17 @@ struct ALMetalWorldExposureScene
     float speed_down = 1.f;
     float sky_weight = 1.f;
     std::uint32_t metering_mode = 1;
+};
+
+// Original postDeferredVisualizeBuffers: raw RGBA textureLod copy, bilinear
+// mirrored sampling and sRGB decode only for an sRGB source. No tone transfer.
+struct ALMetalWorldDebugBufferScene
+{
+    const ALMetalTexture* source = nullptr;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    float mip_level = 0.f;
+    ALMetalPixelFormat output_format = ALMetalPixelFormat::rgba8_unorm;
 };
 
 struct alignas(16) ALMetalWorldLightMapConstants
@@ -2403,6 +2424,16 @@ public:
         const ALMetalWorldExposureScene& scene,
         std::string* error = nullptr);
 
+    // The original luminance view still meters when adaptation is disabled.
+    std::unique_ptr<ALMetalRenderTarget> renderExposureMeter(
+        const ALMetalRenderTarget& source,
+        const ALMetalTexture& normal,
+        std::string* error = nullptr);
+
+    std::unique_ptr<ALMetalRenderTarget> renderDebugBuffer(
+        const ALMetalWorldDebugBufferScene& scene,
+        std::string* error = nullptr);
+
     // Point-decimate a completed display-post target into the exact RGBA8
     // CPU scope format. RGB10_A2 therefore takes its real 10-to-8-bit
     // quantization on the GPU before the nonblocking readback ring sees it.
@@ -2573,6 +2604,9 @@ public:
         std::string* error = nullptr);
 
 private:
+    std::unique_ptr<ALMetalRenderTarget> renderExposureInternal(
+        const ALMetalWorldExposureScene& scene, bool meter_only,
+        std::string* error);
     ALMetalRenderTarget* renderLocalLightsInternal(
         const ALMetalWorldLocalLightingScene& scene,
         ALMetalRenderTarget* accumulation_target,

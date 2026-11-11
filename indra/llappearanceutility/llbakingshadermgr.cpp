@@ -30,45 +30,17 @@
 
 #include "llbakingshadermgr.h"
 
+#include "alrendercapabilities.h"
 #include "lldir.h"
-#include "llfile.h"
-#include "llrender.h"
 #include "llvertexbuffer.h"
 
-#if LL_DARWIN
-#include "OpenGL/OpenGL.h"
-#endif
-
-#ifdef LL_RELEASE_FOR_DOWNLOAD
-#define UNIFORM_ERRS LL_WARNS_ONCE("Shader")
-#else
-#define UNIFORM_ERRS LL_ERRS("Shader")
-#endif
-
-// Lots of STL stuff in here, using namespace std to keep things more readable
-using std::vector;
-using std::pair;
 using std::make_pair;
-using std::string;
 
 bool                LLBakingShaderMgr::sInitialized = false;
-bool                LLBakingShaderMgr::sSkipReload = false;
 
 //utility shaders
 LLGLSLShader    gAlphaMaskProgram;
 
-
-LLBakingShaderMgr::LLBakingShaderMgr() :
-    mVertexShaderLevel(SHADER_COUNT, 0),
-    mMaxAvatarShaderLevel(0)
-{
-}
-
-LLBakingShaderMgr::~LLBakingShaderMgr()
-{
-    mVertexShaderLevel.clear();
-    mShaderList.clear();
-}
 
 // static
 LLBakingShaderMgr * LLBakingShaderMgr::instance()
@@ -91,115 +63,33 @@ void LLBakingShaderMgr::initAttribsAndUniforms(void)
 
 
 //============================================================================
-// Set Levels
-
-S32 LLBakingShaderMgr::getVertexShaderLevel(S32 type)
-{
-    return mVertexShaderLevel[type];
-}
-
-//============================================================================
 // Shader Management
 
-void LLBakingShaderMgr::setShaders()
+bool LLBakingShaderMgr::setShaders()
 {
-    //setShaders might be called redundantly by gSavedSettings, so return on reentrance
-    static bool reentrance = false;
-
-    if (!sInitialized || reentrance || sSkipReload)
+    if (!sInitialized || !gRenderCapabilities.isMetal() || gGLManager.mInited)
     {
-        return;
+        LL_WARNS("ShaderLoading")
+            << "The appearance utility requires the initialized native Metal backend"
+            << LL_ENDL;
+        return false;
     }
 
-    LLGLSLShader::sIndexedTextureChannels = llmax(gGLManager.mNumTextureImageUnits, 1);
-
-    //NEVER use more than 16 texture channels (work around for prevalent driver bug)
-    LLGLSLShader::sIndexedTextureChannels = llmin(LLGLSLShader::sIndexedTextureChannels, 16);
-
-    reentrance = true;
-
+    // The original utility has one alpha-mask program, sampling only diffuseMap.
+    // Native capture owns its executable shader, matrices, sampling and blend state;
+    // this object remains the pass identity used by LLTexLayerSetBuffer.
+    LLGLSLShader::sIndexedTextureChannels = 1;
     initAttribsAndUniforms();
-
-    // Shaders
-    LL_INFOS("ShaderLoading") << "\n~~~~~~~~~~~~~~~~~~\n Loading Shaders:\n~~~~~~~~~~~~~~~~~~" << LL_ENDL;
-    LL_INFOS("ShaderLoading") << llformat("Using GLSL %d.%d", gGLManager.mGLSLVersionMajor, gGLManager.mGLSLVersionMinor) << LL_ENDL;
-
-    for (S32 i = 0; i < SHADER_COUNT; i++)
-    {
-        mVertexShaderLevel[i] = 0;
-    }
-    mMaxAvatarShaderLevel = 0;
-
     LLVertexBuffer::unbind();
-    S32 light_class = 2;
-    mVertexShaderLevel[SHADER_INTERFACE] = light_class;
-
-    // loadBasicShaders
-    vector< pair<string, S32> > shaders;
-    shaders.push_back( make_pair( "objects/indexedTextureV.glsl",           1 ) );
-    shaders.push_back( make_pair( "objects/nonindexedTextureV.glsl",        1 ) );
-    shaders.push_back( make_pair( "deferred/textureUtilV.glsl",             1 ) );
-    bool loaded = true;
-    for (U32 i = 0; i < shaders.size(); i++)
-    {
-        // Note usage of GL_VERTEX_SHADER
-        if (loadShaderFile(shaders[i].first, shaders[i].second, GL_VERTEX_SHADER) == 0)
-        {
-            LL_WARNS("Shader") << "Failed to load vertex shader " << shaders[i].first << LL_ENDL;
-            loaded = false;
-            break;
-        }
-    }
-
-    shaders.clear();
-
-    // fragment shaders
-    shaders.push_back( make_pair( "deferred/globalF.glsl",             1 ) );
-
-    for (U32 i = 0; i < shaders.size(); i++)
-    {
-        // Note usage of GL_FRAGMENT_SHADER
-        if (loadShaderFile(shaders[i].first, shaders[i].second, GL_FRAGMENT_SHADER) == 0)
-        {
-            LL_WARNS("Shader") << "Failed to load fragment shader " << shaders[i].first << LL_ENDL;
-            loaded = false;
-            break;
-        }
-    }
-
-    if (loaded)
-    {
-        loaded = loadShadersInterface();
-    }
-
-    if (!loaded)
-    {
-        //gPipeline.mVertexShadersEnabled = false;
-        //gPipeline.mVertexShadersLoaded = 0;
-        mVertexShaderLevel[SHADER_LIGHTING] = 0;
-        mVertexShaderLevel[SHADER_INTERFACE] = 0;
-        mVertexShaderLevel[SHADER_ENVIRONMENT] = 0;
-        mVertexShaderLevel[SHADER_WATER] = 0;
-        mVertexShaderLevel[SHADER_OBJECT] = 0;
-        mVertexShaderLevel[SHADER_EFFECT] = 0;
-        mVertexShaderLevel[SHADER_WINDLIGHT] = 0;
-        mVertexShaderLevel[SHADER_AVATAR] = 0;
-    }
-
-    //gPipeline.createGLBuffers();
-
-    reentrance = false;
+    LL_INFOS("ShaderLoading")
+        << "Configuring the native appearance alpha-mask pass without GLSL"
+        << LL_ENDL;
+    return loadShadersInterface();
 }
 
 void LLBakingShaderMgr::unloadShaders()
 {
     gAlphaMaskProgram.unload();
-    // The shared objects are the manager's, so they go here rather than with the program.
-    clearShaderObjects();
-
-    mVertexShaderLevel[SHADER_INTERFACE] = 0;
-
-    //gPipeline.mVertexShadersLoaded = 0;
 }
 
 bool LLBakingShaderMgr::loadShadersInterface()
@@ -208,7 +98,7 @@ bool LLBakingShaderMgr::loadShadersInterface()
     gAlphaMaskProgram.mShaderFiles.clear();
     gAlphaMaskProgram.mShaderFiles.push_back(make_pair("interface/alphamaskV.glsl", GL_VERTEX_SHADER));
     gAlphaMaskProgram.mShaderFiles.push_back(make_pair("interface/alphamaskF.glsl", GL_FRAGMENT_SHADER));
-    gAlphaMaskProgram.mShaderLevel = mVertexShaderLevel[SHADER_INTERFACE];
+    gAlphaMaskProgram.mShaderLevel = 2;
     gAlphaMaskProgram.setNativeAttributeMask(
         LLVertexBuffer::MAP_VERTEX |
         LLVertexBuffer::MAP_TEXCOORD0 |
@@ -216,11 +106,10 @@ bool LLBakingShaderMgr::loadShadersInterface()
 
     if( !gAlphaMaskProgram.createShader() )
     {
-        mVertexShaderLevel[SHADER_INTERFACE] = 0;
         return false;
     }
 
-    return true;
+    return gAlphaMaskProgram.isNativeConfigured();
 }
 
 std::string LLBakingShaderMgr::getShaderDirPrefix(void)
@@ -230,14 +119,4 @@ std::string LLBakingShaderMgr::getShaderDirPrefix(void)
 
 void LLBakingShaderMgr::updateShaderUniforms(LLGLSLShader * shader)
 {
-}
-
-LLBakingShaderMgr::shader_iter LLBakingShaderMgr::beginShaders() const
-{
-    return mShaderList.begin();
-}
-
-LLBakingShaderMgr::shader_iter LLBakingShaderMgr::endShaders() const
-{
-    return mShaderList.end();
 }

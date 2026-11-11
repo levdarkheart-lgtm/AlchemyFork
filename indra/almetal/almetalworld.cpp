@@ -1804,6 +1804,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalTexture> identity_lens_flare_state;
     std::unique_ptr<ALMetalTexture> identity_lens_dirt;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> debug_buffer_pipelines;
+    std::unique_ptr<ALMetalSamplerState> debug_buffer_sampler;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
     std::array<std::unique_ptr<ALMetalComputePipeline>, 2>
         exposure_pipelines;
@@ -2871,6 +2873,18 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     if (!impl->display_sample_pipeline)
     {
         return nullptr;
+    }
+
+    for (std::size_t format = 0; format < 2; ++format)
+    {
+        auto descriptor = display_sample_descriptor;
+        descriptor.fragment_function = "almetal_world_debug_buffer_fragment";
+        descriptor.colors[0].format = format
+            ? ALMetalPixelFormat::rgb10a2_unorm : ALMetalPixelFormat::rgba8_unorm;
+        descriptor.label = "Alchemy raw developer buffer visualization";
+        impl->debug_buffer_pipelines[format] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->debug_buffer_pipelines[format]) return nullptr;
     }
 
     const auto make_bloom_pipeline = [&](const char* fragment,
@@ -5761,6 +5775,12 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     {
         return nullptr;
     }
+
+    sampler.mip_filter = ALMetalSamplerMipFilter::nearest;
+    sampler.label = "Alchemy developer buffer bilinear mirrored mip sampler";
+    impl->debug_buffer_sampler = ALMetalSamplerState::create(device, sampler, error);
+    if (!impl->debug_buffer_sampler) return nullptr;
+    sampler.mip_filter = ALMetalSamplerMipFilter::none;
 
     sampler.min_filter = ALMetalSamplerFilter::linear;
     sampler.mag_filter = ALMetalSamplerFilter::linear;
@@ -9761,6 +9781,26 @@ ALMetalWorldGBufferRenderer::renderExposure(
     const ALMetalWorldExposureScene& scene,
     std::string* error)
 {
+    return renderExposureInternal(scene, false, error);
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderExposureMeter(
+    const ALMetalRenderTarget& source, const ALMetalTexture& normal,
+    std::string* error)
+{
+    ALMetalWorldExposureScene scene;
+    scene.source = &source;
+    scene.normal = &normal;
+    return renderExposureInternal(scene, true, error);
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderExposureInternal(
+    const ALMetalWorldExposureScene& scene, bool meter_only,
+    std::string* error)
+{
+    if (scene.meter_output) scene.meter_output->reset();
     constexpr std::uint32_t meter_width = 128;
     constexpr std::uint32_t meter_height = 72;
     if (!mImpl || !mImpl->device || !scene.source || !scene.normal)
@@ -9843,9 +9883,9 @@ ALMetalWorldGBufferRenderer::renderExposure(
     output_descriptor.colors[0].label =
         "Alchemy native world exposure color";
     output_descriptor.label = "Alchemy native world exposure";
-    auto output = mImpl->makeRenderTarget(
+    auto output = meter_only ? nullptr : mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
-    if (!output)
+    if (!meter_only && !output)
     {
         return nullptr;
     }
@@ -9906,6 +9946,12 @@ ALMetalWorldGBufferRenderer::renderExposure(
         return nullptr;
     }
 
+    if (meter_only)
+    {
+        if (!mImpl->finishCommandBuffer(owned_command, true, error)) return nullptr;
+        return meter;
+    }
+
     const std::size_t history = scene.previous ? 1u : 0u;
     auto exposure_encoder = ALMetalComputeEncoder::begin(
         *command, history
@@ -9937,6 +9983,7 @@ ALMetalWorldGBufferRenderer::renderExposure(
     {
         return nullptr;
     }
+    if (scene.meter_output) *scene.meter_output = std::move(meter);
     return output;
 }
 
@@ -11878,6 +11925,7 @@ ALMetalWorldGBufferRenderer::renderSMAA(
     const ALMetalWorldSMAAScene& scene,
     std::string* error)
 {
+    if (scene.intermediates) *scene.intermediates = {};
     ALMetalWorldSMAAEdgeScene edge_scene;
     edge_scene.source = scene.source;
     edge_scene.edge_source_texture = scene.edge_source_texture;
@@ -11904,7 +11952,81 @@ ALMetalWorldGBufferRenderer::renderSMAA(
     ALMetalWorldSMAANeighborhoodScene neighborhood_scene;
     neighborhood_scene.source = scene.source;
     neighborhood_scene.weights = weights.get();
-    return renderSMAANeighborhood(neighborhood_scene, error);
+    auto output = renderSMAANeighborhood(neighborhood_scene, error);
+    if (output && scene.intermediates)
+    {
+        scene.intermediates->edges = std::move(edges);
+        scene.intermediates->weights = std::move(weights);
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderDebugBuffer(
+    const ALMetalWorldDebugBufferScene& scene, std::string* error)
+{
+    if (!mImpl || !mImpl->device || !sampleableTexture(scene.source) ||
+        !scene.width || !scene.height || !std::isfinite(scene.mip_level) ||
+        (scene.output_format != ALMetalPixelFormat::rgba8_unorm &&
+         scene.output_format != ALMetalPixelFormat::rgb10a2_unorm))
+    {
+        setError(error, "Metal developer buffer scene is incomplete");
+        return nullptr;
+    }
+    switch (scene.source->descriptor().format)
+    {
+    case ALMetalPixelFormat::r8_unorm:
+    case ALMetalPixelFormat::rg8_unorm:
+    case ALMetalPixelFormat::rgba8_unorm:
+    case ALMetalPixelFormat::rgba8_unorm_srgb:
+    case ALMetalPixelFormat::bgra8_unorm:
+    case ALMetalPixelFormat::bgra8_unorm_srgb:
+    case ALMetalPixelFormat::r16_unorm:
+    case ALMetalPixelFormat::r16_float:
+    case ALMetalPixelFormat::rg16_float:
+    case ALMetalPixelFormat::rgba16_unorm:
+    case ALMetalPixelFormat::rgba16_float:
+    case ALMetalPixelFormat::r32_float:
+    case ALMetalPixelFormat::rg32_float:
+    case ALMetalPixelFormat::rgba32_float:
+    case ALMetalPixelFormat::rgb10a2_unorm:
+    case ALMetalPixelFormat::rg11b10_float:
+        break;
+    default:
+        setError(error, "Metal developer buffer source format is incompatible");
+        return nullptr;
+    }
+    ALMetalRenderTargetDescriptor descriptor;
+    descriptor.width = scene.width;
+    descriptor.height = scene.height;
+    descriptor.colors[0].format = scene.output_format;
+    descriptor.label = "Alchemy native developer buffer visualization";
+    auto output = mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
+    if (!output) return nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    auto* command = mImpl->acquireCommandBuffer(descriptor.label, owned_command, error);
+    if (!command) return nullptr;
+    ALMetalRenderPassConfig config;
+    config.colors[0].load = ALMetalLoadAction::dont_care;
+    config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, descriptor.label, error) : nullptr;
+    const ALMetalViewport viewport{0.0, 0.0, static_cast<double>(scene.width),
+        static_cast<double>(scene.height), 0.0, 1.0};
+    const ALMetalScissorRect scissor{0, 0, scene.width, scene.height};
+    const bool encoded = encoder && encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(*mImpl->debug_buffer_pipelines[
+            scene.output_format == ALMetalPixelFormat::rgb10a2_unorm ? 1 : 0], error) &&
+        encoder->setFragmentTexture(0, scene.source, error) &&
+        encoder->setFragmentSampler(0, mImpl->debug_buffer_sampler.get(), error) &&
+        encoder->setFragmentBytes(0, &scene.mip_level, sizeof(scene.mip_level), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    const bool ended = encoder && encoder->end(error);
+    if (!mImpl->finishCommandBuffer(owned_command, encoded && ended, error)) return nullptr;
+    return output;
 }
 
 std::unique_ptr<ALMetalRenderTarget>

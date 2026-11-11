@@ -168,6 +168,8 @@ if(AL_BUILD_TESTS)
     list(APPEND llrender_native_test_sources
       tests/algpubuffer_test.cpp
       tests/aldebug_immediate_metal_test.cpp
+      tests/albaking_shader_metal_test.cpp
+      ../llappearanceutility/llbakingshadermgr.cpp
       tests/altextureslot_metal_test.cpp
       tests/alterraintexture_metal_test.cpp
       tests/algputimer_metal_test.cpp

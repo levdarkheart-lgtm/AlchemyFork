@@ -513,6 +513,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> bloom_target;
     U32 bloom_frame = std::numeric_limits<U32>::max();
     std::unique_ptr<ALMetalRenderTarget> exposure_target;
+    std::unique_ptr<ALMetalRenderTarget> exposure_meter_target;
     U32 exposure_frame = std::numeric_limits<U32>::max();
     U64 exposure_epoch = 0;
     std::unique_ptr<ALMetalRenderTarget> lens_flare_state_target;
@@ -1124,7 +1125,6 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     // The Build floater's no-post option is a native display variant, with
     // the original availability gate applied by the post owner below.
     const bool post_enabled = !gSnapshotNoPost || snapshot_clean_plate;
-    const bool final_buffer = RenderBufferVisualization < 0;
     // Hero mirrors are native-owned even while their authored-scene parity
     // defect remains in the owner-attended visual queue. Falling back to GL at
     // this boundary hid that missing Metal implementation and mixed backend
@@ -1132,19 +1132,19 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     const bool eligible = started && main_world && ordinary_world &&
         native_lens_dirt && native_legacy_glow &&
         grade.native_resources_ready && post_enabled && sky &&
-        exact_antialiasing && final_buffer;
+        exact_antialiasing;
     if (!eligible && error)
     {
         *error = fmt::format(
             "Metal world presentation is ineligible: started={}, hdr={}, "
             "main_world={}, ordinary_world={}, lens_dirt={}, legacy_glow={}, "
             "color_grade={}, post={}, sky={}, "
-            "antialiasing={}, smaa_sample={}, final_buffer={}",
+            "antialiasing={}, smaa_sample={}",
             started, hdr, main_world, ordinary_world,
             native_lens_dirt, native_legacy_glow,
             grade.native_resources_ready, post_enabled,
             static_cast<bool>(sky), exact_antialiasing,
-            native_smaa_sample, final_buffer);
+            native_smaa_sample);
     }
     return eligible;
 }
@@ -2472,6 +2472,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.exposure_target.reset();
+        capture.exposure_meter_target.reset();
         capture.exposure_frame = std::numeric_limits<U32>::max();
         capture.exposure_epoch = 0;
         capture.lens_flare_state_target.reset();
@@ -2817,6 +2818,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                             }
                             mMetalExposureHistoryReady = false;
                             owner.exposure_target.reset();
+                            owner.exposure_meter_target.reset();
                             owner.exposure_frame =
                                 std::numeric_limits<U32>::max();
                             owner.exposure_epoch = 0;
@@ -4407,6 +4409,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.exposure_target.reset();
+        capture.exposure_meter_target.reset();
         capture.exposure_frame = std::numeric_limits<U32>::max();
         capture.exposure_epoch = 0;
         mMetalExposureHistoryReady = false;
@@ -9201,11 +9204,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 
             static LLCachedControl<bool> dynamic_exposure(
                 gSavedSettings, "RenderDynamicExposureEnabled", true);
-            const bool main_dynamic_exposure = capture.hdr &&
-                dynamic_exposure && !LLRender::sClassicMode &&
+            const bool main_exposure_meter = capture.hdr &&
                 isMainWorldPass() && mRT == &mMainRT &&
                 !mMetalHeroWorldCaptureActive &&
                 !mMetalReflectionWorldCaptureActive && !sCutoutRender;
+            const bool main_dynamic_exposure = main_exposure_meter &&
+                dynamic_exposure && !LLRender::sClassicMode;
             const bool use_exposure_history =
                 capture.exposure_target &&
                 capture.exposure_epoch == mMetalExposureHistoryEpoch;
@@ -9272,6 +9276,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 const F32 low = llclamp(
                     low_percent() * 0.01f, 0.f, 0.99f);
                 ALMetalWorldExposureScene exposure;
+                exposure.meter_output = &capture.exposure_meter_target;
                 exposure.source = target.get();
                 exposure.normal = capture.target->colorTexture(2);
                 exposure.previous = use_exposure_history
@@ -9311,6 +9316,21 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     LL_WARNS("Metal")
                         << "Native world exposure history did not advance: "
                         << exposure_error << LL_ENDL;
+                }
+            }
+
+            if (main_exposure_meter && !main_dynamic_exposure)
+            {
+                // Original generateLuminance precedes adaptation and is not
+                // gated by automatic exposure or classic-sky fixed exposure.
+                std::string meter_error;
+                capture.exposure_meter_target =
+                    capture.renderer->renderExposureMeter(
+                        *target, *capture.target->colorTexture(2), &meter_error);
+                if (!capture.exposure_meter_target)
+                {
+                    LL_WARNS("Metal") << "Native luminance meter failed: "
+                        << meter_error << LL_ENDL;
                 }
             }
 
@@ -9384,6 +9404,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 }
                 if (!history_batch_committed)
                 {
+                    capture.exposure_meter_target.reset();
                     capture.exposure_target.reset();
                     capture.exposure_frame =
                         std::numeric_limits<U32>::max();
@@ -9990,6 +10011,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         display, &display_error);
                 if (display_target)
                 {
+                    ALMetalWorldSMAAIntermediates debug_smaa;
                     // Report the actual encoded transfer branch, without sky
                     // identity or a per-frame/per-float log. Bound repeated
                     // user toggles; this is not GPU completion/publication.
@@ -10128,6 +10150,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         const bool use_predication =
                             shaderInputs().mLocal.mSMAAPredication;
                         ALMetalWorldSMAAScene smaa;
+                        smaa.intermediates = RenderBufferVisualization == 5 ||
+                            RenderBufferVisualization == 6 ? &debug_smaa : nullptr;
                         smaa.source = display_target.get();
                         smaa.edge_source_texture =
                             mResourceInputs.mSMAAUseSample
@@ -10303,7 +10327,57 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                 << sphere_error << LL_ENDL;
                         }
                     }
-                    if (exact_rlv_sphere)
+                    bool exact_debug_buffer = exact_rlv_sphere;
+                    if (exact_rlv_sphere && !cutout_snapshot)
+                    {
+                        const ALMetalTexture* debug_source = nullptr;
+                        bool required_source = false;
+                        if (RenderBufferVisualization >= 0 &&
+                            RenderBufferVisualization <= 3 &&
+                            (RenderBufferVisualization != 3 || mResourceInputs.mEmissive))
+                        {
+                            required_source = true;
+                            debug_source = capture.target->colorTexture(
+                                static_cast<U32>(RenderBufferVisualization));
+                        }
+                        else if (RenderBufferVisualization == 4)
+                        {
+                            required_source = capture.hdr;
+                            debug_source = capture.exposure_meter_target
+                                ? capture.exposure_meter_target->colorTexture(0) : nullptr;
+                        }
+                        else if (RenderBufferVisualization == 5 && debug_smaa.edges)
+                        {
+                            debug_source = debug_smaa.edges->colorTexture(0);
+                        }
+                        else if (RenderBufferVisualization == 6 && debug_smaa.weights)
+                        {
+                            debug_source = debug_smaa.weights->colorTexture(0);
+                        }
+                        if (debug_source)
+                        {
+                            ALMetalWorldDebugBufferScene view;
+                            view.source = debug_source;
+                            view.width = display_target->descriptor().width;
+                            view.height = display_target->descriptor().height;
+                            view.output_format = display_target->descriptor().colors[0].format;
+                            view.mip_level = RenderBufferVisualization == 4 ? 8.f : 0.f;
+                            std::string debug_error;
+                            auto visualized = capture.renderer->renderDebugBuffer(view, &debug_error);
+                            exact_debug_buffer = static_cast<bool>(visualized);
+                            if (visualized) display_target = std::move(visualized);
+                            else LL_WARNS("Metal") << "Native buffer visualization failed: "
+                                << debug_error << LL_ENDL;
+                        }
+                        else if (required_source)
+                        {
+                            exact_debug_buffer = false;
+                            LL_WARNS("Metal") << "Native buffer visualization source is absent" << LL_ENDL;
+                        }
+                        // Inactive SMAA, unknown modes and absent optional
+                        // original buffers leave the completed scene intact.
+                    }
+                    if (exact_debug_buffer)
                     {
                         capture.display_post_target =
                             std::move(display_target);
@@ -10674,6 +10748,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         {
                             target.reset();
                             capture.exposure_target.reset();
+                            capture.exposure_meter_target.reset();
                             capture.exposure_frame =
                                 std::numeric_limits<U32>::max();
                             capture.exposure_epoch = 0;
@@ -10734,6 +10809,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     {
                         target.reset();
                         capture.exposure_target.reset();
+                        capture.exposure_meter_target.reset();
                         capture.exposure_frame =
                             std::numeric_limits<U32>::max();
                         capture.exposure_epoch = 0;
@@ -25647,27 +25723,6 @@ void LLPipeline::bindScreenToTexture()
 
 }
 
-void LLPipeline::visualizeBuffers(LLRenderTarget* src, LLRenderTarget* dst, U32 bufferIndex)
-{
-    dst->bindTarget();
-    gDeferredBufferVisualProgram.bind();
-    // Attachment 0 of deferredScreen is sRGB, so match what the lighting pass sees; the
-    // other attachments and the other targets this visualises are not, where the bit is inert.
-    gDeferredBufferVisualProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src,
-                                             ALSamplers::BilinearMirror | ALSampler::SRGBDecode,
-                                             bufferIndex);
-
-    if (RenderBufferVisualization != 4)
-        gDeferredBufferVisualProgram.uniform1f(LLShaderMgr::MIP_LEVEL, 0);
-    else
-        gDeferredBufferVisualProgram.uniform1f(LLShaderMgr::MIP_LEVEL, 8);
-
-    mScreenTriangleVB->setBuffer();
-    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-    gDeferredBufferVisualProgram.unbind();
-    dst->flush();
-}
-
 void LLPipeline::requestScenePixel(S32 x, S32 y, scene_pixel_cb_t callback)
 {
     if (!callback)
@@ -28323,40 +28378,6 @@ void LLPipeline::renderFinalize()
     gGLViewport[2] = gViewerWindow->getWorldViewRectRaw().getWidth();
     gGLViewport[3] = gViewerWindow->getWorldViewRectRaw().getHeight();
     gGL.setViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
-
-    if (RenderBufferVisualization > -1 && !cutout)
-    {
-        switch (RenderBufferVisualization)
-        {
-        case 0:
-        case 1:
-        case 2:
-        case 3:
-            visualizeBuffers(&mRT->deferredScreen, sourceBuffer, RenderBufferVisualization);
-            break;
-        case 4:
-            visualizeBuffers(&mLuminanceMap, sourceBuffer, 0);
-            break;
-        case 5:
-        {
-            if (smaa.mEdges)
-            {
-                visualizeBuffers(smaa.mEdges, sourceBuffer, 0);
-            }
-            break;
-        }
-        case 6:
-        {
-            if (smaa.mBlend)
-            {
-                visualizeBuffers(smaa.mBlend, sourceBuffer, 0);
-            }
-            break;
-        }
-        default:
-            break;
-        }
-    }
 
     // Measure what is about to be presented. After every post pass, before
     // the vignette/grain/dither the final blit adds -- those are print

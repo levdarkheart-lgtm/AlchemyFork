@@ -139,7 +139,6 @@ LLGLSLShader            gSMAANeighborhoodBlendProgram[4];
 LLGLSLShader            gCASProgram;
 #endif
 LLGLSLShader            gDeferredPostNoDoFProgram;
-LLGLSLShader            gDeferredBufferVisualProgram;
 LLGLSLShader            gBlitWithEffectsProgram;
 #if !LL_DARWIN
 LLGLSLShader            gBlitWithEffectsSharpenProgram;
@@ -1140,7 +1139,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         }
         gCASProgram.unload();
 #endif
-        gDeferredBufferVisualProgram.unload();
 
         LLGLSLShader::sIndexedLegacyMaterials = false;
 
@@ -1581,18 +1579,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoDoFF.glsl", GL_FRAGMENT_SHADER));
         gDeferredPostNoDoFProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         built(gDeferredPostNoDoFProgram.createShader(), gDeferredPostNoDoFProgram);
-    }
-
-    {
-        gDeferredBufferVisualProgram.mName = "Deferred Buffer Visualization Shader";
-        gDeferredBufferVisualProgram.mShaderFiles.clear();
-        gDeferredBufferVisualProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gDeferredBufferVisualProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredVisualizeBuffers.glsl", GL_FRAGMENT_SHADER));
-        gDeferredBufferVisualProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredBufferVisualProgram);
-
-        built(gDeferredBufferVisualProgram.createShader(), gDeferredBufferVisualProgram);
     }
 
     {
