@@ -43,7 +43,6 @@
 #include "alframefences.h"
 #include "alquerypool.h"
 #include "altextureslot.h"
-#include "aluniformbuffer.h"
 
 #include <boost/unordered_map.hpp>
 
@@ -436,40 +435,10 @@ public:
     void syncMatrices();
     void syncLightState();
 
-    // ---- Shared forward-lighting uniform block (UB_LIGHTS) --------------------------------
-    // The fixed-function light arrays every forward/alpha program reads. They used to be
-    // pushed as LOOSE uniforms into each program on its first bind after mLightHash moved --
-    // the same ~672 bytes re-derived and re-written once per program. Packed once and bound at
-    // a fixed engine point instead, so a light-state change costs one upload total.
-    //
-    // Holds ONLY what LLRender owns exclusively. sun_up_factor stays LOOSE: it is written from
-    // many sites across the pipeline, draw pools and LLSettingsVO, and a shared block would let
-    // one writer silently stomp another's value. The sun's, moon's and ambient light the
-    // atmospherics read are the Environment block's (LLSettingsVOSky::applySpecial).
-    //
-    // std140 pads every array element to 16 bytes regardless of the element type, hence the
-    // float[4] rows for the vec3/vec2 arrays -- the C++ mirror carries that padding explicitly
-    // so the struct IS the layout. Public so the debug layout registration can offsetof it.
-    struct alignas(16) LightsUBOData
-    {
-        F32 light_position[LL_NUM_LIGHT_UNITS][4];
-        F32 light_direction[LL_NUM_LIGHT_UNITS][4];             // .xyz used, .w padding
-        F32 light_attenuation[LL_NUM_LIGHT_UNITS][4];
-        F32 light_deferred_attenuation[LL_NUM_LIGHT_UNITS][4];  // .xy used (size, falloff)
-        F32 light_diffuse[LL_NUM_LIGHT_UNITS][4];               // .rgb used, .a padding
-        F32 light_ambient[3];  F32 _tail_pad;
-    };
-
-    // ---- Shared matrix uniform block (UB_MATRICES) ----------------------------------------
-    // The matrix stack plus the matrices derived from it. Like the Lights block above, these
-    // used to be LOOSE uniforms re-pushed per program -- and they were the worst offenders:
-    // every (modelview, projection) epoch (camera set, shadow cascade, probe face, mirror
-    // pass, each UI translate/scale) re-taxed every program bound after it with up to six
-    // matrix writes. Packed once per epoch and bound at a fixed engine point, a matrix change
-    // costs one upload total and a program bind costs no matrix work at all.
-    //
-    // Matrices go up as they lie: LLMatrix4a's rows are the columns std140 reads by default.
-    // normal is a mat3, which std140 strides at 16 bytes per column, hence float[3][4].
+    // Native UI matrix ABI, also mirrored by ALMetalUIMatrices and MSL.
+    // Native batches snapshot the current CPU matrix stacks directly; this
+    // schema does not allocate or publish a separate uniform-buffer store.
+    // normal retains its 16-byte column stride and the complete 368-byte layout.
     struct alignas(16) MatricesUBOData
     {
         F32 modelview[16];
@@ -566,14 +535,6 @@ public:
     }
 
     LLLightState* getLight(U32 index);
-    // Snapshot the exact CPU mirror consumed by UB_LIGHTS. This updates only
-    // the packed bytes; it performs no GL upload or bind, so native sidecar
-    // encoders can capture the forward-light contract at a draw boundary.
-    const LightsUBOData& getLightsUBOData()
-    {
-        packLightsUBO();
-        return mLightsUBOData;
-    }
     void setAmbientLightColor(const LLColor4& color);
 
     void setLineWidth(F32 width);
@@ -798,40 +759,12 @@ private:
 
     eMatrixMode mMatrixMode;
     U32 mMatIdx[NUM_MATRIX_MODES];
-    U32 mMatHash[NUM_MATRIX_MODES];
     LLMatrix4a mMatrix[NUM_MATRIX_MODES][LL_MATRIX_STACK_DEPTH];
-    U32 mCurMatHash[NUM_MATRIX_MODES];
     U32 mLightHash;
     LLColor4 mAmbientLightColor;
 
-    // Pack the light state into mLightsUBOData. Returns true if the bytes actually changed
-    // (so the caller uploads). mLightHash is a conservative trigger -- setPosition and
-    // setSpotDirection bump it unconditionally because the modelview may have moved, so a
-    // frame's worth of "changes" are frequently byte-identical -- hence the compare.
-    bool packLightsUBO();
-
-    LightsUBOData   mLightsUBOData{};
-    ALUniformBuffer mLightsUBO;
-    U32             mLightsUBOHash  = 0xFFFFFFFFu;
-    bool            mLightsUBOBound = false;
-
-    // Rebuild the matrix block from the current stacks into the buffer's shadow. The derived
-    // matrices are recomputed only for the stack that actually moved.
-    void packMatricesUBO();
-
-    ALUniformBuffer mMatricesUBO;
-    U32             mMatricesUBOHash[NUM_MATRIX_MODES] = { 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu };
-    bool            mMatricesUBOBound = false;
-
     ALFrameFences mFrameFences;
     ALQueryPool   mQueries;
-
-    // Derived matrices, cached across epochs so a stack that did not move is not re-derived.
-    // Members rather than function statics: they belong to this context, and shutdown() has to
-    // be able to invalidate them along with the block.
-    LLMatrix4a      mCachedInvMdv;
-    LLMatrix4a      mCachedInvProj;
-    LLMatrix4a      mCachedMVP;
 
     bool            mDirty;
     U32             mCount;

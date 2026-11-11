@@ -35,7 +35,6 @@
 // Library includes
 #include "alrendercapabilities.h"
 #include "alfarplane.h"
-#include "aluniformbuffer.h"
 #include "llwindow.h"   // getGamma()
 
 // For Listeners
@@ -650,14 +649,6 @@ static bool handleRenderDebugPipelineChanged(const LLSD& newvalue)
     return true;
 }
 
-static bool handleRenderUBOUpdateModeChanged(const LLSD& newvalue)
-{
-    // Applies live: the shadow always holds current contents, so the next
-    // flush/bind under the new mode uploads correctly in any direction.
-    ALUniformBuffer::sUpdateMode = ALUniformBuffer::clampUpdateMode(newvalue.asInteger());
-    return true;
-}
-
 static bool handleDebugViewsChanged(const LLSD& newvalue)
 {
     LLView::sDebugRects = newvalue.asBoolean();
@@ -1020,7 +1011,6 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "RenderDeferredNoise", handleRenderInputChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderDebugPipeline", handleRenderDebugPipelineChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderResolutionDivisor", handleRenderInputChanged);
-    setting_setup_signal_listener(gSavedSettings, "AlchemyRenderUBOUpdateMode", handleRenderUBOUpdateModeChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderReflectionProbeLevel", handleReflectionProbesChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderReflectionProbeDetail", handleReflectionProbeSettingsChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderReflectionProbeCount", handleReflectionProbeSettingsChanged);

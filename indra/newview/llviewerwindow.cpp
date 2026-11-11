@@ -56,7 +56,6 @@
 #include "llslurl.h"
 #include "llrender.h"
 #include "llimagegl.h"
-#include "aluniformbuffer.h"
 
 #if LL_DARWIN
 #include "almetaldevice.h"
@@ -2865,7 +2864,6 @@ void LLViewerWindow::shutdownGL()
     gGL.shutdown();
 
     SUBSYSTEM_CLEANUP(LLVertexBuffer);
-    ALUniformBuffer::cleanupClass();
 
     LL_INFOS() << "LLVertexBuffer cleaned." << LL_ENDL ;
 #if LL_DARWIN

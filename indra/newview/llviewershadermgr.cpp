@@ -31,7 +31,6 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "alrendercapabilities.h"
-#include "aluniformbuffer.h"
 #include "llviewershadermgr.h"
 #include "almetaldevice.h"
 #include "almetalpipelinecache.h"
@@ -285,8 +284,6 @@ bool LLViewerShaderMgr::setShaders(const ALShaderInputs& inputs, const ALRenderA
     // Latch one coherent input set before configuring pass identities and
     // reconciling the native resources which consume it.
     mInputs = inputs;
-    ALUniformBuffer::sUpdateMode = ALUniformBuffer::clampUpdateMode(
-        gSavedSettings.getS32("AlchemyRenderUBOUpdateMode"));
     LLPipeline::updateReverseZ(mInputs.mGlobal.mReverseZ);
     LLRender::sGBufferNormHDR = mInputs.mGlobal.mGBufferNormHDR;
     LLRender::sCompute = mInputs.mLocal.mCompute;

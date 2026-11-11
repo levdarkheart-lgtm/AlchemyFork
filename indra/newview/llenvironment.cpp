@@ -1821,16 +1821,12 @@ void LLEnvironment::updateSettingsUniforms()
         LL_WARNS("ENVIRONMENT") << "Failed to update GL variable for sky settings, environment is not properly set" << LL_ENDL;
     }
 
-    // Re-pack the shared Environment block from the freshly computed uniforms (CPU only; the
-    // GL upload/bind happens in bindEnvironmentUBO() on the render thread). MUST run before
-    // the compaction below, which removes exactly the entries this reads.
+    // Rebuild the CPU environment snapshot consumed by native world/water/preview
+    // constants before compaction removes the uniform entries this packer reads.
     packEnvironmentUBO();
 
-    // Drop every entry the Environment UBO now owns. The collections have two consumers with
-    // different needs: packEnvironmentUBO() above wants the FULL set (it is how those values
-    // reach the GPU at all), while LLShaderUniforms::apply() only ever wants what a program
-    // can actually read as a loose uniform. Once a constant moved into the shared block, no
-    // shader declares it loose, yet every syncing program still walked them to no-op.
+    // The native environment snapshot needs the complete settings set; the
+    // remaining semantic uniform lists keep only entries not owned by it.
     //
     // Compacting here rather than deleting the pushes in applySpecial()/applyToUniforms()
     // keeps the packer's input intact; removing them at the source would zero-fill those
@@ -1916,7 +1912,6 @@ void LLEnvironment::packEnvironmentUBO()
 
     packAtmosphericTerms(d);
 
-    mEnvUBODirty = true;
 }
 
 // static
@@ -1938,38 +1933,6 @@ void LLEnvironment::packAtmosphericTerms(EnvironmentUBOData& d)
         d.haze_additive[c]       = blue * (cs + ambient) + haze * ambient;
         d.haze_additive_glow[c]  = haze * cs;
     }
-}
-
-void LLEnvironment::bindEnvironmentUBO()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-
-    if (mEnvUBODirty || !mEnvUBO.allocated())
-    {
-        mEnvUBO.update(&mEnvUBOData, sizeof(EnvironmentUBOData));
-        mEnvUBODirty = false;
-    }
-
-    mEnvUBO.bind(LLGLSLShader::UB_ENVIRONMENT);
-}
-
-void LLEnvironment::bindEnvironmentUBOLitBy(const LLColor3& sunlit)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-
-    EnvironmentUBOData d = mEnvUBOData;
-    memcpy(d.atmos_sunlit, sunlit.mV, sizeof(d.atmos_sunlit));
-    packAtmosphericTerms(d);
-
-    mEnvLitByUBO.update(&d, sizeof(EnvironmentUBOData));
-    mEnvLitByUBO.bind(LLGLSLShader::UB_ENVIRONMENT);
-}
-
-void LLEnvironment::releaseGLBuffers()
-{
-    mEnvUBO.release();
-    mEnvLitByUBO.release();
-    mEnvUBODirty = true; // force a re-upload before the next bind
 }
 
 void LLEnvironment::recordEnvironment(S32 parcel_id, LLEnvironment::EnvironmentInfo::ptr_t envinfo, LLSettingsBase::Seconds transition)

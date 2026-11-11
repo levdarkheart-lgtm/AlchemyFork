@@ -43,7 +43,6 @@
 #include "../llimagegl.h"
 #include "../llfontfreetype.h"
 #include "../alfontshaping.h"
-#include "../aluniformbuffer.h"
 #include "../llfonttextcache.h"
 #include "../llrender.h"
 #include "../llshadermgr.h"
@@ -558,10 +557,6 @@ namespace ll_test
 #endif
             gGL.shutdown();
             LLVertexBuffer::cleanupClass();
-            // Drop ALUniformBuffer's process-lifetime statics (streaming rings, the
-            // rigged-palette scratch ring) with this context: a stale buffer name
-            // surviving into the next fixture's fresh context would alias or fail.
-            ALUniformBuffer::cleanupClass();
 
             LLWindowManager::destroyWindow(mWindow);
             std::fill(std::begin(gGLViewport), std::end(gGLViewport), 0);

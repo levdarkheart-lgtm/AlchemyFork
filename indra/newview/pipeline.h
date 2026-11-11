@@ -49,7 +49,6 @@
 #include "altransienttargetpool.h"
 #include "altransienttargets.h"
 #include "alwatersurface.h"
-#include "aluniformbuffer.h"
 #include "llrendertarget.h"
 #include "llreflectionmapmanager.h"
 #include "llheroprobemanager.h"
@@ -1285,11 +1284,11 @@ public:
     void endMetalWorldGBufferCapture();
 #endif
 
-    // Rebuild the native shadow state and retained GL SSAO/specular block from current state.
+    // Rebuild the native shadow state and CPU SSAO/specular snapshot from current state.
     // Called once per deferred pass; every value is fixed for the whole pass.
     void packDeferredConstants();
-    // Upload (if dirty) and bind the retained GL block at UB_DEFERRED.
-    void bindDeferredUBO();
+    // Initialize the CPU snapshot on its first shader-bind use after release.
+    void ensureDeferredConstants();
 
     void bindDeferredShaderFast(LLGLSLShader& shader);
     void bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_target = nullptr, LLRenderTarget* depth_target = nullptr);
@@ -1907,9 +1906,8 @@ public:
 
     NativeShadowData            mNativeShadowData{};
 
-    // ---- Retained GL deferred uniform block (UB_DEFERRED) ---------------------------------
-    // std140-packed SSAO constants and the legacy specular exponent. ssao_effect_mat@0,
-    // scalars@48..64, size 80. Native consumers repack these CPU values into
+    // CPU SSAO constants and the legacy specular exponent. ssao_effect_mat@0,
+    // scalars@48..64, size 80. Native consumers repack these values into
     // their explicit Metal constant layouts.
     struct alignas(16) DeferredUBOData
     {
@@ -1922,8 +1920,7 @@ public:
     };
 
     DeferredUBOData             mDeferredUBOData{};
-    ALUniformBuffer             mDeferredUBO;
-    bool                        mDeferredUBODirty{ true };
+    bool                        mDeferredConstantsInitialized{ false };
 
 #if LL_DARWIN
     struct MetalAvatarProfileRequest

@@ -28,7 +28,6 @@
 
 #pragma once
 
-#include "aluniformbuffer.h"
 #include "llfile.h"
 #include "llgl.h"
 #include "llglheaders.h"
@@ -1216,7 +1215,6 @@ void main()
                 put(march_offsets[i], 0, 0, &march[i], sizeof(F32));
             }
 
-            mUBO.update(block.data(), block.size(), ALUniformBuffer::EUsage::STATIC);
         }
 
         // Draws `program` over the target, through entry point `api`.
@@ -1225,7 +1223,6 @@ void main()
             // The triangle covers every pixel, so nothing is cleared.
             mTarget.bindTarget();
             program.bind();
-            mUBO.bind(LLGLSLShader::UB_REFLECTION_PROBES);
             S32 channel = program.enableTexture(LLShaderMgr::REFLECTION_PROBES);
             REQUIRE(channel > -1);
             gGL.getTextureSlot(channel)->bindManual(
@@ -1303,7 +1300,6 @@ void main()
         LLRenderTarget            mSH;
         LLRenderTarget            mScene; ///< what the screen-space reflections march: a colour and its depth
         GLuint                    mCube = 0;
-        ALUniformBuffer           mUBO;
         LLPointer<LLVertexBuffer> mTriangle;
         S32                       mW = 0;
         S32                       mH = 0;

@@ -84,7 +84,6 @@ RenderDisableVintageMode           1   1
 RenderMaxTextureResolution         1   2048
 RenderReflectionProbeCount  1   256
 AlchemyRenderWaterWaves    1   1
-AlchemyRenderUBOUpdateMode 1 4
 
 //
 // Low Graphics Settings
@@ -439,7 +438,6 @@ RenderGLMultiThreadedMedia 0 0
 RenderDisableVintageMode           0   0
 RenderReflectionProbeCount  0   0
 AlchemyRenderWaterWaves     0   0
-AlchemyRenderUBOUpdateMode  0   1
 
 list TexUnit16orLess
 RenderTerrainPBRDetail      1   -1

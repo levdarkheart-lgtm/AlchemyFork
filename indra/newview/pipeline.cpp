@@ -68,7 +68,6 @@
 #include "alrenderisolation.h"
 #include "alrendercapabilities.h"
 #include "alsamplerstate.h"
-#include "aluniformbuffer.h"
 #include "alwhitebalancesolver.h"
 #include "alcurvemodel.h"
 #include "alfarplane.h"
@@ -19877,13 +19876,7 @@ void LLPipeline::releaseAllRenderResources()
     releaseScopeBuffers();
     clearReferenceStill();
 
-    mDeferredUBO.release(); // retained GL SSAO/specular block (UB_DEFERRED); re-created lazily on next use
-    mDeferredUBODirty = true;
-
-    if (LLEnvironment::instanceExists())
-    {   // shared environment block (UB_ENVIRONMENT); re-created lazily on next bind
-        LLEnvironment::instance().releaseGLBuffers();
-    }
+    mDeferredConstantsInitialized = false;
 
     // Release outstanding native diagnostics with the rendering resources.
     mTerrainPrimitives.release();
@@ -23301,9 +23294,6 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
             mReflectionMapManager.updateUniforms();
             mHeroProbeManager.updateUniforms();
 
-            // Upload (if changed) and bind the shared sky/water constant block (UB_ENVIRONMENT)
-            // for this pass, same cadence as the reflection-probe UBO.
-            LLEnvironment::instance().bindEnvironmentUBO();
         }
 
         U32 cur_type = 0;
@@ -28872,23 +28862,18 @@ void LLPipeline::packDeferredConstants()
     shadow.shadow_pcss_scale = pcss_scale;
     d.specular_exponent = specular_exponent;
 
-    mDeferredUBODirty = true;
 }
 
-void LLPipeline::bindDeferredUBO()
+void LLPipeline::ensureDeferredConstants()
 {
-    // First use before any renderDeferredLighting this session: fill from current state so the
-    // block is never uploaded zero-filled (e.g. the reflection-probe display debug path).
-    if (!mDeferredUBO.allocated())
+    // Preserve the first shader-bind refresh independently of GPU allocation.
+    // Native consumers also need valid CPU constants before a lighting pass
+    // has packed them, for example when displaying reflection probes.
+    if (!mDeferredConstantsInitialized)
     {
         packDeferredConstants();
+        mDeferredConstantsInitialized = true;
     }
-    if (mDeferredUBODirty)
-    {
-        mDeferredUBO.update(&mDeferredUBOData, sizeof(DeferredUBOData));
-        mDeferredUBODirty = false;
-    }
-    mDeferredUBO.bind(LLGLSLShader::UB_DEFERRED);
 }
 
 void LLPipeline::bindDeferredShaderFast(LLGLSLShader& shader)
@@ -28900,7 +28885,7 @@ void LLPipeline::bindDeferredShaderFast(LLGLSLShader& shader)
         // program's ordinary deferred textures remain valid for the fast path.
         shader.uniform1i(LLShaderMgr::CUBE_SNAPSHOT, gCubeSnapshot ? 1 : 0);
         bindReflectionProbes(shader);
-        bindDeferredUBO();
+        ensureDeferredConstants();
     }
     else
     { //wasn't previously bound, use slow path
@@ -28916,8 +28901,8 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
 
     shader.bind();
 
-    // Bind the retained per-pass GL SSAO/specular block (UB_DEFERRED).
-    bindDeferredUBO();
+    // Ensure the per-pass CPU SSAO/specular snapshot exists.
+    ensureDeferredConstants();
 
     S32 channel = 0;
     channel = shader.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
@@ -29029,9 +29014,9 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
     bindReflectionProbes(shader);
 
     // SSAO radius/max/factor/factor_inv, ssao_effect_mat and specular_exponent live in the
-    // retained GL UB_DEFERRED block, packed once per pass by packDeferredConstants(). Native
-    // shadow constants are held separately and never uploaded to GL. Only uniforms that are
-    // not in the block are still pushed here.
+    // CPU snapshot, packed once per pass by packDeferredConstants(). Native
+    // shadow constants are held separately. The remaining semantic uniform
+    // calls cover values outside this snapshot.
 
     shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)deferred_target->getWidth(), (GLfloat)deferred_target->getHeight());
     shader.uniform1f(LLShaderMgr::DEFERRED_NEAR_CLIP, LLViewerCamera::getInstance()->getNear()*2.f);

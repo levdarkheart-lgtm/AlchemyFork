@@ -37,7 +37,6 @@
 #include "llsettingsdaycycle.h"
 
 #include "llglslshader.h"
-#include "aluniformbuffer.h"
 
 #include <boost/signals2.hpp>
 
@@ -139,21 +138,6 @@ public:
 
     // prepare settings to be applied to shaders (call whenever settings are updated)
     void                        updateSettingsUniforms();
-
-    // Upload (if dirty) and bind the shared Environment UBO at UB_ENVIRONMENT. Needs a GL
-    // context -- call from the render loop, alongside the reflection-probe UBO bind.
-    void                        bindEnvironmentUBO();
-
-    // Bind a copy of the Environment block whose lit terms take `sunlit` in place of the sky's
-    // sun or moon on its way down, for a pass that lights an object under a light of its own
-    // (the GLTF material preview). The next bindEnvironmentUBO() binds the shared block again.
-    void                        bindEnvironmentUBOLitBy(const LLColor3& sunlit);
-
-    // Release the Environment UBO's GL object on a context teardown (re-created lazily on the
-    // next bindEnvironmentUBO). Must be paired with the pipeline's GL-buffer teardown, mirroring
-    // the reflection-probe UBO: without it a GL destroy/restore cycle leaves a stale (or
-    // driver-recycled) buffer name bound at UB_ENVIRONMENT.
-    void                        releaseGLBuffers();
 
     void                        setSelectedEnvironment(EnvSelection_t env, LLSettingsBase::Seconds transition = TRANSITION_DEFAULT, bool forced = false);
     EnvSelection_t              getSelectedEnvironment() const                  { return mSelectedEnvironment; }
@@ -281,8 +265,8 @@ public:
     // The sun's, moon's and ambient light the atmospherics read are here and nowhere else, as
     // the terms worked from them: the light lit geometry takes (LLSettingsSky::getLitLightColors,
     // the same LLPipeline's light 0 is), the sky dome's, and the ambient applySpecial decides,
-    // worked into calcAtmosphericVars' per-sky terms by packAtmosphericTerms. A pass that lights
-    // an object under a light of its own binds a copy (bindEnvironmentUBOLitBy).
+    // worked into calcAtmosphericVars' per-sky terms by packAtmosphericTerms.
+    // Native preview owners select their pass-specific light in typed constants.
     //
     // Field order/types/padding MUST byte-match the GLSL block. Each vec3 is paired with a
     // trailing scalar so that scalar fills the vec3's std140 tail (the next member lands at
@@ -330,15 +314,14 @@ public:
         F32 sky_ambient_below[3];      F32 _pad15;
     };
 
-    // CPU-side bytes currently bound by the shared environment block. Native
-    // render owners use this read-only snapshot instead of re-deriving sky
+    // Native render owners read this CPU snapshot instead of re-deriving sky
     // lighting from settings independently.
     const EnvironmentUBOData&   getEnvironmentUBOData() const
     {
         return mEnvUBOData;
     }
 
-    // Pack mSky/mWaterUniforms into the CPU-side block and mark it for upload (no GL calls).
+    // Pack mSky/mWaterUniforms into the CPU snapshot.
     void                        packEnvironmentUBO();
 
     // calcAtmosphericVars' per-sky terms of atmos_sunlit and atmos_ambient, worked into d from
@@ -348,9 +331,6 @@ public:
     static void                 packAtmosphericTerms(EnvironmentUBOData& d);
 
     EnvironmentUBOData          mEnvUBOData{};
-    ALUniformBuffer             mEnvUBO;
-    ALUniformBuffer             mEnvLitByUBO;
-    bool                        mEnvUBODirty{ true };
     // eyeToSky as ALFarPlane::eyeToSkyFrame gives it, for the camera of the last update()
     std::array<F32, 9>          mEyeToSky{ 1.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f };
 

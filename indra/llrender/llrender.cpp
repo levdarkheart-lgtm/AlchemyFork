@@ -28,7 +28,6 @@
 
 #include "llrender.h"
 
-#include "algpubuffer.h"
 #include "alsamplerstate.h"
 #include "llvertexbuffer.h"
 #include "llcubemap.h"
@@ -550,12 +549,7 @@ LLRender::LLRender()
             mMatrix[i][j].setIdentity();
         }
         mMatIdx[i] = 0;
-        mMatHash[i] = 0;
-        mCurMatHash[i] = 0xFFFFFFFF;
     }
-    mCachedInvMdv.setIdentity();
-    mCachedInvProj.setIdentity();
-    mCachedMVP.setIdentity();
 
     mLightHash = 0;
 }
@@ -588,10 +582,6 @@ bool LLRender::init(bool needs_vertex_buffer)
 
 void LLRender::resetCachedState()
 {
-    // A fresh native renderer owns no live light or matrix binding.
-    mLightsUBOBound   = false;
-    mMatricesUBOBound = false;
-
     // Logical slot identities are renderer-local and must not survive a
     // backend restart. Unit zero remains the default semantic active slot.
     for (ALTextureSlot& slot : mTextureSlots)
@@ -789,23 +779,7 @@ void LLRender::shutdown()
 
     resetVertexBuffer();
 
-    // Drop the shared light block with the context that owns it. Forcing a re-pack (rather
-    // than just clearing mLightsUBOBound) means a restarted context can never rebind a
-    // buffer name from the dead one.
-    mLightsUBO.release();
-    mLightsUBOHash  = 0xFFFFFFFFu;
-    mLightsUBOBound = false;
-
-    // Same for the matrix block. syncMatrices re-initialises the shadow on the next use
-    // because release() leaves it unallocated.
-    mMatricesUBO.release();
-    for (U32 i = 0; i < NUM_MATRIX_MODES; ++i)
-    {
-        mMatricesUBOHash[i] = 0xFFFFFFFFu;
-    }
-    mMatricesUBOBound = false;
-
-    // Its queries and fences, which it deletes only while the context is up.
+    // Release native query ownership and drain the submitted frame timeline.
     mQueries.release();
     mFrameFences.release();
 }
@@ -858,7 +832,6 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     }
     mMetalUIRenderer.reset();
     mFrameFences.setMetalScheduler(nullptr);
-    ALGPUBuffer::setMetalDevice(nullptr);
     mMetalDevice = nullptr;
     mMetalFrames = nullptr;
     mMetalUISurface = nullptr;
@@ -881,7 +854,6 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
 
     mMetalDevice = device;
     mMetalFrames = scheduler;
-    ALGPUBuffer::setMetalDevice(device);
     mFrameFences.setMetalScheduler(scheduler);
     // Hidden windows intentionally have no presentation surface. Publishing
     // their device and scheduler is still sufficient for texture captures.
@@ -1889,7 +1861,6 @@ void LLRender::endFrame(U32 frames_ahead)
     }
 #endif
     LLImageGL::pollUploads();
-    ALUniformBuffer::endFrame();
 }
 
 void LLRender::clearSamplers()
@@ -1918,75 +1889,10 @@ void LLRender::refreshState(void)
     mDirty = false;
 }
 
-// Pack the light arrays into the shared block. Returns true when the bytes moved.
-bool LLRender::packLightsUBO()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-
-    // Must match the std140 layout the shaders declare: five 16-byte-strided [8] arrays
-    // (128 bytes each) then a float3 rounded up to the block's 16-byte multiple.
-    static_assert(sizeof(LightsUBOData) == 656, "LightsUBOData must match std140 (656 bytes)");
-
-    LightsUBOData d{};
-
-    for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
-    {
-        const LLLightState* light = &mLightState[i];
-
-        // std140 pads every array element to 16 bytes whatever the element type, so each
-        // row below is float[4] and the unused tail components stay zero.
-        memcpy(d.light_position[i], light->mPosition.mV, sizeof(F32) * 4);
-        memcpy(d.light_direction[i], light->mSpotDirection.mV, sizeof(F32) * 3);
-
-        d.light_attenuation[i][0] = light->mLinearAtten;
-        d.light_attenuation[i][1] = light->mQuadraticAtten;
-        d.light_attenuation[i][2] = light->mSpecular.mV[2];
-        d.light_attenuation[i][3] = light->mSpecular.mV[3];
-
-        d.light_deferred_attenuation[i][0] = light->mSize;
-        d.light_deferred_attenuation[i][1] = light->mFalloff;
-
-        memcpy(d.light_diffuse[i], light->mDiffuse.mV, sizeof(F32) * 3);
-    }
-
-    memcpy(d.light_ambient, mAmbientLightColor.mV, sizeof(F32) * 3);
-
-    if (memcmp(&d, &mLightsUBOData, sizeof(LightsUBOData)) == 0)
-    {
-        return false;
-    }
-
-    mLightsUBOData = d;
-    return true;
-}
-
 void LLRender::syncLightState()
 {
-    // The light ARRAYS live in the shared UB_LIGHTS block: packed once when the light state
-    // actually moves, not once per program. mLightHash is only a cheap trigger -- setPosition
-    // and setSpotDirection bump it unconditionally (the modelview may have changed), so the
-    // pack still byte-compares before spending an upload.
-    if (mLightsUBOHash != mLightHash || !mLightsUBO.allocated())
-    {
-        mLightsUBOHash = mLightHash;
-        if (packLightsUBO() || !mLightsUBO.allocated())
-        {
-            mLightsUBO.update(&mLightsUBOData, sizeof(LightsUBOData));
-            mLightsUBOBound = false; // re-assert the binding against the new store
-        }
-    }
-
-    if (!mLightsUBOBound)
-    {
-        mLightsUBO.bind(LLGLSLShader::UB_LIGHTS);
-        mLightsUBOBound = true;
-    }
-
-    // Everything below is still a LOOSE per-program uniform, so it keeps the per-shader hash
-    // gate. sun_up_factor has writers outside LLRender (the pipeline, the draw pools and
-    // LLSettingsVO), so folding it into the shared block would let one writer stomp another.
-    // The sun's, moon's and ambient light the atmospherics read are the Environment block's,
-    // classic sky or not: the sky settings set them there, in one place for every program.
+    // Preserve the per-program CPU light epoch/sun-primary routing. Native
+    // encoders consume explicit light data, without a parallel upload/bind table.
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
 
     if (!shader || shader->mLightHash == mLightHash)
@@ -1999,120 +1905,18 @@ void LLRender::syncLightState()
     shader->uniform1i(LLShaderMgr::SUN_UP_FACTOR, mLightState[0].mSunIsPrimary ? 1 : 0);
 }
 
-void LLRender::packMatricesUBO()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-
-    static_assert(sizeof(MatricesUBOData) == 368, "MatricesUBOData must match std140 (368 bytes)");
-
-    const LLMatrix4a& mdv  = mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]];
-    const LLMatrix4a& proj = mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]];
-    const LLMatrix4a& tex  = mMatrix[MM_TEXTURE0][mMatIdx[MM_TEXTURE0]];
-
-    const bool mdv_moved  = mMatHash[MM_MODELVIEW]  != mMatricesUBOHash[MM_MODELVIEW];
-    const bool proj_moved = mMatHash[MM_PROJECTION] != mMatricesUBOHash[MM_PROJECTION];
-
-    if (mdv_moved)
-    {
-        // The modelview is affine (view * model, no perspective), so the affine inverse is
-        // exact and much cheaper than a general 4x4 inverse.
-        mCachedInvMdv.setAffineInverse(mdv);
-    }
-    if (proj_moved)
-    {
-        // Projection is not affine -- general inverse required.
-        mCachedInvProj.setInverse(proj);
-    }
-    if (mdv_moved || proj_moved)
-    {
-        // the modelview first, then the projection
-        mCachedMVP.setMul(mdv, proj);
-    }
-
-    MatricesUBOData d;
-    memcpy(d.modelview,            mdv.getF32ptr(),            sizeof(d.modelview));
-    memcpy(d.projection,           proj.getF32ptr(),           sizeof(d.projection));
-    memcpy(d.modelview_projection, mCachedMVP.getF32ptr(),     sizeof(d.modelview_projection));
-    memcpy(d.inv_proj,             mCachedInvProj.getF32ptr(), sizeof(d.inv_proj));
-    memcpy(d.texture0,             tex.getF32ptr(),            sizeof(d.texture0));
-
-    // normal_matrix is the upper 3x3 of the inverse modelview transposed: column c of the
-    // block is lane c of the inverse's first three rows, i.e. inv[4*k + c] for k = 0..2.
-    // This reproduces exactly the nine floats the loose uniformMatrix3fv used to upload.
-    const F32* inv = mCachedInvMdv.getF32ptr();
-    for (U32 c = 0; c < 3; ++c)
-    {
-        d.normal[c][0] = inv[0 * 4 + c];
-        d.normal[c][1] = inv[1 * 4 + c];
-        d.normal[c][2] = inv[2 * 4 + c];
-        d.normal[c][3] = 0.f;
-    }
-
-    U8* shadow = mMatricesUBO.beginWrite();
-    if (memcmp(shadow, &d, sizeof(d)) != 0)
-    {
-        memcpy(shadow, &d, sizeof(d));
-        mMatricesUBO.endWrite(0, sizeof(d));
-    }
-}
-
 void LLRender::syncMatrices()
 {
     STOP_GLERROR;
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-
+    // Native world/UI owners snapshot the live stacks into their typed
+    // constants. Retain only the independent semantic light-state update.
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
-
-    if (shader)
+    if (shader && (shader->mFeatures.hasLighting ||
+                   shader->mFeatures.calculatesLighting ||
+                   shader->mFeatures.calculatesAtmospherics))
     {
-        // The matrices live in the shared UB_MATRICES block: packed once per matrix EPOCH (any
-        // mMatHash movement since the last pack) rather than once per program, so a program
-        // bind costs no matrix work at all. The derived matrices (inverses, normal, MVP) are
-        // recomputed per epoch under per-stack gates inside the pack, and unconditionally --
-        // any program may read them from the block, so the old hasUniform() gates are gone.
-        if (!mMatricesUBO.allocated())
-        {
-            // Fresh context (first use, or re-init after shutdown released the old block):
-            // re-pack and re-bind everything.
-            mMatricesUBO.initShadowed(sizeof(MatricesUBOData));
-            for (U32 i = 0; i < NUM_MATRIX_MODES; ++i)
-            {
-                mMatricesUBOHash[i] = 0xFFFFFFFFu;
-            }
-            mMatricesUBOBound = false;
-        }
-
-        if (mMatHash[MM_MODELVIEW]  != mMatricesUBOHash[MM_MODELVIEW]  ||
-            mMatHash[MM_PROJECTION] != mMatricesUBOHash[MM_PROJECTION] ||
-            mMatHash[MM_TEXTURE0]   != mMatricesUBOHash[MM_TEXTURE0])
-        {
-            packMatricesUBO();
-            for (U32 i = 0; i < NUM_MATRIX_MODES; ++i)
-            {
-                mMatricesUBOHash[i] = mMatHash[i];
-            }
-        }
-
-        if (!mMatricesUBOBound)
-        {
-            // First attach on this context (or a refreshState() re-assert): bindCurrent both
-            // uploads any pending bytes and (re)claims the binding point -- needed even when
-            // clean, e.g. UPDATE_DIRECT where endWrite uploads without ever dirtying.
-            mMatricesUBO.bindCurrent(LLGLSLShader::UB_MATRICES);
-            mMatricesUBOBound = true;
-        }
-        else
-        {
-            // Per-draw steady state: upload when the pack dirtied the shadow, otherwise just
-            // confirm the last flushed slice is still readable (streaming-ring reuse can
-            // invalidate it). No GL calls at all on the clean-and-live path.
-            mMatricesUBO.ensureCurrent(LLGLSLShader::UB_MATRICES);
-        }
-
-        if (shader->mFeatures.hasLighting || shader->mFeatures.calculatesLighting || shader->mFeatures.calculatesAtmospherics)
-        { //also sync light state
-            syncLightState();
-        }
+        syncLightState();
     }
     STOP_GLERROR;
 }
@@ -2125,7 +1929,6 @@ void LLRender::translatef(const GLfloat& x, const GLfloat& y, const GLfloat& z)
         // the translation applies first: T then the stack's matrix
         LLMatrix4a& m = mMatrix[mMatrixMode][mMatIdx[mMatrixMode]];
         m.setMul(LLMatrix4a::translation(x, y, z), m);
-        mMatHash[mMatrixMode]++;
     }
 }
 
@@ -2136,7 +1939,6 @@ void LLRender::scalef(const GLfloat& x, const GLfloat& y, const GLfloat& z)
     {
         LLMatrix4a& m = mMatrix[mMatrixMode][mMatIdx[mMatrixMode]];
         m.setMul(LLMatrix4a::scaling(x, y, z), m);
-        mMatHash[mMatrixMode]++;
     }
 }
 
@@ -2150,7 +1952,6 @@ void LLRender::ortho(F32 left, F32 right, F32 bottom, F32 top, F32 zNear, F32 zF
         // and the plain ortho otherwise. Converts all gGL.ortho() callers at once.
         LLMatrix4a& m = mMatrix[mMatrixMode][mMatIdx[mMatrixMode]];
         m.setMul(al_ortho(left, right, bottom, top, zNear, zFar), m);
-        mMatHash[mMatrixMode]++;
     }
 }
 
@@ -2161,7 +1962,6 @@ void LLRender::rotatef(const GLfloat& a, const GLfloat& x, const GLfloat& y, con
     {
         LLMatrix4a& m = mMatrix[mMatrixMode][mMatIdx[mMatrixMode]];
         m.setMul(LLMatrix4a::rotation(a * DEG_TO_RAD, LLVector4a(x, y, z)), m);
-        mMatHash[mMatrixMode]++;
     }
 }
 
@@ -2189,7 +1989,6 @@ void LLRender::popMatrix()
         if (mMatIdx[mMatrixMode] > 0)
         {
             --mMatIdx[mMatrixMode];
-            mMatHash[mMatrixMode]++;
         }
         else
         {
@@ -2210,7 +2009,6 @@ void LLRender::loadMatrix(const LLMatrix4a& m)
     flush();
     {
         mMatrix[mMatrixMode][mMatIdx[mMatrixMode]] = m;
-        mMatHash[mMatrixMode]++;
     }
 }
 
@@ -2228,7 +2026,6 @@ void LLRender::multMatrix(const LLMatrix4a& m)
         // the new matrix applies first, then what the stack held
         LLMatrix4a& top = mMatrix[mMatrixMode][mMatIdx[mMatrixMode]];
         top.setMul(m, top);
-        mMatHash[mMatrixMode]++;
     }
 }
 
@@ -2251,7 +2048,6 @@ void LLRender::loadIdentity()
         llassert_always(mMatrixMode < NUM_MATRIX_MODES) ;
 
         mMatrix[mMatrixMode][mMatIdx[mMatrixMode]].setIdentity();
-        mMatHash[mMatrixMode]++;
     }
 }
 

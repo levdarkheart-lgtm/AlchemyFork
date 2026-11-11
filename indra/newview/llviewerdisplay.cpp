@@ -39,7 +39,6 @@
 #include "../almetal/almetalframecapture.h"
 #include "../almetal/almetalstagetiming.h"
 #endif
-#include "aluniformbuffer.h"
 #include "fsyspath.h"
 #include "hexdump.h"
 #include "llagent.h"
@@ -2216,13 +2215,9 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
     stop_glerror();
 
-    // Close the frame's queries, lay this frame's fence and poll the frames before, and close out the UBO
-    // streaming rings' per-frame counters (slices, wraps, GPU stalls) and let them resize. Straight
-    // after the swap: the frame's one poll waits on a threaded driver's own thread here, if
-    // anywhere, which is behind the swap already (see ALFrameFences). And here rather than in
-    // resetFrameStats(): a resize deletes and remaps a ring and invalidates every outstanding slice,
-    // which must land past this frame's draws, not before its heaviest passes. See
-    // ALUniformBuffer::endFrame. A frame that reached the screen also waits for the one
+    // Close the frame's native queries and record the submitted Metal timeline,
+    // then poll earlier logical frames (see ALFrameFences).
+    // A frame that reached the screen also waits for the one
     // AlchemyRenderMaxFramesAhead before it, every frame, so the CPU keeps an even pace that far
     // ahead of the GPU, with the main loop's work in that wait first; that end is the main loop's,
     // straight after display() returns (display_end_frame, ALFrameEnd). A capture's frames, and
