@@ -227,6 +227,14 @@ class PerfTests(unittest.TestCase):
 
 
 class AuditTests(unittest.TestCase):
+    def audit_source(self, source, path="indra/llrender/renderer.cpp"):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / path
+            target.parent.mkdir(parents=True)
+            target.write_text(source)
+            return load("audit_gl").audit(root)
+
     def test_gl_detected_and_absent_after_rewrite(self):
         module = load("audit_gl")
         with tempfile.TemporaryDirectory() as d:
@@ -251,6 +259,193 @@ class AuditTests(unittest.TestCase):
                     sys, "argv",
                     ["audit_gl.py", "--strict", "--root", str(root)]):
                 self.assertEqual(module.main(), 1)
+
+    def test_native_class_inventory_does_not_weaken_actual_api_gate(self):
+        module = load("audit_gl")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            src = root / "indra/llrender/llglslshader.cpp"
+            src.parent.mkdir(parents=True)
+            src.write_text("void LLGLSLShader::bind() { configureNative(); }\n")
+            report = module.audit(root)
+            self.assertEqual(1, report["finding_count"])
+            self.assertEqual(1, report["informational_count"])
+            self.assertEqual(0, report["blocking_count"])
+            with mock.patch.object(sys, "argv", ["audit_gl.py", "--strict", "--root", str(root)]):
+                self.assertEqual(0, module.main())
+            src.write_text("void LLGLSLShader::bind() { glUseProgram(1); }\n")
+            report = module.audit(root)
+            self.assertEqual(1, report["blocking_count"])
+            self.assertEqual(["gl_function"], report["findings"][0]["blocking_kinds"])
+            self.assertEqual(["gl_shader"], report["findings"][0]["informational_kinds"])
+            with mock.patch.object(sys, "argv", ["audit_gl.py", "--mode", "strict", "--root", str(root)]):
+                self.assertEqual(1, module.main())
+            with mock.patch.object(sys, "argv", ["audit_gl.py", "--root", str(root)]):
+                self.assertEqual(0, module.main())
+
+    def test_comments_strings_raw_literals_and_digit_separators_are_not_calls(self):
+        report = self.audit_source(r'''
+/* A multiline comment.
+ glClear(0); SDL_GL_CreateContext(window);
+*/
+// glBindBuffer(0, 0); \
+glFinish(); // C++ line splicing keeps this in the comment.
+const char* message = "glClear(0); /* not a comment */";
+const char* label = "glTF (*.gltf; *.glb)";
+const char* shader = u8R"shader(
+    glBindBuffer(0, 0); // source text, not a C++ API invocation
+    " /* #include <OpenGL/gl.h> */
+)shader";
+const char slash = '/'; const char quote = '\'';
+const auto size = 1'024; const auto mask = 0xffff'ffff;
+void render(){ encodeMetalCommands(); }
+''')
+        self.assertEqual(0, report["finding_count"])
+        self.assertEqual([], report["errors"])
+
+    def test_real_calls_survive_urls_comments_multiline_and_spliced_tokens(self):
+        report = self.audit_source(
+            'const char* url = "https://host/path"; glClear /* gap */\n(0);\n'
+            'glCl\\\near(0);\n'
+            '#define CALL_GL glFinish\nCALL_GL();\n'
+            'void draw() { (*glDrawArrays)(0, 0, 3); }\n')
+        self.assertEqual(4, report["blocking_count"])
+        self.assertEqual([1, 3, 5, 7], [row["line"] for row in report["findings"]])
+        self.assertTrue(all("gl_function" in row["blocking_kinds"] for row in report["findings"]))
+
+    def test_prototypes_contexts_macros_and_imports_block_without_a_call(self):
+        samples = [
+            "extern void glBindBuffer(unsigned, unsigned);",
+            "extern PFNGLBINDBUFFERPROC dispatch;",
+            "extern PFN_wglDXOpenDeviceNV dispatch;",
+            "auto function = &glClear;",
+            "GLXContext context; EGLContext other; HGLRC win; CGLContextObj mac;",
+            "NSOpenGLContext* context; EAGLContext* mobile;",
+            "auto attributes = WGL_CONTEXT_MAJOR_VERSION_ARB; auto pixel = kCGLPFAAccelerated;",
+            "auto loader = &glfwGetProcAddress; int ready = glewInit();",
+            "auto flag = SDL_WINDOW_OPENGL; auto prop = SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN;",
+            "auto context = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_OPENGL_CONTEXT_POINTER, nullptr);",
+            "void render() { eglSwapBuffers(display, surface); glXSwapBuffers(display, window); }",
+            "#define CALL(name) gl ## name\nCALL(Clear)(0);",
+            "#define FINISH g ## lFinish\nFINISH();",
+            "#define CALL(name) g ## l ## name\nCALL(Clear)(0);",
+            "#include /* between tokens */ <OpenGL/gl.h>",
+            '#import "EGL/egl.h"',
+            "#include <SDL3/SDL_opengl.h>",
+            '#define GL_HEADER "GL/glcorearb.h"\n#include GL_HEADER',
+            '#define API_HEADER <GL/glcorearb.h>\n#include API_HEADER',
+            '#define H1 H2\n#define H2 <GL/gl.h>\n#include H1',
+            '#define H <GL/gl.h>\n#if 0\n#define H "ordinary.h"\n#endif\n#include H',
+            "@import OpenGL;",
+            '#pragma comment(lib, "opengl32.lib")',
+        ]
+        for source in samples:
+            with self.subTest(source=source):
+                report = self.audit_source(source)
+                self.assertGreater(report["blocking_count"], 0)
+                self.assertEqual([], report["errors"])
+
+    def test_dynamic_api_names_and_libraries_resolve_literals_and_local_aliases(self):
+        samples = [
+            'auto p = dlsym(handle, "gl" /* gap */ "Clear");',
+            r'auto p = dlsym(handle, "\x67lClear");',
+            r'auto p = dlsym(handle, "glClear\0ignored");',
+            'auto p = dlsym(handle, R"name(glClear)name");',
+            'const auto symbol = "glClear"; auto p = dlsym(handle, symbol);',
+            'const char symbol[] = "glClear"; auto p = dlsym(handle, symbol);',
+            'const char symbol[8] = "glClear"; auto p = dlsym(handle, symbol);',
+            'const char symbol[] = "glClear"; if(symbol[0] == 0) return; auto p = dlsym(handle, symbol);',
+            'const auto first = "glClear"; const auto copy = first; first = "ordinary"; auto p = dlsym(handle, copy);',
+            'const auto symbol = "glClear"; auto p = dlsym(handle, symbol); symbol = "ordinary";',
+            'const char* symbol = "glClear"; if(change){symbol = "ordinary";} auto p = dlsym(handle, symbol);',
+            'const char* symbol = "glClear"; void unrelated(){const char* symbol = "ordinary";} auto p = dlsym(handle, symbol);',
+            '#define SYMBOL "glClear"\n#if 0\n#define SYMBOL "ordinary"\n#endif\nauto p = dlsym(handle, SYMBOL);',
+            '#define SYMBOL BASE\n#define BASE "gl" "Clear"\nauto p = dlsym(handle, SYMBOL);',
+            '#define LOOKUP(symbol) dlsym(handle, symbol)\nauto p = LOOKUP("glClear");',
+            '#define LOOKUP(name) dlsym(handle, "g" "l" #name)\nauto p = LOOKUP(Clear);',
+            'auto lookup = dlsym; auto p = lookup(handle, "glClear");',
+            'auto lookup = (&dlsym); auto p = lookup(handle, "glClear");',
+            'auto p = dlsym(handle, std::string("glClear").c_str());',
+            'std::string symbol = "glClear"s; auto p = dlsym(handle, symbol.c_str());',
+            'auto p = GetProcAddress(handle, "wglCreateContext");',
+            'auto p = CFBundleGetFunctionPointerForName(bundle, CFSTR("CGLCreateContext"));',
+            'auto p = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));',
+            'auto p = SDL_GL_GetProcAddress("glClear");',
+            'auto library = dlopen("lib" "GL.so.1", flags);',
+            r'auto library = dlopen("libGL.so.1\0ignored", flags);',
+            'auto library = dlopen(std::string("libGL.so.1").c_str(), flags);',
+            '#define LIB TEXT("opengl32.dll")\nauto library = LoadLibraryW(LIB);',
+            'auto library = LoadLibraryEx(L"opengl32.dll", nullptr, 0);',
+            'auto library = LoadLibraryW(L"opengl32");',
+            'auto library = SDL_LoadObject("/System/Library/Frameworks/OpenGL.framework/OpenGL");',
+        ]
+        for source in samples:
+            with self.subTest(source=source):
+                report = self.audit_source(source)
+                self.assertGreater(report["blocking_count"], 0)
+                self.assertEqual([], report["errors"])
+        report = self.audit_source(
+            'auto p = dlsym(handle, "SDL_GetVersion");\n'
+            'auto library = dlopen("libpulse.so.0", flags);\n'
+            'const char* diagnostic = "glClear"; const char* format = "glTF";\n'
+            '#include "native/MyGL/diagnostics.h"\n')
+        self.assertEqual(0, report["blocking_count"])
+
+    def test_cpu_helpers_are_exempt_by_exact_name_and_path_only(self):
+        helpers = "void glPointToScreen(); void glRectToScreen();\n"
+        for path in ("indra/llui/llui.h", "indra/llui/llui.cpp"):
+            with self.subTest(path=path):
+                report = self.audit_source(helpers, path)
+                self.assertEqual(0, report["blocking_count"])
+                self.assertIn("cpu_coordinate_helper", report["findings"][0]["informational_kinds"])
+                report = self.audit_source(
+                    "void glPointToScreen() { glClear(0); }\n", path)
+                self.assertEqual(1, report["blocking_count"])
+        self.assertEqual(1, self.audit_source(helpers)["blocking_count"])
+        self.assertEqual(1, self.audit_source("void glPointToScreenExtra();", "indra/llui/llui.cpp")["blocking_count"])
+
+    def test_all_first_party_runtime_directories_and_explicit_exclusions(self):
+        module = load("audit_gl")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = ["almetal", "llappearance", "llappearanceutility", "llcommon",
+                       "llplugin", "media_plugins/cef", "llmath", "llrender"]
+            excluded = ["llrender/tests", "llrender/test", "integration_tests",
+                        "externals", "almetal/third_party", "newview/vendor", "dullahan/examples"]
+            for path in runtime + excluded:
+                target = root / "indra" / path / ("source.C" if path == "llmath" else "source.mm")
+                target.parent.mkdir(parents=True)
+                target.write_text("void render(){ glClear(0); }\n")
+            (root / ".gitmodules").write_text('[submodule "dullahan"]\npath = indra/dullahan\n')
+            report = module.audit(root)
+            self.assertEqual(len(runtime), report["scanned_files"])
+            self.assertEqual(len(runtime), report["blocking_count"])
+            self.assertEqual([], report["errors"])
+            reasons = {item["reason"] for item in report["scope"]["excluded_directories"]}
+            self.assertEqual({"tests", "vendored", "submodule"}, reasons)
+            report = module.audit(root, include_tests=True)
+            self.assertEqual(len(runtime) + 3, report["blocking_count"])
+
+    def test_scan_errors_cannot_be_reported_as_strict_zero(self):
+        module = load("audit_gl")
+        for source in ('/* glClear(0);', 'const char* text = R"x(unclosed;'):
+            with self.subTest(source=source):
+                self.assertGreater(self.audit_source(source)["error_count"], 0)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with mock.patch.object(sys, "argv", ["audit_gl.py", "--strict", "--root", str(root)]):
+                self.assertEqual(1, module.main())
+            with mock.patch.object(sys, "argv", ["audit_gl.py", "--root", str(root)]):
+                self.assertEqual(0, module.main())
+            source = root / "indra/almetal/renderer.cpp"
+            source.parent.mkdir(parents=True)
+            source.write_text("void render(){encodeMetalCommands();}\n")
+            (root / ".gitmodules").write_text("[broken submodule metadata\n")
+            report = module.audit(root)
+            self.assertEqual(0, report["blocking_count"])
+            self.assertGreater(report["error_count"], 0)
+            with mock.patch.object(sys, "argv", ["audit_gl.py", "--strict", "--root", str(root)]):
+                self.assertEqual(1, module.main())
 
 
 class TraceSubmissionTests(unittest.TestCase):
