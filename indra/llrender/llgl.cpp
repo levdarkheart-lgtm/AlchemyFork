@@ -101,13 +101,6 @@ PFNWGLDXLOCKOBJECTSNVPROC wglDXLockObjectsNV = nullptr;
 PFNWGLDXUNLOCKOBJECTSNVPROC wglDXUnlockObjectsNV = nullptr;
 #endif
 
-PFNGLTEXPARAMETERIPROC glTexParameteri = nullptr;
-PFNGLTEXPARAMETERIVPROC glTexParameteriv = nullptr;
-PFNGLTEXSUBIMAGE2DPROC glTexSubImage2D = nullptr;
-PFNGLDELETETEXTURESPROC glDeleteTextures = nullptr;
-PFNGLGENTEXTURESPROC glGenTextures = nullptr;
-PFNGLGENERATEMIPMAPPROC glGenerateMipmap = nullptr;
-PFNGLTEXSTORAGE2DPROC glTexStorage2D = nullptr;
 
 LLGLManager gGLManager;
 

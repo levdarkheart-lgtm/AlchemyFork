@@ -173,6 +173,9 @@ if(AL_BUILD_TESTS)
       tests/llvertexbuffer_test.cpp
       tests/alvertex_range_test.cpp
       tests/alvertex_draw_metal_test.cpp
+      tests/alvertex_label_metal_test.mm
+      tests/alimagegl_metal_test.cpp
+      tests/alprimitiveplot_test.cpp
     )
   endif()
   al_add_test_binary(
@@ -198,6 +201,8 @@ if(AL_BUILD_TESTS)
   )
   if(DARWIN)
     target_link_libraries(llrender_tests PRIVATE almetal)
+    set_source_files_properties(tests/alvertex_label_metal_test.mm
+                                PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   endif()
 
   # The GL suites that stand a context up for each test case and end the GL
