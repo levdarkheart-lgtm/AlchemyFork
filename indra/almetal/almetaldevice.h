@@ -20,6 +20,8 @@
 #include <memory>
 #include <string>
 
+class ALMetalPipelineCache;
+
 struct ALMetalDeviceInfo
 {
     std::string name;
@@ -158,6 +160,10 @@ public:
     void* nativeHandle() const noexcept;
     void* nativeCommandQueue() const noexcept;
 
+    // Default-disabled app-owned native binary archive. Configure before the
+    // first renderer PSO and before an explicit shader rebuild.
+    ALMetalPipelineCache& pipelineCache() const noexcept;
+
     // Explicit Develop-menu crash-reporting test only. Deliberately passes
     // invalid client memory to Metal so the crash has a graphics API stack;
     // never enqueues GPU work and never returns to the viewer.
@@ -199,4 +205,5 @@ private:
     explicit ALMetalDevice(std::unique_ptr<Impl> impl, ALMetalDeviceInfo info);
     std::unique_ptr<Impl> mImpl;
     ALMetalDeviceInfo mInfo;
+    std::unique_ptr<ALMetalPipelineCache> mPipelineCache;
 };

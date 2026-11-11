@@ -38,6 +38,10 @@ public:
     static std::uint64_t builtinReloadGeneration() noexcept;
     static void requestBuiltinReload() noexcept;
 
+    // SHA256 identity of the exact bundled library/source asset selected by
+    // loadBuiltin. Explicit cache setup only; disabled caching never calls it.
+    static std::string builtinCacheIdentity(std::string* error = nullptr);
+
     static std::unique_ptr<ALMetalShaderLibrary> loadBuiltin(
         const ALMetalDevice& device,
         std::string* error = nullptr);

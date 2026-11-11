@@ -9,6 +9,7 @@
  */
 
 #include "almetaldevice.h"
+#include "almetalpipelinecache.h"
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
@@ -356,11 +357,17 @@ bool ALMetalCommandBuffer::commitAndWait(std::string* error)
 
 ALMetalDevice::ALMetalDevice(std::unique_ptr<Impl> impl, ALMetalDeviceInfo info)
 : mImpl(std::move(impl)),
-  mInfo(std::move(info))
+  mInfo(std::move(info)),
+  mPipelineCache(new ALMetalPipelineCache(*this))
 {
 }
 
 ALMetalDevice::~ALMetalDevice() = default;
+
+ALMetalPipelineCache& ALMetalDevice::pipelineCache() const noexcept
+{
+    return *mPipelineCache;
+}
 
 std::unique_ptr<ALMetalDevice> ALMetalDevice::create(std::string* error)
 {

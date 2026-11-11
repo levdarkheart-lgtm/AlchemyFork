@@ -9,6 +9,8 @@
  */
 
 #include "almetalpipeline.h"
+#include "almetalpipelinecache.h"
+#include <CommonCrypto/CommonDigest.h>
 #include "almetalstagetiming.h"
 
 #import <Foundation/Foundation.h>
@@ -394,6 +396,40 @@ std::unique_ptr<ALMetalShaderLibrary> ALMetalShaderLibrary::loadBuiltin(
     }
 }
 
+std::string ALMetalShaderLibrary::builtinCacheIdentity(std::string* error)
+{
+    @autoreleasepool
+    {
+        // Match loadBuiltin's exact asset precedence. The offline metallib
+        // remains an immutable application asset, separate from the cache.
+        NSString* path = [[NSBundle mainBundle] pathForResource:@"almetal_builtin" ofType:@"metallib"];
+        if (!path.length)
+            path = [[NSBundle mainBundle] pathForResource:@"almetal_builtin" ofType:@"metal"];
+        if (!path.length) path = toNSString(AL_METAL_BUILTIN_SOURCE_PATH);
+        NSError* native_error = nil;
+        NSData* bytes = path.length
+            ? [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:&native_error]
+            : nil;
+        if (!bytes || !bytes.length || bytes.length > std::numeric_limits<CC_LONG>::max())
+        {
+            setError(error, native_error ? describeError(native_error)
+                : "Could not identify the built-in Metal shader asset");
+            return {};
+        }
+        unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+        CC_SHA256(bytes.bytes, static_cast<CC_LONG>(bytes.length), digest);
+        constexpr char hex[] = "0123456789abcdef";
+        std::string identity;
+        identity.reserve(sizeof(digest) * 2);
+        for (unsigned char byte : digest)
+        {
+            identity.push_back(hex[byte >> 4]);
+            identity.push_back(hex[byte & 15]);
+        }
+        return identity;
+    }
+}
+
 std::unique_ptr<ALMetalShaderLibrary> ALMetalShaderLibrary::loadFile(
     const ALMetalDevice& device,
     const std::string& path,
@@ -649,8 +685,17 @@ std::unique_ptr<ALMetalRenderPipeline> ALMetalRenderPipeline::create(
         }
 
         NSError* native_error = nil;
-        id<MTLRenderPipelineState> state = [native_device
-            newRenderPipelineStateWithDescriptor:native_descriptor error:&native_error];
+        id<MTLRenderPipelineState> state;
+        if (device.pipelineCache().enabled())
+        {
+            state = (__bridge_transfer id<MTLRenderPipelineState>)device.pipelineCache()
+                .createRenderPipeline((__bridge void*)native_descriptor, error);
+            if (!state) return nullptr;
+        }
+        else
+        {
+            state = [native_device newRenderPipelineStateWithDescriptor:native_descriptor error:&native_error];
+        }
         if (!state)
         {
             setError(error, describeError(native_error));
@@ -710,8 +755,21 @@ std::unique_ptr<ALMetalComputePipeline> ALMetalComputePipeline::create(
         }
         NSError* native_error = nil;
         id<MTLDevice> native_device = (__bridge id<MTLDevice>)device.nativeHandle();
-        id<MTLComputePipelineState> state = [native_device
-            newComputePipelineStateWithFunction:function error:&native_error];
+        id<MTLComputePipelineState> state;
+        if (device.pipelineCache().enabled())
+        {
+            MTLComputePipelineDescriptor* native_descriptor = [[MTLComputePipelineDescriptor alloc] init];
+            native_descriptor.computeFunction = function;
+            // The ordinary WithFunction factory has no creation-time label.
+            // Keep that selection contract for selective shader validation.
+            state = (__bridge_transfer id<MTLComputePipelineState>)device.pipelineCache()
+                .createComputePipeline((__bridge void*)native_descriptor, error);
+            if (!state) return nullptr;
+        }
+        else
+        {
+            state = [native_device newComputePipelineStateWithFunction:function error:&native_error];
+        }
         if (!state)
         {
             setError(error, describeError(native_error));
