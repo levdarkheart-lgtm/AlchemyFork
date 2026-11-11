@@ -132,11 +132,12 @@ jobs:
           echo "release_title=Alchemy $PROJECT ($GITHUB_REF_NAME)" >> "$GITHUB_OUTPUT"
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Validate source-independent harness
+      - name: Validate native source and harness
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/metal/validate_harness.py
+          python3 tools/metal/audit_gl.py --strict
           python3 -m unittest discover -s tools/metal/tests -v
           python3 -m py_compile tools/metal/*.py
           bash -n tools/metal/*.sh
@@ -204,6 +205,33 @@ jobs:
 
           tools/metal/verify_app.sh "$app"
           codesign --verify --deep --strict --verbose=2 "$app"
+          python3 - "$app" <<'PY'
+          import pathlib
+          import plistlib
+          import re
+          import subprocess
+          import sys
+
+          app = pathlib.Path(sys.argv[1])
+          owned = [app]
+          for name in ("media_plugin_cef.app", "media_plugin_libvlc.app"):
+              matches = list(app.rglob(name))
+              if len(matches) != 1:
+                  raise SystemExit(f"Expected one owned media host: {name}")
+              owned.extend(matches)
+          for bundle in owned:
+              info = plistlib.loads((bundle / "Contents/Info.plist").read_bytes())
+              binary = bundle / "Contents/MacOS" / info["CFBundleExecutable"]
+              libraries = subprocess.check_output(["otool", "-L", str(binary)], text=True)
+              symbols = subprocess.check_output(["nm", "-u", str(binary)], text=True)
+              if re.search(r"OpenGL|OpenGLES|Vulkan|MoltenVK|libGL\.", libraries):
+                  raise SystemExit(f"Forbidden direct graphics dependency: {binary}")
+              if re.search(r"\b_(?:gl[A-Z]\w*|CGL\w*|agl[A-Z]\w*|SDL_GL\w*|vk[A-Z]\w*)\b", symbols):
+                  raise SystemExit(f"Forbidden owned graphics import: {binary}")
+              if bundle == app and "/Metal.framework/" not in libraries:
+                  raise SystemExit("Viewer must link native Metal")
+              print(f"Native owned-import gate passed: {bundle.name}")
+          PY
           (cd "$package_directory" && shasum -a 256 -c "$(basename "$archive.sha256")")
 
           echo "archive=$archive" >> "$GITHUB_OUTPUT"

@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `f254feb048`; built/verified and owner-requested launch.
+**Integrated checkpoint:** Commit `8a14710e80`; newer corrections, separate build pending.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -16,6 +16,7 @@ Reference source1eb44bbd1bdc76d0100c75699bad1fb337e8cb45.
 
 Latest: [native finalization/preview/media closure](native-finalization-and-media-closure.md),
 and [settings/resource tail](native-settings-and-resource-tail.md),
+plus [post-launch corrections](native-post-launch-corrections.md),
 extending [raster/float/reflection and fixture admission](native-raster-and-legacy-fixture-admission.md),
 [Scene Monitor/UI/RenderInfo](native-scene-ui-and-render-info.md),
 [target/query/font](native-target-query-invariants.md),
@@ -61,6 +62,9 @@ native preview/profile/debug owners preserved. Water6473c5c77d restores normal
 filter setting; 83567e407d restores original optional Compute-culling gate and
 waves remain. 2c16d75147 removes only redundant resource Compute copy; actual
 shader/local setting latch and full resource-input publication stay live.
+Owner provisionally passed f254/68817. Later source review found inherited mask
+and preview/media gaps: integrated9838/65b5/158f/a380/8a14 fixes; matching combined
+build pending. Source map, baseline red controls and peers recorded in new note.
 
 ## Work board
 
@@ -119,16 +123,27 @@ Exhausted-plan source audit finds no concrete ordinary ownership/freshness bug;
 typed pool recovery clears and checks current-frame/commit publication. Forced
 native pool-failure injection remains an unexecuted diagnostic question, not a
 proved rendering bug. No !mFullSize guard; full viewer parity stays unverified.
+Owner says68817 “pass...for now”; exact7,840file/link/byte signed baseline copy
+preserved. No later fixes are inferred from that observation. New child controls:
+mask80red44→0; preview20red3→0 and combined1860/6 API/GPU; media same-source
+599red112→831/2green. Root tools50/shell/harness pass; corrected -B wrapper and
+actual separate followup configure75939 pass, old binary unchanged/installOFF.
 
 ## Immediate executable action
 
-Root owns canonical integration/docs; all agent source released, no pending
-build/GPU/check handles. Source/registration/comment freeze f254 is committed;
-checkpoint docs are the only WIP. No confirmed source-porting gap remains in
-the completed bounded audits. Leave the exact running viewer for owner manual
-confirmation: no rebuild/restart/login/UI/screenshot action unasked. Respond to
-reported regressions by original1eb producer/consumer inspection, focused fix and
-matching checks. Record owner observations separately; no full-parity claim.
+Root owns canonical integration/CMake/docs/workflow; all agent source released,
+no pending build/GPU/check handles. Private inl listing/strict CI source gate/
+docs are WIP. Freeze and build current corrections ONLY in followup directory,
+using corrected wrapper; run affected LLRender/preview/upload/policy and app/
+resources/import/source checks. Keep exact owner-passed f254 app untouched.
+User explicitly requests push+release action after fixes. Push feature branch to
+private origin levdarkheart-lgtm/AlchemyFork, no force/default merge. Dedicated
+Metal job needs fresh exact version-alpha4 tag plus Project/Metal Alpha4; generic
+tag defaults are wrong. Owner configured CLI; outside-sandbox gh auth status
+confirms levdarkheart-lgtm/keyring. Use gh for trigger; no remote write yet.
+Monitor actual run/artifacts after trigger; no credentials/security/public-access
+changes. Viewer screenshot/login/restart unrequested. Preserve original1eb gate
+for any actual new defect; no whole-product completeness claim.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all

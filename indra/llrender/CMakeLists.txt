@@ -24,6 +24,7 @@ set(
   llglslshader.cpp
   llgltexture.cpp
   llimagegl.cpp
+  llimagegl_upload_native.inl
   llrender.cpp
   llrender2dutils.cpp
   llrendernavprim.cpp

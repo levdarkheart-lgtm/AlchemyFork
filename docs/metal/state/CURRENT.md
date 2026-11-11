@@ -2,7 +2,8 @@
 
 **Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `f254feb048` (built, verified and launched).
+**Renderer code checkpoint:** `8a14710e80` (newer source; separate rebuild pending).
+**Owner-passed viewer:** `f254feb048`,26.4.0d68817; provisional “pass...for now”.
 The remaining-feature/OpenGL-removal goal is active. Owner superseded the earlier
 no-launch instruction and requested the ready viewer for manual confirmation.
 Fresh26.4.0d68817 launched with open -na; exact new executable PID90460 was
@@ -14,6 +15,7 @@ The owner-stopped20FPS campaign remains deferred.
 
 [Latest finalization/preview/media closure](../work/active/native-finalization-and-media-closure.md)
 and [settings/resource tail](../work/active/native-settings-and-resource-tail.md)
+plus [post-launch corrections](../work/active/native-post-launch-corrections.md)
 extends [raster/float/reflection and fixture admission](../work/active/native-raster-and-legacy-fixture-admission.md),
 [Scene Monitor/UI/RenderInfo](../work/active/native-scene-ui-and-render-info.md),
 [target/query/font](../work/active/native-target-query-invariants.md) and
@@ -53,6 +55,12 @@ ordinary/profile specialization stays exact. Heroce65f508a4 removes an uncalled
 wrapper; live debug owners remain. Water6473c5c77d restores point/aniso normals;
 83567e407d restores optional Compute culling gate while waves remain. 2c16d75147
 removes only redundant resource Compute copy; real shader/local latch stays live.
+
+Post-launch source audit found additional issues; earlier completion assessment
+was premature. Integrated9838 fixes inherited feature-mask off clearing all bits;
+65b5 restores dirty1 avatar-preview morph refresh;158f retries/current-qualifies
+preview vertex/index stores; a380/8a14 fixes RGB8 media source stride/opaque alpha.
+Child CPU/GPU/source peers pass; matching combined root build remains pending.
 
 ## Observed validation
 
@@ -95,19 +103,32 @@ independent exact typed pool recovery clears storage and retains commit/current-
 frame publication gates. No !mFullSize guard. Forced pool-failure injection is a
 separate unexecuted diagnostic question, not a proved rendering bug.
 /private/tmp/alchemy-native-exhausted-plan-audit-20261111.json.
+Owner subsequently provisionally passed68817. Exact7,840file/link/byte baseline
+copy and strict signature0: manual-pass-baseline-receipt.json. App path untouched.
+New fixes: mask80checks red44→0; normal preview20red3→0; realLLVB/publication
+combined1860/6 API/GPU pass; media CPU831/2pass after same-source599/2red112.
+Tools d053 honor isolated configure -B; all50tools tests/shell syntax pass.
+Real new followup directory bootstrap/wrapper configure75939 exit0, existing
+dependencies read with installOFF, passed binary hash unchanged. No new app run.
 
 ## Exact next actions
 
-Root owns canonical integration/docs; all agent source released, no live build/
-GPU/check handles. Source/registration/comment freeze f254 is committed; these
-checkpoint docs are the only current WIP. No confirmed porting gap remains in
-the completed bounded audits; broader parity remains unverified.
-1. Leave the exact running viewer available for owner confirmation. Do not
-   rebuild over it, restart it, operate its login/UI or take screenshots unasked.
-2. If owner reports a regression, inspect corresponding original1eb behavior,
-   identify earliest incorrect producer and fix with matching focused evidence.
-3. Record owner observations separately from source/test facts. Keep whole-
-   product runtime/feature/stability/performance and foreign dependency gates open.
+Root owns canonical integration/CMake/docs/workflow. Agent source released; no
+live GPU/build/check handles. Private inl listing, strict release-source gate and
+these docs are WIP. Preserve passed app; all further builds use followup directory.
+1. Commit combined freeze, doctor/configure/full build through corrected wrapper
+   with AL_METAL_BUILD_DIR=build-Darwin-ninja-os-arm64-followup. Run matching
+   LLRender/preview/upload/policy tests and static app/resources/import/source
+   checks. Recheck baseline copy names/bytes/signature; no baseline overwrite.
+2. Owner now explicitly requests GitHub push and release action when fixed.
+   origin private levdarkheart-lgtm/AlchemyFork; feature branch only/no force.
+   Existing Metal alpha job needs tag ref, Project, Metal Alpha4 and fresh exact
+   26.4.0.<revision>-alpha4 override. Run generic tag defaults would select wrong job.
+3. Owner configured CLI; gh auth status outside sandbox confirms levdarkheart-lgtm
+   keyring authentication. No push/dispatch yet. Use authenticated gh
+   after validated push to trigger and monitor exact run/artifacts. No credentials,
+   default merges, public exposure or permission changes. Keep screenshots of
+   viewer unrequested; CI evidence is separate from owner provisional pass.
 
 ## Complete-product advancement assessment
 

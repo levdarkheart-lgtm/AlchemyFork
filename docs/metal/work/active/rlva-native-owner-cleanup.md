@@ -2,7 +2,9 @@
 
 **Observed source:** `bccbb7be48000fab91b43688bc585f2f9ab474cf`, 2026-11-11.
 **State:** implementation integrated with the active port; live RLVa parity remains
-unverified. The owner prohibits launching either viewer or screenshot comparisons.
+unverified. Launches/screenshots were prohibited at this source checkpoint.
+The owner later requested the ready viewer and provisionally passed f254/68817;
+see [current state](../../state/CURRENT.md). No screenshot comparison was performed.
 
 ## Original contract inspected before changes
 
