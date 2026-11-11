@@ -1,15 +1,23 @@
-Third-party notices for native Metal shader implementations
-==========================================================
+Notices retained for native Metal shader implementations
+=======================================================
 
-The following existing notices are retained from Alchemy's original tracked
-shader sources. Source paths refer to revision
-1eb44bbd1bdc76d0100c75699bad1fb337e8cb45, preserved in Git history; they do
-not describe a runtime GLSL dependency. The native implementations are in
-indra/almetal/shaders/almetal_builtin.metal.
+These existing notices and source attributions are retained from Alchemy's
+tracked GLSL sources, translated into the native implementations in
+indra/almetal/shaders/almetal_builtin.metal. Former paths are provenance,
+not runtime GLSL dependencies.
 
-Attribution mappings identify the corresponding native code. This file copies
-existing notices; it does not add a permission grant or replace the project's
-other licenses and notices. Original comment prefixes are retained verbatim.
+Source reference revisions:
+- Original viewer: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45
+- Asset snapshot:  8f19f5689de089b7b54c496fadd5666df562ee51
+
+Attribution mappings identify corresponding native code. Existing notices
+are copied verbatim, including original comment prefixes and spelling.
+This file adds no permission grant and does not replace the repository's
+LICENSE, doc/LICENSE-source.txt, or other applicable notices. Source text
+preservation alone is not a claim of legal completeness.
+
+Embedded third-party notices and source citation
+===============================================
 
 AMD shader portability
 ----------------------
@@ -137,3 +145,713 @@ Native mapping: almetal_world_smaa_* helpers and edge/weight/neighborhood fragme
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
+Godot Engine tone mapping
+-------------------------
+
+Source: indra/newview/app_settings/shaders/class1/deferred/tonemapUtilF.glsl
+Original lines: 26-49
+Native mapping: Original file-wide Godot notice retained for the corresponding native almetal_pbr_tonemap family, including almetal_pbr_aces_hill, almetal_pbr_reinhard, almetal_pbr_filmic and almetal_pbr_agx in shaders/almetal_builtin.metal.
+
+// Contains code licensed under:
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
+
+Sascha Willems PBR reference
+----------------------------
+
+Source: indra/newview/app_settings/shaders/class1/deferred/deferredUtil.glsl
+Original lines: 27-49
+Native mapping: Original shared PBR reference notice retained for the corresponding native almetal_pbr_* lighting/BRDF helpers in shaders/almetal_builtin.metal.
+
+/*  Parts of this file are taken from Sascha Willem's Vulkan GLTF refernce implementation
+MIT License
+
+Copyright (c) 2018 Sascha Willems
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+Inigo Quilez terrain triplanar mapping
+--------------------------------------
+
+Source: indra/newview/app_settings/shaders/class1/deferred/pbrterrainUtilF.glsl
+Original lines: 28-47
+Native mapping: almetal_world_terrain_pbr_sample and its native triplanar terrain-material sampling helpers in shaders/almetal_builtin.metal.
+
+/**
+ * Triplanar mapping implementation adapted from Inigo Quilez' example shader,
+ * MIT license.
+ * https://www.shadertoy.com/view/MtsGWH
+ * Copyright © 2015 Inigo Quilez
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to
+ * deal in the Software without restriction, including without limitation the
+ * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+ * sell copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions: The above copyright
+ * notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS",
+ * WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ * TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+ * CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+Original ACES source citation
+-----------------------------
+
+Source: indra/newview/app_settings/shaders/class1/deferred/tonemapUtilF.glsl
+Original lines: 172-173
+Native mapping: almetal_pbr_aces_hill and almetal_pbr_aces_boosted in shaders/almetal_builtin.metal. This is the existing source citation; no additional license text or rights are inferred from its URL.
+
+// Adapted from https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
+// (MIT License).
+
+Upstream module notices retained with translated source
+======================================================
+
+Each following LicenseInfo/copyright/grant/disclaimer span is reproduced
+verbatim once. Source paths list every original or asset-snapshot file that
+carried those exact bytes. These spans apply alongside the embedded notices
+above and the repository's license texts; the native shader module retains
+their source attribution rather than dropping it with the former files.
+
+Upstream notice 1
+-----------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/alchemy/blitWithEffectsF.glsl
+
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright © 2026, Rye <rye@alchemyviewer.org>
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * $/LicenseInfo$
+
+Upstream notice 2
+-----------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/alchemy/colorCorrectF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/alchemy/postEffectUtilsF.glsl
+
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright (C) 2026, Rye <rye@alchemyviewer.org>
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * $/LicenseInfo$
+
+Upstream notice 3
+-----------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/alchemy/colorGradeUtilF.glsl
+
+ * $LicenseInfo:firstyear=2021&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright (C) 2021-2026, Rye Mutt <rye@alchemyviewer.org>
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * $/LicenseInfo$
+
+Upstream notice 4
+-----------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/alchemy/lensFlareStateF.glsl
+
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright (C) 2026, Alchemy Viewer Project
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * $/LicenseInfo$
+
+Upstream notice 5
+-----------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/avatar/avatarF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/avatar/avatarSkinV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/avatar/avatarV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/alphaV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/aoUtil.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/deferredUtil.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/dofCoFUtilF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/dofCombineF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/fxaaF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/postDeferredF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/postDeferredNoDoFF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/postDeferredNoTCV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/postDeferredV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/screenSpaceReflUtil.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/terrainF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/terrainTE.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/effects/glowExtractF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/effects/glowExtractV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/effects/glowF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/effects/glowV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/environment/srgbF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/environment/waterFogF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/alphamaskF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/alphamaskV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/glowcombineF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/glowcombineV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/occlusionCubeV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/occlusionF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/occlusionV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/solidcolorF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/solidcolorV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/uiF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/uiV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/lighting/lightF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/lighting/lightFuncSpecularV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/lighting/lightFuncV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/lighting/lightNonIndexedF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/lighting/lightSpecularV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/indexedTextureV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/nonindexedTextureV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/previewV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/simpleF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/simpleNoAtmosV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/simpleNoColorV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/windlight/atmosphericsF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/windlight/atmosphericsVarsF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/windlight/atmosphericsVarsV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class2/deferred/alphaF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class3/deferred/screenSpaceReflUtil.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class3/lighting/lightV.glsl
+
+ * $LicenseInfo:firstyear=2007&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2007, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 6
+-----------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/avatar/objectSkinV.glsl
+
+ * $LicenseInfo:firstyear=2007&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2007, Linden Research, Inc.
+ *
+ * Alchemy Viewer Source Code
+ * Copyright (C) 2026, Rye <rye@alchemyviewer.org>
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 7
+-----------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/CASF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/SMAA.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/SMAABlendWeightsF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/SMAABlendWeightsV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/SMAAEdgeDetectF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/SMAAEdgeDetectV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/SMAANeighborhoodBlendF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/SMAANeighborhoodBlendV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/globalF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/tonemapUtilF.glsl
+
+ * $LicenseInfo:firstyear=2024&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2024, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 8
+-----------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/deferredBlock.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/lightsBlock.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/matricesBlock.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/reflectionProbesBlock.glsl
+
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright (C) 2026, Rye <rye@alchemyviewer.org>
+ * $/LicenseInfo$
+
+Upstream notice 9
+-----------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/diffuseAlphaMaskNoColorF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/lighting/sumLightsSpecularV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/lighting/sumLightsV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/windlight/atmosphericsHelpersF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/windlight/atmosphericsHelpersV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/windlight/atmosphericsV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class3/lighting/sumLightsSpecularV.glsl
+
+ * $LicenseInfo:firstyear=2005&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2005, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 10
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/diffuseNoColorV.glsl
+
+  * $LicenseInfo:firstyear=2007&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2007, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 11
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/environmentBlock.glsl
+
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright © 2026, Rye <rye@alchemyviewer.org>
+ * $/LicenseInfo$
+
+Upstream notice 12
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/exposureF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/luminanceF.glsl
+
+ * $LicenseInfo:firstyear=2023&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2023, Linden Research, Inc.
+ *
+ * Alchemy Viewer Source Code
+ * Copyright (C) 2026, Rye <rye@alchemyviewer.org>
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 13
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/exposureHistogramF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/exposureHistogramV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/hexLatticeUtil.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/terrainPatchV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/terrainSurface.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/terrainTC.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/environment/waterSurface.glsl
+
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright (C) 2026, Rye <rye@alchemyviewer.org>
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * $/LicenseInfo$
+
+Upstream notice 14
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/gbufferUtil.glsl
+
+ * $LicenseInfo:firstyear=2024&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2007, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 15
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/pbropaqueF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/pbropaqueV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/previewPhysicsF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/previewPhysicsV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/windlight/atmosphericsFuncs.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class2/deferred/reflectionProbeF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class3/deferred/reflectionProbeF.glsl
+
+ * $LicenseInfo:firstyear=2022&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2022, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 16
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/pbrterrainF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/pbrterrainTE.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/pbrterrainUtilF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/deferred/textureUtilV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/copyF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/copyV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/errorF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/errorV.glsl
+
+ * $LicenseInfo:firstyear=2023&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2023, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 17
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/effects/bloomCompositeF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/effects/bloomDownsampleF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/effects/bloomExtractF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/effects/bloomUpsampleF.glsl
+
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright © 2026, Rye <rye@alchemyviewer.org>
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ * $/LicenseInfo$
+
+Upstream notice 18
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/effects/crossFilterF.glsl
+
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright (C) 2026, Alchemy Viewer Project
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * $/LicenseInfo$
+
+Upstream notice 19
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/clipF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/clipV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/debugF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/debugV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/interface/splattexturerectV.glsl
+
+ * $LicenseInfo:firstyear=2007&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2011, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 20
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/lighting/lightAlphaMaskF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/lighting/lightAlphaMaskNonIndexedF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/impostorF.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/impostorV.glsl
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/previewF.glsl
+
+ * $LicenseInfo:firstyear=2011&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2011, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+
+Upstream notice 21
+------------------
+
+Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/objects/simpleColorF.glsl
+
+ * $LicenseInfo:firstyear=2025&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2007, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
