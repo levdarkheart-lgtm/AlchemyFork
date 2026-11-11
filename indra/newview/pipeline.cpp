@@ -28515,7 +28515,7 @@ std::shared_ptr<const ALMetalCommandCompletion> LLPipeline::profileMetalAvatar(
     // Original profiling samples those retained main-view shadow matrices.
     packDeferredConstants();
     LLTimer cpu_timer;
-    generateImpostor(&avatar, false, true, attachment);
+    generateImpostor(&avatar, true, attachment);
     const F32 cpu_ms = cpu_timer.getElapsedTimeF32() * 1000.f;
     if (!completion || !measured.impostor_bake_attempted ||
         !measured.impostor_bake_native_valid ||
@@ -28525,53 +28525,6 @@ std::shared_ptr<const ALMetalCommandCompletion> LLPipeline::profileMetalAvatar(
         return {};
     if (!attachment) avatar.mCPURenderTime = cpu_ms;
     return completion;
-}
-
-void LLPipeline::drawFarPlaneQuad(U32 depth_func, const LLColor4* color)
-{
-    gGL.getTextureSlot(0)->unbind();
-
-    // Both directions auto-translate under reverse-Z (via LLGLDepthTest::remap),
-    // and the quad sits at the reverse-Z far plane (~0) instead of ~1.
-    LLGLDepthTest depth(GL_TRUE, GL_FALSE, depth_func);
-
-    gGL.flush();
-
-    gGL.pushMatrix();
-    gGL.loadIdentity();
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
-
-    // Mirror the forward WINDOW depth (0.99999 ndc -> 0.999995 window -> 0.000005 under ZO),
-    // consistent with the sunDisc/moon far pins.
-    const F32 clip_plane = LLRender::sReverseZ ? 0.000005f : 0.99999f;
-
-    gDebugProgram.bind();
-
-    if (color)
-    {
-        gGL.diffuseColor4fv(color->mV);
-    }
-
-    gGL.begin(LLRender::TRIANGLES);
-    {
-        gGL.vertex3f(-1.f, -1.f, clip_plane);
-        gGL.vertex3f(1.f, -1.f, clip_plane);
-        gGL.vertex3f(1.f, 1.f, clip_plane);
-
-        gGL.vertex3f(-1.f, -1.f, clip_plane);
-        gGL.vertex3f(1.f, 1.f, clip_plane);
-        gGL.vertex3f(-1.f, 1.f, clip_plane);
-    }
-    gGL.end();
-    gGL.flush();
-
-    gDebugProgram.unbind();
-
-    gGL.popMatrix();
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.popMatrix();
 }
 
 void LLPipeline::readAttachmentTimes()
@@ -28736,7 +28689,7 @@ bool LLPipeline::prepareMetalAvatarPreview(LLVOAvatar* avatar, LLCamera& camera)
 }
 #endif
 
-void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool for_profile, LLViewerObject* specific_attachment)
+void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool for_profile, LLViewerObject* specific_attachment)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("generateImpostor");
@@ -28755,12 +28708,11 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
 
     assertInitialized();
 
-    // previews can't be muted or impostered
-    bool visually_muted = !for_profile && !preview_avatar && avatar->isVisuallyMuted();
+    bool visually_muted = !for_profile && avatar->isVisuallyMuted();
     LL_DEBUGS_ONCE("AvatarRenderPipeline") << "Avatar " << avatar->getID()
                               << " is " << ( visually_muted ? "" : "not ") << "visually muted"
                               << LL_ENDL;
-    bool too_complex = !for_profile && !preview_avatar && avatar->isTooComplex();
+    bool too_complex = !for_profile && avatar->isTooComplex();
     LL_DEBUGS_ONCE("AvatarRenderPipeline") << "Avatar " << avatar->getID()
                               << " is " << ( too_complex ? "" : "not ") << "too complex"
                               << LL_ENDL;
@@ -28819,17 +28771,21 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
     {
         markVisible(avatar->mDrawable, *viewer_camera);
 
-        if (preview_avatar)
+        if (specific_attachment)
         {
-            // Only show rigged attachments for preview
-            // For the sake of performance and so that static
-            // objects won't obstruct previewing changes
+            markVisible(specific_attachment->mDrawable->getSpatialBridge(), *viewer_camera);
+        }
+        else
+        {
             LLVOAvatar::attachment_map_t::iterator iter;
-            for (iter = avatar->mAttachmentPoints.begin();
-                iter != avatar->mAttachmentPoints.end();
+            LLVOAvatar::attachment_map_t::iterator begin = avatar->mAttachmentPoints.begin();
+            LLVOAvatar::attachment_map_t::iterator end = avatar->mAttachmentPoints.end();
+
+            for (iter = begin;
+                iter != end;
                 ++iter)
             {
-                LLViewerJointAttachment *attachment = iter->second;
+                LLViewerJointAttachment* attachment = iter->second;
                 for (LLViewerJointAttachment::attachedobjs_vec_t::iterator attachment_iter = attachment->mAttachedObjects.begin();
                     attachment_iter != attachment->mAttachedObjects.end();
                     ++attachment_iter)
@@ -28837,55 +28793,7 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
                     LLViewerObject* attached_object = attachment_iter->get();
                     if (attached_object)
                     {
-                        if (attached_object->isRiggedMesh())
-                        {
-                            markVisible(attached_object->mDrawable->getSpatialBridge(), *viewer_camera);
-                        }
-                        else
-                        {
-                            // sometimes object is a linkset and rigged mesh is a child
-                            LLViewerObject::const_child_list_t& child_list = attached_object->getChildren();
-                            for (LLViewerObject::child_list_t::const_iterator iter = child_list.begin();
-                                iter != child_list.end(); iter++)
-                            {
-                                LLViewerObject* child = *iter;
-                                if (child->isRiggedMesh())
-                                {
-                                    markVisible(attached_object->mDrawable->getSpatialBridge(), *viewer_camera);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        else
-        {
-            if (specific_attachment)
-            {
-                markVisible(specific_attachment->mDrawable->getSpatialBridge(), *viewer_camera);
-            }
-            else
-            {
-                LLVOAvatar::attachment_map_t::iterator iter;
-                LLVOAvatar::attachment_map_t::iterator begin = avatar->mAttachmentPoints.begin();
-                LLVOAvatar::attachment_map_t::iterator end = avatar->mAttachmentPoints.end();
-
-                for (iter = begin;
-                    iter != end;
-                    ++iter)
-                {
-                    LLViewerJointAttachment* attachment = iter->second;
-                    for (LLViewerJointAttachment::attachedobjs_vec_t::iterator attachment_iter = attachment->mAttachedObjects.begin();
-                        attachment_iter != attachment->mAttachedObjects.end();
-                        ++attachment_iter)
-                    {
-                        LLViewerObject* attached_object = attachment_iter->get();
-                        if (attached_object)
-                        {
-                            markVisible(attached_object->mDrawable->getSpatialBridge(), *viewer_camera);
-                        }
+                        markVisible(attached_object->mDrawable->getSpatialBridge(), *viewer_camera);
                     }
                 }
             }
@@ -28899,132 +28807,129 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
     U32 resY = 0;
     U32 resX = 0;
 
-    if (!preview_avatar)
+    const LLVector4a* ext = avatar->mDrawable->getSpatialExtents();
+    LLVector3 pos(avatar->getRenderPosition()+avatar->getImpostorOffset());
+
+    camera.lookAt(viewer_camera->getOrigin(), pos, viewer_camera->getUpAxis());
+
+    LLVector4a half_height;
+    half_height.setSub(ext[1], ext[0]);
+    half_height.mul(0.5f);
+
+    // The half-extent of a box projected onto a direction is sum(half_i * |d_i|) -- the
+    // component-wise ABSOLUTE value of the axis, dotted with the half extents.
+    //
+    // This used to square the axis and renormalize, which computes
+    // sum(half_i * d_i^2) / sqrt(sum(d_i^4)). That agrees with the real answer only when
+    // the axis is aligned to a box axis or has equal components, and is otherwise too
+    // small -- so the captured frame was tighter than the avatar at oblique camera
+    // angles, clipping outstretched arms, tall hair and wide attachments at the edge of
+    // the impostor. The axes are already unit length, and taking absolute values does not
+    // change that, so the renormalize goes with it.
+    LLVector4a left;
+    left.load3(camera.getLeftAxis().mV);
+    left.setAbs(left);
+
+    LLVector4a up;
+    up.load3(camera.getUpAxis().mV);
+    up.setAbs(up);
+
+    // No fabsf needed now: both operands are non-negative by construction.
+    tdim.mV[0] = half_height.dot3(left).getF32();
+    tdim.mV[1] = half_height.dot3(up).getF32();
+
+    gGL.matrixMode(LLRender::MM_PROJECTION);
+    gGL.pushMatrix();
+
+    F32 distance = (pos-camera.getOrigin()).length();
+    F32 fov = atanf(tdim.mV[1]/distance)*2.f*RAD_TO_DEG;
+    F32 aspect = tdim.mV[0]/tdim.mV[1];
+
+    // Clip planes bracketing the subject instead of a hardcoded 1..256.
+    //
+    // Impostoring is chosen by rank, not distance (LLVOAvatar::shouldImpostor), so an
+    // avatar beyond 256 m is a normal thing to be asked to bake -- and the old far plane
+    // clipped it out of its own capture, leaving a fully transparent billboard. The near
+    // plane was equally arbitrary in the other direction: at any real impostor distance
+    // it threw away most of the depth range, which is what the coverage stamp's depth test
+    // and any depth-sorted content inside the bake have to resolve against.
+    //
+    // The bounding sphere of the extents is what has to fit, and 10cm of slack keeps a
+    // caster exactly on the plane from being clipped by rounding.
+    const F32 radius = half_height.getLength3().getF32() + 0.1f;
+    const F32 near_clip = llmax(0.1f, distance - radius);
+    const F32 far_clip  = distance + radius;
+
+    const LLMatrix4a persp = al_perspective(fov * DEG_TO_RAD, aspect, near_clip, far_clip);
+    camera.setProjection(persp);
+    gGL.loadMatrix(persp);
+
+    gGL.matrixMode(LLRender::MM_MODELVIEW);
+    gGL.pushMatrix();
+
+    const LLMatrix4a mat = camera.frameModelview();
+    camera.setModelview(mat);
+    gGL.loadMatrix(mat);
+    LLViewerCamera::setCurrent(camera);
+
+    // Remember the basis the G-buffer normals about to be captured are encoded in. The
+    // billboard replays them into the scene G-buffer verbatim, where the lighting pass
+    // reads normals as MAIN-view-space -- and this camera is aimed at the avatar, not
+    // along the main camera's forward axis, so the two differ by the avatar's angular
+    // offset from screen centre. Left unrebased, an impostor is lit from a direction that
+    // slides as it crosses the screen.
     {
-        const LLVector4a* ext = avatar->mDrawable->getSpatialExtents();
-        LLVector3 pos(avatar->getRenderPosition()+avatar->getImpostorOffset());
-
-        camera.lookAt(viewer_camera->getOrigin(), pos, viewer_camera->getUpAxis());
-
-        LLVector4a half_height;
-        half_height.setSub(ext[1], ext[0]);
-        half_height.mul(0.5f);
-
-        // The half-extent of a box projected onto a direction is sum(half_i * |d_i|) -- the
-        // component-wise ABSOLUTE value of the axis, dotted with the half extents.
-        //
-        // This used to square the axis and renormalize, which computes
-        // sum(half_i * d_i^2) / sqrt(sum(d_i^4)). That agrees with the real answer only when
-        // the axis is aligned to a box axis or has equal components, and is otherwise too
-        // small -- so the captured frame was tighter than the avatar at oblique camera
-        // angles, clipping outstretched arms, tall hair and wide attachments at the edge of
-        // the impostor. The axes are already unit length, and taking absolute values does not
-        // change that, so the renormalize goes with it.
-        LLVector4a left;
-        left.load3(camera.getLeftAxis().mV);
-        left.setAbs(left);
-
-        LLVector4a up;
-        up.load3(camera.getUpAxis().mV);
-        up.setAbs(up);
-
-        // No fabsf needed now: both operands are non-negative by construction.
-        tdim.mV[0] = half_height.dot3(left).getF32();
-        tdim.mV[1] = half_height.dot3(up).getF32();
-
-        gGL.matrixMode(LLRender::MM_PROJECTION);
-        gGL.pushMatrix();
-
-        F32 distance = (pos-camera.getOrigin()).length();
-        F32 fov = atanf(tdim.mV[1]/distance)*2.f*RAD_TO_DEG;
-        F32 aspect = tdim.mV[0]/tdim.mV[1];
-
-        // Clip planes bracketing the subject instead of a hardcoded 1..256.
-        //
-        // Impostoring is chosen by rank, not distance (LLVOAvatar::shouldImpostor), so an
-        // avatar beyond 256 m is a normal thing to be asked to bake -- and the old far plane
-        // clipped it out of its own capture, leaving a fully transparent billboard. The near
-        // plane was equally arbitrary in the other direction: at any real impostor distance
-        // it threw away most of the depth range, which is what the coverage stamp's depth test
-        // and any depth-sorted content inside the bake have to resolve against.
-        //
-        // The bounding sphere of the extents is what has to fit, and 10cm of slack keeps a
-        // caster exactly on the plane from being clipped by rounding.
-        const F32 radius = half_height.getLength3().getF32() + 0.1f;
-        const F32 near_clip = llmax(0.1f, distance - radius);
-        const F32 far_clip  = distance + radius;
-
-        const LLMatrix4a persp = al_perspective(fov * DEG_TO_RAD, aspect, near_clip, far_clip);
-        camera.setProjection(persp);
-        gGL.loadMatrix(persp);
-
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
-        gGL.pushMatrix();
-
-        const LLMatrix4a mat = camera.frameModelview();
-        camera.setModelview(mat);
-        gGL.loadMatrix(mat);
-        LLViewerCamera::setCurrent(camera);
-
-        // Remember the basis the G-buffer normals about to be captured are encoded in. The
-        // billboard replays them into the scene G-buffer verbatim, where the lighting pass
-        // reads normals as MAIN-view-space -- and this camera is aimed at the avatar, not
-        // along the main camera's forward axis, so the two differ by the avatar's angular
-        // offset from screen centre. Left unrebased, an impostor is lit from a direction that
-        // slides as it crosses the screen.
+        // the basis transposed: the rotation back out of this view
+        LLMatrix3 bake_rot;
+        for (U32 r = 0; r < 3; ++r)
         {
-            // the basis transposed: the rotation back out of this view
-            LLMatrix3 bake_rot;
-            for (U32 r = 0; r < 3; ++r)
+            for (U32 c = 0; c < 3; ++c)
             {
-                for (U32 c = 0; c < 3; ++c)
-                {
-                    bake_rot.mMatrix[r][c] = mat.mMatrix[c][r];
-                }
+                bake_rot.mMatrix[r][c] = mat.mMatrix[c][r];
             }
-            avatar->setImpostorViewRotation(bake_rot);
         }
+        avatar->setImpostorViewRotation(bake_rot);
+    }
 
-        gGL.setClearColor(LLColor4::transparent);
-        gGL.setColorMask(true, true);
+    gGL.setClearColor(LLColor4::transparent);
+    gGL.setColorMask(true, true);
 
-        // get the number of pixels per angle
-        F32 pa = gViewerWindow->getWindowHeightRaw() / (RAD_TO_DEG * viewer_camera->getView());
+    // get the number of pixels per angle
+    F32 pa = gViewerWindow->getWindowHeightRaw() / (RAD_TO_DEG * viewer_camera->getView());
 
-        //get resolution based on angle width and height of impostor (double desired resolution to prevent aliasing)
-        resY = llmin(nhpo2((U32) (fov*pa)), (U32) 512);
-        resX = llmin(nhpo2((U32) (atanf(tdim.mV[0]/distance)*2.f*RAD_TO_DEG*pa)), (U32) 512);
+    //get resolution based on angle width and height of impostor (double desired resolution to prevent aliasing)
+    resY = llmin(nhpo2((U32) (fov*pa)), (U32) 512);
+    resX = llmin(nhpo2((U32) (atanf(tdim.mV[0]/distance)*2.f*RAD_TO_DEG*pa)), (U32) 512);
 
-        if (!for_profile)
+    if (!for_profile)
+    {
+        // A resolution change rebuilds rather than resizing in place. allocate()
+        // releases first, so this is the same path as first creation and keeps the
+        // deferred attachments and TFO_POINT filtering that a resize would not have
+        // re-applied to fresh textures.
+        if (!avatar->mImpostor.isComplete()
+            || resX != avatar->mImpostor.getWidth()
+            || resY != avatar->mImpostor.getHeight())
         {
-            // A resolution change rebuilds rather than resizing in place. allocate()
-            // releases first, so this is the same path as first creation and keeps the
-            // deferred attachments and TFO_POINT filtering that a resize would not have
-            // re-applied to fresh textures.
-            if (!avatar->mImpostor.isComplete()
-                || resX != avatar->mImpostor.getWidth()
-                || resY != avatar->mImpostor.getHeight())
+            // sRGB, matching deferredScreen. renderGeomDeferred() runs the ordinary
+            // G-buffer pools into this target for the avatar's attachments, and those
+            // passes shade in linear and rely on the pass's hoisted GL_FRAMEBUFFER_SRGB
+            // (renderGeomDeferred) to encode on store. A plain GL_RGBA8 attachment gives
+            // that enable nothing to act on, so the linear result would be stored raw
+            // and then decoded a second time when the impostor writer feeds it back into
+            // the real G-buffer -- attachments on impostored avatars rendering too dark.
+            avatar->mImpostor.allocate(resX, resY, GL_SRGB8_ALPHA8, true, false, ALTextureSlot::TT_TEXTURE, LLRenderTarget::MIPS_NONE, mainDepthFormat());
+
+            if (LLPipeline::sRenderDeferred)
             {
-                // sRGB, matching deferredScreen. renderGeomDeferred() runs the ordinary
-                // G-buffer pools into this target for the avatar's attachments, and those
-                // passes shade in linear and rely on the pass's hoisted GL_FRAMEBUFFER_SRGB
-                // (renderGeomDeferred) to encode on store. A plain GL_RGBA8 attachment gives
-                // that enable nothing to act on, so the linear result would be stored raw
-                // and then decoded a second time when the impostor writer feeds it back into
-                // the real G-buffer -- attachments on impostored avatars rendering too dark.
-                avatar->mImpostor.allocate(resX, resY, GL_SRGB8_ALPHA8, true, false, ALTextureSlot::TT_TEXTURE, LLRenderTarget::MIPS_NONE, mainDepthFormat());
-
-                if (LLPipeline::sRenderDeferred)
-                {
-                    addDeferredAttachments(avatar->mImpostor);
-                }
-
-                // Point filtering is applied where the impostor is sampled
-                // (LLVOAvatar::renderImpostor), not written onto the texture here.
+                addDeferredAttachments(avatar->mImpostor);
             }
 
-            avatar->mImpostor.bindTarget();
+            // Point filtering is applied where the impostor is sampled
+            // (LLVOAvatar::renderImpostor), not written onto the texture here.
         }
+
+        avatar->mImpostor.bindTarget();
     }
 
     F32 old_alpha = LLDrawPoolAvatar::sMinimumAlpha;
@@ -29050,8 +28955,8 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
     // draws into the single-attachment screen target. Leaving every attachment selected lets
     // the driver blend undefined values into the normal and ORM buffers wherever alpha drew,
     // and those are exactly what light the billboard afterwards. Narrowed AFTER the G-buffer
-    // pass, which needs all of them, and restored at the end of the function because the
-    // preview path draws into a target its caller still owns.
+    // pass, which needs all of them, and restored at the end of the function if the
+    // same logical target remains bound.
     LLRenderTarget* bake_target = for_profile
         ? nullptr : LLRenderTarget::getCurrentBoundTarget();
     auto forward_only_attachments = [bake_target]()
@@ -29104,63 +29009,49 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
                 fill = &fill_color;
                 LL_DEBUGS_ONCE("AvatarRenderPipeline") << "Avatar " << avatar->getID() << " MUTED set solid color " << fill_color << LL_ENDL;
             }
-            else if (!preview_avatar)
+            else
             { //grey muted avatar
                 fill = &LLColor4::pink;
                 LL_DEBUGS_ONCE("AvatarRenderPipeline") << "Avatar " << avatar->getID() << " MUTED set grey" << LL_ENDL;
             }
 
 #if LL_DARWIN
-            if (!preview_avatar)
-                stampMetalImpostorCoverage(avatar->getID(), visually_muted || too_complex ? fill : nullptr);
-            else
+            stampMetalImpostorCoverage(avatar->getID(), visually_muted || too_complex ? fill : nullptr);
 #endif
-                drawFarPlaneQuad(GL_GREATER, fill);
         }
     };
 
-    if (preview_avatar)
-    {
-        // Preview targets are supplied by the dynamic texture owner.
-        renderGeomDeferred(camera);
-        stamp_opaque_coverage();
-        forward_only_attachments();
-        renderGeomPostDeferred(camera);
-    }
-    else
-    {
-        if (!for_profile) avatar->mImpostor.clear();
+    if (!for_profile) avatar->mImpostor.clear();
 #if LL_DARWIN
-        beginMetalImpostorBakeCapture(avatar->getID(),
-            for_profile ? mRT->deferredScreen.getWidth() : resX,
-            for_profile ? mRT->deferredScreen.getHeight() : resY,
-            for_profile);
+    beginMetalImpostorBakeCapture(avatar->getID(),
+        for_profile ? mRT->deferredScreen.getWidth() : resX,
+        for_profile ? mRT->deferredScreen.getHeight() : resY,
+        for_profile);
 #endif
-        renderGeomDeferred(camera);
+    renderGeomDeferred(camera);
 
-        stamp_opaque_coverage();
-        forward_only_attachments();
+    stamp_opaque_coverage();
+    forward_only_attachments();
 #if LL_DARWIN
-        beginMetalImpostorAlphaCapture(avatar->getID());
+    beginMetalImpostorAlphaCapture(avatar->getID());
 #endif
-        renderGeomPostDeferred(camera);
+    renderGeomPostDeferred(camera);
 #if LL_DARWIN
-        endMetalImpostorAlphaCapture();
+    endMetalImpostorAlphaCapture();
 #endif
 
-        // The scene used to be rendered a THIRD time here, colour-masked off, purely so
-        // that blended geometry would lay down depth for a coverage mask that ran afterwards
-        // -- the "shameless hack" the old comment named. Both are gone: the mask stamps
-        // opaque coverage before the forward passes instead, and the alpha channel carries
-        // real coverage from the native alpha-pool replay. One fewer full scene
-        // render per impostor, and partial coverage survives to the composite instead of
-        // being flattened to opaque, which is what produced the dark halo around hair.
-    }
+    // The scene used to be rendered a THIRD time here, colour-masked off, purely so
+    // that blended geometry would lay down depth for a coverage mask that ran afterwards
+    // -- the "shameless hack" the old comment named. Both are gone: the mask stamps
+    // opaque coverage before the forward passes instead, and the alpha channel carries
+    // real coverage from the native alpha-pool replay. One fewer full scene
+    // render per impostor, and partial coverage survives to the composite instead of
+    // being flattened to opaque, which is what produced the dark halo around hair.
 
     LLDrawPoolAvatar::sMinimumAlpha = old_alpha;
 
     bool native_impostor_published = true;
-    if (!preview_avatar && !for_profile)
+    if (!for_profile)
     {
 #if LL_DARWIN
         native_impostor_published = publishMetalImpostorBake(*avatar);
@@ -29169,11 +29060,8 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
         if (native_impostor_published) avatar->setImpostorDim(tdim);
     }
 
-    // Put the attachment selection back. On the impostor path the flush above has already
-    // rebound whatever was underneath (bindTarget re-issues its own draw buffers), but the
-    // PREVIEW path never bound a target of its own -- it has been drawing into one the
-    // dynamic-texture system owns and will keep using, so leaving it narrowed dropped
-    // attachments 1..3 for every preview rendered after this one in the same frame.
+    // Restore attachment selection if the logical bake target remains bound.
+    // The native profile path has no retained target to restore.
     if (bake_target && bake_target == LLRenderTarget::getCurrentBoundTarget())
     {
         bake_target->setDrawBuffers();
@@ -29184,15 +29072,12 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
     sShadowRender = saved_shadow_render;
     popRenderTypeMask();
 
-    if (!preview_avatar)
-    {
-        gGL.matrixMode(LLRender::MM_PROJECTION);
-        gGL.popMatrix();
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
-        gGL.popMatrix();
-    }
+    gGL.matrixMode(LLRender::MM_PROJECTION);
+    gGL.popMatrix();
+    gGL.matrixMode(LLRender::MM_MODELVIEW);
+    gGL.popMatrix();
 
-    if (!preview_avatar && !for_profile)
+    if (!for_profile)
     {
         avatar->mNeedsImpostorUpdate = !native_impostor_published;
         if (native_impostor_published)
