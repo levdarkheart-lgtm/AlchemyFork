@@ -10,8 +10,6 @@ if(WINDOWS)
   )
 endif()
 
-target_link_libraries(ll::pluginlibraries INTERFACE ll::opengl)
-
 target_include_directories(
   ll::pluginlibraries
   INTERFACE ${INDRA_SOURCE_DIR}/llimage ${INDRA_SOURCE_DIR}/llrender

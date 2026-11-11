@@ -110,14 +110,6 @@ target_link_libraries(
 
 target_precompile_headers(llrender REUSE_FROM llprecompiled)
 
-# llgl.cpp talks to WGL directly on Windows (wglGetCurrentDC for the
-# extensions string) even when SDL owns context creation, so keep the
-# OpenGL link explicit there regardless of the window backend. Darwin's
-# application targets publish no OpenGL dependency.
-if(WINDOWS OR (NOT DARWIN AND NOT AL_USE_SDL_WINDOW))
-  target_link_libraries(llrender PUBLIC ll::opengl)
-endif()
-
 if(DARWIN)
   target_link_libraries(llrender PRIVATE almetal)
 endif()
