@@ -92,17 +92,12 @@ static const ALShaderInputs& load_inputs()
 //utility shaders
 LLGLSLShader    gOcclusionProgram;
 LLGLSLShader    gOcclusionCubeProgram;
-LLGLSLShader    gGlowCombineProgram;
 LLGLSLShader    gDebugProgram;
-LLGLSLShader    gClipProgram;
 LLGLSLShader    gAlphaMaskProgram;
 LLGLSLShader    gCopyProgram;
 LLGLSLShader    gCopyDepthProgram;
-LLGLSLShader    gDrawColorProgram;
 
 //object shaders
-LLGLSLShader        gObjectPreviewProgram;
-LLGLSLShader        gPhysicsPreviewProgram;
 LLGLSLShader        gObjectAlphaMaskNoColorProgram;
 
 //avatar shader handles
@@ -116,11 +111,9 @@ LLGLSLShader            gBloomExtractProgram;
 LLGLSLShader            gBloomDownsampleProgram;
 LLGLSLShader            gBloomDownsampleFirstProgram;
 LLGLSLShader            gBloomUpsampleProgram;
-LLGLSLShader            gBloomCompositeProgram;
 LLGLSLShader            gCrossFilterProgram;
 
 // Deferred rendering shaders
-LLGLSLShader            gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 LLGLSLShader            gDeferredTerrainProgram;
 #if !LL_DARWIN
 LLGLSLShader            gDeferredPostProgram;
@@ -138,15 +131,8 @@ LLGLSLShader            gLensFlareStateProgram;
 #if !LL_DARWIN
 LLGLSLShader            gFXAAProgram[4];
 LLGLSLShader            gSMAAEdgeDetectProgram[4];
-LLGLSLShader            gSMAABlendWeightsProgram[4];
-LLGLSLShader            gSMAANeighborhoodBlendProgram[4];
-LLGLSLShader            gCASProgram;
 #endif
-LLGLSLShader            gDeferredPostNoDoFProgram;
 LLGLSLShader            gBlitWithEffectsProgram;
-#if !LL_DARWIN
-LLGLSLShader            gBlitWithEffectsSharpenProgram;
-#endif
 LLGLSLShader            gCGGammaProgram;
 LLGLSLShader            gCGLegacyGammaProgram;
 LLGLSLShader            gCGTonemapProgram;
@@ -156,7 +142,6 @@ LLGLSLShader            gCGColorgradeLegacyGammaProgram;
 LLGLSLShader            gCGTonemapColorgradeProgram;
 LLGLSLShader            gCGTonemapColorgradeLegacyGammaProgram;
 
-LLGLSLShader            gHUDPBROpaqueProgram;
 LLGLSLShader            gDeferredPBRTerrainProgram[TERRAIN_PAINT_TYPE_COUNT];
 LLGLSLShader            gDeferredPBRTerrainAlphaMaskProgram[TERRAIN_PAINT_TYPE_COUNT];
 
@@ -457,7 +442,6 @@ void LLViewerShaderMgr::loadShadersEffects()
         gBloomDownsampleProgram.unload();
         gBloomDownsampleFirstProgram.unload();
         gBloomUpsampleProgram.unload();
-        gBloomCompositeProgram.unload();
         gCrossFilterProgram.unload();
         return;
     }
@@ -549,18 +533,6 @@ void LLViewerShaderMgr::loadShadersEffects()
         built(gCrossFilterProgram.createShader(), gCrossFilterProgram);
     }
 
-    {
-        gBloomCompositeProgram.mName = "HDR Bloom Composite";
-        gBloomCompositeProgram.mShaderFiles.clear();
-        gBloomCompositeProgram.mShaderFiles.push_back(make_pair("effects/glowExtractV.glsl", GL_VERTEX_SHADER));
-        gBloomCompositeProgram.mShaderFiles.push_back(make_pair("effects/bloomCompositeF.glsl", GL_FRAGMENT_SHADER));
-        gBloomCompositeProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
-        if (bloom_halation)
-        {
-            gBloomCompositeProgram.addPermutation("BLOOM_HALATION", "1");
-        }
-        built(gBloomCompositeProgram.createShader(), gBloomCompositeProgram);
-    }
 }
 
 void LLViewerShaderMgr::loadShadersDeferred()
@@ -568,7 +540,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
     LL_PROFILE_ZONE_SCOPED;
     if (mShaderLevel[SHADER_DEFERRED] == 0)
     {
-        gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.unload();
         gDeferredTerrainProgram.unload();
 #if !LL_DARWIN
         gDeferredPostProgram.unload();
@@ -589,15 +560,11 @@ void LLViewerShaderMgr::loadShadersDeferred()
         {
             gFXAAProgram[i].unload();
             gSMAAEdgeDetectProgram[i].unload();
-            gSMAABlendWeightsProgram[i].unload();
-            gSMAANeighborhoodBlendProgram[i].unload();
         }
-        gCASProgram.unload();
 #endif
 
         LLGLSLShader::sIndexedLegacyMaterials = false;
 
-        gHUDPBROpaqueProgram.unload();
         for (U32 paint_type = 0; paint_type < TERRAIN_PAINT_TYPE_COUNT; ++paint_type)
         {
             gDeferredPBRTerrainProgram[paint_type].unload();
@@ -607,36 +574,10 @@ void LLViewerShaderMgr::loadShadersDeferred()
         return;
     }
 
-    {
-        gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.mName = "Deferred Diffuse Non-Indexed Alpha Mask No Color Shader";
-        gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.mShaderFiles.clear();
-        gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.mShaderFiles.push_back(make_pair("deferred/diffuseNoColorV.glsl", GL_VERTEX_SHADER));
-        gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.mShaderFiles.push_back(make_pair("deferred/diffuseAlphaMaskNoColorF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        add_common_permutations(&gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram);
-        built(gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.createShader(mirror_variant()), gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram);
-    }
-
     // Native G-buffer and shadow capture accept indexed legacy batches
     // directly. Keep formation enabled when the shared slot width exists.
     LLGLSLShader::sIndexedLegacyMaterials =
         LLGLSLShader::sIndexedGLTFChannels >= 2;
-
-    {
-        gHUDPBROpaqueProgram.mName = "HUD PBR Opaque Shader";
-        gHUDPBROpaqueProgram.mFeatures.hasSrgb = true;
-        gHUDPBROpaqueProgram.mShaderFiles.clear();
-        gHUDPBROpaqueProgram.mShaderFiles.push_back(make_pair("deferred/pbropaqueV.glsl", GL_VERTEX_SHADER));
-        gHUDPBROpaqueProgram.mShaderFiles.push_back(make_pair("deferred/pbropaqueF.glsl", GL_FRAGMENT_SHADER));
-        gHUDPBROpaqueProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gHUDPBROpaqueProgram.clearPermutations();
-        gHUDPBROpaqueProgram.addPermutation("IS_HUD", "1");
-
-        add_common_permutations(&gHUDPBROpaqueProgram);
-
-        built(gHUDPBROpaqueProgram.createShader(), gHUDPBROpaqueProgram);
-
-    }
 
     {
         const S32 detail = mInputs.mGlobal.mTerrainPBRDetail;
@@ -875,45 +816,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
                 break;
             }
 
-            gSMAABlendWeightsProgram[i].mName = llformat("SMAA Blending Weights (%s)", smaa_pair.second.c_str());
-            gSMAABlendWeightsProgram[i].mFeatures.isDeferred = true;
-
-            gSMAABlendWeightsProgram[i].clearPermutations();
-            gSMAABlendWeightsProgram[i].addPermutations(defines);
-
-            gSMAABlendWeightsProgram[i].mShaderFiles.clear();
-            gSMAABlendWeightsProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAABlendWeightsF.glsl", GL_FRAGMENT_SHADER));
-            gSMAABlendWeightsProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAABlendWeightsV.glsl", GL_VERTEX_SHADER));
-            gSMAABlendWeightsProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAA.glsl", GL_FRAGMENT_SHADER));
-            gSMAABlendWeightsProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAA.glsl", GL_VERTEX_SHADER));
-            gSMAABlendWeightsProgram[i].mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-            if (!built(gSMAABlendWeightsProgram[i].createShader(), gSMAABlendWeightsProgram[i]))
-            {
-                LL_WARNS() << "Failed to create shader '" << gSMAABlendWeightsProgram[i].mName << "', disabling!" << LL_ENDL;
-                // continue as if this shader never happened
-                failed = true;
-                break;
-            }
-
-            gSMAANeighborhoodBlendProgram[i].mName = llformat("SMAA Neighborhood Blending (%s)", smaa_pair.second.c_str());
-            gSMAANeighborhoodBlendProgram[i].mFeatures.isDeferred = true;
-
-            gSMAANeighborhoodBlendProgram[i].clearPermutations();
-            gSMAANeighborhoodBlendProgram[i].addPermutations(defines);
-
-            gSMAANeighborhoodBlendProgram[i].mShaderFiles.clear();
-            gSMAANeighborhoodBlendProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAANeighborhoodBlendF.glsl", GL_FRAGMENT_SHADER));
-            gSMAANeighborhoodBlendProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAANeighborhoodBlendV.glsl", GL_VERTEX_SHADER));
-            gSMAANeighborhoodBlendProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAA.glsl", GL_FRAGMENT_SHADER));
-            gSMAANeighborhoodBlendProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAA.glsl", GL_VERTEX_SHADER));
-            gSMAANeighborhoodBlendProgram[i].mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-            if (!built(gSMAANeighborhoodBlendProgram[i].createShader(), gSMAANeighborhoodBlendProgram[i]))
-            {
-                LL_WARNS() << "Failed to create shader '" << gSMAANeighborhoodBlendProgram[i].mName << "', disabling!" << LL_ENDL;
-                // continue as if this shader never happened
-                failed = true;
-                break;
-            }
             ++i;
         }
 
@@ -923,24 +825,10 @@ void LLViewerShaderMgr::loadShadersDeferred()
             for (auto i = 0; i < 4; ++i)
             {
                 gSMAAEdgeDetectProgram[i].unload();
-                gSMAABlendWeightsProgram[i].unload();
-                gSMAANeighborhoodBlendProgram[i].unload();
             }
         }
     }
 
-    {
-        gCASProgram.mName = "Contrast Adaptive Sharpening Shader";
-        gCASProgram.mFeatures.hasSrgb = true;
-        gCASProgram.mShaderFiles.clear();
-        gCASProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gCASProgram.mShaderFiles.push_back(make_pair("deferred/CASF.glsl", GL_FRAGMENT_SHADER));
-        gCASProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        if (!built(gCASProgram.createShader(), gCASProgram))
-        {
-            LL_WARNS() << "Failed to create shader '" << gCASProgram.mName << "', disabling!" << LL_ENDL;
-        }
-    }
 #endif
 
 #if !LL_DARWIN
@@ -1027,16 +915,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 #endif
 
     {
-        gDeferredPostNoDoFProgram.mName = "Deferred Post NoDoF Shader";
-        gDeferredPostNoDoFProgram.mFeatures.isDeferred = true;
-        gDeferredPostNoDoFProgram.mShaderFiles.clear();
-        gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoDoFF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredPostNoDoFProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gDeferredPostNoDoFProgram.createShader(), gDeferredPostNoDoFProgram);
-    }
-
-    {
         gBlitWithEffectsProgram.mName = "Blit With Post Effects Shader";
         gBlitWithEffectsProgram.mFeatures.isDeferred = true;
         gBlitWithEffectsProgram.mFeatures.hasPostEffects = true;
@@ -1051,28 +929,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gBlitWithEffectsProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         built(gBlitWithEffectsProgram.createShader(), gBlitWithEffectsProgram);
     }
-
-#if !LL_DARWIN
-    {
-        // The same blit sharpening the frame as it samples it, CASF.glsl's filter linked in. While it is incomplete
-        // the frame is sharpened by CAS's own pass.
-        gBlitWithEffectsSharpenProgram.mName = "Blit With Post Effects Shader (Sharpened)";
-        gBlitWithEffectsSharpenProgram.mFeatures.isDeferred = true;
-        gBlitWithEffectsSharpenProgram.mFeatures.hasPostEffects = true;
-        gBlitWithEffectsSharpenProgram.mShaderFiles.clear();
-        gBlitWithEffectsSharpenProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gBlitWithEffectsSharpenProgram.mShaderFiles.push_back(make_pair("alchemy/blitWithEffectsF.glsl", GL_FRAGMENT_SHADER));
-        gBlitWithEffectsSharpenProgram.mShaderFiles.push_back(make_pair("deferred/CASF.glsl", GL_FRAGMENT_SHADER));
-        gBlitWithEffectsSharpenProgram.clearPermutations();
-        gBlitWithEffectsSharpenProgram.addPermutation("CAS_LIBRARY", "1");
-        if (mInputs.mLocal.mHDR)
-        {
-            gBlitWithEffectsSharpenProgram.addPermutation("DITHER", "1");
-        }
-        gBlitWithEffectsSharpenProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gBlitWithEffectsSharpenProgram.createShader(), gBlitWithEffectsSharpenProgram);
-    }
-#endif
 
     // HDR-only: the bloom pyramid is allocated in the HDR path, so the tonemap
     // shader variants fold the bloom composite inline. Halation rides in the
@@ -1332,30 +1188,6 @@ void LLViewerShaderMgr::loadShadersObject()
         built(gImpostorProgram.createShader(), gImpostorProgram);
     }
 
-    {
-        gObjectPreviewProgram.mName = "Object Preview Shader";
-        gObjectPreviewProgram.mShaderFiles.clear();
-        gObjectPreviewProgram.mShaderFiles.push_back(make_pair("objects/previewV.glsl", GL_VERTEX_SHADER));
-        gObjectPreviewProgram.mShaderFiles.push_back(make_pair("objects/previewF.glsl", GL_FRAGMENT_SHADER));
-        gObjectPreviewProgram.mShaderLevel = mShaderLevel[SHADER_OBJECT];
-        built(gObjectPreviewProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gObjectPreviewProgram);
-        gObjectPreviewProgram.forEachVariant([](LLGLSLShader& s) { s.mFeatures.hasLighting = true; });
-    }
-
-    {
-        gPhysicsPreviewProgram.mName = "Preview Physics Shader";
-        gPhysicsPreviewProgram.mFeatures.calculatesLighting = false;
-        gPhysicsPreviewProgram.mFeatures.calculatesAtmospherics = false;
-        gPhysicsPreviewProgram.mFeatures.hasGamma = false;
-        gPhysicsPreviewProgram.mFeatures.hasAtmospherics = false;
-        gPhysicsPreviewProgram.mFeatures.hasLighting = false;
-        gPhysicsPreviewProgram.mShaderFiles.clear();
-        gPhysicsPreviewProgram.mShaderFiles.push_back(make_pair("objects/previewPhysicsV.glsl", GL_VERTEX_SHADER));
-        gPhysicsPreviewProgram.mShaderFiles.push_back(make_pair("objects/previewPhysicsF.glsl", GL_FRAGMENT_SHADER));
-        gPhysicsPreviewProgram.mShaderLevel = mShaderLevel[SHADER_OBJECT];
-        built(gPhysicsPreviewProgram.createShader(), gPhysicsPreviewProgram);
-        gPhysicsPreviewProgram.mFeatures.hasLighting = false;
-    }
 }
 
 void LLViewerShaderMgr::loadShadersAvatar()
@@ -1403,15 +1235,6 @@ void LLViewerShaderMgr::loadShadersInterface()
     }
 
     {
-        gGlowCombineProgram.mName = "Glow Combine Shader";
-        gGlowCombineProgram.mShaderFiles.clear();
-        gGlowCombineProgram.mShaderFiles.push_back(make_pair("interface/glowcombineV.glsl", GL_VERTEX_SHADER));
-        gGlowCombineProgram.mShaderFiles.push_back(make_pair("interface/glowcombineF.glsl", GL_FRAGMENT_SHADER));
-        gGlowCombineProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gGlowCombineProgram.createShader(), gGlowCombineProgram);
-    }
-
-    {
         gSolidColorProgram.mName = "Solid Color Shader";
         gSolidColorProgram.mShaderFiles.clear();
         gSolidColorProgram.mShaderFiles.push_back(make_pair("interface/solidcolorV.glsl", GL_VERTEX_SHADER));
@@ -1455,15 +1278,6 @@ void LLViewerShaderMgr::loadShadersInterface()
     }
 
     {
-        gClipProgram.mName = "Clip Shader";
-        gClipProgram.mShaderFiles.clear();
-        gClipProgram.mShaderFiles.push_back(make_pair("interface/clipV.glsl", GL_VERTEX_SHADER));
-        gClipProgram.mShaderFiles.push_back(make_pair("interface/clipF.glsl", GL_FRAGMENT_SHADER));
-        gClipProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gClipProgram.createShader(), gClipProgram);
-    }
-
-    {
         gCopyProgram.mName = "Copy Shader";
         gCopyProgram.mShaderFiles.clear();
         gCopyProgram.mShaderFiles.push_back(make_pair("interface/copyV.glsl", GL_VERTEX_SHADER));
@@ -1482,16 +1296,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gCopyDepthProgram.addPermutation("DEPTH_ONLY", "1");
         gCopyDepthProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         built(gCopyDepthProgram.createShader(), gCopyDepthProgram);
-    }
-
-    {
-        gDrawColorProgram.mName = "Draw Color Shader";
-        gDrawColorProgram.mShaderFiles.clear();
-        gDrawColorProgram.mShaderFiles.push_back(make_pair("objects/simpleNoAtmosV.glsl", GL_VERTEX_SHADER));
-        gDrawColorProgram.mShaderFiles.push_back(make_pair("objects/simpleColorF.glsl", GL_FRAGMENT_SHADER));
-        gDrawColorProgram.clearPermutations();
-        gDrawColorProgram.mShaderLevel = mShaderLevel[SHADER_OBJECT];
-        built(gDrawColorProgram.createShader(), gDrawColorProgram);
     }
 
     {

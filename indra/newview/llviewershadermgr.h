@@ -112,17 +112,12 @@ extern LLVector4            gShinyOrigin;
 //utility shaders
 extern LLGLSLShader         gOcclusionProgram;
 extern LLGLSLShader         gOcclusionCubeProgram;
-extern LLGLSLShader         gGlowCombineProgram;
 extern LLGLSLShader         gDebugProgram;
-extern LLGLSLShader         gClipProgram;
 extern LLGLSLShader         gCopyProgram;
 extern LLGLSLShader         gCopyDepthProgram;
-extern LLGLSLShader         gDrawColorProgram;
 
 
 //object shaders
-extern LLGLSLShader     gObjectPreviewProgram;
-extern LLGLSLShader        gPhysicsPreviewProgram;
 extern LLGLSLShader     gObjectAlphaMaskNoColorProgram;
 
 //environment shaders
@@ -132,7 +127,6 @@ extern LLGLSLShader         gBloomExtractProgram;
 extern LLGLSLShader         gBloomDownsampleProgram;
 extern LLGLSLShader         gBloomDownsampleFirstProgram;
 extern LLGLSLShader         gBloomUpsampleProgram;
-extern LLGLSLShader         gBloomCompositeProgram;
 // Taps per cross-filter pass. Injected into crossFilterF.glsl as CROSS_TAPS
 // and used by pipeline.cpp for the pass strides and the falloff remap, so the
 // chain's exact base-N tiling has one source of truth instead of three sites
@@ -151,7 +145,6 @@ extern LLGLSLShader         gAvatarProgram;
 extern LLGLSLShader         gImpostorProgram;
 
 // Deferred rendering shaders
-extern LLGLSLShader         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 extern LLGLSLShader         gDeferredTerrainProgram;
 #if !LL_DARWIN
 // Retained non-Darwin DoF gather blur, four variants over two orthogonal
@@ -167,20 +160,13 @@ extern LLGLSLShader         gDeferredDoFCombineProgram;
 extern LLGLSLShader         gDeferredDoFCombineProgramNoNear;
 extern LLGLSLShader         gFXAAProgram[4];
 extern LLGLSLShader         gSMAAEdgeDetectProgram[4];
-extern LLGLSLShader         gSMAABlendWeightsProgram[4];
-extern LLGLSLShader         gSMAANeighborhoodBlendProgram[4];
-extern LLGLSLShader         gCASProgram;
 #endif
-extern LLGLSLShader         gDeferredPostNoDoFProgram;
 extern LLGLSLShader         gExposureProgram;
 extern LLGLSLShader         gExposureProgramNoFade;
 extern LLGLSLShader         gExposureHistogramProgram;
 extern LLGLSLShader         gLuminanceProgram;
 extern LLGLSLShader         gLensFlareStateProgram;
 extern LLGLSLShader         gBlitWithEffectsProgram;
-#if !LL_DARWIN
-extern LLGLSLShader         gBlitWithEffectsSharpenProgram;
-#endif
 extern LLGLSLShader         gCGGammaProgram;
 extern LLGLSLShader         gCGLegacyGammaProgram;
 extern LLGLSLShader         gCGTonemapProgram;
@@ -189,7 +175,6 @@ extern LLGLSLShader         gCGColorgradeGammaProgram;
 extern LLGLSLShader         gCGColorgradeLegacyGammaProgram;
 extern LLGLSLShader         gCGTonemapColorgradeProgram;
 extern LLGLSLShader         gCGTonemapColorgradeLegacyGammaProgram;
-extern LLGLSLShader         gHUDPBROpaqueProgram;
 
 enum TerrainPaintType : U32
 {
