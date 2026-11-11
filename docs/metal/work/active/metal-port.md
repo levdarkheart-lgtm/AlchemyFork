@@ -161,8 +161,11 @@ https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68836-alpha
 Both server asset sizes/SHA256 digests match local ZIP+SHA; tag exact9f42 source.
 Normal feature-branch push; no Actions dispatch/billing changes. Publication
 receipt hud-preview-alpha-release.json. Scoped implementation/delivery finished;
-no identified code fix or running engineering job remains. Concurrent research
+new attached-light follow-up below is separate. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
+
+New: [attached-light cutoff](facelight-light-coverage.md) doing. Actual light-bound
+Y inversion found; root integration and GL-tail offscreen actual-helper proof.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all

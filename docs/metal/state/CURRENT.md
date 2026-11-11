@@ -4,14 +4,16 @@
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `8ce7e33f71`; combined source `9f42b86606` built/tested/packaged.
 **Owner-passed viewer:** `f254feb048`,26.4.0d68817; provisional “pass...for now”.
-Alpha4 version68836 is built/tested/packaged/published. Owner superseded the earlier
-no-launch instruction and requested the ready viewer for manual confirmation.
-Fresh26.4.0d68817 launched with open -na; exact new executable PID90460 was
-confirmed alive. No login action or screenshots by the agent; utility unexecuted.
-Device-only Metal tests and separate CPU/Foundation probes are bounded evidence.
+Alpha4 version68836 is built/tested/packaged/published. Older owner-requested
+f254 launch observed PID90460; no later launch/login/screenshots by the agent.
+Utility unexecuted. Device-only tests and CPU/Foundation probes are bounded.
 The owner-stopped20FPS campaign remains deferred.
 
 ## Current implementation
+
+New owner-reported [attached-light cutoff](../work/active/facelight-light-coverage.md)
+is under focused offscreen investigation: actual projected light bounds invert Y
+relative to native G-buffer rows. Root owns integration; GL-tail owns the test.
 
 [Latest finalization/preview/media closure](../work/active/native-finalization-and-media-closure.md)
 and [settings/resource tail](../work/active/native-settings-and-resource-tail.md)
@@ -138,8 +140,8 @@ https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68836-alpha
 Both uploaded asset sizes/SHA256 digests match local files; tag points to exact
 9f42b8660639e8827f8449a64cf0248fef6d90c0. Receipt hud-preview-alpha-release.json.
 Feature branch pushed normally; no Actions dispatch/billing changes. This scoped
-implementation/delivery request is finished; no identified coding fix or running
-engineering job remains. No new viewer/window/utility launch or screenshots.
+implementation/delivery request is finished; new attached-light follow-up above
+does not reopen that goal. No new viewer/window/utility launch or screenshots.
 Concurrent research files untouched/excluded. Full-product gates remain open.
 
 ## Complete-product advancement assessment
