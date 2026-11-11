@@ -2627,6 +2627,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction(
             "almetal_world_impostor_debug_vertex") ||
         !impl->library->hasFunction("almetal_world_coverage_vertex") ||
+        !impl->library->hasFunction("almetal_world_cutout_coverage_vertex") ||
         !impl->library->hasFunction("almetal_world_terrain_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_fragment") ||
         !impl->library->hasFunction("almetal_world_alpha_mask_fragment") ||
@@ -5228,7 +5229,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     {
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = impl->library.get();
-        descriptor.vertex_function = "almetal_world_coverage_vertex";
+        descriptor.vertex_function = "almetal_world_cutout_coverage_vertex";
         descriptor.fragment_function = "almetal_world_coverage_fragment";
         descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
         descriptor.depth_stencil_format =

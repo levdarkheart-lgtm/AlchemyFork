@@ -1913,6 +1913,24 @@ vertex ALMetalWorldCoverageVaryings almetal_world_coverage_vertex(
     return output;
 }
 
+vertex ALMetalWorldCoverageVaryings almetal_world_cutout_coverage_vertex(
+    constant uint& reverse_z [[buffer(0)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float2 texcoord = float2((vertex_id << 1) & 2, vertex_id & 2);
+    ALMetalWorldCoverageVaryings output;
+    // Original drawFarPlaneQuad used forward NDC0.99999f under GL's [-1,1]
+    // depth convention, and independently authored0.000005f under reverse
+    // GL_ZERO_TO_ONE. Preserve their float window-depth pins for cutouts;
+    // other opaque-coverage owners still use the shared exact-far vertex.
+    const float window_depth = reverse_z != 0
+        ? 0.000005f : (0.99999f + 1.0f) * 0.5f;
+    output.position = float4(texcoord.x * 2.0 - 1.0,
+                             1.0 - texcoord.y * 2.0,
+                             window_depth, 1.0);
+    return output;
+}
+
 fragment float4 almetal_world_coverage_fragment(
     ALMetalWorldCoverageVaryings input [[stage_in]])
 {
