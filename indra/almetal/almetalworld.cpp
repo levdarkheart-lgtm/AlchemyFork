@@ -13004,17 +13004,21 @@ bool ALMetalWorldGBufferRenderer::projectReflectionProbeSH(
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     const ALMetalWorldOpaquePostDeferredScene& scene,
-    std::string* error)
+    std::string* error,
+    std::uint32_t* encoded_water_draws)
 {
-    return renderOpaquePostDeferred(scene, nullptr, error);
+    return renderOpaquePostDeferred(
+        scene, nullptr, error, encoded_water_draws);
 }
 
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     const ALMetalWorldOpaquePostDeferredScene& scene,
     std::unique_ptr<ALMetalRenderTarget> composed_lighting_owner,
-    std::string* error)
+    std::string* error,
+    std::uint32_t* encoded_water_draws)
 {
+    if (encoded_water_draws) *encoded_water_draws = 0;
     if (!mImpl || !mImpl->device || !scene.gbuffer ||
         !scene.composed_lighting ||
         (scene.batch_count != 0 && !scene.batches) ||
@@ -16777,6 +16781,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     };
     encoded = encoded && bind_forward_resources(*encoder);
 
+    // Water geometry used to increment the viewer's draw plot at the issued
+    // GL calls. Observe the corresponding accepted native calls only when
+    // requested, without arming timing or inspecting pipeline descriptors.
+    // Validation admits at most one haze and one surface, each with <=4
+    // field draws, plus a patch call per surface/exclusion pass: <=14 total.
+    std::uint32_t water_draws = 0;
     bool cutout_coverage_seeded = !scene.seed_cutout_coverage;
     const auto seed_cutout_coverage = [&]()
     {
@@ -16990,6 +17000,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                                 : ALMetalPrimitiveType::triangle,
                             0, field.vertex_count,
                             field.instance_count, error);
+                    if (encoded && encoded_water_draws) ++water_draws;
                 }
             }
             else if (encoded)
@@ -17521,7 +17532,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                                 : ALMetalPrimitiveType::triangle,
                             0, draw_command.vertex_count,
                             draw_command.instance_count, error);
-                    if (drew) record_water_draw(*flat_water_pipeline, false);
+                    if (drew)
+                    {
+                        if (encoded_water_draws) ++water_draws;
+                        record_water_draw(*flat_water_pipeline, false);
+                    }
                 }
                 return drew;
             };
@@ -17539,7 +17554,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                          *water_factor_buffer, 0, 0, error) &&
                      encoder->drawPatches(
                          4, 0, water.patch_count, 1, 0, error);
-                if (drew) record_water_draw(*wave_water_pipeline, true);
+                if (drew)
+                {
+                    if (encoded_water_draws) ++water_draws;
+                    record_water_draw(*wave_water_pipeline, true);
+                }
                 return drew;
             };
 
@@ -19867,6 +19886,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         stats.diagnostic_initial_family_view_kind = scene.diagnostic_view_kind;
         stats.diagnostic_initial_family_view_index = scene.diagnostic_view_index;
     }
+    if (encoded_water_draws) *encoded_water_draws = water_draws;
     return output;
 }
 

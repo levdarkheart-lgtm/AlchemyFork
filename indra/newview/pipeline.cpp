@@ -9080,8 +9080,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 << ", face=" << capture.hero_probe_face << LL_ENDL;
         }
         std::string error;
+        U32 encoded_water_draws = 0;
         auto target = capture.renderer->renderOpaquePostDeferred(
-            scene, std::move(capture.composed_light_target), &error);
+            scene, std::move(capture.composed_light_target), &error,
+            mCollectWaterDraws ? &encoded_water_draws : nullptr);
         if (hero_capture_end.started)
         {
             end_metal_hero_forward_capture(static_cast<bool>(target));
@@ -9101,6 +9103,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         }
         else
         {
+            mWaterDraws += encoded_water_draws;
             describe_metal_draw_join_upper_bound(
                 scene.batches, scene.batch_count, true,
                 scene.diagnostic_view_kind, scene.diagnostic_view_index, 0);
@@ -23125,7 +23128,14 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
             mTerrainPrimitives.plot();
             mWaterPrimitives.plot();
             mWaterPatchPrimitives.plot();
-            LL_PROFILE_PLOT("water draws", (int64_t)mWaterDraws);
+#if LL_PROFILER_CONFIGURATION >= LL_PROFILER_CONFIG_TRACY
+            // Arm at this original main-frame boundary, so connecting Tracy
+            // midway through a frame never publishes a partial view interval.
+            // These are accepted native geometry calls, not GPU samples.
+            if (mCollectWaterDraws && TracyIsConnected)
+                LL_PROFILE_PLOT("encoded water draws", (int64_t)mWaterDraws);
+            mCollectWaterDraws = TracyIsConnected;
+#endif
             mWaterDraws = 0;
             // The waves this frame: their patches before the cull, and A in centimetres.
             LL_PROFILE_PLOT("water patches", (int64_t)mWaterSurface.patchCount());

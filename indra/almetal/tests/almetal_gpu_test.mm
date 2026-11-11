@@ -12448,8 +12448,13 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.batch_count = water_haze_batches.size();
         opaque_forward_scene.water_exclusion_surface = &water_surface;
         opaque_forward_scene.water_haze = nullptr;
+        // The optional counter observes accepted physical geometry calls,
+        // independently of timing/PSO census collection. Failure clears the
+        // caller's previous observation rather than returning a partial count.
+        std::uint32_t encoded_water_draws = 99;
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
-            opaque_forward_scene, &error));
+            opaque_forward_scene, &error, &encoded_water_draws));
+        CHECK(encoded_water_draws == 0);
         CHECK(error == "Metal world water-haze inputs are invalid");
         opaque_forward_scene.water_haze = &water_haze;
         std::array<ALMetalWorldSimpleBatch, 2> misordered_haze{{
@@ -12462,10 +12467,16 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(error == "Metal world water-haze ordering is invalid");
         opaque_forward_scene.batches = water_haze_batches.data();
         error.clear();
+        const bool water_timing_enabled = ALMetalDevice::commandTimingEnabled();
+        const auto water_census_sequence = renderer->opaquePostDiagnostics().encoded_calls;
         auto above_water_haze = renderer->renderOpaquePostDeferred(
-            opaque_forward_scene, &error);
+            opaque_forward_scene, &error, &encoded_water_draws);
         INFO(error);
         REQUIRE(above_water_haze);
+        CHECK(encoded_water_draws == 3); // Strip, outer rings, and void field.
+        CHECK(ALMetalDevice::commandTimingEnabled() == water_timing_enabled);
+        if (!water_timing_enabled)
+            CHECK(renderer->opaquePostDiagnostics().encoded_calls == water_census_sequence);
         std::array<std::uint16_t, 32 * 32 * 4> water_haze_pixels{};
         std::array<float, 32 * 32> water_haze_depth{};
         REQUIRE(above_water_haze->colorTexture(0)->readback(
@@ -12486,6 +12497,16 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
               0.0001f);
         CHECK(std::abs(water_haze_depth[0] - 1.f) < 0.0001f);
 
+        // Omitting diagnostics must leave the actual rendered result intact.
+        auto uncounted_water_haze = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(uncounted_water_haze);
+        std::array<std::uint16_t, 32 * 32 * 4> uncounted_haze_pixels{};
+        REQUIRE(uncounted_water_haze->colorTexture(0)->readback(
+            *device, 0, 0, {}, uncounted_haze_pixels.data(), 32 * 8, &error));
+        CHECK(uncounted_haze_pixels == water_haze_pixels);
+
         water_haze.above_water = false;
         water_haze.cell_map = nullptr;
         water_haze.draw_count = 0;
@@ -12493,9 +12514,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.batch_count = 1;
         opaque_forward_scene.water_exclusion_surface = nullptr;
         auto underwater_haze = renderer->renderOpaquePostDeferred(
-            opaque_forward_scene, &error);
+            opaque_forward_scene, &error, &encoded_water_draws);
         INFO(error);
         REQUIRE(underwater_haze);
+        CHECK(encoded_water_draws == 0); // Fullscreen fog is not field geometry.
         REQUIRE(underwater_haze->colorTexture(0)->readback(
             *device, 0, 0, {}, water_haze_pixels.data(), 32 * 8,
             &error));
@@ -12523,9 +12545,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.gbuffer = reverse_coverage_result.get();
         opaque_forward_scene.reverse_z = true;
         auto reverse_water_haze = renderer->renderOpaquePostDeferred(
-            opaque_forward_scene, &error);
+            opaque_forward_scene, nullptr, &error, &encoded_water_draws);
         INFO(error);
         REQUIRE(reverse_water_haze);
+        CHECK(encoded_water_draws == 3); // The owner overload counts exactly once.
         REQUIRE(reverse_water_haze->colorTexture(0)->readback(
             *device, 0, 0, {}, water_haze_pixels.data(), 32 * 8,
             &error));
@@ -15722,9 +15745,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
 
         auto underwater_surface_result =
             renderer->renderOpaquePostDeferred(
-                opaque_forward_scene, &error);
+                opaque_forward_scene, &error, &encoded_water_draws);
         INFO(error);
         REQUIRE(underwater_surface_result);
+        CHECK(encoded_water_draws == 6); // Three fields, two stencil passes.
         REQUIRE(underwater_surface_result->colorTexture(0)->readback(
             *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
             &error));
@@ -15897,9 +15921,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.reverse_z = false;
         opaque_forward_scene.water_surface = &underwater_wave;
         auto underwater_wave_result = renderer->renderOpaquePostDeferred(
-            opaque_forward_scene, &error);
+            opaque_forward_scene, &error, &encoded_water_draws);
         INFO(error);
         REQUIRE(underwater_wave_result);
+        CHECK(encoded_water_draws == 10); // Four fields plus one patch, replayed.
         REQUIRE(underwater_wave_result->depthStencilTexture()->readback(
             *device, 0, 0, {}, pre_water_depth.data(),
             32 * sizeof(float), &error));
@@ -15937,15 +15962,17 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         underwater_wave.wave_occlusion = true;
         auto native_occlusion_wave =
             renderer->renderOpaquePostDeferred(
-                opaque_forward_scene, &error);
+                opaque_forward_scene, &error, &encoded_water_draws);
         INFO(error);
         REQUIRE(native_occlusion_wave);
+        CHECK(encoded_water_draws == 10); // Depth-pyramid compute adds no draws.
         CHECK(native_occlusion_wave->descriptor().depth_stencil_shader_read);
         underwater_wave.wave_occlusion = false;
 
         underwater_wave.tessellation_factors.pop_back();
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
-            opaque_forward_scene, &error));
+            opaque_forward_scene, &error, &encoded_water_draws));
+        CHECK(encoded_water_draws == 0);
         CHECK(error ==
               "Metal world wave water-surface inputs are invalid");
         underwater_wave.tessellation_factors.push_back(0x3c00u);
@@ -16211,9 +16238,17 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         error.clear();
         auto above_water_surface_result =
             renderer->renderOpaquePostDeferred(
-                opaque_forward_scene, &error);
+                opaque_forward_scene, &error, &encoded_water_draws);
         INFO(error);
         REQUIRE(above_water_surface_result);
+        CHECK(encoded_water_draws == 3); // No exclusion replay in this view.
+        auto haze_and_surface_scene = opaque_forward_scene;
+        haze_and_surface_scene.water_haze = &water_haze;
+        auto haze_and_surface_result = renderer->renderOpaquePostDeferred(
+            haze_and_surface_scene, &error, &encoded_water_draws);
+        INFO(error);
+        REQUIRE(haze_and_surface_result);
+        CHECK(encoded_water_draws == 6); // Haze field and surface both contribute.
         REQUIRE(above_water_surface_result->colorTexture(0)->readback(
             *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
             &error));
@@ -16448,9 +16483,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.water_surface = &above_water_wave;
         auto above_water_wave_result =
             renderer->renderOpaquePostDeferred(
-                opaque_forward_scene, &error);
+                opaque_forward_scene, &error, &encoded_water_draws);
         INFO(error);
         REQUIRE(above_water_wave_result);
+        CHECK(encoded_water_draws == 5); // Four fields plus one patch call.
         REQUIRE(above_water_wave_result->depthStencilTexture()->readback(
             *device, 0, 0, {}, pre_water_depth.data(),
             32 * sizeof(float), &error));
@@ -16956,9 +16992,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.batch_count = 1;
         auto post_water_atmospheric_baseline =
             renderer->renderOpaquePostDeferred(
-                opaque_forward_scene, &error);
+                opaque_forward_scene, &error, &encoded_water_draws);
         INFO(error);
         REQUIRE(post_water_atmospheric_baseline);
+        CHECK(encoded_water_draws == 0); // A successful view with no water geometry.
         REQUIRE(post_water_atmospheric_baseline->colorTexture(0)->readback(
             *device, 0, 0, {}, atmospheric_pixels.data(), 32 * 8,
             &error));

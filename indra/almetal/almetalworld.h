@@ -2304,9 +2304,16 @@ public:
 
     // Retain composed lighting and scene depth, then render the supported
     // ordered post-deferred families into a one-color output target.
+    // The optional synchronous output counts successfully encoded water
+    // field, above-water haze-field and wave-patch draw calls in this view,
+    // including the underwater exclusion replay. It excludes fullscreen
+    // underwater haze and compute work. The output is cleared on entry and
+    // published only when the complete render succeeds; no pointer is retained.
+    // This is issued geometry, not completed GPU work or visible primitives.
     std::unique_ptr<ALMetalRenderTarget> renderOpaquePostDeferred(
         const ALMetalWorldOpaquePostDeferredScene& scene,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        std::uint32_t* encoded_water_draws = nullptr);
 
     // Continue an integrated lighting-composition target in place. The
     // owner must be the same object borrowed by scene.composed_lighting and
@@ -2314,7 +2321,8 @@ public:
     std::unique_ptr<ALMetalRenderTarget> renderOpaquePostDeferred(
         const ALMetalWorldOpaquePostDeferredScene& scene,
         std::unique_ptr<ALMetalRenderTarget> composed_lighting_owner,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        std::uint32_t* encoded_water_draws = nullptr);
 
     // Convert one completed linear native world target into the GL post
     // chain's first display-space target without crossing CPU memory. Bloom,

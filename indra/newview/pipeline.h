@@ -1942,7 +1942,10 @@ public:
     ALPrimitivePlot             mTerrainPrimitives{ "terrain primitives", true };
     ALPrimitivePlot             mWaterPrimitives{ "water primitives", false };
     ALPrimitivePlot             mWaterPatchPrimitives{ "water patch primitives", true };
+    // Accepted native geometry calls between main-frame boundaries. Collect
+    // complete Tracy intervals only; this does not measure GPU completion.
     U32                         mWaterDraws = 0;
+    bool                        mCollectWaterDraws = false;
 
     static constexpr U32 MAX_PREVIEW_WIDTH = ALRenderResourcePlan::PREVIEW_SIZE;
 
