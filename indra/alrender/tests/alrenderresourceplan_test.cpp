@@ -677,20 +677,6 @@ namespace
         }
     }
 
-    // An independent retained allocation matches; a color target borrowing depth does not.
-    TEST_CASE("alrenderresourceplan: describes() knows the descriptions of the resources it wants", "[alrenderresourceplan]")
-    {
-        const Plan plan = Plan::make(defaults());
-        const ALRenderTargetDesc& gbuffer = *plan.desc(Id::MainGBuffer);
-        CHECK(plan.describes(gbuffer));
-        ALRenderTargetDesc smaller = gbuffer;
-        smaller.width /= 2;
-        CHECK_FALSE(plan.describes(smaller));
-        UNSCOPED_INFO("the screen shares the G-buffer's depth, so its colour alone is no resource's description");
-        REQUIRE(plan[Id::MainScreen].mDepthFrom);
-        CHECK_FALSE(plan.describes(*plan.desc(Id::MainScreen)));
-    }
-
     TEST_CASE("alrenderresourceplan: the hero pack and its probes are there only with mirrors and probes both on", "[alrenderresourceplan]")
     {
         for (bool mirrors : { false, true })

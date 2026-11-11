@@ -131,9 +131,6 @@ public:
     const Resource& operator[](Id id) const { return mResources[(size_t)id]; }
     bool wants(Id id) const { return mResources[(size_t)id].mDesc.has_value(); }
     const std::optional<ALRenderTargetDesc>& desc(Id id) const { return mResources[(size_t)id].mDesc; }
-    /// Whether some resource the plan wants is what `desc` describes, sharing no depth.
-    bool describes(const ALRenderTargetDesc& desc) const;
-
     /// Whether ordinary views trace the preceding native scene through reflection probes.
     /// This is logical render intent, independent of retained target allocations.
     bool usesScreenSpaceReflections() const { return mUsesScreenSpaceReflections; }

@@ -279,13 +279,6 @@ bool ALRenderResourcePlan::isTexture(Id id)
 }
 
 // static
-bool ALRenderResourcePlan::describes(const ALRenderTargetDesc& desc) const
-{
-    return std::any_of(mResources.begin(), mResources.end(),
-                       [&desc](const Resource& resource) { return resource.mDesc == desc && !resource.mDepthFrom; });
-}
-
-// static
 ALRenderResourcePlan::IdSet ALRenderResourcePlan::idsOf(Pack pack)
 {
     return idsWhere([pack](Id id) { return packOf(id) == pack; });
