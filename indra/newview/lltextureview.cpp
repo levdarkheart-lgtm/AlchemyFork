@@ -36,7 +36,7 @@
 #include "lllfsthread.h"
 #include "llui.h"
 #include "llimageworker.h"
-#include "algpubuffer.h"
+#include "almetalresource.h"
 #include "llrender.h"
 
 #include "lltooltip.h"
@@ -634,11 +634,13 @@ void LLGLTexMemBar::draw()
 
     // Parent LLContainerView already paints the full-rect background; this bar's
     // required height (see getRequiredRect) covers all eight lines of text below.
-    text = llformat("Est. Free: %d MB Sys Free: %d MB FBO: %d MB Buffers: %d MB Probe#: %d Probe Mem: %d MB Bias: %.2f Cache: %.1f/%.1f MB",
+    // Typed buffer-wrapper payload bytes include vertex/constant/readback
+    // owners. This is not total driver allocation or GPU-retained residency.
+    text = llformat("Est. Free: %d MB Sys Free: %d MB FBO: %d MB Tracked Metal buffers: %d MB Probe#: %d Probe Mem: %d MB Bias: %.2f Cache: %.1f/%.1f MB",
                     (S32)LLViewerTexture::sFreeVRAMMegabytes,
                     LLMemory::getAvailableMemKB()/1024,
                     LLRenderTarget::sBytesAllocated/(1024*1024),
-                    (S32)(ALGPUBuffer::sBytesAllocated/(1024*1024)),
+                    (S32)(alMetalResourceAllocationStats().buffer_bytes_live/(1024*1024)),
                     gPipeline.mReflectionMapManager.probeCount(),
                     gPipeline.mReflectionMapManager.probeMemory(),
                     discard_bias,

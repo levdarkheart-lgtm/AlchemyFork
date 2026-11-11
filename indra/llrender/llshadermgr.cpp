@@ -29,7 +29,6 @@
 
 #include "linden_common.h"
 #include "llshadermgr.h"
-#include "algpubuffer.h"
 #include "lldir.h"
 #if LL_DARWIN
 #include "almetalpipelinecache.h"
@@ -763,49 +762,4 @@ void LLShaderMgr::initAttribsAndUniforms()
         }
     }
 
-    // The storage blocks, each with its element count, in eGLSLReservedStorageBlocks order.
-    mReservedStorageBlocks.clear();
-
-    // Validate names, element counts and the fixed storage-binding capacity.
-    if (mReservedStorageBlocks.size() != END_RESERVED_STORAGE_BLOCKS)
-    {
-        LL_ERRS() << "Reserved storage block table has " << mReservedStorageBlocks.size()
-                  << " entries but eGLSLReservedStorageBlocks declares " << (U32)END_RESERVED_STORAGE_BLOCKS
-                  << " -- the enum and the table are out of sync" << LL_ENDL;
-    }
-    std::set<std::string> block_check;
-    U32 points = 0;
-    for (const ReservedStorageBlock& block : mReservedStorageBlocks)
-    {
-        if (!block_check.insert(block.mName).second)
-        {
-            LL_ERRS() << "Duplicate reserved storage block name found: " << block.mName << LL_ENDL;
-        }
-        if (block.mName.find('[') != std::string::npos || block.mCount == 0)
-        {
-            LL_ERRS() << "Reserved storage block '" << block.mName << "' carries a subscript or no elements; "
-                      << "an array of blocks is declared by its bare name and its count" << LL_ENDL;
-        }
-        points += block.mCount;
-    }
-    if (points > AL_NUM_STORAGE_BINDINGS)
-    {
-        LL_ERRS() << "The reserved storage blocks take " << points << " binding points; every compute context has "
-                  << AL_NUM_STORAGE_BINDINGS << LL_ENDL;
-    }
 }
-
-S32 LLShaderMgr::getStorageBlockBinding(S32 block, U32 element) const
-{
-    if (block < 0 || block >= (S32)mReservedStorageBlocks.size() || element >= mReservedStorageBlocks[block].mCount)
-    {
-        return -1;
-    }
-    U32 binding = element;
-    for (S32 i = 0; i < block; ++i)
-    {
-        binding += mReservedStorageBlocks[i].mCount;
-    }
-    return binding < AL_NUM_STORAGE_BINDINGS ? (S32)binding : -1;
-}
-

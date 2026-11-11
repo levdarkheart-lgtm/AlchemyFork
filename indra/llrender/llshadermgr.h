@@ -669,24 +669,12 @@ public:
         END_RESERVED_UNIFORMS
     } eGLSLReservedUniforms;
 
-    // Shader storage blocks, by block name, set in initAttribsAndUniforms beside the uniforms. Each has fixed binding
-    // points, the same in every program that declares it, as the engine's uniform blocks have theirs: the entries
-    // take them in this order, an array of blocks one for each of its elements. A buffer bound at a block's point is
-    // there for every program, so a pass binds it once whatever it draws or dispatches between.
-    typedef enum
-    {                                       // Block name, element count
-        END_RESERVED_STORAGE_BLOCKS
-    } eGLSLReservedStorageBlocks;
     // clang-format on
 
     // singleton pattern implementation
     static LLShaderMgr * instance();
 
     virtual void initAttribsAndUniforms(void);
-
-    // The binding point of `element` of a reserved storage block (eGLSLReservedStorageBlocks), the same in every
-    // program; -1 for an index or element the table does not have.
-    S32 getStorageBlockBinding(S32 block, U32 element = 0) const;
 
     // Implemented in the application to actually update out of date uniforms for a particular shader
     virtual void updateShaderUniforms(LLGLSLShader * shader) = 0; // Pure Virtual
@@ -699,15 +687,6 @@ public:
     std::vector<std::string> mReservedAttribs;
 
     std::vector<std::string> mReservedUniforms;
-
-    // The storage blocks, in eGLSLReservedStorageBlocks order: a block's name, and how many elements an array of it
-    // has (1 for a single block). Their binding points together stay within AL_NUM_STORAGE_BINDINGS.
-    struct ReservedStorageBlock
-    {
-        std::string mName;
-        U32         mCount = 1;
-    };
-    std::vector<ReservedStorageBlock> mReservedStorageBlocks;
 
 
 protected:
