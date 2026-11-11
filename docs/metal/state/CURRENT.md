@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `815416675e`.
+**Renderer code checkpoint:** `6a0831ad88`.
 Benchmark registration and displaced shader cleanup are validated.
 The remaining-feature/OpenGL-removal goal stays active. No viewer or appearance
 utility launch, menu action, screenshot or signed-in state change. Offscreen
@@ -43,7 +43,7 @@ all earlier world/avatar/editing/travel/music/HUD/upload fixes.
 
 ## Observed validation
 
-Integrated native direct draw tests pass **67598 assertions/42 cases**, including
+Integrated native image/label/profiler/direct draw tests pass **67773 assertions/47 cases**, including
 texture/index/offset/alpha/order, failed upload and independent publication
 readiness, under Metal API/shader validation. Integrated Frame Profile and
 utility/preview reload tests pass **60425 assertions/12 cases**. These filters
@@ -51,8 +51,9 @@ overlap earlier test receipts; do not sum historical totals. The isolated
 Developer benchmark passes **103 assertions/2 cases**; canonical integration
 test build and combined GPU run exit0,19123 assertions/10 cases.
 Harness validation0. Frozen696c43ba78 doctor/configure/build all0;
-feature-native-*.log receipts. New image/label/profile batch test build is
-running, handle79692; image-label-profile-native-test-build.log.
+feature-native-*.log receipts. Image/label/profile and wrapper builds0.
+Wrapper regressions:66108/18 llrender,552467/29CPUwater,33323/8nativeGPU.
+Water/window build0; native water count regression31516assertions/1case0.
 
 The first Frame Profile GPU test aborted134 on an absent optional pipeline
 label; production setters now skip absent/nonconvertible labels, and the
@@ -68,39 +69,37 @@ Exact hashes: `artifacts/metal/feature-completion-20261111/feature-native-identi
 Current source still requires a frozen canonical build and verification.
 All receipts are under `artifacts/metal/feature-completion-20261111/`.
 
-Latest whole-tree audit:1257 findings/2406 files,36call-syntax matches; strict
-exit1, image-label-native-gl-audit.json/log. Physical matches remain in excluded
-Win32 source; CPU helper names/glTF strings and native class names also match.
+Win32/WGL graphics owners and dead Vulkan telemetry are removed. Child inventory
+after Win32 cleanup:1229findings/2398files,8call-syntax matches,strict1; all8
+are CPU helpers/glTF strings. Native compatibility class names remain markers.
 Names/comments/excluded code contribute; this is not a live call count, and the
 inventory omits some owned directories. Runtime context proof remains open.
 
 ## Exact next actions and ownership
 
-Root owns integration, CMake, documentation, tests and canonical builds. Resume
-native target rebuild79692, then execute image publication/label/profiler and
-draw regressions with Metal validation. Current image/layout, label, profiler,
-SDL context removal, dependency removal and native-only build gate are integrated.
-Integrate frozen wrapper cleanup, then freeze a new canonical build. No launches.
+Root owns integration, CMake, documentation, tests and canonical builds. Current
+image/label/profiler/wrapper/Win32 removal and native water count changes are
+integrated. [Menu audit](../work/active/developer-menu-admission.md) fixes two
+inherited timer controls and identifies orphaned Enable Shader Cache. Root
+policy draft in `/private/tmp/alchemy-native-cache-policy-20261111` is not yet
+integrated; startup/reload/clear/shutdown wiring awaits the native cache owner.
+Freeze final source after cache/header/audit integration, then run full builds
+and verification. No launches or cache/menu actions.
 
-Agent `menu_port`: frozen `/private/tmp/alchemy-image-publication-cleanup-20261111`,
-branch `codex/native-image-publication-cleanup`. Own llimagegl.cpp/.h and new
-native readback test only. Fix published-versus-pending format mixing in
-readBackRaw and audited dead image helpers are integrated b91d739a46/31db370a3d.
-Baseline fails2 cases; fixed offscreen tests pass83assertions/2cases before
-layout cleanup. Final rebuilt-target GPU run remains. Full menu audit is now
-read-only, including registered callbacks and native owners.
+Agent `menu_port`: `/private/tmp/alchemy-native-pipeline-cache-20261111`, branch
+`codex/native-pipeline-cache`, basec5261cecae. Own new native binary archive/test,
+device-owned lifetime and synchronous PSO factory hooks, exact builtin identity.
+Default disabled/no IO; root maps actual setting/path/version/second instance.
 
-Agent `gl_tail_audit`: labels integrated2e2b542800; new isolated
-`/private/tmp/alchemy-render-wrapper-cleanup-20261111`,
-branch `codex/native-render-wrapper-cleanup`, base62d99552aa. Own dead generic
-LLRender instanced/indirect/compute/barrier wrappers, ALWaterSurface bind/draw,
-exact displaced excluded fixture sections and stale native failure text.
-Agent `rlva_port`: isolated `/private/tmp/alchemy-shader-profiler-cleanup-20261111`,
-branch `codex/native-shader-profiler-cleanup`, base325354e4da. Own old
-llglslshader profiling deletion, exact dead Win32 caller/excluded test sections
-and ALPrimitivePlot unsupported-counter repair integrated d0f6fcf6f0/d397b548ca.
-Current task: independent label review and native water draw diagnostic census.
-Root owns shared CMake.
+Agent `gl_tail_audit`: next isolated CPU format/state/shader-stage vocabulary
+replaces external GL header dependency with exact proven numeric/ABI constants,
+removing unused glext/opengl-registry dependencies. Own llglheaders.h and exact
+dependency/CMake entries only. Root excluded the orphan GL UI fixture6a0831ad88;
+its historical header must not enter the native vocabulary closure.
+Agent `rlva_port`: isolated audit precision/coverage work; own audit_gl.py and
+tests/test_scripts.py only. Actual API/context/import/loader blockers must stay
+strict; native class-name markers and exact CPU helpers are informational.
+CURRENT/linked work notes retain prior committed worktree provenance.
 
 Prior utility/preview/vertex/FrameProfile/manager/batching/GLTF worktrees are
 committed and integrated; do not reintegrate their foundation commits. Exact

@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `815416675e`; native resource regression build in progress.
+**Renderer checkpoint:** Commit `6a0831ad88`; cache/header/audit completion active.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -23,8 +23,11 @@ Frozen696c43ba78 app build0; canonical68677 verified349ARM64/0invalid,
 deepcodesign0 and viewerimports0forbidden. New image readback/helper cleanup,
 native labels, displaced shader profiler, primitive-counter fix, SDL context/
 OpenGL dependency removal and native build gates are integrated through815416675e;
-full dependent native regression build79692 is in progress. CURRENT pins
-isolated generic wrapper cleanup and read-only menu/water diagnostic audits.
+full dependent native regressions0,67773assertions/47cases. Wrapper/Win32/WGL/
+Vulkan tails removed; native water count fixture31516/1 passes. [Menu audit](developer-menu-admission.md)
+repairs inherited timer controls and identifies the remaining orphan Shader
+Cache enable control. Native archive owner, root viewer policy, explicit CPU
+vocabulary header and stronger actual-API audit are isolated active work.
 No launches. Exact commands/failures in latest note.
 
 Earlier verified bounded checkpoints below remain included; their older build
