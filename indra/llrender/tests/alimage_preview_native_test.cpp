@@ -10,6 +10,7 @@
 #include "../alrendercapabilities.h"
 #include "../llgltexture.h"
 #include "../llimagegl.h"
+#include "../llvertexbuffer.h"
 #include "../../almetal/almetaldevice.h"
 #include "../../almetal/almetalresource.h"
 #include "../../almetal/almetalsculptpreview.h"
@@ -100,6 +101,10 @@ struct LLScopedImagePreviewCameraState
 };
 
 enum class SceneInput { complete, render_rejected, publication_rejected };
+namespace
+{
+bool prepareImagePreviewAvatarBuffer(LLVertexBuffer* buffer);
+}
 struct PreviewScene : LLViewerDynamicTexture
 {
     NativeImages& native;
@@ -107,6 +112,7 @@ struct PreviewScene : LLViewerDynamicTexture
     std::array<float, 4> color{.25f, .5f, .75f, 1.f};
     bool mNeedsUpdate = true;
     unsigned scene_calls = 0;
+    LLVertexBuffer* geometry_input = nullptr;
     std::unique_ptr<ALMetalTexture> mMetalPreview;
     std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
 
@@ -126,6 +132,8 @@ struct PreviewScene : LLViewerDynamicTexture
             CHECK_FALSE(error.empty());
             return false;
         }
+        if (geometry_input && !prepareImagePreviewAvatarBuffer(geometry_input))
+            return false;
         mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
             mGLTexturep->getMetalTexture()->descriptor());
         if (input == SceneInput::publication_rejected)
@@ -134,6 +142,21 @@ struct PreviewScene : LLViewerDynamicTexture
         batch.geometry = ALMetalLitPreviewGeometry::unindexed_flat_triangles;
         batch.vertices = native.vertices.get();
         batch.vertex_count = 3;
+        if (geometry_input)
+        {
+            batch.geometry = ALMetalLitPreviewGeometry::indexed_lit;
+            batch.vertices = geometry_input->getMetalVertexBuffer();
+            batch.position_offset = geometry_input->getOffset(LLVertexBuffer::TYPE_VERTEX);
+            batch.normal_offset = geometry_input->getOffset(LLVertexBuffer::TYPE_NORMAL);
+            batch.indices = geometry_input->getMetalIndexBuffer();
+            batch.index_count = 3;
+            for (unsigned axis = 0; axis < 3; ++axis)
+                batch.normal_matrix[axis][axis] = 1.f;
+            batch.light_direction[0][2] = 1.f;
+            batch.light_diffuse[0][0] = 1.f;
+            batch.light_diffuse[0][1] = 1.f;
+            batch.light_diffuse[0][2] = 1.f;
+        }
         std::copy(color.begin(), color.end(), batch.diffuse_color);
         for (unsigned axis = 0; axis < 4; ++axis)
             batch.modelview_projection[axis * 4 + axis] = 1.f;
@@ -261,6 +284,129 @@ TEST_CASE("Avatar image preview refreshes ordinary dirty morph geometry before e
         CHECK(avatar.mDirtyMesh == 1);
         CHECK(avatar.vertex_revision == 1);
     }
+}
+
+TEST_CASE("Avatar image preview retries and admits only current indexed native stores",
+          "[almetal][preview-geometry-publication]")
+{
+    NativeImages native;
+    // This isolated fixture starts with no vertex owner. It exercises the
+    // real LLVB publisher, not a boolean substitute for publication state.
+    REQUIRE_FALSE(LLVertexBuffer::isMetalBufferAuthority());
+    REQUIRE(LLVertexBuffer::getBytesAllocated() == 0);
+    REQUIRE(native.old_device == nullptr);
+    LLVertexBuffer::setMetalDevice(native.device.get());
+    LLVertexBuffer::setMetalBufferAuthority(true);
+    LLVertexBuffer::initClass(nullptr);
+    struct VertexBackendScope
+    {
+        ~VertexBackendScope()
+        {
+            LLVertexBuffer::flushBuffers();
+            CHECK(LLVertexBuffer::getBytesAllocated() == 0);
+            LLVertexBuffer::cleanupClass();
+            LLVertexBuffer::setMetalBufferAuthority(false);
+            LLVertexBuffer::setMetalDevice(nullptr);
+        }
+    } backend;
+    struct MissingVertexPublisher
+    {
+        ALMetalDevice* previous;
+        explicit MissingVertexPublisher(ALMetalDevice* device) : previous(device)
+        { LLVertexBuffer::setMetalDevice(nullptr); }
+        ~MissingVertexPublisher() { LLVertexBuffer::setMetalDevice(previous); }
+    };
+    const auto read_store = [&native](const ALMetalBuffer* store)
+    {
+        REQUIRE(store);
+        std::vector<U8> bytes(store->length());
+        REQUIRE(store->read(0, bytes.data(), bytes.size(), &native.error));
+        return bytes;
+    };
+    CHECK_FALSE(prepareImagePreviewAvatarBuffer(nullptr));
+    LLPointer<LLVertexBuffer> buffer = new LLVertexBuffer(
+        LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_NORMAL);
+    REQUIRE(buffer->allocateBuffer(3, 3));
+    REQUIRE(buffer->getMetalVertexBuffer());
+    REQUIRE(buffer->getMetalIndexBuffer());
+    CHECK_FALSE(prepareImagePreviewAvatarBuffer(buffer));
+    std::memset(buffer->getMappedData(), 0, buffer->getSize());
+    std::memset(buffer->getMappedIndices(), 0, buffer->getIndicesSize());
+    LLStrider<LLVector3> positions, normals;
+    REQUIRE(buffer->getVertexStrider(positions));
+    positions[0].set(-1.f, -1.f, .5f);
+    positions[1].set(3.f, -1.f, .5f);
+    positions[2].set(-1.f, 3.f, .5f);
+    REQUIRE(buffer->getNormalStrider(normals));
+    for (unsigned vertex = 0; vertex < 3; ++vertex)
+        normals[vertex].set(0.f, 0.f, 1.f);
+    LLStrider<U16> indices;
+    REQUIRE(buffer->getIndexStrider(indices));
+    indices[0] = 0; indices[1] = 1; indices[2] = 2;
+    buffer->unmapBuffer();
+    REQUIRE(prepareImagePreviewAvatarBuffer(buffer));
+    LLImagePreviewAvatar preview(native);
+    preview.geometry_input = buffer;
+    REQUIRE(preview.renderWithoutTarget() ==
+            LLViewerDynamicTexture::ETargetlessRenderResult::COMPLETED);
+    LLImageGL* image = preview.getGLTexture();
+    const auto first_pixels = pixels(native, *image->getMetalTexture());
+    const auto first_identity = image->getMetalTexture()->nativeHandle();
+    const auto first_image_stamp = image->getContentStamp();
+    auto* previous_vertices = buffer->getMetalVertexBuffer();
+    auto* previous_indices = buffer->getMetalIndexBuffer();
+    bool vertex_edit = false;
+    SECTION("a warm vertex generation stays pending until its retry publishes")
+    { vertex_edit = true; }
+    SECTION("a warm index generation stays pending until its retry publishes")
+    {}
+
+    std::vector<U8> expected_vertices, expected_indices;
+    U64 pending_stamp = 0;
+    {
+        MissingVertexPublisher missing(native.device.get());
+        if (vertex_edit)
+        {
+            REQUIRE(buffer->getVertexStrider(positions));
+            positions[1].set(0.f, -1.f, .5f);
+            positions[2].set(-1.f, 0.f, .5f);
+        }
+        else
+        {
+            REQUIRE(buffer->getIndexStrider(indices));
+            indices[1] = 0; indices[2] = 0;
+        }
+        expected_vertices.assign(buffer->getMappedData(),
+                                 buffer->getMappedData() + buffer->getSize());
+        expected_indices.assign(buffer->getMappedIndices(),
+                                buffer->getMappedIndices() + buffer->getIndicesSize());
+        buffer->unmapBuffer();
+        pending_stamp = buffer->getContentStamp();
+        CHECK(buffer->getMetalVertexBuffer() == previous_vertices);
+        CHECK(buffer->getMetalIndexBuffer() == previous_indices);
+        CHECK(buffer->hasPublishedMetalVertexBuffer() == !vertex_edit);
+        CHECK(buffer->hasPublishedMetalIndexBuffer() == vertex_edit);
+        preview.mNeedsUpdate = true;
+        CHECK(preview.renderWithoutTarget() ==
+              LLViewerDynamicTexture::ETargetlessRenderResult::PENDING);
+        CHECK(preview.mNeedsUpdate);
+        CHECK(image->getMetalTexture()->nativeHandle() == first_identity);
+        CHECK(image->getContentStamp() == first_image_stamp);
+        CHECK(pixels(native, *image->getMetalTexture()) == first_pixels);
+    }
+    // No mesh regeneration, map or CPU write occurs after the failure.
+    // The original setBuffer draw boundary retried precisely this state.
+    REQUIRE(preview.renderWithoutTarget() ==
+            LLViewerDynamicTexture::ETargetlessRenderResult::COMPLETED);
+    CHECK_FALSE(preview.mNeedsUpdate);
+    CHECK(buffer->hasPublishedMetalVertexBuffer());
+    CHECK(buffer->hasPublishedMetalIndexBuffer());
+    CHECK(buffer->getContentStamp() == pending_stamp);
+    CHECK(read_store(buffer->getMetalVertexBuffer()) == expected_vertices);
+    CHECK(read_store(buffer->getMetalIndexBuffer()) == expected_indices);
+    CHECK(pixels(native, *image->getMetalTexture()) != first_pixels);
+    CHECK((vertex_edit ? buffer->getMetalIndexBuffer() == previous_indices
+                       : buffer->getMetalVertexBuffer() == previous_vertices));
 }
 
 TEMPLATE_TEST_CASE("Image preview callers recover a missing initial native destination",

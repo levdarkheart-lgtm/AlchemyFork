@@ -861,7 +861,7 @@ bool LLImagePreviewAvatar::render()
         !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT) ||
-        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
+        !prepareImagePreviewAvatarBuffer(buffer))
     {
         LL_DEBUGS("Metal")
             << "Avatar image preview is pending because its native geometry, "

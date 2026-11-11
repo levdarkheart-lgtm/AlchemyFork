@@ -42,6 +42,19 @@ void updateImagePreviewAvatarGeometry(LLVOAvatar* avatar)
         avatar->updateMeshData();
     }
 }
+
+bool prepareImagePreviewAvatarBuffer(LLVertexBuffer* buffer)
+{
+    if (!buffer)
+    {
+        return false;
+    }
+    // The original draw retried pending stores through setBuffer. A prior
+    // native generation can still exist when the current CPU upload failed.
+    buffer->setBuffer();
+    return buffer->hasPublishedMetalVertexBuffer() &&
+        buffer->hasPublishedMetalIndexBuffer();
+}
 }
 
 LLViewerDynamicTexture::ETargetlessRenderResult
