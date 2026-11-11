@@ -1828,6 +1828,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalTexture> identity_lens_flare_state;
     std::unique_ptr<ALMetalTexture> identity_lens_dirt;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> reference_capture_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> debug_buffer_pipelines;
     std::unique_ptr<ALMetalSamplerState> debug_buffer_sampler;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
@@ -2984,6 +2985,18 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->display_sample_pipeline = ALMetalRenderPipeline::create(
         device, display_sample_descriptor, error);
     if (!impl->display_sample_pipeline)
+    {
+        return nullptr;
+    }
+
+    auto reference_capture_descriptor = display_sample_descriptor;
+    reference_capture_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgb10a2_unorm;
+    reference_capture_descriptor.label =
+        "Alchemy original RGB10_A2 reference capture pipeline";
+    impl->reference_capture_pipeline = ALMetalRenderPipeline::create(
+        device, reference_capture_descriptor, error);
+    if (!impl->reference_capture_pipeline)
     {
         return nullptr;
     }
@@ -10701,7 +10714,7 @@ ALMetalWorldGBufferRenderer::capturePresentationReference(
     ALMetalRenderTargetDescriptor descriptor;
     descriptor.width = input.width;
     descriptor.height = input.height;
-    descriptor.colors[0].format = input.colors[0].format;
+    descriptor.colors[0].format = ALMetalPixelFormat::rgb10a2_unorm;
     descriptor.colors[0].label =
         "Alchemy native final-presentation reference color";
     descriptor.label = "Alchemy native final-presentation reference target";
@@ -10716,9 +10729,44 @@ ALMetalWorldGBufferRenderer::capturePresentationReference(
     ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
         "Alchemy native final-presentation reference capture",
         owned_command, error);
-    const bool copied = command && output->copyColorFrom(
-        *command, 0, *input_texture, {}, error);
-    if (!mImpl->finishCommandBuffer(owned_command, copied, error))
+    bool encoded = false;
+    if (command && input.colors[0].format == ALMetalPixelFormat::rgb10a2_unorm)
+    {
+        encoded = output->copyColorFrom(
+            *command, 0, *input_texture, {}, error);
+    }
+    else if (command)
+    {
+        // Original reference stills always used RGB10_A2. Preserve the raw
+        // ten-bit copy above, and normalize SDR RGB/alpha into that storage.
+        ALMetalRenderPassConfig config;
+        config.colors[0].load = ALMetalLoadAction::dont_care;
+        config.colors[0].store = ALMetalStoreAction::store;
+        auto pass = output->makeRenderPass(config, error);
+        auto encoder = pass ? ALMetalRenderEncoder::begin(
+            *command, *pass, "Alchemy normalized reference capture", error)
+            : nullptr;
+        if (encoder)
+        {
+            const ALMetalViewport viewport{
+                0.0, 0.0, static_cast<double>(input.width),
+                static_cast<double>(input.height), 0.0, 1.0,
+            };
+            const ALMetalScissorRect scissor{0, 0, input.width, input.height};
+            const bool drawn =
+                encoder->setViewport(viewport, error) &&
+                encoder->setScissor(scissor, error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setPipeline(*mImpl->reference_capture_pipeline, error) &&
+                encoder->setFragmentTexture(0, input_texture, error) &&
+                encoder->setFragmentSampler(
+                    0, mImpl->point_clamp_sampler.get(), error) &&
+                encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+            const bool ended = encoder->end(error);
+            encoded = drawn && ended;
+        }
+    }
+    if (!mImpl->finishCommandBuffer(owned_command, encoded, error))
     {
         return nullptr;
     }
@@ -10846,7 +10894,8 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
         if (reference.type != ALMetalTextureType::texture_2d ||
             reference.width != source.width ||
             reference.height != source.height ||
-            reference.format != source_format ||
+            (reference.format != ALMetalPixelFormat::rgba8_unorm &&
+             reference.format != ALMetalPixelFormat::rgb10a2_unorm) ||
             reference.array_length != 1 ||
             reference.mipmap_level_count != 1 ||
             reference.sample_count != 1 ||

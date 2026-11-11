@@ -1525,6 +1525,7 @@ struct ALMetalWorldRlvSphereScene
 struct ALMetalWorldPresentationScene
 {
     const ALMetalRenderTarget* source = nullptr;
+    // Same-sized normalized RGBA8 or RGB10_A2, independently of source format.
     const ALMetalTexture* reference_texture = nullptr;
     std::uint32_t reference_mode = 0;
     float reference_position = 0.5f;
@@ -2319,6 +2320,7 @@ public:
     // presentation pass. The copy stays on the GPU and joins an active
     // command batch, so a reference is never published from a transaction
     // whose later presentation or UI owner failed.
+    // Original still storage is RGB10_A2 for both normalized display modes.
     std::unique_ptr<ALMetalRenderTarget> capturePresentationReference(
         const ALMetalRenderTarget& source,
         std::string* error = nullptr);

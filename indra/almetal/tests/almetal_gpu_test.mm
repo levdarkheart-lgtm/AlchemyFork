@@ -28434,14 +28434,21 @@ TEST_CASE("almetal: world final presentation owns the complete print chain", "[a
         INFO(error);
         REQUIRE(reference);
         CHECK(reference->descriptor().colors[0].format ==
-              ALMetalPixelFormat::rgba8_unorm);
-        std::array<std::uint8_t, width * height * 4>
+              ALMetalPixelFormat::rgb10a2_unorm);
+        std::array<std::uint32_t, width * height>
             captured_reference_pixels{};
         REQUIRE(reference->colorTexture(0)->readback(
             *device, 0, 0, {}, captured_reference_pixels.data(),
             width * 4, &error));
         INFO(error);
-        CHECK(captured_reference_pixels == reference_pixels);
+        constexpr std::uint32_t reference_packed =
+            ((224u * 1023u + 127u) / 255u) |
+            (((32u * 1023u + 127u) / 255u) << 10u) |
+            (((80u * 1023u + 127u) / 255u) << 20u) |
+            (((63u * 3u + 127u) / 255u) << 30u);
+        CHECK(std::all_of(captured_reference_pixels.begin(),
+                          captured_reference_pixels.end(),
+                          [](auto pixel) { return pixel == reference_packed; }));
         ALMetalWorldPresentationScene reference_scene = flat_scene;
         reference_scene.reference_texture = reference->colorTexture(0);
         reference_scene.reference_mode = 1;
@@ -28456,7 +28463,7 @@ TEST_CASE("almetal: world final presentation owns the complete print chain", "[a
         CHECK(wipe_pixels[left + 0] == 80u);
         CHECK(wipe_pixels[left + 1] == 32u);
         CHECK(wipe_pixels[left + 2] == 224u);
-        CHECK(wipe_pixels[left + 3] == 63u);
+        CHECK(wipe_pixels[left + 3] == 85u);
         CHECK(wipe_pixels[right + 0] == flat_rgba[2]);
         CHECK(wipe_pixels[right + 1] == flat_rgba[1]);
         CHECK(wipe_pixels[right + 2] == flat_rgba[0]);
@@ -28486,9 +28493,10 @@ TEST_CASE("almetal: world final presentation owns the complete print chain", "[a
         CHECK(error == "Metal world presentation reference is missing");
         invalid.reference_texture = hdr_source->colorTexture(0);
         error.clear();
-        CHECK_FALSE(renderer->renderPresentationPost(invalid, &error));
-        CHECK(error ==
-              "Metal world presentation reference is incompatible");
+        auto compatible_reference = renderer->renderPresentationPost(
+            invalid, &error);
+        INFO(error);
+        REQUIRE(compatible_reference);
         invalid = flat_scene;
         invalid.cvd_mode = 4;
         error.clear();
