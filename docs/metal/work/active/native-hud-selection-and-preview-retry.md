@@ -200,3 +200,44 @@ Matching full registered tests/static/strict checks precede normal feature-branc
 push and new ZIP+SHA/extraction/signature verification. Concurrent untracked
 research files are excluded/untouched. No further CI dispatch/upload/viewer/
 window/utility/screenshot action. Product gates remain open.
+
+## Combined source build and delivery — 2026-11-11
+
+Clean tracked9f42b8660639e8827f8449a64cf0248fef6d90c0 includes all integrated
+fixes through8ce7. Root integration peer verifies all13lifecycle files byte-exact
+and only five CMake additions: dynamic-destination-integration-peer.json.
+Foreground doctor/configure/tools/metal/build.sh exit0/0/0; Release/LTO OFF,
+ARM64 and dependency installOFF in the isolated followup tree. Build366.02sec
+reused completed objects. Original app and older archive unchanged.
+
+The original background build was deliberately interrupted130 after macOS
+background priority throttled compilation. Same source/cache/objects resumed in
+an independent user job. launchctl submit unexpectedly restarted the completed
+wrapper; its existing-receipt guard rejected each retry before stage/build
+mutation. Full stderr is preserved; job removed. Subsequent verification uses
+temporary RunAtLoad/KeepAliveFalse bootstrap and exits once with0; removed.
+No product code change or viewer operation was needed for the scheduling remedy.
+
+Matching registered validation: policy652/20; full LLRender453086assertions/
+474passed+one skipped (Noto-COLRv1 single CPAL palette); alrender563966/115 pass.
+Both renderer logs explicitly confirm API/GPU validation. Static checks exit0:
+346ARM64 Mach-O; strict deep signature; main viewer and both owned media-host
+graphics imports; exact native MSL/metallib/notices; zeroGLSL;332VLC plugin names/
+bytes exact versus original335 minus three exclusions. Strict source3514files/
+912informational/0blockers/0errors. Full viewer scenes/runtime/performance unrun.
+
+Alpha4 version26.4.0.68836 ZIP319934684bytes, SHA256
+7e74d96fb3c991286fd4bbb44ac56fae3f21a72f9aed0b7e58d2f77535d2314e.
+All7840files/links and modes match after ditto extraction; checksum and source/
+extracted strict signatures0. Identity+policy662/21 pass; test binaries unchanged.
+Viewer executable SHA2560f0bd2c2f8ce255842a923aaef02a37ba05cd77b48ff4124d27d82992e31e7ec.
+Evidence under artifacts/metal/feature-completion-20261111/:
+hud-preview-alpha-{foreground-build-state,foreground-job,checks-job,checks-state,
+registered-validation,validation,strict-source,zip-validation}.json and logs.
+
+Owner supersedes manual-upload-only delivery and explicitly requests a NEW GitHub
+release from the local build because Actions budget is exhausted. Root next pushes
+the feature branch normally, creates draft26.4.0.68836-alpha4 at exact9f42,
+uploads ZIP+SHA, verifies remote asset digests, then publishes/verifies tag/source.
+No workflow dispatch or billing changes. Older remote release tag68825 already
+contains the earlier319936679byte ZIP; preserve it. Repository currently public.

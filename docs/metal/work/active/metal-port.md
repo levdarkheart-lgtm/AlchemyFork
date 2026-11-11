@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `8ce7e33f71`; identified fixes integrated, combined build pending.
+**Integrated checkpoint:** Commit `8ce7e33f71`; source `9f42b86606` built/tested/packaged.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -138,33 +138,29 @@ Evidence: followup-* and manual-alpha-* receipts under feature-completion-202611
 
 ## Immediate executable action
 
-Root owns integration/docs; all child source released and GPU jobs closed.
-114 and handoff6bf pushed normally to private origin; CLI works. Action43094454819
-failed before steps for payments/spending-limit restrictions; no tag/build/release
-or billing changes. Owner requested manual ZIP+SHA: delivered68825/114 preserved.
-No further CI dispatch/upload/publishing; owner-passed f254 stays untouched.
+All identified fixes integrated through8ce7: selected HUD faces/debug overlays,
+per-owner current-buffer preparation (including vertex-only admission), four
+preview destination retries and early bake metadata bootstrap. Scheduler/generator
+and metadata-valid no-backing bake adoption preserved; original projections,
+actual old-body red/green controls and peers in linked followup note. No identified
+coding fix remains; full scene/physical OOM evidence stays unverified.
 
-Integrated39preview gates: actual helper1494/1 and combined3354/7API/GPU pass
-after13baseline failures. HUD208 selected faces18150/6pass after813failures,
-original alpha/blend/order negatives retained. HUD578 diagnostics61654/3pass
-after15failures; API enabled/validation env recorded, shader property unprobed.
-LLVB4a6 per-buffer retry preserves unrelated buffers and vertex-only owners;
-19875/4API/GPU pass. Preview/UI/HUD/outline/pipeline consumerscc788/ef0/175
-qualify before handle capture: cached UI82335/5pass after2baseline failures;
-pipeline306/5pass after35. Original owner/filter/layout projections and peers pass.
-Final8ce7 integrates child8bfb/five private CMake sources: four preview destination
-retries plus early bake metadata bootstrap. Actual old bodies expose5failures;
-fixed3991/10, combined7357/18API/GPU, CPU reset12/1 and6ReleaseTUs pass; peer
-no blockers. Scheduler/generator unchanged; valid-metadata bake can still adopt
-without old backing. Detailed source hashes/receipts in linked followup note.
-No identified coding fix remains; full scene/physical OOM evidence stays unverified.
+Combined9f42/68836 doctor/configure/build0/0/0, Release/LTO OFF. Full matching
+LLRender453086assertions/474passed+one CPAL skip; alrender563966/115; policy652/20
+pass. Both renderer logs confirm API/GPU validation. Static346ARM64/332exact VLC/
+signatures/owned imports/resources/zeroGLSL pass; strict3514/912info/0block/error.
+ZIP319934684bytes/7840exact files+links+modes after extraction/signature/checksum0.
+SHA2567e74d96fb3c991286fd4bbb44ac56fae3f21a72f9aed0b7e58d2f77535d2314e.
+Evidence hud-preview-alpha-{foreground-build-state,validation,registered-validation,
+strict-source,zip-validation,checks-state}.json. Background attempt interrupted130
+intentionally, same source/objects resumed; job-wrapper restarts blocked by guard.
+All temporary jobs removed; passed f254/older ZIP unchanged; no new product launch.
 
-Freeze docs; doctor/configure/full build final Alpha4 in isolated followup tree,
-preserving old Alpha4 before configure and original f254 in place. Run matching
-full LLRender/alrender, affected policy/static/strict checks, normal feature-branch
-push, fresh versioned ZIP+SHA and exact extraction/signature verification. Keep
-concurrent untracked docs/metal/research files excluded/untouched. No viewer/
-window/utility launch or screenshots; full-product completion remains unclaimed.
+Owner now authorizes new GitHub release from local ZIP+SHA because Actions budget
+is exhausted. Push normally; create draft26.4.0.68836-alpha4 at exact9f42, upload
+and verify remote asset digests, publish and verify tag/source. No dispatch or
+billing changes. CLI works; repository currently public. Concurrent untracked
+research files excluded/untouched. Full-product completion remains unclaimed.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all

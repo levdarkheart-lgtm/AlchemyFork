@@ -2,9 +2,9 @@
 
 **Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `8ce7e33f71` (identified fixes integrated; combined build pending).
+**Renderer code checkpoint:** `8ce7e33f71`; combined source `9f42b86606` built/tested/packaged.
 **Owner-passed viewer:** `f254feb048`,26.4.0d68817; provisional “pass...for now”.
-Alpha4 source114 is built/tested/packaged; newer previews are source-tested. Owner superseded the earlier
+Alpha4 version68836 is built/tested/packaged; publication pending. Owner superseded the earlier
 no-launch instruction and requested the ready viewer for manual confirmation.
 Fresh26.4.0d68817 launched with open -na; exact new executable PID90460 was
 confirmed alive. No login action or screenshots by the agent; utility unexecuted.
@@ -114,35 +114,31 @@ hashes and identity. No viewer launch or upload. Passed f254 binary unchanged.
 
 ## Exact next actions
 
-Root owns canonical integration/docs; child source released and GPU jobs closed.
-114 and later handoff6bf pushed normally to private origin feature branch; new
-fixes await combined validation/push. CLI/keyring works. Tag a Build43094454819
-failed before steps for account payments/spending limit; no tag/build/release
-created or billing changes. Owner requested manual ZIP+SHA instead. Delivered
-68825/114 stays immutable; no further CI dispatch/upload/publishing.
+All identified source fixes integrated: preview/HUD duties39/208/578,
+per-owner current-buffer preparation4a6/cc788/ef0/175 and final8ce7 recovery for
+four preview destinations/early bake metadata. Source peers/original projections
+and red/green controls are recorded in the linked followup note. No identified
+code fix pending; full scenes/physical OOM remain unexecuted.
 
-HUD selected faces208 and diagnostics578 restore original native capture/blend/
-mask duties. Actual6case18150 and3case61654 checks pass after813/15baseline
-failures, with independent peers/production syntax checks. Diagnostic shader-
-validation property was not directly probed; full selectedTE/HUD scenes unrun.
-Preview39 restores3current-store gates: actual helper1494/1 and combined3354/7
-API/GPU pass after13baseline failures. LLVB4a6 adds per-buffer prepare, preserving
-vertex-only draws and independent buffers; actual19875/4API/GPU pass. Consumers
-cc788/ef0/175 cover previews, UI/HUD/outline and31pipeline owners (5vertex-only).
-Actual cached-UI82335/5pass after2baseline failures; pipeline306/5pass after35.
-Final8ce7 integrates child8bfb:4preview destination retries and early bake metadata
-bootstrap. Actual old bodies2123/10 expose5failures; fixed3991/10 and combined
-7357/18API/GPU pass. CPU reset12/1,6productionReleaseTUs and independent peer
-pass. Healthy images/metadata-valid bake adoption remain allocation-independent.
-Full scene/physical OOM testing unexecuted; no new identified code fix pending.
+Combined9f42/26.4.0.68836 Release/LTO OFF: doctor/configure/build0/0/0;
+matching policy652/20, LLRender453086assertions/474passed+one known CPAL skip,
+alrender563966/115 pass. Both renderer suites confirm API/GPU validation. Static
+346ARM64/332exact VLC/signature/viewer+owned-host imports/resources/zeroGLSL pass.
+Strict3514files/912info/0blockers/0errors. ZIP319934684bytes; all7840files/links
+and modes exact after extraction; source/extracted signature and checksum0.
+SHA2567e74d96fb3c991286fd4bbb44ac56fae3f21a72f9aed0b7e58d2f77535d2314e.
+Receipts: hud-preview-alpha-{foreground-build-state,registered-validation,
+validation,strict-source,zip-validation,checks-state}.json. Original background
+attempt intentionally interrupted130; unchanged source/objects resumed at normal
+priority. Temporary job wrapper restart was blocked by receipt guard; removed.
+All build/check jobs now terminal/removed; original f254 and older ZIP unchanged.
 
-Next: freeze docs, doctor/configure/full build as Alpha4 in isolated followup
-tree; preserve old Alpha4 before configure and keep owner-passed f254 untouched.
-Run matching full LLRender/alrender, affected policy/static/strict source checks,
-then normal feature-branch push and new versioned ZIP+SHA with extraction/signature
-verification. No viewer/window/utility launch or screenshots. Research files
-under docs/metal/research are untracked concurrent work; preserve/exclude them.
-All detailed source/peer/failure receipts are in the linked followup note.
+Owner now explicitly authorizes a new GitHub release with locally built ZIP+SHA,
+bypassing exhausted Actions budget. Next: normal feature-branch push; draft/upload
+26.4.0.68836-alpha4 against exact9f42, verify remote asset digests, publish and
+verify tag/source. No Actions dispatch. Repository currently public; CLI works.
+No viewer/window/utility launch or screenshots. Concurrent untracked research
+files remain untouched/excluded. Full-product gates remain open.
 
 ## Complete-product advancement assessment
 
