@@ -173,6 +173,7 @@ if(AL_BUILD_TESTS)
       tests/alvertex_range_test.cpp
       tests/alvertex_draw_metal_test.cpp
       tests/alvertex_label_metal_test.mm
+      tests/alvertex_publication_metal_test.cpp
       tests/alimagegl_metal_test.cpp
       tests/alfont_atlas_metal_test.cpp
       tests/alprimitiveplot_test.cpp
@@ -281,7 +282,6 @@ if(AL_BUILD_TESTS)
       tests/llrendertarget_gl_test.cpp
       tests/llrendersphere_gl_test.cpp
       tests/lluiimage_test.cpp
-      tests/llvertexbuffer_gl_test.cpp
     LIBRARIES llrender
     SUPPORT llrender_test_checks llcommon_test_checks
     DEFINES ${font_defines}
