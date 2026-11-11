@@ -10108,6 +10108,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         const bool use_predication =
                             shaderInputs().mLocal.mSMAAPredication;
                         ALMetalWorldSMAAScene smaa;
+                        smaa.use_stencil = mResourceInputs.mSMAAStencil;
                         smaa.intermediates = RenderBufferVisualization == 5 ||
                             RenderBufferVisualization == 6 ? &debug_smaa : nullptr;
                         smaa.source = display_target.get();
