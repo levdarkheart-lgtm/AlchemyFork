@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `696c43ba78`; canonical build in progress.
+**Renderer checkpoint:** Commit `815416675e`; native resource regression build in progress.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -19,9 +19,12 @@ removal, native About/report identity, Developer Frame Profile and native fixed
 texture benchmark. Native draw regressions67598assertions/42cases and combined
 FrameProfile/utility/preview regressions60425/12 pass with Metal validation.
 Registered benchmark target and GPU integration run0,19123assertions/10cases.
-Canonical app remains older30ef2ccb69/68655; current frozen696c43ba78 build
-is in progress, handle14238. CURRENT pins isolated image readback/helper
-cleanup, vertex labels and displaced profiler/primitive-counter work.
+Frozen696c43ba78 app build0; canonical68677 verified349ARM64/0invalid,
+deepcodesign0 and viewerimports0forbidden. New image readback/helper cleanup,
+native labels, displaced shader profiler, primitive-counter fix, SDL context/
+OpenGL dependency removal and native build gates are integrated through815416675e;
+full dependent native regression build79692 is in progress. CURRENT pins
+isolated generic wrapper cleanup and read-only menu/water diagnostic audits.
 No launches. Exact commands/failures in latest note.
 
 Earlier verified bounded checkpoints below remain included; their older build

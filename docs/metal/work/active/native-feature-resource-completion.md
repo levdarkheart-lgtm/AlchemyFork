@@ -1,6 +1,6 @@
 # Native feature and resource completion — 2026-11-11
 
-**Integrated checkpoint:** `696c43ba78` (benchmark registration/cleanup complete).
+**Integrated checkpoint:** `815416675e`; latest verified app696c43ba78.
 **Reference:** original viewer `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`;
 compare immediate native source and transition `3087308155` too.
 Host M1 Max /64GiB /macOS26.5.2 /Xcode26.6, native ARM64.
@@ -77,18 +77,73 @@ All listed completed commands exit0 unless explicitly stated.
 | frame-profile-counter-capabilities.log | Physical M1 Max stage-boundary timestamps only |
 | utility-vertex-gl-audit.json/log | Strict exit1:1427 findings/2406 files,146 call syntax before subsequent manager/draw cleanup |
 
-Canonical app remains the older30ef2ccb69/26.4.0d68655 verified checkpoint.
-See native-shader-owner-cleanup.md and shader-native-identities.json for exact
-hashes, link65 failure/restoration and final0 build/import/codesign checks.
-Do not attribute that app to current source. Frozen696c43ba78 doctor/configure/
-build sequence is running, handle14238; feature-native-*.log receipts.
+Frozen696c43ba78 canonical doctor/configure/build exits0; version26.4.0d68677.
+verify_app0:349Mach-O/0invalidARM64; deepstrictcodesign0; viewer imports have no
+OpenGL/Vulkan/MoltenVK/ANGLE framework or GL/CGL/SDL_GL undefined symbols.
+feature-native-identities.json pins executable SHA256
+`a222d0dfffe8612f9fb5adcd7a7ecb948882726a65f66c3905886809182c6984`
+and metallibSHA256
+`b8da56415b3546dedc50882109b20568ab4a8ec6f6bf8d3885e6165ea18e3f89`.
+feature-native-doctor.log/configure.log/app-build.log/verify-app.log/codesign.log
+and feature-native-viewer-imports.log retain exact command results. Earlier
+30ef2ccb69/link65/restoration receipts remain in native-shader-owner-cleanup.md.
+The current815416675e source still requires a new canonical build.
+
+## Integrated image, label, profiler and context follow-up
+
+b91d739a46 aligns readBackRaw's type, compressed allocation and BC row pitch
+with the already-published native owner while a replacement upload is pending.
+The original viewer's publication boundary and immediate native producer code
+were checked separately; producer getStorageInternalFormat stays live-build.
+Baseline325354e4da fails both real staged-generation cases (RGBA8-to-float
+rejects old byte readback; BC1-to-BC3 incorrectly allocates64 instead of32bytes).
+Fixed no-layout implementation passes83assertions/2cases under Metal validation,
+including cancel/publish, old/new texture identity, exact bytes and accounting.
+Evidence `/private/tmp/alchemy-image-publication-validation/` baseline/fixed
+GPU logs and Release compile/link receipts.31db370a3d then removes13physical
+GL calls, dead name/deferred-delete pools, accounting map and allocation/helper
+graph.29 native publication/worker/rollback/alpha/mip/readback methods compare
+unchanged;12 Release TU syntax checks0. Disabled-manager destruction coverage
+is preservation evidence, not a newly discovered baseline accounting bug.
+The changed image class layout requires rebuilt dependent GPU tests.
+
+2e2b542800 labels actual Metal vertex/index resources across publication/reuse,
+removes always-zero GL fields, nine displaced pointer pairs, old GL label macro
+and exact excluded face block. The original pass-name switch is retained.
+Seven Release syntax checks0; physical label/lifetime test awaits root execution.
+815416675e registers new image/label/primitive regressions and removes the last
+seven image pointer pairs after their production consumers disappeared.
+
+d0f6fcf6f0 removes the disconnected GL per-shader query profiling engine after
+actual native Frame Profile and benchmark replacement.27 retained native shader/
+uniform methods compare unchanged;10 Release TU syntax checks0. d397b548ca
+checks actual primitive query support before plotting, preserving supported
+empty-workload zero semantics without fabricating unsupported zero measurements.
+The actual profiler-enabled owner fails two baseline assertions (exit42), then
+passes7assertions/1case after repair (exit0); primitive-profile-baseline/fixed
+logs and consumer census are retained under `/private/tmp/`.
+
+e4d33e2278 removes uncalled SDL shared WGL/EGL context APIs and reset callbacks;
+original1eb44 workers needed shared GPU namespaces, while current native uploads
+share Metal resources and no callers remain. Release syntax check0 in
+window-tail-syntax.log. b17ba5d131 removes unused application/plugin OpenGL
+package/link declarations after production GL entrypoint census.007defc0cf
+enforces native macOS/ARM64 and rejects the optional dependency OpenGL demo.
+Actual configure/build validation for this newer checkpoint is pending.
+
+`image-label-profile-native-test-build.log` is running(handle79692) to rebuild
+all header dependents before image/layout and label execution. Latest strict
+audit(image-label-native-gl-audit.json/log) exits1:1257findings/2406files,
+36call-syntax matches. Remaining physical matches are unsupported Win32 source;
+CPU coordinate helpers, glTF strings and native compatibility class names also
+match. Do not equate this with the strict release gate passing.
 
 ## Next boundary
 
-Root completes registered benchmark test, displaced shader removal and canonical
-build. Isolated image owner fixes readback mixing pending type/format with the
-old published texture before removing audited dead GL helpers. Vertex-label
-owner preserves diagnostics on real Metal allocations, removes displaced
-pointer declarations and excluded code. Read-only menu/RLVa audit continues.
+Root completes rebuilt image/label/profiler/draw regressions, integrates bounded
+dead generic render wrappers/water helpers, then freezes a new canonical build.
+Read-only exhaustive menu audit and independent label/water diagnostic review
+continue. Unsupported Win32 source, native-name inventory false positives and
+excluded legacy test fixtures still require original-mapped scope resolution.
 CURRENT pins exclusive files/worktrees. Full parity, source/runtime zero-GL,
 stability, release review and multi-scene performance are still open.
