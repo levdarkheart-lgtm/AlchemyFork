@@ -255,6 +255,20 @@ public:
     U32 getNumVerts() const                 { return mNumVerts; }
     U32 getNumIndices() const               { return mNumIndices; }
 
+    struct DrawRange
+    {
+        U32 first_vertex;
+        U32 vertex_count;
+        U32 first_index;
+        U32 index_count;
+    };
+
+    // Appending requires adjacent vertex and index spans in this same buffer.
+    // Check actual allocation bounds, independently of optional debug checks.
+    bool canAppendRange(const DrawRange& current,
+                        const LLVertexBuffer& next_buffer,
+                        const DrawRange& next) const noexcept;
+
     U32 getTypeMask() const                 { return mTypeMask; }
     bool hasDataType(AttributeType type) const { return ((1 << type) & getTypeMask()); }
     U32 getSize() const                     { return mSize; }

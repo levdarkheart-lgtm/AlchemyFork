@@ -5734,10 +5734,12 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         info->mVertexBuffer == facep->getVertexBuffer() &&
         info->mEnd == facep->getGeomIndex()-1 &&
         (LLPipeline::sTextureBindTest || draw_vec[idx]->mTexture == tex || batchable) &&
-#if LL_DARWIN
-        info->mEnd - draw_vec[idx]->mStart + facep->getGeomCount() <= (U32) gGLManager.mGLMaxVertexRange &&
-        info->mCount + facep->getIndicesCount() <= (U32) gGLManager.mGLMaxIndexRange &&
-#endif
+        info->mVertexBuffer->canAppendRange(
+            {info->mStart, U32(info->mEnd) - info->mStart + 1,
+             info->mOffset, info->mCount},
+            *facep->getVertexBuffer(),
+            {facep->getGeomIndex(), facep->getGeomCount(),
+             U32(facep->getIndicesStart()), facep->getIndicesCount()}) &&
         // indexed batches deliberately merge different materials, so the
         // per-material id (and legacy shiny) differs across the batch -- the
         // slot list (checked via `batchable` above) governs membership instead.

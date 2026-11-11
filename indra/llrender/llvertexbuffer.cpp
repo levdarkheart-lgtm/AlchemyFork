@@ -399,6 +399,26 @@ void LLVertexBuffer::drawElements(U32 mode, const LLVector4a* pos, const LLVecto
     gGL.flush();
 }
 
+bool LLVertexBuffer::canAppendRange(const DrawRange& current,
+                                    const LLVertexBuffer& next_buffer,
+                                    const DrawRange& next) const noexcept
+{
+    if (this != &next_buffer) return false;
+    const auto fits = [this](const DrawRange& range)
+    {
+        return range.vertex_count != 0 && range.index_count != 0 &&
+            range.first_vertex < mNumVerts &&
+            range.vertex_count <= mNumVerts - range.first_vertex &&
+            range.first_index < mNumIndices &&
+            range.index_count <= mNumIndices - range.first_index;
+    };
+    return fits(current) && fits(next) &&
+        next.first_vertex >= current.first_vertex &&
+        next.first_vertex - current.first_vertex == current.vertex_count &&
+        next.first_index >= current.first_index &&
+        next.first_index - current.first_index == current.index_count;
+}
+
 bool LLVertexBuffer::validateRange(U32 start, U32 end, U32 count, U32 indices_offset) const
 {
     if (!gDebugGL)
