@@ -17365,7 +17365,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setFragmentTexture(
                     4, refraction_depth, error) &&
                 encoder->setFragmentSampler(
-                    0, mImpl->diffuse_sampler.get(), error) &&
+                    0, water.normal_maps_mipped
+                        ? mImpl->diffuse_sampler.get()
+                        : mImpl->point_repeat_sampler.get(), error) &&
                 encoder->setFragmentSampler(
                     1, mImpl->linear_clamp_sampler.get(), error) &&
                 mImpl->setVertexData(*encoder, *command,

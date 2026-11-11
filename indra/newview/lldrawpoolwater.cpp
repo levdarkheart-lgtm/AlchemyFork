@@ -182,6 +182,9 @@ bool LLDrawPoolWater::captureMetalWaterSurface(bool direct_probe)
     }
     metal_water.normal_maps[0] = metal_a;
     metal_water.normal_maps[1] = metal_b;
+    static LLCachedControl<bool> normal_maps_mipped(
+        gSavedSettings, "RenderWaterMipNormal", true);
+    metal_water.normal_maps_mipped = normal_maps_mipped();
     std::memcpy(metal_water.modelview,
                 camera.getModelview().getF32ptr(),
                 sizeof(metal_water.modelview));

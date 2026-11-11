@@ -1164,6 +1164,9 @@ struct ALMetalWorldWaterSurface
     bool refracts = false;
     bool has_excluded_surface = false;
     bool uses_shadows = false;
+    // Original RenderWaterMipNormal selects AnisoWrap or PointWrap for both
+    // normal maps, independently of the wave height-map vertex sampler.
+    bool normal_maps_mipped = true;
 };
 
 // The shared environment subset used by post-deferred transparent geometry.
