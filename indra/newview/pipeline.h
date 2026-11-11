@@ -738,18 +738,6 @@ public:
     ColorGradeConfig colorGradeConfig(bool apply_color_grade) const;
     void colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool tonemap, bool colorgrade,
                       const Bloom* bloom = nullptr);
-    // Whether generateBloomHDR can run: the pyramid is deep enough and every
-    // shader it needs built. It makes none at zero bloom and halation strength.
-    bool bloomHDRReady() const;
-    Bloom generateBloomHDR(LLRenderTarget* src, ALTransientTargets& scope);
-    // Optional retained handles for the debug visualization selector. The
-    // native display transaction owns SMAA and does not publish transitional
-    // GL edge/weight targets into this post chain.
-    struct SMAATargets
-    {
-        LLRenderTarget* mEdges = nullptr;
-        LLRenderTarget* mBlend = nullptr;
-    };
     // Depth of field from mRT->screen into a target of the screen's description
     // from @a scope, which the post chain reads in the screen's place; null where
     // it does not run. The screen keeps the sharp scene.
@@ -788,16 +776,7 @@ public:
         bool computed = false;
     };
     DepthOfFieldConfig depthOfFieldConfig() const;
-#if !LL_DARWIN
-    bool depthOfFieldProgramsReady(
-        const DepthOfFieldConfig& config) const;
-#endif
     void updateDepthOfFieldFocus();
-#if !LL_DARWIN
-    LLRenderTarget* renderDoF(ALTransientTargets& scope);
-    // The description depth of field's blur was last taken at, freed from the pool when its scale moves on.
-    std::optional<ALRenderTargetDesc> mDoFBlurDesc;
-#endif
     DepthOfFieldFocus mDepthOfFieldFocus;
 
     /// Take a point-sampled copy of the presented frame for the scopes floater
@@ -1761,8 +1740,7 @@ public:
         LLRenderTarget          screen;
         LLRenderTarget          deferredScreen;
 
-        // How deep the HDR bloom pyramid generateBloomHDR acquires is: the
-        // levels the plan describes, from the first, that the pool can build.
+        // HDR bloom depth requested by the plan; native post owns its pyramid.
         U32                         bloomMipCount = 0;
     };
 
@@ -1945,11 +1923,6 @@ public:
 
     // Legacy GL noise names remain zero on Darwin. Native readiness is the exact size of the publications above.
     U32                 mNoiseMap;
-    U32                 mTrueNoiseMap;
-    //smaa
-    U32                 mSMAAAreaMap = 0;
-    U32                 mSMAASearchMap = 0;
-    U32                 mSMAASampleMap = 0;
 
     // The lens distortion auto-fit scale, and what it was solved for. The
     // solve walks the frame edge and an interior grid, and its inputs move
