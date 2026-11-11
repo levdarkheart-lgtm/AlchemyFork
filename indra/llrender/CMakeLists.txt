@@ -105,7 +105,6 @@ target_link_libraries(
     ll::freetype
     ll::harfbuzz
     ll::plutosvg
-    ll::glext
 )
 
 target_precompile_headers(llrender REUSE_FROM llprecompiled)
@@ -116,7 +115,7 @@ endif()
 
 if(AL_BUILD_TESTS)
   # llrender pulls in llcommon / llimage / llmath / llfilesystem / llxml /
-  # llwindow + ll::freetype / ll::harfbuzz / ll::plutosvg / ll::glext via
+  # llwindow + ll::freetype / ll::harfbuzz / ll::plutosvg via
   # its own target_link_libraries; transitive linking propagates them to
   # consumers, so listing llrender alone is enough.
 

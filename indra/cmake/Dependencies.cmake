@@ -96,7 +96,6 @@ al_import(ll::vorbis       PACKAGE Vorbis          CONFIG TARGETS Vorbis::vorbis
 al_import(ll::xxhash       PACKAGE xxHash          CONFIG TARGETS xxHash::xxhash)
 
 # Header-only ports, and the library kept in the tree.
-al_import(ll::glext        HEADER GL/glcorearb.h)
 al_import(ll::pocketfft    HEADER pocketfft_hdronly.h DEFINES POCKETFFT_NO_MULTITHREADING)
 al_import(ll::tinygltf     HEADER tiny_gltf.h)
 al_import(ll::vhacd        HEADER VHACD.h)

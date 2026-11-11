@@ -86,7 +86,6 @@
       "name": "open-libndofdev",
       "platform": "linux"
     },
-    "opengl-registry",
     "openjpeg",
     {
       "name": "openssl",
