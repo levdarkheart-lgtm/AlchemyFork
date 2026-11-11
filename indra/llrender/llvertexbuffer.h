@@ -95,12 +95,6 @@ typedef std::list<LLVertexBufferData> buffer_data_list_t;
 class LLVertexBuffer final : public LLRefCount
 {
 public:
-    struct MappedRegion
-    {
-        U32 mStart;
-        U32 mEnd;
-    };
-
     LLVertexBuffer(const LLVertexBuffer& rhs) = delete;
     const LLVertexBuffer& operator=(const LLVertexBuffer& rhs) = delete;
 
@@ -113,18 +107,6 @@ public:
     // selection remains live while duplicate GL buffer ownership is removed.
     static void setMetalBufferAuthority(bool enabled) noexcept;
     static bool isMetalBufferAuthority() noexcept;
-    // CPU-authored preview meshes can publish directly to their Metal buffers
-    // without manufacturing duplicate OpenGL names. The scope is nestable and
-    // main-thread local to the producer that owns the upload.
-    class ScopedMetalOnlyUpload final
-    {
-    public:
-        ScopedMetalOnlyUpload();
-        ~ScopedMetalOnlyUpload();
-        ScopedMetalOnlyUpload(const ScopedMetalOnlyUpload&) = delete;
-        ScopedMetalOnlyUpload& operator=(const ScopedMetalOnlyUpload&) = delete;
-    };
-    static bool metalOnlyUploadActive() noexcept;
 #endif
     static void setupClientArrays(U32 data_mask);
     static void drawArrays(U32 mode, const std::vector<LLVector3>& pos);
@@ -342,13 +324,7 @@ protected:
     bool mMetalIndicesInitialized = false;
 #endif
 
-    std::vector<MappedRegion> mMappedVertexRegions;  // list of mMappedData byte ranges that must be sent to GL
-    std::vector<MappedRegion> mMappedIndexRegions;   // list of mMappedIndexData byte ranges that must be sent to GL
-
 private:
-#if LL_DARWIN
-    static thread_local U32 sMetalOnlyUploadDepth;
-#endif
     // DEPRECATED
     // These function signatures are deprecated, but for some reason
     // there are classes in an external package that depend on LLVertexBuffer
@@ -376,9 +352,9 @@ private:
     void touchContents();
     U64 mContentStamp = 0;
 
-    // Apple's path only: whether mMappedData / mMappedIndexData hold writes the
-    // authoritative GPU store has not been given. GL and Metal keep separate
-    // initialization state because a native buffer deliberately has no GL name.
+    // Whether either CPU shadow holds an unpublished native store. These stay
+    // independent of the per-store initialized flags so failed updates retry
+    // without inventing another CPU write or republishing the other store.
     bool mVerticesWritten = false;
     bool mIndicesWritten = false;
 

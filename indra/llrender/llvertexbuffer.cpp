@@ -26,25 +26,21 @@
 
 #include "linden_common.h"
 
-#include "llsys.h"
 #include "llvertexbuffer.h"
 
 #if LL_DARWIN
 #include "almetaldevice.h"
 #include "almetalresource.h"
 #endif
-// #include "llrender.h"
 #include "llglheaders.h"
 #include "llrender.h"
 #include "llvector4a.h"
-#include "llshadermgr.h"
 #include "llglslshader.h"
 #include "llimagegl.h"
 #include "llmemory.h"
 
 #include <algorithm>
 #include <atomic>
-#include <boost/unordered_map.hpp>
 #include <utility>
 
 //Next Highest Power Of Two
@@ -58,136 +54,8 @@ U32 nhpo2(U32 v)
     return r;
 }
 
-//which power of 2 is i?
-//assumes i is a power of 2 > 0
-U32 wpo2(U32 i)
-{
-    llassert(i > 0);
-    llassert(nhpo2(i) == i);
-
-    U32 r = 0;
-
-    while (i >>= 1) ++r;
-
-    return r;
-}
-
-struct CompareMappedRegion
-{
-    bool operator()(const LLVertexBuffer::MappedRegion& lhs, const LLVertexBuffer::MappedRegion& rhs)
-    {
-        return lhs.mStart < rhs.mStart;
-    }
-};
-
-//============================================================================
-// Pool of reusable VertexBuffer state
-
-// The GL context the names in a thread's pool were generated on, bumped by cleanupClass when
-// that context's buffers go. A name of the old context is nobody's on the next one -- a core
-// profile refuses to bind it -- and the pool is thread-local, so each thread empties its own
-// the next time it asks. LLImageGL's texture-name pool works the same way.
-static std::atomic<U32> sBufferNameGeneration{ 1 };
-
 // The last content stamp handed out (LLVertexBuffer::getContentStamp).
 static std::atomic<U64> sContentStamps{ 0 };
-
-// batch calls to glGenBuffers
-static GLuint gen_buffer()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-
-    GLuint ret = 0;
-    constexpr U32 pool_size = 4096;
-
-    // On the heap: as a thread_local array the pool was 16 KB of static TLS,
-    // which glibc takes out of the stack of every thread, those that never
-    // make a buffer too.
-    thread_local static std::unique_ptr<GLuint[]> sNamePool;
-    thread_local static U32 sIndex = 0;
-    thread_local static U32 sNameGeneration = 0;
-
-    const U32 generation = sBufferNameGeneration.load(std::memory_order_relaxed);
-    if (sNameGeneration != generation)
-    {
-        sIndex = 0;
-        sNameGeneration = generation;
-    }
-
-    if (sIndex == 0)
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("gen buffer");
-        if (!sNamePool)
-        {
-            sNamePool = std::make_unique<GLuint[]>(pool_size);
-        }
-        sIndex = pool_size;
-#if !LL_DARWIN
-        if (!gGLManager.mIsAMD)
-        {
-            glGenBuffers(pool_size, sNamePool.get());
-        }
-        else
-#endif
-        { // work around for AMD driver bug
-            for (U32 i = 0; i < pool_size; ++i)
-            {
-                glGenBuffers(1, sNamePool.get() + i);
-            }
-        }
-    }
-
-    ret = sNamePool[--sIndex];
-    return ret;
-}
-
-// wait a few frames before actually deleting the buffers to avoid
-// synchronization issues with the GPU
-constexpr U32 BUFFER_FREE_BUCKETS = 4;
-static std::vector<GLuint> sBufferFreeList[BUFFER_FREE_BUCKETS];
-
-static void delete_buffers(S32 count, GLuint* buffers)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-
-    if (gGLManager.mInited)
-    {
-        // Move current frame to free list
-        U32 idx = LLImageGL::sFrameCount % BUFFER_FREE_BUCKETS;
-
-        for (S32 i = 0; i < count; ++i)
-        {
-            sBufferFreeList[idx].push_back(buffers[i]);
-        }
-
-        // Clear frame -3 (equals +1), this idx will be written over on the next call
-        idx = (LLImageGL::sFrameCount + 1) % BUFFER_FREE_BUCKETS;
-
-        if (!sBufferFreeList[idx].empty())
-        {
-            glDeleteBuffers((GLsizei)sBufferFreeList[idx].size(), sBufferFreeList[idx].data());
-            sBufferFreeList[idx].resize(0);
-        }
-    }
-}
-
-// Delete everything still waiting out its frames, now, while its context is current. Left
-// for the next context, the names would be deleted there -- where the same numbers can
-// belong to buffers that context has since made.
-static void drain_deleted_buffers()
-{
-    for (std::vector<GLuint>& bucket : sBufferFreeList)
-    {
-        if (!bucket.empty())
-        {
-            if (gGLManager.mInited)
-            {
-                glDeleteBuffers((GLsizei)bucket.size(), bucket.data());
-            }
-            bucket.resize(0);
-        }
-    }
-}
 
 #if LL_DARWIN
 namespace
@@ -258,330 +126,36 @@ namespace
 #endif
 
 
-#define ANALYZE_VBO_POOL 0
-
-// VBO Pool interface
-class LLVBOPool
-{
-    public:
-    virtual ~LLVBOPool() = default;
-    virtual void allocateVBO(GLenum type, U32 size, GLuint& name, U8*& data) = 0;
-    virtual void freeVBO(GLenum type, U32 size, GLuint name, U8* data) = 0;
-    virtual U64 getVramBytesUsed() = 0;
-};
-
-// VBO Pool for Apple GPUs (as in M1/M2 etc, not Intel macs)
-// Effectively disables VBO pooling
-class LLAppleVBOPool final: public LLVBOPool
+// The original Apple allocator staged aligned CPU stores without caching GL
+// VBOs. Native geometry retains that staging policy; explicit Metal buffers
+// and their completion-retired generations are owned by LLVertexBuffer.
+class NativeVertexStorage final
 {
 public:
-    U64 mAllocated = 0;
+    U64 getBytesAllocated() const { return mAllocated; }
 
-    U64 getVramBytesUsed() override
-    {
-        return mAllocated;
-    }
-
-    void allocateVBO(GLenum type, U32 size, GLuint& name, U8*& data) override
+    void allocate(U32 size, U8*& data)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-#if LL_DARWIN
-        const bool native_upload =
-            LLVertexBuffer::isMetalBufferAuthority() ||
-            LLVertexBuffer::metalOnlyUploadActive() ||
-            gGL.isMetalUITextureCaptureAuthoritative() ||
-            gGLManager.mIsDisabled;
-#else
-        constexpr bool native_upload = false;
-#endif
-        if (!native_upload)
-        {
-            STOP_GLERROR;
-        }
-        llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
-        llassert(name == 0); // non zero name indicates a gl name that wasn't freed
-        llassert(data == nullptr);  // non null data indicates a buffer that wasn't freed
-        llassert(size >= 2);  // any buffer size smaller than a single index is nonsensical
-
-        mAllocated += size;
-
-        { //allocate a new buffer
-            // ON OS X, we don't allocate a VBO until the last possible moment
-            // in unmapBuffer
-            data = (U8*) ll_aligned_malloc_16(size);
-            if (!native_upload)
-            {
-                STOP_GLERROR;
-            }
-        }
-    }
-
-    void freeVBO(GLenum type, U32 size, GLuint name, U8* data) override
-    {
-        LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-#if LL_DARWIN
-        const bool native_upload =
-            LLVertexBuffer::isMetalBufferAuthority() ||
-            LLVertexBuffer::metalOnlyUploadActive() ||
-            gGL.isMetalUITextureCaptureAuthoritative() ||
-            gGLManager.mIsDisabled;
-#else
-        constexpr bool native_upload = false;
-#endif
-        llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
+        llassert(data == nullptr);
         llassert(size >= 2);
-
-        if (data)
-        {
-            ll_aligned_free_16(data);
-        }
-
-        mAllocated -= size;
-        if (!native_upload)
-        {
-            STOP_GLERROR;
-        }
-        if (name)
-        {
-            delete_buffers(1, &name);
-        }
-        if (!native_upload)
-        {
-            STOP_GLERROR;
-        }
-    }
-};
-
-// VBO Pool for GPUs that benefit from VBO pooling
-class LLDefaultVBOPool final : public LLVBOPool
-{
-public:
-    typedef std::chrono::steady_clock::time_point Time;
-    struct Entry
-    {
-        U8* mData;
-        GLuint mGLName;
-        Time mAge;
-    };
-
-    ~LLDefaultVBOPool() override
-    {
-        clear();
+        data = static_cast<U8*>(ll_aligned_malloc_16(size));
+        if (data) mAllocated += size;
     }
 
-    typedef boost::unordered_map<U32, std::list<Entry>> Pool;
-
-    Pool mVBOPool;
-    Pool mIBOPool;
-
-    U32 mTouchCount = 0;
-
-    U64 mDistributed = 0;
-    U64 mAllocated = 0;
-    U64 mReserved = 0;
-    U32 mMisses = 0;
-    U32 mHits = 0;
-
-    U64 getVramBytesUsed() override
-    {
-        return mAllocated + mReserved;
-    }
-
-    // increase the size to some common value (e.g. a power of two) to increase hit rate
-    void adjustSize(U32& size)
-    {
-        // size = nhpo2(size);  // (193/303)/580 MB (distributed/allocated)/reserved in VBO Pool. Overhead: 66 percent. Hit rate: 77 percent
-
-        //(245/276)/385 MB (distributed/allocated)/reserved in VBO Pool. Overhead: 57 percent. Hit rate: 69 percent
-        //(187/209)/397 MB (distributed/allocated)/reserved in VBO Pool. Overhead: 112 percent. Hit rate: 76 percent
-        U32 block_size = llmax(nhpo2(size) / 8, (U32) 16);
-        // Round size UP to the next multiple of block_size, but DON'T add a full block
-        // when size is already aligned. The previous "size += block_size - (size %
-        // block_size)" form unconditionally added block_size for aligned inputs, wasting
-        // memory at every bucket boundary.
-        const U32 rem = size % block_size;
-        if (rem != 0)
-        {
-            size += block_size - rem;
-        }
-    }
-
-    void allocateVBO(GLenum type, U32 size, GLuint& name, U8*& data) override
+    void release(U32 size, U8* data)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
-        llassert(name == 0); // non zero name indicates a gl name that wasn't freed
-        llassert(data == nullptr);  // non null data indicates a buffer that wasn't freed
-        llassert(size >= 2);  // any buffer size smaller than a single index is nonsensical
-
-        mDistributed += size;
-        adjustSize(size);
-        mAllocated += size;
-
-        auto& pool = type == GL_ELEMENT_ARRAY_BUFFER ? mIBOPool : mVBOPool;
-
-        Pool::iterator iter = pool.find(size);
-        if (iter == pool.end())
-        { // cache miss, allocate a new buffer
-            LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vbo pool miss");
-            LL_PROFILE_GPU_ZONE("vbo alloc");
-
-            mMisses++;
-            name = gen_buffer();
-            glBindBuffer(type, name);
-            glBufferData(type, size, nullptr, GL_DYNAMIC_DRAW);
-            if (type == GL_ELEMENT_ARRAY_BUFFER)
-            {
-                LLVertexBuffer::sGLRenderIndices = name;
-            }
-            else
-            {
-                LLVertexBuffer::sGLRenderBuffer = name;
-            }
-
-            data = (U8*)ll_aligned_malloc_16(size);
-        }
-        else
-        {
-            mHits++;
-            llassert(mReserved >= size); // assert if accounting gets messed up
-            mReserved -= size;
-
-            std::list<Entry>& entries = iter->second;
-            Entry& entry = entries.back();
-            name = entry.mGLName;
-            data = entry.mData;
-
-            entries.pop_back();
-            if (entries.empty())
-            {
-                pool.erase(iter);
-            }
-        }
-
-        clean();
-    }
-
-    void freeVBO(GLenum type, U32 size, GLuint name, U8* data) override
-    {
-        LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
-        llassert(size >= 2);
-        llassert(name != 0);
-        llassert(data != nullptr);
-
-        clean();
-
-        llassert(mDistributed >= size);
-        mDistributed -= size;
-        adjustSize(size);
         llassert(mAllocated >= size);
+        ll_aligned_free_16(data);
         mAllocated -= size;
-        mReserved += size;
-
-        auto& pool = type == GL_ELEMENT_ARRAY_BUFFER ? mIBOPool : mVBOPool;
-
-        Pool::iterator iter = pool.find(size);
-
-        if (iter == pool.end())
-        {
-            std::list<Entry> newlist;
-            newlist.push_front({ data, name, std::chrono::steady_clock::now() });
-            pool[size] = newlist;
-        }
-        else
-        {
-            iter->second.push_front({ data, name, std::chrono::steady_clock::now() });
-        }
-
     }
 
-    // clean periodically (clean gets called for every alloc/free)
-    void clean()
-    {
-        mTouchCount++;
-        if (mTouchCount < 1024) // clean every 1k touches
-        {
-            return;
-        }
-        mTouchCount = 0;
-
-        LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-
-        boost::unordered_map<U32, std::list<Entry>>* pools[] = { &mVBOPool, &mIBOPool };
-
-        using namespace std::chrono_literals;
-
-        Time cutoff = std::chrono::steady_clock::now() - 5s;
-
-        for (auto* pool : pools)
-        {
-            for (Pool::iterator iter = pool->begin(); iter != pool->end(); )
-            {
-                auto& entries = iter->second;
-
-                while (!entries.empty() && entries.back().mAge < cutoff)
-                {
-                    LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vbo cache timeout");
-                    auto& entry = entries.back();
-                    ll_aligned_free_16(entry.mData);
-                    delete_buffers(1, &entry.mGLName);
-                    llassert(mReserved >= iter->first);
-                    mReserved -= iter->first;
-                    entries.pop_back();
-
-                }
-
-                if (entries.empty())
-                {
-                    iter = pool->erase(iter);
-                }
-                else
-                {
-                    ++iter;
-                }
-            }
-        }
-
-#if 0
-        LL_INFOS() << llformat("(%d/%d)/%d MB (distributed/allocated)/total in VBO Pool. Overhead: %d percent. Hit rate: %d percent",
-            mDistributed / 1000000,
-            mAllocated / 1000000,
-            (mAllocated + mReserved) / 1000000, // total bytes
-            ((mAllocated+mReserved-mDistributed)*100)/llmax(mDistributed, (U64) 1), // overhead percent
-            (mHits*100)/llmax(mMisses+mHits, (U32)1)) // hit rate percent
-            << LL_ENDL;
-#endif
-    }
-
-    void clear()
-    {
-        for (auto& entries : mIBOPool)
-        {
-            for (auto& entry : entries.second)
-            {
-                ll_aligned_free_16(entry.mData);
-                delete_buffers(1, &entry.mGLName);
-            }
-        }
-
-        for (auto& entries : mVBOPool)
-        {
-            for (auto& entry : entries.second)
-            {
-                ll_aligned_free_16(entry.mData);
-                delete_buffers(1, &entry.mGLName);
-            }
-        }
-
-        mReserved = 0;
-
-        mIBOPool.clear();
-        mVBOPool.clear();
-    }
+private:
+    U64 mAllocated = 0;
 };
 
-static LLVBOPool* sVBOPool = nullptr;
+static NativeVertexStorage* sNativeStorage = nullptr;
 
 LLVertexBufferData::LLVertexBufferData()
     : mVB(nullptr),
@@ -667,7 +241,7 @@ void LLVertexBufferData::draw()
 //static
 U64 LLVertexBuffer::getBytesAllocated()
 {
-    return sVBOPool ? sVBOPool->getVramBytesUsed() : 0;
+    return sNativeStorage ? sNativeStorage->getBytesAllocated() : 0;
 }
 
 //============================================================================
@@ -677,29 +251,6 @@ U32 LLVertexBuffer::sGLRenderBuffer = 0;
 U32 LLVertexBuffer::sGLRenderIndices = 0;
 U32 LLVertexBuffer::sLastMask = 0;
 U32 LLVertexBuffer::sVertexCount = 0;
-#if LL_DARWIN
-thread_local U32 LLVertexBuffer::sMetalOnlyUploadDepth = 0;
-
-LLVertexBuffer::ScopedMetalOnlyUpload::ScopedMetalOnlyUpload()
-{
-    ++sMetalOnlyUploadDepth;
-}
-
-LLVertexBuffer::ScopedMetalOnlyUpload::~ScopedMetalOnlyUpload()
-{
-    llassert(sMetalOnlyUploadDepth > 0);
-    if (sMetalOnlyUploadDepth > 0)
-    {
-        --sMetalOnlyUploadDepth;
-    }
-}
-
-//static
-bool LLVertexBuffer::metalOnlyUploadActive() noexcept
-{
-    return sMetalOnlyUploadDepth != 0;
-}
-#endif
 
 // What the attribute pointers were last set up from: the buffer, the GL name it had, and the
 // attributes the program read. Being bound is not the same thing. An upload binds the buffer it
@@ -997,25 +548,8 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
 //static
 void LLVertexBuffer::initClass(LLWindow* window)
 {
-    llassert(sVBOPool == nullptr);
-
-#if LL_DARWIN || LL_ARM64
-    if (
-#if LL_DARWIN
-        isMetalBufferAuthority() ||
-#endif
-        gGLManager.mIsApple)
-    {
-        LL_INFOS() << "VBO Pooling Disabled" << LL_ENDL;
-        sVBOPool = new LLAppleVBOPool();
-    }
-    else
-#endif
-    {
-        LL_INFOS() << "VBO Pooling Enabled" << LL_ENDL;
-        sVBOPool = new LLDefaultVBOPool();
-    }
-
+    llassert(sNativeStorage == nullptr);
+    sNativeStorage = new NativeVertexStorage();
     (void)window;
 }
 
@@ -1065,20 +599,14 @@ void LLVertexBuffer::cleanupClass()
     // draw's arrays for enabled already and skip the glEnableVertexAttribArray they need.
     sLastMask = 0;
 
-    delete sVBOPool;
-    sVBOPool = nullptr;
-
-    // Last: the pool's teardown above queued its buffers for deletion.
-    drain_deleted_buffers();
+    delete sNativeStorage;
+    sNativeStorage = nullptr;
 
 #if LL_DARWIN
     // gGL.shutdown() drains the scheduler before LLVertexBuffer cleanup, so
     // no native command can still reference a globally retired generation.
     collect_retired_metal_buffers(true);
 #endif
-
-    // What follows is a new context, whose names these were not.
-    sBufferNameGeneration.fetch_add(1, std::memory_order_relaxed);
 }
 
 //----------------------------------------------------------------------------
@@ -1143,7 +671,7 @@ static std::unique_ptr<ALMetalBuffer> allocate_metal_buffer(U32 size, const char
         bool expected = false;
         if (sMetalMirrorReported.compare_exchange_strong(expected, true, std::memory_order_relaxed))
         {
-            LL_INFOS("Metal") << "Production LLVertexBuffer Metal mirrors are active; first allocation "
+            LL_INFOS("Metal") << "Production LLVertexBuffer Metal stores are active; first allocation "
                                << label << " is " << size << " bytes" << LL_ENDL;
         }
     }
@@ -1302,31 +830,31 @@ LLVertexBuffer::~LLVertexBuffer()
 void LLVertexBuffer::genBuffer(U32 size)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-    llassert(sVBOPool);
+    llassert(sNativeStorage);
 
-    if (sVBOPool)
+    if (sNativeStorage)
     {
         llassert(mSize == 0);
         llassert(mGLBuffer == 0);
         llassert(mMappedData == nullptr);
 
         mSize = size;
-        sVBOPool->allocateVBO(GL_ARRAY_BUFFER, mSize, mGLBuffer, mMappedData);
+        sNativeStorage->allocate(mSize, mMappedData);
     }
 }
 
 void LLVertexBuffer::genIndices(U32 size)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-    llassert(sVBOPool);
+    llassert(sNativeStorage);
 
-    if (sVBOPool)
+    if (sNativeStorage)
     {
         llassert(mIndicesSize == 0);
         llassert(mGLIndices == 0);
         llassert(mMappedIndexData == nullptr);
         mIndicesSize = size;
-        sVBOPool->allocateVBO(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mGLIndices, mMappedIndexData);
+        sNativeStorage->allocate(mIndicesSize, mMappedIndexData);
     }
 }
 
@@ -1418,10 +946,9 @@ void LLVertexBuffer::destroyGLBuffer()
     if (mGLBuffer || mMappedData)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        //llassert(sVBOPool);
-        if (sVBOPool)
+        if (sNativeStorage)
         {
-            sVBOPool->freeVBO(GL_ARRAY_BUFFER, mSize, mGLBuffer, mMappedData);
+            sNativeStorage->release(mSize, mMappedData);
         }
 
         mSize = 0;
@@ -1454,10 +981,9 @@ void LLVertexBuffer::destroyGLIndices()
     if (mGLIndices || mMappedIndexData)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        //llassert(sVBOPool);
-        if (sVBOPool)
+        if (sNativeStorage)
         {
-            sVBOPool->freeVBO(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mGLIndices, mMappedIndexData);
+            sNativeStorage->release(mIndicesSize, mMappedIndexData);
         }
 
         mIndicesSize = 0;
@@ -1526,187 +1052,39 @@ bool LLVertexBuffer::allocateBuffer(U32 nverts, U32 nindices)
 
 //----------------------------------------------------------------------------
 
-// if no gap between region and given range exists, expand region to cover given range and return true
-// otherwise return false
-bool expand_region(LLVertexBuffer::MappedRegion& region, U32 start, U32 end)
-{
-
-    if (end < region.mStart ||
-        start > region.mEnd)
-    { //gap exists, do not merge
-        return false;
-    }
-
-    region.mStart = llmin(region.mStart, start);
-    region.mEnd = llmax(region.mEnd, end);
-
-    return true;
-}
-
-
-// Map for data access
-U8* LLVertexBuffer::mapVertexBuffer(LLVertexBuffer::AttributeType type, U32 index, S32 count)
+// Mapping edits the CPU shadow and records which complete native store must
+// be republished. Partial setters below modify that same shadow; no mapped
+// GL range list or driver upload remains.
+U8* LLVertexBuffer::mapVertexBuffer(LLVertexBuffer::AttributeType type, U32 index, S32)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
     _mapBuffer();
     touchContents();
-
-    if (count == -1)
-    {
-        count = mNumVerts - index;
-    }
-
-#if LL_DARWIN || LL_ARM64
-    // Apple's path gives GL whole stores, never ranges (see _unmapBuffer), so it marks only that
-    // the vertices were written. While mIsApple can be encountered under windows, this is a
-    // macOS OpenGL behavior workaround. LL_ARM64 check might be not needed
-    if (
-#if LL_DARWIN
-        isMetalBufferAuthority() ||
-#endif
-        gGLManager.mIsApple)
-    {
-        mVerticesWritten = true;
-    }
-    else
-#endif
-    {
-        U32 start = mOffsets[type] + sTypeSize[type] * index;
-        U32 end = start + sTypeSize[type] * count-1;
-
-        bool flagged = false;
-        // flag region as mapped
-        for (U32 i = 0; i < mMappedVertexRegions.size(); ++i)
-        {
-            MappedRegion& region = mMappedVertexRegions[i];
-            if (expand_region(region, start, end))
-            {
-                flagged = true;
-                break;
-            }
-        }
-
-        if (!flagged)
-        {
-            //didn't expand an existing region, make a new one
-            mMappedVertexRegions.push_back({ start, end });
-        }
-    }
-    return mMappedData+mOffsets[type]+sTypeSize[type]*index;
+    mVerticesWritten = true;
+    return mMappedData + mOffsets[type] + sTypeSize[type] * index;
 }
 
-
-U8* LLVertexBuffer::mapIndexBuffer(U32 index, S32 count)
+U8* LLVertexBuffer::mapIndexBuffer(U32 index, S32)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
     _mapBuffer();
     touchContents();
-
-    if (count == -1)
-    {
-        count = mNumIndices-index;
-    }
-
-#if LL_DARWIN || LL_ARM64
-    if (
-#if LL_DARWIN
-        isMetalBufferAuthority() ||
-#endif
-        gGLManager.mIsApple)
-    {
-        mIndicesWritten = true;
-    }
-    else
-#endif
-    {
-        U32 start = sizeof(U16) * index;
-        U32 end = start + sizeof(U16) * count-1;
-
-        bool flagged = false;
-        // flag region as mapped
-        for (U32 i = 0; i < mMappedIndexRegions.size(); ++i)
-        {
-            MappedRegion& region = mMappedIndexRegions[i];
-            if (expand_region(region, start, end))
-            {
-                flagged = true;
-                break;
-            }
-        }
-
-        if (!flagged)
-        {
-            //didn't expand an existing region, make a new one
-            mMappedIndexRegions.push_back({ start, end });
-        }
-    }
-
-    return mMappedIndexData + sizeof(U16)*index;
+    mIndicesWritten = true;
+    return mMappedIndexData + sizeof(U16) * index;
 }
 
-// flush the given byte range
-//  target -- "target" parameter for glBufferSubData
-//  start -- first byte to copy
-//  end -- last byte to copy (NOT last byte + 1)
-//  data -- data to be flushed
-//  dst -- mMappedData or mMappedIndexData
+// Inclusive byte range, as used by the retained whole/partial data setters.
 void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8* dst)
 {
-    // Callers compute end = start + size - 1; when size == 0 this underflows to
-    // (start - 1), which then passes the "end != 0" test below and issues a
-    // glBufferSubData with a nonsense size.
-    if (end + 1 == start)
-        return;
-
+    if (end + 1 == start) return;
     touchContents();
-
-#if LL_DARWIN || LL_ARM64
-    if (
-#if LL_DARWIN
-        isMetalBufferAuthority() ||
-#endif
-        gGLManager.mIsApple)
-    {
-        // on OS X, flush_vbo doesn't actually write to the GL buffer, so be sure to call
-        // _mapBuffer to tag the buffer for flushing to GL
-        _mapBuffer();
-        if (target == GL_ELEMENT_ARRAY_BUFFER)
-        {
-            mIndicesWritten = true;
-        }
-        else
-        {
-            mVerticesWritten = true;
-        }
-        LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vb memcpy");
-#if LL_DARWIN
-        if (!isMetalBufferAuthority())
-#endif
-        {
-            STOP_GLERROR;
-        }
-        // copy into mapped buffer
-        memcpy(dst+start, data, end-start+1);
-    }
+    _mapBuffer();
+    if (target == GL_ELEMENT_ARRAY_BUFFER)
+        mIndicesWritten = true;
     else
-#endif
-    {
-        llassert(target == GL_ARRAY_BUFFER ? sGLRenderBuffer == mGLBuffer : sGLRenderIndices == mGLIndices);
-
-        // skip mapped data and stream to GPU via glBufferSubData
-        if (end != 0)
-        {
-            LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("glBufferSubData");
-            LL_PROFILE_ZONE_NUM(start);
-            LL_PROFILE_ZONE_NUM(end);
-            LL_PROFILE_ZONE_NUM(end-start);
-
-            // Issue a single glBufferSubData; modern drivers handle internal
-            // chunking better than user-space loops, and the chunked loop is
-            // a relic that fragments DMA scheduling.
-            glBufferSubData(target, start, end - start + 1, data);
-        }
-    }
+        mVerticesWritten = true;
+    LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vb memcpy");
+    memcpy(dst + start, data, end - start + 1);
 }
 
 void LLVertexBuffer::unmapBuffer()
@@ -1725,240 +1103,54 @@ void LLVertexBuffer::_mapBuffer()
 
 void LLVertexBuffer::_unmapBuffer()
 {
+    if (!mMapped) return;
 #if LL_DARWIN
-    const bool native_upload =
-        isMetalBufferAuthority() ||
-        metalOnlyUploadActive() ||
-        gGL.isMetalUITextureCaptureAuthoritative() ||
-        gGLManager.mIsDisabled;
-#else
-    constexpr bool native_upload = false;
-#endif
-    if (!native_upload)
+    // Preserve the original Apple whole-store orphaning contract: only a
+    // written or never-initialized store is published. An index-only edit
+    // must leave vertex bytes/generation intact, and conversely. Failed
+    // publication retains its dirty flag for flushBuffers to retry.
+    const bool upload_vertices = mVerticesWritten || !mMetalBufferInitialized;
+    bool vertices_uploaded = true;
+    if (mMappedData && upload_vertices)
     {
-        STOP_GLERROR;
-    }
-    if (!mMapped)
-    {
-        return;
-    }
-
-    struct SortMappedRegion
-    {
-        bool operator()(const MappedRegion& lhs, const MappedRegion& rhs)
+        if (sMetalDevice)
         {
-            return lhs.mStart < rhs.mStart;
+            std::string error;
+            vertices_uploaded = upload_metal_buffer(
+                mMetalBuffer, mRetiredMetalBuffers, mMetalBufferInitialized,
+                mMappedData, mSize, "Alchemy vertex data", error);
+            if (!vertices_uploaded)
+                LL_WARNS("Metal") << "Could not upload vertex data: " << error << LL_ENDL;
         }
-    };
-
-#if LL_DARWIN || LL_ARM64
-    if (
-#if LL_DARWIN
-        isMetalBufferAuthority() ||
-#endif
-        gGLManager.mIsApple)
-    {
-        // Apple's GL-on-Metal is given the whole store again, under the name the buffer already
-        // has. glBufferData on a name the GPU may still be reading gives the name a new store and
-        // leaves the old one to the draws already queued, so nothing waits. glBufferSubData into
-        // that store makes the CPU wait for those draws, and frames slow with it. A new name for
-        // each upload, as this path once made, waits for nothing either, but pays to make and
-        // delete names and keeps every old store the frames delete_buffers holds it. Keep
-        // GL_STATIC_DRAW: a store given again as GL_DYNAMIC_DRAW takes many times as long.
-        //
-        // Only the stores the map wrote are sent, plus any store the active
-        // backend has not initialized yet: a rebuild of the vertices alone
-        // leaves the indices as the GPU has them. Metal reproduces GL's
-        // orphaning contract with completion-retired resource generations;
-        // it never uses the deliberately absent GL name as native state.
-        if (!native_upload)
+        else
         {
-            STOP_GLERROR;
-        }
-#if LL_DARWIN
-        const bool upload_vertices = mVerticesWritten ||
-            (native_upload ? !mMetalBufferInitialized : !mGLBuffer);
-#else
-        const bool upload_vertices = mVerticesWritten || !mGLBuffer;
-#endif
-#if LL_DARWIN
-        bool metal_vertices_uploaded = true;
-#endif
-        if (mMappedData && upload_vertices)
-        {
-#if LL_DARWIN
-            if (sMetalDevice)
-            {
-                std::string error;
-                metal_vertices_uploaded = upload_metal_buffer(
-                    mMetalBuffer, mRetiredMetalBuffers,
-                    mMetalBufferInitialized, mMappedData, mSize,
-                    "Alchemy vertex data", error);
-                if (!metal_vertices_uploaded)
-                {
-                    LL_WARNS("Metal") << "Could not upload vertex data: " << error << LL_ENDL;
-                }
-            }
-            else if (native_upload)
-            {
-                metal_vertices_uploaded = false;
-                LL_WARNS("Metal")
-                    << "Could not upload vertex data without a Metal device"
-                    << LL_ENDL;
-            }
-#endif
-            if (!native_upload)
-            {
-                if (!mGLBuffer)
-                {
-                    mGLBuffer = gen_buffer();
-                }
-                if (mGLBuffer != sGLRenderBuffer)
-                {
-                    glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
-                    sGLRenderBuffer = mGLBuffer;
-                }
-                glBufferData(GL_ARRAY_BUFFER, mSize, mMappedData, GL_STATIC_DRAW);
-            }
-        }
-#if LL_DARWIN
-        mVerticesWritten = native_upload && upload_vertices &&
-            !metal_vertices_uploaded;
-#else
-        mVerticesWritten = false;
-#endif
-        if (!native_upload)
-        {
-            STOP_GLERROR;
-        }
-
-#if LL_DARWIN
-        const bool upload_indices = mIndicesWritten ||
-            (native_upload ? !mMetalIndicesInitialized : !mGLIndices);
-#else
-        const bool upload_indices = mIndicesWritten || !mGLIndices;
-#endif
-#if LL_DARWIN
-        bool metal_indices_uploaded = true;
-#endif
-        if (mMappedIndexData && upload_indices)
-        {
-#if LL_DARWIN
-            if (sMetalDevice)
-            {
-                std::string error;
-                metal_indices_uploaded = upload_metal_buffer(
-                    mMetalIndices, mRetiredMetalIndices,
-                    mMetalIndicesInitialized, mMappedIndexData,
-                    mIndicesSize, "Alchemy index data", error);
-                if (!metal_indices_uploaded)
-                {
-                    LL_WARNS("Metal") << "Could not upload index data: " << error << LL_ENDL;
-                }
-            }
-            else if (native_upload)
-            {
-                metal_indices_uploaded = false;
-                LL_WARNS("Metal")
-                    << "Could not upload index data without a Metal device"
-                    << LL_ENDL;
-            }
-#endif
-            if (!native_upload)
-            {
-                if (!mGLIndices)
-                {
-                    mGLIndices = gen_buffer();
-                }
-                if (mGLIndices != sGLRenderIndices)
-                {
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mGLIndices);
-                    sGLRenderIndices = mGLIndices;
-                }
-                glBufferData(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData, GL_STATIC_DRAW);
-            }
-        }
-#if LL_DARWIN
-        mIndicesWritten = native_upload && upload_indices &&
-            !metal_indices_uploaded;
-#else
-        mIndicesWritten = false;
-#endif
-        if (!native_upload)
-        {
-            STOP_GLERROR;
+            vertices_uploaded = false;
+            LL_WARNS("Metal") << "Could not upload vertex data without a Metal device" << LL_ENDL;
         }
     }
-    else
-#endif // LL_DARWIN || LL_ARM64
+    mVerticesWritten = upload_vertices && !vertices_uploaded;
+
+    const bool upload_indices = mIndicesWritten || !mMetalIndicesInitialized;
+    bool indices_uploaded = true;
+    if (mMappedIndexData && upload_indices)
     {
-        if (!mMappedVertexRegions.empty())
+        if (sMetalDevice)
         {
-            LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("unmapBuffer - vertex");
-
-            if (sGLRenderBuffer != mGLBuffer)
-            {
-                glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
-                sGLRenderBuffer = mGLBuffer;
-            }
-
-            U32 start = 0;
-            U32 end = 0;
-
-            std::sort(mMappedVertexRegions.begin(), mMappedVertexRegions.end(), SortMappedRegion());
-
-            for (U32 i = 0; i < mMappedVertexRegions.size(); ++i)
-            {
-                const MappedRegion& region = mMappedVertexRegions[i];
-                if (region.mStart == end + 1)
-                {
-                    end = region.mEnd;
-                }
-                else
-                {
-                    flush_vbo(GL_ARRAY_BUFFER, start, end, (U8*)mMappedData + start, mMappedData);
-                    start = region.mStart;
-                    end = region.mEnd;
-                }
-            }
-
-            flush_vbo(GL_ARRAY_BUFFER, start, end, (U8*)mMappedData + start, mMappedData);
-            mMappedVertexRegions.clear();
+            std::string error;
+            indices_uploaded = upload_metal_buffer(
+                mMetalIndices, mRetiredMetalIndices, mMetalIndicesInitialized,
+                mMappedIndexData, mIndicesSize, "Alchemy index data", error);
+            if (!indices_uploaded)
+                LL_WARNS("Metal") << "Could not upload index data: " << error << LL_ENDL;
         }
-
-        if (!mMappedIndexRegions.empty())
+        else
         {
-            LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("unmapBuffer - index");
-
-            if (mGLIndices != sGLRenderIndices)
-            {
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mGLIndices);
-                sGLRenderIndices = mGLIndices;
-            }
-            U32 start = 0;
-            U32 end = 0;
-
-            std::sort(mMappedIndexRegions.begin(), mMappedIndexRegions.end(), SortMappedRegion());
-
-            for (U32 i = 0; i < mMappedIndexRegions.size(); ++i)
-            {
-                const MappedRegion& region = mMappedIndexRegions[i];
-                if (region.mStart == end + 1)
-                {
-                    end = region.mEnd;
-                }
-                else
-                {
-                    flush_vbo(GL_ELEMENT_ARRAY_BUFFER, start, end, (U8*)mMappedIndexData + start, mMappedIndexData);
-                    start = region.mStart;
-                    end = region.mEnd;
-                }
-            }
-
-            flush_vbo(GL_ELEMENT_ARRAY_BUFFER, start, end, (U8*)mMappedIndexData + start, mMappedIndexData);
-            mMappedIndexRegions.clear();
+            indices_uploaded = false;
+            LL_WARNS("Metal") << "Could not upload index data without a Metal device" << LL_ENDL;
         }
     }
+    mIndicesWritten = upload_indices && !indices_uploaded;
+#endif
 }
 
 //----------------------------------------------------------------------------
@@ -2093,10 +1285,6 @@ void LLVertexBuffer::setBuffer()
 #endif
 
     STOP_GLERROR;
-
-    // no data may be pending
-    llassert(mMappedVertexRegions.empty());
-    llassert(mMappedIndexRegions.empty());
 
     // a shader must be bound
     llassert(LLGLSLShader::sCurBoundShaderPtr);

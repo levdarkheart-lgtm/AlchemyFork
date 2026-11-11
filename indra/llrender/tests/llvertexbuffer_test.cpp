@@ -22,8 +22,53 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
+#include <cstdint>
 #include <cstring>
 #include <vector>
+
+namespace
+{
+unsigned buffer_gl_calls = 0;
+void APIENTRY bufferNameTrap(GLsizei count, GLuint* names)
+{
+    ++buffer_gl_calls;
+    for (GLsizei index = 0; index < count; ++index) names[index] = 1;
+}
+void APIENTRY bufferDeleteTrap(GLsizei, const GLuint*) { ++buffer_gl_calls; }
+void APIENTRY bufferBindTrap(GLenum, GLuint) { ++buffer_gl_calls; }
+void APIENTRY bufferDataTrap(GLenum, GLsizeiptr, const void*, GLenum) { ++buffer_gl_calls; }
+void APIENTRY bufferSubDataTrap(GLenum, GLintptr, GLsizeiptr, const void*) { ++buffer_gl_calls; }
+
+struct BufferGLTraps
+{
+    PFNGLGENBUFFERSPROC generate = glGenBuffers;
+    PFNGLDELETEBUFFERSPROC destroy = glDeleteBuffers;
+    PFNGLBINDBUFFERPROC bind = glBindBuffer;
+    PFNGLBUFFERDATAPROC data = glBufferData;
+    PFNGLBUFFERSUBDATAPROC sub_data = glBufferSubData;
+    unsigned previous_calls = buffer_gl_calls;
+
+    BufferGLTraps()
+    {
+        buffer_gl_calls = 0;
+        glGenBuffers = bufferNameTrap;
+        glDeleteBuffers = bufferDeleteTrap;
+        glBindBuffer = bufferBindTrap;
+        glBufferData = bufferDataTrap;
+        glBufferSubData = bufferSubDataTrap;
+    }
+    ~BufferGLTraps()
+    {
+        glGenBuffers = generate;
+        glDeleteBuffers = destroy;
+        glBindBuffer = bind;
+        glBufferData = data;
+        glBufferSubData = sub_data;
+        buffer_gl_calls = previous_calls;
+    }
+};
+}
 
 TEST_CASE(
     "LLVertexBuffer preserves selective native stores and in-flight generations",
@@ -334,4 +379,106 @@ TEST_CASE(
         LLVertexBuffer::flushBuffers();
         CHECK(LLVertexBuffer::getBytesAllocated() == 0);
     }
+}
+
+TEST_CASE(
+    "LLVertexBuffer stages and uploads natively without legacy allocation policy flags",
+    "[llvertexbuffer][almetal][native-allocation]")
+{
+    REQUIRE_FALSE(gGLManager.mInited);
+    BufferGLTraps gl_traps;
+    std::string error;
+    auto device = ALMetalDevice::create(&error);
+    INFO(error);
+    REQUIRE(device);
+    auto scheduler = ALMetalFrameScheduler::create(*device, 2, &error);
+    REQUIRE(scheduler);
+    const bool previous_authority = LLVertexBuffer::isMetalBufferAuthority();
+    const bool previous_apple = gGLManager.mIsApple;
+    LLVertexBuffer::setMetalDevice(device.get());
+    LLVertexBuffer::setMetalBufferAuthority(false);
+    gGLManager.mIsApple = false;
+    gGL.frameFences().setMetalScheduler(scheduler.get());
+    LLVertexBuffer::initClass(nullptr);
+    struct Reset
+    {
+        bool authority, apple;
+        ~Reset()
+        {
+            LLVertexBuffer::flushBuffers();
+            gGL.frameFences().setMetalScheduler(nullptr);
+            // Draw/client-array compatibility is outside this allocation
+            // cleanup. Keep cleanupClass's retained unbind on its native path.
+            LLVertexBuffer::setMetalBufferAuthority(true);
+            LLVertexBuffer::cleanupClass();
+            LLVertexBuffer::setMetalBufferAuthority(authority);
+            LLVertexBuffer::setMetalDevice(nullptr);
+            gGLManager.mIsApple = apple;
+        }
+    } reset{previous_authority, previous_apple};
+
+    LLPointer<LLVertexBuffer> buffer = new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX);
+    REQUIRE(buffer->allocateBuffer(3, 6));
+    CHECK(reinterpret_cast<std::uintptr_t>(buffer->getMappedData()) % 16 == 0);
+    CHECK(reinterpret_cast<std::uintptr_t>(buffer->getMappedIndices()) % 16 == 0);
+    CHECK(LLVertexBuffer::getBytesAllocated() == buffer->getSize() + buffer->getIndicesSize());
+    std::array<LLVector4a, 3> positions;
+    positions[0].set(-1.f, 0.f, 0.f, 1.f);
+    positions[1].set(1.f, 0.f, 0.f, 1.f);
+    positions[2].set(0.f, 1.f, 0.f, 1.f);
+    const std::array<U32, 3> indices{2, 1, 0};
+    std::memset(buffer->getMappedData(), 0, buffer->getSize());
+    buffer->setPositionData(positions.data());
+    buffer->setIndexData(indices.data());
+    CHECK(buffer->getIndexStride() == sizeof(U32));
+    CHECK(buffer->getNumIndices() == indices.size());
+    const auto published_stamp = buffer->getContentStamp();
+    // Zero-length partial writes must not dirty a store or mint a new stamp.
+    buffer->setPositionData(positions.data(), 1, 0);
+    CHECK(buffer->getContentStamp() == published_stamp);
+    buffer->unmapBuffer();
+    CHECK(buffer->getContentStamp() == published_stamp);
+
+    const auto read_store = [&error](const ALMetalBuffer* store)
+    {
+        REQUIRE(store);
+        std::vector<U8> bytes(store->length());
+        REQUIRE(store->read(0, bytes.data(), bytes.size(), &error));
+        INFO(error);
+        return bytes;
+    };
+    const auto expected = [](const void* bytes, std::size_t count)
+    {
+        const auto* first = static_cast<const U8*>(bytes);
+        return std::vector<U8>(first, first + count);
+    };
+    CHECK(read_store(buffer->getMetalVertexBuffer()) == expected(positions.data(), sizeof(positions)));
+    const auto index_bytes = expected(indices.data(), sizeof(indices));
+    CHECK(read_store(buffer->getMetalIndexBuffer()) == index_bytes);
+    auto* original_indices = buffer->getMetalIndexBuffer();
+
+    LLVector4a replacement;
+    replacement.set(0.25f, -0.5f, 0.75f, 1.f);
+    buffer->setPositionData(&replacement, 1, 1);
+    CHECK(buffer->getContentStamp() != published_stamp);
+    buffer->unmapBuffer();
+    positions[1] = replacement;
+    CHECK(read_store(buffer->getMetalVertexBuffer()) == expected(positions.data(), sizeof(positions)));
+    CHECK(buffer->getMetalIndexBuffer() == original_indices);
+    CHECK(read_store(buffer->getMetalIndexBuffer()) == index_bytes);
+
+    auto* unchanged_vertices = buffer->getMetalVertexBuffer();
+    const U32 replacement_index = 2;
+    buffer->setIndexData(&replacement_index, 1, 1);
+    buffer->unmapBuffer();
+    const std::array<U32, 3> updated_indices{2, 2, 0};
+    CHECK(buffer->getMetalVertexBuffer() == unchanged_vertices);
+    CHECK(read_store(buffer->getMetalIndexBuffer()) ==
+          expected(updated_indices.data(), sizeof(updated_indices)));
+    CHECK(buffer_gl_calls == 0);
+
+    buffer = nullptr;
+    LLVertexBuffer::flushBuffers();
+    CHECK(LLVertexBuffer::getBytesAllocated() == 0);
+    CHECK(buffer_gl_calls == 0);
 }

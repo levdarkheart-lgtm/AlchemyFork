@@ -4087,7 +4087,6 @@ bool LLModelPreview::renderMetal()
 {
     assert_main_thread();
     LLMutexLock lock(this);
-    LLVertexBuffer::ScopedMetalOnlyUpload metal_upload;
 
     mMetalPreview.reset();
     mMetalPreviewDescriptor.reset();
