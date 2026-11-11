@@ -46,7 +46,6 @@ public:
     virtual ~LLDrawPoolTerrain();
 
     /*virtual*/ S32 getNumDeferredPasses() { return 1; }
-    /*virtual*/ void beginDeferredPass(S32 pass);
     /*virtual*/ void endDeferredPass(S32 pass);
     /*virtual*/ void renderDeferred(S32 pass);
 

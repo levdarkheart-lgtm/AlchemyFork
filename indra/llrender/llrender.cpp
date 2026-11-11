@@ -605,12 +605,10 @@ void LLRender::resetCachedState()
     mCurrBlendColorDFactor = BF_UNDEF;
     mCurrBlendAlphaDFactor = BF_UNDEF;
 
-    // Established renderer defaults: unit line width, no polygon offset and
-    // three control points per patch.
+    // Established renderer defaults: unit line width and no polygon offset.
     mLineWidth           = 1.f;
     mPolygonOffsetFactor = 0.f;
     mPolygonOffsetUnits  = 0.f;
-    mPatchVertices       = 3;
 
     // Target dimensions are unknown until the first native pass establishes
     // its viewport and scissor.
@@ -628,7 +626,6 @@ void LLRender::resetCachedState()
     // these values as explicit pipeline descriptions.
     mPolygonMode        = GL_FILL;
     mCullFace           = GL_BACK;
-    mPointSize          = 1.f;
     mBlendEquationRGB   = GL_FUNC_ADD;
     mBlendEquationAlpha = GL_FUNC_ADD;
 }
@@ -3291,15 +3288,6 @@ void LLRender::setPolygonOffset(F32 factor, F32 units)
     }
 }
 
-void LLRender::setPatchVertices(U32 count)
-{
-    if (mPatchVertices != count)
-    {
-        mPatchVertices = count;
-        flush();
-    }
-}
-
 void LLRender::setClearColor(const LLColor4& color)
 {
     if (mClearColor != color)
@@ -3331,16 +3319,6 @@ void LLRender::setCullFace(U32 face)
     {
         flush();
         mCullFace = face;
-    }
-}
-
-void LLRender::setPointSize(F32 size)
-{
-    llassert(size > 0.f);
-    if (mPointSize != size)
-    {
-        flush();
-        mPointSize = size;
     }
 }
 

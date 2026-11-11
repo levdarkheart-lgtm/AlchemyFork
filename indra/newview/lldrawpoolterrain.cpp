@@ -270,13 +270,6 @@ void LLDrawPoolTerrain::bindParcelOverlay(LLGLSLShader* shader)
     shader->uniform1i(LLShaderMgr::TERRAIN_SHOW_PARCEL_OWNERS, overlay ? 1 : 0);
 }
 
-void LLDrawPoolTerrain::beginDeferredPass(S32 pass)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    LLFacePool::beginRenderPass(pass);
-    gGL.setPatchVertices(LLVOSurfacePatch::PATCH_CORNERS);
-}
-
 void LLDrawPoolTerrain::endDeferredPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;

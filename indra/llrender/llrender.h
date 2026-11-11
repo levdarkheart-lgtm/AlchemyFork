@@ -552,10 +552,6 @@ public:
     // changes. The cached semantic values remain unchanged.
     void rebasePolygonOffset();
 
-    // Control points per PATCHES primitive, read by the tessellation control stage.
-    // Redundant sets are dropped without a flush.
-    void setPatchVertices(U32 count);
-
     // How polygons rasterize, using the retained GL_FILL/GL_LINE/GL_POINT
     // numeric vocabulary. Native pipeline creation maps the value.
     void setPolygonMode(U32 mode);
@@ -565,11 +561,6 @@ public:
     // numeric vocabulary. A change flushes queued geometry.
     void setCullFace(U32 face);
     U32  getCullFace() const { return mCullFace; }
-
-    // Point diameter in pixels. A change flushes queued geometry; redundant
-    // sets are dropped without one.
-    void setPointSize(F32 size);
-    F32  getPointSize() const { return mPointSize; }
 
     // How blending combines source and destination, the colour by `rgb` and alpha by `alpha` (GL_FUNC_ADD, GL_MAX
     // and the rest), for every draw buffer. A change flushes what is batched; redundant sets are dropped without one.
@@ -755,14 +746,12 @@ private:
     // Semantic (forward-convention) polygon offset.
     F32             mPolygonOffsetFactor = 0.f;
     F32             mPolygonOffsetUnits = 0.f;
-    U32             mPatchVertices = 3;
     LLColor4        mClearColor = LLColor4(0.f, 0.f, 0.f, 0.f);
     S32             mScissor[4] = { 0, 0, -1, -1 };              // unknown until set (see getScissor)
     S32             mViewport[4] = { 0, 0, -1, -1 };             // unknown until set (see getViewport)
     // Established semantic defaults consumed by native pipeline descriptions.
     U32             mPolygonMode = GL_FILL;
     U32             mCullFace = GL_BACK;
-    F32             mPointSize = 1.f;
     U32             mBlendEquationRGB = GL_FUNC_ADD;
     U32             mBlendEquationAlpha = GL_FUNC_ADD;
 

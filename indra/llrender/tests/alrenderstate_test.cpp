@@ -39,10 +39,8 @@ TEST_CASE("Renderer state remains semantic without an OpenGL context",
     LLRender render;
     render.setLineWidth(3.f);
     render.setPolygonOffset(-2.f, -4.f);
-    render.setPatchVertices(4);
     render.setPolygonMode(GL_LINE);
     render.setCullFace(GL_FRONT);
-    render.setPointSize(5.f);
     render.setBlendEquation(GL_FUNC_ADD, GL_MAX);
     render.setViewport(1, 2, 640, 480);
     render.setScissor(3, 4, 320, 240);
@@ -53,7 +51,6 @@ TEST_CASE("Renderer state remains semantic without an OpenGL context",
     CHECK(render.getPolygonOffsetUnits() == -4.f);
     CHECK(render.getPolygonMode() == GL_LINE);
     CHECK(render.getCullFace() == GL_FRONT);
-    CHECK(render.getPointSize() == 5.f);
     CHECK(render.getClearColor() == LLColor4(0.25f, 0.5f, 0.75f, 1.f));
 
     U32 blend_rgb = 0;
