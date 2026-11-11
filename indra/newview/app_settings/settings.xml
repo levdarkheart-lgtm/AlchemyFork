@@ -8171,10 +8171,21 @@
       <key>Value</key>
       <real>0.5</real>
     </map>
+    <key>RenderDebugMetalSession</key>
+    <map>
+      <key>Comment</key>
+      <string>Enable Metal API validation and strict graphics diagnostics for the next session only.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <key>RenderDebugGLSession</key>
     <map>
       <key>Comment</key>
-      <string>Enable strict GL debugging on the start of next session.</string>
+      <string>Legacy next-run graphics diagnostic request; consumed as Metal API validation on startup. Use RenderDebugMetalSession.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

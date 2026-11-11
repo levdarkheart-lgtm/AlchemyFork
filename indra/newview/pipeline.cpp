@@ -64,7 +64,6 @@
 #include "v3color.h"
 #include "llui.h"
 #include "llglheaders.h"
-#include "aldepthbounds.h"
 #include "allightmapblur.h"
 #include "alrenderisolation.h"
 #include "alrendercapabilities.h"
@@ -1067,8 +1066,6 @@ void LLPipeline::refreshMetalSMAASampleTexture()
 
 bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
 {
-    static LLCachedControl<bool> build_no_post(
-        gSavedSettings, "RenderDisablePostProcessing", false);
     static LLCachedControl<std::string> sample_path(
         gSavedSettings, "SamplePath", "");
     const bool use_smaa_sample = mResourceInputs.mSMAAUseSample;
@@ -1124,11 +1121,9 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     // scopes and ordinary window publication remain on the full post chain.
     const bool snapshot_clean_plate =
         gSnapshotNoPost && mMetalWorldSnapshotRequested;
-    const bool post_enabled = !build_no_post &&
-        (!gSnapshotNoPost || snapshot_clean_plate);
-    const bool sphere_supported =
-        !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) ||
-        gRlvSphereProgram.isComplete();
+    // The Build floater's no-post option is a native display variant, with
+    // the original availability gate applied by the post owner below.
+    const bool post_enabled = !gSnapshotNoPost || snapshot_clean_plate;
     const bool final_buffer = RenderBufferVisualization < 0;
     // Hero mirrors are native-owned even while their authored-scene parity
     // defect remains in the owner-attended visual queue. Falling back to GL at
@@ -1137,19 +1132,19 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     const bool eligible = started && main_world && ordinary_world &&
         native_lens_dirt && native_legacy_glow &&
         grade.native_resources_ready && post_enabled && sky &&
-        exact_antialiasing && sphere_supported && final_buffer;
+        exact_antialiasing && final_buffer;
     if (!eligible && error)
     {
         *error = fmt::format(
             "Metal world presentation is ineligible: started={}, hdr={}, "
             "main_world={}, ordinary_world={}, lens_dirt={}, legacy_glow={}, "
             "color_grade={}, post={}, sky={}, "
-            "antialiasing={}, smaa_sample={}, sphere={}, final_buffer={}",
+            "antialiasing={}, smaa_sample={}, final_buffer={}",
             started, hdr, main_world, ordinary_world,
             native_lens_dirt, native_legacy_glow,
             grade.native_resources_ready, post_enabled,
             static_cast<bool>(sky), exact_antialiasing,
-            native_smaa_sample, sphere_supported, final_buffer);
+            native_smaa_sample, final_buffer);
     }
     return eligible;
 }
@@ -10224,9 +10219,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     // RLVa's vision sphere is the last display-space owner
                     // before scopes and reference capture. Feed the native
                     // pass from the exact same tween/policy objects and in
-                    // LLVfxManager priority order; a missing effect, invalid
-                    // state or failed pass keeps the complete GL chain
-                    // authoritative for this frame.
+                    // LLVfxManager priority order. Missing or invalid state
+                    // fails the native publication transaction closed.
                     bool exact_rlv_sphere = exact_glow_combine;
                     const bool wants_rlv_sphere =
                         RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
@@ -10244,8 +10238,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         bool enabled_effect = false;
                         std::string sphere_error;
                         auto sphere_source = std::move(display_target);
-                        exact_rlv_sphere = sphere_depth && sphere_source &&
-                            gRlvSphereProgram.isComplete();
+                        exact_rlv_sphere = sphere_depth && sphere_source;
                         for (RlvSphereEffect* effect : effects)
                         {
                             if (!exact_rlv_sphere || !effect ||
@@ -18598,6 +18591,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     scene.depth_stencil_shader_read = true;
     scene.hdr = capture.hdr;
     ALMetalWorldBaseLightingConstants& constants = scene.constants;
+    constants.environment_config[1] = mResourceInputs.mEmissive ? 0u : 1u;
     LLMatrix4a inverse_projection;
     inverse_projection.setInverse(camera.getProjection());
     std::memcpy(constants.inverse_projection,
@@ -28323,27 +28317,12 @@ void LLPipeline::renderFinalize()
     // reference still taken this frame -- and where the blit resamples it, at another size or through the lens, which
     // costs the blit more to sharpen than the pass does.
     static LLCachedControl<S32> ref_wipe_mode(gSavedSettings, "RenderReferenceWipeMode", 0);
-    const bool    rlv_sphere    = chain && RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
 
     gGLViewport[0] = gViewerWindow->getWorldViewRectRaw().mLeft;
     gGLViewport[1] = gViewerWindow->getWorldViewRectRaw().mBottom;
     gGLViewport[2] = gViewerWindow->getWorldViewRectRaw().getWidth();
     gGLViewport[3] = gViewerWindow->getWorldViewRectRaw().getHeight();
     gGL.setViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
-
-// [RLVa:KB] - @setsphere
-    if (rlv_sphere && gRlvSphereProgram.isComplete() && other_target())
-    {
-        LLShaderEffectParams params(sourceBuffer, targetBuffer, false);
-        LLVfxManager::instance().runEffect(EVisualEffect::RlvSphere, &params);
-        // The frame is wherever the last pass left it: still sourceBuffer if no sphere is
-        // enabled or the passes were even in number (one per effect, two per blur).
-        if (params.m_pDstBuffer == targetBuffer)
-        {
-            std::swap(sourceBuffer, targetBuffer);
-        }
-    }
-// [/RLVa:KB]
 
     if (RenderBufferVisualization > -1 && !cutout)
     {
@@ -28978,10 +28957,6 @@ void LLPipeline::renderDeferredLighting()
     }
 
     llassert(!sRenderingHUDs);
-
-    // Read here, ahead of every pass that holds to it: the lighting and, through renderGeomPostDeferred, the haze.
-    static LLCachedControl<bool> depth_bounds(gSavedSettings, "AlchemyRenderDepthBoundsTest", true);
-    ALDepthBounds::sEnabled = depth_bounds;
 
     F32 light_scale = 1.f;
 

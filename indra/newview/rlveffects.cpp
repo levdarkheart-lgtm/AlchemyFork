@@ -16,13 +16,13 @@
  */
 
 #include "llviewerprecompiledheaders.h"
+#include "llviewercamera.h"
 
 #include "llagent.h"
 #include "llviewershadermgr.h"
 #include "llviewertexturelist.h"
 #include "llviewerwindow.h"
 #include "llvoavatarself.h"
-#include "pipeline.h"
 
 #include "rlveffects.h"
 #include "rlvhandler.h"
@@ -35,7 +35,7 @@ const float c_DefaultAlpha = 1.0f;
 const float c_DefaultColor[3] = { 1.0f, 1.0f, 1.0f };
 
 RlvOverlayEffect::RlvOverlayEffect(const LLUUID& idRlvObj)
-    : LLVisualEffect(idRlvObj, EVisualEffect::RlvOverlay, EVisualEffectType::Custom)
+    : LLVisualEffect(idRlvObj, EVisualEffect::RlvOverlay)
     , m_nAlpha(c_DefaultAlpha)
     , m_fBlockTouch(false)
     , m_Color(LLColor3(c_DefaultColor))
@@ -110,7 +110,7 @@ void RlvOverlayEffect::setImage(const LLUUID& idTexture)
     m_pImage->forceToSaveRawImage(0);
 }
 
-void RlvOverlayEffect::run(LLVisualEffectParams*)
+void RlvOverlayEffect::run()
 {
     if (m_pImage)
     {
@@ -157,7 +157,7 @@ const int   c_SphereDefaultDistanceExtend = 1;
 const float c_SphereDefaultAlpha = 1.0f;
 
 RlvSphereEffect::RlvSphereEffect(const LLUUID& idRlvObj)
-    : LLVisualEffect(idRlvObj, EVisualEffect::RlvSphere, EVisualEffectType::PostProcessShader)
+    : LLVisualEffect(idRlvObj, EVisualEffect::RlvSphere)
     , m_eMode((ESphereMode)c_SphereDefaultMode)
     , m_eOrigin((ESphereOrigin)c_SphereDefaultOrigin)
     , m_Params(LLVector4(c_SphereDefaultColor))
@@ -298,13 +298,6 @@ ERlvCmdRet RlvSphereEffect::onValueMaxChanged(const LLUUID& idRlvObj, const boos
 
 bool RlvSphereEffect::getShaderParams(ShaderParams& params)
 {
-    const U32 frame = LLFrameTimer::getFrameCount();
-    if (m_ShaderParamsCached && m_ShaderParamsFrame == frame)
-    {
-        params = m_ShaderParams;
-        return m_ShaderParamsValid;
-    }
-
     const S32 raw_mode = static_cast<S32>(m_eMode);
     params.mode = llclamp(raw_mode, 0, static_cast<S32>(ESphereMode::Count));
 
@@ -340,106 +333,8 @@ bool RlvSphereEffect::getShaderParams(ShaderParams& params)
     // Pass effect params
     params.effect = m_Params.get();
 
-    m_ShaderParams = params;
-    m_ShaderParamsFrame = frame;
-    m_ShaderParamsCached = true;
-    m_ShaderParamsValid = raw_mode >= 0 &&
+    return raw_mode >= 0 &&
         raw_mode < static_cast<S32>(ESphereMode::Count);
-    return m_ShaderParamsValid;
-}
-
-void RlvSphereEffect::setShaderUniforms(LLGLSLShader* pShader)
-{
-    ShaderParams params;
-    getShaderParams(params);
-    pShader->uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)gPipeline.mRT->screen.getWidth(), (GLfloat)gPipeline.mRT->screen.getHeight());
-    pShader->uniform1i(LLShaderMgr::RLV_EFFECT_MODE, params.mode);
-    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM1, 1, params.origin.mV);
-    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM2, 1, params.distance_value.mV);
-    pShader->uniform2fv(LLShaderMgr::RLV_EFFECT_PARAM3, 1, params.distance_extend.mV);
-    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM4, 1, params.effect.mV);
-}
-
-void RlvSphereEffect::renderPass(LLGLSLShader* pShader, const LLShaderEffectParams* pParams) const
-{
-    if (pParams->m_pDstBuffer)
-    {
-        pParams->m_pDstBuffer->bindTarget();
-    }
-    else
-    {
-        gGLViewport[0] = gViewerWindow->getWorldViewRectRaw().mLeft;
-        gGLViewport[1] = gViewerWindow->getWorldViewRectRaw().mBottom;
-        gGLViewport[2] = gViewerWindow->getWorldViewRectRaw().getWidth();
-        gGLViewport[3] = gViewerWindow->getWorldViewRectRaw().getHeight();
-        gGL.setViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
-    }
-    RLV_ASSERT_DBG(pParams->m_pSrcBuffer);
-
-    S32 nDiffuseChannel = pShader->enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
-    if (nDiffuseChannel > -1)
-    {
-        pParams->m_pSrcBuffer->bindTexture(0, nDiffuseChannel, ALSamplers::PointMirror);
-    }
-
-    S32 nDepthChannel = pShader->enableTexture(LLShaderMgr::DEFERRED_DEPTH);
-    if (nDepthChannel > -1)
-    {
-        gGL.getTextureSlot(nDepthChannel)->bind(&gPipeline.mRT->deferredScreen, true);
-    }
-
-    gPipeline.mScreenTriangleVB->setBuffer();
-    gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-    pShader->disableTexture(LLShaderMgr::DEFERRED_DIFFUSE, pParams->m_pSrcBuffer->getUsage());
-    pShader->disableTexture(LLShaderMgr::DEFERRED_DEPTH, gPipeline.mRT->deferredScreen.getUsage());
-
-    if (pParams->m_pDstBuffer)
-    {
-        pParams->m_pDstBuffer->flush();
-    }
-}
-
-void RlvSphereEffect::run(LLVisualEffectParams* pParams)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    if (gRlvSphereProgram.isComplete())
-    {
-        LLGLDepthTest depth(GL_FALSE, GL_FALSE);
-
-        gRlvSphereProgram.bind();
-        setShaderUniforms(&gRlvSphereProgram);
-
-        LLShaderEffectParams* pShaderParams = static_cast<LLShaderEffectParams*>(pParams);
-        switch (m_eMode)
-        {
-            case ESphereMode::Blend:
-            case ESphereMode::ChromaticAberration:
-            case ESphereMode::Pixelate:
-                renderPass(&gRlvSphereProgram, pShaderParams);
-                break;
-            case ESphereMode::Blur:
-            case ESphereMode::BlurVariable:
-                // Separable: the vertical pass reads what the horizontal one wrote, so the
-                // buffers swap between them and the result ends in the destination the
-                // params are left with. The horizontal pass needs a buffer to land in: as the
-                // last effect drawn straight into what is bound (m_fBindLast) there is none, and
-                // only the vertical pass draws.
-                if (pShaderParams->m_pDstBuffer)
-                {
-                    gRlvSphereProgram.uniform2f(LLShaderMgr::RLV_EFFECT_PARAM5, 1.f, 0.f);
-                    renderPass(&gRlvSphereProgram, pShaderParams);
-                    pShaderParams->step(false);
-                }
-                gRlvSphereProgram.uniform2f(LLShaderMgr::RLV_EFFECT_PARAM5, 0.f, 1.f);
-                renderPass(&gRlvSphereProgram, pShaderParams);
-                break;
-            default:
-                llassert(true);
-        }
-
-        gRlvSphereProgram.unbind();
-    }
 }
 
 // ====================================================================================

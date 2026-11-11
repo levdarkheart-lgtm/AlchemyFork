@@ -4205,14 +4205,14 @@ function="World.EnvPreset"
           <menu_item_separator />
 
           <menu_item_check
-             label="Start Debug GL on next run"
-             name="Debug GL">
+             label="Start Metal API Validation on next run"
+             name="Debug Metal">
                 <menu_item_check.on_check
                  function="CheckControl"
-                 parameter="RenderDebugGLSession" />
+                 parameter="RenderDebugMetalSession" />
                 <menu_item_check.on_click
                  function="ToggleControl"
-                 parameter="RenderDebugGLSession" />
+                 parameter="RenderDebugMetalSession" />
             </menu_item_check>
             <menu_item_check
              label="Debug Pipeline"

@@ -39,7 +39,7 @@ public:
     static const EVisualEffect EffectCode = EVisualEffect::RlvOverlay;
 public:
     bool hitTest(const LLCoordGL& ptMouse) const;
-    void run(LLVisualEffectParams*) override;
+    void run();
     void setBlockTouch(bool block_touch)                { m_fBlockTouch = block_touch; }
     void tweenAlpha(float endAlpha, double duration)    { m_nAlpha.start(endAlpha, duration); }
     void tweenColor(LLColor3 endColor, double duration) { m_Color.start(endColor, duration); }
@@ -69,9 +69,8 @@ protected:
 class RlvSphereEffect : public LLVisualEffect
 {
 public:
-    // The post owner consumes exactly the same shader-ready state on GL and
-    // Metal.  Keeping the view-space origin and tween samples here prevents
-    // the native path from independently reinterpreting RLVa policy.
+    // Keep RLVa policy and tween sampling here; the native display-post owner
+    // consumes this state in effect priority order.
     struct ShaderParams
     {
         S32       mode = 0;
@@ -86,10 +85,8 @@ public:
 
     static const EVisualEffect EffectCode = EVisualEffect::RlvSphere;
 public:
-    void run(LLVisualEffectParams* pParams) override;
-    // Returns false for an out-of-range mode.  The GL owner also draws no
-    // pass for that state; native publication must fail closed rather than
-    // silently advancing the effect chain.
+    // Returns false for an out-of-range mode; the native display-post owner
+    // must reject that state rather than silently advancing the effect chain.
     bool getShaderParams(ShaderParams& params);
     static ERlvCmdRet onModeChanged(const LLUUID& idRlvObj, const boost::optional<RlvBehaviourModifierValue> newValue);
     static ERlvCmdRet onOriginChanged(const LLUUID& idRlvObj, const boost::optional<RlvBehaviourModifierValue> newValue);
@@ -101,10 +98,6 @@ public:
     static ERlvCmdRet onTweenDurationChanged(const LLUUID& idRlvObj, const boost::optional<RlvBehaviourModifierValue> newValue);
     static ERlvCmdRet onValueMinChanged(const LLUUID& idRlvObj, const boost::optional<RlvBehaviourModifierValue> newValue);
     static ERlvCmdRet onValueMaxChanged(const LLUUID& idRlvObj, const boost::optional<RlvBehaviourModifierValue> newValue);
-protected:
-    void renderPass(LLGLSLShader* pShader, const LLShaderEffectParams* pParams) const;
-    void setShaderUniforms(LLGLSLShader* pShader);
-
     /*
      * Member variables
      */
@@ -121,13 +114,6 @@ protected:
     LLTweenableValueLerp<float>     m_nValueMin;
     LLTweenableValueLerp<float>     m_nValueMax;
     float                           m_nTweenDuration;
-    // Native capture and the authoritative GL draw can visit this owner at
-    // different points in one frame. Cache one tween sample so they cannot
-    // diverge merely because a few milliseconds elapsed between visits.
-    ShaderParams                    m_ShaderParams;
-    U32                             m_ShaderParamsFrame = 0;
-    bool                            m_ShaderParamsCached = false;
-    bool                            m_ShaderParamsValid = false;
 };
 
 // ====================================================================================

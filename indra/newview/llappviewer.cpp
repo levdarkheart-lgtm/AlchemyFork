@@ -96,6 +96,9 @@
 #include "llurlhistory.h"
 #include "llrender.h"
 #include "alrendercapabilities.h"
+#if LL_DARWIN
+#include "almetaldevice.h"
+#endif
 #include "llteleporthistory.h"
 #include "lltoast.h"
 #include "llsdutil_math.h"
@@ -3139,12 +3142,31 @@ bool LLAppViewer::initConfiguration()
         ll_init_fail_log(gDirUtilp->getExpandedFilename(LL_PATH_LOGS, "test_failures.log"));
     }
 
-    if (gSavedSettings.getBOOL("RenderDebugGLSession"))
+    if (gSavedSettings.getBOOL("DebugSession") ||
+        gSavedSettings.getBOOL("RenderDebugMetalSession") ||
+        gSavedSettings.getBOOL("RenderDebugGLSession"))
+    {
+        if (setenv("MTL_DEBUG_LAYER", "1", 1) != 0)
+        {
+            LL_WARNS("Metal") << "Could not request Metal API validation" << LL_ENDL;
+        }
+        else
+        {
+            LL_INFOS("Metal") << "Requested Metal API validation for this session" << LL_ENDL;
+        }
+    }
+
+    // Consume the old setting as well so an already saved next-run request
+    // survives the native renderer migration. Configuration precedes the
+    // window's first Metal device creation, when API validation is selected.
+    if (gSavedSettings.getBOOL("RenderDebugMetalSession") ||
+        gSavedSettings.getBOOL("RenderDebugGLSession"))
     {
         gDebugGLSession = true;
         gDebugGL = true;
-        // gDebugGL can cause excessive logging
-        // so it's limited to a single session
+        // Strict graphics diagnostics are expensive; retain the original
+        // one-session behavior instead of persisting validation indefinitely.
+        gSavedSettings.setBOOL("RenderDebugMetalSession", false);
         gSavedSettings.setBOOL("RenderDebugGLSession", false);
     }
 
@@ -6718,8 +6740,19 @@ void LLAppViewer::forceErrorOSSpecificException()
 
 void LLAppViewer::forceErrorDriverCrash()
 {
-    LL_WARNS() << "Forcing a deliberate driver crash" << LL_ENDL;
-    glDeleteTextures(1, NULL);
+    LL_WARNS() << "Forcing a deliberate Metal API driver crash" << LL_ENDL;
+#if LL_DARWIN
+    if (gViewerWindow && gViewerWindow->getWindow())
+    {
+        if (ALMetalDevice* device = gViewerWindow->getWindow()->getMetalDevice())
+        {
+            device->forceDriverCrash();
+        }
+    }
+#endif
+    // This explicit crash-reporting test must also terminate if initialization
+    // has not yet produced a device; no legacy graphics entrypoint exists.
+    std::abort();
 }
 
 void LLAppViewer::forceErrorCoroutineCrash()

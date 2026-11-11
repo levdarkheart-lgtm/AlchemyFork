@@ -158,6 +158,11 @@ public:
     void* nativeHandle() const noexcept;
     void* nativeCommandQueue() const noexcept;
 
+    // Explicit Develop-menu crash-reporting test only. Deliberately passes
+    // invalid client memory to Metal so the crash has a graphics API stack;
+    // never enqueues GPU work and never returns to the viewer.
+    [[noreturn]] void forceDriverCrash() const;
+
     // Process-wide count of command buffers committed through the viewer's
     // native Metal wrapper. Monotonic deltas provide low-overhead per-frame
     // submission telemetry; this is not a GPU-time measurement.

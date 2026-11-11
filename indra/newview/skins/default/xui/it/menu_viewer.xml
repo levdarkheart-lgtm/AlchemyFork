@@ -299,7 +299,7 @@
 			<menu_item_call label="Pulisci cache immediatamente" name="Cache Clear"/>
 			<menu_item_check name="Rull Res Textures" label="Texture a tutta risoluzione"/>
 			<menu_item_check name="Debug Pipeline" label="Accesso al debug"/>
-			<menu_item_check name="Debug GL" label="Debug GL"/>
+			<menu_item_check name="Debug Metal" label="Debug Metal"/>
 			<menu_item_check name="Object-Object Occlusion" label="Occlusione oggetto-oggetto"/>
 			<menu_item_call name="Selected Texture Info Basis" label="Informazioni base sulla struttura selezionata"/>
 			<menu_item_check name="Tangent Basis" label="Base tangente"/>

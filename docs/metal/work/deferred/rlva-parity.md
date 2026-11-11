@@ -1,5 +1,12 @@
 # Deferred RLVa parity backlog
 
+Historical deferral, superseded by the owner's 2026-11-11 request to finish
+remaining RLVa features. M-013 is active again; see the
+[current implementation](../active/remaining-feature-port.md) and
+[native ownership repair](../active/rlva-native-owner-cleanup.md). The backlog
+below preserves the earlier decision and still-unverified behavior; it is no
+longer authorization to leave requested RLVa behavior unfinished.
+
 **Work item:** M-013. **State:** deferred nice-to-have. **Owner decision:**
 2026-11-01.
 

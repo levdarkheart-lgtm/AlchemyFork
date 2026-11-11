@@ -18,14 +18,9 @@
 #pragma once
 
 #include "llsingleton.h"
+#include <boost/iterator/filter_iterator.hpp>
 #include <boost/optional.hpp>
 #include <boost/none.hpp>
-
-// ============================================================================
-//
-//
-
-class LLRenderTarget;
 
 // ============================================================================
 //
@@ -37,38 +32,6 @@ enum class EVisualEffect
     RlvSphere,
 };
 
-enum class EVisualEffectType
-{
-    PostProcessShader,
-    Custom,
-};
-
-// ============================================================================
-//
-//
-
-struct LLVisualEffectParams
-{
-    virtual ~LLVisualEffectParams() = default;
-    virtual void step(bool isLast) = 0;
-};
-
-struct LLShaderEffectParams : LLVisualEffectParams
-{
-    explicit LLShaderEffectParams(LLRenderTarget* pSrcBuffer, LLRenderTarget* pScratchBuffer, bool fBindLast) : m_pSrcBuffer(pScratchBuffer), m_pDstBuffer(pSrcBuffer), m_fBindLast(fBindLast) {}
-
-    void step(bool isLast) override
-    {
-        LLRenderTarget* pPrevSrc = m_pSrcBuffer, *pPrevDst = m_pDstBuffer;
-        m_pSrcBuffer = pPrevDst;
-        m_pDstBuffer = (!isLast || !m_fBindLast) ? pPrevSrc : nullptr;
-    }
-
-    LLRenderTarget* m_pSrcBuffer = nullptr;
-    LLRenderTarget* m_pDstBuffer = nullptr;
-    bool            m_fBindLast = false;
-};
-
 // ============================================================================
 //
 //
@@ -77,8 +40,8 @@ class LLVisualEffect
 {
     friend class LLVfxManager;
 public:
-    LLVisualEffect(LLUUID id, EVisualEffect eCode, EVisualEffectType eType)
-        : m_id(id), m_eCode(eCode), m_eType(eType)
+    LLVisualEffect(LLUUID id, EVisualEffect eCode)
+        : m_id(id), m_eCode(eCode)
     {}
     virtual ~LLVisualEffect() {}
 
@@ -86,12 +49,7 @@ public:
     bool              getEnabled() const  { return m_fEnabled; }
     const LLUUID&     getId() const       { return m_id;}
     U32               getPriority() const { return m_nPriority; }
-    EVisualEffectType getType() const     { return m_eType;}
     void              setEnabled(bool enable) { m_fEnabled = enable; }
-
-    // An effect that draws in more than one pass steps pParams between them itself, so
-    // what it leaves as the destination is where its result is.
-    virtual void      run(LLVisualEffectParams* pParams) = 0;
 
 protected:
     void              setPriority(U32 priority) { m_nPriority = priority; }
@@ -102,7 +60,6 @@ protected:
 protected:
     LLUUID            m_id;
     EVisualEffect     m_eCode;
-    EVisualEffectType m_eType;
     bool              m_fEnabled = true;
     U32               m_nPriority = 0;
 };
@@ -174,16 +131,12 @@ public:
     bool            addEffect(LLVisualEffect* pEffectInst);
     LLVisualEffect* getEffect(EVisualEffect eCode, const LLUUID& idEffect) const;
     template<typename T> T* getEffect(const LLUUID& idEffect) const { return dynamic_cast<T*>(getEffect(T::EffectCode, idEffect)); }
-    bool            getEffects(std::list<LLVisualEffect*>& effectList, std::function<bool(const LLVisualEffect*)> fnFilter);
     template<typename T> bool getEffects(std::list<T*>& effectList);
     bool            hasEffect(EVisualEffect eCode) const;
     bool            removeEffect(EVisualEffect eCode, const LLUUID& idEffect);
     template<typename T> bool removeEffect(const LLUUID& idEffect) { return removeEffect(T::EffectCode, idEffect); }
-    void            runEffect(EVisualEffect eCode, LLVisualEffectParams* pParams = nullptr);
-    void            runEffect(EVisualEffectType eType, LLVisualEffectParams* pParams = nullptr);
     void            updateEffect(LLVisualEffect* pEffect, bool fEnabled, U32 nPriority);
 protected:
-    void            runEffect(std::function<bool(const LLVisualEffect*)> fnFilter, LLVisualEffectParams* pParams);
     static bool     cmpEffect(const LLVisualEffect* pLHS, const LLVisualEffect* pRHS);
 
     /*

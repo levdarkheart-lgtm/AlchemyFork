@@ -19,9 +19,6 @@
 
 #include "llvisualeffect.h"
 
-#include <boost/iterator/filter_iterator.hpp>
-#include <boost/range/iterator_range.hpp>
-
 // ============================================================================
 // LLTweenableValue class
 //
@@ -91,20 +88,6 @@ LLVisualEffect* LLVfxManager::getEffect(EVisualEffect eCode, const LLUUID& idEff
     return (m_Effects.end() != itEffect) ? *itEffect : nullptr;
 }
 
-bool LLVfxManager::getEffects(std::list<LLVisualEffect*>& effectList, std::function<bool(const LLVisualEffect*)> fnFilter)
-{
-    effectList.clear();
-
-    auto itEffect  = boost::make_filter_iterator(fnFilter, m_Effects.begin(), m_Effects.end()),
-         endEffect = boost::make_filter_iterator(fnFilter, m_Effects.end(), m_Effects.end());
-    while (itEffect != endEffect)
-    {
-        effectList.push_back(*itEffect++);
-    }
-
-    return effectList.size();
-}
-
 bool LLVfxManager::removeEffect(EVisualEffect eCode, const LLUUID& idEffect)
 {
     auto itEffect = std::find_if(m_Effects.begin(), m_Effects.end(), [eCode, &idEffect](const LLVisualEffect* pEffect) { return pEffect->getCode() == eCode && pEffect->getId() == idEffect; });
@@ -114,33 +97,6 @@ bool LLVfxManager::removeEffect(EVisualEffect eCode, const LLUUID& idEffect)
     delete *itEffect;
     m_Effects.erase(itEffect);
     return true;
-}
-
-void LLVfxManager::runEffect(EVisualEffect eCode, LLVisualEffectParams* pParams)
-{
-    runEffect([eCode](const LLVisualEffect* pEffect) { return pEffect->getCode() == eCode; }, pParams);
-}
-
-void LLVfxManager::runEffect(EVisualEffectType eType, LLVisualEffectParams* pParams)
-{
-    runEffect([eType](const LLVisualEffect* pEffect) { return pEffect->getType() == eType; }, pParams);
-}
-
-void LLVfxManager::runEffect(std::function<bool(const LLVisualEffect*)> predicate, LLVisualEffectParams* pParams)
-{
-    // *TODO-Catz: once we're done, check whether iterating over the entire list still has negliable impact
-    auto itEffect  = boost::make_filter_iterator(predicate, m_Effects.begin(), m_Effects.end()),
-         endEffect = boost::make_filter_iterator(predicate, m_Effects.end(), m_Effects.end());
-    while (itEffect != endEffect)
-    {
-        LLVisualEffect* pEffect = *itEffect++;
-        if (pEffect->getEnabled())
-        {
-            if (pParams)
-                pParams->step(itEffect == endEffect);
-            pEffect->run(pParams);
-        }
-    }
 }
 
 void  LLVfxManager::updateEffect(LLVisualEffect* pEffect, bool fEnabled, U32 nPriority)

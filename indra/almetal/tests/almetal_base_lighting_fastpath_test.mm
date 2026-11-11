@@ -46,8 +46,9 @@ namespace
 }
 
 TEST_CASE("almetal: base fullbright preserves linear output and exact material guards",
-          "[almetal][base-light-fastpath]")
+          "[almetal][base-light-fastpath][emissive-toggle]")
 {
+    for (const bool hdr : {false, true})
     @autoreleasepool
     {
         std::string error;
@@ -65,7 +66,8 @@ TEST_CASE("almetal: base fullbright preserves linear output and exact material g
         descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm_srgb;
         descriptor.colors[1].format = ALMetalPixelFormat::rgba8_unorm;
         descriptor.colors[2].format = ALMetalPixelFormat::rgba16_unorm;
-        descriptor.colors[3].format = ALMetalPixelFormat::rg11b10_float;
+        descriptor.colors[3].format = hdr ? ALMetalPixelFormat::rg11b10_float
+                                        : ALMetalPixelFormat::rgba8_unorm;
         descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
         descriptor.depth_stencil_shader_read = true;
         descriptor.label = "Fullbright boundary G-buffer";
@@ -119,7 +121,7 @@ TEST_CASE("almetal: base fullbright preserves linear output and exact material g
         scene.gbuffer = gbuffer.get();
         scene.light_map = light_map.get();
         scene.legacy_environment = environment.get();
-        scene.hdr = true;
+        scene.hdr = hdr;
         scene.constants.environment_config[0] = 1;
         scene.constants.light_direction[2] = 1.f;
         // With no ambient/sun and no gloss, the original legacy expression
@@ -146,11 +148,12 @@ TEST_CASE("almetal: base fullbright preserves linear output and exact material g
         }};
         for (const bool reverse_z : {false, true})
         {
+            for (const bool suppress_emissive : {false, true})
             for (const bool classic : {false, true})
             {
                 for (const Case& sample : cases)
                 {
-                    CAPTURE(sample.name, reverse_z, classic);
+                    CAPTURE(sample.name, hdr, reverse_z, classic, suppress_emissive);
                     ALMetalRenderPassConfig clear;
                     clear.clear_depth = sample.clear_depth
                         ? (reverse_z ? 0.0 : 1.0)
@@ -190,12 +193,14 @@ TEST_CASE("almetal: base fullbright preserves linear output and exact material g
                     REQUIRE(command->commitAndWait(&error));
                     scene.constants.config[0] = reverse_z ? 1 : 0;
                     scene.constants.config[1] = classic ? 1 : 0;
+                    scene.constants.environment_config[1] = suppress_emissive ? 1u : 0u;
                     auto output = renderer->renderBaseLighting(scene, &error);
                     INFO(error);
                     REQUIRE(output);
                     std::array<std::uint16_t, pixel_count * 4> pixels{};
                     REQUIRE(output->colorTexture(0)->readback(*device, 0, 0, {},
-                        pixels.data(), size * 8, &error));
+                        pixels.data(), size * (hdr ? 8 : 4), &error));
+                    const auto* sdr_pixels = reinterpret_cast<const std::uint8_t*>(pixels.data());
                     for (std::size_t pixel = 0; pixel < pixel_count; ++pixel)
                     {
                         for (std::size_t channel = 0; channel < 3; ++channel)
@@ -210,13 +215,16 @@ TEST_CASE("almetal: base fullbright preserves linear output and exact material g
                                     environment_color[channel] / 255.f * 2.f * weight);
                             }
                             if (sample.pbr)
-                                expected = std::array<float, 3>{{0.25f, 0.5f, 1.f}}[channel];
+                                expected = suppress_emissive ? 0.f
+                                    : std::array<float, 3>{{0.25f, 0.5f, 1.f}}[channel];
                             expected *= classic ? 1.1f : 1.f;
                             if (sample.clear_depth) expected = 0.f;
-                            CHECK(std::abs(halfValue(pixels[pixel * 4 + channel]) - expected)
-                                  < 0.001f);
+                            const float actual = hdr ? halfValue(pixels[pixel * 4 + channel])
+                                : sdr_pixels[pixel * 4 + channel] / 255.f;
+                            if (!hdr) expected = std::min(expected, 1.f);
+                            CHECK(std::abs(actual - expected) < (hdr ? 0.001f : 0.003f));
                         }
-                        CHECK(pixels[pixel * 4 + 3] == 0);
+                        CHECK((hdr ? pixels[pixel * 4 + 3] : sdr_pixels[pixel * 4 + 3]) == 0);
                     }
                 }
             }

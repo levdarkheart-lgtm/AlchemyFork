@@ -197,10 +197,6 @@ extern LLGLSLShader         gCGColorgradeGammaProgram;
 extern LLGLSLShader         gCGColorgradeLegacyGammaProgram;
 extern LLGLSLShader         gCGTonemapColorgradeProgram;
 extern LLGLSLShader         gCGTonemapColorgradeLegacyGammaProgram;
-// [RLVa:KB] - @setsphere
-extern LLGLSLShader         gRlvSphereProgram;
-// [/RLVa:KB]
-
 extern LLGLSLShader         gHUDPBROpaqueProgram;
 
 enum TerrainPaintType : U32

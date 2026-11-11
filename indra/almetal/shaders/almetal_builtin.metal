@@ -12899,8 +12899,11 @@ fragment float4 almetal_world_base_light_geometry_fragment(
         point_sampler, input.texcoord);
     float4 specular = specular_texture.sample(
         point_sampler, input.texcoord);
-    const float3 emissive = emissive_texture.sample(
-        point_sampler, input.texcoord).rgb;
+    // Original getGBuffer reads emission only for HAS_EMISSIVE. Keep this
+    // independent of HDR storage and of the inline alpha/HUD owners.
+    const float3 emissive = constants.environment_config.y == 0u
+        ? emissive_texture.sample(point_sampler, input.texcoord).rgb
+        : float3(0.0);
     const bool pbr = abs(normal_sample.a - 0.67) < 0.1;
     const bool classic_mode = constants.config.y != 0u;
     const float2 shadow_occlusion = light_map.sample(

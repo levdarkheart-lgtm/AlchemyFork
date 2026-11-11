@@ -1,114 +1,91 @@
-# Current engineering state — native Edit Rotate repair
+# Current engineering state — remaining-feature port resumed
 
-**Observed:** 2026-11-11 UTC, M1 Max / 64 GiB / macOS 26.5.2 / Xcode 26.6.
+**Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `7710ae4f977295d7c3539516a2d3814485a7db45`.
-All previous renderer, avatar, HUD, loading, environment and music repairs remain.
-The broader porting goal and earlier 20 FPS campaign are paused. Translator and
-Xcode replay remain stopped. Owner explicitly prohibits starting the viewer.
-The viewer is CLOSED: final process inspection found no running Alchemy app.
-No login, settings, account, cache, camera, region or object changes in this repair.
+**Renderer code checkpoint:** `bccbb7be48000fab91b43688bc585f2f9ab474cf` plus current feature-port changes.
+The owner resumed RLVa, Debug/Developer and remaining OpenGL removal. This
+supersedes the previous broad-port pause. The separate20FPS campaign remains
+deferred. No viewer launch or screenshot comparison is allowed. No account,
+cache, settings, camera, location or simulator state was changed.
 
-## Confirmed Edit Rotate defect repaired
+## Current implementation
 
-[Original mapping and validation](../work/active/object-rotation-repair.md).
-Exact original `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` uses position-only,
-uniform-color Debug geometry for rotation rings. Native Debug metadata omitted
-MAP_VERTEX; immediate buffer admission failed and invalidated authoritative UI
-captures. Previous UI could remain displayed, making mode selection appear absent.
-The saved owner-trial log corroborates mask0 Debug rejections at washer/fan vertex
-counts, with successful publications interspersed; not one continuous freeze.
-Declare the actual native layout before shader creation. Also copy original cull
-state for nonindexed immediate geometry, previously handled only for indexed
-batches. No input/permission gates, hidden geometry or shader math changes.
+[Remaining-feature port and exact checks](../work/active/remaining-feature-port.md).
+Original viewer source was inspected before each change; independent reviews
+found no blocking contract defects.
 
-M1 Max Release tests under Metal API and shader validation:
+- RLVa: sole native sphere owner; remove displaced GL program, shaders,
+  framebuffer execution and generic effect-target dispatcher. Preserve ordered
+  enabled overlays and five sphere modes. Remove erroneous frame-only policy/
+  view-origin cache so each execution samples current state like the original.
+- Developer: next-run Metal API validation, including legacy request migration
+  and `--debugsession`, is selected before device creation. Standalone actual-
+  device probe selects MTLDebugDevice; normal control selects AGXG13XDevice.
+  Explicit Force Driver Crash now enters Metal with invalid CPU data and an
+  abort fallback; this action was not executed and submits no GPU work.
+- Correct deferred emissive OFF independently of HDR storage, preserving inline
+  alpha/HUD emission and cached-impostor data for reenable. Correct Glow ON's
+  native program-availability latch.
+- Correct Build No Post-processing's stale native preflight rejection. The
+  downstream native owner already applies the original available-floater gate
+  and gamma-only/tonemap-bypass behavior.
+- Remove unused ALDepthBounds/ALDrawnOnly code, GL-only test, CMake entries and
+  obsolete setting. Native depth/stencil/sky/radius restrictions remain.
 
-| Check | Result |
-| --- | --- |
-| New Debug configuration/immediate GPU fixture | exit0; 62 assertions / 1 case |
-| Same frozen fixture against previous cull implementation | exit42; 4 failures / 62 assertions |
-| Restored candidate plus nearby native UI/metadata regressions | exit0; 419 assertions / 14 cases |
+All previous renderer, avatar, editing, travel and music repairs remain.
+Deleted legacy files remain recoverable through Git.
 
-The test exercises real native shader configuration, immediate helpers, capture
-and GPU pixels against independent triangle oracles. It does not link the newview
-loader or exercise mouse handling; loader placement is source-reviewed and app-
-compiled. Production and test source reviews approved. Live rings, picking,
-object dragging and simulator rotation remain UNVERIFIED. No FPS claim.
+## Observed validation
 
-## Exact build and evidence
+Doctor/configure and native test builds exit0. Initial sandbox builds could not
+access compiler caches; approved retries used. First app compile exposed an
+implicit camera include after RLVa cleanup; explicit include fixed, final
+Release app rebuild pending. Do not claim the previous app is this candidate.
 
-Canonical Release **26.4.0.68648**, clean renderer source checkpoint7710ae4f97.
-`tools/metal/doctor.sh`, `tools/metal/build.sh configure`,
-`tools/metal/build.sh build`, `tools/metal/verify_app.sh <app>` and
-`codesign --verify --deep --strict --verbose=2 <app>` all exited0.
-Slice inspection checked349 Mach-O files, zero invalid slices. Canonical app:
-`build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-Executable SHA256:
-`c96203506cfedcfebef3aa92514d839a3e1b8427efd1ce294e104413a314b9b7`.
-Metallib SHA256:
-`52d5aec4853511526cc5198f077fdb289d566c602271464f57c3f6174314e36c`.
-Root ran tests/build; peers source-reviewed. No fresh-checkout release claim.
+Under Metal API and shader validation, native renderer tests pass910assertions/
+17cases. Focused RLVa/Glow/emissive/G-buffer/UI tests pass38307assertions/5cases;
+display-post/tonemap-bypass fixture passes1824assertions/1case. Emissive fixture
+covers HDR/SDR, both depth conventions, classic modes, switch off/on and legacy
+fullbright invariance against analytic GPU values.
 
-Ignored evidence: `artifacts/metal/private-object-rotate-audit-20261110-01/`.
-`final-build-identity.json` pins app/source/hashes and exact command receipts;
-`cull-red-control.json` records temporary baseline and restored candidate.
-No raw logs, screenshots, cache or private capture uploads are authorized.
-The inspection-only CUA selection earlier opened a login-only process; it was
-closed with SIGTERM after the owner instruction. No login occurred. No further
-viewer launches or screenshot comparisons are allowed by this handoff.
+These fixtures do not establish live menu clicks, settings persistence, RLVa
+command/reply, touch, tween, restart or full feature parity. No viewer started,
+no deliberate crash executed, no performance claim.
 
-## Earlier fixes and remaining symptoms
-
-[Classic-avatar repair](../work/active/classic-avatar-position-w.md) restores XYZ/W1
-at the shared skin/cloth shader entries, matching the original attribute contract.
-Old shader fails10/256 assertions; repaired256/1 and existing48568/2 GPU tests pass.
-Owner later reported geometry fixed among roughly76 avatars; full parity remains
-open. [Music repair](../work/active/parcel-music-host-repair.md) fixes packaged
-LibVLC module resolution and failed-init cleanup. Actual playback host passed
-silent local3sWAV volume0 through Playing/time updates/Done/normal exit0; remote
-parcel/audible playback remains unverified. All earlier repairs stay included.
-
-[Prior crowd trial](../work/active/crowd-live-68643.md): owner raised animated-avatar
-limit11→40 and confirmed responsiveness. LEFT/RIGHT self-turn body/name-tag lag
-remains open; original CPU turn code matches. One current-backing snapshot did
-not establish actual presented world age or capture a bad turn. Do not repeat
-intrusive debugger sampling. [Camera/voice audit](../work/active/teleport-camera-voice-audit.md)
-found no source-proved incorrect port; actual fly-in cause and attended voice
-functionality remain open. No speculative camera/voice changes were applied.
-
-[Display/lighting audit](../work/active/display-settings-lighting-audit.md) found
-HiDPI restart wiring and scene HDR connected; physical output remains SDR.
-Deferred PBR emissive OFF and native Glow ON callback defects are confirmed but
-UNFIXED. Preserve original inline alpha/HUD emissive exceptions in future work.
-Lightbox/EEP and bounded exposure math match original. Reported bright/dark
-lighting remains OPEN; no matching original/EEP/Look/exposure proof, no guessed
-brightness change. The previous detailed state is preserved in the
-[indexed archive](archive/CURRENT-classic-avatar-music-display-audit-2026-11-11.md).
+Ignored evidence: `artifacts/metal/feature-completion-20261111/`.
+Strict source audit exits1 with1792findings/2406files (previous1815/2408).
+Names account for many findings, but dormant GL function pointers and real dead
+GL implementations remain. Earlier executable inspection found no linked
+OpenGL framework or unresolved GL imports; runtime context proof remains open.
 
 ## Complete-product advancement assessment
 
-M-006/M-008 editing rendering advanced through a confirmed missing-layout and
-cull-state repair with actual GPU failure/success evidence. Editing remains
-unverified as an end-to-end feature. M-014 stays deferred: last controlled
-current-source9.745FPS, 20FPS unmet, no hardware ceiling proved.
+M-008/M-011/M-013 are doing: native feature semantics corrected and displaced GL
+execution removed, with bounded GPU evidence. Full parity, source/runtime no-GL,
+prolonged stability, performance and independent release gates remain open.
+M-012 stays complete; M-014 stays deferred.
 
 | Milestone | State | Evidence / remaining requirement |
 | --- | --- | --- |
-| M-008 Advanced views/effects | doing | Debug geometry and original avatar contracts repaired; live parity remains. |
-| M-012 Native UI automation | complete | Prior exact-build flow retained; no new launch is authorized. |
-| M-014 Ultra20FPS campaign | deferred | Owner-paused; no new FPS claim. |
+| M-008 Advanced views/effects | doing | Native settings and developer behavior repaired; debug buffers remain. |
+| M-012 Native UI automation | complete | Prior exact-build flow retained; no new viewer launch. |
+| M-013 RLVa parity | doing | Sole native ownership and current-view state; live policy parity unverified. |
+
+Full parity, strict no-GL and independent build/review evidence remain open.
 
 ## Exact next actions
 
-The owner requested a normal push of ALL accumulated fixes to the feature branch;
-verify final remote HEAD equals local HEAD and record the push receipt privately.
-Do not resume broad implementation, launch the viewer or start visual comparison.
+Next finish current Release build and run `tools/metal/verify_app.sh` on
+`build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
+Then implement native `RenderBufferVisualization`: preflight currently rejects
+every selected debug buffer and the old GLSL path alone consumes modes0–6.
+Trace attachment sampling, luminance mip8 and retained SMAA intermediates before
+native scope/reference/UI composition. Afterwards remove the dormant GLSL
+compiler/linker/binary-cache tail while preserving metadata/uniform contracts.
 
-Full original sky/interior/shadow/low-DD/HUD/crowd parity, prolonged stability,
-ART/loading-sphere behavior, non1-scale final noise, real media/voice, strict
-source/runtime no-GL and independent release review remain open. Full parity,
-strict no-GL and independent build/review evidence remain open release gates.
-No release
-readiness or full product completion claim. Cold cache backup remains private
-and intact; do not restore it over the active cache.
+Keep unresolved self-turn body/name-tag lag, camera/voice and broad lighting
+complaints recorded in the prior [rotation handoff](../work/active/object-rotation-repair.md),
+[display audit](../work/active/display-settings-lighting-audit.md),
+[crowd record](../work/active/crowd-live-68643.md) and
+[camera/voice audit](../work/active/teleport-camera-voice-audit.md).
+No speculative brightness, camera or voice policy changes. No release readiness.

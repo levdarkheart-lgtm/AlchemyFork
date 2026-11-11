@@ -2078,6 +2078,9 @@ struct alignas(16) ALMetalWorldBaseLightingConstants
     // x = reverse Z, y = classic mode, z = sun shadow, w = SSAO.
     std::uint32_t config[4]{};
     // x = legacy sky-cube environment instead of reflection probes.
+    // y = suppress deferred emission (RenderEnableEmissiveBuffer off).
+    // Native storage stays resident so cached impostors survive off/on toggles;
+    // alpha and HUD owners add emission inline, independently of this switch.
     std::uint32_t environment_config[4]{};
 };
 

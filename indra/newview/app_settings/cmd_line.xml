@@ -47,7 +47,7 @@
     <key>debugsession</key>
     <map>
       <key>desc</key>
-      <string>Run as if RenderDebugGLSession is TRUE, but log errors until end of session.</string>
+      <string>Enable Metal API validation and graphics diagnostics, logging viewer errors until end of session.</string>
       <key>map-to</key>
       <string>DebugSession</string>
     </map>

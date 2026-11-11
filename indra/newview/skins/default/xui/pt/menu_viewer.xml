@@ -299,7 +299,7 @@
 			<menu_item_call label="Limpar cache imediatamente" name="Cache Clear"/>
 			<menu_item_check name="Rull Res Textures" label="Texturas de Resolução Máxima"/>
 			<menu_item_check name="Debug Pipeline" label="Pipeline de Depuração"/>
-			<menu_item_check name="Debug GL" label="Depurar GL"/>
+			<menu_item_check name="Debug Metal" label="Depurar Metal"/>
 			<menu_item_check name="Object-Object Occlusion" label="Oclusão Objeto-Objeto"/>
 			<menu_item_call name="Selected Texture Info Basis" label="Base de Informações da Textura Selecionada"/>
 			<menu_item_check name="Tangent Basis" label="Base da Tangente"/>

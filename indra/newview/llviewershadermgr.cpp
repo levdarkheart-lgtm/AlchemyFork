@@ -152,9 +152,6 @@ LLGLSLShader            gCGColorgradeGammaProgram;
 LLGLSLShader            gCGColorgradeLegacyGammaProgram;
 LLGLSLShader            gCGTonemapColorgradeProgram;
 LLGLSLShader            gCGTonemapColorgradeLegacyGammaProgram;
-// [RLVa:KB] - @setsphere
-LLGLSLShader            gRlvSphereProgram;
-// [/RLVa:KB]
 
 LLGLSLShader            gHUDPBROpaqueProgram;
 LLGLSLShader            gDeferredPBRTerrainProgram[TERRAIN_PAINT_TYPE_COUNT];
@@ -1154,10 +1151,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
             gDeferredPBRTerrainAlphaMaskProgram[paint_type].unload();
         }
 
-// [RLVa:KB] - @setsphere
-        gRlvSphereProgram.unload();
-// [/RLVa:KB]
-
         return;
     }
 
@@ -1868,17 +1861,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         built(gCGTonemapColorgradeLegacyGammaProgram.createShader(), gCGTonemapColorgradeLegacyGammaProgram);
     }
 
-    // [RLVa:KB] - @setsphere
-    {
-        gRlvSphereProgram.mName = "RLVa Sphere Post Processing Shader";
-        gRlvSphereProgram.mFeatures.isDeferred = true;
-        gRlvSphereProgram.mShaderFiles.clear();
-        gRlvSphereProgram.mShaderFiles.push_back(make_pair("deferred/rlvV.glsl", GL_VERTEX_SHADER));
-        gRlvSphereProgram.mShaderFiles.push_back(make_pair("deferred/rlvF.glsl", GL_FRAGMENT_SHADER));
-        gRlvSphereProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gRlvSphereProgram.createShader(), gRlvSphereProgram);
-    }
-    // [/RLV:KB]
 }
 
 void LLViewerShaderMgr::loadShadersObject()

@@ -2,7 +2,6 @@
 
 set(
   llrender_SOURCES
-  aldepthbounds.cpp
   alframefences.cpp
   algpubuffer.cpp
   algputimer.cpp
@@ -43,7 +42,6 @@ set(
 
 set(
   llrender_HEADERS
-  aldepthbounds.h
   alframefences.h
   algpubuffer.h
   algputimer.h
@@ -234,8 +232,6 @@ if(AL_BUILD_TESTS)
   # - tessellation stages and the quad conventions the terrain relies on;
   # - the infinite reverse-Z projection: stored depth, round trip and depth
   #   order out to 100 km;
-  # - the depth bounds test against the depth test it stands in for, and the
-  #   depths a light's sphere spans;
   # - which fragment output reaches a render target's colour attachment,
   #   integer attachments cleared and drawn, targets kept, built again and
   #   re-pointed at a shared depth by their descriptions, and their labels;
@@ -271,7 +267,6 @@ if(AL_BUILD_TESTS)
     llrender_gl_shared_tests
     PROJECT llrender
     SOURCES
-      tests/aldepthbounds_gl_test.cpp
       tests/alframefences_gl_test.cpp
       tests/algpubuffer_gl_test.cpp
       tests/algputimer_gl_test.cpp

@@ -108,6 +108,7 @@
 // [RLVa:KB] - Checked: 2011-05-22 (RLVa-1.3.1a)
 #include "llvisualeffect.h"
 #include "rlvactions.h"
+#include "rlveffects.h"
 #include "rlvlocks.h"
 // [/RLVa:KB]
 
@@ -2526,7 +2527,15 @@ static void render_ui_over_world()
 // [RLVa:KB] - Checked: RLVa-2.2 (@setoverlay)
         if (RlvActions::hasBehaviour(RLV_BHVR_SETOVERLAY))
         {
-            LLVfxManager::instance().runEffect(EVisualEffect::RlvOverlay);
+            std::list<RlvOverlayEffect*> overlays;
+            LLVfxManager::instance().getEffects<RlvOverlayEffect>(overlays);
+            for (RlvOverlayEffect* overlay : overlays)
+            {
+                if (overlay && overlay->getEnabled())
+                {
+                    overlay->run();
+                }
+            }
         }
 // [/RLVa:KB]
         render_hud_attachments();

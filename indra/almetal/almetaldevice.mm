@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <mutex>
 #include <utility>
@@ -451,6 +452,20 @@ void* ALMetalDevice::nativeHandle() const noexcept
 void* ALMetalDevice::nativeCommandQueue() const noexcept
 {
     return mImpl ? (__bridge void*)mImpl->command_queue : nullptr;
+}
+
+[[noreturn]] void ALMetalDevice::forceDriverCrash() const
+{
+    // Match the original deliberate null client-array graphics API call.
+    // API validation aborts here when enabled; the driver otherwise faults
+    // copying the invalid CPU source. Do not submit invalid GPU commands.
+    const void* invalid_client_data = nullptr;
+    (void)[mImpl->device newBufferWithBytes:invalid_client_data
+                                  length:16
+                                 options:MTLResourceStorageModeShared];
+    // A runtime may reject the call without crashing. The explicit crash
+    // test must still terminate rather than silently resume the viewer.
+    std::abort();
 }
 
 std::uint64_t ALMetalDevice::committedCommandBufferCount() noexcept

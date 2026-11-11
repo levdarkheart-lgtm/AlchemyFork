@@ -293,7 +293,7 @@
 			<menu_item_check label="Occlusion objet-objet" name="Object-Object Occlusion"/>
 			<menu_item_check label="Ombres du soleil/de la lune/des projecteurs" name="Shadows from Sun/Moon/Projectors"/>
 			<menu_item_check label="SSAO et lissage des ombres" name="SSAO and Shadow Smoothing"/>
-			<menu_item_check label="Débogage GL" name="Debug GL"/>
+			<menu_item_check label="Débogage Metal" name="Debug Metal"/>
 			<menu_item_check label="Débogage pipeline" name="Debug Pipeline"/>
 			<menu_item_check label="Masques alpha automatiques (différés)" name="Automatic Alpha Masks (deferred)"/>
 			<menu_item_check label="Masques alpha automatiques (non différés)" name="Automatic Alpha Masks (non-deferred)"/>

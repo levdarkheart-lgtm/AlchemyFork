@@ -21188,7 +21188,7 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         scene.constants.config[2] > 1 ||
         scene.constants.config[3] > 1 ||
         scene.constants.environment_config[0] > 1 ||
-        scene.constants.environment_config[1] != 0 ||
+        scene.constants.environment_config[1] > 1 ||
         scene.constants.environment_config[2] != 0 ||
         scene.constants.environment_config[3] != 0 ||
         (scene.constants.environment_config[0] != 0) !=
