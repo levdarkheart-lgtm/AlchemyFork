@@ -107,22 +107,9 @@ LLGLSLShader        gImpostorProgram;
 // Effects Shaders
 LLGLSLShader            gGlowProgram;
 LLGLSLShader            gGlowExtractProgram;
-LLGLSLShader            gBloomExtractProgram;
-LLGLSLShader            gBloomDownsampleProgram;
-LLGLSLShader            gBloomDownsampleFirstProgram;
-LLGLSLShader            gBloomUpsampleProgram;
-LLGLSLShader            gCrossFilterProgram;
 
 // Deferred rendering shaders
 LLGLSLShader            gDeferredTerrainProgram;
-#if !LL_DARWIN
-LLGLSLShader            gDeferredPostProgram;
-LLGLSLShader            gDeferredPostProgramNoNear;
-LLGLSLShader            gDeferredPostProgramShaped;
-LLGLSLShader            gDeferredPostProgramNoNearShaped;
-LLGLSLShader            gDeferredDoFCombineProgram;
-LLGLSLShader            gDeferredDoFCombineProgramNoNear;
-#endif
 LLGLSLShader            gExposureProgram;
 LLGLSLShader            gExposureProgramNoFade;
 LLGLSLShader            gExposureHistogramProgram;
@@ -438,11 +425,6 @@ void LLViewerShaderMgr::loadShadersEffects()
     {
         gGlowProgram.unload();
         gGlowExtractProgram.unload();
-        gBloomExtractProgram.unload();
-        gBloomDownsampleProgram.unload();
-        gBloomDownsampleFirstProgram.unload();
-        gBloomUpsampleProgram.unload();
-        gCrossFilterProgram.unload();
         return;
     }
 
@@ -478,61 +460,6 @@ void LLViewerShaderMgr::loadShadersEffects()
             LLPipeline::sRenderGlow = false;
         }
     }
-
-    const bool bloom_halation = mInputs.mLocal.mBloomHalation;
-
-    {
-        gBloomExtractProgram.mName = "HDR Bloom Extract";
-        gBloomExtractProgram.mShaderFiles.clear();
-        gBloomExtractProgram.mShaderFiles.push_back(make_pair("effects/glowExtractV.glsl", GL_VERTEX_SHADER));
-        gBloomExtractProgram.mShaderFiles.push_back(make_pair("effects/bloomExtractF.glsl", GL_FRAGMENT_SHADER));
-        gBloomExtractProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
-        if (bloom_halation)
-        {
-            gBloomExtractProgram.addPermutation("BLOOM_HALATION", "1");
-        }
-        built(gBloomExtractProgram.createShader(), gBloomExtractProgram);
-    }
-
-    {
-        gBloomDownsampleFirstProgram.mName = "HDR Bloom Downsample (First)";
-        gBloomDownsampleFirstProgram.mShaderFiles.clear();
-        gBloomDownsampleFirstProgram.mShaderFiles.push_back(make_pair("effects/glowExtractV.glsl", GL_VERTEX_SHADER));
-        gBloomDownsampleFirstProgram.mShaderFiles.push_back(make_pair("effects/bloomDownsampleF.glsl", GL_FRAGMENT_SHADER));
-        gBloomDownsampleFirstProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
-        gBloomDownsampleFirstProgram.addPermutation("FIRST_DOWNSAMPLE", "1");
-        built(gBloomDownsampleFirstProgram.createShader(), gBloomDownsampleFirstProgram);
-    }
-
-    {
-        gBloomDownsampleProgram.mName = "HDR Bloom Downsample";
-        gBloomDownsampleProgram.mShaderFiles.clear();
-        gBloomDownsampleProgram.mShaderFiles.push_back(make_pair("effects/glowExtractV.glsl", GL_VERTEX_SHADER));
-        gBloomDownsampleProgram.mShaderFiles.push_back(make_pair("effects/bloomDownsampleF.glsl", GL_FRAGMENT_SHADER));
-        gBloomDownsampleProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
-        built(gBloomDownsampleProgram.createShader(), gBloomDownsampleProgram);
-    }
-
-    {
-        gBloomUpsampleProgram.mName = "HDR Bloom Upsample";
-        gBloomUpsampleProgram.mShaderFiles.clear();
-        gBloomUpsampleProgram.mShaderFiles.push_back(make_pair("effects/glowExtractV.glsl", GL_VERTEX_SHADER));
-        gBloomUpsampleProgram.mShaderFiles.push_back(make_pair("effects/bloomUpsampleF.glsl", GL_FRAGMENT_SHADER));
-        gBloomUpsampleProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
-        built(gBloomUpsampleProgram.createShader(), gBloomUpsampleProgram);
-    }
-
-    {
-        gCrossFilterProgram.mName = "Cross Screen Filter";
-        gCrossFilterProgram.mShaderFiles.clear();
-        gCrossFilterProgram.mShaderFiles.push_back(make_pair("effects/glowExtractV.glsl", GL_VERTEX_SHADER));
-        gCrossFilterProgram.mShaderFiles.push_back(make_pair("effects/crossFilterF.glsl", GL_FRAGMENT_SHADER));
-        gCrossFilterProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
-        gCrossFilterProgram.clearPermutations();
-        gCrossFilterProgram.addPermutation("CROSS_TAPS", std::to_string(CROSS_FILTER_TAPS));
-        built(gCrossFilterProgram.createShader(), gCrossFilterProgram);
-    }
-
 }
 
 void LLViewerShaderMgr::loadShadersDeferred()
@@ -541,14 +468,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
     if (mShaderLevel[SHADER_DEFERRED] == 0)
     {
         gDeferredTerrainProgram.unload();
-#if !LL_DARWIN
-        gDeferredPostProgram.unload();
-        gDeferredPostProgramNoNear.unload();
-        gDeferredPostProgramShaped.unload();
-        gDeferredPostProgramNoNearShaped.unload();
-        gDeferredDoFCombineProgram.unload();
-        gDeferredDoFCombineProgramNoNear.unload();
-#endif
         gExposureProgram.unload();
         gExposureProgramNoFade.unload();
         gExposureHistogramProgram.unload();
@@ -829,89 +748,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         }
     }
 
-#endif
-
-#if !LL_DARWIN
-    // Without HDR, retained LLPipeline::renderDoF's blur is in the post
-    // chain's RGBA8, so the gather and combine programs keep it square-root
-    // encoded.
-    const bool dof_sqrt_encoded = !mInputs.mLocal.mHDR;
-
-    {
-        // Four DoF gather variants across two orthogonal axes. Both are value
-        // tests in the shader, so the "off" build defines the symbol as "0"
-        // rather than omitting it -- omitting it would make #if FRONT_BLUR a
-        // compile error rather than a false branch.
-        struct PostVariant
-        {
-            LLGLSLShader* shader;
-            const char*   name;
-            const char*   front_blur;
-            const char*   dof_shaped;
-        };
-
-        const PostVariant post_variants[] =
-        {
-            { &gDeferredPostProgram,             "Deferred Post Shader",                            "1", "0" },
-            { &gDeferredPostProgramNoNear,       "Deferred Post Shader No Near Blur",               "0", "0" },
-            { &gDeferredPostProgramShaped,       "Deferred Post Shader Shaped",                     "1", "1" },
-            { &gDeferredPostProgramNoNearShaped, "Deferred Post Shader No Near Blur Shaped",        "0", "1" },
-        };
-
-        for (const PostVariant& variant : post_variants)
-        {
-            variant.shader->mName = variant.name;
-            variant.shader->mFeatures.isDeferred = true;
-            variant.shader->mShaderFiles.clear();
-            variant.shader->mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-            variant.shader->mShaderFiles.push_back(make_pair("deferred/postDeferredF.glsl", GL_FRAGMENT_SHADER));
-            variant.shader->mShaderFiles.push_back(make_pair("deferred/dofCoFUtilF.glsl", GL_FRAGMENT_SHADER));
-            variant.shader->mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-            variant.shader->clearPermutations();
-            variant.shader->addPermutation("FRONT_BLUR", variant.front_blur);
-            variant.shader->addPermutation("DOF_SHAPED", variant.dof_shaped);
-            if (dof_sqrt_encoded)
-            {
-                variant.shader->addPermutation("DOF_SQRT_ENCODED", "1");
-            }
-
-            built(variant.shader->createShader(), *variant.shader);
-        }
-    }
-
-    {
-        gDeferredDoFCombineProgram.mName = "Deferred DoFCombine Shader";
-        gDeferredDoFCombineProgram.mFeatures.isDeferred = true;
-        gDeferredDoFCombineProgram.mShaderFiles.clear();
-        gDeferredDoFCombineProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gDeferredDoFCombineProgram.mShaderFiles.push_back(make_pair("deferred/dofCombineF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredDoFCombineProgram.mShaderFiles.push_back(make_pair("deferred/dofCoFUtilF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredDoFCombineProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredDoFCombineProgram.clearPermutations();
-        gDeferredDoFCombineProgram.addPermutation("FRONT_BLUR", "1");
-        if (dof_sqrt_encoded)
-        {
-            gDeferredDoFCombineProgram.addPermutation("DOF_SQRT_ENCODED", "1");
-        }
-        built(gDeferredDoFCombineProgram.createShader(), gDeferredDoFCombineProgram);
-    }
-
-    {
-        gDeferredDoFCombineProgramNoNear.mName = "Deferred DoFCombine Shader No Near Blur";
-        gDeferredDoFCombineProgramNoNear.mFeatures.isDeferred = true;
-        gDeferredDoFCombineProgramNoNear.mShaderFiles.clear();
-        gDeferredDoFCombineProgramNoNear.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gDeferredDoFCombineProgramNoNear.mShaderFiles.push_back(make_pair("deferred/dofCombineF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredDoFCombineProgramNoNear.mShaderFiles.push_back(make_pair("deferred/dofCoFUtilF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredDoFCombineProgramNoNear.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredDoFCombineProgramNoNear.clearPermutations();
-        gDeferredDoFCombineProgramNoNear.addPermutation("FRONT_BLUR", "0");
-        if (dof_sqrt_encoded)
-        {
-            gDeferredDoFCombineProgramNoNear.addPermutation("DOF_SQRT_ENCODED", "1");
-        }
-        built(gDeferredDoFCombineProgramNoNear.createShader(), gDeferredDoFCombineProgramNoNear);
-    }
 #endif
 
     {

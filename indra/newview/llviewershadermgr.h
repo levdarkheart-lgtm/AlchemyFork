@@ -123,20 +123,10 @@ extern LLGLSLShader     gObjectAlphaMaskNoColorProgram;
 //environment shaders
 extern LLGLSLShader         gGlowProgram;
 extern LLGLSLShader         gGlowExtractProgram;
-extern LLGLSLShader         gBloomExtractProgram;
-extern LLGLSLShader         gBloomDownsampleProgram;
-extern LLGLSLShader         gBloomDownsampleFirstProgram;
-extern LLGLSLShader         gBloomUpsampleProgram;
-// Taps per cross-filter pass. Injected into crossFilterF.glsl as CROSS_TAPS
-// and used by pipeline.cpp for the pass strides and the falloff remap, so the
-// chain's exact base-N tiling has one source of truth instead of three sites
-// that each hard-coded 4 or 63.
-constexpr S32               CROSS_FILTER_TAPS = 4;
 // Shared by the generation gate and the composite, which read the same setting
 // in two different files and must agree, or the effect changes brightness
 // between "is it on" and "how bright".
 constexpr F32               CROSS_FILTER_MAX_STRENGTH = 32.f;
-extern LLGLSLShader         gCrossFilterProgram;
 // Upper bound on the native generator's segment loop and the CPU control.
 constexpr S32               LENS_DIRT_MAX_LINES = 32;
 
@@ -147,17 +137,6 @@ extern LLGLSLShader         gImpostorProgram;
 // Deferred rendering shaders
 extern LLGLSLShader         gDeferredTerrainProgram;
 #if !LL_DARWIN
-// Retained non-Darwin DoF gather blur, four variants over two orthogonal
-// compile-time axes: FRONT_BLUR (RenderDepthOfFieldNearBlur) and DOF_SHAPED
-// (any shaped aperture, cat's-eye or defocus fringe being active). The shaped
-// code sits in the innermost sample loop, so it is compiled out rather than
-// branched over.
-extern LLGLSLShader         gDeferredPostProgram;
-extern LLGLSLShader         gDeferredPostProgramNoNear;
-extern LLGLSLShader         gDeferredPostProgramShaped;
-extern LLGLSLShader         gDeferredPostProgramNoNearShaped;
-extern LLGLSLShader         gDeferredDoFCombineProgram;
-extern LLGLSLShader         gDeferredDoFCombineProgramNoNear;
 extern LLGLSLShader         gFXAAProgram[4];
 extern LLGLSLShader         gSMAAEdgeDetectProgram[4];
 #endif
