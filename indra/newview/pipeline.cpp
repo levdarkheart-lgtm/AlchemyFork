@@ -926,17 +926,16 @@ bool LLPipeline::metalWorldPresentationCurrent() const
             gFrameCount;
 }
 
-std::shared_ptr<const ALMetalRenderTarget>
-LLPipeline::acquireMetalSceneMonitorFrame() const
+ALMetalRetainedBackground::Lease LLPipeline::acquireMetalSceneMonitorFrame()
 {
     if (!mMetalWorldSimpleCapture || !gViewerWindow || gDisconnected ||
         gSnapshot || sCutoutRender || mRT != &mMainRT || !isMainWorldPass() ||
         mMetalHeroWorldCaptureActive || mMetalReflectionWorldCaptureActive)
         return {};
-    const auto& capture = *mMetalWorldSimpleCapture;
+    auto& capture = *mMetalWorldSimpleCapture;
     if (!capture.renderer || capture.renderer->commandBatchActive() ||
         !capture.complete || capture.world_ssr_history_warmup ||
-        capture.world_ui_chain_snapshot || !capture.presentation_target ||
+        capture.world_ui_chain_snapshot || !capture.presentation_target || !capture.target ||
         capture.presentation_frame != gFrameCount ||
         capture.device != getViewerMetalDevice())
         return {};
@@ -944,7 +943,26 @@ LLPipeline::acquireMetalSceneMonitorFrame() const
     if (!color || color->descriptor().format != ALMetalPixelFormat::bgra8_unorm ||
         color->width() == 0 || color->height() == 0)
         return {};
-    return capture.presentation_target;
+    const auto* surface = gGL.getMetalPresentationSurface();
+    if (!surface) return {};
+    const auto& info = surface->info();
+    const ALMetalRetainedBackground::Context context{
+        capture.device, surface, info.generation, info.width, info.height,
+        LLRender::sReverseZ};
+    auto frame = capture.ui_background.find(context);
+    if (frame && frame->source_frame == gFrameCount) return frame;
+    // Share the UI's actual surface-size normalization, including its
+    // BilinearMirror color resample when world resolution is reduced.
+    std::string error;
+    if (!capture.ui_background.publish(context, gFrameCount,
+            capture.presentation_target, capture.target, &error))
+    {
+        LL_WARNS_ONCE("SceneMonitor") << "Could not retain the current native world: "
+                                     << error << LL_ENDL;
+        return {};
+    }
+    frame = capture.ui_background.find(context);
+    return frame && frame->source_frame == gFrameCount ? frame : nullptr;
 }
 
 LLPipeline::MetalWorldPresentationState
@@ -11362,7 +11380,9 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
             capture.device == device &&
             !capture.world_ssr_history_warmup)
         {
-            if (!capture.ui_background.publish(context, gFrameCount,
+            const auto current = capture.ui_background.find(context);
+            if ((!current || current->source_frame != gFrameCount) &&
+                !capture.ui_background.publish(context, gFrameCount,
                     capture.presentation_target, capture.target, &error))
             {
                 LL_WARNS_ONCE("Metal")

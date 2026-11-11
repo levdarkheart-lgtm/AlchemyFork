@@ -54,6 +54,9 @@
 #include "llreflectionmapmanager.h"
 #include "llheroprobemanager.h"
 #include "alscopedata.h"
+#if LL_DARWIN
+#include "../almetal/almetalretainedbackground.h"
+#endif
 
 #include <array>
 #include <cstddef>
@@ -566,7 +569,7 @@ public:
     void endMetalWorldUICompositionCapture();
     // Retain this frame's submitted pre-UI presentation owner for Scene
     // Monitor. Incomplete, historical and alternate-view frames are absent.
-    std::shared_ptr<const ALMetalRenderTarget> acquireMetalSceneMonitorFrame() const;
+    ALMetalRetainedBackground::Lease acquireMetalSceneMonitorFrame();
     // Arms one ordinary color or depth snapshot for native world/UI capture.
     // A tiled caller may read one exact current-frame transaction after each
     // subfield render; it remains responsible for rejecting the aggregate if
