@@ -1,7 +1,6 @@
 /**
- * @file llfontbitmapcache_gl_test.cpp
- * @brief LLFontBitmapCache against a GL context: nextOpenPos and
- *        releaseSheet, which allocate and free atlas textures.
+ * @file alfont_atlas_metal_test.cpp
+ * @brief Native font atlas allocation, publication, packing and eviction.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -29,34 +28,47 @@
 #include "../llimagegl.h"
 #include "llimage.h"
 
-#include "llheadlessgl_fixture.h"
+#include "../alrendercapabilities.h"
 
 #include <catch2/catch_test_macros.hpp>
 
-#if LL_DARWIN
 #include "../../almetal/almetaldevice.h"
 #include "../../almetal/almetalresource.h"
-#endif
 
 namespace
 {
-    using namespace ll_test;
-
-    // GL-backed fixture: a HeadlessGL of each test's own, so every
-    // test below has a live GL context available for the
-    // gGL.bind call inside nextOpenPos and the destroyGLTexture call
-    // inside releaseSheet.
-    struct llfontbitmapcache_gl_data
+    struct NativeAtlas
     {
-        std::unique_ptr<ll_test::HeadlessGL> gl = std::make_unique<ll_test::HeadlessGL>();
+        ALRenderCapabilities previous_capabilities = gRenderCapabilities;
+        ALMetalDevice* previous_device = LLImageGL::getMetalDevice();
+        bool previous_authority = LLImageGL::isMetalTextureAuthority();
+        bool previous_gl = LLFontBitmapCache::usesGL();
+        bool previous_metal = LLFontBitmapCache::usesMetal();
+        std::unique_ptr<ALMetalDevice> device;
+        NativeAtlas()
+        {
+            std::string error;
+            device = ALMetalDevice::create(&error);
+            INFO(error); REQUIRE(device);
+            gRenderCapabilities.initializeMetal(device->info());
+            LLImageGL::setMetalDevice(device.get());
+            LLImageGL::setMetalTextureAuthority(true);
+            LLFontBitmapCache::setTextureBackend(false, true);
+        }
+        ~NativeAtlas()
+        {
+            LLFontBitmapCache::setTextureBackend(previous_gl, previous_metal);
+            LLImageGL::setMetalTextureAuthority(previous_authority);
+            LLImageGL::setMetalDevice(previous_device);
+            gRenderCapabilities = previous_capabilities;
+        }
     };
-
 
     // After a Grayscale allocation, the underlying LLImageRaw must
     // carry 2 components (R+G with R=255 stem, G=alpha) — pins
     // c99dcaa7d3 which restored the greyscale atlas to 2 components
     // after a regression had it at 1.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: a Grayscale sheet has 2 components", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: a Grayscale sheet has 2 components", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -71,7 +83,7 @@ namespace
 
     // Color allocation must produce a 4-component (RGBA) raw — pins
     // the same array-init bug from c99dcaa7d3 in its Color form.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: a Color sheet has 4 components", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: a Color sheet has 4 components", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -84,75 +96,7 @@ namespace
         CHECK((S32)raw->getComponents() == 4);
     }
 
-#if LL_DARWIN
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: transition pages keep GL and Metal atlas bytes synchronized", "[LLFontBitmapCacheGL][almetal]")
-    {
-        REQUIRE(LLImageGL::getMetalDevice() != nullptr);
-        ALMetalDevice* device = LLImageGL::getMetalDevice();
-
-        const bool previous_gl = LLFontBitmapCache::usesGL();
-        const bool previous_metal = LLFontBitmapCache::usesMetal();
-        struct BackendReset
-        {
-            bool gl;
-            bool metal;
-            ~BackendReset()
-            {
-                LLFontBitmapCache::setTextureBackend(gl, metal);
-            }
-        } reset{previous_gl, previous_metal};
-        LLFontBitmapCache::setTextureBackend(true, true);
-
-        LLFontBitmapCache cache;
-        cache.init(2, 2);
-
-        S32 glyph_x = 0;
-        S32 glyph_y = 0;
-        U32 sheet = 0;
-        REQUIRE(cache.nextOpenPos(
-            3, 2, glyph_x, glyph_y, EFontGlyphType::Grayscale, sheet));
-        LLImageRaw* raw = cache.getImageRaw(EFontGlyphType::Grayscale, sheet);
-        LLImageGL* page = cache.getImageGL(EFontGlyphType::Grayscale, sheet);
-        REQUIRE(raw);
-        REQUIRE(page);
-        REQUIRE(page->getHasGLTexture());
-        REQUIRE(page->getMetalTexture());
-
-        for (S32 y = glyph_y; y < glyph_y + 2; ++y)
-        {
-            for (S32 x = glyph_x; x < glyph_x + 3; ++x)
-            {
-                const std::size_t offset =
-                    (static_cast<std::size_t>(y) * raw->getWidth() + x) * 2;
-                raw->getData()[offset] = 0x90;
-                raw->getData()[offset + 1] = 0x60;
-            }
-        }
-        REQUIRE(cache.publishGlyph(
-            EFontGlyphType::Grayscale, sheet,
-            glyph_x, glyph_y, 3, 2));
-
-        const std::size_t byte_count =
-            static_cast<std::size_t>(raw->getWidth()) * raw->getHeight() * 2;
-        const std::vector<U8> expected(
-            raw->getData(), raw->getData() + byte_count);
-
-        std::vector<U8> gl_pixels(byte_count);
-        ll_test::readTexture(page->getTexName(), GL_RG, GL_UNSIGNED_BYTE,
-                             gl_pixels.data());
-        CHECK(gl_pixels == expected);
-
-        std::vector<U8> metal_pixels(byte_count);
-        std::string error;
-        REQUIRE(page->getMetalTexture()->readback(
-            *device, 0, 0, {}, metal_pixels.data(),
-            raw->getWidth() * 2, &error));
-        INFO(error);
-        CHECK(metal_pixels == expected);
-        CHECK(page->getHasGLTexture());
-    }
-
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: native grayscale and color pages publish exact dirty rectangles without GL", "[LLFontBitmapCacheGL][almetal]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: native grayscale and color pages publish exact dirty rectangles without GL", "[native-font-atlas][almetal]")
     {
         REQUIRE(LLImageGL::getMetalDevice() != nullptr);
         ALMetalDevice* device = LLImageGL::getMetalDevice();
@@ -268,13 +212,12 @@ namespace
         CHECK(color_pixels == expected_color);
         CHECK_FALSE(color_page->getHasGLTexture());
     }
-#endif
 
     // The very first nextOpenPos on a fresh cache must yield (4, 4) —
     // pins the mCurrentOffsetX/Y = {4, 4} array-init in the header
     // (an earlier `= { 4 }` form was zero-initing index [1], which
     // started Color atlases at offset 0).
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: the first Grayscale and Color allocations start past the 4px border", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: the first Grayscale and Color allocations start past the 4px border", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -298,7 +241,7 @@ namespace
     // Sequential allocations within the same row advance posX by
     // width + 4 (4-pixel border). Tests the row-packing pen advance
     // at llfontbitmapcache.cpp:201.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: allocations in a row advance x by the width and the 4px border", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: allocations in a row advance x by the width and the 4px border", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -319,7 +262,7 @@ namespace
     // When the next allocation would exceed mBitmapWidth, the row
     // wraps. posX resets to 4; posY advances by the tallest glyph
     // placed in the prior row (mCurrentRowMaxHeight, not mMaxCharHeight).
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: a full row wraps below the tallest glyph placed in it", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: a full row wraps below the tallest glyph placed in it", "[native-font-atlas]")
     {
         // 128x128 atlas. Two 50px-wide glyphs fit in row 0
         // (4 + 50 + 4 + 50 + 4 = 112 ≤ 128); third forces wrap.
@@ -346,7 +289,7 @@ namespace
     // When a row wrap would push posY past mBitmapHeight, the cache
     // must allocate a fresh sheet rather than write past the atlas.
     // Verify by repeatedly forcing wraps until the next would overflow.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: a row wrap that would pass the bottom starts a new sheet", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: a row wrap that would pass the bottom starts a new sheet", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -382,7 +325,7 @@ namespace
     // Per-type isolation: a Grayscale allocation must not move the
     // Color pen, and vice versa. Each type owns its own X/Y/row-max
     // state at index [bitmap_idx].
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: Grayscale and Color pens and sheets are independent", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: Grayscale and Color pens and sheets are independent", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -408,7 +351,7 @@ namespace
     // and on releaseSheet. Vertex buffers compare against a captured
     // generation to invalidate; equal-or-decreasing generations would
     // mask the invalidation.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: the generation rises on allocation and release and reset", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: the generation rises on allocation and release and reset", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -431,7 +374,7 @@ namespace
     // releaseSheet drops the LLImageRaw + LLImageGL but keeps the
     // slot index alive (as nullptr) so existing index references stay
     // valid. isSheetReleased flips true; getSheetLastUsedTime returns 0.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: releaseSheet frees the images and keeps the slot", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: releaseSheet frees the images and keeps the slot", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -463,7 +406,7 @@ namespace
     // index, so reuse is safe and bounds slot growth across eviction
     // cycles. Pins the active_sheet_released check + slot recycling in
     // nextOpenPos.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: an allocation after the active sheet's release rebuilds it in that slot", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: an allocation after the active sheet's release rebuilds it in that slot", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -487,7 +430,7 @@ namespace
     // reset() after allocations clears all state — no live sheets,
     // pens back at 4, and a subsequent nextOpenPos starts from (4, 4)
     // on a fresh sheet.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: reset clears every sheet and the pen starts over", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: reset clears every sheet and the pen starts over", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -514,7 +457,7 @@ namespace
     // cycles, and the generation counter still advances every cycle so
     // captured vertex buffers rebuild. Pins bounded slot growth under
     // repeat cycles.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: repeated release and allocation keeps recycling slot 0", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: repeated release and allocation keeps recycling slot 0", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -543,7 +486,7 @@ namespace
     // release+recycle cycle doesn't perturb the pen, and no spurious
     // sheets are created while the active sheet has space. Pins the
     // active-sheet tracking (mCurrentSheet) staying put across allocs.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: a recycled active sheet keeps taking allocations while it has room", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: a recycled active sheet keeps taking allocations while it has room", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);
@@ -575,7 +518,7 @@ namespace
     // keys its memo on it, so a change to any cache of a font's chain has
     // to move it. (Vertex buffers no longer compare against it directly:
     // llfontbitmapcache.h:84-92.)
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: two caches' allocations and releases each bump the global generation", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: two caches' allocations and releases each bump the global generation", "[native-font-atlas]")
     {
         LLFontBitmapCache c1; c1.init(2, 2);
         LLFontBitmapCache c2; c2.init(2, 2);
@@ -608,7 +551,7 @@ namespace
     // queries don't cross-bleed. Pins the per-type vector array layout
     // — each EFontGlyphType has its own mImageRawVec / pen / released
     // tracking.
-    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: releasing the Color sheet leaves Grayscale alone", "[LLFontBitmapCacheGL]")
+    TEST_CASE_METHOD(NativeAtlas, "LLFontBitmapCache native: releasing the Color sheet leaves Grayscale alone", "[native-font-atlas]")
     {
         LLFontBitmapCache c;
         c.init(2, 2);

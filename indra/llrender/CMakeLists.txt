@@ -174,6 +174,7 @@ if(AL_BUILD_TESTS)
       tests/alvertex_draw_metal_test.cpp
       tests/alvertex_label_metal_test.mm
       tests/alimagegl_metal_test.cpp
+      tests/alfont_atlas_metal_test.cpp
       tests/alprimitiveplot_test.cpp
     )
   endif()
@@ -215,7 +216,6 @@ if(AL_BUILD_TESTS)
     SOURCES
       tests/alfontcolrv1_gl_test.cpp
       tests/alfontshaping_gl_test.cpp
-      tests/llfontbitmapcache_gl_test.cpp
       tests/llfontfreetype_gl_test.cpp
       tests/llfontregistry_gl_test.cpp
       tests/llimagegl_test.cpp
