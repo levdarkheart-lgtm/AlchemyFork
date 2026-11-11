@@ -32,12 +32,10 @@
 #include "llfloater.h"
 #include "llcharacter.h"
 #include "lltracerecording.h"
-#include "alquerypool.h"
+#include "almetalscenemonitor.h"
+#include <array>
 
 class LLCharacter;
-class LLRenderTarget;
-class LLViewerTexture;
-
 class LLSceneMonitor : public LLSingleton<LLSceneMonitor>
 {
     LLSINGLETON(LLSceneMonitor);
@@ -54,10 +52,10 @@ public:
     void calcDiffAggregate();
     void setDiffTolerance(F32 tol) {mDiffTolerance = tol;}
 
-    const LLRenderTarget* getDiffTarget() const {return mDiff;}
+    const ALMetalTexture* getDiffTarget() const
+    { return mDiff ? mDiff->filteredTexture() : nullptr; }
     F32  getDiffTolerance() const {return mDiffTolerance;}
     F32  getDiffResult() const { return mDiffResult;}
-    F32  getDiffPixelRatio() const { return mDiffPixelRatio;}
     bool isEnabled()const {return mEnabled;}
     bool needsUpdate() const;
 
@@ -71,35 +69,30 @@ private:
     void freezeScene();
     void unfreezeScene();
 
-    LLRenderTarget& getCaptureTarget();
-    void generateDitheringTexture(S32 width, S32 height);
-
-private:
-    bool                                    mEnabled,
-                                            mDebugViewerVisible;
+    bool mEnabled = false, mDebugViewerVisible = false;
 
     enum EDiffState
     {
         WAITING_FOR_NEXT_DIFF,
         NEED_DIFF,
-        EXECUTE_DIFF,
         WAIT_ON_RESULT,
         VIEWER_QUITTING
-    }                                       mDiffState;
+    } mDiffState = WAITING_FOR_NEXT_DIFF;
 
-    LLRenderTarget*                         mFrames[2];
-    LLRenderTarget*                         mDiff;
+    std::array<ALMetalRetainedBackground::Lease, 2> mFrames;
+    std::unique_ptr<ALMetalSceneMonitor> mNativeMonitor;
+    std::unique_ptr<ALMetalSceneDifference> mPendingDiff, mDiff;
+    ALMetalDevice* mNativeDevice = nullptr;
+    U32 mCaptureWidth = 0, mCaptureHeight = 0;
+    U32 mLastCaptureFrame = ~U32(0);
+    bool mForceCapture = true;
+    F32 mDiffResult = 0.f, mDiffTolerance = 0.1f, mDiffPixelRatio = 0.5f;
 
-    ALQueryTicket                           mQuery; //the diff's sample count, from gGL's pool
-    F32                                     mDiffResult,  //aggregate results of mDiff.
-                                            mDiffTolerance, //pixels are filtered out when R+G+B < mDiffTolerance
-                                            mDiffPixelRatio; //ratio of pixels used for comparison against the original mDiff size along one dimension
-
-    LLPointer<LLViewerTexture>              mDitheringTexture;
-    S32                                     mDitherMatrixWidth;
-    F32                                     mDitherScale,
-                                            mDitherScaleS,
-                                            mDitherScaleT;
+    // Only restore state this monitor actually froze. In particular, a user
+    // who already froze time or disabled a render type must keep that choice.
+    bool mSceneFrozen = false, mPreviousFreezeTime = false;
+    S32 mPreviousParticleLimit = 0;
+    std::array<bool, 4> mPreviousRenderTypes{};
 
     std::vector<LLAnimPauseRequest>         mAvatarPauseHandles;
 
