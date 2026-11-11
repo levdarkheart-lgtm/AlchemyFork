@@ -2178,6 +2178,10 @@ public:
     ALMetalShadowMaterials* shadowMaterials(
         const ALMetalShaderLibrary& library, std::string* error = nullptr);
     ALMetalShadowMaterialStats shadowMaterialStats() const noexcept;
+    // Retire only shader-derived material encoders/tables. Existing command
+    // leases remain valid; draw-data arenas and their frame generation stay.
+    bool reloadShadowMaterials(const ALMetalShaderLibrary& library,
+                               std::string* error = nullptr);
 private:
     struct Impl;
     explicit ALMetalWorldFrameData(std::unique_ptr<Impl> impl);
@@ -2200,6 +2204,13 @@ public:
         const ALMetalDevice& device,
         std::uint32_t max_anisotropy,
         std::string* error = nullptr);
+
+    // Explicit frame-boundary shader rebuild. A complete replacement library
+    // and pipeline set is staged before publication; failure leaves this
+    // renderer usable. External targets, histories and frame data stay owned
+    // by their existing producers. An open command batch is rejected.
+    bool reloadShaders(std::string* error = nullptr);
+    std::uint64_t shaderGeneration() const noexcept;
 
     // Metal sampler states are immutable. Replacing these three persistent
     // states keeps the native world, terrain, sky and probe paths on the same
@@ -2607,6 +2618,9 @@ private:
     std::unique_ptr<ALMetalRenderTarget> renderExposureInternal(
         const ALMetalWorldExposureScene& scene, bool meter_only,
         std::string* error);
+    static std::unique_ptr<ALMetalWorldGBufferRenderer> create(
+        const ALMetalDevice& device, std::uint32_t max_anisotropy,
+        bool initialize_diagnostics, std::string* error);
     ALMetalRenderTarget* renderLocalLightsInternal(
         const ALMetalWorldLocalLightingScene& scene,
         ALMetalRenderTarget* accumulation_target,

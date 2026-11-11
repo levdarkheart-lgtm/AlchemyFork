@@ -106,43 +106,6 @@ namespace
 }
 #endif
 
-#if !LL_RELEASE_FOR_DOWNLOAD
-namespace
-{
-    // Register the "Lights" block's expected std140 layout for the debug-build validator
-    // (LLGLSLShader::registerEngineBlockLayout), derived from offsetof() on the very struct
-    // packLightsUBO() writes -- so the check can never drift from the pack. Array members
-    // introspect under their "[0]" element name, hence the explicit mName overrides; the
-    // scalar-name member resolves from the reserved-uniform table.
-    const bool s_lights_layout_registered = []
-    {
-        using D = LLRender::LightsUBOData;
-        std::vector<LLGLSLShader::EngineBlockLayoutMember> members =
-        {
-            { -1, "light_position[0]",             (U32)offsetof(D, light_position),             false },
-            { -1, "light_direction[0]",            (U32)offsetof(D, light_direction),            false },
-            { -1, "light_attenuation[0]",          (U32)offsetof(D, light_attenuation),          false },
-            { -1, "light_deferred_attenuation[0]", (U32)offsetof(D, light_deferred_attenuation), false },
-            { -1, "light_diffuse[0]",              (U32)offsetof(D, light_diffuse),              false },
-            { LLShaderMgr::LIGHT_AMBIENT, nullptr, (U32)offsetof(D, light_ambient),              false },
-        };
-        LLGLSLShader::registerEngineBlockLayout("Lights", std::move(members));
-
-        using M = LLRender::MatricesUBOData;
-        LLGLSLShader::registerEngineBlockLayout("Matrices",
-        {
-            { LLShaderMgr::MODELVIEW_MATRIX,            nullptr, (U32)offsetof(M, modelview),            true },
-            { LLShaderMgr::PROJECTION_MATRIX,           nullptr, (U32)offsetof(M, projection),           true },
-            { LLShaderMgr::MODELVIEW_PROJECTION_MATRIX, nullptr, (U32)offsetof(M, modelview_projection), true },
-            { LLShaderMgr::INVERSE_PROJECTION_MATRIX,   nullptr, (U32)offsetof(M, inv_proj),             true },
-            { LLShaderMgr::TEXTURE_MATRIX0,             nullptr, (U32)offsetof(M, texture0),             true },
-            { LLShaderMgr::NORMAL_MATRIX,               nullptr, (U32)offsetof(M, normal),               true },
-        });
-        return true;
-    }();
-}
-#endif // !LL_RELEASE_FOR_DOWNLOAD
-
 S32 gGLViewport[4];
 
 
@@ -607,12 +570,11 @@ void LLRender::resetCachedState()
     }
     mCurrTextureUnitIndex = 0;
 
-    // The same for image units and semantic storage-buffer bindings.
+    // The same for image units.
     for (ALImageSlot& slot : mImageSlots)
     {
         slot.reset();
     }
-    mStorageBindings.fill(StorageBinding());
 
     // Start with all channels writable. Blend factors are marked unknown so
     // initialization establishes the requested alpha contract explicitly.
@@ -821,6 +783,30 @@ void LLRender::shutdown()
 }
 
 #if LL_DARWIN
+bool LLRender::reloadMetalShaders(std::string* error)
+{
+    if (mMetalUICaptureRenderer ||
+        (mMetalUIRenderer && mMetalUIRenderer->hasOpenFrame()))
+    {
+        if (error) *error = "A native UI transaction is active during shader reload";
+        return false;
+    }
+    for (const auto& renderer : mMetalUICaptureCache)
+    {
+        if (renderer && renderer->hasOpenFrame())
+        {
+            if (error) *error = "A cached native UI transaction is still active";
+            return false;
+        }
+    }
+    if (mMetalUIRenderer && !mMetalUIRenderer->reloadShaders(error)) return false;
+    for (const auto& renderer : mMetalUICaptureCache)
+    {
+        if (renderer && !renderer->reloadShaders(error)) return false;
+    }
+    return true;
+}
+
 void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* scheduler,
                                ALMetalSurface* surface)
 {
@@ -2436,67 +2422,6 @@ void LLRender::forgetTextures(S32 count, const U32* names)
 
     // Native image slots hold typed Metal resources, never GL names. Deleting
     // an unrelated compatibility name must not displace their bindings.
-}
-
-void LLRender::forgetBuffer(U32 name)
-{
-    if (name == 0)
-    {
-        return;
-    }
-    for (StorageBinding& binding : mStorageBindings)
-    {
-        if (binding.mName == name)
-        {
-            binding = StorageBinding();
-        }
-    }
-}
-
-void LLRender::bindStorageBuffer(U32 binding, const ALGPUBuffer& buffer)
-{
-    llassert(buffer.isAllocated());
-    setStorageBinding(binding, { buffer.getGLName(), 0, 0 });
-}
-
-void LLRender::bindStorageBuffer(U32 binding, const ALGPUBuffer& buffer, size_t offset, size_t bytes)
-{
-    llassert(gGLManager.mShaderStorageBufferOffsetAlignment > 0
-             && offset % (size_t)gGLManager.mShaderStorageBufferOffsetAlignment == 0);
-    if (!buffer.isAllocated() || bytes == 0 || offset > buffer.size() || bytes > buffer.size() - offset)
-    {
-        llassert(false);
-        return;
-    }
-    setStorageBinding(binding, { buffer.getGLName(), offset, bytes });
-}
-
-void LLRender::unbindStorageBuffer(U32 binding)
-{
-    setStorageBinding(binding, StorageBinding());
-}
-
-U32 LLRender::getStorageBuffer(U32 binding) const
-{
-    return binding < AL_NUM_STORAGE_BINDINGS ? mStorageBindings[binding].mName : 0;
-}
-
-void LLRender::setStorageBinding(U32 binding, const StorageBinding& wanted)
-{
-    llassert(sCompute);
-    llassert(binding < AL_NUM_STORAGE_BINDINGS);
-    if (binding >= AL_NUM_STORAGE_BINDINGS)
-    {
-        return;
-    }
-    StorageBinding& held = mStorageBindings[binding];
-    if (held.mName == wanted.mName && held.mOffset == wanted.mOffset && held.mBytes == wanted.mBytes)
-    {
-        return;
-    }
-    // What is batched was meant to see the point as it was.
-    flush();
-    held = wanted;
 }
 
 LLLightState* LLRender::getLight(U32 index)

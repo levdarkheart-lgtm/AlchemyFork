@@ -205,6 +205,7 @@ struct ALMetalUIRenderer::Impl
     ALMetalPixelFormat render_format = ALMetalPixelFormat::bgra8_unorm;
     bool linear_storage_view = false;
     std::unique_ptr<ALMetalShaderLibrary> library;
+    std::uint64_t shader_generation = 1;
     std::unique_ptr<ALMetalRenderPipeline> background_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> drawable_presentation_pipeline;
     ALMetalPixelFormat background_depth_format =
@@ -1650,6 +1651,71 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForSurface(
         renderer->mImpl->surface = &surface;
     }
     return renderer;
+}
+
+bool ALMetalUIRenderer::reloadShaders(std::string* error)
+{
+    if (!mImpl || !mImpl->device || !mImpl->scheduler ||
+        mImpl->frame || mImpl->encoder)
+    {
+        setError(error, "Metal UI shader reload requires an idle renderer");
+        return false;
+    }
+    auto replacement = createForTexture(*mImpl->device, *mImpl->scheduler,
+        mImpl->output_format, error, mImpl->linear_storage_view);
+    if (!replacement) return false;
+    auto& next = *replacement->mImpl;
+    const auto rebuild = [&](const auto& old, auto& fresh)
+    {
+        if (!old) return true;
+        auto descriptor = old->descriptor();
+        descriptor.library = next.library.get();
+        fresh = ALMetalRenderPipeline::create(*next.device, descriptor, error);
+        return fresh != nullptr;
+    };
+    for (const auto& old : mImpl->pipelines)
+    {
+        std::unique_ptr<ALMetalRenderPipeline> pipeline;
+        if (!rebuild(old.state, pipeline)) return false;
+        next.pipelines.push_back({old.shader, old.blend, old.depth_format,
+                                  std::move(pipeline)});
+    }
+    for (const auto& old : mImpl->hud_pipelines)
+    {
+        std::unique_ptr<ALMetalRenderPipeline> pipeline;
+        if (!rebuild(old.state, pipeline)) return false;
+        next.hud_pipelines.push_back({old.shader, old.blend, old.depth_format,
+                                      std::move(pipeline)});
+    }
+    // These optional pipelines are not in the ordinary batch caches. Clone
+    // their real immutable descriptors, changing only the executable library.
+    const std::array members{
+        &Impl::background_pipeline, &Impl::drawable_presentation_pipeline,
+        &Impl::depth_clear_pipeline, &Impl::depth_restore_pipeline,
+        &Impl::selection_id_pipeline, &Impl::selection_id_skinned_pipeline,
+        &Impl::selection_jump_pipeline, &Impl::selection_tile_pipeline,
+        &Impl::selection_glow_reach_pipeline, &Impl::selection_glow_row_pipeline,
+        &Impl::selection_backdrop_pipeline, &Impl::selection_contour_pipeline};
+    for (auto member : members)
+        if (!rebuild(mImpl.get()->*member, next.*member)) return false;
+    for (std::size_t index = 0; index < mImpl->selection_wire_pipelines.size(); ++index)
+        if (!rebuild(mImpl->selection_wire_pipelines[index],
+                     next.selection_wire_pipelines[index])) return false;
+
+    // Publish only shader owners. Keep all backing textures, pending borrowed
+    // inputs, samplers, depth state, output dimensions and lifetime counters.
+    mImpl->library.swap(next.library);
+    mImpl->pipelines.swap(next.pipelines);
+    mImpl->hud_pipelines.swap(next.hud_pipelines);
+    for (auto member : members) (mImpl.get()->*member).swap(next.*member);
+    mImpl->selection_wire_pipelines.swap(next.selection_wire_pipelines);
+    ++mImpl->shader_generation;
+    return true;
+}
+
+std::uint64_t ALMetalUIRenderer::shaderGeneration() const noexcept
+{
+    return mImpl ? mImpl->shader_generation : 0;
 }
 
 bool ALMetalUIRenderer::setFrameBackground(

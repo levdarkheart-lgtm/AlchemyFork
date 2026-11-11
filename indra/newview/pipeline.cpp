@@ -1129,7 +1129,7 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     // defect remains in the owner-attended visual queue. Falling back to GL at
     // this boundary hid that missing Metal implementation and mixed backend
     // authority inside otherwise complete native frames.
-    const bool eligible = started && main_world && ordinary_world &&
+    const bool eligible = mShadersLoaded && started && main_world && ordinary_world &&
         native_lens_dirt && native_legacy_glow &&
         grade.native_resources_ready && post_enabled && sky &&
         exact_antialiasing;
@@ -1297,25 +1297,6 @@ LLPipeline::LLPipeline() :
         mHWLightColors[i] = LLColor4::black;
     }
 
-#if !LL_RELEASE_FOR_DOWNLOAD
-    // Register the Deferred block's expected std140 layout for debug validation at shader
-    // load, offsetof()-derived from the very struct packDeferredConstants writes -- llrender
-    // carries no hand-copied offset table that can drift from it. ssao_effect_mat must
-    // introspect COLUMN-major (see DeferredUBOData). Registered here because gPipeline is a
-    // global: this runs during static init, before any shader load.
-#define LL_DEFERRED_LAYOUT(name_lit, m, is_matrix) \
-    { -1, name_lit, (U32)offsetof(DeferredUBOData, m), is_matrix }
-    LLGLSLShader::registerEngineBlockLayout("Deferred",
-    {
-        LL_DEFERRED_LAYOUT("ssao_effect_mat",    ssao_effect_mat,    true),
-        LL_DEFERRED_LAYOUT("ssao_radius",        ssao_radius,        false),
-        LL_DEFERRED_LAYOUT("ssao_max_radius",    ssao_max_radius,    false),
-        LL_DEFERRED_LAYOUT("ssao_factor",        ssao_factor,        false),
-        LL_DEFERRED_LAYOUT("ssao_factor_inv",    ssao_factor_inv,    false),
-        LL_DEFERRED_LAYOUT("specular_exponent",  specular_exponent,  false),
-    });
-#undef LL_DEFERRED_LAYOUT
-#endif // !LL_RELEASE_FOR_DOWNLOAD
 }
 
 void LLPipeline::connectRefreshCachedSettingsSafe(const std::string name)
@@ -18877,6 +18858,27 @@ void LLPipeline::markRenderInputsDirty(ALRenderInputRequests::Change change)
     mRenderInputRequests.mark(change);
 }
 
+bool LLPipeline::reloadMetalShaders(std::string* error)
+{
+    // Programs are rebuilt before this frame starts recording any world/UI
+    // commands. Targets, exposure histories and published avatar resources
+    // remain owned by their existing capture/resource owners.
+    for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
+    {
+        if (owner && owner->renderer && owner->renderer->commandBatchActive())
+        {
+            if (error) *error = "A native world transaction is active during shader reload";
+            return false;
+        }
+    }
+    if (!gGL.reloadMetalShaders(error)) return false;
+    for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
+    {
+        if (owner && owner->renderer && !owner->renderer->reloadShaders(error)) return false;
+    }
+    return true;
+}
+
 void LLPipeline::applyRenderInputs()
 {
     // A frame starts here, with every transient target the last one acquired back in the pool. Debug GL poisons each
@@ -18931,9 +18933,28 @@ void LLPipeline::applyRenderInputs(const ALRenderInputRequests::Application& tak
 
     mApplyingChanges = taken.mChanges;
     const bool reload = steps.mPrograms != Programs::Kept;
+    if (steps.mPrograms == Programs::Rebuilt && (mShadersLoaded || mMetalShaderReloadPending))
+    {
+        std::string shader_error;
+        if (!reloadMetalShaders(&shader_error))
+        {
+            // Retain each owner's usable old pipelines and the last published
+            // complete frame; retry at the next safe application boundary.
+            mMetalShaderReloadPending = true;
+            mShadersLoaded = false;
+            mRenderInputRequests.mark(ALRenderInputRequests::Change::Programs);
+            mApplyingChanges = 0;
+            LL_WARNS("ShaderLoading") << "Native shader reload withheld: " << shader_error << LL_ENDL;
+            return;
+        }
+        mMetalShaderReloadPending = false;
+    }
     // Programs first: the resources' plan takes the normal layout and the depth convention they compile for.
     if (reload && !shaders->setShaders(mLatchedShaderInputs, steps))
     {
+        mMetalShaderReloadPending = true;
+        mShadersLoaded = false;
+        mRenderInputRequests.mark(ALRenderInputRequests::Change::Programs);
         mApplyingChanges = 0;
         return;
     }
@@ -19320,29 +19341,13 @@ ALShaderInputs LLPipeline::shaderInputsFromSettings()
     static_assert(ALShaderInputs::MAX_INDEXED_GLTF_CHANNELS == LLGLSLShader::MAX_INDEXED_GLTF_CHANNELS);
 
     ALShaderSettings s;
-    if (gRenderCapabilities.isMetal() && !gGLManager.mInited)
-    {
-        // The native world/HUD layouts carry 32 diffuse slots and eight PBR
-        // material slots. Metal supports reverse-Z and compute on every
-        // Apple Silicon target; none of these choices may inherit zeroed GL
-        // capability fields after the context is removed.
-        s.mTextureImageUnits = LLGLSLShader::MAX_BATCH_TEXTURE_COUNT;
-        s.mHasClipControl = true;
-        s.mHasCompute = true;
-        s.mIsD3D12 = false;
-    }
-    else
-    {
-        const S32 glsl = gGLManager.mGLSLVersionMajor * 100 +
-                         gGLManager.mGLSLVersionMinor;
-        s.mTextureImageUnits = gGLManager.mNumTextureImageUnits;
-        s.mHasClipControl = gGLManager.mHasClipControl;
-        // Intel's legacy drivers are held back from compute
-        // (LLGLManager::isIntelLegacy).
-        s.mHasCompute = gGLManager.mHasCompute && glsl >= 430 &&
-                        !gGLManager.isIntelLegacy();
-        s.mIsD3D12 = gGLManager.mIsD3D12;
-    }
+    // Native world/HUD layouts carry 32 diffuse slots and eight PBR material
+    // slots. Reverse-Z and compute are baseline Apple Silicon capabilities;
+    // shader selection must not inherit the retired GL manager's limits.
+    s.mTextureImageUnits = LLGLSLShader::MAX_BATCH_TEXTURE_COUNT;
+    s.mHasClipControl = true;
+    s.mHasCompute = true;
+    s.mIsD3D12 = false;
 
     s.mReverseZ                 = gSavedSettings.getBOOL("AlchemyRenderReverseZ");
     s.mHDR                      = gSavedSettings.getBOOL("RenderHDREnabled");

@@ -145,36 +145,6 @@ extern bool gTeleportDisplay;
 
 static U32 sUpdateCount = 0;
 
-#if !LL_RELEASE_FOR_DOWNLOAD
-namespace
-{
-    // Register the tail of the ReflectionProbes block for debug validation at shader load.
-    // Only the scalars are listed: the leading arrays are what fixes their offsets, so a
-    // packing surprise anywhere ahead of them shows up here, and these are the members with no
-    // other check -- the C++ struct's own size is the only thing pinning _ssrTailPad.
-    const bool s_probe_layout_registered = []
-    {
-#define LL_PROBE_LAYOUT(m) \
-        { -1, #m, (U32)offsetof(LLReflectionMapManager::ReflectionProbeData, m), false }
-        LLGLSLShader::registerEngineBlockLayout("ReflectionProbes",
-        {
-            LL_PROBE_LAYOUT(refmapCount),
-            LL_PROBE_LAYOUT(heroShape),
-            LL_PROBE_LAYOUT(heroMaxLod),
-            LL_PROBE_LAYOUT(heroProbeCount),
-            LL_PROBE_LAYOUT(iterationCount),
-            LL_PROBE_LAYOUT(rayStep),
-            LL_PROBE_LAYOUT(distanceBias),
-            LL_PROBE_LAYOUT(depthRejectBias),
-            LL_PROBE_LAYOUT(glossySampleCount),
-            LL_PROBE_LAYOUT(adaptiveStepMultiplier),
-        });
-#undef LL_PROBE_LAYOUT
-        return true;
-    }();
-}
-#endif // !LL_RELEASE_FOR_DOWNLOAD
-
 static void touch_default_probe(LLReflectionMap* probe)
 {
     if (LLViewerCamera::getInstance())

@@ -216,6 +216,8 @@ private:
     bool rebuildGLBuffers(const ALRenderResourceInputs& requested, RebuildCause cause);
     // What the programs' reload alone invalidates, where no reconcile follows it, and its log line.
     void programsReloaded();
+    bool reloadMetalShaders(std::string* error);
+    bool mMetalShaderReloadPending = false;
     // What the settings say the programs' and the resources' inputs are now, read by latchRenderInputs alone, so every
     // program, resource and pass is planned from the same reading of the settings. The resources take the G-buffer's
     // normal layout and the depth convention from the programs' inputs, which compile for them.
@@ -1900,8 +1902,8 @@ public:
 
     // ---- Retained GL deferred uniform block (UB_DEFERRED) ---------------------------------
     // std140-packed SSAO constants and the legacy specular exponent. ssao_effect_mat@0,
-    // scalars@48..64, size 80. The matrix is symmetric, so orientation is moot. Checked
-    // against the driver at shader load by validateEngineBlockLayouts() in debug builds.
+    // scalars@48..64, size 80. Native consumers repack these CPU values into
+    // their explicit Metal constant layouts.
     struct alignas(16) DeferredUBOData
     {
         F32 ssao_effect_mat[12];       // mat3 (3 vec4-strided columns)

@@ -31,7 +31,6 @@
 #include "llbakingshadermgr.h"
 
 #include "alrendercapabilities.h"
-#include "lldir.h"
 #include "llvertexbuffer.h"
 
 using std::make_pair;
@@ -110,11 +109,6 @@ bool LLBakingShaderMgr::loadShadersInterface()
     }
 
     return gAlphaMaskProgram.isNativeConfigured();
-}
-
-std::string LLBakingShaderMgr::getShaderDirPrefix(void)
-{
-    return gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "shaders/class");
 }
 
 void LLBakingShaderMgr::updateShaderUniforms(LLGLSLShader * shader)

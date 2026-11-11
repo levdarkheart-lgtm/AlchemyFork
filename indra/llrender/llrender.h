@@ -308,6 +308,10 @@ public:
     void setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* scheduler,
                          ALMetalSurface* surface);
 
+    // Explicit shader reload at a frame boundary. Keep capture textures and
+    // backend ownership; never interrupt an active UI transaction.
+    bool reloadMetalShaders(std::string* error = nullptr);
+
     // Mirror one already-materialized immediate/captured UI draw. Public only
     // because LLVertexBufferData replays outside LLRender::drawBuffer.
     bool drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
@@ -710,16 +714,6 @@ public:
     // the operation fails closed until a native compute owner is supplied.
     void dispatchComputeIndirect(const ALGPUBuffer& buffer, size_t offset);
 
-    // Cache `buffer`, whole or [offset, offset + bytes), at semantic shader
-    // storage binding point `binding`. Native compute encoders consume this
-    // description; deleting a buffer forgets it.
-    void bindStorageBuffer(U32 binding, const ALGPUBuffer& buffer);
-    void bindStorageBuffer(U32 binding, const ALGPUBuffer& buffer, size_t offset, size_t bytes);
-    // Leave nothing at `binding`.
-    void unbindStorageBuffer(U32 binding);
-    // The buffer at `binding`, 0 for none or for a point past AL_NUM_STORAGE_BINDINGS.
-    U32 getStorageBuffer(U32 binding) const;
-
     // ---- Frames ----------------------------------------------------------------------------------------------------
 
     // This context's queries: the viewer's display() retires them before its first cull reads them. Released with the
@@ -758,10 +752,6 @@ public:
     // name out again; a slot still caching it would take the new texture for bound already
     // and skip the bind.
     void forgetTextures(S32 count, const U32* names);
-
-    // Forget a buffer identity cached at a semantic storage binding point.
-    // ALGPUBuffer::release calls it.
-    void forgetBuffer(U32 name);
 
     U32 getCurrentTexUnitIndex(void) const { return mCurrTextureUnitIndex; }
 
@@ -827,16 +817,13 @@ public:
     static bool sClassicMode; // classic sky mode active
     static bool sMirrorPass;  // hero-probe planar-reflection (mirror clip) pass active
     static bool s10bitBackBuffer;
-    // Reverse-Z depth active this session: clip control ZERO_TO_ONE, reversed projections
-    // (near=1, far=0), depth cleared to 0, default depth func GREATER. Latched by
-    // LLPipeline::updateReverseZ() (newview) from the setting AND gGLManager.mHasClipControl;
-    // llrender cannot read settings, so newview owns the decision and writes it here.
+    // Reverse-Z depth active this session: Metal's [0,1] depth, reversed
+    // projections (near=1, far=0), depth cleared to 0, default GREATER comparison.
+    // Newview latches the setting before selecting native resources/constants.
     static bool sReverseZ;
 
-    // Compute is in use this session: the context has it (gGLManager.mHasCompute), GLSL is 4.30 after
-    // whatever fallback the feature manager applied, and the user has not turned it off. Latched by newview
-    // at shader load (llrender cannot read settings), as sReverseZ is. Everything compute in LLRender,
-    // ALImageSlot and ALGPUBuffer's storage binds asserts it.
+    // Compute is selected for the native pass plan and has not been disabled
+    // by the user. Newview latches it with the other shader inputs.
     static bool sCompute;
 
     // The GBuffer normal attachment is GL_RGBA16 when the deferred targets are HDR and
@@ -939,17 +926,6 @@ private:
     std::array<ALImageSlot, AL_NUM_IMAGE_SLOTS> mImageSlots;
     ALImageSlot             mDummyImageSlot;
     std::array<LLLightState, LL_NUM_LIGHT_UNITS> mLightState;
-
-    // What each native shader storage binding point holds: a buffer, and the
-    // range of it bound, mBytes 0 for the whole.
-    struct StorageBinding
-    {
-        U32    mName   = 0;
-        size_t mOffset = 0;
-        size_t mBytes  = 0;
-    };
-    std::array<StorageBinding, AL_NUM_STORAGE_BINDINGS> mStorageBindings;
-    void setStorageBinding(U32 binding, const StorageBinding& wanted);
 
     eBlendFactor mCurrBlendColorSFactor;
     eBlendFactor mCurrBlendColorDFactor;

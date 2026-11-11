@@ -52,21 +52,16 @@ public:
     static void releaseInstance();
 
     void initAttribsAndUniforms(void) override;
-    /// Loads the programs for @a inputs, which the pipeline's application latched (LLPipeline::applyRenderInputs), and
-    /// keeps them, as @a application says: every program built from its sources, or every loader run and only the
-    /// programs it configures otherwise than they linked linked again, the shared objects compiled again only where it
-    /// asks. A program no loader asks for is unloaded. Whether the programs were loaded: not before the pipeline is
-    /// initialised, nor on a context that cannot build them.
+    /// Configures native pass identities and variants from the pipeline's latched inputs.
+    /// Unchanged configurations keep their metadata; a forced rebuild replaces it, and
+    /// a pass no loader requests is retired. The pipeline reloads actual Metal libraries
+    /// and pipelines separately at the same frame boundary. Requires initialized Metal.
     bool setShaders(const ALShaderInputs& inputs, const ALRenderApplication& application);
     /// The inputs the programs were last loaded for, which every loader reads in place of the settings.
     const ALShaderInputs& inputs() const { return mInputs; }
     void unloadShaders();
     S32  getShaderLevel(S32 type);
 
-    // loadBasicShaders in case of a failure returns
-    // name of a file error happened at, otherwise
-    // returns an empty string
-    std::string loadBasicShaders();
     void loadShadersEffects();
     void loadShadersDeferred();
     void loadShadersObject();
@@ -89,8 +84,6 @@ public:
         SHADER_DEFERRED,
         SHADER_COUNT
     };
-
-    std::string getShaderDirPrefix(void) override;
 
     void updateShaderUniforms(LLGLSLShader * shader) override;
 

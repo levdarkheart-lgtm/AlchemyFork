@@ -125,10 +125,6 @@ public:
     // GL 4.1, immutable texture storage, sRGB decode -- every context past initGL has, so it
     // has no flag.
 
-    // Debug output and object labels (glDebugMessageCallback, glObjectLabel, ...). Core in
-    // 4.3, also reachable as GL_KHR_debug. Only true once glDebugMessageCallback has
-    // actually resolved, so callers may trust it directly.
-    bool mHasDebugOutput = false;
     bool mHasAnisotropic = false;
     // Direct state access (glBindTextureUnit, glCreateSamplers, glTextureStorage*, ...).
     // Core in 4.5, also reachable as GL_ARB_direct_state_access. Only true once the entry
@@ -151,40 +147,6 @@ public:
     // may lack. Only true once the entry point has resolved, so callers may trust it directly. See
     // LLRender::textureBarrier.
     bool mHasTextureBarrier = false;
-    // GL_ANY_SAMPLES_PASSED_CONSERVATIVE: core in 4.3, also GL_ARB_ES3_compatibility.
-    bool mHasConservativeOcclusion = false;
-    // GL_TIMESTAMP counts time: its GL_QUERY_COUNTER_BITS are not 0, which on Apple silicon they are.
-    bool mHasTimestampQuery = false;
-    // GL_ARB_pipeline_statistics_query's counters, such as GL_FRAGMENT_SHADER_INVOCATIONS: core in 4.6.
-    bool mHasPipelineStatistics = false;
-    // GL_QUERY_BUFFER: glGetQueryObject writes a result into the buffer bound there, by the GPU, rather than returning
-    // it to the CPU. Core in 4.4, also GL_ARB_query_buffer_object. False on AMD's drivers: Windows' writes the results
-    // into the wrong buffer, and radeonsi leaks with each write (LLGLManager::initQueries).
-    bool mHasQueryBufferObject = false;
-    // Whether the query pool has the GPU write its results through GL_QUERY_BUFFER, rather than asking GL for them: on
-    // NVIDIA's driver alone, where asking waits on its threaded optimization (ALQueryPool). What the session does, not
-    // what the context can.
-    bool mWritesQueryResults = false;
-    // Compute shaders, shader storage buffers, image load/store and indirect dispatch: core in 4.3.
-    // Only true once every entry point the compute path calls has resolved (glDispatchCompute,
-    // glDispatchComputeIndirect, glMemoryBarrier, glBindImageTexture, glShaderStorageBlockBinding,
-    // glGetProgramResourceIndex, glGetProgramInterfaceiv, glGetProgramResourceName,
-    // glGetProgramResourceiv, glClearBufferSubData, glDrawArraysIndirect, glGetIntegeri_v), so
-    // callers may trust it directly. What the context can do, not whether the session uses it:
-    // see LLRender::sCompute.
-    bool mHasCompute = false;
-    // The compute limits, queried only where mHasCompute; 0 elsewhere.
-    S32 mMaxComputeWorkGroupCount[3] = {};
-    S32 mMaxComputeWorkGroupSize[3] = {};
-    S32 mMaxComputeWorkGroupInvocations = 0;
-    S32 mMaxComputeSharedMemorySize = 0;
-    S32 mMaxImageUnits = 0;
-    S32 mMaxShaderStorageBufferBindings = 0;
-    S32 mMaxVertexShaderStorageBlocks = 0;    // a conforming 4.3 may report 0
-    S32 mMaxFragmentShaderStorageBlocks = 0;
-    S32 mMaxComputeShaderStorageBlocks = 0;
-    S64 mMaxShaderStorageBlockSize = 0;
-    S32 mShaderStorageBufferOffsetAlignment = 0;
 
     // Vendor-specific extensions
     bool mHasAMDAssociations = false;
@@ -253,8 +215,6 @@ public:
 private:
     void reloadExtensionsString();
     void initExtensions();
-    void initCompute();
-    void initQueries();
     void initGLStates();
 };
 
@@ -268,26 +228,6 @@ void rotate_quat(LLQuaternion& rotation);
 void flush_glerror(); // Flush GL errors when we know we're handling them correctly.
 
 void log_glerror();
-// Validate every sampler the currently bound program declares against the state actually
-// bound to its texture unit: something bound at all, no depth/compare mismatch in either
-// direction (non-shadow sampler over a compare-enabled depth texture, or a shadow sampler
-// without comparisons), and no integer one -- an integer sampler over a texture that is
-// neither integer nor read as its stencil, a float sampler over one that is, or an integer
-// texture under a filtering sampler, which leaves it incomplete. And every image against
-// its image unit: a float image over an integer format, or an integer one over the wrong
-// sign or a float format. Returns true when the state is sound.
-//
-// gDebugGL only -- returns true immediately otherwise. Intended for llassert() at draw and
-// dispatch sites, the way LLVertexBuffer::validateRange is used, so it fails at the draw
-// responsible and names the uniform instead of leaving a driver warning to be traced back
-// by hand.
-bool validate_bound_samplers();
-
-// Drop the cached sampler enumeration for a program about to be deleted. GL is free to hand
-// the name back out, and the cache revalidates only on active-uniform COUNT -- a recreated
-// program with the same name and count would be validated against the old program's
-// samplers. Call before glDeleteProgram; harmless when the program was never cached.
-void forget_program_samplers(U32 program);
 
 void assert_glerror();
 

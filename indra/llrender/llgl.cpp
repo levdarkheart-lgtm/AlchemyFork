@@ -34,6 +34,7 @@
 #include "llsys.h"
 
 #include "llgl.h"
+#include "alrendercapabilities.h"
 #include "llglstates.h"
 #include "llrender.h"
 
@@ -45,12 +46,6 @@
 #include "llstring.h"
 
 #include "llglheaders.h"
-#include "llglslshader.h"
-#include "llimagegl.h"
-#include "llshadermgr.h"
-
-#include <fmt/format.h>
-
 
 #if LL_DARWIN
 #  define LL_GET_PROC_ADDRESS(func) nullptr
@@ -95,804 +90,6 @@ namespace
 
 
 llofstream gFailLog;
-
-#if GL_ARB_debug_output
-
-#ifndef APIENTRY
-#define APIENTRY
-#endif
-
-// ---------------------------------------------------------------------------------------
-// Program sampler introspection, shared by the debug dump and the draw-time validator.
-//
-// What a program DECLARES is the missing half of every sampler/texture diagnostic: the
-// driver reports object names, and the engine's reserved-uniform table only knows engine
-// names -- which for a reflection-driven Slang program leaves the interesting channels
-// anonymous. GL_ACTIVE_UNIFORMS knows all of them, including the sampler TYPE, which is the
-// actual discriminator between correct and undefined.
-// ---------------------------------------------------------------------------------------
-namespace
-{
-    struct ProgramSampler
-    {
-        std::string mName;
-        GLenum      mType      = 0;
-        GLint       mUnit      = -1;
-        GLenum      mTarget    = 0;
-        GLenum      mBinding   = 0;
-        bool        mIsShadow  = false;
-        bool        mIsInteger = false;
-    };
-
-    // The kind of texel an image uniform reads and writes, and so the kind of format its unit must hold.
-    enum class TexelKind : U8
-    {
-        FLOAT,      // float and normalized formats
-        SIGNED,     // the signed integer formats
-        UNSIGNED,   // the unsigned integer formats
-    };
-
-    struct ProgramImage
-    {
-        std::string mName;
-        GLint       mUnit = -1;
-        TexelKind   mKind = TexelKind::FLOAT;
-    };
-
-    struct ProgramSamplerCache
-    {
-        // Revalidation key: a relinked program can reuse its name, and GL is free to hand a
-        // deleted name back out. Cheap enough to re-check every call.
-        GLint                      mUniformCount = -1;
-        std::vector<ProgramSampler> mSamplers;
-        std::vector<ProgramImage>   mImages;
-    };
-
-    std::map<GLuint, ProgramSamplerCache> sProgramSamplerCache;
-
-    // Every sampler type GL has, as mapUniformTextureChannel gives each a unit: the texture target it reads, the binding
-    // naming the texture bound there, whether it compares, and whether it returns integers.
-    struct SamplerType
-    {
-        GLenum mType;
-        GLenum mTarget;
-        GLenum mBinding;
-        bool   mIsShadow;
-        bool   mIsInteger;
-    };
-
-    constexpr SamplerType sSamplerTypes[] =
-    {
-        { GL_SAMPLER_1D,                                   GL_TEXTURE_1D,                   GL_TEXTURE_BINDING_1D,                   false, false },
-        { GL_SAMPLER_1D_SHADOW,                            GL_TEXTURE_1D,                   GL_TEXTURE_BINDING_1D,                   true,  false },
-        { GL_INT_SAMPLER_1D,                               GL_TEXTURE_1D,                   GL_TEXTURE_BINDING_1D,                   false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_1D,                      GL_TEXTURE_1D,                   GL_TEXTURE_BINDING_1D,                   false, true  },
-        { GL_SAMPLER_2D,                                   GL_TEXTURE_2D,                   GL_TEXTURE_BINDING_2D,                   false, false },
-        { GL_SAMPLER_2D_SHADOW,                            GL_TEXTURE_2D,                   GL_TEXTURE_BINDING_2D,                   true,  false },
-        { GL_INT_SAMPLER_2D,                               GL_TEXTURE_2D,                   GL_TEXTURE_BINDING_2D,                   false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_2D,                      GL_TEXTURE_2D,                   GL_TEXTURE_BINDING_2D,                   false, true  },
-        { GL_SAMPLER_3D,                                   GL_TEXTURE_3D,                   GL_TEXTURE_BINDING_3D,                   false, false },
-        { GL_INT_SAMPLER_3D,                               GL_TEXTURE_3D,                   GL_TEXTURE_BINDING_3D,                   false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_3D,                      GL_TEXTURE_3D,                   GL_TEXTURE_BINDING_3D,                   false, true  },
-        { GL_SAMPLER_CUBE,                                 GL_TEXTURE_CUBE_MAP,             GL_TEXTURE_BINDING_CUBE_MAP,             false, false },
-        { GL_SAMPLER_CUBE_SHADOW,                          GL_TEXTURE_CUBE_MAP,             GL_TEXTURE_BINDING_CUBE_MAP,             true,  false },
-        { GL_INT_SAMPLER_CUBE,                             GL_TEXTURE_CUBE_MAP,             GL_TEXTURE_BINDING_CUBE_MAP,             false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_CUBE,                    GL_TEXTURE_CUBE_MAP,             GL_TEXTURE_BINDING_CUBE_MAP,             false, true  },
-        { GL_SAMPLER_1D_ARRAY,                             GL_TEXTURE_1D_ARRAY,             GL_TEXTURE_BINDING_1D_ARRAY,             false, false },
-        { GL_SAMPLER_1D_ARRAY_SHADOW,                      GL_TEXTURE_1D_ARRAY,             GL_TEXTURE_BINDING_1D_ARRAY,             true,  false },
-        { GL_INT_SAMPLER_1D_ARRAY,                         GL_TEXTURE_1D_ARRAY,             GL_TEXTURE_BINDING_1D_ARRAY,             false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_1D_ARRAY,                GL_TEXTURE_1D_ARRAY,             GL_TEXTURE_BINDING_1D_ARRAY,             false, true  },
-        { GL_SAMPLER_2D_ARRAY,                             GL_TEXTURE_2D_ARRAY,             GL_TEXTURE_BINDING_2D_ARRAY,             false, false },
-        { GL_SAMPLER_2D_ARRAY_SHADOW,                      GL_TEXTURE_2D_ARRAY,             GL_TEXTURE_BINDING_2D_ARRAY,             true,  false },
-        { GL_INT_SAMPLER_2D_ARRAY,                         GL_TEXTURE_2D_ARRAY,             GL_TEXTURE_BINDING_2D_ARRAY,             false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_2D_ARRAY,                GL_TEXTURE_2D_ARRAY,             GL_TEXTURE_BINDING_2D_ARRAY,             false, true  },
-        { GL_SAMPLER_CUBE_MAP_ARRAY,                       GL_TEXTURE_CUBE_MAP_ARRAY,       GL_TEXTURE_BINDING_CUBE_MAP_ARRAY,       false, false },
-        { GL_SAMPLER_CUBE_MAP_ARRAY_SHADOW,                GL_TEXTURE_CUBE_MAP_ARRAY,       GL_TEXTURE_BINDING_CUBE_MAP_ARRAY,       true,  false },
-        { GL_INT_SAMPLER_CUBE_MAP_ARRAY,                   GL_TEXTURE_CUBE_MAP_ARRAY,       GL_TEXTURE_BINDING_CUBE_MAP_ARRAY,       false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY,          GL_TEXTURE_CUBE_MAP_ARRAY,       GL_TEXTURE_BINDING_CUBE_MAP_ARRAY,       false, true  },
-        { GL_SAMPLER_2D_RECT,                              GL_TEXTURE_RECTANGLE,            GL_TEXTURE_BINDING_RECTANGLE,            false, false },
-        { GL_SAMPLER_2D_RECT_SHADOW,                       GL_TEXTURE_RECTANGLE,            GL_TEXTURE_BINDING_RECTANGLE,            true,  false },
-        { GL_INT_SAMPLER_2D_RECT,                          GL_TEXTURE_RECTANGLE,            GL_TEXTURE_BINDING_RECTANGLE,            false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_2D_RECT,                 GL_TEXTURE_RECTANGLE,            GL_TEXTURE_BINDING_RECTANGLE,            false, true  },
-        { GL_SAMPLER_2D_MULTISAMPLE,                       GL_TEXTURE_2D_MULTISAMPLE,       GL_TEXTURE_BINDING_2D_MULTISAMPLE,       false, false },
-        { GL_INT_SAMPLER_2D_MULTISAMPLE,                   GL_TEXTURE_2D_MULTISAMPLE,       GL_TEXTURE_BINDING_2D_MULTISAMPLE,       false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE,          GL_TEXTURE_2D_MULTISAMPLE,       GL_TEXTURE_BINDING_2D_MULTISAMPLE,       false, true  },
-        { GL_SAMPLER_2D_MULTISAMPLE_ARRAY,                 GL_TEXTURE_2D_MULTISAMPLE_ARRAY, GL_TEXTURE_BINDING_2D_MULTISAMPLE_ARRAY, false, false },
-        { GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY,             GL_TEXTURE_2D_MULTISAMPLE_ARRAY, GL_TEXTURE_BINDING_2D_MULTISAMPLE_ARRAY, false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY,    GL_TEXTURE_2D_MULTISAMPLE_ARRAY, GL_TEXTURE_BINDING_2D_MULTISAMPLE_ARRAY, false, true  },
-        { GL_SAMPLER_BUFFER,                               GL_TEXTURE_BUFFER,               GL_TEXTURE_BINDING_BUFFER,               false, false },
-        { GL_INT_SAMPLER_BUFFER,                           GL_TEXTURE_BUFFER,               GL_TEXTURE_BINDING_BUFFER,               false, true  },
-        { GL_UNSIGNED_INT_SAMPLER_BUFFER,                  GL_TEXTURE_BUFFER,               GL_TEXTURE_BINDING_BUFFER,               false, true  },
-    };
-
-    bool sampler_target_for_type(GLenum type, GLenum& target, GLenum& binding, bool& is_shadow, bool& is_integer)
-    {
-        for (const SamplerType& entry : sSamplerTypes)
-        {
-            if (entry.mType == type)
-            {
-                target     = entry.mTarget;
-                binding    = entry.mBinding;
-                is_shadow  = entry.mIsShadow;
-                is_integer = entry.mIsInteger;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // Every image type GL has, and the kind of texel each reads and writes.
-    struct ImageType
-    {
-        GLenum    mType;
-        TexelKind mKind;
-    };
-
-    constexpr ImageType sImageTypes[] =
-    {
-        { GL_IMAGE_1D,                                   TexelKind::FLOAT    },
-        { GL_IMAGE_2D,                                   TexelKind::FLOAT    },
-        { GL_IMAGE_3D,                                   TexelKind::FLOAT    },
-        { GL_IMAGE_2D_RECT,                              TexelKind::FLOAT    },
-        { GL_IMAGE_CUBE,                                 TexelKind::FLOAT    },
-        { GL_IMAGE_BUFFER,                               TexelKind::FLOAT    },
-        { GL_IMAGE_1D_ARRAY,                             TexelKind::FLOAT    },
-        { GL_IMAGE_2D_ARRAY,                             TexelKind::FLOAT    },
-        { GL_IMAGE_CUBE_MAP_ARRAY,                       TexelKind::FLOAT    },
-        { GL_IMAGE_2D_MULTISAMPLE,                       TexelKind::FLOAT    },
-        { GL_IMAGE_2D_MULTISAMPLE_ARRAY,                 TexelKind::FLOAT    },
-        { GL_INT_IMAGE_1D,                               TexelKind::SIGNED   },
-        { GL_INT_IMAGE_2D,                               TexelKind::SIGNED   },
-        { GL_INT_IMAGE_3D,                               TexelKind::SIGNED   },
-        { GL_INT_IMAGE_2D_RECT,                          TexelKind::SIGNED   },
-        { GL_INT_IMAGE_CUBE,                             TexelKind::SIGNED   },
-        { GL_INT_IMAGE_BUFFER,                           TexelKind::SIGNED   },
-        { GL_INT_IMAGE_1D_ARRAY,                         TexelKind::SIGNED   },
-        { GL_INT_IMAGE_2D_ARRAY,                         TexelKind::SIGNED   },
-        { GL_INT_IMAGE_CUBE_MAP_ARRAY,                   TexelKind::SIGNED   },
-        { GL_INT_IMAGE_2D_MULTISAMPLE,                   TexelKind::SIGNED   },
-        { GL_INT_IMAGE_2D_MULTISAMPLE_ARRAY,             TexelKind::SIGNED   },
-        { GL_UNSIGNED_INT_IMAGE_1D,                      TexelKind::UNSIGNED },
-        { GL_UNSIGNED_INT_IMAGE_2D,                      TexelKind::UNSIGNED },
-        { GL_UNSIGNED_INT_IMAGE_3D,                      TexelKind::UNSIGNED },
-        { GL_UNSIGNED_INT_IMAGE_2D_RECT,                 TexelKind::UNSIGNED },
-        { GL_UNSIGNED_INT_IMAGE_CUBE,                    TexelKind::UNSIGNED },
-        { GL_UNSIGNED_INT_IMAGE_BUFFER,                  TexelKind::UNSIGNED },
-        { GL_UNSIGNED_INT_IMAGE_1D_ARRAY,                TexelKind::UNSIGNED },
-        { GL_UNSIGNED_INT_IMAGE_2D_ARRAY,                TexelKind::UNSIGNED },
-        { GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY,          TexelKind::UNSIGNED },
-        { GL_UNSIGNED_INT_IMAGE_2D_MULTISAMPLE,          TexelKind::UNSIGNED },
-        { GL_UNSIGNED_INT_IMAGE_2D_MULTISAMPLE_ARRAY,    TexelKind::UNSIGNED },
-    };
-
-    bool image_kind_for_type(GLenum type, TexelKind& kind)
-    {
-        for (const ImageType& entry : sImageTypes)
-        {
-            if (entry.mType == type)
-            {
-                kind = entry.mKind;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // The kind of texel a sized format holds.
-    TexelKind texel_kind_of_format(GLint internal_format)
-    {
-        if (!LLImageGL::isIntegerFormat(internal_format))
-        {
-            return TexelKind::FLOAT;
-        }
-        return LLImageGL::isSignedIntegerFormat(internal_format) ? TexelKind::SIGNED : TexelKind::UNSIGNED;
-    }
-
-    const char* texel_kind_name(TexelKind kind)
-    {
-        switch (kind)
-        {
-        case TexelKind::SIGNED:   return "signed integer";
-        case TexelKind::UNSIGNED: return "unsigned integer";
-        case TexelKind::FLOAT:
-        default:                  return "float";
-        }
-    }
-
-    // Sampler state means nothing to a buffer texture, which has none, or to a multisample one, read only by
-    // texelFetch; nor does a buffer texture have the levels the format query asks about.
-    bool target_has_sampler_state(GLenum target)
-    {
-        return target != GL_TEXTURE_BUFFER && target != GL_TEXTURE_2D_MULTISAMPLE
-            && target != GL_TEXTURE_2D_MULTISAMPLE_ARRAY;
-    }
-
-    // Re-entrancy latch for gl_debug_callback; see the guard there for why.
-    thread_local bool sInDebugCallback = false;
-
-    struct DebugCallbackGuard
-    {
-        DebugCallbackGuard()  { sInDebugCallback = true;  }
-        ~DebugCallbackGuard() { sInDebugCallback = false; }
-    };
-
-    // glGetTexLevelParameteriv describes one IMAGE, and a cube map is six of them -- so it
-    // takes a face target and rejects GL_TEXTURE_CUBE_MAP outright ("The cube map target is
-    // not available for specifying or querying cube map images", GL_INVALID_ENUM). Every
-    // face of every cube we build shares an internal format -- glTexStorage2D allocates all
-    // six in one call, and the per-face uploads are handed the same explicit format -- so
-    // +X answers for the whole object.
-    //
-    // Only the LEVEL query needs this. glGetTexParameteriv describes the OBJECT and does
-    // take the general target, which is why the compare-mode reads nearby are fine as they
-    // are.
-    GLenum level_query_target(GLenum target)
-    {
-        return target == GL_TEXTURE_CUBE_MAP ? GL_TEXTURE_CUBE_MAP_POSITIVE_X : target;
-    }
-
-    bool is_depth_format(GLint internal_format)
-    {
-        return internal_format == GL_DEPTH_COMPONENT16
-            || internal_format == GL_DEPTH_COMPONENT24
-            || internal_format == GL_DEPTH_COMPONENT32
-            || internal_format == GL_DEPTH_COMPONENT32F
-            || internal_format == GL_DEPTH24_STENCIL8
-            || internal_format == GL_DEPTH32F_STENCIL8;
-    }
-
-    // Whether the texture bound at `target` is read as its stencil, through an integer sampler: a stencil-only one
-    // always, and a depth-stencil one where GL 4.3's stencil texturing has set its mode so. Below 4.3 a depth-stencil
-    // texture is read as its depth.
-    bool reads_stencil(GLenum target, GLint internal_format)
-    {
-        if (internal_format == GL_STENCIL_INDEX8)
-        {
-            return true;
-        }
-        if ((internal_format != GL_DEPTH24_STENCIL8 && internal_format != GL_DEPTH32F_STENCIL8)
-            || gGLManager.mGLVersion < 4.29f)
-        {
-            return false;
-        }
-        GLint mode = GL_DEPTH_COMPONENT;
-        glGetTexParameteriv(target, GL_DEPTH_STENCIL_TEXTURE_MODE, &mode);
-        return mode == GL_STENCIL_INDEX;
-    }
-
-    // Whether a sampler, or the texture object where none is bound, reads texel by texel: the only way GL reads an
-    // integer texture, which a filtering one leaves incomplete.
-    bool reads_nearest(GLuint sampler, GLenum target)
-    {
-        GLint min_filter = 0;
-        GLint mag_filter = 0;
-        if (sampler != 0)
-        {
-            glGetSamplerParameteriv(sampler, GL_TEXTURE_MIN_FILTER, &min_filter);
-            glGetSamplerParameteriv(sampler, GL_TEXTURE_MAG_FILTER, &mag_filter);
-        }
-        else
-        {
-            glGetTexParameteriv(target, GL_TEXTURE_MIN_FILTER, &min_filter);
-            glGetTexParameteriv(target, GL_TEXTURE_MAG_FILTER, &mag_filter);
-        }
-        return mag_filter == GL_NEAREST && (min_filter == GL_NEAREST || min_filter == GL_NEAREST_MIPMAP_NEAREST);
-    }
-
-    // The samplers and images `program` declares, each with the unit its uniform holds.
-    const ProgramSamplerCache& get_program_bindings(GLuint program)
-    {
-        GLint uniform_count = 0;
-        glGetProgramiv(program, GL_ACTIVE_UNIFORMS, &uniform_count);
-
-        ProgramSamplerCache& cached = sProgramSamplerCache[program];
-        if (cached.mUniformCount == uniform_count)
-        {
-            return cached;
-        }
-
-        cached.mUniformCount = uniform_count;
-        cached.mSamplers.clear();
-        cached.mImages.clear();
-
-        GLint max_name_len = 0;
-        glGetProgramiv(program, GL_ACTIVE_UNIFORM_MAX_LENGTH, &max_name_len);
-        if (max_name_len <= 0)
-        {
-            return cached;
-        }
-        std::vector<GLchar> name_buf((size_t)max_name_len);
-
-        for (GLint i = 0; i < uniform_count; ++i)
-        {
-            GLsizei written = 0;
-            GLint   size    = 0;
-            GLenum  type    = 0;
-            glGetActiveUniform(program, (GLuint)i, (GLsizei)name_buf.size(), &written, &size, &type, name_buf.data());
-            if (written <= 0)
-            {
-                continue;
-            }
-
-            ProgramSampler sampler;
-            ProgramImage   image;
-            const bool is_sampler =
-                sampler_target_for_type(type, sampler.mTarget, sampler.mBinding, sampler.mIsShadow, sampler.mIsInteger);
-            if (!is_sampler && !image_kind_for_type(type, image.mKind))
-            {
-                continue;
-            }
-
-            const std::string name(name_buf.data(), (size_t)written);
-            const GLint location = glGetUniformLocation(program, name.c_str());
-            if (location < 0)
-            {
-                continue;
-            }
-
-            if (is_sampler)
-            {
-                sampler.mName = name;
-                sampler.mType = type;
-                glGetUniformiv(program, location, &sampler.mUnit);
-                cached.mSamplers.push_back(sampler);
-            }
-            else
-            {
-                image.mName = name;
-                glGetUniformiv(program, location, &image.mUnit);
-                cached.mImages.push_back(image);
-            }
-        }
-
-        return cached;
-    }
-}
-
-void forget_program_samplers(U32 program)
-{
-    sProgramSamplerCache.erase(program);
-}
-
-// Dump per-unit texture and sampler state.
-//
-// The driver's message names a sampler and a texture object but not the UNIT or the
-// UNIFORM, which is the part you need: a mismatch between what a program declares and what
-// is bound is nearly always one specific channel, and hunting it from two bare object names
-// means guessing. Correlating unit -> uniform -> texture -> sampler turns that into reading.
-//
-// Only reports units with something bound, and restores the active unit -- a debug callback
-// must not perturb the state it is describing.
-static void log_texture_unit_state()
-{
-    GLint max_units = 0;
-    glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &max_units);
-    max_units = llmin(max_units, (GLint)AL_NUM_TEXTURE_SLOTS);
-
-    GLint saved_active_unit = GL_TEXTURE0;
-    glGetIntegerv(GL_ACTIVE_TEXTURE, &saved_active_unit);
-
-    // What the PROGRAM declares, per unit. See get_program_bindings.
-    struct UnitUniform
-    {
-        std::string mName;
-        GLenum      mType     = 0;
-        bool        mIsShadow = false;
-    };
-    std::vector<UnitUniform> channel_uniform((size_t)max_units);
-
-    GLint program = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program != 0)
-    {
-        for (const ProgramSampler& sampler : get_program_bindings((GLuint)program).mSamplers)
-        {
-            if (sampler.mUnit >= 0 && sampler.mUnit < max_units)
-            {
-                channel_uniform[(size_t)sampler.mUnit] = { sampler.mName, sampler.mType, sampler.mIsShadow };
-            }
-        }
-    }
-
-    static const struct { GLenum mTarget; GLenum mBinding; const char* mName; } targets[] =
-    {
-        { GL_TEXTURE_1D,                   GL_TEXTURE_BINDING_1D,                   "1D"          },
-        { GL_TEXTURE_1D_ARRAY,             GL_TEXTURE_BINDING_1D_ARRAY,             "1D_ARRAY"    },
-        { GL_TEXTURE_2D,                   GL_TEXTURE_BINDING_2D,                   "2D"          },
-        { GL_TEXTURE_2D_ARRAY,             GL_TEXTURE_BINDING_2D_ARRAY,             "2D_ARRAY"    },
-        { GL_TEXTURE_3D,                   GL_TEXTURE_BINDING_3D,                   "3D"          },
-        { GL_TEXTURE_CUBE_MAP,             GL_TEXTURE_BINDING_CUBE_MAP,             "CUBE"        },
-        { GL_TEXTURE_CUBE_MAP_ARRAY,       GL_TEXTURE_BINDING_CUBE_MAP_ARRAY,       "CUBE_ARRAY"  },
-        { GL_TEXTURE_RECTANGLE,            GL_TEXTURE_BINDING_RECTANGLE,            "RECT"        },
-        { GL_TEXTURE_2D_MULTISAMPLE,       GL_TEXTURE_BINDING_2D_MULTISAMPLE,       "2D_MS"       },
-        { GL_TEXTURE_2D_MULTISAMPLE_ARRAY, GL_TEXTURE_BINDING_2D_MULTISAMPLE_ARRAY, "2D_MS_ARRAY" },
-        { GL_TEXTURE_BUFFER,               GL_TEXTURE_BINDING_BUFFER,               "BUFFER"      },
-    };
-
-    LL_WARNS() << "Texture units:" << LL_ENDL;
-
-    for (GLint unit = 0; unit < max_units; ++unit)
-    {
-        glActiveTexture(GL_TEXTURE0 + unit);
-
-        GLint sampler = 0;
-        glGetIntegerv(GL_SAMPLER_BINDING, &sampler);
-
-        for (const auto& target : targets)
-        {
-            GLint texture = 0;
-            glGetIntegerv(target.mBinding, &texture);
-            if (texture == 0)
-            {
-                continue;
-            }
-
-            // GL_TEXTURE_COMPARE_MODE on the texture and on the sampler are separate state;
-            // a bound sampler wins, so print both -- disagreement is the usual culprit.
-            GLint internal_format = 0;
-            GLint tex_compare     = GL_NONE;
-            if (target_has_sampler_state(target.mTarget))
-            {
-                glGetTexLevelParameteriv(level_query_target(target.mTarget), 0, GL_TEXTURE_INTERNAL_FORMAT, &internal_format);
-                glGetTexParameteriv(target.mTarget, GL_TEXTURE_COMPARE_MODE, &tex_compare);
-            }
-
-            const bool is_depth = is_depth_format(internal_format);
-
-            const UnitUniform& declared = channel_uniform[(size_t)unit];
-
-            std::ostringstream line;
-            line << "  unit " << unit;
-            if (!declared.mName.empty())
-            {
-                line << " (" << declared.mName
-                     << (declared.mIsShadow ? " : shadow" : " : non-shadow")
-                     << " type=0x" << std::hex << declared.mType << std::dec << ")";
-            }
-            line << " " << target.mName << " tex=" << texture
-                 << " format=0x" << std::hex << internal_format << std::dec
-                 << (is_depth ? " DEPTH" : "")
-                 << " tex_compare=" << (tex_compare == GL_NONE ? "none" : "REF_TO_TEXTURE")
-                 << " sampler=" << sampler;
-
-            if (sampler != 0)
-            {
-                GLint smp_compare = GL_NONE;
-                GLint min_filter  = 0;
-                GLint mag_filter  = 0;
-                GLint wrap_s      = 0;
-                glGetSamplerParameteriv(sampler, GL_TEXTURE_COMPARE_MODE, &smp_compare);
-                glGetSamplerParameteriv(sampler, GL_TEXTURE_MIN_FILTER, &min_filter);
-                glGetSamplerParameteriv(sampler, GL_TEXTURE_MAG_FILTER, &mag_filter);
-                glGetSamplerParameteriv(sampler, GL_TEXTURE_WRAP_S, &wrap_s);
-
-                line << " [compare=" << (smp_compare == GL_NONE ? "none" : "REF_TO_TEXTURE")
-                     << " min=0x" << std::hex << min_filter
-                     << " mag=0x" << mag_filter
-                     << " wrap=0x" << wrap_s << std::dec << "]";
-
-                // The exact pairing the driver calls undefined behaviour -- but ONLY when
-                // the program reads that unit with a non-shadow sampler. The same state
-                // under a sampler2DShadow is correct and expected.
-                if (is_depth && smp_compare != GL_NONE)
-                {
-                    if (!declared.mName.empty() && !declared.mIsShadow)
-                    {
-                        line << "  <-- UB: '" << declared.mName
-                             << "' is non-shadow over a depth texture + compare sampler";
-                    }
-                    else if (declared.mName.empty())
-                    {
-                        line << "  (stale: depth + compare, program declares nothing here)";
-                    }
-                }
-            }
-
-            LL_WARNS() << line.str() << LL_ENDL;
-        }
-    }
-
-    glActiveTexture(saved_active_unit);
-}
-
-
-// Check every sampler and image the bound program declares against what is actually bound.
-//
-// Catches the mismatch AT THE DRAW THAT CAUSES IT, naming the uniform -- rather than via a
-// driver warning that reports two object names and leaves you inferring which bind site was
-// responsible. That inference is expensive: the depth-texture-under-a-compare-sampler bug
-// this was written for took five wrong diagnoses before the state was made visible.
-//
-// Reports only what GL actually calls undefined, so an assertion here means a real defect.
-// In particular an EMPTY unit is fine: reading one is defined, and declaring more samplers
-// than a draw fills is normal.
-//
-// gDebugGL only, and hooked through llassert() like LLVertexBuffer::validateRange, so it
-// compiles out entirely otherwise. Enumerating a program's uniforms is cached per program.
-bool validate_bound_samplers()
-{
-    if (!gDebugGL)
-    {
-        return true;
-    }
-
-    GLint program = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program == 0)
-    {
-        return true;
-    }
-
-    GLint saved_active_unit = GL_TEXTURE0;
-    glGetIntegerv(GL_ACTIVE_TEXTURE, &saved_active_unit);
-
-    const char* shader_name = LLGLSLShader::sCurBoundShaderPtr
-                                  ? LLGLSLShader::sCurBoundShaderPtr->mName.c_str()
-                                  : "<unknown>";
-    std::string failure;
-
-    const ProgramSamplerCache& bindings = get_program_bindings((GLuint)program);
-    for (const ProgramSampler& sampler : bindings.mSamplers)
-    {
-        if (sampler.mUnit < 0)
-        {
-            continue;
-        }
-
-        glActiveTexture(GL_TEXTURE0 + sampler.mUnit);
-
-        GLint texture = 0;
-        glGetIntegerv((GLenum)sampler.mBinding, &texture);
-        if (texture == 0)
-        {
-            // NOT an error. Reading an unbound unit is defined -- it yields (0,0,0,1) -- and
-            // programs routinely declare more samplers than a given draw fills: the indexed
-            // batching array is tex0..tex20 whatever the batch size. Nothing to validate.
-            continue;
-        }
-
-        // Nothing below applies to a texture with no sampler state, which reads as it is whatever is bound.
-        if (!target_has_sampler_state(sampler.mTarget))
-        {
-            continue;
-        }
-
-        // A bound sampler object overrides the texture's own compare state, so it decides.
-        GLint bound_sampler = 0;
-        glGetIntegerv(GL_SAMPLER_BINDING, &bound_sampler);
-
-        GLint compare_mode = GL_NONE;
-        if (bound_sampler != 0)
-        {
-            glGetSamplerParameteriv((GLuint)bound_sampler, GL_TEXTURE_COMPARE_MODE, &compare_mode);
-        }
-        else
-        {
-            glGetTexParameteriv(sampler.mTarget, GL_TEXTURE_COMPARE_MODE, &compare_mode);
-        }
-
-        GLint internal_format = 0;
-        glGetTexLevelParameteriv(level_query_target(sampler.mTarget), 0, GL_TEXTURE_INTERNAL_FORMAT, &internal_format);
-        const bool is_depth = is_depth_format(internal_format);
-
-        // The two pairings GL calls undefined, in both directions.
-        if (!sampler.mIsShadow && is_depth && compare_mode != GL_NONE)
-        {
-            failure = llformat("'%s' (unit %d) is a non-shadow sampler over depth texture %d "
-                               "with comparisons enabled on sampler %d",
-                               sampler.mName.c_str(), sampler.mUnit, texture, bound_sampler);
-            break;
-        }
-        if (sampler.mIsShadow && compare_mode == GL_NONE)
-        {
-            failure = llformat("'%s' (unit %d) is a shadow sampler over texture %d with "
-                               "comparisons DISABLED (sampler %d)",
-                               sampler.mName.c_str(), sampler.mUnit, texture, bound_sampler);
-            break;
-        }
-        if (sampler.mIsShadow && !is_depth)
-        {
-            failure = llformat("'%s' (unit %d) is a shadow sampler over non-depth texture %d "
-                               "(format 0x%x)",
-                               sampler.mName.c_str(), sampler.mUnit, texture, internal_format);
-            break;
-        }
-
-        // An integer texture reads only through an integer sampler, and an integer sampler reads only an integer
-        // texture or a texture read as its stencil, which a float one cannot read. Every other pairing is undefined.
-        const bool integer_texture = LLImageGL::isIntegerFormat(internal_format);
-        const bool stencil_texture = reads_stencil(sampler.mTarget, internal_format);
-        if (sampler.mIsInteger != (integer_texture || stencil_texture))
-        {
-            failure = fmt::format("'{}' (unit {}) is {} sampler over {} texture {} (format {:#x})", sampler.mName,
-                                  sampler.mUnit, sampler.mIsInteger ? "an integer" : "a float",
-                                  integer_texture   ? "an integer"
-                                  : stencil_texture ? "a stencil-mode"
-                                                    : "a non-integer",
-                                  texture, internal_format);
-            break;
-        }
-        // And GL reads integers texel by texel: under a filtering sampler the texture is incomplete, and reads 0.
-        if (sampler.mIsInteger && !reads_nearest((GLuint)bound_sampler, sampler.mTarget))
-        {
-            failure = fmt::format("'{}' (unit {}) is an integer sampler over texture {} filtered by sampler {}, "
-                                  "which leaves it incomplete",
-                                  sampler.mName, sampler.mUnit, texture, bound_sampler);
-            break;
-        }
-    }
-
-    glActiveTexture(saved_active_unit);
-
-    // An image reads and writes a texel's bits as its unit's format lays them out, and the uniform's type says which
-    // kind of value that is: a float image over an integer format, or the reverse, is undefined. An empty unit is not
-    // -- its loads read 0 and its stores go nowhere.
-    if (failure.empty() && gGLManager.mHasCompute)
-    {
-        for (const ProgramImage& image : bindings.mImages)
-        {
-            if (image.mUnit < 0)
-            {
-                continue;
-            }
-            GLint texture = 0;
-            glGetIntegeri_v(GL_IMAGE_BINDING_NAME, (GLuint)image.mUnit, &texture);
-            if (texture == 0)
-            {
-                continue;
-            }
-            GLint format = 0;
-            glGetIntegeri_v(GL_IMAGE_BINDING_FORMAT, (GLuint)image.mUnit, &format);
-            const TexelKind bound = texel_kind_of_format(format);
-            if (bound != image.mKind)
-            {
-                failure = fmt::format("'{}' (image unit {}) is a {} image over texture {} bound as {} format {:#x}",
-                                      image.mName, image.mUnit, texel_kind_name(image.mKind), texture,
-                                      texel_kind_name(bound), format);
-                break;
-            }
-        }
-    }
-
-    if (failure.empty())
-    {
-        return true;
-    }
-
-    LL_WARNS() << "----- SAMPLER BINDING INVALID -------" << LL_ENDL;
-    LL_WARNS() << "Shader: " << shader_name << LL_ENDL;
-    LL_WARNS() << failure << LL_ENDL;
-    LL_WARNS() << "-------------------------------------" << LL_ENDL;
-    log_texture_unit_state();
-
-    return false;
-}
-
-void APIENTRY gl_debug_callback(GLenum source,
-                                GLenum type,
-                                GLuint id,
-                                GLenum severity,
-                                GLsizei length,
-                                const GLchar* message,
-                                GLvoid* userParam)
-{
-    // This callback makes GL calls of its own -- the buffer/shader/texture-unit dump below.
-    // Any error one of THOSE raises comes straight back here, which reports it, dumps
-    // again, and raises it again: one real fault turns into a burst of identical messages
-    // whose true origin is buried, and every one of them re-reads the state it is meant to
-    // be describing. That is exactly how the cube-map level query above showed up.
-    //
-    // Per-thread because the texture upload thread has its own context and its own
-    // callback; a shared flag would let one thread silence the other's diagnostics.
-    if (sInDebugCallback)
-    {
-        return;
-    }
-    DebugCallbackGuard reentry_guard;
-
-    /*if (severity != GL_DEBUG_SEVERITY_HIGH &&
-        severity != GL_DEBUG_SEVERITY_MEDIUM &&
-        severity != GL_DEBUG_SEVERITY_LOW
-        )
-    { //suppress out-of-spec messages sent by nvidia driver (mostly vertexbuffer hints)
-        return;
-    }*/
-
-    if (gGLManager.mIsDisabled &&
-        severity == GL_DEBUG_SEVERITY_HIGH_ARB &&
-        source == GL_DEBUG_SOURCE_API_ARB &&
-        type == GL_DEBUG_TYPE_ERROR_ARB &&
-        id == GL_INVALID_VALUE)
-    {
-        // Suppress messages about deleting already deleted objects called from LLViewerWindow::stopGL()
-        // "GL_INVALID_VALUE error generated. Handle does not refer to an object generated by OpenGL."
-        return;
-    }
-
-    // list of messages to suppress
-    const char* suppress[] =
-    {
-        "Buffer detailed info:",
-        "Program undefined behavior warning: The current GL state uses a sampler (0) that has depth comparisons enabled"
-    };
-
-    for (const char* msg : suppress)
-    {
-        if (strncmp(msg, message, strlen(msg)) == 0)
-        {
-            return;
-        }
-    }
-
-    if (severity == GL_DEBUG_SEVERITY_HIGH)
-    {
-        LL_WARNS() << "----- GL ERROR --------" << LL_ENDL;
-    }
-    else
-    {
-        LL_WARNS() << "----- GL WARNING -------" << LL_ENDL;
-    }
-    LL_WARNS() << "Type: " << std::hex << type << LL_ENDL;
-    LL_WARNS() << "ID: " << std::hex << id << LL_ENDL;
-    LL_WARNS() << "Severity: " << std::hex << severity << LL_ENDL;
-    LL_WARNS() << "Message: " << message << LL_ENDL;
-    LL_WARNS() << "-----------------------" << LL_ENDL;
-
-    // The buffer and texture-unit dump below is a few hundred synchronous glGet round
-    // trips. Worth it for anything that might be a defect; not for the notification-level
-    // chatter some drivers emit constantly (buffer migration notes and the like), which
-    // would turn a debug session into a slideshow and bury the messages that matter.
-    if (severity == GL_DEBUG_SEVERITY_NOTIFICATION)
-    {
-        return;
-    }
-
-    GLint vao = 0;
-    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
-    GLint vbo = 0;
-    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &vbo);
-    GLint vbo_size = 0;
-    if (vbo != 0)
-    {
-        glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &vbo_size);
-    }
-    GLint ibo = 0;
-    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &ibo);
-    GLint ibo_size = 0;
-    if (ibo != 0)
-    {
-        glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &ibo_size);
-    }
-    GLint ubo = 0;
-    glGetIntegerv(GL_UNIFORM_BUFFER_BINDING, &ubo);
-    GLint ubo_size = 0;
-    GLint ubo_immutable = 0;
-    if (ubo != 0)
-    {
-        glGetBufferParameteriv(GL_UNIFORM_BUFFER, GL_BUFFER_SIZE, &ubo_size);
-        glGetBufferParameteriv(GL_UNIFORM_BUFFER, GL_BUFFER_IMMUTABLE_STORAGE, &ubo_immutable);
-    }
-
-    if (LLGLSLShader::sCurBoundShaderPtr)
-    {
-        LL_WARNS() << "Bound shader: " << LLGLSLShader::sCurBoundShaderPtr->mName << LL_ENDL;
-    }
-
-    LL_WARNS() << "Bound buffers: VAO=" << vao
-               << " ARRAY_BUFFER=" << vbo << " (size " << vbo_size << ")"
-               << " ELEMENT_ARRAY=" << ibo << " (size " << ibo_size << ")"
-               << " UNIFORM_BUFFER=" << ubo << " (size " << ubo_size << ", immutable " << ubo_immutable << ")"
-               << LL_ENDL;
-
-    log_texture_unit_state();
-
-    // No needs to halt when is called from LLViewerWindow::stopGL()
-    if (severity == GL_DEBUG_SEVERITY_HIGH && !gGLManager.mIsDisabled)
-    {
-        LL_ERRS() << "Halting on GL Error" << LL_ENDL;
-    }
-}
-#endif
 
 void parse_glsl_version(S32& major, S32& minor);
 
@@ -1071,14 +268,6 @@ PFNGLPOINTPARAMETERIPROC         glPointParameteri = nullptr;
 PFNGLPOINTPARAMETERIVPROC        glPointParameteriv = nullptr;
 
 // GL_VERSION_1_5
-PFNGLGENQUERIESPROC              glGenQueries = nullptr;
-PFNGLDELETEQUERIESPROC           glDeleteQueries = nullptr;
-PFNGLISQUERYPROC                 glIsQuery = nullptr;
-PFNGLBEGINQUERYPROC              glBeginQuery = nullptr;
-PFNGLENDQUERYPROC                glEndQuery = nullptr;
-PFNGLGETQUERYIVPROC              glGetQueryiv = nullptr;
-PFNGLGETQUERYOBJECTIVPROC        glGetQueryObjectiv = nullptr;
-PFNGLGETQUERYOBJECTUIVPROC       glGetQueryObjectuiv = nullptr;
 PFNGLBINDBUFFERPROC              glBindBuffer = nullptr;
 PFNGLDELETEBUFFERSPROC           glDeleteBuffers = nullptr;
 PFNGLGENBUFFERSPROC              glGenBuffers = nullptr;
@@ -1097,57 +286,12 @@ PFNGLDRAWBUFFERSPROC                     glDrawBuffers = nullptr;
 PFNGLSTENCILOPSEPARATEPROC               glStencilOpSeparate = nullptr;
 PFNGLSTENCILFUNCSEPARATEPROC             glStencilFuncSeparate = nullptr;
 PFNGLSTENCILMASKSEPARATEPROC             glStencilMaskSeparate = nullptr;
-PFNGLATTACHSHADERPROC                    glAttachShader = nullptr;
-PFNGLBINDATTRIBLOCATIONPROC              glBindAttribLocation = nullptr;
-PFNGLCOMPILESHADERPROC                   glCompileShader = nullptr;
-PFNGLCREATEPROGRAMPROC                   glCreateProgram = nullptr;
-PFNGLCREATESHADERPROC                    glCreateShader = nullptr;
-PFNGLDELETEPROGRAMPROC                   glDeleteProgram = nullptr;
-PFNGLDELETESHADERPROC                    glDeleteShader = nullptr;
-PFNGLDETACHSHADERPROC                    glDetachShader = nullptr;
 PFNGLDISABLEVERTEXATTRIBARRAYPROC        glDisableVertexAttribArray = nullptr;
 PFNGLENABLEVERTEXATTRIBARRAYPROC         glEnableVertexAttribArray = nullptr;
-PFNGLGETACTIVEATTRIBPROC                 glGetActiveAttrib = nullptr;
-PFNGLGETACTIVEUNIFORMPROC                glGetActiveUniform = nullptr;
-PFNGLGETATTACHEDSHADERSPROC              glGetAttachedShaders = nullptr;
-PFNGLGETATTRIBLOCATIONPROC               glGetAttribLocation = nullptr;
-PFNGLGETPROGRAMIVPROC                    glGetProgramiv = nullptr;
-PFNGLGETPROGRAMINFOLOGPROC               glGetProgramInfoLog = nullptr;
-PFNGLGETSHADERIVPROC                     glGetShaderiv = nullptr;
-PFNGLGETSHADERINFOLOGPROC                glGetShaderInfoLog = nullptr;
-PFNGLGETSHADERSOURCEPROC                 glGetShaderSource = nullptr;
-PFNGLGETUNIFORMLOCATIONPROC              glGetUniformLocation = nullptr;
-PFNGLGETUNIFORMFVPROC                    glGetUniformfv = nullptr;
-PFNGLGETUNIFORMIVPROC                    glGetUniformiv = nullptr;
 PFNGLGETVERTEXATTRIBDVPROC               glGetVertexAttribdv = nullptr;
 PFNGLGETVERTEXATTRIBFVPROC               glGetVertexAttribfv = nullptr;
 PFNGLGETVERTEXATTRIBIVPROC               glGetVertexAttribiv = nullptr;
 PFNGLGETVERTEXATTRIBPOINTERVPROC         glGetVertexAttribPointerv = nullptr;
-PFNGLISPROGRAMPROC                       glIsProgram = nullptr;
-PFNGLISSHADERPROC                        glIsShader = nullptr;
-PFNGLLINKPROGRAMPROC                     glLinkProgram = nullptr;
-PFNGLSHADERSOURCEPROC                    glShaderSource = nullptr;
-PFNGLUSEPROGRAMPROC                      glUseProgram = nullptr;
-PFNGLUNIFORM1FPROC                       glUniform1f = nullptr;
-PFNGLUNIFORM2FPROC                       glUniform2f = nullptr;
-PFNGLUNIFORM3FPROC                       glUniform3f = nullptr;
-PFNGLUNIFORM4FPROC                       glUniform4f = nullptr;
-PFNGLUNIFORM1IPROC                       glUniform1i = nullptr;
-PFNGLUNIFORM2IPROC                       glUniform2i = nullptr;
-PFNGLUNIFORM3IPROC                       glUniform3i = nullptr;
-PFNGLUNIFORM4IPROC                       glUniform4i = nullptr;
-PFNGLUNIFORM1FVPROC                      glUniform1fv = nullptr;
-PFNGLUNIFORM2FVPROC                      glUniform2fv = nullptr;
-PFNGLUNIFORM3FVPROC                      glUniform3fv = nullptr;
-PFNGLUNIFORM4FVPROC                      glUniform4fv = nullptr;
-PFNGLUNIFORM1IVPROC                      glUniform1iv = nullptr;
-PFNGLUNIFORM2IVPROC                      glUniform2iv = nullptr;
-PFNGLUNIFORM3IVPROC                      glUniform3iv = nullptr;
-PFNGLUNIFORM4IVPROC                      glUniform4iv = nullptr;
-PFNGLUNIFORMMATRIX2FVPROC                glUniformMatrix2fv = nullptr;
-PFNGLUNIFORMMATRIX3FVPROC                glUniformMatrix3fv = nullptr;
-PFNGLUNIFORMMATRIX4FVPROC                glUniformMatrix4fv = nullptr;
-PFNGLVALIDATEPROGRAMPROC                 glValidateProgram = nullptr;
 PFNGLVERTEXATTRIB1DPROC                  glVertexAttrib1d = nullptr;
 PFNGLVERTEXATTRIB1DVPROC                 glVertexAttrib1dv = nullptr;
 PFNGLVERTEXATTRIB1FPROC                  glVertexAttrib1f = nullptr;
@@ -1187,12 +331,6 @@ PFNGLVERTEXATTRIB4USVPROC                glVertexAttrib4usv = nullptr;
 PFNGLVERTEXATTRIBPOINTERPROC             glVertexAttribPointer = nullptr;
 
 // GL_VERSION_2_1
-PFNGLUNIFORMMATRIX2X3FVPROC glUniformMatrix2x3fv = nullptr;
-PFNGLUNIFORMMATRIX3X2FVPROC glUniformMatrix3x2fv = nullptr;
-PFNGLUNIFORMMATRIX2X4FVPROC glUniformMatrix2x4fv = nullptr;
-PFNGLUNIFORMMATRIX4X2FVPROC glUniformMatrix4x2fv = nullptr;
-PFNGLUNIFORMMATRIX3X4FVPROC glUniformMatrix3x4fv = nullptr;
-PFNGLUNIFORMMATRIX4X3FVPROC glUniformMatrix4x3fv = nullptr;
 
 // GL_VERSION_3_0
 PFNGLCOLORMASKIPROC                              glColorMaski = nullptr;
@@ -1233,17 +371,8 @@ PFNGLVERTEXATTRIBI4BVPROC                        glVertexAttribI4bv = nullptr;
 PFNGLVERTEXATTRIBI4SVPROC                        glVertexAttribI4sv = nullptr;
 PFNGLVERTEXATTRIBI4UBVPROC                       glVertexAttribI4ubv = nullptr;
 PFNGLVERTEXATTRIBI4USVPROC                       glVertexAttribI4usv = nullptr;
-PFNGLGETUNIFORMUIVPROC                           glGetUniformuiv = nullptr;
 PFNGLBINDFRAGDATALOCATIONPROC                    glBindFragDataLocation = nullptr;
 PFNGLGETFRAGDATALOCATIONPROC                     glGetFragDataLocation = nullptr;
-PFNGLUNIFORM1UIPROC                              glUniform1ui = nullptr;
-PFNGLUNIFORM2UIPROC                              glUniform2ui = nullptr;
-PFNGLUNIFORM3UIPROC                              glUniform3ui = nullptr;
-PFNGLUNIFORM4UIPROC                              glUniform4ui = nullptr;
-PFNGLUNIFORM1UIVPROC                             glUniform1uiv = nullptr;
-PFNGLUNIFORM2UIVPROC                             glUniform2uiv = nullptr;
-PFNGLUNIFORM3UIVPROC                             glUniform3uiv = nullptr;
-PFNGLUNIFORM4UIVPROC                             glUniform4uiv = nullptr;
 PFNGLTEXPARAMETERIIVPROC                         glTexParameterIiv = nullptr;
 PFNGLTEXPARAMETERIUIVPROC                        glTexParameterIuiv = nullptr;
 PFNGLGETTEXPARAMETERIIVPROC                      glGetTexParameterIiv = nullptr;
@@ -1286,13 +415,6 @@ PFNGLDRAWELEMENTSINSTANCEDPROC       glDrawElementsInstanced = nullptr;
 PFNGLTEXBUFFERPROC                   glTexBuffer = nullptr;
 PFNGLPRIMITIVERESTARTINDEXPROC       glPrimitiveRestartIndex = nullptr;
 PFNGLCOPYBUFFERSUBDATAPROC           glCopyBufferSubData = nullptr;
-PFNGLGETUNIFORMINDICESPROC           glGetUniformIndices = nullptr;
-PFNGLGETACTIVEUNIFORMSIVPROC         glGetActiveUniformsiv = nullptr;
-PFNGLGETACTIVEUNIFORMNAMEPROC        glGetActiveUniformName = nullptr;
-PFNGLGETUNIFORMBLOCKINDEXPROC        glGetUniformBlockIndex = nullptr;
-PFNGLGETACTIVEUNIFORMBLOCKIVPROC     glGetActiveUniformBlockiv = nullptr;
-PFNGLGETACTIVEUNIFORMBLOCKNAMEPROC   glGetActiveUniformBlockName = nullptr;
-PFNGLUNIFORMBLOCKBINDINGPROC         glUniformBlockBinding = nullptr;
 
 // GL_VERSION_3_2
 PFNGLDRAWELEMENTSBASEVERTEXPROC          glDrawElementsBaseVertex = nullptr;
@@ -1332,9 +454,6 @@ PFNGLGETSAMPLERPARAMETERIVPROC        glGetSamplerParameteriv = nullptr;
 PFNGLGETSAMPLERPARAMETERIIVPROC       glGetSamplerParameterIiv = nullptr;
 PFNGLGETSAMPLERPARAMETERFVPROC        glGetSamplerParameterfv = nullptr;
 PFNGLGETSAMPLERPARAMETERIUIVPROC      glGetSamplerParameterIuiv = nullptr;
-PFNGLQUERYCOUNTERPROC                 glQueryCounter = nullptr;
-PFNGLGETQUERYOBJECTI64VPROC           glGetQueryObjecti64v = nullptr;
-PFNGLGETQUERYOBJECTUI64VPROC          glGetQueryObjectui64v = nullptr;
 PFNGLVERTEXATTRIBDIVISORPROC          glVertexAttribDivisor = nullptr;
 PFNGLVERTEXATTRIBP1UIPROC             glVertexAttribP1ui = nullptr;
 PFNGLVERTEXATTRIBP1UIVPROC            glVertexAttribP1uiv = nullptr;
@@ -1353,32 +472,8 @@ PFNGLBLENDFUNCIPROC                      glBlendFunci = nullptr;
 PFNGLBLENDFUNCSEPARATEIPROC              glBlendFuncSeparatei = nullptr;
 PFNGLDRAWARRAYSINDIRECTPROC              glDrawArraysIndirect = nullptr;
 PFNGLDRAWELEMENTSINDIRECTPROC            glDrawElementsIndirect = nullptr;
-PFNGLUNIFORM1DPROC                       glUniform1d = nullptr;
-PFNGLUNIFORM2DPROC                       glUniform2d = nullptr;
-PFNGLUNIFORM3DPROC                       glUniform3d = nullptr;
-PFNGLUNIFORM4DPROC                       glUniform4d = nullptr;
-PFNGLUNIFORM1DVPROC                      glUniform1dv = nullptr;
-PFNGLUNIFORM2DVPROC                      glUniform2dv = nullptr;
-PFNGLUNIFORM3DVPROC                      glUniform3dv = nullptr;
-PFNGLUNIFORM4DVPROC                      glUniform4dv = nullptr;
-PFNGLUNIFORMMATRIX2DVPROC                glUniformMatrix2dv = nullptr;
-PFNGLUNIFORMMATRIX3DVPROC                glUniformMatrix3dv = nullptr;
-PFNGLUNIFORMMATRIX4DVPROC                glUniformMatrix4dv = nullptr;
-PFNGLUNIFORMMATRIX2X3DVPROC              glUniformMatrix2x3dv = nullptr;
-PFNGLUNIFORMMATRIX2X4DVPROC              glUniformMatrix2x4dv = nullptr;
-PFNGLUNIFORMMATRIX3X2DVPROC              glUniformMatrix3x2dv = nullptr;
-PFNGLUNIFORMMATRIX3X4DVPROC              glUniformMatrix3x4dv = nullptr;
-PFNGLUNIFORMMATRIX4X2DVPROC              glUniformMatrix4x2dv = nullptr;
-PFNGLUNIFORMMATRIX4X3DVPROC              glUniformMatrix4x3dv = nullptr;
-PFNGLGETUNIFORMDVPROC                    glGetUniformdv = nullptr;
-PFNGLGETSUBROUTINEUNIFORMLOCATIONPROC    glGetSubroutineUniformLocation = nullptr;
 PFNGLGETSUBROUTINEINDEXPROC              glGetSubroutineIndex = nullptr;
-PFNGLGETACTIVESUBROUTINEUNIFORMIVPROC    glGetActiveSubroutineUniformiv = nullptr;
-PFNGLGETACTIVESUBROUTINEUNIFORMNAMEPROC  glGetActiveSubroutineUniformName = nullptr;
 PFNGLGETACTIVESUBROUTINENAMEPROC         glGetActiveSubroutineName = nullptr;
-PFNGLUNIFORMSUBROUTINESUIVPROC           glUniformSubroutinesuiv = nullptr;
-PFNGLGETUNIFORMSUBROUTINEUIVPROC         glGetUniformSubroutineuiv = nullptr;
-PFNGLGETPROGRAMSTAGEIVPROC               glGetProgramStageiv = nullptr;
 PFNGLPATCHPARAMETERIPROC                 glPatchParameteri = nullptr;
 PFNGLPATCHPARAMETERFVPROC                glPatchParameterfv = nullptr;
 PFNGLBINDTRANSFORMFEEDBACKPROC           glBindTransformFeedback = nullptr;
@@ -1389,79 +484,10 @@ PFNGLPAUSETRANSFORMFEEDBACKPROC          glPauseTransformFeedback = nullptr;
 PFNGLRESUMETRANSFORMFEEDBACKPROC         glResumeTransformFeedback = nullptr;
 PFNGLDRAWTRANSFORMFEEDBACKPROC           glDrawTransformFeedback = nullptr;
 PFNGLDRAWTRANSFORMFEEDBACKSTREAMPROC     glDrawTransformFeedbackStream = nullptr;
-PFNGLBEGINQUERYINDEXEDPROC               glBeginQueryIndexed = nullptr;
-PFNGLENDQUERYINDEXEDPROC                 glEndQueryIndexed = nullptr;
-PFNGLGETQUERYINDEXEDIVPROC               glGetQueryIndexediv = nullptr;
 
 // GL_VERSION_4_1
-PFNGLRELEASESHADERCOMPILERPROC           glReleaseShaderCompiler = nullptr;
-PFNGLSHADERBINARYPROC                    glShaderBinary = nullptr;
-PFNGLGETSHADERPRECISIONFORMATPROC        glGetShaderPrecisionFormat = nullptr;
 PFNGLDEPTHRANGEFPROC                     glDepthRangef = nullptr;
 PFNGLCLEARDEPTHFPROC                     glClearDepthf = nullptr;
-PFNGLGETPROGRAMBINARYPROC                glGetProgramBinary = nullptr;
-PFNGLPROGRAMBINARYPROC                   glProgramBinary = nullptr;
-PFNGLPROGRAMPARAMETERIPROC               glProgramParameteri = nullptr;
-PFNGLUSEPROGRAMSTAGESPROC                glUseProgramStages = nullptr;
-PFNGLACTIVESHADERPROGRAMPROC             glActiveShaderProgram = nullptr;
-PFNGLCREATESHADERPROGRAMVPROC            glCreateShaderProgramv = nullptr;
-PFNGLBINDPROGRAMPIPELINEPROC             glBindProgramPipeline = nullptr;
-PFNGLDELETEPROGRAMPIPELINESPROC          glDeleteProgramPipelines = nullptr;
-PFNGLGENPROGRAMPIPELINESPROC             glGenProgramPipelines = nullptr;
-PFNGLISPROGRAMPIPELINEPROC               glIsProgramPipeline = nullptr;
-PFNGLGETPROGRAMPIPELINEIVPROC            glGetProgramPipelineiv = nullptr;
-PFNGLPROGRAMUNIFORM1IPROC                glProgramUniform1i = nullptr;
-PFNGLPROGRAMUNIFORM1IVPROC               glProgramUniform1iv = nullptr;
-PFNGLPROGRAMUNIFORM1FPROC                glProgramUniform1f = nullptr;
-PFNGLPROGRAMUNIFORM1FVPROC               glProgramUniform1fv = nullptr;
-PFNGLPROGRAMUNIFORM1DPROC                glProgramUniform1d = nullptr;
-PFNGLPROGRAMUNIFORM1DVPROC               glProgramUniform1dv = nullptr;
-PFNGLPROGRAMUNIFORM1UIPROC               glProgramUniform1ui = nullptr;
-PFNGLPROGRAMUNIFORM1UIVPROC              glProgramUniform1uiv = nullptr;
-PFNGLPROGRAMUNIFORM2IPROC                glProgramUniform2i = nullptr;
-PFNGLPROGRAMUNIFORM2IVPROC               glProgramUniform2iv = nullptr;
-PFNGLPROGRAMUNIFORM2FPROC                glProgramUniform2f = nullptr;
-PFNGLPROGRAMUNIFORM2FVPROC               glProgramUniform2fv = nullptr;
-PFNGLPROGRAMUNIFORM2DPROC                glProgramUniform2d = nullptr;
-PFNGLPROGRAMUNIFORM2DVPROC               glProgramUniform2dv = nullptr;
-PFNGLPROGRAMUNIFORM2UIPROC               glProgramUniform2ui = nullptr;
-PFNGLPROGRAMUNIFORM2UIVPROC              glProgramUniform2uiv = nullptr;
-PFNGLPROGRAMUNIFORM3IPROC                glProgramUniform3i = nullptr;
-PFNGLPROGRAMUNIFORM3IVPROC               glProgramUniform3iv = nullptr;
-PFNGLPROGRAMUNIFORM3FPROC                glProgramUniform3f = nullptr;
-PFNGLPROGRAMUNIFORM3FVPROC               glProgramUniform3fv = nullptr;
-PFNGLPROGRAMUNIFORM3DPROC                glProgramUniform3d = nullptr;
-PFNGLPROGRAMUNIFORM3DVPROC               glProgramUniform3dv = nullptr;
-PFNGLPROGRAMUNIFORM3UIPROC               glProgramUniform3ui = nullptr;
-PFNGLPROGRAMUNIFORM3UIVPROC              glProgramUniform3uiv = nullptr;
-PFNGLPROGRAMUNIFORM4IPROC                glProgramUniform4i = nullptr;
-PFNGLPROGRAMUNIFORM4IVPROC               glProgramUniform4iv = nullptr;
-PFNGLPROGRAMUNIFORM4FPROC                glProgramUniform4f = nullptr;
-PFNGLPROGRAMUNIFORM4FVPROC               glProgramUniform4fv = nullptr;
-PFNGLPROGRAMUNIFORM4DPROC                glProgramUniform4d = nullptr;
-PFNGLPROGRAMUNIFORM4DVPROC               glProgramUniform4dv = nullptr;
-PFNGLPROGRAMUNIFORM4UIPROC               glProgramUniform4ui = nullptr;
-PFNGLPROGRAMUNIFORM4UIVPROC              glProgramUniform4uiv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX2FVPROC         glProgramUniformMatrix2fv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX3FVPROC         glProgramUniformMatrix3fv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX4FVPROC         glProgramUniformMatrix4fv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX2DVPROC         glProgramUniformMatrix2dv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX3DVPROC         glProgramUniformMatrix3dv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX4DVPROC         glProgramUniformMatrix4dv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX2X3FVPROC       glProgramUniformMatrix2x3fv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX3X2FVPROC       glProgramUniformMatrix3x2fv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX2X4FVPROC       glProgramUniformMatrix2x4fv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX4X2FVPROC       glProgramUniformMatrix4x2fv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX3X4FVPROC       glProgramUniformMatrix3x4fv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX4X3FVPROC       glProgramUniformMatrix4x3fv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX2X3DVPROC       glProgramUniformMatrix2x3dv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX3X2DVPROC       glProgramUniformMatrix3x2dv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX2X4DVPROC       glProgramUniformMatrix2x4dv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX4X2DVPROC       glProgramUniformMatrix4x2dv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX3X4DVPROC       glProgramUniformMatrix3x4dv = nullptr;
-PFNGLPROGRAMUNIFORMMATRIX4X3DVPROC       glProgramUniformMatrix4x3dv = nullptr;
-PFNGLVALIDATEPROGRAMPIPELINEPROC         glValidateProgramPipeline = nullptr;
-PFNGLGETPROGRAMPIPELINEINFOLOGPROC       glGetProgramPipelineInfoLog = nullptr;
 PFNGLVERTEXATTRIBL1DPROC                 glVertexAttribL1d = nullptr;
 PFNGLVERTEXATTRIBL2DPROC                 glVertexAttribL2d = nullptr;
 PFNGLVERTEXATTRIBL3DPROC                 glVertexAttribL3d = nullptr;
@@ -1514,13 +540,6 @@ PFNGLINVALIDATEFRAMEBUFFERPROC                       glInvalidateFramebuffer = n
 PFNGLINVALIDATESUBFRAMEBUFFERPROC                    glInvalidateSubFramebuffer = nullptr;
 PFNGLMULTIDRAWARRAYSINDIRECTPROC                     glMultiDrawArraysIndirect = nullptr;
 PFNGLMULTIDRAWELEMENTSINDIRECTPROC                   glMultiDrawElementsIndirect = nullptr;
-PFNGLGETPROGRAMINTERFACEIVPROC                       glGetProgramInterfaceiv = nullptr;
-PFNGLGETPROGRAMRESOURCEINDEXPROC                     glGetProgramResourceIndex = nullptr;
-PFNGLGETPROGRAMRESOURCENAMEPROC                      glGetProgramResourceName = nullptr;
-PFNGLGETPROGRAMRESOURCEIVPROC                        glGetProgramResourceiv = nullptr;
-PFNGLGETPROGRAMRESOURCELOCATIONPROC                  glGetProgramResourceLocation = nullptr;
-PFNGLGETPROGRAMRESOURCELOCATIONINDEXPROC             glGetProgramResourceLocationIndex = nullptr;
-PFNGLSHADERSTORAGEBLOCKBINDINGPROC                   glShaderStorageBlockBinding = nullptr;
 PFNGLTEXBUFFERRANGEPROC                              glTexBufferRange = nullptr;
 PFNGLTEXSTORAGE2DMULTISAMPLEPROC                     glTexStorage2DMultisample = nullptr;
 PFNGLTEXSTORAGE3DMULTISAMPLEPROC                     glTexStorage3DMultisample = nullptr;
@@ -1531,10 +550,6 @@ PFNGLVERTEXATTRIBIFORMATPROC                         glVertexAttribIFormat = nul
 PFNGLVERTEXATTRIBLFORMATPROC                         glVertexAttribLFormat = nullptr;
 PFNGLVERTEXATTRIBBINDINGPROC                         glVertexAttribBinding = nullptr;
 PFNGLVERTEXBINDINGDIVISORPROC                        glVertexBindingDivisor = nullptr;
-PFNGLDEBUGMESSAGECONTROLPROC                         glDebugMessageControl = nullptr;
-PFNGLDEBUGMESSAGEINSERTPROC                          glDebugMessageInsert = nullptr;
-PFNGLDEBUGMESSAGECALLBACKPROC                        glDebugMessageCallback = nullptr;
-PFNGLGETDEBUGMESSAGELOGPROC                          glGetDebugMessageLog = nullptr;
 PFNGLPUSHDEBUGGROUPPROC                              glPushDebugGroup = nullptr;
 PFNGLPOPDEBUGGROUPPROC                               glPopDebugGroup = nullptr;
 PFNGLOBJECTLABELPROC                                 glObjectLabel = nullptr;
@@ -1646,27 +661,16 @@ PFNGLGETVERTEXARRAYIVPROC                                glGetVertexArrayiv = nu
 PFNGLGETVERTEXARRAYINDEXEDIVPROC                         glGetVertexArrayIndexediv = nullptr;
 PFNGLGETVERTEXARRAYINDEXED64IVPROC                       glGetVertexArrayIndexed64iv = nullptr;
 PFNGLCREATESAMPLERSPROC                                  glCreateSamplers = nullptr;
-PFNGLCREATEPROGRAMPIPELINESPROC                          glCreateProgramPipelines = nullptr;
-PFNGLCREATEQUERIESPROC                                   glCreateQueries = nullptr;
-PFNGLGETQUERYBUFFEROBJECTI64VPROC                        glGetQueryBufferObjecti64v = nullptr;
-PFNGLGETQUERYBUFFEROBJECTIVPROC                          glGetQueryBufferObjectiv = nullptr;
-PFNGLGETQUERYBUFFEROBJECTUI64VPROC                       glGetQueryBufferObjectui64v = nullptr;
-PFNGLGETQUERYBUFFEROBJECTUIVPROC                         glGetQueryBufferObjectuiv = nullptr;
 PFNGLMEMORYBARRIERBYREGIONPROC                           glMemoryBarrierByRegion = nullptr;
 PFNGLGETTEXTURESUBIMAGEPROC                              glGetTextureSubImage = nullptr;
 PFNGLGETCOMPRESSEDTEXTURESUBIMAGEPROC                    glGetCompressedTextureSubImage = nullptr;
 PFNGLGETGRAPHICSRESETSTATUSPROC                          glGetGraphicsResetStatus = nullptr;
 PFNGLGETNCOMPRESSEDTEXIMAGEPROC                          glGetnCompressedTexImage = nullptr;
 PFNGLGETNTEXIMAGEPROC                                    glGetnTexImage = nullptr;
-PFNGLGETNUNIFORMDVPROC                                   glGetnUniformdv = nullptr;
-PFNGLGETNUNIFORMFVPROC                                   glGetnUniformfv = nullptr;
-PFNGLGETNUNIFORMIVPROC                                   glGetnUniformiv = nullptr;
-PFNGLGETNUNIFORMUIVPROC                                  glGetnUniformuiv = nullptr;
 PFNGLREADNPIXELSPROC                                     glReadnPixels = nullptr;
 PFNGLTEXTUREBARRIERPROC                                  glTextureBarrier = nullptr;
 
 // GL_VERSION_4_6
-PFNGLSPECIALIZESHADERPROC                glSpecializeShader = nullptr;
 PFNGLMULTIDRAWARRAYSINDIRECTCOUNTPROC    glMultiDrawArraysIndirectCount = nullptr;
 PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC  glMultiDrawElementsIndirectCount = nullptr;
 PFNGLPOLYGONOFFSETCLAMPPROC              glPolygonOffsetClamp = nullptr;
@@ -2185,8 +1189,6 @@ bool LLGLManager::initGL()
         { "glGetSamplerParameteriv", glGetSamplerParameteriv != nullptr },
         { "glBindSampler", glBindSampler != nullptr },
         { "glGetTexLevelParameteriv", glGetTexLevelParameteriv != nullptr },
-        { "glGetActiveUniform", glGetActiveUniform != nullptr },
-        { "glGetUniformiv", glGetUniformiv != nullptr },
         { "glGetInteger64v", glGetInteger64v != nullptr },
         { "glMapBufferRange", glMapBufferRange != nullptr },
         { "glFenceSync", glFenceSync != nullptr },
@@ -2308,201 +1310,90 @@ bool LLGLManager::initGL()
         glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &mMaxAnisotropy);
     }
 
-    initCompute();
-
-    initQueries();
-
     initGLStates();
 
     return true;
 }
 
-// What the query targets past 4.1's can count, and whether the timestamps count at all. After initExtensions, which
-// loads glGetQueryiv.
-void LLGLManager::initQueries()
-{
-    mHasConservativeOcclusion = mGLVersion >= 4.29f || mGLExtensions.contains("GL_ARB_ES3_compatibility");
-    mHasPipelineStatistics    = mGLVersion >= 4.59f || mGLExtensions.contains("GL_ARB_pipeline_statistics_query");
-    mHasQueryBufferObject     = mGLVersion >= 4.39f || mGLExtensions.contains("GL_ARB_query_buffer_object");
-
-    // AMD's drivers claim query buffers but cannot be trusted with a write. Windows' writes the result into whatever
-    // buffer is bound at GL_QUERY_BUFFER rather than the one glGetQueryBufferObject names, and drops it without an
-    // error when none is. radeonsi runs each write as an internal compute dispatch, behind a wait for the query and
-    // cache flushes, and from Mesa 25.3 each one also keeps a reference to the compute constant buffer bound before it
-    // (si_restore_qbo_state), which runs its 32-bit address space out within minutes and aborts the process.
-    if (mIsAMD)
-    {
-        mHasQueryBufferObject = false;
-    }
-
-    // The GPU writes the results only on NVIDIA's driver, whose threaded optimization answers a glGetQueryObject only
-    // once its own thread has caught up on the frame. Elsewhere the pool asks, at the frame's end, where the frame
-    // fences' calls have just caught Mesa's glthread up, and saves the write.
-    mWritesQueryResults = mHasQueryBufferObject && mIsNVIDIA;
-
-    GLint bits = 0;
-    glGetQueryiv(GL_TIMESTAMP, GL_QUERY_COUNTER_BITS, &bits);
-    mHasTimestampQuery = bits > 0;
-
-    LL_INFOS("RenderInit") << "Queries: conservative occlusion " << (mHasConservativeOcclusion ? "yes" : "no")
-                           << ", timestamps " << bits << " bits, pipeline statistics "
-                           << (mHasPipelineStatistics ? "yes" : "no") << ", query buffers "
-                           << (mHasQueryBufferObject ? "yes" : "no") << ", results written by the GPU "
-                           << (mWritesQueryResults ? "yes" : "no") << LL_ENDL;
-}
-
-// Here rather than in initExtensions, whose version ladder returns before its end on any context below 4.6: this
-// reads what the 4.3 rung resolved.
-void LLGLManager::initCompute()
-{
-    mHasCompute = mGLVersion >= 4.29f
-               && glDispatchCompute && glDispatchComputeIndirect && glMemoryBarrier && glBindImageTexture
-               && glShaderStorageBlockBinding && glGetProgramResourceIndex && glGetProgramInterfaceiv
-               && glGetProgramResourceName && glGetProgramResourceiv && glClearBufferSubData && glDrawArraysIndirect
-               && glGetIntegeri_v;
-
-    for (U32 i = 0; i < 3; ++i)
-    {
-        mMaxComputeWorkGroupCount[i] = 0;
-        mMaxComputeWorkGroupSize[i]  = 0;
-    }
-    mMaxComputeWorkGroupInvocations     = 0;
-    mMaxComputeSharedMemorySize         = 0;
-    mMaxImageUnits                      = 0;
-    mMaxShaderStorageBufferBindings     = 0;
-    mMaxVertexShaderStorageBlocks       = 0;
-    mMaxFragmentShaderStorageBlocks     = 0;
-    mMaxComputeShaderStorageBlocks      = 0;
-    mMaxShaderStorageBlockSize          = 0;
-    mShaderStorageBufferOffsetAlignment = 0;
-
-    if (!mHasCompute)
-    {
-        LL_INFOS("RenderInit") << "Compute unavailable (GL " << mGLVersion
-                               << (mGLVersion >= 4.29f ? ": its entry points did not resolve)" : ", needs 4.3)")
-                               << LL_ENDL;
-        return;
-    }
-
-    for (U32 i = 0; i < 3; ++i)
-    {
-        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, i, &mMaxComputeWorkGroupCount[i]);
-        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, i, &mMaxComputeWorkGroupSize[i]);
-    }
-    glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &mMaxComputeWorkGroupInvocations);
-    glGetIntegerv(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE, &mMaxComputeSharedMemorySize);
-    glGetIntegerv(GL_MAX_IMAGE_UNITS, &mMaxImageUnits);
-    glGetIntegerv(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS, &mMaxShaderStorageBufferBindings);
-    glGetIntegerv(GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS, &mMaxVertexShaderStorageBlocks);
-    glGetIntegerv(GL_MAX_FRAGMENT_SHADER_STORAGE_BLOCKS, &mMaxFragmentShaderStorageBlocks);
-    glGetIntegerv(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS, &mMaxComputeShaderStorageBlocks);
-    glGetIntegerv(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT, &mShaderStorageBufferOffsetAlignment);
-    // A block may be larger than an int can say.
-    GLint64 block_size = 0;
-    glGetInteger64v(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &block_size);
-    mMaxShaderStorageBlockSize = block_size;
-    mShaderStorageBufferOffsetAlignment = llmax(mShaderStorageBufferOffsetAlignment, 1);
-
-    LL_INFOS("RenderInit") << "Compute available (GL " << mGLVersion << "): work groups up to "
-                           << mMaxComputeWorkGroupCount[0] << "x" << mMaxComputeWorkGroupCount[1] << "x"
-                           << mMaxComputeWorkGroupCount[2] << " of " << mMaxComputeWorkGroupSize[0] << "x"
-                           << mMaxComputeWorkGroupSize[1] << "x" << mMaxComputeWorkGroupSize[2] << ", "
-                           << mMaxComputeWorkGroupInvocations << " invocations, " << mMaxComputeSharedMemorySize
-                           << " bytes shared; " << mMaxImageUnits << " image units; storage blocks "
-                           << mMaxVertexShaderStorageBlocks << " vertex, " << mMaxFragmentShaderStorageBlocks
-                           << " fragment, " << mMaxComputeShaderStorageBlocks << " compute, at "
-                           << mMaxShaderStorageBufferBindings << " bindings, up to " << mMaxShaderStorageBlockSize
-                           << " bytes each, offsets aligned to " << mShaderStorageBufferOffsetAlignment << LL_ENDL;
-}
-
 void LLGLManager::getGLInfo(LLSD& info)
 {
-    info["GLInfo"]["GLVendor"] = ll_safe_string((const char *)glGetString(GL_VENDOR));
-    info["GLInfo"]["GLRenderer"] = ll_safe_string((const char *)glGetString(GL_RENDERER));
-    info["GLInfo"]["GLVersion"] = ll_safe_string((const char *)glGetString(GL_VERSION));
-
-    for (const auto& ext : mGLExtensions)
+    info.erase("GLInfo");
+    LLSD& renderer = info["RendererInfo"];
+    renderer = LLSD::emptyMap();
+    renderer["Backend"] = gRenderCapabilities.isMetal() ? "Metal" : "none";
+    if (!gRenderCapabilities.isMetal())
     {
-        info["GLInfo"]["GLExtensions"].append(ext);
+        return;
     }
+    renderer["Vendor"] = gRenderCapabilities.vendor();
+    renderer["Renderer"] = gRenderCapabilities.renderer();
+    renderer["Version"] = gRenderCapabilities.version();
+    renderer["Identity"] = gRenderCapabilities.identity();
+    renderer["MemoryBudgetMB"] = LLSD::Integer(gRenderCapabilities.memoryBudgetMB());
+    renderer["MaxTextureDimension"] = LLSD::Integer(gRenderCapabilities.maxTextureDimension());
 }
 
 std::string LLGLManager::getGLInfoString()
 {
-    std::string info_str;
-
-    info_str += std::string("GL_VENDOR      ") + ll_safe_string((const char *)glGetString(GL_VENDOR)) + std::string("\n");
-    info_str += std::string("GL_RENDERER    ") + ll_safe_string((const char *)glGetString(GL_RENDERER)) + std::string("\n");
-    info_str += std::string("GL_VERSION     ") + ll_safe_string((const char *)glGetString(GL_VERSION)) + std::string("\n");
-
-    std::string all_exts;
-    for (const auto& ext : mGLExtensions)
+    if (!gRenderCapabilities.isMetal())
     {
-        all_exts += ext;
-        all_exts += '\n';
+        return "RENDERER_BACKEND none\n";
     }
-    info_str += std::string("GL_EXTENSIONS:\n") + all_exts + std::string("\n");
-
-    return info_str;
+    return "RENDERER_BACKEND Metal\nRENDERER_VENDOR " +
+        gRenderCapabilities.vendor() + "\nRENDERER " +
+        gRenderCapabilities.renderer() + "\nRENDERER_VERSION " +
+        gRenderCapabilities.version() + "\nRENDERER_IDENTITY " +
+        gRenderCapabilities.identity() + "\n";
 }
 
 void LLGLManager::printGLInfoString()
 {
-    LL_INFOS("RenderInit") << "GL_VENDOR:     " << ll_safe_string((const char *)glGetString(GL_VENDOR)) << LL_ENDL;
-    LL_INFOS("RenderInit") << "GL_RENDERER:   " << ll_safe_string((const char *)glGetString(GL_RENDERER)) << LL_ENDL;
-    LL_INFOS("RenderInit") << "GL_VERSION:    " << ll_safe_string((const char *)glGetString(GL_VERSION)) << LL_ENDL;
-
-    std::string all_exts;
-    for (const auto& ext : mGLExtensions)
-    {
-        all_exts += ext;
-        all_exts += '\n';
-    }
-    LL_INFOS("RenderInit") << "GL_EXTENSIONS:\n" << all_exts << LL_ENDL;
+    LL_INFOS("RenderInit") << getGLInfoString() << LL_ENDL;
 }
 
 std::string LLGLManager::getRawGLString()
 {
-    std::string gl_string;
-    gl_string = ll_safe_string((char*)glGetString(GL_VENDOR)) + " " + ll_safe_string((char*)glGetString(GL_RENDERER));
-    return gl_string;
+    return gRenderCapabilities.isMetal()
+        ? gRenderCapabilities.identity() : "Renderer unavailable";
 }
 
 void LLGLManager::asLLSD(LLSD& info)
 {
-    // Currently these are duplicates of fields in "system".
-    info["gpu_vendor"] = mGLVendorShort;
-    info["gpu_version"] = mDriverVersionVendorString;
-    info["opengl_version"] = mGLVersionString;
-
-    info["vram"] = LLSD::Integer(mVRAM);
-
-    // OpenGL limits
-    info["max_samples"] = mMaxSamples;
-    info["num_texture_image_units"] =  mNumTextureImageUnits;
-    info["max_sample_mask_words"] = mMaxSampleMaskWords;
-    info["max_color_texture_samples"] = mMaxColorTextureSamples;
-    info["max_depth_texture_samples"] = mMaxDepthTextureSamples;
-    info["max_integer_samples"] = mMaxIntegerSamples;
-    info["max_vertex_range"] = mGLMaxVertexRange;
-    info["max_index_range"] = mGLMaxIndexRange;
-    info["max_texture_size"] = mGLMaxTextureSize;
-
-    // Compute, and the limits a compute feature sizes itself by
-    info["has_compute"] = mHasCompute;
-    info["max_compute_work_group_invocations"] = mMaxComputeWorkGroupInvocations;
-    info["max_compute_shared_memory_size"] = mMaxComputeSharedMemorySize;
-    info["max_image_units"] = mMaxImageUnits;
-    info["max_vertex_shader_storage_blocks"] = mMaxVertexShaderStorageBlocks;
-    info["max_fragment_shader_storage_blocks"] = mMaxFragmentShaderStorageBlocks;
-    info["max_compute_shader_storage_blocks"] = mMaxComputeShaderStorageBlocks;
-
-    // Which vendor
-    info["is_ati"] = mIsAMD;  // note, do not rename is_ati to is_amd without coordinating with DW
-    info["is_nvidia"] = mIsNVIDIA;
-    info["is_intel"] = mIsIntel;
-
-    info["gl_renderer"] = mGLRenderer;
+    // Do not carry driver-reported GL limits across a backend change or
+    // label absent GL measurements as limits of the native Metal device.
+    for (const char* key : {
+             "opengl_version", "gl_renderer", "max_samples",
+             "num_texture_image_units", "max_sample_mask_words",
+             "max_color_texture_samples", "max_depth_texture_samples",
+             "max_integer_samples", "max_vertex_range", "max_index_range",
+             "has_compute", "max_compute_work_group_invocations",
+             "max_compute_shared_memory_size", "max_image_units",
+             "max_vertex_shader_storage_blocks",
+             "max_fragment_shader_storage_blocks",
+             "max_compute_shader_storage_blocks"})
+    {
+        info.erase(key);
+    }
+    info["renderer_backend"] = gRenderCapabilities.isMetal() ? "Metal" : "none";
+    if (!gRenderCapabilities.isMetal())
+    {
+        for (const char* key : {
+                 "gpu_vendor", "gpu_version", "renderer", "gpu_driver",
+                 "vram", "max_texture_size", "is_ati", "is_nvidia", "is_intel"})
+        {
+            info.erase(key);
+        }
+        return;
+    }
+    info["gpu_vendor"] = gRenderCapabilities.vendor();
+    info["gpu_version"] = gRenderCapabilities.version();
+    info["renderer"] = gRenderCapabilities.renderer();
+    info["gpu_driver"] = gRenderCapabilities.identity();
+    info["vram"] = LLSD::Integer(gRenderCapabilities.memoryBudgetMB());
+    info["max_texture_size"] = LLSD::Integer(gRenderCapabilities.maxTextureDimension());
+    info["is_ati"] = gRenderCapabilities.isAMD();
+    info["is_nvidia"] = gRenderCapabilities.isNVIDIA();
+    info["is_intel"] = gRenderCapabilities.isIntel();
 }
 
 // static
@@ -2595,9 +1486,6 @@ void LLGLManager::initExtensions()
 
     // Past the floor: what a 4.1 context may or may not have.
 
-    // Core in 4.3; also GL_KHR_debug, which names the same entry points without a suffix.
-    // Downgraded below if glDebugMessageCallback doesn't resolve.
-    mHasDebugOutput = mGLVersion >= 4.29f || mGLExtensions.contains("GL_KHR_debug");
     mHasAnisotropic = mGLVersion >= 4.59f;
     if(!mHasAnisotropic)
     {
@@ -2756,15 +1644,11 @@ void LLGLManager::initExtensions()
                                << ", no GL_ARB_clip_control); reverse-Z depth disabled." << LL_ENDL;
     }
 
-    // Debug output and object labels. Resolved here for the same reason as glTexStorage
+    // Object labels. Resolved here for the same reason as glTexStorage
     // above: the GL_VERSION_4_3 ladder early-outs on a lower context, so a 4.1 driver
     // exposing GL_KHR_debug -- GLOn12 -- would otherwise leave these null.
-    if (mHasDebugOutput)
+    if (mGLVersion >= 4.29f || mGLExtensions.contains("GL_KHR_debug"))
     {
-        glDebugMessageControl  = (PFNGLDEBUGMESSAGECONTROLPROC)LL_GET_PROC_ADDRESS("glDebugMessageControl");
-        glDebugMessageInsert   = (PFNGLDEBUGMESSAGEINSERTPROC)LL_GET_PROC_ADDRESS("glDebugMessageInsert");
-        glDebugMessageCallback = (PFNGLDEBUGMESSAGECALLBACKPROC)LL_GET_PROC_ADDRESS("glDebugMessageCallback");
-        glGetDebugMessageLog   = (PFNGLGETDEBUGMESSAGELOGPROC)LL_GET_PROC_ADDRESS("glGetDebugMessageLog");
         glPushDebugGroup       = (PFNGLPUSHDEBUGGROUPPROC)LL_GET_PROC_ADDRESS("glPushDebugGroup");
         glPopDebugGroup        = (PFNGLPOPDEBUGGROUPPROC)LL_GET_PROC_ADDRESS("glPopDebugGroup");
         glObjectLabel          = (PFNGLOBJECTLABELPROC)LL_GET_PROC_ADDRESS("glObjectLabel");
@@ -2772,13 +1656,6 @@ void LLGLManager::initExtensions()
         glObjectPtrLabel       = (PFNGLOBJECTPTRLABELPROC)LL_GET_PROC_ADDRESS("glObjectPtrLabel");
         glGetObjectPtrLabel    = (PFNGLGETOBJECTPTRLABELPROC)LL_GET_PROC_ADDRESS("glGetObjectPtrLabel");
 
-        if (!glDebugMessageCallback)
-        {
-            mHasDebugOutput = false;
-            LL_WARNS("RenderInit") << "Debug output advertised (GL " << mGLVersion
-                                   << ") but glDebugMessageCallback did not resolve; GL debug output is off."
-                                   << LL_ENDL;
-        }
     }
 
     // Reset status. Core in 4.5, and GL_KHR_robustness names it without a suffix on a lower
@@ -2789,9 +1666,6 @@ void LLGLManager::initExtensions()
     {
         glGetGraphicsResetStatus = (PFNGLGETGRAPHICSRESETSTATUSPROC)LL_GET_PROC_ADDRESS("glGetGraphicsResetStatus");
         glReadnPixels            = (PFNGLREADNPIXELSPROC)LL_GET_PROC_ADDRESS("glReadnPixels");
-        glGetnUniformfv          = (PFNGLGETNUNIFORMFVPROC)LL_GET_PROC_ADDRESS("glGetnUniformfv");
-        glGetnUniformiv          = (PFNGLGETNUNIFORMIVPROC)LL_GET_PROC_ADDRESS("glGetnUniformiv");
-        glGetnUniformuiv         = (PFNGLGETNUNIFORMUIVPROC)LL_GET_PROC_ADDRESS("glGetnUniformuiv");
     }
 
     // Texture barrier. Core in 4.5, and GL_ARB_texture_barrier names it without a suffix on a
@@ -2849,14 +1723,6 @@ void LLGLManager::initExtensions()
     glPointParameteriv = (PFNGLPOINTPARAMETERIVPROC)LL_GET_PROC_ADDRESS("glPointParameteriv");
 
     // GL_VERSION_1_5
-    glGenQueries = (PFNGLGENQUERIESPROC)LL_GET_PROC_ADDRESS("glGenQueries");
-    glDeleteQueries = (PFNGLDELETEQUERIESPROC)LL_GET_PROC_ADDRESS("glDeleteQueries");
-    glIsQuery = (PFNGLISQUERYPROC)LL_GET_PROC_ADDRESS("glIsQuery");
-    glBeginQuery = (PFNGLBEGINQUERYPROC)LL_GET_PROC_ADDRESS("glBeginQuery");
-    glEndQuery = (PFNGLENDQUERYPROC)LL_GET_PROC_ADDRESS("glEndQuery");
-    glGetQueryiv = (PFNGLGETQUERYIVPROC)LL_GET_PROC_ADDRESS("glGetQueryiv");
-    glGetQueryObjectiv = (PFNGLGETQUERYOBJECTIVPROC)LL_GET_PROC_ADDRESS("glGetQueryObjectiv");
-    glGetQueryObjectuiv = (PFNGLGETQUERYOBJECTUIVPROC)LL_GET_PROC_ADDRESS("glGetQueryObjectuiv");
     glBindBuffer = (PFNGLBINDBUFFERPROC)LL_GET_PROC_ADDRESS("glBindBuffer");
     glDeleteBuffers = (PFNGLDELETEBUFFERSPROC)LL_GET_PROC_ADDRESS("glDeleteBuffers");
     glGenBuffers = (PFNGLGENBUFFERSPROC)LL_GET_PROC_ADDRESS("glGenBuffers");
@@ -2875,57 +1741,12 @@ void LLGLManager::initExtensions()
     glStencilOpSeparate = (PFNGLSTENCILOPSEPARATEPROC)LL_GET_PROC_ADDRESS("glStencilOpSeparate");
     glStencilFuncSeparate = (PFNGLSTENCILFUNCSEPARATEPROC)LL_GET_PROC_ADDRESS("glStencilFuncSeparate");
     glStencilMaskSeparate = (PFNGLSTENCILMASKSEPARATEPROC)LL_GET_PROC_ADDRESS("glStencilMaskSeparate");
-    glAttachShader = (PFNGLATTACHSHADERPROC)LL_GET_PROC_ADDRESS("glAttachShader");
-    glBindAttribLocation = (PFNGLBINDATTRIBLOCATIONPROC)LL_GET_PROC_ADDRESS("glBindAttribLocation");
-    glCompileShader = (PFNGLCOMPILESHADERPROC)LL_GET_PROC_ADDRESS("glCompileShader");
-    glCreateProgram = (PFNGLCREATEPROGRAMPROC)LL_GET_PROC_ADDRESS("glCreateProgram");
-    glCreateShader = (PFNGLCREATESHADERPROC)LL_GET_PROC_ADDRESS("glCreateShader");
-    glDeleteProgram = (PFNGLDELETEPROGRAMPROC)LL_GET_PROC_ADDRESS("glDeleteProgram");
-    glDeleteShader = (PFNGLDELETESHADERPROC)LL_GET_PROC_ADDRESS("glDeleteShader");
-    glDetachShader = (PFNGLDETACHSHADERPROC)LL_GET_PROC_ADDRESS("glDetachShader");
     glDisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)LL_GET_PROC_ADDRESS("glDisableVertexAttribArray");
     glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)LL_GET_PROC_ADDRESS("glEnableVertexAttribArray");
-    glGetActiveAttrib = (PFNGLGETACTIVEATTRIBPROC)LL_GET_PROC_ADDRESS("glGetActiveAttrib");
-    glGetActiveUniform = (PFNGLGETACTIVEUNIFORMPROC)LL_GET_PROC_ADDRESS("glGetActiveUniform");
-    glGetAttachedShaders = (PFNGLGETATTACHEDSHADERSPROC)LL_GET_PROC_ADDRESS("glGetAttachedShaders");
-    glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)LL_GET_PROC_ADDRESS("glGetAttribLocation");
-    glGetProgramiv = (PFNGLGETPROGRAMIVPROC)LL_GET_PROC_ADDRESS("glGetProgramiv");
-    glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)LL_GET_PROC_ADDRESS("glGetProgramInfoLog");
-    glGetShaderiv = (PFNGLGETSHADERIVPROC)LL_GET_PROC_ADDRESS("glGetShaderiv");
-    glGetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC)LL_GET_PROC_ADDRESS("glGetShaderInfoLog");
-    glGetShaderSource = (PFNGLGETSHADERSOURCEPROC)LL_GET_PROC_ADDRESS("glGetShaderSource");
-    glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)LL_GET_PROC_ADDRESS("glGetUniformLocation");
-    glGetUniformfv = (PFNGLGETUNIFORMFVPROC)LL_GET_PROC_ADDRESS("glGetUniformfv");
-    glGetUniformiv = (PFNGLGETUNIFORMIVPROC)LL_GET_PROC_ADDRESS("glGetUniformiv");
     glGetVertexAttribdv = (PFNGLGETVERTEXATTRIBDVPROC)LL_GET_PROC_ADDRESS("glGetVertexAttribdv");
     glGetVertexAttribfv = (PFNGLGETVERTEXATTRIBFVPROC)LL_GET_PROC_ADDRESS("glGetVertexAttribfv");
     glGetVertexAttribiv = (PFNGLGETVERTEXATTRIBIVPROC)LL_GET_PROC_ADDRESS("glGetVertexAttribiv");
     glGetVertexAttribPointerv = (PFNGLGETVERTEXATTRIBPOINTERVPROC)LL_GET_PROC_ADDRESS("glGetVertexAttribPointerv");
-    glIsProgram = (PFNGLISPROGRAMPROC)LL_GET_PROC_ADDRESS("glIsProgram");
-    glIsShader = (PFNGLISSHADERPROC)LL_GET_PROC_ADDRESS("glIsShader");
-    glLinkProgram = (PFNGLLINKPROGRAMPROC)LL_GET_PROC_ADDRESS("glLinkProgram");
-    glShaderSource = (PFNGLSHADERSOURCEPROC)LL_GET_PROC_ADDRESS("glShaderSource");
-    glUseProgram = (PFNGLUSEPROGRAMPROC)LL_GET_PROC_ADDRESS("glUseProgram");
-    glUniform1f = (PFNGLUNIFORM1FPROC)LL_GET_PROC_ADDRESS("glUniform1f");
-    glUniform2f = (PFNGLUNIFORM2FPROC)LL_GET_PROC_ADDRESS("glUniform2f");
-    glUniform3f = (PFNGLUNIFORM3FPROC)LL_GET_PROC_ADDRESS("glUniform3f");
-    glUniform4f = (PFNGLUNIFORM4FPROC)LL_GET_PROC_ADDRESS("glUniform4f");
-    glUniform1i = (PFNGLUNIFORM1IPROC)LL_GET_PROC_ADDRESS("glUniform1i");
-    glUniform2i = (PFNGLUNIFORM2IPROC)LL_GET_PROC_ADDRESS("glUniform2i");
-    glUniform3i = (PFNGLUNIFORM3IPROC)LL_GET_PROC_ADDRESS("glUniform3i");
-    glUniform4i = (PFNGLUNIFORM4IPROC)LL_GET_PROC_ADDRESS("glUniform4i");
-    glUniform1fv = (PFNGLUNIFORM1FVPROC)LL_GET_PROC_ADDRESS("glUniform1fv");
-    glUniform2fv = (PFNGLUNIFORM2FVPROC)LL_GET_PROC_ADDRESS("glUniform2fv");
-    glUniform3fv = (PFNGLUNIFORM3FVPROC)LL_GET_PROC_ADDRESS("glUniform3fv");
-    glUniform4fv = (PFNGLUNIFORM4FVPROC)LL_GET_PROC_ADDRESS("glUniform4fv");
-    glUniform1iv = (PFNGLUNIFORM1IVPROC)LL_GET_PROC_ADDRESS("glUniform1iv");
-    glUniform2iv = (PFNGLUNIFORM2IVPROC)LL_GET_PROC_ADDRESS("glUniform2iv");
-    glUniform3iv = (PFNGLUNIFORM3IVPROC)LL_GET_PROC_ADDRESS("glUniform3iv");
-    glUniform4iv = (PFNGLUNIFORM4IVPROC)LL_GET_PROC_ADDRESS("glUniform4iv");
-    glUniformMatrix2fv = (PFNGLUNIFORMMATRIX2FVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix2fv");
-    glUniformMatrix3fv = (PFNGLUNIFORMMATRIX3FVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix3fv");
-    glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix4fv");
-    glValidateProgram = (PFNGLVALIDATEPROGRAMPROC)LL_GET_PROC_ADDRESS("glValidateProgram");
     glVertexAttrib1d = (PFNGLVERTEXATTRIB1DPROC)LL_GET_PROC_ADDRESS("glVertexAttrib1d");
     glVertexAttrib1dv = (PFNGLVERTEXATTRIB1DVPROC)LL_GET_PROC_ADDRESS("glVertexAttrib1dv");
     glVertexAttrib1f = (PFNGLVERTEXATTRIB1FPROC)LL_GET_PROC_ADDRESS("glVertexAttrib1f");
@@ -2965,12 +1786,6 @@ void LLGLManager::initExtensions()
     glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)LL_GET_PROC_ADDRESS("glVertexAttribPointer");
 
     // GL_VERSION_2_1
-    glUniformMatrix2x3fv = (PFNGLUNIFORMMATRIX2X3FVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix2x3fv");
-    glUniformMatrix3x2fv = (PFNGLUNIFORMMATRIX3X2FVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix3x2fv");
-    glUniformMatrix2x4fv = (PFNGLUNIFORMMATRIX2X4FVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix2x4fv");
-    glUniformMatrix4x2fv = (PFNGLUNIFORMMATRIX4X2FVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix4x2fv");
-    glUniformMatrix3x4fv = (PFNGLUNIFORMMATRIX3X4FVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix3x4fv");
-    glUniformMatrix4x3fv = (PFNGLUNIFORMMATRIX4X3FVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix4x3fv");
 
     // GL_VERSION_3_0
     glColorMaski = (PFNGLCOLORMASKIPROC)LL_GET_PROC_ADDRESS("glColorMaski");
@@ -3011,17 +1826,8 @@ void LLGLManager::initExtensions()
     glVertexAttribI4sv = (PFNGLVERTEXATTRIBI4SVPROC)LL_GET_PROC_ADDRESS("glVertexAttribI4sv");
     glVertexAttribI4ubv = (PFNGLVERTEXATTRIBI4UBVPROC)LL_GET_PROC_ADDRESS("glVertexAttribI4ubv");
     glVertexAttribI4usv = (PFNGLVERTEXATTRIBI4USVPROC)LL_GET_PROC_ADDRESS("glVertexAttribI4usv");
-    glGetUniformuiv = (PFNGLGETUNIFORMUIVPROC)LL_GET_PROC_ADDRESS("glGetUniformuiv");
     glBindFragDataLocation = (PFNGLBINDFRAGDATALOCATIONPROC)LL_GET_PROC_ADDRESS("glBindFragDataLocation");
     glGetFragDataLocation = (PFNGLGETFRAGDATALOCATIONPROC)LL_GET_PROC_ADDRESS("glGetFragDataLocation");
-    glUniform1ui = (PFNGLUNIFORM1UIPROC)LL_GET_PROC_ADDRESS("glUniform1ui");
-    glUniform2ui = (PFNGLUNIFORM2UIPROC)LL_GET_PROC_ADDRESS("glUniform2ui");
-    glUniform3ui = (PFNGLUNIFORM3UIPROC)LL_GET_PROC_ADDRESS("glUniform3ui");
-    glUniform4ui = (PFNGLUNIFORM4UIPROC)LL_GET_PROC_ADDRESS("glUniform4ui");
-    glUniform1uiv = (PFNGLUNIFORM1UIVPROC)LL_GET_PROC_ADDRESS("glUniform1uiv");
-    glUniform2uiv = (PFNGLUNIFORM2UIVPROC)LL_GET_PROC_ADDRESS("glUniform2uiv");
-    glUniform3uiv = (PFNGLUNIFORM3UIVPROC)LL_GET_PROC_ADDRESS("glUniform3uiv");
-    glUniform4uiv = (PFNGLUNIFORM4UIVPROC)LL_GET_PROC_ADDRESS("glUniform4uiv");
     glTexParameterIiv = (PFNGLTEXPARAMETERIIVPROC)LL_GET_PROC_ADDRESS("glTexParameterIiv");
     glTexParameterIuiv = (PFNGLTEXPARAMETERIUIVPROC)LL_GET_PROC_ADDRESS("glTexParameterIuiv");
     glGetTexParameterIiv = (PFNGLGETTEXPARAMETERIIVPROC)LL_GET_PROC_ADDRESS("glGetTexParameterIiv");
@@ -3064,13 +1870,6 @@ void LLGLManager::initExtensions()
     glTexBuffer = (PFNGLTEXBUFFERPROC)LL_GET_PROC_ADDRESS("glTexBuffer");
     glPrimitiveRestartIndex = (PFNGLPRIMITIVERESTARTINDEXPROC)LL_GET_PROC_ADDRESS("glPrimitiveRestartIndex");
     glCopyBufferSubData = (PFNGLCOPYBUFFERSUBDATAPROC)LL_GET_PROC_ADDRESS("glCopyBufferSubData");
-    glGetUniformIndices = (PFNGLGETUNIFORMINDICESPROC)LL_GET_PROC_ADDRESS("glGetUniformIndices");
-    glGetActiveUniformsiv = (PFNGLGETACTIVEUNIFORMSIVPROC)LL_GET_PROC_ADDRESS("glGetActiveUniformsiv");
-    glGetActiveUniformName = (PFNGLGETACTIVEUNIFORMNAMEPROC)LL_GET_PROC_ADDRESS("glGetActiveUniformName");
-    glGetUniformBlockIndex = (PFNGLGETUNIFORMBLOCKINDEXPROC)LL_GET_PROC_ADDRESS("glGetUniformBlockIndex");
-    glGetActiveUniformBlockiv = (PFNGLGETACTIVEUNIFORMBLOCKIVPROC)LL_GET_PROC_ADDRESS("glGetActiveUniformBlockiv");
-    glGetActiveUniformBlockName = (PFNGLGETACTIVEUNIFORMBLOCKNAMEPROC)LL_GET_PROC_ADDRESS("glGetActiveUniformBlockName");
-    glUniformBlockBinding = (PFNGLUNIFORMBLOCKBINDINGPROC)LL_GET_PROC_ADDRESS("glUniformBlockBinding");
 
     // GL_VERSION_3_2
     glDrawElementsBaseVertex = (PFNGLDRAWELEMENTSBASEVERTEXPROC)LL_GET_PROC_ADDRESS("glDrawElementsBaseVertex");
@@ -3110,9 +1909,6 @@ void LLGLManager::initExtensions()
     glGetSamplerParameterIiv = (PFNGLGETSAMPLERPARAMETERIIVPROC)LL_GET_PROC_ADDRESS("glGetSamplerParameterIiv");
     glGetSamplerParameterfv = (PFNGLGETSAMPLERPARAMETERFVPROC)LL_GET_PROC_ADDRESS("glGetSamplerParameterfv");
     glGetSamplerParameterIuiv = (PFNGLGETSAMPLERPARAMETERIUIVPROC)LL_GET_PROC_ADDRESS("glGetSamplerParameterIuiv");
-    glQueryCounter = (PFNGLQUERYCOUNTERPROC)LL_GET_PROC_ADDRESS("glQueryCounter");
-    glGetQueryObjecti64v = (PFNGLGETQUERYOBJECTI64VPROC)LL_GET_PROC_ADDRESS("glGetQueryObjecti64v");
-    glGetQueryObjectui64v = (PFNGLGETQUERYOBJECTUI64VPROC)LL_GET_PROC_ADDRESS("glGetQueryObjectui64v");
     glVertexAttribDivisor = (PFNGLVERTEXATTRIBDIVISORPROC)LL_GET_PROC_ADDRESS("glVertexAttribDivisor");
     glVertexAttribP1ui = (PFNGLVERTEXATTRIBP1UIPROC)LL_GET_PROC_ADDRESS("glVertexAttribP1ui");
     glVertexAttribP1uiv = (PFNGLVERTEXATTRIBP1UIVPROC)LL_GET_PROC_ADDRESS("glVertexAttribP1uiv");
@@ -3131,32 +1927,8 @@ void LLGLManager::initExtensions()
     glBlendFuncSeparatei = (PFNGLBLENDFUNCSEPARATEIPROC)LL_GET_PROC_ADDRESS("glBlendFuncSeparatei");
     glDrawArraysIndirect = (PFNGLDRAWARRAYSINDIRECTPROC)LL_GET_PROC_ADDRESS("glDrawArraysIndirect");
     glDrawElementsIndirect = (PFNGLDRAWELEMENTSINDIRECTPROC)LL_GET_PROC_ADDRESS("glDrawElementsIndirect");
-    glUniform1d = (PFNGLUNIFORM1DPROC)LL_GET_PROC_ADDRESS("glUniform1d");
-    glUniform2d = (PFNGLUNIFORM2DPROC)LL_GET_PROC_ADDRESS("glUniform2d");
-    glUniform3d = (PFNGLUNIFORM3DPROC)LL_GET_PROC_ADDRESS("glUniform3d");
-    glUniform4d = (PFNGLUNIFORM4DPROC)LL_GET_PROC_ADDRESS("glUniform4d");
-    glUniform1dv = (PFNGLUNIFORM1DVPROC)LL_GET_PROC_ADDRESS("glUniform1dv");
-    glUniform2dv = (PFNGLUNIFORM2DVPROC)LL_GET_PROC_ADDRESS("glUniform2dv");
-    glUniform3dv = (PFNGLUNIFORM3DVPROC)LL_GET_PROC_ADDRESS("glUniform3dv");
-    glUniform4dv = (PFNGLUNIFORM4DVPROC)LL_GET_PROC_ADDRESS("glUniform4dv");
-    glUniformMatrix2dv = (PFNGLUNIFORMMATRIX2DVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix2dv");
-    glUniformMatrix3dv = (PFNGLUNIFORMMATRIX3DVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix3dv");
-    glUniformMatrix4dv = (PFNGLUNIFORMMATRIX4DVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix4dv");
-    glUniformMatrix2x3dv = (PFNGLUNIFORMMATRIX2X3DVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix2x3dv");
-    glUniformMatrix2x4dv = (PFNGLUNIFORMMATRIX2X4DVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix2x4dv");
-    glUniformMatrix3x2dv = (PFNGLUNIFORMMATRIX3X2DVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix3x2dv");
-    glUniformMatrix3x4dv = (PFNGLUNIFORMMATRIX3X4DVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix3x4dv");
-    glUniformMatrix4x2dv = (PFNGLUNIFORMMATRIX4X2DVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix4x2dv");
-    glUniformMatrix4x3dv = (PFNGLUNIFORMMATRIX4X3DVPROC)LL_GET_PROC_ADDRESS("glUniformMatrix4x3dv");
-    glGetUniformdv = (PFNGLGETUNIFORMDVPROC)LL_GET_PROC_ADDRESS("glGetUniformdv");
-    glGetSubroutineUniformLocation = (PFNGLGETSUBROUTINEUNIFORMLOCATIONPROC)LL_GET_PROC_ADDRESS("glGetSubroutineUniformLocation");
     glGetSubroutineIndex = (PFNGLGETSUBROUTINEINDEXPROC)LL_GET_PROC_ADDRESS("glGetSubroutineIndex");
-    glGetActiveSubroutineUniformiv = (PFNGLGETACTIVESUBROUTINEUNIFORMIVPROC)LL_GET_PROC_ADDRESS("glGetActiveSubroutineUniformiv");
-    glGetActiveSubroutineUniformName = (PFNGLGETACTIVESUBROUTINEUNIFORMNAMEPROC)LL_GET_PROC_ADDRESS("glGetActiveSubroutineUniformName");
     glGetActiveSubroutineName = (PFNGLGETACTIVESUBROUTINENAMEPROC)LL_GET_PROC_ADDRESS("glGetActiveSubroutineName");
-    glUniformSubroutinesuiv = (PFNGLUNIFORMSUBROUTINESUIVPROC)LL_GET_PROC_ADDRESS("glUniformSubroutinesuiv");
-    glGetUniformSubroutineuiv = (PFNGLGETUNIFORMSUBROUTINEUIVPROC)LL_GET_PROC_ADDRESS("glGetUniformSubroutineuiv");
-    glGetProgramStageiv = (PFNGLGETPROGRAMSTAGEIVPROC)LL_GET_PROC_ADDRESS("glGetProgramStageiv");
     glPatchParameteri = (PFNGLPATCHPARAMETERIPROC)LL_GET_PROC_ADDRESS("glPatchParameteri");
     glPatchParameterfv = (PFNGLPATCHPARAMETERFVPROC)LL_GET_PROC_ADDRESS("glPatchParameterfv");
     glBindTransformFeedback = (PFNGLBINDTRANSFORMFEEDBACKPROC)LL_GET_PROC_ADDRESS("glBindTransformFeedback");
@@ -3167,79 +1939,10 @@ void LLGLManager::initExtensions()
     glResumeTransformFeedback = (PFNGLRESUMETRANSFORMFEEDBACKPROC)LL_GET_PROC_ADDRESS("glResumeTransformFeedback");
     glDrawTransformFeedback = (PFNGLDRAWTRANSFORMFEEDBACKPROC)LL_GET_PROC_ADDRESS("glDrawTransformFeedback");
     glDrawTransformFeedbackStream = (PFNGLDRAWTRANSFORMFEEDBACKSTREAMPROC)LL_GET_PROC_ADDRESS("glDrawTransformFeedbackStream");
-    glBeginQueryIndexed = (PFNGLBEGINQUERYINDEXEDPROC)LL_GET_PROC_ADDRESS("glBeginQueryIndexed");
-    glEndQueryIndexed = (PFNGLENDQUERYINDEXEDPROC)LL_GET_PROC_ADDRESS("glEndQueryIndexed");
-    glGetQueryIndexediv = (PFNGLGETQUERYINDEXEDIVPROC)LL_GET_PROC_ADDRESS("glGetQueryIndexediv");
 
     // GL_VERSION_4_1
-    glReleaseShaderCompiler = (PFNGLRELEASESHADERCOMPILERPROC)LL_GET_PROC_ADDRESS("glReleaseShaderCompiler");
-    glShaderBinary = (PFNGLSHADERBINARYPROC)LL_GET_PROC_ADDRESS("glShaderBinary");
-    glGetShaderPrecisionFormat = (PFNGLGETSHADERPRECISIONFORMATPROC)LL_GET_PROC_ADDRESS("glGetShaderPrecisionFormat");
     glDepthRangef = (PFNGLDEPTHRANGEFPROC)LL_GET_PROC_ADDRESS("glDepthRangef");
     glClearDepthf = (PFNGLCLEARDEPTHFPROC)LL_GET_PROC_ADDRESS("glClearDepthf");
-    glGetProgramBinary = (PFNGLGETPROGRAMBINARYPROC)LL_GET_PROC_ADDRESS("glGetProgramBinary");
-    glProgramBinary = (PFNGLPROGRAMBINARYPROC)LL_GET_PROC_ADDRESS("glProgramBinary");
-    glProgramParameteri = (PFNGLPROGRAMPARAMETERIPROC)LL_GET_PROC_ADDRESS("glProgramParameteri");
-    glUseProgramStages = (PFNGLUSEPROGRAMSTAGESPROC)LL_GET_PROC_ADDRESS("glUseProgramStages");
-    glActiveShaderProgram = (PFNGLACTIVESHADERPROGRAMPROC)LL_GET_PROC_ADDRESS("glActiveShaderProgram");
-    glCreateShaderProgramv = (PFNGLCREATESHADERPROGRAMVPROC)LL_GET_PROC_ADDRESS("glCreateShaderProgramv");
-    glBindProgramPipeline = (PFNGLBINDPROGRAMPIPELINEPROC)LL_GET_PROC_ADDRESS("glBindProgramPipeline");
-    glDeleteProgramPipelines = (PFNGLDELETEPROGRAMPIPELINESPROC)LL_GET_PROC_ADDRESS("glDeleteProgramPipelines");
-    glGenProgramPipelines = (PFNGLGENPROGRAMPIPELINESPROC)LL_GET_PROC_ADDRESS("glGenProgramPipelines");
-    glIsProgramPipeline = (PFNGLISPROGRAMPIPELINEPROC)LL_GET_PROC_ADDRESS("glIsProgramPipeline");
-    glGetProgramPipelineiv = (PFNGLGETPROGRAMPIPELINEIVPROC)LL_GET_PROC_ADDRESS("glGetProgramPipelineiv");
-    glProgramUniform1i = (PFNGLPROGRAMUNIFORM1IPROC)LL_GET_PROC_ADDRESS("glProgramUniform1i");
-    glProgramUniform1iv = (PFNGLPROGRAMUNIFORM1IVPROC)LL_GET_PROC_ADDRESS("glProgramUniform1iv");
-    glProgramUniform1f = (PFNGLPROGRAMUNIFORM1FPROC)LL_GET_PROC_ADDRESS("glProgramUniform1f");
-    glProgramUniform1fv = (PFNGLPROGRAMUNIFORM1FVPROC)LL_GET_PROC_ADDRESS("glProgramUniform1fv");
-    glProgramUniform1d = (PFNGLPROGRAMUNIFORM1DPROC)LL_GET_PROC_ADDRESS("glProgramUniform1d");
-    glProgramUniform1dv = (PFNGLPROGRAMUNIFORM1DVPROC)LL_GET_PROC_ADDRESS("glProgramUniform1dv");
-    glProgramUniform1ui = (PFNGLPROGRAMUNIFORM1UIPROC)LL_GET_PROC_ADDRESS("glProgramUniform1ui");
-    glProgramUniform1uiv = (PFNGLPROGRAMUNIFORM1UIVPROC)LL_GET_PROC_ADDRESS("glProgramUniform1uiv");
-    glProgramUniform2i = (PFNGLPROGRAMUNIFORM2IPROC)LL_GET_PROC_ADDRESS("glProgramUniform2i");
-    glProgramUniform2iv = (PFNGLPROGRAMUNIFORM2IVPROC)LL_GET_PROC_ADDRESS("glProgramUniform2iv");
-    glProgramUniform2f = (PFNGLPROGRAMUNIFORM2FPROC)LL_GET_PROC_ADDRESS("glProgramUniform2f");
-    glProgramUniform2fv = (PFNGLPROGRAMUNIFORM2FVPROC)LL_GET_PROC_ADDRESS("glProgramUniform2fv");
-    glProgramUniform2d = (PFNGLPROGRAMUNIFORM2DPROC)LL_GET_PROC_ADDRESS("glProgramUniform2d");
-    glProgramUniform2dv = (PFNGLPROGRAMUNIFORM2DVPROC)LL_GET_PROC_ADDRESS("glProgramUniform2dv");
-    glProgramUniform2ui = (PFNGLPROGRAMUNIFORM2UIPROC)LL_GET_PROC_ADDRESS("glProgramUniform2ui");
-    glProgramUniform2uiv = (PFNGLPROGRAMUNIFORM2UIVPROC)LL_GET_PROC_ADDRESS("glProgramUniform2uiv");
-    glProgramUniform3i = (PFNGLPROGRAMUNIFORM3IPROC)LL_GET_PROC_ADDRESS("glProgramUniform3i");
-    glProgramUniform3iv = (PFNGLPROGRAMUNIFORM3IVPROC)LL_GET_PROC_ADDRESS("glProgramUniform3iv");
-    glProgramUniform3f = (PFNGLPROGRAMUNIFORM3FPROC)LL_GET_PROC_ADDRESS("glProgramUniform3f");
-    glProgramUniform3fv = (PFNGLPROGRAMUNIFORM3FVPROC)LL_GET_PROC_ADDRESS("glProgramUniform3fv");
-    glProgramUniform3d = (PFNGLPROGRAMUNIFORM3DPROC)LL_GET_PROC_ADDRESS("glProgramUniform3d");
-    glProgramUniform3dv = (PFNGLPROGRAMUNIFORM3DVPROC)LL_GET_PROC_ADDRESS("glProgramUniform3dv");
-    glProgramUniform3ui = (PFNGLPROGRAMUNIFORM3UIPROC)LL_GET_PROC_ADDRESS("glProgramUniform3ui");
-    glProgramUniform3uiv = (PFNGLPROGRAMUNIFORM3UIVPROC)LL_GET_PROC_ADDRESS("glProgramUniform3uiv");
-    glProgramUniform4i = (PFNGLPROGRAMUNIFORM4IPROC)LL_GET_PROC_ADDRESS("glProgramUniform4i");
-    glProgramUniform4iv = (PFNGLPROGRAMUNIFORM4IVPROC)LL_GET_PROC_ADDRESS("glProgramUniform4iv");
-    glProgramUniform4f = (PFNGLPROGRAMUNIFORM4FPROC)LL_GET_PROC_ADDRESS("glProgramUniform4f");
-    glProgramUniform4fv = (PFNGLPROGRAMUNIFORM4FVPROC)LL_GET_PROC_ADDRESS("glProgramUniform4fv");
-    glProgramUniform4d = (PFNGLPROGRAMUNIFORM4DPROC)LL_GET_PROC_ADDRESS("glProgramUniform4d");
-    glProgramUniform4dv = (PFNGLPROGRAMUNIFORM4DVPROC)LL_GET_PROC_ADDRESS("glProgramUniform4dv");
-    glProgramUniform4ui = (PFNGLPROGRAMUNIFORM4UIPROC)LL_GET_PROC_ADDRESS("glProgramUniform4ui");
-    glProgramUniform4uiv = (PFNGLPROGRAMUNIFORM4UIVPROC)LL_GET_PROC_ADDRESS("glProgramUniform4uiv");
-    glProgramUniformMatrix2fv = (PFNGLPROGRAMUNIFORMMATRIX2FVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix2fv");
-    glProgramUniformMatrix3fv = (PFNGLPROGRAMUNIFORMMATRIX3FVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix3fv");
-    glProgramUniformMatrix4fv = (PFNGLPROGRAMUNIFORMMATRIX4FVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix4fv");
-    glProgramUniformMatrix2dv = (PFNGLPROGRAMUNIFORMMATRIX2DVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix2dv");
-    glProgramUniformMatrix3dv = (PFNGLPROGRAMUNIFORMMATRIX3DVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix3dv");
-    glProgramUniformMatrix4dv = (PFNGLPROGRAMUNIFORMMATRIX4DVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix4dv");
-    glProgramUniformMatrix2x3fv = (PFNGLPROGRAMUNIFORMMATRIX2X3FVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix2x3fv");
-    glProgramUniformMatrix3x2fv = (PFNGLPROGRAMUNIFORMMATRIX3X2FVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix3x2fv");
-    glProgramUniformMatrix2x4fv = (PFNGLPROGRAMUNIFORMMATRIX2X4FVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix2x4fv");
-    glProgramUniformMatrix4x2fv = (PFNGLPROGRAMUNIFORMMATRIX4X2FVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix4x2fv");
-    glProgramUniformMatrix3x4fv = (PFNGLPROGRAMUNIFORMMATRIX3X4FVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix3x4fv");
-    glProgramUniformMatrix4x3fv = (PFNGLPROGRAMUNIFORMMATRIX4X3FVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix4x3fv");
-    glProgramUniformMatrix2x3dv = (PFNGLPROGRAMUNIFORMMATRIX2X3DVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix2x3dv");
-    glProgramUniformMatrix3x2dv = (PFNGLPROGRAMUNIFORMMATRIX3X2DVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix3x2dv");
-    glProgramUniformMatrix2x4dv = (PFNGLPROGRAMUNIFORMMATRIX2X4DVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix2x4dv");
-    glProgramUniformMatrix4x2dv = (PFNGLPROGRAMUNIFORMMATRIX4X2DVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix4x2dv");
-    glProgramUniformMatrix3x4dv = (PFNGLPROGRAMUNIFORMMATRIX3X4DVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix3x4dv");
-    glProgramUniformMatrix4x3dv = (PFNGLPROGRAMUNIFORMMATRIX4X3DVPROC)LL_GET_PROC_ADDRESS("glProgramUniformMatrix4x3dv");
-    glValidateProgramPipeline = (PFNGLVALIDATEPROGRAMPIPELINEPROC)LL_GET_PROC_ADDRESS("glValidateProgramPipeline");
-    glGetProgramPipelineInfoLog = (PFNGLGETPROGRAMPIPELINEINFOLOGPROC)LL_GET_PROC_ADDRESS("glGetProgramPipelineInfoLog");
     glVertexAttribL1d = (PFNGLVERTEXATTRIBL1DPROC)LL_GET_PROC_ADDRESS("glVertexAttribL1d");
     glVertexAttribL2d = (PFNGLVERTEXATTRIBL2DPROC)LL_GET_PROC_ADDRESS("glVertexAttribL2d");
     glVertexAttribL3d = (PFNGLVERTEXATTRIBL3DPROC)LL_GET_PROC_ADDRESS("glVertexAttribL3d");
@@ -3300,13 +2003,6 @@ void LLGLManager::initExtensions()
     glInvalidateSubFramebuffer = (PFNGLINVALIDATESUBFRAMEBUFFERPROC)LL_GET_PROC_ADDRESS("glInvalidateSubFramebuffer");
     glMultiDrawArraysIndirect = (PFNGLMULTIDRAWARRAYSINDIRECTPROC)LL_GET_PROC_ADDRESS("glMultiDrawArraysIndirect");
     glMultiDrawElementsIndirect = (PFNGLMULTIDRAWELEMENTSINDIRECTPROC)LL_GET_PROC_ADDRESS("glMultiDrawElementsIndirect");
-    glGetProgramInterfaceiv = (PFNGLGETPROGRAMINTERFACEIVPROC)LL_GET_PROC_ADDRESS("glGetProgramInterfaceiv");
-    glGetProgramResourceIndex = (PFNGLGETPROGRAMRESOURCEINDEXPROC)LL_GET_PROC_ADDRESS("glGetProgramResourceIndex");
-    glGetProgramResourceName = (PFNGLGETPROGRAMRESOURCENAMEPROC)LL_GET_PROC_ADDRESS("glGetProgramResourceName");
-    glGetProgramResourceiv = (PFNGLGETPROGRAMRESOURCEIVPROC)LL_GET_PROC_ADDRESS("glGetProgramResourceiv");
-    glGetProgramResourceLocation = (PFNGLGETPROGRAMRESOURCELOCATIONPROC)LL_GET_PROC_ADDRESS("glGetProgramResourceLocation");
-    glGetProgramResourceLocationIndex = (PFNGLGETPROGRAMRESOURCELOCATIONINDEXPROC)LL_GET_PROC_ADDRESS("glGetProgramResourceLocationIndex");
-    glShaderStorageBlockBinding = (PFNGLSHADERSTORAGEBLOCKBINDINGPROC)LL_GET_PROC_ADDRESS("glShaderStorageBlockBinding");
     glTexBufferRange = (PFNGLTEXBUFFERRANGEPROC)LL_GET_PROC_ADDRESS("glTexBufferRange");
     glTexStorage2DMultisample = (PFNGLTEXSTORAGE2DMULTISAMPLEPROC)LL_GET_PROC_ADDRESS("glTexStorage2DMultisample");
     glTexStorage3DMultisample = (PFNGLTEXSTORAGE3DMULTISAMPLEPROC)LL_GET_PROC_ADDRESS("glTexStorage3DMultisample");
@@ -3317,10 +2013,6 @@ void LLGLManager::initExtensions()
     glVertexAttribLFormat = (PFNGLVERTEXATTRIBLFORMATPROC)LL_GET_PROC_ADDRESS("glVertexAttribLFormat");
     glVertexAttribBinding = (PFNGLVERTEXATTRIBBINDINGPROC)LL_GET_PROC_ADDRESS("glVertexAttribBinding");
     glVertexBindingDivisor = (PFNGLVERTEXBINDINGDIVISORPROC)LL_GET_PROC_ADDRESS("glVertexBindingDivisor");
-    glDebugMessageControl = (PFNGLDEBUGMESSAGECONTROLPROC)LL_GET_PROC_ADDRESS("glDebugMessageControl");
-    glDebugMessageInsert = (PFNGLDEBUGMESSAGEINSERTPROC)LL_GET_PROC_ADDRESS("glDebugMessageInsert");
-    glDebugMessageCallback = (PFNGLDEBUGMESSAGECALLBACKPROC)LL_GET_PROC_ADDRESS("glDebugMessageCallback");
-    glGetDebugMessageLog = (PFNGLGETDEBUGMESSAGELOGPROC)LL_GET_PROC_ADDRESS("glGetDebugMessageLog");
     glPushDebugGroup = (PFNGLPUSHDEBUGGROUPPROC)LL_GET_PROC_ADDRESS("glPushDebugGroup");
     glPopDebugGroup = (PFNGLPOPDEBUGGROUPPROC)LL_GET_PROC_ADDRESS("glPopDebugGroup");
     glObjectLabel = (PFNGLOBJECTLABELPROC)LL_GET_PROC_ADDRESS("glObjectLabel");
@@ -3440,22 +2132,12 @@ void LLGLManager::initExtensions()
     glGetVertexArrayIndexediv = (PFNGLGETVERTEXARRAYINDEXEDIVPROC)LL_GET_PROC_ADDRESS("glGetVertexArrayIndexediv");
     glGetVertexArrayIndexed64iv = (PFNGLGETVERTEXARRAYINDEXED64IVPROC)LL_GET_PROC_ADDRESS("glGetVertexArrayIndexed64iv");
     glCreateSamplers = (PFNGLCREATESAMPLERSPROC)LL_GET_PROC_ADDRESS("glCreateSamplers");
-    glCreateProgramPipelines = (PFNGLCREATEPROGRAMPIPELINESPROC)LL_GET_PROC_ADDRESS("glCreateProgramPipelines");
-    glCreateQueries = (PFNGLCREATEQUERIESPROC)LL_GET_PROC_ADDRESS("glCreateQueries");
-    glGetQueryBufferObjecti64v = (PFNGLGETQUERYBUFFEROBJECTI64VPROC)LL_GET_PROC_ADDRESS("glGetQueryBufferObjecti64v");
-    glGetQueryBufferObjectiv = (PFNGLGETQUERYBUFFEROBJECTIVPROC)LL_GET_PROC_ADDRESS("glGetQueryBufferObjectiv");
-    glGetQueryBufferObjectui64v = (PFNGLGETQUERYBUFFEROBJECTUI64VPROC)LL_GET_PROC_ADDRESS("glGetQueryBufferObjectui64v");
-    glGetQueryBufferObjectuiv = (PFNGLGETQUERYBUFFEROBJECTUIVPROC)LL_GET_PROC_ADDRESS("glGetQueryBufferObjectuiv");
     glMemoryBarrierByRegion = (PFNGLMEMORYBARRIERBYREGIONPROC)LL_GET_PROC_ADDRESS("glMemoryBarrierByRegion");
     glGetTextureSubImage = (PFNGLGETTEXTURESUBIMAGEPROC)LL_GET_PROC_ADDRESS("glGetTextureSubImage");
     glGetCompressedTextureSubImage = (PFNGLGETCOMPRESSEDTEXTURESUBIMAGEPROC)LL_GET_PROC_ADDRESS("glGetCompressedTextureSubImage");
     glGetGraphicsResetStatus = (PFNGLGETGRAPHICSRESETSTATUSPROC)LL_GET_PROC_ADDRESS("glGetGraphicsResetStatus");
     glGetnCompressedTexImage = (PFNGLGETNCOMPRESSEDTEXIMAGEPROC)LL_GET_PROC_ADDRESS("glGetnCompressedTexImage");
     glGetnTexImage = (PFNGLGETNTEXIMAGEPROC)LL_GET_PROC_ADDRESS("glGetnTexImage");
-    glGetnUniformdv = (PFNGLGETNUNIFORMDVPROC)LL_GET_PROC_ADDRESS("glGetnUniformdv");
-    glGetnUniformfv = (PFNGLGETNUNIFORMFVPROC)LL_GET_PROC_ADDRESS("glGetnUniformfv");
-    glGetnUniformiv = (PFNGLGETNUNIFORMIVPROC)LL_GET_PROC_ADDRESS("glGetnUniformiv");
-    glGetnUniformuiv = (PFNGLGETNUNIFORMUIVPROC)LL_GET_PROC_ADDRESS("glGetnUniformuiv");
     glReadnPixels = (PFNGLREADNPIXELSPROC)LL_GET_PROC_ADDRESS("glReadnPixels");
     glTextureBarrier = (PFNGLTEXTUREBARRIERPROC)LL_GET_PROC_ADDRESS("glTextureBarrier");
 
@@ -3464,7 +2146,6 @@ void LLGLManager::initExtensions()
     {
         return;
     }
-    glSpecializeShader = (PFNGLSPECIALIZESHADERPROC)LL_GET_PROC_ADDRESS("glSpecializeShader");
     glMultiDrawArraysIndirectCount = (PFNGLMULTIDRAWARRAYSINDIRECTCOUNTPROC)LL_GET_PROC_ADDRESS("glMultiDrawArraysIndirectCount");
     glMultiDrawElementsIndirectCount = (PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC)LL_GET_PROC_ADDRESS("glMultiDrawElementsIndirectCount");
     glPolygonOffsetClamp = (PFNGLPOLYGONOFFSETCLAMPPROC)LL_GET_PROC_ADDRESS("glPolygonOffsetClamp");

@@ -30,17 +30,12 @@
 
 #include "llviewerprecompiledheaders.h"
 
-#include <boost/lexical_cast.hpp>
-
 #include "alrendercapabilities.h"
 #include "aluniformbuffer.h"
-#include "hbxxh.h"
-#include "llfeaturemanager.h"
 #include "llviewershadermgr.h"
 
 #include "alwatersurface.h"
 #include "llviewercontrol.h"
-#include "llversioninfo.h"
 
 #include "llrender.h"
 #include "llenvironment.h"
@@ -50,9 +45,6 @@
 
 #include "pipeline.h"
 
-#include "llfile.h"
-
-#include <filesystem>
 #include <fmt/format.h>
 #include "llviewerwindow.h"
 #include "llwindow.h"
@@ -60,11 +52,6 @@
 #include "lljoint.h"
 #include "llskinningutil.h"
 
-static LLStaticHashedString sTexture0("texture0");
-static LLStaticHashedString sTexture1("texture1");
-static LLStaticHashedString sTex0("tex0");
-static LLStaticHashedString sTex1("tex1");
-static LLStaticHashedString sDitherTex("dither_tex");
 
 // Lots of STL stuff in here, using namespace std to keep things more readable
 using std::vector;
@@ -164,116 +151,6 @@ static U32 mirror_variant()
     return load_inputs().mGlobal.mMirrors ? (U32)LLGLSLShader::VARIANT_MIRROR : 0u;
 }
 
-// Digest of every shader source on disk, folded into the binary cache version.
-//
-// A program's own hash() covers its file PATHS, its defines and its features -- not the CONTENT
-// of anything. Shared objects are worse off still: they are compiled once and attached by name,
-// so nothing about them reaches the hash at all. Editing a shader therefore leaves every cached
-// binary looking valid, and the only other input to the cache version is the viewer version,
-// which does not move between local builds.
-//
-// Reading the tree costs one pass over a few hundred small files at startup, against reading
-// them all again to compile anyway.
-static std::string hash_shader_sources()
-{
-    LL_PROFILE_ZONE_SCOPED;
-
-    std::vector<std::filesystem::path> files;
-    std::error_code ec;
-    const std::string root = gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "shaders");
-
-    for (std::filesystem::recursive_directory_iterator it(root, ec), end;
-         !ec && it != end;
-         it.increment(ec))
-    {
-        if (it->is_regular_file(ec))
-        {
-            files.push_back(it->path());
-        }
-    }
-
-    if (ec || files.empty())
-    {   // no digest is better than a wrong one: fall back to invalidating every run
-        LL_WARNS("Shader") << "Could not enumerate " << root
-                           << " to version the shader cache; treating it as stale" << LL_ENDL;
-        return LLUUID::generateNewID().asString();
-    }
-
-    std::sort(files.begin(), files.end());  // directory iteration order is unspecified
-
-    HBXXH128 hash_obj;
-    for (const auto& file : files)
-    {
-        // relative, not absolute: the digest must not change with the install location
-        hash_obj.update(file.lexically_relative(root).generic_string());
-
-        llifstream in(file.string(), std::ios::binary);
-        if (!in.is_open())
-        {
-            LL_WARNS("Shader") << "Could not read " << file.string()
-                               << " to version the shader cache; treating it as stale" << LL_ENDL;
-            return LLUUID::generateNewID().asString();
-        }
-
-        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        hash_obj.update(text);
-    }
-    return hash_obj.digest().asString();
-}
-
-// Compile a second copy of a shared object under `suffix`, for programs carrying `define`.
-//
-// Two things this does not do naively. It uses the level the BASE copy RESOLVED to rather than
-// the level that was asked for -- loadShaderFile walks down the class directories when a level
-// is missing, and a copy built from a different class file than the base would link mismatched
-// declarations into one program. And it skips the compile entirely when the file that level
-// selects does not mention `define`: deferred/reflectionProbeF.glsl reads CLASSIC_MODE at class3
-// and not at class2, so below class3 the second compile yields a byte-identical object under a
-// different key -- a full compile of a large source at every setShaders().
-// LLShaderMgr::variantObjectKey falls back to the base object when no copy exists, so the skip
-// is invisible to attach.
-//
-// The single-file test is sound because the loader has no #include: a shared source cannot pull
-// the define in from anywhere else.
-static bool load_axis_copy(LLViewerShaderMgr& mgr,
-                           const std::vector<std::pair<std::string, S32> >& loaded,
-                           const std::string& path, GLenum stage,
-                           std::map<std::string, std::string>& defines,
-                           const char* define, const char* suffix)
-{
-    auto it = std::find_if(loaded.begin(), loaded.end(),
-                           [&path](const std::pair<std::string, S32>& e) { return e.first == path; });
-    if (it == loaded.end())
-    {   // the base pass must have loaded it, or there is nothing for this to be a copy OF
-        LL_WARNS("Shader") << "No base object for " << path << "; cannot build its " << suffix
-                           << " copy" << LL_ENDL;
-        return false;
-    }
-
-    S32 level = it->second;
-
-    bool varies = false;
-    for (S32 gpu_class = level; gpu_class > 0; --gpu_class)
-    {
-        const std::string full = mgr.getShaderDirPrefix() + std::to_string(gpu_class)
-                               + gDirUtilp->getDirDelimiter() + path;
-        llifstream in(full, std::ios::binary);
-        if (!in.is_open())
-        {
-            continue;
-        }
-        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        varies = text.find(define) != std::string::npos;
-        break;  // the first file that exists is the one loadShaderFile picked
-    }
-
-    if (!varies)
-    {
-        return true;
-    }
-
-    return mgr.loadShaderFile(path, level, stage, &defines, -1, path + suffix) != 0;
-}
 
 static void add_common_permutations(LLGLSLShader* shader)
 {
@@ -377,255 +254,31 @@ bool LLViewerShaderMgr::setShaders(const ALShaderInputs& inputs, const ALRenderA
 {
     LL_PROFILE_ZONE_SCOPED;
     static bool reentrance = false;
-
     if (!gPipeline.mInitialized || !sInitialized || reentrance)
     {
         return false;
     }
-
-    const bool native_metal =
-        gRenderCapabilities.isMetal() && !gGLManager.mInited;
-    if (!native_metal && !gGLManager.mHasRequirements)
+    if (!gRenderCapabilities.isMetal() || gGLManager.mInited)
     {
-        // The window refused the context and told the user why
-        LL_INFOS("ShaderLoading") << "Not supported hardware/software" << LL_ENDL;
+        LL_WARNS("ShaderLoading") << "Native Metal renderer is required" << LL_ENDL;
         return false;
     }
 
-    // Every loader below reads these, and nothing else of the settings.
+    // Latch one coherent input set before configuring pass identities and
+    // reconciling the native resources which consume it.
     mInputs = inputs;
-
-    ALUniformBuffer::sUpdateMode = ALUniformBuffer::clampUpdateMode(gSavedSettings.getS32("AlchemyRenderUBOUpdateMode"));
-
-    // Latch reverse-Z before anything downstream reads it: every shader compile below injects
-    // REVERSE_Z from the latched state and the cache key folds it in, and the reconcile that
-    // follows in the same application builds the depth format (mainDepthFormat) from it, so
-    // clip control, clear depth, depth format and the shader define agree for the whole next
-    // frame.
+    ALUniformBuffer::sUpdateMode = ALUniformBuffer::clampUpdateMode(
+        gSavedSettings.getS32("AlchemyRenderUBOUpdateMode"));
     LLPipeline::updateReverseZ(mInputs.mGlobal.mReverseZ);
-
-    // The same for the G-buffer's normal layout: every compile below injects GBUFFER_NORM_HDR from this latch, the
-    // cache key folds it in, and the resources planned from the same inputs give the normal attachment its format.
     LLRender::sGBufferNormHDR = mInputs.mGlobal.mGBufferNormHDR;
-
-    // The same for compute: the shared objects compiled for its stage and every program built on it follow the switch
-    // as it stands for this load.
     LLRender::sCompute = mInputs.mLocal.mCompute;
-
-    // The texture ladder still forms viewer draw batches on Metal, but its
-    // width comes from the native layout rather than a GL fragment-unit
-    // query. These values are consumed by draw-pool formation and native
-    // capture even though no GLSL program exists.
-    LLGLSLShader::sIndexedTextureChannels =
-        mInputs.mGlobal.mIndexedTextureChannels;
-    LLGLSLShader::sIndexedGLTFChannels =
-        mInputs.mLocal.mIndexedGLTFChannels;
-
-    if (native_metal)
-    {
-        reentrance = true;
-        const bool configured = setMetalShaders(application);
-        reentrance = false;
-        return configured;
-    }
-
-    {
-        static LLCachedControl<bool> shader_cache_enabled(gSavedSettings, "RenderShaderCacheEnabled", true);
-        static LLUUID old_cache_version;
-        static LLUUID current_cache_version;
-        if (current_cache_version.isNull())
-        {
-            HBXXH128 hash_obj;
-            hash_obj.update(LLVersionInfo::instance().getVersion());
-            hash_obj.update(hash_shader_sources());
-            current_cache_version = hash_obj.digest();
-
-            old_cache_version = LLUUID(gSavedSettings.getString("RenderShaderCacheVersion"));
-            gSavedSettings.setString("RenderShaderCacheVersion", current_cache_version.asString());
-        }
-
-        // Intel's legacy drivers build every program from source (LLGLManager::isIntelLegacy).
-        initShaderCache(
-            shader_cache_enabled && !gGLManager.isIntelLegacy(),
-            old_cache_version,
-            current_cache_version,
-            LLAppViewer::instance()->isSecondInstance());
-    }
-
-    // The texture units an indexed draw spreads its textures over, and the indexed material programs' slots, which the
-    // loaders below lower where a program cannot be built. Zero slots, as on GLOn12, is the state a failed load leaves,
-    // and the pools fall back to their scalar paths.
-    if (gGLManager.mIsD3D12)
-    {
-        LL_INFOS("ShaderLoading") << "Indexed material batching disabled on GLOn12." << LL_ENDL;
-    }
+    LLGLSLShader::sIndexedTextureChannels = mInputs.mGlobal.mIndexedTextureChannels;
+    LLGLSLShader::sIndexedGLTFChannels = mInputs.mLocal.mIndexedGLTFChannels;
 
     reentrance = true;
-
-    const LLTimer timer;
-    LLGLSLShader::sLinked = 0;
-    LLGLSLShader::sKept   = 0;
-    mFailedPrograms.clear();
-    ++LLGLSLShader::sLoadGeneration;
-
-    initAttribsAndUniforms();
-
-    const bool rebuild        = application.mPrograms == ALRenderApplication::Programs::Rebuilt;
-    const bool shared_objects = rebuild || application.mSharedObjects;
-    if (rebuild)
-    {
-        // Every program built from its sources, and the shared objects with them.
-        unloadShaders();
-    }
-    else
-    {
-        // Every program configured again from nothing, as an unload leaves it, and still linked: createShader keeps
-        // each its loader configures as it linked. A variant is its program's, kept or built again with it.
-        for (LLGLSLShader* shader : LLGLSLShader::sConfigured)
-        {
-            if (!shader->mOwnedVariant)
-            {
-                shader->clearConfiguration();
-            }
-        }
-        if (shared_objects)
-        {
-            clearShaderObjects();
-        }
-    }
-
-    LLPipeline::sRenderGlow = gSavedSettings.getBOOL("RenderGlow");
-
-    if (gViewerWindow)
-    {
-        gViewerWindow->setCursor(UI_CURSOR_WAIT);
-    }
-
-    // Shaders
-    LL_INFOS("ShaderLoading") << "\n~~~~~~~~~~~~~~~~~~\n Loading Shaders:\n~~~~~~~~~~~~~~~~~~" << LL_ENDL;
-    LL_INFOS("ShaderLoading") << llformat("Using GLSL %d.%d", gGLManager.mGLSLVersionMajor, gGLManager.mGLSLVersionMinor) << LL_ENDL;
-
-    for (S32 i = 0; i < SHADER_COUNT; i++)
-    {
-        mShaderLevel[i] = 0;
-    }
-    mMaxAvatarShaderLevel = 0;
-
-    LLVertexBuffer::unbind();
-
-
-    S32 light_class = 3;
-    S32 interface_class = 2;
-    S32 env_class = 2;
-    S32 obj_class = 2;
-    S32 effect_class = 2;
-    S32 wl_class = 2;
-    S32 water_class = 3;
-    S32 deferred_class = 3;
-
-    // Load lighting shaders
-    mShaderLevel[SHADER_LIGHTING] = light_class;
-    mShaderLevel[SHADER_INTERFACE] = interface_class;
-    mShaderLevel[SHADER_ENVIRONMENT] = env_class;
-    mShaderLevel[SHADER_WATER] = water_class;
-    mShaderLevel[SHADER_OBJECT] = obj_class;
-    mShaderLevel[SHADER_EFFECT] = effect_class;
-    mShaderLevel[SHADER_WINDLIGHT] = wl_class;
-    mShaderLevel[SHADER_DEFERRED] = deferred_class;
-
-    std::string shader_name = shared_objects ? loadBasicShaders() : std::string();
-    if (!shared_objects)
-    {
-        LL_INFOS("Shader") << "Kept the basic shaders." << LL_ENDL;
-    }
-    else if (shader_name.empty())
-    {
-        LL_INFOS("Shader") << "Loaded basic shaders." << LL_ENDL;
-    }
-    else
-    {
-        // "ShaderLoading" and "Shader" need to be logged
-        LL_WARNS("Shader") << "Failed loading basic shaders.  Retrying with increased log level..." << LL_ENDL;
-
-        LLError::ELevel lvl = LLError::getDefaultLevel();
-        LLError::setDefaultLevel(LLError::LEVEL_DEBUG);
-        loadBasicShaders();
-        LLError::setDefaultLevel(lvl);
-        gGLManager.printGLInfoString();
-        // The programs attaching it fail to build and draw nothing; the rest draw.
-        LL_WARNS("Shader") << "Unable to load basic shader " << shader_name
-                           << ", verify graphics driver installed and current." << LL_ENDL;
-    }
-
-    gPipeline.mShadersLoaded = true;
-
-    // Every loader runs, whatever the others did: a program that does not build is recorded (built) and draws nothing
-    // (LLGLSLShader::bind), and the rest of the viewer draws on.
-    loadShadersEffects();
-    loadShadersInterface();
-
-    // The avatar programs are built at class 1; mMaxAvatarShaderLevel is the highest they may take.
-    mMaxAvatarShaderLevel = 3;
-    mShaderLevel[SHADER_AVATAR] = 1;
-    loadShadersObject();
-    loadShadersAvatar();
-    loadShadersDeferred();
-
-    // A program this load's loaders configured nothing for was not asked for: a feature switched off, or a loader
-    // stopped short at a failure. It goes, as a load from nothing would leave it.
-    std::vector<LLGLSLShader*> unasked;
-    for (LLGLSLShader* shader : LLGLSLShader::sInstances)
-    {
-        if (!shader->mOwnedVariant && shader->mLoadGeneration != LLGLSLShader::sLoadGeneration)
-        {
-            unasked.push_back(shader);
-        }
-    }
-    for (LLGLSLShader* shader : unasked)
-    {
-        shader->unload();
-    }
-
-    // The fallback sky cube map is drawn with these programs, and again by the sky once it is told to.
-    if (LLGLSLShader::sLinked > 0 && gSky.mVOSkyp.notNull())
-    {
-        gSky.mVOSkyp->forceSkyUpdate();
-    }
-
-    if (!mFailedPrograms.empty())
-    {
-        std::string names;
-        for (const std::string& name : mFailedPrograms)
-        {
-            names += names.empty() ? name : ", " + name;
-        }
-        LL_WARNS("ShaderLoading") << mFailedPrograms.size() << " programs did not build and draw nothing: " << names
-                                  << LL_ENDL;
-    }
-
-    // A program that did not link saved no binary, so the metadata names only programs that did.
-    if (LLGLSLShader::sLinked > 0 && !LLAppViewer::instance()->isSecondInstance())
-    {
-        persistShaderCacheMetadata();
-    }
-
-    if (gViewerWindow)
-    {
-        gViewerWindow->setCursor(UI_CURSOR_ARROW);
-    }
-
-    finalizeShaderList();
-
-    LL_INFOS("ShaderLoading") << "Programs " << (rebuild ? "built from their sources" : "reloaded") << ": "
-                              << LLGLSLShader::sLinked << " linked, " << LLGLSLShader::sKept << " kept, "
-                              << unasked.size() << " unloaded; shared objects "
-                              << (shared_objects ? "compiled" : "kept") << ", in "
-                              << fmt::format("{:.1f}", timer.getElapsedTimeF64().value() * 1000.0) << " ms" << LL_ENDL;
-    LL_PROFILE_PLOT("programs linked", (int64_t)LLGLSLShader::sLinked);
-    LL_PROFILE_PLOT("programs kept", (int64_t)LLGLSLShader::sKept);
-
+    const bool configured = setMetalShaders(application);
     reentrance = false;
-    return true;
+    return configured;
 }
 
 bool LLViewerShaderMgr::setMetalShaders(
@@ -653,12 +306,6 @@ bool LLViewerShaderMgr::setMetalShaders(
             {
                 shader->clearConfiguration();
             }
-        }
-        if (application.mSharedObjects)
-        {
-            // A context released during migration owns any old GL names;
-            // clearShaderObjects now only retires the CPU-side registry.
-            clearShaderObjects();
         }
     }
 
@@ -759,9 +406,6 @@ void LLViewerShaderMgr::unloadShaders()
         LLGLSLShader* shader = *(LLGLSLShader::sInstances.begin());
         shader->unload();
     }
-    // The shared objects are the manager's, so they go here rather than with the programs that attached them.
-    clearShaderObjects();
-    LLGLSLShader::releaseStandIn();
 
     mShaderLevel[SHADER_LIGHTING] = 0;
     mShaderLevel[SHADER_OBJECT] = 0;
@@ -775,221 +419,6 @@ void LLViewerShaderMgr::unloadShaders()
     gPipeline.mShadersLoaded = false;
 }
 
-std::string LLViewerShaderMgr::loadBasicShaders()
-{
-    // Load basic dependency shaders first
-
-    // A shared object that does not compile is reported, and the rest compiled: only the programs attaching it fail.
-    std::string first_failure;
-    const auto failed = [&first_failure](const std::string& file)
-    {
-        if (first_failure.empty())
-        {
-            first_failure = file;
-        }
-    };
-
-    // The feature table masks out the light level to use.
-    const S32 sum_lights_class = mInputs.mGlobal.mLightingClass;
-
-    // Load the Basic Vertex Shaders at the appropriate level.
-    // (in order of shader function call depth for reference purposes, deepest level first)
-
-    vector< pair<string, S32> > shaders;
-    shaders.push_back( make_pair( "windlight/atmosphericsVarsV.glsl",       mShaderLevel[SHADER_WINDLIGHT] ) );
-    shaders.push_back( make_pair( "windlight/atmosphericsHelpersV.glsl",    mShaderLevel[SHADER_WINDLIGHT] ) );
-    shaders.push_back( make_pair( "lighting/lightFuncV.glsl",               mShaderLevel[SHADER_LIGHTING] ) );
-    shaders.push_back( make_pair( "lighting/sumLightsV.glsl",               sum_lights_class ) );
-    shaders.push_back( make_pair( "lighting/lightV.glsl",                   mShaderLevel[SHADER_LIGHTING] ) );
-    shaders.push_back( make_pair( "lighting/lightFuncSpecularV.glsl",       mShaderLevel[SHADER_LIGHTING] ) );
-    shaders.push_back( make_pair( "lighting/sumLightsSpecularV.glsl",       sum_lights_class ) );
-    shaders.push_back( make_pair( "lighting/lightSpecularV.glsl",           mShaderLevel[SHADER_LIGHTING] ) );
-    shaders.push_back( make_pair( "windlight/atmosphericsFuncs.glsl",       mShaderLevel[SHADER_WINDLIGHT] ) );
-    shaders.push_back( make_pair( "windlight/atmosphericsV.glsl",           mShaderLevel[SHADER_WINDLIGHT] ) );
-    shaders.push_back( make_pair( "environment/srgbF.glsl",                 1 ) );
-    shaders.push_back( make_pair( "avatar/avatarSkinV.glsl",                1 ) );
-    shaders.push_back( make_pair( "avatar/objectSkinV.glsl",                1 ) );
-    shaders.push_back( make_pair( "deferred/textureUtilV.glsl",             1 ) );
-    shaders.push_back( make_pair( "environment/waterSurface.glsl",          1 ) );
-    shaders.push_back( make_pair( "objects/indexedTextureV.glsl",           1 ) );
-    shaders.push_back( make_pair( "objects/nonindexedTextureV.glsl",        1 ) );
-
-    std::map<std::string, std::string> attribs;
-    attribs["MAX_JOINTS_PER_MESH_OBJECT"] =
-        std::to_string(LLSkinningUtil::getMaxJointCount());
-
-    const ALShaderInputs::Global& in = mInputs.mGlobal;
-
-    if (in.mEmissive)
-    {
-        attribs["HAS_EMISSIVE"] = "1";
-    }
-
-    const bool ssr = in.mSSR;
-
-    const bool mirrors = in.mMirrors;
-
-    const bool has_reflection_probes = in.mProbes;
-
-    const S32 probe_level = in.mProbeLevel;
-
-    if (ssr)
-    {
-        attribs["SSR"] = "1";
-    }
-
-    if (has_reflection_probes)
-    {
-        attribs["REFMAP_LEVEL"] = std::to_string(probe_level);
-        attribs["REF_SAMPLE_COUNT"] = "32";
-    }
-
-    if (mirrors)
-    {
-        attribs["HERO_PROBES"] = "1";
-    }
-
-    // NOTE: REVERSE_Z is deliberately NOT here. This map reaches only the shared objects
-    // compiled below -- a program's own mShaderFiles carry their permutations and nothing else
-    // -- and reverse-Z is read by program-owned sources too. LLShaderMgr::loadShaderFile()
-    // injects it for every compile instead, and LLGLSLShader::hash() folds LLRender::sReverseZ
-    // in directly so a toggle still invalidates cached binaries.
-
-    { // PBR terrain
-        attribs["TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT"] = llformat("%d", in.mTerrainPlanarSampleCount);
-        attribs["TERRAIN_PBR_DETAIL"] = llformat("%d", in.mTerrainPBRDetail);
-        if (in.mTerrainHexTiling)
-        {
-            attribs["TERRAIN_HEX_TILING"] = "1";
-        }
-    }
-
-    // The water's wave layers that hex-tile, read in waterSurface.glsl, a shared object.
-    attribs["WATER_HEXTILE"] = std::to_string(in.mWaterHextile);
-
-    LLGLSLShader::sGlobalDefines = attribs;
-    // What the objects below compile from, which every program's hash follows.
-    LLGLSLShader::sSharedObjectsKey = in.digest();
-
-    // Shared objects are compiled once and attached by name, so a per-program permutation
-    // cannot reach them. Sources that read classic_mode therefore get a second copy compiled
-    // with CLASSIC_MODE=1, stored under a suffixed key; attachShaderFeatures() picks the copy
-    // matching each program's own defines (see LLShaderMgr::variantObjectKey).
-    std::map<std::string, std::string> classic_attribs = attribs;
-    classic_attribs["CLASSIC_MODE"] = "1";
-
-    // We no longer have to bind the shaders to global glhandles, they are automatically added to a map now.
-    for (U32 i = 0; i < shaders.size(); i++)
-    {
-        // Note usage of GL_VERTEX_SHADER
-        if (loadShaderFile(shaders[i].first, shaders[i].second, GL_VERTEX_SHADER, &attribs) == 0)
-        {
-            LL_WARNS("Shader") << "Failed to load basic vertex shader " << i << ": " << shaders[i].first << LL_ENDL;
-            failed(shaders[i].first);
-        }
-    }
-
-    if (!load_axis_copy(*this, shaders, "windlight/atmosphericsFuncs.glsl", GL_VERTEX_SHADER,
-                        classic_attribs, "CLASSIC_MODE", LLShaderMgr::CLASSIC_OBJECT_SUFFIX))
-    {
-        failed("windlight/atmosphericsFuncs.glsl");
-    }
-
-    // The terrain's evaluation-stage objects. GLSL links per stage, so the objects the terrain
-    // evaluation calls are compiled here for that stage, under the same keys in the stage's
-    // own map.
-    shaders.clear();
-    shaders.push_back( make_pair( "deferred/terrainSurface.glsl",           1 ) );
-    shaders.push_back( make_pair( "windlight/atmosphericsVarsV.glsl",       mShaderLevel[SHADER_WINDLIGHT] ) );
-    for (U32 i = 0; i < shaders.size(); i++)
-    {
-        if (loadShaderFile(shaders[i].first, shaders[i].second, GL_TESS_EVALUATION_SHADER, &attribs) == 0)
-        {
-            LL_WARNS("Shader") << "Failed to load basic tessellation evaluation shader " << i << ": " << shaders[i].first << LL_ENDL;
-            failed(shaders[i].first);
-        }
-    }
-
-    // Load the Basic Fragment Shaders at the appropriate level.
-    // (in order of shader function call depth for reference purposes, deepest level first)
-
-    shaders.clear();
-    S32 ch = llmax(LLGLSLShader::sIndexedTextureChannels, 1);
-
-
-    std::vector<S32> index_channels;
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "windlight/atmosphericsVarsF.glsl",      mShaderLevel[SHADER_WINDLIGHT] ) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "windlight/atmosphericsHelpersF.glsl",       mShaderLevel[SHADER_WINDLIGHT] ) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "windlight/atmosphericsFuncs.glsl",       mShaderLevel[SHADER_WINDLIGHT] ) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "windlight/atmosphericsF.glsl",          mShaderLevel[SHADER_WINDLIGHT] ) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "environment/waterFogF.glsl",                mShaderLevel[SHADER_WATER] ) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "environment/srgbF.glsl",                    mShaderLevel[SHADER_ENVIRONMENT] ) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/deferredUtil.glsl",                    1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/gbufferUtil.glsl",                    1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/globalF.glsl",                          1));
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/aoUtil.glsl",                          1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/terrainSurface.glsl",                  1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "environment/waterSurface.glsl",                 1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/pbrterrainUtilF.glsl",                 1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/hexLatticeUtil.glsl",                  1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/tonemapUtilF.glsl",                    1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "alchemy/colorGradeUtilF.glsl",                 1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "alchemy/postEffectUtilsF.glsl",                 1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/reflectionProbeF.glsl",                has_reflection_probes ? 3 : 2) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/screenSpaceReflUtil.glsl",             ssr ? 3 : 1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "lighting/lightNonIndexedF.glsl",                    mShaderLevel[SHADER_LIGHTING] ) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "lighting/lightAlphaMaskNonIndexedF.glsl",                   mShaderLevel[SHADER_LIGHTING] ) );
-    index_channels.push_back(ch);    shaders.push_back( make_pair( "lighting/lightF.glsl",                  mShaderLevel[SHADER_LIGHTING] ) );
-    index_channels.push_back(ch);    shaders.push_back( make_pair( "lighting/lightAlphaMaskF.glsl",                 mShaderLevel[SHADER_LIGHTING] ) );
-
-    for (U32 i = 0; i < shaders.size(); i++)
-    {
-        // Note usage of GL_FRAGMENT_SHADER
-        if (loadShaderFile(shaders[i].first, shaders[i].second, GL_FRAGMENT_SHADER, &attribs, index_channels[i]) == 0)
-        {
-            LL_WARNS("Shader") << "Failed to load fragment shader " << shaders[i].first << LL_ENDL;
-            failed(shaders[i].first);
-        }
-    }
-
-    if (mirrors)
-    {
-        // globalF's mirrorClip() is the only shared source that varies on MIRROR_CLIP. Only
-        // compiled when RenderMirrors is on, matching the gate on the variants themselves --
-        // nothing can attach this copy otherwise.
-        std::map<std::string, std::string> mirror_attribs = attribs;
-        mirror_attribs["MIRROR_CLIP"] = "1";
-
-        if (!load_axis_copy(*this, shaders, "deferred/globalF.glsl", GL_FRAGMENT_SHADER,
-                            mirror_attribs, "MIRROR_CLIP", LLShaderMgr::MIRROR_OBJECT_SUFFIX))
-        {
-            failed("deferred/globalF.glsl");
-        }
-    }
-
-    for (const char* path : { "windlight/atmosphericsFuncs.glsl",
-                              "deferred/deferredUtil.glsl",
-                              "deferred/reflectionProbeF.glsl" })
-    {
-        if (!load_axis_copy(*this, shaders, path, GL_FRAGMENT_SHADER,
-                            classic_attribs, "CLASSIC_MODE", LLShaderMgr::CLASSIC_OBJECT_SUFFIX))
-        {
-            failed(path);
-        }
-    }
-
-    return first_failure;
-}
-
-bool LLViewerShaderMgr::built(bool linked, const LLGLSLShader& shader)
-{
-    if (!linked)
-    {
-        LL_WARNS("ShaderLoading") << shader.mName << " did not build; it draws nothing, and the load goes on" << LL_ENDL;
-        mFailedPrograms.push_back(shader.mName);
-    }
-    return linked;
-}
 
 void LLViewerShaderMgr::loadShadersEffects()
 {
@@ -1943,18 +1372,7 @@ void LLViewerShaderMgr::loadShadersInterface()
         gUIProgram.setNativeAttributeMask(LLVertexBuffer::MAP_VERTEX |
                                           LLVertexBuffer::MAP_TEXCOORD0 |
                                           LLVertexBuffer::MAP_COLOR);
-        // Initialize the shadow-path uniform to passthrough so non-text UI
-        // and NO_SHADOW text take the early-return branch in uiF.glsl. GLSL
-        // already zero-initializes uniforms, but pushing an explicit default
-        // documents the contract and protects against driver quirks.
-        // textShadowMode is the shader's only shadow uniform — atlas texel size
-        // and channel layout derive from the bound texture in uiF.glsl.
-        gUIProgram.mOnLink = [](LLGLSLShader& s)
-        {
-            s.bind();
-            s.uniform1i(LLShaderMgr::TEXT_SHADOW_MODE, 0);
-            s.unbind();
-        };
+        // Native text shadow state is carried by LLRender's ordered UI batch.
         built(gUIProgram.createShader(), gUIProgram);
     }
 
@@ -1974,14 +1392,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gTwoTextureCompareProgram.mShaderFiles.push_back(make_pair("interface/twotexturecompareV.glsl", GL_VERTEX_SHADER));
         gTwoTextureCompareProgram.mShaderFiles.push_back(make_pair("interface/twotexturecompareF.glsl", GL_FRAGMENT_SHADER));
         gTwoTextureCompareProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        gTwoTextureCompareProgram.mOnLink = [](LLGLSLShader& s)
-        {
-            s.bind();
-            s.uniform1i(sTex0, 0);
-            s.uniform1i(sTex1, 1);
-            s.uniform1i(sDitherTex, 2);
-            s.unbind();
-        };
         built(gTwoTextureCompareProgram.createShader(), gTwoTextureCompareProgram);
     }
 
@@ -1991,12 +1401,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gOneTextureFilterProgram.mShaderFiles.push_back(make_pair("interface/onetexturefilterV.glsl", GL_VERTEX_SHADER));
         gOneTextureFilterProgram.mShaderFiles.push_back(make_pair("interface/onetexturefilterF.glsl", GL_FRAGMENT_SHADER));
         gOneTextureFilterProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        gOneTextureFilterProgram.mOnLink = [](LLGLSLShader& s)
-        {
-            s.bind();
-            s.uniform1i(sTex0, 0);
-            s.unbind();
-        };
         built(gOneTextureFilterProgram.createShader(), gOneTextureFilterProgram);
     }
 #endif
@@ -2009,12 +1413,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gSolidColorProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         gSolidColorProgram.setNativeAttributeMask(LLVertexBuffer::MAP_VERTEX |
                                                   LLVertexBuffer::MAP_TEXCOORD0);
-        gSolidColorProgram.mOnLink = [](LLGLSLShader& s)
-        {
-            s.bind();
-            s.uniform1i(sTex0, 0);
-            s.unbind();
-        };
         built(gSolidColorProgram.createShader(), gSolidColorProgram);
     }
 
@@ -2118,10 +1516,6 @@ void LLViewerShaderMgr::loadShadersInterface()
 }
 
 
-std::string LLViewerShaderMgr::getShaderDirPrefix(void)
-{
-    return gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "shaders", "class");
-}
 
 void LLViewerShaderMgr::updateShaderUniforms(LLGLSLShader * shader)
 {

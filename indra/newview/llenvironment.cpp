@@ -1771,24 +1771,6 @@ namespace
         return nullptr;
     }
 
-    // Register the block's expected std140 layout for debug validation at shader load, derived
-    // from the SAME offsetof()-based table packEnvironmentUBO writes through -- llrender carries
-    // no hand-copied offset table that can drift from this struct. (Member names resolve from
-    // the reserved-uniform table at validation time; every Environment member is a reserved
-    // uniform.)
-#if !LL_RELEASE_FOR_DOWNLOAD
-    const bool s_env_layout_registered = []
-    {
-        std::vector<LLGLSLShader::EngineBlockLayoutMember> members;
-        for (const auto& f : sEnvBlockFields)
-        {
-            members.push_back({ f.uniform, nullptr, f.offset, false });
-        }
-        members.push_back({ LLShaderMgr::EYE_TO_SKY, nullptr, (U32)offsetof(LLEnvironment::EnvironmentUBOData, eyeToSky), true });
-        LLGLSLShader::registerEngineBlockLayout("Environment", std::move(members));
-        return true;
-    }();
-#endif // !LL_RELEASE_FOR_DOWNLOAD
 }
 
 // static

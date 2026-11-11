@@ -1,6 +1,6 @@
 /**
  * @file llglslshader.h
- * @brief GLSL shader wrappers
+ * @brief Native renderer pass identities and retained traversal metadata.
  *
  * $LicenseInfo:firstyear=2001&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -32,10 +32,7 @@
 #include "llsd.h"
 #include "llstaticstringtable.h"
 
-#include <functional>
 #include <type_traits>
-
-class ALGPUBuffer;
 
 class LLShaderFeatures
 {
@@ -164,10 +161,8 @@ public:
         SG_COUNT
     } eGroup;
 
-    // Indexed uniform-buffer binding points the engine attaches its shared constant blocks to
-    // (glBindBufferBase); every consumer program references the block at the SAME point, so they
-    // are a fixed cross-program contract. Programs are remapped onto them by NAME after link
-    // (mapUniforms) rather than by an in-source `layout(binding=)`, which needs GLSL 4.20.
+    // Shared CPU constant-block indices, retained for their producer boundaries.
+    // Native encoders bind their Metal buffers explicitly.
     enum UniformBlock : GLuint
     {
         UB_REFLECTION_PROBES,   // "ReflectionProbes"
@@ -181,9 +176,7 @@ public:
         NUM_UNIFORM_BLOCKS
     };
 
-    // GL block names for the engine uniform blocks, in UniformBlock enum order (index ==
-    // binding). The single source of these names: read by the post-link remap in mapUniforms
-    // and by the debug layout validator. Keep in lockstep with the enum and the GLSL blocks.
+    // Producer-side block schema names, in UniformBlock enum order.
     static constexpr const char* UNIFORM_BLOCK_NAMES[NUM_UNIFORM_BLOCKS] =
     {
         "ReflectionProbes", // UB_REFLECTION_PROBES
@@ -196,42 +189,6 @@ public:
         "Matrices",         // UB_MATRICES
     };
 
-    // Expected std140 layout of an engine UBO block, registered by the module that owns the
-    // C++ mirror struct with offsetof-derived offsets -- so the debug validator and the pack
-    // code can never drift apart. mReservedUniform indexes LLShaderMgr::mReservedUniforms for
-    // the GLSL member name; mName overrides it for members that aren't reserved uniforms.
-    // mMatrix marks a matrix member, which is additionally required to introspect
-    // COLUMN-major: std140's default, and what the pack code writes (an LLMatrix4a's rows,
-    // uploaded straight through). A row-major layout would silently transpose every read.
-#if !LL_RELEASE_FOR_DOWNLOAD
-    struct EngineBlockLayoutMember
-    {
-        S32         mReservedUniform;
-        const char* mName;
-        U32         mOffset;
-        bool        mMatrix;
-    };
-    // Called from the owning module's static initializer to describe what the C++ upload
-    // expects; validated against every linked program at load.
-    //
-    // Debug-only, declaration included: the registered layouts are read by exactly one
-    // consumer (validateEngineBlockLayouts), which is itself debug-only, so in a release build
-    // the registrations were pure cost. The CALL SITES are gated to match; adding another
-    // engine block means gating its registration too.
-    static void registerEngineBlockLayout(const char* block_name, std::vector<EngineBlockLayoutMember> members);
-#endif // !LL_RELEASE_FOR_DOWNLOAD
-
-    // An active uniform read back from the linked program, plus the texture-unit
-    // ordering used to assign sampler channels deterministically (see mapUniforms).
-    struct gl_uniform_data_t
-    {
-        std::string name;
-        GLenum type = (GLenum)-1;
-        GLint size = -1;
-        U32 texunit_priority = UINT_MAX; // lower value gets an earlier texture-unit index
-    };
-
-
     // Every program that created successfully. Walked for name uniqueness and by unloadShaders();
     // entries are removed by unloadInternal() and by the destructor.
     //
@@ -239,8 +196,7 @@ public:
     // in other translation units and leave this registry from their destructors, and destruction
     // order across translation units is unspecified -- a registry that destroyed itself could be
     // gone before the last program left it. One empty set at process exit is the cheaper half of
-    // that trade. Nothing touches this before dynamic initialisation finishes: entries only ever
-    // arrive from createShader(), which needs a GL context.
+    // that trade. Entries arrive only when createShader() configures a native pass.
     static std::set<LLGLSLShader*>& sInstances;
     // Every program createShader has been asked to build, linked or not, until it is destroyed: what a load configures
     // from nothing (clearConfiguration). Leaked for the reason sInstances is.
@@ -250,7 +206,9 @@ public:
     LLGLSLShader();
     ~LLGLSLShader();
 
-    static GLuint sCurBoundShader;
+    // Compatibility state for LLRender's saved client traversal. Native pass
+    // identity is the pointer; there is no GPU program name.
+    static U32 sCurBoundShader;
     static LLGLSLShader* sCurBoundShaderPtr;
     static S32 sIndexedTextureChannels;
 
@@ -323,39 +281,22 @@ public:
         VARIANT_MIRROR  = 1 << 2, // MIRROR_CLIP=1  -- hero-probe mirror clip   (per-PASS)
     };
 
-    // Compile this program and, on success, build the requested variant subtrees (owned by this
-    // program; freed by unload()). Any previously built variants are dropped first, since
-    // recreating the program invalidates them. Returns false if the program OR any requested
-    // variant fails; a failed axis leaves its pointer null.
-    //
-    // A program already linked under the configuration hash() gives now, with the same variants, is
-    // kept as it is, its variants and its uniforms with it: nothing is compiled, linked or read from
-    // the binary cache, and its post-link hook does not run.
+    // Configure this native pass and its requested variant subtrees, owned by
+    // this identity and freed by unload(). An unchanged hash/axis set retains
+    // the existing graph. A failed pass or corner retires the complete graph.
     bool createShader(U32 variants = 0);
 
-    // Native Metal passes do not run GLSL reflection, so a loader that feeds
-    // CPU-authored vertex buffers must declare the reserved attributes its
-    // native pipeline consumes. GL still derives mAttributeMask from the
-    // linked program in mapAttributes().
+    // Loaders that feed CPU-authored geometry declare the reserved attributes
+    // consumed by their native pipelines; no GLSL reflection exists.
     void setNativeAttributeMask(U32 attribute_mask) { mNativeAttributeMask = attribute_mask; }
 
-    // What a loader configures, cleared for a load to configure again from nothing, as unload()
-    // leaves it: the files, the defines, the features and the post-link hook. A linked program stays
-    // linked, and createShader keeps it where it is configured as it was.
+    // Clear loader configuration while preserving the current native pass
+    // until createShader decides whether its configuration can be reused.
     void clearConfiguration();
-
-    // Run after this program links, and after each variant built from it links: what a program needs
-    // set once per link, such as the units its samplers read. Part of the configuration, so a program
-    // kept linked by createShader does not run it again.
-    std::function<void(LLGLSLShader&)> mOnLink;
 
     // How many times this program has linked since it was constructed, for what derives from what it
     // draws.
     U32 linkCount() const { return mLinkCount; }
-
-    // The program bound in place of one that did not build, which draws nothing, released with the
-    // context's programs.
-    static void releaseStandIn();
 
     // The load running (LLViewerShaderMgr::setShaders), which every program its loaders configure is
     // stamped with by createShader: a program not stamped by a load was not asked for by it.
@@ -367,71 +308,39 @@ public:
     static U32 sLinked;
     static U32 sKept;
 
-    // The digest of what every shared object was compiled from, which every program links against,
-    // so every program's hash() follows it (set by the viewer with the objects).
+    // Digest of shared native shader inputs, set by the viewer loader.
     static LLUUID sSharedObjectsKey;
-    // Attach the shared object compiled for `stage` under `object` (a path, or a variant key
-    // from LLShaderMgr::variantObjectKey). An object compiled for another stage does not
-    // count: GLSL resolves calls within a stage.
-    bool attachStageObject(GLenum stage, const std::string& object);
-    bool attachFragmentObject(const std::string& object) { return attachStageObject(GL_FRAGMENT_SHADER, object); }
-    bool attachVertexObject(const std::string& object) { return attachStageObject(GL_VERTEX_SHADER, object); }
-    // Attach an object whoever compiled it keeps: the program detaches it, after a link through createShader or at
-    // unload, and leaves deleting it to them.
-    void attachObject(GLuint object);
-    void attachObjects(GLuint* objects = NULL, S32 count = 0);
-    bool mapAttributes();
-    bool mapUniforms();
-    void mapUniform(const gl_uniform_data_t& gl_uniform);
-    void uniform1i(U32 index, GLint i);
-    void uniform1f(U32 index, GLfloat v);
-    void fastUniform1f(U32 index, GLfloat v);
-    void uniform1ui(U32 index, GLuint i);
-    void uniform2f(U32 index, GLfloat x, GLfloat y);
-    void uniform3f(U32 index, GLfloat x, GLfloat y, GLfloat z);
-    void uniform4f(U32 index, GLfloat x, GLfloat y, GLfloat z, GLfloat w);
-    void uniform1iv(U32 index, U32 count, const GLint* i);
-    void uniform4iv(U32 index, U32 count, const GLint* i);
-    void uniform1fv(U32 index, U32 count, const GLfloat* v);
-    void uniform2fv(U32 index, U32 count, const GLfloat* v);
-    void uniform3fv(U32 index, U32 count, const GLfloat* v);
-    void uniform4fv(U32 index, U32 count, const GLfloat* v);
-    void fastUniform4fv(U32 index, U32 count, const GLfloat* v);
-    void uniform4uiv(U32 index, U32 count, const GLuint* v);
-    void uniformMatrix2fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v);
-    void uniformMatrix3fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v);
-    void uniformMatrix3x4fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v);
-    void uniformMatrix4fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v);
-
-    // The native matrices, as they lie: their rows are the columns the
-    // shader reads, so the shader's M * v is the row-vector product v * M.
-    void uniformMatrix4fv(U32 index, const LLMatrix4a& m);
-    void uniformMatrix3fv(U32 index, const LLMatrix3a& m);
-
-    void uniform1i(const LLStaticHashedString& uniform, GLint i);
+    // Transitional calls from retained traversal. Native encoders consume
+    // explicit pass constants (and LLShaderUniforms CPU records), never GL
+    // default-block uniforms. These setters already performed no work on the
+    // native path; remove the legacy callers with their displaced passes.
+    void uniform1i(U32, GLint) {}
+    void uniform1f(U32, GLfloat) {}
+    void uniform1ui(U32, GLuint) {}
+    void uniform2f(U32, GLfloat, GLfloat) {}
+    void uniform3f(U32, GLfloat, GLfloat, GLfloat) {}
+    void uniform4f(U32, GLfloat, GLfloat, GLfloat, GLfloat) {}
+    void uniform1iv(U32, U32, const GLint*) {}
+    void uniform4iv(U32, U32, const GLint*) {}
+    void uniform1fv(U32, U32, const GLfloat*) {}
+    void uniform2fv(U32, U32, const GLfloat*) {}
+    void uniform3fv(U32, U32, const GLfloat*) {}
+    void uniform4fv(U32, U32, const GLfloat*) {}
+    void uniform4uiv(U32, U32, const GLuint*) {}
+    void uniformMatrix2fv(U32, U32, GLboolean, const GLfloat*) {}
+    void uniformMatrix3fv(U32, U32, GLboolean, const GLfloat*) {}
+    void uniformMatrix3x4fv(U32, U32, GLboolean, const GLfloat*) {}
+    void uniformMatrix4fv(U32, U32, GLboolean, const GLfloat*) {}
+    void uniformMatrix4fv(U32, const LLMatrix4a&) {}
+    void uniformMatrix3fv(U32, const LLMatrix3a&) {}
+    void uniform1i(const LLStaticHashedString&, GLint) {}
 
     void setMinimumAlpha(F32 minimum);
     F32 getMinimumAlpha() const { return mMinimumAlpha; }
 
-    void vertexAttrib4f(U32 index, GLfloat x, GLfloat y, GLfloat z, GLfloat w);
-    void vertexAttrib4fv(U32 index, GLfloat* v);
-
-    //GLint getUniformLocation(const std::string& uniform);
-    GLint getUniformLocation(const LLStaticHashedString& uniform);
-    GLint getUniformLocation(U32 index);
-
-    // True if the reserved uniform is present, whether as a default-block
-    // uniform (real location) or a Slang $Globals block member (UBO-backed).
-    // Use this instead of getUniformLocation()>-1 for presence checks that then
-    // set via the uniform*() setters, so block-resident uniforms aren't skipped.
+    GLint getUniformLocation(const LLStaticHashedString&) const { return -1; }
+    GLint getUniformLocation(U32) const { return -1; }
     bool hasUniform(U32 index) const;
-
-    GLint getAttribLocation(U32 attrib);
-    // The texture unit a sampler uniform gets -- any of GL's sampler types, float, int or unsigned -- the next free
-    // one, an array taking consecutive units; -1 for any other type.
-    GLint mapUniformTextureChannel(GLint location, GLenum type, GLint size);
-    // The same for an image uniform and the image units, which are counted apart from the texture units.
-    GLint mapUniformImageUnit(GLint location, GLenum type, GLint size);
 
     void clearPermutations();
     void addPermutation(std::string name, std::string value);
@@ -444,148 +353,54 @@ public:
 
     void addConstant(const LLGLSLShader::eShaderConsts shader_const);
 
-    // Texture channel for the specified uniform, or -1 if the uniform is not used as a
-    // texture. enableTexture only resolves it; disableTexture also releases the slot, and its
-    // `mode` is the caller's expected target, checked against what was actually bound there
-    // when gDebugGL is on.
-    S32 enableTexture(S32 uniform);
-    S32 disableTexture(S32 uniform, ALTextureSlot::eTextureType mode = ALTextureSlot::TT_TEXTURE);
+    // Legacy sampler calls do not invent Metal resource bindings. Native
+    // encoders own their explicit textures/samplers; retained calls previously
+    // resolved to -1 because no GL reflection was performed.
+    S32 enableTexture(S32) { return -1; }
+    S32 disableTexture(S32, ALTextureSlot::eTextureType = ALTextureSlot::TT_TEXTURE) { return -1; }
+    S32 getTextureChannel(S32) const { return -1; }
+    S32 bindTexture(S32, LLTexture*, ALSampler) { return -1; }
+    S32 bindTexture(S32, LLRenderTarget*, ALSampler = ALSamplers::TargetDefault, U32 = 0) { return -1; }
+    S32 bindDepthTexture(S32, LLRenderTarget*, ALSampler = ALSamplers::PointClamp) { return -1; }
+    S32 unbindTexture(S32) { return -1; }
 
-    // get the texture channel of the given uniform, or -1 if uniform is not used as a texture
-    S32 getTextureChannel(S32 uniform) const;
-
-    // bindTexture returns the texture unit we've bound the texture to.
-    // You can reuse the return value to unbind a texture when required.
-    //
-    // The sampler is NAMED BY THE CALLER, and there is no overload that infers it. How a pass
-    // reads an image is a property of the pass: two materials can reference one texture and
-    // want it read differently, so a texture that decided its own filtering would have to pick
-    // a winner and be wrong for the other. The inferring form existed until every call site
-    // had chosen; it was deleted once that count reached zero, so it cannot come back by habit.
-    S32 bindTexture(S32 uniform, LLTexture* texture, ALSampler key);
-    // An unnamed key resolves to the target's per-attachment default (bilinear for
-    // attachment 0, point for data attachments and integer ones) -- see LLRenderTarget::bindTexture.
-    S32 bindTexture(S32 uniform, LLRenderTarget* texture, ALSampler key = ALSamplers::TargetDefault, U32 index = 0);
-
-    // Colour and depth attachments are separate calls rather than one with a bool.
-    //
-    // They were one, and the bool sat third -- exactly where a filter reads naturally. The
-    // legacy filter enum is unscoped and TFO_POINT is 0, so four post-process call sites wrote
-    // bindTexture(uniform, target, LLTexUnit::TFO_POINT), meaning "sample this point-filtered",
-    // and silently got depth=false plus the DEFAULT bilinear filter. It compiled, it ran, and
-    // the depth-of-field passes had been reading bilinear for as long as the call existed.
-    // Splitting the two removes the parameter that made that expressible.
-    // Point by default, matching LLRenderTarget::getDefaultDepthSampler: linear filtering a
-    // DEPTH_COMPONENT texture without compare mode is implementation-defined, and at
-    // silhouette edges it averages foreground and background into a depth no surface has.
-    S32 bindDepthTexture(S32 uniform, LLRenderTarget* texture, ALSampler key = ALSamplers::PointClamp);
-    S32 unbindTexture(S32 uniform);
-
-    // ---- Images ------------------------------------------------------------------------------------------------------
-    // Image uniforms get image units in mapUniforms, separately from texture units, in reserved-uniform order (only
-    // reserved uniforms get one, as only reserved samplers get a texture unit); arrays take consecutive units.
-
-    // The image unit of a reserved image uniform, or of `element` of an image array, or -1 if this program has no such
-    // image.
-    S32 getImageUnit(S32 uniform, U32 element = 0) const;
-
-    // Bind `level` of a texture to the image unit of the uniform, or of `element` of an image array (ALImageSlot::bind),
-    // at the texture's own format. Returns the unit, or -1 if the program has no such image or the texture cannot be
-    // one.
-    S32 bindImage(S32 uniform, LLRenderTarget* target, ALImageSlot::eAccess access, U32 attachment = 0, U32 level = 0,
-                  U32 element = 0);
-    S32 bindImage(S32 uniform, LLImageGL* image, ALImageSlot::eAccess access, U32 level = 0, U32 element = 0);
-    // Unbind every unit the uniform has, an array's elements all.
-    S32 unbindImage(S32 uniform);
-
-    // ---- Storage blocks ----------------------------------------------------------------------------------------------
-    // A storage block in LLShaderMgr's reserved table (eGLSLReservedStorageBlocks) is given its fixed binding point at
-    // mapUniforms, the same in every program, and an array of blocks one for each element. A buffer bound at a point
-    // stays there across program switches (LLRender::bindStorageBuffer). A block not in the table keeps the binding
-    // its source gave it, which must lie past the table's points.
-
-    // The binding point of `element` of a reserved storage block, or -1 if this program does not declare the block.
-    S32 getStorageBinding(S32 block, U32 element = 0) const;
-
-    // Attach `buffer`, whole or [offset, offset + bytes), at the binding point of `element` of the block. Nothing if
-    // the program does not declare it.
-    void bindStorageBuffer(S32 block, const ALGPUBuffer& buffer, U32 element = 0);
-    void bindStorageBuffer(S32 block, const ALGPUBuffer& buffer, size_t offset, size_t bytes, U32 element = 0);
-
-    // ---- Compute -----------------------------------------------------------------------------------------------------
-
-    // This is a compute program: its stage files are compute, which createShader reads off mShaderFiles.
     bool isCompute() const { return mIsCompute; }
-    // Whether the program has a tessellation stage, from its files.
     bool isTessellated() const;
 
-    // Run this program, bound, over groups_x * groups_y * groups_z work groups (LLRender::dispatchCompute).
-    void dispatch(U32 groups_x, U32 groups_y = 1, U32 groups_z = 1);
-    // Enough groups of mComputeLocalSize to cover x * y * z invocations, the last group in each direction partly
-    // past the end: the kernel bounds-checks its gl_GlobalInvocationID.
-    void dispatchThreads(U32 x, U32 y = 1, U32 z = 1);
-    // The group counts read on the GPU from the ALDispatchIndirectCommand at `offset` in `buffer`.
-    void dispatchIndirect(const ALGPUBuffer& buffer, size_t offset = 0);
-
-    bool link(bool suppress_errors = false);
     void bind();
     //helper to conditionally bind mRiggedVariant instead of this
     void bind(bool rigged);
 
-    // A complete GLSL program owns a live GL name. Native Metal setup keeps
-    // the same objects only as semantic pass identities for the retained
-    // traversal, so keep that state separate: callers must not mistake a
-    // configured native pass for a linked OpenGL program.
-    bool isComplete() const { return mProgramObject != 0; }
+    // Availability describes native semantic pass configuration. The legacy
+    // completion gate remains false until its displaced callers are removed;
+    // it must not activate the old post-processing execution paths.
+    bool isComplete() const { return false; }
     bool isNativeConfigured() const { return mNativeConfigured; }
-    bool isAvailable() const { return isComplete() || isNativeConfigured(); }
+    bool isAvailable() const { return mNativeConfigured; }
 
     LLUUID hash();
 
     // Unbinds any previously bound shader by explicitly binding no shader.
     static void unbind();
 
-    U32 mLightHash;
+    U32 mLightHash = 0xFFFFFFFF;
 
-    GLuint mProgramObject;
-#if LL_DEBUG || LL_RELEASE_WITH_DEBUG_INFO
-    struct attr_name
-    {
-        GLint loc;
-        const char* name;
-        void operator = (GLint _loc) { loc = _loc; }
-        operator GLint () { return loc; }
-    };
-    std::vector<attr_name> mAttribute; //lookup table of attribute enum to attribute channel
-#else
-    std::vector<GLint> mAttribute; //lookup table of attribute enum to attribute channel
-#endif
     U32 mAttributeMask;  //mask of which reserved attributes are set (lines up with LLVertexBuffer::getTypeMask())
-    std::vector<GLint> mUniform;   //lookup table of uniform enum to uniform location
-    LLStaticStringTable<GLint> mUniformMap; //lookup map of uniform name to uniform location
-    std::vector<GLint> mTexture;
     // Last value routed to MINIMUM_ALPHA on this program, so setMinimumAlpha can skip the
     // batch flush and the whole uniform path when unchanged (the alpha pool re-applies it
     // per batch; GLTF material binds re-push it per material). EVERY writer of that
     // uniform must go through setMinimumAlpha to keep this authoritative -- do not write
-    // it via uniform1f/fastUniform1f directly. -1 is a live value (GLTF "no masking"),
-    // so the unset sentinel sits far outside the usable range; reset alongside the
-    // uniform value cache (link/mapUniforms/unloadInternal), since both shadow GPU-side
-    // program state.
+    // it via uniform1f directly. -1 is a live value (GLTF "no masking"), so the
+    // unset sentinel sits outside the usable range and resets on reconfiguration.
     static constexpr F32 MINIMUM_ALPHA_UNSET = -1e30f;
     F32 mMinimumAlpha = MINIMUM_ALPHA_UNSET;
 
-    S32 mTotalUniformSize;
-    S32 mActiveTextureChannels;
     S32 mShaderLevel;
     S32 mShaderGroup; // see LLGLSLShader::eGroup
     // environment-uniform generation this program last applied; see sEnvironmentGeneration.
     // A program starts one behind it when it links, so its first bind applies the set.
     U32 mEnvUniformsGeneration = 1;
     LLShaderFeatures mFeatures;
-    // A compute program's work group size, its `layout(local_size_x = ...) in`, read back after it links or loads
-    // from the binary cache. Zero for any other program.
-    U32 mComputeLocalSize[3] = { 0, 0, 0 };
     std::vector< std::pair< std::string, GLenum > > mShaderFiles;
     std::string mName;
     typedef std::map<std::string, std::string> defines_map_t; //NOTE: this must be an ordered map to maintain hash consistency
@@ -594,7 +409,6 @@ public:
     bool mPermutationsAdded = false;
     static defines_map_t sGlobalDefines;
     LLUUID mShaderHash;
-    bool mUsingBinaryProgram = false;
 
     //statistics for profiling shader performance
     U64 mTimeElapsed = 0;
@@ -689,7 +503,7 @@ public:
     // dirtyEnvironmentUniforms(); a program re-applies on bind when its own generation is
     // behind. A counter rather than a per-program dirty flag so the per-frame environment
     // update stays O(1) and reaches programs no list happens to hold. A program that links starts
-    // one behind it -- see linkProgram().
+    // distinct from the native pass/constant ownership.
     static U32 sEnvironmentGeneration;
 
 
@@ -697,23 +511,17 @@ public:
     // hacky flag used for optimization in LLDrawPoolAlpha
     bool mCanBindFast = false;
 
-#if LL_PROFILER_ENABLE_RENDER_DOC
-    void setLabel(const char* label);
-#endif
-
 private:
     void unloadInternal();
 
-    // createShader's build: compiled, attached, linked, its hook run and its variants built.
-    bool linkProgram(U32 variants);
     // Metal keeps the loader-authored pass/variant graph without compiling
     // the GLSL files named by that graph. Native renderers own the actual MSL
     // functions, pipeline reflection and binding layout.
     bool configureNative(U32 variants);
 
-    // Bound in place of this program, or its skinned variant, where it did not build; warned of once a link.
-    void bindStandIn();
-    bool mStandInWarned = false;
+    // Preserve the failed pass identity without leaving a prior valid one bound.
+    void bindUnavailable();
+    bool mUnavailableWarned = false;
 
     // What the program linked under, for createShader to keep it: its configuration's hash() as the
     // loader set it, its variants, and the level it linked at, which a fallback may have lowered.
@@ -724,157 +532,7 @@ private:
     bool   mNativeConfigured = false;
     U32    mNativeAttributeMask = 0;
 
-    // The stage objects createShader compiled of mShaderFiles, which this program owns: deleted once it links, or at
-    // unload where it never did. The shared objects attachShaderFeatures attaches by name are LLShaderMgr's.
-    std::vector<GLuint> mOwnObjects;
-
-    // Detach every object, deleting this program's own: a linked program needs none of them, and an object no program
-    // holds is freed when its owner deletes it rather than when the last program holding it goes.
-    void releaseObjects();
-
-    // Image units per reserved uniform, -1 where this program declares none; filled by mapUniforms, emptied with
-    // mTexture. An image array has its elements' units from mFirst on.
-    struct ImageUnits
-    {
-        GLint mFirst = -1;
-        GLint mCount = 0;
-    };
-    std::vector<ImageUnits> mImage;
-    // Per reserved storage block, whether this program declares it.
-    std::vector<bool> mStorage;
-    S32 mActiveImageUnits = 0;
     bool mIsCompute = false;
-
-    // Give the reserved storage blocks this program declares their binding points; see getStorageBinding.
-    void mapStorageBlocks();
-
-#if LL_WINDOWS
-    // The locations of this program's bools -- an array's at its first element, the one the setters reach -- filled by
-    // mapUniforms under AMD's Windows driver alone and emptied with mUniform.
-    //
-    // There every set of a bool reaches GL as an int, whichever setter makes it: the float and uint setters convert as
-    // GL would, any value but zero true. AMD's Windows driver drops an int set of a bool -- glUniform1i, glUniform1iv,
-    // glProgramUniform1i -- that matches, as a bool, the last int set of it, even when a float or uint set has changed
-    // the bool since: glUniform1i(1), glUniform1f(0), glUniform1i(1) leaves it false, for draws and glGetUniformiv
-    // alike, with no error. Its float and uint sets always arrive, and bvecs are unaffected (Radeon RX 6800, driver
-    // 26.8.1). Sent as ints alone, a bool always holds its last int set, so a set the driver drops changes nothing.
-    // mIsAMD alone would also take in Mesa's and Apple's GL on AMD's cards, which are not that driver.
-    std::vector<GLint> mBoolLocations;
-    bool isBoolLocation(GLint location) const;
-#endif
-    // The uploads of the setters that can reach a bool as another kind: as ints where `location` is in mBoolLocations,
-    // as the setter made them everywhere else.
-    void uploadFloat(GLint location, GLfloat x) const;
-    void uploadFloats(GLint location, U32 count, const GLfloat* v) const;
-    void uploadUInt(GLint location, GLuint x) const;
-
-    // What this program holds at each uniform location, as the setters last uploaded it, so a set of the value a
-    // location already holds skips its glUniform* call. Every setter but the matrices' comes through here, on the
-    // path of every draw.
-    //
-    // A slot holds the bit patterns of the components uploaded and the kind of upload that wrote them: the GL
-    // component type and count. A set matches only when both agree exactly, so ints and uints are compared as
-    // themselves and floats by their bits -- +0 against -0, or two NaN payloads, cost an upload and never skip one.
-    // A location written through one kind and then set through another uploads: what GL holds there was converted
-    // from the first kind's bytes. A bool's slot holds a set as its setter made it, though under AMD's Windows driver
-    // the set reached GL as an int (see mBoolLocations): a match still means GL holds what the set would leave.
-    //
-    // Indexed by location. Implementations number a program's uniforms from 0 at link, an array taking a location
-    // an element, so a flat array sized past the largest location a setter can reach -- every active uniform's,
-    // found by name in mapUniforms -- costs one slot a location and no hashing, and the reserved-index setters and
-    // the named one share the slot each location has. A location at or past MAX_LOCATIONS uploads every time.
-    //
-    // Arrays (count != 1) upload every time and forget their location's slot, which holds element 0 as a single
-    // set wrote it. Matrices neither consult nor touch the cache: GL takes only the matrix setters at a matrix's
-    // location, so no kind a slot describes can be held there.
-    //
-    // Empty until mapUniforms sizes it, and emptied by every link and unload: a link resets each uniform to its
-    // initializer, and a value cached for an older link would skip a set the new one needs.
-    class UniformCache
-    {
-    public:
-        // The uploads a slot can describe: one value of each type a setter writes.
-        enum class Kind : U32
-        {
-            Empty,  // holds nothing, so matches no set
-            Int,    // glUniform1i, glUniform1iv with count 1
-            IVec4,  // glUniform4iv with count 1
-            UInt,   // glUniform1ui
-            UVec4,  // glUniform4uiv with count 1
-            Float,  // glUniform1f, glUniform1fv with count 1
-            Vec2,   // glUniform2f, glUniform2fv with count 1
-            Vec3,   // glUniform3f, glUniform3fv with count 1
-            Vec4,   // glUniform4f, glUniform4fv with count 1
-        };
-
-        // GL 4.3's minimum GL_MAX_UNIFORM_LOCATIONS. A program's own locations stay well below it; a driver that
-        // numbered them sparsely would cost uploads past it, not memory.
-        static constexpr size_t MAX_LOCATIONS = 1024;
-
-        // Cache locations 0 to `locations` - 1, every slot empty.
-        void reset(size_t locations)
-        {
-            mSlots.assign(llmin(locations, MAX_LOCATIONS), Slot());
-            mCount = (U32)mSlots.size();
-        }
-
-        // Cache nothing: every set uploads.
-        void clear()
-        {
-            mSlots.clear();
-            mCount = 0;
-        }
-
-        // Whether a set must reach GL: its location is not cached, or its slot holds another kind or other bits.
-        // Records the set as uploaded, so the caller uploads whenever this says so. Components past the kind's
-        // count are zero on both sides.
-        bool changed(GLint location, Kind kind, U32 x, U32 y = 0, U32 z = 0, U32 w = 0)
-        {
-            if ((U32)location >= mCount)
-            {
-                return true;
-            }
-            Slot& slot = mSlots[(U32)location];
-            // One branch on the whole comparison rather than one a word.
-            const U32 diff = ((U32)slot.mKind ^ (U32)kind)
-                           | (slot.mBits[0] ^ x) | (slot.mBits[1] ^ y) | (slot.mBits[2] ^ z) | (slot.mBits[3] ^ w);
-            if (diff == 0)
-            {
-                return false;
-            }
-            slot = Slot{ kind, { x, y, z, w } };
-            return true;
-        }
-
-        // Record a set its caller uploaded regardless.
-        void uploaded(GLint location, Kind kind, U32 x, U32 y = 0, U32 z = 0, U32 w = 0)
-        {
-            if ((U32)location < mCount)
-            {
-                mSlots[(U32)location] = Slot{ kind, { x, y, z, w } };
-            }
-        }
-
-        // Forget what a location holds, after an upload no slot describes.
-        void forget(GLint location)
-        {
-            if ((U32)location < mCount)
-            {
-                mSlots[(U32)location].mKind = Kind::Empty;
-            }
-        }
-
-    private:
-        struct Slot
-        {
-            Kind mKind = Kind::Empty;
-            U32  mBits[4] = {}; // the uploaded components' bit patterns, zero past the kind's count
-        };
-
-        std::vector<Slot> mSlots;
-        U32 mCount = 0; // mSlots.size(), kept beside it so the bounds check is one compare
-    };
-    UniformCache mUniformCache;
 
     // ---- compile-time variant construction (see EVariant / createShader) ----
     // build one axis's corner set into the matching member; see the definition
@@ -901,11 +559,5 @@ extern LLGLSLShader         gUIProgram;
 extern LLGLSLShader         gSolidColorProgram;
 //Alpha mask shader (declared here so llappearance can access properly)
 extern LLGLSLShader         gAlphaMaskProgram;
-
-#if LL_PROFILER_ENABLE_RENDER_DOC
-#define LL_SET_SHADER_LABEL(shader) shader.setLabel(#shader)
-#else
-#define LL_SET_SHADER_LABEL(shader, label)
-#endif
 
 #endif

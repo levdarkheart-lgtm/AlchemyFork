@@ -515,7 +515,6 @@ TEST_CASE("Metal shader configuration retains pass variants without compiling GL
     CHECK_FALSE(shader.isComplete());
     CHECK(shader.isNativeConfigured());
     CHECK(shader.isAvailable());
-    CHECK(shader.mProgramObject == 0);
 
     U32 variants = 0;
     shader.forEachVariant([&variants](LLGLSLShader& configured)
@@ -523,7 +522,6 @@ TEST_CASE("Metal shader configuration retains pass variants without compiling GL
         ++variants;
         CHECK(configured.isNativeConfigured());
         CHECK_FALSE(configured.isComplete());
-        CHECK(configured.mProgramObject == 0);
         CHECK(configured.mAttributeMask == native_attributes);
     });
     CHECK(variants == 4);

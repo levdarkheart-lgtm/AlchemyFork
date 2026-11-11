@@ -169,6 +169,7 @@ if(AL_BUILD_TESTS)
       tests/algpubuffer_test.cpp
       tests/aldebug_immediate_metal_test.cpp
       tests/albaking_shader_metal_test.cpp
+      tests/alshader_native_lifecycle_test.cpp
       ../llappearanceutility/llbakingshadermgr.cpp
       tests/altextureslot_metal_test.cpp
       tests/alterraintexture_metal_test.cpp
@@ -282,7 +283,6 @@ if(AL_BUILD_TESTS)
       tests/alwindowsdlheadless_test.cpp
       tests/llfontgl_test.cpp
       tests/llfonttextcache_test.cpp
-      tests/llglslshader_gl_test.cpp
       tests/llrender2dutils_gl_test.cpp
       tests/llrendertarget_gl_test.cpp
       tests/llrendersphere_gl_test.cpp

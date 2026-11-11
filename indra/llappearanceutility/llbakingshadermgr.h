@@ -47,8 +47,6 @@ public:
     void unloadShaders();
     bool loadShadersInterface();
 
-    std::string getShaderDirPrefix(void) override;
-
     void updateShaderUniforms(LLGLSLShader * shader) override;
 
 }; //LLBakingShaderMgr

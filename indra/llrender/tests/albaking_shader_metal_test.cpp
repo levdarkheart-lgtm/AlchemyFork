@@ -63,8 +63,6 @@ TEST_CASE("Appearance shader loader configures native metadata without a GL comp
     REQUIRE_FALSE(gGLManager.mInited);
     REQUIRE_FALSE(gAlphaMaskProgram.isAvailable());
     REQUIRE(gAlphaMaskProgram.mShaderFiles.empty());
-    REQUIRE(glCreateShader == nullptr);
-    REQUIRE(glCreateProgram == nullptr);
     REQUIRE(glBindBuffer == nullptr);
     BakingLoaderScope manager;
     std::string error;
@@ -96,7 +94,6 @@ TEST_CASE("Appearance shader loader configures native metadata without a GL comp
         CHECK(gAlphaMaskProgram.isAvailable());
         CHECK(gAlphaMaskProgram.isNativeConfigured());
         CHECK_FALSE(gAlphaMaskProgram.isComplete());
-        CHECK(gAlphaMaskProgram.mProgramObject == 0);
         CHECK(gAlphaMaskProgram.mShaderLevel == 2);
         CHECK(gAlphaMaskProgram.mAttributeMask == (LLVertexBuffer::MAP_VERTEX |
               LLVertexBuffer::MAP_TEXCOORD0 | LLVertexBuffer::MAP_COLOR));

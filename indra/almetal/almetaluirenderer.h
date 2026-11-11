@@ -314,6 +314,12 @@ public:
         ALMetalSurface& surface,
         std::string* error = nullptr);
 
+    // Stage a new native library and every currently used pipeline before
+    // publishing either. Call only between frames; outputs, depth, selection
+    // resources and cumulative statistics retain their existing ownership.
+    bool reloadShaders(std::string* error = nullptr);
+    std::uint64_t shaderGeneration() const noexcept;
+
     // Encodes into one command buffer per viewer frame. The test path uses a
     // persistent offscreen target; the production path acquires and presents
     // one window drawable. No CPU/GPU synchronization occurs here.

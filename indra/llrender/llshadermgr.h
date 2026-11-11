@@ -1,6 +1,6 @@
 /**
  * @file llshadermgr.h
- * @brief Shader Manager
+ * @brief Reserved native render-pass attributes and uniform metadata
  *
  * $LicenseInfo:firstyear=2001&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -33,8 +33,8 @@
 #include "llgl.h"
 #include "llglslshader.h"
 
-#include <boost/unordered/unordered_flat_map.hpp>
-#include <boost/unordered/unordered_flat_set.hpp>
+#include <string>
+#include <vector>
 
 class LLShaderMgr
 {
@@ -684,100 +684,16 @@ public:
 
     virtual void initAttribsAndUniforms(void);
 
-    bool attachShaderFeatures(LLGLSLShader * shader);
-    void dumpObjectLog(GLuint ret, bool warns = true, const std::string& filename = "");
-    void dumpShaderSource(U32 shader_code_count, GLchar** shader_code_text);
-    bool    linkProgramObject(GLuint obj, bool suppress_errors = false, const std::string& shader_name = "unknown");
-    bool    validateProgramObject(GLuint obj);
-    // Compile a shared object into mShaderObjects, which owns it from then on: programs attach it by name and never
-    // delete it, and an object it replaces under the same key is deleted. Returns the object, or 0.
-    // `cache_key` overrides the map key the compiled object is stored under; empty means the
-    // path. Shared objects are compiled once and attached by name, so a source that keys on a
-    // compile-time variant axis is compiled once per axis value under distinct keys.
-    // `min_glsl_version` is the least #version the stage compiles at (430 to read storage blocks or images); 0 is the
-    // context's usual, and a compute stage is always 430. A context whose GLSL is below it fails the stage.
-    GLuint loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines = NULL, S32 texture_index_channels = -1, const std::string& cache_key = std::string(), U32 min_glsl_version = 0);
-    // Compile a stage the caller owns and deletes, stored nowhere: what a program compiles of its own files. As
-    // loadShaderFile otherwise, from the class `shader_level` names down to the first that compiles.
-    GLuint compileShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines = NULL, S32 texture_index_channels = -1, U32 min_glsl_version = 0);
-
-    // Delete a shader object. One still attached to a program is only flagged, and goes when the last program
-    // holding it detaches it.
-    static void deleteShaderObject(GLuint object);
-
-    // Shader objects compileShaderFile has made and deleteShaderObject has not yet deleted: the shared ones, plus any
-    // a program is still linking. A count that only grows is a leak.
-    static U32 sLiveObjects;
-
     // The binding point of `element` of a reserved storage block (eGLSLReservedStorageBlocks), the same in every
     // program; -1 for an index or element the table does not have.
     S32 getStorageBlockBinding(S32 block, U32 element = 0) const;
 
-    // Suffixes marking the axis copies of a shared object. Not legal path character sequences,
-    // so they cannot collide with a real file.
-    static constexpr const char* CLASSIC_OBJECT_SUFFIX = "|CLASSIC_MODE";
-    static constexpr const char* MIRROR_OBJECT_SUFFIX  = "|MIRROR_CLIP";
-
-    // Which compile-time axes a shared object's own source varies on. Passed explicitly at each
-    // attach so a program cannot ask for a copy that was never compiled: no shared source keys
-    // on more than one axis, and a key naming an axis its file ignores has no entry.
-    enum ObjectVariantAxis : U32
-    {
-        OBJ_AXIS_CLASSIC = 1 << 0,
-        OBJ_AXIS_MIRROR  = 1 << 1,
-    };
-
-    // Key of the copy of `path` matching `shader`'s defines, considering only `axes`: a program
-    // carrying CLASSIC_MODE must attach the object compiled with it, since the define cannot
-    // reach an object that was compiled once for everyone. Falls back to the plain path when no
-    // copy was compiled for the axis, which is how a source that does not vary at the class
-    // level in use costs one object rather than two -- see the definition. `stage` picks which
-    // object map to look in and must match the attach the result is passed to.
-    std::string variantObjectKey(const std::string& path, U32 axes, const LLGLSLShader* shader, GLenum stage) const;
-
-    // Implemented in the application to actually point to the shader directory.
-    virtual std::string getShaderDirPrefix(void) = 0; // Pure Virtual
-
     // Implemented in the application to actually update out of date uniforms for a particular shader
     virtual void updateShaderUniforms(LLGLSLShader * shader) = 0; // Pure Virtual
 
-    void initShaderCache(bool enabled, const LLUUID& old_cache_version, const LLUUID& current_cache_version, bool second_instance);
+    // Explicitly purge the historical on-disk shader cache. The application
+    // renderer owner separately invalidates native pipelines and resources.
     void clearShaderCache();
-    void persistShaderCacheMetadata();
-
-    bool loadCachedProgramBinary(LLGLSLShader* shader);
-    bool saveCachedProgramBinary(LLGLSLShader* shader);
-
-    // The pipeline stages a shader object can be compiled for, as indices into
-    // mShaderObjects. GLSL links per stage, so an object a program attaches must
-    // have been compiled for the stage it is attached to; the same source can
-    // sit in several maps.
-    enum EShaderStage : U32
-    {
-        STAGE_VERTEX = 0,
-        STAGE_TESS_CONTROL,
-        STAGE_TESS_EVALUATION,
-        STAGE_GEOMETRY,
-        STAGE_FRAGMENT,
-        STAGE_COMPUTE,
-        STAGE_COUNT
-    };
-    static EShaderStage stageIndex(GLenum type);
-    // The "#define <STAGE>_SHADER 1" line loadShaderFile prepends for a stage.
-    static const char* stageDefine(GLenum type);
-
-    // Delete every shared object and forget it. A program built on them goes on drawing, as a linked program needs
-    // none of its objects; one built afterwards needs them compiled again.
-    void clearShaderObjects();
-
-public:
-    // Compiled shared shader objects per stage, keyed by path -- or by the
-    // distinct key an axis copy was stored under (see loadShaderFile). The
-    // manager owns them: unloading a program that attached one leaves it here.
-    boost::unordered_flat_map<std::string, GLuint> mShaderObjects[STAGE_COUNT];
-    // The keys of the copies loadShaderFile compiled under a key of their own that did not build, per stage, until
-    // clearShaderObjects or the copy builds.
-    boost::unordered_flat_set<std::string> mFailedCopies[STAGE_COUNT];
 
     //global (reserved slot) shader parameters
     std::vector<std::string> mReservedAttribs;
@@ -793,16 +709,6 @@ public:
     };
     std::vector<ReservedStorageBlock> mReservedStorageBlocks;
 
-    struct ProgramBinaryData
-    {
-        GLsizei mBinaryLength = 0;
-        GLenum mBinaryFormat = 0;
-        F64 mLastUsedTime = 0.0;    // calendar seconds, kept across sessions
-    };
-    std::map<LLUUID, ProgramBinaryData> mShaderBinaryCache;
-    LLUUID mShaderCacheVersion;
-    bool mShaderCacheEnabled = false;
-    std::string mShaderCacheDir;
 
 protected:
 

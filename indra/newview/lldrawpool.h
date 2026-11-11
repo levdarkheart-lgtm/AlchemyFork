@@ -386,9 +386,8 @@ public:
     // ladder, so they do hold a previous draw's textures, but an ordinary 2D texture under an
     // unreached sampler2D is defined and costs nothing; clearing them would mean up to N
     // redundant binds on every draw in the hottest loop in the renderer. What must never land
-    // there is a texture whose SAMPLER disagrees with the declaration. The retained
-    // application-owned GL tree has no compare-sampler users; validate_bound_samplers()
-    // asserts the remaining invariant at the draw under gDebugGL.
+    // there is a texture whose sampler disagrees with the native pass binding.
+    // Typed Metal encoders and API validation enforce those bindings.
     //
     // The diffuse sampler is derived from the bound program, not named by the caller:
     // AnisoWrap, plus the SRGBDecode bit when the program's mLinearDiffuse (the

@@ -26,6 +26,7 @@
 #include <new>
 #include <functional>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -1389,6 +1390,19 @@ ALMetalShadowMaterialStats ALMetalWorldFrameData::shadowMaterialStats() const no
         ? mImpl->shadow_materials->stats() : ALMetalShadowMaterialStats{};
 }
 
+bool ALMetalWorldFrameData::reloadShadowMaterials(
+    const ALMetalShaderLibrary& library, std::string* error)
+{
+    if (!mImpl->shadow_materials) return true;
+    auto replacement = ALMetalShadowMaterials::create(*mImpl->device, library, error);
+    if (!replacement) return false;
+    if (mImpl->initialized) replacement->beginFrame(mImpl->generation);
+    // Passes hold the old Pool; submitted commands independently retain their
+    // immutable entries, slots and resources. No GPU wait or arena reset.
+    mImpl->shadow_materials.swap(replacement);
+    return true;
+}
+
 bool ALMetalWorldFrameData::publish(
     ALMetalCommandBuffer& command, const void* bytes, std::size_t length,
     ALMetalWorldDataSlice& slice, std::string* error, bool deduplicate)
@@ -1592,6 +1606,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     }
     std::shared_ptr<ALMetalRenderTargetPool> render_target_pool;
     std::unique_ptr<ALMetalShaderLibrary> library;
+    std::uint64_t shader_generation = 1;
     std::unique_ptr<ALMetalCommandBuffer> command_batch;
     std::deque<std::unique_ptr<ALMetalCommandBuffer>>
         pending_command_batches;
@@ -1715,7 +1730,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<ALMetalWorldSimpleShadowPSOCensus, 13> simple_shadow_pso_diagnostics{};
     std::array<ALMetalWorldPBRShadowPSOCensus, 13> pbr_shadow_pso_diagnostics{};
     ALMetalWorldWaterShadowPSOCensus water_shadow_pso_diagnostics;
-    const bool opaque_family_split_requested = []()
+    bool opaque_family_split_requested = []()
     {
         const char* value = std::getenv("ALCHEMY_METAL_POST_FAMILY_ENCODERS");
         return value && std::strcmp(value, "1") == 0;
@@ -2227,6 +2242,85 @@ ALMetalWorldGBufferRenderer::ALMetalWorldGBufferRenderer(
 
 ALMetalWorldGBufferRenderer::~ALMetalWorldGBufferRenderer() = default;
 
+bool ALMetalWorldGBufferRenderer::reloadShaders(std::string* error)
+{
+    if (!mImpl || !mImpl->device || mImpl->command_batch)
+    {
+        setError(error, "Metal world shader reload requires an idle renderer");
+        return false;
+    }
+    // The original forced program load did not destroy render targets or
+    // histories. Build native executable owners independently, then publish
+    // only after every eager PSO and sampler has succeeded.
+    auto replacement = create(*mImpl->device, mImpl->max_anisotropy, false, error);
+    if (!replacement) return false;
+    auto& next = *replacement->mImpl;
+    const auto rebuild_optional = [&](auto&& self, const auto& old, auto& fresh) -> bool
+    {
+        if constexpr (std::is_same_v<std::decay_t<decltype(old)>,
+                                     std::unique_ptr<ALMetalRenderPipeline>>)
+        {
+            if (!old) return true;
+            auto descriptor = old->descriptor();
+            descriptor.library = next.library.get();
+            fresh = ALMetalRenderPipeline::create(*next.device, descriptor, error);
+            return fresh != nullptr;
+        }
+        else
+        {
+            for (std::size_t index = 0; index < old.size(); ++index)
+                if (!self(self, old[index], fresh[index])) return false;
+            return true;
+        }
+    };
+    // These experimental/blend-specialized PSOs are created lazily rather
+    // than by create(). Rebuild already-used variants before committing too.
+    if (!rebuild_optional(rebuild_optional, mImpl->probe_above_water_flat_pipelines,
+                          next.probe_above_water_flat_pipelines) ||
+        !rebuild_optional(rebuild_optional, mImpl->probe_above_water_wave_pipelines,
+                          next.probe_above_water_wave_pipelines) ||
+        !rebuild_optional(rebuild_optional, mImpl->probe_pre_water_pbr_pipelines,
+                          next.probe_pre_water_pbr_pipelines)) return false;
+    for (const auto& entry : mImpl->custom_pre_water_alpha_pipelines)
+    {
+        std::unique_ptr<ALMetalRenderPipeline> pipeline;
+        if (!rebuild_optional(rebuild_optional, entry.pipeline, pipeline)) return false;
+        next.custom_pre_water_alpha_pipelines.push_back({entry.family, entry.hdr,
+            entry.rigged, entry.shadows, entry.coverage, entry.source,
+            entry.destination, std::move(pipeline)});
+    }
+    next.frame_data = mImpl->frame_data;
+    if (next.frame_data &&
+        !next.frame_data->reloadShadowMaterials(*next.library, error)) return false;
+    next.render_target_pool = mImpl->render_target_pool;
+    next.pending_command_batches.swap(mImpl->pending_command_batches);
+    next.probe_workload.swap(mImpl->probe_workload);
+    next.opaque_family_split_requested = mImpl->opaque_family_split_requested;
+    next.opaque_family_split_saw_timing = mImpl->opaque_family_split_saw_timing;
+    next.opaque_diagnostic_calls = mImpl->opaque_diagnostic_calls;
+    next.opaque_diagnostics = mImpl->opaque_diagnostics;
+    next.simple_shadow_pso_diagnostics = mImpl->simple_shadow_pso_diagnostics;
+    next.pbr_shadow_pso_diagnostics = mImpl->pbr_shadow_pso_diagnostics;
+    next.water_shadow_pso_diagnostics = mImpl->water_shadow_pso_diagnostics;
+    next.constant_stats = mImpl->constant_stats;
+    next.shadow_coalesced_draws = mImpl->shadow_coalesced_draws;
+    next.shadow_covered_input_draws = mImpl->shadow_covered_input_draws;
+    next.shadow_covered_coalesced_draws = mImpl->shadow_covered_coalesced_draws;
+    next.shadow_source_records = mImpl->shadow_source_records;
+    next.shadow_encoded_records = mImpl->shadow_encoded_records;
+    next.shadow_early_coalesced_records = mImpl->shadow_early_coalesced_records;
+    next.shader_generation = mImpl->shader_generation + 1;
+    mImpl.swap(replacement->mImpl);
+    // Metal command buffers retain their encoded pipelines/resources; pending
+    // completion wrappers moved above retain throttling/error observation.
+    return true;
+}
+
+std::uint64_t ALMetalWorldGBufferRenderer::shaderGeneration() const noexcept
+{
+    return mImpl ? mImpl->shader_generation : 0;
+}
+
 void ALMetalWorldGBufferRenderer::setFrameData(
     std::shared_ptr<ALMetalWorldFrameData> data)
 {
@@ -2436,6 +2530,15 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                                     std::uint32_t max_anisotropy,
                                     std::string* error)
 {
+    return create(device, max_anisotropy, true, error);
+}
+
+std::unique_ptr<ALMetalWorldGBufferRenderer>
+ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
+                                    std::uint32_t max_anisotropy,
+                                    bool initialize_diagnostics,
+                                    std::string* error)
+{
     if (max_anisotropy < 1 || max_anisotropy > 16)
     {
         setError(error,
@@ -2444,18 +2547,21 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     }
     auto impl = std::make_unique<Impl>();
     impl->device = &device;
-    try
+    if (initialize_diagnostics)
     {
-        std::string diagnostic_error;
-        impl->probe_workload = ALMetalProbeWorkloadCapture::createIfRequested(
-            device, &diagnostic_error);
-        if (!diagnostic_error.empty())
-            std::fprintf(stderr, "Metal probe workload diagnostic unavailable: %s\n",
-                         diagnostic_error.c_str());
-    }
-    catch (...)
-    {
-        std::fprintf(stderr, "Metal probe workload diagnostic initialization failed\n");
+        try
+        {
+            std::string diagnostic_error;
+            impl->probe_workload = ALMetalProbeWorkloadCapture::createIfRequested(
+                device, &diagnostic_error);
+            if (!diagnostic_error.empty())
+                std::fprintf(stderr, "Metal probe workload diagnostic unavailable: %s\n",
+                             diagnostic_error.c_str());
+        }
+        catch (...)
+        {
+            std::fprintf(stderr, "Metal probe workload diagnostic initialization failed\n");
+        }
     }
     impl->render_target_pool = ALMetalRenderTargetPool::create(device);
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
