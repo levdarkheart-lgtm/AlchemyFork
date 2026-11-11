@@ -200,3 +200,5 @@ erratum or a new current observation; do not silently rewrite historical claims.
 - [Cold startup and environment repairs](CURRENT-cold-start-environment-repairs-2026-11-10.md) — zero-file cache test, UI/default textures, EEP display policy and probe-reset continuity; build68630 prepared without launch, plus the initial multi-avatar findings.
 
 - [Failed owner-driven travel on 68633](CURRENT-failed-travel-68633-2026-11-10.md) — retained exact build/GPU evidence plus the failed live UI/name/geometry test and CPU trace limits, before the subsequent correctness repairs.
+
+- [Classic-avatar/music and display audit before Rotate repair](CURRENT-classic-avatar-music-display-audit-2026-11-11.md) — prior68643 live observations and unresolved display/turn findings; superseded by the closed-viewer68648 checkpoint.

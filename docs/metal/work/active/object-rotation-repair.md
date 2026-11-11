@@ -74,3 +74,11 @@ live log SHA256 is
 `1a4dd3be28edb2b5ebff908ccedab04b3e4ee61fdec7ff2dec08ebd71f00cd6a`.
 Raw logs/captures remain ignored and private. Final canonical build identity and
 handoff are recorded in `state/CURRENT.md` after the source commit.
+
+Canonical app follow-through: code checkpoint
+`7710ae4f977295d7c3539516a2d3814485a7db45`, Release26.4.0.68648.
+`tools/metal/build.sh configure`, `tools/metal/build.sh build`,
+`tools/metal/verify_app.sh <canonical app>` and deep strict `codesign --verify`
+all exit0;349 Mach-O files ARM64. Exact expanded argv and hashes are in
+`final-build-identity.json`. Production loader and LLRender objects were compiled.
+No viewer was launched for these checks; final viewer process census was empty.

@@ -1,57 +1,47 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `2c60e47b0eac61f3a62b504163504516d1729bed`.
+**Renderer checkpoint:** Commit `7710ae4f977295d7c3539516a2d3814485a7db45`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [paused campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
-## Current correctness work — 2026-11-10
+## Current correctness work — 2026-11-11
 
-Owner requested actual original-source repairs after failed68638 travel. Root
-integrated and built; independent agents source-reviewed separate contracts.
-[Classic-avatar repair](classic-avatar-position-w.md): original position vec3 is
-explicitly XYZ/W1. Native shared skin/cloth helpers used raw stored padding W,
-which is not homogeneous position. Two helper normalizations restore original
-translation behavior without hiding geometry or changing object skinning.
-Actual old68638 library fails10/256 assertions; repaired shader passes256/1.
-Existing world/impostor regressions pass48568/2. GPU API+shader validation used.
+Owner requests all accumulated fixes pushed. Broader porting goal and20FPS goal
+are paused; viewer must stay CLOSED. No launch or screenshot comparison.
+[Edit Rotate repair](object-rotation-repair.md): exact original Debug shader is
+position-only/uniform-color. Native omitted MAP_VERTEX, rejecting immediate
+rings/fans and authoritative UI publication. Repair restores metadata and nonindexed
+cull-state propagation. No input/permission gate, hidden geometry or math changes.
+Saved live log corroborates original washer/fan vertex counts; not exact clicks.
 
-[Music repair](parcel-music-host-repair.md): inherited relative LibVLC module path
-fails initialization in actual bundle. Canonical native-executable-derived path
-succeeds. Rebuilt real playback host passed local3s silent WAV atvolume0 through
-Playing/time updates/Done/normal exit0, no audio-output errors. Remote/audible
-parcel playback remains open. [Camera/voice audit](teleport-camera-voice-audit.md)
-found no changed teleport interpolation or voice contract; functional voice and
-actual fly-in diagnosis remain open, no guessed changes applied.
+Actual native fixture passes62/1. Same frozen test on old cull code fails4/62;
+restored candidate plus nearby UI/metadata regressions pass419/14 with Metal API
+and shader validation. Tests cover real immediate helpers and independent GPU
+oracles; newview loader and live dragging are separate source/build/live gates.
+Independent source/test reviewers approved; live object rotation unverified.
 
-Canonical Release68643 source2c60e47 is built/verified/signed; owner subsequently
-requested launch. Exact hash/PID48817 and login window verified; no login by root.
-Doctor/configure/build/verify_app/deep signature all0;349 Mach-O files ARM64.
-Private commands/logs/hashes: private-classic-avatar-position-w-20261110-01.
-Owner closed68638;68643 now at login, no account/cache/settings/camera
-changes or performance campaign resumption. Translator stopped; replay off.
+Canonical Release68648 at7710ae4f97 built/verified/signed, never launched for
+validation. Doctor/configure/build/verify_app/deep codesign all0;349ARM64 Mach-O.
+Private evidence: private-object-rotate-audit-20261110-01/final-build-identity.json.
+Viewer census empty. No account/cache/settings/camera/region/object changes.
+Earlier inspection opened login-only viewer; it was closed after owner said no
+launch. Do not use app-selection APIs that can auto-launch.
 
-[Failed68638 live result](travel-live-68638.md) remains failed; bounded GPU proof
-is not full live acceptance. Earlier [travel repairs](travel-correctness-repair.md)
-and [avatar ownership work](avatar-crowd-parity.md) remain included. Potential
-VBO/fence publication seams are private/unapplied, not established live causes.
-Cold cache backup remains private/intact. No release/private upload/new push.
+Keep [classic-avatar W1](classic-avatar-position-w.md), [LibVLC module/cleanup
+repair](parcel-music-host-repair.md), [travel repairs](travel-correctness-repair.md)
+and all preceding renderer changes. Old avatar library fails10/256; repaired
+256/1 and existing48568/2 pass; actual local silent media host smoke passed.
+Owner reports geometry fixed in76-avatar crowd; complete parity still open.
+[Crowd/turn findings](crowd-live-68643.md): animated limit11→40 restored owner
+responsiveness, distinct self-arrow-turn/body lag unresolved. Avoid intrusive
+LLDB repeats. [Camera/voice](teleport-camera-voice-audit.md) source matches;
+actual teleport fly-in cause and attended voice/media acceptance still open.
 
-[Latest crowded-region trial](crowd-live-68643.md): owner raised max animated
-avatars11→40 and confirmed UI/walking/nearby-avatar movement responsive. Root
-captured20sCPUtrace, no source/settings/restart changes or formal FPS comparison.
-Earlier cloud/bad-inverse warnings remain separate unclosed correctness evidence.
-Follow-up LEFT/RIGHT turning name-tag/body mismatch remains unresolved; original
-rotation policy unchanged. Capture actual world age before a guessed fix.
-One pure-data sample showed current world; snapshot+detach succeeded. It did not
-capture a controlled bad turn. Avoid repeated disruptive debugger attachments.
-
-[Display-settings audit](display-settings-lighting-audit.md) found original HiDPI
-and scene-HDR wiring retained; physical display output stays SDR. Two confirmed
-source defects need repair: deferred PBR emissive OFF is disconnected, and Glow
-ON tests GL-only shader handles. Current check changed no code/settings. Owner
-lighting/Lightbox/Auto Exposure complaint remains visually unverified; bounded
-source math/open callbacks match original. Do not tune brightness from screenshots.
+[Display audit](display-settings-lighting-audit.md): HiDPI restart and internal
+HDR wired, physical outputSDR. UNFIXED deferred emissive-OFF and Glow-ON callback
+defects; preserve original alpha/HUD emission exceptions. Bright/dark lighting
+complaint open; Lightbox/EEP/bounded AE math match, no speculative tuning.
 
 ## Work board
 
@@ -90,22 +80,17 @@ ancestry was explicitly verified. No measured performance improvement claimed.
 
 ## Complete-product checkpoint gate
 
-Original classic-avatar shader ABI and packaged LibVLC initialization defects
-are repaired with actual failing-old/passing-new GPU and actual-host playback
-proof. Prior loading/UI/depth/terrain/name repairs retained. Whole-viewer travel,
-input/resize/HUD/crowd/ART/music/voice and shadow/sky/low-DD parity remain open.
-Non1-scale final grain/dither coordinate parity remains open. Build/test counts
-do not establish visual acceptance, product completion or FPS gains.
+Editing renderer advanced through source-confirmed Debug layout and cull fixes,
+with actual failing-old/passing-new GPU evidence. Not live edit-feature parity.
+All previous repairs retained; broad goal and performance campaign stay paused.
+No full product, FPS improvement or release-readiness claim.
 
 ## Immediate executable action
 
-68643 runs for owner-directed travel. Crowd responsiveness is owner-confirmed
-after animated-avatar limit change; verify previously corrupt
-avatar, outfit/teleport loading, HUDs, input/resize, names and real parcel music
-with exact-build logs. If camera symptom persists, correlate camera pose and
-published world source-frame/region; original camera code is unchanged. Voice
-requires attended functionality before parity. No speculative camera/voice fix.
-Earlier20FPS campaign remains paused; last controlled9.745FPS is not a new result.
+Complete normal push of all commits to origin/codex/apple-silicon-metal, verify
+remote HEAD equals final local HEAD, keep exact receipt private. Owner already
+authorized this push. No force push, release or default-branch merge. Keep viewer
+closed; do not resume broad implementation or screenshot comparisons.
 
 ## Non-negotiable open gates
 
