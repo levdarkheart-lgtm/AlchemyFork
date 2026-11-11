@@ -46,10 +46,8 @@ target_sources(
   PUBLIC FILE_SET HEADERS FILES ${llwindow_BASE_HEADERS} llpreeditor.h
 )
 
-# SDL's video and GL bring-up (llsdl) is part of every build: the worker
-# threads' shared contexts are made through it, and so is the hidden window a
-# headless run renders on. The SDL window backend below is the part that is
-# optional.
+# SDL video initialization serves both the native Metal window and hidden
+# utility surface. Metal resources are shared directly by upload workers.
 target_link_libraries(
   llwindow
   PRIVATE al::flags
