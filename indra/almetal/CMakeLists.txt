@@ -189,6 +189,9 @@ if(AL_BUILD_TESTS)
             tests/almetal_avatar_coverage_test.mm
             tests/almetal_postchain_parity_test.mm
             tests/almetal_postchain_legacy_admission_test.mm
+            tests/almetal_lens_policy_admission_test.mm
+            tests/almetal_linear_screen_boundary_test.mm
+            tests/almetal_reflection_policy_test.mm
             tests/almetal_classic_avatar_pose_test.mm
             tests/almetal_avatar_resources_test.mm tests/almetal_gpu_test.mm tests/almetal_encoder_cache_test.mm
             tests/almetal_indexed_join_test.mm
@@ -223,6 +226,10 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_avatar_coverage_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_postchain_parity_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_postchain_legacy_admission_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_lens_policy_admission_test.mm
+                              tests/almetal_linear_screen_boundary_test.mm
+                              tests/almetal_reflection_policy_test.mm
+                              PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_classic_avatar_pose_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_gpu_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_encoder_cache_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

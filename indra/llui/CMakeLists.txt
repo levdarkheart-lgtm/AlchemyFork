@@ -572,14 +572,14 @@ if(AL_BUILD_TESTS)
   set_target_properties(llui_test_fakes PROPERTIES FOLDER "Tests/llui")
 
   # What llui's test binaries set up for the process, put back after every
-  # case, and give the native state guard to check. The excluded historical
-  # GL binary must not leave an orphan GL fixture object in the native build.
+  # case, and give the native state guard to check. Native pixel cases use a
+  # separate process/session from CPU cases with unbacked fonts.
   add_library(llui_test_checks OBJECT tests/llui_test_checks.cpp)
   set(llui_checks llui_test_checks)
-  if(NOT DARWIN)
-    add_library(llui_gl_test_checks OBJECT tests/llui_test_checks.cpp)
-    target_compile_definitions(llui_gl_test_checks PRIVATE LLUI_TEST_GL=1)
-    list(APPEND llui_checks llui_gl_test_checks)
+  if(DARWIN)
+    add_library(llui_metal_test_checks OBJECT tests/llui_test_checks.cpp)
+    target_compile_definitions(llui_metal_test_checks PRIVATE LLUI_TEST_METAL=1)
+    list(APPEND llui_checks llui_metal_test_checks)
   endif()
   foreach(checks ${llui_checks})
     target_link_libraries(${checks} PRIVATE al::flags al_test_support llui)
@@ -736,19 +736,14 @@ if(AL_BUILD_TESTS)
     DEFINES "LLUI_TEST_APP_DIR=\"${INDRA_SOURCE_DIR}/newview\""
   )
 
-  # What the text view, a surface and its tab strip, and a comparison draw,
-  # read back from llrender's hidden window: one GL context, and the
-  # headless UI's fonts with GL textures on it.
+  # Exact text/surface/diff drawing through an offscreen native UI session.
+  # No SDL/window surface is created by this fixture.
   al_add_test_binary(
-    llui_gl_tests
+    llui_metal_tests
     PROJECT llui
-    SOURCES tests/aldiffview_gl_test.cpp tests/alsurface_gl_test.cpp tests/altextview_gl_test.cpp
-    # The same editor drawn, a frame at a time, into llrender's hidden
-    # window: what the drawing steps are measured by.
-    BENCH_SOURCES tests/altextdraw_bench.cpp
-    SUPPORT llui_test_fakes llui_gl_test_checks llrender_test_checks llcommon_test_checks
-    LIBRARIES llui ${test_libs}
+    SOURCES tests/aldiffview_metal_test.cpp tests/alsurface_metal_test.cpp tests/altextview_metal_test.cpp
+    SUPPORT llui_test_fakes llui_metal_test_checks llrender_test_checks llcommon_test_checks
+    LIBRARIES llui almetal ${test_libs}
     DEFINES "LLUI_TEST_APP_DIR=\"${INDRA_SOURCE_DIR}/newview\""
-    GL
   )
 endif()

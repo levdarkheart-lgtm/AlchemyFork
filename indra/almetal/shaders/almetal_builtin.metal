@@ -1,3 +1,6 @@
+// Copyright and license notices for the original Alchemy shader sources and
+// embedded algorithms are preserved in indra/almetal/THIRD_PARTY_NOTICES.txt
+// in the source tree and beside this module in installed Resources directories.
 #include <metal_stdlib>
 using namespace metal;
 

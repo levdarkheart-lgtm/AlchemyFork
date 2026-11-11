@@ -89,14 +89,13 @@ if(AL_BUILD_TESTS)
   target_link_libraries(llappearance_test_fakes PRIVATE al::flags llrender)
   set_target_properties(llappearance_test_fakes PROPERTIES FOLDER "Tests/llappearance")
 
-  # The texture layers' morph mask readback on the hidden window, in the one
-  # context the process shares.
+  # Ordered native morph-mask readback and encoded bake storage. The scoped
+  # Metal fixture creates a device without an SDL/window surface.
   al_add_test_binary(
-    llappearance_gl_tests
+    llappearance_metal_tests
     PROJECT llappearance
-    SOURCES tests/lltexlayer_gl_test.cpp
-    LIBRARIES llappearance
+    SOURCES tests/lltexlayer_metal_test.cpp
+    LIBRARIES llappearance almetal
     SUPPORT llappearance_test_fakes llrender_test_checks llcommon_test_checks
-    GL
   )
 endif()

@@ -145,16 +145,20 @@ if(DARWIN)
   set_property(
     TARGET ${AL_VIEWER_BINARY_NAME}
     APPEND PROPERTY LINK_DEPENDS "${AL_METAL_BUILTIN_SOURCE}"
+                                "${INDRA_SOURCE_DIR}/almetal/THIRD_PARTY_NOTICES.txt"
   )
   if(AL_METAL_BUILTIN_LIBRARY_TARGET)
     add_dependencies(${AL_VIEWER_BINARY_NAME} ${AL_METAL_BUILTIN_LIBRARY_TARGET})
   endif()
   install(
     FILES "${AL_METAL_BUILTIN_SOURCE}"
+          "${INDRA_SOURCE_DIR}/almetal/THIRD_PARTY_NOTICES.txt"
     DESTINATION "${AL_INSTALL_DATADIR}"
     COMPONENT viewer
   )
   if(AL_METAL_BUILTIN_LIBRARY)
+    set_property(TARGET ${AL_VIEWER_BINARY_NAME} APPEND PROPERTY
+                 LINK_DEPENDS "${AL_METAL_BUILTIN_LIBRARY}")
     install(
       FILES "${AL_METAL_BUILTIN_LIBRARY}"
       DESTINATION "${AL_INSTALL_DATADIR}"
@@ -501,7 +505,6 @@ install(
 )
 foreach(
   tree
-  shaders
   camera
   windlight
   filters

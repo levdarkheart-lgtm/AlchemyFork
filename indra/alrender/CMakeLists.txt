@@ -13,7 +13,6 @@ set(
   alcutoutimage.cpp
   alfarplane.cpp
   allightmapblur.cpp
-  alondemandtarget.cpp
   alrenderinputrequests.cpp
   alrenderresourceplan.cpp
   alshaderinputs.cpp
@@ -32,7 +31,6 @@ set(
   alhexlattice.h
   alhuddepth.h
   allightmapblur.h
-  alondemandtarget.h
   alrenderinputrequests.h
   alrenderresourceinputs.h
   alrenderresourceplan.h
@@ -60,9 +58,8 @@ target_link_libraries(
 target_precompile_headers(alrender REUSE_FROM llprecompiled)
 
 if(AL_BUILD_TESTS)
-  # The viewer's own shader files, read from the source tree.
+  # The viewer's native shader source, also inspected by CPU contract checks.
   set(alrender_shader_dir
-    "AL_TEST_SHADER_DIR=\"${INDRA_SOURCE_DIR}/newview/app_settings/shaders\""
     "AL_TEST_METAL_SHADER=\"${INDRA_SOURCE_DIR}/almetal/shaders/almetal_builtin.metal\""
   )
 
@@ -80,6 +77,8 @@ if(AL_BUILD_TESTS)
       tests/alframeend_test.cpp
       tests/alrenderinputrequests_test.cpp
       tests/alrenderresourceplan_test.cpp
+      tests/alrender_resource_invariants_test.cpp
+      tests/alfxaa_native_invariants_test.mm
       tests/alshaderinputs_test.cpp
       tests/alspotshadowcache_test.cpp
       tests/altransienttargetpool_test.cpp
@@ -89,27 +88,7 @@ if(AL_BUILD_TESTS)
     SUPPORT llrender_test_checks llcommon_test_checks
     DEFINES ${alrender_shader_dir}
   )
+  set_source_files_properties(tests/alfxaa_native_invariants_test.mm
+                              PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
-  # The window's depth under the HUD, a spot shadow draw's geometry from a real vertex buffer,
-  # FXAA on an RGB10_A2 source, the reflection probes' taps in one pass over
-  # them against their list, the transient target pool's GL objects,
-  # shared depth and poison, and the previews' and bakes' targets taken from
-  # it only when one draws, on llrender's shared hidden window.
-  al_add_test_binary(
-    alrender_gl_tests
-    PROJECT alrender
-    SOURCES
-      tests/alondemandtarget_gl_test.cpp
-      tests/alspotshadowcache_gl_test.cpp
-      tests/altransienttargetpool_gl_test.cpp
-      tests/fxaa_gl_test.cpp
-      tests/reflectionprobe_gl_test.cpp
-    BENCH_SOURCES
-      tests/alondemandtarget_bench.cpp
-      tests/reflectionprobe_gl_bench.cpp
-    LIBRARIES alrender
-    SUPPORT llrender_test_checks llcommon_test_checks
-    DEFINES ${alrender_shader_dir}
-    GL
-  )
 endif()

@@ -1,162 +1,122 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `8bb61bb34d`; current uncommitted admissions
-and isolated live HUD/lens fixes are identified in CURRENT.
+**Integrated checkpoint:** Commit `066d9d4e53`; root registrations/staging WIP
+and exact isolated ownership are recorded in CURRENT.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
 ## Current implementation — 2026-11-11
 
-Owner resumed unfinished RLVa, Debug/Developer and remaining OpenGL removal.
-No viewer launch or screenshot comparison. The separate20FPS campaign remains
-deferred. Follow original source contracts before each fix.
+Owner requested unfinished RLVa, Debug/Developer features and final OpenGL
+removal, with original-viewer source inspection before every rendering fix.
+Keep viewer, appearance utility and all native windows closed; no screenshot
+comparison. The separate20FPS campaign remains deferred.
 
-[Current work and command receipts](remaining-feature-port.md).
-Latest: [native feature/resource completion](native-feature-resource-completion.md)
-integrates utility/preview reload, native vertex allocation/upload/direct draws,
-actual capacity-based batching, GL manager/state cleanup, write-only GLTF sink
-removal, native About/report identity, Developer Frame Profile and native fixed
-texture benchmark. Native draw regressions67598assertions/42cases and combined
-FrameProfile/utility/preview regressions60425/12 pass with Metal validation.
-Registered benchmark target and GPU integration run0,19123assertions/10cases.
-Frozen696c43ba78 app build0; canonical68677 verified349ARM64/0invalid,
-deepcodesign0 and viewerimports0forbidden. New image readback/helper cleanup,
-native labels, displaced shader profiler, primitive-counter fix, SDL context/
-OpenGL dependency removal and native build gates are integrated through815416675e;
-full dependent native regressions0,67773assertions/47cases. Wrapper/Win32/WGL/
-Vulkan tails removed; native water count fixture31516/1 passes. [Menu audit](developer-menu-admission.md)
-repairs inherited timer controls and identifies the remaining orphan Shader
-Cache enable control. [Source-tail evidence](native-opengl-tail-removal.md):
-CPU vocabulary and expanded source gate integrated,3507files/0blockers/0errors/
-1188informational;39tool tests0. Native regressions67793/49 and93869/22 pass.
-Native archive dd9372cd69/root policy53e3599a36 are integrated, including actual
-failed-save retry, shader-validation compatibility and persistence proof.
-[Current cache/coverage receipts](native-pipeline-cache-and-coverage.md) supersede
-historical counts above: frozen d28b0477a0 Release26.4.0d68712 doctor/configure/
-build/verify0,349ARM64/0invalid/deepcodesign0/imports0forbidden; optional appearance
-Release build/ARM64/signature/import checks0. Full llrender77929/312(311pass/one
-CPAL multi-palette skip),alrender556639/132,targeted GPU93869/22 all0. Cache API
-5905/6,global instrumentation882/1,selective98/1 all0. Tools39/harness32files0;
-strict source3509files/0blockers/0errors/1188informational. Filters overlap.
-No launches. Exact commands/failures in latest note.
-[New target/query/font invariants](native-target-query-invariants.md): native
-font/UI24cases276assertions0, defaultFont/TextCache61cases1862assertions0 in
-separate registered process,2Dhelper4cases76assertions0. Dead image-slot state
-removed after exact live format predicate relocated; usage/font447/340.
-Native timer-only receipt owner5666/30; displaced attachment spans removed.
-Target/depth f75461d142 and query ac4a125458 fixes are integrated with actualGPU
-regressions. Native sphere/cached draw diagnostics restored f36e8aabdb. Full
-registered llrender88827assertions/375cases(374pass/one known palette skip),
-separate Font/UI1862/61 both0 under Metal API/shader validation.
-[Latest Scene Monitor/UI/RenderInfo evidence](native-scene-ui-and-render-info.md)
-supersedes that checkpoint: frozen9918621da8 includes renderer0b; Release
-llrender96864/384(383passed/one CPAL skip), Font/UI1862/61, alrender556641/132,
-affected Metal73523/38 all0. Canonical26.4.0d68744 doctor/configure/build/verify/
-deepcodesign0;349ARM64/zero invalid, viewer forbidden imports0. Appearance
-build/ARM64/signature/imports0. All349Mach-O imports inspected: foreign VLC/CEF
-GL links are recorded separately and require consumer/policy audit. No launch.
+Latest: [native raster/float/reflection and fixture admission](native-raster-and-legacy-fixture-admission.md).
+This extends [Scene Monitor/UI/RenderInfo](native-scene-ui-and-render-info.md),
+[target/query/font invariants](native-target-query-invariants.md),
+[cache/coverage](native-pipeline-cache-and-coverage.md),
+[feature/resource completion](native-feature-resource-completion.md),
+[menu audit](developer-menu-admission.md),
+[source-tail evidence](native-opengl-tail-removal.md),
+[buffer visualization](debug-buffer-visualization.md),
+[appearance loader](appearance-native-loader.md),
+[RLVa mapping](rlva-native-owner-cleanup.md) and
+[developer diagnostics](developer-metal-diagnostics.md).
 
-Earlier verified bounded checkpoints below remain included; their older build
-and inventory counts do not supersede the current observations above.
-Follow-up: [native buffer visualization](debug-buffer-visualization.md) now
-owns modes0–6 in the original post order, retaining spatial meter/SMAA sources.
-[Optional baking loader](appearance-native-loader.md) now configures native
-AlphaMask without shared GL compilation; initialization failure cleanup is
-checked. Remove displaced visualization GLSL and dead texture introspection.
-Canonical Release68651 and optional Release utility build0. ARM64 bundle349/0
-and deep strict codesign0. Metal-validated tests59386/11 +959/18 pass; no apps
-launched. Strict source audit still fails1783findings/2406files (333call syntax).
-Older bounded fixes and receipts follow; they remain included.
-Native sphere ownership replaces its displaced GL execution; current-view
-parameter sampling restores original per-execution policy. Typed overlay order
-is retained. [RLVa mapping](rlva-native-owner-cleanup.md).
-[Developer diagnostics](developer-metal-diagnostics.md) now select next-run
-Metal API validation before device creation, including legacy requests and
-debugsession; explicit driver-crash testing enters Metal without GPU work.
-The crash action was not executed. Correct deferred emissive OFF, Glow ON and
-Build No Post-processing preflight; preserve original alpha/HUD exceptions.
-Remove dead GL depth-bounds unit/tests/setting and sphere GLSL files.
+Retain native world/material/avatar/terrain/shadow/sky/water/effects,
+UI/font/HUD/media ownership and all original-mapped repairs from those notes.
+Network, inventory, editing, simulation and voice behavior remain in scope.
+No retained fallback renderer, translation backend or general graphics layer.
 
-Doctor/configure/test builds0. Native renderer910/17 and focused native38307/5
-plus display-post1824/1 assertions/cases pass under Metal API/shader validation.
-First app compile found an exposed transitive camera include; explicit include
-fixed. Final Release68649 build0; ARM64 inspection349files/zero invalid slices
-and deep strict codesign0. Exact app hashes are pinned in the work note.
-Live feature parity remains unverified.
-Strict GL inventory still fails1792findings/2406files. No performance claim.
+New integrated work through e3e8ed5b35:
+- Original polygon-offset/queued-flush behavior and actual retained-target
+  viewport extent repaired, with actual red controls and native pixel tests.
+- Always-float Screen restores nonHDR highlight/flare/dirt behavior. Explicit
+  HDR intent preserves SSR and probe conversion boundaries; original Gaussian
+  horizontal/vertical quantization checked independently.
+- Reflection level zero shades the default probe without rewriting the full
+  pack or debug data; separate actual manager-body CPU/native GPU controls.
+- Native resource/FXAA/morph and28LLUI legacy invariant admission, orphan
+  on-demand target and displaced GL test/benchmark retirement.
+- Three unused lighting/composition APIs and13 unused shader-program metadata
+  graphs retired after reader/body preservation audits.
+- Full original shader/embedded-algorithm notices tracked. Native viewer and
+  optional utility shader/notice staging is root WIP; fresh utility build0.
+
+Root registered validations: resource+FXAA9140/5, morph13203/3,
+native LLUI73292/28, CPU LLUI4821716/1516, llrender333661/438(one known CPAL
+skip), Font/UI1862/61, affected Metal UI36441/11 all0. Counts overlap; do not
+sum them as independent coverage. Float/reflection registered Release build0;
+actual-method CPU190/5 passed. Root integrated float105890/23, conversion3462/3,
+reflection1964/3 and affected UI36441/11 passed API/shader validation;
+exact source/WIP/binary hashes are in float-reflection-registered-validation.json.
+Exact commands/hashes/failures and source maps are in the latest note.
+
+Last verified full canonical viewer remains d9f624ea464d3ba3c305d7656bf9533f6e65a8dd,
+Release26.4.0d68755: doctor/configure/build/verify0,349ARM64/zero invalid slices,
+deepcodesign0 and main viewer forbidden imports0. Optional utility newer WIP
+build/static/lookup/dependency checks0, exact resources and96character files,
+zeroGLSL; final receipt in the latest note. Neither executable launched.
+All349 prior bundle imports audited; foreign VLC/CEF links/capabilities remain
+separate open work, not a whole-bundle native-only pass.
 
 ## Work board
 
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
-| M-001 | Reproducible ARM64 reference/build | doing | Source-exact originals/native normal builds verified; independent fresh-checkout release remains. |
-| M-002 | GL inventory and release audit | doing | Owned native rendering; strict source/runtime zero gate remains. |
-| M-003 | Native presentation/lifecycle | doing | Native world/UI and attended lifecycle; prolonged stability remains. |
-| M-004 | Resource/transfer/sync ownership | doing | Arenas/retirement/direct slices/borrowed targets/material ownership validated; net performance open. |
-| M-005 | MSL/binding behavior | doing | Original math preserved; material resource ABI validated; full parity open. |
-| M-006 | UI/fonts/HUD/media | doing | Native implementation retained; full feature/stability proof remains. |
-| M-007 | World/material/shadow correctness | doing | Raw depth/PCSS/casters/reverseZ retained; broad original parity remains. |
-| M-008 | Advanced views/effects | doing | Native buffer views and real intermediate ownership validated; full parity remains. |
-| M-009 | Feature/stability/native-only release | doing | Feature matrix, prolonged stability and independent release review remain. |
-| M-010 | M1 Max measured optimization | doing | Controlled baselines/captures collected; multi-scene contract unmet. |
-| M-011 | Remaining owned GL authority | doing | Native resources/window/rendering; strict remaining-tail audit open. |
-| M-012 | Native UI automation | complete | Exact fullscreen/login/Preset123 flow; unsupported system-helper targeting avoided. |
-| M-013 | RLVa parity | doing | Native-only sphere ownership and current-view state repaired; broader behavior remains unverified. |
-| M-014 | Ultra20FPS campaign | deferred | Ownerrequestedstop; finalcurrentOFF9.745FPS/20FPSunmet; no validatednextfix. |
-States describe evidence; a bounded completed item never implies product completion.
-
-## Current implementation boundary
-
-Native Metal owns world, materials, avatars, terrain, shadows, sky/water,
-atmosphere/effects, UI/font/HUD, media textures and presentation. Retain network,
-inventory, simulation, editing and voice behavior. Preserve all earlier native
-resource, shader, avatar, HUD/upload, travel, music and editing repairs.
-No fallback renderer or general graphics framework is authorized.
+| M-001 | Reproducible ARM64 reference/build | doing | Original source and canonical builds verified; independent fresh-checkout release remains. |
+| M-002 | GL inventory and release audit | doing | Owned Metal/source gates advance; foreign/runtime audit remains. |
+| M-003 | Native presentation/lifecycle | doing | Real native owners; finalization and prolonged stability remain. |
+| M-004 | Resource/transfer/sync ownership | doing | Native lease/pool/buffer/query admission; measured performance open. |
+| M-005 | MSL/binding behavior | doing | Explicit native formats/ABI and shader math checked; broader parity open. |
+| M-006 | UI/fonts/HUD/media | doing | Native28LLUI/morph/HUD admission; full feature/stability proof remains. |
+| M-007 | World/material/shadow correctness | doing | Float scene and reflection policy repaired; broad original parity remains. |
+| M-008 | Advanced views/effects | doing | Lens/scope/DoF/finalization closure and broader parity remain. |
+| M-009 | Feature/stability/native-only release | doing | Feature matrix, stability and independent release review remain. |
+| M-010 | M1 Max measured optimization | doing | Earlier controlled baselines retained; multi-scene contract unmet. |
+| M-011 | Remaining owned GL authority | doing | Last fixtures/assets/build paths under removal; runtime gates remain. |
+| M-012 | Native UI automation | complete | Prior exact fullscreen/login/Preset123 flow; no launch this goal. |
+| M-013 | RLVa parity | doing | Sphere/silhouette/current-view repairs retained; broader behavior unverified. |
+| M-014 | Ultra20FPS campaign | deferred | Owner-requested stop; final OFF9.745FPS/20FPS unmet. |
 
 ## Complete-product checkpoint gate
 
-M-008/M-011 advance through real buffer-view consumers, native world/UI shader
-reload and removal of shared GL compiler/driver ownership; M-013 prior fixes remain included.
-Bounded physical GPU evidence does not establish whole-feature/runtime parity.
-This does not establish complete Debug/Developer menus or RLVa parity.
-M-012 stays complete; M-014 remains deferred. No release readiness claim.
+M-008/M-011 advance through corrected real scene/raster ownership, native
+legacy-invariant admission and removal of proven dead execution/storage.
+M-013 retains original-mapped sphere/silhouette/camera fixes. A passing bounded
+fixture does not establish complete RLVa or Debug/Developer menu parity.
+M-012 remains complete; M-014 remains deferred. No release-readiness claim.
 
 ## Immediate executable action
 
-Frozen d9/renderer1f canonical26.4.0d68755 and optional appearance Release
-build/static verification passed:349ARM64/zero invalid, deepcodesign0 and main
-viewer forbidden imports0. Matching-header llrender98965/389(one known skip),
-Font/UI1862/61, alrender556641/132 and affected Metal106377/50 all0 under API+
-shader validation. Exact viewport-* receipts are in the artifact directory.
-Newer88ff dead finalizers, ab128 native CAS/DoF admission,9ac375 image/tessellation
-admission and a272 native CPU shader/tool readers are integrated. Root is
-registering those fixtures and retiring only their displaced GL test mechanics.
-Live isComplete guards repaired:8bb61bb34d HUD native bracket9595/9GPU passes;
-no-order control100/818failures, viewer textual syntax0 and source review0.
-a54314153d lens policy/history actual registered CPU73/3passes, existing HDR
-flare/dirt1846/2passes. NonHDR feature remains excluded until original always-
-float screen/input contract and explicit HDR-dependent conversion boundaries
-are repaired; RLVa owns isolated pipeline/world/header/probe callsite closure
-and physical positive/negative tests. Current root Release renderer rebuild0;
-llrender302803/426(one known skip), Font/UI1862/61 and alrender556674/132 all0
-with API+shader validation. Production strict3505files/0blockers/0errors;
-excluded old tests still232blocking inventory findings. gl_tail owns remaining
-alrender/appearance fixture invariants and orphan on-demand graph; menu owns
-28LLUI native case admission. Root maps nine remaining llrender state cases;
-partial target-clear native semantics need actual consumer proof. Foreign
-read-only audit complete; three VLC windowed output/converter exclusions are
-candidates, keep screen/VT/CEF capabilities. Shader asset/packaging retirement
-follows remaining reader admission, fresh staging and appropriate validation.
-No whole-bundle no-GL claim: VLC/CEF links and shipped foreign capability payloads
-are separate recorded work. CURRENT/latest note pin exact ownership and limits.
-Goal stays active; bounded build/test success never establishes full parity.
-Keep viewer and appearance utility closed.
+Root run56044 exited0. Native replacement gates closed; integrated reflection
+harness97d0b8a20e, pipeline leaf49fa6b4401 and120GLSL assets066d9d4e53.
+Root registration/IDE/install boundaries updated in WIP; exact original asset
+hashes and notice gates are in glsl-root-retirement-gates.json.
+Live finalization remains separate and must preserve actual
+reference-capture/lens-fit/callback/epoch/SSR/native scope owners.
+
+Root owns canonical registrations/docs/assets/integration. rlva_port owns
+isolated pipeline.cpp/h, actual-body finalize config and native CPU/GPU tests.
+menu_port owns isolated obsolete GL test-mode plumbing in shared test helper/
+top-level option/report/CI/upstream docs/sanitizers. gl_tail_audit owns eleven
+now-unused bloom/DoF shader metadata graphs in isolated llviewershadermgr.cpp/h;
+optional utility fresh staging/lookup/dependency validation is complete.
+No overlapping shared renderer edits.
+
+After final staging review, verify fresh native viewer/utility stages. Keep
+notice/source hashes and metallib dependency tracking. Do not interpret
+existing-stage stale assets as newly packaged files. Three VLC windowed-output
+exclusions remain proposals; keep actual screen/VT/CEF functionality and record
+foreign import/runtime unknowns. Required frozen full viewer build/static
+verification follows coherent integration; no executable launch.
 
 ## Non-negotiable open gates
 
 Full original feature parity, prolonged stability, measured multi-scene
 performance, strict source/runtime no-GL and independent release review remain
-open. Keep all earlier unresolved lighting, self-turn, camera and voice issues
-documented; do not apply speculative unrelated policy changes.
+open. Keep earlier lighting, self-turn, camera and voice issues documented.
+Do not change immutable product constraints. A bounded completed item never implies product completion.
 Do not mark feature parity from build/test success alone.

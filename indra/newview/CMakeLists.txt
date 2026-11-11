@@ -1872,6 +1872,7 @@ if(AL_BUILD_VIEWER)
     noise.h
     pipeline.h
     pipeline_lens_config.inl
+    llreflectionmapmanager_config.inl
     rlvactions.h
     rlvcommon.h
     rlvdefines.h
@@ -2037,18 +2038,6 @@ if(AL_BUILD_VIEWER)
   file(GLOB_RECURSE viewer_XUI_FILES LIST_DIRECTORIES FALSE ${CMAKE_CURRENT_SOURCE_DIR}/skins/*.xml)
   source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/skins PREFIX "XUI Files" FILES ${viewer_XUI_FILES})
 
-  # Add the shader sources
-  file(
-    GLOB_RECURSE viewer_SHADER_FILES
-    LIST_DIRECTORIES FALSE
-    ${CMAKE_CURRENT_SOURCE_DIR}/app_settings/shaders/*.glsl
-  )
-  source_group(
-    TREE ${CMAKE_CURRENT_SOURCE_DIR}/app_settings/shaders
-    PREFIX "Shaders"
-    FILES ${viewer_SHADER_FILES}
-  )
-
   # note that the scripts which publish these files are sensitive to the file
   # extensions. Be cautious about adding new file types here.
   set(
@@ -2100,7 +2089,6 @@ if(AL_BUILD_VIEWER)
     ${AL_VIEWER_BINARY_NAME}-resources
     SOURCES
       ${viewer_XUI_FILES}
-      ${viewer_SHADER_FILES}
       ${viewer_APPSETTINGS_FILES}
       ${viewer_CHARACTER_FILES}
       ${viewer_RESOURCE_FILES}
@@ -2576,6 +2564,7 @@ if(AL_BUILD_TESTS)
       tests/alfeedback_test.cpp
       tests/alfeedbackoutbox_test.cpp
       tests/allens_policy_test.cpp
+      tests/alreflection_policy_test.cpp
       tests/algradehistory_test.cpp
       tests/almetalbenchmark_test.cpp
       tests/almetalbenchmark_provenance_test.cpp
