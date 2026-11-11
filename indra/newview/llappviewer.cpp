@@ -3878,8 +3878,8 @@ LLSD LLAppViewer::getViewerInfo() const
     // Moved hack adjustment to Windows memory size into llsys.cpp
     info["CONCURRENCY"] = LLSD::Integer((S32) std::thread::hardware_concurrency());
     info["OS_VERSION"] = LLOSInfo::instance().getOSString();
-    info["GRAPHICS_CARD_VENDOR"] = gGLManager.mGLVendorString;
-    info["GRAPHICS_CARD"] = gGLManager.mGLRendererString;
+    info["GRAPHICS_CARD_VENDOR"] = gRenderCapabilities.vendor();
+    info["GRAPHICS_CARD"] = gRenderCapabilities.renderer();
 
 #if LL_WINDOWS
     std::string drvinfo;

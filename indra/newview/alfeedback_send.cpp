@@ -28,6 +28,7 @@
 
 #include "alcrashreporter.h"
 #include "alfeedbackoutbox.h"
+#include "alrendercapabilities.h"
 #include "llagent.h"
 #include "llappviewer.h"
 #include "llavatarnamecache.h"
@@ -40,7 +41,6 @@
 #include "llevents.h"
 #include "llfile.h"
 #include "llfloaterreg.h"
-#include "llgl.h"
 #include "llhttpconstants.h"
 #include "llhttpretrypolicy.h"
 #include "llimagejpeg.h"
@@ -156,15 +156,14 @@ namespace
             context.userName = gAgentAvatarp->getFullname();
         }
         context.osName = LLOSInfo::instance().getOSStringSimple();
-        context.gpuName = gGLManager.mGLRenderer;
-        context.gpuVendor = gGLManager.mGLVendor;
-        context.gpuVersion = gGLManager.mDriverVersionVendorString.empty() ? gGLManager.mGLVersionString
-                                                                           : gGLManager.mDriverVersionVendorString;
+        context.gpuName = gRenderCapabilities.renderer();
+        context.gpuVendor = gRenderCapabilities.vendor();
+        context.gpuVersion = gRenderCapabilities.version();
 
         auto& tags = context.tags;
         tags = ALCrashReporter::commonTags();
         tags.emplace_back("ref", ALFeedback::reference(event_id));
-        tags.emplace_back("gpu_vendor", gGLManager.mGLVendorShort);
+        tags.emplace_back("gpu_vendor", gRenderCapabilities.vendor());
         tags.emplace_back("render_quality", std::to_string(gSavedSettings.getU32("RenderQualityPerformance")));
         tags.emplace_back("crash_reports", ALCrashReporter::isEngaged() ? "on" : "off");
         if (!report.linked.empty())
