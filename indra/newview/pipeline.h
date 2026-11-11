@@ -1199,6 +1199,7 @@ public:
         const LLMatrix3a& normal_rotation,
         F32 debug_outline_width = 0.f);
     bool publishMetalImpostorBake(LLVOAvatar& avatar);
+    void stampMetalImpostorCoverage(const LLUUID& avatar_id, const LLColor4* fill);
     void releaseMetalImpostorTextures(const LLUUID& avatar_id);
     void renderMetalWorldLocalLights(
         LLViewerCamera& camera, const LLMatrix4a& modelview,

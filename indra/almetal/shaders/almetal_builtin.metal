@@ -1916,6 +1916,25 @@ fragment float4 almetal_world_coverage_fragment(
     return float4(0.0, 0.0, 0.0, 1.0);
 }
 
+vertex ALMetalWorldCoverageVaryings almetal_world_impostor_coverage_vertex(
+    constant float& window_depth [[buffer(0)]], uint vertex_id [[vertex_id]])
+{
+    const float2 texcoord = float2((vertex_id << 1) & 2, vertex_id & 2);
+    ALMetalWorldCoverageVaryings output;
+    output.position = float4(texcoord.x * 2.0 - 1.0,
+                             1.0 - texcoord.y * 2.0, window_depth, 1.0);
+    return output;
+}
+
+fragment float4 almetal_world_impostor_coverage_fragment(
+    ALMetalWorldCoverageVaryings input [[stage_in]],
+    constant float4& fill [[buffer(0)]])
+{
+    // Original gDebugProgram writes the CPU colour in linear space. The
+    // impostor's sRGB attachment performs its normal encode on store.
+    return fill;
+}
+
 vertex ALMetalWorldImpostorVaryings almetal_world_impostor_vertex(
     constant ALMetalWorldImpostorConstants& constants [[buffer(0)]],
     uint vertex_id [[vertex_id]])

@@ -11740,7 +11740,9 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
         scene.normal_hdr = capture.normal_hdr;
         scene.hdr = capture.hdr;
         scene.reverse_z = capture.reverse_z;
-        scene.stamp_opaque_coverage = !capture.impostor_profile;
+        // Coverage was stamped at generateImpostor's original pre-forward
+        // boundary, even when this opaque-forward slice contains no batches.
+        scene.stamp_opaque_coverage = false;
         scene.reflection_probes = has_shiny
             ? &capture.impostor_reflection_probes : nullptr;
         scene.hero_probe = has_shiny && hero_active
@@ -16415,6 +16417,37 @@ void LLPipeline::captureMetalWorldImpostorBatch(
     }
 }
 
+void LLPipeline::stampMetalImpostorCoverage(const LLUUID& avatar_id, const LLColor4* fill)
+{
+    if (!mMetalWorldSimpleCapture) return;
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.renderer || !capture.impostor_bake_target ||
+        !capture.impostor_bake_attempted || !capture.impostor_bake_native_valid ||
+        capture.impostor_bake_avatar_id != avatar_id)
+    {
+        capture.impostor_bake_native_valid = false;
+        return;
+    }
+    ALMetalWorldGBufferScene scene;
+    scene.width = capture.width;
+    scene.height = capture.height;
+    scene.hdr = capture.hdr;
+    scene.normal_hdr = capture.normal_hdr;
+    scene.reverse_z = capture.reverse_z;
+    scene.stamp_opaque_coverage = true;
+    scene.opaque_coverage_fill = fill ? fill->mV : nullptr;
+    // The original forward NDC .99999 maps to window .999995. Reverse-Z's
+    // original native pin is .000005, not the exact clear/far depth.
+    scene.opaque_coverage_depth = capture.reverse_z ? .000005f : .999995f;
+    std::string error;
+    if (!capture.renderer->compositeImpostorPostDeferred(
+            *capture.impostor_bake_target, scene, &error))
+    {
+        capture.impostor_bake_native_valid = false;
+        LL_WARNS("Metal") << "Native avatar coverage stamp failed: " << error << LL_ENDL;
+    }
+}
+
 bool LLPipeline::publishMetalImpostorBake(LLVOAvatar& avatar)
 {
     if (!mMetalWorldSimpleCapture)
@@ -17282,14 +17315,16 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.normal_hdr = capture.normal_hdr;
     scene.hdr = capture.hdr;
     scene.reverse_z = capture.reverse_z;
-    scene.stamp_opaque_coverage = impostor_bake && !capture.impostor_profile;
+    // The viewer stamps once at its original CPU policy boundary below,
+    // where muted/complexity colour and the original far pin are known.
+    scene.stamp_opaque_coverage = false;
     scene.wireframe = capture.wireframe;
     // CPU mechanism tests are positive, while GPU results depend on the
     // workload. Keep this nonpersistent trial control off by default until
     // a controlled viewer comparison establishes an end-to-end benefit.
     static LLCachedControl<bool> join_static_draws(
         gSavedSettings, "RenderMetalJoinStaticDraws", false);
-    scene.join_adjacent_static_draws = join_static_draws();
+    scene.join_adjacent_static_draws = !impostor_bake && join_static_draws();
     if (scene.wireframe)
     {
         constexpr F32 gray = 0.5f;
@@ -31897,7 +31932,12 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
                 LL_DEBUGS_ONCE("AvatarRenderPipeline") << "Avatar " << avatar->getID() << " MUTED set grey" << LL_ENDL;
             }
 
-            drawFarPlaneQuad(GL_GREATER, fill);
+#if LL_DARWIN
+            if (!preview_avatar)
+                stampMetalImpostorCoverage(avatar->getID(), visually_muted || too_complex ? fill : nullptr);
+            else
+#endif
+                drawFarPlaneQuad(GL_GREATER, fill);
         }
     };
 

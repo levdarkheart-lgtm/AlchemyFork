@@ -956,6 +956,12 @@ struct ALMetalWorldGBufferScene
     bool hdr = false;
     bool reverse_z = false;
     bool stamp_opaque_coverage = false;
+    // Optional original-viewer stamp policy. Borrowed RGBA is copied while
+    // encoding; commands never retain this CPU pointer. Null preserves RGB.
+    const float* opaque_coverage_fill = nullptr;
+    // Window depth in Metal's [0,1] convention. Absent keeps the existing
+    // exact-far coverage contract (forward 1, reverse 0).
+    std::optional<float> opaque_coverage_depth;
     bool wireframe = false;
     // Opt-in for immutable static ordinary triangle streams only. Native
     // encoder state changes remain barriers; query/special scopes stay direct.

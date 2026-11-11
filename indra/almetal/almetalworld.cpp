@@ -793,6 +793,16 @@ namespace
         return true;
     }
 
+    bool validOpaqueCoverage(const ALMetalWorldGBufferScene& scene)
+    {
+        if (!scene.stamp_opaque_coverage)
+            return !scene.opaque_coverage_fill && !scene.opaque_coverage_depth;
+        return (!scene.opaque_coverage_fill || finiteValues(scene.opaque_coverage_fill, 4)) &&
+            (!scene.opaque_coverage_depth ||
+             (std::isfinite(*scene.opaque_coverage_depth) &&
+              *scene.opaque_coverage_depth >= 0.f && *scene.opaque_coverage_depth <= 1.f));
+    }
+
     bool validWorldColorGrade(const ALMetalWorldColorGrade& grade)
     {
         if (!grade.enabled)
@@ -1761,6 +1771,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<NormalPipelines, 2> impostor_pipelines;
     std::array<NormalPipelines, 2> impostor_debug_pipelines;
     std::array<NormalPipelines, 2> coverage_pipelines;
+    std::array<NormalPipelines, 2> coverage_depth_pipelines;
+    std::array<NormalPipelines, 2> coverage_fill_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         cutout_background_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2689,6 +2701,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction(
             "almetal_world_impostor_debug_fragment") ||
         !impl->library->hasFunction("almetal_world_coverage_fragment") ||
+        !impl->library->hasFunction("almetal_world_impostor_coverage_vertex") ||
+        !impl->library->hasFunction("almetal_world_impostor_coverage_fragment") ||
         !impl->library->hasFunction("almetal_world_terrain_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_terrain_fragment") ||
         !impl->library->hasFunction("almetal_world_local_light_vertex") ||
@@ -5296,6 +5310,17 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             {
                 return nullptr;
             }
+            descriptor.vertex_function = "almetal_world_impostor_coverage_vertex";
+            descriptor.label = "Alchemy avatar pinned opaque-coverage pipeline";
+            impl->coverage_depth_pipelines[hdr][normal_hdr] =
+                ALMetalRenderPipeline::create(device, descriptor, error);
+            if (!impl->coverage_depth_pipelines[hdr][normal_hdr]) return nullptr;
+            descriptor.fragment_function = "almetal_world_impostor_coverage_fragment";
+            descriptor.colors[0].write_mask = ALMetalColorWriteMask::all;
+            descriptor.label = "Alchemy avatar silhouette opaque-coverage pipeline";
+            impl->coverage_fill_pipelines[hdr][normal_hdr] =
+                ALMetalRenderPipeline::create(device, descriptor, error);
+            if (!impl->coverage_fill_pipelines[hdr][normal_hdr]) return nullptr;
         }
     }
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
@@ -7152,7 +7177,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         (scene.batch_count != 0 && !scene.batches) ||
         (scene.visibility_query_count != 0 &&
          !scene.visibility_queries) ||
-        scene.width == 0 || scene.height == 0)
+        scene.width == 0 || scene.height == 0 || !validOpaqueCoverage(scene))
     {
         setError(error, "Metal world G-buffer scene is incomplete");
         return nullptr;
@@ -8509,9 +8534,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         const ALMetalDepthStencilState* coverage_depth = scene.reverse_z
             ? mImpl->reverse_coverage_depth.get()
             : mImpl->forward_coverage_depth.get();
+        const bool pinned = scene.opaque_coverage_depth.has_value() || scene.opaque_coverage_fill;
+        const float coverage_depth_value = scene.opaque_coverage_depth.value_or(scene.reverse_z ? 0.f : 1.f);
+        const auto& pipelines = scene.opaque_coverage_fill ? mImpl->coverage_fill_pipelines :
+            pinned ? mImpl->coverage_depth_pipelines : mImpl->coverage_pipelines;
         const ALMetalRenderPipeline* coverage_pipeline =
-            mImpl->coverage_pipelines[scene.hdr ? 1 : 0]
-                                     [scene.normal_hdr ? 1 : 0].get();
+            pipelines[scene.hdr ? 1 : 0][scene.normal_hdr ? 1 : 0].get();
         encoded =
             coverage_encoder->setDepthStencilState(coverage_depth, error) &&
             coverage_encoder->setViewport(viewport, error) &&
@@ -8519,7 +8547,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             coverage_encoder->setCullMode(ALMetalCullMode::none, error) &&
             coverage_encoder->setPipeline(*coverage_pipeline, error) &&
             mImpl->setVertexData(*coverage_encoder, *command,
-                0, &reverse_z, sizeof(reverse_z), error) &&
+                0, pinned ? static_cast<const void*>(&coverage_depth_value) : &reverse_z,
+                sizeof(reverse_z), error);
+        if (encoded && scene.opaque_coverage_fill)
+            encoded = mImpl->setFragmentData(*coverage_encoder, *command,
+                0, scene.opaque_coverage_fill, sizeof(float) * 4, error);
+        encoded = encoded &&
             coverage_encoder->draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
             coverage_encoder->end(error);
@@ -21751,8 +21784,10 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
     const ALMetalWorldGBufferScene& scene,
     std::string* error)
 {
-    if (!mImpl || !mImpl->device || !scene.batches ||
-        scene.batch_count == 0 || scene.width == 0 || scene.height == 0)
+    if (!mImpl || !mImpl->device ||
+        (scene.batch_count != 0 && !scene.batches) ||
+        (scene.batch_count == 0 && !scene.stamp_opaque_coverage) ||
+        scene.width == 0 || scene.height == 0 || !validOpaqueCoverage(scene))
     {
         setError(error,
                  "Metal world impostor post-deferred scene is incomplete");
@@ -21787,13 +21822,13 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
 
     constexpr std::size_t float4_stride = sizeof(float) * 4;
     constexpr std::uint32_t max_skin_joints = 110;
-    const bool has_shiny = std::any_of(
+    const bool has_shiny = scene.batch_count != 0 && std::any_of(
         scene.batches, scene.batches + scene.batch_count,
         [](const ALMetalWorldSimpleBatch& batch)
         {
             return batch.impostor_shiny;
         });
-    const bool has_legacy_alpha = std::any_of(
+    const bool has_legacy_alpha = scene.batch_count != 0 && std::any_of(
         scene.batches, scene.batches + scene.batch_count,
         [](const ALMetalWorldSimpleBatch& batch)
         {
@@ -22437,9 +22472,12 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         const ALMetalDepthStencilState* coverage_depth = scene.reverse_z
             ? mImpl->reverse_coverage_depth.get()
             : mImpl->forward_coverage_depth.get();
+        const bool pinned = scene.opaque_coverage_depth.has_value() || scene.opaque_coverage_fill;
+        const float coverage_depth_value = scene.opaque_coverage_depth.value_or(scene.reverse_z ? 0.f : 1.f);
+        const auto& pipelines = scene.opaque_coverage_fill ? mImpl->coverage_fill_pipelines :
+            pinned ? mImpl->coverage_depth_pipelines : mImpl->coverage_pipelines;
         const ALMetalRenderPipeline* coverage_pipeline =
-            mImpl->coverage_pipelines[scene.hdr ? 1 : 0]
-                                     [scene.normal_hdr ? 1 : 0].get();
+            pipelines[scene.hdr ? 1 : 0][scene.normal_hdr ? 1 : 0].get();
         encoded =
             coverage_encoder->setDepthStencilState(coverage_depth, error) &&
             coverage_encoder->setViewport(viewport, error) &&
@@ -22447,7 +22485,12 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
             coverage_encoder->setCullMode(ALMetalCullMode::none, error) &&
             coverage_encoder->setPipeline(*coverage_pipeline, error) &&
             coverage_encoder->setVertexBytes(
-                0, &reverse_z, sizeof(reverse_z), error) &&
+                0, pinned ? static_cast<const void*>(&coverage_depth_value) : &reverse_z,
+                sizeof(reverse_z), error);
+        if (encoded && scene.opaque_coverage_fill)
+            encoded = coverage_encoder->setFragmentBytes(
+                0, scene.opaque_coverage_fill, sizeof(float) * 4, error);
+        encoded = encoded &&
             coverage_encoder->draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
             coverage_encoder->end(error);
