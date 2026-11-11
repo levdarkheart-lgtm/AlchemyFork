@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `0b219b9728b7dda9864357e1546a7e7337ce274c`.
+**Renderer checkpoint:** Commit `f75d9e306ffd1371582ff40b8662bf7944aabee6`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -123,9 +123,11 @@ M-012 stays complete; M-014 remains deferred. No release readiness claim.
 
 ## Immediate executable action
 
-Frozen9918 verification is complete; root owns integration/CMake/docs. Integrate
-native fence495efc818c (original12case map, actual2318/20pass, bounded two-counter
-fix) and target-local almetal_tests bundle resources, then reviewed RLVa
+Frozen9918 verification is complete; root owns integration/CMake/docs. Native
+fence495efc818c integrated asf75d9e306f (original12case map, actual2318/20pass,
+bounded two-counter fix), registered2157/9pass. Target-local almetal_tests bundle
+resource ownership registered indexed-join7969/1pass; direct CLI CTest only.
+Review RLVa
 silhouette fill (menu owns pipeline/world/MSL; child21566/4pass). Release pipeline
 ownership to rlva for CPU-preserving zero-reader uniform closure, then gl_tail's
 ALGPUBuffer/schema/native-byte diagnostic cleanup. Dead stencil graph follows.

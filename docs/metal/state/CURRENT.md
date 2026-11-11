@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `0b219b9728b7dda9864357e1546a7e7337ce274c`.
+**Renderer code checkpoint:** `f75d9e306ffd1371582ff40b8662bf7944aabee6`.
 The remaining-feature/OpenGL-removal goal stays active. No viewer or appearance
 utility launch, menu invocation, screenshot, signed-in state or user-cache
 operation. Offscreen tests submit actual Metal commands. The owner-stopped
@@ -42,6 +42,10 @@ Native buffer storage bodies remain unchanged with stronger tests.
 ## Observed validation
 
 Root receipts: `artifacts/metal/feature-completion-20261111/`.
+Frame-fence fix integrated f75d9e306f. Registered CTest native fences2157/9
+and packaged indexed-join7969/1 pass API+shader validation. almetal_tests now
+owns its offline metallib in a target-local bundle; CTest directly executes
+the CLI binary. Generated resource rules also track shader-only updates.
 Frozen source9918621da8 (renderer0b) registered Release llrender:
 **96864assertions/384cases**,383passed/one known CPAL multi-palette skip;
 separate native Font/UI **1862/61**0, alrender **556641/132**0, affected native
@@ -73,9 +77,9 @@ No performance or release-readiness claim.
 
 ## Exact next actions and ownership
 
-Root owns integration/CMake/docs. Frozen9918 verification is complete; integrate
-frame-fence495efc818c and target-local native test-bundle resource packaging,
-then silhouette and uniform closures in order. Root isolated test-only tree
+Root owns integration/CMake/docs. Frozen9918 verification is complete; fence
+and test-bundle packaging integrated. Review silhouette8c40fc6 then release
+pipeline for uniform closure. Root isolated test-only tree
 /private/tmp/alchemy-native-postchain-admission-20261111 proves a new final
 viewport defect: original hard lens mask at32x24 passes at1x but native world
 post then resize fails1080/9249assertions at reduced/oversampled sizes. Preserve

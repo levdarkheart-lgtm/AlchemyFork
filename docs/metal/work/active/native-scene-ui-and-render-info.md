@@ -151,6 +151,16 @@ Release indexed-join requires an actual NSBundle metallib; unbundled run37/38
 passed, then the identical executable plus exact offline asset in an offscreen
 CLI test bundle passed73523/38. No source assertion weakened. Add target-local
 CMake bundle resource ownership to prevent this recurring packaging error.
+Integrated f75d9e306f preserves all12 historical frame-fence invariants over
+nine actual native cases. Red2157/9 found one pending wait diagnostic2vs3;
+only two counters change, all timeline/pacing behavior identical. Child
+2318/20with scheduler/completion/slack passes; root registered fences2157/9
+and actual bundled indexed-join7969/1pass API+shader validation. Target-local
+almetal_tests MACOSX_BUNDLE and concrete per-config generated resource rules
+use existing TARGET_FILE CTest paths; no launch or global helper changes.
+Both Release/Debug resource-only update behavior also checked by independent
+Foundation-only probe (notGPUproof). Root native-fences-bundled-* logs pin
+the real offline asset. Deleted only the mapped554-line legacy fence fixture.
 API-only cache5905/6, instrumented882/1 and selective98/1 all0; actual disk
 render/compute hits1/1 withzero misses. Test receipt scene-ui-test-validation.json.
 Strict production source3509files/0blockers/0errors/1177informational; including

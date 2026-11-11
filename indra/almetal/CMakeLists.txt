@@ -242,6 +242,23 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_frame_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_function_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   if(AL_METAL_BUILTIN_LIBRARY)
+    # Exercise the same offline asset lookup as the viewer. CTest executes
+    # TARGET_FILE directly; this bundle creates no window or app launch.
+    set_target_properties(almetal_tests PROPERTIES MACOSX_BUNDLE TRUE)
+    target_sources(almetal_tests PRIVATE "${AL_METAL_BUILTIN_LIBRARY}")
+    # Multi-config source properties belong to concrete generated paths.
+    # Resource rules then also copy shader-only updates without relinking.
+    if(CMAKE_CONFIGURATION_TYPES)
+      set(almetal_test_configs ${CMAKE_CONFIGURATION_TYPES})
+    else()
+      set(almetal_test_configs "${CMAKE_BUILD_TYPE}")
+    endif()
+    foreach(almetal_test_config IN LISTS almetal_test_configs)
+      string(REPLACE "$<CONFIG>" "${almetal_test_config}"
+             almetal_test_asset "${AL_METAL_BUILTIN_LIBRARY}")
+      set_source_files_properties("${almetal_test_asset}" PROPERTIES
+        GENERATED TRUE MACOSX_PACKAGE_LOCATION Resources)
+    endforeach()
     target_compile_definitions(
       almetal_tests
       PRIVATE AL_METAL_BUILTIN_LIBRARY_PATH="${AL_METAL_BUILTIN_LIBRARY}"

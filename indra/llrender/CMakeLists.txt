@@ -163,6 +163,7 @@ if(AL_BUILD_TESTS)
       tests/altextureslot_metal_test.cpp
       tests/alterraintexture_metal_test.cpp
       tests/algputimer_metal_test.cpp
+      tests/alframefences_metal_test.mm
       tests/alquerypool_test.cpp
       tests/alquerypool_diagnostics_test.cpp
       tests/alquerypool_metal_diagnostics_test.cpp
@@ -214,6 +215,7 @@ if(AL_BUILD_TESTS)
   if(DARWIN)
     target_link_libraries(llrender_tests PRIVATE almetal)
     set_source_files_properties(tests/alvertex_label_metal_test.mm
+                                tests/alframefences_metal_test.mm
                                 tests/alinfiniteprojection_metal_test.mm
                                 tests/alrendertarget_native_test.mm
                                 PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
@@ -233,11 +235,8 @@ if(AL_BUILD_TESTS)
     target_link_libraries(llrender_font_ui_tests PRIVATE almetal)
   endif()
 
-  # The GL suites that stand a context up for each test case and end the GL
-  # classes with it, on LLWindowManager's hidden window: the paths of the
-  # font libraries above that rasterize, and llimagegl, which also makes a
-  # context again in the middle of a case. Never beside the shared context
-  # below, whose classes they would end under it.
+  # Historical driver fixtures excluded by the native-only configuration.
+  # Preserve each meaningful invariant in native tests before retiring it.
   al_add_test_binary(
     llrender_gl_fresh_tests
     PROJECT llrender
@@ -249,41 +248,12 @@ if(AL_BUILD_TESTS)
     GL
   )
 
-  # The GL suites that share one context for the process, each case putting
-  # back what it changed of it:
-  # - the hidden window itself, and a worker thread's shared context on it;
-  # - tessellation stages and the quad conventions the terrain relies on;
-  # - the infinite reverse-Z projection: stored depth, round trip and depth
-  #   order out to 100 km;
-  # - which fragment output reaches a render target's colour attachment,
-  #   integer attachments cleared and drawn, targets kept, built again and
-  #   re-pointed at a shared depth by their descriptions, and their labels;
-  # - LLRender's cached clear colour, scissor box, viewport and raster state,
-  #   LLGLSScissor and ALGLStencil;
-  # - LLGLSLShader's cache key, its uniform value cache, the compute path
-  #   (programs built through the shader manager, their images, storage
-  #   blocks and dispatches), integer textures through reserved samplers,
-  #   what the debug validator says of images and stencil reads, and which
-  #   shader objects a program owns and which the manager does;
-  # - the historical ALGPUBuffer store, readback and stream rings;
-  # - ALUniformBuffer's persistently mapped rings: the store each makes, how
-  #   it is mapped, what the GPU reads where a slice is bound, and the scratch
-  #   ring's segments reused once the frame each was left in has finished;
-  # - ALFrameFences: one fence a frame, polled at the frame's end, waits that
-  #   stall only on frames the GPU has not finished, and the frame's end's
-  #   pacing wait for the frame a given number before it, and no later one;
-  # - ALQueryPool: each kind's names kept to its target, a held target
-  #   refused, results read once their frame has ended, spans, release and
-  #   conditional draws;
-  # - LLVertexBuffer: what a buffer draws straight after an upload, after a
-  #   second upload and after a new size, and that an upload sends only the
-  #   stores its map wrote; and LLRenderSphere's buffer drawn under the debug
-  #   GL checks.
+  # Remaining historical shared-context fixtures. Native target/query/buffer,
+  # font/UI, projection, sphere and frame-fence invariants are registered above.
   al_add_test_binary(
     llrender_gl_shared_tests
     PROJECT llrender
     SOURCES
-      tests/alframefences_gl_test.cpp
       tests/alrenderstate_gl_test.cpp
       tests/altessellation_gl_test.cpp
       tests/aluniformbuffer_gl_test.cpp
