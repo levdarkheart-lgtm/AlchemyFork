@@ -248,7 +248,7 @@ bool LLDrawPoolWater::captureMetalWaterSurface(bool direct_probe)
         LLViewerShaderMgr::instance()->getShaderLevel(
             LLViewerShaderMgr::SHADER_DEFERRED) > 1 &&
         gPipeline.shaderInputs().mGlobal.mShadowDetail > 0;
-    const bool metal_occlusion = main_view && occlusion_cull;
+    const bool metal_occlusion = main_view && occlusion_cull && LLRender::sCompute;
     if (waves && !surface.fillMetalWaterWaves(
             metal_water, camera, bound_a, bound_b,
             metal_occlusion))
