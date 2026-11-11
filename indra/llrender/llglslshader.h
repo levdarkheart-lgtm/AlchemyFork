@@ -29,7 +29,6 @@
 
 #include "llgl.h"
 #include "llrender.h"
-#include "llsd.h"
 #include "llstaticstringtable.h"
 
 #include <type_traits>
@@ -201,7 +200,6 @@ public:
     // Every program createShader has been asked to build, linked or not, until it is destroyed: what a load configures
     // from nothing (clearConfiguration). Leaked for the reason sInstances is.
     static std::set<LLGLSLShader*>& sConfigured;
-    static bool sProfileEnabled;
 
     LLGLSLShader();
     ~LLGLSLShader();
@@ -242,32 +240,7 @@ public:
     static U32 sMaxGLTFMaterials;
     static U32 sMaxGLTFNodes;
 
-    // Profiles every bind until finishProfile(): each program's GPU time, the fragments it drew and the primitives it
-    // drew. The fragments and primitives are the pipeline statistics' fragment shader invocations and clipping input
-    // primitives where the context has them, which leaves the occlusion and primitives targets to the frame's own
-    // queries; samples passed and primitives generated elsewhere, or where `count_samples` asks for them. A profile
-    // still open is abandoned first.
-    static void initProfile(bool count_samples = false);
-    // Reads every bind's queries, waiting once for the GPU, adds them to each program's statistics, and reports them
-    // into `stats` where it is defined.
-    static void finishProfile(LLSD& stats=sDefaultStats);
-    // Ends the profile and gives back the targets it held, reading nothing: for a profile that cannot finish.
-    static void abandonProfile();
-
     void unload();
-    void clearStats();
-    void dumpStats(LLSD& stats);
-
-    // Opens this program's queries for the draws that follow, while profiling.
-    void placeProfileQuery();
-
-    // Ends the queries the last placeProfileQuery() opened, if any are open. They are read by finishProfile().
-    static void endProfileQuery();
-
-    // A render pass ends (LLRenderTarget): the open queries of a profile end with it, as a query may not cross a pass,
-    // and the program they were counting is returned, to resume counting for the pass after. Null for none.
-    static LLGLSLShader* suspendProfileQuery();
-    static void          resumeProfileQuery(LLGLSLShader* shader);
 
     // Compile-time variant axes, passed to createShader() as a mask. They are built in this
     // order because each composes over the ones before it: a program asking for all three gets
@@ -410,16 +383,6 @@ public:
     static defines_map_t sGlobalDefines;
     LLUUID mShaderHash;
 
-    //statistics for profiling shader performance
-    U64 mTimeElapsed = 0;
-    static U64 sTotalTimeElapsed;
-    U32 mTrianglesDrawn = 0;
-    static U32 sTotalTrianglesDrawn;
-    U64 mSamplesDrawn = 0;
-    static U64 sTotalSamplesDrawn;
-    U32 mBinds = 0;
-    static U32 sTotalBinds;
-
     // This program expects its diffuse/base-colour texture already LINEAR: the bind decodes
     // sRGB on the sampler (ALSampler::SRGBDecode), the shader has dropped its own
     // srgb_to_linear on the diffuse, and its vertex-colour tint is linearised in the vertex
@@ -545,12 +508,6 @@ private:
 
     // gDebugGL-only: warn when an active per-pass axis had a corner this bind did not select
     void warnIfVariantMissed() const;
-
-    // This must be static because finishProfile() is called at least once
-    // within a __try block. If we default its stats parameter to a temporary
-    // LLSD, that temporary must be destroyed when the stack is unwound,
-    // which __try forbids.
-    static LLSD sDefaultStats;
 };
 
 //UI shader (declared here so llui_libtest will link properly)

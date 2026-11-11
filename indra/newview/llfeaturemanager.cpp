@@ -482,9 +482,6 @@ F32 logExceptionBenchmark()
     }
     __except (msc_exception_filter(GetExceptionCode(), GetExceptionInformation()))
     {
-        // HACK - ensure that profiling is disabled, reading nothing back from a driver that has just faulted
-        LLGLSLShader::abandonProfile();
-
         // convert to C++ styled exception
         char integer_string[32];
         sprintf(integer_string, "SEH, code: %lu\n", GetExceptionCode());

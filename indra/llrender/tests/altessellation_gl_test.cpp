@@ -28,7 +28,6 @@
 
 #include "../llgl.h"
 #include "../llglheaders.h"
-#include "../llglslshader.h"
 #include "../llrender.h"
 #include "../llvertexbuffer.h"
 
@@ -384,68 +383,5 @@ namespace
         }
     }
 
-    // Profiling a tessellated draw must still render. Apple's Metal-backed
-    // OpenGL driver aborts when GL_PRIMITIVES_GENERATED is active here.
-    TEST_CASE_METHOD(altessellation_data, "ALTessellation: a profiled tessellated draw still renders", "[ALTessellation]")
-    {
-        REQUIRE(mLinked);
-        // Viewer programs do not capture transform feedback. Declaring a
-        // captured varying takes a different Apple driver path and hides the crash.
-        glTransformFeedbackVaryings(mProgram, 0, nullptr, GL_INTERLEAVED_ATTRIBS);
-        glLinkProgram(mProgram);
-        GLint linked = GL_FALSE;
-        glGetProgramiv(mProgram, GL_LINK_STATUS, &linked);
-        UNSCOPED_INFO("program linked without transform feedback");
-        REQUIRE(linked == GL_TRUE);
-        mOuter = glGetUniformLocation(mProgram, "outer");
-        mInner = glGetUniformLocation(mProgram, "inner");
-        setLevels(3, 3, 3, 3, 3, 3);
-        LLGLSLShader profile;
-        profile.mShaderFiles.emplace_back("tessellated.glsl", GL_TESS_EVALUATION_SHADER);
-        profile.clearStats();
-        // Samples and primitives generated: the counters Apple's driver aborts this draw under.
-        LLGLSLShader::initProfile(true);
-        profile.placeProfileQuery();
-        const std::vector<U8> px = draw(kCCW);
-        LLGLSLShader::endProfileQuery();
-        LLSD stats;
-        LLGLSLShader::finishProfile(stats);
-        UNSCOPED_INFO("profiled terrain covers centre");
-        CHECK(white(px, W / 2, H / 2));
-        UNSCOPED_INFO("sample query still counts fragments");
-        CHECK(profile.mSamplesDrawn > 0);
-        CHECK(glGetError() == GLenum(GL_NO_ERROR));
-    }
 
-    // Puts the Apple flag back however the case leaves.
-    struct AppleFlag
-    {
-        explicit AppleFlag(bool apple) : mHad(gGLManager.mIsApple) { gGLManager.mIsApple = apple; }
-        ~AppleFlag() { gGLManager.mIsApple = mHad; }
-
-        bool mHad;
-    };
-
-    // On Apple a profile counts no primitives generated for a program with a tessellation stage, whatever its features
-    // say, and still counts its samples.
-    TEST_CASE_METHOD(altessellation_data, "ALTessellation: a profile on Apple counts no primitives of a tessellated program", "[ALTessellation]")
-    {
-        REQUIRE(mLinked);
-        setLevels(3, 3, 3, 3, 3, 3);
-        AppleFlag apple(true);
-        LLGLSLShader profile;
-        profile.mShaderFiles.emplace_back("terrainTC.glsl", GL_TESS_CONTROL_SHADER);
-        profile.clearStats();
-        LLGLSLShader::initProfile(true);
-        profile.placeProfileQuery();
-        draw(kCCW);
-        LLGLSLShader::endProfileQuery();
-        LLSD stats;
-        LLGLSLShader::finishProfile(stats);
-        UNSCOPED_INFO("no primitives counted");
-        CHECK(profile.mTrianglesDrawn == 0);
-        UNSCOPED_INFO("samples still counted");
-        CHECK(profile.mSamplesDrawn > 0);
-        CHECK(glGetError() == GLenum(GL_NO_ERROR));
-    }
 }

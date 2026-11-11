@@ -30,7 +30,6 @@
 
 #include "alrendercapabilities.h"
 #include "llrender.h"
-#include "llthread.h"
 
 #include "hbxxh.h"
 
@@ -44,7 +43,6 @@ S32 LLGLSLShader::sIndexedGLTFChannels = 0;
 bool LLGLSLShader::sIndexedLegacyMaterials = false;
 U32 LLGLSLShader::sMaxGLTFMaterials = 0;
 U32 LLGLSLShader::sMaxGLTFNodes = 0;
-bool LLGLSLShader::sProfileEnabled = false;
 std::set<LLGLSLShader*>& LLGLSLShader::sInstances = *(new std::set<LLGLSLShader*>());
 std::set<LLGLSLShader*>& LLGLSLShader::sConfigured = *(new std::set<LLGLSLShader*>());
 U32 LLGLSLShader::sLoadGeneration = 0;
@@ -56,91 +54,6 @@ LLGLSLShader::defines_map_t LLGLSLShader::sGlobalDefines;
 // initialiser) rather than behind: a program must not apply the environment uniform set before
 // there is an environment. Wrapping is harmless -- this is only ever compared for equality.
 U32 LLGLSLShader::sEnvironmentGeneration = 1;
-U64 LLGLSLShader::sTotalTimeElapsed = 0;
-U32 LLGLSLShader::sTotalTrianglesDrawn = 0;
-U64 LLGLSLShader::sTotalSamplesDrawn = 0;
-U32 LLGLSLShader::sTotalBinds = 0;
-LLSD LLGLSLShader::sDefaultStats;
-
-namespace
-{
-    // One bind of a profile: the program's time and counts over the draws until the next bind, from gGL's pool, read
-    // when the profile finishes.
-    struct ProfileRecord
-    {
-        LLGLSLShader* mShader = nullptr; // null once the program has gone
-        ALQuerySpan   mTime;
-        ALQueryTicket mStatistics;       // the pipeline statistics, where the profile counts them
-        ALQueryTicket mSamples;          // samples passed, elsewhere
-        ALQueryTicket mPrimitives;       // primitives generated, elsewhere
-        bool          mBind = true;      // false for the rest of a bind, after a render pass ended its first record
-    };
-
-    // Leaked, as sInstances is: a program destroyed at static destruction, in whatever translation unit, still
-    // forgets its records here.
-    std::vector<ProfileRecord>& profile_records()
-    {
-        static std::vector<ProfileRecord>* records = new std::vector<ProfileRecord>();
-        return *records;
-    }
-
-    constexpr size_t NO_RECORD   = size_t(-1);
-    size_t           sOpenRecord = NO_RECORD;
-
-    // What this profile counts: the pipeline statistics, where the context has them and its caller did not ask for
-    // samples. The occlusion targets and the primitives target stay free to the frame's own queries then.
-    bool sProfileStatistics = false;
-
-    // Holds the targets the profile counts with for its whole length, since each bind opens them again: the frame's
-    // other queries of the same targets are refused until it finishes. Or gives them back.
-    void reserve_profile_targets(bool reserved)
-    {
-        ALQueryPool& queries = gGL.queries();
-        if (sProfileStatistics)
-        {
-            queries.reserve(ALQueryKind::Statistics, reserved);
-        }
-        else
-        {
-            queries.reserve(ALQueryKind::Samples, reserved);
-            queries.reserve(ALQueryKind::Primitives, reserved);
-        }
-    }
-
-    void open_profile_record(LLGLSLShader& shader, bool bind)
-    {
-        ALQueryPool& queries = gGL.queries();
-        ProfileRecord record;
-        record.mShader = &shader;
-        record.mBind   = bind;
-        record.mTime   = queries.beginSpan();
-        if (sProfileStatistics)
-        {
-            record.mStatistics = queries.beginReserved(ALQueryKind::Statistics);
-        }
-        else
-        {
-            record.mSamples = queries.beginReserved(ALQueryKind::Samples);
-            if (gGLManager.canQueryPrimitives(shader.isTessellated()))
-            {
-                record.mPrimitives = queries.beginReserved(ALQueryKind::Primitives);
-            }
-        }
-        sOpenRecord = profile_records().size();
-        profile_records().push_back(record);
-    }
-
-    void forget_profile_records(const LLGLSLShader* shader)
-    {
-        for (ProfileRecord& record : profile_records())
-        {
-            if (record.mShader == shader)
-            {
-                record.mShader = nullptr;
-            }
-        }
-    }
-}
 
 //UI shader -- declared here so llui_libtest will link properly
 LLGLSLShader    gUIProgram;
@@ -164,254 +77,11 @@ const std::string gShaderConstsVal[LLGLSLShader::NUM_SHADER_CONSTS] =
 // LLGLSL Shader implementation
 //===============================
 
-//static
-void LLGLSLShader::initProfile(bool count_samples)
-{
-    // One still open would leave its queries counting, and its targets held, for the rest of the session.
-    if (sProfileEnabled)
-    {
-        abandonProfile();
-    }
-    sProfileStatistics = !count_samples && ALQueryPool::supports(ALQueryKind::Statistics);
-    reserve_profile_targets(true);
-    profile_records().clear();
-    sOpenRecord = NO_RECORD;
-
-    sProfileEnabled = true;
-    sTotalTimeElapsed = 0;
-    sTotalTrianglesDrawn = 0;
-    sTotalSamplesDrawn = 0;
-    sTotalBinds = 0;
-
-    for (auto ptr : sInstances)
-    {
-        ptr->clearStats();
-    }
-}
-
-
-struct LLGLSLShaderCompareTimeElapsed
-{
-    bool operator()(const LLGLSLShader* const& lhs, const LLGLSLShader* const& rhs)
-    {
-        return lhs->mTimeElapsed < rhs->mTimeElapsed;
-    }
-};
-
-//static
-void LLGLSLShader::finishProfile(LLSD& stats)
-{
-    // The bind still open ends here, then every bind's queries are read: the first wait is for the GPU to finish the
-    // profile's draws, and the rest are in by then.
-    endProfileQuery();
-    ALQueryPool& queries = gGL.queries();
-    for (const ProfileRecord& record : profile_records())
-    {
-        if (!record.mShader)
-        {
-            continue;
-        }
-        U64 time       = 0;
-        U64 fragments  = 0;
-        U64 primitives = 0;
-        queries.wait(record.mTime, time);
-        ALStatistics statistics;
-        if (queries.wait(record.mStatistics, statistics))
-        {
-            fragments  = statistics[ALStatistic::FragmentInvocations];
-            primitives = statistics[ALStatistic::ClippingPrimitives];
-        }
-        queries.wait(record.mSamples, fragments);
-        queries.wait(record.mPrimitives, primitives);
-
-        LLGLSLShader& shader = *record.mShader;
-        shader.mTimeElapsed += time;
-        sTotalTimeElapsed += time;
-        shader.mSamplesDrawn += fragments;
-        sTotalSamplesDrawn += fragments;
-        shader.mTrianglesDrawn += (U32)primitives;
-        sTotalTrianglesDrawn += (U32)primitives;
-        if (record.mBind)
-        {
-            ++shader.mBinds;
-            ++sTotalBinds;
-        }
-    }
-    profile_records().clear();
-    reserve_profile_targets(false);
-
-    sProfileEnabled = false;
-
-    if (stats.isDefined())
-    {
-        // Which counters the samples and triangles are: they differ, invocations counting fragments a depth test or a
-        // discard then dropped.
-        stats["counters"] = sProfileStatistics ? "fragment shader invocations, clipping input primitives"
-                                                : "samples passed, primitives generated";
-
-        std::vector<LLGLSLShader*> sorted(sInstances.begin(), sInstances.end());
-        std::sort(sorted.begin(), sorted.end(), LLGLSLShaderCompareTimeElapsed());
-
-        LLSD& shaders = stats["shaders"];
-        shaders = LLSD::emptyArray();
-        bool unbound = false;
-        for (auto ptr : sorted)
-        {
-            if (ptr->mBinds == 0)
-            {
-                unbound = true;
-            }
-            else
-            {
-                LLSD& shaderit = shaders.append(LLSD::emptyMap());
-                ptr->dumpStats(shaderit);
-            }
-        }
-
-        constexpr float mega = 1'000'000.f;
-        float totalTimeMs = sTotalTimeElapsed / mega;
-        LL_INFOS() << "-----------------------------------" << LL_ENDL;
-        LL_INFOS() << "Total rendering time: " << llformat("%.4f ms", totalTimeMs) << LL_ENDL;
-        LL_INFOS() << "Total samples drawn: " << llformat("%.4f million", sTotalSamplesDrawn / mega) << LL_ENDL;
-        LL_INFOS() << "Total triangles drawn: " << llformat("%.3f million", sTotalTrianglesDrawn / mega) << LL_ENDL;
-        LL_INFOS() << "-----------------------------------" << LL_ENDL;
-        LLSD& totals = stats["totals"];
-        totals = LLSD::emptyMap();
-        totals["time"] = totalTimeMs / 1000.0;
-        totals["binds"] = LLSD::Integer(sTotalBinds);
-        // sample counters are 64-bit; store as Real to avoid S32 overflow
-        totals["samples"] = F64(sTotalSamplesDrawn);
-        totals["triangles"] = LLSD::Integer(sTotalTrianglesDrawn);
-
-        LLSD& unused = stats["unused"];
-        unused = LLSD::emptyArray();
-        if (unbound)
-        {
-            LL_INFOS() << "The following shaders were unused: " << LL_ENDL;
-            for (auto ptr : sorted)
-            {
-                if (ptr->mBinds == 0)
-                {
-                    LL_INFOS() << ptr->mName << LL_ENDL;
-                    unused.append(ptr->mName);
-                }
-            }
-        }
-    }
-}
-
-void LLGLSLShader::clearStats()
-{
-    mTrianglesDrawn = 0;
-    mTimeElapsed = 0;
-    mSamplesDrawn = 0;
-    mBinds = 0;
-}
-
-void LLGLSLShader::dumpStats(LLSD& stats)
-{
-    stats["name"] = mName;
-    LLSD& files = stats["files"];
-    files = LLSD::emptyArray();
-    LL_INFOS() << "=============================================" << LL_ENDL;
-    LL_INFOS() << mName << LL_ENDL;
-    for (U32 i = 0; i < mShaderFiles.size(); ++i)
-    {
-        LL_INFOS() << mShaderFiles[i].first << LL_ENDL;
-        files.append(mShaderFiles[i].first);
-    }
-    LL_INFOS() << "=============================================" << LL_ENDL;
-
-    constexpr float  mega = 1'000'000.f;
-    constexpr double giga = 1'000'000'000.0;
-    F32 ms = mTimeElapsed / mega;
-    F32 seconds = ms / 1000.f;
-
-    F32 pct_tris = (F32)mTrianglesDrawn / (F32)sTotalTrianglesDrawn * 100.f;
-    F32 tris_sec = (F32)(mTrianglesDrawn / mega);
-    tris_sec /= seconds;
-
-    F32 pct_samples = (F32)((F64)mSamplesDrawn / (F64)sTotalSamplesDrawn) * 100.f;
-    F32 samples_sec = (F32)(mSamplesDrawn / giga);
-    samples_sec /= seconds;
-
-    F32 pct_binds = (F32)mBinds / (F32)sTotalBinds * 100.f;
-
-    LL_INFOS() << "Triangles Drawn: " << mTrianglesDrawn << " " << llformat("(%.2f pct of total, %.3f million/sec)", pct_tris, tris_sec) << LL_ENDL;
-    LL_INFOS() << "Binds: " << mBinds << " " << llformat("(%.2f pct of total)", pct_binds) << LL_ENDL;
-    LL_INFOS() << "SamplesDrawn: " << mSamplesDrawn << " " << llformat("(%.2f pct of total, %.3f billion/sec)", pct_samples, samples_sec) << LL_ENDL;
-    LL_INFOS() << "Time Elapsed: " << mTimeElapsed << " " << llformat("(%.2f pct of total, %.5f ms)\n", (F32)((F64)mTimeElapsed / (F64)sTotalTimeElapsed) * 100.f, ms) << LL_ENDL;
-    stats["time"] = seconds;
-    stats["binds"] = LLSD::Integer(mBinds);
-    // sample counters are 64-bit; store as Real to avoid S32 overflow
-    stats["samples"] = F64(mSamplesDrawn);
-    stats["triangles"] = LLSD::Integer(mTrianglesDrawn);
-}
-
 bool LLGLSLShader::isTessellated() const
 {
     return std::any_of(mShaderFiles.begin(), mShaderFiles.end(), [](const auto& file)
                        { return file.second == GL_TESS_CONTROL_SHADER || file.second == GL_TESS_EVALUATION_SHADER; });
 }
-
-//static
-void LLGLSLShader::abandonProfile()
-{
-    endProfileQuery();
-    profile_records().clear();
-    reserve_profile_targets(false);
-    sProfileEnabled = false;
-}
-
-void LLGLSLShader::placeProfileQuery()
-{
-    // A profile is the main thread's: a worker's binds are on another context, with its own gGL and pool.
-    if (!sProfileEnabled || !on_main_thread())
-    {
-        return;
-    }
-    endProfileQuery();
-    open_profile_record(*this, true);
-}
-
-//static
-void LLGLSLShader::endProfileQuery()
-{
-    if (sOpenRecord == NO_RECORD || !on_main_thread())
-    {
-        return;
-    }
-    ProfileRecord& record = profile_records()[sOpenRecord];
-    sOpenRecord = NO_RECORD;
-    ALQueryPool& queries = gGL.queries();
-    queries.endSpan(record.mTime);
-    queries.end(record.mStatistics);
-    queries.end(record.mSamples);
-    queries.end(record.mPrimitives);
-}
-
-//static
-LLGLSLShader* LLGLSLShader::suspendProfileQuery()
-{
-    if (sOpenRecord == NO_RECORD || !on_main_thread())
-    {
-        return nullptr;
-    }
-    LLGLSLShader* shader = profile_records()[sOpenRecord].mShader;
-    endProfileQuery();
-    return shader;
-}
-
-//static
-void LLGLSLShader::resumeProfileQuery(LLGLSLShader* shader)
-{
-    if (shader && sProfileEnabled && sOpenRecord == NO_RECORD && on_main_thread())
-    {
-        open_profile_record(*shader, false);
-    }
-}
-
-
 
 LLGLSLShader::LLGLSLShader()
     : mAttributeMask(0), mShaderLevel(0), mShaderGroup(SG_DEFAULT)
@@ -427,7 +97,6 @@ LLGLSLShader::~LLGLSLShader()
     // than a leak. Recursion covers the subtree: each child erases itself on the way out.
     sInstances.erase(this);
     sConfigured.erase(this);
-    forget_profile_records(this);
 
     // Nor may the bound-program statics name this object. They are cleared without a GL call,
     // for the reason below.
@@ -600,8 +269,6 @@ void LLGLSLShader::unload()
 
     unloadInternal();
 
-    // After unloadInternal: unbinding a bound program ends its profile queries by the
-    // features they were begun with.
     clearConfiguration();
 }
 
@@ -621,7 +288,6 @@ void LLGLSLShader::unloadInternal()
     {
         unbind();
     }
-    forget_profile_records(this);
     mAttributeMask = 0;
     mMinimumAlpha = MINIMUM_ALPHA_UNSET;
     mIsCompute = false;
@@ -777,9 +443,7 @@ void LLGLSLShader::bind()
         return;
     }
     gGL.flush();
-    // This bind labels retained CPU traversal. Native encoders execute later
-    // and do not consume ALQueryPool shader-profile tokens, so opening a GPU
-    // profile here would publish zero counters as if they measured this pass.
+    // This bind labels retained CPU traversal. Native encoders execute later.
     sCurBoundShaderPtr = this;
     sCurBoundShader = 0;
     warnIfVariantMissed();
