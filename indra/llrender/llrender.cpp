@@ -1800,11 +1800,8 @@ void LLRender::endFrame(U32 frames_ahead)
     mMetalUIFrameFallbackBatches = 0;
 #endif
 
-    // The batch's results are written ahead of the fence that follows them. The batches the fences have just shown
-    // finished are read here rather than before the next cull, the next batch's names are made here rather than by its
-    // queries, and the fences of the uploads handed over by other contexts are polled here rather than in the next
-    // idle: a threaded driver answers a call that returns a value only once its thread has caught up, and the fences'
-    // own calls have just caught it up.
+    // End the native visibility capture and advance its retained ticket
+    // history. Results remain owned by their actual command completions.
     if (gGLManager.mInited
 #if LL_DARWIN
         || mMetalFrames
@@ -1812,8 +1809,6 @@ void LLRender::endFrame(U32 frames_ahead)
        )
     {
         mQueries.endFrame();
-        mQueries.retire();
-        mQueries.makeRoom();
     }
 #if LL_DARWIN
     if (mMetalFrames)
@@ -3062,6 +3057,10 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         else
         {
             ++mMetalUICaptureBatches;
+            // Count actual accepted UI batches here so immediate buffers,
+            // direct vertex calls and cached/matrix replays share one owner.
+            ++sDrawCalls;
+            sDrawElements += indexed ? index_count : count;
         }
     }
     if (!replace)
@@ -3080,6 +3079,8 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         }
         return fallback(MetalUIFallbackReason::encoder);
     }
+    ++sDrawCalls;
+    sDrawElements += indexed ? index_count : count;
     return true;
 }
 

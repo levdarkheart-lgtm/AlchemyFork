@@ -35,8 +35,6 @@
 #include "v4color.h"
 #include "llgl.h"
 
-void lat2xyz(LLVector3 * result, F32 lat, F32 lon);         // utility routine
-
 class LLRenderSphere
 {
 public:

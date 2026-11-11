@@ -814,7 +814,7 @@ private:
     bool            mMatricesUBOBound = false;
 
     ALFrameFences mFrameFences;
-    ALQueryPool   mQueries{ mFrameFences };
+    ALQueryPool   mQueries;
 
     // Derived matrices, cached across epochs so a stack that did not move is not re-derived.
     // Members rather than function statics: they belong to this context, and shutdown() has to

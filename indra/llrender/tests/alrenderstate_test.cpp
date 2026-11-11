@@ -394,13 +394,18 @@ TEST_CASE("Render targets own, clear, mip and share native Metal attachments",
     CHECK(borrower.isComplete());
     CHECK(borrower.sharesDepth());
     CHECK_FALSE(borrower.ownsDepthAttachment());
-    CHECK(borrower.getMetalDepthTexture() == owner.getMetalDepthTexture());
+    REQUIRE(borrower.getMetalDepthTexture());
+    REQUIRE(owner.getMetalDepthTexture());
+    CHECK(borrower.getMetalDepthTexture()->nativeHandle() ==
+          owner.getMetalDepthTexture()->nativeHandle());
 
     ALTextureSlot slot(7);
     REQUIRE(slot.bind(&owner));
     CHECK(slot.getCurrMetalTexture() == owner.getMetalColorTexture(0));
     REQUIRE(slot.bind(&borrower, true));
-    CHECK(slot.getCurrMetalTexture() == owner.getMetalDepthTexture());
+    REQUIRE(slot.getCurrMetalTexture());
+    CHECK(slot.getCurrMetalTexture()->nativeHandle() ==
+          owner.getMetalDepthTexture()->nativeHandle());
 
     borrower.release();
     owner.release();

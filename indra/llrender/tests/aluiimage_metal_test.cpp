@@ -57,6 +57,13 @@ namespace ll_test
 
         static bool collectionEnabled() { return LLUIImage::sEnableDisplayListsCollection; }
 
+        static void replayWithMatrix(const LLUIImage& image)
+        {
+            REQUIRE(image.mDisplayLists.size() == 1u);
+            for (auto& buffer : image.mDisplayLists.begin()->second.list)
+                buffer.drawWithMatrix();
+        }
+
         // Read the actual published native vertex allocation, preserving the
         // original buffer-readback invariant without a driver binding query.
         static std::vector<LLVector3> positions(const LLUIImage& image)
@@ -168,6 +175,26 @@ namespace
             REQUIRE(max_y == height);
         }
     };
+
+    TEST_CASE_METHOD(lluiimage_data,
+        "Native image recordings and both replay paths count accepted draws",
+        "[native-replay-diagnostics]")
+    {
+        auto texture = makeTexture(4, 4);
+        LLPointer<LLUIImage> image = new LLUIImage("diagnostic probe", texture.get());
+        const auto calls = LLRender::sDrawCalls;
+        const auto elements = LLRender::sDrawElements;
+        image->draw(10, 10, 8, 8);
+        CHECK(LLRender::sDrawCalls == calls + 1u);
+        CHECK(LLRender::sDrawElements == elements + 6u);
+        image->draw(100, 50, 8, 8);
+        CHECK(LLRender::sDrawCalls == calls + 2u);
+        CHECK(LLRender::sDrawElements == elements + 12u);
+        ll_test::UIImageProbe::replayWithMatrix(*image);
+        CHECK(LLRender::sDrawCalls == calls + 3u);
+        CHECK(LLRender::sDrawElements == elements + 18u);
+        requirePixels({{10,10,8,8}, {100,50,8,8}});
+    }
 
 
     // One recording serves every position the image is drawn at. A floater

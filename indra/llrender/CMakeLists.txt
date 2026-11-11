@@ -166,6 +166,7 @@ if(AL_BUILD_TESTS)
       tests/alquerypool_test.cpp
       tests/alquerypool_diagnostics_test.cpp
       tests/alquerypool_metal_diagnostics_test.cpp
+      tests/alquerypool_metal_lifecycle_test.cpp
       tests/aluniformbuffer_test.cpp
       tests/llvertexbuffer_test.cpp
       tests/alvertex_range_test.cpp
@@ -180,6 +181,9 @@ if(AL_BUILD_TESTS)
       tests/alfont_shaping_metal_test.cpp
       tests/aluiimage_metal_test.cpp
       tests/alrender2dutils_metal_test.cpp
+      tests/alrendersphere_metal_test.cpp
+      tests/alinfiniteprojection_metal_test.mm
+      tests/alrendertarget_native_test.mm
       tests/alimage_native_coverage_test.cpp
       tests/alprimitiveplot_test.cpp
     )
@@ -208,6 +212,8 @@ if(AL_BUILD_TESTS)
   if(DARWIN)
     target_link_libraries(llrender_tests PRIVATE almetal)
     set_source_files_properties(tests/alvertex_label_metal_test.mm
+                                tests/alinfiniteprojection_metal_test.mm
+                                tests/alrendertarget_native_test.mm
                                 PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
     # Default-font getters keep process-lifetime pointers, as in the original
     # viewer. Give their native atlas/UI session a separate process instead
@@ -277,14 +283,10 @@ if(AL_BUILD_TESTS)
     SOURCES
       tests/alframefences_gl_test.cpp
       tests/algpubuffer_gl_test.cpp
-      tests/alinfiniteprojection_gl_test.cpp
-      tests/alquerypool_gl_test.cpp
       tests/alrenderstate_gl_test.cpp
       tests/altessellation_gl_test.cpp
       tests/aluniformbuffer_gl_test.cpp
       tests/alwindowsdlheadless_test.cpp
-      tests/llrendertarget_gl_test.cpp
-      tests/llrendersphere_gl_test.cpp
     LIBRARIES llrender
     SUPPORT llrender_test_checks llcommon_test_checks
     DEFINES ${font_defines}

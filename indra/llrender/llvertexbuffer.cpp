@@ -420,12 +420,8 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
     }
     // World draw pools already admitted their typed native batches. Only an
     // active UI owner consumes this generic draw, using its current bindings.
-    if (gGL.drawBoundMetalUIBuffer(const_cast<LLVertexBuffer*>(this), mode,
-                                   count, true, indices_offset))
-    {
-        ++LLRender::sDrawCalls;
-        LLRender::sDrawElements += count;
-    }
+    gGL.drawBoundMetalUIBuffer(const_cast<LLVertexBuffer*>(this), mode,
+                              count, true, indices_offset);
 }
 
 void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
@@ -450,12 +446,8 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
         LL_WARNS_ONCE("Render") << "Skipping native array draw outside its vertex allocation" << LL_ENDL;
         return;
     }
-    if (gGL.drawBoundMetalUIBuffer(const_cast<LLVertexBuffer*>(this), mode,
-                                   count, false, first))
-    {
-        ++LLRender::sDrawCalls;
-        LLRender::sDrawElements += count;
-    }
+    gGL.drawBoundMetalUIBuffer(const_cast<LLVertexBuffer*>(this), mode,
+                              count, false, first);
 }
 
 //static
