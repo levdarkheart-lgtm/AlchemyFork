@@ -151,88 +151,9 @@ bool LLViewerTexLayerSetBuffer::needsRender()
 }
 
 // virtual
-void LLViewerTexLayerSetBuffer::preRenderTexLayerSet()
-{
-#if LL_DARWIN
-    mMetalComposite.reset();
-    ALMetalTexture* destination = mGLTexturep.notNull()
-        ? mGLTexturep->getMetalTexture() : nullptr;
-    const ALMetalPixelFormat format = destination
-        ? destination->descriptor().format
-        : ALMetalPixelFormat::rgba8_unorm_srgb;
-    mMetalCaptureActive =
-        (!destination || destination->descriptor().mipmap_level_count == 1) &&
-        gGL.beginMetalUITextureCapture(
-            format,
-            &gAlphaMaskProgram, nullptr, nullptr, nullptr,
-            LLRender::EMetalUICaptureMode::NATIVE_AUTHORITATIVE,
-            LLRender::EMetalUICaptureStorage::LINEAR_STORAGE);
-    if (!mMetalCaptureActive)
-    {
-        LL_DEBUGS("Metal")
-            << "Native appearance composite is not ready; update remains pending"
-            << LL_ENDL;
-        return;
-    }
-
-    // The native transaction owns the complete target. These calls update
-    // only the logical matrix/viewport/texture state that its encoder reads.
-    LLTexLayerSetBuffer::preRenderTexLayerSet();
-    mOrigin.set(0, 0);
-    gGL.getTextureSlot(0)->unbind();
-    gGL.setViewport(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
-#else
-    LLTexLayerSetBuffer::preRenderTexLayerSet();
-    mOrigin.set(0, 0);
-#endif
-}
+#include "texlayer_preview_native.inl"
 
 // virtual
-void LLViewerTexLayerSetBuffer::postRenderTexLayerSet(bool success)
-{
-#if LL_DARWIN
-    if (!mMetalCaptureActive)
-    {
-        mLastNativeRenderSucceeded = false;
-        return;
-    }
-
-    // Restore the balanced matrix stack while the capture is still native-
-    // authoritative, then submit and restore the pre-transaction renderer
-    // caches without issuing any corresponding GL state calls.
-    LLTexLayerSetBuffer::postRenderTexLayerSet(success);
-    std::string failure;
-    mMetalComposite = gGL.endMetalUITextureCapture(
-        success, false, nullptr, &failure);
-    mMetalCaptureActive = false;
-
-    const bool published = success && mMetalComposite && mGLTexturep.notNull() &&
-        mGLTexturep->adoptMetalRenderTextureAuthoritative(
-            std::move(mMetalComposite), LLGLTexture::DYNAMIC_TEX);
-    mLastNativeRenderSucceeded = published;
-    if (published)
-    {
-        const bool update_now = mNeedsUpdate && isReadyToUpdate();
-        if (update_now)
-        {
-            doUpdate();
-        }
-        LL_INFOS_ONCE("Metal")
-            << "Appearance composites publish authoritative native Metal textures"
-            << LL_ENDL;
-    }
-    else
-    {
-        LL_WARNS("Metal")
-            << "Native appearance composite remained pending"
-            << (failure.empty() ? std::string() : ": " + failure)
-            << LL_ENDL;
-    }
-    mMetalComposite.reset();
-#else
-    LLTexLayerSetBuffer::postRenderTexLayerSet(success);
-#endif
-}
 
 // virtual
 void LLViewerTexLayerSetBuffer::midRenderTexLayerSet(bool success)
@@ -262,26 +183,6 @@ bool LLViewerTexLayerSetBuffer::isInitialized(void) const
 #endif
 }
 
-LLViewerDynamicTexture::ETargetlessRenderResult
-LLViewerTexLayerSetBuffer::renderWithoutTarget()
-{
-#if LL_DARWIN
-    mLastNativeRenderSucceeded = false;
-    preRenderTexLayerSet();
-    if (!mMetalCaptureActive)
-    {
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    const bool rendered = renderTexLayerSet(nullptr);
-    postRenderTexLayerSet(rendered);
-    return mLastNativeRenderSucceeded
-        ? ETargetlessRenderResult::COMPLETED
-        : ETargetlessRenderResult::PENDING;
-#else
-    return ETargetlessRenderResult::PENDING;
-#endif
-}
 
 bool LLViewerTexLayerSetBuffer::isReadyToUpdate() const
 {

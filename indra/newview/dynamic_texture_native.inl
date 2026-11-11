@@ -55,3 +55,12 @@ void LLViewerDynamicTexture::generateMetalTexture()
             << LL_ENDL;
     }
 }
+
+bool LLViewerDynamicTexture::ensureMetalTexture()
+{
+    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
+    {
+        generateMetalTexture();
+    }
+    return mGLTexturep.notNull() && mGLTexturep->getMetalTexture();
+}

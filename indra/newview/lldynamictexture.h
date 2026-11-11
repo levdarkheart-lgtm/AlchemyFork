@@ -89,6 +89,7 @@ public:
     static void destroyGL() ;
 #if LL_DARWIN
     void generateMetalTexture();
+    bool ensureMetalTexture();
 #endif
 
 protected:

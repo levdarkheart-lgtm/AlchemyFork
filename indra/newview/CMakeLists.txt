@@ -1880,6 +1880,11 @@ if(AL_BUILD_VIEWER)
     dynamic_texture_native.inl
     image_preview_native.inl
     model_preview_native.inl
+    model_preview_publication_native.inl
+    animation_preview_native.inl
+    appearance_hint_native.inl
+    gltf_preview_native.inl
+    texlayer_preview_native.inl
     rlvactions.h
     rlvcommon.h
     rlvdefines.h

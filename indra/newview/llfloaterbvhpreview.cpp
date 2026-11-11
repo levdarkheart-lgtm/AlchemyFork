@@ -1107,46 +1107,7 @@ S8 LLPreviewAnimation::getType() const
     return LLViewerDynamicTexture::LL_PREVIEW_ANIMATION ;
 }
 
-LLViewerDynamicTexture::ETargetlessRenderResult
-LLPreviewAnimation::renderWithoutTarget()
-{
-#if LL_DARWIN
-    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
-    {
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    bool rendered = false;
-    {
-        LLScopedAnimationPreviewCameraState saved_state;
-        mOrigin.set(0, 0);
-        rendered = render();
-    }
-
-    const bool published = rendered && mMetalPreview &&
-        mGLTexturep->adoptMetalRenderTextureAuthoritative(
-            std::move(mMetalPreview), LLGLTexture::DYNAMIC_TEX);
-    mMetalPreview.reset();
-    mMetalPreviewDescriptor.reset();
-    if (!published)
-    {
-        mNeedsUpdate = true;
-        LL_DEBUGS("Metal")
-            << "Animation preview remains pending; its prior native result "
-               "is unchanged"
-            << LL_ENDL;
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    mNeedsUpdate = false;
-    LL_INFOS_ONCE("Metal")
-        << "Animation previews are targetless native Metal producers"
-        << LL_ENDL;
-    return ETargetlessRenderResult::COMPLETED;
-#else
-    return ETargetlessRenderResult::PENDING;
-#endif
-}
+#include "animation_preview_native.inl"
 
 //-----------------------------------------------------------------------------
 // update()

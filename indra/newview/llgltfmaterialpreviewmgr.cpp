@@ -303,44 +303,7 @@ bool LLGLTFPreviewTexture::needsRender()
     return false;
 }
 
-LLViewerDynamicTexture::ETargetlessRenderResult
-LLGLTFPreviewTexture::renderWithoutTarget()
-{
-#if LL_DARWIN
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
-
-    llassert(mShouldRender);
-    if (!mShouldRender)
-    {
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    // Apple Silicon previews have one rendering owner. Readiness and actual
-    // failures both stay targetless and retry Metal.
-    preRender();
-    const bool rendered = render();
-
-    const bool published = rendered && mMetalPreview && publishMetalPreview();
-    if (!published)
-    {
-        mMetalPreview.reset();
-        // A completed native render whose logical texture refuses adoption is
-        // a publication failure. Keep it observable and retry natively.
-        if (mNativeAttemptResult == ENativeAttemptResult::READY)
-        {
-            mNativeAttemptResult = ENativeAttemptResult::FAILED;
-        }
-        mShouldRender = true;
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    mShouldRender = false;
-    mBestLoad = mPendingLoad;
-    return ETargetlessRenderResult::COMPLETED;
-#else
-    return ETargetlessRenderResult::PENDING;
-#endif
-}
+#include "gltf_preview_native.inl"
 
 void LLGLTFPreviewTexture::preRender(bool clear_depth)
 {

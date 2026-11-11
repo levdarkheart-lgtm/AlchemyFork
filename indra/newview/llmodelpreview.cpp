@@ -3920,48 +3920,7 @@ void LLModelPreview::addEmptyFace(LLModel* pTarget)
 
 }
 
-LLViewerDynamicTexture::ETargetlessRenderResult
-LLModelPreview::renderWithoutTarget()
-{
-#if LL_DARWIN
-    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
-    {
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    bool rendered = false;
-    {
-        LLScopedModelPreviewCameraState saved_state;
-        mOrigin.set(0, 0);
-        rendered = render();
-    }
-
-    const bool published = rendered && mMetalPreview &&
-        mGLTexturep->adoptMetalRenderTextureAuthoritative(
-            std::move(mMetalPreview), LLGLTexture::DYNAMIC_TEX);
-    mMetalPreview.reset();
-    mMetalPreviewDescriptor.reset();
-    if (!published)
-    {
-        mNeedsUpdate = true;
-        LL_DEBUGS("Metal")
-            << "Model upload preview remains pending; its prior native result "
-               "is unchanged"
-            << LL_ENDL;
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    // Rigged previews continuously reflect joint overrides and avatar motion;
-    // static/physics previews remain demand-driven by refresh().
-    mNeedsUpdate = mViewOption["show_skin_weight"];
-    LL_INFOS_ONCE("Metal")
-        << "Model upload previews are targetless native Metal producers"
-        << LL_ENDL;
-    return ETargetlessRenderResult::COMPLETED;
-#else
-    return ETargetlessRenderResult::PENDING;
-#endif
-}
+#include "model_preview_publication_native.inl"
 
 #if LL_DARWIN
 bool LLModelPreview::renderMetal()

@@ -178,62 +178,7 @@ bool LLVisualParamHint::needsRender()
     return mNeedsUpdate && mDelayFrames-- <= 0 && !gAgentAvatarp->getIsAppearanceAnimating() && mAllowsUpdates;
 }
 
-LLViewerDynamicTexture::ETargetlessRenderResult
-LLVisualParamHint::renderWithoutTarget()
-{
-#if LL_DARWIN
-    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
-    {
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    LLViewerCamera* camera = LLViewerCamera::getInstance();
-    const LLCamera saved_camera = *camera;
-    const LLCamera saved_current = LLViewerCamera::getCurrent();
-    const std::array<S32, 4> saved_viewport{{
-        gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3],
-    }};
-
-    preRender(false);
-    const bool rendered = render();
-
-    camera->setOrigin(saved_camera);
-    camera->setAxes(saved_camera);
-    camera->setAspect(saved_camera.getAspect());
-    camera->setViewNoBroadcast(saved_camera.getView());
-    camera->setNear(saved_camera.getNear());
-    camera->setFar(saved_camera.getFar());
-    camera->setModelview(saved_camera.getModelview());
-    camera->setProjection(saved_camera.getProjection());
-    LLViewerCamera::updateFrustumPlanes(*camera);
-    LLViewerCamera::setCurrent(saved_current);
-    std::copy(saved_viewport.begin(), saved_viewport.end(), gGLViewport);
-
-    const bool published = rendered && mMetalPreview &&
-        mGLTexturep->adoptMetalRenderTextureAuthoritative(
-            std::move(mMetalPreview), LLGLTexture::DYNAMIC_TEX);
-    mMetalPreview.reset();
-    mMetalPreviewDescriptor.reset();
-    if (!published)
-    {
-        mNeedsUpdate = true;
-        LL_DEBUGS("Metal")
-            << "Visual-parameter hint remains pending; prior native result "
-               "is unchanged"
-            << LL_ENDL;
-        return ETargetlessRenderResult::PENDING;
-    }
-
-    mNeedsUpdate = false;
-    mIsVisible = true;
-    LL_INFOS_ONCE("Metal")
-        << "Visual-parameter hints are targetless native Metal producers"
-        << LL_ENDL;
-    return ETargetlessRenderResult::COMPLETED;
-#else
-    return ETargetlessRenderResult::PENDING;
-#endif
-}
+#include "appearance_hint_native.inl"
 
 void LLVisualParamHint::preRender(bool clear_depth)
 {
@@ -1154,29 +1099,7 @@ S8 LLVisualParamReset::getType() const
     return LLViewerDynamicTexture::LL_VISUAL_PARAM_RESET ;
 }
 
-LLViewerDynamicTexture::ETargetlessRenderResult
-LLVisualParamReset::renderWithoutTarget()
-{
-#if LL_DARWIN
-    render();
-    return ETargetlessRenderResult::COMPLETED;
-#else
-    return ETargetlessRenderResult::PENDING;
-#endif
-}
 
 //-----------------------------------------------------------------------------
 // render()
 //-----------------------------------------------------------------------------
-bool LLVisualParamReset::render()
-{
-    if (sDirty)
-    {
-        gAgentAvatarp->updateComposites();
-        gAgentAvatarp->updateVisualParams();
-        gAgentAvatarp->updateGeometry(gAgentAvatarp->mDrawable);
-        sDirty = false;
-    }
-
-    return false;
-}
