@@ -1,7 +1,6 @@
 /** Real native visibility results exercise diagnostic phase deduplication. */
 #include <catch2/catch_test_macros.hpp>
 
-#include "alframefences.h"
 #include "alquerypool.h"
 #include "almetaldevice.h"
 #include "almetalresource.h"
@@ -23,8 +22,7 @@ TEST_CASE("Native visibility diagnostics count tickets across pending and GPU-re
     data->beginFrame(1);
     renderer->setFrameData(data);
 
-    ALFrameFences frames;
-    ALQueryPool pool(frames);
+    ALQueryPool pool;
     struct DiagnosticsOffOnExit
     {
         ALQueryPool& pool;

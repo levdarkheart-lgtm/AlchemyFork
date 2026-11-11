@@ -143,7 +143,7 @@ ALQueryPool::Status ALQueryPool::observeResult(
     return status;
 }
 
-ALQueryPool::ALQueryPool(ALFrameFences&) noexcept
+ALQueryPool::ALQueryPool() noexcept
 {
     mFrames[mSerial % RESULT_FRAMES].serial = mSerial;
 }
@@ -157,13 +157,13 @@ bool ALQueryPool::supports(ALQueryKind kind)
 bool ALQueryPool::canBegin(ALQueryKind kind) const
 {
     return mVisibilityCaptureActive && supports(kind) &&
-           !mOpen.isValid() && !mVisibilityReserved;
+           !mOpen.isValid();
 }
 
-ALQueryTicket ALQueryPool::acquire(ALQueryKind kind, bool reserved)
+ALQueryTicket ALQueryPool::acquire(ALQueryKind kind)
 {
     if (!mVisibilityCaptureActive || !supports(kind) ||
-        mOpen.isValid() || (mVisibilityReserved != reserved))
+        mOpen.isValid())
     {
         return {};
     }
@@ -203,7 +203,7 @@ ALQueryTicket ALQueryPool::acquire(ALQueryKind kind, bool reserved)
 
 ALQueryTicket ALQueryPool::begin(ALQueryKind kind)
 {
-    return acquire(kind, false);
+    return acquire(kind);
 }
 
 void ALQueryPool::end(const ALQueryTicket& ticket)
@@ -217,15 +217,6 @@ void ALQueryPool::end(const ALQueryTicket& ticket)
         entry->closed = true;
     }
     mOpen = {};
-}
-
-ALQuerySpan ALQueryPool::beginSpan()
-{
-    return {};
-}
-
-void ALQueryPool::endSpan(ALQuerySpan&)
-{
 }
 
 ALQueryPool::Entry* ALQueryPool::find(const ALQueryTicket& ticket)
@@ -279,20 +270,6 @@ ALQueryPool::Status ALQueryPool::result(
     return sDiagnosticsEnabled ? observeResult(entry, Status::Expired, 0) : Status::Expired;
 }
 
-ALQueryPool::Status ALQueryPool::result(
-    const ALQueryTicket&, ALStatistics& statistics) const
-{
-    statistics = {};
-    return Status::Expired;
-}
-
-ALQueryPool::Status ALQueryPool::result(
-    const ALQuerySpan&, U64& nanoseconds) const
-{
-    nanoseconds = 0;
-    return Status::Expired;
-}
-
 bool ALQueryPool::wait(const ALQueryTicket& ticket, U64& value)
 {
     value = 0;
@@ -316,51 +293,6 @@ bool ALQueryPool::wait(const ALQueryTicket& ticket, U64& value)
     return true;
 }
 
-bool ALQueryPool::wait(const ALQueryTicket&, ALStatistics& statistics)
-{
-    statistics = {};
-    return false;
-}
-
-bool ALQueryPool::wait(const ALQuerySpan&, U64& nanoseconds)
-{
-    nanoseconds = 0;
-    return false;
-}
-
-void ALQueryPool::reserve(ALQueryKind kind, bool reserved)
-{
-    if (supports(kind))
-    {
-        mVisibilityReserved = reserved;
-    }
-}
-
-ALQueryTicket ALQueryPool::beginReserved(ALQueryKind kind)
-{
-    return acquire(kind, true);
-}
-
-void ALQueryPool::beginConditional(const ALQueryTicket&)
-{
-}
-
-void ALQueryPool::endConditional()
-{
-}
-
-void ALQueryPool::checkPassBoundary() const
-{
-}
-
-void ALQueryPool::retire()
-{
-}
-
-void ALQueryPool::makeRoom()
-{
-}
-
 void ALQueryPool::endFrame()
 {
     endVisibilityCapture();
@@ -369,7 +301,6 @@ void ALQueryPool::endFrame()
         // Zero is the invalid ticket sentinel. A wrap is practically
         // unreachable, but releasing retained entries preserves that rule.
         release();
-        mSerial = 1;
     }
     Frame& frame = mFrames[mSerial % RESULT_FRAMES];
     retireEntries(frame);
@@ -386,7 +317,10 @@ void ALQueryPool::release()
     mOpen = {};
     mVisibilityCaptureActive = false;
     mVisibilityCaptureMainWorld = false;
-    mVisibilityReserved = false;
+    // The original pool advanced its serial on release: tickets owned by
+    // prior captures must never act on the next generation's reused slots.
+    // Zero is the invalid sentinel, including endFrame's wrap boundary.
+    if (++mSerial == 0) mSerial = 1;
     mFrames[mSerial % RESULT_FRAMES].serial = mSerial;
 }
 

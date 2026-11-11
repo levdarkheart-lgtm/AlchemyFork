@@ -30,7 +30,6 @@
 #include <memory>
 #include <vector>
 
-class ALFrameFences;
 class ALMetalVisibilityResultBatch;
 
 enum class ALQueryKind : U8
@@ -41,20 +40,6 @@ enum class ALQueryKind : U8
     Primitives,
     Statistics,
     Count
-};
-
-enum class ALStatistic : U8
-{
-    FragmentInvocations,
-    ClippingPrimitives,
-    Count
-};
-
-struct ALStatistics
-{
-    U64 mCounts[U32(ALStatistic::Count)] = {};
-
-    U64 operator[](ALStatistic statistic) const { return mCounts[U32(statistic)]; }
 };
 
 class ALQueryTicket
@@ -73,18 +58,6 @@ private:
     U32 mSerial    = 0;
     U32 mSlot : 24 = 0;
     U32 mKind : 8  = 0;
-};
-
-class ALQuerySpan
-{
-public:
-    bool isValid() const { return mBegin.isValid(); }
-
-private:
-    friend class ALQueryPool;
-
-    ALQueryTicket mBegin;
-    ALQueryTicket mEnd;
 };
 
 /// Legacy-facing asynchronous query contract backed by Metal visibility
@@ -142,7 +115,7 @@ public:
     void recordMainWorldGroupTransition(bool occluded) noexcept;
     void recordMainWorldGroupSkip(GroupSkip skip) noexcept;
 
-    explicit ALQueryPool(ALFrameFences&) noexcept;
+    ALQueryPool() noexcept;
     ALQueryPool(const ALQueryPool&) = delete;
     ALQueryPool& operator=(const ALQueryPool&) = delete;
 
@@ -152,26 +125,10 @@ public:
     ALQueryTicket begin(ALQueryKind kind);
     void end(const ALQueryTicket& ticket);
 
-    ALQuerySpan beginSpan();
-    void endSpan(ALQuerySpan& span);
-
     Status result(const ALQueryTicket& ticket, U64& value) const;
-    Status result(const ALQueryTicket& ticket, ALStatistics& statistics) const;
-    Status result(const ALQuerySpan& span, U64& nanoseconds) const;
 
     bool wait(const ALQueryTicket& ticket, U64& value);
-    bool wait(const ALQueryTicket& ticket, ALStatistics& statistics);
-    bool wait(const ALQuerySpan& span, U64& nanoseconds);
 
-    void reserve(ALQueryKind kind, bool reserved);
-    ALQueryTicket beginReserved(ALQueryKind kind);
-
-    void beginConditional(const ALQueryTicket& ticket);
-    void endConditional();
-    void checkPassBoundary() const;
-
-    void retire();
-    void makeRoom();
     void endFrame();
     void release();
 
@@ -211,7 +168,7 @@ private:
 
     Entry* find(const ALQueryTicket& ticket);
     const Entry* find(const ALQueryTicket& ticket) const;
-    ALQueryTicket acquire(ALQueryKind kind, bool reserved);
+    ALQueryTicket acquire(ALQueryKind kind);
     void retireEntries(Frame& frame);
     Status observeResult(const Entry* entry, Status status, U64 value) const;
     bool diagnosticEntry(const Entry& entry) const noexcept;
@@ -232,7 +189,6 @@ private:
     U32 mAskedReads = 0;
     bool mVisibilityCaptureActive = false;
     bool mVisibilityCaptureMainWorld = false;
-    bool mVisibilityReserved = false;
 };
 
 class ALQueryScope
@@ -249,20 +205,4 @@ public:
 private:
     ALQueryPool&  mPool;
     ALQueryTicket mTicket;
-};
-
-class ALConditionalRender
-{
-public:
-    ALConditionalRender(ALQueryPool& pool, const ALQueryTicket& ticket) : mPool(pool)
-    {
-        pool.beginConditional(ticket);
-    }
-    ~ALConditionalRender() { mPool.endConditional(); }
-
-    ALConditionalRender(const ALConditionalRender&) = delete;
-    ALConditionalRender& operator=(const ALConditionalRender&) = delete;
-
-private:
-    ALQueryPool& mPool;
 };

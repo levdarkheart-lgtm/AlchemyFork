@@ -1,7 +1,6 @@
 /** Benchmark-only visibility diagnostics preserve ticket/retirement semantics. */
 #include <catch2/catch_test_macros.hpp>
 
-#include "alframefences.h"
 #include "alquerypool.h"
 
 namespace
@@ -23,8 +22,7 @@ ALQueryTicket closed_ticket(ALQueryPool& pool)
 TEST_CASE("Query diagnostics separate armed main tickets, duplicate polls and retirement",
           "[alquerypool][diagnostics]")
 {
-    ALFrameFences frames;
-    ALQueryPool pool(frames);
+    ALQueryPool pool;
     DiagnosticsOffOnExit cleanup{pool};
     pool.setDiagnosticsEnabled(false);
     REQUIRE(pool.beginVisibilityCapture(true));
@@ -99,8 +97,7 @@ TEST_CASE("Query diagnostics separate armed main tickets, duplicate polls and re
 TEST_CASE("Rearming query diagnostics does not relabel live old tickets",
           "[alquerypool][diagnostics]")
 {
-    ALFrameFences frames;
-    ALQueryPool pool(frames);
+    ALQueryPool pool;
     DiagnosticsOffOnExit cleanup{pool};
     pool.setDiagnosticsEnabled(true);
     REQUIRE(pool.beginVisibilityCapture(true));

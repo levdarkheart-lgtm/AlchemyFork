@@ -24,14 +24,12 @@
 
 #include "catch2/catch_test_macros.hpp"
 
-#include "alframefences.h"
 #include "alquerypool.h"
 
 TEST_CASE("Metal visibility tickets are bounded by retained capture scopes",
           "[alquerypool][metal-cutover]")
 {
-    ALFrameFences frames;
-    ALQueryPool queries(frames);
+    ALQueryPool queries;
 
     for (U32 value = 0; value < U32(ALQueryKind::Count); ++value)
     {
@@ -67,15 +65,6 @@ TEST_CASE("Metal visibility tickets are bounded by retained capture scopes",
     CHECK_FALSE(queries.wait(ticket, count));
     CHECK(count == 0);
 
-    queries.reserve(ALQueryKind::Occlusion, true);
-    CHECK_FALSE(queries.canBegin(ALQueryKind::Occlusion));
-    CHECK_FALSE(queries.begin(ALQueryKind::Occlusion).isValid());
-    ALQueryTicket reserved =
-        queries.beginReserved(ALQueryKind::OcclusionExact);
-    REQUIRE(reserved.isValid());
-    queries.end(reserved);
-    queries.reserve(ALQueryKind::Occlusion, false);
-
     ALQueryTicket discarded = queries.begin(ALQueryKind::Occlusion);
     REQUIRE(discarded.isValid());
     queries.discard(discarded);
@@ -87,29 +76,7 @@ TEST_CASE("Metal visibility tickets are bounded by retained capture scopes",
     CHECK_FALSE(queries.visibilityCaptureActive());
     CHECK_FALSE(queries.canBegin(ALQueryKind::Occlusion));
 
-    ALStatistics statistics;
-    statistics.mCounts[0] = 3;
-    statistics.mCounts[1] = 4;
-    CHECK(queries.result(ticket, statistics) == ALQueryPool::Status::Expired);
-    CHECK(statistics.mCounts[0] == 0);
-    CHECK(statistics.mCounts[1] == 0);
-
-    ALQuerySpan span = queries.beginSpan();
-    CHECK_FALSE(span.isValid());
-    queries.endSpan(span);
-    U64 nanoseconds = 99;
-    CHECK(queries.result(span, nanoseconds) == ALQueryPool::Status::Expired);
-    CHECK(nanoseconds == 0);
-    nanoseconds = 99;
-    CHECK_FALSE(queries.wait(span, nanoseconds));
-    CHECK(nanoseconds == 0);
-
-    queries.beginConditional(ticket);
-    queries.endConditional();
-    queries.checkPassBoundary();
     queries.endFrame();
-    queries.retire();
-    queries.makeRoom();
     queries.release();
     CHECK(queries.getStalls() == 0);
     CHECK(queries.getAskedReads() == 0);
