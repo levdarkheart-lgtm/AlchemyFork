@@ -158,8 +158,10 @@ namespace
         LLRenderTarget* borrower = pool.acquire(
             SHARED, depth_owner, "native.shared-depth.poison");
         REQUIRE(borrower);
-        CHECK(borrower->getMetalDepthTexture() ==
-              depth_owner.getMetalDepthTexture());
+        REQUIRE(borrower->getMetalDepthTexture());
+        REQUIRE(depth_owner.getMetalDepthTexture());
+        CHECK(borrower->getMetalDepthTexture()->nativeHandle() ==
+              depth_owner.getMetalDepthTexture()->nativeHandle());
         REQUIRE(pool.release(borrower));
 
         depth.fill(0.f);
