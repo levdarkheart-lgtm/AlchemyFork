@@ -1,12 +1,13 @@
 # Native settings and retained resource tail — 2026-11-11
 
-Source checkpoint `83567e407d` on
+Built/started checkpoint `f254feb048e832c101ec62f3e02335eeff13a2cb` on
 `codex/apple-silicon-metal`. Original behavior is pinned to
 `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`. This extends
 [finalization/preview/media closure](native-finalization-and-media-closure.md).
-The goal remains active. No viewer, utility, real media host or native window
-has run at this checkpoint; no screenshots. The owner subsequently authorizes
-launching the exact fresh viewer after checks for their manual confirmation.
+The goal remains active. No product/window ran during implementation/tests.
+The owner subsequently requested the ready viewer for manual confirmation;
+the exact fresh build is now launched. No agent login or screenshot action;
+the utility remains unexecuted.
 CPU facades and device-only tests have bounded scope.
 
 ## Retired phase descriptions
@@ -95,7 +96,7 @@ pooled fallback remains a separate candidate requiring stronger evidence;
 neither an ordinary-frame failure policy nor actual snapshot execution is
 claimed by this probe.
 
-## Remaining source audit and implementation
+## Water control and source audit
 
 The read-only Debug/Developer audit surveys 203 Develop leaves and 246 declared
 graphics/debug literal-key candidates. It finds an original-active water
@@ -170,17 +171,66 @@ Actual shader-local state, setting callback/latch, water gate and full-input
 publication remain. A new actual Application case requires shader policy reload
 without unnecessary resource reconciliation. Six Release checks and1893/41 CPU
 controls pass; the same9,216-config physical-plan dump is still byte-identical.
-Independent source peer passes; root matching dependent rebuild remains.
+Independent source peer and the matching root dependent rebuild pass.
 `/private/tmp/alchemy-native-resource-compute-copy-validation-20261111/validation-receipt.json`.
+
+## Combined build, static admission and owner launch
+
+Frozen clean f254 required doctor/configure/full app build exits0. The first
+full compile31819 succeeded, but task staging renamed the old app after configure
+had written its Info.plist, leaving the fresh app without that metadata. Static
+verification caught this before launch. Preserve the complete first logs/state
+in native-settings-phase-canonical-pre-plist-repair-build-state.json. The task
+script now renames before configure; repaired full build1447 and static69509
+exit0, with no source or test-expectation change. Both old stages are preserved.
+
+Fresh26.4.0d68817 has346ARM64 Mach-O/zero invalid slices, strict deep signature0,
+zero direct forbidden viewer/owned-media-host imports/frameworks, zeroGLSL/no old
+shader subtree, exact native MSL/metallib/notices and332VLC names/bytes exactly
+matching prior335 minus three exclusions. Keep functional screen/VT/CVPX and CEF
+payload; foreign/runtime context questions remain separate. Viewer SHA256
+`285c561302672cb9fab2fe4ab4ef402297796ca2272b579765d57b3abd4ab1eb`.
+`artifacts/metal/feature-completion-20261111/native-settings-phase-canonical-{build-state,validation}.json`.
+
+Matching root77976 passes policy652/20, full alrender563966/115, focused water/
+cutout/SMAA11054/19, broad world105890/23, water-cull250/1 and reload2304/8.
+GPU logs confirm Metal API/GPU validation; all exact tested binary hashes remain
+unchanged after packaging repair. Counts overlap. Snapshot actual-body184checks
+also passes at the clean combined freeze. Strict3504files/909informational/
+0blockers/0errors passes. Tools remain unchanged; harness32passes after docs.
+`native-settings-phase-registered-validation.json`,
+`native-settings-phase-strict-source.json` and
+`native-snapshot-failure/combined-freeze-receipt.json` in the same artifact root.
+
+Separate optional utility build/static83133 exits0 at f254: ARM64, strict
+signature/direct imports, exact native resources/notices and96character names/
+bytes, zeroGLSL/no legacy app_settings. Utility SHA256
+`6b516138f1adf6b23e8ceb6a9db536b36f047b37332cf4f0080ddc134e8ab97d`.
+Viewer/utility staged MSL b52a0fda… and metallib0f69b4aa… are identical. No actual
+utility executed. `native-settings-phase-appearance-validation.json`.
+
+The final read-only exhausted-plan audit finds no concrete ordinary ownership/
+freshness defect. Original ordinary display did not read mResourcesFullSize;
+that state's original admission consumer was snapshots. Native recovery borrows
+complete/exact/unused retained storage or acquires its own exact typed target,
+clears all attachments, and retains current-frame/completion/publication gates.
+Valid reduced-size recovery must remain. Forced native pool-failure injection is
+a separate unexecuted diagnostic-policy question; do not invent !mFullSize guards.
+`/private/tmp/alchemy-native-exhausted-plan-audit-20261111.json` pins f254 hashes.
+
+After all checks, owner-authorized open -na launches the exact verified app.
+New PID90460 matches its canonical executable path and is confirmed alive after
+launch, open exit0. `native-settings-phase-viewer-launch.json` records version,
+source, binary hash and process identity without login or screenshots. Startup
+identity does not prove full viewer parity. Owner now manually confirms behavior.
 
 ## Complete-product advancement and next action
 
-These changes advance the requested dead-code and Debug feature closure through
-preserved resource ownership and restored native failure admission. They do not
-establish complete menu/RLVa/runtime parity. The latest full application remains
-the earlier ae2 source-pinned build; combined full app/static verification and
-optional appearance utility refresh follow this frozen combined closure.
-Broader feature, foreign dependency/runtime, prolonged stability, performance
-and independent release gates remain open. After build/static/affected checks,
-launch the exact fresh viewer for the owner's requested manual confirmation.
-No screenshot comparison is requested; the utility is not to be executed.
+All confirmed source-porting gaps in these completed bounded audits are fixed;
+no further implementation defect is established by the exhausted-plan audit.
+Dead resource/preview/debug graphs are removed while active native owners stay.
+Leave the exact running viewer for owner testing; do not rebuild/restart/operate
+its login/UI or capture screenshots unasked. Investigate any reported regression
+against original1eb before changing its native producer. Broader full feature,
+foreign dependency/runtime, prolonged stability, performance and independent
+release gates stay open; no release-readiness claim.

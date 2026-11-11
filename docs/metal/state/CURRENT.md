@@ -2,11 +2,11 @@
 
 **Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `83567e407d` (newer than the verified viewer app).
-The remaining-feature/OpenGL-removal goal is active. No viewer, appearance
-utility, actual plugin host or native window launched so far; no screenshots.
-Owner now authorizes launching the exact fresh viewer after checks for their
-manual confirmation. Utility execution and screenshot comparisons are not requested.
+**Renderer code checkpoint:** `f254feb048` (built, verified and launched).
+The remaining-feature/OpenGL-removal goal is active. Owner superseded the earlier
+no-launch instruction and requested the ready viewer for manual confirmation.
+Fresh26.4.0d68817 launched with open -na; exact new executable PID90460 was
+confirmed alive. No login action or screenshots by the agent; utility unexecuted.
 Device-only Metal tests and separate CPU/Foundation probes are bounded evidence.
 The owner-stopped20FPS campaign remains deferred.
 
@@ -57,67 +57,65 @@ removes only redundant resource Compute copy; real shader/local latch stays live
 ## Observed validation
 
 Evidence: `artifacts/metal/feature-completion-20261111/`.
-Frozen clean ae2 doctor/configure/full build session2519 and static checks0.
-Version26.4.0d68801:346ARM64 Mach-O/zero invalid slices, strict deep signature0,
+Frozen clean f254 doctor/configure/full build1447 and static69509 exit0.
+Version26.4.0d68817:346ARM64 Mach-O/zero invalid slices, strict deep signature0,
 main viewer and both owned media hosts forbidden direct imports/frameworks0.
 Fresh332VLC plugin names/bytes exactly match old335 minus the three exclusions.
 Keep screen/VT/CVPX/vmem and complete CEF capabilities. Foreign links/runtime
 remain separate; no whole-bundle native-only claim. ZeroGLSL/no old shader tree;
-exact native MSL/metallib/notices. Previous verified d2d app preserved by rename.
-Receipt: native-pool-cutout-canonical-{build-state,validation}.json.
-Viewer SHA2561f5f8373bbd362638c4998e92b036adf752020f9fba9af6a79026cc79f38f920.
-Later configure may change metadata/resources before a full rebuild; this is a
-source-pinned observation, not a current-artifact guarantee.
+exact native MSL/metallib/notices. Previous stages preserved by rename.
+Receipt: native-settings-phase-canonical-{build-state,validation}.json.
+Viewer SHA256285c561302672cb9fab2fe4ab4ef402297796ca2272b579765d57b3abd4ab1eb.
+First full compile31819 exited0 but task staging renamed the configure-generated
+Info.plist into backup. Static check caught it; preserve pre-plist-repair evidence.
+Corrected rename-before-configure, rebuilt/signed fresh stage and verified it.
+No source change or test weakening. Current app matches f254; later rebuilds
+must not overwrite it while the owner is testing.
 
-At ae2: policy640/19, full alrender564631/120, LLRender335391/442(441passed/
-one known CPAL skip), focused5861/8, world105889/23 and reload2304/8 passed.
-GPU groups use API/shader validation. native-pool-cutout-registered-validation.json.
-SMAA matching build82307 exited0; registered2552/4, world105889/23 and reload
-2304/8 passed at dd+test registration. native-smaa-registered-validation.json.
-Alpha matching build64115 exited0; root10665/17 focused, world105890/23 and
-reload2304/8 passed at b20+registrations. native-cutout-alpha-registered-validation.json.
-Counts overlap. Matching legacy/root policy652/20 and phase-resource1894/40 pass;
-resource/policy builds57228/57070 exit0. Snapshot actual-body CPU184 checks expose
-16 baseline failures then pass; Release textual syntax0 and source peer clear.
-Water normal child389/2 exposes17 baseline failures then passes API/shader;
-caller gate actual policy352/1 exposes6 baseline flags then passes. Preview three
-Release checks, hero two and compute-copy six/CPU1893/41 pass; peers clear.
-Matching combined root full build/static and affected checks remain pending.
+Matching root77976: policy652/20, full alrender563966/115, focused water/cutout/
+SMAA11054/19, world105890/23, water-cull250/1 and reload2304/8 all pass. GPU
+logs confirm API/GPU validation. Exact argv/hashes: native-settings-phase-
+registered-validation.json. Tested binaries unchanged after packaging repair.
+Snapshot actual-body184/0fail passes again at clean f254 after16 baseline fails;
+real water caller policy352/1 passes after6 baseline flags. Normal389/2 red17→0
+and independent source/physical-plan/preview/hero peers remain source-pinned.
+Counts overlap; earlier full LLRender335391/442(one CPAL skip) is older evidence.
 
-Production ae2 strict3504files/910info/0blockers/0errors passed. Earlier tests
+Production f254 strict3504files/909info/0blockers/0errors passed. Earlier tests
 4094files flags two negative SDL_WINDOW_OPENGL==0 assertions; retain both, no
 all-source strict pass or manual window execution. Tools49/four content models
 passed at unchanged-tool state. Root harness32files last passed; rerun after docs.
-Optional utility was independently rebuilt/static/resource/dependency-validated
-at older459→066+explicit WIP hashes; it needs a matching final refresh. Receipt:
-/private/tmp/alchemy-native-appearance-resource-validation-20261111/validation-receipt.json.
-No actual utility or viewer executable ran.
+Optional utility f254 build/static83133 exits0: ARM64/signature/direct imports,
+exact same native MSL/metallib/notices,96character names/bytes, zeroGLSL. Receipt:
+native-settings-phase-appearance-validation.json. Utility not executed.
+Launch31758 exits0; exact process90460/new verified binary alive after launch.
+native-settings-phase-viewer-launch.json. Actual viewer parity not inferred.
+Ordinary exhausted-plan audit finds no concrete ownership/freshness defect:
+independent exact typed pool recovery clears storage and retains commit/current-
+frame publication gates. No !mFullSize guard. Forced pool-failure injection is a
+separate unexecuted diagnostic question, not a proved rendering bug.
+/private/tmp/alchemy-native-exhausted-plan-audit-20261111.json.
 
 ## Exact next actions
 
-Root owns canonical CMake/docs/integration; no user edits. All three agent source
-trees are frozen/released; GPU slot free. New water test registration and Compute
-debug comment are root WIP with these docs.
-1. Commit source/evidence freeze, then run required doctor/configure/full-app
-   build via artifacts/metal/feature-completion-20261111/build-native-settings-stage.py.
-   Statically verify exact stage with verify-native-finalize-stage.py and fresh
-   native-settings-phase-canonical build-state/prefix. No product run by scripts.
-2. Refresh optional utility through refresh-native-appearance-stage.py; separate
-   build/cache, strict static/native resources/96character bytes, no utility run.
-3. Run matching affected resource/input/native policy, focused water/cutout/SMAA,
-   world/water-cull/reload checks, strict owned-source and harness. Record exact
-   source/commands/exits/binary hashes; do not use earlier app as current artifact.
-4. Once checks pass, launch the exact fresh viewer for the owner to confirm.
-   Keep screenshots unrequested; record process/build identity, not parity claims.
-   Full feature/stability/performance and ordinary exhausted-frame policy remain open.
+Root owns canonical integration/docs; all agent source released, no live build/
+GPU/check handles. Source/registration/comment freeze f254 is committed; these
+checkpoint docs are the only current WIP. No confirmed porting gap remains in
+the completed bounded audits; broader parity remains unverified.
+1. Leave the exact running viewer available for owner confirmation. Do not
+   rebuild over it, restart it, operate its login/UI or take screenshots unasked.
+2. If owner reports a regression, inspect corresponding original1eb behavior,
+   identify earliest incorrect producer and fix with matching focused evidence.
+3. Record owner observations separately from source/test facts. Keep whole-
+   product runtime/feature/stability/performance and foreign dependency gates open.
 
 ## Complete-product advancement assessment
 
 | ID | State | Evidence / next boundary |
 | --- | --- | --- |
 | M-008 | doing | Original SMAA/cutout/optical duties advance; broader parity remains. |
-| M-011 | doing | Owned source gate passes; final cleanup/build/foreign/runtime remain. |
-| M-012 | complete | Prior native UI automation tooling retained; no launch this goal. |
+| M-011 | doing | Source/static/build pass; owner confirmation/foreign/runtime remain. |
+| M-012 | complete | Prior tooling retained; requested exact-build CLI launch observed. |
 | M-013 | doing | Original-mapped RLVa repairs retained; full behavior unverified. |
 | M-014 | deferred | Owner-stopped20FPS campaign remains deferred. |
 
