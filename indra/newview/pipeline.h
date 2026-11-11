@@ -1926,6 +1926,8 @@ private:
     bool configureMetalPresentationLens(ALMetalWorldPresentationScene& presentation);
     bool wantsMetalDepthOfField(const DepthOfFieldConfig& dof) const;
     bool wantsMetalBloom(bool exact_dof, F32 bloom_strength, F32 halation_strength) const;
+    bool wantsMetalScreenSpaceReflections() const;
+    bool hasMetalScreenSpaceReflectionHistory() const;
     bool metalScopeSourceCurrent(U32 width, U32 height) const;
     void updateNativeExposureReadiness();
 public:

@@ -42,6 +42,11 @@ struct FinalizeSource
     FinalizeSource() { dimensions.width = 8; dimensions.height = 6; }
     const ALMetalRenderTargetDescriptor& descriptor() const { return dimensions; }
 };
+struct FinalizeHistoryTexture
+{
+    ALMetalTextureDescriptor dimensions;
+    const ALMetalTextureDescriptor& descriptor() const { return dimensions; }
+};
 struct FinalizePixelReader
 {
     unsigned reads = 0;
@@ -78,6 +83,13 @@ struct FinalizePolicyPipeline
     struct MetalWorldSimpleCapture
     {
         bool hdr = true, device = true;
+        U32 width = 8, height = 6;
+        std::unique_ptr<int> impostor_ssr_history_target;
+        struct Reflections
+        {
+            const FinalizeHistoryTexture* scene_color = nullptr;
+            const FinalizeHistoryTexture* scene_depth = nullptr;
+        } impostor_screen_space_reflections;
         std::unique_ptr<int> exposure_target;
         std::unique_ptr<FinalizeSource> reference_still_target;
         std::unique_ptr<int> lens_flare_state_target;
@@ -92,6 +104,11 @@ struct FinalizePolicyPipeline
     };
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture = std::make_unique<MetalWorldSimpleCapture>();
     std::unique_ptr<MetalWorldSimpleCapture> mMetalProbeWorldSimpleCapture;
+    // An unallocated real retained target makes the baseline clear body safe
+    // to execute without a device. Native history descriptors below are named
+    // CPU inputs; the separate GPU fixture owns actual clear/sample bytes.
+    LLRenderTarget mSceneMap;
+    ALRenderResourcePlan mResourcePlan;
     LensDistortFit mLensDistortFit;
     bool mReferenceStillWanted = false;
     bool sCutoutRender = false, main = true, hdr = true, suppress = false, scope_eligible = true;
@@ -120,6 +137,9 @@ struct FinalizePolicyPipeline
     bool configureMetalPresentationLens(ALMetalWorldPresentationScene& presentation);
     bool wantsMetalDepthOfField(const DepthOfFieldConfig& dof) const;
     bool wantsMetalBloom(bool, F32, F32) const;
+    bool wantsMetalScreenSpaceReflections() const;
+    bool hasMetalScreenSpaceReflectionHistory() const;
+    void clearSceneMap();
     bool metalScopeSourceCurrent(U32, U32) const;
     void updateNativeExposureReadiness();
     void resetExposureHistory();
@@ -330,6 +350,76 @@ TEST_CASE("Native HDR bloom follows presentation readiness independently of scop
     CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f));
     p.sCutoutRender = p.mMetalWorldSnapshotRequested = false;
     p.mMetalWorldSimpleCapture.reset(); CHECK_FALSE(p.wantsMetalBloom(true, 1.f, 1.f));
+}
+
+TEST_CASE("Native SSR isolation retires warm history until a new ordinary publication",
+          "[native-finalize-policy][native-ssr-isolation-policy]")
+{
+    FinalizeCase f; auto& p = f.pipeline;
+    ALRenderResourceInputs inputs;
+    inputs.mWidth = 8; inputs.mHeight = 6;
+    inputs.mSSR = inputs.mProbes = true;
+    p.mResourcePlan = ALRenderResourcePlan::make(inputs);
+    REQUIRE(p.mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene));
+    FinalizeHistoryTexture color, depth;
+    color.dimensions.width = depth.dimensions.width = 8;
+    color.dimensions.height = depth.dimensions.height = 6;
+    color.dimensions.format = ALMetalPixelFormat::rg11b10_float;
+    depth.dimensions.format = ALMetalPixelFormat::r32_float;
+    auto warm = [&](FinalizePolicyPipeline::MetalWorldSimpleCapture& capture)
+    {
+        capture.impostor_ssr_history_target = std::make_unique<int>(17);
+        capture.impostor_screen_space_reflections = {&color, &depth};
+    };
+    auto& main_capture = *p.mMetalWorldSimpleCapture;
+    p.mMetalProbeWorldSimpleCapture =
+        std::make_unique<FinalizePolicyPipeline::MetalWorldSimpleCapture>();
+    warm(main_capture); warm(*p.mMetalProbeWorldSimpleCapture);
+    CHECK(p.wantsMetalScreenSpaceReflections());
+    CHECK(p.hasMetalScreenSpaceReflectionHistory());
+    // This is the actual isolation caller order: clear BEFORE setting cutout.
+    p.clearSceneMap();
+    for (const auto* capture : {p.mMetalWorldSimpleCapture.get(), p.mMetalProbeWorldSimpleCapture.get()})
+    {
+        CHECK_FALSE(capture->impostor_ssr_history_target);
+        CHECK_FALSE(capture->impostor_screen_space_reflections.scene_color);
+        CHECK_FALSE(capture->impostor_screen_space_reflections.scene_depth);
+    }
+    p.sCutoutRender = true;
+    CHECK_FALSE(p.wantsMetalScreenSpaceReflections());
+    CHECK_FALSE(p.hasMetalScreenSpaceReflectionHistory());
+    // Returning to the same-sized ordinary view must not reveal pre-cutout
+    // owners. Without a successful producer publication, repeated reads miss.
+    p.sCutoutRender = false;
+    CHECK(p.wantsMetalScreenSpaceReflections());
+    CHECK_FALSE(p.hasMetalScreenSpaceReflectionHistory());
+    CHECK_FALSE(p.hasMetalScreenSpaceReflectionHistory());
+    // Explicitly authored successful producer output is an input to this CPU
+    // policy; the GPU companion checks the real publication/sample contract.
+    warm(main_capture);
+    CHECK(p.hasMetalScreenSpaceReflectionHistory());
+    p.sCutoutRender = true;
+    CHECK_FALSE(p.hasMetalScreenSpaceReflectionHistory()); p.sCutoutRender = false;
+    finalize_cube_snapshot = true;
+    CHECK_FALSE(p.wantsMetalScreenSpaceReflections()); finalize_cube_snapshot = false;
+    inputs.mSSR = false; p.mResourcePlan = ALRenderResourcePlan::make(inputs);
+    CHECK_FALSE(p.wantsMetalScreenSpaceReflections());
+    inputs.mSSR = true; inputs.mProbes = false;
+    p.mResourcePlan = ALRenderResourcePlan::make(inputs);
+    CHECK_FALSE(p.wantsMetalScreenSpaceReflections());
+    color.dimensions.width = 7;
+    CHECK_FALSE(p.hasMetalScreenSpaceReflectionHistory()); color.dimensions.width = 8;
+    depth.dimensions.format = ALMetalPixelFormat::rgba8_unorm;
+    CHECK_FALSE(p.hasMetalScreenSpaceReflectionHistory()); depth.dimensions.format = ALMetalPixelFormat::r32_float;
+    p.hdr = false;
+    CHECK_FALSE(p.hasMetalScreenSpaceReflectionHistory());
+    color.dimensions.format = ALMetalPixelFormat::rgba8_unorm;
+    CHECK(p.hasMetalScreenSpaceReflectionHistory());
+    p.clearSceneMap(); p.clearSceneMap();
+    CHECK_FALSE(p.hasMetalScreenSpaceReflectionHistory());
+    p.mMetalWorldSimpleCapture.reset(); p.mMetalProbeWorldSimpleCapture.reset();
+    p.clearSceneMap();
+    CHECK_FALSE(p.hasMetalScreenSpaceReflectionHistory());
 }
 
 TEST_CASE("Native scene pixel callbacks rearm and retain lower-row scaled coordinates",

@@ -853,10 +853,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool reflection_probe_face_capture = false;
     std::unique_ptr<ALMetalRenderTarget> impostor_ssr_history_target;
     ALMetalWorldScreenSpaceReflections impostor_screen_space_reflections;
-    // A native SSR history has no predecessor after startup or resize. The
-    // first Metal frame renders against the inactive history, publishes its
-    // coherent color/depth pair for the next frame, and is never presented.
-    bool world_ssr_history_warmup = false;
     bool continuous_world_capture = false;
     U32 continuous_world_frame = std::numeric_limits<U32>::max();
     ALMetalWorldLegacyAlphaLighting impostor_legacy_alpha_lighting;
@@ -900,7 +896,7 @@ ALMetalRetainedBackground::Lease LLPipeline::acquireMetalSceneMonitorFrame()
         return {};
     auto& capture = *mMetalWorldSimpleCapture;
     if (!capture.renderer || capture.renderer->commandBatchActive() ||
-        !capture.complete || capture.world_ssr_history_warmup ||
+        !capture.complete ||
         capture.world_ui_chain_snapshot || !capture.presentation_target || !capture.target ||
         capture.presentation_frame != gFrameCount ||
         capture.device != getViewerMetalDevice())
@@ -2546,7 +2542,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.hero_probe_native_generation = 0;
         capture.impostor_ssr_history_target.reset();
         capture.impostor_screen_space_reflections = {};
-        capture.world_ssr_history_warmup = false;
         capture.continuous_world_capture = false;
         capture.continuous_world_frame = std::numeric_limits<U32>::max();
         capture.impostor_directional_shadows = {};
@@ -3021,7 +3016,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.reverse_z = LLRender::sReverseZ;
     capture.wireframe = gUseWireframe;
     capture.resetCompleteness();
-    capture.world_ssr_history_warmup = false;
     capture.continuous_world_frame = gFrameCount;
     capture.frame_active = true;
     capture.pass_active = false;
@@ -4462,7 +4456,6 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_hero_probe = {};
         capture.impostor_ssr_history_target.reset();
         capture.impostor_screen_space_reflections = {};
-        capture.world_ssr_history_warmup = false;
         capture.continuous_world_capture = false;
         capture.continuous_world_frame = std::numeric_limits<U32>::max();
         capture.impostor_directional_shadows = {};
@@ -8752,11 +8745,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     const bool hero_active = needs_reflection_probes && !gCubeSnapshot &&
         isMetalHeroProbeActive();
     const bool ssr_active = needs_reflection_probes &&
-        mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
-        !gCubeSnapshot && !sCutoutRender;
+        wantsMetalScreenSpaceReflections();
     const bool ssr_history_ready = !ssr_active ||
-        (!capture.world_ssr_history_warmup &&
-         fillMetalImpostorScreenSpaceReflections());
+        fillMetalImpostorScreenSpaceReflections();
     if (capture.complete &&
         (has_simple_alpha || has_material_alpha || has_pbr_alpha ||
          has_above_water_surface) &&
@@ -8785,17 +8776,6 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         LL_WARNS("Metal")
             << "Could not acquire the active hero probe for the native "
                "world opaque-forward slice" << LL_ENDL;
-    }
-    if (capture.complete &&
-        (material_uses_environment || has_pbr_alpha ||
-         has_above_water_surface) && ssr_active &&
-        !ssr_history_ready && !capture.world_ssr_history_warmup)
-    {
-        capture.markIncomplete(__LINE__);
-        LL_WARNS("Metal")
-            << "Could not acquire coherent screen-space reflection history "
-               "for the native world pre-water legacy-material slice"
-            << LL_ENDL;
     }
 
     if (capture.complete && capture.renderer && capture.target &&
@@ -11188,7 +11168,7 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
     {
         // Screenshots and pixel diagnostics must describe this exact world,
         // never the retained prefix of a preceding display frame.
-        if (!capture.world_ui_chain_active || capture.world_ssr_history_warmup ||
+        if (!capture.world_ui_chain_active ||
             !capture.presentation_target || !capture.target ||
             capture.presentation_frame != gFrameCount)
             return false;
@@ -11227,8 +11207,7 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
         std::string error;
         if (capture.presentation_frame == gFrameCount &&
             capture.presentation_target && capture.target &&
-            capture.device == device &&
-            !capture.world_ssr_history_warmup)
+            capture.device == device)
         {
             const auto current = capture.ui_background.find(context);
             if ((!current || current->source_frame != gFrameCount) &&
@@ -11676,8 +11655,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
         });
     const bool hero_active = !gCubeSnapshot && isMetalHeroProbeActive();
     const bool ssr_active =
-        mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
-        !gCubeSnapshot;
+        wantsMetalScreenSpaceReflections();
     if (capture.complete && has_legacy_alpha &&
         (!capture.impostor_legacy_alpha_lighting_valid ||
          (legacy_alpha_uses_probes &&
@@ -11697,15 +11675,9 @@ void LLPipeline::endMetalImpostorAlphaCapture()
             << "Could not acquire the active hero probe for the native "
                "avatar-impostor legacy BLEND slice" << LL_ENDL;
     }
-    if (capture.complete && legacy_alpha_uses_environment && ssr_active &&
-        !fillMetalImpostorScreenSpaceReflections())
-    {
-        capture.markIncomplete(__LINE__);
-        LL_WARNS("Metal")
-            << "Could not acquire coherent screen-space reflection history "
-               "for the native avatar-impostor legacy BLEND slice"
-            << LL_ENDL;
-    }
+    const bool ssr_history_ready = capture.complete &&
+        legacy_alpha_uses_environment && ssr_active &&
+        fillMetalImpostorScreenSpaceReflections();
 
     if (!capture.complete || capture.batches.empty() ||
         !capture.renderer || !capture.impostor_bake_target)
@@ -11735,7 +11707,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     scene.hero_probe = legacy_alpha_uses_environment && hero_active
         ? &capture.impostor_hero_probe : nullptr;
     scene.screen_space_reflections =
-        legacy_alpha_uses_environment && ssr_active
+        legacy_alpha_uses_environment && ssr_history_ready
         ? &capture.impostor_screen_space_reflections : nullptr;
     scene.legacy_alpha_lighting = has_legacy_alpha
         ? &capture.impostor_legacy_alpha_lighting : nullptr;
@@ -13786,29 +13758,13 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
 
 bool LLPipeline::fillMetalImpostorScreenSpaceReflections()
 {
-    if (!mMetalWorldSimpleCapture)
+    if (!hasMetalScreenSpaceReflectionHistory())
     {
         return false;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     ALMetalWorldScreenSpaceReflections& reflections =
         capture.impostor_screen_space_reflections;
-    if (!reflections.scene_color || !reflections.scene_depth ||
-        capture.width == 0 || capture.height == 0 ||
-        reflections.scene_color->descriptor().width !=
-            capture.width ||
-        reflections.scene_color->descriptor().height !=
-            capture.height ||
-        reflections.scene_color->descriptor().format !=
-            (hdrEnabled() ? ALMetalPixelFormat::rg11b10_float
-                          : ALMetalPixelFormat::rgba8_unorm) ||
-        reflections.scene_depth->descriptor().width != capture.width ||
-        reflections.scene_depth->descriptor().height != capture.height ||
-        reflections.scene_depth->descriptor().format !=
-            ALMetalPixelFormat::r32_float)
-    {
-        return false;
-    }
 
     ALMetalWorldScreenSpaceReflectionConstants constants;
     const LLCamera& camera = LLViewerCamera::getCurrent();
@@ -18544,16 +18500,12 @@ void LLPipeline::renderMetalWorldBaseLighting(
         return;
     }
     const bool ssr_active = use_reflection_probes &&
-        mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
-        !gCubeSnapshot;
+        wantsMetalScreenSpaceReflections();
     const bool ssr_history_ready = !ssr_active ||
         fillMetalImpostorScreenSpaceReflections();
-    // Startup and resize have no predecessor. Encode the first complete
-    // native frame without SSR, publish its coherent color/depth pair, and
-    // bar that warm-up frame from UI composition and presentation. Metal
-    // never bootstraps its history by reading the GL framebuffer.
-    capture.world_ssr_history_warmup =
-        ssr_active && !ssr_history_ready;
+    // A cleared, absent or resized SSR history contributes no screen-space
+    // hit, as the original black/far scene map did. Probe lighting remains
+    // valid and presentable while the next ordinary frame publishes history.
 
     ALMetalWorldBaseLightingScene scene;
     scene.diagnostic_view.frame_index = gFrameCount;
@@ -28859,20 +28811,6 @@ void LLPipeline::copyCutoutCoverageToAlpha()
     gCopyProgram.unbind();
 }
 
-void LLPipeline::clearSceneMap()
-{
-    if (mSceneMap.isComplete())
-    {
-        // The depth clear value is the reverse-Z latch's far plane. Clears obey
-        // the write masks, so both are opened for it.
-        LLGLSColorMask mask(true, true);
-        LLGLDepthTest depth(GL_TRUE, GL_TRUE);
-        mSceneMap.bindTarget();
-        gGL.setClearColor(LLColor4::transparent);
-        mSceneMap.clear();
-        mSceneMap.flush();
-    }
-}
 
 void LLPipeline::readAttachmentTimes()
 {

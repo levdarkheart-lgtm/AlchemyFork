@@ -28,7 +28,7 @@
  */
 
 // Production method bodies are also compiled by the focused CPU policy test.
-// No viewer or GPU object is constructed by that test.
+// No viewer instance or Metal resource is constructed by that test.
 
 bool LLPipeline::consumeReferenceStillRequest()
 {
@@ -493,4 +493,65 @@ void LLPipeline::clearLensFlareState()
         mMetalWorldSimpleCapture->lens_flare_state_epoch = 0;
     }
 #endif
+}
+
+void LLPipeline::clearSceneMap()
+{
+    // Isolation clears the shared scene before its cutout flag is raised.
+    // Drop both view owners so returning to an ordinary view cannot expose
+    // the preceding scene through a swapped or same-sized history pair.
+    for (auto* capture : {mMetalWorldSimpleCapture.get(),
+                          mMetalProbeWorldSimpleCapture.get()})
+    {
+        if (!capture) continue;
+        capture->impostor_screen_space_reflections = {};
+        capture->impostor_ssr_history_target.reset();
+    }
+    if (mSceneMap.isComplete())
+    {
+        // The depth clear value is the reverse-Z latch's far plane. Clears obey
+        // the write masks, so both are opened for it.
+        LLGLSColorMask mask(true, true);
+        LLGLDepthTest depth(GL_TRUE, GL_TRUE);
+        mSceneMap.bindTarget();
+        gGL.setClearColor(LLColor4::transparent);
+        mSceneMap.clear();
+        mSceneMap.flush();
+    }
+}
+
+
+bool LLPipeline::wantsMetalScreenSpaceReflections() const
+{
+    return mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
+        !gCubeSnapshot && !sCutoutRender;
+}
+
+bool LLPipeline::hasMetalScreenSpaceReflectionHistory() const
+{
+    if (sCutoutRender || !mMetalWorldSimpleCapture)
+    {
+        return false;
+    }
+    const MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const auto& reflections =
+        capture.impostor_screen_space_reflections;
+    if (!reflections.scene_color || !reflections.scene_depth ||
+        capture.width == 0 || capture.height == 0 ||
+        reflections.scene_color->descriptor().width !=
+            capture.width ||
+        reflections.scene_color->descriptor().height !=
+            capture.height ||
+        reflections.scene_color->descriptor().format !=
+            (hdrEnabled() ? ALMetalPixelFormat::rg11b10_float
+                          : ALMetalPixelFormat::rgba8_unorm) ||
+        reflections.scene_depth->descriptor().width != capture.width ||
+        reflections.scene_depth->descriptor().height != capture.height ||
+        reflections.scene_depth->descriptor().format !=
+            ALMetalPixelFormat::r32_float)
+    {
+        return false;
+    }
+
+    return true;
 }
