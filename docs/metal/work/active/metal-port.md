@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `f36e8aabdb`.
+**Renderer checkpoint:** Commit `0b219b9728b7dda9864357e1546a7e7337ce274c`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -127,7 +127,12 @@ read-only before proposing a concrete owner. rlva_port owns native SceneMonitor
 service/state/MSL; root provides exact normalized pre-UI lease getter and owns
 shared pipeline/display/CMake/docs. SceneMonitor integration remains next.
 CURRENT pins worktrees/exclusive owners. Integrate actual GPU tests/repairs,
-then freeze/rebuild canonical and appearance apps; goal stays active.
+Native Scene Monitor/raw UI/RenderInfo integrated through0b219b9728; see
+[latest evidence](native-scene-ui-and-render-info.md). Complete final native
+suites and frozen canonical/appearance verification, then continue actual
+RLVa silhouette stamp repair (menu owns pipeline/world/MSL), unconsumed GPU
+uniform retirement (rlva owns LLRender/env/control/window; pipeline held), and
+original12case fence admission (gl_tail owns fences). Goal stays active.
 Keep viewer and appearance utility closed.
 
 ## Non-negotiable open gates
