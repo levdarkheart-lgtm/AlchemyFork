@@ -2,8 +2,10 @@
 
 **Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `6a0831ad88`.
+**Renderer code checkpoint:** `5d55f9a202`.
 Benchmark registration and displaced shader cleanup are validated.
+[Native source-tail evidence](../work/active/native-opengl-tail-removal.md)
+records removals, exact CPU vocabulary and source-gate limits.
 The remaining-feature/OpenGL-removal goal stays active. No viewer or appearance
 utility launch, menu action, screenshot or signed-in state change. Offscreen
 test executables create Metal devices and submit GPU work. The separate20FPS
@@ -69,11 +71,11 @@ Exact hashes: `artifacts/metal/feature-completion-20261111/feature-native-identi
 Current source still requires a frozen canonical build and verification.
 All receipts are under `artifacts/metal/feature-completion-20261111/`.
 
-Win32/WGL graphics owners and dead Vulkan telemetry are removed. Child inventory
-after Win32 cleanup:1229findings/2398files,8call-syntax matches,strict1; all8
-are CPU helpers/glTF strings. Native compatibility class names remain markers.
-Names/comments/excluded code contribute; this is not a live call count, and the
-inventory omits some owned directories. Runtime context proof remains open.
+Expanded root strict source audit0:3507files/0blocking/0errors/1188informational.
+Root39tools tests/harness0. All first-party runtime directories are scanned,
+with explicit vendor/submodule/test exclusions and lexical limits. Native names
+and CPU data are informational; actual APIs still block. This does not prove
+runtime contexts, linking or foreign subprocess behavior.
 
 ## Exact next actions and ownership
 
@@ -81,24 +83,22 @@ Root owns integration, CMake, documentation, tests and canonical builds. Current
 image/label/profiler/wrapper/Win32 removal and native water count changes are
 integrated. [Menu audit](../work/active/developer-menu-admission.md) fixes two
 inherited timer controls and identifies orphaned Enable Shader Cache. Root
-policy draft in `/private/tmp/alchemy-native-cache-policy-20261111` is not yet
+policy6cc38ac11b in `/private/tmp/alchemy-native-cache-policy-20261111` is not yet
 integrated; startup/reload/clear/shutdown wiring awaits the native cache owner.
-Freeze final source after cache/header/audit integration, then run full builds
-and verification. No launches or cache/menu actions.
+CPU vocabulary and audit integrated; native builds0,67793assertions/49render
+cases and93869/22GPUcases pass. Freeze after cache/policy integration, then
+full builds/verification. No launches or cache/menu actions.
 
 Agent `menu_port`: `/private/tmp/alchemy-native-pipeline-cache-20261111`, branch
 `codex/native-pipeline-cache`, basec5261cecae. Own new native binary archive/test,
 device-owned lifetime and synchronous PSO factory hooks, exact builtin identity.
 Default disabled/no IO; root maps actual setting/path/version/second instance.
 
-Agent `gl_tail_audit`: next isolated CPU format/state/shader-stage vocabulary
-replaces external GL header dependency with exact proven numeric/ABI constants,
-removing unused glext/opengl-registry dependencies. Own llglheaders.h and exact
-dependency/CMake entries only. Root excluded the orphan GL UI fixture6a0831ad88;
-its historical header must not enter the native vocabulary closure.
-Agent `rlva_port`: isolated audit precision/coverage work; own audit_gl.py and
-tests/test_scripts.py only. Actual API/context/import/loader blockers must stay
-strict; native class-name markers and exact CPU helpers are informational.
+Agent `gl_tail_audit`: CPU vocabulary integratedfe9cf22c68; current task is
+independent native-cache lifecycle/persistence/default-path review.
+Agent `rlva_port`: audit integrated5d55f9a202; current task retires excluded
+llvertexbuffer_gl_test.cpp only after native invariant census, porting unique
+meaningful checks into a dedicated new native file. Root owns shared CMake.
 CURRENT/linked work notes retain prior committed worktree provenance.
 
 Prior utility/preview/vertex/FrameProfile/manager/batching/GLTF worktrees are

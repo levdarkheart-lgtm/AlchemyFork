@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `6a0831ad88`; cache/header/audit completion active.
+**Renderer checkpoint:** Commit `5d55f9a202`; native cache completion active.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -26,8 +26,11 @@ OpenGL dependency removal and native build gates are integrated through815416675
 full dependent native regressions0,67773assertions/47cases. Wrapper/Win32/WGL/
 Vulkan tails removed; native water count fixture31516/1 passes. [Menu audit](developer-menu-admission.md)
 repairs inherited timer controls and identifies the remaining orphan Shader
-Cache enable control. Native archive owner, root viewer policy, explicit CPU
-vocabulary header and stronger actual-API audit are isolated active work.
+Cache enable control. [Source-tail evidence](native-opengl-tail-removal.md):
+CPU vocabulary and expanded source gate integrated,3507files/0blockers/0errors/
+1188informational;39tool tests0. Native regressions67793/49 and93869/22 pass.
+Native archive/root policy remain isolated active work, including actual failed
+save retry and shader-validation/archive compatibility handling.
 No launches. Exact commands/failures in latest note.
 
 Earlier verified bounded checkpoints below remain included; their older build

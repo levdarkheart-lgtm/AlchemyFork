@@ -13,6 +13,13 @@ The versioned `feature-matrix.csv` is the functional contract. For each critical
 - Compare equivalent scene, exposure, shader level, avatar limit, resolution, antialiasing, SSR and reflectivity. Before scoring any paired images, capture each isolated profile's effective `Render*` plus Alchemy exposure/render settings with `tools/metal/graphics_settings.py` and require its comparison command to exit zero. A mismatch, missing required setting or unilateral visual setting invalidates the pair; image metrics from such a pair are not parity evidence. For every shadow comparison, shadows must be enabled and saved through Graphics Preferences in both viewers before capture; shadows do not require a restart, while RLVa state changes do. An off/on or both-off pair is not shadow-parity evidence. Allow defined stochastic/temporal differences; capture deviations in colors, depth, PBR normals, alpha sorting, selection and shadow edges.
 - Track CPU/GPU stalls, resource hazards, retained/overreleased Metal objects, command completion, resize and drawable starvation. Validate correctness with Metal debug enabled and performance with validation disabled.
 - OpenGL-static audit: `python3 tools/metal/audit_gl.py --mode inventory` reports current owned-application API use; **`--mode strict` must pass at release**. Static grep is necessary but not sufficient. Check runtime context creation and linked binaries (and document legitimate foreign media subprocess API use).
+  The expanded gate scans first-party `indra` runtime source and reports
+  vendor/submodule/test exclusions. Strict fails API/context/header/prototype/
+  loader blockers and scan errors; native names remain informational rows.
+  Exact CPU-helper exemptions never exempt their bodies. Categories can overlap.
+  Lexical analysis cannot prove arbitrary computed symbols, full dataflow or
+  runtime safety. [Source-gate evidence](work/active/native-opengl-tail-removal.md)
+  includes positive detections and adversarial regression checks.
 - `tools/metal/verify_app.sh <path-to-app>` checks native slice at release; code-sign and runtime load checks require actual macOS host.
 
 ## Build/test evidence
