@@ -161,6 +161,44 @@ public:
     ETargetlessRenderResult renderWithoutTarget();
 };
 
+// Named inputs for the avatar producer's scheduling boundary. The production
+// helper below runs unchanged; these inputs do not construct a viewer avatar.
+struct LLDrawable
+{
+    static constexpr U32 REBUILD_GEOMETRY = 1;
+    bool rebuild = false;
+    bool isState(U32 state) const { return state == REBUILD_GEOMETRY && rebuild; }
+};
+struct PreviewDrawableInput
+{
+    LLDrawable* value = nullptr;
+    bool notNull() const { return value != nullptr; }
+    LLDrawable* operator->() const { return value; }
+};
+class LLVOAvatar
+{
+public:
+    PreviewDrawableInput mDrawable;
+    S32 mDirtyMesh = 0;
+    bool lod_refreshes = false;
+    unsigned morph_revision = 2;
+    unsigned vertex_revision = 1;
+    std::vector<char> operations;
+    bool isMeshDirty() const { return mDirtyMesh > 0; }
+    void updateLOD()
+    {
+        operations.push_back('L');
+        if (lod_refreshes) updateMeshData();
+    }
+    void updateMeshData()
+    {
+        operations.push_back('M');
+        vertex_revision = morph_revision;
+        mDirtyMesh = 0;
+        mDrawable->rebuild = false;
+    }
+};
+
 #include "../../newview/image_preview_native.inl"
 
 Pixels pixels(NativeImages& native, const ALMetalTexture& texture)
@@ -180,6 +218,49 @@ void checkColor(const Pixels& actual, const std::array<U8, 4>& color)
         for (std::size_t channel = 0; channel < color.size(); ++channel)
             CHECK(actual[offset + channel] == color[channel]);
 }
+}
+
+TEST_CASE("Avatar image preview refreshes ordinary dirty morph geometry before extraction",
+          "[preview-geometry-policy]")
+{
+    LLDrawable drawable;
+    LLVOAvatar avatar;
+    avatar.mDrawable.value = &drawable;
+    unsigned expected_updates = 0;
+    SECTION("a warmed priority-one morph needs its final mesh refresh")
+    {
+        avatar.mDirtyMesh = 1;
+        expected_updates = 1;
+    }
+    SECTION("an unchanged mesh keeps its current revision")
+    {
+        avatar.vertex_revision = avatar.morph_revision;
+    }
+    SECTION("LOD already refreshed priority-two geometry once")
+    {
+        avatar.mDirtyMesh = 2;
+        avatar.lod_refreshes = true;
+        expected_updates = 1;
+    }
+    SECTION("an unavailable drawable remains pending")
+    {
+        avatar.mDrawable.value = nullptr;
+        avatar.mDirtyMesh = 1;
+    }
+    updateImagePreviewAvatarGeometry(&avatar);
+    REQUIRE_FALSE(avatar.operations.empty());
+    CHECK(avatar.operations.front() == 'L');
+    CHECK(std::count(avatar.operations.begin(), avatar.operations.end(), 'M') == expected_updates);
+    if (avatar.mDrawable.notNull())
+    {
+        CHECK(avatar.mDirtyMesh == 0);
+        CHECK(avatar.vertex_revision == avatar.morph_revision);
+    }
+    else
+    {
+        CHECK(avatar.mDirtyMesh == 1);
+        CHECK(avatar.vertex_revision == 1);
+    }
 }
 
 TEMPLATE_TEST_CASE("Image preview callers recover a missing initial native destination",

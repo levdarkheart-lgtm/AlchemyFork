@@ -841,9 +841,9 @@ bool LLImagePreviewAvatar::render()
     camera->setPerspectiveWithoutRenderState(
         mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
 
-    // updateLOD() also refreshes dirty/reallocated mesh data before native
-    // extraction, so no retained avatar draw is needed to populate the face.
-    avatar->updateLOD();
+    // Preserve the original preview's final mesh refresh before native
+    // extraction, including ordinary priority-one morph changes.
+    updateImagePreviewAvatarGeometry(avatar);
 
     LLFace* face = nullptr;
     LLPolyMesh* mesh = nullptr;

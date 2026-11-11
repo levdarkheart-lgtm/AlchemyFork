@@ -28,6 +28,22 @@
 // Camera/scene construction stays with the caller; native image publication
 // and retry state are defined here once.
 
+namespace
+{
+void updateImagePreviewAvatarGeometry(LLVOAvatar* avatar)
+{
+    avatar->updateLOD();
+    if (avatar->mDrawable.notNull() &&
+        (avatar->isMeshDirty() ||
+         avatar->mDrawable->isState(LLDrawable::REBUILD_GEOMETRY)))
+    {
+        // The original preview's renderSkinned refreshed priority-one
+        // morph changes as well as the higher-priority LOD changes.
+        avatar->updateMeshData();
+    }
+}
+}
+
 LLViewerDynamicTexture::ETargetlessRenderResult
 LLImagePreviewAvatar::renderWithoutTarget()
 {

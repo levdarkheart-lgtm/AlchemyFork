@@ -939,6 +939,7 @@ public:
     virtual void    updateMeshTextures();
     void            updateSexDependentLayerSets();
     virtual void    dirtyMesh(); // Dirty the avatar mesh
+    bool            isMeshDirty() const { return mDirtyMesh > 0; }
     void            updateMeshData();
     void            updateMeshVisibility();
     LLViewerTexture*        getBakedTexture(const U8 te);
