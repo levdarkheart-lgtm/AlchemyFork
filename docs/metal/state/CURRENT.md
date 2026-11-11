@@ -2,9 +2,9 @@
 
 **Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `8a14710e80` (newer source; separate rebuild pending).
+**Renderer code checkpoint:** `114fedf245` (built/tested; manual Alpha4 ZIP verified).
 **Owner-passed viewer:** `f254feb048`,26.4.0d68817; provisional “pass...for now”.
-The remaining-feature/OpenGL-removal goal is active. Owner superseded the earlier
+The latest fixes are built/tested/packaged. Owner superseded the earlier
 no-launch instruction and requested the ready viewer for manual confirmation.
 Fresh26.4.0d68817 launched with open -na; exact new executable PID90460 was
 confirmed alive. No login action or screenshots by the agent; utility unexecuted.
@@ -60,7 +60,7 @@ Post-launch source audit found additional issues; earlier completion assessment
 was premature. Integrated9838 fixes inherited feature-mask off clearing all bits;
 65b5 restores dirty1 avatar-preview morph refresh;158f retries/current-qualifies
 preview vertex/index stores; a380/8a14 fixes RGB8 media source stride/opaque alpha.
-Child CPU/GPU/source peers pass; matching combined root build remains pending.
+Child CPU/GPU/source peers and matching combined root build/tests pass.
 
 ## Observed validation
 
@@ -110,25 +110,31 @@ combined1860/6 API/GPU pass; media CPU831/2pass after same-source599/2red112.
 Tools d053 honor isolated configure -B; all50tools tests/shell syntax pass.
 Real new followup directory bootstrap/wrapper configure75939 exit0, existing
 dependencies read with installOFF, passed binary hash unchanged. No new app run.
+Combined clean114fedf245: doctor/configure/full build98310 exit0 in followup tree.
+Root55175: policy652/20; LLRender336356assertions/445passed+one known CPAL skip;
+alrender563966/115 pass, device suites confirm API/GPU validation. Static44362
+passes346ARM64/332exact VLC/signature/import/resource/zeroGLSL checks. Strict
+source3505files/911info/0blockers/0errors. Receipts: followup-{canonical-build-state,
+canonical-validation,registered-validation,strict-source}.json.
+Same source staged as Alchemy Metal Alpha4 in Release, LTO OFF;83415/7544 exit0.
+Renderer test hashes unchanged; identity+policy662/21 pass. ZIP84942 exit0:
+319936679bytes, all7840files/links/modes exact after extraction, strict signature0.
+artifacts/metal/releases/26.4.0.68825-alpha4/ contains ZIP and ZIP.sha256.
+manual-alpha-{build-state,validation,zip-validation}.json records exact commands,
+hashes and identity. No viewer launch or upload. Passed f254 binary unchanged.
 
 ## Exact next actions
 
-Root owns canonical integration/CMake/docs/workflow. Agent source released; no
-live GPU/build/check handles. Private inl listing, strict release-source gate and
-these docs are WIP. Preserve passed app; all further builds use followup directory.
-1. Commit combined freeze, doctor/configure/full build through corrected wrapper
-   with AL_METAL_BUILD_DIR=build-Darwin-ninja-os-arm64-followup. Run matching
-   LLRender/preview/upload/policy tests and static app/resources/import/source
-   checks. Recheck baseline copy names/bytes/signature; no baseline overwrite.
-2. Owner now explicitly requests GitHub push and release action when fixed.
-   origin private levdarkheart-lgtm/AlchemyFork; feature branch only/no force.
-   Existing Metal alpha job needs tag ref, Project, Metal Alpha4 and fresh exact
-   26.4.0.<revision>-alpha4 override. Run generic tag defaults would select wrong job.
-3. Owner configured CLI; gh auth status outside sandbox confirms levdarkheart-lgtm
-   keyring authentication. No push/dispatch yet. Use authenticated gh
-   after validated push to trigger and monitor exact run/artifacts. No credentials,
-   default merges, public exposure or permission changes. Keep screenshots of
-   viewer unrequested; CI evidence is separate from owner provisional pass.
+Root owns canonical integration/docs; agents released, all build/check handles
+closed.114fedf245 pushed normally to private origin codex/apple-silicon-metal;
+remote SHA verified. CLI/keyring works. Tag a Build43094454819 failed before any
+step: GitHub says recent account payments failed or spending limit needs increase.
+No tag/build/release was created by that action. No billing/security changes.
+Owner instead requests ZIP+SHA for manual upload. Deliver the verified files;
+no further CI dispatch or publishing. Keep source114 and artifact receipts pinned.
+Exact release job route, if later needed: Project / `Metal Alpha 4`, existing
+versioned-alpha tag ref. Generic defaults select the wrong job. Preserve passed
+app; no viewer screenshot/login/restart. Full-product gates below remain open.
 
 ## Complete-product advancement assessment
 

@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `8a14710e80`; newer corrections, separate build pending.
+**Integrated checkpoint:** Commit `114fedf245`; combined build/tests/manual ZIP verified.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -64,7 +64,7 @@ waves remain. 2c16d75147 removes only redundant resource Compute copy; actual
 shader/local setting latch and full resource-input publication stay live.
 Owner provisionally passed f254/68817. Later source review found inherited mask
 and preview/media gaps: integrated9838/65b5/158f/a380/8a14 fixes; matching combined
-build pending. Source map, baseline red controls and peers recorded in new note.
+build/tests now pass. Source map, baseline red controls and peers in new note.
 
 ## Work board
 
@@ -94,7 +94,7 @@ M-014 deferred. No release-readiness claim.
 
 ## Observed validation
 
-Last verified full app f254feb048e832c101ec62f3e02335eeff13a2cb, Release68817:
+Prior owner-passed full app f254feb048e832c101ec62f3e02335eeff13a2cb, Release68817:
 required doctor/configure/full build1447/static69509 exits0,346ARM64/deep signature0,
 viewer+owned media host direct imports0,332exact VLC modules/zeroGLSL/exact native
 resources/notices. Prior stages preserved. Receipt:
@@ -128,22 +128,28 @@ preserved. No later fixes are inferred from that observation. New child controls
 mask80red44→0; preview20red3→0 and combined1860/6 API/GPU; media same-source
 599red112→831/2green. Root tools50/shell/harness pass; corrected -B wrapper and
 actual separate followup configure75939 pass, old binary unchanged/installOFF.
+Latest clean114: followup doctor/configure/full build98310 and static44362 exit0;
+346ARM64/332exact VLC/signature/imports/native resources/zeroGLSL pass. Strict
+source3505/911info/0blockers/0errors. Root55175 policy652/20, LLRender336356/445pass
++one known CPAL skip, alrender563966/115 pass; GPU/API validation observed.
+Alpha4 same-source identity stage83415/static7544 pass, Release/LTO OFF; unchanged
+renderer test hashes and identity+policy662/21. ZIP84942:319936679bytes/7840exact
+files+links+modes after extraction/strict signature0/checksum0, no execution.
+Evidence: followup-* and manual-alpha-* receipts under feature-completion-20261111.
 
 ## Immediate executable action
 
-Root owns canonical integration/CMake/docs/workflow; all agent source released,
-no pending build/GPU/check handles. Private inl listing/strict CI source gate/
-docs are WIP. Freeze and build current corrections ONLY in followup directory,
-using corrected wrapper; run affected LLRender/preview/upload/policy and app/
-resources/import/source checks. Keep exact owner-passed f254 app untouched.
-User explicitly requests push+release action after fixes. Push feature branch to
-private origin levdarkheart-lgtm/AlchemyFork, no force/default merge. Dedicated
-Metal job needs fresh exact version-alpha4 tag plus Project/Metal Alpha4; generic
-tag defaults are wrong. Owner configured CLI; outside-sandbox gh auth status
-confirms levdarkheart-lgtm/keyring. Use gh for trigger; no remote write yet.
-Monitor actual run/artifacts after trigger; no credentials/security/public-access
-changes. Viewer screenshot/login/restart unrequested. Preserve original1eb gate
-for any actual new defect; no whole-product completeness claim.
+Root owns docs/handoff; agents released, all build/GPU/check handles closed.
+Validated114 pushed normally to private origin feature branch; remote SHA exact.
+CLI works. Tag a Build43094454819 rejected before steps for account payments/
+spending-limit restriction; no tag/release/build created, no billing changes.
+Owner replaces CI delivery with ZIP+SHA for manual upload. Deliver the verified
+Alchemy_Metal_Alpha_4_26_4_0_68825_arm64.zip and .zip.sha256 from
+artifacts/metal/releases/26.4.0.68825-alpha4/. No upload/publishing by agent.
+If later needed, dedicated action inputs are Project / `Metal Alpha 4` on an
+existing exact version-alpha4 tag. No further dispatch now. Owner-passed f254
+app remains untouched. Original1eb gate applies to any future concrete defect;
+no whole-product completion claim or new viewer operation.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all

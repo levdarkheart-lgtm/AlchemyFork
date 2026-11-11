@@ -1,9 +1,9 @@
 # Post-launch source corrections — 2026-11-11
 
-Integrated renderer checkpoint `8a14710e80`, following the built/started
+Integrated renderer checkpoint `114fedf245`, following the built/started
 `f254feb048` checkpoint in [settings/resource tail](native-settings-and-resource-tail.md).
 Original source remains `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`.
-The goal is active. Owner provisionally passed26.4.0d68817: “viewer i tested seems
+Owner provisionally passed26.4.0d68817: “viewer i tested seems
 ok...i would rate it pass...for now”. This is an observation about that build,
 not a scenario-specific parity/stability/performance result or these later fixes.
 
@@ -124,22 +124,51 @@ process/params/skin/avatar and exact five-channel packing/J2C and bake-ID bodies
 actual optional utility execution remains unperformed.
 `artifacts/metal/feature-completion-20261111/appearance-source-closure-audit.json`.
 
-## GitHub request and next action
+## Combined build and manual package
+
+Clean114fedf245092bb0bb24bf814f6d239fded24e68 doctor/configure/full build98310
+exits0 in the isolated followup tree. Root55175 policy652/20, fullLLRender336356
+assertions/445passed+one known Noto single-CPAL-data skip and alrender563966/115
+pass. Device suites observe Metal API/GPU validation. Static44362 passes346ARM64,
+332exact VLC modules, strict signature/owned imports/native resource bytes and
+zeroGLSL. Strict production source3505files/911info/0blockers/0errors.
+Receipts: followup-canonical-{build-state,validation}.json,
+followup-registered-validation.json and followup-strict-source.json.
+
+Same source was staged with proper Alchemy Metal Alpha4 identity, Release/O3,
+LTO OFF, reused open-source dependencies/installOFF.83415 build and7544 static
+checks exit0. LLRender/alrender test binaries remain byte-identical to the tested
+cohort; relinked newview identity+policy662/21 pass. No new rendering source edits.
+manual-alpha-{build-state,validation,zip-validation}.json records all commands.
+
+ZIP84942 uses ditto keepParent/resource preservation; checksum verification0.
+Fresh extraction matches all7,840file/link names, bytes, symlinks and modes;
+deep strict signature0. ZIP319,936,679bytes, SHA256
+5a6d07493073ebde986c83fad84e6e4723980338c6989e296eb876fe30587419.
+Files: artifacts/metal/releases/26.4.0.68825-alpha4/
+Alchemy_Metal_Alpha_4_26_4_0_68825_arm64.zip and .zip.sha256.
+No app launch or upload. Owner-passed f254 binary remains unchanged.
+
+## GitHub request and manual handoff
 
 Owner explicitly requests pushing fixed source and triggering the release build.
 Configured origin is private levdarkheart-lgtm/AlchemyFork; use the existing
 codex/apple-silicon-metal branch, no force push/default merge/permission changes.
 Existing dedicated Metal action packages native ARM64 open-source dependencies
 and publishes a prerelease in that private fork. Use Tag a Build with Project,
-Metal Alpha4 and a fresh exact26.4.0.<revision>-alpha4 override; generic auto tags
+`Metal Alpha 4` and a fresh exact26.4.0.<revision>-alpha4 override; generic auto tags
 or a branch ref cannot enter that job. Never accept an automatic collision suffix.
 The Metal release job now also gates the actual strict owned-source GL audit.
 
 Owner configured the CLI; gh auth status outside the sandbox now confirms the
-levdarkheart-lgtm account/keyring. Use gh for the dispatch and monitoring. No
-remote push/tag/dispatch has occurred for these fixes yet. Do not
-request credentials or alter repository security. Validate the combined separate
-build/affected tests/static resources/source gate first, push the exact frozen
-branch, trigger the existing release action and monitor its real run/artifacts.
-Keep manual pass and CI evidence source-pinned. Whole-product runtime/feature/
-stability/performance gates remain separate; no product-complete claim.
+levdarkheart-lgtm account/keyring. Normal push to the feature branch succeeded;
+GitHub confirms exact114fedf245 SHA. Tag a Build43094454819 was dispatched with
+Project / Metal Alpha4 /26.4.0.68825-alpha4, but GitHub rejected it before any
+step: “recent account payments have failed or your spending limit needs to be
+increased”. No tag or release build was created; no billing/security changes.
+The native runner is also hosted; no self-hosted repository runner is available.
+
+Owner instead requests ZIP+SHA for manual upload. The verified local files above
+are the handoff; do not perform further CI dispatch or publish/upload anything.
+Source remains114, already pushed. Whole-product runtime/feature/stability/
+performance gates remain separate; no product-complete claim.
