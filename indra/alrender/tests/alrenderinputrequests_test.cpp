@@ -181,6 +181,19 @@ namespace
         CHECK_FALSE(application.mReconcile);
     }
 
+    TEST_CASE("alrenderapplication: compute policy reloads shader state and keeps resource inputs",
+              "[alrenderinputrequests]")
+    {
+        ALShaderInputs latched = shaders();
+        latched.mLocal.mCompute = !latched.mLocal.mCompute;
+        const Application application = Application::make(false, shaders(), latched, resources(), resources());
+        CHECK(application.mPrograms == Programs::Reloaded);
+        CHECK_FALSE(application.mSharedObjects);
+        CHECK_FALSE(application.mReconcile);
+        CHECK_FALSE(application.idle());
+        CHECK(Application::make(false, latched, latched, resources(), resources()).idle());
+    }
+
     TEST_CASE("alrenderapplication: a global shader input compiles the shared objects again", "[alrenderinputrequests]")
     {
         ALShaderInputs latched = shaders();

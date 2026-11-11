@@ -19179,7 +19179,6 @@ ALRenderResourceInputs LLPipeline::resourceInputsFromSettings(const ALShaderInpu
     in.mEmissive = gSavedSettings.getBOOL("RenderEnableEmissiveBuffer");
     in.mGBufferNormHDR = shaders.mGlobal.mGBufferNormHDR;
     in.mReverseZ       = shaders.mGlobal.mReverseZ;
-    in.mCompute        = shaders.mLocal.mCompute;
 
     in.mShadowDetail     = gSavedSettings.getS32("RenderShadowDetail");
     in.mShadowScale      = gSavedSettings.getF32("RenderShadowResolutionScale");
