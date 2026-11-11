@@ -100,6 +100,7 @@ target_sources(
     almetalframecapture.mm
     almetalpbrpreview.cpp
     almetalpipeline.mm
+    almetalpipelinecache.mm
     almetalprobeworkload.mm
     almetalresource.mm
     almetalretainedbackground.mm
@@ -123,6 +124,7 @@ target_sources(
       almetalframecapture.h
       almetalpbrpreview.h
       almetalpipeline.h
+      almetalpipelinecache.h
       almetalprobeworkload.h
       almetalresource.h
       almetalretainedbackground.h
@@ -163,6 +165,7 @@ set_source_files_properties(
   almetaldevice.mm
   almetalframe.mm
   almetalpipeline.mm
+  almetalpipelinecache.mm
   almetalresource.mm
   almetalretainedbackground.mm
   almetalshadowindirect.mm
@@ -195,6 +198,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_stage_timing_test.mm
             tests/almetal_frame_profile_test.mm
             tests/almetal_benchmark_test.mm
+            tests/almetal_pipeline_cache_test.mm
             tests/almetal_shadow_capture_test.mm
             tests/almetal_shadow_gather_test.mm
             tests/almetal_world_diagnostics_test.cpp
@@ -224,6 +228,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_stage_timing_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_frame_profile_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_benchmark_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_pipeline_cache_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_gather_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_gbuffer_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
