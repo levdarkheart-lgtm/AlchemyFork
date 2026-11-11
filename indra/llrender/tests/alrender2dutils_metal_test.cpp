@@ -1,6 +1,6 @@
 /**
- * @file llrender2dutils_gl_test.cpp
- * @brief The quads the 2D helpers emit, read back from the buffers they land in.
+ * @file alrender2dutils_metal_test.cpp
+ * @brief Original 2D helper invariants through native buffers and UI pixels.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -24,9 +24,7 @@
 
 #include "linden_common.h"
 
-#include "../llglheaders.h"
-
-#include "llheadlessgl_fixture.h"
+#include "llfontmetal_fixture.h"
 
 #include "../llgltexture.h"
 #include "../llrender2dutils.h"
@@ -42,26 +40,30 @@
 
 namespace
 {
-    struct llrender2dutils_data
+    struct llrender2dutils_data : ll_test::NativeFontUI
     {
-        // One context for the binary: standing it up is the expensive part,
-        // and LLImageGL's class state does not survive a re-init.
-        static ll_test::HeadlessGL& gl()
-        {
-            return ll_test::sharedHeadlessGL();
-        }
-
+        bool ui_matrix = false;
         llrender2dutils_data()
         {
-            gl();
+            initRenderer();
+            gGL.pushUIMatrix();
+            gGL.loadUIIdentity();
+            ui_matrix = true;
+        }
+        ~llrender2dutils_data()
+        {
+            if (gGL.hasMetalUITextureCapture()) gGL.endMetalUITextureCapture(false);
+            if (ui_matrix) gGL.popUIMatrix();
         }
 
         static LLPointer<LLGLTexture> makeTexture(U16 width, U16 height)
         {
             LLPointer<LLImageRaw> raw = new LLImageRaw(width, height, 4);
             std::memset(raw->getData(), 0xFF, static_cast<size_t>(width) * height * 4);
-            LLPointer<LLGLTexture> texture = new LLGLTexture(raw, /*usemipmaps=*/false);
-            texture->createGLTexture(0, raw);
+            LLPointer<LLGLTexture> texture = new LLGLTexture(/*usemipmaps=*/false);
+            REQUIRE(texture->createMetalTexture(0, raw));
+            REQUIRE(texture->getGLTexture()->getMetalTexture());
+            CHECK_FALSE(texture->hasGLTexture());
             return texture;
         }
 
@@ -74,9 +76,8 @@ namespace
             size_t count = 0;
         };
 
-        // The extent of everything `draw` emits, read back from GL: the
-        // upload streams straight to the buffer and keeps no copy on this
-        // side, so the buffer itself is the only place the vertices are.
+        // Read the actual published native allocation rather than the CPU
+        // producer's arrays, retaining the original upload oracle.
         template <typename Draw>
         static Bounds boundsOf(Draw draw)
         {
@@ -96,10 +97,13 @@ namespace
                 }
                 data.mVB->setBuffer();
                 std::vector<F32> floats(static_cast<size_t>(data.mCount) * stride / sizeof(F32));
-                glGetBufferSubData(GL_ARRAY_BUFFER,
-                                   data.mVB->getOffset(LLVertexBuffer::TYPE_VERTEX),
-                                   data.mCount * stride,
-                                   floats.data());
+                REQUIRE(data.mVB->hasPublishedMetalVertexBuffer());
+                const auto* buffer = data.mVB->getMetalVertexBuffer();
+                REQUIRE(buffer);
+                std::string error;
+                REQUIRE(buffer->read(data.mVB->getOffset(LLVertexBuffer::TYPE_VERTEX),
+                                     floats.data(), data.mCount * stride, &error));
+                INFO(error);
                 for (U32 i = 0; i < data.mCount; ++i)
                 {
                     const F32* v = floats.data() + static_cast<size_t>(i) * stride / sizeof(F32);
@@ -131,7 +135,7 @@ namespace
     // A rotated image turns about its own centre and keeps its size. An
     // odd-sized image at a quarter turn covers the same pixels it does
     // unrotated -- an open folder arrow sits where the closed one did.
-    TEST_CASE_METHOD(llrender2dutils_data, "llrender2dutils_gl: a rotated image turns about its own centre and keeps its size", "[llrender2dutils_gl]")
+    TEST_CASE_METHOD(llrender2dutils_data, "native 2D helpers: a rotated image turns about its own centre and keeps its size", "[native-2d-utils]")
     {
         LLPointer<LLGLTexture> texture = makeTexture(4, 4);
 
@@ -158,7 +162,7 @@ namespace
 
     // The turn is a turn: at a quarter turn a wide image stands tall, and
     // it does so about the centre of the rect it was asked to fill.
-    TEST_CASE_METHOD(llrender2dutils_data, "llrender2dutils_gl: a quarter turn stands a wide image tall about the rect's centre", "[llrender2dutils_gl]")
+    TEST_CASE_METHOD(llrender2dutils_data, "native 2D helpers: a quarter turn stands a wide image tall about the rect's centre", "[native-2d-utils]")
     {
         LLPointer<LLGLTexture> texture = makeTexture(4, 4);
 
@@ -176,7 +180,7 @@ namespace
 
     // Rectangles added to one batch are one draw, where gl_rect_2d makes
     // a draw of each; and they are the same rectangles.
-    TEST_CASE_METHOD(llrender2dutils_data, "llrender2dutils_gl: gl_rect_2d_in_batch draws the same rectangles as gl_rect_2d in one draw", "[llrender2dutils_gl]")
+    TEST_CASE_METHOD(llrender2dutils_data, "native 2D helpers: gl_rect_2d_in_batch draws the same rectangles as gl_rect_2d in one draw", "[native-2d-utils]")
     {
         const auto count_draws = [](const std::function<void()>& draw) {
             std::list<LLVertexBufferData> capture;
@@ -230,20 +234,29 @@ namespace
     // nothing else: at the window's corner too, where a line along the
     // edge of a pixel landing outside the rect is not drawn at all; and
     // with the UI scaled up, a screen pixel thick, not a unit.
-    TEST_CASE_METHOD(llrender2dutils_data, "llrender2dutils_gl: a rect's outline lights only the pixels just inside its edges", "[llrender2dutils_gl]")
+    TEST_CASE_METHOD(llrender2dutils_data, "native 2D helpers: a rect's outline lights only the pixels just inside its edges", "[native-2d-utils]")
     {
-        constexpr S32 W = ll_test::HeadlessGL::WIDTH;
-        constexpr S32 H = ll_test::HeadlessGL::HEIGHT;
-        ll_test::installWhiteTexture();
+        constexpr S32 W = WIDTH;
+        constexpr S32 H = HEIGHT;
         const auto drawn = [&](const LLRect& rect, F32 scale) {
-            llrender2dutils_data::gl().clearFramebuffer();
+            REQUIRE(gGL.beginMetalUITextureCapture(ALMetalPixelFormat::rgba8_unorm,
+                &gUIProgram, nullptr, nullptr, nullptr,
+                LLRender::EMetalUICaptureMode::NATIVE_AUTHORITATIVE));
             gGL.pushUIMatrix();
             gGL.scaleUI(scale, scale, 1.f);
             gl_rect_2d(rect, LLColor4::white, false);
             gGL.flush();
             gGL.popUIMatrix();
-            glFinish();
-            return ll_test::readFramebufferRGBA(W, H);
+            std::string error;
+            LLRender::EMetalUICaptureEndState state{};
+            auto output = gGL.endMetalUITextureCapture(true, false, nullptr, &error, &state);
+            INFO(error);
+            REQUIRE(state == LLRender::EMetalUICaptureEndState::COMPLETE);
+            REQUIRE(output);
+            std::vector<U8> pixels(W * H * 4);
+            REQUIRE(output->readback(*device, 0, 0, {}, pixels.data(), W * 4, &error));
+            INFO(error);
+            return pixels;
         };
         for (F32 scale : { 1.f, 2.f })
         {

@@ -179,6 +179,7 @@ if(AL_BUILD_TESTS)
       tests/alfont_registry_metal_test.cpp
       tests/alfont_shaping_metal_test.cpp
       tests/aluiimage_metal_test.cpp
+      tests/alrender2dutils_metal_test.cpp
       tests/alimage_native_coverage_test.cpp
       tests/alprimitiveplot_test.cpp
     )
@@ -208,6 +209,20 @@ if(AL_BUILD_TESTS)
     target_link_libraries(llrender_tests PRIVATE almetal)
     set_source_files_properties(tests/alvertex_label_metal_test.mm
                                 PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    # Default-font getters keep process-lifetime pointers, as in the original
+    # viewer. Give their native atlas/UI session a separate process instead
+    # of mixing it with the scoped font-manager cases in llrender_tests.
+    al_add_test_binary(
+      llrender_font_ui_tests
+      PROJECT llrender
+      SOURCES
+        tests/alfontgl_metal_test.cpp
+        tests/alfonttextcache_metal_test.cpp
+      LIBRARIES llrender
+      SUPPORT llrender_test_checks llcommon_test_checks
+      DEFINES ${font_defines}
+    )
+    target_link_libraries(llrender_font_ui_tests PRIVATE almetal)
   endif()
 
   # The GL suites that stand a context up for each test case and end the GL
@@ -228,8 +243,6 @@ if(AL_BUILD_TESTS)
 
   # The GL suites that share one context for the process, each case putting
   # back what it changed of it:
-  # - fonts drawn, cached and laid out (llfontgl, llfonttextcache), UI images
-  #   and the immediate-mode 2D helpers' quads;
   # - the hidden window itself, and a worker thread's shared context on it;
   # - tessellation stages and the quad conventions the terrain relies on;
   # - the infinite reverse-Z projection: stored depth, round trip and depth
@@ -273,9 +286,6 @@ if(AL_BUILD_TESTS)
       tests/altessellation_gl_test.cpp
       tests/aluniformbuffer_gl_test.cpp
       tests/alwindowsdlheadless_test.cpp
-      tests/llfontgl_test.cpp
-      tests/llfonttextcache_test.cpp
-      tests/llrender2dutils_gl_test.cpp
       tests/llrendertarget_gl_test.cpp
       tests/llrendersphere_gl_test.cpp
     LIBRARIES llrender
