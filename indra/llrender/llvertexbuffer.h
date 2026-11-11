@@ -273,6 +273,16 @@ public:
 #if LL_DARWIN
     ALMetalBuffer* getMetalVertexBuffer() const noexcept { return mMetalBuffer.get(); }
     ALMetalBuffer* getMetalIndexBuffer() const noexcept { return mMetalIndices.get(); }
+    // Raw getters above also expose allocated/prior generations to resource
+    // owners. New draws require the corresponding current CPU store published.
+    bool hasPublishedMetalVertexBuffer() const noexcept
+    {
+        return mMetalBuffer && mMetalBufferInitialized && !mVerticesWritten;
+    }
+    bool hasPublishedMetalIndexBuffer() const noexcept
+    {
+        return mMetalIndices && mMetalIndicesInitialized && !mIndicesWritten;
+    }
 #endif
 
     // What the buffer holds, as a value no buffer has held before: taken whenever its stores are allocated, mapped for

@@ -109,7 +109,7 @@ struct Fixture
     {
         LLPointer<LLVertexBuffer> result = new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX |
             LLVertexBuffer::MAP_TEXCOORD0 | LLVertexBuffer::MAP_COLOR);
-        REQUIRE(result->allocateBuffer(9, 9));
+        REQUIRE(result->allocateBuffer(9, wide_indices ? 18 : 9));
         std::memset(result->getMappedData(), 0, result->getSize());
         std::array<LLVector4a, 9> positions;
         std::array<LLVector2, 9> uv;
@@ -117,8 +117,10 @@ struct Fixture
         for (U32 i = 0; i < 9; ++i)
         {
             positions[i].set(8.f, 8.f, 0.f, 1.f);
-            uv[i].set(.25f, .5f); colors[i].set(255, 128, 255, 255);
+            uv[i].set(-.5f, .5f); colors[i].set(64, 255, 0, 64);
         }
+        for (U32 i = 3; i < 6; ++i)
+        { uv[i].set(.25f, .5f); colors[i].set(255, 128, 255, 255); }
         positions[3].set(-1.f, -1.f, 0.f, 1.f);
         positions[4].set(3.f, -1.f, 0.f, 1.f);
         positions[5].set(-1.f, 3.f, 0.f, 1.f);
@@ -131,8 +133,12 @@ struct Fixture
             result->setIndexData(wide.data());
         }
         else result->setIndexData(indices.data());
+        REQUIRE(result->getNumIndices() == 9);
+        REQUIRE(result->getIndexStride() == (wide_indices ? sizeof(U32) : sizeof(U16)));
         result->setBuffer(); // Real lazy publication with both old flags false.
         REQUIRE(result->getMetalVertexBuffer()); REQUIRE(result->getMetalIndexBuffer());
+        REQUIRE(result->hasPublishedMetalVertexBuffer());
+        REQUIRE(result->hasPublishedMetalIndexBuffer());
         return result;
     }
     LLPointer<LLImageGL> image()
@@ -172,15 +178,15 @@ struct Fixture
         REQUIRE(output->readback(*device, 0, 0, {}, pixels.data(), side * 4, &error));
         return pixels;
     }
-    static void check(const Pixels& pixels, bool discarded = false)
+    static void check(const Pixels& pixels, bool discarded = false, int green = 128)
     {
         for (U32 y = 0; y < side; ++y) for (U32 x = 0; x < side; ++x)
         {
             const auto i = (y * side + x) * 4;
             CHECK(pixels[i] == 0); CHECK(pixels[i+2] == 0);
-            const int expected = x < side / 4 || discarded ? 0 : 128;
-            CHECK(std::abs(int(pixels[i+1]) - expected) <= 1);
-            CHECK(std::abs(int(pixels[i+3]) - expected) <= 1);
+            const bool clear = x < side / 4 || discarded;
+            CHECK(std::abs(int(pixels[i+1]) - (clear ? 0 : green)) <= 1);
+            CHECK(std::abs(int(pixels[i+3]) - (clear ? 0 : 128)) <= 1);
         }
     }
 };
@@ -278,6 +284,95 @@ TEST_CASE("Native direct vertex draws drain earlier pending immediate geometry",
         if (entry == 1) buffer->drawRangeFast(LLRender::TRIANGLES, 3, 5, 3, 3);
         if (entry == 2) buffer->draw(LLRender::TRIANGLES, 3, 3);
         if (entry == 3) buffer->drawArrays(LLRender::TRIANGLES, 3, 3);
+        Fixture::check(f.finish());
+    }
+}
+
+TEST_CASE("Native UI admits only current published vertex and required index stores",
+          "[llvertexbuffer][almetal][native-draw]")
+{
+    Fixture f; f.init();
+    LLGLDisable blend(GL_BLEND), cull(GL_CULL_FACE), scissor(GL_SCISSOR_TEST);
+    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
+    auto image = f.image();
+    struct MissingMetalDevice
+    {
+        ALMetalDevice* device;
+        explicit MissingMetalDevice(ALMetalDevice* value) : device(value)
+        { LLVertexBuffer::setMetalDevice(nullptr); }
+        ~MissingMetalDevice() { LLVertexBuffer::setMetalDevice(device); }
+    };
+
+    SECTION("allocated but never published resources cannot draw")
+    {
+        LLPointer<LLVertexBuffer> buffer = new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX |
+            LLVertexBuffer::MAP_TEXCOORD0 | LLVertexBuffer::MAP_COLOR);
+        REQUIRE(buffer->allocateBuffer(9, 9));
+        REQUIRE(buffer->getMetalVertexBuffer()); REQUIRE(buffer->getMetalIndexBuffer());
+        CHECK_FALSE(buffer->hasPublishedMetalVertexBuffer());
+        CHECK_FALSE(buffer->hasPublishedMetalIndexBuffer());
+        f.begin(image, true);
+        const auto calls = LLRender::sDrawCalls;
+        buffer->setBuffer(); buffer->drawRange(LLRender::TRIANGLES, 3, 5, 3, 3);
+        CHECK(LLRender::sDrawCalls == calls); f.finish(false);
+    }
+    SECTION("failed vertex update withholds stale bytes and retry preserves earlier GPU leases")
+    {
+        auto buffer = f.buffer();
+        auto* old_vertices = buffer->getMetalVertexBuffer();
+        std::vector<U8> previous(old_vertices->length());
+        REQUIRE(old_vertices->read(0, previous.data(), previous.size(), &f.error));
+        ALMetalBufferDescriptor d; d.length = previous.size(); d.storage = ALMetalStorageMode::shared;
+        auto lease = ALMetalBuffer::create(*f.device, d, &f.error); REQUIRE(lease);
+        auto command = f.device->makeCommandBuffer("Earlier published vertex lease", &f.error);
+        REQUIRE(command); REQUIRE(lease->copyFrom(*command, *old_vertices, 0, 0, previous.size(), &f.error));
+        std::array<LLColor4U, 3> colors;
+        for (auto& color : colors) color.set(255, 64, 255, 255);
+        f.begin(image, false);
+        {
+            MissingMetalDevice missing(f.device.get());
+            buffer->setColorData(colors.data(), 3, 3); buffer->setBuffer();
+            CHECK(buffer->getMetalVertexBuffer() == old_vertices);
+            CHECK_FALSE(buffer->hasPublishedMetalVertexBuffer());
+            CHECK(buffer->hasPublishedMetalIndexBuffer());
+            const auto calls = LLRender::sDrawCalls;
+            buffer->drawRange(LLRender::TRIANGLES, 3, 5, 3, 3);
+            CHECK(LLRender::sDrawCalls == calls); f.finish(false);
+        }
+        LLVertexBuffer::flushBuffers();
+        REQUIRE(buffer->hasPublishedMetalVertexBuffer());
+        REQUIRE(buffer->hasPublishedMetalIndexBuffer());
+        f.begin(image, true); buffer->drawRange(LLRender::TRIANGLES, 3, 5, 3, 3);
+        Fixture::check(f.finish(), false, 64);
+        buffer = nullptr;
+        // Commit only after the old wrapper owner and replacement generation
+        // have gone. Encoded native resources still belong to this command.
+        REQUIRE(command->commitAndWait(&f.error));
+        std::vector<U8> retained(previous.size());
+        REQUIRE(lease->read(0, retained.data(), retained.size(), &f.error));
+        CHECK(retained == previous);
+    }
+    SECTION("an unrelated failed index update does not withhold clean array draws")
+    {
+        auto buffer = f.buffer();
+        auto* old_indices = buffer->getMetalIndexBuffer();
+        const U16 unchanged = 3;
+        {
+            MissingMetalDevice missing(f.device.get());
+            buffer->setIndexData(&unchanged, 3, 1); buffer->setBuffer();
+            CHECK(buffer->hasPublishedMetalVertexBuffer());
+            CHECK_FALSE(buffer->hasPublishedMetalIndexBuffer());
+            CHECK(buffer->getMetalIndexBuffer() == old_indices);
+            f.begin(image, false); buffer->drawArrays(LLRender::TRIANGLES, 3, 3);
+            Fixture::check(f.finish());
+            f.begin(image, true);
+            const auto calls = LLRender::sDrawCalls;
+            buffer->drawRangeFast(LLRender::TRIANGLES, 3, 5, 3, 3);
+            CHECK(LLRender::sDrawCalls == calls); f.finish(false);
+        }
+        LLVertexBuffer::flushBuffers();
+        REQUIRE(buffer->hasPublishedMetalIndexBuffer());
+        f.begin(image, true); buffer->drawRange(LLRender::TRIANGLES, 3, 5, 3, 3);
         Fixture::check(f.finish());
     }
 }
