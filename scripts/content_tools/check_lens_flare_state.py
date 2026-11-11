@@ -1,9 +1,9 @@
-"""Offline mirror of the lens flare state pass, lensFlareStateF.glsl.
+"""Offline mirror of the native Metal lens flare state pass.
 
 The shader is the source of truth; this script mirrors its kernel and its
-temporal filter statement for statement, is the tool that chose the
-constants, and is the only regression test they have. Change a constant in
-the shader first, then make the copy below agree and re-run this.
+temporal filter statement for statement. It chose the original constants;
+native GPU tests also check the rendered output. Change a constant in the
+shader first, then make the copy below agree and re-run this.
 
 Model A -- the spatial kernel: a fixed Fermat spiral of taps, each gated on
 its own (an occluded tap contributes nothing, an unoccluded one the texel's
@@ -21,7 +21,10 @@ stores near / distance and so never reaches it: 1 km stores 1e-4, 1000 km 1e-7.
     python check_lens_flare_state.py          # verify the chosen constants
     python check_lens_flare_state.py --grid   # compare tap counts and patterns
 """
+import argparse
 import math
+import re
+from pathlib import Path
 import random
 import struct
 import sys
@@ -464,7 +467,7 @@ NEAR = 0.1            # MIN_NEAR_PLANE
 FAR = 1024.0          # FINITE_PROJECTION_FAR, every finite projection's far plane
 FLOOR = 1000000.0     # MAX_RECONSTRUCT_DISTANCE, the farthest point reconstruction places
 EDGE = 256000.0       # ALFarPlane::EDGE_WATER_STRETCH
-SHADER = __file__.replace("\\", "/").rsplit("/scripts/", 1)[0] +     "/indra/newview/app_settings/shaders/class1/alchemy/lensFlareStateF.glsl"
+SHADER = Path(__file__).resolve().parents[2] / "indra/almetal/shaders/almetal_builtin.metal"
 
 
 def smoothstep(e0, e1, x):
@@ -495,11 +498,12 @@ def sky_of(d, reverse):
     return 1.0 if d >= 1.0 else 0.0
 
 
-def model_c():
+def model_c(shader_path=SHADER):
     print("Model C: skyOf")
-    src = open(SHADER).read()
-    check("shader parity", "return d <= 0.0 ? 1.0 : 0.0;" in src and "return d >= 1.0 ? 1.0 : 0.0;" in src,
-          "skyOf expressions match the mirror")
+    src = _native_function(Path(shader_path).read_text(encoding="utf-8"))
+    compact = re.sub(r"\s+", "", src)
+    check("shader parity", "?depth<=0.0:depth>=1.0;" in compact,
+          "native cleared-depth expressions match the mirror")
     check("the cleared depth is sky", sky_of(0.0, True) == 1.0 and sky_of(1.0, False) == 1.0,
           "0 reversed, 1 forward")
     edge = EDGE + 2048.0
@@ -515,12 +519,93 @@ def model_c():
     check("the old 0.9999 ramp counted far geometry as sky", old > 0.5, "900 m under it %.3f" % old)
 
 
-if __name__ == "__main__":
-    if "--grid" in sys.argv:
+def _native_function(source):
+    source = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
+    signature = re.search(
+        r"\balmetal_world_lens_flare_state_fragment\s*\([^;{]*\)\s*\{", source)
+    if not signature:
+        raise ValueError("missing native lens-flare state function")
+    begin = signature.end()
+    depth = 1
+    for end in range(begin, len(source)):
+        depth += (source[end] == "{") - (source[end] == "}")
+        if depth == 0:
+            return source[begin:end]
+    raise ValueError("unterminated native lens-flare state function")
+
+
+def verify_port(shader_path=SHADER):
+    """Keep the spatial/filter model attached to the actual native producer."""
+    try:
+        body = re.sub(r"\s+", "", _native_function(
+            Path(shader_path).read_text(encoding="utf-8")))
+    except (OSError, ValueError) as error:
+        print("port check FAILED: %s: %s" % (shader_path, error))
+        return False
+    number = r"([0-9]+(?:\.[0-9]*)?(?:[eE][+-]?[0-9]+)?)"
+    # Patterns include the operations around the constants, so a changed
+    # filter relationship cannot pass just by retaining the old numbers.
+    contracts = [
+        (r"golden_angle=" + number + ";", (GOLDEN_ANGLE,)),
+        (r"tap_count=" + number + "u;", (TAP_COUNT,)),
+        (r"tap_falloff=" + number + ";", (K_TAP,)),
+        (r"luminance_gate=" + number + ";", (GATE,)),
+        (r"clamp\(constants.screen_time.z,0.0," + number + r"\)", (P.dt_max,)),
+        (r"previous1.g\*exp\(-dt/" + number + r"\)", (P.tau_ref,)),
+        (r"abs\(delta\)>" + number + r"\?sign\(delta\):0.0", (P.step_thresh,)),
+        (r"reversal\?" + number + ":0.0", (P.gain,)),
+        (r"tau\*=1.0\+" + number + r"\*max\(instability-" + number + r",0.0\)", (P.k, P.I0)),
+        (r"rising\?\(1.0/" + number + r"\):" + number, (1 / P.tau_in_mul, P.tau_out_mul)),
+        (r"rising\?" + number + r":\(1.0/" + number + r"\)\)/fade", (P.slew_in, 1 / P.slew_out)),
+        (r"dot\(drive,luma_weights\)<" + number, (P.snap_floor,)),
+    ]
+    failed = []
+    for pattern, expected in contracts:
+        match = re.search(pattern, body)
+        if not match or tuple(map(float, match.groups())) != expected:
+            failed.append(pattern)
+    if P.tau_I != 1.0 or "instability*exp(-dt)+" not in body:
+        failed.append("instability decay")
+    if "?depth<=0.0:depth>=1.0;" not in body:
+        failed.append("cleared-depth sky predicate")
+    for relation in (
+        "sqrt((float(index)+0.5)/float(tap_count))",
+        "exp(-tap_falloff*dot(tap,tap))",
+        "max(luminance-luminance_gate,0.0)/max(luminance,1.0e-4)",
+        "constfloatfade=max(constants.screen_time.w,0.05);",
+        "max(max(peak,reference),1.0e-6)",
+        "max(instability,1.0e-3)",
+        "floatalpha=1.0-exp(-dt/tau);",
+        "constfloatcap=slew*dt*reference;",
+        "if(difference>1.0e-9)",
+        "alpha=min(alpha,cap/difference);",
+        "max(mix(previous0.rgb,target,alpha),float3(0.0))",
+    ):
+        if relation not in body:
+            failed.append(relation)
+    if failed:
+        print("port check FAILED: native spatial/filter/sky contract drift: " + "; ".join(failed))
+        return False
+    print("port check: native spatial/filter/sky constants agree with the mirror")
+    return True
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--grid", action="store_true", help="compare tap counts and patterns")
+    parser.add_argument("--shader", default=SHADER, help="native MSL source to check against")
+    args = parser.parse_args()
+    if not verify_port(args.shader):
+        return 2
+    if args.grid:
         grid()
-        sys.exit(0)
+        return 0
     model_a()
     model_b()
-    model_c()
+    model_c(args.shader)
     print("%d failure(s)" % len(FAIL))
-    sys.exit(1 if FAIL else 0)
+    return 1 if FAIL else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

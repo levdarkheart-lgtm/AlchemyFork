@@ -3,9 +3,9 @@
 @file   check_lens_dirt.py
 @brief  Offline harness for the procedural lens dirt generator.
 
-        The plate is generated on the GPU by lensDirtGenF.glsl, which cannot be
+        The plate is generated on the GPU by almetal_world_lens_dirt_fragment, which cannot be
         inspected from here. This mirrors that shader in Python and answers the
-        one question the GLSL cannot answer on its own: does the plate still
+        one question the shader cannot answer on its own: does the plate still
         read as dirt?
 
         That question is not rhetorical. The four plates this effect used to
@@ -18,8 +18,8 @@
         the same level.
 
         A Python mirror of a shader is only worth having while it stays a
-        mirror, so --verify-port compares every numeric constant in this file's
-        build() against the shader's main() and fails if they have drifted.
+        mirror, so the default port check compares build() and its helpers
+        against the native MSL and fails if their constants have drifted.
         Run it before trusting any number this script prints.
 
         Usage:
@@ -54,9 +54,11 @@ $/LicenseInfo$
 """
 
 import argparse
-import os
+import ast
+import inspect
 import re
 import sys
+from pathlib import Path
 
 try:
     import numpy as np
@@ -64,8 +66,7 @@ except ImportError:
     sys.exit("numpy is required: pip install numpy")
 
 
-SHADER = os.path.join("indra", "newview", "app_settings", "shaders",
-                      "class1", "effects", "lensDirtGenF.glsl")
+SHADER = Path(__file__).resolve().parents[2] / "indra/almetal/shaders/almetal_builtin.metal"
 
 # Layer densities and tone curve per preset, plus the histogram it is aiming
 # for. These are the four looks the bundled plates used to cover, kept as
@@ -123,7 +124,7 @@ def motes(u, v, cells, r_min, r_max, softness, seed, aspect, density, bias):
     for ox in (-1, 0, 1):
         for oy in (-1, 0, 1):
             gx, gy = cx + ox, cy + oy
-            keep = hash21(gx, gy, seed + 57.0) < density
+            keep = hash21(gx, gy, seed + 57.0) <= density
             jx, jy = hash22(gx, gy, seed)
             fx, fy = (gx + jx) / cells, (gy + jy) / cells
             rad = r_min + (r_max - r_min) * np.power(hash21(gx, gy, seed + 19.0), bias)
@@ -188,7 +189,7 @@ def lines(u, v, count, length, width, seed, aspect, wander):
 
 # ---------------------------------------------------------------- build -----
 def build(w, h, seed, grime, mote_scale, smudge, scratches, toe, gain):
-    """Mirror of lensDirtGenF.glsl's main().
+    """Mirror of almetal_world_lens_dirt_fragment.
 
     Written statement for statement against the shader, and deliberately so:
     the port check below compares the two constant streams in order, which only
@@ -205,11 +206,11 @@ def build(w, h, seed, grime, mote_scale, smudge, scratches, toe, gain):
     clump = 0.62 + 0.76 * np.clip((clump - 0.34) / 0.36, 0.0, 1.0)
 
     img = np.full_like(u, 0.0)
-    img = screen(img, motes(u, v, 4.5 / mscale, 0.050, 0.140, 0.45,
+    img = screen(img, motes(u, v, 4.5 / mscale, 0.050 * mscale, 0.140 * mscale, 0.45,
                             seed, aspect, 0.80 * grime, 1.7) * 0.46 * clump)
-    img = screen(img, motes(u, v, 9.0 / mscale, 0.022, 0.064, 0.42,
+    img = screen(img, motes(u, v, 9.0 / mscale, 0.022 * mscale, 0.064 * mscale, 0.42,
                             seed + 3.0, aspect, 0.75 * grime, 1.9) * 0.50 * clump)
-    img = screen(img, motes(u, v, 20.0 / mscale, 0.009, 0.028, 0.40,
+    img = screen(img, motes(u, v, 20.0 / mscale, 0.009 * mscale, 0.028 * mscale, 0.40,
                             seed + 5.0, aspect, 0.60 * grime, 2.1) * 0.44 * clump)
     img = screen(img, motes(u, v, 90.0, 0.0011, 0.0030, 0.55,
                             seed + 9.0, aspect, 0.34 * grime, 1.5) * 0.75)
@@ -244,51 +245,99 @@ def _span(text, start_pat, end_pat):
     return text[a.start():a.start() + b.end()] if b else None
 
 
+def _native_function(source, name):
+    source = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
+    signature = re.search(r"\b" + re.escape(name) + r"\s*\([^;{]*\)\s*\{", source)
+    if not signature:
+        raise ValueError("missing native function " + name)
+    begin = signature.end()
+    depth = 1
+    for end in range(begin, len(source)):
+        depth += (source[end] == "{") - (source[end] == "}")
+        if depth == 0:
+            return source[begin:end]
+    raise ValueError("unterminated native function " + name)
+
+
+def _model_numbers(function):
+    tree = ast.parse(inspect.getsource(function))
+    return {float(node.value) for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and type(node.value) in (int, float)}
+
+
 def verify_port(shader_path):
-    """The Python above is only meaningful while it matches the shader. Compare
-    the constants of the two build routines and report any that differ.
+    """Check the actual native generator, its helper constants and mote units.
 
-    Both are read from the first shared statement to the last. Outside that
-    range the two differ structurally -- the shader is handed its uv and its
-    parameters as uniforms, this builds a grid and takes arguments -- and those
-    constants describe the harness rather than the plate."""
+    The generator's ordered literal stream is compared as before. Helpers use
+    literal sets because MSL vector operations share constants that numpy's
+    scalar lanes spell twice. This is a source drift check, not a proof of
+    algebraic equivalence; the native GPU tests exercise generated pixels.
+    """
     try:
-        glsl = open(shader_path, encoding='utf-8').read()
-    except IOError:
-        print("cannot read %s -- run from the repository root" % shader_path)
+        source = Path(shader_path).read_text(encoding="utf-8")
+        body = _native_function(source, "almetal_world_lens_dirt_fragment")
+        native = body[body.index("const float mote_scale ="):body.index("return float4(")]
+        python = _span(inspect.getsource(build), r'    mscale = max\(',
+                       r'    return np\.clip\([^\n]*\n')
+        if python is None:
+            raise ValueError("missing Python build body")
+        python = re.sub(r"#[^\n]*", "", python)
+        checks = {"generator constants": _floats(native) == _floats(python)}
+        helpers = {
+            "hash21": hash21, "hash22": hash22, "screen": screen,
+            "motes": motes, "noise": vnoise, "fbm3": fbm3,
+            "segment_distance": seg_dist, "lines": lines,
+        }
+        for name, function in helpers.items():
+            native_helper = _native_function(source, "almetal_lens_dirt_" + name)
+            expected = _model_numbers(function)
+            if name == "noise":
+                expected.add(0.0)  # float2 offsets use an explicit zero lane.
+            elif name in ("fbm3", "segment_distance"):
+                expected.discard(2.0)  # exp2 / vector length replace ** 2.
+            elif name == "lines":
+                expected.update((0.0, 32.0))  # Native/original bounded line loop.
+            checks[name + " constants"] = set(_floats(native_helper)) == expected
+
+        native_motes = re.sub(r"\s+", "", _native_function(
+            source, "almetal_lens_dirt_motes"))
+        comparisons = [node for node in ast.walk(ast.parse(inspect.getsource(motes)))
+                       if isinstance(node, ast.Compare) and isinstance(node.left, ast.Call)
+                       and isinstance(node.left.func, ast.Name) and node.left.func.id == "hash21"]
+        checks["inclusive density threshold"] = (
+            "step(almetal_lens_dirt_hash21(grid,seed+57.0),density)" in native_motes
+            and len(comparisons) == 1 and len(comparisons[0].ops) == 1
+            and isinstance(comparisons[0].ops[0], ast.LtE))
+
+        # A literal-only comparison missed the old Python radius bug: spacing
+        # changed with mote scale but the first three layers' radii did not.
+        calls = sorted((node for node in ast.walk(ast.parse(inspect.getsource(build)))
+                        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id == "motes"), key=lambda node: node.lineno)
+        native_radii = re.findall(
+            r"almetal_lens_dirt_motes\(\s*uv,\s*[^,]+,\s*([^,]+),\s*([^,]+),", body)
+        if len(calls) != 4 or len(native_radii) != 4:
+            raise ValueError("missing four native/model mote layers")
+        for layer in range(3):
+            for component in range(2):
+                radius = calls[layer].args[3 + component]
+                scaled = (isinstance(radius, ast.BinOp) and isinstance(radius.op, ast.Mult)
+                          and isinstance(radius.left, ast.Constant)
+                          and isinstance(radius.right, ast.Name) and radius.right.id == "mscale")
+                native_radius = re.fullmatch(
+                    r"\s*([\d.]+)\s*\*\s*mote_scale\s*", native_radii[layer][component])
+                checks[f"layer {layer} radius {component} units"] = (
+                    scaled and native_radius is not None
+                    and float(native_radius.group(1)) == float(radius.left.value))
+    except (OSError, ValueError, IndexError) as error:
+        print("port check FAILED: %s: %s" % (shader_path, error))
         return False
-
-    glsl_body = _span(glsl, r'float mscale = max\(', r'float v = clamp\([^\n]*\n')
-    if glsl_body is None:
-        print("could not find the generator body in %s" % shader_path)
+    failed = [name for name, matches in checks.items() if not matches]
+    if failed:
+        print("port check FAILED: " + ", ".join(failed))
         return False
-    # Comments carry prose numbers ("19% to 76%"); only code is comparable.
-    glsl_body = re.sub(r'//[^\n]*', '', glsl_body)
-
-    py = open(__file__, encoding='utf-8').read()
-    py_body = _span(py, r'    mscale = max\(', r'    return np\.clip\([^\n]*\n')
-    if py_body is None:
-        # These anchors are in this very file, so losing them means build() was
-        # restructured -- which is the drift this check exists to report. Say so
-        # rather than dying in re.sub with a TypeError.
-        print("could not find build() in %s -- the mirror has been restructured" % __file__)
-        return False
-    py_body = re.sub(r'#[^\n]*', '', py_body)
-
-    a, b = _floats(glsl_body), _floats(py_body)
-    if a == b:
-        print("port check: %d constants, shader and mirror agree" % len(a))
-        return True
-
-    print("port check FAILED: %d constants in the shader, %d here" % (len(a), len(b)))
-    for i in range(max(len(a), len(b))):
-        x = a[i] if i < len(a) else None
-        y = b[i] if i < len(b) else None
-        if x != y:
-            print("  first difference at %d: shader %s, mirror %s" % (i, x, y))
-            break
-    print("  lensDirtGenF.glsl and build() have drifted; every number below is suspect.")
-    return False
+    print("port check: native generator and eight helpers agree with the mirror")
+    return True
 
 
 # ---------------------------------------------------------------- report ----
@@ -379,7 +428,7 @@ def main():
     if worst >= 0.35:
         print("\nAt least one preset is off its target histogram by more than a third.")
         print("Adjust its toe/gain in PRESETS -- a lower toe keeps more midtone --")
-        print("then carry the change into lensDirtGenF.glsl's defaults and the settings.")
+        print("then carry the change into the native lens-dirt generator and the settings.")
         return 1
 
     return 0

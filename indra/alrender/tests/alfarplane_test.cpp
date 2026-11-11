@@ -34,31 +34,52 @@
 #include "../alwaterheightbake.h"
 
 #include "llcamera.h"
+#include "almetalworld.h"
 
 #include <cmath>
-#include <filesystem>
+#include <algorithm>
+#include <cctype>
+#include <cstddef>
 #include <fstream>
 #include <limits>
 #include <sstream>
 
 namespace
 {
-    // A shader's source, read from the viewer's shader tree so the test reads what the viewer compiles.
-    static std::string shader_source(const std::string& rel)
-    {
-        const std::filesystem::path path = std::filesystem::path(AL_TEST_SHADER_DIR) / rel;
-        std::ifstream in(path);
-        std::stringstream buf;
-        buf << in.rdbuf();
-        return buf.str();
-    }
-
     static std::string metal_shader_source()
     {
         std::ifstream in(AL_TEST_METAL_SHADER);
         std::stringstream buf;
         buf << in.rdbuf();
         return buf.str();
+    }
+
+    // Scope source checks to the native producer that actually consumes the
+    // constants, so an unrelated copy elsewhere in the library cannot pass.
+    static std::string metal_function(const std::string& source, const std::string& name)
+    {
+        const size_t signature = source.find(name + "(");
+        REQUIRE(signature != std::string::npos);
+        const size_t begin = source.find('{', signature);
+        REQUIRE(begin != std::string::npos);
+        S32 depth = 1;
+        for (size_t end = begin + 1; end < source.size(); ++end)
+        {
+            depth += (source[end] == '{') - (source[end] == '}');
+            if (depth == 0)
+            {
+                return source.substr(begin + 1, end - begin - 1);
+            }
+        }
+        FAIL("Unterminated native function " << name);
+        return {};
+    }
+
+    static std::string compact(std::string source)
+    {
+        source.erase(std::remove_if(source.begin(), source.end(),
+            [](unsigned char c) { return std::isspace(c); }), source.end());
+        return source;
     }
 
     // The number that follows `key` in `text`, or -1 when the key is missing.
@@ -220,15 +241,20 @@ namespace
         UNSCOPED_INFO("geometry at the floor stores a normal depth");
         CHECK(MIN_NEAR_PLANE / MAX_RECONSTRUCT_DISTANCE >= std::numeric_limits<F32>::min());
 
-        // The floors the shaders actually carry, read from their sources.
+        // The three live native reconstruction paths: local lighting, the
+        // SSAO/light-map helper and depth of field. The native depth GPU cases
+        // additionally exercise the projection roundtrip out to the floor.
         const F32 floor = 1.f / MAX_RECONSTRUCT_DISTANCE;
-        const std::string util = shader_source("class1/deferred/deferredUtil.glsl");
-        UNSCOPED_INFO("deferredUtil read");
-        REQUIRE_FALSE(util.empty());
-        UNSCOPED_INFO("deferredUtil floor");
-        CHECK(literal_after(util, "#define RECONSTRUCT_W_FLOOR ") == floor);
-        CHECK(literal_after(shader_source("class1/deferred/aoUtil.glsl"), "pos.w = max(pos.w, ") == floor);
-        CHECK(literal_after(shader_source("class1/deferred/dofCoFUtilF.glsl"), "*max(p.w, ") == floor);
+        const std::string metal = metal_shader_source();
+        REQUIRE_FALSE(metal.empty());
+        for (const char* consumer : { "almetal_world_local_light_fragment",
+                                      "almetal_world_light_map_position",
+                                      "almetal_world_dof_cof" })
+        {
+            CAPTURE(consumer);
+            CHECK(literal_after(metal_function(metal, consumer),
+                                "max(position.w, ") == floor);
+        }
     }
 
     // The sky is the cleared far depth and nothing else: every pass that tells sky from geometry tests for exactly
@@ -255,11 +281,12 @@ namespace
         UNSCOPED_INFO("native void-water fog keys on the cleared far depth");
         REQUIRE(metal.find("const bool far_depth = reverse_z ? depth <= 0.0 : depth >= 1.0;",
                            water_haze) != std::string::npos);
-        const std::string flare = shader_source("class1/alchemy/lensFlareStateF.glsl");
-        UNSCOPED_INFO("flare sky is the far plane, reversed");
-        REQUIRE(flare.find("return d <= 0.0 ? 1.0 : 0.0;") != std::string::npos);
-        UNSCOPED_INFO("flare sky is the far plane, forward");
-        REQUIRE(flare.find("return d >= 1.0 ? 1.0 : 0.0;") != std::string::npos);
+        const std::string flare = compact(metal_function(
+            metal, "almetal_world_lens_flare_state_fragment"));
+        UNSCOPED_INFO("native flare sky is the cleared plane, reversed");
+        REQUIRE(flare.find("?depth<=0.0:") != std::string::npos);
+        UNSCOPED_INFO("native flare sky is the cleared plane, forward");
+        REQUIRE(flare.find(":depth>=1.0;") != std::string::npos);
         // Opaque geometry in the haze pass takes the same atmosphere helper as
         // native alpha, and the water surface alone converges on the native
         // sky-behind texture.
@@ -301,14 +328,18 @@ namespace
         const std::string metal = metal_shader_source();
         UNSCOPED_INFO("native sky behind water is held 1024 metres past the surface");
         REQUIRE(metal.find("position.xyz = direction * (entry + 1024.0);") != std::string::npos);
-        const std::string surface = shader_source("class1/environment/waterSurface.glsl");
-        UNSCOPED_INFO("wave clamp from the uniform");
-        REQUIRE(surface.find("min(d, waterFar.x)") != std::string::npos);
+        const std::string surface = compact(metal_function(
+            metal, "almetal_world_water_wave_normals"));
+        const std::string clamp = compact(metal_function(
+            metal, "almetal_world_water_wave_clamp"));
+        UNSCOPED_INFO("wave clamp from the captured uniform");
+        REQUIRE(surface.find("agent_view,water.water_far.x)") != std::string::npos);
+        REQUIRE(clamp.find("min(distance,limit)") != std::string::npos);
         UNSCOPED_INFO("no literal wave clamp");
-        REQUIRE(surface.find("2560.0") == std::string::npos);
-        // The waves follow the phases the CPU takes, the camera and the scroll folded in, which sets no wave direction
-        // or time; both native water fragments work them through the one function.
-        for (const char* phase : { "+ waterBigPhase;", "+ waterLittlePhase.xy;", "+ waterLittlePhase.zw;" })
+        REQUIRE(clamp.find("2560.0") == std::string::npos);
+        // The captured CPU phases reach the actual coordinate expressions.
+        for (const char* phase : { "+water.big_phase.xy;", "+water.little_phase.xy,",
+                                   "+water.little_phase.zw);" })
         {
             UNSCOPED_INFO("waves take " << phase);
             REQUIRE(surface.find(phase) != std::string::npos);
@@ -322,24 +353,39 @@ namespace
             UNSCOPED_INFO(entry << " works the waves per fragment");
             REQUIRE(metal.find("almetal_world_water_wave_normals(", fragment) != std::string::npos);
         }
-        UNSCOPED_INFO("the wave reads work the coordinates");
-        REQUIRE(surface.find("water_wave_coords(r, big_uv, little_uv);") != std::string::npos);
-        // The CPU places the camera on the tiled layers' lattices; the shader adds the rest of the way to a point, on
-        // the same lattice.
+        UNSCOPED_INFO("the wave reads use the generated coordinates");
+        REQUIRE(surface.find("normal_sampler,big_uv,") != std::string::npos);
+        REQUIRE(surface.find("normal_sampler,little_uv.xy,") != std::string::npos);
+        REQUIRE(surface.find("normal_sampler,little_uv.zw,") != std::string::npos);
+        // Native hex coordinates use the CPU's unit-density lattice directly.
+        const std::string cells = compact(metal_function(
+            metal, "almetal_world_water_hex_cells"));
         UNSCOPED_INFO("the lattice's density");
-        CHECK((F64)literal_after(surface, "#define WATER_HEX_GRID ") == ALWaterField::HEX_GRID);
-        const std::string lattice = shader_source("class1/deferred/hexLatticeUtil.glsl");
+        CHECK(ALWaterField::HEX_GRID == 1.0);
+        REQUIRE(cells.find("almetal_world_water_hex_skew(point)") != std::string::npos);
+        const std::string lattice = compact(metal_function(
+            metal, "almetal_world_water_hex_skew"));
         UNSCOPED_INFO("the lattice's skew");
-        CHECK_THAT(literal_after(lattice, "mat2(1.0, 0.0, "), ll_test::WithinBits((F32)ALWaterField::HEX_SKEW_XY, 16));
+        CHECK_THAT(-literal_after(lattice, "point.x-"),
+                   ll_test::WithinBits((F32)ALWaterField::HEX_SKEW_XY, 16));
         UNSCOPED_INFO("and its stretch");
-        CHECK_THAT(literal_after(lattice, "mat2(1.0, 0.0, -0.57735027, "), ll_test::WithinBits((F32)ALWaterField::HEX_SKEW_YY, 16));
-        // The waves' patches a cell side, which the draw counts, and the heights' metres, which the bake's bound uses.
-        UNSCOPED_INFO("the patches a cell side");
-        CHECK((S32)literal_after(surface, "#define WATER_PATCHES ") == ALWaterField::PATCHES_PER_CELL);
+        CHECK_THAT(literal_after(lattice, "*point.y,"),
+                   ll_test::WithinBits((F32)ALWaterField::HEX_SKEW_YY, 16));
+        UNSCOPED_INFO("the patches a cell side, in both actual consumers");
+        for (const char* consumer : { "almetal_world_wave_water_vertex",
+                                      "almetal_world_water_wave_occlusion" })
+        {
+            CAPTURE(consumer);
+            CHECK((S32)literal_after(metal_function(metal, consumer),
+                                    "constexpr int patches_per_cell = ") ==
+                  ALWaterField::PATCHES_PER_CELL);
+        }
+        const std::string height = compact(metal_function(
+            metal, "almetal_world_water_map_height"));
         UNSCOPED_INFO("the big layer's metres");
-        CHECK(literal_after(surface, "#define WATER_BIG_METRES ") == ALWaterHeightBake::BIG_METRES);
+        CHECK(literal_after(height, "return") == ALWaterHeightBake::BIG_METRES);
         UNSCOPED_INFO("the mid layer's metres");
-        CHECK(literal_after(surface, "#define WATER_MID_METRES ") == ALWaterHeightBake::MID_METRES);
+        CHECK(literal_after(height, "*big+") == ALWaterHeightBake::MID_METRES);
     }
 
     // The far plane overlay: nearer-first pairs out to 100 km on distinct bearings, each farther column behind its
@@ -426,23 +472,31 @@ namespace
             REQUIRE(close_to(sky, LLVector3(agent.mV[1], agent.mV[2], agent.mV[0])));
         }
 
-        // WindLight's haze takes the rotation from the Environment block, for every pass that hazes geometry, and its
-        // callers hand it eye space.
-        const std::string funcs = shader_source("class1/windlight/atmosphericsFuncs.glsl");
+        // The native environment carries three padded matrix columns and
+        // the same CPU eyeToSkyFrame result tested above. The atmosphere
+        // helper rotates both operands, then limits only rising rays.
+        const std::string metal = metal_shader_source();
+        const std::string funcs = compact(metal_function(
+            metal, "almetal_world_alpha_atmospherics"));
         UNSCOPED_INFO("haze position into the sky's frame");
-        REQUIRE(funcs.find("vec3 rel_pos = eyeToSky * inPositionEye;") != std::string::npos);
+        REQUIRE(funcs.find("relative_position=eye_to_sky*eye_position;") != std::string::npos);
         UNSCOPED_INFO("haze light into the sky's frame");
-        REQUIRE(funcs.find("light_dir = eyeToSky * light_dir;") != std::string::npos);
-        // Only rising rays leave the haze, as the dome's do; a falling ray keeps its whole length.
+        REQUIRE(funcs.find("eye_to_sky*environment.light_direction.xyz;") != std::string::npos);
         UNSCOPED_INFO("altitude limit on rising rays alone");
-        REQUIRE(funcs.find("float h = max(rel_pos.y, 0.0) / max(max_y, 1.0);") != std::string::npos);
+        REQUIRE(funcs.find("max(relative_position.y,0.0)/max(environment.glow_max_y.w,1.0);") != std::string::npos);
         UNSCOPED_INFO("no limit on falling rays");
-        REQUIRE(funcs.find("abs(rel_pos.y)") == std::string::npos);
-        UNSCOPED_INFO("the rotation is in the Environment block");
-        REQUIRE(shader_source("class1/deferred/environmentBlock.glsl").find("mat3  eyeToSky;") != std::string::npos);
+        REQUIRE(funcs.find("abs(relative_position.y)") == std::string::npos);
+        UNSCOPED_INFO("the rotation is in the actual native environment payload");
+        CHECK(sizeof(ALMetalWorldAlphaEnvironment::eye_to_sky) == 3 * 4 * sizeof(float));
+        CHECK(offsetof(ALMetalWorldAlphaEnvironment, eye_to_sky) == 4 * sizeof(float));
+        const size_t environment_begin = metal.find("struct ALMetalWorldAlphaEnvironment\n");
+        REQUIRE(environment_begin != std::string::npos);
+        const size_t environment_end = metal.find("};", environment_begin);
+        REQUIRE(environment_end != std::string::npos);
+        REQUIRE(compact(metal.substr(environment_begin, environment_end - environment_begin))
+                    .find("float4eye_to_sky[3];") != std::string::npos);
         // The native haze passes the eye-space position to the shared native
         // atmosphere helper; it does not apply the environment rotation again.
-        const std::string metal = metal_shader_source();
         const size_t haze_begin = metal.find(
             "fragment float4 almetal_world_atmospheric_haze_fragment(");
         const size_t haze_end = metal.find(
