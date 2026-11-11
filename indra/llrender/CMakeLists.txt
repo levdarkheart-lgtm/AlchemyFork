@@ -176,6 +176,8 @@ if(AL_BUILD_TESTS)
       tests/alvertex_publication_metal_test.cpp
       tests/alimagegl_metal_test.cpp
       tests/alfont_atlas_metal_test.cpp
+      tests/alfont_freetype_metal_test.cpp
+      tests/alimage_native_coverage_test.cpp
       tests/alprimitiveplot_test.cpp
     )
   endif()
@@ -198,7 +200,7 @@ if(AL_BUILD_TESTS)
       ${llrender_native_test_sources}
     LIBRARIES llrender ll::icu
     SUPPORT llrender_test_checks llcommon_test_checks
-    DEFINES ${font_defines}
+    DEFINES ${font_defines} ${startup_texture_defines}
   )
   if(DARWIN)
     target_link_libraries(llrender_tests PRIVATE almetal)
@@ -217,7 +219,6 @@ if(AL_BUILD_TESTS)
     SOURCES
       tests/alfontcolrv1_gl_test.cpp
       tests/alfontshaping_gl_test.cpp
-      tests/llfontfreetype_gl_test.cpp
       tests/llfontregistry_gl_test.cpp
       tests/llimagegl_test.cpp
     LIBRARIES llrender ll::icu
