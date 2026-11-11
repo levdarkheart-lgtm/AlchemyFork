@@ -1050,22 +1050,6 @@ struct ALMetalWorldProjectorLightingScene
     bool classic_mode = false;
 };
 
-struct ALMetalWorldLightingCompositionScene
-{
-    // These are the exact three owners accumulated into GL's screen target:
-    // soften/base first, then ordinary and projector lights additively.
-    const ALMetalRenderTarget* base_lighting = nullptr;
-    const ALMetalRenderTarget* local_lighting = nullptr;
-    const ALMetalRenderTarget* projector_lighting = nullptr;
-    // The integrated main-world route can carry exact G-buffer depth into
-    // the composed target so the following opaque-forward owner continues
-    // in place instead of copying a full-frame color attachment. Standalone
-    // lighting composition remains color-only when this is null.
-    const ALMetalRenderTarget* depth_source = nullptr;
-    bool depth_stencil_shader_read = false;
-    bool hdr = false;
-};
-
 // The native water-exclusion fragment needs the live height field and
 // eye-to-agent transform. The cell map is the persistent Metal mirror of
 // ALWaterSurface's RG32F height/flag texture.
@@ -1429,6 +1413,7 @@ struct ALMetalWorldColorGrade
 
 struct ALMetalWorldDisplayPostScene
 {
+    // The original linear Screen is RGBA16F even when HDR transfer is off.
     const ALMetalRenderTarget* source = nullptr;
     // Optional dynamic-exposure result. When present it must be the 1x1
     // RGBA16F output of renderExposure; its red scale replaces the scalar
@@ -2276,42 +2261,20 @@ public:
         const ALMetalWorldSpotShadowScene& scene,
         std::string* error = nullptr);
 
-    // Decode the retained native G-buffer and accumulate every ordinary
-    // (non-projector) deferred point light into a linear screen-format
-    // target. This is the first downstream native world owner; the result is
-    // deliberately retained offscreen until the remaining lighting and
-    // composition passes are native as well.
-    std::unique_ptr<ALMetalRenderTarget> renderLocalLights(
-        const ALMetalWorldLocalLightingScene& scene,
-        std::string* error = nullptr);
-
-    // Add ordinary point lights directly to an existing base-light target.
-    // This is the production continuation path; the standalone method above
-    // remains available for isolated validation and produces the same light
-    // contribution in a cleared target.
+    // Add ordinary deferred point lights directly to the existing RGBA16F
+    // base-light owner, in both display modes, preserving the original
+    // per-stage Screen accumulation instead of materializing light targets.
     bool accumulateLocalLights(
         ALMetalRenderTarget& target,
         const ALMetalWorldLocalLightingScene& scene,
         std::string* error = nullptr);
 
-    // Accumulate deferred projector cookies, ambiance, legacy reflection
-    // and the two live filtered spot-shadow channels. A draw per projector
-    // keeps each cookie's independent mip chain and sampler semantics.
-    std::unique_ptr<ALMetalRenderTarget> renderProjectorLights(
-        const ALMetalWorldProjectorLightingScene& scene,
-        std::string* error = nullptr);
-
-    // Add projector draws directly after base and ordinary lighting. The
-    // projector pipeline already implements the viewer's ONE/ONE blend.
+    // Add projector cookies, ambiance and filtered shadows after ordinary
+    // lighting with the original ONE/ONE blend. Each cookie keeps its own
+    // mip chain and sampler semantics.
     bool accumulateProjectorLights(
         ALMetalRenderTarget& target,
         const ALMetalWorldProjectorLightingScene& scene,
-        std::string* error = nullptr);
-
-    // Reproduce the deferred screen-target accumulation boundary without
-    // folding in post-deferred geometry, tone mapping or presentation.
-    std::unique_ptr<ALMetalRenderTarget> composeLighting(
-        const ALMetalWorldLightingCompositionScene& scene,
         std::string* error = nullptr);
 
     // Retain composed lighting and scene depth, then render the supported
@@ -2484,23 +2447,27 @@ public:
         float color[4],
         std::string* error = nullptr) const;
 
-    // Convert the completed native final-color target into the exact paired
-    // SSR history formats without a CPU readback. HDR RGBA16F is quantized at
+    // Convert the completed native float Screen into the exact paired SSR
+    // history formats without a CPU readback. Caller HDR intent is explicit;
+    // the source storage is floating point in both modes. HDR is quantized at
     // this boundary to R11G11B10F, combined depth is extracted to R32F, and
     // both outputs are vertically reversed to retain glReadPixels' historical
     // lower-row-first storage contract. A matching target is reused in place.
     bool updateScreenSpaceReflectionHistory(
         const ALMetalRenderTarget& source,
+        bool hdr,
         std::unique_ptr<ALMetalRenderTarget>& history,
         std::string* error = nullptr);
 
     // Retain one completed native hero-probe face in a private cube without
     // crossing through CPU memory. Recreating the cube clears valid_faces;
     // a successful copy publishes the selected bit only after submission.
+    // Explicit HDR intent chooses the original RGBA16F/RGBA8 mip-zero format.
     bool updateHeroProbeFace(
         const ALMetalRenderTarget& source,
         std::uint32_t face,
         std::uint32_t max_probe_lod,
+        bool hdr,
         std::unique_ptr<ALMetalTexture>& source_cube,
         std::uint32_t& valid_faces,
         std::string* error = nullptr);
@@ -2518,12 +2485,15 @@ public:
 
     // Retain one ordinary-probe face after reproducing the live separable
     // Gaussian supersample resolve. The resulting cube carries exactly the
-    // authored probe mip range and never crosses CPU memory.
+    // authored probe mip range and never crosses CPU memory. Explicit HDR
+    // intent chooses the original R11G11B10F/RGBA8 snapshot and mip storage;
+    // the intermediate vertical Gaussian remains a float Screen.
     bool updateReflectionProbeFace(
         const ALMetalRenderTarget& source,
         std::uint32_t face,
         std::uint32_t probe_resolution,
         std::uint32_t max_probe_lod,
+        bool hdr,
         std::unique_ptr<ALMetalTexture>& source_cube,
         std::uint32_t& valid_faces,
         std::string* error = nullptr);
@@ -2641,16 +2611,6 @@ private:
     static std::unique_ptr<ALMetalWorldGBufferRenderer> create(
         const ALMetalDevice& device, std::uint32_t max_anisotropy,
         bool initialize_diagnostics, std::string* error);
-    ALMetalRenderTarget* renderLocalLightsInternal(
-        const ALMetalWorldLocalLightingScene& scene,
-        ALMetalRenderTarget* accumulation_target,
-        std::unique_ptr<ALMetalRenderTarget>& standalone_target,
-        std::string* error);
-    ALMetalRenderTarget* renderProjectorLightsInternal(
-        const ALMetalWorldProjectorLightingScene& scene,
-        ALMetalRenderTarget* accumulation_target,
-        std::unique_ptr<ALMetalRenderTarget>& standalone_target,
-        std::string* error);
 
     struct Impl;
     explicit ALMetalWorldGBufferRenderer(std::unique_ptr<Impl> impl);

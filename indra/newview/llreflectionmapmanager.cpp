@@ -700,7 +700,7 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
     const U32 max_probe_lod =
         static_cast<U32>(std::lround(mMaxProbeLOD));
     if (!renderer.updateReflectionProbeFace(
-            source, face, mProbeResolution, max_probe_lod,
+            source, face, mProbeResolution, max_probe_lod, mHDR,
             mirror.mNativeSourceCube, mirror.mNativeValidFaces,
             error))
     {

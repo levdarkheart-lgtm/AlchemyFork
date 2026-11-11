@@ -44,6 +44,66 @@
 
 namespace
 {
+    // Preserve the old normalized byte-domain pixel oracles while reading
+    // the original float Screen. This is GL_UNSIGNED_BYTE readback's clamp/
+    // conversion in the fixture, never a production rendering boundary.
+    // Separate float-screen cases assert overbright values before conversion.
+    template<std::size_t N>
+    bool readLinearAsRGBA8(const ALMetalDevice& device,
+                          const ALMetalTexture* texture,
+                          std::array<std::uint8_t, N>& pixels,
+                          std::string* error)
+    {
+        REQUIRE(texture);
+        const auto& descriptor = texture->descriptor();
+        REQUIRE(descriptor.format == ALMetalPixelFormat::rgba16_float);
+        REQUIRE(N == descriptor.width * descriptor.height * 4);
+        std::array<std::uint16_t, N> linear{};
+        if (!texture->readback(device, 0, 0, {}, linear.data(), descriptor.width * 8, error))
+            return false;
+        for (std::size_t index = 0; index < N; ++index)
+            pixels[index] = static_cast<std::uint8_t>(std::lround(
+                std::clamp(static_cast<float>(std::bit_cast<_Float16>(linear[index])),
+                           0.f, 1.f) * 255.f));
+        return true;
+    }
+
+    std::unique_ptr<ALMetalRenderTarget> zeroLinearTarget(
+        const ALMetalDevice& device, const ALMetalRenderTarget* gbuffer, std::string* error)
+    {
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = gbuffer ? gbuffer->descriptor().width : 1;
+        descriptor.height = gbuffer ? gbuffer->descriptor().height : 1;
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
+        auto target = ALMetalRenderTarget::create(device, descriptor, error);
+        REQUIRE(target);
+        ALMetalRenderPassConfig clear;
+        auto pass = target->makeRenderPass(clear, error); REQUIRE(pass);
+        auto command = device.makeCommandBuffer("Authored zero accumulation input", error);
+        REQUIRE(command);
+        auto encoder = ALMetalRenderEncoder::begin(*command, *pass, "Clear test input", error);
+        REQUIRE(encoder); REQUIRE(encoder->end(error)); REQUIRE(command->commitAndWait(error));
+        return target;
+    }
+    // Tests author a zero base, then exercise the shipping in-place APIs.
+    // These helpers allocate fixture inputs; they implement no lighting math.
+    std::unique_ptr<ALMetalRenderTarget> localContribution(
+        const ALMetalDevice& device, ALMetalWorldGBufferRenderer& renderer,
+        const ALMetalWorldLocalLightingScene& scene, std::string* error)
+    {
+        auto target = zeroLinearTarget(device, scene.gbuffer, error);
+        if (!renderer.accumulateLocalLights(*target, scene, error)) return nullptr;
+        return target;
+    }
+    std::unique_ptr<ALMetalRenderTarget> projectorContribution(
+        const ALMetalDevice& device, ALMetalWorldGBufferRenderer& renderer,
+        const ALMetalWorldProjectorLightingScene& scene, std::string* error)
+    {
+        auto target = zeroLinearTarget(device, scene.gbuffer, error);
+        if (!renderer.accumulateProjectorLights(*target, scene, error)) return nullptr;
+        return target;
+    }
+
     std::unique_ptr<ALMetalWorldGBufferRenderer> createFrameDataRenderer(
         const ALMetalDevice& device, std::uint32_t anisotropy,
         std::string* error)
@@ -816,7 +876,6 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_local_light_vertex",
             "almetal_world_local_light_fragment",
             "almetal_world_projector_light_fragment",
-            "almetal_world_lighting_composition_fragment",
             "almetal_world_lens_flare_state_fragment",
             "almetal_world_lens_dirt_fragment",
             "almetal_world_rlv_sphere_fragment",
@@ -12108,7 +12167,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         overlay_ldr_descriptor.width = 32;
         overlay_ldr_descriptor.height = 32;
         overlay_ldr_descriptor.colors[0].format =
-            ALMetalPixelFormat::rgba8_unorm;
+            ALMetalPixelFormat::rgba16_float;
         overlay_ldr_descriptor.label =
             "Alchemy far-plane overlay LDR test lighting";
         auto overlay_ldr_lighting = ALMetalRenderTarget::create(
@@ -12139,8 +12198,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         INFO(error);
         REQUIRE(ldr_far_plane_overlay);
         std::array<std::uint8_t, 32 * 32 * 4> overlay_ldr_pixels{};
-        REQUIRE(ldr_far_plane_overlay->colorTexture(0)->readback(
-            *device, 0, 0, {}, overlay_ldr_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, ldr_far_plane_overlay->colorTexture(0), overlay_ldr_pixels, &error));
         INFO(error);
         CHECK(overlay_ldr_pixels[near_overlay + 0] == 255u);
         CHECK(overlay_ldr_pixels[near_overlay + 1] == 128u);
@@ -12162,8 +12220,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         INFO(error);
         REQUIRE(ldr_probe_volume);
         std::array<std::uint8_t, 32 * 32 * 4> ldr_probe_pixels{};
-        REQUIRE(ldr_probe_volume->colorTexture(0)->readback(
-            *device, 0, 0, {}, ldr_probe_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, ldr_probe_volume->colorTexture(0), ldr_probe_pixels, &error));
         INFO(error);
         CHECK(ldr_probe_pixels[0] == 64u);
         CHECK(ldr_probe_pixels[1] > 32u);
@@ -12185,7 +12242,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         std::unique_ptr<ALMetalRenderTarget> ssr_history;
         error.clear();
         CHECK_FALSE(renderer->updateScreenSpaceReflectionHistory(
-            *opaque_forward, ssr_history, &error));
+            *opaque_forward, opaque_forward_scene.hdr, ssr_history, &error));
         CHECK(error == "Metal world SSR-history source is incompatible");
         opaque_forward_scene.publish_screen_space_reflection_history = true;
         error.clear();
@@ -12197,7 +12254,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(opaque_forward_history_source->descriptor()
                   .depth_stencil_shader_read);
         REQUIRE(renderer->updateScreenSpaceReflectionHistory(
-            *opaque_forward_history_source, ssr_history, &error));
+            *opaque_forward_history_source, opaque_forward_scene.hdr, ssr_history, &error));
         INFO(error);
         REQUIRE(ssr_history);
         CHECK(ssr_history->descriptor().color_attachment_count == 2);
@@ -12220,7 +12277,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(ssr_history_depth[31 * 32] - 1.f) < 0.0001f);
         ALMetalRenderTarget* retained_ssr_history = ssr_history.get();
         REQUIRE(renderer->updateScreenSpaceReflectionHistory(
-            *opaque_forward_history_source, ssr_history, &error));
+            *opaque_forward_history_source, opaque_forward_scene.hdr, ssr_history, &error));
         INFO(error);
         CHECK(ssr_history.get() == retained_ssr_history);
         opaque_forward_scene.publish_screen_space_reflection_history = false;
@@ -14565,11 +14622,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                 REQUIRE(encoder); REQUIRE(encoder->end(&error)); REQUIRE(command->commitAndWait(&error));
                 return target;
             };
-            const auto make_pbr_light=[&](std::uint32_t size,bool hdr=true)
+            const auto make_pbr_light=[&](std::uint32_t size,bool /*hdr*/=true)
             {
                 ALMetalRenderTargetDescriptor descriptor; descriptor.width=descriptor.height=size;
-                descriptor.color_attachment_count=1; descriptor.colors[0].format=hdr
-                    ?ALMetalPixelFormat::rgba16_float:ALMetalPixelFormat::rgba8_unorm;
+                descriptor.color_attachment_count=1; descriptor.colors[0].format=ALMetalPixelFormat::rgba16_float;
                 auto target=ALMetalRenderTarget::create(*device,descriptor,&error); REQUIRE(target);
                 ALMetalRenderPassConfig clear;
                 clear.colors[0].load=ALMetalLoadAction::clear; clear.colors[0].store=ALMetalStoreAction::store;
@@ -14590,8 +14646,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             {
                 const auto width=target.descriptor().width,height=target.descriptor().height;
                 const auto format=target.colorTexture(0)->descriptor().format;
-                REQUIRE((format==ALMetalPixelFormat::rgba16_float||format==ALMetalPixelFormat::rgba8_unorm));
-                const std::size_t bpp=format==ALMetalPixelFormat::rgba16_float?8u:4u;
+                REQUIRE(format==ALMetalPixelFormat::rgba16_float);
+                constexpr std::size_t bpp=8u;
                 PBRPixels result; result.color.resize(width*height*bpp/sizeof(std::uint16_t));
                 result.depth.resize(width*height); result.stencil.resize(width*height);
                 REQUIRE(target.colorTexture(0)->readback(*device,0,0,{},result.color.data(),width*bpp,&error));
@@ -14813,15 +14869,15 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                 }
             }
             // Non-HDR standard/custom PSOs are separate cached objects. Keep
-            // rawRGBA8 bytes, rawD32 and compactS8 exact on both depth conventions.
+            // rawRGBA16F, rawD32 and compactS8 exact on both depth conventions.
             auto pbr_ldr_forward=make_pbr_input(32,false,false);
             auto pbr_ldr_reverse=make_pbr_input(32,true,false);
             auto pbr_ldr_light=make_pbr_light(32,false);
             const auto ldr_forward_before=snapshot_pbr_input(*pbr_ldr_forward);
             const auto ldr_reverse_before=snapshot_pbr_input(*pbr_ldr_reverse);
-            std::vector<std::uint16_t> pbr_ldr_background(32*32*2);
+            std::vector<std::uint16_t> pbr_ldr_background(32*32*4);
             REQUIRE(pbr_ldr_light->colorTexture(0)->readback(*device,0,0,{},
-                pbr_ldr_background.data(),32*4,&error));
+                pbr_ldr_background.data(),32*8,&error));
             unsigned nonhdr_pairs=0;
             for (bool reverse:{false,true}) for (bool rigged:{false,true})
             for (bool custom:{true,false}) for (bool coverage:{false,true})
@@ -14834,7 +14890,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                 const auto on=read_pbr(true,true,rigged,custom,true,256);
                 const auto off=read_pbr(false,false,rigged,custom,true,256);
                 CHECK(on==off); ++nonhdr_pairs;
-                REQUIRE(off.color.size()==32u*32u*2u);
+                REQUIRE(off.color.size()==32u*32u*4u);
                 CHECK(off.color!=pbr_ldr_background);
                 CHECK(std::all_of(off.stencil.begin(),off.stencil.end(),[](auto v){return v==0u;}));
             }
@@ -19164,14 +19220,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             lighting_scene.inverse_projection[axis * 4 + axis] = 1.f;
         }
 
-        auto legacy = renderer->renderLocalLights(lighting_scene, &error);
+        auto legacy = localContribution(*device, *renderer, lighting_scene, &error);
         INFO(error);
         REQUIRE(legacy);
         REQUIRE(legacy->descriptor().colors[0].format ==
-                ALMetalPixelFormat::rgba8_unorm);
+                ALMetalPixelFormat::rgba16_float);
         std::array<std::uint8_t, 32 * 32 * 4> legacy_pixels{};
-        REQUIRE(legacy->colorTexture(0)->readback(
-            *device, 0, 0, {}, legacy_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, legacy->colorTexture(0), legacy_pixels, &error));
         INFO(error);
         const std::size_t center = (16 * 32 + 16) * 4;
         const std::size_t outside = (2 * 32 + 2) * 4;
@@ -19194,12 +19249,11 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         lights[0].screen_rect[2] = 8;
         lights[0].screen_rect[3] = 8;
         lighting_scene.bounded_light_count = 1;
-        auto bounded = renderer->renderLocalLights(lighting_scene, &error);
+        auto bounded = localContribution(*device, *renderer, lighting_scene, &error);
         INFO(error);
         REQUIRE(bounded);
         std::array<std::uint8_t, 32 * 32 * 4> bounded_pixels{};
-        REQUIRE(bounded->colorTexture(0)->readback(
-            *device, 0, 0, {}, bounded_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, bounded->colorTexture(0), bounded_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 4; ++channel)
         {
@@ -19237,12 +19291,11 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
 
         lighting_scene.lights = nullptr;
         lighting_scene.light_count = 0;
-        auto unlit = renderer->renderLocalLights(lighting_scene, &error);
+        auto unlit = localContribution(*device, *renderer, lighting_scene, &error);
         INFO(error);
         REQUIRE(unlit);
         std::array<std::uint8_t, 32 * 32 * 4> unlit_pixels{};
-        REQUIRE(unlit->colorTexture(0)->readback(
-            *device, 0, 0, {}, unlit_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, unlit->colorTexture(0), unlit_pixels, &error));
         INFO(error);
         CHECK(unlit_pixels[center + 0] == 0);
         CHECK(unlit_pixels[center + 1] == 0);
@@ -19261,12 +19314,11 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         lighting_scene.gbuffer = reverse_gbuffer.get();
         lighting_scene.inverse_projection[10] = -1.f;
         lighting_scene.reverse_z = true;
-        auto reverse = renderer->renderLocalLights(lighting_scene, &error);
+        auto reverse = localContribution(*device, *renderer, lighting_scene, &error);
         INFO(error);
         REQUIRE(reverse);
         std::array<std::uint8_t, 32 * 32 * 4> reverse_pixels{};
-        REQUIRE(reverse->colorTexture(0)->readback(
-            *device, 0, 0, {}, reverse_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, reverse->colorTexture(0), reverse_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 3; ++channel)
         {
@@ -19281,24 +19333,22 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         lighting_scene.reverse_z = false;
 
         lighting_scene.classic_mode = true;
-        auto classic = renderer->renderLocalLights(lighting_scene, &error);
+        auto classic = localContribution(*device, *renderer, lighting_scene, &error);
         INFO(error);
         REQUIRE(classic);
         std::array<std::uint8_t, 32 * 32 * 4> classic_pixels{};
-        REQUIRE(classic->colorTexture(0)->readback(
-            *device, 0, 0, {}, classic_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, classic->colorTexture(0), classic_pixels, &error));
         INFO(error);
         CHECK(classic_pixels[center + 0] < legacy_pixels[center + 0]);
         CHECK(classic_pixels[center + 1] < legacy_pixels[center + 1]);
 
         lighting_scene.classic_mode = false;
         lighting_scene.light_count = 2;
-        auto doubled = renderer->renderLocalLights(lighting_scene, &error);
+        auto doubled = localContribution(*device, *renderer, lighting_scene, &error);
         INFO(error);
         REQUIRE(doubled);
         std::array<std::uint8_t, 32 * 32 * 4> doubled_pixels{};
-        REQUIRE(doubled->colorTexture(0)->readback(
-            *device, 0, 0, {}, doubled_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, doubled->colorTexture(0), doubled_pixels, &error));
         INFO(error);
         CHECK(doubled_pixels[center + 0] > legacy_pixels[center + 0]);
         CHECK(doubled_pixels[center + 1] > legacy_pixels[center + 1]);
@@ -19309,13 +19359,12 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         // batches. Their additive result must neither skip nor double either
         // contribution.
         lighting_scene.bounded_light_count = 1;
-        auto mixed_bounds = renderer->renderLocalLights(
+        auto mixed_bounds = localContribution(*device, *renderer,
             lighting_scene, &error);
         INFO(error);
         REQUIRE(mixed_bounds);
         std::array<std::uint8_t, 32 * 32 * 4> mixed_bounds_pixels{};
-        REQUIRE(mixed_bounds->colorTexture(0)->readback(
-            *device, 0, 0, {}, mixed_bounds_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, mixed_bounds->colorTexture(0), mixed_bounds_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 3; ++channel)
         {
@@ -19457,14 +19506,12 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         {
             projector_scene.inverse_projection[axis * 4 + axis] = 1.f;
         }
-        auto projected = renderer->renderProjectorLights(
+        auto projected = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(projected);
         std::array<std::uint8_t, 32 * 32 * 4> projected_pixels{};
-        REQUIRE(projected->colorTexture(0)->readback(
-            *device, 0, 0, {}, projected_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, projected->colorTexture(0), projected_pixels, &error));
         INFO(error);
         CHECK(projected_pixels[center + 0] > 0);
         CHECK(projected_pixels[center + 1] > 0);
@@ -19493,15 +19540,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector.screen_rect[1] = 8;
         projector.screen_rect[2] = 16;
         projector.screen_rect[3] = 16;
-        auto bounded_projector = renderer->renderProjectorLights(
+        auto bounded_projector = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(bounded_projector);
         std::array<std::uint8_t, 32 * 32 * 4>
             bounded_projector_pixels{};
-        REQUIRE(bounded_projector->colorTexture(0)->readback(
-            *device, 0, 0, {}, bounded_projector_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, bounded_projector->colorTexture(0), bounded_projector_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 4; ++channel)
         {
@@ -19519,14 +19564,12 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         // focus is consumed directly by both GLSL and MSL when selecting the
         // cookie mip; it is not malformed scene data.
         projector.projector_origin[3] = -3.5f;
-        auto negative_focus = renderer->renderProjectorLights(
+        auto negative_focus = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(negative_focus);
         std::array<std::uint8_t, 32 * 32 * 4> negative_focus_pixels{};
-        REQUIRE(negative_focus->colorTexture(0)->readback(
-            *device, 0, 0, {}, negative_focus_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, negative_focus->colorTexture(0), negative_focus_pixels, &error));
         INFO(error);
         CHECK(negative_focus_pixels[center + 0] > 0);
         CHECK(negative_focus_pixels[center + 1] > 0);
@@ -19534,14 +19577,12 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector.projector_origin[3] = 2.f;
 
         projector.shadow_channel = 0;
-        auto shadowed = renderer->renderProjectorLights(
+        auto shadowed = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(shadowed);
         std::array<std::uint8_t, 32 * 32 * 4> shadowed_pixels{};
-        REQUIRE(shadowed->colorTexture(0)->readback(
-            *device, 0, 0, {}, shadowed_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, shadowed->colorTexture(0), shadowed_pixels, &error));
         INFO(error);
         CHECK(shadowed_pixels[center + 0] == 0);
         CHECK(shadowed_pixels[center + 1] == 0);
@@ -19551,7 +19592,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             projector_scene;
         missing_projector_shadows.projector_shadows = nullptr;
         error.clear();
-        CHECK_FALSE(renderer->renderProjectorLights(
+        CHECK_FALSE(projectorContribution(*device, *renderer,
             missing_projector_shadows, &error));
         CHECK(error ==
               "Metal world projector shadows are incompatible");
@@ -19560,15 +19601,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         // The same raw map is lit when the receiver itself is outside the
         // spot frustum; normal offset does not control this early decision.
         projector_shadow_input.constants.shadow_matrix[0][12] = 2.f;
-        auto outside_shadow_frustum = renderer->renderProjectorLights(
+        auto outside_shadow_frustum = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(outside_shadow_frustum);
         std::array<std::uint8_t, 32 * 32 * 4>
             outside_shadow_frustum_pixels{};
-        REQUIRE(outside_shadow_frustum->colorTexture(0)->readback(
-            *device, 0, 0, {}, outside_shadow_frustum_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, outside_shadow_frustum->colorTexture(0), outside_shadow_frustum_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 3; ++channel)
         {
@@ -19602,27 +19641,23 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
 
         projector_shadow_input.constants.shadow_matrix[0][12] = 0.25f;
-        auto first_projector_view = renderer->renderProjectorLights(
+        auto first_projector_view = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(first_projector_view);
         std::array<std::uint8_t, 32 * 32 * 4>
             first_projector_view_pixels{};
-        REQUIRE(first_projector_view->colorTexture(0)->readback(
-            *device, 0, 0, {}, first_projector_view_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, first_projector_view->colorTexture(0), first_projector_view_pixels, &error));
         INFO(error);
 
         projector_shadow_input.constants.shadow_matrix[0][12] = 0.75f;
-        auto second_projector_view = renderer->renderProjectorLights(
+        auto second_projector_view = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(second_projector_view);
         std::array<std::uint8_t, 32 * 32 * 4>
             second_projector_view_pixels{};
-        REQUIRE(second_projector_view->colorTexture(0)->readback(
-            *device, 0, 0, {}, second_projector_view_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, second_projector_view->colorTexture(0), second_projector_view_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 3; ++channel)
         {
@@ -19644,15 +19679,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector_shadow_input.constants.shadow_matrix[0][12] = 0.5f;
 
         projector_shadow_input.constants.config[1] = 1u;
-        auto unbuilt_projector_shadow = renderer->renderProjectorLights(
+        auto unbuilt_projector_shadow = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(unbuilt_projector_shadow);
         std::array<std::uint8_t, 32 * 32 * 4>
             unbuilt_projector_shadow_pixels{};
-        REQUIRE(unbuilt_projector_shadow->colorTexture(0)->readback(
-            *device, 0, 0, {}, unbuilt_projector_shadow_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, unbuilt_projector_shadow->colorTexture(0), unbuilt_projector_shadow_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 3; ++channel)
         {
@@ -19663,15 +19696,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector_shadow_input.constants.config[1] = 0u;
 
         projector_shadow_input.constants.config[3] = 3u;
-        auto pcss_projector_shadow = renderer->renderProjectorLights(
+        auto pcss_projector_shadow = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(pcss_projector_shadow);
         std::array<std::uint8_t, 32 * 32 * 4>
             pcss_projector_shadow_pixels{};
-        REQUIRE(pcss_projector_shadow->colorTexture(0)->readback(
-            *device, 0, 0, {}, pcss_projector_shadow_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, pcss_projector_shadow->colorTexture(0), pcss_projector_shadow_pixels, &error));
         INFO(error);
         CHECK(pcss_projector_shadow_pixels[center + 0] == 0);
         CHECK(pcss_projector_shadow_pixels[center + 1] == 0);
@@ -19679,14 +19710,12 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector_shadow_input.constants.config[3] = 1u;
 
         projector.sampling[1] = 0.5f;
-        auto fading_shadow = renderer->renderProjectorLights(
+        auto fading_shadow = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(fading_shadow);
         std::array<std::uint8_t, 32 * 32 * 4> fading_pixels{};
-        REQUIRE(fading_shadow->colorTexture(0)->readback(
-            *device, 0, 0, {}, fading_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, fading_shadow->colorTexture(0), fading_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 3; ++channel)
         {
@@ -19714,26 +19743,22 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(backface_gbuffer);
         projector_scene.gbuffer = backface_gbuffer.get();
-        auto no_ambient_projector = renderer->renderProjectorLights(
+        auto no_ambient_projector = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(no_ambient_projector);
         std::array<std::uint8_t, 32 * 32 * 4>
             no_ambient_projector_pixels{};
-        REQUIRE(no_ambient_projector->colorTexture(0)->readback(
-            *device, 0, 0, {}, no_ambient_projector_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, no_ambient_projector->colorTexture(0), no_ambient_projector_pixels, &error));
         INFO(error);
         projector.projector_plane[3] = 1.f;
-        auto ambient_projector = renderer->renderProjectorLights(
+        auto ambient_projector = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(ambient_projector);
         std::array<std::uint8_t, 32 * 32 * 4>
             ambient_projector_pixels{};
-        REQUIRE(ambient_projector->colorTexture(0)->readback(
-            *device, 0, 0, {}, ambient_projector_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, ambient_projector->colorTexture(0), ambient_projector_pixels, &error));
         INFO(error);
         CHECK(ambient_projector_pixels[center + 0] >
               no_ambient_projector_pixels[center + 0]);
@@ -19743,15 +19768,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector_scene.gbuffer = gbuffer.get();
 
         projector.projector_matrix[12] = 2.f;
-        auto outside_cookie = renderer->renderProjectorLights(
+        auto outside_cookie = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(outside_cookie);
         std::array<std::uint8_t, 32 * 32 * 4>
             outside_cookie_pixels{};
-        REQUIRE(outside_cookie->colorTexture(0)->readback(
-            *device, 0, 0, {}, outside_cookie_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, outside_cookie->colorTexture(0), outside_cookie_pixels, &error));
         INFO(error);
         CHECK(outside_cookie_pixels[center + 0] == 0);
         CHECK(outside_cookie_pixels[center + 1] == 0);
@@ -19759,14 +19782,12 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector.projector_matrix[12] = 0.5f;
 
         projector_scene.classic_mode = true;
-        auto classic_projector = renderer->renderProjectorLights(
+        auto classic_projector = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(classic_projector);
         std::array<std::uint8_t, 32 * 32 * 4> classic_projector_pixels{};
-        REQUIRE(classic_projector->colorTexture(0)->readback(
-            *device, 0, 0, {}, classic_projector_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, classic_projector->colorTexture(0), classic_projector_pixels, &error));
         INFO(error);
         CHECK(classic_projector_pixels[center + 1] <
               projected_pixels[center + 1]);
@@ -19800,15 +19821,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector_scene.gbuffer = reverse_gbuffer.get();
         projector_scene.inverse_projection[10] = -1.f;
         projector_scene.reverse_z = true;
-        auto reverse_projector = renderer->renderProjectorLights(
+        auto reverse_projector = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(reverse_projector);
         std::array<std::uint8_t, 32 * 32 * 4>
             reverse_projector_pixels{};
-        REQUIRE(reverse_projector->colorTexture(0)->readback(
-            *device, 0, 0, {}, reverse_projector_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, reverse_projector->colorTexture(0), reverse_projector_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 3; ++channel)
         {
@@ -19835,15 +19854,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
 
         projector_scene.light_count = 2;
-        auto doubled_projector = renderer->renderProjectorLights(
+        auto doubled_projector = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(doubled_projector);
         std::array<std::uint8_t, 32 * 32 * 4>
             doubled_projector_pixels{};
-        REQUIRE(doubled_projector->colorTexture(0)->readback(
-            *device, 0, 0, {}, doubled_projector_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, doubled_projector->colorTexture(0), doubled_projector_pixels, &error));
         INFO(error);
         CHECK(doubled_projector_pixels[center + 0] >
               projected_pixels[center + 0]);
@@ -19879,15 +19896,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector_scene.gbuffer = reflective_gbuffer.get();
         projector.projector_matrix[12] = -0.02f;
         projector.projector_plane[2] = 3.f;
-        auto reflected_projector = renderer->renderProjectorLights(
+        auto reflected_projector = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(reflected_projector);
         std::array<std::uint8_t, 32 * 32 * 4>
             reflected_projector_pixels{};
-        REQUIRE(reflected_projector->colorTexture(0)->readback(
-            *device, 0, 0, {}, reflected_projector_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, reflected_projector->colorTexture(0), reflected_projector_pixels, &error));
         INFO(error);
         CHECK(reflected_projector_pixels[center + 0] > 0);
         CHECK(reflected_projector_pixels[center + 1] > 0);
@@ -19929,12 +19944,11 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         gbuffer_scene.reverse_z = false;
         lighting_scene.gbuffer = pbr_gbuffer.get();
         lighting_scene.light_count = 1;
-        auto pbr = renderer->renderLocalLights(lighting_scene, &error);
+        auto pbr = localContribution(*device, *renderer, lighting_scene, &error);
         INFO(error);
         REQUIRE(pbr);
         std::array<std::uint8_t, 32 * 32 * 4> pbr_pixels{};
-        REQUIRE(pbr->colorTexture(0)->readback(
-            *device, 0, 0, {}, pbr_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, pbr->colorTexture(0), pbr_pixels, &error));
         INFO(error);
         CHECK(pbr_pixels[center + 0] > 0);
         CHECK(pbr_pixels[center + 1] > 0);
@@ -19943,15 +19957,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(pbr_pixels[center + 0] != legacy_pixels[center + 0]);
 
         projector_scene.gbuffer = pbr_gbuffer.get();
-        auto pbr_projector = renderer->renderProjectorLights(
+        auto pbr_projector = projectorContribution(*device, *renderer,
             projector_scene, &error);
         INFO(error);
         REQUIRE(pbr_projector);
         std::array<std::uint8_t, 32 * 32 * 4>
             pbr_projector_pixels{};
-        REQUIRE(pbr_projector->colorTexture(0)->readback(
-            *device, 0, 0, {}, pbr_projector_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, pbr_projector->colorTexture(0), pbr_projector_pixels, &error));
         INFO(error);
         CHECK(pbr_projector_pixels[center + 0] > 0);
         CHECK(pbr_projector_pixels[center + 1] > 0);
@@ -21891,8 +21903,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(base_lit);
         std::array<std::uint8_t, 32 * 32 * 4> base_pixels{};
-        REQUIRE(base_lit->colorTexture(0)->readback(
-            *device, 0, 0, {}, base_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, base_lit->colorTexture(0), base_pixels, &error));
         INFO(error);
         CHECK(base_pixels[center + 0] > 0);
         CHECK(base_pixels[center + 1] > 0);
@@ -21964,8 +21975,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(warming_lit);
         std::array<std::uint8_t, 32 * 32 * 4> warming_pixels{};
-        REQUIRE(warming_lit->colorTexture(0)->readback(
-            *device, 0, 0, {}, warming_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, warming_lit->colorTexture(0), warming_pixels, &error));
         INFO(error);
         CHECK(warming_pixels[center + 0] > 0);
         CHECK(warming_pixels[center + 1] > 0);
@@ -22026,9 +22036,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         REQUIRE(legacy_environment_lit);
         std::array<std::uint8_t, 32 * 32 * 4>
             legacy_environment_pixels{};
-        REQUIRE(legacy_environment_lit->colorTexture(0)->readback(
-            *device, 0, 0, {}, legacy_environment_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, legacy_environment_lit->colorTexture(0), legacy_environment_pixels, &error));
         INFO(error);
         CHECK(legacy_environment_pixels[center + 2] > 0);
         CHECK((legacy_environment_pixels[center + 0] !=
@@ -22050,36 +22058,48 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             legacy_environment_scene, &error));
         CHECK(error == "Metal world base-light scene is incomplete");
 
-        // GL writes this base result into screen first, then adds ordinary
-        // and projector lights with ONE/ONE blending. The native owner keeps
-        // that boundary separate from post-deferred geometry and output
-        // transforms while reproducing the exact three-target sum.
-        ALMetalWorldLightingCompositionScene composition_scene;
-        composition_scene.base_lighting = base_lit.get();
-        composition_scene.local_lighting = legacy.get();
-        composition_scene.projector_lighting = projected.get();
-        auto composed = renderer->composeLighting(
-            composition_scene, &error);
+        // Original Screen receives base, ordinary and projector lighting in
+        // that order. Exercise the actual single-owner path and require
+        // nonnegative additions at each stage, independently of depth carry.
+        const auto ordered_lighting = [&](ALMetalWorldBaseLightingScene base)
+        {
+            auto target = renderer->renderBaseLighting(base, &error);
+            REQUIRE(target);
+            auto local = lighting_scene; local.gbuffer = base.gbuffer; local.hdr = base.hdr;
+            auto projector = projector_scene; projector.gbuffer = base.gbuffer; projector.hdr = base.hdr;
+            std::array<std::uint16_t, 32 * 32 * 4> before{}, after{};
+            const auto check_additive = [&](const auto& emit)
+            {
+                REQUIRE(target->colorTexture(0)->readback(*device, 0, 0, {}, before.data(), 32 * 8, &error));
+                REQUIRE(emit());
+                REQUIRE(target->colorTexture(0)->readback(*device, 0, 0, {}, after.data(), 32 * 8, &error));
+                unsigned increased = 0;
+                for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+                {
+                    for (std::size_t c = 0; c < 3; ++c)
+                    {
+                        CHECK(after[pixel * 4 + c] >= before[pixel * 4 + c]);
+                        increased += after[pixel * 4 + c] > before[pixel * 4 + c];
+                    }
+                    CHECK(after[pixel * 4 + 3] == before[pixel * 4 + 3]);
+                }
+                CHECK(increased > 0);
+            };
+            check_additive([&] { return renderer->accumulateLocalLights(*target, local, &error); });
+            check_additive([&] { return renderer->accumulateProjectorLights(*target, projector, &error); });
+            return target;
+        };
+        auto composed = ordered_lighting(base_scene);
         INFO(error);
         REQUIRE(composed);
         REQUIRE(composed->descriptor().colors[0].format ==
-                ALMetalPixelFormat::rgba8_unorm);
+                ALMetalPixelFormat::rgba16_float);
         std::array<std::uint8_t, 32 * 32 * 4> composed_pixels{};
-        REQUIRE(composed->colorTexture(0)->readback(
-            *device, 0, 0, {}, composed_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, composed->colorTexture(0), composed_pixels, &error));
         INFO(error);
-        for (std::size_t channel = 0; channel < 3; ++channel)
-        {
-            const int expected = std::min(
-                static_cast<int>(base_pixels[center + channel]) +
-                    static_cast<int>(legacy_pixels[center + channel]) +
-                    static_cast<int>(projected_pixels[center + channel]),
-                255);
-            CHECK(std::abs(static_cast<int>(
-                      composed_pixels[center + channel]) - expected) <= 1);
-            CHECK(composed_pixels[outside + channel] == 0);
-        }
+        CHECK(composed_pixels[center + 0] > 0);
+        CHECK(composed_pixels[center + 1] > 0);
+        CHECK(composed_pixels[center + 2] > 0);
         CHECK(composed_pixels[center + 3] == 0);
         CHECK(composed_pixels[outside + 3] == 0);
 
@@ -22087,12 +22107,10 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         // composition and transfers the resulting owner into opaque-forward
         // rendering. The same target must survive in place: color and depth
         // stay bit-identical without a redundant full-frame color blit.
-        ALMetalWorldLightingCompositionScene continued_composition_scene =
-            composition_scene;
-        continued_composition_scene.depth_source = pbr_gbuffer.get();
-        continued_composition_scene.depth_stencil_shader_read = true;
-        auto continued_composed = renderer->composeLighting(
-            continued_composition_scene, &error);
+        auto continued_base_scene = base_scene;
+        continued_base_scene.carry_depth = true;
+        continued_base_scene.depth_stencil_shader_read = true;
+        auto continued_composed = ordered_lighting(continued_base_scene);
         INFO(error);
         REQUIRE(continued_composed);
         REQUIRE(continued_composed->descriptor().depth_stencil_format ==
@@ -22115,9 +22133,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             continued_composed_pixels{};
         std::array<float, 32 * 32> continued_depth{};
         std::array<float, 32 * 32> source_depth{};
-        REQUIRE(continued_opaque->colorTexture(0)->readback(
-            *device, 0, 0, {}, continued_composed_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, continued_opaque->colorTexture(0), continued_composed_pixels, &error));
         REQUIRE(continued_opaque->depthStencilTexture()->readback(
             *device, 0, 0, {}, continued_depth.data(),
             32 * sizeof(float), &error));
@@ -22128,29 +22144,19 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(continued_composed_pixels == composed_pixels);
         CHECK(continued_depth == source_depth);
 
-        // Production no longer materializes ordinary/projector targets or a
-        // fourth composition target. Base lighting carries exact G-buffer
-        // depth, then both additive families load and continue that same
-        // owner. Compare the physical result with the retained standalone
-        // three-target contract before proving the owner also survives the
-        // opaque-forward handoff.
+        // Base lighting carries exact G-buffer depth, then both additive
+        // families load the same owner. Require bit-identical color with the
+        // same original ordered path without depth carry, then preserve that
+        // owner through the opaque-forward handoff.
         ALMetalWorldProjectorLightingScene accumulated_projector_scene =
             projector_scene;
         accumulated_projector_scene.gbuffer = pbr_gbuffer.get();
-        ALMetalWorldLightingCompositionScene accumulation_reference_scene;
-        accumulation_reference_scene.base_lighting = base_lit.get();
-        accumulation_reference_scene.local_lighting = pbr.get();
-        accumulation_reference_scene.projector_lighting =
-            pbr_projector.get();
-        auto accumulation_reference = renderer->composeLighting(
-            accumulation_reference_scene, &error);
+        auto accumulation_reference = ordered_lighting(base_scene);
         INFO(error);
         REQUIRE(accumulation_reference);
         std::array<std::uint8_t, 32 * 32 * 4>
             accumulation_reference_pixels{};
-        REQUIRE(accumulation_reference->colorTexture(0)->readback(
-            *device, 0, 0, {}, accumulation_reference_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, accumulation_reference->colorTexture(0), accumulation_reference_pixels, &error));
 
         ALMetalWorldBaseLightingScene accumulated_base_scene = base_scene;
         accumulated_base_scene.carry_depth = true;
@@ -22173,13 +22179,17 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         std::array<std::uint8_t, 32 * 32 * 4> accumulated_pixels{};
         std::array<float, 32 * 32> accumulated_depth{};
-        REQUIRE(accumulated->colorTexture(0)->readback(
-            *device, 0, 0, {}, accumulated_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, accumulated->colorTexture(0), accumulated_pixels, &error));
         REQUIRE(accumulated->depthStencilTexture()->readback(
             *device, 0, 0, {}, accumulated_depth.data(),
             32 * sizeof(float), &error));
         INFO(error);
+        std::array<std::uint16_t, 32 * 32 * 4> accumulated_half{}, reference_half{};
+        REQUIRE(accumulated->colorTexture(0)->readback(*device, 0, 0, {},
+            accumulated_half.data(), 32 * 8, &error));
+        REQUIRE(accumulation_reference->colorTexture(0)->readback(*device, 0, 0, {},
+            reference_half.data(), 32 * 8, &error));
+        CHECK(accumulated_half == reference_half);
         CHECK(accumulated_pixels == accumulation_reference_pixels);
         CHECK(accumulated_depth == source_depth);
 
@@ -22262,16 +22272,18 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         REQUIRE(batched_light_map->colorTexture(0)->readback(
             *device, 0, 0, {}, batched_light_map_pixels.data(), 32 * 2,
             &error));
-        REQUIRE(batched_base->colorTexture(0)->readback(
-            *device, 0, 0, {}, batched_accumulated_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, batched_base->colorTexture(0),
+            batched_accumulated_pixels, &error));
         REQUIRE(batched_base->depthStencilTexture()->readback(
             *device, 0, 0, {}, batched_depth.data(),
             32 * sizeof(float), &error));
         INFO(error);
         CHECK(batched_light_map_pixels == full_light_map);
-        CHECK(batched_accumulated_pixels ==
-              accumulation_reference_pixels);
+        std::array<std::uint16_t, 32 * 32 * 4> batched_half{};
+        REQUIRE(batched_base->colorTexture(0)->readback(*device, 0, 0, {},
+            batched_half.data(), 32 * 8, &error));
+        CHECK(batched_half == accumulated_half);
+        CHECK(batched_accumulated_pixels == accumulation_reference_pixels);
         CHECK(batched_depth == source_depth);
 
         // Merely seeing clear depth and a normal alpha of one is not enough:
@@ -22284,9 +22296,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(base_with_hdri);
         std::array<std::uint8_t, 32 * 32 * 4> base_hdri_pixels{};
-        REQUIRE(base_with_hdri->colorTexture(0)->readback(
-            *device, 0, 0, {}, base_hdri_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, base_with_hdri->colorTexture(0), base_hdri_pixels, &error));
         INFO(error);
         CHECK(std::abs(static_cast<int>(
                   base_hdri_pixels[outside + 0]) - 128) <= 1);
@@ -22317,9 +22327,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         REQUIRE(base_with_windlight);
         std::array<std::uint8_t, 32 * 32 * 4>
             base_windlight_pixels{};
-        REQUIRE(base_with_windlight->colorTexture(0)->readback(
-            *device, 0, 0, {}, base_windlight_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, base_with_windlight->colorTexture(0), base_windlight_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 3; ++channel)
         {
@@ -22347,9 +22355,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(base_with_split);
         std::array<std::uint8_t, 32 * 32 * 4> base_split_pixels{};
-        REQUIRE(base_with_split->colorTexture(0)->readback(
-            *device, 0, 0, {}, base_split_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, base_with_split->colorTexture(0), base_split_pixels, &error));
         INFO(error);
         CHECK(std::abs(static_cast<int>(
                   base_split_pixels[split_left + 0]) - 128) <= 1);
@@ -22430,9 +22436,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(glossy_ordinary);
         std::array<std::uint8_t, 32 * 32 * 4> glossy_ordinary_pixels{};
-        REQUIRE(glossy_ordinary->colorTexture(0)->readback(
-            *device, 0, 0, {}, glossy_ordinary_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, glossy_ordinary->colorTexture(0), glossy_ordinary_pixels, &error));
         INFO(error);
 
         ALMetalTextureDescriptor base_hero_descriptor;
@@ -22482,9 +22486,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(glossy_hero);
         std::array<std::uint8_t, 32 * 32 * 4> glossy_hero_pixels{};
-        REQUIRE(glossy_hero->colorTexture(0)->readback(
-            *device, 0, 0, {}, glossy_hero_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, glossy_hero->colorTexture(0), glossy_hero_pixels, &error));
         INFO(error);
         CHECK(glossy_hero_pixels[center + 2] >
               glossy_ordinary_pixels[center + 2]);
@@ -22609,9 +22611,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         REQUIRE(oriented_identity);
         std::array<std::uint8_t, 32 * 32 * 4>
             oriented_identity_pixels{};
-        REQUIRE(oriented_identity->colorTexture(0)->readback(
-            *device, 0, 0, {}, oriented_identity_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, oriented_identity->colorTexture(0), oriented_identity_pixels, &error));
         INFO(error);
         const std::size_t positive_y = (20 * 32 + 16) * 4;
         const std::size_t negative_y = (11 * 32 + 16) * 4;
@@ -22631,9 +22631,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         REQUIRE(oriented_rotated);
         std::array<std::uint8_t, 32 * 32 * 4>
             oriented_rotated_pixels{};
-        REQUIRE(oriented_rotated->colorTexture(0)->readback(
-            *device, 0, 0, {}, oriented_rotated_pixels.data(),
-            32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, oriented_rotated->colorTexture(0), oriented_rotated_pixels, &error));
         INFO(error);
         CHECK(oriented_rotated_pixels[center + 0] >
               oriented_rotated_pixels[center + 1]);
@@ -22693,8 +22691,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(no_ssr);
         std::array<std::uint8_t, 32 * 32 * 4> no_ssr_pixels{};
-        REQUIRE(no_ssr->colorTexture(0)->readback(
-            *device, 0, 0, {}, no_ssr_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, no_ssr->colorTexture(0), no_ssr_pixels, &error));
         INFO(error);
 
         ALMetalWorldScreenSpaceReflections invalid_base_ssr;
@@ -22767,8 +22764,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(with_ssr);
         std::array<std::uint8_t, 32 * 32 * 4> with_ssr_pixels{};
-        REQUIRE(with_ssr->colorTexture(0)->readback(
-            *device, 0, 0, {}, with_ssr_pixels.data(), 32 * 4, &error));
+        REQUIRE(readLinearAsRGBA8(*device, with_ssr->colorTexture(0), with_ssr_pixels, &error));
         INFO(error);
         CHECK(with_ssr_pixels[center + 0] > no_ssr_pixels[center + 0]);
         base_scene.screen_space_reflections = nullptr;
@@ -22792,9 +22788,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(base_occluded);
         std::array<std::uint8_t, 32 * 32 * 4> base_occluded_pixels{};
-        REQUIRE(base_occluded->colorTexture(0)->readback(
-            *device, 0, 0, {}, base_occluded_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, base_occluded->colorTexture(0), base_occluded_pixels, &error));
         INFO(error);
         CHECK(base_occluded_pixels[center + 0] <
               base_pixels[center + 0]);
@@ -22822,9 +22816,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(base_reverse);
         std::array<std::uint8_t, 32 * 32 * 4> base_reverse_pixels{};
-        REQUIRE(base_reverse->colorTexture(0)->readback(
-            *device, 0, 0, {}, base_reverse_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, base_reverse->colorTexture(0), base_reverse_pixels, &error));
         INFO(error);
         for (std::size_t channel = 0; channel < 3; ++channel)
         {
@@ -22844,9 +22836,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(base_legacy);
         std::array<std::uint8_t, 32 * 32 * 4> base_legacy_pixels{};
-        REQUIRE(base_legacy->colorTexture(0)->readback(
-            *device, 0, 0, {}, base_legacy_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, base_legacy->colorTexture(0), base_legacy_pixels, &error));
         INFO(error);
         CHECK(base_legacy_pixels[center + 0] > 0);
         CHECK(base_legacy_pixels[center + 1] > 0);
@@ -22861,9 +22851,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         REQUIRE(base_classic);
         std::array<std::uint8_t, 32 * 32 * 4> base_classic_pixels{};
-        REQUIRE(base_classic->colorTexture(0)->readback(
-            *device, 0, 0, {}, base_classic_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(readLinearAsRGBA8(*device, base_classic->colorTexture(0), base_classic_pixels, &error));
         INFO(error);
         CHECK(base_classic_pixels[center + 0] > 0);
         CHECK(base_classic_pixels[center + 1] > 0);
@@ -23073,7 +23061,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         base_scene.constants.sky_transfer[0] = 1.f;
         lighting_scene.gbuffer = hdr_gbuffer.get();
         lighting_scene.hdr = true;
-        auto hdr = renderer->renderLocalLights(lighting_scene, &error);
+        auto hdr = localContribution(*device, *renderer, lighting_scene, &error);
         INFO(error);
         REQUIRE(hdr);
         CHECK(hdr->descriptor().colors[0].format ==
@@ -23087,13 +23075,10 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(hdr_pixels[center + 2] > 0);
         CHECK(hdr_pixels[center + 3] == 0);
 
-        ALMetalWorldLightingCompositionScene hdr_composition_scene;
-        hdr_composition_scene.base_lighting = hdr.get();
-        hdr_composition_scene.local_lighting = hdr.get();
-        hdr_composition_scene.projector_lighting = hdr.get();
-        hdr_composition_scene.hdr = true;
-        auto hdr_composed = renderer->composeLighting(
-            hdr_composition_scene, &error);
+        auto hdr_composed = localContribution(*device, *renderer, lighting_scene, &error);
+        REQUIRE(hdr_composed);
+        REQUIRE(renderer->accumulateLocalLights(*hdr_composed, lighting_scene, &error));
+        REQUIRE(renderer->accumulateLocalLights(*hdr_composed, lighting_scene, &error));
         INFO(error);
         REQUIRE(hdr_composed);
         REQUIRE(hdr_composed->descriptor().colors[0].format ==
@@ -23108,30 +23093,28 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(hdr_composed_pixels[center + 2] > hdr_pixels[center + 2]);
         CHECK(hdr_composed_pixels[center + 3] == 0);
 
-        composition_scene.local_lighting = hdr.get();
+        // The live API rejects incompatible destination dimensions/format.
+        ALMetalRenderTargetDescriptor invalid_target_descriptor;
+        invalid_target_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        auto invalid_target = ALMetalRenderTarget::create(*device, invalid_target_descriptor, &error);
+        REQUIRE(invalid_target);
         error.clear();
-        CHECK_FALSE(renderer->composeLighting(
-            composition_scene, &error));
-        CHECK(error ==
-              "Metal world lighting composition targets are incompatible");
-
-        ALMetalWorldLightingCompositionScene invalid_composition_scene;
+        CHECK_FALSE(renderer->accumulateLocalLights(*invalid_target, lighting_scene, &error));
+        CHECK(error == "Metal world local-light accumulation target is incompatible");
         error.clear();
-        CHECK_FALSE(renderer->composeLighting(
-            invalid_composition_scene, &error));
-        CHECK(error ==
-              "Metal world lighting composition is incomplete");
+        CHECK_FALSE(renderer->accumulateProjectorLights(*invalid_target, projector_scene, &error));
+        CHECK(error == "Metal world projector-light accumulation target is incompatible");
 
         ALMetalWorldProjectorLightingScene invalid_projector_scene;
         error.clear();
-        CHECK_FALSE(renderer->renderProjectorLights(
+        CHECK_FALSE(projectorContribution(*device, *renderer,
             invalid_projector_scene, &error));
         CHECK(error ==
               "Metal world projector-light scene is incomplete");
 
         ALMetalWorldLocalLightingScene invalid_scene;
         error.clear();
-        CHECK_FALSE(renderer->renderLocalLights(invalid_scene, &error));
+        CHECK_FALSE(localContribution(*device, *renderer, invalid_scene, &error));
         CHECK(error == "Metal world local-light scene is incomplete");
     }
 }
@@ -23222,7 +23205,7 @@ TEST_CASE("almetal: native final color publishes coherent SSR history", "[almeta
 
         std::unique_ptr<ALMetalRenderTarget> history;
         REQUIRE(renderer->updateScreenSpaceReflectionHistory(
-            *source, history, &error));
+            *source, false, history, &error));
         INFO(error);
         REQUIRE(history);
         CHECK(history->descriptor().color_attachment_count == 2);
@@ -23251,7 +23234,7 @@ TEST_CASE("almetal: native final color publishes coherent SSR history", "[almeta
 
         ALMetalRenderTarget* retained_history = history.get();
         REQUIRE(renderer->updateScreenSpaceReflectionHistory(
-            *source, history, &error));
+            *source, false, history, &error));
         INFO(error);
         CHECK(history.get() == retained_history);
     }
@@ -27135,6 +27118,16 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
             INFO(error);
             return target;
         };
+        const auto make_linear_byte_source = [&](std::uint32_t width,
+            std::uint32_t height, const std::uint8_t* pixels, const char* label)
+        {
+            std::vector<std::uint16_t> linear(width * height * 4);
+            for (std::size_t i = 0; i < linear.size(); ++i)
+                linear[i] = std::bit_cast<std::uint16_t>(
+                    static_cast<_Float16>(pixels[i] / 255.f));
+            return make_source(ALMetalPixelFormat::rgba16_float, width, height,
+                               linear.data(), width * 8, label);
+        };
         const auto srgb = [](float linear)
         {
             linear = std::max(linear, 0.f);
@@ -27738,10 +27731,8 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
                     static_cast<std::uint8_t>(80u + x + y * 2u);
             }
         }
-        auto chromatic_source = make_source(
-            ALMetalPixelFormat::rgba8_unorm,
-            chromatic_width, chromatic_height,
-            chromatic_source_pixels.data(), chromatic_width * 4,
+        auto chromatic_source = make_linear_byte_source(
+            chromatic_width, chromatic_height, chromatic_source_pixels.data(),
             "Alchemy chromatic-aberration test source");
         ALMetalWorldDisplayPostScene chromatic_scene;
         chromatic_scene.source = chromatic_source.get();
@@ -27872,9 +27863,8 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         const std::array<std::uint8_t, 4> vintage_pixel{{
             64u, 128u, 255u, 128u,
         }};
-        auto vintage_source = make_source(
-            ALMetalPixelFormat::rgba8_unorm, 1, 1,
-            vintage_pixel.data(), sizeof(vintage_pixel),
+        auto vintage_source = make_linear_byte_source(
+            1, 1, vintage_pixel.data(),
             "Alchemy vintage display-post test source");
         ALMetalWorldDisplayPostScene vintage;
         vintage.source = vintage_source.get();
@@ -27959,9 +27949,8 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
             std::copy(vintage_pixel.begin(), vintage_pixel.end(),
                       dither_source_pixels.begin() + pixel * 4);
         }
-        auto dither_source = make_source(
-            ALMetalPixelFormat::rgba8_unorm, 8, 8,
-            dither_source_pixels.data(), 8 * 4,
+        auto dither_source = make_linear_byte_source(
+            8, 8, dither_source_pixels.data(),
             "Alchemy display-post dither test source");
         ALMetalWorldDisplayPostScene dither_scene;
         dither_scene.source = dither_source.get();
@@ -27995,7 +27984,9 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         error.clear();
         CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
         CHECK(error == "Metal world display-post scene is incomplete");
-        invalid.source = vintage_source.get();
+        auto invalid_byte_source = make_source(ALMetalPixelFormat::rgba8_unorm,
+            1, 1, vintage_pixel.data(), 4, "Invalid normalized display source");
+        invalid.source = invalid_byte_source.get();
         invalid.hdr = true;
         error.clear();
         CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
@@ -28731,7 +28722,7 @@ TEST_CASE("almetal: native hero faces publish filtered cube radiance", "[almetal
             REQUIRE(upload->commit(&error));
             INFO(error);
             REQUIRE(renderer->updateHeroProbeFace(
-                *source, face, 1, source_cube, valid_faces, &error));
+                *source, face, 1, false, source_cube, valid_faces, &error));
             INFO(error);
             CHECK(valid_faces == ((1u << (face + 1)) - 1u));
             if (face == 0)
@@ -28870,10 +28861,9 @@ TEST_CASE("almetal: native hero faces publish filtered cube radiance", "[almetal
                     CAPTURE(face, x, y);
                     for (std::size_t channel = 0; channel < 4; ++channel)
                     {
-                        CHECK(std::abs(samples[index][channel] -
-                            static_cast<float>(
-                                source_faces[face][texel + channel]) /
-                                255.f) < 0.001f);
+                        const float expected = channel == 3 ? 0.f :
+                            static_cast<float>(source_faces[face][texel + channel]) / 255.f;
+                        CHECK(std::abs(samples[index][channel] - expected) < 0.001f);
                     }
                 }
             }
@@ -28907,8 +28897,9 @@ TEST_CASE("almetal: native hero faces publish filtered cube radiance", "[almetal
                                    source_faces[face][texel + 1]) <= 1);
                     CHECK(std::abs(static_cast<int>(pixels[texel + 2]) -
                                    source_faces[face][texel + 2]) <= 1);
-                    CHECK(std::abs(
-                        static_cast<int>(pixels[texel + 3]) - 128) <= 1);
+                    // reflectionmipF writes alpha zero before GGX; the
+                    // original probe-strength operation cannot create alpha.
+                    CHECK(pixels[texel + 3] == 0);
                 }
             }
         }
@@ -28929,7 +28920,7 @@ TEST_CASE("almetal: native hero faces publish filtered cube radiance", "[almetal
         REQUIRE(invalid);
         error.clear();
         CHECK_FALSE(renderer->updateHeroProbeFace(
-            *invalid, 0, 1, source_cube, valid_faces, &error));
+            *invalid, 0, 1, false, source_cube, valid_faces, &error));
         CHECK(error == "Metal hero-probe face source is incompatible");
 
         // Production HDR faces use RGBA16F and publish filtered R11G11B10F.
@@ -28968,7 +28959,7 @@ TEST_CASE("almetal: native hero faces publish filtered cube radiance", "[almetal
             REQUIRE(encoder->end(&error));
             REQUIRE(command->commitAndWait(&error));
             REQUIRE(renderer->updateHeroProbeFace(
-                *hdr_source, face, 1, hdr_source_cube,
+                *hdr_source, face, 1, true, hdr_source_cube,
                 hdr_valid_faces, &error));
             INFO(error);
         }
@@ -29022,7 +29013,7 @@ TEST_CASE("almetal: native ordinary probes filter radiance and project SH", "[al
         std::unique_ptr<ALMetalTexture> radiance_cube;
         std::uint32_t valid_faces = 0;
         CHECK_FALSE(renderer->updateReflectionProbeFace(
-            *source, 0, 3, 1,
+            *source, 0, 3, 1, false,
             source_cube, valid_faces, &error));
         CHECK(error ==
               "Metal reflection-probe face source is incompatible");
@@ -29065,7 +29056,7 @@ TEST_CASE("almetal: native ordinary probes filter radiance and project SH", "[al
             [blit endEncoding];
             REQUIRE(upload->commit(&error));
             REQUIRE(renderer->updateReflectionProbeFace(
-                *source, face, 4, 1,
+                *source, face, 4, 1, false,
                 source_cube, valid_faces, &error));
             INFO(error);
             CHECK(valid_faces == ((1u << (face + 1)) - 1u));
@@ -29141,7 +29132,7 @@ TEST_CASE("almetal: native ordinary probes filter radiance and project SH", "[al
             [blit endEncoding];
             REQUIRE(upload->commit(&error));
             REQUIRE(renderer->updateReflectionProbeFace(
-                *source, face, 4, 1,
+                *source, face, 4, 1, false,
                 source_cube, valid_faces, &error));
             INFO(error);
         }

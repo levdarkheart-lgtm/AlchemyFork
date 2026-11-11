@@ -199,8 +199,9 @@ TEST_CASE("almetal: base fullbright preserves linear output and exact material g
                     REQUIRE(output);
                     std::array<std::uint16_t, pixel_count * 4> pixels{};
                     REQUIRE(output->colorTexture(0)->readback(*device, 0, 0, {},
-                        pixels.data(), size * (hdr ? 8 : 4), &error));
-                    const auto* sdr_pixels = reinterpret_cast<const std::uint8_t*>(pixels.data());
+                        pixels.data(), size * 8, &error));
+                    CHECK(output->descriptor().colors[0].format ==
+                          ALMetalPixelFormat::rgba16_float);
                     for (std::size_t pixel = 0; pixel < pixel_count; ++pixel)
                     {
                         for (std::size_t channel = 0; channel < 3; ++channel)
@@ -215,16 +216,20 @@ TEST_CASE("almetal: base fullbright preserves linear output and exact material g
                                     environment_color[channel] / 255.f * 2.f * weight);
                             }
                             if (sample.pbr)
+                            {
                                 expected = suppress_emissive ? 0.f
                                     : std::array<float, 3>{{0.25f, 0.5f, 1.f}}[channel];
+                                // The G-buffer emissive storage still follows
+                                // HDR. Its UNORM8 input quantizes before the
+                                // now-float Screen; do not clamp that Screen.
+                                if (!hdr) expected = std::round(expected * 255.f) / 255.f;
+                            }
                             expected *= classic ? 1.1f : 1.f;
                             if (sample.clear_depth) expected = 0.f;
-                            const float actual = hdr ? halfValue(pixels[pixel * 4 + channel])
-                                : sdr_pixels[pixel * 4 + channel] / 255.f;
-                            if (!hdr) expected = std::min(expected, 1.f);
-                            CHECK(std::abs(actual - expected) < (hdr ? 0.001f : 0.003f));
+                            const float actual = halfValue(pixels[pixel * 4 + channel]);
+                            CHECK(std::abs(actual - expected) < 0.001f);
                         }
-                        CHECK((hdr ? pixels[pixel * 4 + 3] : sdr_pixels[pixel * 4 + 3]) == 0);
+                        CHECK(pixels[pixel * 4 + 3] == 0);
                     }
                 }
             }

@@ -11194,7 +11194,7 @@ kernel void almetal_world_probe_downsample(
         coord::normalized, filter::linear, address::clamp_to_edge);
     const float2 uv = (float2(position) + 0.5) /
         float2(destination.get_width(), destination.get_height());
-    destination.write(source.sample(linear_sampler, uv), position);
+    destination.write(float4(source.sample(linear_sampler, uv).rgb, 0.0), position);
 }
 
 static float almetal_world_hero_random(float2 value)
@@ -12484,20 +12484,6 @@ fragment float4 almetal_world_projector_light_fragment(
 
     return float4(
         max(final_color * constants.sampling.w, float3(0.0)), 0.0);
-}
-
-fragment float4 almetal_world_lighting_composition_fragment(
-    ALMetalWorldLocalLightVaryings input [[stage_in]],
-    texture2d<float> base_lighting [[texture(0)]],
-    texture2d<float> local_lighting [[texture(1)]],
-    texture2d<float> projector_lighting [[texture(2)]],
-    sampler point_sampler [[sampler(0)]])
-{
-    // GL writes the soften/base result first, then uses ONE/ONE blending for
-    // both local-light families. Every contributing owner writes zero alpha.
-    return base_lighting.sample(point_sampler, input.texcoord) +
-        local_lighting.sample(point_sampler, input.texcoord) +
-        projector_lighting.sample(point_sampler, input.texcoord);
 }
 
 fragment ALMetalWorldSSRHistoryOutput almetal_world_ssr_history_fragment(

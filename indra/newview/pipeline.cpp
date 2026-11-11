@@ -1102,7 +1102,7 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     const bool snapshot_cutout =
         sCutoutRender && mMetalWorldSnapshotRequested;
     const LensDirtConfig dirt = lensDirtConfig(true);
-    const bool native_lens_dirt = !hdr || snapshot_cutout || !dirt.enabled ||
+    const bool native_lens_dirt = snapshot_cutout || !dirt.enabled ||
         (mMetalWorldSimpleCapture &&
          mMetalWorldSimpleCapture->lens_dirt_target &&
          mMetalWorldSimpleCapture->lens_dirt_params == dirt.plate);
@@ -1819,7 +1819,7 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
         published = capture.renderer->updateHeroProbeFace(
             *capture.opaque_post_deferred_target,
             capture.hero_probe_face, capture.hero_probe_max_lod,
-            capture.hero_probe_source_cube,
+            capture.hdr, capture.hero_probe_source_cube,
             capture.hero_probe_valid_faces, &error);
         if (!published)
         {
@@ -9234,7 +9234,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             {
                 clearLensFlareState();
             }
-            const bool main_lens_flare = capture.hdr && main_lens_flare_view &&
+            const bool main_lens_flare = main_lens_flare_view &&
                 native_flare_state.enabled;
             const bool use_lens_flare_history =
                 capture.lens_flare_state_target &&
@@ -9720,15 +9720,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const ChromaticAberrationConfig chromatic =
                 chromaticAberrationConfig();
             const LensFlareConfig flare = lensFlareConfig(true);
-            const bool exact_lens_flare = !capture.hdr ||
-                cutout_snapshot || !flare.enabled ||
+            const bool exact_lens_flare = cutout_snapshot || !flare.enabled ||
                 (capture.lens_flare_state_target &&
                  capture.lens_flare_state_epoch ==
                      mMetalLensFlareHistoryEpoch &&
                  capture.lens_flare_state_frame == gFrameCount);
             const LensDirtConfig dirt = lensDirtConfig(true);
-            const bool exact_lens_dirt = !capture.hdr ||
-                cutout_snapshot || !dirt.enabled ||
+            const bool exact_lens_dirt = cutout_snapshot || !dirt.enabled ||
                 (capture.lens_dirt_target &&
                  capture.lens_dirt_params == dirt.plate);
             std::string presentation_error;
@@ -9811,7 +9809,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 std::copy(chromatic.offset_b.begin(),
                           chromatic.offset_b.end(),
                           display.chromatic_aberration_offset_b);
-                if (capture.hdr && flare.enabled && !cutout_snapshot)
+                if (flare.enabled && !cutout_snapshot)
                 {
                     display.lens_flare_state_texture =
                         capture.lens_flare_state_target->colorTexture(0);
@@ -9853,7 +9851,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     display.lens_flare_starburst_falloff =
                         flare.starburst_falloff;
                 }
-                if (capture.hdr && dirt.enabled && !cutout_snapshot)
+                if (dirt.enabled && !cutout_snapshot)
                 {
                     display.lens_dirt_texture =
                         capture.lens_dirt_target->colorTexture(0);
@@ -10870,7 +10868,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 capture.continuous_world_capture = true;
                 std::string history_error;
                 if (capture.renderer->updateScreenSpaceReflectionHistory(
-                        *target, capture.impostor_ssr_history_target,
+                        *target, capture.hdr, capture.impostor_ssr_history_target,
                         &history_error))
                 {
                     capture.impostor_screen_space_reflections.scene_color =
