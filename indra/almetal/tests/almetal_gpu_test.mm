@@ -34803,7 +34803,11 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
                     255.f - expected) < 0.01f);
         }
         CHECK(composed_pixels[center + 3] == 255u);
-        CHECK(depth_region_values[16 * 32 + 16] < 0.25f);
+        // Original renderBatchSize uses logical (-1,+1). This triangle is
+        // flat, so its slope term is zero and +1 units moves forward-Z depth
+        // away from the camera. The former native sign was inverted.
+        REQUIRE_FALSE(hud_batch.depth.reverse_z);
+        CHECK(depth_region_values[16 * 32 + 16] > 0.25f);
 
         hud_batch.indices = hud_reversed_indices.get();
         REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
