@@ -20,7 +20,7 @@ This document is an **engineering hypothesis grounded in upstream source**, not 
 | `indra/llrender/llglslshader.cpp`, `llshadermgr.*` | GLSL variants, uniforms, `LLGLSLShader` | MSL shader libraries, pipeline state cache, argument/buffer/texture/sampler binding, variant and error diagnostics |
 | `indra/newview/llviewershadermgr.cpp` and `app_settings/shaders/` | GLSL program assembly, shared snippets | Native `.metal` implementations plus deterministic variant/binding metadata; preserve algorithms, validate output |
 | `indra/newview/pipeline.cpp`, `lldrawpool*.cpp`, `llviewerdisplay.cpp` | GL pass graph, render state, material/avatar draw calls | Direct Metal rendering and compute passes, PBR, avatar, transparent objects, probes, shadows, HDR and presentation |
-| `indra/alrender/` | Pure planning plus remaining GL blur/transient-target helpers; the duplicate GL depth-pyramid owner is removed | Retain pure resource policies; rewrite actual GPU allocation/commands and synchronization |
+| `indra/alrender/` | Resource/kernel policy plus retained transient prewarming; the duplicate GL depth-pyramid owner is removed | Retain pure policies; native owners control actual GPU allocation/commands and synchronization |
 | `indra/llrender/llfontgl.cpp`, `indra/llui/` render call sites | Glyph/UI drawing using GL-style interfaces | Native Metal text/2D/widget/selection rendering without replacing widget logic |
 | media texture and snapshot/picking paths | GL texture upload/readback | Metal texture ingress, CPU-GPU readback, color/alpha and synchronization correctness |
 
@@ -39,6 +39,22 @@ This document is an **engineering hypothesis grounded in upstream source**, not 
   no compiled window-object import for SDL/GL context APIs. The application
   still links OpenGL through other owned renderer objects; this is a completed
   lifecycle boundary, not the final no-OpenGL gate.
+
+## Current fork observation (2026-11-11)
+
+At `d2d0380309`, strict production source3508files has zero API blockers/errors.
+The fresh ARM64 viewer and both owned media hosts have no direct forbidden
+graphics imports/frameworks; all346bundled Mach-O files and strict signatures
+pass. Foreign CEF/screen dependencies and runtime context creation remain
+separate open gates. See [current evidence](work/active/native-finalization-and-media-closure.md).
+Compatibility class/state names do not establish retained OpenGL execution.
+
+The native finalizer owns exposure, lens, callbacks, scopes and typed SSR/
+reference histories. Eight displaced fixed targets are retired. Pure
+ALLightMapBlur kernel policy remains; the retained transient pool still
+allocates unused Metal targets during prewarm and is being retired after its
+live Bloom shape dependency is replaced. The separate ALMetalRenderTargetPool
+remains a live native GPU owner.
 
 ## Key semantic traps
 - GL state caches are global/implicit; Metal pipeline state and command buffers are explicit. Implement actual pass/state semantics, not a superficial GL-call shim.

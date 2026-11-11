@@ -7,7 +7,35 @@ No viewer, actual plugin host or SDL/native window was launched; no screenshots.
 Standalone CPU libVLC callback probes, Foundation resource probes and device-only
 Metal tests are distinct evidence, never live viewer/menu parity.
 
-## Full application checkpoint
+## Current full application checkpoint
+
+Frozen clean source `d2d03803091c17d56977df3c905519894684fbec` passed required
+doctor/configure/full build through the same wrapper/env below (session63895).
+The previous335-plugin app was preserved by rename before configure recreated
+the stage. Source stayed frozen; only metal documentation changed during build.
+Release26.4.0d68796 passes verify_app:346Mach-O/zero invalid ARM64 slices,
+deep strict codesign0, main viewer and both owned media host direct forbidden
+GL/CGL/SDL_GL/Vulkan imports/libraries0. Foreign CEF/screen dependencies remain
+separately audited; this is not a whole-bundle/runtime no-GL claim.
+
+All332remaining VLC plugin names and complete bytes exactly match prior335
+minus the three exclusions. Screen/VT/CVPX/vmem modules remain. Fresh bundle
+has zeroGLSL/no shader subtree and exact native MSL/metallib/notices, with the
+same three resource hashes as the earlier checkpoint below. Viewer SHA256:
+230e3678c0049366b8bef60ffa398ad475f670efe2b22b11f0e2a7d53b4b9de1.
+Evidence: native-finalize-canonical-build-state.json and
+native-finalize-canonical-validation.json with exact argv/exits/source/status/
+hashes and native-finalize-canonical-* logs. Product executables never ran.
+
+Matching registered actual-body policy/lens/reflection629/18 and full
+alrender565511/137 pass, API/shader validation for the resource suite.
+native-fixed-resource-registered-validation.json records exact argv/hashes.
+Current almetal binary SHAe6ee03ec7f8a19583e53757cc933d6cb704bd58ff54b7e5384019306bda71bab
+is byte-identical to the prior reference/world GPU runs; those exact unchanged
+GPU results are reused rather than repeated. Current production strict source:
+3508files/910info/0blockers/0errors (native-finalize-strict-source.json).
+
+## Prior full application checkpoint
 
 Frozen clean source `0fe112ee902172c4983e5d277cfba08ded41751b` built through
 the required tools/metal/build.sh wrapper with AL_METAL_PRESET=ninja-os-arm64,
@@ -101,8 +129,8 @@ independent gl_tail review found no blockers.
 Receipt: /private/tmp/alchemy-vlc-callback-validation-20261111/validation-receipt.json.
 Existing GUI Growl/Sparkle module load warnings occur in both complete/filtered
 baseline and are recorded; no unrelated module deletion was made.
-EXCLUDE cannot prune a stale bundle: required grouped full build must recreate
-the actual app stage and verify all three absent. No complete host/media/
+EXCLUDE cannot prune a stale bundle: the current d2d full build recreated the
+actual app stage and proved exact335→332 names/bytes. No complete host/media/
 stream/audio/HW/URI/screen/CEF-runtime or whole-bundle no-GL claim.
 
 ## Integrated native finalization
@@ -257,9 +285,17 @@ plan/policy2697/43, two Release syntax TUs, strict source3508/910info/0blocking/
 0errors and independent source-hash-pinned peer pass. Native pressure/create
 prefix and13live methods are byte-identical. Receipt:
 /private/tmp/alchemy-native-fixed-resource-validation-20261111/validation-receipt.json.
-Postfreeze review caught the removed target block's implicit gGL.flush; gl_tail
-owns a narrow explicit semantic-flush follow-up, with rlva_port read-only peer.
-No exposed pending-geometry runtime bug is claimed. Root build awaits that fix.
+Postfreeze review caught the removed target block's implicit gGL.flush.
+Integratedd2d0380309 restores one effective semantic drain after native pair
+retirement for current SSR or newly enabled next-plan SSR, before cutout/plan
+publication. No duplicate attachment, mask/depth/viewport mutation or GPU wait.
+Exact same recorder test with immutable baseline body433/13 has17failures;
+fixed439/13 and combined plan/policy2733/44 pass. Warm nonnull R11/R32 payloads
+make retirement-order checks meaningful. These are actual-body CPU call/order
+observations, not actual Scope/GPU execution or an exposed runtime bug claim.
+Release pipeline syntax0; independent peer hashes/source0. Receipts:
+/private/tmp/alchemy-native-fixed-resource-validation-20261111/flush-boundary-followup.json
+and /private/tmp/alchemy-fixed-resource-flush-peer-review-rlva-20261111.json.
 
 Independent transient census:
 /private/tmp/alchemy-native-transient-pool-audit-20261111.json.
@@ -268,12 +304,36 @@ has no caller. Prewarming allocates real Metal textures that no pass consumes.
 However its success bits still drive native Bloom mip count, and unused post
 target failures can force resolution reduction. Replace those live policies
 before deleting the graph; preserve the separate live ALMetalRenderTargetPool.
-No transient removal is integrated or assigned yet.
+gl_tail_audit owns an isolated removal patch based on d2d; shared pure Bloom
+shape policy now uses actual post-source geometry, including native snapshot
+overrides that deliberately bypass retained resource reconciliation. It removes
+the cached count/prewarm-only pool while retaining actual native allocation
+failure and the unrelated spot-shadow invariant. Source/CPU/peer proof is in
+progress; no patch is integrated. menu_port's three orphan uniform identities/
+table entries are frozen5b0b8e136d with actual-manager1011checks, exact503-entry
+projection, two Release syntax TUs and independent peer0. Matching-header root
+rebuild remains required after integration.
+
+The cutout trace maps actual native seed/blend/display/presentation/RGBA readback
+ownership. Old pipeline seed/copy traversals produce no native pixel work but
+retain real CPU stream/state side effects; do not delete those blindly.
+Source review also found a numeric gap: original forward far quad uses
+(0.99999f+1.f)*0.5f window depth; reverse explicitly uses0.000005f. Native shared
+coverage vertex uses exact1/0. Existing tests cover far/mid depths and miss the
+epsilon band. Actual unchanged-source GPU baseline1230/1 fails exactly12pin/
+band checks across HDR/SDR and both depth conventions;1218controls pass.
+Baseline: /private/tmp/alchemy-native-cutout-depth-pin-validation-20261111/baseline-gpu.log.
+rlva_port owns the isolated cutout-specific repair, preserving shared exact-far
+behavior for other users. Snapshot matrix
+row is reopened; the stale claim of a retained GL fallback was corrected.
 Root owns CMake/docs/integration and required fresh full-app verification.
-Current tested native registrations are four CMake WIP files; no user edits.
-Before full build, preserve the old app by rename so exact VLC exclusions are
-observed rather than masked by stale installed modules. Viewer/utility/hosts/
-windows remain closed throughout.
+Tested native registrations are committeddc6f505a0a; no user edits.
+Clean frozen sourced2d0380309 doctor/configure/full build63895 and static
+verification pass. Previous app with335plugins is preserved as
+Alchemy Metal Development.pre-native-finalize-d2d03803-20261111.app before
+configure. Exact source/status/argv/progress: native-finalize-canonical-build-state.json.
+Current app verification and affected registered tests are recorded above.
+Viewer/utility/hosts/windows remain closed throughout.
 
 Full original parity, stability, runtime native-only, independent release evidence
 and measured multi-scene performance remain open. Earlier lighting/self-turn/
