@@ -1110,6 +1110,10 @@ bool LLRender::updateMetalUITextureCaptureDepth(
     {
         return false;
     }
+    // Retained-depth operations are ordered boundaries even when the caller's
+    // logical shader/depth state did not change since queued immediate draws.
+    flush();
+    if (!mMetalUICaptureComplete) return false;
     const auto reject = [this](const std::string& reason)
     {
         if (mMetalUICaptureFirstFailure.empty())
@@ -1154,7 +1158,9 @@ bool LLRender::updateMetalUITextureCaptureDepth(
 
     const ALMetalScissorRect rect{
         static_cast<U32>(left),
-        static_cast<U32>(target_height - top),
+        // Offscreen world/UI textures preserve GL lower rows first. Their
+        // depth rect uses that same raw row, with no presentation-layer flip.
+        static_cast<U32>(bottom),
         static_cast<U32>(right - left),
         static_cast<U32>(top - bottom),
     };

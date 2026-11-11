@@ -2458,10 +2458,12 @@ void display_cube_face()
 static void hud_screen_rects(std::vector<LLRect>& rects)
 {
     rects.clear();
-    // None without what restore_scene_depth puts the scene's depth back from.
+    // The ordered native UI transaction retains the pre-HUD world depth that
+    // restore_scene_depth puts back; the displaced full-screen triangle is
+    // no longer a dependency of the depth bracket.
     LLMatrix4a proj;
     LLMatrix4a model;
-    if (!gPipeline.mRT || !gPipeline.mScreenTriangleVB || !isAgentAvatarValid() || !get_hud_matrices(proj, model))
+    if (!gGL.hasMetalUITextureCapture() || !isAgentAvatarValid() || !get_hud_matrices(proj, model))
     {
         return;
     }
@@ -2492,8 +2494,7 @@ static void restore_scene_depth(const std::vector<LLRect>& rects)
     {
         return;
     }
-    ALHUDDepth::restore(gCopyDepthProgram, gPipeline.mRT->deferredScreen, *gPipeline.mScreenTriangleVB, rects,
-                        gGLViewport[0], gGLViewport[1]);
+    ALHUDDepth::restore(gCopyDepthProgram, rects, gGLViewport[0], gGLViewport[1]);
 }
 
 void render_hud_attachments()

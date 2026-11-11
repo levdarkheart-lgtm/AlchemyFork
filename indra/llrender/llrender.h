@@ -336,9 +336,9 @@ public:
     // Keep capture-only alpha-test state local to the native transaction.
     void setMetalUITextureCaptureMinimumAlpha(
         const LLGLSLShader* shader, F32 minimum);
-    // Mirror GL's localized HUD depth bracket into an active retained-depth
-    // capture. Coordinates are GL lower-left target pixels and are clipped to
-    // the retained target before conversion to Metal's upper-left scissor.
+    // Localized HUD depth bracket in an active retained-depth capture.
+    // Coordinates use the same lower-left raw rows as the world/UI textures
+    // and are clipped to the retained target before encoding the scissor.
     bool clearMetalUITextureCaptureDepth(
         S32 x, S32 y, S32 width, S32 height, F32 depth);
     bool restoreMetalUITextureCaptureDepth(

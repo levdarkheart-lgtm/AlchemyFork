@@ -25,16 +25,11 @@
 
 #pragma once
 
-#include "llgl.h"
 #include "llglslshader.h"
-#include "llglstates.h"
 #include "llmath.h"
 #include "llmatrix4a.h"
 #include "llrect.h"
 #include "llrender.h"
-#include "llrendertarget.h"
-#include "llshadermgr.h"
-#include "llvertexbuffer.h"
 #include "v3math.h"
 
 #include <cfloat>
@@ -107,68 +102,37 @@ inline void mergeRect(std::vector<LLRect>& rects, LLRect rect)
 /// scene's, which the HUD then tests against, and the 3D UI after it keeps the world's occlusion.
 inline void clear(const LLGLSLShader& program, const std::vector<LLRect>& rects, S32 x, S32 y)
 {
-    if (!program.isComplete())
+    if (!program.isAvailable())
     {
         return;
     }
 
-    // Depth writes on: they mask the clear.
-    LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
     for (const LLRect& rect : rects)
     {
-        LLGLSScissor scissor(x + rect.mLeft, y + rect.mBottom, rect.getWidth(), rect.getHeight());
-        gGL.clear(GL_DEPTH_BUFFER_BIT);
-#if LL_DARWIN
+        if (rect.isEmpty()) continue;
         gGL.clearMetalUITextureCaptureDepth(
             x + rect.mLeft, y + rect.mBottom,
             rect.getWidth(), rect.getHeight(),
             LLRender::sReverseZ ? 0.f : 1.f);
-#endif
     }
 }
 
-/// Writes `scene`'s depth over the bound framebuffer's within each rect of a viewport whose origin is (x, y),
-/// wherever it is nearer than what is there, through `program` (interface/copyF.glsl with COPY_DEPTH and
-/// DEPTH_ONLY) over `triangle`, the full-screen triangle the final blit is drawn with: the same values it wrote, so
+/// Restores the native UI's retained pre-HUD world depth within each rect of a viewport whose origin is (x, y),
+/// wherever it is nearer than what is there: the same values the final composition wrote, so
 /// the 3D UI drawn after the HUD is hidden by the world as before, and by the HUD where the HUD is in front.
-inline void restore(LLGLSLShader& program, LLRenderTarget& scene, LLVertexBuffer& triangle,
-                    const std::vector<LLRect>& rects, S32 x, S32 y)
+inline void restore(const LLGLSLShader& program, const std::vector<LLRect>& rects, S32 x, S32 y)
 {
-    if (rects.empty() || !program.isComplete())
+    if (rects.empty() || !program.isAvailable())
     {
         return;
     }
 
-    LLGLSLShader* previous = LLGLSLShader::sCurBoundShaderPtr;
+    for (const LLRect& rect : rects)
     {
-        LLGLSColorMask mask(false, false);
-        LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_LESS);
-        LLGLDisable blend(GL_BLEND);
-        LLGLDisable cull(GL_CULL_FACE);
-
-        program.bind();
-        program.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &scene);
-        triangle.setBuffer();
-        for (const LLRect& rect : rects)
-        {
-            LLGLSScissor scissor(x + rect.mLeft, y + rect.mBottom, rect.getWidth(), rect.getHeight());
-            triangle.drawArrays(LLRender::TRIANGLES, 0, 3);
-#if LL_DARWIN
-            gGL.restoreMetalUITextureCaptureDepth(
-                x + rect.mLeft, y + rect.mBottom,
-                rect.getWidth(), rect.getHeight());
-#endif
-        }
-        program.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
-    }
-
-    if (previous)
-    {
-        previous->bind();
-    }
-    else
-    {
-        LLGLSLShader::unbind();
+        if (rect.isEmpty()) continue;
+        gGL.restoreMetalUITextureCaptureDepth(
+            x + rect.mLeft, y + rect.mBottom,
+            rect.getWidth(), rect.getHeight());
     }
 }
 
