@@ -33,6 +33,11 @@ public:
     ALMetalShaderLibrary& operator=(ALMetalShaderLibrary&&) = delete;
     ~ALMetalShaderLibrary();
 
+    // Announces an explicit reload of application-owned builtin shader assets.
+    // Owners rebuild lazily; this neither deletes caches nor invalidates resources.
+    static std::uint64_t builtinReloadGeneration() noexcept;
+    static void requestBuiltinReload() noexcept;
+
     static std::unique_ptr<ALMetalShaderLibrary> loadBuiltin(
         const ALMetalDevice& device,
         std::string* error = nullptr);

@@ -15,6 +15,7 @@
 #import <Metal/Metal.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -26,6 +27,8 @@
 
 namespace
 {
+    std::atomic<std::uint64_t> sBuiltinReloadGeneration{1};
+
     void setError(std::string* destination, const std::string& message)
     {
         if (destination)
@@ -349,6 +352,16 @@ ALMetalShaderLibrary::ALMetalShaderLibrary(std::unique_ptr<Impl> impl)
 }
 
 ALMetalShaderLibrary::~ALMetalShaderLibrary() = default;
+
+std::uint64_t ALMetalShaderLibrary::builtinReloadGeneration() noexcept
+{
+    return sBuiltinReloadGeneration.load(std::memory_order_relaxed);
+}
+
+void ALMetalShaderLibrary::requestBuiltinReload() noexcept
+{
+    sBuiltinReloadGeneration.fetch_add(1, std::memory_order_relaxed);
+}
 
 std::unique_ptr<ALMetalShaderLibrary> ALMetalShaderLibrary::loadBuiltin(
     const ALMetalDevice& device,
