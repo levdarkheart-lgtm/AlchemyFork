@@ -1,7 +1,7 @@
 /**
- * @file llfontfreetype_gl_test.cpp
+ * @file alfont_freetype_metal_test.cpp
  * @brief LLFontFreetype paths that rasterize: getGlyphInfo, addGlyph and
- *        collectGarbage, through the atlas and gGL.bind on a GL context.
+ *        collectGarbage, through native atlas storage and offscreen Metal UI.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -33,13 +33,17 @@
 #include "../llfonttextcache.h"
 #include "../llimagegl.h"
 
-#if LL_DARWIN
 #include "../../almetal/almetaldevice.h"
 #include "../../almetal/almetalresource.h"
-#endif
+#include "../../almetal/almetalframe.h"
+#include "../alrendercapabilities.h"
+#include "../alfontshaping.h"
+#include "../llgl.h"
+#include "../llglslshader.h"
+#include "../llrender.h"
+#include "../llvertexbuffer.h"
 
 #include "llfonttest_helpers.h"
-#include "llheadlessgl_fixture.h"
 
 #include "llframetimer.h"
 
@@ -55,28 +59,94 @@ namespace
 {
     using namespace ll_test;
 
-    // -------------------------------------------------------------
-    // GL-backed group: rasterizer-touching paths. Each test's own
-    // HeadlessGL supplies the GL context so addGlyph's
-    // gGL.bind(image_gl) call lands on a live GL state.
-    // -------------------------------------------------------------
-
-    struct llfontfreetype_render_data
+    // A real device and font manager replace the displaced hidden GL window.
+    // The original rasterizer/packing/cache owners are exercised unchanged.
+    struct NativeFont
     {
-        std::unique_ptr<ll_test::HeadlessGL> gl = std::make_unique<ll_test::HeadlessGL>();
-        ll_test::FontStateScope font_scope;
+        ALRenderCapabilities old_capabilities = gRenderCapabilities;
+        ALMetalDevice* old_device = LLImageGL::getMetalDevice();
+        bool old_authority = LLImageGL::isMetalTextureAuthority();
+        bool old_gl = LLFontBitmapCache::usesGL();
+        bool old_metal = LLFontBitmapCache::usesMetal();
+        std::unique_ptr<ALMetalDevice> device;
+        NativeFont()
+        {
+            REQUIRE_FALSE(gFontManagerp);
+            std::string error;
+            device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
+            gRenderCapabilities.initializeMetal(device->info());
+            LLImageGL::setMetalDevice(device.get());
+            LLImageGL::setMetalTextureAuthority(true);
+            LLFontBitmapCache::setTextureBackend(false, true);
+            LLFontManager::initClass();
+        }
+        ~NativeFont()
+        {
+            ALFontShaping::clearCache();
+            LLFontManager::cleanupClass();
+            LLFontBitmapCache::setTextureBackend(old_gl, old_metal);
+            LLImageGL::setMetalTextureAuthority(old_authority);
+            LLImageGL::setMetalDevice(old_device);
+            gRenderCapabilities = old_capabilities;
+        }
     };
 
-#if LL_DARWIN
-    struct llfontmetal_render_data
+    struct NativeFontUI : NativeFont
     {
-        std::unique_ptr<ll_test::HeadlessGL> gl =
-            std::make_unique<ll_test::HeadlessGL>(
-                /*needs_vbos=*/true, /*needs_imagegl=*/true,
-                /*needs_llrender=*/true, /*needs_render=*/true);
-        ll_test::FontStateScope font_scope;
+        static constexpr S32 WIDTH = 256, HEIGHT = 256;
+        std::unique_ptr<ALMetalFrameScheduler> frames;
+        bool old_authority = LLVertexBuffer::isMetalBufferAuthority();
+        LLGLSLShader* old_shader = LLGLSLShader::sCurBoundShaderPtr;
+        U32 old_shader_id = LLGLSLShader::sCurBoundShader;
+        U32 old_ui_mask = gUIProgram.mAttributeMask;
+        U32 old_calls = LLRender::sDrawCalls;
+        U64 old_elements = LLRender::sDrawElements;
+        LLRender::eMatrixMode old_mode = gGL.getMatrixMode();
+        bool initialized = false, matrices = false;
+        void initRenderer()
+        {
+            std::string error;
+            frames = ALMetalFrameScheduler::create(*device, 2, &error);
+            INFO(error); REQUIRE(frames);
+            LLVertexBuffer::setMetalDevice(device.get());
+            LLVertexBuffer::setMetalBufferAuthority(true);
+            LLVertexBuffer::initClass(nullptr);
+            gGL.setMetalBackend(device.get(), frames.get(), nullptr);
+            initialized = true;
+            REQUIRE(gGL.initMetal(true));
+            for (auto mode : {LLRender::MM_MODELVIEW, LLRender::MM_PROJECTION, LLRender::MM_TEXTURE0})
+            { gGL.matrixMode(mode); gGL.pushMatrix(); gGL.loadIdentity(); }
+            matrices = true;
+            gGL.matrixMode(LLRender::MM_PROJECTION);
+            gGL.ortho(0.f, F32(WIDTH), 0.f, F32(HEIGHT), -1.f, 1.f);
+            gGL.matrixMode(LLRender::MM_MODELVIEW);
+            gGL.setViewport(0, 0, WIDTH, HEIGHT);
+            // The native UI owner selects this global semantic identity and
+            // consumes the same position/UV/colour layout as the font producer.
+            gUIProgram.mAttributeMask = LLVertexBuffer::MAP_VERTEX |
+                LLVertexBuffer::MAP_TEXCOORD0 | LLVertexBuffer::MAP_COLOR;
+            gUIProgram.bind();
+        }
+        ~NativeFontUI()
+        {
+            if (!initialized) return;
+            if (gGL.hasMetalUITextureCapture()) gGL.endMetalUITextureCapture(false);
+            if (LLGLSLShader::sCurBoundShaderPtr) LLGLSLShader::sCurBoundShaderPtr->unbind();
+            if (matrices)
+                for (auto mode : {LLRender::MM_TEXTURE0, LLRender::MM_PROJECTION, LLRender::MM_MODELVIEW})
+                { gGL.matrixMode(mode); gGL.popMatrix(); }
+            gGL.matrixMode(old_mode);
+            std::string error; CHECK(frames->waitUntilIdle(5000, &error));
+            gGL.shutdown(); gGL.setMetalBackend(nullptr, nullptr, nullptr);
+            LLVertexBuffer::cleanupClass();
+            LLVertexBuffer::setMetalBufferAuthority(old_authority);
+            LLVertexBuffer::setMetalDevice(NativeFont::old_device);
+            gUIProgram.mAttributeMask = old_ui_mask;
+            LLGLSLShader::sCurBoundShader = old_shader_id;
+            LLGLSLShader::sCurBoundShaderPtr = old_shader;
+            LLRender::sDrawCalls = old_calls; LLRender::sDrawElements = old_elements;
+        }
     };
-#endif
 
     // The frame clock, which the atlas stamps a sheet's use with and the
     // glyph sweep reads, set by a case that needs time to have passed.
@@ -96,7 +166,7 @@ namespace
     // After getGlyphInfo for an ASCII glyph, the bitmap cache has at
     // least one Grayscale page, and the returned info has positive
     // metrics (the FT raster actually ran).
-    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: getGlyphInfo rasterizes an ASCII glyph onto a Grayscale sheet", "[LLFontFreetypeRender]")
+    TEST_CASE_METHOD(NativeFont, "LLFontFreetypeRender: getGlyphInfo rasterizes an ASCII glyph onto a Grayscale sheet", "[LLFontFreetypeRender][native-font-freetype]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
         if (!fileExists(path))
@@ -114,8 +184,7 @@ namespace
         CHECK(cache->getNumBitmaps(EFontGlyphType::Grayscale) >= 1u);
     }
 
-#if LL_DARWIN
-    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: a rasterized ASCII glyph preserves grayscale coverage in native atlas storage", "[LLFontFreetypeRender][almetal]")
+    TEST_CASE_METHOD(NativeFont, "LLFontFreetypeRender: a rasterized ASCII glyph preserves grayscale coverage in native atlas storage", "[LLFontFreetypeRender][almetal][native-font-freetype]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
         if (!fileExists(path))
@@ -200,15 +269,15 @@ namespace
         CHECK(actual == expected);
     }
 
-    TEST_CASE_METHOD(llfontmetal_render_data, "LLFontFreetypeRender: a real grayscale glyph remains shaped through the complete native UI path", "[LLFontFreetypeRender][almetal][native_ui]")
+    TEST_CASE_METHOD(NativeFontUI, "LLFontFreetypeRender: a real grayscale glyph remains shaped through the complete native UI path", "[LLFontFreetypeRender][almetal][native_ui][native-font-freetype]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
         if (!fileExists(path))
             SKIP("DejaVuSans.woff2 not present");
 
-        ALMetalDevice* device = gl->window()->getMetalDevice();
-        ALMetalFrameScheduler* frames =
-            gl->window()->getMetalFrameScheduler();
+        initRenderer();
+        ALMetalDevice* device = this->device.get();
+        ALMetalFrameScheduler* frames = this->frames.get();
         REQUIRE(device);
         REQUIRE(frames);
 
@@ -224,8 +293,6 @@ namespace
                 {
                     gGL.endMetalUITextureCapture(false);
                 }
-                gGL.setMetalBackend(nullptr, nullptr, nullptr);
-                LLVertexBuffer::setMetalDevice(nullptr);
                 LLFontBitmapCache::setTextureBackend(
                     gl_backend, metal_backend);
             }
@@ -234,23 +301,22 @@ namespace
         LLFontBitmapCache::setTextureBackend(false, true);
         LLVertexBuffer::setMetalDevice(device);
         gGL.setMetalBackend(device, frames, nullptr);
-        gGL.setViewport(0, 0, ll_test::HeadlessGL::WIDTH,
-                        ll_test::HeadlessGL::HEIGHT);
+        gGL.setViewport(0, 0, NativeFontUI::WIDTH,
+                        NativeFontUI::HEIGHT);
 
         LLFontGL font;
         REQUIRE(font.loadFace(
             path, 24.f, 96.f, 96.f, /*is_fallback=*/false,
             /*face_n=*/0, EFontHinting::DEFAULT, /*flags=*/0));
 
-        // World/UI composition mirrors the still-authoritative GL draw. Its
-        // native-only font atlas is represented in GL by the white image, but
-        // mCurrImage must remain the atlas so Metal samples glyph coverage.
-        // Exercise that path as well as native-authoritative appearance/UI
-        // producers: the two modes have deliberately different bind owners.
+        // Ordinary world/UI and authoritative appearance producers retain
+        // different logical texture-bind owners. Both now encode Metal and
+        // must sample glyph coverage through capture and cached replay.
         LLPointer<LLImageRaw> white_raw = new LLImageRaw(1, 1, 4);
         std::memset(white_raw->getData(), 0xff, 4);
         LLPointer<LLImageGL> white = new LLImageGL(white_raw, false);
-        REQUIRE(white->getTexName() != 0);
+        REQUIRE(white->getMetalTexture());
+        CHECK_FALSE(white->getHasGLTexture());
         ALTextureSlot::setWhiteImage(white);
         struct WhiteImageReset
         {
@@ -291,12 +357,12 @@ namespace
                 REQUIRE(output);
 
                 std::vector<U8> pixels(
-                    static_cast<std::size_t>(ll_test::HeadlessGL::WIDTH) *
-                    ll_test::HeadlessGL::HEIGHT * 4);
+                    static_cast<std::size_t>(NativeFontUI::WIDTH) *
+                    NativeFontUI::HEIGHT * 4);
                 std::string error;
                 REQUIRE(output->readback(
                     *device, 0, 0, {}, pixels.data(),
-                    ll_test::HeadlessGL::WIDTH * 4, &error));
+                    NativeFontUI::WIDTH * 4, &error));
                 INFO(error);
 
                 std::size_t transparent = 0;
@@ -326,7 +392,6 @@ namespace
             }
         }
     }
-#endif
 
     // collectGarbage is throttled — a call within the interval of the
     // last sweep (GC_INTERVAL_SEC, 5 s, in ALFontFace::collectGarbage)
@@ -338,7 +403,7 @@ namespace
     // inside the interval, so the sheet survives and the cache
     // generation does NOT advance. Pins 169390b593 — the cache-sweep
     // gating moved out of the render hot path.
-    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: collectGarbage again within its interval leaves an idle sheet alone", "[LLFontFreetypeRender]")
+    TEST_CASE_METHOD(NativeFont, "LLFontFreetypeRender: collectGarbage again within its interval leaves an idle sheet alone", "[LLFontFreetypeRender][native-font-freetype]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
         if (!fileExists(path))
@@ -373,7 +438,7 @@ namespace
     // 'A' holds an entry for it, and a face loaded fresh holds none. The
     // address of the evicted face is no evidence -- the allocator may hand
     // the same block straight back to the reload.
-    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: LLFontManager::collectGarbage evicts only faces nothing else holds", "[LLFontFreetypeRender]")
+    TEST_CASE_METHOD(NativeFont, "LLFontFreetypeRender: LLFontManager::collectGarbage evicts only faces nothing else holds", "[LLFontFreetypeRender][native-font-freetype]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
         if (!fileExists(path))
@@ -415,7 +480,7 @@ namespace
     // font-atlas layer (the disable-on-setSubImage regression would
     // surface as a crash or as a generation skip on the second
     // upload).
-    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: two ASCII glyphs rasterized in a row share one sheet", "[LLFontFreetypeRender]")
+    TEST_CASE_METHOD(NativeFont, "LLFontFreetypeRender: two ASCII glyphs rasterized in a row share one sheet", "[LLFontFreetypeRender][native-font-freetype]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
         if (!fileExists(path))
@@ -445,7 +510,7 @@ namespace
     // a >1px advance gap at 32pt 96dpi. Small point sizes can collapse
     // the diff under FT's grid-fitting; this guards explicitly against
     // that edge case.
-    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: InterVariable at weight 900 has a wider 'A' than at weight 300", "[LLFontFreetypeRender]")
+    TEST_CASE_METHOD(NativeFont, "LLFontFreetypeRender: InterVariable at weight 900 has a wider 'A' than at weight 300", "[LLFontFreetypeRender][native-font-freetype]")
     {
         const std::string path = std::string(kFontDir) + "InterVariable.woff2";
         if (!fileExists(path))
@@ -479,7 +544,7 @@ namespace
     // across eviction cycles) and getCacheGeneration advances so
     // captured vertex buffers rebuild. Pins slot recycling through the
     // rasterizer layer (the cache-layer tests pin it at nextOpenPos).
-    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: a glyph after sheet 0's release reuses the slot and bumps the generation", "[LLFontFreetypeRender]")
+    TEST_CASE_METHOD(NativeFont, "LLFontFreetypeRender: a glyph after sheet 0's release reuses the slot and bumps the generation", "[LLFontFreetypeRender][native-font-freetype]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
         if (!fileExists(path))
@@ -533,7 +598,7 @@ namespace
     // its generation from it, and LLFontGL::getCacheGeneration keys its
     // memo on it, so a glyph rasterized on any face of a font's chain
     // has to move it.
-    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: rasterizing on each of two faces bumps the global generation", "[LLFontFreetypeRender]")
+    TEST_CASE_METHOD(NativeFont, "LLFontFreetypeRender: rasterizing on each of two faces bumps the global generation", "[LLFontFreetypeRender][native-font-freetype]")
     {
         const std::string a_path = std::string(kFontDir) + "DejaVuSans.woff2";
         const std::string b_path = std::string(kFontDir) + "InterVariable.woff2";
@@ -567,7 +632,7 @@ namespace
     // "glyphs unload after long idle and never reload"). The fix routes
     // every lookup through the face's owned cache so all freetypes that
     // share the face observe the eviction consistently.
-    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: a sibling head gets a live glyph after the other evicts its sheet", "[LLFontFreetypeRender]")
+    TEST_CASE_METHOD(NativeFont, "LLFontFreetypeRender: a sibling head gets a live glyph after the other evicts its sheet", "[LLFontFreetypeRender][native-font-freetype]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
         if (!fileExists(path))
@@ -635,7 +700,7 @@ namespace
     // on a live sheet. (The pre-fix bug bit only the cross-head
     // scenario, but this test pins the single-head invariant so future
     // refactors of the eviction path don't silently regress.)
-    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: a glyph evicted with its sheet comes back on a live sheet", "[LLFontFreetypeRender]")
+    TEST_CASE_METHOD(NativeFont, "LLFontFreetypeRender: a glyph evicted with its sheet comes back on a live sheet", "[LLFontFreetypeRender][native-font-freetype]")
     {
         const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
         if (!fileExists(path))
