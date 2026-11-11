@@ -241,3 +241,14 @@ the feature branch normally, creates draft26.4.0.68836-alpha4 at exact9f42,
 uploads ZIP+SHA, verifies remote asset digests, then publishes/verifies tag/source.
 No workflow dispatch or billing changes. Older remote release tag68825 already
 contains the earlier319936679byte ZIP; preserve it. Repository currently public.
+
+Publication completed: GitHub release442275652 is public prerelease
+https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68836-alpha4 .
+Both server asset states uploaded/sizes/SHA256 digests match local ZIP+checksum;
+exact tag points to9f42b8660639e8827f8449a64cf0248fef6d90c0. Draft verified before
+publication; metadata/notes/assets/tag verified afterward. No Actions dispatch,
+clobber/deletion or billing changes. Source plus docs pushed normally to feature
+branch; release source remains frozen9f42. hud-preview-alpha-release.json pins
+commands/inputs/hashes/metadata. Scoped implementation and delivery finished;
+no identified code fix or engineering job remains. Product parity/stability/
+runtime/independent-release/performance gates remain unverified separately.

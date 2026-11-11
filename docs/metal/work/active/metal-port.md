@@ -156,11 +156,13 @@ strict-source,zip-validation,checks-state}.json. Background attempt interrupted1
 intentionally, same source/objects resumed; job-wrapper restarts blocked by guard.
 All temporary jobs removed; passed f254/older ZIP unchanged; no new product launch.
 
-Owner now authorizes new GitHub release from local ZIP+SHA because Actions budget
-is exhausted. Push normally; create draft26.4.0.68836-alpha4 at exact9f42, upload
-and verify remote asset digests, publish and verify tag/source. No dispatch or
-billing changes. CLI works; repository currently public. Concurrent untracked
-research files excluded/untouched. Full-product completion remains unclaimed.
+Owner-authorized release442275652 is published/verified:26.4.0.68836-alpha4,
+https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68836-alpha4 .
+Both server asset sizes/SHA256 digests match local ZIP+SHA; tag exact9f42 source.
+Normal feature-branch push; no Actions dispatch/billing changes. Publication
+receipt hud-preview-alpha-release.json. Scoped implementation/delivery finished;
+no identified code fix or running engineering job remains. Concurrent research
+files untouched/excluded; full-product completion remains unclaimed.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all

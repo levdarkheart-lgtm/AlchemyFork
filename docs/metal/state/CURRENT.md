@@ -4,7 +4,7 @@
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `8ce7e33f71`; combined source `9f42b86606` built/tested/packaged.
 **Owner-passed viewer:** `f254feb048`,26.4.0d68817; provisional “pass...for now”.
-Alpha4 version68836 is built/tested/packaged; publication pending. Owner superseded the earlier
+Alpha4 version68836 is built/tested/packaged/published. Owner superseded the earlier
 no-launch instruction and requested the ready viewer for manual confirmation.
 Fresh26.4.0d68817 launched with open -na; exact new executable PID90460 was
 confirmed alive. No login action or screenshots by the agent; utility unexecuted.
@@ -133,12 +133,14 @@ attempt intentionally interrupted130; unchanged source/objects resumed at normal
 priority. Temporary job wrapper restart was blocked by receipt guard; removed.
 All build/check jobs now terminal/removed; original f254 and older ZIP unchanged.
 
-Owner now explicitly authorizes a new GitHub release with locally built ZIP+SHA,
-bypassing exhausted Actions budget. Next: normal feature-branch push; draft/upload
-26.4.0.68836-alpha4 against exact9f42, verify remote asset digests, publish and
-verify tag/source. No Actions dispatch. Repository currently public; CLI works.
-No viewer/window/utility launch or screenshots. Concurrent untracked research
-files remain untouched/excluded. Full-product gates remain open.
+Owner-authorized release442275652 published and verified:26.4.0.68836-alpha4.
+https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68836-alpha4
+Both uploaded asset sizes/SHA256 digests match local files; tag points to exact
+9f42b8660639e8827f8449a64cf0248fef6d90c0. Receipt hud-preview-alpha-release.json.
+Feature branch pushed normally; no Actions dispatch/billing changes. This scoped
+implementation/delivery request is finished; no identified coding fix or running
+engineering job remains. No new viewer/window/utility launch or screenshots.
+Concurrent research files untouched/excluded. Full-product gates remain open.
 
 ## Complete-product advancement assessment
 
