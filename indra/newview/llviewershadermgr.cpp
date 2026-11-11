@@ -2072,6 +2072,9 @@ void LLViewerShaderMgr::loadShadersInterface()
 
     {
         gDebugProgram.mName = "Debug Shader";
+        // Native setup cannot reflect debugV.glsl's position attribute.
+        // Immediate edit-tool rings use this position-only uniform-color pass.
+        gDebugProgram.setNativeAttributeMask(LLVertexBuffer::MAP_VERTEX);
         gDebugProgram.mShaderFiles.clear();
         gDebugProgram.mShaderFiles.push_back(make_pair("interface/debugV.glsl", GL_VERTEX_SHADER));
         gDebugProgram.mShaderFiles.push_back(make_pair("interface/debugF.glsl", GL_FRAGMENT_SHADER));

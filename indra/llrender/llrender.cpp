@@ -3023,20 +3023,22 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         batch.index_type = index_stride == sizeof(U16)
             ? ALMetalIndexType::uint16 : ALMetalIndexType::uint32;
         batch.index_count = index_count;
-        if (LLGLState::isEnabled(GL_CULL_FACE))
+    }
+    // Immediate manipulator strips/fans obey the same cull state as indexed
+    // geometry. Their topology does not change which faces the caller draws.
+    if (LLGLState::isEnabled(GL_CULL_FACE))
+    {
+        if (getCullFace() == GL_BACK)
         {
-            if (getCullFace() == GL_BACK)
-            {
-                batch.cull_mode = ALMetalCullMode::back;
-            }
-            else if (getCullFace() == GL_FRONT)
-            {
-                batch.cull_mode = ALMetalCullMode::front;
-            }
-            else
-            {
-                return fallback(MetalUIFallbackReason::primitive);
-            }
+            batch.cull_mode = ALMetalCullMode::back;
+        }
+        else if (getCullFace() == GL_FRONT)
+        {
+            batch.cull_mode = ALMetalCullMode::front;
+        }
+        else
+        {
+            return fallback(MetalUIFallbackReason::primitive);
         }
     }
     batch.texture = metal_texture;

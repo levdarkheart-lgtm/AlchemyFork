@@ -169,6 +169,7 @@ if(AL_BUILD_TESTS)
   if(DARWIN)
     list(APPEND llrender_native_test_sources
       tests/algpubuffer_test.cpp
+      tests/aldebug_immediate_metal_test.cpp
       tests/altextureslot_metal_test.cpp
       tests/alterraintexture_metal_test.cpp
       tests/algputimer_metal_test.cpp
