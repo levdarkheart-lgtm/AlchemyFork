@@ -311,8 +311,6 @@ static LLAppViewerListener sAppViewerListener(LLAppViewer::instance);
 //----------------------------------------------------------------------------
 // viewer.cpp - these are only used in viewer, should be easily moved.
 
-extern bool gRandomizeFramerate;
-extern bool gPeriodicSlowFrame;
 extern bool gDebugGL;
 
 #if LL_DARWIN || LL_SDL_WINDOW
@@ -380,10 +378,6 @@ std::string gLastVersionChannel;
 
 LLVector3 gWindVec(3.0, 3.0, 0.0);
 LLVector3 gRelativeWindVec(0.0, 0.0, 0.0);
-
-bool gRandomizeFramerate = false;
-bool gPeriodicSlowFrame = false;
-
 
 bool gCrashOnStartup = false;
 bool gLLErrorActivated = false;
