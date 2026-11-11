@@ -420,6 +420,17 @@ void LLViewerShaderMgr::unloadShaders()
 }
 
 
+bool LLViewerShaderMgr::built(bool configured, const LLGLSLShader& shader)
+{
+    if (!configured)
+    {
+        LL_WARNS("ShaderLoading") << shader.mName
+            << " did not configure; it draws nothing, and the load goes on" << LL_ENDL;
+        mFailedPrograms.push_back(shader.mName);
+    }
+    return configured;
+}
+
 void LLViewerShaderMgr::loadShadersEffects()
 {
     LL_PROFILE_ZONE_SCOPED;
