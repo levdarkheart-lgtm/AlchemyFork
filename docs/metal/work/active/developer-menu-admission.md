@@ -28,11 +28,11 @@ screenshot was executed. Preserve all non-rendering menu behavior.
 Enable Shader Cache retained its control but lost its executable reader after
 the displaced GL compiler/cache was removed. Original llviewershadermgr passed
 RenderShaderCacheEnabled to initShaderCache and keyed binaries by app/source
-identity. A direct device-owned Metal binary-archive port is being implemented
-in `/private/tmp/alchemy-native-pipeline-cache-20261111`, with separate root
-policy wiring in `/private/tmp/alchemy-native-cache-policy-20261111`.
-Do not claim this menu functional until its actual persistence/hit/disable/
-purge regressions and integration build pass. System Metal caches and the
+identity. dd9372cd69/53e3599a36 implement the device-owned native archive and
+actual startup/reload/shutdown/purge policy. [Exact cache receipts](native-pipeline-cache-and-coverage.md)
+record passing persistence/hit/disable/purge/retry/instrumentation tests and a
+frozen canonical build/import/signature gate. Menu itself was not invoked.
+System Metal caches and the
 bundled metallib are not app-owned cache-purge targets.
 
 Randomize Framerate and Periodic Slow Frame inherited a real original bug:
@@ -70,6 +70,7 @@ full dependent rebuild; wrapper regressions pass66108/18 llrender,552467/29
 CPU water,33323/8 native water/typed compute/shadow-indirect assertions/cases.
 Historical filters overlap; do not sum them into a new aggregate.
 Receipts: `artifacts/metal/feature-completion-20261111/`.
-Latest verified app remains696c43ba78/26.4.0d68677. Newer source requires a
-frozen canonical build, imports, architecture and signature checks.
+Latest verified app d28b0477a0/26.4.0d68712 and optional appearance build pass
+frozen build/import/architecture/signature checks. Linked current receipts
+supersede the historical overlapping test totals above.
 Full original feature parity, stability and release gates remain open.

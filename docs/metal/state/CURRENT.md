@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `5d55f9a202`.
+**Renderer code checkpoint:** `d28b0477a038e42b5a593d0d5350588d48c62343`.
 Benchmark registration and displaced shader cleanup are validated.
 [Native source-tail evidence](../work/active/native-opengl-tail-removal.md)
 records removals, exact CPU vocabulary and source-gate limits.
@@ -62,16 +62,18 @@ label; production setters now skip absent/nonconvertible labels, and the
 unlabelled regression passes. Preserve the initial failure receipt.
 Optional appearance Release build after utility/vertex changes exits0.
 
-**Last verified canonical app is source `696c43ba78`, version
-26.4.0d68677**, not current source. Configure/build0,349 Mach-O files/zero
+**Last verified canonical app is source `d28b0477a038e42b5a593d0d5350588d48c62343`, version
+26.4.0d68712**. Doctor/configure/build0,349 Mach-O files/zero
 invalid ARM64 slices, deep strict codesign0. Viewer/utility imports contain no
 OpenGL framework or GL/CGL/SDL_GL undefined imports. The earlier failed link65
 and restoration of native `LLViewerShaderMgr::built` are retained.
-Exact hashes: `artifacts/metal/feature-completion-20261111/feature-native-identities.json`.
-Current source still requires a frozen canonical build and verification.
+Exact hashes: `artifacts/metal/feature-completion-20261111/final-feature-identities.json`.
+Optional appearance Release build/ARM64/signature/forbidden-import checks0.
+Neither executable was launched. [Latest cache/coverage receipts](../work/active/native-pipeline-cache-and-coverage.md)
+supersede historical partial-test/build counts above.
 All receipts are under `artifacts/metal/feature-completion-20261111/`.
 
-Expanded root strict source audit0:3507files/0blocking/0errors/1188informational.
+Expanded root strict source audit0:3509files/0blocking/0errors/1188informational.
 Root39tools tests/harness0. All first-party runtime directories are scanned,
 with explicit vendor/submodule/test exclusions and lexical limits. Native names
 and CPU data are informational; actual APIs still block. This does not prove
@@ -80,25 +82,25 @@ runtime contexts, linking or foreign subprocess behavior.
 ## Exact next actions and ownership
 
 Root owns integration, CMake, documentation, tests and canonical builds. Current
-image/label/profiler/wrapper/Win32 removal and native water count changes are
-integrated. [Menu audit](../work/active/developer-menu-admission.md) fixes two
-inherited timer controls and identifies orphaned Enable Shader Cache. Root
-policy6cc38ac11b in `/private/tmp/alchemy-native-cache-policy-20261111` is not yet
-integrated; startup/reload/clear/shutdown wiring awaits the native cache owner.
-CPU vocabulary and audit integrated; native builds0,67793assertions/49render
-cases and93869/22GPUcases pass. Freeze after cache/policy integration, then
-full builds/verification. No launches or cache/menu actions.
+image/label/profiler/wrapper/Win32/water/cache/policy changes are integrated.
+Native cache dd9372cd69 + policy53e3599a36 include actual persistence/retry/
+disable/purge/instrumentation proof. Frozen final native builds0; full llrender
+77929assertions/312cases:311pass/one CPAL multi-palette skip; alrender556639/1320,
+targeted native GPU93869/220. Cache API5905/60, global instrumentation882/10,
+selective98/10. Historical filters overlap. No launches or user cache actions.
 
-Agent `menu_port`: `/private/tmp/alchemy-native-pipeline-cache-20261111`, branch
-`codex/native-pipeline-cache`, basec5261cecae. Own new native binary archive/test,
-device-owned lifetime and synchronous PSO factory hooks, exact builtin identity.
-Default disabled/no IO; root maps actual setting/path/version/second instance.
+Agent `menu_port`: `/private/tmp/alchemy-native-depth-target-test-admission-20261111`,
+branch `codex/native-depth-target-test-admission`, based28. Own llrendertarget.*,
+minimal native relabel APIs and projection/target native tests. Reproduce/fix
+shared-depth color replacement/content loss and stale actual texture labels.
 
-Agent `gl_tail_audit`: CPU vocabulary integratedfe9cf22c68; current task is
-independent native-cache lifecycle/persistence/default-path review.
-Agent `rlva_port`: audit integrated5d55f9a202; current task retires excluded
-llvertexbuffer_gl_test.cpp only after native invariant census, porting unique
-meaningful checks into a dedicated new native file. Root owns shared CMake.
+Agent `gl_tail_audit`: `/private/tmp/alchemy-native-font-ui-test-admission-20261111`,
+branch `codex/native-font-ui-test-admission`, based28; native registry/COLRv1/
+shaping/UIImage24cases green276assertions pending final foundation/integration.
+Agent `rlva_port`: `/private/tmp/alchemy-native-font-ui-cache-coverage-20261111`;
+shared fixture69a6cda5f2, LLFontGL38/TextCache23 native case admission in separate
+shared-session binary. Root owns CMake/docs/LLRender and dead ALImageSlot graph;
+retain sole live format predicate in menu agent's target owner before removal.
 CURRENT/linked work notes retain prior committed worktree provenance.
 
 Prior utility/preview/vertex/FrameProfile/manager/batching/GLTF worktrees are

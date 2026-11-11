@@ -1,9 +1,10 @@
 # Native source tail removal — 2026-11-11
 
-**Integrated checkpoint:** `5d55f9a202`. Goal remains active. No viewer, menu,
+**Source-gate implementation checkpoint:** `5d55f9a202`. Goal remains active. No viewer, menu,
 appearance utility, window, screenshot or user-cache operation was executed.
-Last verified canonical binary remains696c43ba78/26.4.0d68677; newer source
-requires a frozen application/appearance build and bundle verification.
+Latest frozen canonical d28b0477a0/26.4.0d68712 includes cache/coverage work;
+[exact current receipts](native-pipeline-cache-and-coverage.md) supersede older
+build/cache status below. Canonical/appearance build/signature/import/ARM64 checks0.
 
 ## Removed ownership and preserved behavior
 
@@ -82,15 +83,13 @@ or live menu/visual parity claim. Product stability/release review remain open.
 
 ## Remaining executable work
 
-Native Shader Cache owner and root policy are not integrated yet. Policy
-6cc38ac11b compiles four actual Release consumers and XML parses; its native
-dependency is fixing failed-save retry and validating all persistence cases.
-Actual API-validated disk hits were observed, not whole-suite success.
+Native Shader Cache owner dd9372cd69 and root policy53e3599a36 are integrated.
+Persistence/retry/purge and actual instrumentation cases now pass. Exact current
+receipts in the latest note supersede the historical partial-test status.
 Apple documents [Shader Validation's binary-archive incompatibility](https://developer.apple.com/documentation/xcode/validating-your-apps-metal-shader-usage.md).
 Keep actual instrumentation and PSO-state checks; report real cache probes/
 bypasses and isolate diagnostic namespaces, never fabricate hits.
 
-After frozen cache/policy integration: registered offscreen regressions, tools/
-harness/strict audit, then canonical/appearance builds and exact bundle/import/
-signature checks. Retire excluded GL fixtures only after native coverage keeps
-every meaningful invariant. No viewer launch.
+Continue native target/font invariant admission and reproduced target repairs.
+Retire excluded GL fixtures only after native coverage keeps every meaningful
+invariant. No viewer launch.
