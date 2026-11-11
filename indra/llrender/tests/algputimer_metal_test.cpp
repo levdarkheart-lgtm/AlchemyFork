@@ -11,7 +11,6 @@
 #include "linden_common.h"
 
 #include "../algputimer.h"
-#include "../alframefences.h"
 #include "almetaldevice.h"
 #include "almetalresource.h"
 
@@ -60,33 +59,35 @@ void checkCopy(const ALMetalBuffer& output, std::string& error)
 }
 }
 
-TEST_CASE("ALGPUTimer consumes one native command receipt without generic spans",
+TEST_CASE("ALGPUTimer consumes one native command receipt exactly once",
           "[algputimer][almetal]")
 {
     std::string error;
     auto device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
-    ALFrameFences frames;
-    ALQueryPool pool(frames);
-    ALGPUTimer timer(&pool);
-    CHECK_FALSE(timer.begin()); // Unsupported generic spans stay explicit.
+    ALGPUTimer timer;
     CHECK_FALSE(timer.isPending());
+    U64 empty = 99;
+    CHECK_FALSE(timer.poll(empty)); CHECK(empty == 0);
     CHECK_FALSE(timer.attachNativeCompletion({}));
     auto work = encodeCopy(*device, error);
     auto receipt = work.command->completionToken(); REQUIRE(receipt);
     REQUIRE(timer.attachNativeCompletion(receipt));
     REQUIRE(timer.isPending());
     CHECK_FALSE(timer.attachNativeCompletion(receipt));
-    CHECK_FALSE(timer.begin());
-    timer.end(); // No generic span is open; do not close the native receipt.
     U64 ns = 99;
-    CHECK_FALSE(timer.poll(ns, true)); // Native `wait` never waits/submits.
+    const auto submissions = ALMetalDevice::committedCommandBufferCount();
+    CHECK_FALSE(timer.poll(ns));
+    CHECK(ALMetalDevice::committedCommandBufferCount() == submissions);
     CHECK(ns == 0);
     CHECK(timer.isPending());
     REQUIRE(work.command->commit(&error));
     work.command.reset();
-    receipt.reset(); // The timer is now the caller's only ticket owner.
     REQUIRE(device->waitUntilIdle(&error)); // Test oracle/teardown only.
+    ALMetalCommandGPUTime expected;
+    REQUIRE(receipt->gpuTime(expected) == ALMetalCommandTimingStatus::ready);
+    receipt.reset(); // The timer is now the caller's only ticket owner.
     REQUIRE(timer.poll(ns));
+    CHECK(ns == expected.elapsed_nanoseconds);
     CHECK(ns > 0);
     CHECK_FALSE(timer.isPending());
     ns = 99;
@@ -100,9 +101,7 @@ TEST_CASE("ALGPUTimer releases abandoned receipts and accepts the next native pr
 {
     std::string error;
     auto device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
-    ALFrameFences frames;
-    ALQueryPool pool(frames);
-    ALGPUTimer timer(&pool);
+    ALGPUTimer timer;
     auto abandoned = device->makeCommandBuffer("Abandoned avatar profile", &error);
     REQUIRE(abandoned);
     REQUIRE(timer.attachNativeCompletion(abandoned->completionToken()));
@@ -122,4 +121,58 @@ TEST_CASE("ALGPUTimer releases abandoned receipts and accepts the next native pr
     CHECK(ns > 0);
     CHECK_FALSE(timer.isPending());
     checkCopy(*work.output, error);
+}
+
+TEST_CASE("ALGPUTimer retains unread native intervals across independent profiles and reuses the owner",
+          "[algputimer][almetal]")
+{
+    std::string error;
+    auto device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
+    ALGPUTimer retained, independent;
+    auto first = encodeCopy(*device, error);
+    auto receipt = first.command->completionToken(); REQUIRE(receipt);
+    REQUIRE(retained.attachNativeCompletion(receipt));
+    REQUIRE(first.command->commitAndWait(&error));
+    ALMetalCommandGPUTime expected;
+    REQUIRE(receipt->gpuTime(expected) == ALMetalCommandTimingStatus::ready);
+    first.command.reset(); receipt.reset();
+
+    // The original query pool expired results after 64 frames. Native
+    // command receipts own their result independently of later profiles.
+    for (U32 profile = 0; profile < 65; ++profile)
+    {
+        auto other = encodeCopy(*device, error);
+        auto other_receipt = other.command->completionToken(); REQUIRE(other_receipt);
+        REQUIRE(independent.attachNativeCompletion(other_receipt));
+        CHECK_FALSE(retained.attachNativeCompletion(other_receipt));
+        REQUIRE(other.command->commitAndWait(&error));
+        ALMetalCommandGPUTime other_expected;
+        REQUIRE(other_receipt->gpuTime(other_expected) == ALMetalCommandTimingStatus::ready);
+        other.command.reset(); other_receipt.reset();
+        U64 ns = 99;
+        REQUIRE(independent.poll(ns));
+        CHECK(ns == other_expected.elapsed_nanoseconds);
+        CHECK_FALSE(independent.isPending());
+        CHECK(retained.isPending());
+        CHECK_FALSE(independent.poll(ns));
+        CHECK(ns == 0);
+        checkCopy(*other.output, error);
+    }
+    U64 ns = 99;
+    REQUIRE(retained.poll(ns));
+    CHECK(ns == expected.elapsed_nanoseconds);
+    CHECK_FALSE(retained.isPending());
+    CHECK_FALSE(retained.poll(ns)); CHECK(ns == 0);
+    checkCopy(*first.output, error);
+
+    auto next = encodeCopy(*device, error);
+    auto next_receipt = next.command->completionToken(); REQUIRE(next_receipt);
+    REQUIRE(next.command->commitAndWait(&error));
+    REQUIRE(next_receipt->gpuTime(expected) == ALMetalCommandTimingStatus::ready);
+    REQUIRE(retained.attachNativeCompletion(next_receipt));
+    next.command.reset(); next_receipt.reset();
+    REQUIRE(retained.poll(ns));
+    CHECK(ns == expected.elapsed_nanoseconds);
+    CHECK_FALSE(retained.isPending());
+    checkCopy(*next.output, error);
 }

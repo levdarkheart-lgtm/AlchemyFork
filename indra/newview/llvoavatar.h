@@ -317,9 +317,6 @@ public:
     void markAttachmentComplexityDirty(const LLUUID& object_id, bool force_reset_attachment = false);
     void markBodyPartsComplexityDirty();
 
-    // A profile's GPU time is taken between these two.
-    void placeProfileQuery();
-    void endProfileQuery();
     // Takes the last profile's GPU time once its frame has been read, waiting for nothing. Once a frame, from
     // idleUpdate().
     void readProfileQuery();

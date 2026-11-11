@@ -1,6 +1,6 @@
 /**
  * @file algputimer.cpp
- * @brief The GPU time a span of draws takes, read back without waiting on the GPU.
+ * @brief An isolated native command GPU interval, consumed without waiting.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -26,95 +26,39 @@
 
 #include "algputimer.h"
 
-#include "llrender.h"
-
-#if LL_DARWIN
 #include "almetaldevice.h"
-#endif
 
 #include <utility>
-
-ALQueryPool& ALGPUTimer::pool() const
-{
-    return mPool ? *mPool : gGL.queries();
-}
-
-bool ALGPUTimer::begin()
-{
-    if (mOpen || isPending())
-    {
-        return false;
-    }
-    mSpan = pool().beginSpan();
-    mOpen = mSpan.isValid();
-    return mOpen;
-}
-
-void ALGPUTimer::end()
-{
-    if (mOpen)
-    {
-        pool().endSpan(mSpan);
-        mOpen    = false;
-        mPending = true;
-    }
-}
 
 bool ALGPUTimer::attachNativeCompletion(
     std::shared_ptr<const ALMetalCommandCompletion> completion)
 {
-#if LL_DARWIN
-    if (mOpen || isPending() || !completion)
+    if (isPending() || !completion)
     {
         return false;
     }
     mNativeCompletion = std::move(completion);
     return true;
-#else
-    return false;
-#endif
 }
 
-bool ALGPUTimer::poll(U64& nanoseconds, bool wait)
+bool ALGPUTimer::poll(U64& nanoseconds)
 {
     nanoseconds = 0;
-#if LL_DARWIN
-    if (mNativeCompletion)
-    {
-        ALMetalCommandGPUTime timing;
-        const auto status = mNativeCompletion->gpuTime(timing);
-        if (status == ALMetalCommandTimingStatus::pending)
-        {
-            return false;
-        }
-        mNativeCompletion.reset();
-        if (status == ALMetalCommandTimingStatus::ready)
-        {
-            nanoseconds = timing.elapsed_nanoseconds;
-            return true;
-        }
-        return false;
-    }
-#endif
-    if (!mPending)
+    if (!mNativeCompletion)
     {
         return false;
     }
-    switch (pool().result(mSpan, nanoseconds))
+    ALMetalCommandGPUTime timing;
+    const auto status = mNativeCompletion->gpuTime(timing);
+    if (status == ALMetalCommandTimingStatus::pending)
     {
-    case ALQueryPool::Status::Ready:
-        mPending = false;
+        return false;
+    }
+    mNativeCompletion.reset();
+    if (status == ALMetalCommandTimingStatus::ready)
+    {
+        nanoseconds = timing.elapsed_nanoseconds;
         return true;
-    case ALQueryPool::Status::Expired:
-        mPending = false;
-        return false;
-    case ALQueryPool::Status::Pending:
-    default:
-        if (!wait)
-        {
-            return false;
-        }
-        mPending = false;
-        return pool().wait(mSpan, nanoseconds);
     }
+    return false;
 }

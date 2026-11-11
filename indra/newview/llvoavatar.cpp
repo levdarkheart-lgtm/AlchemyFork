@@ -12957,16 +12957,6 @@ bool LLVOAvatar::isTextureVisible(LLAvatarAppearanceDefines::ETextureIndex type,
     return false;
 }
 
-void LLVOAvatar::placeProfileQuery()
-{
-    mGPUTimer.begin();
-}
-
-void LLVOAvatar::endProfileQuery()
-{
-    mGPUTimer.end();
-}
-
 void LLVOAvatar::readProfileQuery()
 {
     U64 time_elapsed = 0;
