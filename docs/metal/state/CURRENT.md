@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `bccbb7be48000fab91b43688bc585f2f9ab474cf` plus current feature-port changes.
+**Renderer code checkpoint:** `71f0a584038012fc6b03c29336936a5735fba692`.
 The owner resumed RLVa, Debug/Developer and remaining OpenGL removal. This
 supersedes the previous broad-port pause. The separate20FPS campaign remains
 deferred. No viewer launch or screenshot comparison is allowed. No account,
@@ -39,8 +39,11 @@ Deleted legacy files remain recoverable through Git.
 
 Doctor/configure and native test builds exit0. Initial sandbox builds could not
 access compiler caches; approved retries used. First app compile exposed an
-implicit camera include after RLVa cleanup; explicit include fixed, final
-Release app rebuild pending. Do not claim the previous app is this candidate.
+implicit camera include after RLVa cleanup; explicit include fixed and final
+Release app build exits0. Canonical bundle26.4.0d68649 has source content71f0a58403
+(configuration/build began atbccbb7be48 plus those changes). ARM64 verification
+passes349 Mach-O files /zero invalid slices; deep strict codesign verification0.
+The linked work note pins executable/metallib hashes and exact command logs.
 
 Under Metal API and shader validation, native renderer tests pass910assertions/
 17cases. Focused RLVa/Glow/emissive/G-buffer/UI tests pass38307assertions/5cases;
@@ -55,8 +58,8 @@ no deliberate crash executed, no performance claim.
 Ignored evidence: `artifacts/metal/feature-completion-20261111/`.
 Strict source audit exits1 with1792findings/2406files (previous1815/2408).
 Names account for many findings, but dormant GL function pointers and real dead
-GL implementations remain. Earlier executable inspection found no linked
-OpenGL framework or unresolved GL imports; runtime context proof remains open.
+GL implementations remain. Final executable inspection finds no linked OpenGL
+framework or unresolved GL/CGL/SDL_GL imports; runtime context proof remains open.
 
 ## Complete-product advancement assessment
 
@@ -75,9 +78,7 @@ Full parity, strict no-GL and independent build/review evidence remain open.
 
 ## Exact next actions
 
-Next finish current Release build and run `tools/metal/verify_app.sh` on
-`build-Darwin-xcode-os-arm64/newview/Release/Alchemy Metal Development.app`.
-Then implement native `RenderBufferVisualization`: preflight currently rejects
+Next implement native `RenderBufferVisualization`: preflight currently rejects
 every selected debug buffer and the old GLSL path alone consumes modes0–6.
 Trace attachment sampling, luminance mip8 and retained SMAA intermediates before
 native scope/reference/UI composition. Afterwards remove the dormant GLSL

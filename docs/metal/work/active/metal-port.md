@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `bccbb7be48000fab91b43688bc585f2f9ab474cf` plus current feature-port changes.
+**Renderer checkpoint:** Commit `71f0a584038012fc6b03c29336936a5735fba692`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -25,7 +25,9 @@ Remove dead GL depth-bounds unit/tests/setting and sphere GLSL files.
 Doctor/configure/test builds0. Native renderer910/17 and focused native38307/5
 plus display-post1824/1 assertions/cases pass under Metal API/shader validation.
 First app compile found an exposed transitive camera include; explicit include
-fixed and final Release build pending. Live feature parity remains unverified.
+fixed. Final Release68649 build0; ARM64 inspection349files/zero invalid slices
+and deep strict codesign0. Exact app hashes are pinned in the work note.
+Live feature parity remains unverified.
 Strict GL inventory still fails1792findings/2406files. No performance claim.
 
 ## Work board
@@ -65,8 +67,7 @@ M-012 stays complete; M-014 remains deferred. No release readiness claim.
 
 ## Immediate executable action
 
-Finish current Release app build, inspect ARM64 slices with verify_app and
-record app identity. Then implement native RenderBufferVisualization modes0–6:
+Implement native RenderBufferVisualization modes0–6:
 the current presentation gate rejects all selected buffers and the displaced
 GLSL visualization is still their only consumer. Trace original attachment,
 luminance mip8 and SMAA-edge/weight lifetimes and scope/reference/UI order.

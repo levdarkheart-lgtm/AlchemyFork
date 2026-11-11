@@ -33,7 +33,10 @@ renames. Startup consumes both the new one-shot setting and the legacy setting
 `MTL_DEBUG_LAYER=1` is requested before `initWindow()`. External shader/capture
 environment controls are not changed. Existing viewer-side strict diagnostic
 globals remain connected. Full app startup/settings persistence is source
-reviewed and awaits root's build; it was not exercised in a viewer process.
+reviewed; root's Release68649 build and ARM64/signature checks now pass at
+implementation71f0a58403. It was not exercised in a viewer process. Root also
+independently reran both safe device-probe arms with the same debug/normal
+classes. [Exact integration receipts](remaining-feature-port.md).
 
 The explicit Force Driver Crash action now calls the window-owned native
 device's deliberately invalid CPU-memory buffer creation and aborts if it

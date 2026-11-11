@@ -1,5 +1,10 @@
 # HiDPI, HDR, emissive and Lightbox source audit
 
+Follow-up2026-11-11: the two confirmed conversion defects below are repaired
+in `71f0a58403`; see [implementation and validation](remaining-feature-port.md).
+The original audit remains below as historical evidence. Live toggles and the
+broader brightness complaint remain unverified; no viewer launch was performed.
+
 Owner requested original-versus-port support/toggle checks, then reported bright
 sunlit areas, dark avatar/shadows, a change while using Lightbox and darkness
 after disabling Auto Exposure. Exact reference

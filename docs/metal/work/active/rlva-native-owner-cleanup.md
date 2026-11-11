@@ -39,18 +39,23 @@ policy, tweening and current-view parameter export in `rlveffects.cpp`.
   No command parsing, restriction policy, effect order, shader math or tween
   interpolation is changed.
 
-The integrator owns matching removal of the old pipeline sphere invocation and
-`gRlvSphereProgram` loader/readiness dependencies, plus the direct typed overlay
-call in `llviewerdisplay.cpp`.
+Integration removes the old pipeline sphere invocation and `gRlvSphereProgram`
+loader/readiness dependencies and GLSL sources, plus installs the direct typed
+overlay call in `llviewerdisplay.cpp`. The explicit camera include replaces the
+old transitive dependency on pipeline.h exposed by the full app compile.
 
 ## Validation boundary and next checks
 
 Child source checks: `git diff --check` exits 0. No child build or viewer launch.
+Root Release build and ARM64/signature checks pass at implementation71f0a58403;
+the focused38307-assertion/5-case Metal validation group includes the real RLVa
+fixture below. [Exact command receipts](remaining-feature-port.md).
 The existing real-GPU fixture is
 `almetal: RLVa vision sphere owns every post mode` in
 `indra/almetal/tests/almetal_gpu_test.mm`; it exercises all five modes, depth
 reconstruction, output alpha and invalid native scene rejection. Root must run
-that fixture and the full application build after integrating caller changes.
+that fixture and the full application build after integrating caller changes
+(both now executed as recorded above).
 It does not establish script command/reply, touch-mask, tween timing, multi-effect
 visual parity, restart-qualified RLVa, or snapshot behavior end to end.
 
