@@ -247,20 +247,7 @@ U64 LLVertexBuffer::getBytesAllocated()
 //============================================================================
 //
 //static
-U32 LLVertexBuffer::sGLRenderBuffer = 0;
-U32 LLVertexBuffer::sGLRenderIndices = 0;
-U32 LLVertexBuffer::sLastMask = 0;
 U32 LLVertexBuffer::sVertexCount = 0;
-
-// What the attribute pointers were last set up from: the buffer, the GL name it had, and the
-// attributes the program read. Being bound is not the same thing. An upload binds the buffer it
-// sends and leaves the pointers where the last draw set them, and a pointer keeps the buffer bound
-// when it was set, whatever is bound after. Cleared with the bindings by unbind(), and by a buffer
-// that goes or works out its offsets again, so a buffer made where a gone one was is never taken
-// for it.
-static const LLVertexBuffer* sSetupBuffer = nullptr;
-static U32 sSetupGLBuffer = 0;
-static U32 sSetupMask = 0;
 
 
 //NOTE: each component must be AT LEAST 4 bytes in size to avoid a performance penalty on AMD hardware
@@ -301,55 +288,6 @@ static const std::string vb_type_name[] =
     "TYPE_MAX",
     "TYPE_INDEX",
 };
-
-const U32 LLVertexBuffer::sGLMode[LLRender::NUM_MODES] =
-{
-    GL_TRIANGLES,
-    GL_TRIANGLE_STRIP,
-    GL_TRIANGLE_FAN,
-    GL_POINTS,
-    GL_LINES,
-    GL_LINE_STRIP,
-    GL_LINE_LOOP,
-    GL_PATCHES,
-};
-
-//static
-void LLVertexBuffer::setupClientArrays(U32 data_mask)
-{
-#if LL_DARWIN
-    if (isMetalBufferAuthority())
-    {
-        return;
-    }
-#endif
-    if (sLastMask != data_mask)
-    {
-        for (U32 i = 0; i < TYPE_MAX; ++i)
-        {
-            S32 loc = i;
-
-            U32 mask = 1 << i;
-
-            if (sLastMask & (1 << i))
-            { //was enabled
-                if (!(data_mask & mask))
-                { //needs to be disabled
-                    glDisableVertexAttribArray(loc);
-                }
-            }
-            else
-            {   //was disabled
-                if (data_mask & mask)
-                { //needs to be enabled
-                    glEnableVertexAttribArray(loc);
-                }
-            }
-        }
-    }
-
-    sLastMask = data_mask;
-}
 
 //static
 void LLVertexBuffer::drawArrays(U32 mode, const std::vector<LLVector3>& pos)
@@ -421,69 +359,20 @@ bool LLVertexBuffer::canAppendRange(const DrawRange& current,
 
 bool LLVertexBuffer::validateRange(U32 start, U32 end, U32 count, U32 indices_offset) const
 {
-    if (!gDebugGL)
+    const bool vertices_fit = start <= end && end < mNumVerts;
+    const bool indices_fit = indices_offset <= mNumIndices &&
+        count <= mNumIndices - indices_offset;
+    if (gDebugGL && !vertices_fit)
     {
-        return true;
+        LL_ERRS() << "Bad vertex buffer draw range: [" << start << ", " << end
+                  << "] vs " << mNumVerts << LL_ENDL;
     }
-
-    llassert(start < mNumVerts);
-    llassert(end < mNumVerts);
-
-    if (start >= mNumVerts ||
-        end >= mNumVerts)
+    if (gDebugGL && !indices_fit)
     {
-        LL_ERRS() << "Bad vertex buffer draw range: [" << start << ", " << end << "] vs " << mNumVerts << LL_ENDL;
+        LL_ERRS() << "Bad index buffer draw range: offset " << indices_offset
+                  << ", count " << count << " vs " << mNumIndices << LL_ENDL;
     }
-
-    if (indices_offset >= mNumIndices ||
-        indices_offset + count > mNumIndices)
-    {
-        LL_ERRS() << "Bad index buffer draw range: [" << indices_offset << ", " << indices_offset+count << "]" << LL_ENDL;
-    }
-
-    {
-#if 0  // not a reliable test for VBOs that are not backed by a CPU buffer
-        U16* idx = (U16*) mMappedIndexData+indices_offset;
-        for (U32 i = 0; i < count; ++i)
-        {
-            llassert(idx[i] >= start);
-            llassert(idx[i] <= end);
-
-            if (idx[i] < start || idx[i] > end)
-            {
-                LL_ERRS() << "Index out of range: " << idx[i] << " not in [" << start << ", " << end << "]" << LL_ENDL;
-            }
-        }
-
-        LLVector4a* v = (LLVector4a*)mMappedData;
-
-        for (U32 i = start; i <= end; ++i)
-        {
-            if (!v[i].isFinite3())
-            {
-                LL_ERRS() << "Non-finite vertex position data detected." << LL_ENDL;
-            }
-        }
-
-        LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
-
-        if (shader && shader->mFeatures.mIndexedTextureChannels > 1)
-        {
-            LLVector4a* v = (LLVector4a*) mMappedData;
-
-            for (U32 i = start; i < end; i++)
-            {
-                U32 idx = (U32) (v[i][3]+0.25f);
-                if (idx >= (U32)shader->mFeatures.mIndexedTextureChannels)
-                {
-                    LL_ERRS() << "Bad texture index found in vertex data stream." << LL_ENDL;
-                }
-            }
-        }
-#endif
-    }
-
-    return true;
+    return vertices_fit && indices_fit;
 }
 
 #if LL_PROFILER_ENABLE_RENDER_DOC
@@ -506,63 +395,50 @@ void LLVertexBuffer::clone(LLVertexBuffer& target) const
 
 void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
 {
-#if LL_DARWIN
-    if (isMetalBufferAuthority())
+    if (count == 0) return;
+    if (!validateRange(start, end, count, indices_offset))
     {
+        gGL.invalidateMetalUITextureCapture("Vertex buffer indexed draw exceeds its allocation");
+        LL_WARNS_ONCE("Render") << "Skipping native indexed draw outside its vertex/index allocation" << LL_ENDL;
         return;
     }
-#endif
-    llassert(validateRange(start, end, count, indices_offset));
-    llassert(mGLBuffer == sGLRenderBuffer);
-    llassert(mGLIndices == sGLRenderIndices);
-    gGL.syncMatrices();
-    STOP_GLERROR;
-    glDrawRangeElements(sGLMode[mode], start, end, count, mIndicesType,
-        (GLvoid*) (indices_offset * (size_t) mIndicesStride));
-    STOP_GLERROR;
-    ++LLRender::sDrawCalls;
-    LLRender::sDrawElements += count;
+    // World draw pools already admitted their typed native batches. Only an
+    // active UI owner consumes this generic draw, using its current bindings.
+    if (gGL.drawBoundMetalUIBuffer(const_cast<LLVertexBuffer*>(this), mode,
+                                   count, true, indices_offset))
+    {
+        ++LLRender::sDrawCalls;
+        LLRender::sDrawElements += count;
+    }
 }
 
 void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
 {
-#if LL_DARWIN
-    if (isMetalBufferAuthority())
-    {
-        return;
-    }
-#endif
-    glDrawRangeElements(sGLMode[mode], start, end, count, mIndicesType,
-        (GLvoid*)(indices_offset * (size_t)mIndicesStride));
-    ++LLRender::sDrawCalls;
-    LLRender::sDrawElements += count;
+    drawRange(mode, start, end, count, indices_offset);
 }
 
 
 void LLVertexBuffer::draw(U32 mode, U32 count, U32 indices_offset) const
 {
-    drawRange(mode, 0, mNumVerts-1, count, indices_offset);
+    drawRange(mode, 0, mNumVerts ? mNumVerts-1 : 0, count, indices_offset);
 }
 
 
 void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
 {
-#if LL_DARWIN
-    if (isMetalBufferAuthority())
+    if (count == 0) return;
+    if (first >= mNumVerts || count > mNumVerts - first)
     {
+        gGL.invalidateMetalUITextureCapture("Vertex buffer array draw exceeds its allocation");
+        LL_WARNS_ONCE("Render") << "Skipping native array draw outside its vertex allocation" << LL_ENDL;
         return;
     }
-#endif
-    llassert(first + count <= mNumVerts);
-    llassert(mGLBuffer == sGLRenderBuffer);
-    llassert(mGLIndices == sGLRenderIndices);
-
-    gGL.syncMatrices();
-    STOP_GLERROR;
-    glDrawArrays(sGLMode[mode], first, count);
-    STOP_GLERROR;
-    ++LLRender::sDrawCalls;
-    LLRender::sDrawElements += count;
+    if (gGL.drawBoundMetalUIBuffer(const_cast<LLVertexBuffer*>(this), mode,
+                                   count, false, first))
+    {
+        ++LLRender::sDrawCalls;
+        LLRender::sDrawElements += count;
+    }
 }
 
 //static
@@ -576,22 +452,7 @@ void LLVertexBuffer::initClass(LLWindow* window)
 //static
 void LLVertexBuffer::unbind()
 {
-#if LL_DARWIN
-    if (isMetalBufferAuthority() ||
-        gGL.isMetalUITextureCaptureAuthoritative())
-    {
-        // The authoritative capture never changed the physical GL bindings,
-        // so neither change nor invalidate the caches that describe them.
-        return;
-    }
-#endif
-    STOP_GLERROR;
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    STOP_GLERROR;
-    sGLRenderBuffer = 0;
-    sGLRenderIndices = 0;
-    sSetupBuffer = nullptr;
+    // Every native encoder binds explicit resources; no ambient buffer exists.
 }
 
 // list of mapped buffers
@@ -613,11 +474,6 @@ void LLVertexBuffer::cleanupClass()
     }
     sMappedBuffers.clear();
 #endif
-
-    // Which attribute arrays are enabled is vertex-array-object state, and the next
-    // context's VAO starts with none. Left as it was, setupClientArrays would take its first
-    // draw's arrays for enabled already and skip the glEnableVertexAttribArray they need.
-    sLastMask = 0;
 
     delete sNativeStorage;
     sNativeStorage = nullptr;
@@ -821,11 +677,6 @@ U32 LLVertexBuffer::calcVertexSize(const U32& typemask)
 //virtual
 LLVertexBuffer::~LLVertexBuffer()
 {
-    if (sSetupBuffer == this)
-    {
-        sSetupBuffer = nullptr;
-    }
-
     if (mMapped)
     { // is on the mapped buffer list but doesn't need to be flushed
         mMapped = false;
@@ -1017,12 +868,6 @@ bool LLVertexBuffer::updateNumVerts(U32 nverts)
     llassert(nverts >= 0);
 
     bool success = true;
-
-    // The offsets are worked out again, and the attribute pointers were set from the old ones.
-    if (sSetupBuffer == this)
-    {
-        sSetupBuffer = nullptr;
-    }
 
     U32 needed_size = calcOffsets(mTypeMask, mOffsets, nverts);
 
@@ -1288,7 +1133,8 @@ bool LLVertexBuffer::getClothWeightStrider(LLStrider<LLVector4>& strider, U32 in
 //----------------------------------------------------------------------------
 
 
-// Set for rendering
+// Publish pending native stores. Shader layout and resource bindings belong
+// to the typed native draw/capture that consumes this buffer.
 void LLVertexBuffer::setBuffer()
 {
     if (mMapped)
@@ -1296,162 +1142,6 @@ void LLVertexBuffer::setBuffer()
         LL_WARNS_ONCE() << "Missing call to unmapBuffer or flushBuffers" << LL_ENDL;
         _unmapBuffer();
     }
-
-#if LL_DARWIN
-    if (isMetalBufferAuthority())
-    {
-        return;
-    }
-#endif
-
-    STOP_GLERROR;
-
-    // a shader must be bound
-    llassert(LLGLSLShader::sCurBoundShaderPtr);
-
-    U32 data_mask = LLGLSLShader::sCurBoundShaderPtr->mAttributeMask;
-
-    // this Vertex Buffer must provide all necessary attributes for currently bound shader
-    llassert_msg((data_mask & mTypeMask) == data_mask,
-        "Attribute mask mismatch! mTypeMask should be a superset of data_mask.  data_mask: 0x"
-                << std::hex << data_mask << " mTypeMask: 0x" << mTypeMask << " Missing: 0x" << (data_mask & ~mTypeMask) <<  std::dec);
-
-    if (sGLRenderBuffer != mGLBuffer)
-    {
-        glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
-        sGLRenderBuffer = mGLBuffer;
-    }
-
-    // Bound is not set up (see sSetupBuffer): the pointers are set whenever they were last set
-    // for another buffer, another name of this one, or another program's attributes. Which arrays
-    // are enabled is setupClientArrays' to say, and sLastMask with it.
-    if (sSetupBuffer != this || sSetupGLBuffer != mGLBuffer || sSetupMask != data_mask)
-    {
-        setupVertexBuffer();
-        sSetupBuffer = this;
-        sSetupGLBuffer = mGLBuffer;
-        sSetupMask = data_mask;
-    }
-
-    if (mGLIndices != sGLRenderIndices)
-    {
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mGLIndices);
-        sGLRenderIndices = mGLIndices;
-    }
-
-    STOP_GLERROR;
-}
-
-
-// virtual (default)
-// An offset into the bound buffer, which GL takes as a pointer: made from the
-// integer, as an offset added to a null pointer is undefined.
-static void* buffer_offset(size_t offset)
-{
-    return reinterpret_cast<void*>(offset);
-}
-
-void LLVertexBuffer::setupVertexBuffer()
-{
-    STOP_GLERROR;
-
-    U32 data_mask = LLGLSLShader::sCurBoundShaderPtr->mAttributeMask;
-
-    if (data_mask & MAP_NORMAL)
-    {
-        AttributeType loc = TYPE_NORMAL;
-        void* ptr = buffer_offset(mOffsets[TYPE_NORMAL]);
-        glVertexAttribPointer(loc, 3, GL_FLOAT, GL_FALSE, LLVertexBuffer::sTypeSize[TYPE_NORMAL], ptr);
-    }
-    if (data_mask & MAP_TEXCOORD3)
-    {
-        AttributeType loc = TYPE_TEXCOORD3;
-        void* ptr = buffer_offset(mOffsets[TYPE_TEXCOORD3]);
-        glVertexAttribPointer(loc, 2, GL_FLOAT, GL_FALSE, LLVertexBuffer::sTypeSize[TYPE_TEXCOORD3], ptr);
-    }
-    if (data_mask & MAP_TEXCOORD2)
-    {
-        AttributeType loc = TYPE_TEXCOORD2;
-        void* ptr = buffer_offset(mOffsets[TYPE_TEXCOORD2]);
-        glVertexAttribPointer(loc, 2, GL_FLOAT, GL_FALSE, LLVertexBuffer::sTypeSize[TYPE_TEXCOORD2], ptr);
-    }
-    if (data_mask & MAP_TEXCOORD1)
-    {
-        AttributeType loc = TYPE_TEXCOORD1;
-        void* ptr = buffer_offset(mOffsets[TYPE_TEXCOORD1]);
-        glVertexAttribPointer(loc, 2, GL_FLOAT, GL_FALSE, LLVertexBuffer::sTypeSize[TYPE_TEXCOORD1], ptr);
-    }
-    if (data_mask & MAP_TANGENT)
-    {
-        AttributeType loc = TYPE_TANGENT;
-        void* ptr = buffer_offset(mOffsets[TYPE_TANGENT]);
-        glVertexAttribPointer(loc, 4, GL_FLOAT, GL_FALSE, LLVertexBuffer::sTypeSize[TYPE_TANGENT], ptr);
-    }
-    if (data_mask & MAP_TEXCOORD0)
-    {
-        AttributeType loc = TYPE_TEXCOORD0;
-        void* ptr = buffer_offset(mOffsets[TYPE_TEXCOORD0]);
-        glVertexAttribPointer(loc, 2, GL_FLOAT, GL_FALSE, LLVertexBuffer::sTypeSize[TYPE_TEXCOORD0], ptr);
-    }
-    if (data_mask & MAP_COLOR)
-    {
-        AttributeType loc = TYPE_COLOR;
-        //bind emissive instead of color pointer if emissive is present
-        void* ptr = (data_mask & MAP_EMISSIVE) ? buffer_offset(mOffsets[TYPE_EMISSIVE]) : buffer_offset(mOffsets[TYPE_COLOR]);
-        glVertexAttribPointer(loc, 4, GL_UNSIGNED_BYTE, GL_TRUE, LLVertexBuffer::sTypeSize[TYPE_COLOR], ptr);
-    }
-    if (data_mask & MAP_EMISSIVE)
-    {
-        AttributeType loc = TYPE_EMISSIVE;
-        void* ptr = buffer_offset(mOffsets[TYPE_EMISSIVE]);
-        glVertexAttribPointer(loc, 4, GL_UNSIGNED_BYTE, GL_TRUE, LLVertexBuffer::sTypeSize[TYPE_EMISSIVE], ptr);
-
-        if (!(data_mask & MAP_COLOR))
-        { //map emissive to color channel when color is not also being bound to avoid unnecessary shader swaps
-            loc = TYPE_COLOR;
-            glVertexAttribPointer(loc, 4, GL_UNSIGNED_BYTE, GL_TRUE, LLVertexBuffer::sTypeSize[TYPE_EMISSIVE], ptr);
-        }
-    }
-    if (data_mask & MAP_WEIGHT)
-    {
-        AttributeType loc = TYPE_WEIGHT;
-        void* ptr = buffer_offset(mOffsets[TYPE_WEIGHT]);
-        glVertexAttribPointer(loc, 1, GL_FLOAT, GL_FALSE, LLVertexBuffer::sTypeSize[TYPE_WEIGHT], ptr);
-    }
-    if (data_mask & MAP_WEIGHT4)
-    {
-        AttributeType loc = TYPE_WEIGHT4;
-        void* ptr = buffer_offset(mOffsets[TYPE_WEIGHT4]);
-        glVertexAttribPointer(loc, 4, GL_FLOAT, GL_FALSE, LLVertexBuffer::sTypeSize[TYPE_WEIGHT4], ptr);
-    }
-    if (data_mask & MAP_JOINT)
-    {
-        AttributeType loc = TYPE_JOINT;
-        void* ptr = buffer_offset(mOffsets[TYPE_JOINT]);
-        glVertexAttribIPointer(loc, 4, GL_UNSIGNED_SHORT, LLVertexBuffer::sTypeSize[TYPE_JOINT], ptr);
-    }
-    if (data_mask & MAP_CLOTHWEIGHT)
-    {
-        AttributeType loc = TYPE_CLOTHWEIGHT;
-        void* ptr = buffer_offset(mOffsets[TYPE_CLOTHWEIGHT]);
-        glVertexAttribPointer(loc, 4, GL_FLOAT, GL_TRUE, LLVertexBuffer::sTypeSize[TYPE_CLOTHWEIGHT], ptr);
-    }
-    if (data_mask & MAP_TEXTURE_INDEX)
-    {
-        AttributeType loc = TYPE_TEXTURE_INDEX;
-        void* ptr = buffer_offset(mOffsets[TYPE_VERTEX] + 12);
-        // GL_INT: the shaders declare `in int texture_index`, and GL defines a signed integer
-        // input only when it is sourced as BYTE, SHORT or INT. The indices are small, so the
-        // bits read the same either way.
-        glVertexAttribIPointer(loc, 1, GL_INT, LLVertexBuffer::sTypeSize[TYPE_VERTEX], ptr);
-    }
-    if (data_mask & MAP_VERTEX)
-    {
-        AttributeType loc = TYPE_VERTEX;
-        void* ptr = buffer_offset(mOffsets[TYPE_VERTEX]);
-        glVertexAttribPointer(loc, 3, GL_FLOAT, GL_FALSE, LLVertexBuffer::sTypeSize[TYPE_VERTEX], ptr);
-    }
-    STOP_GLERROR;
 }
 
 void LLVertexBuffer::setPositionData(const LLVector4a* data)

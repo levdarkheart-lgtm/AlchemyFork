@@ -27,29 +27,6 @@
 #include <cstring>
 #include <vector>
 
-namespace
-{
-unsigned buffer_gl_calls = 0;
-void APIENTRY bufferBindTrap(GLenum, GLuint) { ++buffer_gl_calls; }
-
-struct BufferGLTraps
-{
-    PFNGLBINDBUFFERPROC bind = glBindBuffer;
-    unsigned previous_calls = buffer_gl_calls;
-
-    BufferGLTraps()
-    {
-        buffer_gl_calls = 0;
-        glBindBuffer = bufferBindTrap;
-    }
-    ~BufferGLTraps()
-    {
-        glBindBuffer = bind;
-        buffer_gl_calls = previous_calls;
-    }
-};
-}
-
 TEST_CASE(
     "LLVertexBuffer preserves selective native stores and in-flight generations",
     "[llvertexbuffer][almetal]")
@@ -366,7 +343,6 @@ TEST_CASE(
     "[llvertexbuffer][almetal][native-allocation]")
 {
     REQUIRE_FALSE(gGLManager.mInited);
-    BufferGLTraps gl_traps;
     std::string error;
     auto device = ALMetalDevice::create(&error);
     INFO(error);
@@ -387,9 +363,6 @@ TEST_CASE(
         {
             LLVertexBuffer::flushBuffers();
             gGL.frameFences().setMetalScheduler(nullptr);
-            // Draw/client-array compatibility is outside this allocation
-            // cleanup. Keep cleanupClass's retained unbind on its native path.
-            LLVertexBuffer::setMetalBufferAuthority(true);
             LLVertexBuffer::cleanupClass();
             LLVertexBuffer::setMetalBufferAuthority(authority);
             LLVertexBuffer::setMetalDevice(nullptr);
@@ -455,10 +428,8 @@ TEST_CASE(
     CHECK(buffer->getMetalVertexBuffer() == unchanged_vertices);
     CHECK(read_store(buffer->getMetalIndexBuffer()) ==
           expected(updated_indices.data(), sizeof(updated_indices)));
-    CHECK(buffer_gl_calls == 0);
 
     buffer = nullptr;
     LLVertexBuffer::flushBuffers();
     CHECK(LLVertexBuffer::getBytesAllocated() == 0);
-    CHECK(buffer_gl_calls == 0);
 }

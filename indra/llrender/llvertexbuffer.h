@@ -108,11 +108,10 @@ public:
     static void setMetalBufferAuthority(bool enabled) noexcept;
     static bool isMetalBufferAuthority() noexcept;
 #endif
-    static void setupClientArrays(U32 data_mask);
     static void drawArrays(U32 mode, const std::vector<LLVector3>& pos);
     static void drawElements(U32 mode, const LLVector4a* pos, const LLVector2* tc, U32 num_indices, const U16* indicesp);
 
-    static void unbind(); //unbind any bound vertex buffer
+    static void unbind(); // Native draws bind their own resources explicitly.
 
     //get the size of a vertex with the given typemask
     static U32 calcVertexSize(const U32& typemask);
@@ -129,7 +128,6 @@ public:
     // 1 - update LLVertexBuffer::sTypeSize
     // 2 - update LLVertexBuffer::vb_type_name
     // 3 - add a strider accessor
-    // 4 - modify LLVertexBuffer::setupVertexBuffer
     // 6 - modify LLViewerShaderMgr::mReservedAttribs
 
     // clang-format off
@@ -175,8 +173,6 @@ protected:
 
     ~LLVertexBuffer(); // use unref()
 
-    void setupVertexBuffer();
-
     void    genBuffer(U32 size);
     void    genIndices(U32 size);
     bool    createGLBuffer(U32 size);
@@ -199,11 +195,7 @@ public:
     // synonym for flushBuffers
     void    unmapBuffer();
 
-    // set for rendering
-    // assumes (and will assert on) the following:
-    //      - this buffer has no pending unmapBuffer call
-    //      - a shader is currently bound
-    //      - This buffer has sufficient attributes within it to satisfy the needs of the currently bound shader
+    // Publish any pending native stores before a typed capture consumes them.
     void    setBuffer();
 
     // Only call each getVertexPointer, etc, once before calling unmapBuffer()
@@ -287,17 +279,16 @@ public:
     // writing or written. A pass that keeps what it drew tells by it whether the geometry it drew is as it was.
     U64 getContentStamp() const             { return mContentStamp; }
 
-    // these functions assume (and assert on) the current VBO being bound
-    // Detailed error checking can be enabled by setting gDebugGL to true
+    // Typed native world captures own world draws. These entry points admit
+    // supported draws into the current UI capture without ambient GL state.
     void draw(U32 mode, U32 count, U32 indices_offset) const;
     void drawArrays(U32 mode, U32 offset, U32 count) const;
     void drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const;
 
-    // draw without syncing matrices.  If you're positive there have been no matrix
-    // since the last call to syncMatrices, this is much faster than drawRange
+    // Retained spelling for callers whose matrix state is already current.
     void drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const;
 
-    //for debugging, validate data in given range is valid
+    // Always check allocation bounds; gDebugGL additionally diagnoses failures.
     bool validateRange(U32 start, U32 end, U32 count, U32 offset) const;
 
     #if LL_PROFILER_ENABLE_RENDER_DOC
@@ -376,10 +367,6 @@ public:
 
     static U64 getBytesAllocated();
     static const U32 sTypeSize[TYPE_MAX];
-    static const U32 sGLMode[LLRender::NUM_MODES];
-    static U32 sGLRenderBuffer;
-    static U32 sGLRenderIndices;
-    static U32 sLastMask;
     static U32 sVertexCount;
 };
 
