@@ -63,9 +63,8 @@ namespace
 
     // Everything after the packs, in Id order.
     constexpr std::string_view OWN_NAMES[Plan::ID_COUNT - PACK_IDS] = {
-        "shadow.spot0", "shadow.spot1", "smaa.edges", "smaa.blend", "ssr.scene",
-        "glow0", "glow1", "glow2", "downres", "preview", "bake", "exposure.meter", "exposure.histogram",
-        "exposure", "exposure.last", "lens.flare.a", "lens.flare.b", "noise", "noise.true", "smaa.area", "smaa.search",
+        "shadow.spot0", "shadow.spot1", "smaa.edges", "smaa.blend",
+        "glow0", "glow1", "glow2", "preview", "bake", "noise", "noise.true", "smaa.area", "smaa.search",
         "smaa.sample",
     };
 
@@ -76,6 +75,7 @@ namespace
 ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in)
 {
     ALRenderResourcePlan plan;
+    plan.mUsesScreenSpaceReflections = in.mSSR && in.mProbes;
 
     const bool hdr = in.mHDR;
 
@@ -86,8 +86,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     const Depth main_depth   = in.mReverseZ ? Depth::D32F : Depth::D24;
     const Depth shadow_depth = (in.mShadowDepth32F || in.mReverseZ) ? Depth::D32F : Depth::D24;
 
-    // The scene's colour in a target of its own: float with HDR, 8 bits without.
-    const U32 screen_format = hdr ? GL_RGBA16F : GL_RGBA8;
     // The tonemapped image the post chain carries.
     const U32 post_format = hdr ? GL_RGB10_A2 : GL_RGBA8;
 
@@ -247,17 +245,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     }
 #endif
 
-    // The reflections' source: last frame's scene, without the alpha the reflections drop, so R11F_G11F_B10F under HDR
-    // (unsigned, which the lit scene is), and the scene's depth without its stencil, in its format. They trace it
-    // only through the probes (bindReflectionProbes): without them no program reads it.
-    if (in.mSSR && in.mProbes)
-    {
-        plan.at(Id::SSRScene).mDesc = ALRenderTargetDesc{ .width  = width,
-                                                          .height = height,
-                                                          .color  = { hdr ? (U32)GL_R11F_G11F_B10F : screen_format },
-                                                          .depth  = main_depth };
-    }
-
     // The legacy glow, which HDR's bloom replaces.
     if (!hdr)
     {
@@ -270,24 +257,12 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         }
     }
 
-    // The texture downscaler's scratch (LLImageGL::scaleDown), every UI preview's target, and the appearance bake's.
-    plan.at(Id::DownRes).mDesc = ALRenderTargetDesc{ .width = DOWNRES_SIZE, .height = DOWNRES_SIZE, .color = { GL_RGBA8 } };
+    // The UI preview and appearance bake descriptions.
     plan.at(Id::Preview).mDesc = ALRenderTargetDesc{ .width  = PREVIEW_SIZE,
                                                      .height = PREVIEW_SIZE,
                                                      .color  = { GL_SRGB8_ALPHA8 },
                                                      .depth  = main_depth };
     plan.at(Id::Bake).mDesc = ALRenderTargetDesc{ .width = in.mBakeWidth, .height = in.mBakeHeight, .color = { GL_RGBA8 } };
-
-    // The auto-exposure: the meter, its histogram (RGBA32F: a bin sums thousands of points, past what a half float
-    // counts exactly), the exposure and last frame's; and the lens flare's sun state, two swapped each frame.
-    plan.at(Id::ExposureMeter).mDesc =
-        ALRenderTargetDesc{ .width = EXPOSURE_METER_WIDTH, .height = EXPOSURE_METER_HEIGHT, .color = { GL_RGBA16F } };
-    plan.at(Id::ExposureHistogram).mDesc =
-        ALRenderTargetDesc{ .width = EXPOSURE_HISTOGRAM_BINS, .height = 1, .color = { GL_RGBA32F } };
-    plan.at(Id::Exposure).mDesc     = ALRenderTargetDesc{ .width = 1, .height = 1, .color = { GL_RGBA16F } };
-    plan.at(Id::ExposureLast).mDesc = ALRenderTargetDesc{ .width = 1, .height = 1, .color = { GL_RGBA16F } };
-    plan.at(Id::LensFlareA).mDesc   = ALRenderTargetDesc{ .width = 2, .height = 1, .color = { GL_RGBA16F } };
-    plan.at(Id::LensFlareB).mDesc   = ALRenderTargetDesc{ .width = 2, .height = 1, .color = { GL_RGBA16F } };
 
     plan.at(Id::Noise).mDesc     = ALRenderTargetDesc{ .color = { GL_RGB16F } };
     plan.at(Id::TrueNoise).mDesc = ALRenderTargetDesc{ .color = { GL_RGB16F } };
@@ -363,7 +338,6 @@ bool ALRenderResourcePlan::followsRenderSize(Id id)
         case Id::SpotShadow1:
         case Id::SMAAEdges:
         case Id::SMAABlend:
-        case Id::SSRScene:
             return true;
         default:
             return false;

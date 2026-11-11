@@ -87,8 +87,6 @@ static U32 sPixelAreaCalcCount = 0;
 
 LLViewerTextureList gTextureList;
 
-extern LLGLSLShader gCopyProgram;
-
 ETexListType get_element_type(S32 priority)
 {
     return (priority == LLViewerFetchedTexture::BOOST_ICON || priority == LLViewerFetchedTexture::BOOST_THUMBNAIL) ? TEX_LIST_SCALE : TEX_LIST_STANDARD;
@@ -1237,60 +1235,6 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         {
             break;
         }
-    }
-
-#if LL_DARWIN
-    if (LLImageGL::isMetalTextureAuthority())
-    {
-        return create_timer.getElapsedTimeF32();
-    }
-#endif
-    if (gGLManager.mIsDisabled)
-    {
-        return create_timer.getElapsedTimeF32();
-    }
-
-    if (!mDownScaleQueue.empty() && gPipeline.mDownResMap.isComplete())
-    {
-        LLGLDisable blend(GL_BLEND);
-        gGL.setColorMask(true, true);
-
-        // just in case we downres textures, bind downresmap and copy program
-        gPipeline.mDownResMap.bindTarget();
-        gCopyProgram.bind();
-        gPipeline.mScreenTriangleVB->setBuffer();
-
-        // give time to downscaling first -- if mDownScaleQueue is not empty, we're running out of memory and need
-        // to free up memory by discarding off screen textures quickly
-
-        // do at least 5 and make sure we don't get too far behind even if it violates
-        // the time limit.  If we don't downscale quickly the viewer will hit swap and may
-        // freeze.
-        S32 min_count = (S32)mCreateTextureList.size() / 20 + 5;
-
-        create_timer.reset();
-        while (!mDownScaleQueue.empty())
-        {
-            LLViewerFetchedTexture* image = mDownScaleQueue.front();
-            llassert(image->mDownScalePending);
-
-            LLImageGL* img = image->getGLTexture();
-            if (img && img->getHasGLTexture())
-            {
-                img->scaleDown(image->getDesiredDiscardLevel());
-            }
-
-            image->mDownScalePending = false;
-            mDownScaleQueue.pop();
-
-            if (create_timer.getElapsedTimeF32() > max_time && --min_count <= 0)
-            {
-                break;
-            }
-        }
-
-        gCopyProgram.unbind();
-        gPipeline.mDownResMap.flush();
     }
 
     return create_timer.getElapsedTimeF32();

@@ -261,6 +261,9 @@ private:
     // surface's maps, the selection outline and the far-plane overlay.
     void releaseDepthDependents();
 
+    // Invalidate native history at the same logical resource changes that formerly rebuilt its retained targets.
+    void reconcileNativeHistoryState(const ALRenderResourcePlan& plan, bool hdr, bool render_sized_recreated);
+
     // What the resources were last reconciled to, and whether they have been
     // since releaseAllRenderResources last ran.
     ALRenderResourceInputs mResourceInputs;
@@ -1745,26 +1748,8 @@ public:
 
     // What each spot map holds, so that one whose light and casters are as they were is not drawn again.
 
-    // copy of the color/depth buffer just before gamma correction
-    // for use by SSR
-    LLRenderTarget          mSceneMap;
-
-    // The auto-exposure: the meter grid (luminanceF.glsl), its 64-bin histogram
-    // (exposureHistogramV.glsl), and the exposure, 1x1: x the scale, y the EV the next
-    // frame adapts from (exposureF.glsl). mLastExposure is last frame's: the two swap their
-    // storage as each frame's exposure is made.
-    LLRenderTarget          mLuminanceMap;
-    LLRenderTarget          mExposureHistogram;
-    LLRenderTarget          mExposureMap;
-    LLRenderTarget          mLastExposure;
-
-    // lens flare sun state, 2x1, swapped each frame: [0] is this frame's, [1]
-    // last frame's. Layout in lensFlareStateF.glsl.
-    LLRenderTarget          mLensFlareState[2];
-    bool                    mLensFlareSunUp = true;    // which body the history describes
-
-    // downres scratch space for GPU downscaling of textures
-    LLRenderTarget          mDownResMap;
+    // Which sun/moon body the actual native flare history describes.
+    bool mLensFlareSunUp = true;
 
 #if LL_DARWIN
     // Scopes consume only the exact native display-post source. The target is

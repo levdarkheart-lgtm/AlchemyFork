@@ -18956,7 +18956,6 @@ void LLPipeline::scaleToRenderResolution(U32& resX, U32& resY)
 LLRenderTarget* LLPipeline::resourceTarget(ALRenderResourcePlan::Id id)
 {
     using Plan = ALRenderResourcePlan;
-    using Id   = Plan::Id;
     using Slot = Plan::Slot;
 
     // The pool's, acquired by the passes that use them.
@@ -18978,19 +18977,7 @@ LLRenderTarget* LLPipeline::resourceTarget(ALRenderResourcePlan::Id id)
         }
     }
 
-    switch (id)
-    {
-        case Id::SSRScene:          return &mSceneMap;
-        case Id::DownRes:           return &mDownResMap;
-        case Id::ExposureMeter:     return &mLuminanceMap;
-        case Id::ExposureHistogram: return &mExposureHistogram;
-        case Id::Exposure:          return &mExposureMap;
-        case Id::ExposureLast:      return &mLastExposure;
-        case Id::LensFlareA:        return &mLensFlareState[0];
-        case Id::LensFlareB:        return &mLensFlareState[1];
-        default:
-            return nullptr;
-    }
+    return nullptr;
 }
 
 bool LLPipeline::resourceTextureReady(ALRenderResourcePlan::Id id)
@@ -19368,8 +19355,10 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
 
     static LLCachedControl<bool> simulate_failure(gSavedSettings, "SimulateFBOFailure", false);
     const auto short_of_size = [&]() { return simulate_failure() || (changes.mFailed & required).any(); };
+    bool render_sized_recreated = false;
     const auto release_render_sized = [&]()
     {
+        render_sized_recreated = true;
         for (size_t i = 0; i < Plan::ID_COUNT; ++i)
         {
             if (LLRenderTarget* target = retried.test(i) ? resourceTarget((Id)i) : nullptr)
@@ -19464,17 +19453,7 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
         }
     }
 
-    // The reflections march through last frame's scene, which a new target does not hold.
-    if (changes.mBuilt.test((size_t)Id::SSRScene))
-    {
-        clearSceneMap();
-    }
-    // New storage holds no history.
-    if (changes.mBuilt.test((size_t)Id::Exposure) || changes.mBuilt.test((size_t)Id::LensFlareA) ||
-        changes.mBuilt.test((size_t)Id::LensFlareB))
-    {
-        resetExposureHistory();
-    }
+    reconcileNativeHistoryState(plan, inputs.mHDR, render_sized_recreated);
     // The probe managers' own resources, planned beside their packs. They are freed here once nothing renders through
     // them, and built by initReflectionMaps: the reflection probes' below, once this plan is the pipeline's, and the
     // mirrors' by the hero manager's update, which runs in the frame before the world is drawn.
@@ -26391,12 +26370,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
         stop_glerror();
     }
 
-    channel = shader.enableTexture(LLShaderMgr::EXPOSURE_MAP);
-    if (channel > -1)
-    {
-        gGL.getTextureSlot(channel)->bind(&mExposureMap);
-    }
-
     if (shader.hasUniform(LLShaderMgr::VIEWPORT))
     {
         shader.uniform4f(LLShaderMgr::VIEWPORT, (F32) gGLViewport[0],
@@ -26940,18 +26913,6 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
         return;
     }
 
-    // Hero radiance is owned and consumed by the Metal world renderer. The
-    // retained GL traversal must not allocate or bind a second hero cube.
-    S32 channel = -1;
-
-    // reflection probe shaders generally sample the scene map as well for SSR
-    channel = shader.enableTexture(LLShaderMgr::SCENE_MAP);
-    if (channel > -1)
-    {
-        gGL.getTextureSlot(channel)->bind(&mSceneMap);
-    }
-
-
     // The march parameters (iteration count, ray step, biases, glossy samples, adaptive step)
     // are frame-constant and now ride in the ReflectionProbes block, uploaded once in
     // LLReflectionMapManager::updateUniforms(). noiseSine stays loose -- it advances per bind.
@@ -26961,14 +26922,6 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
         mPoissonOffset = 0;
 
     shader.uniform1f(LLShaderMgr::DEFERRED_SSR_NOISE_SINE, (GLfloat)mPoissonOffset);
-
-    channel = shader.enableTexture(LLShaderMgr::SCENE_DEPTH);
-    if (channel > -1)
-    {
-        gGL.getTextureSlot(channel)->bind(&mSceneMap, true);
-    }
-
-
 }
 
 void LLPipeline::unbindReflectionProbes(LLGLSLShader& shader)

@@ -112,10 +112,7 @@ struct FinalizePolicyPipeline
     };
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture = std::make_unique<MetalWorldSimpleCapture>();
     std::unique_ptr<MetalWorldSimpleCapture> mMetalProbeWorldSimpleCapture;
-    // An unallocated real retained target makes the baseline clear body safe
-    // to execute without a device. Native history descriptors below are named
-    // CPU inputs; the separate GPU fixture owns actual clear/sample bytes.
-    LLRenderTarget mSceneMap;
+    ALRenderResourceInputs mResourceInputs;
     ALRenderResourcePlan mResourcePlan;
     LensDistortFit mLensDistortFit;
     bool mReferenceStillWanted = false;
@@ -148,6 +145,7 @@ struct FinalizePolicyPipeline
     bool wantsMetalScreenSpaceReflections() const;
     bool hasMetalScreenSpaceReflectionHistory() const;
     void clearSceneMap();
+    void reconcileNativeHistoryState(const ALRenderResourcePlan& plan, bool hdr, bool render_sized_recreated);
     bool metalScopeSourceCurrent(U32, U32) const;
     void updateNativeExposureReadiness();
     void resetExposureHistory();
@@ -400,7 +398,7 @@ TEST_CASE("Native SSR isolation retires warm history until a new ordinary public
     inputs.mWidth = 8; inputs.mHeight = 6;
     inputs.mSSR = inputs.mProbes = true;
     p.mResourcePlan = ALRenderResourcePlan::make(inputs);
-    REQUIRE(p.mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene));
+    REQUIRE(p.mResourcePlan.usesScreenSpaceReflections());
     FinalizeHistoryTexture color, depth;
     color.dimensions.width = depth.dimensions.width = 8;
     color.dimensions.height = depth.dimensions.height = 6;
@@ -564,4 +562,97 @@ TEST_CASE("Explicit native history reset invalidates both owners without changin
     CHECK(main.lens_flare_state_frame == std::numeric_limits<U32>::max());
     CHECK(main.reference_still_target.get() == held);
     CHECK(p.mReferenceStillWanted);
+}
+
+TEST_CASE("Native resource history invalidation preserves the original reconciliation event matrix",
+          "[native-finalize-policy][native-resource-history]")
+{
+    using Inputs = ALRenderResourceInputs;
+    using Plan = ALRenderResourcePlan;
+    Inputs ordinary; ordinary.mWidth = 96; ordinary.mHeight = 64;
+    ordinary.mSSR = ordinary.mProbes = true;
+    struct Event
+    {
+        const char* name;
+        Inputs before, after;
+        bool initial = false, recreated = false;
+        bool scene_reset = false, exposure_reset = false;
+    };
+    std::vector<Event> events;
+    const auto add = [&](const char* name, const auto& change, bool scene_reset,
+                         bool recreated = false)
+    {
+        Event event{name, ordinary, ordinary}; change(event);
+        event.recreated = recreated; event.scene_reset = scene_reset;
+        events.push_back(event);
+    };
+    const auto unchanged = [](Event&) {};
+    add("first resources", [](Event& e) { e.initial = e.exposure_reset = true; }, true);
+    add("first resources without SSR", [](Event& e)
+        { e.initial = e.exposure_reset = true; e.after.mSSR = false; }, false);
+    add("unchanged", unchanged, false);
+    add("width changes", [](Event& e) { e.after.mWidth += 16; }, true);
+    add("height changes", [](Event& e) { e.after.mHeight += 16; }, true);
+    add("resolution divisor changes applied size", [](Event& e) { e.after.mResolutionDivisor = 2; }, true);
+    add("resolution multiplier changes applied size", [](Event& e) { e.after.mResolutionMultiplier = .5f; }, true);
+    add("different raw dimensions preserve applied size", [](Event& e)
+        { e.after.mWidth *= 2; e.after.mHeight *= 2; e.after.mResolutionDivisor = 2; }, false);
+    add("integer division preserves applied size", [](Event& e)
+        { e.before.mResolutionDivisor = e.after.mResolutionDivisor = 3; ++e.after.mWidth; ++e.after.mHeight; }, false);
+    add("active divisor takes precedence over multiplier", [](Event& e)
+        { e.before.mResolutionDivisor = e.after.mResolutionDivisor = 2; e.after.mResolutionMultiplier = .5f; }, false);
+    // The old fixed exposure/flare descriptors did not change on HDR or resize.
+    // The separate existing HDR settings invalidation is not part of this event.
+    add("SSR storage HDR format changes", [](Event& e) { e.after.mHDR = false; }, true);
+    add("SSR storage depth format changes", [](Event& e) { e.after.mReverseZ = false; }, true);
+    add("shadow-only depth format does not change SSR", [](Event& e) { e.after.mShadowDepth32F = true; }, false);
+    add("GBuffer normal format does not change SSR", [](Event& e) { e.after.mGBufferNormHDR = false; }, false);
+    add("emissive attachment does not change SSR", [](Event& e) { e.after.mEmissive = false; }, false);
+    add("bloom setting does not change histories", [](Event& e) { e.after.mBloomMips = 7; }, false);
+    add("disable SSR", [](Event& e) { e.after.mSSR = false; }, false);
+    add("enable SSR", [](Event& e) { e.before.mSSR = false; }, true);
+    add("SSR without probes", [](Event& e)
+        { e.before.mProbes = e.after.mProbes = false; e.before.mSSR = false; }, false);
+    add("disable probes", [](Event& e) { e.after.mProbes = false; }, false);
+    add("enable probes", [](Event& e) { e.before.mProbes = false; }, true);
+    add("same-key render-sized recreation", unchanged, true, true);
+    add("render-sized recreation with SSR off", [](Event& e)
+        { e.before.mSSR = e.after.mSSR = false; }, false, true);
+    add("release and recreate", [](Event& e) { e.initial = e.exposure_reset = true; }, true);
+    for (const auto& event : events)
+    {
+        CAPTURE(event.name);
+        FinalizeCase f; auto& p = f.pipeline;
+        p.mResourceInputs = event.before;
+        p.mResourcePlan = event.initial ? Plan{} : Plan::make(event.before);
+        const Plan after = Plan::make(event.after);
+        if (!event.initial && event.before.mSSR != event.after.mSSR &&
+            event.before.mProbes == event.after.mProbes)
+        {
+            // Logical intent still changes when no retained storage does.
+            REQUIRE(Plan::changed(p.mResourcePlan, after).none());
+        }
+        auto& main = *p.mMetalWorldSimpleCapture;
+        p.mMetalProbeWorldSimpleCapture = std::make_unique<FinalizePolicyPipeline::MetalWorldSimpleCapture>();
+        auto& probe = *p.mMetalProbeWorldSimpleCapture;
+        for (auto* capture : {&main, &probe})
+        {
+            capture->impostor_ssr_history_target = std::make_unique<int>(1);
+            capture->exposure_target = std::make_unique<int>(2);
+        }
+        main.lens_flare_state_target = std::make_unique<int>(3);
+        p.mMetalExposureHistoryReady = p.mMetalLensFlareHistoryReady = true;
+        // Execute the actual native reconciliation policy with actual applied
+        // plan metadata. The named captures model owner presence, not a GPU.
+        p.reconcileNativeHistoryState(after, event.after.mHDR, event.recreated);
+        CHECK(!main.impostor_ssr_history_target == event.scene_reset);
+        CHECK(!probe.impostor_ssr_history_target == event.scene_reset);
+        CHECK(!main.exposure_target == event.exposure_reset);
+        CHECK(!probe.exposure_target == event.exposure_reset);
+        CHECK(!main.lens_flare_state_target == event.exposure_reset);
+        CHECK(p.mMetalExposureHistoryEpoch == (event.exposure_reset ? 8u : 7u));
+        CHECK(p.mMetalLensFlareHistoryEpoch == (event.exposure_reset ? 8u : 7u));
+        CHECK(p.mMetalExposureHistoryReady == !event.exposure_reset);
+        CHECK(p.mMetalLensFlareHistoryReady == !event.exposure_reset);
+    }
 }

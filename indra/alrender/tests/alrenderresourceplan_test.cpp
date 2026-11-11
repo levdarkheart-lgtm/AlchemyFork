@@ -302,7 +302,7 @@ namespace
             { "RenderReflectionsEnabled", no_change, [](Inputs& in) { in.mProbes = false; },
               [](const Plan& before) { return wanted(before, Plan::idsOf(Pack::Probe) | Plan::idsOf(Pack::Hero)); } },
             { "RenderScreenSpaceReflections", no_change, [](Inputs& in) { in.mSSR = true; },
-              [](const Plan&) { return of({ Id::SSRScene }); } },
+              nothing },
             { "RenderScreenSpaceReflections without probes", [](Inputs& in) { in.mProbes = false; },
               [](Inputs& in) { in.mSSR = true; }, nothing },
             { "RenderMirrors", no_change, [](Inputs& in) { in.mMirrors = false; },
@@ -919,30 +919,18 @@ namespace
         }
     }
 
-    TEST_CASE("alrenderresourceplan: the reflections' source keeps last frame's colour without its alpha, and its depth",
+    TEST_CASE("alrenderresourceplan: SSR intent is independent of retained target descriptions",
               "[alrenderresourceplan]")
     {
-        for (bool reverse_z : { false, true })
+        for (bool probes : { false, true })
         {
-            INFO("reverse-Z " << reverse_z);
-            Inputs in    = defaults();
-            in.mSSR      = true;
-            in.mReverseZ = reverse_z;
-            const Plan plan = Plan::make(in);
-            REQUIRE(plan.desc(Id::SSRScene));
-            const ALRenderTargetDesc& scene = *plan.desc(Id::SSRScene);
-
-            // The reflections read its colour alone, unsigned and float under HDR.
-            CHECK(scene.color[0] == (U32)GL_R11F_G11F_B10F);
-            CHECK(scene.color[1] == 0u);
-            // The scene's depth in its format, without the stencil.
-            CHECK(scene.depth == (reverse_z ? Depth::D32F : Depth::D24));
-            CHECK_FALSE(scene.stencil);
-            CHECK(!plan[Id::SSRScene].mDepthFrom);
-            // 8 B/px at the render size.
-            CHECK(LLRenderTarget::bytesFor(scene) == 8ull * scene.width * scene.height);
-            CHECK(scene.width == plan.desc(Id::MainScreen)->width);
-            CHECK(scene.height == plan.desc(Id::MainScreen)->height);
+            Inputs before = defaults(); before.mProbes = probes; before.mSSR = false;
+            Inputs after = before; after.mSSR = true;
+            const Plan off = Plan::make(before), on = Plan::make(after);
+            CHECK_FALSE(off.usesScreenSpaceReflections());
+            CHECK(on.usesScreenSpaceReflections() == probes);
+            CHECK(Plan::changed(off, on).none());
+            CHECK(Plan::changed(on, off).none());
         }
     }
 
@@ -1027,14 +1015,14 @@ namespace
 
         // The fixed-size targets, the capture packs and the textures never do, nor do the shadow maps: halving the
         // view would not make room for a square spot map sized from its width, nor for one with no size.
-        for (Id id : { Id::Preview, Id::DownRes, Id::Bake, Id::Exposure, Id::Glow0, Id::ProbeGBuffer,
+        for (Id id : { Id::Preview, Id::Bake, Id::Glow0, Id::ProbeGBuffer,
                        Id::ProbeSun0, Id::HeroGBuffer, Id::Noise, Id::SMAAArea, Id::MainSun0, Id::MainSun3,
                        Id::SpotShadow0, Id::SpotShadow1 })
         {
             INFO(Plan::name(id));
             CHECK(!Plan::drivesRenderSize(id));
         }
-        for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::MainPostPing, Id::SMAABlend, Id::SSRScene })
+        for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::MainPostPing, Id::SMAABlend })
         {
             INFO(Plan::name(id));
             CHECK(Plan::drivesRenderSize(id));
@@ -1062,8 +1050,7 @@ namespace
         CHECK(names(Plan::idsWhere(Plan::isTransient)) == names(transient));
 
         // What holds anything across frames, or between the phases of one, is built to keep.
-        for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::SSRScene, Id::Exposure, Id::ExposureLast, Id::LensFlareA,
-                       Id::MainSun0, Id::SpotShadow0, Id::DownRes, Id::Noise })
+        for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::MainSun0, Id::SpotShadow0, Id::Noise })
         {
             INFO(Plan::name(id));
             CHECK_FALSE(Plan::isTransient(id));
@@ -1243,7 +1230,6 @@ namespace
         CHECK(Plan::name(Id::HeroBloom6) == "hero.bloom.mip6");
         CHECK(Plan::name(Id::SpotShadow0) == "shadow.spot0");
         CHECK(Plan::name(Id::SMAAEdges) == "smaa.edges");
-        CHECK(Plan::name(Id::LensFlareB) == "lens.flare.b");
         CHECK(Plan::name(Id::SMAASample) == "smaa.sample");
 
         std::set<std::string_view> seen;

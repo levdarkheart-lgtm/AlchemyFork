@@ -81,12 +81,8 @@ public:
     static constexpr U32 BLOOM_MAX_MIPS = 7;
 
     // The fixed sizes, which the pipeline's passes read from here.
-    static constexpr U32 DOWNRES_SIZE = 1024;
     static constexpr U32 PREVIEW_SIZE = 512;
     static constexpr U32 GLOW_WIDTH = 512;
-    static constexpr U32 EXPOSURE_METER_WIDTH = 128;
-    static constexpr U32 EXPOSURE_METER_HEIGHT = 72;
-    static constexpr U32 EXPOSURE_HISTOGRAM_BINS = 64;
     static constexpr U32 NOISE_SIZE = 128;
 
     /// Every resource, each pack's in Slot order first. The names are the debugger labels (name()).
@@ -107,15 +103,11 @@ public:
         // The main view's own, at its render size.
         SpotShadow0, SpotShadow1,
         SMAAEdges, SMAABlend,
-        SSRScene,
 
         // Fixed in size.
         Glow0, Glow1, Glow2,
-        DownRes,
         Preview,
         Bake,
-        ExposureMeter, ExposureHistogram, Exposure, ExposureLast,
-        LensFlareA, LensFlareB,
 
         // Standalone textures of the pipeline's own rather than render targets.
         // Noise and TrueNoise are native Metal publications. SMAA keeps these
@@ -161,6 +153,10 @@ public:
     const std::optional<ALRenderTargetDesc>& desc(Id id) const { return mResources[(size_t)id].mDesc; }
     /// Whether some resource the plan wants is what `desc` describes, sharing no depth.
     bool describes(const ALRenderTargetDesc& desc) const;
+
+    /// Whether ordinary views trace the preceding native scene through reflection probes.
+    /// This is logical render intent, independent of retained target allocations.
+    bool usesScreenSpaceReflections() const { return mUsesScreenSpaceReflections; }
 
     /// The sun cascades @a pack renders, which are those it has maps for, from the first: SUN_CASCADES in the main view,
     /// CAPTURE_SUN_CASCADES in a capture unless a probe's renders them all, none without sun shadows.
@@ -246,6 +242,7 @@ private:
     Resource& at(Id id) { return mResources[(size_t)id]; }
 
     std::array<Resource, ID_COUNT> mResources{};
+    bool mUsesScreenSpaceReflections = false;
     std::optional<ProbeManager>    mReflectionProbes;
     std::optional<ProbeManager>    mHeroProbes;
 };

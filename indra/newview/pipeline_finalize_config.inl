@@ -506,23 +506,12 @@ void LLPipeline::clearSceneMap()
         capture->impostor_screen_space_reflections = {};
         capture->impostor_ssr_history_target.reset();
     }
-    if (mSceneMap.isComplete())
-    {
-        // The depth clear value is the reverse-Z latch's far plane. Clears obey
-        // the write masks, so both are opened for it.
-        LLGLSColorMask mask(true, true);
-        LLGLDepthTest depth(GL_TRUE, GL_TRUE);
-        mSceneMap.bindTarget();
-        gGL.setClearColor(LLColor4::transparent);
-        mSceneMap.clear();
-        mSceneMap.flush();
-    }
 }
 
 
 bool LLPipeline::wantsMetalScreenSpaceReflections() const
 {
-    return mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
+    return mResourcePlan.usesScreenSpaceReflections() &&
         !gCubeSnapshot && !sCutoutRender;
 }
 
@@ -553,4 +542,33 @@ bool LLPipeline::hasMetalScreenSpaceReflectionHistory() const
     }
 
     return true;
+}
+
+void LLPipeline::reconcileNativeHistoryState(
+    const ALRenderResourcePlan& plan, bool hdr, bool render_sized_recreated)
+{
+    using Id = ALRenderResourcePlan::Id;
+    const auto& before = mResourcePlan.desc(Id::MainGBuffer);
+    const auto& after = plan.desc(Id::MainGBuffer);
+    // The old SSR target rebuilt on enable, applied render size, HDR color
+    // format, depth format, or a render-sized retry/recreation. Its native
+    // replacement must forget that same preceding scene, even when all
+    // remaining physical descriptions compare equal on an SSR-only toggle.
+    if (plan.usesScreenSpaceReflections() &&
+        (!mResourcePlan.usesScreenSpaceReflections() || render_sized_recreated ||
+         !before || !after || before->width != after->width ||
+         before->height != after->height || before->depth != after->depth ||
+         mResourceInputs.mHDR != hdr))
+    {
+        clearSceneMap();
+    }
+    // Every applied plan has a main G-buffer description; releaseRenderTargets
+    // restores the empty plan. The old fixed exposure/flare descriptors built
+    // only on that first reconciliation or recreation, never on a resize.
+    // Existing explicit history resets (including HDR changes) stay with their
+    // callers; this adds no new setting- or render-size reset.
+    if (!before)
+    {
+        resetExposureHistory();
+    }
 }
