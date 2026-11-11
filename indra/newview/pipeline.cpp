@@ -19806,11 +19806,10 @@ void LLPipeline::releaseAllRenderResources()
         LLEnvironment::instance().releaseGLBuffers();
     }
 
-    // Spans of gGL's query pool, whose queries go with the context.
+    // Release outstanding native diagnostics with the rendering resources.
     mTerrainPrimitives.release();
     mWaterPrimitives.release();
     mWaterPatchPrimitives.release();
-    mAttachmentSpans.clear();
     mMetalAvatarProfileRequests.clear();
     mMetalAttachmentProfiles.clear();
 

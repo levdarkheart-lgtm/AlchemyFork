@@ -1918,8 +1918,6 @@ public:
     ALUniformBuffer             mDeferredUBO;
     bool                        mDeferredUBODirty{ true };
 
-    // The attachments profileAvatar() timed, with their spans of gGL's pool, until readAttachmentTimes() has them.
-    std::vector<std::pair<LLPointer<LLViewerObject>, ALQuerySpan>> mAttachmentSpans;
 #if LL_DARWIN
     struct MetalAvatarProfileRequest
     {

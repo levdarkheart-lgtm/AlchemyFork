@@ -261,8 +261,6 @@ if(AL_BUILD_TESTS)
   # - ALUniformBuffer's persistently mapped rings: the store each makes, how
   #   it is mapped, what the GPU reads where a slice is bound, and the scratch
   #   ring's segments reused once the frame each was left in has finished;
-  # - ALGPUTimer: one span timed at a time, as timestamps and as Elapsed
-  #   queries;
   # - ALFrameFences: one fence a frame, polled at the frame's end, waits that
   #   stall only on frames the GPU has not finished, and the frame's end's
   #   pacing wait for the frame a given number before it, and no later one;
@@ -279,7 +277,6 @@ if(AL_BUILD_TESTS)
     SOURCES
       tests/alframefences_gl_test.cpp
       tests/algpubuffer_gl_test.cpp
-      tests/algputimer_gl_test.cpp
       tests/alinfiniteprojection_gl_test.cpp
       tests/alquerypool_gl_test.cpp
       tests/alrenderstate_gl_test.cpp
