@@ -220,13 +220,13 @@ TEST_CASE("Native metadata hash includes original inputs and destruction clears 
     CHECK(ALMetalDevice::committedCommandBufferCount() == submissions);
 }
 
-TEST_CASE("Reserved native producer metadata retains its pre-removal enum alignment",
+TEST_CASE("Reserved native producer metadata keeps enum and name alignment",
           "[llrender][shader-lifecycle][shader-metadata]")
 {
     // This is CPU metadata only. The original GL suite asserted the water
     // patch ordering name at its reserved index; no graphics context is
-    // needed to preserve that producer contract. The immediate pre-removal
-    // source has 14 attributes and 506 uniforms (older 1eb44 had 547 uniforms
+    // needed to preserve that producer contract. The retained native table
+    // has 14 attributes and 503 uniforms (older 1eb44 had 547 uniforms
     // before displaced consumers were retired).
     NativeShaderScope scope;
     scope.initAttribsAndUniforms();
@@ -234,7 +234,12 @@ TEST_CASE("Reserved native producer metadata retains its pre-removal enum alignm
     CHECK(scope.mReservedAttribs.size() == LLVertexBuffer::TYPE_MAX);
     CHECK(scope.mReservedAttribs[LLVertexBuffer::TYPE_VERTEX] == "position");
     CHECK(scope.mReservedAttribs[LLVertexBuffer::TYPE_TEXTURE_INDEX] == "texture_index");
-    REQUIRE(scope.mReservedUniforms.size() == 506);
+    REQUIRE(scope.mReservedUniforms.size() == 503);
     CHECK(scope.mReservedUniforms.size() == LLShaderMgr::END_RESERVED_UNIFORMS);
+    CHECK(scope.mReservedUniforms[LLShaderMgr::ENVIRONMENT_MAP] == "environmentMap");
+    CHECK(scope.mReservedUniforms[LLShaderMgr::REFLECTION_PROBES] == "reflectionProbes");
+    CHECK(scope.mReservedUniforms[LLShaderMgr::DEFERRED_EMISSIVE] == "emissiveRect");
+    CHECK(scope.mReservedUniforms[LLShaderMgr::DEFERRED_NOISE] == "noiseMap");
+    CHECK(scope.mReservedUniforms[LLShaderMgr::SELECTION_SCENE_DEPTH] == "selection_scene_depth");
     CHECK(scope.mReservedUniforms[LLShaderMgr::WATER_PATCH_ORDER] == "waterPatchOrder");
 }

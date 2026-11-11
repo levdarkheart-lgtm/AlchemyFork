@@ -168,8 +168,6 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("bumpMap");
     mReservedUniforms.push_back("bumpMap2");
     mReservedUniforms.push_back("environmentMap");
-    mReservedUniforms.push_back("sceneMap");
-    mReservedUniforms.push_back("sceneDepth");
     mReservedUniforms.push_back("reflectionProbes");
     mReservedUniforms.push_back("shCoeffs");
     mReservedUniforms.push_back("heroProbes");
@@ -287,7 +285,6 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("diffuseRect");
     mReservedUniforms.push_back("specularRect");
     mReservedUniforms.push_back("emissiveRect");
-    mReservedUniforms.push_back("exposureMap");
     mReservedUniforms.push_back("noiseMap");
     mReservedUniforms.push_back("lightMap");
     mReservedUniforms.push_back("projectionMap");
