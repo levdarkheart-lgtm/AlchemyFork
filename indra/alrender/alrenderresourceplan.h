@@ -34,9 +34,9 @@
 
 /// What each of the pipeline's render resources is for a set of inputs: a description where the resource is wanted,
 /// nothing where it is not, and for a target that takes its depth from another, which. A pure function of the inputs;
-/// LLPipeline::reconcileResources makes persistent retained targets what the plan says, but for Metal-only shadow maps
-/// and phase-only descriptions (isTransient). Native shadow generation consumes descriptions directly; native
-/// transactions own their actual short-lived resources independently of these retained-plan identities.
+/// LLPipeline::reconcileResources makes persistent retained targets what the plan says, except for native shadow maps.
+/// Native shadow generation consumes their descriptions directly. Native post, preview and bake transactions own
+/// their short-lived resources independently of this plan.
 ///
 /// Three packs of targets render a view each (LLPipeline::RenderTargetPack): Main, the world view at the render size;
 /// Probe, a reflection probe's face at the probe resolution times its supersample; Hero, a mirror's face at the hero
@@ -59,55 +59,35 @@ public:
     {
         GBuffer,
         Screen,
-        PostPing,
-        PostPong,
         Sun0,
         Sun1,
         Sun2,
         Sun3,
-        Bloom0,
-        Bloom1,
-        Bloom2,
-        Bloom3,
-        Bloom4,
-        Bloom5,
-        Bloom6,
         COUNT
     };
 
     static constexpr U32 SUN_CASCADES = 4;
     /// A capture's sun cascades, unless a probe's renders them all (ALRenderResourceInputs::mProbeAllCascades).
     static constexpr U32 CAPTURE_SUN_CASCADES = 2;
-    static constexpr U32 BLOOM_MAX_MIPS = ALRenderResourceInputs::BLOOM_MAX_MIPS;
 
     // The fixed sizes, which the pipeline's passes read from here.
     static constexpr U32 PREVIEW_SIZE = 512;
-    static constexpr U32 GLOW_WIDTH = 512;
     static constexpr U32 NOISE_SIZE = 128;
 
     /// Every resource, each pack's in Slot order first. The names are the debugger labels (name()).
     enum class Id : U8
     {
-        MainGBuffer, MainScreen, MainPostPing, MainPostPong,
+        MainGBuffer, MainScreen,
         MainSun0, MainSun1, MainSun2, MainSun3,
-        MainBloom0, MainBloom1, MainBloom2, MainBloom3, MainBloom4, MainBloom5, MainBloom6,
 
-        ProbeGBuffer, ProbeScreen, ProbePostPing, ProbePostPong,
+        ProbeGBuffer, ProbeScreen,
         ProbeSun0, ProbeSun1, ProbeSun2, ProbeSun3,
-        ProbeBloom0, ProbeBloom1, ProbeBloom2, ProbeBloom3, ProbeBloom4, ProbeBloom5, ProbeBloom6,
 
-        HeroGBuffer, HeroScreen, HeroPostPing, HeroPostPong,
+        HeroGBuffer, HeroScreen,
         HeroSun0, HeroSun1, HeroSun2, HeroSun3,
-        HeroBloom0, HeroBloom1, HeroBloom2, HeroBloom3, HeroBloom4, HeroBloom5, HeroBloom6,
 
         // The main view's own, at its render size.
         SpotShadow0, SpotShadow1,
-        SMAAEdges, SMAABlend,
-
-        // Fixed in size.
-        Glow0, Glow1, Glow2,
-        Preview,
-        Bake,
 
         // Standalone textures of the pipeline's own rather than render targets.
         // Noise and TrueNoise are native Metal publications. SMAA keeps these
@@ -193,33 +173,22 @@ public:
 
     static constexpr Id inPack(Pack pack, Slot slot) { return (Id)((U32)pack * (U32)Slot::COUNT + (U32)slot); }
     static constexpr Id sunShadow(Pack pack, U32 cascade) { return inPack(pack, (Slot)((U32)Slot::Sun0 + cascade)); }
-    static constexpr Id bloomMip(Pack pack, U32 mip) { return inPack(pack, (Slot)((U32)Slot::Bloom0 + mip)); }
 
     /// The pack @a id is a target of, or nothing for the main view's own and the fixed ones.
     static std::optional<Pack> packOf(Id id);
     /// Its slot in its pack; only for a pack's targets.
     static Slot slotOf(Id id);
-    /// What debuggers call it: main.gbuffer, probe.shadow.sun1, shadow.spot0, smaa.edges, noise.
+    /// What debuggers call it: main.gbuffer, probe.shadow.sun1, shadow.spot0, noise.
     static std::string_view name(Id id);
     /// Whether it is sized from the main view's render size, so that a resize, a snapshot and a retry at a lower size
     /// rebuild it, and its failing to build halves that size.
     static bool followsRenderSize(Id id);
-    /// The render-sized description class excluding bloom and shadow maps.
-    /// Only failures of retained targets actually built by ensureResources drive a size retry;
-    /// phase-only descriptions (isTransient) are skipped and cannot contribute a failure.
+    /// The retained main-view targets whose allocation failure drives a render-size retry, excluding shadow maps.
     static bool drivesRenderSize(Id id);
     /// Whether it is a shadow map: a pack's sun cascade or one of the spot lights' pair.
     static bool isShadowMap(Id id);
     /// Whether it is a standalone texture of the pipeline's own rather than a render target.
     static bool isTexture(Id id);
-    /// Whether the retained allocator skips the phase-only identity, whose actual resources are owned by native
-    /// transactions: a target that lives for one phase of a frame, and holds nothing across frames. A
-    /// pack's bloom pyramid and post chain are, as are SMAA's edges and blend weights, the legacy glow, and the targets the UI previews and the
-    /// appearance bakes draw into.
-    static bool isTransient(Id id);
-    /// Whether only the GLTF material preview renders through it: the probe pack's post targets and bloom, which the
-    /// probes' captures never read, and which are planned only while a preview is alive.
-    static bool forMaterialPreview(Id id);
 
     /// Every id of @a pack.
     static IdSet idsOf(Pack pack);
@@ -246,9 +215,9 @@ private:
 static_assert(ALRenderResourcePlan::inPack(ALRenderResourcePlan::Pack::Probe, ALRenderResourcePlan::Slot::GBuffer) ==
                   ALRenderResourcePlan::Id::ProbeGBuffer,
               "the probe pack's ids follow the main pack's, in Slot order");
-static_assert(ALRenderResourcePlan::inPack(ALRenderResourcePlan::Pack::Hero, ALRenderResourcePlan::Slot::Bloom6) ==
-                  ALRenderResourcePlan::Id::HeroBloom6,
+static_assert(ALRenderResourcePlan::inPack(ALRenderResourcePlan::Pack::Hero, ALRenderResourcePlan::Slot::Sun3) ==
+                  ALRenderResourcePlan::Id::HeroSun3,
               "the hero pack's ids follow the probe pack's, in Slot order");
-static_assert(ALRenderResourcePlan::bloomMip(ALRenderResourcePlan::Pack::Hero, ALRenderResourcePlan::BLOOM_MAX_MIPS) ==
-                  ALRenderResourcePlan::Id::SpotShadow0,
+static_assert((U32)ALRenderResourcePlan::Id::HeroSun3 + 1 ==
+                  (U32)ALRenderResourcePlan::Id::SpotShadow0,
               "the main view's own ids follow the packs'");

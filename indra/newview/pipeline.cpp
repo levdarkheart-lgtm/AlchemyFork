@@ -50,7 +50,6 @@
 #include "llimagetga.h"
 #include "llimagewebp.h"
 #include "llaudioengine.h" // For debugging.
-#include "llavatarappearancedefines.h"
 #include "llerror.h"
 #include "llfocusmgr.h"
 #include "llviewercontrol.h"
@@ -18938,12 +18937,6 @@ LLRenderTarget* LLPipeline::resourceTarget(ALRenderResourcePlan::Id id)
     using Plan = ALRenderResourcePlan;
     using Slot = Plan::Slot;
 
-    // Phase-only descriptions are metadata; their actual native transactions own the targets.
-    if (Plan::isTransient(id))
-    {
-        return nullptr;
-    }
-
     if (const std::optional<Plan::Pack> pack = Plan::packOf(id))
     {
         RenderTargetPack& rt = *pack == Plan::Pack::Main ? mMainRT : (*pack == Plan::Pack::Probe ? mAuxillaryRT : mHeroProbeRT);
@@ -19033,7 +19026,7 @@ void LLPipeline::ensureResources(const ALRenderResourcePlan& plan, const ALRende
         {
             const Id              id       = (Id)i;
             const Plan::Resource& resource = plan[id];
-            if (!ids.test(i) || resource.mDepthFrom.has_value() != sharers || Plan::isTransient(id))
+            if (!ids.test(i) || resource.mDepthFrom.has_value() != sharers)
             {
                 continue;
             }
@@ -19189,8 +19182,6 @@ ALRenderResourceInputs LLPipeline::resourceInputsFromSettings(const ALShaderInpu
     in.mProbeSuperSample = ALRenderResourceInputs::probeSuperSample(gSavedSettings.getS32("ALProbeSuperSample"));
     in.mProbeAllCascades = gSavedSettings.getBOOL("AlchemyRenderProbeAllShadowCascades");
     in.mMirrors          = gSavedSettings.getBOOL("RenderMirrors");
-    // This Apple Silicon fork has no retained material-preview renderer.
-    in.mMaterialPreview  = false;
     in.mHeroResolution   = (U32)llmax(gSavedSettings.getS32("RenderHeroProbeResolution"), 1);
 
     in.mFSAAType          = gSavedSettings.getU32("RenderFSAAType");
@@ -19202,9 +19193,6 @@ ALRenderResourceInputs LLPipeline::resourceInputsFromSettings(const ALShaderInpu
     in.mGlowResolutionPow = gSavedSettings.getS32("RenderGlowResolutionPow");
     in.mGlowHDR           = gSavedSettings.getBOOL("RenderGlowHDR");
     in.mDeferredNoise     = gSavedSettings.getF32("RenderDeferredNoise");
-
-    in.mBakeWidth  = (U32)LLAvatarAppearanceDefines::SCRATCH_TEX_WIDTH;
-    in.mBakeHeight = (U32)LLAvatarAppearanceDefines::SCRATCH_TEX_HEIGHT;
 
     return in;
 }
@@ -19353,7 +19341,7 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
     changes.mGBufferFormats = before.color != after.color;
     changes.mDepthFormat    = before.depth != after.depth;
     changes.mHDR            = mResourceInputs.mHDR != inputs.mHDR;
-    changes.mProbePack      = (changed & Plan::idsOf(Plan::Pack::Probe) & ~Plan::idsWhere(Plan::forMaterialPreview)).any();
+    changes.mProbePack      = (changed & Plan::idsOf(Plan::Pack::Probe)).any();
     changes.mHeroPack       = (changed & Plan::idsOf(Plan::Pack::Hero)).any();
 
     mRequestedInputs = requested;

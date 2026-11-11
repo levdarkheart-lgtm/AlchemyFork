@@ -112,32 +112,6 @@ namespace
         return of({ Id::SpotShadow0, Id::SpotShadow1 });
     }
 
-    IdSet smaa_lookups(bool sample)
-    {
-        (void)sample;
-        return {};
-    }
-
-    IdSet smaa_intermediates()
-    {
-#if LL_DARWIN
-        return {};
-#else
-        return of({ Id::SMAAEdges, Id::SMAABlend });
-#endif
-    }
-
-    IdSet smaa_resources(bool sample)
-    {
-        return smaa_intermediates() | smaa_lookups(sample);
-    }
-
-    IdSet bloom(std::initializer_list<Pack> packs)
-    {
-        return in_packs(packs, { Slot::Bloom0, Slot::Bloom1, Slot::Bloom2, Slot::Bloom3, Slot::Bloom4, Slot::Bloom5,
-                                 Slot::Bloom6 });
-    }
-
     // Those of @a ids that @a plan wants.
     IdSet wanted(const Plan& plan, const IdSet& ids)
     {
@@ -147,11 +121,6 @@ namespace
     IdSet render_sized()
     {
         return Plan::idsWhere(Plan::followsRenderSize);
-    }
-
-    IdSet preview_targets()
-    {
-        return Plan::idsWhere(Plan::forMaterialPreview);
     }
 
     // A shadow map's edge as the shadow blur needs it: the size times its scale plus 16, to a multiple of 16.
@@ -184,76 +153,50 @@ namespace
             in.mHDR           = false;
             in.mGBufferNormHDR = false;
         };
-        const auto previewed = [](Inputs& in) { in.mMaterialPreview = true; };
 
         return {
             { "RenderFSAAType to FXAA", no_change, [](Inputs& in) { in.mFSAAType = 1; }, nothing },
             { "RenderFSAAType to SMAA", no_change, [](Inputs& in) { in.mFSAAType = 2; },
-              [](const Plan&) { return smaa_resources(false); } },
+              nothing },
             { "RenderFSAAType from SMAA to FXAA", [](Inputs& in) { in.mFSAAType = 2; },
               [](Inputs& in) { in.mFSAAType = 1; },
-              [](const Plan&) { return smaa_resources(false); } },
+              nothing },
             { "RenderSMAAUseStencil under SMAA", [](Inputs& in) { in.mFSAAType = 2; },
               [](Inputs& in) { in.mSMAAStencil = false; },
-              [](const Plan&) { return smaa_intermediates(); } },
+              nothing },
             { "RenderSMAAUseStencil without SMAA", no_change, [](Inputs& in) { in.mSMAAStencil = false; }, nothing },
             { "RenderSMAAUseSample under SMAA", [](Inputs& in) { in.mFSAAType = 2; },
               [](Inputs& in) { in.mSMAAUseSample = true; },
-              [](const Plan&) { return smaa_lookups(true) & ~smaa_lookups(false); } },
+              nothing },
             { "RenderSMAAUseSample without SMAA", no_change,
               [](Inputs& in) { in.mSMAAUseSample = true; }, nothing },
             { "RenderGlowResolutionPow under HDR", no_change, [](Inputs& in) { in.mGlowResolutionPow = 8; }, nothing },
             { "RenderGlowResolutionPow without HDR", hdr_off, [](Inputs& in) { in.mGlowResolutionPow = 8; },
-              [](const Plan&) { return of({ Id::Glow0, Id::Glow1, Id::Glow2 }); } },
+              nothing },
             { "RenderGlowHDR under HDR", no_change, [](Inputs& in) { in.mGlowHDR = true; }, nothing },
             { "RenderGlowHDR without HDR", hdr_off, [](Inputs& in) { in.mGlowHDR = true; },
-              [](const Plan&) { return of({ Id::Glow0, Id::Glow1, Id::Glow2 }); } },
+              nothing },
             { "RenderBloomMipCount", no_change, [](Inputs& in) { in.mBloomMips = 4; },
-              [](const Plan&) { return of({ Id::MainBloom4 }); } },
-            { "RenderBloomMipCount under a material preview", previewed, [](Inputs& in) { in.mBloomMips = 4; },
-              [](const Plan&) { return of({ Id::MainBloom4, Id::ProbeBloom4 }); } },
+              nothing },
             { "RenderBloomResolutionScale", no_change, [](Inputs& in) { in.mBloomScale = 2; },
-              [](const Plan& before) { return wanted(before, bloom({ Pack::Main })); } },
-            { "RenderBloomResolutionScale under a material preview", previewed, [](Inputs& in) { in.mBloomScale = 2; },
-              [](const Plan& before) { return wanted(before, bloom({ Pack::Main, Pack::Probe })); } },
+              nothing },
             { "RenderBloomHalation", no_change, [](Inputs& in) { in.mBloomHalation = true; },
-              [](const Plan& before) { return wanted(before, bloom({ Pack::Main })); } },
+              nothing },
             { "RenderEnableEmissiveBuffer", no_change, [](Inputs& in) { in.mEmissive = false; },
               [](const Plan&) { return of({ Id::MainGBuffer, Id::ProbeGBuffer, Id::HeroGBuffer }); } },
             { "RenderHDREnabled", no_change, hdr_off,
-              [](const Plan& before)
-              {
-                  return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::GBuffer }) |
-                         in_packs({ Pack::Main }, { Slot::PostPing, Slot::PostPong }) |
-                         wanted(before, bloom({ Pack::Main })) |
-                         of({ Id::Glow0, Id::Glow1, Id::Glow2 });
-              } },
-            { "RenderHDREnabled under a material preview", previewed, hdr_off,
-              [](const Plan& before)
-              {
-                  return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::GBuffer }) |
-                         in_packs({ Pack::Main, Pack::Probe }, { Slot::PostPing, Slot::PostPong }) |
-                         wanted(before, bloom({ Pack::Main, Pack::Probe })) |
-                         of({ Id::Glow0, Id::Glow1, Id::Glow2 });
-              } },
-            { "a retained material preview demanded", no_change, previewed,
-              [](const Plan&)
-              {
-                  return in_packs({ Pack::Probe }, { Slot::PostPing, Slot::PostPong }) |
-                         of({ Id::ProbeBloom0, Id::ProbeBloom1, Id::ProbeBloom2, Id::ProbeBloom3, Id::ProbeBloom4 });
-              } },
+              [](const Plan&) { return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::GBuffer }); } },
             { "AlchemyRenderReverseZ", no_change, [](Inputs& in) { in.mReverseZ = false; },
               [](const Plan& before)
               {
-                  return of({ Id::MainGBuffer, Id::ProbeGBuffer, Id::HeroGBuffer, Id::SpotShadow0, Id::SpotShadow1,
-                              Id::Preview }) |
+                  return of({ Id::MainGBuffer, Id::ProbeGBuffer, Id::HeroGBuffer, Id::SpotShadow0, Id::SpotShadow1 }) |
                          wanted(before, sun_shadows({ Pack::Main, Pack::Probe, Pack::Hero }));
               } },
             { "AlchemyRenderReverseZ over 32-bit shadows", [](Inputs& in) { in.mShadowDepth32F = true; },
               [](Inputs& in) { in.mReverseZ = false; },
               [](const Plan&)
               {
-                  return of({ Id::MainGBuffer, Id::ProbeGBuffer, Id::HeroGBuffer, Id::Preview });
+                  return of({ Id::MainGBuffer, Id::ProbeGBuffer, Id::HeroGBuffer });
               } },
             { "RenderShadowDetail 2 to 1", no_change, [](Inputs& in) { in.mShadowDetail = 1; },
               [](const Plan&) { return of({ Id::SpotShadow0, Id::SpotShadow1 }); } },
@@ -316,7 +259,6 @@ namespace
               [](const Plan& before) { return wanted(before, render_sized()); } },
             { "RenderResolutionDivisor", no_change, [](Inputs& in) { in.mResolutionDivisor = 2; },
               [](const Plan& before) { return wanted(before, render_sized()); } },
-            // The spot pair stays at its largest edge, which 2560 wide and 3840 wide both pass.
             { "RenderResolutionMultiplier", no_change, [](Inputs& in) { in.mResolutionMultiplier = 1.5f; },
               [](const Plan& before) { return wanted(before, render_sized()) & ~spot_shadows(); } },
             { "RenderResolutionMultiplier below the spot shadows' edge", no_change,
@@ -333,9 +275,7 @@ namespace
         };
     }
 
-    // The changes plan section 2.3a says must leave the probe and hero packs alone, other than the screen-only ones the
-    // rows already cover. The probe pack's post targets and bloom are the retained material preview's, there only while
-    // one is demanded, so with none bloom's settings leave the pack alone too.
+    // Changes to main-view geometry and native post policy leave the retained capture packs alone.
     std::vector<std::pair<const char*, std::function<void(Inputs&)>>> not_the_probes()
     {
         return {
@@ -615,13 +555,6 @@ namespace
               },
               0, 0, 0 },
             { "no probes", [](Inputs& in) { in.mProbes = false; }, 4, 0, 0 },
-            { "a material preview without probes",
-              [](Inputs& in)
-              {
-                  in.mProbes          = false;
-                  in.mMaterialPreview = true;
-              },
-              4, 0, 0 },
         };
 
         for (const Case& c : cases)
@@ -665,29 +598,6 @@ namespace
                 CHECK(names(changed & Plan::idsOf(Pack::Probe)) == "nothing");
                 CHECK(before.reflectionProbes() == after.reflectionProbes());
                 CHECK(before.heroProbes() == after.heroProbes());
-            }
-        }
-    }
-
-    TEST_CASE("alrenderresourceplan: bloom's settings change the material preview's bloom and no other probe target", "[alrenderresourceplan]")
-    {
-        const std::vector<std::pair<const char*, std::function<void(Inputs&)>>> changes = {
-            { "RenderBloomMipCount", [](Inputs& in) { in.mBloomMips = 3; } },
-            { "RenderBloomResolutionScale", [](Inputs& in) { in.mBloomScale = 1; } },
-            { "RenderBloomHalation", [](Inputs& in) { in.mBloomHalation = true; } },
-        };
-        for (const auto& [change, apply] : changes)
-        {
-            for (bool previewed : { true, false })
-            {
-                INFO(change << (previewed ? " under a material preview" : " with none"));
-                Inputs from           = defaults();
-                from.mMaterialPreview = previewed;
-                Inputs to             = from;
-                apply(to);
-                const IdSet changed = Plan::changed(Plan::make(from), Plan::make(to));
-                CHECK((changed & bloom({ Pack::Probe })).any() == previewed);
-                CHECK(names(changed & Plan::idsOf(Pack::Probe) & ~bloom({ Pack::Probe })) == "nothing");
             }
         }
     }
@@ -767,44 +677,18 @@ namespace
         }
     }
 
-    // What depth of field asks of describes() before it frees the last scale's blur: a description is the plan's where a
-    // resource it wants has it and shares no depth.
+    // An independent retained allocation matches; a color target borrowing depth does not.
     TEST_CASE("alrenderresourceplan: describes() knows the descriptions of the resources it wants", "[alrenderresourceplan]")
     {
         const Plan plan = Plan::make(defaults());
-        const ALRenderTargetDesc& bloom0 = *plan.desc(Plan::bloomMip(Pack::Main, 0));
-        CHECK(plan.describes(bloom0));
-        ALRenderTargetDesc smaller = bloom0;
+        const ALRenderTargetDesc& gbuffer = *plan.desc(Id::MainGBuffer);
+        CHECK(plan.describes(gbuffer));
+        ALRenderTargetDesc smaller = gbuffer;
         smaller.width /= 2;
         CHECK_FALSE(plan.describes(smaller));
         UNSCOPED_INFO("the screen shares the G-buffer's depth, so its colour alone is no resource's description");
         REQUIRE(plan[Id::MainScreen].mDepthFrom);
         CHECK_FALSE(plan.describes(*plan.desc(Id::MainScreen)));
-    }
-
-    TEST_CASE("alrenderresourceplan: a material preview keeps the probe pack and not the probes' own resources", "[alrenderresourceplan]")
-    {
-        Inputs off           = defaults();
-        off.mProbes          = false;
-        off.mMaterialPreview = true;
-        const Plan plan      = Plan::make(off);
-        for (Id id : { Id::ProbeGBuffer, Id::ProbeScreen, Id::ProbePostPing, Id::ProbeBloom0 })
-        {
-            INFO(Plan::name(id));
-            CHECK(plan.wants(id));
-        }
-        UNSCOPED_INFO("a preview draws without the sun's shadows or water");
-        CHECK(names(wanted(plan, sun_shadows({ Pack::Probe }))) == "nothing");
-        CHECK(!plan.reflectionProbes());
-        CHECK(names(wanted(plan, Plan::idsOf(Pack::Hero))) == "nothing");
-
-        // With probes on the pack is there already, and a preview adds the targets only it renders through.
-        Inputs on           = defaults();
-        Inputs on_previewed = on;
-        on_previewed.mMaterialPreview = true;
-        const Plan previewed = Plan::make(on_previewed);
-        CHECK(names(Plan::changed(Plan::make(on), previewed)) == names(wanted(previewed, preview_targets())));
-        CHECK(previewed.wants(Id::ProbePostPing));
     }
 
     TEST_CASE("alrenderresourceplan: the hero pack and its probes are there only with mirrors and probes both on", "[alrenderresourceplan]")
@@ -901,16 +785,10 @@ namespace
                     in.mSMAAUseSample = sample;
                     const Plan plan   = Plan::make(in);
 
-                    const bool wants_intermediates = fsaa == 2 &&
-                        smaa_intermediates().test((size_t)Id::SMAAEdges);
-                    CHECK(plan.wants(Id::SMAAEdges) == wants_intermediates);
-                    CHECK(plan.wants(Id::SMAABlend) == wants_intermediates);
-                    const bool wants_lookup =
-                        fsaa == 2 && smaa_lookups(sample).test((size_t)Id::SMAAArea);
                     for (Id table : { Id::SMAAArea, Id::SMAASearch, Id::SMAASample })
                     {
                         INFO(Plan::name(table));
-                        CHECK(plan.wants(table) == wants_lookup);
+                        CHECK_FALSE(plan.wants(table));
                     }
                 }
             }
@@ -929,33 +807,6 @@ namespace
             CHECK(on.usesScreenSpaceReflections() == probes);
             CHECK(Plan::changed(off, on).none());
             CHECK(Plan::changed(on, off).none());
-        }
-    }
-
-    TEST_CASE("alrenderresourceplan: only the main view and the material preview have post targets", "[alrenderresourceplan]")
-    {
-        for (bool hdr : { true, false })
-        {
-            for (bool previewed : { false, true })
-            {
-                INFO((hdr ? "under HDR" : "without HDR") <<
-                     (previewed ? ", a retained material preview demanded" : ", none"));
-                Inputs in           = defaults();
-                in.mHDR             = hdr;
-                in.mGBufferNormHDR  = hdr;
-                in.mMaterialPreview = previewed;
-                const Plan plan     = Plan::make(in);
-
-                const IdSet post = in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::PostPing, Slot::PostPong }) |
-                                   bloom({ Pack::Main, Pack::Probe, Pack::Hero });
-                CHECK(names(wanted(plan, post & Plan::idsOf(Pack::Hero))) == "nothing");
-                // The probes' captures never read the probe pack's: they are there for the preview alone.
-                CHECK(plan.wants(Id::ProbePostPing) == previewed);
-                CHECK(plan.wants(Id::ProbePostPong) == previewed);
-                CHECK(plan.wants(Id::ProbeBloom0) == (previewed && hdr));
-                CHECK(plan.wants(Id::MainPostPing));
-                CHECK(plan.wants(Id::MainPostPong));
-            }
         }
     }
 
@@ -1004,23 +855,19 @@ namespace
         {
             const Id id = (Id)i;
             INFO(Plan::name(id));
-            const std::optional<Pack> pack = Plan::packOf(id);
-            const bool bloom_mip = pack && Plan::slotOf(id) >= Slot::Bloom0;
-            // What the render size sizes, but the pyramid, which loses levels instead, and the shadow maps, which are
-            // left unbuilt.
-            CHECK(Plan::drivesRenderSize(id) == (Plan::followsRenderSize(id) && !bloom_mip && !shadow_maps.test(i)));
+            CHECK(Plan::drivesRenderSize(id) == (Plan::followsRenderSize(id) && !shadow_maps.test(i)));
         }
 
         // The fixed-size targets, the capture packs and the textures never do, nor do the shadow maps: halving the
         // view would not make room for a square spot map sized from its width, nor for one with no size.
-        for (Id id : { Id::Preview, Id::Bake, Id::Glow0, Id::ProbeGBuffer,
+        for (Id id : { Id::ProbeGBuffer,
                        Id::ProbeSun0, Id::HeroGBuffer, Id::Noise, Id::SMAAArea, Id::MainSun0, Id::MainSun3,
                        Id::SpotShadow0, Id::SpotShadow1 })
         {
             INFO(Plan::name(id));
             CHECK(!Plan::drivesRenderSize(id));
         }
-        for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::MainPostPing, Id::SMAABlend })
+        for (Id id : { Id::MainGBuffer, Id::MainScreen })
         {
             INFO(Plan::name(id));
             CHECK(Plan::drivesRenderSize(id));
@@ -1036,41 +883,6 @@ namespace
         // Every pack's sun cascades and the spot pair, and nothing else.
         CHECK(names(Plan::idsWhere(Plan::isShadowMap)) ==
               names(sun_shadows({ Pack::Main, Pack::Probe, Pack::Hero }) | of({ Id::SpotShadow0, Id::SpotShadow1 })));
-    }
-
-    TEST_CASE("alrenderresourceplan: the retained allocator skips native-owned phase descriptions", "[alrenderresourceplan]")
-    {
-        const IdSet transient = in_packs({ Pack::Main, Pack::Probe, Pack::Hero },
-                                         { Slot::PostPing, Slot::PostPong }) |
-                                bloom({ Pack::Main, Pack::Probe, Pack::Hero }) |
-                                of({ Id::SMAAEdges, Id::SMAABlend, Id::Glow0, Id::Glow1, Id::Glow2,
-                                     Id::Preview, Id::Bake });
-        CHECK(names(Plan::idsWhere(Plan::isTransient)) == names(transient));
-
-        // Persistent and native shadow/noise identities are not these skipped phase descriptions.
-        for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::MainSun0, Id::SpotShadow0, Id::Noise })
-        {
-            INFO(Plan::name(id));
-            CHECK_FALSE(Plan::isTransient(id));
-        }
-    }
-
-    TEST_CASE("alrenderresourceplan: preview and bake descriptions are independent",
-              "[alrenderresourceplan]")
-    {
-        // Neither shares a depth, nor has a depth shared: each is acquired alone, against nothing the reconcile builds.
-        const Plan plan = Plan::make(defaults());
-        for (Id id : { Id::Preview, Id::Bake })
-        {
-            INFO(Plan::name(id));
-            REQUIRE(plan.wants(id));
-            CHECK_FALSE(plan[id].mDepthFrom.has_value());
-        }
-        for (size_t i = 0; i < Plan::ID_COUNT; ++i)
-        {
-            const std::optional<Id> owner = plan[(Id)i].mDepthFrom;
-            CHECK_FALSE((owner == Id::Preview || owner == Id::Bake));
-        }
     }
 
     TEST_CASE("alrenderresourceplan: requested bloom shape preserves original scale clamps and one-texel stop",
@@ -1105,53 +917,12 @@ namespace
         }
     }
 
-    TEST_CASE("alrenderresourceplan: requested bloom descriptions retain main preview HDR and applied-size policy",
-              "[alrenderresourceplan][bloom-shape]")
-    {
-        for (bool hdr : {false, true}) for (bool preview : {false, true}) for (bool probes : {false, true})
-        {
-            CAPTURE(hdr, preview, probes);
-            Inputs in = defaults(); in.mWidth = 9; in.mHeight = 5;
-            in.mHDR = hdr; in.mMaterialPreview = preview; in.mProbes = probes;
-            in.mProbeResolution = 3; in.mProbeSuperSample = 3;
-            in.mBloomScale = 1; in.mBloomMips = 5;
-            const Plan plan = Plan::make(in);
-            for (const auto pack : {Pack::Main, Pack::Probe, Pack::Hero})
-            {
-                const bool requested = hdr && (pack == Pack::Main || (pack == Pack::Probe && preview));
-                U32 count = 0;
-                for (U32 mip = 0; mip < Plan::BLOOM_MAX_MIPS; ++mip)
-                {
-                    const auto& desc = plan.desc(Plan::bloomMip(pack, mip));
-                    CHECK(desc.has_value() == (requested && mip < 3));
-                    if (desc)
-                    {
-                        CHECK(desc->width == std::max(1u, 6u >> mip));
-                        CHECK(desc->height == std::max(1u, (pack == Pack::Main ? 3u : 6u) >> mip));
-                        ++count;
-                    }
-                }
-                CHECK(count == (requested ? 3u : 0u));
-            }
-        }
-        Inputs in = defaults(); in.mWidth = 9; in.mHeight = 5;
-        in.mResolutionDivisor = 2; in.mBloomScale = 1;
-        const Plan plan = Plan::make(in);
-        REQUIRE(plan.desc(Id::MainBloom0)); REQUIRE(plan.desc(Id::MainBloom1));
-        CHECK(plan.desc(Id::MainBloom0)->width == 3);
-        CHECK(plan.desc(Id::MainBloom0)->height == 1);
-        CHECK(plan.desc(Id::MainBloom1)->width == 1);
-        CHECK(plan.desc(Id::MainBloom1)->height == 1);
-        CHECK_FALSE(plan.wants(Id::MainBloom2));
-    }
-
     TEST_CASE("alrenderresourceplan: every resource has its own debugger label", "[alrenderresourceplan]")
     {
         CHECK(Plan::name(Id::MainGBuffer) == "main.gbuffer");
         CHECK(Plan::name(Id::ProbeSun1) == "probe.shadow.sun1");
-        CHECK(Plan::name(Id::HeroBloom6) == "hero.bloom.mip6");
+        CHECK(Plan::name(Id::HeroSun3) == "hero.shadow.sun3");
         CHECK(Plan::name(Id::SpotShadow0) == "shadow.spot0");
-        CHECK(Plan::name(Id::SMAAEdges) == "smaa.edges");
         CHECK(Plan::name(Id::SMAASample) == "smaa.sample");
 
         std::set<std::string_view> seen;

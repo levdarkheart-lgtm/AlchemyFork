@@ -25,6 +25,7 @@
 #include "linden_common.h"
 
 #include "../alrenderinputrequests.h"
+#include "../alrenderresourceplan.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -197,6 +198,51 @@ namespace
         const Application application = Application::make(false, shaders(), shaders(), resources(), requested);
         CHECK(application.mPrograms == Programs::Kept);
         CHECK(application.mReconcile);
+    }
+
+    TEST_CASE("alrenderapplication: native post policy publishes without a retained descriptor change",
+              "[alrenderinputrequests]")
+    {
+        using Inputs = ALRenderResourceInputs;
+        struct Change
+        {
+            const char* name;
+            void (*apply)(Inputs&);
+        };
+        const Change changes[] = {
+            { "FXAA", [](Inputs& in) { in.mFSAAType = 1; } },
+            { "SMAA stencil", [](Inputs& in) { in.mSMAAStencil = false; } },
+            { "SMAA alternate source", [](Inputs& in) { in.mSMAAUseSample = true; } },
+            { "bloom mip count", [](Inputs& in) { in.mBloomMips = 7; } },
+            { "bloom scale", [](Inputs& in) { in.mBloomScale = 2; } },
+            { "halation", [](Inputs& in) { in.mBloomHalation = true; } },
+            { "glow resolution", [](Inputs& in) { in.mGlowResolutionPow = 8; } },
+            { "glow format", [](Inputs& in) { in.mGlowHDR = true; } },
+            { "SSAO", [](Inputs& in) { in.mSSAO = false; } },
+            { "SSR", [](Inputs& in) { in.mSSR = true; } },
+        };
+        for (bool hdr : { false, true })
+        {
+            for (const Change& change : changes)
+            {
+                CAPTURE(hdr, change.name);
+                Inputs published = resources();
+                published.mHDR = hdr;
+                published.mFSAAType = 2;
+                Inputs requested = published;
+                change.apply(requested);
+                CHECK_FALSE(requested == published);
+                CHECK(ALRenderResourcePlan::changed(ALRenderResourcePlan::make(published),
+                                                    ALRenderResourcePlan::make(requested)).none());
+                const Application application = Application::make(false, shaders(), shaders(), published, requested);
+                CHECK(application.mReconcile);
+                CHECK(application.mPrograms == Programs::Kept);
+                CHECK_FALSE(application.idle());
+                // Reconciliation publishes the complete requested inputs, not only changed descriptions.
+                published = requested;
+                CHECK(Application::make(false, shaders(), shaders(), published, requested).idle());
+            }
+        }
     }
 
     TEST_CASE("alrenderapplication: the depth convention reloads the programs, then reconciles", "[alrenderinputrequests]")

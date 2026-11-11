@@ -48,24 +48,16 @@ namespace
 
     // Each pack's slot names under its own prefix, laid out as Id lays the packs out.
     constexpr std::string_view PACK_NAMES[(size_t)Pack::COUNT][(size_t)Slot::COUNT] = {
-        { "main.gbuffer", "main.screen", "main.post.ping", "main.post.pong", "main.shadow.sun0",
-          "main.shadow.sun1", "main.shadow.sun2", "main.shadow.sun3", "main.bloom.mip0", "main.bloom.mip1",
-          "main.bloom.mip2", "main.bloom.mip3", "main.bloom.mip4", "main.bloom.mip5", "main.bloom.mip6" },
-        { "probe.gbuffer", "probe.screen", "probe.post.ping", "probe.post.pong", "probe.shadow.sun0",
-          "probe.shadow.sun1", "probe.shadow.sun2", "probe.shadow.sun3", "probe.bloom.mip0", "probe.bloom.mip1",
-          "probe.bloom.mip2", "probe.bloom.mip3", "probe.bloom.mip4", "probe.bloom.mip5", "probe.bloom.mip6" },
-        { "hero.gbuffer", "hero.screen", "hero.post.ping", "hero.post.pong", "hero.shadow.sun0",
-          "hero.shadow.sun1", "hero.shadow.sun2", "hero.shadow.sun3", "hero.bloom.mip0", "hero.bloom.mip1",
-          "hero.bloom.mip2", "hero.bloom.mip3", "hero.bloom.mip4", "hero.bloom.mip5", "hero.bloom.mip6" },
+        { "main.gbuffer", "main.screen", "main.shadow.sun0", "main.shadow.sun1", "main.shadow.sun2", "main.shadow.sun3" },
+        { "probe.gbuffer", "probe.screen", "probe.shadow.sun0", "probe.shadow.sun1", "probe.shadow.sun2", "probe.shadow.sun3" },
+        { "hero.gbuffer", "hero.screen", "hero.shadow.sun0", "hero.shadow.sun1", "hero.shadow.sun2", "hero.shadow.sun3" },
     };
 
     constexpr size_t PACK_IDS = (size_t)Pack::COUNT * (size_t)Slot::COUNT;
 
     // Everything after the packs, in Id order.
     constexpr std::string_view OWN_NAMES[Plan::ID_COUNT - PACK_IDS] = {
-        "shadow.spot0", "shadow.spot1", "smaa.edges", "smaa.blend",
-        "glow0", "glow1", "glow2", "preview", "bake", "noise", "noise.true", "smaa.area", "smaa.search",
-        "smaa.sample",
+        "shadow.spot0", "shadow.spot1", "noise", "noise.true", "smaa.area", "smaa.search", "smaa.sample",
     };
 
     static_assert(OWN_NAMES[(size_t)Id::SMAASample - PACK_IDS] == "smaa.sample", "a name for every id after the packs");
@@ -86,9 +78,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     const Depth main_depth   = in.mReverseZ ? Depth::D32F : Depth::D24;
     const Depth shadow_depth = (in.mShadowDepth32F || in.mReverseZ) ? Depth::D32F : Depth::D24;
 
-    // The tonemapped image the post chain carries.
-    const U32 post_format = hdr ? GL_RGB10_A2 : GL_RGBA8;
-
     // Albedo, ORM or specular, the normal and the emissive. The normal's layout is the one the programs were compiled
     // against (GBUFFER_NORM_HDR), which setShaders latches from RenderHDREnabled before it compiles; nothing compiles
     // against the emissive's, which follows HDR as the other HDR targets do. R11F_G11F_B10F rather than RGB16F, which
@@ -100,11 +89,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         in.mEmissive ? (hdr ? (U32)GL_R11F_G11F_B10F : (U32)GL_RGB8) : 0u
     };
 
-    // The HDR bloom pyramid's base is the pack's size times one of five fractions, each level half the one before, to a
-    // single texel at most. Halation carries its warmth in alpha, which needs RGBA16F; without it the pyramid takes the
-    // half-bandwidth R11F_G11F_B10F.
-    const U32 bloom_format = in.mBloomHalation ? GL_RGBA16F : GL_R11F_G11F_B10F;
-
     struct PackShape
     {
         U32  width;
@@ -112,7 +96,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         U32  shadow_width;
         U32  shadow_height;
         U32  sun_cascades;
-        bool post;
     };
 
     const auto plan_pack = [&](Pack pack, const PackShape& shape)
@@ -127,25 +110,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         plan.at(inPack(pack, Slot::Screen)) = {
             ALRenderTargetDesc{ .width = shape.width, .height = shape.height, .color = { GL_RGBA16F } }, gbuffer
         };
-        if (shape.post)
-        {
-            const ALRenderTargetDesc post{ .width = shape.width, .height = shape.height, .color = { post_format } };
-            plan.at(inPack(pack, Slot::PostPing)).mDesc = post;
-            plan.at(inPack(pack, Slot::PostPong)).mDesc = post;
-
-            if (hdr)
-            {
-                const auto shape_requested = in.bloomShape(shape.width, shape.height);
-                for (U32 mip = 0; mip < shape_requested.mMipCount; ++mip)
-                {
-                    const U32 width = std::max(1u, shape_requested.mWidth >> mip);
-                    const U32 height = std::max(1u, shape_requested.mHeight >> mip);
-                    plan.at(bloomMip(pack, mip)).mDesc =
-                        ALRenderTargetDesc{ .width = width, .height = height, .color = { bloom_format } };
-                }
-            }
-        }
-
         if (in.mShadowDetail > 0)
         {
             for (U32 cascade = 0; cascade < shape.sun_cascades; ++cascade)
@@ -165,23 +129,20 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     height = std::max(height, 1u);
     const F32 shadow_scale = std::max(0.f, in.mShadowScale);
     plan_pack(Pack::Main, { width, height, blur_happy_size(width, shadow_scale), blur_happy_size(height, shadow_scale),
-                            SUN_CASCADES, true });
+                            SUN_CASCADES });
 
     // A probe face renders at the probe resolution times its supersample, which the manager downsamples to its probe,
     // and its shadow maps at the size the full supersample of four gave them: a coarser capture is no reason for coarser
     // shadows in it. A capture renders two sun cascades, or a probe's all four where AlchemyRenderProbeAllShadowCascades
-    // asks (generateSunShadow), and has maps for those alone. Its post targets and bloom are the GLTF material preview's,
-    // which the probes' captures never read, so they are there only while a retained preview fallback needs them. The
-    // pack is there while probes are on or a retained preview is demanded, and the manager's own resources while probes
-    // are. A preview draws without sun shadows or water (LLGLTFPreviewTexture::render). The native water and light-map
-    // transactions own no resource in this retained GL plan.
-    if (in.mProbes || in.mMaterialPreview)
+    // asks (generateSunShadow), and has maps for those alone. The native material-preview, water and light-map
+    // transactions own their resources independently of this plan.
+    if (in.mProbes)
     {
         const U32 probe_size     = in.mProbeResolution * in.mProbeSuperSample;
         const U32 probe_shadow   = blur_happy_size(in.mProbeResolution * 4, 1.f);
-        const U32 probe_cascades = !in.mProbes ? 0 : in.mProbeAllCascades ? SUN_CASCADES : CAPTURE_SUN_CASCADES;
+        const U32 probe_cascades = in.mProbeAllCascades ? SUN_CASCADES : CAPTURE_SUN_CASCADES;
         plan_pack(Pack::Probe,
-                  { probe_size, probe_size, probe_shadow, probe_shadow, probe_cascades, in.mMaterialPreview });
+                  { probe_size, probe_size, probe_shadow, probe_shadow, probe_cascades });
     }
     if (in.mProbes)
     {
@@ -198,7 +159,7 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         const U32 hero_size   = std::max(in.mHeroResolution, 1u);
         const U32 hero_shadow = blur_happy_size(hero_size, 1.f);
         plan_pack(Pack::Hero,
-                  { hero_size, hero_size, hero_shadow, hero_shadow, CAPTURE_SUN_CASCADES, false });
+                  { hero_size, hero_size, hero_shadow, hero_shadow, CAPTURE_SUN_CASCADES });
         plan.mHeroProbes = ProbeManager{ .mResolution = hero_size, .mSuperSample = 1, .mHDR = hdr };
     }
 
@@ -215,45 +176,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
             plan.at(id).mDesc = ALRenderTargetDesc{ .width = spot, .height = spot, .depth = shadow_depth };
         }
     }
-
-    // SMAA's retained GL edges and blend weights. Darwin's complete transaction
-    // owns private Metal intermediates and never acquires these transient GL
-    // targets. Elsewhere RGBA8 is required whatever the post format: the
-    // neighbourhood blend reads the right edge's weight from alpha, which
-    // RGB10_A2 would leave four levels. The stencil the blend-weights pass skips
-    // non-edges by is a pure stencil carrier, never scene depth, so DEPTH24 even
-    // under reverse-Z.
-#if !LL_DARWIN
-    if (in.mFSAAType == 2)
-    {
-        plan.at(Id::SMAAEdges).mDesc = ALRenderTargetDesc{ .width   = width,
-                                                           .height  = height,
-                                                           .color   = { GL_RGBA8 },
-                                                           .depth   = in.mSMAAStencil ? Depth::D24 : Depth::None,
-                                                           .stencil = in.mSMAAStencil };
-        plan.at(Id::SMAABlend) = { ALRenderTargetDesc{ .width = width, .height = height, .color = { GL_RGBA8 } },
-                                   in.mSMAAStencil ? std::optional<Id>(Id::SMAAEdges) : std::nullopt };
-    }
-#endif
-
-    // The legacy glow, which HDR's bloom replaces.
-    if (!hdr)
-    {
-        const U32 glow_height = 1u << std::clamp(in.mGlowResolutionPow, 0, 9);
-        for (Id id : { Id::Glow0, Id::Glow1, Id::Glow2 })
-        {
-            plan.at(id).mDesc = ALRenderTargetDesc{ .width  = GLOW_WIDTH,
-                                                    .height = glow_height,
-                                                    .color  = { in.mGlowHDR ? (U32)GL_RGBA16F : (U32)GL_RGBA8 } };
-        }
-    }
-
-    // The UI preview and appearance bake descriptions.
-    plan.at(Id::Preview).mDesc = ALRenderTargetDesc{ .width  = PREVIEW_SIZE,
-                                                     .height = PREVIEW_SIZE,
-                                                     .color  = { GL_SRGB8_ALPHA8 },
-                                                     .depth  = main_depth };
-    plan.at(Id::Bake).mDesc = ALRenderTargetDesc{ .width = in.mBakeWidth, .height = in.mBakeHeight, .color = { GL_RGBA8 } };
 
     plan.at(Id::Noise).mDesc     = ALRenderTargetDesc{ .color = { GL_RGB16F } };
     plan.at(Id::TrueNoise).mDesc = ALRenderTargetDesc{ .color = { GL_RGB16F } };
@@ -327,8 +249,6 @@ bool ALRenderResourcePlan::followsRenderSize(Id id)
     {
         case Id::SpotShadow0:
         case Id::SpotShadow1:
-        case Id::SMAAEdges:
-        case Id::SMAABlend:
             return true;
         default:
             return false;
@@ -338,12 +258,7 @@ bool ALRenderResourcePlan::followsRenderSize(Id id)
 // static
 bool ALRenderResourcePlan::drivesRenderSize(Id id)
 {
-    if (!followsRenderSize(id) || isShadowMap(id))
-    {
-        return false;
-    }
-    const std::optional<Pack> pack = packOf(id);
-    return !pack || slotOf(id) < Slot::Bloom0;
+    return followsRenderSize(id) && !isShadowMap(id);
 }
 
 // static
@@ -364,33 +279,10 @@ bool ALRenderResourcePlan::isTexture(Id id)
 }
 
 // static
-bool ALRenderResourcePlan::isTransient(Id id)
-{
-    if (packOf(id))
-    {
-        const Slot slot = slotOf(id);
-        return slot == Slot::PostPing || slot == Slot::PostPong || slot >= Slot::Bloom0;
-    }
-    return id == Id::SMAAEdges || id == Id::SMAABlend || id == Id::Glow0 || id == Id::Glow1 || id == Id::Glow2 ||
-           id == Id::Preview || id == Id::Bake;
-}
-
-// static
 bool ALRenderResourcePlan::describes(const ALRenderTargetDesc& desc) const
 {
     return std::any_of(mResources.begin(), mResources.end(),
                        [&desc](const Resource& resource) { return resource.mDesc == desc && !resource.mDepthFrom; });
-}
-
-// static
-bool ALRenderResourcePlan::forMaterialPreview(Id id)
-{
-    if (packOf(id) != Pack::Probe)
-    {
-        return false;
-    }
-    const Slot slot = slotOf(id);
-    return slot == Slot::PostPing || slot == Slot::PostPong || slot >= Slot::Bloom0;
 }
 
 // static
