@@ -258,17 +258,6 @@ const F32 ALPHA_BLEND_CUTOFF = 0.598f;
 const F32 DEFERRED_LIGHT_FALLOFF = 0.5f;
 const U32 DEFERRED_VB_MASK = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_TEXCOORD0 | LLVertexBuffer::MAP_TEXCOORD1;
 
-// The exposure meter. The grid's size is fixed so its cost does not grow with the window;
-// luminanceF.glsl box-filters each texel's patch of the scene whatever the patch's size. The
-// histogram's 64 bins span log2 luminance -16 to +12 (BINS in exposureHistogramV.glsl and
-// exposureF.glsl), and the exposure puts the metered mean at middle grey.
-constexpr U32 EXPOSURE_METER_WIDTH = ALRenderResourcePlan::EXPOSURE_METER_WIDTH;
-constexpr U32 EXPOSURE_METER_HEIGHT = ALRenderResourcePlan::EXPOSURE_METER_HEIGHT;
-constexpr U32 EXPOSURE_HISTOGRAM_BINS = ALRenderResourcePlan::EXPOSURE_HISTOGRAM_BINS;
-constexpr F32 EXPOSURE_HISTOGRAM_MIN_EV = -16.f;
-constexpr F32 EXPOSURE_HISTOGRAM_MAX_EV = 12.f;
-constexpr F32 EXPOSURE_KEY = 0.18f;
-
 extern S32 gBoxFrame;
 extern bool gDisplaySwapBuffers;
 extern bool gDebugGL;
@@ -1283,6 +1272,8 @@ static void describe_metal_gbuffer_draw_encoding(
 }
 #endif
 
+#include "pipeline_finalize_config.inl"
+
 LLPipeline::LLPipeline() :
     mBackfaceCull(false),
     mMatrixOpCount(0),
@@ -1341,7 +1332,6 @@ void LLPipeline::init()
             target->setLabel(ALRenderResourcePlan::name((ALRenderResourcePlan::Id)i));
         }
     }
-    mReferenceStill.setLabel("reference.still");
 
     gOctreeMaxCapacity = gSavedSettings.getU32("OctreeMaxNodeCapacity");
     gOctreeMinSize = gSavedSettings.getF32("OctreeMinimumNodeSize");
@@ -1435,24 +1425,6 @@ void LLPipeline::init()
         vert[2].set(3, 1, 0);
 
         mScreenTriangleVB->unmapBuffer();
-    }
-
-    {
-        // xy: the meter texel, z: 0 for its non-sky part, 1 for its sky
-        mExposureHistogramVB = new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX);
-        mExposureHistogramVB->allocateBuffer(EXPOSURE_METER_WIDTH * EXPOSURE_METER_HEIGHT * 2, 0);
-        LLStrider<LLVector3> vert;
-        mExposureHistogramVB->getVertexStrider(vert);
-        U32 i = 0;
-        for (U32 y = 0; y < EXPOSURE_METER_HEIGHT; ++y)
-        {
-            for (U32 x = 0; x < EXPOSURE_METER_WIDTH; ++x)
-            {
-                vert[i++].set((F32)x, (F32)y, 0.f);
-                vert[i++].set((F32)x, (F32)y, 1.f);
-            }
-        }
-        mExposureHistogramVB->unmapBuffer();
     }
 
     //
@@ -1554,8 +1526,8 @@ void LLPipeline::init()
     gSavedSettings.getControl("RenderColorGrade")->getCommitSignal()->connect(boost::bind(&LLPipeline::setupGradingLUT, this));
     gSavedSettings.getControl("RenderColorGradeLUT")->getCommitSignal()->connect(boost::bind(&LLPipeline::setupGradingLUT, this));
 
-    // Tone curve: a commit only marks the lookup row dirty. The bake itself
-    // runs from colorCorrect -- see bakeToneCurveLut for why not here.
+    // Tone curve: a commit marks the lookup row dirty. Native preflight or
+    // frame finalization coalesces and publishes it once before its consumer.
     for (S32 c = 0; c < ALToneCurveSet::CH_COUNT; ++c)
     {
         cntrl_ptr = gSavedSettings.getControl(ALToneCurveSet::settingName(static_cast<ALToneCurveSet::EChannel>(c)));
@@ -2609,7 +2581,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     // Native scope eligibility consumes the baked curve state. Resolve a dirty
-    // curve before its exactness census; colorCorrect also ensures publication
+    // curve before its exactness census; finalization also ensures publication
     // on frames with no capture. The upload is a native Metal transaction.
     if (mToneCurveLutDirty)
     {
@@ -9463,8 +9435,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const DepthOfFieldConfig dof = depthOfFieldConfig();
             const bool cutout_snapshot =
                 sCutoutRender && mMetalWorldSnapshotRequested;
-            const bool wants_native_dof = capture.hdr && dof.enabled &&
-                !cutout_snapshot && isMainWorldPass() && mRT == &mMainRT;
+            const bool wants_native_dof = wantsMetalDepthOfField(dof);
             bool exact_dof = !wants_native_dof;
             const ALMetalRenderTarget* post_source = target.get();
             capture.depth_of_field_frame = gFrameCount;
@@ -9533,7 +9504,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 
             // Display transfer and bloom suppression follow the effective
             // EEP probe ambiance, independently of the surface-lighting
-            // classic-mode permutation (colorCorrect/generateBloomHDR).
+            // classic-mode surface-lighting variant.
             static LLCachedControl<bool> auto_adjust(
                 gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
             static LLCachedControl<bool> build_no_post(
@@ -10391,49 +10362,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.display_post_frame = gFrameCount;
                         display_post_available = true;
 
-                        const ALMetalRenderTargetDescriptor& display_desc =
-                            capture.display_post_target->descriptor();
-                        if (capture.reference_still_target)
-                        {
-                            const ALMetalRenderTargetDescriptor& still_desc =
-                                capture.reference_still_target->descriptor();
-                            if (still_desc.width != display_desc.width ||
-                                still_desc.height != display_desc.height ||
-                                still_desc.colors[0].format !=
-                                    display_desc.colors[0].format)
-                            {
-                                capture.reference_still_target.reset();
-                            }
-                        }
-
-                        // Freeze the same post-AA/CAS source as the GL
-                        // captureReferenceStill boundary. Keep the request
-                        // set for GL while it remains authoritative; the
-                        // native copy publishes only after this command
-                        // transaction commits.
-                        const bool wants_reference_capture =
-                            mReferenceStillWanted && !cutout_snapshot;
-                        if (wants_reference_capture)
-                        {
-                            // GL will replace its still later in this frame.
-                            // From this point the old native still can never
-                            // be an exact peer again, even if the new native
-                            // copy or the enclosing command batch fails.
-                            capture.reference_still_target.reset();
-                            std::string reference_error;
-                            pending_reference_still =
-                                capture.renderer->
-                                    capturePresentationReference(
-                                        *capture.display_post_target,
-                                        &reference_error);
-                            if (!pending_reference_still)
-                            {
-                                LL_WARNS("Metal")
-                                    << "Native presentation-reference "
-                                       "capture retained GL: "
-                                    << reference_error << LL_ENDL;
-                            }
-                        }
+                        // Stage the original pre-print/offscreen still. Its
+                        // request is one-shot; only a committed replacement
+                        // may retire the prior same-sized reference owner.
+                        pending_reference_still = captureReferenceStill(
+                            *capture.display_post_target);
 
                         // The display-post target is the same RGB10_A2 (HDR)
                         // or RGBA8 (non-HDR) source measured by the scopes.
@@ -10456,92 +10389,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         const bool suppress_effects =
                             suppressesLensAndPrintEffects();
                         bool exact_presentation =
-                            presentation.output_width != 0 && presentation.output_height != 0 &&
-                            (!wants_reference_capture ||
-                             static_cast<bool>(pending_reference_still));
+                            presentation.output_width != 0 && presentation.output_height != 0;
 
-                        static LLCachedControl<F32> distort_amount(
-                            gSavedSettings, "RenderLensDistortionAmount",
-                            0.f);
-                        static LLCachedControl<F32> distort_k1(
-                            gSavedSettings, "RenderLensDistortionK1", -0.2f);
-                        static LLCachedControl<F32> distort_k2(
-                            gSavedSettings, "RenderLensDistortionK2", 0.f);
-                        static LLCachedControl<F32> distort_squeeze(
-                            gSavedSettings, "RenderLensDistortionSqueeze",
-                            1.f);
-                        static LLCachedControl<S32> distort_fit(
-                            gSavedSettings, "RenderLensDistortionFit", 1);
-                        static LLCachedControl<LLVector3> distort_center(
-                            gSavedSettings, "RenderLensDistortionCenter",
-                            LLVector3::zero);
-                        static LLCachedControl<LLVector3> distort_tangential(
-                            gSavedSettings,
-                            "RenderLensDistortionTangential",
-                            LLVector3::zero);
-                        const F32 distortion = suppress_effects
-                            ? 0.f : llclamp(distort_amount(), 0.f, 1.f);
-                        presentation.lens_distortion_amount = distortion;
-                        if (distortion > 0.f)
-                        {
-                            const F32 k1 = llclamp(
-                                distort_k1(), -0.5f, 0.5f) * distortion;
-                            const F32 k2 = llclamp(
-                                distort_k2(), -0.25f, 0.25f) * distortion;
-                            const F32 p1 = llclamp(
-                                distort_tangential().mV[0], -0.05f, 0.05f) *
-                                distortion;
-                            const F32 p2 = llclamp(
-                                distort_tangential().mV[1], -0.05f, 0.05f) *
-                                distortion;
-                            const F32 cx = llclamp(
-                                distort_center().mV[0], -0.5f, 0.5f) *
-                                distortion;
-                            const F32 cy = llclamp(
-                                distort_center().mV[1], -0.5f, 0.5f) *
-                                distortion;
-                            const F32 squeeze = 1.f +
-                                (llclamp(distort_squeeze(), 0.5f, 2.5f) -
-                                 1.f) * distortion;
-                            const F32 width = static_cast<F32>(
-                                capture.display_post_target->descriptor().width);
-                            const F32 height = static_cast<F32>(
-                                capture.display_post_target->descriptor().height);
-                            const F32 aspect = width / llmax(height, 1.f);
-                            const F32 axis_x = llmax(aspect, 1.f);
-                            const F32 axis_y = llmax(
-                                1.f / llmax(aspect, 1e-4f), 1.f);
-                            const F32 sq_x = 1.f / squeeze;
-                            const S32 fit_mode = llclamp(
-                                distort_fit(), 0, 2);
-                            const LensDistortFit::Inputs inputs = {
-                                k1, k2, p1, p2, cx, cy,
-                                axis_x, axis_y, sq_x, fit_mode};
-
-                            // renderFinalize owns the bounded fit solve. A
-                            // setting change is allowed to make this first
-                            // native frame fail closed; the GL owner updates
-                            // the cache later in the same frame and the next
-                            // native frame consumes exactly that result.
-                            exact_presentation =
-                                inputs == mLensDistortFit.inputs;
-                            if (exact_presentation)
-                            {
-                                presentation.lens_distortion_k[0] = k1;
-                                presentation.lens_distortion_k[1] = k2;
-                                presentation.lens_distortion_scale =
-                                    mLensDistortFit.scale;
-                                presentation.lens_distortion_squeeze[0] =
-                                    sq_x;
-                                presentation.lens_distortion_squeeze[1] = 1.f;
-                                presentation.lens_distortion_center[0] = cx;
-                                presentation.lens_distortion_center[1] = cy;
-                                presentation.lens_distortion_tangential[0] =
-                                    p1;
-                                presentation.lens_distortion_tangential[1] =
-                                    p2;
-                            }
-                        }
+                        exact_presentation = exact_presentation &&
+                            configureMetalPresentationLens(presentation);
 
                         static LLCachedControl<F32> vignette_amount(
                             gSavedSettings, "RenderVignetteAmount", 0.f);
@@ -10683,8 +10534,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                     ? capture.reference_still_target->
                                         colorTexture(0)
                                     : nullptr;
-                        const bool have_reference =
-                            hasReferenceStill() || reference_texture;
+                        const bool have_reference = reference_texture != nullptr;
                         const S32 wipe_mode =
                             have_reference && !suppress_effects
                                 ? llclamp(reference_mode(), 0, 2) : 0;
@@ -10788,11 +10638,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     post_batch_active = false;
                     opaque_post_batch_active = false;
                 }
-                if (pending_reference_still)
-                {
-                    capture.reference_still_target =
-                        std::move(pending_reference_still);
-                }
+                // Standalone capture committed itself; a failed batch has
+                // already discarded pending. Final print/window availability
+                // is independent of the original pre-print reference grab.
+                publishReferenceStill(std::move(pending_reference_still));
                 if (final_presentation_available)
                 {
                     LL_INFOS_ONCE("Metal")
@@ -18933,7 +18782,6 @@ void LLPipeline::cleanup()
 
     mDeferredVB = NULL;
     mScreenTriangleVB = nullptr;
-    mExposureHistogramVB = nullptr;
 
     mCubeVB = NULL;
 
@@ -20051,9 +19899,8 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
             add(invalidated, "exposure and flare history");
         }
 
-        // The native lens-dirt owner rebuilds when its plate description
-        // changes; captureReferenceStill drops a still of another size and
-        // the scopes resize their sample without losing it.
+        // Native dirt rebuilds when its plate description changes; the post
+        // owner drops a still of another size and scopes resize their sample.
 #if LL_DARWIN
         if (changes.mMainSize && mMetalWorldSimpleCapture &&
             mMetalWorldSimpleCapture->lens_dirt_target)
@@ -20061,7 +19908,7 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
             add(invalidated, "lens dirt (next frame)");
         }
 #endif
-        if (changes.mMainSize && mReferenceStill.isComplete())
+        if (changes.mMainSize && hasReferenceStill())
         {
             add(invalidated, "reference still (next frame)");
         }
@@ -20237,40 +20084,7 @@ F32 lerpf(F32 a, F32 b, F32 w)
     return a + w * (b - a);
 }
 
-void LLPipeline::resetExposureHistory()
-{
-    // Scale 1 at EV 0: the first frame adapts from no exposure at all. Zero is the lens flare's history: no drive, no
-    // instability, no reference luminance.
-    if (mExposureMap.isComplete())
-    {
-        mExposureMap.bindTarget();
-        gGL.setClearColor(LLColor4::red);
-        mExposureMap.clear();
-        gGL.setClearColor(LLColor4::transparent);
-        mExposureMap.flush();
-    }
-    clearLensFlareState();
-#if LL_DARWIN
-    ++mMetalExposureHistoryEpoch;
-    if (mMetalExposureHistoryEpoch == 0)
-    {
-        ++mMetalExposureHistoryEpoch;
-    }
-    mMetalExposureHistoryReady = false;
-    for (const auto* capture_owner :
-         { &mMetalWorldSimpleCapture,
-           &mMetalProbeWorldSimpleCapture })
-    {
-        if (*capture_owner)
-        {
-            (*capture_owner)->exposure_target.reset();
-            (*capture_owner)->exposure_frame =
-                std::numeric_limits<U32>::max();
-            (*capture_owner)->exposure_epoch = 0;
-        }
-    }
-#endif
-}
+
 
 LLPipeline::LensDirtConfig LLPipeline::lensDirtConfig(
     bool world_frame) const
@@ -20576,7 +20390,7 @@ void LLPipeline::setupGradingLUT()
 }
 
 
-// Runs lazily on the way to native world capture, with colorCorrect ensuring
+// Runs lazily on the way to native world capture, with finalization ensuring
 // publication on frames with no capture, rather than from the settings signal.
 // Resource release drops the published texture and only a bake on a draw path
 // can refill it. A Look
@@ -25811,90 +25625,6 @@ void apply_cube_face_rotation(U32 face)
     }
 }
 
-void LLPipeline::requestScenePixel(S32 x, S32 y, scene_pixel_cb_t callback)
-{
-    if (!callback)
-    {
-        return;
-    }
-    mScenePixelX = x;
-    mScenePixelY = y;
-    mScenePixelCallback = std::move(callback);
-    mScenePixelPending = true;
-}
-
-void LLPipeline::serviceScenePixelProbe(LLRenderTarget* src)
-{
-    if (!mScenePixelPending || !src || gCubeSnapshot)
-    {
-        return;
-    }
-
-    // Cleared before the callback runs, not after: the callback is free to ask
-    // for another sample, and swallowing that request would make a tool that
-    // stays armed sample exactly once.
-    mScenePixelPending = false;
-    scene_pixel_cb_t callback;
-    callback.swap(mScenePixelCallback);
-
-    // The mouse arrives in scaled window coordinates; the buffer is in raw
-    // pixels, is only the world view rather than the whole window, and may be
-    // rendered at a fraction of that again under resolution scaling. All three
-    // conversions live in worldViewUV, in one place, because the scopes'
-    // cursor readout needs exactly the same walk -- and the first version of
-    // that one skipped the scaled-to-raw step, which is invisible on a machine
-    // where the two spaces happen to match.
-    F32 u = 0.f, v = 0.f;
-    if (!worldViewUV(mScenePixelX, mScenePixelY, u, v))
-    {
-        // Clicked outside the 3D view. Nothing there to sample.
-        return;
-    }
-
-#if LL_DARWIN
-    const S32 px = llclamp((S32)(u * (F32)src->getWidth()),
-                           0, (S32)src->getWidth() - 1);
-    const S32 py = llclamp((S32)(v * (F32)src->getHeight()),
-                           0, (S32)src->getHeight() - 1);
-    F32 texel[4] = { 0.f, 0.f, 0.f, 0.f };
-    if (mMetalWorldSimpleCapture &&
-        !mMetalHeroWorldCaptureActive &&
-        !mMetalReflectionWorldCaptureActive)
-    {
-        MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-        const ALMetalRenderTargetDescriptor* descriptor =
-            capture.opaque_post_deferred_target
-                ? &capture.opaque_post_deferred_target->descriptor()
-                : nullptr;
-        if (capture.renderer && descriptor &&
-            capture.continuous_world_frame == gFrameCount &&
-            descriptor->width == src->getWidth() &&
-            descriptor->height == src->getHeight())
-        {
-            // Native world vertices already flip clip-space Y so raw Metal
-            // storage row zero matches this GL target's lower-left row zero.
-            // The click's GL pixel coordinate therefore crosses unchanged.
-            std::string error;
-            if (capture.renderer->readSceneColorPixel(
-                    *capture.opaque_post_deferred_target,
-                    static_cast<U32>(px), static_cast<U32>(py), texel,
-                    &error))
-            {
-                callback(LLColor3(texel[0], texel[1], texel[2]));
-                return;
-            }
-            LL_WARNS("Metal")
-                << "Native scene-pixel readback failed; request dropped: "
-                << error << LL_ENDL;
-            return;
-        }
-    }
-    LL_WARNS("Metal")
-        << "Native scene-pixel source was not exact; request dropped"
-        << LL_ENDL;
-#endif
-}
-
 void LLPipeline::releaseScopeBuffers()
 {
 #if LL_DARWIN
@@ -25910,32 +25640,6 @@ void LLPipeline::releaseScopeBuffers()
     mScopeSampleHeight = 0;
     mScopeReadback.clear();
     mScopeData.clear();
-}
-
-// static
-bool LLPipeline::worldViewUV(S32 scaled_x, S32 scaled_y, F32& u, F32& v)
-{
-    // Everything here stays in scaled window space, and the answer comes out as
-    // a fraction of the world view -- which is all a buffer covering that view
-    // needs, whatever resolution it happens to be rendered at.
-    //
-    // The previous version converted the mouse to raw pixels by the *window's*
-    // raw/scaled ratio and then measured it against the *world view's* raw
-    // rect. Those are two different scalings, and mixing them leaves an error
-    // proportional to the distance from the origin: dead on in one corner and
-    // visibly adrift in the far one. Staying in one space cannot express that
-    // mistake. It is also what the viewer itself does when it asks whether the
-    // cursor is over the world (llviewerwindow.cpp, getWorldViewRectScaled
-    // against mCurrentMousePoint).
-    const LLRect world = gViewerWindow->getWorldViewRectScaled();
-    if (world.getWidth() <= 0 || world.getHeight() <= 0)
-    {
-        return false;
-    }
-
-    u = (F32)(scaled_x - world.mLeft)   / (F32)world.getWidth();
-    v = (F32)(scaled_y - world.mBottom) / (F32)world.getHeight();
-    return (u >= 0.f && u <= 1.f && v >= 0.f && v <= 1.f);
 }
 
 bool LLPipeline::getScopePixel(S32 scaled_x, S32 scaled_y, LLColor4U& out) const
@@ -25954,9 +25658,9 @@ bool LLPipeline::getScopePixel(S32 scaled_x, S32 scaled_y, LLColor4U& out) const
     }
 
     // The sample is a point decimation of the whole world view, so this is a
-    // plain rescale with no letterboxing or crop to undo. Row 0 is the bottom:
-    // glReadPixels fills bottom-up and the world rect counts y upwards too, so
-    // v == 0 is the bottom on both sides and there is no flip.
+    // plain rescale with no letterboxing or crop to undo. Native raw row zero
+    // retains the original lower-left orientation, so v == 0 is the bottom
+    // on both sides and there is no flip.
     const S32 sx = llclamp((S32)(u * (F32)width),  0, width  - 1);
     const S32 sy = llclamp((S32)(v * (F32)height), 0, height - 1);
 
@@ -25965,90 +25669,22 @@ bool LLPipeline::getScopePixel(S32 scaled_x, S32 scaled_y, LLColor4U& out) const
     return true;
 }
 
-void LLPipeline::clearReferenceStill()
+void LLPipeline::captureScopeSample()
 {
-    mReferenceStill.release();
-    mReferenceStillWanted = false;
-#if LL_DARWIN
-    if (mMetalWorldSimpleCapture)
-    {
-        mMetalWorldSimpleCapture->reference_still_target.reset();
-    }
-#endif
-}
-
-void LLPipeline::captureReferenceStill(LLRenderTarget* src)
-{
-    if (!src || gCubeSnapshot)
+    if (!sScopeCapture || gCubeSnapshot)
     {
         return;
     }
-
-    // A still taken at one resolution cannot honestly be compared against a
-    // frame at another: sampled by UV it would stretch, and a reference you
-    // cannot trust geometrically is worse than no reference at all. Drop it
-    // and let the user grab again -- which is what a resize does to every
-    // other full-resolution target here anyway.
-    const bool had_reference_still = mReferenceStill.getWidth() != 0;
-    if (mReferenceStill.getWidth() != src->getWidth() ||
-        mReferenceStill.getHeight() != src->getHeight())
-    {
-        mReferenceStill.release();
-#if LL_DARWIN
-        if (had_reference_still && mMetalWorldSimpleCapture)
-        {
-            const auto& native_still =
-                mMetalWorldSimpleCapture->reference_still_target;
-            if (native_still &&
-                (native_still->descriptor().width != src->getWidth() ||
-                 native_still->descriptor().height != src->getHeight()))
-            {
-                mMetalWorldSimpleCapture->reference_still_target.reset();
-            }
-        }
-#endif
-    }
-
-    if (!mReferenceStillWanted)
+    // This is the exact scaled geometry used by beginMetalWorldCapture,
+    // not the unscaled main viewport and not duplicate render-target storage.
+    // Keep collecting a prior readback even if this frame fails to publish.
+    const auto& planned = mResourcePlan.desc(ALRenderResourcePlan::Id::MainGBuffer);
+    if (!planned || planned->width == 0 || planned->height == 0)
     {
         return;
     }
-    mReferenceStillWanted = false;
-
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    LL_PROFILE_GPU_ZONE("reference still");
-
-    if (mReferenceStill.getWidth() == 0)
-    {
-        // GL_RGB10_A2 whether or not HDR is on. It is what the post chain uses
-        // in HDR and the same four bytes per pixel as the GL_RGBA8 it uses
-        // otherwise, so this copy is exact in the first case and lossless in
-        // the second, without having to track which one the source was.
-        if (!mReferenceStill.allocate(src->getWidth(), src->getHeight(), GL_RGB10_A2))
-        {
-            LL_WARNS("Pipeline") << "Could not allocate the reference still target." << LL_ENDL;
-            mReferenceStill.release();
-#if LL_DARWIN
-            if (mMetalWorldSimpleCapture)
-            {
-                mMetalWorldSimpleCapture->reference_still_target.reset();
-            }
-#endif
-            return;
-        }
-    }
-
-    mReferenceStill.copyContents(*src, 0, 0, src->getWidth(), src->getHeight(),
-                                 0, 0, mReferenceStill.getWidth(), mReferenceStill.getHeight(),
-                                 GL_COLOR_BUFFER_BIT, GL_NEAREST);
-}
-
-void LLPipeline::captureScopeSample(LLRenderTarget* src)
-{
-    if (!sScopeCapture || !src || gCubeSnapshot)
-    {
-        return;
-    }
+    const U32 source_width = planned->width;
+    const U32 source_height = planned->height;
 
     // Scopes are read, not watched. Sampling every frame would multiply the
     // cost by six for a display no one can follow that fast; hardware scopes
@@ -26066,7 +25702,7 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
 
     static LLCachedControl<S32> sample_width(gSavedSettings, "AlchemyScopeSampleWidth", 320);
     const S32 width = llclamp(sample_width(), 32, 1024);
-    const F32 aspect = (F32)llmax(1U, src->getHeight()) / (F32)llmax(1U, src->getWidth());
+    const F32 aspect = F32(source_height) / F32(source_width);
     const S32 height = llclamp(ll_round((F32)width * aspect), 16, 1024);
 
     if (mScopeSampleWidth != static_cast<U32>(width) ||
@@ -26136,15 +25772,7 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
     // published when a configured native DoF pass fails.
     MetalWorldSimpleCapture* metal_capture =
         mMetalWorldSimpleCapture.get();
-    const bool native_exact = metal_capture && metal_capture->renderer &&
-        metal_capture->device && metal_capture->display_post_target &&
-        metal_capture->display_post_frame == gFrameCount &&
-        metal_capture->depth_of_field_frame == gFrameCount &&
-        metal_capture->hdr && canCaptureMetalScopeSample(false) &&
-        metal_capture->display_post_target->descriptor().width ==
-            src->getWidth() &&
-        metal_capture->display_post_target->descriptor().height ==
-            src->getHeight();
+    const bool native_exact = metalScopeSourceCurrent(source_width, source_height);
     if (native_exact)
     {
         if (!mMetalScopeCaptures ||
@@ -26206,176 +25834,7 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
 #endif
 }
 
-void LLPipeline::generateLuminance(LLRenderTarget* src, LLRenderTarget* dst)
-{
-    // The exposure meter's grid (luminanceF.glsl), from the scene before bloom: metering a
-    // buffer the exposure already shaped would feed the exposure back into itself.
-    LL_PROFILE_GPU_ZONE("exposure meter grid");
 
-    dst->bindTarget();
-
-    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
-
-    gLuminanceProgram.bind();
-
-    S32 channel = gLuminanceProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
-    if (channel > -1)
-    {
-        src->bindTexture(0, channel, ALSamplers::BilinearClamp);
-    }
-
-    channel = gLuminanceProgram.enableTexture(LLShaderMgr::NORMAL_MAP);
-    if (channel > -1)
-    {
-        // the G-buffer normals carry the flags that mark the sky
-        mRT->deferredScreen.bindTexture(2, channel, ALSamplers::PointClamp);
-    }
-
-    // A bilinear tap averages a 2x2 block, so taps two texels apart cover a patch.
-    const F32 patch_w = (F32)src->getWidth() / (F32)dst->getWidth();
-    const F32 patch_h = (F32)src->getHeight() / (F32)dst->getHeight();
-    gLuminanceProgram.uniform4f(LLShaderMgr::METER_PARAMS, patch_w, patch_h,
-                                (F32)llmax(1, llceil(patch_w * 0.5f)), (F32)llmax(1, llceil(patch_h * 0.5f)));
-
-    mScreenTriangleVB->setBuffer();
-    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-    gLuminanceProgram.unbind();
-    dst->flush();
-}
-
-void LLPipeline::generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool use_history)
-{
-    LL_PROFILE_GPU_ZONE("exposure");
-
-    static LLCachedControl<bool> dynamic_exposure_enabled(gSavedSettings, "RenderDynamicExposureEnabled", true);
-    static LLCachedControl<F32> compensation(gSavedSettings, "AlchemyExposureCompensation", 0.f);
-    static LLCachedControl<F32> min_ev(gSavedSettings, "AlchemyExposureMinEV", -3.f);
-    static LLCachedControl<F32> max_ev(gSavedSettings, "AlchemyExposureMaxEV", 4.f);
-    static LLCachedControl<F32> low_percent(gSavedSettings, "AlchemyExposureLowPercent", 10.f);
-    static LLCachedControl<F32> high_percent(gSavedSettings, "AlchemyExposureHighPercent", 95.f);
-    static LLCachedControl<F32> speed_up(gSavedSettings, "AlchemyExposureSpeedUp", 3.f);
-    static LLCachedControl<F32> speed_down(gSavedSettings, "AlchemyExposureSpeedDown", 1.f);
-    static LLCachedControl<U32> metering_mode(gSavedSettings, "AlchemyExposureMeteringMode", 1);
-    static LLCachedControl<F32> sky_weight(gSavedSettings, "AlchemyExposureSkyWeight", 1.f);
-
-    // A classic sky reproduces pre-PBR lighting, which assumed a fixed exposure.
-    const bool meter = dynamic_exposure_enabled && !LLRender::sClassicMode;
-
-    if (meter)
-    {
-        // The histogram (exposureHistogramV.glsl): the meter grid's points, summed per bin.
-        LL_PROFILE_GPU_ZONE("exposure histogram");
-
-        mExposureHistogram.bindTarget();
-        mExposureHistogram.clear();
-
-        LLGLDepthTest depth(GL_FALSE, GL_FALSE);
-        LLGLEnable blend(GL_BLEND);
-        gGL.setSceneBlendType(LLRender::BT_ADD);
-
-        gExposureHistogramProgram.bind();
-        S32 channel = gExposureHistogramProgram.enableTexture(LLShaderMgr::METER_MAP);
-        if (channel > -1)
-        {
-            src->bindTexture(0, channel, ALSamplers::PointClamp);
-        }
-
-        const F32 bins_per_ev = (F32)EXPOSURE_HISTOGRAM_BINS / (EXPOSURE_HISTOGRAM_MAX_EV - EXPOSURE_HISTOGRAM_MIN_EV);
-        gExposureHistogramProgram.uniform4f(LLShaderMgr::METER_PARAMS, (F32)metering_mode(), llmax(sky_weight(), 0.f),
-                                            EXPOSURE_HISTOGRAM_MIN_EV, bins_per_ev);
-
-        mExposureHistogramVB->setBuffer();
-        mExposureHistogramVB->drawArrays(LLRender::POINTS, 0, mExposureHistogramVB->getNumVerts());
-
-        gExposureHistogramProgram.unbind();
-        gGL.setSceneBlendType(LLRender::BT_ALPHA);
-        mExposureHistogram.flush();
-    }
-
-    if (use_history && dst->isComplete() && mLastExposure.isComplete())
-    {
-        // Last frame's exposure, which this one adapts from, is what the target holds: the two trade their storage, and
-        // this frame's is drawn whole into what was the frame before's.
-        dst->swapFBORefs(mLastExposure);
-    }
-
-    dst->bindTarget();
-
-    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
-
-    LLGLSLShader* shader = use_history ? &gExposureProgram : &gExposureProgramNoFade;
-    shader->bind();
-
-    S32 channel = shader->enableTexture(LLShaderMgr::EXPOSURE_HISTOGRAM);
-    if (channel > -1)
-    {
-        mExposureHistogram.bindTexture(0, channel, ALSamplers::PointClamp);
-    }
-
-    S32 history_channel = -1;
-    if (use_history)
-    {
-        history_channel = shader->enableTexture(LLShaderMgr::EXPOSURE_MAP);
-        if (history_channel > -1)
-        {
-            mLastExposure.bindTexture(0, history_channel);
-        }
-    }
-
-    // At least a percent of the weight between the trims, or nothing would be kept.
-    const F32 low = llclamp(low_percent() * 0.01f, 0.f, 0.99f);
-    const F32 high = llclamp(high_percent() * 0.01f, low + 0.01f, 1.f);
-    shader->uniform1f(LLShaderMgr::DT, gFrameIntervalSeconds);
-    shader->uniform4f(LLShaderMgr::DYNAMIC_EXPOSURE_PARAMS, log2f(EXPOSURE_KEY) + compensation(), llmin(min_ev(), max_ev()),
-                      llmax(min_ev(), max_ev()), meter ? 1.f : 0.f);
-    shader->uniform4f(LLShaderMgr::DYNAMIC_EXPOSURE_PARAMS2, low, high, llmax(speed_up(), 0.f), llmax(speed_down(), 0.f));
-
-    mScreenTriangleVB->setBuffer();
-    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-    if (history_channel > -1)
-    {
-        gGL.getTextureSlot(history_channel)->unbind();
-    }
-    shader->unbind();
-    dst->flush();
-#if LL_DARWIN
-    MetalWorldSimpleCapture* capture =
-        mMetalWorldSimpleCapture.get();
-    if (capture && !meter)
-    {
-        // Metering disabled defines EV 0 for both implementations. Drop only
-        // the native temporal resource so a later Metal-enabled frame starts
-        // from that specified value without consulting GL's ping-pong map.
-        capture->exposure_target.reset();
-        capture->exposure_frame = std::numeric_limits<U32>::max();
-        capture->exposure_epoch = 0;
-    }
-    mMetalExposureHistoryReady = meter && capture &&
-        capture->exposure_target &&
-        capture->exposure_epoch == mMetalExposureHistoryEpoch;
-#endif
-}
-
-void LLPipeline::clearLensFlareState()
-{
-#if LL_DARWIN
-    ++mMetalLensFlareHistoryEpoch;
-    if (mMetalLensFlareHistoryEpoch == 0)
-    {
-        ++mMetalLensFlareHistoryEpoch;
-    }
-    mMetalLensFlareHistoryReady = false;
-    if (mMetalWorldSimpleCapture)
-    {
-        mMetalWorldSimpleCapture->lens_flare_state_target.reset();
-        mMetalWorldSimpleCapture->lens_flare_state_frame =
-            std::numeric_limits<U32>::max();
-        mMetalWorldSimpleCapture->lens_flare_state_epoch = 0;
-    }
-#endif
-}
 
 #include "pipeline_lens_config.inl"
 
@@ -26604,490 +26063,6 @@ LLPipeline::ColorGradeConfig LLPipeline::colorGradeConfig(
     return config;
 }
 
-void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool apply_tonemap, bool apply_color_grade,
-                              const Bloom* bloom)
-{
-    LL_PROFILE_GPU_ZONE("colorcorrect");
-
-    if (mToneCurveLutDirty)
-    {
-        // Borrows slot 0, so it has to run before anything below is bound.
-        bakeToneCurveLut();
-    }
-    const ColorGradeConfig grade = colorGradeConfig(apply_color_grade);
-    const ChromaticAberrationConfig chromatic =
-        chromaticAberrationConfig();
-
-    dst->bindTarget();
-    {
-        LLGLDepthTest depth(GL_FALSE, GL_FALSE);
-
-        // Apply gamma correction to the frame here.
-        static LLCachedControl<bool> should_auto_adjust(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-        static LLCachedControl<bool> buildNoPost(gSavedSettings, "RenderDisablePostProcessing", false);
-
-        LLSettingsSky::ptr_t psky = LLEnvironment::instance().getCurrentSky();
-
-        // sGradeBypass is the hold-to-compare key. Both shader variants are
-        // already built and bound by this same branch, so suppressing the
-        // grade is a rebind rather than a recompile -- free, and instant on
-        // the frame the key goes down.
-        // gSnapshotNoPost is the snapshot floater's "No post-processing" box,
-        // and it only ever selected a non-tonemap variant -- leaving the grade,
-        // which is the most post-processing thing in the whole chain, running
-        // on a frame that had asked for none of it.
-        //
-        // legacy_gamma deliberately does not do this. A legacy sky drops
-        // tonemapping because it predates it, not because anybody asked for a
-        // clean plate, and the user's grade still applies there.
-        const bool color_grade = grade.enabled;
-        bool legacy_gamma = psky->getReflectionProbeAmbiance(should_auto_adjust) == 0.f;
-        bool no_post = gSnapshotNoPost || legacy_gamma || (buildNoPost && gFloaterTools && gFloaterTools->isAvailable());
-        LLGLSLShader* shader = nullptr;
-        if (apply_tonemap)
-        {
-            if (legacy_gamma)
-            {
-                shader = no_post       ? color_grade ? &gCGColorgradeLegacyGammaProgram : &gCGLegacyGammaProgram
-                         : color_grade ? &gCGTonemapColorgradeLegacyGammaProgram
-                                       : &gCGTonemapLegacyGammaProgram;
-            }
-            else
-            {
-                shader = no_post       ? color_grade ? &gCGColorgradeGammaProgram : &gCGGammaProgram
-                         : color_grade ? &gCGTonemapColorgradeProgram
-                                       : &gCGTonemapProgram;
-            }
-        }
-        else
-        {
-            shader = legacy_gamma ? color_grade ? &gCGColorgradeLegacyGammaProgram : &gCGLegacyGammaProgram
-                                  : color_grade ? &gCGColorgradeGammaProgram : &gCGGammaProgram;
-        }
-
-        shader->bind();
-
-        // Point sampled, except under chromatic aberration: its red and blue
-        // taps fall between texels, where point sampling would step the fringe
-        // a whole pixel at a time. Its centre tap, and the only tap without it,
-        // land on texel centres either way, src being the size of dst.
-        S32 diffuse_channel = shader->bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src,
-                                                  chromatic.enabled ? ALSamplers::BilinearMirror : ALSamplers::PointMirror);
-        S32 exposure_channel = shader->bindTexture(LLShaderMgr::EXPOSURE_MAP, &mExposureMap);
-
-        // HDR bloom pyramid is folded into the tonemap variants of this shader
-        // (permutation BLOOM_COMPOSITE). Bind the pyramid top + strength here so
-        // the composite no longer needs its own pass. When HDR is off the shader
-        // variant lacks the sampler and bindTexture is a no-op via getTextureChannel.
-        //
-        // A frame that made no pyramid -- a cutout frame makes none -- binds
-        // black in its place at no strength, for the variants that sample it
-        // whatever the strength.
-        const bool bloomed = bloom && bloom->mMipCount > 0;
-        S32 bloom_channel = bloomed ? shader->bindTexture(LLShaderMgr::BLOOM_SAMPLER, bloom->mMips[0], ALSamplers::BilinearMirror)
-                                    : shader->bindTexture(LLShaderMgr::BLOOM_SAMPLER, LLViewerFetchedTexture::sBlackImagep,
-                                                          ALSamplers::BilinearMirror);
-        S32 cross_channel = -1;
-        S32 state_channel = -1;
-        if (bloom_channel > -1)
-        {
-            static LLCachedControl<F32>      bloom_strength(gSavedSettings, "RenderBloomStrength", 0.325f);
-            static LLCachedControl<F32>      halation_strength(gSavedSettings, "RenderBloomHalationStrength", 0.0f);
-            static LLCachedControl<LLColor3> halation_tint(gSavedSettings, "RenderBloomHalationTint", LLColor3(1.0f, 0.35f, 0.15f));
-            // generateBloomHDR makes none shallower than the three levels its
-            // downsample and upsample chain needs to mean anything.
-            const F32 strength_gate = bloomed ? 1.0f : 0.0f;
-            shader->uniform1f(LLShaderMgr::BLOOM_STRENGTH,    llmax(bloom_strength(), 0.0f)    * strength_gate);
-            shader->uniform1f(LLShaderMgr::HALATION_STRENGTH, llmax(halation_strength(), 0.0f) * strength_gate);
-            const LLColor3& tint = halation_tint();
-            shader->uniform3f(LLShaderMgr::HALATION_TINT, tint.mV[0], tint.mV[1], tint.mV[2]);
-
-            // Cross-filter streaks fold in here rather than in a fullscreen
-            // pass of their own. That pass existed only to add a half-size
-            // buffer into bloomMip[0], which cost a full-resolution
-            // read-modify-write of the pyramid top every frame; this pass
-            // already samples that pyramid, so one more sampler replaces all
-            // of it.
-            //
-            // Added to bloom_term inside the shader rather than to the scene
-            // directly, which keeps two couplings that were previously free:
-            // the streaks stay scaled by bloom strength, and they keep
-            // lighting the lens dirt through lens_light.
-            static LLCachedControl<F32> streak_strength_setting(gSavedSettings, "RenderCrossFilterStrength", 0.f);
-            // Drawn this frame: generateBloomHDR hands back the sum only
-            // where it drew the arms.
-            const bool streaks_live = bloom && bloom->mStreaks;
-            const F32  streaks      = (streaks_live && !suppressesLensAndPrintEffects())
-                                    ? llclamp(streak_strength_setting(), 0.f, CROSS_FILTER_MAX_STRENGTH) * strength_gate
-                                    : 0.f;
-            shader->uniform1f(LLShaderMgr::CROSS_STRENGTH, streaks);
-            if (streaks > 0.f)
-            {
-                cross_channel = shader->bindTexture(LLShaderMgr::CROSS_FILTER_MAP,
-                                                    bloom->mStreaks,
-                                                    ALSamplers::BilinearClamp);
-            }
-        }
-
-        shader->uniform2f(LLShaderMgr::SCREEN_RESOLUTION, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
-        shader->uniform1f(LLShaderMgr::CUTOUT_PREMULTIPLIED, sCutoutRender ? 1.f : 0.f);
-
-        // Without HDR these programs carry DITHER and the final blit does not
-        // (LLViewerShaderMgr), since dst is the post chain's first 8-bit target.
-        // With HDR nothing reads the dither uniforms and their sets fall away.
-        static LLCachedControl<bool> dither_enabled(gSavedSettings, "RenderDitherEnabled", true);
-        static LLCachedControl<bool> dither_animated(gSavedSettings, "RenderDitherAnimated", true);
-        shader->uniform1f(LLShaderMgr::DITHER_AMOUNT, dither_enabled() ? 1.0f : 0.0f);
-        shader->uniform1i(LLShaderMgr::DITHER_BITS, 8);
-        shader->uniform1i(LLShaderMgr::DITHER_ANIMATE, dither_animated ? 1 : 0);
-        shader->uniform1ui(LLShaderMgr::FRAME_ID, LLFrameTimer::getFrameCount());
-
-        // The other half of the "No post-processing" contract. The grade is
-        // gated where this pass's program is chosen and the print effects in
-        // the final blit are gated in renderFinalize -- but chromatic
-        // aberration and the lens flare are applied *inside* this program, in
-        // every variant including the no-post ones, so their strengths have to
-        // be silenced here or a clean plate still carries both (suppress_effects,
-        // above).
-        // The material preview renders through here too, inside the auxiliary
-        // target pack. The flare state was measured for the world frame, so
-        // only the main pack gets the flare; aberration is left as it was.
-        const bool suppress_effects = suppressesLensAndPrintEffects();
-        const bool world_frame = (mRT == &mMainRT);
-
-        // Chromatic aberration parameters
-        // Precompute shader-friendly forms once on the CPU: square the
-        // strength (and pre-apply the 0.02 peak-offset scale), take the
-        // reciprocal of falloff, and turn the angle into a (sin, cos) pair.
-        // chromaticAberrationConfig performs that reduction once for this
-        // backend and the native display-post owner.
-        shader->uniform1f(LLShaderMgr::CA_AMOUNT, chromatic.amount);
-        shader->uniform1f(LLShaderMgr::CA_FALLOFF,
-                          chromatic.reciprocal_falloff);
-        shader->uniform2f(LLShaderMgr::CA_ANGLE_SIN_COS,
-                          chromatic.angle_sin_cos[0],
-                          chromatic.angle_sin_cos[1]);
-        shader->uniform2f(LLShaderMgr::CA_OFFSET_R,
-                          chromatic.offset_r[0], chromatic.offset_r[1]);
-        shader->uniform2f(LLShaderMgr::CA_OFFSET_B,
-                          chromatic.offset_b[0], chromatic.offset_b[1]);
-        shader->uniform1f(LLShaderMgr::CA_ANISOTROPY,
-                          chromatic.anisotropy);
-
-        // Lens flare parameters
-        {
-            const LensFlareConfig flare = lensFlareConfig(world_frame);
-            shader->uniform1f(LLShaderMgr::LENS_FLARE_STRENGTH,
-                              flare.strength);
-            if (flare.enabled)
-            {
-                shader->uniform2f(LLShaderMgr::LENS_FLARE_SUN_POS,
-                                  flare.sun_uv[0], flare.sun_uv[1]);
-                state_channel = shader->bindTexture(
-                    LLShaderMgr::LENS_FLARE_STATE_MAP,
-                    &mLensFlareState[0], ALSamplers::PointClamp);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_LENGTH,
-                                  flare.streak_length);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_FALLOFF,
-                                  flare.streak_falloff);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_WIDTH,
-                                  flare.streak_width);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_INTENSITY,
-                                  flare.streak_intensity);
-                shader->uniform3f(LLShaderMgr::LENS_FLARE_STREAK_TINT,
-                                  flare.streak_tint[0],
-                                  flare.streak_tint[1],
-                                  flare.streak_tint[2]);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_CHROMATIC_SPREAD,
-                                  flare.chromatic_spread);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_GLOW_RADIUS,
-                                  flare.glow_radius);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_GLOW_FALLOFF,
-                                  flare.glow_falloff);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_GLOW,
-                                  flare.glow);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_GHOST,
-                                  flare.ghost);
-                shader->uniform1i(LLShaderMgr::LENS_FLARE_GHOST_COUNT,
-                                  static_cast<S32>(flare.ghost_count));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_GHOST_SPACING,
-                                  flare.ghost_spacing);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_HALO,
-                                  flare.halo);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_HALO_RADIUS,
-                                  flare.halo_radius);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_HALO_WIDTH,
-                                  flare.halo_width);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STARBURST,
-                                  flare.starburst);
-                shader->uniform1i(LLShaderMgr::LENS_FLARE_STARBURST_SPIKES,
-                                  static_cast<S32>(flare.starburst_spikes));
-                shader->uniform1f(
-                    LLShaderMgr::LENS_FLARE_STARBURST_SHARPNESS,
-                    flare.starburst_sharpness);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STARBURST_FALLOFF,
-                                  flare.starburst_falloff);
-                shader->uniform3f(LLShaderMgr::LENS_FLARE_LIGHT_COLOR,
-                                  flare.light_color[0],
-                                  flare.light_color[1],
-                                  flare.light_color[2]);
-            }
-        }
-
-        // Lens dirt belongs to the native display transaction. The retained
-        // post shader stays neutral until its remaining callers are removed;
-        // it neither owns nor samples a second plate.
-        shader->uniform1f(LLShaderMgr::LENS_DIRT_STRENGTH, 0.f);
-
-        if (apply_tonemap)
-        {
-            // Exposure parameters
-            static LLCachedControl<F32> exposure(gSavedSettings, "RenderExposure", 1.f);
-            shader->uniform1f(LLShaderMgr::EXPOSURE, llclamp(exposure(), 0.5f, 4.f));
-
-            // Tonemap type and parameters
-            static LLCachedControl<S32> tonemap_type_setting(gSavedSettings, "AlchemyRenderTonemapType", 0U);
-            shader->uniform1i(LLShaderMgr::TONEMAP_TYPE, tonemap_type_setting);
-            shader->uniform1f(LLShaderMgr::TONEMAP_MIX, psky->getTonemapMix(should_auto_adjust()));
-
-            constexpr F32 max_screen_brightness = 1.f;
-            switch (tonemap_type_setting)
-            {
-                case 2: // ACES Godot
-                {
-                    static LLCachedControl<F32> tonemap_aces_white(gSavedSettings, "RenderTonemapACESWhite", 6.f);
-                    F32                         white = llmax(1.0f, tonemap_aces_white());
-
-                    // These constants must match those in the shader code.
-                    const float exposure_bias = 1.2f;
-                    const float A             = 0.0245786f;
-                    const float B             = 0.000090537f;
-                    const float C             = 0.983729f;
-                    const float D             = 0.432951f;
-                    const float E             = 0.238081f;
-
-                    white *= exposure_bias;
-                    float white_tonemapped = (white * (white + A) - B) / (white * (C * white + D) + E);
-                    shader->uniform4f(LLShaderMgr::TONEMAP_PARAMS, white_tonemapped, 0.f, 0.f, 0.f);
-                    break;
-                }
-                case 3: // Reinhard
-                {
-                    // The Reinhard tonemapper is not designed to have a white parameter
-                    // that is less than the output max value. This is especially important
-                    // in the variable Extended Dynamic Range (EDR) paradigm where the
-                    // output max value may change to be greater or less than the white
-                    // parameter, depending on the available dynamic range.
-                    static LLCachedControl<F32> tonemap_reinhard_white(gSavedSettings, "RenderTonemapReinhardWhite", 6.f);
-
-                    F32 white         = llmax(max_screen_brightness, tonemap_reinhard_white());
-                    F32 white_squared = (white * white) / max_screen_brightness;
-
-                    shader->uniform4f(LLShaderMgr::TONEMAP_PARAMS, white_squared, 0.f, 0.f, 0.f);
-                    break;
-                }
-                case 4: // Filmic
-                {
-                    static LLCachedControl<F32> tonemap_filmic_white(gSavedSettings, "RenderTonemapFilmicWhite", 6.f);
-                    F32                         white = llmax(1.0f, tonemap_filmic_white());
-
-                    // These constants must match those in the shader code.
-                    const float exposure_bias = 2.0f;
-                    const float A             = 0.22f * exposure_bias * exposure_bias; // bias baked into constants for performance
-                    const float B             = 0.30f * exposure_bias;
-                    const float C             = 0.10f;
-                    const float D             = 0.20f;
-                    const float E             = 0.01f;
-                    const float F             = 0.30f;
-
-                    F32 white_tonemapped = ((white * (A * white + C * B) + D * E) / (white * (A * white + B) + D * F)) - E / F;
-
-                    shader->uniform4f(LLShaderMgr::TONEMAP_PARAMS, white_tonemapped, 0.f, 0.f, 0.f);
-                    break;
-                }
-                case 6: // AgX
-                {
-                    static LLCachedControl<F32> tonemap_agx_contrast(gSavedSettings, "RenderTonemapAgxContrast", 1.25f);
-                    static LLCachedControl<F32> tonemap_agx_white(gSavedSettings, "RenderTonemapAgxWhite", 16.29f);
-
-                    float agx_white = llmax(2.f, tonemap_agx_white());
-
-                    // Calculate allenwp tonemapping curve parameters on the CPU to improve shader performance.
-                    // Source and details: https://allenwp.com/blog/2025/05/29/allenwp-tonemapping-curve/
-
-                    // These constants must match the those in the shader code.
-                    // 18% "middle gray" is perceptually 50% of the brightness of reference white.
-                    const float awp_crossover_point = 0.18f;
-                    // When output_max_value and/or awp_crossover_point are no longer constant, awp_shoulder_max can
-                    // be calculated on the CPU and passed in as tonemap_parameters.tonemap_e.
-                    const float awp_shoulder_max = max_screen_brightness - awp_crossover_point;
-
-                    float awp_high_clip = agx_white;
-
-                    // awp_toe_a is a solution generated by Mathematica that ensures intersection at awp_crossover_point.
-                    float awp_toe_a = ((1.0f / awp_crossover_point) - 1.0f) * pow(awp_crossover_point, tonemap_agx_contrast);
-                    // Slope formula is simply the derivative of the toe function with an input of awp_crossover_point.
-                    float awp_slope_denom = pow(awp_crossover_point, tonemap_agx_contrast) + awp_toe_a;
-                    float awp_slope       = (tonemap_agx_contrast * pow(awp_crossover_point, tonemap_agx_contrast - 1.0f) * awp_toe_a) /
-                                      (awp_slope_denom * awp_slope_denom);
-
-                    float awp_w = awp_high_clip - awp_crossover_point;
-                    awp_w       = awp_w * awp_w;
-                    awp_w       = awp_w / awp_shoulder_max;
-                    awp_w       = awp_w * awp_slope;
-
-                    shader->uniform4f(LLShaderMgr::TONEMAP_PARAMS, tonemap_agx_contrast, awp_toe_a, awp_slope, awp_w);
-                    break;
-                }
-                default:
-                    break;
-            }
-        }
-
-        // Color correction
-        if (color_grade)
-        {
-            // The Apple-only product publishes and samples LUTs through the
-            // native display-post pass. The legacy GL post path retains the
-            // shared scalar grading controls but owns neither artist nor
-            // channel-curve LUT resources.
-            shader->uniform1f(LLShaderMgr::COLOR_GRADE_LUT_STRENGTH, 0.f);
-
-            // The builder above owns every clamp, bypass and identity choice
-            // shared with the native display-post owner.
-            shader->uniform3fv(
-                LLShaderMgr::COLOR_GRADE_WHITE_BALANCE_GAIN, 1,
-                grade.white_balance_gain.data());
-            shader->uniform3fv(
-                LLShaderMgr::COLOR_GRADE_LIFT, 1, grade.lift.data());
-            shader->uniform3fv(
-                LLShaderMgr::COLOR_GRADE_INV_GAMMA_CC, 1,
-                grade.inverse_gamma.data());
-            shader->uniform3fv(
-                LLShaderMgr::COLOR_GRADE_GAIN, 1, grade.gain.data());
-
-            shader->uniform3fv(
-                LLShaderMgr::SPLIT_TONE_SHADOW_RATIO, 1,
-                grade.shadow_ratio.data());
-            shader->uniform3fv(
-                LLShaderMgr::SPLIT_TONE_HIGHLIGHT_RATIO, 1,
-                grade.highlight_ratio.data());
-            shader->uniform3fv(
-                LLShaderMgr::SPLIT_TONE_MIDTONE_RATIO, 1,
-                grade.midtone_ratio.data());
-            shader->uniform1f(
-                LLShaderMgr::SPLIT_TONE_MIDTONE_AMOUNT,
-                grade.midtone_amount);
-            shader->uniform2f(
-                LLShaderMgr::SPLIT_TONE_SHADOW_RAMP,
-                grade.shadow_ramp[0], grade.shadow_ramp[1]);
-            shader->uniform2f(
-                LLShaderMgr::SPLIT_TONE_HIGHLIGHT_RAMP,
-                grade.highlight_ramp[0], grade.highlight_ramp[1]);
-            shader->uniform1f(
-                LLShaderMgr::SPLIT_TONE_AMOUNT, grade.split_amount);
-
-            shader->uniform1f(
-                LLShaderMgr::COLOR_GRADE_BWP_SCALE,
-                grade.black_white_scale);
-            shader->uniform1f(
-                LLShaderMgr::COLOR_GRADE_BWP_BIAS,
-                grade.black_white_bias);
-            shader->uniform1f(
-                LLShaderMgr::COLOR_GRADE_BC_SCALE,
-                grade.brightness_contrast_scale);
-            shader->uniform1f(
-                LLShaderMgr::COLOR_GRADE_BC_BIAS,
-                grade.brightness_contrast_bias);
-            shader->uniform1f(
-                LLShaderMgr::COLOR_GRADE_HIGHLIGHTS_SCALED,
-                grade.highlights_scaled);
-            shader->uniform1f(
-                LLShaderMgr::COLOR_GRADE_SHADOWS_SCALED,
-                grade.shadows_scaled);
-            shader->uniform1f(
-                LLShaderMgr::COLOR_GRADE_SATURATION, grade.saturation);
-            shader->uniform1f(
-                LLShaderMgr::COLOR_GRADE_VIBRANCE, grade.vibrance);
-            shader->uniform1f(
-                LLShaderMgr::COLOR_GRADE_HUE_SHIFT_NORM,
-                grade.hue_shift);
-        }
-
-        mScreenTriangleVB->setBuffer();
-        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-        if (exposure_channel > -1)
-        {
-            gGL.getTextureSlot(exposure_channel)->unbind();
-        }
-        if (cross_channel > -1)
-        {
-            gGL.getTextureSlot(cross_channel)->unbind();
-        }
-        if (bloom_channel > -1)
-        {
-            gGL.getTextureSlot(bloom_channel)->unbind();
-        }
-        if (state_channel > -1)
-        {
-            gGL.getTextureSlot(state_channel)->unbind();
-        }
-        gGL.getTextureSlot(diffuse_channel)->unbind();
-        shader->unbind();
-    }
-    dst->flush();
-}
-
-void LLPipeline::copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget* dst)
-{
-
-    // Where the plan has the copy, SSR with probes to trace it through, and the copy is built: a reconcile that could
-    // build the render size at no size at all leaves it unbuilt under a plan that wants it.
-    if (mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) && dst->isComplete() && !gCubeSnapshot)
-    {
-        LL_PROFILE_GPU_ZONE("ssr copy");
-        dst->copyContents(*src, 0, 0, src->getWidth(), src->getHeight(), 0, 0, dst->getWidth(), dst->getHeight(),
-                         GL_COLOR_BUFFER_BIT, GL_NEAREST);
-        copySceneDepth(*dst);
-    }
-}
-
-void LLPipeline::copySceneDepth(LLRenderTarget& dst)
-{
-    LL_PROFILE_GPU_ZONE("depth copy");
-    LLRenderTarget& src = mRT->deferredScreen;
-
-    dst.bindTarget();
-    {
-        LLGLSColorMask no_color(false, false);
-        LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
-        LLGLDisable no_blend(GL_BLEND);
-        LLGLDisable no_cull(GL_CULL_FACE);
-
-        // Cleared whole before it is drawn over. radeonsi makes a depth's tile metadata sampleable only at a whole
-        // clear, once a sample has had to decompress it: a copy never cleared is decompressed for every frame's readers.
-        dst.clear(GL_DEPTH_BUFFER_BIT);
-
-        if (gCopyDepthProgram.isComplete())
-        {
-            gCopyDepthProgram.bind();
-            gCopyDepthProgram.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &src, ALSamplers::PointClamp);
-            mScreenTriangleVB->setBuffer();
-            mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            gCopyDepthProgram.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
-            gCopyDepthProgram.unbind();
-        }
-        else
-        {
-            // A blit cannot stand in: GL copies depth only between matching formats, and the copies keep none of the
-            // scene's stencil. Their readers find nothing nearer than the far plane.
-            LL_WARNS_ONCE("RenderResources") << "No depth copy program; the scene's depth copies stay cleared" << LL_ENDL;
-        }
-    }
-    dst.flush();
-}
-
 LLPipeline::DepthOfFieldConfig LLPipeline::depthOfFieldConfig() const
 {
     static LLCachedControl<bool> render_in_edit_mode(
@@ -27292,459 +26267,42 @@ void LLPipeline::renderFinalize()
     gGL.setColorMask(true, true);
     gGL.setClearColor(LLColor4::transparent);
 
-    const bool hdr = hdrEnabled();
-
-    // A cutout frame measures nothing and leaves nothing behind. It is mostly
-    // empty, so metering it would brighten the subject, and the next live frame
-    // would reflect and meter a world with everything but the subject cut out.
-    // The last live frame's exposure serves, as it does for the scopes.
-    //
-    // Everything that spreads past a pixel is left out as well -- depth of
-    // field, bloom, glow, anti-aliasing and sharpening -- since each carries
-    // the subject's edge into what is to be left empty, where the coverage
-    // written after the frame (copyCutoutCoverageToAlpha) knows nothing of it.
-    // Edges come from rendering the cutout larger and averaging it down.
-    const bool cutout = sCutoutRender;
-
-    if (hdr && !cutout)
+    // The native transaction retained both measurement points: sharp linear
+    // color before DoF and display-post color before lens/print effects.
+    // Keep one-shot callbacks and the scope cadence at their original UI
+    // boundary, without allocating or drawing a parallel post chain.
+    updateNativeExposureReadiness();
+    if (!sCutoutRender)
     {
-        copyScreenSpaceReflections(&mRT->screen, &mSceneMap);
-
-        generateLuminance(&mRT->screen, &mLuminanceMap);
-
-        generateExposure(&mLuminanceMap, &mExposureMap);
+        serviceScenePixelProbe();
+    }
+    if (mToneCurveLutDirty)
+    {
+        bakeToneCurveLut();
     }
 
-    // Read any pending scene probe here, while the buffer still holds linear
-    // radiance and is still sharp. One line later it has been white balanced,
-    // graded and tonemapped, and a sample taken then would describe the grade
-    // rather than the scene -- which is no use to a tool whose whole job is to
-    // decide what the grade should be. It has to precede DoF for the same
-    // reason: a sample from a defocused pixel describes the blur, not the scene.
-    // Nor from a cutout, which describes one subject on nothing.
-    if (!cutout)
-    {
-        serviceScenePixelProbe(&mRT->screen);
-    }
-
-    // Depth of field, from mRT->screen into a target of the pool's, which the
-    // rest of the chain reads in its place: the screen keeps the scene as it
-    // was, for the reflections to trace next frame.
-    //
-    // Ahead of both the tonemapper and bloom. Pre-tonemap because gathering
-    // over display-space values is gathering over already-compressed
-    // highlights, which is why stock bokeh reads flat and why postDeferredF
-    // carried a weighting hack to fake the pop back. Pre-bloom because that is
-    // the optical order -- defocus happens at the aperture, veiling glare in
-    // the glass after it -- so a defocused highlight blooms as a soft disc
-    // instead of a sharp core floating on a blurred background.
-    //
-    // The residual, worth knowing before chasing it: the legacy alpha-tagged
-    // glow term reads the sharp glow tag over blurred RGB, so a defocused
-    // glowing prim's alpha-glow contribution hugs its sharp silhouette. The
-    // RGB-threshold term, which dominates in HDR, follows the blur correctly.
-    // If that reads badly in world, swapping this block with generateBloomHDR
-    // below restores bloom-first, at the cost of sharp bloom cores on
-    // defocused lights.
-    //
-    // SSR, luminance and exposure stay above deliberately: reflections keep
-    // their detail, and a blur conserves mean energy so metering is unaffected.
-    //
-    // The defocused scene, what the bloom makes for colorCorrect and the post
-    // chain's targets are all held until the frame is presented.
-    ALTransientTargets post(mTransientTargets);
-    LLRenderTarget*    scene = &mRT->screen;
-
-    Bloom bloom;
-
-    // Handles tonemap, colorgrading, and gamma correction in one pass. In the HDR
-    // path, this also applies eye adaptation and bloom. In the non-HDR path, this
-    // is just a linear copy with color correction.
-    // The post chain's first target, from the pool until the frame is presented, which colorCorrect writes whole.
-    // Without it, the frame goes out as the scene stands rather than not at all.
-    LLRenderTarget* const post_ping = acquireResource(post, ALRenderResourcePlan::Id::MainPostPing);
-    const bool            chain     = post_ping != nullptr;
-    if (chain)
-    {
-        colorCorrect(scene, post_ping, hdr, true, &bloom);
-    }
-
-    LLVertexBuffer::unbind();
-
-    // The chain's other target, from the pool once a pass after colorCorrect draws, each such pass writing it whole
-    // before the two swap. A pass with no target to draw into is left out.
-    LLRenderTarget* sourceBuffer = chain ? post_ping : scene;
-    LLRenderTarget* targetBuffer = nullptr;
-    const auto      other_target = [&]() -> LLRenderTarget*
-    {
-        if (!targetBuffer && chain)
-        {
-            targetBuffer = acquireResource(post, ALRenderResourcePlan::Id::MainPostPong);
-        }
-        return targetBuffer;
-    };
-
-    // Anti-aliasing and sharpening both spread past a pixel, so a cutout
-    // frame skips them (see above). A pass that draws nothing leaves the frame
-    // where it was, and the next reads it there.
-    // The print effects had no snapshot gate at all, so "No post-processing"
-    // produced an image that was still vignetted, still grainy, still
-    // CVD-compensated and, with a preview mode on, still false-coloured.
-    // They are the print effects; a clean plate is exactly the frame
-    // without them.
-    //
-    // Dither is not in the list on purpose. It is a quantisation aid rather
-    // than a look, and an 8-bit PNG wants it whether or not the rest is
-    // wanted.
-    const bool suppress_effects = suppressesLensAndPrintEffects();
-
-    static LLCachedControl<F32> distort_amount(gSavedSettings, "RenderLensDistortionAmount", 0.0f, "[0, 1] default 0.");
-    const F32 distort = suppress_effects ? 0.f : llclamp(distort_amount(), 0.f, 1.f);
-
-    // Sharpening. Where the blit reads the frame next and draws it one to one, through no lens and in no side-by-side
-    // pane, the blit sharpens as it samples (blitWithEffectsF.glsl): CAS's pass is left out, and the chain's other
-    // target with it where nothing else draws into one. CAS's pass sharpens the frame instead where something reads or
-    // draws over it before the blit -- the glow, RLVa's sphere, a buffer shown in its place, a scope sample or a
-    // reference still taken this frame -- and where the blit resamples it, at another size or through the lens, which
-    // costs the blit more to sharpen than the pass does.
-    static LLCachedControl<S32> ref_wipe_mode(gSavedSettings, "RenderReferenceWipeMode", 0);
-
-    gGLViewport[0] = gViewerWindow->getWorldViewRectRaw().mLeft;
-    gGLViewport[1] = gViewerWindow->getWorldViewRectRaw().mBottom;
-    gGLViewport[2] = gViewerWindow->getWorldViewRectRaw().getWidth();
-    gGLViewport[3] = gViewerWindow->getWorldViewRectRaw().getHeight();
+    const LLRect& world_view = gViewerWindow->getWorldViewRectRaw();
+    gGLViewport[0] = world_view.mLeft;
+    gGLViewport[1] = world_view.mBottom;
+    gGLViewport[2] = world_view.getWidth();
+    gGLViewport[3] = world_view.getHeight();
     gGL.setViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
-
-    // Measure what is about to be presented. After every post pass, before
-    // the vignette/grain/dither the final blit adds -- those are print
-    // effects, deliberately outside the measurement. A cutout frame is not
-    // what the scopes describe.
-    if (!cutout)
+    if (!sCutoutRender)
     {
-        captureScopeSample(sourceBuffer);
-
-        // Same point, same reason: a still and the scopes must agree about what a
-        // frame is, or the numbers will not describe the picture beside them.
-        captureReferenceStill(sourceBuffer);
+        captureScopeSample();
     }
 
-    // Present the screen target.
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderFinalize - final blit");
-        LL_PROFILE_GPU_ZONE("renderFinalize - final blit");
-
-        LLGLSLShader& blit = gBlitWithEffectsProgram;
-        blit.bind();
-
-        // Whatever is last in the above post processing chain should _always_ be rendered directly here.  If not, expect problems.
-        blit.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, sourceBuffer);
-        blit.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen);
-
-        // Setup Uniforms
-        blit.uniform1ui(LLShaderMgr::FRAME_ID, LLFrameTimer::getFrameCount());
-        blit.uniform2f(LLShaderMgr::SCREEN_RESOLUTION, (F32)gViewerWindow->getWorldViewRectRaw().getWidth(),
-                       (F32)gViewerWindow->getWorldViewRectRaw().getHeight());
-
-        // Lens distortion
-        //
-        // Precompute shader-friendly forms once on the CPU: fold the master
-        // amount into every coefficient, pre-reciprocate the squeeze, and
-        // solve the auto-fit scale. The shader is then one gate followed by
-        // pure polynomial evaluation -- no per-pixel divides, no solve.
-        //
-        // Sign convention, worth stating because it is easy to get backwards:
-        // this is a gather, so the shader asks "where does this output pixel
-        // come from". Under that map a coefficient below 1 pulls the sample
-        // toward the centre, which stretches the middle of the source out to
-        // the frame edge -- barrel. So negative k1 reads as barrel and
-        // positive as pincushion, matching a lens profile, and it is
-        // *pincushion* that pushes samples off the source and would show
-        // black corners without a fit.
-        static LLCachedControl<F32> distort_k1(gSavedSettings, "RenderLensDistortionK1", -0.2f);
-        static LLCachedControl<F32> distort_k2(gSavedSettings, "RenderLensDistortionK2", 0.0f);
-        static LLCachedControl<F32> distort_squeeze(gSavedSettings, "RenderLensDistortionSqueeze", 1.0f);
-        static LLCachedControl<S32> distort_fit(gSavedSettings, "RenderLensDistortionFit", 1);
-        static LLCachedControl<LLVector3> distort_center(gSavedSettings, "RenderLensDistortionCenter", LLVector3(0.f, 0.f, 0.f));
-        static LLCachedControl<LLVector3> distort_tangential(gSavedSettings, "RenderLensDistortionTangential", LLVector3(0.f, 0.f, 0.f));
-
-        blit.uniform1f(LLShaderMgr::LENS_DISTORT_AMOUNT, distort);
-
-        // Zeroing the master both hits the shader's early-out and skips the
-        // whole solve below, exactly as the lens flare does with its strength.
-        if (distort > 0.f)
-        {
-            // Every shape parameter fades with the master amount, each toward
-            // its own neutral: the polynomial coefficients and decentering
-            // toward 0, the squeeze toward 1. The squeeze included -- scaling
-            // only the coefficients would have the radial bend fade in
-            // smoothly while a non-neutral stretch snapped on in one frame.
-            const F32 k1 = llclamp(distort_k1(), -0.5f, 0.5f) * distort;
-            const F32 k2 = llclamp(distort_k2(), -0.25f, 0.25f) * distort;
-            const F32 p1 = llclamp(distort_tangential().mV[0], -0.05f, 0.05f) * distort;
-            const F32 p2 = llclamp(distort_tangential().mV[1], -0.05f, 0.05f) * distort;
-            const F32 cx = llclamp(distort_center().mV[0], -0.5f, 0.5f) * distort;
-            const F32 cy = llclamp(distort_center().mV[1], -0.5f, 0.5f) * distort;
-            const F32 squeeze = 1.f + (llclamp(distort_squeeze(), 0.5f, 2.5f) - 1.f) * distort;
-
-            // Same aspect basis the shader uses, and the same one the CA path
-            // derives from uResolution -- one component stays 1.0 and the
-            // other carries the ratio, so radial distance is measured in
-            // physical units and the corners really are further out than the
-            // edge midpoints.
-            const F32 res_w  = (F32)gViewerWindow->getWorldViewRectRaw().getWidth();
-            const F32 res_h  = (F32)gViewerWindow->getWorldViewRectRaw().getHeight();
-            const F32 aspect = res_w / llmax(res_h, 1.f);
-            const F32 axis_x = llmax(aspect, 1.f);
-            const F32 axis_y = llmax(1.f / llmax(aspect, 1e-4f), 1.f);
-            const F32 sq_x   = 1.f / squeeze;
-            const F32 sq_y   = 1.f;
-
-            // The shader's warp with the fit scale left at 1. Scale is a pure
-            // multiplier on the result, so solving for it afterwards is exact
-            // rather than iterative.
-            auto base_offset = [&](F32 u, F32 v, F32& out_x, F32& out_y)
-            {
-                const F32 qx = (u - 0.5f - cx) * axis_x;
-                const F32 qy = (v - 0.5f - cy) * axis_y;
-                const F32 r2 = qx * qx + qy * qy;
-                const F32 radial = 1.f + r2 * (k1 + r2 * k2);
-                const F32 tx = 2.f * p1 * qx * qy + p2 * (r2 + 2.f * qx * qx);
-                const F32 ty = p1 * (r2 + 2.f * qy * qy) + 2.f * p2 * qx * qy;
-                out_x = (qx * radial + tx) / axis_x * sq_x;
-                out_y = (qy * radial + ty) / axis_y * sq_y;
-            };
-
-            // Scale at which the ray from the optical axis along `base` leaves
-            // the source frame -- a two-slab exit test. Below that scale the
-            // sample is inside the image; above it, off the edge and black.
-            const F32 origin_x = 0.5f + cx;
-            const F32 origin_y = 0.5f + cy;
-            auto exit_scale = [&](F32 bx, F32 by) -> F32
-            {
-                F32 best = 1e30f;
-                if (bx > 1e-6f || bx < -1e-6f)
-                {
-                    best = llmin(best, ((bx > 0.f ? 1.f : 0.f) - origin_x) / bx);
-                }
-                if (by > 1e-6f || by < -1e-6f)
-                {
-                    best = llmin(best, ((by > 0.f ? 1.f : 0.f) - origin_y) / by);
-                }
-                return best;
-            };
-
-            F32 fit_scale = 1.f;
-            const S32 fit_mode = llclamp(distort_fit(), 0, 2);
-            const LensDistortFit::Inputs inputs = { k1, k2, p1, p2, cx, cy, axis_x, axis_y, sq_x, fit_mode };
-            if (inputs == mLensDistortFit.inputs)
-            {
-                fit_scale = mLensDistortFit.scale;
-            }
-            else if (fit_mode != 0)
-            {
-                // Walk the frame boundary densely instead of probing only the
-                // corners and edge midpoints.
-                //
-                // With a non-zero secondary coefficient the radial polynomial
-                // 1 + k1*r^2 + k2*r^4 stops being monotonic in r -- that
-                // non-monotonicity *is* the moustache bend -- so the largest
-                // outward displacement along an edge can fall between two
-                // sparse probes. Eight probes let that region escape the solve,
-                // which showed up as curved black arcs along the edges at
-                // extreme settings even in Fit mode. Dense sampling is also
-                // what keeps this honest once the tangential terms are
-                // non-zero, since those break the clean radial structure a
-                // corners-dominate argument leans on.
-                //
-                // Sixty-four evaluations of a short polynomial, once per change
-                // of the inputs above.
-                const S32 probes_per_edge = 16;
-
-                // Fit (1): the smallest exit scale over every probe with a
-                // satisfiable constraint, so nothing that scaling can save
-                // ever goes black. Not quite "nothing goes black anywhere":
-                // with the optical axis pinned on the frame edge, fold-over
-                // can fling a pixel straight off that edge, and no positive
-                // scale brings it back -- Fit degrades to best-effort there
-                // rather than collapsing the whole frame chasing an
-                // impossible constraint.
-                // Fill (2): the largest, so every probe is reachable -- the
-                // whole source stays visible, at the cost of black corners.
-                F32 solved = (fit_mode == 1) ? 1e30f : 0.f;
-
-                auto consider_probe = [&](F32 u, F32 v)
-                {
-                    F32 bx, by;
-                    base_offset(u, v, bx, by);
-                    const F32 s = exit_scale(bx, by);
-                    // >= 1e30 is no constraint at all (base ~ 0 near the
-                    // optical axis); ~0 is the unsatisfiable case above.
-                    if (s < 1e-4f || s >= 1e30f)
-                    {
-                        return;
-                    }
-                    solved = (fit_mode == 1) ? llmin(solved, s) : llmax(solved, s);
-                };
-
-                for (S32 edge = 0; edge < 4; ++edge)
-                {
-                    for (S32 i = 0; i < probes_per_edge; ++i)
-                    {
-                        // t == 0 lands exactly on a corner, so all four corners
-                        // are still probed; the rest subdivide each edge.
-                        const F32 t = (F32)i / (F32)probes_per_edge;
-                        switch (edge)
-                        {
-                            case 0:  consider_probe(t, 0.f);        break;  // top
-                            case 1:  consider_probe(1.f, t);        break;  // right
-                            case 2:  consider_probe(1.f - t, 1.f);  break;  // bottom
-                            default: consider_probe(0.f, 1.f - t);  break;  // left
-                        }
-                    }
-                }
-
-                // Fit also probes the interior. Boundary-only probing assumes
-                // the binding constraint lies on the frame edge, which holds
-                // while the polynomial is monotonic over the frame -- but
-                // strong barrel folds it over (the radial factor goes negative
-                // past its turning point), and then an interior pixel can be
-                // flung further than any boundary pixel: at clamp-edge settings
-                // a boundary-only solve passes all 64 probes while a mid-frame
-                // island escapes. A 15x15 grid catches every satisfiable
-                // interior bind for a few hundred cheap evaluations. Fit only:
-                // Fill takes the max, which the
-                // near-axis interior would poison with huge exit scales.
-                if (fit_mode == 1)
-                {
-                    const S32 grid = 15;
-                    for (S32 gy = 1; gy <= grid; ++gy)
-                    {
-                        for (S32 gx = 1; gx <= grid; ++gx)
-                        {
-                            consider_probe((F32)gx / (F32)(grid + 1),
-                                           (F32)gy / (F32)(grid + 1));
-                        }
-                    }
-                }
-
-                if (solved > 0.f && solved < 1e30f)
-                {
-                    fit_scale = llclamp(solved, 0.1f, 10.f);
-                }
-            }
-            mLensDistortFit.inputs = inputs;
-            mLensDistortFit.scale = fit_scale;
-
-            blit.uniform2f(LLShaderMgr::LENS_DISTORT_K, k1, k2);
-            blit.uniform1f(LLShaderMgr::LENS_DISTORT_SCALE, fit_scale);
-            blit.uniform2f(LLShaderMgr::LENS_DISTORT_SQUEEZE, sq_x, sq_y);
-            blit.uniform2f(LLShaderMgr::LENS_DISTORT_CENTER, cx, cy);
-            blit.uniform2f(LLShaderMgr::LENS_DISTORT_TANGENTIAL, p1, p2);
-        }
-
-        // Vignette
-        static LLCachedControl<F32> vignette_amount(gSavedSettings, "RenderVignetteAmount", 0.0f, "[0, 1] default 0.");
-        static LLCachedControl<F32> vignette_radius(gSavedSettings, "RenderVignetteRadius", 1.0f);
-        static LLCachedControl<F32> vignette_soft(gSavedSettings, "RenderVignetteSoft", 0.5f);
-        static LLCachedControl<F32> vignette_shape(gSavedSettings, "RenderVignetteShape", 0.0f, "[0, 1] 0 circular, 1 rounded square.");
-        static LLCachedControl<LLColor3>  vignette_color(gSavedSettings, "RenderVignetteColor", LLColor3(0.0f, 0.0f, 0.0f));
-        static LLCachedControl<LLColor3>  vignette_mid_color(gSavedSettings, "RenderVignetteMidColor", LLColor3(0.0f, 0.0f, 0.0f));
-        static LLCachedControl<F32>       vignette_mid_point(gSavedSettings, "RenderVignetteMidPoint", 0.0f);
-        static LLCachedControl<LLVector3> vignette_center(gSavedSettings, "RenderVignetteCenter", LLVector3(0.0f, 0.0f, 0.0f));
-        static LLCachedControl<bool>      vignette_correct_aspect(gSavedSettings, "RenderVignetteCorrectAspect", false);
-        static LLCachedControl<F32>       vignette_feather(gSavedSettings, "RenderVignetteFeather", 1.0f);
-        blit.uniform1f(LLShaderMgr::VIGNETTE_AMOUNT, suppress_effects ? 0.0f : llclamp(vignette_amount(), 0.0f, 1.0f));
-        blit.uniform1f(LLShaderMgr::VIGNETTE_RADIUS, llclamp(vignette_radius(), 0.25f, 1.5f));
-        blit.uniform1f(LLShaderMgr::VIGNETTE_SOFT, llclamp(vignette_soft(), 0.05f, 1.0f));
-        blit.uniform1f(LLShaderMgr::VIGNETTE_SHAPE, llclamp(vignette_shape(), 0.0f, 1.0f));
-        blit.uniform3fv(LLShaderMgr::VIGNETTE_COLOR, 1, vignette_color().mV);
-        blit.uniform3fv(LLShaderMgr::VIGNETTE_MID_COLOR, 1, vignette_mid_color().mV);
-        blit.uniform1f(LLShaderMgr::VIGNETTE_MID_POINT, llclamp(vignette_mid_point(), 0.0f, 1.0f));
-        if (vignette_correct_aspect)
-        {
-            blit.uniform2f(LLShaderMgr::VIGNETTE_ASPECT, (F32)sourceBuffer->getWidth(), (F32)sourceBuffer->getHeight());
-        }
-        else
-        {
-            blit.uniform2f(LLShaderMgr::VIGNETTE_ASPECT, 1.f, 1.f);
-        }
-        blit.uniform2fv(LLShaderMgr::VIGNETTE_CENTER, 1, vignette_center().mV);
-        blit.uniform1f(LLShaderMgr::VIGNETTE_FEATHER, llclamp(vignette_feather(), 0.2f, 4.0f));
-
-        // CVD Compensation
-        static LLCachedControl<S32> cvd_mode(gSavedSettings, "RenderCVDMode", 0);
-        static LLCachedControl<F32> cvd_amount(gSavedSettings, "RenderCVDAmount", 0.0f);
-        blit.uniform1i(LLShaderMgr::CVD_MODE, suppress_effects ? 0 : llclamp(cvd_mode(), 0, 3));
-        blit.uniform1f(LLShaderMgr::CVD_AMOUNT, suppress_effects ? 0.0f : llclamp(cvd_amount(), 0.0f, 1.0f));
-
-        // Film Grain
-        static LLCachedControl<bool>     film_grain_animated(gSavedSettings, "RenderFilmGrainAnimated", true);
-        static LLCachedControl<F32>      film_grain_amount(gSavedSettings, "RenderFilmGrainAmount", 0.0f);
-        static LLCachedControl<S32>      film_grain_style(gSavedSettings, "RenderFilmGrainStyle", 0);
-        static LLCachedControl<F32>      film_grain_size(gSavedSettings, "RenderFilmGrainSize", 1.0f);
-        static LLCachedControl<F32>      film_grain_range(gSavedSettings, "RenderFilmGrainRange", 0.5f);
-        static LLCachedControl<LLColor3> film_grain_tint(gSavedSettings, "RenderFilmGrainTint", LLColor3(1.0f, 1.0f, 1.0f));
-        blit.uniform1f(LLShaderMgr::GRAIN_AMOUNT, suppress_effects ? 0.0f : llclamp(film_grain_amount(), 0.0f, 1.0f));
-        blit.uniform1i(LLShaderMgr::GRAIN_STYLE, llclamp(film_grain_style(), 0, 3));
-        blit.uniform1f(LLShaderMgr::GRAIN_SIZE, llclamp(film_grain_size(), 1.0f, 8.0f));
-        blit.uniform1f(LLShaderMgr::GRAIN_RANGE, llclamp(film_grain_range(), 0.0f, 1.0f));
-        blit.uniform3fv(LLShaderMgr::GRAIN_TINT, 1, film_grain_tint().mV);
-        blit.uniform1i(LLShaderMgr::GRAIN_ANIMATE, film_grain_animated ? 1 : 0);
-
-        // Dithering
-        static LLCachedControl<bool> dither_enabled(gSavedSettings, "RenderDitherEnabled", true);
-        static LLCachedControl<bool> dither_animated(gSavedSettings, "RenderDitherAnimated", true);
-        blit.uniform1f(LLShaderMgr::DITHER_AMOUNT, dither_enabled() ? 1.0f : 0.0f);
-        blit.uniform1i(LLShaderMgr::DITHER_BITS, LLRender::s10bitBackBuffer ? 10 : 8);
-        blit.uniform1i(LLShaderMgr::DITHER_ANIMATE, dither_animated ? 1 : 0);
-
-        // Previews
-        static LLCachedControl<S32> preview_mode(gSavedSettings, "RenderEffectPreviewMode", 0);
-        blit.uniform1i(LLShaderMgr::PREVIEW_MODE, suppress_effects ? 0 : llclamp(preview_mode(), 0, 7));
-
-        // Reference still. The mode is forced off unless a still actually
-        // exists, which is what lets the shader read the sampler without
-        // checking, and means a mode left set from before a resize (which
-        // drops the still) shows the live frame rather than a stale or unbound
-        // texture. Off for a clean plate too: a snapshot of a comparison is
-        // not a snapshot of the image.
-        static LLCachedControl<F32> ref_wipe_pos(gSavedSettings, "RenderReferenceWipePosition", 0.5f);
-        const S32 wipe_mode = (hasReferenceStill() && !suppress_effects) ? llclamp(ref_wipe_mode(), 0, 2) : 0;
-        blit.uniform1i(LLShaderMgr::REFERENCE_WIPE_MODE, wipe_mode);
-        blit.uniform1f(LLShaderMgr::REFERENCE_WIPE_POS, llclamp(ref_wipe_pos(), 0.f, 1.f));
-        if (wipe_mode != 0)
-        {
-            blit.bindTexture(LLShaderMgr::REFERENCE_STILL, &mReferenceStill);
-        }
-
-        {
-            LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
-            mScreenTriangleVB->setBuffer();
-            mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-        }
-
-        blit.unbind();
-    }
-
+    // The displaced final blit unbound its semantic shader before physics
+    // and UI. Preserve that CPU identity/flush boundary without a fake draw.
+    LLGLSLShader::unbind();
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
-
-    if (hasRenderDebugMask(LLPipeline::RENDER_DEBUG_PHYSICS_SHAPES) && !cutout)
+    if (hasRenderDebugMask(LLPipeline::RENDER_DEBUG_PHYSICS_SHAPES) && !sCutoutRender)
     {
         renderPhysicsDisplay();
     }
-
-    /*if (LLRenderTarget::sUseFBO && !gCubeSnapshot)
-    { // copy depth buffer from mRT->screen to framebuffer
-        LLRenderTarget::copyContentsToFramebuffer(mRT->screen, 0, 0, mRT->screen.getWidth(), mRT->screen.getHeight(), 0, 0,
-                                                  mRT->screen.getWidth(), mRT->screen.getHeight(),
-                                                  GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, GL_NEAREST);
-    }*/
-
     LLVertexBuffer::unbind();
 
     LLGLState::checkStates();
-
-    // flush calls made to "addTrianglesDrawn" so far to stats machinery
     recordTrianglesDrawn();
 }
 

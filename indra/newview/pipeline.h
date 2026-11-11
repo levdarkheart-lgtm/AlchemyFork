@@ -91,6 +91,7 @@ class ALMetalTextureReadbackRing;
 struct ALMetalWorldAlphaEnvironment;
 struct ALMetalWorldLegacyAlphaLighting;
 struct ALMetalWorldWaterSurface;
+struct ALMetalWorldPresentationScene;
 enum class ALMetalWorldSpotShadowCoverage : std::uint32_t;
 
 typedef enum e_avatar_skinning_method
@@ -595,30 +596,9 @@ public:
     // an unavailable CAMetalLayer surface and a failed fused submission.
     MetalWorldPresentationState metalWorldPresentationStateCurrent() const;
 #endif
-    void copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget* dst);
-    // The current pack's scene depth (mRT->deferredScreen's, which mRT->screen shares) over the whole of `dst`'s,
-    // stretched as a nearest blit would, through gCopyDepthProgram: the water's depth copy and mSceneMap keep depth
-    // without the screen's stencil, which a blit's matching formats would make them carry. `dst` is cleared to the far
-    // plane first, and stays so where the program has not built.
-    void copySceneDepth(LLRenderTarget& dst);
-    void generateLuminance(LLRenderTarget* src, LLRenderTarget* dst);
-    void generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool use_history = true);
     void clearLensFlareState();
-    // What generateBloomHDR makes for colorCorrect to composite, each held by the scope it was given until that ends.
-    struct Bloom
-    {
-        // The HDR pyramid (RGB = bloom, A = halation intensity): mMips[0] the
-        // extract at its base, each level after it half the one before, and
-        // mMips[0] the bloom once the upsample is done. None where none was made.
-        std::array<LLRenderTarget*, ALRenderResourcePlan::BLOOM_MAX_MIPS> mMips{};
-        U32                                                         mMipCount = 0;
-        // The cross-screen filter's arms summed, where they were drawn this frame.
-        LLRenderTarget* mStreaks = nullptr;
-    };
-    // One shader-ready chromatic-aberration state for both colorCorrect's
-    // GLSL uniforms and the native display-post owner. Keeping the nonlinear
-    // strength, reciprocal falloff and angle reduction here prevents the two
-    // backends from drifting on setting clamps or clean-plate suppression.
+    // Shader-ready chromatic aberration for the native display-post owner,
+    // including authored clamps and clean-plate suppression.
     struct ChromaticAberrationConfig
     {
         bool enabled = false;
@@ -736,11 +716,8 @@ public:
         F32 tone_curve_amount = 0.f;
     };
     ColorGradeConfig colorGradeConfig(bool apply_color_grade) const;
-    void colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool tonemap, bool colorgrade,
-                      const Bloom* bloom = nullptr);
-    // Depth of field from mRT->screen into a target of the screen's description
-    // from @a scope, which the post chain reads in the screen's place; null where
-    // it does not run. The screen keeps the sharp scene.
+    // CPU optical settings consumed by native DoF. Its owner retains the
+    // sharp linear scene separately for metering and scene-pixel tools.
     struct DepthOfFieldConfig
     {
         bool enabled = false;
@@ -779,13 +756,10 @@ public:
     void updateDepthOfFieldFocus();
     DepthOfFieldFocus mDepthOfFieldFocus;
 
-    /// Take a point-sampled copy of the presented frame for the scopes floater
-    /// and read it back asynchronously. Does nothing unless sScopeCapture is
-    /// set and the sample interval has elapsed. See alfloaterscopes.h.
-    void captureScopeSample(LLRenderTarget* src);
-    /// Service a pending grab, and drop a still whose resolution no longer
-    /// matches the frame. Called from the same place as captureScopeSample.
-    void captureReferenceStill(LLRenderTarget* src);
+    /// Point-sample display-post color before lens/print effects for scopes,
+    /// with asynchronous readback. Requires sScopeCapture and its sample
+    /// interval to have elapsed. See alfloaterscopes.h.
+    void captureScopeSample();
     const ALScopeData& getScopeData() const { return mScopeData; }
 
     /// Where a point in *scaled* window coordinates -- which is what
@@ -829,7 +803,7 @@ public:
     /// gone.
     void requestReferenceStill() { mReferenceStillWanted = true; }
     void clearReferenceStill();
-    bool hasReferenceStill() const { return mReferenceStill.getWidth() > 0; }
+    bool hasReferenceStill() const;
     /// @}
 
     /// Ask for the linear scene colour under a screen pixel.
@@ -1809,12 +1783,11 @@ public:
     // Reference still: a grabbed copy of a presented frame, for wiping the
     // live image against. Full resolution, so it is only allocated once
     // somebody asks for one.
-    LLRenderTarget          mReferenceStill;
     bool                    mReferenceStillWanted = false;
 
     // One-shot scene probe, serviced in renderFinalize while the buffer is
     // still linear. See requestScenePixel.
-    void                    serviceScenePixelProbe(LLRenderTarget* src);
+    void                    serviceScenePixelProbe();
     scene_pixel_cb_t        mScenePixelCallback;
     S32                     mScenePixelX = 0;
     S32                     mScenePixelY = 0;
@@ -1829,9 +1802,6 @@ public:
 
     // a single triangle that covers the whole screen
     LLPointer<LLVertexBuffer> mScreenTriangleVB;
-
-    // the exposure meter's points: two per meter grid texel, its non-sky and sky parts
-    LLPointer<LLVertexBuffer> mExposureHistogramVB;
 
     //utility buffer for rendering cubes, 8 vertices are corners of a cube [-1, 1]
     LLPointer<LLVertexBuffer> mCubeVB;
@@ -1948,6 +1918,16 @@ public:
         Inputs inputs;
         F32    scale = 1.f;
     };
+private:
+    bool consumeReferenceStillRequest();
+    std::unique_ptr<ALMetalRenderTarget> captureReferenceStill(const ALMetalRenderTarget& source);
+    void publishReferenceStill(std::unique_ptr<ALMetalRenderTarget> pending);
+    F32 lensDistortionFitScale(const LensDistortFit::Inputs& inputs);
+    bool configureMetalPresentationLens(ALMetalWorldPresentationScene& presentation);
+    bool wantsMetalDepthOfField(const DepthOfFieldConfig& dof) const;
+    bool metalScopeSourceCurrent(U32 width, U32 height) const;
+    void updateNativeExposureReadiness();
+public:
     LensDistortFit      mLensDistortFit;
 
     // Raised by the Lightbox while one of the generation sliders is being
