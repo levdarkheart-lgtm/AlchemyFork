@@ -75,7 +75,6 @@ extern "C" {
 #if LL_WINDOWS
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
-#include "lldxhardware.h"
 
 // DirectInput8 interface for llviewerjoystick / SpaceNavigator. Created once
 // in the LLWindowSDL constructor; only needs the process module handle, not

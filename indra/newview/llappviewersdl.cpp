@@ -432,10 +432,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     LLAppViewer::setStartupCommandLine(argc, argv);
 
 #if LL_WINDOWS
-    // Note: gIconResource (consumed by the native LLWindowWin32 window proc)
-    // is not set here — SDL_RegisterApp sources the window-class icon from the
-    // exe's embedded RT_GROUP_ICON (branded ll_icon.ico) automatically.
-    //
     // LLAppViewerWin32::initParseCommandLine parses a single command-tail
     // string with no program name — the same shape WINMAIN's pCmdLine has —
     // so hand it the tail of GetCommandLineW rather than re-joining argv.

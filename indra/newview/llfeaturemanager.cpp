@@ -58,9 +58,7 @@
 #include "stringize.h"
 #include "llcorehttputil.h"
 
-#if LL_WINDOWS
-#include "lldxhardware.h"
-#elif LL_LINUX
+#if LL_LINUX
 #include <unistd.h>     // write(), _exit() for the GPU benchmark subprocess
 #include <sys/utsname.h>
 #endif

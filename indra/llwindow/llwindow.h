@@ -284,11 +284,6 @@ protected:
     virtual bool setSizeImpl(LLCoordScreen size) = 0;
     virtual bool setSizeImpl(LLCoordWindow size) = 0;
 
-    // What to tell the user when LLGLManager::initGL has refused the context: what it lacks of the
-    // floor, or, where it lacks nothing initGL names, that the driver is not usable. Reads the GL
-    // strings, so the refused context must still be current.
-    std::string glInitFailureMessage() const;
-
 protected:
     LLWindowCallbacks*  mCallbacks;
 
@@ -368,7 +363,7 @@ constexpr S32 OSBTN_CANCEL = 3;
 // Which window LLWindowManager makes.
 enum class ALWindowBackend
 {
-    Native,     // the platform's window: LLWindowWin32 or LLWindowSDL
+    Native,     // LLWindowSDL: native Metal presentation and SDL input
     Hidden,     // ALWindowSDLHeadless: never shown; native offscreen Metal on Darwin
     None,       // LLWindowHeadless: no window and no GL
 };

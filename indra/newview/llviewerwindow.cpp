@@ -233,11 +233,6 @@
 #include "rlvhandler.h"
 // [/RLVa:KB]
 
-#if LL_WINDOWS
-#include <tchar.h> // For Unicode conversion methods
-#include "llwindowwin32.h" // For AltGr handling
-#endif
-
 //
 // Globals
 //
@@ -3334,49 +3329,6 @@ bool LLViewerWindow::handleKey(KEY key, MASK mask)
             if (mWindow->isAltGrPressed() && (mask & MASK_ALT) && key >= 0x20 && key < 0x80)
             {
                 return true;
-            }
-#endif
-
-#if LL_WINDOWS && !LL_SDL_WINDOW
-            // On windows Alt Gr key generates additional Ctrl event, as result handling situations
-            // like 'AltGr + D' will result in 'Alt+Ctrl+D'. If it results in WM_CHAR, don't let it
-            // pass into menu or it will trigger 'develop' menu assigned to this combination on top
-            // of character handling.
-            // Alt Gr can be additionally modified by Shift
-            const MASK alt_gr = MASK_CONTROL | MASK_ALT;
-            LLWindowWin32 *window = static_cast<LLWindowWin32*>(mWindow);
-            U32 raw_key = window->getRawWParam();
-            if ((mask & alt_gr) != 0
-                && ((raw_key >= 0x30 && raw_key <= 0x5A) //0-9, plus normal chartacters
-                    || (raw_key >= 0xBA && raw_key <= 0xE4)) // Misc/OEM characters that can be covered by AltGr, ex: -, =, ~
-                && (GetKeyState(VK_RMENU) & 0x8000) != 0
-                && (GetKeyState(VK_RCONTROL) & 0x8000) == 0) // ensure right control is not pressed, only left one
-            {
-                // Alt Gr key is represented as right alt and left control.
-                // Any alt+ctrl combination is treated as Alt Gr by TranslateMessage() and
-                // will generate a WM_CHAR message, but here we only treat virtual Alt Graph
-                // key by checking if this specific combination has unicode char.
-                //
-                // I decided to handle only virtual RAlt+LCtrl==AltGr combination to minimize
-                // impact on menu, but the right way might be to handle all Alt+Ctrl calls.
-
-                BYTE keyboard_state[256];
-                if (GetKeyboardState(keyboard_state))
-                {
-                    const int char_count = 6;
-                    wchar_t chars[char_count];
-                    HKL layout = GetKeyboardLayout(0);
-                    // ToUnicodeEx changes buffer state on OS below Win10, which is undesirable,
-                    // but since we already did a TranslateMessage() in gatherInput(), this
-                    // should have no negative effect
-                    // ToUnicodeEx works with virtual key codes
-                    int res = ToUnicodeEx(raw_key, 0, keyboard_state, chars, char_count, 1 << 2 /*do not modify buffer flag*/, layout);
-                    if (res == 1 && chars[0] >= 0x20)
-                    {
-                        // Let it fall through to character handler and get a WM_CHAR.
-                        return true;
-                    }
-                }
             }
 #endif
 

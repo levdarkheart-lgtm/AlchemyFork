@@ -65,10 +65,6 @@
 #include "lldir.h"
 #include "lliconctrl.h"
 
-#if LL_WINDOWS
-#include "lldxhardware.h"
-#endif
-
 extern U32 gPacketsIn;
 
 ///----------------------------------------------------------------------------

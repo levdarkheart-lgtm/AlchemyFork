@@ -27,15 +27,8 @@
 #ifndef LL_LLGLHEADERS_H
 #define LL_LLGLHEADERS_H
 
- // windows gl headers depend on things like APIENTRY, so include windows.
-#include "llwin32headers.h"
-
 // quotes so we get libraries/.../GL/ version
 #include <GL/glcorearb.h>
-
-#if LL_WINDOWS
-#include <GL/wglext.h>
-#endif
 
 // GL_NVX_gpu_memory_info constants
 #ifndef GL_NVX_gpu_memory_info
@@ -116,21 +109,6 @@ typedef void (APIENTRYP PFNGLDEPTHBOUNDSEXTPROC) (GLdouble zmin, GLdouble zmax);
 #define GL_COMPRESSED_ALPHA               0x84E9
 #define GL_COMPRESSED_LUMINANCE           0x84EA
 #define GL_COMPRESSED_LUMINANCE_ALPHA     0x84EB
-
-// Remaining legacy calls belong to consumers still being converted.
-// Native device setup never resolves a GL entrypoint.
-#if LL_WINDOWS
-extern PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT;
-extern PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
-extern PFNWGLGETPIXELFORMATATTRIBIVARBPROC wglGetPixelFormatAttribivARB;
-extern PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB;
-extern PFNWGLDXOPENDEVICENVPROC wglDXOpenDeviceNV;
-extern PFNWGLDXCLOSEDEVICENVPROC wglDXCloseDeviceNV;
-extern PFNWGLDXREGISTEROBJECTNVPROC wglDXRegisterObjectNV;
-extern PFNWGLDXUNREGISTEROBJECTNVPROC wglDXUnregisterObjectNV;
-extern PFNWGLDXLOCKOBJECTSNVPROC wglDXLockObjectsNV;
-extern PFNWGLDXUNLOCKOBJECTSNVPROC wglDXUnlockObjectsNV;
-#endif
 
 
 #endif // LL_LLGLHEADERS_H

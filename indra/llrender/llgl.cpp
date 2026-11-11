@@ -86,21 +86,6 @@ void ll_close_fail_log()
 
 std::list<LLGLUpdate*> LLGLUpdate::sGLQ;
 
-// Remaining legacy calls belong to consumers still being converted.
-// Native device setup never resolves a GL entrypoint.
-#if LL_WINDOWS
-PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = nullptr;
-PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = nullptr;
-PFNWGLGETPIXELFORMATATTRIBIVARBPROC wglGetPixelFormatAttribivARB = nullptr;
-PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB = nullptr;
-PFNWGLDXOPENDEVICENVPROC wglDXOpenDeviceNV = nullptr;
-PFNWGLDXCLOSEDEVICENVPROC wglDXCloseDeviceNV = nullptr;
-PFNWGLDXREGISTEROBJECTNVPROC wglDXRegisterObjectNV = nullptr;
-PFNWGLDXUNREGISTEROBJECTNVPROC wglDXUnregisterObjectNV = nullptr;
-PFNWGLDXLOCKOBJECTSNVPROC wglDXLockObjectsNV = nullptr;
-PFNWGLDXUNLOCKOBJECTSNVPROC wglDXUnlockObjectsNV = nullptr;
-#endif
-
 
 LLGLManager gGLManager;
 

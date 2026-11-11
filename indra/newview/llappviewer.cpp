@@ -72,7 +72,6 @@
 #include "llcalc.h"
 #include "llconversationlog.h"
 #if LL_WINDOWS
-#include "lldxhardware.h"
 #include <shellapi.h>
 #endif
 #include "lltexturestats.h"
@@ -384,6 +383,7 @@ LLVector3 gRelativeWindVec(0.0, 0.0, 0.0);
 
 bool gRandomizeFramerate = false;
 bool gPeriodicSlowFrame = false;
+
 
 bool gCrashOnStartup = false;
 bool gLLErrorActivated = false;
@@ -2036,13 +2036,6 @@ bool LLAppViewer::cleanup()
     SUBSYSTEM_CLEANUP(LLAvatarAppearance);
 
     LLTracker::cleanupInstance();
-
-    // *FIX: This is handled in LLAppViewerWin32::cleanup().
-    // I'm keeping the comment to remember its order in cleanup,
-    // in case of unforseen dependency.
-    //#if LL_WINDOWS
-    //  gDXHardware.cleanup();
-    //#endif // LL_WINDOWS
 
     LLVolumeMgr* volume_manager = LLPrimitive::getVolumeManager();
     if (!volume_manager->cleanup())
@@ -3881,43 +3874,6 @@ LLSD LLAppViewer::getViewerInfo() const
     info["GRAPHICS_CARD_VENDOR"] = gRenderCapabilities.vendor();
     info["GRAPHICS_CARD"] = gRenderCapabilities.renderer();
 
-#if LL_WINDOWS
-    std::string drvinfo;
-
-    if (gGLManager.mIsIntel)
-    {
-        drvinfo = gDXHardware.getDriverVersionWMI(LLDXHardware::GPU_INTEL);
-    }
-    else if (gGLManager.mIsNVIDIA)
-    {
-        drvinfo = gDXHardware.getDriverVersionWMI(LLDXHardware::GPU_NVIDIA);
-    }
-    else if (gGLManager.mIsAMD)
-    {
-        drvinfo = gDXHardware.getDriverVersionWMI(LLDXHardware::GPU_AMD);
-    }
-
-    if (drvinfo.empty())
-    {
-        // Generic/substitute windows driver? Unknown vendor?
-        LL_WARNS("DriverVersion") << "Vendor based driver search failed, searching for any driver" << LL_ENDL;
-        drvinfo = gDXHardware.getDriverVersionWMI(LLDXHardware::GPU_ANY);
-    }
-
-    if (!drvinfo.empty())
-    {
-        info["GRAPHICS_DRIVER_VERSION"] = drvinfo;
-    }
-    else
-    {
-        LL_WARNS("DriverVersion")<< "Cannot get driver version from getDriverVersionWMI" << LL_ENDL;
-        LLSD driver_info = gDXHardware.getDisplayInfo();
-        if (driver_info.has("DriverVersion"))
-        {
-            info["GRAPHICS_DRIVER_VERSION"] = driver_info["DriverVersion"];
-        }
-    }
-#endif
 
 // [RLVa:KB] - Checked: 2010-04-18 (RLVa-1.2.0)
     info["RLV_VERSION"] = (rlv_handler_t::isEnabled()) ? RlvStrings::getVersionAbout() : "(disabled)";

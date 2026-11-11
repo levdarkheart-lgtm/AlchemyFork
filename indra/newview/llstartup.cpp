@@ -299,10 +299,6 @@
 #include "llperfstats.h"
 
 
-#if LL_WINDOWS
-#include "lldxhardware.h"
-#endif
-
 //
 // exported globals
 //

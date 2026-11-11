@@ -28,14 +28,9 @@
 #include "llwindowheadless.h"
 #include "alwindowsdlheadless.h"
 
-#if LL_WINDOWS && !LL_SDL_WINDOW
-#include "llwindowwin32.h"
-#else
 #include "llwindowsdl.h"
-#endif
 
 #include "llerror.h"
-#include "llgl.h"
 #include "llkeyboard.h"
 #include "llsdl.h"
 #include "llwindowcallbacks.h"
@@ -76,11 +71,7 @@ S32 OSMessageBox(const std::string& text, const std::string& caption, U32 type)
     {
         return OSBTN_OK;
     }
-#if LL_WINDOWS && !LL_SDL_WINDOW
-    result = OSMessageBoxWin32(text, caption, type);
-#else
     result = OSMessageBoxSDL(text, caption, type);
-#endif
 
     if (was_visible)
     {
@@ -133,20 +124,6 @@ bool LLWindow::isValid()
 bool LLWindow::canDelete()
 {
     return true;
-}
-
-std::string LLWindow::glInitFailureMessage() const
-{
-    if (gGLManager.mUnmetRequirement.empty())
-    {
-        return mCallbacks->translateString("MBVideoDrvErr");
-    }
-
-    std::map<std::string, std::string> args;
-    args["[MISSING]"]  = gGLManager.mUnmetRequirement;
-    args["[VERSION]"]  = gGLManager.mGLVersionString;
-    args["[RENDERER]"] = gGLManager.getRawGLString();
-    return mCallbacks->translateString("MBGLVersionErr", args);
 }
 
 //virtual
@@ -264,31 +241,19 @@ bool LLWindow::copyTextToPrimary(const std::string &src)
 // static
 std::vector<std::string> LLWindow::getDynamicFallbackFontList()
 {
-#if LL_WINDOWS && !LL_SDL_WINDOW
-    return LLWindowWin32::getDynamicFallbackFontList();
-#else
     return LLWindowSDL::getDynamicFallbackFontList();
-#endif
 }
 
 // static
 LLFontFallbackMatch LLWindow::findFallbackFontForChar(llwchar wch)
 {
-#if LL_WINDOWS && !LL_SDL_WINDOW
-    return LLWindowWin32::findFallbackFontForChar(wch);
-#else
     return LLWindowSDL::findFallbackFontForChar(wch);
-#endif
 }
 
 // static
 std::vector<std::string> LLWindow::getDisplaysResolutionList()
 {
-#if LL_WINDOWS && !LL_SDL_WINDOW
-    return LLWindowWin32::getDisplaysResolutionList();
-#else
     return LLWindowSDL::getDisplaysResolutionList();
-#endif
 }
 
 #define UTF16_IS_HIGH_SURROGATE(U) ((U16)((U) - 0xD800) < 0x0400)
@@ -355,11 +320,7 @@ LLSplashScreen *LLSplashScreen::create()
     {
         return nullptr;
     }
-#if LL_WINDOWS && !LL_SDL_WINDOW
-    return new LLSplashScreenWin32;
-#else
     return new LLSplashScreenSDL;
-#endif
 }
 
 
@@ -442,15 +403,9 @@ LLWindow* LLWindowManager::createWindow(
     switch (backend)
     {
     case ALWindowBackend::Native:
-#if LL_WINDOWS && !LL_SDL_WINDOW
-        new_window = new LLWindowWin32(callbacks,
-            title, name, x, y, width, height, flags,
-            fullscreen, clearBg, enable_vsync, true, ignore_pixel_depth, fsaa_samples, max_cores, max_gl_version);
-#else
         new_window = new LLWindowSDL(callbacks,
                                      title, name, x, y, width, height, flags,
                                      fullscreen, clearBg, enable_vsync, true, ignore_pixel_depth, fsaa_samples);
-#endif
         break;
 
     case ALWindowBackend::Hidden:

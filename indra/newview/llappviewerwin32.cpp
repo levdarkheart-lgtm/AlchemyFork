@@ -28,16 +28,9 @@
 
 #include "llappviewerwin32.h"
 
-#if !LL_SDL_WINDOW
-#include "llwindowwin32.h" // for gIconResource, set in the native WINMAIN below
-#endif
-
-#include "res/resource.h" // *FIX: for setting gIconResource.
-
 #include <WERAPI.H>     // for WerAddExcludedApplication()
 
 #include "llviewercontrol.h"
-#include "lldxhardware.h"
 
 #include "nvapi/nvapi.h"
 #include "nvapi/NvApiDriverSettings.h"
@@ -343,9 +336,6 @@ int APIENTRY WINMAIN(HINSTANCE hInstance,
 #endif
 #endif
 
-    // *FIX: global
-    gIconResource = MAKEINTRESOURCE(IDI_LL_ICON);
-
     // Benchmark subprocess mode before full init for LLFeatureManager::loadGPUClass().
     {
         std::wstring cmdLineStr(pCmdLine ? pCmdLine : L"");
@@ -579,7 +569,6 @@ bool LLAppViewerWin32::cleanup()
 {
     bool result = LLAppViewer::cleanup();
 
-    gDXHardware.cleanup();
     cleanupConsole();
 
     return result;
