@@ -1,7 +1,9 @@
 import csv
 import importlib.util
 import json
+import os
 import plistlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -17,6 +19,43 @@ def load(name):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+class BuildWrapperTests(unittest.TestCase):
+    def test_configure_respects_isolated_build_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task = Path(directory)
+            commands = task / "commands"
+            commands.mkdir()
+            capture = task / "configure-arguments.json"
+            candidate = task / "isolated candidate"
+            scripts = {
+                "uname": '#!/bin/sh\ncase "$1" in -s) echo Darwin;; -m) echo arm64;; esac\n',
+                "git": '#!/bin/sh\nprintf "%s\\n" "$AL_BUILD_WRAPPER_TEST_ROOT"\n',
+                "cmake": '#!/usr/bin/env python3\nimport json, os, sys\n'
+                         'with open(os.environ["AL_BUILD_WRAPPER_CAPTURE"], "w") as output:\n'
+                         '    json.dump(sys.argv[1:], output)\n',
+            }
+            for name, contents in scripts.items():
+                executable = commands / name
+                executable.write_text(contents)
+                executable.chmod(0o755)
+            environment = os.environ.copy()
+            environment.update({
+                "PATH": str(commands) + os.pathsep + environment.get("PATH", ""),
+                "AL_BUILD_WRAPPER_TEST_ROOT": str(task),
+                "AL_BUILD_WRAPPER_CAPTURE": str(capture),
+                "AL_METAL_PRESET": "ninja-os-arm64",
+                "AL_METAL_BUILD_DIR": str(candidate),
+            })
+            subprocess.run(["bash", str(TOOLS / "build.sh"), "configure"],
+                           env=environment, check=True, capture_output=True, text=True)
+            arguments = json.loads(capture.read_text())
+            self.assertEqual("ninja-os-arm64", arguments[arguments.index("--preset") + 1])
+            self.assertIn("-B", arguments,
+                          "configure must not modify the preset's existing viewer build")
+            self.assertEqual(str(candidate), arguments[arguments.index("-B") + 1])
+            self.assertIn('-DAL_CHANNEL:STRING=Alchemy Metal Development', arguments)
 
 
 class PerfTests(unittest.TestCase):

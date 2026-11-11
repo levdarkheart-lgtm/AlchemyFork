@@ -15,7 +15,7 @@ CONFIG="${AL_METAL_CONFIG:-Release}"
 
 case "$ACTION" in
   configure)
-    cmake -S indra --preset "$PRESET" -DAL_CHANNEL:STRING="Alchemy Metal Development"
+    cmake -S indra --preset "$PRESET" -B "$BUILD_DIR" -DAL_CHANNEL:STRING="Alchemy Metal Development"
     ;;
   build)
     if [[ ! -d "$BUILD_DIR" ]]; then
