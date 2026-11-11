@@ -15,6 +15,8 @@
 #include "../../almetal/almetalresource.h"
 #include "../../almetal/almetalsculptpreview.h"
 #include "llcoord.h"
+#include "v4color.h"
+#include "llmatrix4a.h"
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <algorithm>
@@ -224,6 +226,23 @@ public:
 
 #include "../../newview/image_preview_native.inl"
 
+namespace ModelPreviewInputs
+{
+// Only the viewer's selected preview lights are named inputs. The actual
+// model batch admission, transforms and packing below run unchanged.
+struct LLPipeline
+{
+    inline static LLVector3 PreviewDirection0{0.f, 0.f, 1.f};
+    inline static LLVector3 PreviewDirection1{0.f, 0.f, 1.f};
+    inline static LLVector3 PreviewDirection2{0.f, 0.f, 1.f};
+    inline static LLColor4 PreviewDiffuse0{1.f, 1.f, 1.f, 1.f};
+    inline static LLColor4 PreviewDiffuse1{0.f, 0.f, 0.f, 1.f};
+    inline static LLColor4 PreviewDiffuse2{0.f, 0.f, 0.f, 1.f};
+};
+const LLColor4 PREVIEW_EDGE_COL(0.4f, 0.4f, 0.4f, 1.0);
+#include "../../newview/model_preview_native.inl"
+}
+
 Pixels pixels(NativeImages& native, const ALMetalTexture& texture)
 {
     Pixels result{};
@@ -407,6 +426,169 @@ TEST_CASE("Avatar image preview retries and admits only current indexed native s
     CHECK(pixels(native, *image->getMetalTexture()) != first_pixels);
     CHECK((vertex_edit ? buffer->getMetalIndexBuffer() == previous_indices
                        : buffer->getMetalVertexBuffer() == previous_vertices));
+}
+
+TEST_CASE("Model preview admits only published stores after its final upload retry",
+          "[almetal][preview-indexed-publication]")
+{
+    NativeImages native;
+    REQUIRE_FALSE(LLVertexBuffer::isMetalBufferAuthority());
+    REQUIRE(LLVertexBuffer::getBytesAllocated() == 0);
+    REQUIRE(native.old_device == nullptr);
+    LLVertexBuffer::setMetalDevice(native.device.get());
+    LLVertexBuffer::setMetalBufferAuthority(true);
+    LLVertexBuffer::initClass(nullptr);
+    struct VertexBackendScope
+    {
+        ~VertexBackendScope()
+        {
+            LLVertexBuffer::flushBuffers();
+            CHECK(LLVertexBuffer::getBytesAllocated() == 0);
+            LLVertexBuffer::cleanupClass();
+            LLVertexBuffer::setMetalBufferAuthority(false);
+            LLVertexBuffer::setMetalDevice(nullptr);
+        }
+    } backend;
+    struct MissingVertexPublisher
+    {
+        ALMetalDevice* previous;
+        explicit MissingVertexPublisher(ALMetalDevice* device) : previous(device)
+        { LLVertexBuffer::setMetalDevice(nullptr); }
+        ~MissingVertexPublisher() { LLVertexBuffer::setMetalDevice(previous); }
+    };
+    enum class Failure { first_upload, first_allocation, vertices, indices, flushed };
+    Failure failure = Failure::first_upload;
+    SECTION("an allocated first store is not a published store") {}
+    SECTION("a missing first native allocation retries without another write")
+    { failure = Failure::first_allocation; }
+    SECTION("a warm vertex generation cannot substitute for a dirty store")
+    { failure = Failure::vertices; }
+    SECTION("a warm index generation cannot substitute for a dirty store")
+    { failure = Failure::indices; }
+    SECTION("a successful earlier global flush needs no duplicate publication")
+    { failure = Failure::flushed; }
+    const bool first = failure == Failure::first_upload ||
+                       failure == Failure::first_allocation;
+    LLPointer<LLVertexBuffer> buffer = new LLVertexBuffer(
+        LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_NORMAL);
+    std::unique_ptr<MissingVertexPublisher> missing;
+    if (failure == Failure::first_allocation)
+        missing = std::make_unique<MissingVertexPublisher>(native.device.get());
+    REQUIRE(buffer->allocateBuffer(3, 3));
+    std::memset(buffer->getMappedData(), 0, buffer->getSize());
+    std::memset(buffer->getMappedIndices(), 0, buffer->getIndicesSize());
+    LLStrider<LLVector3> positions, normals;
+    REQUIRE(buffer->getVertexStrider(positions));
+    positions[0].set(-1.f, -1.f, .5f);
+    positions[1].set(3.f, -1.f, .5f);
+    positions[2].set(-1.f, 3.f, .5f);
+    REQUIRE(buffer->getNormalStrider(normals));
+    for (U32 vertex = 0; vertex < 3; ++vertex)
+        normals[vertex].set(0.f, 0.f, 1.f);
+    LLStrider<U16> indices;
+    REQUIRE(buffer->getIndexStrider(indices));
+    indices[0] = 0; indices[1] = 1; indices[2] = 2;
+    if (failure == Failure::first_upload)
+        missing = std::make_unique<MissingVertexPublisher>(native.device.get());
+    buffer->unmapBuffer();
+    std::vector<ALMetalLitPreviewBatch> batches;
+    const auto append = [&]
+    {
+        return ModelPreviewInputs::appendMetalModelPreviewBatch(
+            *buffer, nullptr, LLColor4(.25f, .5f, .75f, 1.f), false,
+            LLMatrix4a::identity(), LLMatrix4a::identity(), batches);
+    };
+    ALMetalTextureDescriptor output;
+    output.width = width; output.height = height;
+    output.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+    const auto render = [&]
+    {
+        ALMetalLitPreviewScene scene;
+        scene.batches = batches.data(); scene.batch_count = batches.size();
+        scene.destination_descriptor = &output;
+        scene.linear_storage_view = true;
+        auto texture = native.renderer->render(scene, &native.error);
+        INFO(native.error); REQUIRE(texture);
+        return texture;
+    };
+    std::unique_ptr<ALMetalTexture> previous_output;
+    Pixels previous_pixels{};
+    ALMetalBuffer* old_vertices = buffer->getMetalVertexBuffer();
+    ALMetalBuffer* old_indices = buffer->getMetalIndexBuffer();
+    if (!first)
+    {
+        REQUIRE(append()); REQUIRE(batches.size() == 1);
+        previous_output = render();
+        previous_pixels = pixels(native, *previous_output);
+        checkColor(previous_pixels, {64, 128, 191, 255});
+        batches.clear();
+        missing = std::make_unique<MissingVertexPublisher>(native.device.get());
+        if (failure == Failure::indices)
+        {
+            REQUIRE(buffer->getIndexStrider(indices));
+            indices[1] = 0; indices[2] = 0;
+        }
+        else
+        {
+            REQUIRE(buffer->getVertexStrider(positions));
+            positions[1].set(0.f, -1.f, .5f);
+            positions[2].set(-1.f, 0.f, .5f);
+        }
+        buffer->unmapBuffer();
+        CHECK(buffer->getMetalVertexBuffer() == old_vertices);
+        CHECK(buffer->getMetalIndexBuffer() == old_indices);
+    }
+    const std::vector<U8> expected_vertices(buffer->getMappedData(),
+        buffer->getMappedData() + buffer->getSize());
+    const std::vector<U8> expected_indices(buffer->getMappedIndices(),
+        buffer->getMappedIndices() + buffer->getIndicesSize());
+    const U64 pending_stamp = buffer->getContentStamp();
+    // Even repeated ordinary flushes cannot publish while the publisher is
+    // unavailable. The final producer boundary must not admit old handles.
+    LLVertexBuffer::flushBuffers(); LLVertexBuffer::flushBuffers();
+    CHECK_FALSE(append()); CHECK(batches.empty()); batches.clear();
+    if (previous_output)
+        CHECK(pixels(native, *previous_output) == previous_pixels);
+    missing.reset();
+    if (failure == Failure::flushed)
+    {
+        LLVertexBuffer::flushBuffers();
+        REQUIRE(buffer->hasPublishedMetalVertexBuffer());
+        REQUIRE(buffer->hasPublishedMetalIndexBuffer());
+    }
+    auto* before_append_vertices = buffer->getMetalVertexBuffer();
+    auto* before_append_indices = buffer->getMetalIndexBuffer();
+    REQUIRE(append()); REQUIRE(batches.size() == 1);
+    CHECK(buffer->hasPublishedMetalVertexBuffer());
+    CHECK(buffer->hasPublishedMetalIndexBuffer());
+    if (!buffer->hasPublishedMetalVertexBuffer() ||
+        !buffer->hasPublishedMetalIndexBuffer())
+        return; // Baseline must not send uninitialized indices to the GPU.
+    CHECK(buffer->getContentStamp() == pending_stamp);
+    const auto read_store = [&native](const ALMetalBuffer* store)
+    {
+        REQUIRE(store);
+        std::vector<U8> bytes(store->length());
+        REQUIRE(store->read(0, bytes.data(), bytes.size(), &native.error));
+        return bytes;
+    };
+    CHECK(read_store(buffer->getMetalVertexBuffer()) == expected_vertices);
+    CHECK(read_store(buffer->getMetalIndexBuffer()) == expected_indices);
+    auto current_output = render();
+    const auto current_pixels = pixels(native, *current_output);
+    if (first)
+        checkColor(current_pixels, {64, 128, 191, 255});
+    else
+        CHECK(current_pixels != previous_pixels);
+    if (failure == Failure::flushed)
+    {
+        CHECK(buffer->getMetalVertexBuffer() == before_append_vertices);
+        CHECK(buffer->getMetalIndexBuffer() == before_append_indices);
+    }
+    else if (!first)
+        CHECK((failure == Failure::indices
+            ? buffer->getMetalVertexBuffer() == old_vertices
+            : buffer->getMetalIndexBuffer() == old_indices));
 }
 
 TEMPLATE_TEST_CASE("Image preview callers recover a missing initial native destination",

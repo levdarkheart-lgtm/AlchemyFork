@@ -1342,9 +1342,13 @@ bool    LLPreviewAnimation::render()
                     complete = complete && buffer && preview_mesh &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) &&
-                        buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
-                        buffer->getMetalVertexBuffer() &&
-                        buffer->getMetalIndexBuffer();
+                        buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0);
+                    if (complete)
+                    {
+                        buffer->setBuffer();
+                        complete = buffer->hasPublishedMetalVertexBuffer() &&
+                            buffer->hasPublishedMetalIndexBuffer();
+                    }
                     if (!complete)
                     {
                         break;

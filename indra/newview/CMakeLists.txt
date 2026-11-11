@@ -1876,6 +1876,7 @@ if(AL_BUILD_VIEWER)
     llreflectionmapmanager_config.inl
     dynamic_texture_native.inl
     image_preview_native.inl
+    model_preview_native.inl
     rlvactions.h
     rlvcommon.h
     rlvdefines.h

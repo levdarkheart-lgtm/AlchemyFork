@@ -1134,11 +1134,14 @@ bool LLImagePreviewSculpted::render()
     const F32 BRIGHTNESS = 0.9f;
 
     ALMetalDevice* metal_device = getViewerMetalDevice();
+    mVertexBuffer->setBuffer();
     ALMetalBuffer* metal_vertices = mVertexBuffer.notNull()
         ? mVertexBuffer->getMetalVertexBuffer() : nullptr;
     ALMetalBuffer* metal_indices = mVertexBuffer.notNull()
         ? mVertexBuffer->getMetalIndexBuffer() : nullptr;
-    if (!metal_device || !metal_vertices || !metal_indices)
+    if (!metal_device || !metal_vertices || !metal_indices ||
+        !mVertexBuffer->hasPublishedMetalVertexBuffer() ||
+        !mVertexBuffer->hasPublishedMetalIndexBuffer())
     {
         LL_DEBUGS("Metal")
             << "Sculpt image preview is pending because its native geometry "
