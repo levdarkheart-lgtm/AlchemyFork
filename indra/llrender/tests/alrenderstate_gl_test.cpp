@@ -495,41 +495,6 @@ namespace
         CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
     }
 
-    // copyFromWindow copies from the window's framebuffer whatever is bound, and leaves bound what was.
-    TEST_CASE_METHOD(alrenderstate_data, "alrenderstate_gl: copyFromWindow copies the window's framebuffer into attachment 0", "[alrenderstate_gl]")
-    {
-        setUp();
-        LLRenderTarget bound;
-        REQUIRE(bound.allocate(SIZE, SIZE, GL_RGBA8));
-        // Every target red, the window green.
-        mTarget.bindTarget();
-        gGL.setClearColor(LLColor4::red);
-        mTarget.clear();
-        mTarget.flush();
-        gGL.setClearColor(LLColor4::green);
-        gGL.clear(GL_COLOR_BUFFER_BIT);
-        bound.bindTarget();
-        gGL.setClearColor(LLColor4::red);
-        bound.clear();
-
-        mTarget.copyFromWindow(0, 0, SIZE, SIZE);
-        GLint draw = -1, read = -1;
-        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw);
-        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read);
-        UNSCOPED_INFO("what was bound stays bound");
-        CHECK((U32)draw == LLRenderTarget::sCurFBO);
-        CHECK((U32)read == LLRenderTarget::sCurFBO);
-        bound.flush();
-        bound.release();
-
-        mTarget.bindTarget();
-        UNSCOPED_INFO("the window's colour, not the bound target's");
-        CHECK(pixel(1, 1) == GREEN);
-        CHECK(pixel(SIZE - 1, SIZE - 1) == GREEN);
-        mTarget.flush();
-        CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
-    }
-
     // The driver's own vendor and renderer strings, which the uppercased ones are made from.
     TEST_CASE_METHOD(alrenderstate_data, "alrenderstate_gl: gGLManager keeps GL_VENDOR and GL_RENDERER in the driver's case", "[alrenderstate_gl]")
     {

@@ -119,11 +119,6 @@ extern LLGLSLShader         gCopyProgram;
 extern LLGLSLShader         gCopyDepthProgram;
 extern LLGLSLShader         gDrawColorProgram;
 
-//output tex0[tc0] - tex1[tc1]
-extern LLGLSLShader         gTwoTextureCompareProgram;
-//discard some fragments based on user-set color tolerance
-extern LLGLSLShader         gOneTextureFilterProgram;
-
 
 //object shaders
 extern LLGLSLShader     gObjectPreviewProgram;

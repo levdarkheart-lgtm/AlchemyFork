@@ -1144,13 +1144,6 @@ void LLRenderTarget::copyFromBound(S32 srcX0, S32 srcY0, S32 srcX1, S32 srcY1,
                  dstX0, dstY0, dstX1, dstY1, GL_COLOR_BUFFER_BIT, filter);
 }
 
-void LLRenderTarget::copyFromWindow(S32, S32, S32, S32)
-{
-    LL_WARNS_ONCE("RenderTarget")
-        << "Window framebuffer copies have no native resource; use the retained Metal presentation target"
-        << LL_ENDL;
-}
-
 bool LLRenderTarget::isComplete() const
 {
     return mMetalTarget && (getNumTextures() || hasDepthAttachment());

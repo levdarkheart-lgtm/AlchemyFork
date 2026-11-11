@@ -94,8 +94,6 @@ static const ALShaderInputs& load_inputs()
 LLGLSLShader    gOcclusionProgram;
 LLGLSLShader    gOcclusionCubeProgram;
 LLGLSLShader    gGlowCombineProgram;
-LLGLSLShader    gTwoTextureCompareProgram;
-LLGLSLShader    gOneTextureFilterProgram;
 LLGLSLShader    gDebugProgram;
 LLGLSLShader    gClipProgram;
 LLGLSLShader    gAlphaMaskProgram;
@@ -1415,26 +1413,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gGlowCombineProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         built(gGlowCombineProgram.createShader(), gGlowCombineProgram);
     }
-
-#ifdef LL_WINDOWS
-    {
-        gTwoTextureCompareProgram.mName = "Two Texture Compare Shader";
-        gTwoTextureCompareProgram.mShaderFiles.clear();
-        gTwoTextureCompareProgram.mShaderFiles.push_back(make_pair("interface/twotexturecompareV.glsl", GL_VERTEX_SHADER));
-        gTwoTextureCompareProgram.mShaderFiles.push_back(make_pair("interface/twotexturecompareF.glsl", GL_FRAGMENT_SHADER));
-        gTwoTextureCompareProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gTwoTextureCompareProgram.createShader(), gTwoTextureCompareProgram);
-    }
-
-    {
-        gOneTextureFilterProgram.mName = "One Texture Filter Shader";
-        gOneTextureFilterProgram.mShaderFiles.clear();
-        gOneTextureFilterProgram.mShaderFiles.push_back(make_pair("interface/onetexturefilterV.glsl", GL_VERTEX_SHADER));
-        gOneTextureFilterProgram.mShaderFiles.push_back(make_pair("interface/onetexturefilterF.glsl", GL_FRAGMENT_SHADER));
-        gOneTextureFilterProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gOneTextureFilterProgram.createShader(), gOneTextureFilterProgram);
-    }
-#endif
 
     {
         gSolidColorProgram.mName = "Solid Color Shader";
