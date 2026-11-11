@@ -1318,7 +1318,7 @@ public:
     void doWaterHaze();
 
     // Mark where the PASS_INVISIBLE prims remove the water in the bound screen target's stencil
-    // (ALWaterStencil::EXCLUDE_BIT), against the scene's depth, before the water draws.
+    // (native exclusion mask 0x01), against the scene's depth, before the water draws.
     void doWaterExclusion();
 
     void postDeferredGammaCorrect(LLRenderTarget* screen_target);

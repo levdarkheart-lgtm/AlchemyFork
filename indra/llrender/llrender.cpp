@@ -629,13 +629,6 @@ void LLRender::resetCachedState()
     mPolygonMode        = GL_FILL;
     mCullFace           = GL_BACK;
     mPointSize          = 1.f;
-    mStencilFunc        = GL_ALWAYS;
-    mStencilRef         = 0;
-    mStencilReadMask    = ~0u;
-    mStencilFail        = GL_KEEP;
-    mStencilDepthFail   = GL_KEEP;
-    mStencilPass        = GL_KEEP;
-    mStencilWriteMask   = ~0u;
     mBlendEquationRGB   = GL_FUNC_ADD;
     mBlendEquationAlpha = GL_FUNC_ADD;
 }
@@ -3319,37 +3312,6 @@ void LLRender::setPointSize(F32 size)
     {
         flush();
         mPointSize = size;
-    }
-}
-
-void LLRender::setStencilFunc(U32 func, S32 ref, U32 mask)
-{
-    if (mStencilFunc != func || mStencilRef != ref || mStencilReadMask != mask)
-    {
-        flush();
-        mStencilFunc     = func;
-        mStencilRef      = ref;
-        mStencilReadMask = mask;
-    }
-}
-
-void LLRender::setStencilOp(U32 stencil_fail, U32 depth_fail, U32 pass)
-{
-    if (mStencilFail != stencil_fail || mStencilDepthFail != depth_fail || mStencilPass != pass)
-    {
-        flush();
-        mStencilFail      = stencil_fail;
-        mStencilDepthFail = depth_fail;
-        mStencilPass      = pass;
-    }
-}
-
-void LLRender::setStencilMask(U32 mask)
-{
-    if (mStencilWriteMask != mask)
-    {
-        flush();
-        mStencilWriteMask = mask;
     }
 }
 

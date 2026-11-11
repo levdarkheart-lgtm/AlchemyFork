@@ -652,9 +652,6 @@ namespace ll_test
             mPolygonMode = gGL.getPolygonMode();
             mCullFace = gGL.getCullFace();
             mPointSize = gGL.getPointSize();
-            gGL.getStencilFunc(mStencilFunc, mStencilRef, mStencilReadMask);
-            gGL.getStencilOp(mStencilFail, mStencilDepthFail, mStencilPass);
-            mStencilWriteMask = gGL.getStencilMask();
             gGL.getBlendEquation(mBlendEquationRGB, mBlendEquationAlpha);
             mReverseZ = LLRender::sReverseZ;
             mCompute = LLRender::sCompute;
@@ -718,9 +715,6 @@ namespace ll_test
             gGL.setPolygonMode(mPolygonMode);
             gGL.setCullFace(mCullFace);
             gGL.setPointSize(mPointSize);
-            gGL.setStencilFunc(mStencilFunc, mStencilRef, mStencilReadMask);
-            gGL.setStencilOp(mStencilFail, mStencilDepthFail, mStencilPass);
-            gGL.setStencilMask(mStencilWriteMask);
             gGL.setBlendEquation(mBlendEquationRGB, mBlendEquationAlpha);
             gGL.matrixMode(LLRender::MM_TEXTURE0);
             gGL.loadIdentity();
@@ -771,13 +765,6 @@ namespace ll_test
         U32 mPolygonMode = GL_FILL;
         U32 mCullFace = GL_BACK;
         F32 mPointSize = 1.f;
-        U32 mStencilFunc = GL_ALWAYS;
-        S32 mStencilRef = 0;
-        U32 mStencilReadMask = ~0u;
-        U32 mStencilFail = GL_KEEP;
-        U32 mStencilDepthFail = GL_KEEP;
-        U32 mStencilPass = GL_KEEP;
-        U32 mStencilWriteMask = ~0u;
         U32 mBlendEquationRGB = GL_FUNC_ADD;
         U32 mBlendEquationAlpha = GL_FUNC_ADD;
         bool mReverseZ = false;

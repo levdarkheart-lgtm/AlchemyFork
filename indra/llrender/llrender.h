@@ -571,26 +571,6 @@ public:
     void setPointSize(F32 size);
     F32  getPointSize() const { return mPointSize; }
 
-    // The stencil test GL_STENCIL_TEST (an LLGLState) runs, front and back alike: its function, reference and the
-    // bits it compares, what each outcome does to the stencil, and the bits a draw or a clear may write. Each setter
-    // flushes what is batched on a change and drops a redundant set without one. ALGLStencil scopes all three.
-    void setStencilFunc(U32 func, S32 ref, U32 mask);
-    void setStencilOp(U32 stencil_fail, U32 depth_fail, U32 pass);
-    void setStencilMask(U32 mask);
-    void getStencilFunc(U32& func, S32& ref, U32& mask) const
-    {
-        func = mStencilFunc;
-        ref  = mStencilRef;
-        mask = mStencilReadMask;
-    }
-    void getStencilOp(U32& stencil_fail, U32& depth_fail, U32& pass) const
-    {
-        stencil_fail = mStencilFail;
-        depth_fail   = mStencilDepthFail;
-        pass         = mStencilPass;
-    }
-    U32  getStencilMask() const { return mStencilWriteMask; }
-
     // How blending combines source and destination, the colour by `rgb` and alpha by `alpha` (GL_FUNC_ADD, GL_MAX
     // and the rest), for every draw buffer. A change flushes what is batched; redundant sets are dropped without one.
     void setBlendEquation(U32 rgb, U32 alpha);
@@ -783,13 +763,6 @@ private:
     U32             mPolygonMode = GL_FILL;
     U32             mCullFace = GL_BACK;
     F32             mPointSize = 1.f;
-    U32             mStencilFunc = GL_ALWAYS;
-    S32             mStencilRef = 0;
-    U32             mStencilReadMask = ~0u;
-    U32             mStencilFail = GL_KEEP;
-    U32             mStencilDepthFail = GL_KEEP;
-    U32             mStencilPass = GL_KEEP;
-    U32             mStencilWriteMask = ~0u;
     U32             mBlendEquationRGB = GL_FUNC_ADD;
     U32             mBlendEquationAlpha = GL_FUNC_ADD;
 

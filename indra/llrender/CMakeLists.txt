@@ -3,7 +3,6 @@
 set(
   llrender_SOURCES
   alframefences.cpp
-  algpubuffer.cpp
   algputimer.cpp
   almetalfetchedtexture.cpp
   alpacingslack.cpp
@@ -15,7 +14,6 @@ set(
   alfontcolrv1.cpp
   alfontface.cpp
   alfontshaping.cpp
-  aluniformbuffer.cpp
   llcubemap.cpp
   llfontbitmapcache.cpp
   llfontfreetype.cpp
@@ -42,7 +40,6 @@ set(
 set(
   llrender_HEADERS
   alframefences.h
-  algpubuffer.h
   algputimer.h
   almetalfetchedtexture.h
   alpacingslack.h
@@ -55,7 +52,6 @@ set(
   alfontcolrv1.h
   alfontface.h
   alfontshaping.h
-  aluniformbuffer.h
   llcubemap.h
   llfontgl.h
   llfonttextcache.h
@@ -155,7 +151,7 @@ if(AL_BUILD_TESTS)
   set(llrender_native_test_sources)
   if(DARWIN)
     list(APPEND llrender_native_test_sources
-      tests/algpubuffer_test.cpp
+      tests/almetal_buffer_storage_test.cpp
       tests/aldebug_immediate_metal_test.cpp
       tests/albaking_shader_metal_test.cpp
       tests/alshader_native_lifecycle_test.cpp
@@ -168,7 +164,6 @@ if(AL_BUILD_TESTS)
       tests/alquerypool_diagnostics_test.cpp
       tests/alquerypool_metal_diagnostics_test.cpp
       tests/alquerypool_metal_lifecycle_test.cpp
-      tests/aluniformbuffer_test.cpp
       tests/llvertexbuffer_test.cpp
       tests/alvertex_range_test.cpp
       tests/alvertex_draw_metal_test.cpp
@@ -256,7 +251,6 @@ if(AL_BUILD_TESTS)
     SOURCES
       tests/alrenderstate_gl_test.cpp
       tests/altessellation_gl_test.cpp
-      tests/aluniformbuffer_gl_test.cpp
       tests/alwindowsdlheadless_test.cpp
     LIBRARIES llrender
     SUPPORT llrender_test_checks llcommon_test_checks

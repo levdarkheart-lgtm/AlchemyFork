@@ -79,7 +79,7 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
 
     const bool hdr = in.mHDR;
 
-    // The scene's depth carries stencil, where the water keeps its per-pixel facts (alwaterstencil.h), and is float
+    // The scene's depth carries native water exclusion/surface stencil bits and is float
     // under reverse-Z. The shadow maps are float under reverse-Z whatever AlchemyRenderShadowDepth32F says: reversed
     // depth puts the float mantissa's dense end where the perspective spot cascades need it, and DEPTH24 pads to the
     // same four bytes.

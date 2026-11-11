@@ -73,7 +73,6 @@
 #include "alfarplane.h"
 #include "alfarplaneoverlay.h"
 #include "alselectionoutline.h"
-#include "alwaterstencil.h"
 #include "llrender.h"
 #include "llstartup.h"
 #include "llwindow.h"   // swapBuffers()

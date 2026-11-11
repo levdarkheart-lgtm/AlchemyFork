@@ -42,7 +42,6 @@ set(
   altransienttargets.h
   alwaterfield.h
   alwaterheightbake.h
-  alwaterstencil.h
 )
 
 add_library(alrender STATIC)
