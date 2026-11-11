@@ -2316,11 +2316,11 @@ public:
         const ALMetalWorldRlvSphereScene& scene,
         std::string* error = nullptr);
 
-    // Freeze the exact post-AA/CAS display source consumed by the final
-    // presentation pass. The copy stays on the GPU and joins an active
-    // command batch, so a reference is never published from a transaction
-    // whose later presentation or UI owner failed.
-    // Original still storage is RGB10_A2 for both normalized display modes.
+    // Capture post-AA/CAS display into original RGB10_A2 still storage.
+    // RGB10 copies are exact; RGBA8 components normalize into 10/2 bits.
+    // The GPU copy joins an active command batch; its caller publishes only
+    // after that command/batch commits. An independently committed still
+    // remains valid if a later presentation or UI owner fails.
     std::unique_ptr<ALMetalRenderTarget> capturePresentationReference(
         const ALMetalRenderTarget& source,
         std::string* error = nullptr);
