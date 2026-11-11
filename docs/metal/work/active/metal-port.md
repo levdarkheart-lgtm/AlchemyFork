@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `7162dd92f86dc1df099bf2c27d53b8fdc070d2eb`.
+**Renderer checkpoint:** Commit `f36e8aabdb`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -44,8 +44,11 @@ font/UI24cases276assertions0, defaultFont/TextCache61cases1862assertions0 in
 separate registered process,2Dhelper4cases76assertions0. Dead image-slot state
 removed after exact live format predicate relocated; usage/font447/340.
 Native timer-only receipt owner5666/30; displaced attachment spans removed.
-Original-mapped target identity/content/label failures and query ticket reuse
-bug are under repair. SceneMonitor native port active. Current code is newer
+Target/depth f75461d142 and query ac4a125458 fixes are integrated with actualGPU
+regressions. Native sphere/cached draw diagnostics restored f36e8aabdb. Full
+registered llrender88827assertions/375cases(374pass/one known palette skip),
+separate Font/UI1862/61 both0 under Metal API/shader validation. SceneMonitor
+native port active; ALGPUBuffer invariant admission follows. Current code is newer
 than the last canonical d28 build; no full current app verification claimed.
 
 Earlier verified bounded checkpoints below remain included; their older build
@@ -117,11 +120,12 @@ M-012 stays complete; M-014 remains deferred. No release readiness claim.
 
 Native cache, font/UI89case admission and dead image-slot/timer/span cleanup
 are integrated, individually tested; historical d28 app remains last verified.
-menu_port owns transactional native target attachment preservation/labels and
-projection/target tests. gl_tail_audit owns query generation bug/invariant
-admission/dead generic-query APIs. rlva_port owns native SceneMonitor service/
-state/MSL; root provides exact normalized pre-UI lease getter and owns shared
-pipeline/display/CMake/docs. Native sphere range admission pending in root.
+Target/query/native sphere/accepted UI diagnostic fixes are integrated with a
+passing full renderer suite. menu_port owns ALGPUBuffer native admission and
+dead stream/stub cleanup. gl_tail_audit audits typed-world RenderInfo counters
+read-only before proposing a concrete owner. rlva_port owns native SceneMonitor
+service/state/MSL; root provides exact normalized pre-UI lease getter and owns
+shared pipeline/display/CMake/docs. SceneMonitor integration remains next.
 CURRENT pins worktrees/exclusive owners. Integrate actual GPU tests/repairs,
 then freeze/rebuild canonical and appearance apps; goal stays active.
 Keep viewer and appearance utility closed.

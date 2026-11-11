@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `7162dd92f86dc1df099bf2c27d53b8fdc070d2eb`.
+**Renderer code checkpoint:** `f36e8aabdb`.
 Benchmark registration and displaced shader cleanup are validated.
 [Native source-tail evidence](../work/active/native-opengl-tail-removal.md)
 records removals, exact CPU vocabulary and source-gate limits.
@@ -98,23 +98,28 @@ llrender_font_ui_tests:1862assertions0. Original2D helpers four native cases:
 removed bd13164b70 after exact live format predicate moved657da5ce23;
 target-usage/font filter447/340. Timer ef34b9c424 native5666/30 and dead
 attachment-span storage f2db7c729e removed; actual native profiles preserved.
-These are bounded overlapping receipts, not a current full-suite aggregate.
+Latest integrated f36 native build0: full llrender **88827assertions/375cases**,
+374passed/one known CPAL palette skip; separate Font/UI **1862/61**0 under
+Metal API/shader validation. Includes target/query and accepted UI diagnostics
+fixes below. Prior targeted filters overlap; do not sum them.
 
-Agent `menu_port`: `/private/tmp/alchemy-native-depth-target-test-admission-20261111`,
-branch `codex/native-depth-target-test-admission`, based28. Own llrendertarget.*,
-native transactional attachment/relabel APIs and projection/target tests.
-Actual red baselines confirm shared-depth rebase, addColorAttachment and
-allocateDepth lose existing pixels/identity, and setLabel leaves native labels stale.
+Target/depth f75461d142 integrated: preserve attachments/rollback/native labels,
+retain shared-depth lifetime, atomically build depth-only sharers and restore
+original integer-clear rounding. Child3867/26 actualGPU0; full integrated suite0.
+Agent menu_port now owns isolated ALGPUBuffer storage invariant admission and
+dead test-only stream/getGLName cleanup; root retains uniform/frame ownership.
 
-Agent `gl_tail_audit`: `/private/tmp/alchemy-native-query-pool-cleanup-20261111`,
-basef2db7c729e. Own alquerypool.* and native/old query suites. Release/reacquire
-ticket alias red: CPU3fail; actualGPU15fail incl staleattach replacing clipped0
-with visible1. Restore original generation invalidation; retain visibility/diagnostics.
+Query ac4a125458 integrated after CPU3/GPU15 red assertions: generation
+invalidation restored; visibility/diagnostics retained, dead driver APIs removed.
+Child1291/10GPU0; full integrated suite0. Agent gl_tail_audit now read-only
+audits actual typed-world RenderInfo counters before proposing an owner.
 Agent `rlva_port`: `/private/tmp/alchemy-native-scene-monitor-20261111`,
 basebd13164b70 + root frame-owner1c77fa745a/7162dd92f8. Own SceneMonitor,
 bounded native service/test and additive MSL. Preserve original byte/dither/
 filter/normalization/state semantics with actual retained pre-UI leases.
-Root owns pipeline/display/CMake/docs/LLRender and pending native sphere test.
+Root owns pipeline/display/CMake/docs/LLRender. Native sphere/recording/matrix
+replay counts now owned at successful UI batch admission, avoiding double counts;
+full integrated native suite0. Remove unreachable fetched GL marker395510e792.
 No current source full-app verification yet; rebuild after these repairs.
 CURRENT/linked work notes retain prior committed worktree provenance.
 

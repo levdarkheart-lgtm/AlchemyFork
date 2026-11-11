@@ -1,7 +1,7 @@
 # Native target, query and font invariants — 2026-11-11
 
 Branch codex/apple-silicon-metal, physical M1 Max64GiB/macOS26.5.2/Xcode26.6.
-Code checkpoint7162dd92f86dc1df099bf2c27d53b8fdc070d2eb; goal active.
+Code checkpointf36e8aabdb; goal active.
 Original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 inspected before fixes.
 No viewer/appearance utility/window/menu/screenshot/user-cache action. Actual
 offscreen Metal commands and synthetic native pixel readbacks are test evidence.
@@ -32,8 +32,21 @@ fb7c4873a3 also ports original four2D cases,76assertions0. Original rotation/
 rectangle helper bodies byte-identical, old assertion lines retained; actual
 published Metal buffers replace driver reads, native capture retains the exact
 57600-pixel outline oracle (two sizes/locations and1x/2x UI scale). Peer review
-no blockers. Receipt native-2d-utils-preservation.json. Sphere range native
-admission is currently pending in root, not yet claimed passing.
+no blockers. Receipt native-2d-utils-preservation.json.
+
+f36e8aabdb admits original sphere range check, with unchanged original sphere
+body and actual fast/immediate native pixel equality. Initial fixture-only
+white-vertex-color and expected two immediate chunks corrected separately;
+isolated real red shows two missing diagnostics (zero calls/elements despite
+correct pixels). Original drawBuffer->VB.drawArrays counted these submissions.
+Peer review also finds both cached replay paths lost counters. Actual image
+record/replay/drawWithMatrix red20assertions/fourfail, pixels correct. Count
+only successful capture/direct UI renderer admission centrally, removing outer
+increments to prevent duplicates. Sphere/direct/replay/2D tests pass in full
+suite. Orphan lat2xyz declaration has no original/current body/caller and is removed.
+395510e792 removes unreachable fetched-texture GL restoration helper/two calls;
+native decoded publication/baking marker semantics remain unchanged, Release
+actual fetched-texture TU syntax0. No fake native GL-created marker is introduced.
 
 ## Removed dead ownership
 
@@ -55,7 +68,7 @@ checks0 in child, including avatar/pipeline; root registered build/run0.
 f2db7c729e removes displaced write-only mAttachmentSpans; actual native
 mMetalAttachmentProfiles remain. Root Release pipeline syntax0.
 
-## Reproduced defects still under repair
+## Reproduced target and query defects repaired
 
 menu_port owns llrendertarget.* and bounded almetalresource.* transaction/
 label additions in /private/tmp/alchemy-native-depth-target-test-admission-20261111.
@@ -66,7 +79,18 @@ replaces old color/depth/serial/data, allocateDepth replaces existing colors:
 21assertions/twocasessevenfail, exit42. Preserve original resource identity/
 contents and failure rollback. Native shared-depth leases must survive producer
 release/rebuild without changing producer labels. Six depth/projection cases
-737assertions0 in child; full native target admission/repair still pending.
+737assertions0 in child. Final f75461d142 (child8ae272dc35) integrates26native
+target/depth cases with3867assertions0 in child. Additional original-mapped red
+finds depth-only shared target creates invalid attachment-less intermediate,
+and signed clear truncates -6.6 to-6 instead of original rounded-7. Full shared
+graph is built atomically; original finite/rounded/clamped integer conversion
+restored. Transactional attachment growth stages real new allocation before
+moving old wrappers; actual injected allocation failure/retry preserves old
+identity/contents/serial/logical+native bytes. Shared-depth lease survives actual
+producer destruction. Peer review no blockers. Existing root slot/depth tests
+now compare real native handles, matching the original resource identity;
+first integration retained one stale wrapper-pointer assertion and failed once,
+then corrected. All meaningful original16target/sixdepth cases mapped explicitly.
 
 gl_tail_audit owns alquerypool.* plus original/native query tests in
 /private/tmp/alchemy-native-query-pool-cleanup-20261111, basef2db7c729e.
@@ -74,8 +98,13 @@ Release currently leaves mSerial unchanged, so reacquired slot0 aliases a stale
 ticket. Original release advances generation. Red CPUthreefail/onecase and
 actualGPU15fail/onecase(three sections), exit42: stale attach changes clipped0
 to visible1. Keep actual visibility capture/ring/result/wait/diagnostics; remove
-only producerless spans/statistics/conditional/driver strategy APIs after an
-explicit original20case census and native lifetime admission.
+only producerless spans/statistics/conditional/reservation/driver strategy APIs
+after explicit original20case census and native lifetime admission. Final
+ac4a125458 (child55bfe4fcbb) integrates actual1291assertions/10cases0: all64
+retention ages/expiry, stale end/discard/attach, native owner release, uncommitted
+wait/poll no-submit and32mixed-kind GPU slots. Default constructor no longer
+takes unused frame fences; LLRender no-op retire/makeRoom calls removed. Actual
+native pacing/frame/Tracy owners remain. Root review no blockers.
 
 ## Scene Monitor in progress
 
@@ -96,7 +125,11 @@ matches UI pixels, with no duplicate same-frame publish. Release pipeline
 syntax0, not a functional menu/feature result. Native submit must pin both
 source leases until actual command completion, including reset/destruction;
 pending/failed work must never record a successful zero. Implementation/tests
-and high-level wiring remain in progress.
+and high-level wiring remain in progress. Child exact byte cutoff proof finds
+normalized read versus fast reciprocal expression differ one ulp at equality;
+recover authored RGB8 byte deltas and compare integer BayerByte*15 without any
+epsilon/tolerance widening. Do not claim incidental old driver float cutoff
+bit identity. Low-level actual GPU proof is green, final policy review pending.
 
 ## Command receipts and limits
 
@@ -111,3 +144,11 @@ registered Ninja test tree built0. Current targeted filters overlap, no totals
 are summed. Last verified canonical/appearance binaries remain frozen d28/
 26.4.0d68712; current source still needs a full build after active repairs.
 Full source/runtime/feature/stability/release/performance gates remain open.
+
+Latest integrated native builds0, native-target-query-diagnostics-full-gpu.log:
+88827assertions/375cases,374pass/one known CPAL multi-palette skip. Separate
+native-target-query-default-font-gpu.log:1862assertions/61cases0, no skips.
+Source includes central UI counters, target and query fixes. Earlier wrong
+target/direct-draw tag attempts are preserved with filter-miss/first-integration
+names; only the full registered suite is the current aggregate. Application
+build/architecture/import/signature verification still awaits frozen current code.
