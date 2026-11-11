@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Renderer checkpoint:** Commit `a5425524eeb85e340d491a818a91d4b0f375c105`.
+**Renderer checkpoint:** Commit `30ef2ccb694ee3030ff059ec00f084de3fe7c748`.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -12,6 +12,25 @@ No viewer launch or screenshot comparison. The separate20FPS campaign remains
 deferred. Follow original source contracts before each fix.
 
 [Current work and command receipts](remaining-feature-port.md).
+Latest: [native shader ownership cleanup](native-shader-owner-cleanup.md)
+removes the dormant compiler/linker/binary cache/reflection/uniform upload and
+shader/query/resource entrypoints. Native pass/variant/CPU data contracts remain.
+Remove write-only schema registration and unused buffer-name state. Actual
+world/UI Metal libraries/PSOs reload on forced rebuild, retaining targets,
+histories and old material leases. Failed reload/configuration requeues safely.
+Diagnostics use actual Metal identity or unavailable state without GL queries.
+Native/optional utility builds0; Metal-validated tests35550assertions/32cases.
+First canonical link failed because root removed the still-needed native loader
+failure helper; restored from original source in30ef2ccb69. Corrected frozen
+configure/build0, canonical Release68655 verified349ARM64/0invalid, deepcodesign0;
+viewer/utility have no OpenGL framework or GL/CGL/SDL_GL undefined imports.
+Strict source audit remains failed1441findings/2406files,159GL-call
+syntax matches. Root owns final integration/build/evidence. Independent utility
+and preview reload worktrees/owners are pinned in CURRENT; their changes are not
+integrated. Current reload coverage is world/UI, not every application shader.
+
+Earlier verified bounded checkpoints below remain included; their older build
+and inventory counts do not supersede the current observations above.
 Follow-up: [native buffer visualization](debug-buffer-visualization.md) now
 owns modes0–6 in the original post order, retaining spatial meter/SMAA sources.
 [Optional baking loader](appearance-native-loader.md) now configures native
@@ -69,21 +88,23 @@ No fallback renderer or general graphics framework is authorized.
 
 ## Complete-product checkpoint gate
 
-M-008/M-011 advance through real buffer-view consumers and removal of the
-utility's live shared GL compiler dependency; M-013 prior fixes remain included.
+M-008/M-011 advance through real buffer-view consumers, native world/UI shader
+reload and removal of shared GL compiler/driver ownership; M-013 prior fixes remain included.
 Bounded physical GPU evidence does not establish whole-feature/runtime parity.
 This does not establish complete Debug/Developer menus or RLVa parity.
 M-012 stays complete; M-014 remains deferred. No release readiness claim.
 
 ## Immediate executable action
 
-Remove dormant GLSL compiler/linker/binary-cache code from the native shader
-manager/program boundary. The optional utility no longer consumes GL compilation.
-Preserve native metadata/variants/uniform state and cache-purge/reload semantics;
-enumerate all remaining consumers before API removal, then remove shader-only
-GL pointers after their last uses. Build viewer/utility and run native metadata,
-UI/world regressions plus strict audit. No viewer or utility launches.
-The detailed work note records exact paths and tests. Keep viewer closed.
+Integrate isolated utility/preview reload and vertex allocation/upload cleanup
+commits after reviewing exact diffs and running GPU tests. Root alone wires the
+central builtin revision announcement and CMake; preserve generated/external
+images and pending resources. Developer Frame Profile is being implemented in
+its isolated worktree using actual Metal encoder measurements and honest
+unavailable counters. Runtime M1 probe confirms only stage-boundary timestamps,
+no per-draw/dispatch sampling or statistics. Continue remaining GL manager/
+vertex-draw/image tails. No viewer or utility launches.
+CURRENT pins exact worktree paths, branches and exclusive owners. Keep viewer closed.
 
 ## Non-negotiable open gates
 

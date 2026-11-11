@@ -1,5 +1,11 @@
 # Remaining feature port — 2026-11-11
 
+Latest: [native shader ownership/reload](native-shader-owner-cleanup.md) removes
+the shared GL compiler/linker/cache/reflection and begins actual native reload
+coverage. Its current receipts and next actions supersede the older compiler
+cleanup next action below. Remaining utility/preview owners and Frame Profile
+are still active work; this is not whole-feature completion.
+
 Follow-up: [native buffer visualization](debug-buffer-visualization.md) and the
 [appearance utility loader](appearance-native-loader.md) now implement the next
 two identified native ownership boundaries. Their later receipts supersede the
