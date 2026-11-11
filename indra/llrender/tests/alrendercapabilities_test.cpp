@@ -24,31 +24,11 @@
 
 namespace
 {
-unsigned diagnostic_gl_queries = 0;
-
-void APIENTRY diagnosticIntegerTrap(GLenum, GLint* value)
-{
-    ++diagnostic_gl_queries;
-    if (value) *value = 0;
-}
-
 struct DiagnosticStateScope
 {
     ALRenderCapabilities capabilities = gRenderCapabilities;
-    PFNGLGETINTEGERVPROC get_integer = glGetIntegerv;
-    unsigned previous_queries = diagnostic_gl_queries;
-
-    DiagnosticStateScope()
-    {
-        diagnostic_gl_queries = 0;
-        // The remaining query entrypoint is a CPU sentinel: a diagnostic
-        // path must not read GL limits on a machine with no GL context.
-        glGetIntegerv = diagnosticIntegerTrap;
-    }
     ~DiagnosticStateScope()
     {
-        glGetIntegerv = get_integer;
-        diagnostic_gl_queries = previous_queries;
         gRenderCapabilities = capabilities;
     }
 };
@@ -220,7 +200,6 @@ TEST_CASE("LLGLManager diagnostics report native capabilities without OpenGL que
             CHECK_FALSE(telemetry.has(key));
         }
         CHECK(telemetry["unrelated_telemetry"].asString() == "preserved");
-        CHECK(diagnostic_gl_queries == 0);
         CHECK_FALSE(manager.mInited);
         CHECK_FALSE(gGLManager.mInited);
     }
@@ -260,7 +239,6 @@ TEST_CASE("LLGLManager diagnostics report native capabilities without OpenGL que
         CHECK_FALSE(telemetry.has(key));
     }
     CHECK(telemetry["unrelated_telemetry"].asString() == "preserved");
-    CHECK(diagnostic_gl_queries == 0);
     CHECK_FALSE(manager.mInited);
     CHECK_FALSE(gGLManager.mInited);
 }

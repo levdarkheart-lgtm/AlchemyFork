@@ -44,27 +44,21 @@ public:
     LLGLDepthTest(const LLGLDepthTest&) = delete;
     LLGLDepthTest& operator=(const LLGLDepthTest&) = delete;
 
-    void checkState();
-
-    // Take the tracked state back to a fresh context's: test off, writes on, GL_LESS, with the
-    // func issued through remap so GL agrees under whichever convention is latched. Run per
-    // context by LLGLState::initClass.
+    // Reset semantic defaults: test off, writes on, GL_LESS. Called by
+    // LLGLState::initClass when the renderer initializes.
     static void initClass();
 
     // Reverse-Z depth-func translation. The tracked state (sDepthFunc) and every call
-    // site stay in the forward/semantic convention; the physical glDepthFunc is fed the
+    // site stay in the forward/semantic convention; native draw capture uses the
     // translated func so a call site asking for "nearer wins" keeps that meaning under
     // reverse-Z. Identity unless LLRender::sReverseZ. LESS<->GREATER, LEQUAL<->GEQUAL;
     // EQUAL/NOTEQUAL/ALWAYS/NEVER pass through unchanged.
     static GLenum remap(GLenum func);
-    // Re-issue the physical depth func for the current translation. Call after
-    // LLRender::sReverseZ changes so the GL state agrees with the (unchanged) semantic
-    // static -- the ambient func was issued under the old translation.
+    // Flush the draw boundary when LLRender::sReverseZ changes. Subsequent
+    // native draws translate the unchanged semantic function through remap().
     static void rebase();
 
-    // Read the semantic state already tracked for GL. Native sidecar encoders
-    // use this snapshot at the same materialized draw boundary; querying the
-    // driver here would serialize it and would lose the forward convention.
+    // Read the semantic state at the materialized native draw boundary.
     static bool depthEnabled() noexcept { return sDepthEnabled != GL_FALSE; }
     static bool depthWriteEnabled() noexcept { return sWriteEnabled != GL_FALSE; }
     static GLenum depthFunction() noexcept { return sDepthFunc; }

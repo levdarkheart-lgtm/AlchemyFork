@@ -52,8 +52,6 @@ extern bool gDebugSession;
 extern bool gDebugGLSession;
 extern llofstream gFailLog;
 
-#define LL_GL_ERRS LL_ERRS("RenderState")
-
 void ll_init_fail_log(std::string filename);
 
 void ll_fail(std::string msg);
@@ -171,21 +169,16 @@ class LLMatrix4;
 
 void rotate_quat(LLQuaternion& rotation);
 
-void flush_glerror(); // Flush GL errors when we know we're handling them correctly.
-
-void log_glerror();
-
+// Empty legacy checkpoints retained until their callers are migrated. Native
+// errors belong to typed Metal API results, command completion and the Metal
+// API/shader validation layers; there is no global Metal error queue to poll.
+void flush_glerror();
 void assert_glerror();
-
-void clear_glerror();
-
 
 # define stop_glerror() assert_glerror()
 # define llglassertok() assert_glerror()
 
-// stop_glerror is still needed on OS X but has performance implications
-// use macro below to conditionally add stop_glerror to non-release builds
-// on OS X
+// Retained source compatibility for callers pending migration.
 #if LL_DARWIN && !LL_RELEASE_FOR_DOWNLOAD
 #define STOP_GLERROR stop_glerror()
 #else
@@ -199,18 +192,17 @@ void clear_glerror();
 // Note: U32's are GLEnum's...
 //
 
-// This is a class for GL state management
+// CPU render-state scopes consumed by native draw snapshots.
 
 /*
     GL STATE MANAGEMENT DESCRIPTION
 
-    LLGLState and its two subclasses, LLGLEnable and LLGLDisable, manage the current
-    enable/disable states of the GL to prevent redundant setting of state within a
-    render path or the accidental corruption of what state the next path expects.
+    LLGLState and its two subclasses, LLGLEnable and LLGLDisable, manage semantic
+    enable/disable state. Native draw capture reads the CPU map when building
+    explicit Metal pipeline/encoder descriptors.
 
-    Essentially, wherever you would call glEnable set a state and then
-    subsequently reset it by calling glDisable (or vice versa), make an instance of
-    LLGLEnable with the state you want to set, and assume it will be restored to its
+    When a path temporarily enables a capability, make an instance of
+    LLGLEnable with the state you want to set, and it will be restored to its
     original state when that instance of LLGLEnable is destroyed.  It is good practice
     to exploit stack frame controls for optimal setting/unsetting and readability of
     code.  In llglstates.h, there are a collection of helper classes that define groups
@@ -219,7 +211,7 @@ void clear_glerror();
 
     Sample usage:
 
-    //disable lighting for rendering hud objects
+    //enable blending for rendering hud objects
     //INCORRECT USAGE
     LLGLEnable blend(GL_BLEND);
     renderHUD();
@@ -235,18 +227,15 @@ void clear_glerror();
     is useful:
 
     {
-        LLGLEnable blend(blend_hud ? GL_GL_BLEND: 0);
+        LLGLEnable blend(blend_hud ? GL_BLEND: 0);
         renderHUD();
     }
 
     A LLGLState initialized with a parameter of 0 does nothing.
 
-    LLGLState works by maintaining a map of the current GL states, and ignoring redundant
+    LLGLState works by maintaining a map of the current semantic states, and ignoring redundant
     enables/disables.  If a redundant call is attempted, it becomes a noop, otherwise,
     it is set in the constructor and reset in the destructor.
-
-    For debugging GL state corruption, running with debug enabled will trigger asserts
-    if the existing GL state does not match the expected GL state.
 
 */
 
@@ -255,21 +244,16 @@ class LLGLState
 public:
     static void initClass();
 
-    // Record a cap set with a raw glEnable/glDisable, so a scoped state does not take it for
-    // GL's default. The map describes the main context; call on the main thread only.
+    // Seed externally initialized semantic state before scoped owners use it.
+    // The map describes the main renderer; call on the main thread only.
     static void seedState(LLGLenum state, LLGLboolean enabled) { sStateMap[state] = enabled; }
 
     // Read the renderer's authoritative capability cache without a driver
-    // round trip. Native migration paths snapshot this at the same draw
-    // boundary that GL consumes it.
+    // round trip. Native draw capture snapshots this at the draw boundary.
     static bool isEnabled(LLGLenum state);
 
-    static void resetTextureStates();
-    static void dumpStates();
-
-    // make sure GL blend function, GL states, and GL color mask match
-    // what we expect
-    //  writeAlpha - whether or not writing to alpha channel is expected
+    // Empty legacy driver-state checkpoint; native validation occurs at the
+    // explicit Metal resource/encoder boundary, never through global queries.
     static void checkStates(GLboolean writeAlpha = GL_TRUE);
 
 protected:

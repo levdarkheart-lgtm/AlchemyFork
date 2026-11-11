@@ -117,9 +117,8 @@ typedef void (APIENTRYP PFNGLDEPTHBOUNDSEXTPROC) (GLdouble zmin, GLdouble zmax);
 #define GL_COMPRESSED_LUMINANCE           0x84EA
 #define GL_COMPRESSED_LUMINANCE_ALPHA     0x84EB
 
-// Remaining legacy calls are owned by the state/error helpers and the
-// vertex/image consumers still being converted. Native device setup never
-// resolves a GL entrypoint.
+// Remaining legacy calls belong to consumers still being converted.
+// Native device setup never resolves a GL entrypoint.
 #if LL_WINDOWS
 extern PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT;
 extern PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
@@ -135,14 +134,6 @@ extern PFNWGLDXUNLOCKOBJECTSNVPROC wglDXUnlockObjectsNV;
 
 extern PFNGLTEXPARAMETERIPROC glTexParameteri;
 extern PFNGLTEXPARAMETERIVPROC glTexParameteriv;
-extern PFNGLDEPTHMASKPROC glDepthMask;
-extern PFNGLDISABLEPROC glDisable;
-extern PFNGLENABLEPROC glEnable;
-extern PFNGLDEPTHFUNCPROC glDepthFunc;
-extern PFNGLGETBOOLEANVPROC glGetBooleanv;
-extern PFNGLGETERRORPROC glGetError;
-extern PFNGLGETINTEGERVPROC glGetIntegerv;
-extern PFNGLISENABLEDPROC glIsEnabled;
 extern PFNGLDRAWARRAYSPROC glDrawArrays;
 extern PFNGLDRAWELEMENTSPROC glDrawElements;
 extern PFNGLTEXSUBIMAGE2DPROC glTexSubImage2D;
