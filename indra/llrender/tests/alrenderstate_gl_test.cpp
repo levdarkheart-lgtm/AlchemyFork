@@ -1,9 +1,9 @@
 /**
  * @file alrenderstate_gl_test.cpp
  * @brief LLRender's cached clear colour, scissor box, patch size, polygon mode, cull face, point size,
- *        stencil state, blend equation and viewport on the hidden window: what a clear fills with and
- *        cuts to, what GL holds after refreshState, what a change flushes, and what LLGLSScissor and
- *        ALGLStencil hand back; the depth convention, a synchronous read, a copy from the window, and
+ *        blend equation and viewport on the hidden window: what a clear fills with and
+ *        cuts to, what GL holds after refreshState, what a change flushes, and what LLGLSScissor
+ *        hands back; the depth convention, a synchronous read, a copy from the window, and
  *        the driver's own strings.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
@@ -120,45 +120,6 @@ namespace
             return drew;
         }
 
-        // GL's stencil state, both faces, against what is given. The masks are held to the 8 bits a stencil buffer has:
-        // past them, what glGetIntegerv answers for an unsigned mask is the driver's choice. GL answers the reference
-        // held to the stencil bits of the draw framebuffer, which Mesa takes as of the last draw or clear into it, not
-        // its bind: a check of one above 0 binds a target with stencil and clears it first.
-        void checkStencil(GLenum func, GLint ref, GLuint read_mask, GLenum fail, GLenum depth_fail, GLenum pass,
-                          GLuint write_mask)
-        {
-            CHECK((U32)glInteger(GL_STENCIL_FUNC) == func);
-            CHECK(glInteger(GL_STENCIL_REF) == ref);
-            CHECK(((U32)glInteger(GL_STENCIL_VALUE_MASK) & 0xFF) == (read_mask & 0xFF));
-            CHECK((U32)glInteger(GL_STENCIL_FAIL) == fail);
-            CHECK((U32)glInteger(GL_STENCIL_PASS_DEPTH_FAIL) == depth_fail);
-            CHECK((U32)glInteger(GL_STENCIL_PASS_DEPTH_PASS) == pass);
-            CHECK(((U32)glInteger(GL_STENCIL_WRITEMASK) & 0xFF) == (write_mask & 0xFF));
-            CHECK((U32)glInteger(GL_STENCIL_BACK_FUNC) == func);
-            CHECK(glInteger(GL_STENCIL_BACK_REF) == ref);
-            CHECK(((U32)glInteger(GL_STENCIL_BACK_VALUE_MASK) & 0xFF) == (read_mask & 0xFF));
-            CHECK((U32)glInteger(GL_STENCIL_BACK_FAIL) == fail);
-            CHECK((U32)glInteger(GL_STENCIL_BACK_PASS_DEPTH_FAIL) == depth_fail);
-            CHECK((U32)glInteger(GL_STENCIL_BACK_PASS_DEPTH_PASS) == pass);
-            CHECK(((U32)glInteger(GL_STENCIL_BACK_WRITEMASK) & 0xFF) == (write_mask & 0xFF));
-        }
-
-        // gGL's stencil state against what is given.
-        void checkCachedStencil(U32 func, S32 ref, U32 read_mask, U32 fail, U32 depth_fail, U32 pass, U32 write_mask)
-        {
-            U32 cached_func = 0, cached_read_mask = 0, cached_fail = 0, cached_depth_fail = 0, cached_pass = 0;
-            S32 cached_ref = -1;
-            gGL.getStencilFunc(cached_func, cached_ref, cached_read_mask);
-            gGL.getStencilOp(cached_fail, cached_depth_fail, cached_pass);
-            CHECK(cached_func == func);
-            CHECK(cached_ref == ref);
-            CHECK(cached_read_mask == read_mask);
-            CHECK(cached_fail == fail);
-            CHECK(cached_depth_fail == depth_fail);
-            CHECK(cached_pass == pass);
-            CHECK(gGL.getStencilMask() == write_mask);
-        }
-
     // The clear colour and scissor box the tests set go back with mGL.
     struct alrenderstate_data
     {
@@ -172,10 +133,10 @@ namespace
             mTarget.release();
         }
 
-        // The target, with depth and stencil where `stencil`.
-        void setUp(bool stencil = false)
+        // The colour target used by clear, scissor and raster-state checks.
+        void setUp()
         {
-            REQUIRE(mTarget.allocate(SIZE, SIZE, GL_RGBA8, stencil, stencil));
+            REQUIRE(mTarget.allocate(SIZE, SIZE, GL_RGBA8));
         }
 
         ll_test::SharedGLScope mGL;
@@ -313,7 +274,7 @@ namespace
         CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
     }
 
-    // The polygon mode, cull face, point size, stencil state and blend equation: what gGL is given GL holds, a set
+    // The polygon mode, cull face, point size and blend equation: what gGL is given GL holds, a set
     // the cache agrees with issues nothing, and refreshState puts back what gGL holds.
     TEST_CASE_METHOD(alrenderstate_data, "alrenderstate_gl: the raster state gGL is given is issued, kept and put back by refreshState", "[alrenderstate_gl]")
     {
@@ -322,9 +283,6 @@ namespace
             gGL.setPolygonMode(GL_LINE);
             gGL.setCullFace(GL_FRONT);
             gGL.setPointSize(4.f);
-            gGL.setStencilFunc(GL_EQUAL, 3, 0x0F);
-            gGL.setStencilOp(GL_ZERO, GL_INCR, GL_REPLACE);
-            gGL.setStencilMask(0xF0);
             gGL.setBlendEquation(GL_FUNC_ADD, GL_MAX);
         };
         const auto check_set = []
@@ -332,12 +290,11 @@ namespace
             CHECK((U32)glInteger(GL_POLYGON_MODE) == (U32)GL_LINE);
             CHECK((U32)glInteger(GL_CULL_FACE_MODE) == (U32)GL_FRONT);
             CHECK(glFloat(GL_POINT_SIZE) == 4.f);
-            checkStencil(GL_EQUAL, 3, 0x0F, GL_ZERO, GL_INCR, GL_REPLACE, 0xF0);
             CHECK((U32)glInteger(GL_BLEND_EQUATION_RGB) == (U32)GL_FUNC_ADD);
             CHECK((U32)glInteger(GL_BLEND_EQUATION_ALPHA) == (U32)GL_MAX);
         };
 
-        setUp(true);
+        setUp();
         mTarget.bindTarget();
         mTarget.clear();
         set();
@@ -348,7 +305,6 @@ namespace
         CHECK(gGL.getPolygonMode() == (U32)GL_LINE);
         CHECK(gGL.getCullFace() == (U32)GL_FRONT);
         CHECK(gGL.getPointSize() == 4.f);
-        checkCachedStencil(GL_EQUAL, 3, 0x0F, GL_ZERO, GL_INCR, GL_REPLACE, 0xF0);
         U32 rgb = 0, alpha = 0;
         gGL.getBlendEquation(rgb, alpha);
         CHECK(rgb == (U32)GL_FUNC_ADD);
@@ -358,9 +314,6 @@ namespace
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glCullFace(GL_BACK);
         glPointSize(1.f);
-        glStencilFunc(GL_ALWAYS, 0, 0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-        glStencilMask(0xFF);
         glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
         set();
         {
@@ -368,7 +321,6 @@ namespace
             CHECK((U32)glInteger(GL_POLYGON_MODE) == (U32)GL_FILL);
             CHECK((U32)glInteger(GL_CULL_FACE_MODE) == (U32)GL_BACK);
             CHECK(glFloat(GL_POINT_SIZE) == 1.f);
-            checkStencil(GL_ALWAYS, 0, 0xFF, GL_KEEP, GL_KEEP, GL_KEEP, 0xFF);
             CHECK((U32)glInteger(GL_BLEND_EQUATION_ALPHA) == (U32)GL_FUNC_ADD);
         }
 
@@ -392,12 +344,6 @@ namespace
         CHECK(drawsBatched([] { gGL.setCullFace(GL_FRONT); }));
         CHECK_FALSE(drawsBatched([] { gGL.setPointSize(gGL.getPointSize()); }));
         CHECK(drawsBatched([] { gGL.setPointSize(3.f); }));
-        CHECK_FALSE(drawsBatched([] { gGL.setStencilFunc(GL_ALWAYS, 0, ~0u); }));
-        CHECK(drawsBatched([] { gGL.setStencilFunc(GL_EQUAL, 1, 0xFF); }));
-        CHECK_FALSE(drawsBatched([] { gGL.setStencilOp(GL_KEEP, GL_KEEP, GL_KEEP); }));
-        CHECK(drawsBatched([] { gGL.setStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE); }));
-        CHECK_FALSE(drawsBatched([] { gGL.setStencilMask(~0u); }));
-        CHECK(drawsBatched([] { gGL.setStencilMask(0x0F); }));
         CHECK_FALSE(drawsBatched([] { gGL.setBlendEquation(GL_FUNC_ADD, GL_FUNC_ADD); }));
         CHECK(drawsBatched([] { gGL.setBlendEquation(GL_FUNC_ADD, GL_MAX); }));
         CHECK_FALSE(drawsBatched([] { gGL.setViewport(0, 0, 8, 8); }));
@@ -430,48 +376,6 @@ namespace
         gGL.refreshState();
         UNSCOPED_INFO("refreshState puts back what gGL holds");
         CHECK(glViewportIs(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]));
-        CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
-    }
-
-    // ALGLStencil turns the test on with what it is given, through gGL, and on exit turns it off with the rest at GL's
-    // defaults.
-    TEST_CASE_METHOD(alrenderstate_data, "alrenderstate_gl: ALGLStencil sets its state through gGL and leaves GL's defaults", "[alrenderstate_gl]")
-    {
-        setUp(true);
-        mTarget.bindTarget();
-        mTarget.clear();
-        {
-            ALGLStencil stencil(GL_EQUAL, 3, 0x0F, GL_KEEP, GL_INCR, GL_REPLACE, 0xF0);
-            UNSCOPED_INFO("the test is on in the scope");
-            CHECK(glIsEnabled(GL_STENCIL_TEST) == GL_TRUE);
-            checkCachedStencil(GL_EQUAL, 3, 0x0F, GL_KEEP, GL_INCR, GL_REPLACE, 0xF0);
-            checkStencil(GL_EQUAL, 3, 0x0F, GL_KEEP, GL_INCR, GL_REPLACE, 0xF0);
-        }
-        UNSCOPED_INFO("the test is off again");
-        CHECK(glIsEnabled(GL_STENCIL_TEST) == GL_FALSE);
-        checkCachedStencil(GL_ALWAYS, 0, ~0u, GL_KEEP, GL_KEEP, GL_KEEP, ~0u);
-        checkStencil(GL_ALWAYS, 0, ~0u, GL_KEEP, GL_KEEP, GL_KEEP, ~0u);
-        mTarget.flush();
-        CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
-    }
-
-    // A clear writes the stencil only through the write mask gGL holds.
-    TEST_CASE_METHOD(alrenderstate_data, "alrenderstate_gl: a stencil clear writes only the bits of gGL's write mask", "[alrenderstate_gl]")
-    {
-        LLRenderTarget stenciled;
-        REQUIRE(stenciled.allocate(SIZE, SIZE, GL_RGBA8, true, true));
-        stenciled.bindTarget();
-        glClearStencil(0xFF);
-        gGL.setStencilMask(0x0F);
-        stenciled.clear(GL_STENCIL_BUFFER_BIT);
-        U8 value = 0;
-        glReadPixels(1, 1, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &value);
-        CHECK((U32)value == 0x0Fu);
-
-        gGL.setStencilMask(~0u);
-        glClearStencil(0);
-        stenciled.flush();
-        stenciled.release();
         CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
     }
 

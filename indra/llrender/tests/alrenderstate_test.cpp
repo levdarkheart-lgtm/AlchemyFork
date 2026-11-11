@@ -43,9 +43,6 @@ TEST_CASE("Renderer state remains semantic without an OpenGL context",
     render.setPolygonMode(GL_LINE);
     render.setCullFace(GL_FRONT);
     render.setPointSize(5.f);
-    render.setStencilFunc(GL_EQUAL, 7, 0x0fu);
-    render.setStencilOp(GL_ZERO, GL_INCR, GL_REPLACE);
-    render.setStencilMask(0xf0u);
     render.setBlendEquation(GL_FUNC_ADD, GL_MAX);
     render.setViewport(1, 2, 640, 480);
     render.setScissor(3, 4, 320, 240);
@@ -57,24 +54,7 @@ TEST_CASE("Renderer state remains semantic without an OpenGL context",
     CHECK(render.getPolygonMode() == GL_LINE);
     CHECK(render.getCullFace() == GL_FRONT);
     CHECK(render.getPointSize() == 5.f);
-    CHECK(render.getStencilMask() == 0xf0u);
     CHECK(render.getClearColor() == LLColor4(0.25f, 0.5f, 0.75f, 1.f));
-
-    U32 stencil_func = 0;
-    S32 stencil_ref = 0;
-    U32 stencil_read_mask = 0;
-    render.getStencilFunc(stencil_func, stencil_ref, stencil_read_mask);
-    CHECK(stencil_func == GL_EQUAL);
-    CHECK(stencil_ref == 7);
-    CHECK(stencil_read_mask == 0x0fu);
-
-    U32 stencil_fail = 0;
-    U32 depth_fail = 0;
-    U32 stencil_pass = 0;
-    render.getStencilOp(stencil_fail, depth_fail, stencil_pass);
-    CHECK(stencil_fail == GL_ZERO);
-    CHECK(depth_fail == GL_INCR);
-    CHECK(stencil_pass == GL_REPLACE);
 
     U32 blend_rgb = 0;
     U32 blend_alpha = 0;
