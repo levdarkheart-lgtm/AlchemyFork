@@ -1876,6 +1876,7 @@ if(AL_BUILD_VIEWER)
     pipeline_highlight_native.inl
     pipeline_hud_debug_native.inl
     pipeline_buffer_publication_native.inl
+    light_screen_rect_native.inl
     llreflectionmapmanager_config.inl
     dynamic_texture_native.inl
     image_preview_native.inl
