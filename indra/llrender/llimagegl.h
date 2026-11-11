@@ -586,9 +586,8 @@ public:
     // publication boundary. Returns whether that handoff reached the main queue.
     bool syncMetalToMainThread();
 
-    // Main-thread publication boundary for a complete staged native texture.
-    // Unlike a media-frame mirror update, this makes Metal authoritative and
-    // retires any transitional GL object only after the native upload commits.
+    // Main-thread publication boundary for a complete staged native texture,
+    // its alpha facts and accounting after the native upload commits.
     void publishMetalTextureAuthoritative();
 #endif
 
@@ -597,8 +596,8 @@ private:
     bool prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& command_owner,
                              ALMetalCommandBuffer*& command_buffer,
                              bool will_upload_pixels);
-    // Process-wide texture budgeting counts a transitional GL+Metal image once.
-    // These helpers account native storage only while it is authoritative.
+    // Process-wide budgeting accounts the published native generation;
+    // pending replacement storage takes its place only when published.
     void updateMetalTextureAccounting() noexcept;
     void clearMetalTextureAccounting() noexcept;
     bool uploadMetalTextureRegion(ALMetalCommandBuffer& command_buffer,
@@ -632,14 +631,14 @@ public:
 
     void setTexName(GLuint texName) { mTexName = texName; }
 
-    // Publish texname in place of mTexName, deleting the old one, along with what the
-    // upload that built it staged (the pick mask), then end the upload. Main thread.
+    // Publish a complete pending native texture, its pick mask and accounting,
+    // then end the upload. Main thread. texname is a retained sentinel and must be zero.
     void syncTexName(LLGLuint texname);
 
     // Bracket an upload handed to the LLImageGL thread, on the MAIN thread: begin before
     // posting the work, and end in its completion callback whatever the worker did
     // (syncTexName has already ended it if the texture published). In between, the
-    // geometry getters answer for the texture mTexName still names.
+    // geometry getters answer for the currently published native texture.
     void beginUpload();
     // The same, first working out here the format an image without an explicit one takes
     // from the components it is about to upload: see resolveComponentFormat.
