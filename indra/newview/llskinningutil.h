@@ -67,7 +67,6 @@ namespace LLSkinningUtil
     }
 
     S32 getMaxJointCount();
-    S32 getMaxGLTFJointCount();
     U32 getMeshJointCount(const LLMeshSkinInfo *skin);
     void scrubInvalidJoints(LLVOAvatar *avatar, LLMeshSkinInfo* skin);
     void initSkinningMatrixPalette(LLMatrix4a* mat, S32 count, const LLMeshSkinInfo* skin, LLVOAvatar *avatar);

@@ -27,7 +27,6 @@
  */
 
 #include "llvertexbuffer.h"
-#include "aluniformbuffer.h"
 #include "llvolumeoctree.h"
 #include "accessor.h"
 #include "primitive.h"
@@ -235,14 +234,11 @@ namespace LL
             S32 mInverseBindMatrices = INVALID_INDEX;
             S32 mSkeleton = INVALID_INDEX;
 
-            // joint matrix-palette constant block (deleted with the Skin via RAII)
-            ALUniformBuffer mUBO;
             std::vector<S32> mJoints;
             std::string mName;
             std::vector<mat4> mInverseBindMatricesData;
 
             bool prep(Asset& asset);
-            void uploadMatrixPalette(Asset& asset);
 
             const Skin& operator=(const Value& src);
             void serialize(JsonWriter& dst) const;
@@ -361,11 +357,6 @@ namespace LL
             // the last time update() was called according to gFrameTimeSeconds
             F64 mLastUpdateTime = gFrameTimeSeconds;
 
-            // UBO for storing node transforms
-            ALUniformBuffer mNodesUBO;
-
-            // UBO for storing material data
-            ALUniformBuffer mMaterialsUBO;
             bool mLoadIntoVRAM = false;
 
             std::vector<std::string> mUnsupportedExtensions;
@@ -383,12 +374,6 @@ namespace LL
 
             // update asset-to-node and node-to-asset transforms
             void updateTransforms();
-
-            // upload matrices to UBO
-            void uploadTransforms();
-
-            // upload materils to UBO
-            void uploadMaterials();
 
             // return the index of the node that the line segment intersects with, or -1 if no hit
             // input and output values must be in this asset's local coordinate frame

@@ -28,7 +28,6 @@
 
 #include "asset.h"
 #include "buffer_util.h"
-#include "../llskinningutil.h"
 
 using namespace LL::GLTF;
 
@@ -395,58 +394,6 @@ const Animation& Animation::operator=(const Value& src)
         }
     }
     return *this;
-}
-
-void Skin::uploadMatrixPalette(Asset& asset)
-{
-    // prepare matrix palette
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_GLTF;
-
-    U32 max_joints = LLSkinningUtil::getMaxGLTFJointCount();
-
-    size_t joint_count = llmin<size_t>(max_joints, mJoints.size());
-
-    std::vector<mat4> t_mp;
-
-    t_mp.resize(joint_count);
-
-    for (U32 i = 0; i < joint_count; ++i)
-    {
-        Node& joint = asset.mNodes[mJoints[i]];
-        // build matrix palette in asset space
-        // out of the bind pose, then into asset space
-        t_mp[i].setMul(mInverseBindMatricesData[i], joint.mAssetMatrix);
-    }
-
-    std::vector<F32> glmp;
-
-    glmp.resize(joint_count * 12);
-
-    F32* mp = glmp.data();
-
-    for (U32 i = 0; i < joint_count; ++i)
-    {
-        const F32* m = t_mp[i].getF32ptr();
-
-        U32 idx = i * 12;
-
-        mp[idx + 0] = m[0];
-        mp[idx + 1] = m[1];
-        mp[idx + 2] = m[2];
-        mp[idx + 3] = m[12];
-
-        mp[idx + 4] = m[4];
-        mp[idx + 5] = m[5];
-        mp[idx + 6] = m[6];
-        mp[idx + 7] = m[13];
-
-        mp[idx + 8] = m[8];
-        mp[idx + 9] = m[9];
-        mp[idx + 10] = m[10];
-        mp[idx + 11] = m[14];
-    }
-
-    mUBO.update(glmp.data(), glmp.size() * sizeof(F32));
 }
 
 bool Skin::prep(Asset& asset)

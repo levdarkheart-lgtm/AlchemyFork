@@ -34,7 +34,6 @@
 #include "../pipeline.h"
 #include "buffer_util.h"
 #include "llimagejpeg.h"
-#include "../llskinningutil.h"
 
 #include <future>
 
@@ -127,100 +126,6 @@ void Asset::updateTransforms()
     {
         scene.updateTransforms(*this);
     }
-
-    uploadTransforms();
-}
-
-void Asset::uploadTransforms()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_GLTF;
-    // prepare matrix palette
-    U32 max_nodes = LLSkinningUtil::getMaxGLTFJointCount();
-
-    size_t node_count = llmin<size_t>(max_nodes, mNodes.size());
-
-    std::vector<mat4> t_mp;
-
-    t_mp.resize(node_count);
-
-    for (U32 i = 0; i < node_count; ++i)
-    {
-        Node& node = mNodes[i];
-        // build matrix palette in asset space
-        t_mp[i] = node.mAssetMatrix;
-    }
-
-    std::vector<F32> glmp;
-
-    glmp.resize(node_count * 12);
-
-    F32* mp = glmp.data();
-
-    for (U32 i = 0; i < node_count; ++i)
-    {
-        const F32* m = t_mp[i].getF32ptr();
-
-        U32 idx = i * 12;
-
-        mp[idx + 0] = m[0];
-        mp[idx + 1] = m[1];
-        mp[idx + 2] = m[2];
-        mp[idx + 3] = m[12];
-
-        mp[idx + 4] = m[4];
-        mp[idx + 5] = m[5];
-        mp[idx + 6] = m[6];
-        mp[idx + 7] = m[13];
-
-        mp[idx + 8] = m[8];
-        mp[idx + 9] = m[9];
-        mp[idx + 10] = m[10];
-        mp[idx + 11] = m[14];
-    }
-
-    mNodesUBO.update(glmp.data(), glmp.size() * sizeof(F32));
-}
-
-void Asset::uploadMaterials()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_GLTF;
-    // see pbrmetallicroughnessV.glsl for the layout of the material UBO
-    std::vector<vec4> md;
-
-    U32 material_size = sizeof(vec4) * 12;
-    U32 max_materials = gGLManager.mMaxUniformBlockSize / material_size;
-
-    U32 mat_count = (U32)mMaterials.size();
-    mat_count = llmin(mat_count, max_materials);
-
-    md.resize(mat_count * 12);
-
-    for (U32 i = 0; i < mat_count*12; i += 12)
-    {
-        Material& material = mMaterials[i/12];
-
-        // add texture transforms and UV indices
-        material.mPbrMetallicRoughness.mBaseColorTexture.mTextureTransform.getPacked(&md[i+0]);
-        md[i + 1].getF32ptr()[1] = (F32)material.mPbrMetallicRoughness.mBaseColorTexture.getTexCoord();
-        material.mNormalTexture.mTextureTransform.getPacked(&md[i + 2]);
-        md[i + 3].getF32ptr()[1] = (F32)material.mNormalTexture.getTexCoord();
-        material.mPbrMetallicRoughness.mMetallicRoughnessTexture.mTextureTransform.getPacked(&md[i+4]);
-        md[i + 5].getF32ptr()[1] = (F32)material.mPbrMetallicRoughness.mMetallicRoughnessTexture.getTexCoord();
-        material.mEmissiveTexture.mTextureTransform.getPacked(&md[i + 6]);
-        md[i + 7].getF32ptr()[1] = (F32)material.mEmissiveTexture.getTexCoord();
-        material.mOcclusionTexture.mTextureTransform.getPacked(&md[i + 8]);
-        md[i + 9].getF32ptr()[1] = (F32)material.mOcclusionTexture.getTexCoord();
-
-        // add material properties
-        F32 min_alpha = material.mAlphaMode == Material::AlphaMode::MASK ? material.mAlphaCutoff : -1.0f;
-        md[i + 10] = vec4(material.mEmissiveFactor.mV[0], material.mEmissiveFactor.mV[1], material.mEmissiveFactor.mV[2], 1.f);
-        md[i + 11] = vec4(0.f,
-            material.mPbrMetallicRoughness.mRoughnessFactor,
-            material.mPbrMetallicRoughness.mMetallicFactor,
-            min_alpha);
-    }
-
-    mMaterialsUBO.update(md.data(), md.size() * sizeof(vec4));
 }
 
 S32 Asset::lineSegmentIntersect(const LLVector4a& start, const LLVector4a& end,
@@ -448,13 +353,6 @@ void Asset::update()
         }
 
         updateTransforms();
-
-        for (auto& skin : mSkins)
-        {
-            skin.uploadMatrixPalette(*this);
-        }
-
-        uploadMaterials();
 
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gltf - addTextureStats");
