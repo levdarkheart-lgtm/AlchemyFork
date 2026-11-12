@@ -3,9 +3,9 @@
 Owner request: fix decoder worker sizing, then benchmark Grok and OpenHTJ2K on
 actual SL textures on M1 Max. All changes, inputs and results stay local until
 owner testing and explicit push approval. The application retains OpenJPEG.
-Defect register ID: PPD-005, source_confirmed, ready_for_owner; owner verification
-pending and push approval not_granted. The register was introduced by concurrent
-work during this task and is maintained locally without staging that work.
+Defect register ID: PPD-005, source_confirmed and owner-verified. On2026-11-12
+the owner accepted the later OpenHTJ2K experiment and explicitly approved the
+decoder/worker scope for codex/apple-silicon-metal; raw artifacts remain local.
 
 ## Original behavior and minimal fix
 
@@ -158,3 +158,8 @@ Actual relaunch time and sustained busy-scene contention remain unmeasured;
 alternative codecs have not been integrated. All changes stay local pending
 owner testing and explicit push approval. This advances the measured CPU asset
 decode boundary, not full-product parity/performance/runtime release gates.
+
+Owner acceptance2026-11-12: the subsequent OpenHTJ2K experiment is accepted,
+with explicit approval to commit/push only its decoder/worker/evidence scope
+to codex/apple-silicon-metal. Historical pending states above describe earlier
+handoffs; no broader renderer approval or causal FPS claim is inferred.

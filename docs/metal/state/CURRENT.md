@@ -7,11 +7,11 @@
 Alpha4 built/tested/packaged/published; [profile](../research/busy-region-profile-2026-11-12.md)301.302sec+11.912sec; exact68841 PID91442/92651 owner login/settings/logout, no source change.
 [Shadow queries](../work/active/shadow-camera-occlusion.md):68849/tests pass;181.281s recovered; [recurring hotspots](../research/three-profile-hotspots-2026-11-12.md) compared, benefit unproven. Raw artifacts/metal/busy-region-profile-20261112/; utility unexecuted/stopped20FPS deferred.
 Local [OpenHTJ2K experiment](../work/active/openhtj2k-local-experiment.md), PPD-005:
-db398/68860 build/ARM64/signature+76tools+736image assertions pass; exactPID67814 launched,4OpenHTworkers observed.181.755s [profile](../research/openhtj2k-profile-2026-11-12.md) saved; post-arrival/unmatched, no speedup claim. Owner acceptance pending; keep local/no push.
+db398/68860 build/ARM64/signature+76tools+736image assertions pass; PID67814/4OpenHTworkers observed,181.755s [profile](../research/openhtj2k-profile-2026-11-12.md) saved. Owner accepted decoder experiment and approved scoped push to codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
 
 ## Current implementation
 
-Mandatory [post-port defects](../POST_PORT_DEFECTS.md): PPD-001–006 unresolved; source defects and the busy-turn report remain distinct.
+Mandatory [post-port defects](../POST_PORT_DEFECTS.md): PPD-001–004/006 unresolved; PPD-005 owner-accepted with scoped push approval. Other source defects and busy-turn report remain distinct.
 Unapproved2c11/5ed push reverted as0f7; original beard-light68841 remains owner-passed.
 Keep future fixes local until explicit owner approval to push after testing.
 

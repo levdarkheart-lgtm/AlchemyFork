@@ -81,7 +81,8 @@ footprint is a peak process metric, not current texture/GPU residency.
 
 No OpenHTJ2K failure message was found; failures are logged at a suppressible
 debug level, so this is not an observed zero-failure count or pixel-correctness
-claim. Owner visual/alpha/texture acceptance remains pending.
+claim. The owner subsequently accepted the experiment and explicitly authorized
+the decoder scope for codex/apple-silicon-metal on2026-11-12.
 
 ## Evidence and next action
 
@@ -95,6 +96,7 @@ ignored; none is published.
 
 See [implementation/handoff](../work/active/openhtj2k-local-experiment.md) and
 [the controlled CPU corpus comparison](../work/active/texture-decoder-workers-and-codecs.md).
-Keep this experimental app local. Owner reports visual behavior/acceptance;
+Owner accepted this experiment and authorized the decoder changes for
+codex/apple-silicon-metal. Raw captures remain local;
 a future decoder A/B needs matched controls, scene, cache and arrival timing.
 Recording the transition itself requires starting before a subsequent teleport.

@@ -162,16 +162,16 @@ execute the real avatar scheduler or establish the cause of PPD-002.
 
 ## PPD-005 — ImageDecode worker sizing halves Apple Silicon CPU count
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex texture decoder workstream
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `LLAppViewer::initThreads` sizes CPU workers before window/vendor initialization; inherited heuristic also exists in pre-fix `d537f10611`.
 - Evidence: [Worker sizing fix, actual SL codec benchmark and local candidate](work/active/texture-decoder-workers-and-codecs.md).
-- Next action: Owner tests local26.4.0.68855, confirms four ImageDecode workers and evaluates warm-disk relaunch texture settling/frame pacing; keep local pending explicit push approval.
-- Verification: Actual old/fixed sizing bodies:16 cases, old9 failures/fixed0; M1 Max selects2/4 workers. Source64f10455ce build/346 ARM64 files/strict signature and56 tools tests pass. Isolated OpenJPEG CPU batch time falls46.30% full/48.31% mixed; no viewer relaunch/FPS gain or owner acceptance inferred.
-- Owner verification: pending
-- Push approval: not_granted
+- Next action: Push only the accepted decoder/worker scope on codex/apple-silicon-metal; unrelated renderer fixes retain their separate approval requirements.
+- Verification: Actual old/fixed sizing bodies:16 cases, old9 failures/fixed0; M1 Max selects2/4 workers. Source64f10455ce build/346 ARM64 files/strict signature and56 tools tests pass. Isolated OpenJPEG CPU batch time falls46.30% full/48.31% mixed; owner explicitly accepted the later68860 experiment and approved this scope on2026-11-12. No controlled viewer loading/FPS gain is established.
+- Owner verification: passed
+- Push approval: granted
 
 The default-false legacy graphics-vendor flag halves10 reported M1 Max CPUs
 to5 before subtracting the six-core reserve, leaving only two decode workers.
@@ -194,6 +194,7 @@ as a Metal-introduced regression or a cause of PPD-002.
   no push approval granted, no push/upload performed.
 - 2026-11-12: Owner requested a separate [OpenHTJ2K experiment](work/active/openhtj2k-local-experiment.md), build and exact launch, then recording only on their signal before teleport. PPD-005 remains ready_for_owner; no acceptance or push approval inferred.
 - 2026-11-12: Local db398/68860 built/tested/launched; runtime confirms4 OpenHTJ2K workers with stable cache identity. Owner-triggered181.755s [profile](research/openhtj2k-profile-2026-11-12.md) saved and analyzed; teleport actually completed34s before recording. Keep experimental correctness/owner acceptance pending; no push approval.
+- 2026-11-12: Owner explicitly accepted the experiment and requested committing/pushing these changes. Acceptance covers decoder/worker changes and their scoped evidence; it does not approve unrelated shadow-renderer work or establish a controlled end-to-end speedup.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 

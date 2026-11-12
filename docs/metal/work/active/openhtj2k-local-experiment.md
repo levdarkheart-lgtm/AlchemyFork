@@ -3,9 +3,10 @@
 Owner requests a quick OpenHTJ2K integration, build and exact candidate launch.
 Owner controls login and teleport, and will explicitly signal when recording
 should start just before teleporting to the busy location. Do not record before
-that signal. All changes, binaries and captures stay local; no push approved.
-This follows PPD-005 and the [codec comparison](texture-decoder-workers-and-codecs.md),
-not an owner-confirmed fix or an approved permanent codec replacement.
+that signal. The owner accepted the experiment and explicitly approved committing/
+pushing the decoder scope on2026-11-12. Binaries and captures remain local.
+This follows PPD-005 and the [codec comparison](texture-decoder-workers-and-codecs.md).
+The accepted implementation remains an explicit opt-in experiment.
 
 ## Original mapping before implementation
 
@@ -64,5 +65,14 @@ owner-controlled. No push/upload. [Profile findings and limitations](../../resea
 four actual OpenHTJ2K workers70.591 sampled CPU seconds; shadows46.27% of main
 CPU; about41.76 presentedFPS over covered intervals. The teleport completed
 34s before recording, and shadow controls differ from the prior capture;
-therefore no teleport-transition or causal codec-speedup claim. Owner texture/
-alpha correctness, interactive stability and permanent adoption remain pending.
+therefore no teleport-transition or causal codec-speedup claim.
+
+## Owner acceptance and scoped publication
+
+On2026-11-12 the owner accepted the experiment and explicitly requested commit
+and push. Record PPD-005 as owner-passed with scoped push approval. Publish the
+worker fix, codec benchmark/tools and OpenHTJ2K implementation/evidence on
+`codex/apple-silicon-metal`, based on the remote branch before unrelated local
+shadow changes. Keep those renderer changes and raw/private artifacts local.
+The published feature stays opt-in and requires the pinned local dependency;
+acceptance does not establish whole-product release readiness or a causal FPS gain.
