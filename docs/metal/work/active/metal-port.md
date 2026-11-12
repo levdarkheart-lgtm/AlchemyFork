@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `2c11d05d53`; matching68845 built/checked; candidate unlaunched.
+**Integrated checkpoint:** Commit `b7bc118d68`; cb840/68841 built/checked/launched.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -164,7 +164,8 @@ facelight-cutoff-20261111/release-replacement.json; no Actions/billing changes.
 This correction is separate from the closed porting goal. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
-New: [busy-turn world freshness](busy-turn-world-freshness.md) 2c11/68845 source/build/tests pass; owner retest pending.
+New: [attached-light cutoff](facelight-light-coverage.md) scoped repair complete;
+cb840/68841 built/checked/launched and owner confirms the reported line is fixed.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all

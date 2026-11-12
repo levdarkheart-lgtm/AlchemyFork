@@ -664,11 +664,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool pass_active = false;
     bool complete = false;
     U32 first_incomplete_source_line = 0;
-    // Preserve the main view's first rejection across the per-phase reset.
-    // UI submission alone can advance while its world backing stays older.
-    U32 main_world_diagnostic_frame = std::numeric_limits<U32>::max();
-    U32 main_world_first_incomplete_source_line = 0;
-    F64 last_stale_world_report_time = -1.;
 
     ALMetalWorldSpotShadowBatch* appendSeparateShadowBatch(U32 source_line)
     {
@@ -2076,11 +2071,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
     const bool main_world_capture = !probe_face && isMainWorldPass() &&
         mRT == &mMainRT;
-    if (main_world_capture && capture.main_world_diagnostic_frame != gFrameCount)
-    {
-        capture.main_world_diagnostic_frame = gFrameCount;
-        capture.main_world_first_incomplete_source_line = 0;
-    }
     if (snapshot_request && !main_world_capture)
     {
         // A normal snapshot owns only the main-world transaction. Reflection
@@ -10448,14 +10438,6 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 
     if (!capture.complete)
     {
-        if (isMainWorldPass() && mRT == &mMainRT &&
-            !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive &&
-            capture.main_world_diagnostic_frame == gFrameCount &&
-            capture.main_world_first_incomplete_source_line == 0)
-        {
-            capture.main_world_first_incomplete_source_line =
-                capture.first_incomplete_source_line;
-        }
         if (isMetalProbeFaceCaptureActive())
         {
             LL_WARNS_ONCE("Metal")
@@ -10931,29 +10913,10 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
             capture.ui_clear_background.reset();
             if (capture.ui_frame_background->source_frame != gFrameCount)
             {
-                if (capture.last_stale_world_report_time < 0. ||
-                    gFrameTimeSeconds - capture.last_stale_world_report_time >= 1.)
-                {
-                    capture.last_stale_world_report_time = gFrameTimeSeconds;
-                    LL_INFOS("Metal")
-                        << "Native UI retained an older world: current_frame="
-                        << gFrameCount << ", source_frame="
-                        << capture.ui_frame_background->source_frame
-                        << ", age_frames="
-                        << U32(gFrameCount - capture.ui_frame_background->source_frame)
-                        << ", capture_frame=" << capture.continuous_world_frame
-                        << ", diagnostic_frame=" << capture.main_world_diagnostic_frame
-                        << ", first_incomplete_line="
-                        << capture.main_world_first_incomplete_source_line
-                        << ", gbuffer=" << static_cast<bool>(capture.target)
-                        << ", light_map=" << static_cast<bool>(capture.base_light_map_target)
-                        << ", base_light=" << static_cast<bool>(capture.base_light_target)
-                        << ", composed_light=" << static_cast<bool>(capture.composed_light_target)
-                        << ", opaque_post=" << static_cast<bool>(capture.opaque_post_deferred_target)
-                        << ", display_post=" << static_cast<bool>(capture.display_post_target)
-                        << ", presentation_frame=" << capture.presentation_frame
-                        << LL_ENDL;
-                }
+                LL_INFOS_ONCE("Metal")
+                    << "Publishing fresh native UI over the retained pre-UI "
+                       "world while current scene resources are incomplete"
+                    << LL_ENDL;
             }
         }
         else
@@ -15572,7 +15535,121 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     }
 }
 
-#include "pipeline_impostor_readiness_native.inl"
+void LLPipeline::captureMetalWorldImpostorBatch(
+    LLVOAvatar& avatar, const LLVector3& center,
+    const LLVector3& left, const LLVector3& up,
+    const LLMatrix3a& normal_rotation, F32 debug_outline_width)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->pass_active ||
+        !mMetalWorldSimpleCapture->impostor)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool debug_requested =
+        hasRenderDebugMask(RENDER_DEBUG_IMPOSTORS);
+    const bool debug_outline = debug_outline_width > 0.f;
+    bool debug_state_valid = !debug_requested && !debug_outline &&
+        debug_outline_width == 0.f;
+    if (debug_requested && debug_outline)
+    {
+        LLRender::eBlendFactor color_source;
+        LLRender::eBlendFactor color_destination;
+        LLRender::eBlendFactor alpha_source;
+        LLRender::eBlendFactor alpha_destination;
+        gGL.getBlendFunc(color_source, color_destination,
+                         alpha_source, alpha_destination);
+        U32 rgb_equation = 0;
+        U32 alpha_equation = 0;
+        gGL.getBlendEquation(rgb_equation, alpha_equation);
+        bool color_mask[4]{};
+        gGL.getColorMask(color_mask);
+        debug_state_valid =
+            std::isfinite(debug_outline_width) &&
+            debug_outline_width >= 1.f && debug_outline_width <= 5.f &&
+            gGL.getLineWidth() == debug_outline_width &&
+            LLGLState::isEnabled(GL_BLEND) &&
+            LLGLState::isEnabled(GL_CULL_FACE) &&
+            LLGLDepthTest::depthEnabled() &&
+            LLGLDepthTest::depthWriteEnabled() &&
+            LLGLDepthTest::depthFunction() == GL_LEQUAL &&
+            color_source == LLRender::BF_ONE &&
+            color_destination == LLRender::BF_ONE &&
+            alpha_source == LLRender::BF_ONE &&
+            alpha_destination == LLRender::BF_ONE &&
+            rgb_equation == GL_FUNC_ADD &&
+            alpha_equation == GL_FUNC_ADD &&
+            color_mask[0] && color_mask[1] &&
+            color_mask[2] && color_mask[3];
+    }
+    if (!capture.complete || !debug_state_valid)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.batches.clear();
+        capture.avatar_palettes.clear();
+        return;
+    }
+    ALMetalAvatarResources::Key key{};
+    std::copy_n(avatar.getID().mData, key.size(), key.begin());
+    auto textures = capture.avatar_resources->find(
+        key, *capture.device, capture.hdr, capture.normal_hdr);
+    const bool has_textures = static_cast<bool>(textures);
+    if (!has_textures)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.batches.clear();
+        capture.avatar_palettes.clear();
+        // Ask the normal avatar scheduler for one fresh bake. The draw-pool
+        // capture publishes one coherent four-attachment native generation;
+        // no legacy render-target pixels are imported as a fallback.
+        avatar.mNeedsImpostorUpdate = true;
+        return;
+    }
+
+    const LLMatrix4a& modelview =
+        LLViewerCamera::getCurrent().getModelview();
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        modelview, LLViewerCamera::getCurrent().getProjection());
+
+    ALMetalWorldSimpleBatch batch;
+    batch.impostor = true;
+    batch.impostor_texture_owner = textures;
+    batch.impostor_debug_outline = debug_outline;
+    batch.impostor_debug_line_width = debug_outline_width;
+    for (std::size_t texture = 0;
+         texture < batch.impostor_textures.size(); ++texture)
+    {
+        batch.impostor_textures[texture] =
+            textures->textures[texture].get();
+    }
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.modelview, modelview.getF32ptr(),
+                sizeof(batch.modelview));
+    std::memcpy(batch.impostor_center, center.mV, sizeof(center.mV));
+    std::memcpy(batch.impostor_left, left.mV, sizeof(left.mV));
+    std::memcpy(batch.impostor_up, up.mV, sizeof(up.mV));
+    for (U32 row = 0; row < 3; ++row)
+    {
+        std::memcpy(batch.impostor_normal_rotation[row],
+                    normal_rotation.getRow(row).getF32ptr(),
+                    sizeof(batch.impostor_normal_rotation[row]));
+    }
+    try
+    {
+        capture.batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.batches.clear();
+        capture.avatar_palettes.clear();
+    }
+}
 
 void LLPipeline::stampMetalImpostorCoverage(const LLUUID& avatar_id, const LLColor4* fill)
 {
@@ -16423,14 +16500,6 @@ void LLPipeline::endMetalWorldGBufferCapture()
     // receipt: unsupported/missing producers explicitly invalidate the view.
     if (!capture.complete)
     {
-        if (!impostor_bake && isMainWorldPass() && mRT == &mMainRT &&
-            !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive &&
-            capture.main_world_diagnostic_frame == gFrameCount &&
-            capture.main_world_first_incomplete_source_line == 0)
-        {
-            capture.main_world_first_incomplete_source_line =
-                capture.first_incomplete_source_line;
-        }
         const std::size_t incomplete_batch_count =
             capture.batches.size();
         settle_visibility_results(nullptr);
