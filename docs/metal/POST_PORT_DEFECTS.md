@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-015 -->
+<!-- next-defect-id: PPD-016 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -584,14 +584,14 @@ inference. No running viewer or published music backend was changed.
 
 ## PPD-013 — Water coverage forms camera-angle-dependent bands
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, class3/deferred/waterHazeV.glsl passes full clip-space float4; waterHazeF.glsl divides interpolated XY/W in the fragment. Native haze pre-divides before perspective interpolation.
 - Evidence: [Owner images and water investigation](work/active/water-angle-artifacts.md).
-- Next action: Compare original and native water geometry/depth/coverage, reproduce the first incorrect producer with an actual Metal water/terrain fixture, then implement and build a local correction.
-- Verification: Owner screenshots21:27:05/21:27:42/21:29:59 at Chouchou(180,161,21), exact launched68898/f826eea135. Read-only live preflight observes striped shallow-water coverage and predominantly blue-water coverage at different yaw angles; active graphics values and original runtime parity are not measured. No correction or passing retest yet.
+- Next action: Owner retests the copied Alchemy Metal Water Haze Fix candidate at the same Chouchou viewpoint/yaw angles. Preserve the running68898 session until owner chooses a restart; keep correction local pending scene acceptance and explicit push approval.
+- Verification: Locala6f4e8ff41/Water Haze Fix26.4.0.68894 built and verified346ARM64/signature/strict-source. Identical physical GPU test executable fails8checks with old shader, passes171318assertions with corrected library;32197existing water/world assertions/4cases also pass, with API/GPU validation. Original shader math restored; owner-scene resolution still pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -617,6 +617,14 @@ offset, disabled quality feature or changed depth admission.
   A physical GPU field-vs-fullscreen regression is being prepared before local
   corrective validation. Attribution to all owner bands remains pending retest;
   occlusion Y-flip suspicion is withdrawn after composing viewport transforms.
+
+- 2026-11-12: Actual M1Max red/green run uses the same test executable
+  SHA643eab51: uniformW controls pass the frozen old library; four perspective/
+  depth-convention combinations fail8checks, with maximum channel error up to
+  .293213. Corrected library passes all171318assertions. Existing real-world/
+  water/normal/cull cases pass32197assertions/4cases. Separate Release candidate
+  builds and passes signature/ARM64/source gates. No viewer restart, scene
+  resolution claim or push; owner visual test remains next.
 
 ## PPD-014 — Automatic CI spends unwanted runs and manual releases select incompatible jobs
 
@@ -648,3 +656,30 @@ not raising spending limits or changing billing/repository permissions.
   report. CI receives PPD-014 before publication; preserve that unrelated report
   and its unapproved working files. Workflow publication excludes canonical
   shared records until their parallel work can be integrated safely.
+
+
+
+## PPD-015 — Water grazing-angle steepness uses eye-space vertical
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-12
+- Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, class1/environment/waterVaryingsV.glsl50–53 separates eye-space vary_position and agent-relative view; class3/environment/waterF.glsl194–197 scales steep_wave.z using normalized agent-relative view.z.
+- Evidence: [Separate water-coordinate audit](work/active/water-angle-artifacts.md).
+- Next action: Add an independent actual-shader grazing-angle/coordinate-space regression before considering a separate correction; keep distinct from PPD-013 haze interpolation and owner band attribution.
+- Verification: Current native shader calculates both eye-space view_vector and agent_view_vector but scales steep_wave.z with eye-space Z at almetal_builtin.metal8028. Source mismatch confirmed independently; no physical regression, runtime attribution or correction performed.
+- Owner verification: pending
+- Push approval: not_granted
+
+The original steepening follows the viewing angle relative to the horizontal
+water plane. Native uses the camera optical-axis component instead, affecting
+refraction XY and sun-normal inputs. This does not establish that it caused
+PPD-013 bands or the supplied coverage changes. No speculative combined fix.
+
+### History
+
+- 2026-11-12: Discovered during PPD-013 source audit; original and native
+  producer/consumer coordinates inspected and independently confirmed. Register
+  before any repair. Haze-only candidate deliberately retains this behavior
+  so its scene retest isolates the confirmed interpolation correction.
