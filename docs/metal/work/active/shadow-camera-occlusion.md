@@ -80,7 +80,8 @@ leaves remain unresolved. See [enabled profile analysis](../../research/shadow-o
 
 Observed28.284 presentedFPS; combined shadow owner41.03% of mainCPU, compared
 with prior35.57FPS/41.26%. Unmatched workload; no causal improvement/regression
-claim. Decode activity perwallsecond2.69x prior and image working set grew.
+claim. Decode activity perwallsecond2.69x prior and image working set grew. Follow-up:
+first30s decode1.983cores, last30s0.272; capture began before texture work settled.
 No visual parity or fresh-world cadence pass; owner controls acceptance.
 Source strict audit0 blocking/0 errors; final harness and diff checks pass.
 

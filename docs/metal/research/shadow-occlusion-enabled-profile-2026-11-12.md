@@ -108,6 +108,25 @@ seconds under `updateImagesCreateTextures`. Warm disk cache did not eliminate
 in-session decoding/texture creation. This evidence does not identify why each
 asset was decoded, or prove that decoding caused the whole FPS difference.
 
+Follow-up examination of the decoder timeline shows the recording began with
+both decode workers almost continuously occupied: 59.478 CPU seconds in the
+first 30 wall seconds (1.983 cores), falling to 8.168 CPU seconds in the last
+complete 30-second window (0.272 cores). A further burst occurred at120–150s,
+so the decline was not monotonic. This strongly suggests the texture workload
+had not settled when capture began. User-visible readiness was accepted without
+a decoder/texture-memory settling gate; that is a capture-protocol gap.
+
+Keeping the disk cache does not preserve every decoded image or Metal texture
+across viewer exit. Source `lltexturefetch.cpp:1346–1358` explicitly routes a
+successful cache read into `DECODE_IMAGE`; `1932–1945` queues decoding. The small
+raw-image fast cache can supply reduced-resolution previews; it does not replace
+full requested-resolution decoding (`lltexturecache.cpp:2145–2170`). The2.69x
+figure measures decode CPU activity per second, not downloaded bytes or texture
+count. Without per-asset history, initial warmup versus new arrivals/resolution
+changes cannot be fully separated. A future steady-scene comparison should
+verify low/stable decoder activity and texture-memory growth before recording,
+then change only the query gate within the same running session.
+
 Instruments' reported peak footprint rose from 22.64 to 32.82 GiB. Native log
 image-wrapper estimates rose from 5,753 to 16,885 MiB, versus buffers from
 2,833 to 3,218 MiB. Driver and wrapper estimates are different gauges and cannot
