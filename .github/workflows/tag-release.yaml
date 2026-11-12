@@ -115,9 +115,9 @@ jobs:
       - name: Set up open-source build tools
         uses: ./.github/actions/setup-build
 
-      - name: Install harness numerical dependency
+      - name: Verify harness Python dependencies
         shell: bash
-        run: python -m pip install -r tools/metal/requirements.txt
+        run: python -c "import numpy, yaml; print('NumPy', numpy.__version__, 'PyYAML', yaml.__version__)"
 
       - name: Validate source and harness
         shell: bash

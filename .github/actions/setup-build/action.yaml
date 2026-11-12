@@ -177,6 +177,7 @@ runs:
           ninja==1.13.2
           llsd==1.2.4
           PyYAML==6.0.3
+          numpy==2.4.3
           sentry-cli==3.8.0
 
     - name: Bootstrap vcpkg Windows

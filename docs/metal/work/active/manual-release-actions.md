@@ -110,3 +110,22 @@ Publication boundary: a concurrent local water investigation reserves PPD-013.
 CI is PPD-014 in the canonical local register. Shared register/state/Metal ledger
 changes remain local with that investigation; this publication includes only the
 requested CI/release scope and this work record, based on approved remote81bff208.
+
+## Hosted attempt and repair
+
+Scoped repair ea1ff8d9d52f1df85bb0a0f7075ea0e5213eee5c was pushed to the
+Metal branch. Initial dispatch43312529221 had an incorrectly entered full source
+SHA and was immediately canceled before the build. Corrected run43312577772
+acquired macos-26 ARM64, checked out exact source, passed identity/SDK checks,
+and completed build-tools setup. It failed before compilation because that
+setup intentionally creates a cached Python venv without pip, while the next
+step tried python -m pip. Add NumPy to the existing cached build-tools requirements
+and probe imports directly; retain the standalone manual harness's setup-python
+pip install. Rehearse the real pip-free tools environment before a new dispatch.
+No release was published by either attempt; no billing gate occurred.
+
+Exact inherited python_tools.py key/build/activate rehearse with all configured
+requirements succeeds on this M1 Max. Target venv explicitly has no pip; NumPy
+2.4.3/PyYAML6.0.3 imports and all108tool tests pass there (11.863s). Actionlint,
+harness and diff checks pass. The next dispatch uses this corrected immutable
+commit. Evidence: artifacts/metal/actions-manual-release-20261112/python-tools-rehearsal/.
