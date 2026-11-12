@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-007 -->
+<!-- next-defect-id: PPD-008 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -260,3 +260,32 @@ or turning reports. Preserve ordinary rigged-object clipping when investigating.
 - 2026-11-12: Rechecked against committed `8599bfce5195`; the path remains
   reachable. Migrated the previously recorded finding into this mandatory
   register. No fix, build or runtime test performed.
+
+## PPD-007 — HUD font position regeneration creates fresh native buffer stores
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex font-position investigation
+- Discovered: 2026-11-12
+- Original reference: Local upstream/develop `65c39b7bad928e165f1acdc0cbf39478e017ef1d` and immediate child `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`; exact x/y invalidation and fresh display-list buffers predate this port.
+- Evidence: [Source, geometry, allocation and profile audit](research/font-position-cache-audit-2026-11-12.md), [active audit ledger](work/active/font-position-cache-audit.md).
+- Next action: Select a local completion-safe backing-store reuse experiment, or prove a smaller effective-placement cache key; preserve glyph phase/scale/clipping/underline/emoji/fallback/right_x and lifetime semantics.
+- Verification: Actual cache-decision body12checks and actual placement-math12checks pass in private CPU probes; exact68849 binary/dSYM raw-PC audit confirms5.485CPU-s/3.34919%main CPU in name-label Position-selected ancestry. No rendering fix, GPU/visual test or measured speedup for this issue.
+- Owner verification: pending
+- Push approval: not_granted
+
+Projected fractional label origins can change with unchanged text. Exact x/y
+comparison selects full regeneration, clears captured lists and creates fresh
+native buffers per successful nonempty flush. Some regeneration is necessary
+because glyph phase/UV/extent/carry can change. The profile identifies the first
+selected invalidation reason; it does not prove all that time is avoidable or
+that later style/span/color conditions are unchanged. This is a confirmed
+performance mechanism, not a proved visual correctness defect or Metal-introduced
+invalidation regression. Existing bitmap/shaping/replay caches remain functional.
+
+### History
+
+- 2026-11-12: Owner requests grounding of the earlier code/profile claim. Source
+  chain, true local upstream ancestry, actual-body probes and seven-call-site
+  machine-code audit confirm the mechanism and profile attribution. Constrained
+  reuse options recorded; no implementation selected or push approval inferred.

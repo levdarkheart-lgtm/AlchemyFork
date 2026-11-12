@@ -121,6 +121,11 @@ is insufficient; body palettes and cloth can be view-dependent.
 
 ## 3. Moving name labels regenerate glyph geometry and allocate native buffers
 
+The [dedicated follow-up audit](font-position-cache-audit-2026-11-12.md), PPD-007,
+adds actual cache/placement probes, recorded upstream history and machine-code
+verification of the Position-selected5.485CPU-second ancestry. That is not a
+guaranteed saving: phase changes and other invalidators can require rebuilding.
+
 Name-label owners consume **3.91% / 4.54% of main CPU** across the long captures.
 The latest trace attributes **5.485 CPU seconds, 3.35% of all main CPU**, to the
 label subtree at the exact Position-regeneration branch. Its native allocation
