@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-016 -->
+<!-- next-defect-id: PPD-017 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -695,3 +695,30 @@ PPD-013 bands or the supplied coverage changes. No speculative combined fix.
   producer/consumer coordinates inspected and independently confirmed. Register
   before any repair. Haze-only candidate deliberately retains this behavior
   so its scene retest isolates the confirmed interpolation correction.
+
+
+## PPD-016 — Thin lower HUD line changes coverage during movement
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex integrator
+- Discovered: 2026-11-12
+- Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, indexed HUD geometry capture, fullbrightV/F texture/alpha handling and ordinary AnisoWrap sampler; native lldrawpool.cpp captureMetalHUDBatch and ALMetalUIRenderer::drawHUDIndexed. No original runtime comparison yet.
+- Evidence: [Owner HUD images and source audit](work/active/hud-bottom-line-investigation.md).
+- Next action: Establish whether the same HUD shows the line in original Alchemy/Firestorm, then identify actual offending geometry/texture if native-only. Keep authored geometry versus renderer attribution separate before any repair.
+- Verification: Owner images21:50:15/21:50:51/21:51:50 show a thin lower line at the selected HUD frame boundary. It moves with the HUD and changes from continuous to two end segments. Source audit finds matching sampler, alpha-product/cutoff, texture transform and triangle winding; no native defect or corrective change established.
+- Owner verification: pending
+- Push approval: not_granted
+
+Owner briefly suggests a horizon dependency, then explicitly withdraws it and
+notes the line could belong to the HUD itself. Do not retain the withdrawn
+horizon restriction as a reproduction condition. A thin actual side face and
+transparent atlas/mip edge coverage are candidates, not confirmed causes.
+
+### History
+
+- 2026-11-12: Registered owner images and movement observations. Selected HUD
+  outline shows a large mostly transparent frame with lower geometry at the
+  line position. Read-only original/native audit finds no concrete mismatch;
+  await comparison or inspect exact batch/face before changing renderer policy.
+  No UI, shader, sampler, geometry or alpha-cutoff change made for this report.

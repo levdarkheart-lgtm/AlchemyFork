@@ -156,3 +156,23 @@ owner scene acceptance and explicit scoped push approval. PPD-015 remains
 separate/open/unfixed. New HUD-line report is a separate investigation. Preserve
 private captures, the five unrelated research notes and independent release work.
 No automatic app replacement/restart is needed to publish identical source.
+
+
+## Publication observed
+
+Owner-approved water source and records published normally to
+codex/apple-silicon-metal at3e17d4e44cfad01932d590eb46af4a41c0a2bb60.
+git push exits0; independent git ls-remote returns that exact SHA. Normal
+merge retains already-published manual-release/NumPy commits ea1ff8d9d5 and
+bfaaa21cda. All three tested water runtime/test blobs exactly matcha6f4e8ff41.
+The previously untracked manual-release note already matched published bytes;
+its original copy is retained privately before normal tracking integration.
+The five unrelated research notes stay untouched/untracked. No force push or
+new release dispatch by this task. New HUD-line report remains local PPD-016.
+
+Post-merge defaultPython tools run has105passes/oneimporterror becausePyYAML
+is missing (106tests including failed-import placeholder). Required pinned
+numpy2.4.3/PyYAML6.0.3 installed in isolated artifacttool-env; full rerun passes
+108tests/zero errors, source remains3e17d4e44c. No globalPython or source change.
+Exact commands/logs/initialfailure and successful receipt in
+tool-env-validation/receipt.json and unit.log. Harness33files anddiffcheck pass.
