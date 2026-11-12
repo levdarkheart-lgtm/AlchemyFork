@@ -34,6 +34,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
+#include <exception>
 #include <limits>
 #include <new>
 #include <sstream>
@@ -80,6 +81,7 @@
 #include "../almetal/almetaltextureops.h"
 #include "../almetal/almetaluirenderer.h"
 #include "../almetal/almetalworld.h"
+#include "../almetal/almetalpipeline.h"
 #include "../almetal/almetalavatarresources.h"
 #include "../almetal/almetalretainedbackground.h"
 #include "../almetal/almetalsurface.h"
@@ -415,6 +417,7 @@ struct LLPipeline::MetalWorldSimpleCapture
         const ALMetalDevice* device = nullptr;
         std::string owner;
         U32 max_anisotropy = 1;
+        U64 shader_generation = 0;
         std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
         std::string error;
         F64 seconds = 0.0;
@@ -424,6 +427,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
     std::shared_ptr<ALMetalWorldFrameData> frame_data;
     std::shared_ptr<RendererBuild> renderer_build;
+    std::string renderer_error;
+    std::optional<ALMetalRetainedBackground::Context> startup_world_context;
+    U64 startup_world_epoch = 0;
+    U64 startup_world_shader_generation = 0;
     std::shared_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalRenderTarget> composed_light_target;
     std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
@@ -2089,6 +2096,387 @@ static U32 effectiveMetalWorldAnisotropy()
         llclamp(ll_round(descriptor.mMaxAnisotropy), 1, 16));
 }
 
+void LLPipeline::initializeMetalWorldCaptureDevice(
+    MetalWorldSimpleCapture& capture, const ALMetalDevice* device,
+    bool main_world_capture)
+{
+    if (capture.device != device)
+    {
+        capture.renderer.reset();
+        capture.renderer_error.clear();
+        capture.startup_world_context.reset();
+        capture.frame_data.reset();
+        capture.renderer_build.reset();
+        capture.target.reset();
+        capture.composed_light_target.reset();
+        capture.opaque_post_deferred_target.reset();
+        capture.display_post_target.reset();
+        capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.presentation_target.reset();
+        capture.presentation_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_target.reset();
+        capture.world_ui_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_capture_active = false;
+        capture.world_ui_probe_attempted = false;
+        capture.world_ui_probe_attempts = 0;
+        capture.world_ui_continuous_unlocked = true;
+        capture.world_ui_last_submitted_frame =
+            std::numeric_limits<U32>::max();
+        capture.world_ui_presentation_state_frame =
+            std::numeric_limits<U32>::max();
+        capture.world_ui_presentation_state =
+            MetalWorldPresentationState::NotAttempted;
+        capture.world_ui_continuous_failure_streak = 0;
+        capture.world_ui_continuous_last_failure_frame =
+            std::numeric_limits<U32>::max();
+        capture.world_ui_chain_active = false;
+        capture.world_ui_chain_counted = false;
+        capture.world_ui_chain_snapshot = false;
+        capture.world_ui_chain_debug_color = false;
+        capture.world_ui_chain_attempts = 0;
+        capture.world_ui_chain_last_attempt_frame =
+            std::numeric_limits<U32>::max();
+        capture.world_ui_chain_exhausted_reported = false;
+        capture.depth_of_field_target.reset();
+        capture.depth_of_field_frame = std::numeric_limits<U32>::max();
+        capture.bloom_target.reset();
+        capture.bloom_frame = std::numeric_limits<U32>::max();
+        capture.exposure_target.reset();
+        capture.exposure_meter_target.reset();
+        capture.exposure_frame = std::numeric_limits<U32>::max();
+        capture.exposure_epoch = 0;
+        capture.lens_flare_state_target.reset();
+        capture.lens_flare_state_frame = std::numeric_limits<U32>::max();
+        capture.lens_flare_state_epoch = 0;
+        // Reflection and hero captures swap in an independent capture owner.
+        // Initializing that owner's device-local resources must not invalidate
+        // temporal history already synchronized by the main-world owner.
+        if (main_world_capture)
+        {
+            mMetalExposureHistoryReady = false;
+            mMetalLensFlareHistoryReady = false;
+        }
+        capture.lens_dirt_target.reset();
+        capture.lens_dirt_params = LensDirtPlateParams();
+        capture.direct_projector_shadow_texture.reset();
+        capture.direct_directional_shadow_texture.reset();
+        capture.projector_shadows = {};
+        capture.projector_shadow_frame = std::numeric_limits<U32>::max();
+        capture.direct_projector_shadow_valid = {};
+        capture.direct_projector_shadow_cache.invalidate();
+        capture.direct_directional_shadow_valid = {};
+        capture.base_light_map_target.reset();
+        capture.base_noise_texture.reset();
+        capture.legacy_glow_noise_texture.reset();
+        capture.base_light_target.reset();
+        capture.hdri_sky_batches.clear();
+        capture.hdri_sky_environment = nullptr;
+        capture.hdri_sky_active = false;
+        capture.hdri_sky_complete = false;
+        capture.hdri_sky_native_available = false;
+        capture.split_sky_batches.clear();
+        capture.split_sky_environment = nullptr;
+        capture.split_sky_rainbow = nullptr;
+        capture.split_sky_halo = nullptr;
+        capture.split_sky_exposure_scale = 1.f;
+        capture.split_sky_horizontal_fraction = 0.f;
+        capture.split_sky_windlight_constants = {};
+        capture.split_sky_windlight_hdr_scale = 1.f;
+        capture.split_sky_active = false;
+        capture.split_sky_complete = false;
+        capture.split_sky_native_available = false;
+        capture.windlight_sky_batches.clear();
+        capture.windlight_sky_rainbow = nullptr;
+        capture.windlight_sky_halo = nullptr;
+        capture.windlight_sky_constants = {};
+        capture.windlight_sky_hdr_scale = 1.f;
+        capture.windlight_sky_active = false;
+        capture.windlight_sky_complete = false;
+        capture.windlight_sky_native_available = false;
+        capture.windlight_sky_behind_requested = false;
+        capture.windlight_star_batch = {};
+        capture.windlight_star_moon = nullptr;
+        capture.windlight_star_alpha = 0.f;
+        capture.windlight_star_time = 0.f;
+        std::fill(std::begin(capture.windlight_star_moon_direction),
+                  std::end(capture.windlight_star_moon_direction), 0.f);
+        std::fill(std::begin(capture.windlight_star_moon_quad_center),
+                  std::end(capture.windlight_star_moon_quad_center), 0.f);
+        std::fill(std::begin(capture.windlight_star_moon_quad_u),
+                  std::end(capture.windlight_star_moon_quad_u), 0.f);
+        std::fill(std::begin(capture.windlight_star_moon_quad_v),
+                  std::end(capture.windlight_star_moon_quad_v), 0.f);
+        capture.windlight_star_moon_brightness = 0.f;
+        capture.windlight_stars_expected = false;
+        capture.windlight_stars_active = false;
+        capture.windlight_stars_complete = false;
+        capture.windlight_stars_moon_mask = false;
+        capture.windlight_stars_native_available = false;
+        capture.windlight_heavenly_body_batches.clear();
+        capture.windlight_heavenly_bodies_expected = false;
+        capture.windlight_heavenly_bodies_active = false;
+        capture.windlight_heavenly_bodies_complete = false;
+        capture.windlight_heavenly_bodies_native_available = false;
+        capture.windlight_meteor_batch = {};
+        capture.windlight_meteor_width_pixels = 0.f;
+        capture.windlight_meteors_expected = false;
+        capture.windlight_meteors_active = false;
+        capture.windlight_meteors_complete = false;
+        capture.windlight_meteors_native_available = false;
+        capture.windlight_aurora_batches.clear();
+        std::fill(std::begin(capture.windlight_aurora_camera_local),
+                  std::end(capture.windlight_aurora_camera_local), 0.f);
+        capture.windlight_aurora_intensity = 0.f;
+        capture.windlight_aurora_time = 0.f;
+        capture.windlight_aurora_expected = false;
+        capture.windlight_aurora_active = false;
+        capture.windlight_aurora_complete = false;
+        capture.windlight_aurora_native_available = false;
+        capture.windlight_cloud_batches.clear();
+        capture.windlight_cloud_noise = nullptr;
+        capture.windlight_cloud_noise_next = nullptr;
+        capture.windlight_cloud_constants = {};
+        capture.windlight_clouds_expected = false;
+        capture.windlight_clouds_active = false;
+        capture.windlight_clouds_complete = false;
+        capture.windlight_clouds_native_available = false;
+        capture.impostor_bake_target.reset();
+        capture.impostor_hero_probe = {};
+        capture.hero_probe_source_cube.reset();
+        capture.hero_probe_radiance_cube.reset();
+        capture.hero_probe_valid_faces = 0;
+        capture.hero_probe_native_generation = 0;
+        capture.impostor_ssr_history_target.reset();
+        capture.impostor_screen_space_reflections = {};
+        capture.continuous_world_capture = false;
+        capture.continuous_world_frame = std::numeric_limits<U32>::max();
+        capture.impostor_directional_shadows = {};
+        capture.impostor_directional_shadow_frame =
+            std::numeric_limits<U32>::max();
+        capture.impostor_bake_avatar_id.setNull();
+        capture.avatar_resources->discardIncompatible(
+            *device, hdrEnabled(), LLRender::sGBufferNormHDR);
+        capture.attempted = false;
+        capture.local_lighting_attempted = false;
+        capture.local_lighting_failed_frames = 0;
+        capture.projector_lighting_attempted = false;
+        capture.projector_lighting_failed_frames = 0;
+        capture.lighting_composition_attempted = false;
+        capture.lighting_composition_failed_frames = 0;
+        capture.opaque_post_deferred_attempted = false;
+        capture.base_lighting_attempted = false;
+        capture.base_lighting_failed_frames = 0;
+        capture.impostor_bake_attempted = false;
+        capture.impostor_bake_native_valid = false;
+        capture.impostor_bake_native_complete = false;
+        capture.impostor_alpha_active = false;
+        capture.impostor_alpha_phase = false;
+        capture.world_post_deferred_active = false;
+        capture.world_post_deferred_phase = false;
+        capture.impostor_fullbright = false;
+        capture.impostor_shiny = false;
+        capture.impostor_emboss = false;
+        capture.impostor_legacy_alpha_uses_shadows = false;
+        capture.failed_frames = 0;
+        capture.device = device;
+    }
+}
+
+void LLPipeline::prepareMetalWorldRenderer(
+    MetalWorldSimpleCapture& capture, const ALMetalDevice* device, bool probe_face)
+{
+    if (capture.renderer || capture.renderer_build ||
+        !capture.renderer_error.empty() || capture.device != device)
+    {
+        return;
+    }
+
+    LL::WorkQueue::ptr_t main_queue =
+        LL::WorkQueue::getInstance("mainloop");
+    LL::WorkQueue::ptr_t general_queue =
+        LL::WorkQueue::getInstance("General");
+    if (!main_queue || !general_queue)
+    {
+        // Shutdown can close either queue between world passes. Do not
+        // turn that lifecycle boundary into a renderer failure or block
+        // the main thread with a synchronous fallback.
+        return;
+    }
+
+    auto build =
+        std::make_shared<MetalWorldSimpleCapture::RendererBuild>();
+    build->device = device;
+    build->owner = probe_face ? "probe" : "main-world";
+    build->max_anisotropy = effectiveMetalWorldAnisotropy();
+    build->shader_generation = ALMetalShaderLibrary::builtinReloadGeneration();
+    capture.renderer_build = build;
+    const bool posted = main_queue->postTo(
+        general_queue,
+        [build]()
+        {
+            const auto start = std::chrono::steady_clock::now();
+            try
+            {
+                build->renderer = ALMetalWorldGBufferRenderer::create(
+                    *build->device, build->max_anisotropy, &build->error);
+            }
+            catch (const std::exception& error)
+            {
+                build->error = error.what();
+            }
+            catch (...)
+            {
+                build->error = "Unknown native renderer preparation exception";
+            }
+            build->seconds = std::chrono::duration<F64>(
+                std::chrono::steady_clock::now() - start).count();
+            return build;
+        },
+        [this](
+            std::shared_ptr<
+                MetalWorldSimpleCapture::RendererBuild> completed)
+        {
+            for (const auto* capture_owner :
+                 { &mMetalWorldSimpleCapture,
+                   &mMetalProbeWorldSimpleCapture })
+            {
+                if (!*capture_owner ||
+                    (*capture_owner)->renderer_build != completed)
+                {
+                    continue;
+                }
+
+                MetalWorldSimpleCapture& owner = **capture_owner;
+                owner.renderer_build.reset();
+                if (completed->device != getViewerMetalDevice() ||
+                    completed->device != owner.device ||
+                    completed->shader_generation !=
+                        ALMetalShaderLibrary::builtinReloadGeneration())
+                {
+                    owner.attempted = false;
+                    return; // A device change or reload retired this build.
+                }
+                if (completed->renderer)
+                {
+                    owner.renderer = std::move(completed->renderer);
+                    owner.attempted = false;
+                    // A newly built native renderer starts its own
+                    // temporal histories at the specified fixed-EV and
+                    // exact-black boundaries. The parallel GL traversal
+                    // is neither reset nor consulted.
+                    if (completed->owner == "main-world")
+                    {
+                        ++mMetalExposureHistoryEpoch;
+                        if (mMetalExposureHistoryEpoch == 0)
+                        {
+                            ++mMetalExposureHistoryEpoch;
+                        }
+                        mMetalExposureHistoryReady = false;
+                        owner.exposure_target.reset();
+                        owner.exposure_meter_target.reset();
+                        owner.exposure_frame =
+                            std::numeric_limits<U32>::max();
+                        owner.exposure_epoch = 0;
+
+                        ++mMetalLensFlareHistoryEpoch;
+                        if (mMetalLensFlareHistoryEpoch == 0)
+                        {
+                            ++mMetalLensFlareHistoryEpoch;
+                        }
+                        mMetalLensFlareHistoryReady = false;
+                        owner.lens_flare_state_target.reset();
+                        owner.lens_flare_state_frame =
+                            std::numeric_limits<U32>::max();
+                        owner.lens_flare_state_epoch = 0;
+                    }
+                    LL_INFOS("Metal")
+                        << "Asynchronous native " << completed->owner
+                        << " renderer pipeline warm-up completed in "
+                        << completed->seconds
+                        << " seconds; the next exact transaction is "
+                           "eligible"
+                        << LL_ENDL;
+                }
+                else
+                {
+                    owner.renderer_error = completed->error.empty()
+                        ? "Native renderer preparation failed" : completed->error;
+                    if (owner.world_ui_chain_active &&
+                        !owner.world_ui_chain_snapshot &&
+                        !owner.world_ui_chain_debug_color &&
+                        !owner.world_ui_continuous_unlocked)
+                    {
+                        ++owner.world_ui_chain_attempts;
+                        owner.world_ui_chain_last_attempt_frame =
+                            gFrameCount;
+                        owner.world_ui_chain_counted = true;
+                    }
+                    owner.attempted = true;
+                    LL_WARNS("Metal")
+                        << "Could not asynchronously initialize the "
+                           "native "
+                        << completed->owner << " renderer after "
+                        << completed->seconds << " seconds: "
+                        << completed->error << LL_ENDL;
+                }
+                break;
+            }
+        });
+    if (!posted)
+    {
+        if (capture.renderer_build == build) capture.renderer_build.reset();
+        return;
+    }
+    LL_INFOS("Metal")
+        << "Native " << build->owner
+        << " renderer pipelines are warming asynchronously; the native "
+           "surface retains its previous drawable"
+        << LL_ENDL;
+    return;
+}
+
+void LLPipeline::prewarmMetalWorldRenderer()
+{
+    if (!isInit() || mMetalHeroWorldCaptureActive ||
+        mMetalReflectionWorldCaptureActive || mRT != &mMainRT)
+        return;
+    const ALMetalDevice* device = getViewerMetalDevice();
+    if (!device) return;
+    if (!mMetalWorldSimpleCapture)
+        mMetalWorldSimpleCapture = std::make_unique<MetalWorldSimpleCapture>();
+    auto& capture = *mMetalWorldSimpleCapture;
+    initializeMetalWorldCaptureDevice(capture, device, true);
+    prepareMetalWorldRenderer(capture, device, false);
+}
+
+void LLPipeline::resetMetalStartupWorld()
+{
+    ++mMetalStartupWorldEpoch;
+    mMetalStartupWorldStartFrame = gFrameCount;
+    for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
+        if (owner) owner->startup_world_context.reset();
+}
+
+bool LLPipeline::hasPresentedMetalStartupWorld() const
+{
+    if (!gViewerWindow || gDisconnected || mMetalHeroWorldCaptureActive ||
+        mMetalReflectionWorldCaptureActive || !mMetalWorldSimpleCapture)
+        return false;
+    const auto& capture = *mMetalWorldSimpleCapture;
+    const auto* device = getViewerMetalDevice();
+    const auto* surface = gGL.getMetalPresentationSurface();
+    if (!device || !surface || capture.device != device ||
+        !capture.startup_world_context ||
+        capture.startup_world_epoch != mMetalStartupWorldEpoch ||
+        capture.startup_world_shader_generation !=
+            ALMetalShaderLibrary::builtinReloadGeneration())
+        return false;
+    const auto& info = surface->info();
+    const ALMetalRetainedBackground::Context context{
+        device, surface, info.generation, info.width, info.height, LLRender::sReverseZ};
+    return *capture.startup_world_context == context;
+}
+
 void LLPipeline::beginMetalWorldGBufferCapture()
 {
     const bool snapshot_request =
@@ -2134,7 +2522,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         // reflection faces before the connecting curtain lifts. Never make
         // that UI wait on native world pipeline compilation. The retained GL
         // traversal may still collect transitional state, but it is not a
-        // presentation fallback; native world warm-up begins after STARTED.
+        // presentation fallback. Renderer preparation runs independently
+        // during login, but scene capture still waits for STARTED.
         return;
     }
     const std::optional<ALRenderTargetDesc>& descriptor =
@@ -2363,184 +2752,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // native texture before eligibility is evaluated below.
     refreshMetalSMAASampleTexture();
 
-    if (capture.device != device)
-    {
-        capture.renderer.reset();
-        capture.frame_data.reset();
-        capture.renderer_build.reset();
-        capture.target.reset();
-        capture.composed_light_target.reset();
-        capture.opaque_post_deferred_target.reset();
-        capture.display_post_target.reset();
-        capture.display_post_frame = std::numeric_limits<U32>::max();
-        capture.presentation_target.reset();
-        capture.presentation_frame = std::numeric_limits<U32>::max();
-        capture.world_ui_target.reset();
-        capture.world_ui_frame = std::numeric_limits<U32>::max();
-        capture.world_ui_capture_active = false;
-        capture.world_ui_probe_attempted = false;
-        capture.world_ui_probe_attempts = 0;
-        capture.world_ui_continuous_unlocked = true;
-        capture.world_ui_last_submitted_frame =
-            std::numeric_limits<U32>::max();
-        capture.world_ui_presentation_state_frame =
-            std::numeric_limits<U32>::max();
-        capture.world_ui_presentation_state =
-            MetalWorldPresentationState::NotAttempted;
-        capture.world_ui_continuous_failure_streak = 0;
-        capture.world_ui_continuous_last_failure_frame =
-            std::numeric_limits<U32>::max();
-        capture.world_ui_chain_active = false;
-        capture.world_ui_chain_counted = false;
-        capture.world_ui_chain_snapshot = false;
-        capture.world_ui_chain_debug_color = false;
-        capture.world_ui_chain_attempts = 0;
-        capture.world_ui_chain_last_attempt_frame =
-            std::numeric_limits<U32>::max();
-        capture.world_ui_chain_exhausted_reported = false;
-        capture.depth_of_field_target.reset();
-        capture.depth_of_field_frame = std::numeric_limits<U32>::max();
-        capture.bloom_target.reset();
-        capture.bloom_frame = std::numeric_limits<U32>::max();
-        capture.exposure_target.reset();
-        capture.exposure_meter_target.reset();
-        capture.exposure_frame = std::numeric_limits<U32>::max();
-        capture.exposure_epoch = 0;
-        capture.lens_flare_state_target.reset();
-        capture.lens_flare_state_frame = std::numeric_limits<U32>::max();
-        capture.lens_flare_state_epoch = 0;
-        // Reflection and hero captures swap in an independent capture owner.
-        // Initializing that owner's device-local resources must not invalidate
-        // temporal history already synchronized by the main-world owner.
-        if (main_world_capture)
-        {
-            mMetalExposureHistoryReady = false;
-            mMetalLensFlareHistoryReady = false;
-        }
-        capture.lens_dirt_target.reset();
-        capture.lens_dirt_params = LensDirtPlateParams();
-        capture.direct_projector_shadow_texture.reset();
-        capture.direct_directional_shadow_texture.reset();
-        capture.projector_shadows = {};
-        capture.projector_shadow_frame = std::numeric_limits<U32>::max();
-        capture.direct_projector_shadow_valid = {};
-        capture.direct_projector_shadow_cache.invalidate();
-        capture.direct_directional_shadow_valid = {};
-        capture.base_light_map_target.reset();
-        capture.base_noise_texture.reset();
-        capture.legacy_glow_noise_texture.reset();
-        capture.base_light_target.reset();
-        capture.hdri_sky_batches.clear();
-        capture.hdri_sky_environment = nullptr;
-        capture.hdri_sky_active = false;
-        capture.hdri_sky_complete = false;
-        capture.hdri_sky_native_available = false;
-        capture.split_sky_batches.clear();
-        capture.split_sky_environment = nullptr;
-        capture.split_sky_rainbow = nullptr;
-        capture.split_sky_halo = nullptr;
-        capture.split_sky_exposure_scale = 1.f;
-        capture.split_sky_horizontal_fraction = 0.f;
-        capture.split_sky_windlight_constants = {};
-        capture.split_sky_windlight_hdr_scale = 1.f;
-        capture.split_sky_active = false;
-        capture.split_sky_complete = false;
-        capture.split_sky_native_available = false;
-        capture.windlight_sky_batches.clear();
-        capture.windlight_sky_rainbow = nullptr;
-        capture.windlight_sky_halo = nullptr;
-        capture.windlight_sky_constants = {};
-        capture.windlight_sky_hdr_scale = 1.f;
-        capture.windlight_sky_active = false;
-        capture.windlight_sky_complete = false;
-        capture.windlight_sky_native_available = false;
-        capture.windlight_sky_behind_requested = false;
-        capture.windlight_star_batch = {};
-        capture.windlight_star_moon = nullptr;
-        capture.windlight_star_alpha = 0.f;
-        capture.windlight_star_time = 0.f;
-        std::fill(std::begin(capture.windlight_star_moon_direction),
-                  std::end(capture.windlight_star_moon_direction), 0.f);
-        std::fill(std::begin(capture.windlight_star_moon_quad_center),
-                  std::end(capture.windlight_star_moon_quad_center), 0.f);
-        std::fill(std::begin(capture.windlight_star_moon_quad_u),
-                  std::end(capture.windlight_star_moon_quad_u), 0.f);
-        std::fill(std::begin(capture.windlight_star_moon_quad_v),
-                  std::end(capture.windlight_star_moon_quad_v), 0.f);
-        capture.windlight_star_moon_brightness = 0.f;
-        capture.windlight_stars_expected = false;
-        capture.windlight_stars_active = false;
-        capture.windlight_stars_complete = false;
-        capture.windlight_stars_moon_mask = false;
-        capture.windlight_stars_native_available = false;
-        capture.windlight_heavenly_body_batches.clear();
-        capture.windlight_heavenly_bodies_expected = false;
-        capture.windlight_heavenly_bodies_active = false;
-        capture.windlight_heavenly_bodies_complete = false;
-        capture.windlight_heavenly_bodies_native_available = false;
-        capture.windlight_meteor_batch = {};
-        capture.windlight_meteor_width_pixels = 0.f;
-        capture.windlight_meteors_expected = false;
-        capture.windlight_meteors_active = false;
-        capture.windlight_meteors_complete = false;
-        capture.windlight_meteors_native_available = false;
-        capture.windlight_aurora_batches.clear();
-        std::fill(std::begin(capture.windlight_aurora_camera_local),
-                  std::end(capture.windlight_aurora_camera_local), 0.f);
-        capture.windlight_aurora_intensity = 0.f;
-        capture.windlight_aurora_time = 0.f;
-        capture.windlight_aurora_expected = false;
-        capture.windlight_aurora_active = false;
-        capture.windlight_aurora_complete = false;
-        capture.windlight_aurora_native_available = false;
-        capture.windlight_cloud_batches.clear();
-        capture.windlight_cloud_noise = nullptr;
-        capture.windlight_cloud_noise_next = nullptr;
-        capture.windlight_cloud_constants = {};
-        capture.windlight_clouds_expected = false;
-        capture.windlight_clouds_active = false;
-        capture.windlight_clouds_complete = false;
-        capture.windlight_clouds_native_available = false;
-        capture.impostor_bake_target.reset();
-        capture.impostor_hero_probe = {};
-        capture.hero_probe_source_cube.reset();
-        capture.hero_probe_radiance_cube.reset();
-        capture.hero_probe_valid_faces = 0;
-        capture.hero_probe_native_generation = 0;
-        capture.impostor_ssr_history_target.reset();
-        capture.impostor_screen_space_reflections = {};
-        capture.continuous_world_capture = false;
-        capture.continuous_world_frame = std::numeric_limits<U32>::max();
-        capture.impostor_directional_shadows = {};
-        capture.impostor_directional_shadow_frame =
-            std::numeric_limits<U32>::max();
-        capture.impostor_bake_avatar_id.setNull();
-        capture.avatar_resources->discardIncompatible(
-            *device, hdrEnabled(), LLRender::sGBufferNormHDR);
-        capture.attempted = false;
-        capture.local_lighting_attempted = false;
-        capture.local_lighting_failed_frames = 0;
-        capture.projector_lighting_attempted = false;
-        capture.projector_lighting_failed_frames = 0;
-        capture.lighting_composition_attempted = false;
-        capture.lighting_composition_failed_frames = 0;
-        capture.opaque_post_deferred_attempted = false;
-        capture.base_lighting_attempted = false;
-        capture.base_lighting_failed_frames = 0;
-        capture.impostor_bake_attempted = false;
-        capture.impostor_bake_native_valid = false;
-        capture.impostor_bake_native_complete = false;
-        capture.impostor_alpha_active = false;
-        capture.impostor_alpha_phase = false;
-        capture.world_post_deferred_active = false;
-        capture.world_post_deferred_phase = false;
-        capture.impostor_fullbright = false;
-        capture.impostor_shiny = false;
-        capture.impostor_emboss = false;
-        capture.impostor_legacy_alpha_uses_shadows = false;
-        capture.failed_frames = 0;
-        capture.device = device;
-    }
+    initializeMetalWorldCaptureDevice(capture, device, main_world_capture);
 
     // Native scope eligibility consumes the baked curve state. Resolve a dirty
     // curve before its exactness census; finalization also ensures publication
@@ -2673,141 +2885,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         request_world_ui_chain && snapshot_request;
     capture.world_ui_chain_debug_color =
         request_world_ui_chain && debug_color_requested;
-    if (!capture.renderer)
-    {
-        if (capture.renderer_build)
-        {
-            // Pipeline creation can be deliberately expensive under Metal's
-            // shader-validation layer. The worker owns that wait while the
-            // opaque native surface retains its previous drawable.
-            return;
-        }
-
-        LL::WorkQueue::ptr_t main_queue =
-            LL::WorkQueue::getInstance("mainloop");
-        LL::WorkQueue::ptr_t general_queue =
-            LL::WorkQueue::getInstance("General");
-        if (!main_queue || !general_queue)
-        {
-            // Shutdown can close either queue between world passes. Do not
-            // turn that lifecycle boundary into a renderer failure or block
-            // the main thread with a synchronous fallback.
-            return;
-        }
-
-        auto build =
-            std::make_shared<MetalWorldSimpleCapture::RendererBuild>();
-        build->device = device;
-        build->owner = probe_face ? "probe" : "main-world";
-        build->max_anisotropy = effectiveMetalWorldAnisotropy();
-        capture.renderer_build = build;
-        const bool posted = main_queue->postTo(
-            general_queue,
-            [build]()
-            {
-                const auto start = std::chrono::steady_clock::now();
-                build->renderer = ALMetalWorldGBufferRenderer::create(
-                    *build->device, build->max_anisotropy,
-                    &build->error);
-                build->seconds = std::chrono::duration<F64>(
-                    std::chrono::steady_clock::now() - start).count();
-                return build;
-            },
-            [this](
-                std::shared_ptr<
-                    MetalWorldSimpleCapture::RendererBuild> completed)
-            {
-                for (const auto* capture_owner :
-                     { &mMetalWorldSimpleCapture,
-                       &mMetalProbeWorldSimpleCapture })
-                {
-                    if (!*capture_owner ||
-                        (*capture_owner)->renderer_build != completed)
-                    {
-                        continue;
-                    }
-
-                    MetalWorldSimpleCapture& owner = **capture_owner;
-                    owner.renderer_build.reset();
-                    if (completed->device ==
-                            getViewerMetalDevice() &&
-                        completed->renderer)
-                    {
-                        owner.renderer = std::move(completed->renderer);
-                        owner.attempted = false;
-                        // A newly built native renderer starts its own
-                        // temporal histories at the specified fixed-EV and
-                        // exact-black boundaries. The parallel GL traversal
-                        // is neither reset nor consulted.
-                        if (completed->owner == "main-world")
-                        {
-                            ++mMetalExposureHistoryEpoch;
-                            if (mMetalExposureHistoryEpoch == 0)
-                            {
-                                ++mMetalExposureHistoryEpoch;
-                            }
-                            mMetalExposureHistoryReady = false;
-                            owner.exposure_target.reset();
-                            owner.exposure_meter_target.reset();
-                            owner.exposure_frame =
-                                std::numeric_limits<U32>::max();
-                            owner.exposure_epoch = 0;
-
-                            ++mMetalLensFlareHistoryEpoch;
-                            if (mMetalLensFlareHistoryEpoch == 0)
-                            {
-                                ++mMetalLensFlareHistoryEpoch;
-                            }
-                            mMetalLensFlareHistoryReady = false;
-                            owner.lens_flare_state_target.reset();
-                            owner.lens_flare_state_frame =
-                                std::numeric_limits<U32>::max();
-                            owner.lens_flare_state_epoch = 0;
-                        }
-                        LL_INFOS("Metal")
-                            << "Asynchronous native " << completed->owner
-                            << " renderer pipeline warm-up completed in "
-                            << completed->seconds
-                            << " seconds; the next exact transaction is "
-                               "eligible"
-                            << LL_ENDL;
-                    }
-                    else if (completed->device ==
-                                 getViewerMetalDevice())
-                    {
-                        if (owner.world_ui_chain_active &&
-                            !owner.world_ui_chain_snapshot &&
-                            !owner.world_ui_chain_debug_color &&
-                            !owner.world_ui_continuous_unlocked)
-                        {
-                            ++owner.world_ui_chain_attempts;
-                            owner.world_ui_chain_last_attempt_frame =
-                                gFrameCount;
-                            owner.world_ui_chain_counted = true;
-                        }
-                        owner.attempted = true;
-                        LL_WARNS("Metal")
-                            << "Could not asynchronously initialize the "
-                               "native "
-                            << completed->owner << " renderer after "
-                            << completed->seconds << " seconds: "
-                            << completed->error << LL_ENDL;
-                    }
-                    break;
-                }
-            });
-        if (!posted)
-        {
-            capture.renderer_build.reset();
-            return;
-        }
-        LL_INFOS("Metal")
-            << "Native " << build->owner
-            << " renderer pipelines are warming asynchronously; the native "
-               "surface retains its previous drawable"
-            << LL_ENDL;
-        return;
-    }
+    prepareMetalWorldRenderer(capture, device, probe_face);
+    if (!capture.renderer) return;
 
     if (!capture.beginFrameData(
             mMetalProbeWorldSimpleCapture.get(), gFrameCount))
@@ -4260,6 +4339,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     if (capture.device != device)
     {
         capture.renderer.reset();
+        capture.renderer_error.clear();
+        capture.startup_world_context.reset();
         capture.frame_data.reset();
         capture.renderer_build.reset();
         capture.target.reset();
@@ -11054,6 +11135,9 @@ void LLPipeline::endMetalWorldUICompositionCapture()
         true, surface_ready, &surface_submitted, &capture_failure,
         &capture_end_state);
     capture.world_ui_capture_active = false;
+    const auto submitted_background = capture.ui_frame_background;
+    const bool real_world_background = submitted_background &&
+        submitted_background->source_frame != std::numeric_limits<U64>::max();
     // Snapshot depth is read after this submission. Retain its exact normalized
     // pre-UI depth until cancel, rather than reading reduced world coordinates.
     if (!capture.world_ui_chain_snapshot) capture.ui_frame_background.reset();
@@ -11090,10 +11174,18 @@ void LLPipeline::endMetalWorldUICompositionCapture()
     if (capture.world_ui_target)
     {
         capture.world_ui_frame = gFrameCount;
-        LL_INFOS_ONCE("Metal")
-            << "A complete current-frame native world + ordered UI/HUD "
-               "texture was retained after its command submission"
-            << LL_ENDL;
+        if (real_world_background)
+        {
+            LL_INFOS_ONCE("Metal")
+                << "A native world-backed ordered UI/HUD texture was retained "
+                   "after its command submission" << LL_ENDL;
+        }
+        else
+        {
+            LL_INFOS_ONCE("Metal")
+                << "Native UI/HUD was retained over the cleared loading "
+                   "background; no real world is ready yet" << LL_ENDL;
+        }
 
         // Native publication is mandatory. A committed current-frame
         // drawable advances the surface; failure retains the previous Metal
@@ -11104,6 +11196,23 @@ void LLPipeline::endMetalWorldUICompositionCapture()
             {
                 gDisplaySwapBuffers = false;
                 capture.world_ui_last_submitted_frame = gFrameCount;
+                if (real_world_background &&
+                    submitted_background->source_frame > mMetalStartupWorldStartFrame)
+                {
+                    const bool first = !capture.startup_world_context ||
+                        capture.startup_world_epoch != mMetalStartupWorldEpoch;
+                    capture.startup_world_context = submitted_background->context;
+                    capture.startup_world_epoch = mMetalStartupWorldEpoch;
+                    capture.startup_world_shader_generation =
+                        ALMetalShaderLibrary::builtinReloadGeneration();
+                    if (first)
+                    {
+                        LL_INFOS("Metal") << "First real native startup world "
+                            "submitted for epoch " << mMetalStartupWorldEpoch
+                            << "; source frame " << submitted_background->source_frame
+                            << LL_ENDL;
+                    }
+                }
                 capture.world_ui_continuous_failure_streak = 0;
                 capture.world_ui_continuous_last_failure_frame =
                     std::numeric_limits<U32>::max();
@@ -18326,6 +18435,16 @@ bool LLPipeline::reloadMetalShaders(std::string* error)
         }
     }
     if (!gGL.reloadMetalShaders(error)) return false;
+    resetMetalStartupWorld();
+    for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
+    {
+        if (!owner) continue;
+        // Retire in-flight builds; their worker and result keep private ownership,
+        // but an old shader generation must never publish into this capture.
+        owner->renderer_build.reset();
+        owner->renderer_error.clear();
+        owner->attempted = false;
+    }
     for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
     {
         if (owner && owner->renderer && !owner->renderer->reloadShaders(error)) return false;

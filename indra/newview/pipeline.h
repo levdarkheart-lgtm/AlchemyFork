@@ -270,6 +270,12 @@ private:
     bool                   mResourcesFullSize = true;
 #if LL_DARWIN
     struct MetalWorldSimpleCapture;
+    void initializeMetalWorldCaptureDevice(MetalWorldSimpleCapture& capture,
+        const ALMetalDevice* device, bool main_world_capture);
+    void prepareMetalWorldRenderer(MetalWorldSimpleCapture& capture,
+        const ALMetalDevice* device, bool probe_face);
+    U64 mMetalStartupWorldEpoch = 0;
+    U32 mMetalStartupWorldStartFrame = 0;
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture;
     std::unique_ptr<MetalWorldSimpleCapture>
         mMetalProbeWorldSimpleCapture;
@@ -567,6 +573,12 @@ public:
     // world/UI texture to a drawable. Benchmark collection uses this exact
     // fact instead of inferring native presentation from a setting.
     bool metalWorldPresentationCurrent() const;
+    // Compile PSOs asynchronously before login finishes; never starts a scene pass.
+    void prewarmMetalWorldRenderer();
+    void resetMetalStartupWorld();
+    // A real world prefix submitted to this surface in the current startup epoch.
+    // Clear-only UI, PSO readiness and offscreen snapshots cannot satisfy it.
+    bool hasPresentedMetalStartupWorld() const;
     // Machine-readable cutover census for this frame. A requested frame that
     // never reached begin capture is distinct from an invalidated capture,
     // an unavailable CAMetalLayer surface and a failed fused submission.

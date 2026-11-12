@@ -492,6 +492,11 @@ bool idle_startup()
     }
     LL_PROFILE_ZONE_SCOPED;
 
+    // Device, queues and pipeline already exist at the first startup idle.
+    // Overlap native PSO construction with login without drawing a partial world.
+    if (LLStartUp::getStartupState() < STATE_STARTED)
+        gPipeline.prewarmMetalWorldRenderer();
+
     const F32 PRECACHING_DELAY = gSavedSettings.getF32("PrecachingDelay");
     static LLTimer timeout;
 
@@ -2700,7 +2705,8 @@ bool idle_startup()
 
     if (STATE_CLEANUP == LLStartUp::getStartupState())
     {
-        set_startup_status(1.0, "", "");
+        // Native world readiness completes the remaining percent under the curtain.
+        set_startup_status(0.99f, "", "");
         do_startup_frame();
 
         if (!mBenefitsSuccessfullyInit)

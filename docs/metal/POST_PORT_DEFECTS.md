@@ -339,16 +339,16 @@ invalidation regression. Existing bitmap/shaping/replay caches remain functional
 
 ## PPD-008 — Login world stays black briefly while UI remains visible
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 indra/newview/llviewerdisplay.cpp628 begins world traversal at STATE_PRECACHE; llstartup.cpp2727/2760 and llprogressview.cpp retain a1s normal curtain fade without native readiness. Candidate pipeline.cpp2130 delays asynchronous world-renderer warm-up until STARTED. No original runtime comparison completed.
 - Evidence: [Owner report and capture context](work/active/login-black-world-investigation.md).
-- Next action: Investigate early asynchronous renderer/PSO prewarm independently of STARTED scene admission, then verify curtain/first-real-world publication timing and pixels without bypassing startup ownership guards.
-- Verification: Original/current source comparison and frozen log confirm late asynchronous renderer preparation lasting6.60176s while native UI submissions continue and cleared loading background is available. Fits the owner's5–10s report; actual curtain branch/black pixels/first on-glass world frame remain unverified. No fix applied.
-- Owner verification: pending
-- Push approval: not_granted
+- Next action: Retain the verified correction and scoped owner-approved publication; reopen on recurrence. Keep PPD-002/003 and music-backend work separate.
+- Verification: Localb0585e4c1a/68894 build/static pass;133actual-body assertions and31,825nativeGPU assertions/16cases pass with API/GPU validation. ExactPID8114 prewarms7.36349s at LOGIN_WAIT, first real world+curtain fade20:23:29. Owner confirms black screen resolved.
+- Owner verification: passed
+- Push approval: granted
 
 Keep this distinct from PPD-002 busy-turn retained-world freezes and PPD-001
 source-confirmed projector admission. It predates this adaptive test according
@@ -367,6 +367,34 @@ unseparated. Aggregate zero-cadence buckets do not prove black pixel content.
   +25.965s, warm complete/first logged world-source availability+32.965s,
   worker duration6.60176s, UI submissions between. Upgrade source confirmation
   only; visual attribution remains unproved and the record stays investigating.
+
+- 2026-11-12: Owner supplies black-world screenshot19:45:42 after100% login.
+  Exact68889/PID77975 logs STARTED/main-warm19:45:38, factory8.20129s and first
+  final BGRA8 world source19:45:46. Screenshot is inside that interval, with
+  UI/HUD/name tags present. This reproduces pixels and aligns the late native
+  preparation mechanism. Generic world+UI completion19:45:32 can be clear+UI;
+  it is not real-world readiness. Original prepares shader programs before login
+  and draws at PRECache; native preparation is gated untilSTARTED. Owner asks
+  diagnosis first; renderer code unchanged. Early prewarm/readiness is next.
+- 2026-11-12: Owner explicitly requests fixing the black screen. Implement early
+  asynchronous preparation and real-world-qualified curtain completion locally,
+  preserving pre-STARTED scene admission, device/build/reload lifetimes and an
+  actionable Quit path on delayed or failed preparation. Do not interrupt the
+  current owner session or push before owner testing/approval.
+- 2026-11-12: Local implementation separates early background PSO creation from
+  scene admission, validates build/device/shader lifetimes and gates the curtain
+  on a real post-login world-backed submission.63curtain assertions/13cases pass;
+  timeout remains opaque/actionable. Full build and renderer fixture underway;
+  no owner visual retest, active-viewer restart or push yet.
+
+- 2026-11-12: Finalb0585e4c1a/68894 build/signature/346ARM64/strict-source
+  pass.133source checks and31,825physicalMetal assertions pass. ExactPID8114
+  starts at20:22:04 and completes main renderer preparation at20:22:11,
+ 7.36349s while waiting at login. Owner logs in; first real world submission
+  and qualified curtain fade both occur20:23:29. Owner confirms: "its good,
+  black screen is resolved". Mark verified/owner passed; push not granted.
+
+- 2026-11-12: Owner explicitly authorizes pushing the verified black-screen fix to GitHub. Publish the PPD-008 source and evidence documentation on codex/apple-silicon-metal; independent native-music research/backend work remains local.
 
 ## PPD-009 — Startup media indicator active while parcel music is silent
 

@@ -52,6 +52,8 @@
 #include "llweb.h"
 #include "lluictrlfactory.h"
 #include "llpanellogin.h"
+#include "lltrans.h"
+#include "pipeline.h"
 
 LLProgressView* LLProgressView::sInstance = NULL;
 
@@ -75,6 +77,7 @@ LLProgressView::LLProgressView()
     mUpdateEvents.listen("self", boost::bind(&LLProgressView::handleUpdate, this, _1));
     mFadeToWorldTimer.stop();
     mFadeFromLoginTimer.stop();
+    mWorldWaitTimer.stop();
 }
 
 bool LLProgressView::postBuild()
@@ -147,6 +150,13 @@ bool LLProgressView::handleKeyHere(KEY key, MASK mask)
 
 void LLProgressView::revealIntroPanel()
 {
+    // A new login must not inherit readiness or completion from a prior attempt.
+    mStartupComplete = false;
+    mWaitingForWorld = false;
+    mWorldWaitWarning = false;
+    mWorldWaitTimer.stop();
+    mFadeToWorldTimer.stop();
+    gPipeline.resetMetalStartupWorld();
     // if user hasn't yet seen intro video
     std::string intro_url = gSavedSettings.getString("PostFirstLoginIntroURL");
     if ( intro_url.length() > 0 &&
@@ -175,11 +185,66 @@ void LLProgressView::setStartupComplete()
 {
     mStartupComplete = true;
 
-    // if we are not showing a video, fade into world
+    // Intro content stays visible until it explicitly closes. Both exit paths
+    // use the same real-world readiness gate before revealing the scene.
     if (!mMediaCtrl->getVisible())
+        requestFadeToWorld();
+}
+
+void LLProgressView::requestFadeToWorld()
+{
+    if (mFadeToWorldTimer.getStarted()) return;
+    mFadeFromLoginTimer.stop();
+    if (!mWaitingForWorld)
     {
-        mFadeFromLoginTimer.stop();
+        mWaitingForWorld = true;
+        mWorldWaitWarning = false;
+        mWorldWaitTimer.start();
+        LL_INFOS("AppInit") << "Waiting for the first real native world before "
+            "fading the login curtain" << LL_ENDL;
+    }
+    updateWorldReadiness();
+}
+
+void LLProgressView::updateWorldReadiness()
+{
+    const bool world_ready = gPipeline.hasPresentedMetalStartupWorld();
+    if (!mWaitingForWorld)
+    {
+        if (!mFadeToWorldTimer.getStarted() || world_ready) return;
+        // Resize, device reset or shader reload can retire the world backing
+        // during the fade. Restore the opaque curtain until a new one submits.
+        mFadeToWorldTimer.stop();
+        mWaitingForWorld = true;
+        mWorldWaitWarning = false;
+        mWorldWaitTimer.start();
+    }
+    if (world_ready)
+    {
+        mWaitingForWorld = false;
+        mWorldWaitTimer.stop();
+        setPercent(100.f);
+        setText(getString("world_ready"));
+        setMessage(LLStringUtil::null);
+        setCancelButtonVisible(false, LLStringUtil::null);
         mFadeToWorldTimer.start();
+        LL_INFOS("AppInit") << "A real native startup world is ready; "
+            "fading the login curtain" << LL_ENDL;
+        return;
+    }
+
+    setPercent(99.f);
+    setCancelButtonVisible(true, LLTrans::getString("Quit"));
+    if (!mWorldWaitWarning)
+    {
+        setText(getString("world_preparing"));
+        if (mWorldWaitTimer.getElapsedTimeF32() >= 30.f)
+        {
+            mWorldWaitWarning = true;
+            setMessage(getString("world_waiting"));
+            LL_WARNS("AppInit") << "Still waiting for a real native startup "
+                "world; keeping the curtain and Quit action available" << LL_ENDL;
+        }
     }
 }
 
@@ -242,6 +307,7 @@ void LLProgressView::drawStartTexture(F32 alpha)
 void LLProgressView::draw()
 {
     static LLTimer timer;
+    updateWorldReadiness();
 
     if (mFadeFromLoginTimer.getStarted())
     {
@@ -429,7 +495,8 @@ void LLProgressView::onCancelButtonClicked(void*)
     // Quitting viewer here should happen only when "Quit" button is pressed while starting up.
     // Check for startup state is used here instead of teleport state to avoid quitting when
     // cancel is pressed while teleporting inside region (EXT-4911)
-    if (LLStartUp::getStartupState() < STATE_STARTED)
+    if (LLStartUp::getStartupState() < STATE_STARTED ||
+        (sInstance && sInstance->mWaitingForWorld))
     {
         LL_INFOS() << "User requesting quit during login" << LL_ENDL;
         LLAppViewer::instance()->requestQuit();
@@ -513,24 +580,12 @@ void LLProgressView::handleMediaEvent(LLPluginClassMedia* self, EMediaEvent even
     // the intro web content calls javascript::window.close() when it's done
     if( event == MEDIA_EVENT_CLOSE_REQUEST )
     {
+        mMediaCtrl->setVisible(false);
+        if (mMediaCtrl->getMediaPlugin())
+            mMediaCtrl->getMediaPlugin()->stop();
+        getChild<LLView>("stack1")->setVisible(true);
         if (mStartupComplete)
-        {
-            //make sure other timer has stopped
-            mFadeFromLoginTimer.stop();
-            mFadeToWorldTimer.start();
-        }
-        else
-        {
-            // hide the media ctrl and wait for startup to be completed before fading to world
-            mMediaCtrl->setVisible(false);
-            if (mMediaCtrl->getMediaPlugin())
-            {
-                mMediaCtrl->getMediaPlugin()->stop();
-            }
-
-            // show the progress bar
-            getChild<LLView>("stack1")->setVisible(true);
-        }
+            requestFadeToWorld();
     }
 }
 

@@ -164,7 +164,7 @@ facelight-cutoff-20261111/release-replacement.json; no Actions/billing changes.
 This correction is separate from the closed porting goal. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
-Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–004/006–010 unresolved;005 accepted. PPD-008 [black login](login-black-world-investigation.md): late warm-up6.60176s, early prewarm/readiness next. PPD-009 [music indicator](music-startup-indicator.md):9f8d175/68889 build/static+22checks pass, exactPID77975 launched/cache retained; owner explicitly approves push. PPD-010 [latency](music-start-latency.md): native/backend source comparison, no timing gain proved. Prior scope published802250e82c; new fixes require approval.
+Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–004/006–007/009–010 unresolved;005/008 owner-verified. PPD-008 [black login](login-black-world-investigation.md): verifiedb0585e/68894;133source+31,825GPU assertions pass; PID8114 prepares beforelogin, firstworld/fade20:23:29 and owner confirms resolved. Owner explicitly approves scoped push2026-11-12; native-music work excluded. PPD-009 [music indicator](music-startup-indicator.md):9f8d175/68889 build/static+22checks pass, exactPID77975 launched/cache retained; owner explicitly approves push. PPD-010 [latency](music-start-latency.md): native/backend source comparison, no timing gain proved. Prior scope published802250e82c; new fixes require approval.
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
 utility unexecuted; prior f254 launch observation stays source-pinned.

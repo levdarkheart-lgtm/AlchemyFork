@@ -7,6 +7,9 @@
  name="login_progress_panel"
  top="768"
  width="1024">
+    <panel.string name="world_preparing">Preparing world...</panel.string>
+    <panel.string name="world_ready">Entering world...</panel.string>
+    <panel.string name="world_waiting">The world is taking longer than expected. You can wait, or quit and try again.</panel.string>
     <layout_stack
      follows="left|right|top|bottom"
      height="768"

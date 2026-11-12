@@ -85,6 +85,11 @@ public:
     bool onAlertModal(const LLSD& sd);
 
 protected:
+    void requestFadeToWorld();
+    void updateWorldReadiness();
+    bool mWaitingForWorld = false;
+    bool mWorldWaitWarning = false;
+    LLFrameTimer mWorldWaitTimer;
     LLProgressBar* mProgressBar;
     LLMediaCtrl* mMediaCtrl;
     LLTextBox* mProgressText = nullptr;
