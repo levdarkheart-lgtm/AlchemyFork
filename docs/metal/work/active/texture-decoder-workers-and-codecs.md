@@ -3,6 +3,9 @@
 Owner request: fix decoder worker sizing, then benchmark Grok and OpenHTJ2K on
 actual SL textures on M1 Max. All changes, inputs and results stay local until
 owner testing and explicit push approval. The application retains OpenJPEG.
+Defect register ID: PPD-005, source_confirmed, ready_for_owner; owner verification
+pending and push approval not_granted. The register was introduced by concurrent
+work during this task and is maintained locally without staging that work.
 
 ## Original behavior and minimal fix
 

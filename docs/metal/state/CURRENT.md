@@ -7,7 +7,7 @@
 Alpha4 built/tested/packaged/published; [profile](../research/busy-region-profile-2026-11-12.md)301.302sec+11.912sec; exact68841 PID91442/92651 owner login/settings/logout, no source change.
 [Shadow queries](../work/active/shadow-camera-occlusion.md):68849/tests pass;181.281s recovered; [recurring hotspots](../research/three-profile-hotspots-2026-11-12.md) compared, benefit unproven. Raw artifacts/metal/busy-region-profile-20261112/; utility unexecuted/stopped20FPS deferred.
 Local [decoder sizing/codec comparison](../work/active/texture-decoder-workers-and-codecs.md):
-160a fixes2→4;64f/68855 build/ARM64/signature+56tools pass. Actual SL CPU batches46–48% faster, codecs another14–21%; Grok partial mismatch. OpenJPEG retained; app unlaunched/owner test pending; no push.
+PPD-005:160a fixes2→4;64f/68855 build/ARM64/signature+56tools pass. Actual SL CPU batches46–48% faster, codecs another14–21%; Grok partial mismatch. OpenJPEG retained; app unlaunched/owner test pending; no push.
 
 ## Current implementation
 

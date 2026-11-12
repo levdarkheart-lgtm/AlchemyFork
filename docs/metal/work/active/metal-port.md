@@ -5,7 +5,7 @@
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
-Local [decoder sizing/codecs](texture-decoder-workers-and-codecs.md):160a selects4 workers;64f/68855 build/static+56tools pass.192complete+48partial textures; OpenJPEG retained, owner test pending. CPU benefit is not relaunch/FPS evidence; keep local.
+PPD-005 [decoder sizing/codecs](texture-decoder-workers-and-codecs.md):160a selects4 workers;64f/68855 build/static+56tools pass.192complete+48partial textures; OpenJPEG retained, owner test pending. CPU benefit is not relaunch/FPS evidence; keep local.
 
 ## Current implementation — 2026-11-11
 
