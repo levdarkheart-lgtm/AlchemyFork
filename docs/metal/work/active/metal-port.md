@@ -156,12 +156,12 @@ strict-source,zip-validation,checks-state}.json. Background attempt interrupted1
 intentionally, same source/objects resumed; job-wrapper restarts blocked by guard.
 All temporary jobs removed; passed f254/older ZIP unchanged; no new product launch.
 
-Owner-authorized release442275652 is published/verified:26.4.0.68836-alpha4,
-https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68836-alpha4 .
-Both server asset sizes/SHA256 digests match local ZIP+SHA; tag exact9f42 source.
-Normal feature-branch push; no Actions dispatch/billing changes. Publication
-receipt hud-preview-alpha-release.json. Scoped implementation/delivery finished;
-new attached-light follow-up below is separate. Concurrent research
+Owner-authorized release442275652 manually replaced:26.4.0.68841-alpha4,
+https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68841-alpha4 .
+New ZIP319935071bytes+SHA server hashes verified; tag exactcb840/owner-tested source.
+Oldtag9f42 preserved; old68836 assets replaced only after newverification.
+facelight-cutoff-20261111/release-replacement.json; no Actions/billing changes.
+This correction is separate from the closed porting goal. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
 New: [attached-light cutoff](facelight-light-coverage.md) scoped repair complete;

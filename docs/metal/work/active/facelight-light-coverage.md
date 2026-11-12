@@ -126,3 +126,29 @@ It does not assert complete lighting/parity acceptance across all scenes. Root
 records owner-confirmation.json and pushes the reviewed fix plus test/handoff
 evidence normally to codex/apple-silicon-metal. No additional release publication
 or viewer operation is part of this commit/push request.
+
+## Manual release replacement — 2026-11-12 UTC
+
+Owner additionally requests ZIP and manual replacement of the latest Alpha4
+release because Actions budget is exhausted. No rebuild: package the exact
+owner-passed68841 sourcecb840/binary736d56f5, allowing only later docs changes.
+The previously missed supplemental case runs from the correct .app executable:
+26,928assertions/1case pass under observed API/GPU validation. Original wrong-
+path failure remains recorded; supplemental-native-regression.json closes that
+not-run explicitly without repeating passed suites.
+
+manual-package-validation.json verifies source/extracted strict signatures,
+checksum and all7,840files/links/modes/root-mode byte-exact; source app and older
+stages unchanged. ZIP319935071bytes, SHA256
+85a19e063a5a8d3504e7c657075d84ab7f1e05dabfe6ebd7741e6c4fc0b62580.
+Both new uploads' server sizes/SHA256 digests match local files, including the
+checksum file's own digest. Same release ID442275652 is updated to new tag
+26.4.0.68841-alpha4 at exactcb840 source/title/notes; old26.4.0.68836-alpha4 tag
+remains exact9f42. Only old assets737189253/737189252 are deleted, after fresh
+verification of both new assets and their old identities. Final release contains
+exactly the two new assets and retains its published prerelease status.
+https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68841-alpha4
+release-replacement.json records commands/metadata/digests; replacement-verified.
+No Actions dispatch, force/tag retargeting, additional release entry, billing
+change or viewer operation. All temporary jobs exited0 and were removed.
+Scoped correction/delivery complete; broader product gates remain unverified.

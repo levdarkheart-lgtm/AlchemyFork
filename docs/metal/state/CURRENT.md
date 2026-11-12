@@ -3,8 +3,8 @@
 **Observed:** 2026-11-12 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `b7bc118d68`; matching source cb840/68841 built/checked/launched.
-**Owner-passed viewer:** `f254feb048`,26.4.0d68817; provisional “pass...for now”.
-Alpha4 version68836 is built/tested/packaged/published. Older owner-requested
+**Owner-passed viewer:** `cb840a5b9d`,26.4.0.68841; reported beard-light cutoff fixed.
+Alpha4 version68841 is built/tested/packaged/published. Older owner-requested
 f254 launch observed PID90460; no later launch/login/screenshots by the agent.
 Utility unexecuted. Device-only tests and CPU/Foundation probes are bounded.
 The owner-stopped20FPS campaign remains deferred.
@@ -135,13 +135,13 @@ attempt intentionally interrupted130; unchanged source/objects resumed at normal
 priority. Temporary job wrapper restart was blocked by receipt guard; removed.
 All build/check jobs now terminal/removed; original f254 and older ZIP unchanged.
 
-Owner-authorized release442275652 published and verified:26.4.0.68836-alpha4.
-https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68836-alpha4
-Both uploaded asset sizes/SHA256 digests match local files; tag points to exact
-9f42b8660639e8827f8449a64cf0248fef6d90c0. Receipt hud-preview-alpha-release.json.
-Feature branch pushed normally; no Actions dispatch/billing changes. This scoped
-implementation/delivery request is finished; new attached-light follow-up above
-does not reopen that goal. No new viewer/window/utility launch or screenshots.
+Owner-authorized release442275652 replaced manually:26.4.0.68841-alpha4.
+https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68841-alpha4
+ZIP319935071bytes SHA85a19e063a5a8d3504e7c657075d84ab7f1e05dabfe6ebd7741e6c4fc0b62580;
+new ZIP+SHA server digests/sizes verified; tag exactcb840. Oldtag9f42 unchanged.
+See facelight-cutoff-20261111/release-replacement.json. No Actions/billing changes.
+Prior port/release request and this scoped correction are complete.
+No viewer operation during upload; prior requested exact launch remains recorded.
 Concurrent research files untouched/excluded. Full-product gates remain open.
 
 ## Complete-product advancement assessment
