@@ -89,3 +89,12 @@ Next action: owner reviews local candidate; if further performance testing is
 requested, use matched same-session gate changes with actual culling/world-frame
 counts. Do not push without explicit owner approval. Binary is base65bc4e110f
 plus exact recorded implementation diff, not a claimed clean-HEAD build.
+
+Cross-capture follow-up: [recurring code hotspots](../../research/three-profile-hotspots-2026-11-12.md).
+Source d537f10611; same-taxonomy offline parse validates all three inputs,
+first limited to84main samples. Both long captures retain~41%shadow owner,
+~12%maingeometry; sort union15.93–16.66%. Concrete palette scan/hash, glyph
+Position regeneration/native allocation, GBuffer query-joining and D32 extent
+issues mapped to source/original. Analysis only; no further renderer change.
+Evidence artifacts/metal/three-profile-hotspots-20261112/; next implementation
+selection remains owner-directed, all proposed fixes local.
