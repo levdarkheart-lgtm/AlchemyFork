@@ -376,8 +376,8 @@ unseparated. Aggregate zero-cadence buckets do not prove black pixel content.
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `indra/newview/llstatusbar.cpp`, `llvieweraudio.cpp`, `llviewermedia_streamingaudio.cpp`; aggregate all-media control and stream transport/fade ownership.
 - Evidence: [Startup media-state investigation](work/active/music-startup-indicator.md).
-- Next action: Owner confirms intended aggregate/autoplay behavior; if silence recurs with autoplay enabled, capture actual aggregate branches/backend status and start-request ordering before repair.
-- Verification: Top-bar control aggregates music/video/web media. Saved/default autoplay is off; saved world-session logs contain no nonempty music-start request. Sequence fits original behavior; exact incident not reproduced and no backend failure demonstrated. No repair justified yet.
+- Next action: Implement owner-requested music-primary status when parcel music is enabled/present, preserve all-media actions and pending-stream cancellation, test the first-click path and build a local candidate.
+- Verification: Source confirms unrelated active MOAP can select Pause while parcel music is stopped, making the first click stop media instead of starting music. Owner explicitly rejects this UX and requests correction. Exact incident/backend failure remains unproved; no backend retry or autoplay override planned.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -400,3 +400,10 @@ owner's autoplay preferences and all-media behavior during diagnosis.
   starts music independently of autoplay. This supports intended aggregate
   behavior, without proving which branch was active at the reported moment.
   No source/preferences changed; any later fix remains local pending approval.
+- 2026-11-12: Owner rejects the aggregate explanation as a resolution: active
+  button must represent land music rather than require OFF/ON first. Correct the
+  UI selector: when streaming music is enabled and a parcel URL exists, derive
+  the indicator from parcel audio; otherwise retain aggregate behavior. Keep
+  global start/stop action, loading cancellation and autoplay preferences.
+  This intentional source-confirmed UX correction supersedes the earlier
+  no-repair conclusion; owner test/push approval remains pending.

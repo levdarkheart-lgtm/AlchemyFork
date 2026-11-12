@@ -68,3 +68,25 @@ autoplay explicitly enabled, capture actual aggregate branches/backend status
 and start-request ordering at that moment. Raw logs/settings receipts remain
 private. Previous approved fixes are published at802250e82c; this new report
 is local and outside their push scope.
+
+## Owner-requested correction
+
+Owner explicitly rejects the previous explanation as a resolution and requests
+that active indication agree with parcel music, without an OFF/ON cycle. The
+OR selector is a concrete UX mismatch under that contract: stopped enabled
+parcel music plus active MOAP renders Pause; the first click stops everything.
+This is an intentional correction to inherited UI policy, not a demonstrated
+VLC transport failure or a rendering regression.
+
+When AudioStreamingMusic is enabled and the parcel music URL is present, use
+parcel-audio transport state for the top-bar indicator. Otherwise preserve the
+existing all-media aggregate. Keep the global start/stop callback, autoplay
+preferences and backend loading-as-active cancellation semantics. Initialize
+the icon to Play until the first state refresh; clarify the tooltip in music
+mode. Do not change master/music mute, fade timing or URL validation policy.
+
+Root owns llstatusbar.cpp, English panel_status_bar.xml, canonical docs, local
+commit/build and candidate. Peer owns only the private extracted-production
+regression harness. Independent review confirms disabled-music/no-URL fallback,
+inverse toggle sense and pending-loading cancel behavior. Build separately from
+the preserved68880 baseline; no push until owner accepts this new correction.

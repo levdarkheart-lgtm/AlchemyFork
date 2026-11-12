@@ -13,6 +13,14 @@
  top="19"
  width="1000">
     <panel.string
+     name="media_toggle_tooltip">
+        Start/Stop All Media (Music, Video, Web pages)
+    </panel.string>
+    <panel.string
+     name="parcel_music_toggle_tooltip">
+        Start/Stop Parcel Music and All Other Media
+    </panel.string>
+    <panel.string
      name="packet_loss_tooltip">
         Packet Loss
     </panel.string>

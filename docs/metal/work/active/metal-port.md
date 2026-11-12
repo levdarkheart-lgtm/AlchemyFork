@@ -164,7 +164,7 @@ facelight-cutoff-20261111/release-replacement.json; no Actions/billing changes.
 This correction is separate from the closed porting goal. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
-Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–004/006–009 unresolved;005 accepted. PPD-008 [black login](login-black-world-investigation.md): late warm-up6.60176s, early prewarm/readiness next. New localPPD-009 [music indicator](music-startup-indicator.md): aggregate all-media/autoplay-off explain sequence, no backend fault or code/preferences change. Prior scope published802250e82c; new fixes require approval.
+Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–004/006–009 unresolved;005 accepted. PPD-008 [black login](login-black-world-investigation.md): late warm-up6.60176s, early prewarm/readiness next. LocalPPD-009 [music indicator](music-startup-indicator.md): owner requests correction; music-primary state/initial Play/tooltips implemented, first-click regression/separate build next. Prior scope published802250e82c; new fixes require approval.
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
 utility unexecuted; prior f254 launch observation stays source-pinned.

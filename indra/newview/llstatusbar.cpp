@@ -190,6 +190,7 @@ bool LLStatusBar::postBuild()
     mBtnVolume->setToggleState(LLAppViewer::instance()->getMasterSystemAudioMute());
 
     mMediaToggle = getChild<LLButton>("media_toggle_btn");
+    mMediaToggle->setToggleState(true); // Play until the first transport-state refresh.
     mMediaToggle->setClickedCallback( &LLStatusBar::onClickMediaToggle, this );
     mMediaToggle->setMouseEnterCallback(boost::bind(&LLStatusBar::onMouseEnterNearbyMedia, this));
 
@@ -297,11 +298,19 @@ void LLStatusBar::refresh()
         bool button_enabled = (audio_streaming_enabled || media_streaming_enabled) &&
                               (media_inst->hasInWorldMedia() || media_inst->hasParcelMedia() || media_inst->hasParcelAudio());
         mMediaToggle->setEnabled(button_enabled);
-        // Note the "sense" of the toggle is opposite whether media is playing or not
-        bool any_media_playing = (media_inst->isAnyMediaPlaying() ||
-                                  media_inst->isParcelMediaPlaying() ||
-                                  media_inst->isParcelAudioPlaying());
-        mMediaToggle->setValue(!any_media_playing);
+        // Parcel music owns the indicator when it is available. Otherwise a
+        // silent web/media surface can show Pause while music is stopped,
+        // making the first click stop media instead of starting the music.
+        // The click still starts/stops all media, including a connecting stream.
+        const bool parcel_music_available = audio_streaming_enabled && media_inst->hasParcelAudio();
+        const bool media_playing = parcel_music_available
+            ? media_inst->isParcelAudioPlaying()
+            : (media_inst->isAnyMediaPlaying() || media_inst->isParcelMediaPlaying() ||
+               media_inst->isParcelAudioPlaying());
+        // The toggle's selected value displays Play, the inverse of activity.
+        mMediaToggle->setValue(!media_playing);
+        mMediaToggle->setToolTip(getString(parcel_music_available
+            ? "parcel_music_toggle_tooltip" : "media_toggle_tooltip"));
     }
 
     static LLCachedControl<bool> show_fps(gSavedSettings, "ShowStatusBarFPS", false);
@@ -584,7 +593,8 @@ void LLStatusBar::onClickToggleBalance()
 void LLStatusBar::onClickMediaToggle(void* data)
 {
     LLStatusBar *status_bar = (LLStatusBar*)data;
-    // "Selected" means it was showing the "play" icon (so media was playing), and now it shows "pause", so turn off media
+    // LLButton has already toggled: selected now displays Play, so stop media;
+    // unselected now displays Pause, so start it.
     bool pause = status_bar->mMediaToggle->getValue();
     LLViewerMedia::getInstance()->setAllMediaPaused(pause);
 }
