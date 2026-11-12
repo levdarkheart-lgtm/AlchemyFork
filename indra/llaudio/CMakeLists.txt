@@ -45,7 +45,29 @@ endif()
 if(AL_USE_FAUDIO)
   target_sources(
     llaudio
-    PRIVATE llaudioengine_faudio.cpp lllistener_faudio.cpp
-    PUBLIC FILE_SET HEADERS FILES llaudioengine_faudio.h lllistener_faudio.h
+    PRIVATE llaudioengine_faudio.cpp lllistener_faudio.cpp llcoreaudiooutputdevice.cpp
+    PUBLIC FILE_SET HEADERS FILES llaudioengine_faudio.h lllistener_faudio.h llcoreaudiooutputdevice.h
   )
+endif()
+
+# The startup compatibility route is native too, including builds selecting
+# another sound-effects engine. It must not depend on FAudio being enabled.
+if(DARWIN)
+  target_sources(
+    llaudio
+    PRIVATE llstreamingaudio_coreaudio.mm
+    PUBLIC FILE_SET HEADERS FILES llstreamingaudio_coreaudio.h
+  )
+  set_source_files_properties(llstreamingaudio_coreaudio.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  target_link_libraries(llaudio PRIVATE "-framework Foundation" "-framework AudioToolbox" "-framework CoreAudio" "-framework AVFoundation" "-framework CoreMedia")
+  if(AL_BUILD_TESTS)
+    set_source_files_properties(tests/llstreamingaudio_coreaudio_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    al_add_test_binary(
+      llaudio_coreaudio_tests
+      PROJECT llaudio
+      SOURCES tests/llstreamingaudio_coreaudio_test.mm
+      LIBRARIES llaudio
+      SUPPORT llcommon_test_checks
+    )
+  endif()
 endif()

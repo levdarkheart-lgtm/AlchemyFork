@@ -5944,7 +5944,7 @@
     <key>UseMediaPluginsForStreamingAudio</key>
     <map>
       <key>Comment</key>
-      <string>Use media plugins (VLC) for streaming audio.</string>
+      <string>Legacy compatibility preference. Parcel music uses native Core Audio in this macOS fork.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

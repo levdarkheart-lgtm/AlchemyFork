@@ -147,7 +147,7 @@ public:
 
     bool init(void* userdata, const std::string& app_title) override;
     std::string getDriverName(bool verbose) override;
-    LLStreamingAudioInterface* createDefaultStreamingAudioImpl() const override { return nullptr; }
+    LLStreamingAudioInterface* createDefaultStreamingAudioImpl() const override;
     void allocateListener() override;
     void shutdown() override;
 

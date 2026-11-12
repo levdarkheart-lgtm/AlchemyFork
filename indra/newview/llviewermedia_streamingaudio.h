@@ -1,7 +1,7 @@
 /**
  * @file llviewermedia_streamingaudio.h
  * @author Tofu Linden
- * @brief Definition of LLStreamingAudio_MediaPlugins implementation - an implementation of the streaming audio interface which is implemented as a client of the media plugins API.
+ * @brief Startup compatibility name for native parcel music.
  *
  * $LicenseInfo:firstyear=2009&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -28,50 +28,12 @@
 #ifndef LL_VIEWERMEDIA_STREAMINGAUDIO_H
 #define LL_VIEWERMEDIA_STREAMINGAUDIO_H
 
+#include "llstreamingaudio_coreaudio.h"
 
-#include "stdtypes.h" // from llcommon
+// Keep the startup caller's legacy name while startup preparation is being
+// changed independently. Both the engine factory and this compatibility route
+// use native parcel music; the old force-plugin preference cannot launch VLC.
+// Video and browser media continue to use their separate plugin owners.
+using LLStreamingAudio_MediaPlugins = LLStreamingAudio_CoreAudio;
 
-#include "llstreamingaudio.h"
-
-class LLPluginClassMedia;
-
-class LLStreamingAudio_MediaPlugins final : public LLStreamingAudioInterface
-{
- public:
-    LLStreamingAudio_MediaPlugins();
-    /*virtual*/ ~LLStreamingAudio_MediaPlugins();
-
-    /*virtual*/ void start(const std::string& url) override;
-    /*virtual*/ void stop() override;
-    /*virtual*/ void pause(int pause) override;
-    /*virtual*/ void update() override;
-    /*virtual*/ int isPlaying() override;
-    /*virtual*/ void setGain(F32 vol) override;
-    /*virtual*/ F32 getGain() override;
-    /*virtual*/ std::string getURL() override;
-
-    bool supportsAdjustableBufferSizes() override {return false;}
-    void setBufferSizes(U32 streambuffertime, U32 decodebuffertime) override {};
-
-    // The stream's tags, from the media plugin; GStreamer's on Linux.
-    bool supportsMetaData() override { return true; }
-    LLSD getMetadata() const override { return mMetadata; }
-    virtual bool supportsWaveData() override { return false; }
-    virtual bool getWaveData(float* arr, S32 count, S32 stride = 1) override { return false; }
-
-private:
-    LLPluginClassMedia* initializeMedia(const std::string& media_type);
-
-    LLPluginClassMedia *mMediaPlugin;
-
-    std::string mURL;
-    F32 mGain;
-    LLSD mMetadata;
-    // What isPlaying() last said, so the ticker hears of a change.
-    int mLastPlaying = 0;
-
-    void setMetadata(const LLSD& metadata);
-};
-
-
-#endif //LL_VIEWERMEDIA_STREAMINGAUDIO_H
+#endif // LL_VIEWERMEDIA_STREAMINGAUDIO_H

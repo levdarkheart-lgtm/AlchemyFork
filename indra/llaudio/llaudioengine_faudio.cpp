@@ -27,6 +27,8 @@
 
 #include "llaudioengine_faudio.h"
 #include "lllistener_faudio.h"
+#include "llcoreaudiooutputdevice.h"
+#include "llstreamingaudio_coreaudio.h"
 #include "llstring.h"
 #include "llwavfile.h"
 #include "llwindgen.h"
@@ -289,6 +291,13 @@ bool LLAudioEngine_FAudio::init(void* userdata, const std::string& app_title)
     // Parent init creates the listener via allocateListener().
     LLAudioEngine::init(userdata, app_title);
     return initFAudioDevice();
+}
+
+LLStreamingAudioInterface* LLAudioEngine_FAudio::createDefaultStreamingAudioImpl() const
+{
+    // Parcel music has its own output-only queue. WebRTC owns voice capture
+    // and rendering independently; neither device graph is changed here.
+    return new LLStreamingAudio_CoreAudio(llCoreAudioOutputDeviceUID(mActiveDeviceId));
 }
 
 bool LLAudioEngine_FAudio::initFAudioDevice()
@@ -872,6 +881,11 @@ void LLAudioEngine_FAudio::setOutputDevice(const std::string& id)
     LL_INFOS() << "LLAudioEngine_FAudio::setOutputDevice() opened '"
                << mActiveDeviceName << "' (" << mOutputChannels << "ch @ "
                << mSampleRate << "Hz)" << LL_ENDL;
+
+    if (auto* music = dynamic_cast<LLStreamingAudio_CoreAudio*>(getStreamingAudioImpl()))
+    {
+        music->setOutputDevice(llCoreAudioOutputDeviceUID(mActiveDeviceId));
+    }
 
     if (had_wind)
     {

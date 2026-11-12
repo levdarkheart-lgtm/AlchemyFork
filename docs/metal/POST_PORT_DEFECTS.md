@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-011 -->
+<!-- next-defect-id: PPD-013 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -447,16 +447,16 @@ owner's autoplay preferences and all-media behavior during diagnosis.
 
 ## PPD-010 — Parcel music starts slowly compared with Firestorm
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reported
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, viewer audio fade and plugin-backed streaming; official Firestorm `176c8a16ced2d13d455e68b06c500c8def0e40d6` macOS build/native stream selection.
-- Evidence: [Music startup latency source comparison](work/active/music-start-latency.md).
-- Next action: Time click/request, plugin-host readiness, stream opening/playing and audible output for the same stream/network; evaluate retaining the stopped player before changing buffering policy.
-- Verification: Owner reports Alchemy5s+ versus Firestorm1–2s. Source confirms cold VLC host creation/destruction in this Alchemy build and native FMOD in standard macOS Firestorm. Both use3s fade defaults. No matched timing or five-second attribution measured; no latency repair yet.
-- Owner verification: pending
-- Push approval: not_granted
+- Evidence: [Music startup latency source comparison](work/active/music-start-latency.md), [Apple-native playback investigation](research/apple-native-parcel-music-2026-11-12.md).
+- Next action: Retain the owner-accepted native replacement; formal closure of the original relative-latency report awaits corroborated timing/reproduction. Owner acceptance and approval to publish this backend are already granted.
+- Verification: Local f826eea135/68898 replaces VLC music hosting with native Core Audio/AVFoundation. Source-identical native backend passes271assertions/14cases; full build,346ARM64 slices, deep strict signature and strict source gates pass. No controlled audible comparison or owner verification of this candidate has run. Owner tests exact68898 and states "verified, works. you can commit and push this to github"; overall native-music acceptance and scoped publication approval are explicit. No controlled latency benchmark or specific live voice-call observation is inferred.
+- Owner verification: passed
+- Push approval: granted
 
 Keep delayed playback separate from PPD-009's false-active/first-click UI issue.
 A fade is a volume ramp, not a fixed silent wait. The7000ms constant applies
@@ -470,3 +470,113 @@ only to adjustable-buffer backends and is not passed to the VLC stream adapter.
   deletes that plugin, so later play repeats cold startup. This is a candidate
   overhead source, not a measured explanation of the full delay. No settings,
   stream state or latency code changed; next step is matched stage timing.
+
+- 2026-11-12: Owner requests Apple-native alternatives. Source trace and muted
+  standalone AVPlayer tests confirm MP3/AAC/HE-AAC, ICY metadata, PLS/redirects
+  and Ogg/Vorbis viability on M1Max/macOS26.5.2. Default synthetic MP3 readiness
+  still takes about6s; native API selection alone is not a latency fix. Core
+  Audio packet/queue investigation and exact evidence are retained in the linked
+  research. No production replacement, audible comparison or closure.
+
+- 2026-11-12: Owner authorizes replacing VLC parcel music with the researched
+  native Apple backend, conditional on preserving voice. Implementation isolated
+  from the separate black-screen session; [native replacement ledger](work/active/native-parcel-music.md)
+  records ownership, protocol tests and voice boundaries. No push approval or
+  successful integrated playback inferred from authorization.
+
+- 2026-11-12: Owner confirms the exact launched68898 works and explicitly
+  authorizes committing/pushing the native-music replacement. Mark owner
+  verification passed and scoped push approval granted; preserve prior failed
+  candidates and the limits of automated versus real-call evidence.
+
+
+The owner accepts the new backend, but the original Firestorm-relative latency
+comparison remains reported rather than reproduced or source-confirmed. Keep
+that evidence distinction; do not invent a timing measurement to close it.
+
+## PPD-011 — VLC parcel music cannot deliver structured ticker metadata
+
+- Status: verified
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-12
+- Original reference: Inherited in `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`; `indra/media_plugins/libvlc/media_plugin_libvlc.cpp` title messages, `indra/llplugin/llpluginclassmedia.cpp` metadata receiver and `indra/newview/llviewermedia_streamingaudio.cpp` consumer.
+- Evidence: [Native-music investigation and source trace](research/apple-native-parcel-music-2026-11-12.md).
+- Next action: Retain the owner-accepted native music implementation and corrective evidence; reopen on regression. Future fixes still require explicit approval before pushing.
+- Verification: The inherited VLC metadata gap is removed from the music route. Actual native tests deliver split ASCII/Latin1/legacy ICY song/station tags through the existing LLSD signal on the viewer update thread. Native suite271assertions/14cases and candidate build/static checks pass; real parcel ticker verification remains pending. Owner tests exact68898 and states "verified, works. you can commit and push this to github"; overall native-music acceptance and scoped publication approval are explicit. No controlled latency benchmark or specific live voice-call observation is inferred.
+- Owner verification: passed
+- Push approval: granted
+
+This is a source-confirmed inherited message-contract gap, separate from
+PPD-010 startup delay and PPD-009 playback indication. It does not establish
+that a particular parcel station supplies usable metadata, nor that metadata
+caused either playback symptom. No fix attempted.
+
+### History
+
+- 2026-11-12: Discovered during the owner-requested native Apple music study.
+  Current/original sender, sole receiver assignment, adapter and ticker readers
+  inspected independently. Registered before implementation or handoff;
+  retain the defect even if replacing the VLC music path later repairs it.
+
+- 2026-11-12: Owner authorizes the native replacement; implementation will map
+  ICY/station metadata into the existing ticker contract. Actual protocol and
+  metadata regressions are being added before candidate verification. No closure
+  or push approval; owner verification remains pending.
+
+- 2026-11-12: Owner confirms the exact launched68898 works and explicitly
+  authorizes committing/pushing the native-music replacement. Mark owner
+  verification passed and scoped push approval granted; preserve prior failed
+  candidates and the limits of automated versus real-call evidence.
+
+## PPD-012 — Initial native music candidate cannot start its default output
+
+- Status: verified
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-12
+- Original reference: The prior VLC music path at `9f8d17583097d25a7d086296d9553858f6c9853b` does not use AudioQueue. This is a new, unshipped native-replacement candidate issue, not attribution of PPD-010's original latency report.
+- Evidence: [Native replacement attempts and actual tests](work/active/native-parcel-music.md).
+- Next action: Retain the owner-accepted native music implementation and corrective evidence; reopen on regression. Future fixes still require explicit approval before pushing.
+- Verification: Initial queue_start -66680 and finite-EOS failures are retained below. Corrected production backendc25f7872 passes271assertions/14cases plus focused11assertion finite-tail retest. Full f826eea135/68898 build,346ARM64 slices, deep strict signature and strict source checks pass. No viewer launch or actual voice call was performed by this task. Owner tests exact68898 and states "verified, works. you can commit and push this to github"; overall native-music acceptance and scoped publication approval are explicit. No controlled latency benchmark or specific live voice-call observation is inferred.
+- Owner verification: passed
+- Push approval: granted
+
+The first candidate set kAudioQueueProperty_CurrentDevice to a null CFStringRef.
+The setter and getter appear successful, but an actual start fails on this Mac.
+A previous never-started queue probe did not verify playback; retain that failed
+inference. No running viewer or published music backend was changed.
+
+### History
+
+- 2026-11-12: Source review also identifies and repairs synchronous parser-callback
+  errors being overwritten, incomplete queue setup, stale reconnect clock values,
+  discarded playlist alternatives and blocking per-frame native state reads.
+  These are initial candidate findings, not proven causes of existing viewer
+  symptoms. Queue callbacks reclaim compressed buffer storage before decoded
+  audio necessarily finishes, so tail accounting is being corrected against the
+  native playback clock. Detailed attempts remain in the linked ledger.
+- 2026-11-12: First actual MP3 test fails and full initial suite is stopped rather
+  than treating protocol metadata or AVFoundation fallback as a Core Audio pass.
+  Muted queue-start comparison reproduces the null-device cause; corrections and
+  full retest are in progress, local only.
+
+- 2026-11-12: Corrected default output passes all5actual CoreAudio formats.
+  Source-pinned full14-case retest passes13cases/267assertions but fails finite
+  EOF state (1assertion):155MP3packets describe178560nominalframes while the file
+  has176400validframes +576priming +1584remainder. Nominal remaining-frame count
+  cannot reach zero against a trimmed4s playback clock. Native asynchronous stop
+  and IsRunning completion replace that EOF inference. Focused real-body retest
+  passes11assertions, confirms>=3.9s media and>=3.5s walltime before stopped; full
+  repaired-source retest and bundle validation remain in progress.
+
+- 2026-11-12: Final repaired-source suite passes all14cases/271assertions with
+  unchanged source/binary hashes. Exact f826eea135/26.4.0.68898 candidate builds
+  and passes ARM64/signature/source gates; WebRTC code is unchanged and477voice
+  symbols remain in the final executable. Ready for owner testing, not closed;
+  no launch, real voice call or push performed.
+
+- 2026-11-12: Owner confirms the exact launched68898 works and explicitly
+  authorizes committing/pushing the native-music replacement. Mark owner
+  verification passed and scoped push approval granted; preserve prior failed
+  candidates and the limits of automated versus real-call evidence.

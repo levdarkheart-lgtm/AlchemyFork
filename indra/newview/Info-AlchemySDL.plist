@@ -30,6 +30,13 @@
 	<string>For voice chat, you must grant permission for Alchemy to use the microphone.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Alchemy uses WebRTC for voice chat, which may require local network access while establishing the voice connection.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Parcel owners supply arbitrary HTTP radio URLs. The native music
+		     transport must retain the HTTP support of the previous VLC player. -->
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>${MACOSX_BUNDLE_DOCUMENT_TYPES_KEY}</key>
 	<array>
 		<dict>
