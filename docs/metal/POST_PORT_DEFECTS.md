@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-009 -->
+<!-- next-defect-id: PPD-010 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -367,3 +367,36 @@ unseparated. Aggregate zero-cadence buckets do not prove black pixel content.
   +25.965s, warm complete/first logged world-source availability+32.965s,
   worker duration6.60176s, UI submissions between. Upgrade source confirmation
   only; visual attribution remains unproved and the record stays investigating.
+
+## PPD-009 — Startup media indicator active while parcel music is silent
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex integrator
+- Discovered: 2026-11-12
+- Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `indra/newview/llstatusbar.cpp`, `llvieweraudio.cpp`, `llviewermedia_streamingaudio.cpp`; aggregate all-media control and stream transport/fade ownership.
+- Evidence: [Startup media-state investigation](work/active/music-startup-indicator.md).
+- Next action: Owner confirms intended aggregate/autoplay behavior; if silence recurs with autoplay enabled, capture actual aggregate branches/backend status and start-request ordering before repair.
+- Verification: Top-bar control aggregates music/video/web media. Saved/default autoplay is off; saved world-session logs contain no nonempty music-start request. Sequence fits original behavior; exact incident not reproduced and no backend failure demonstrated. No repair justified yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+Owner reports initial active indicator without audible music. OFF changes the
+indicator correctly; subsequent ON starts music after several seconds, and later
+pause works. The top-bar button controls music, parcel media and in-world media;
+active appearance alone is not proof of an audible music stream. Preserve the
+owner's autoplay preferences and all-media behavior during diagnosis.
+
+### History
+
+- 2026-11-12: Report registered before repair. Owner clarifies top-bar control.
+  Original comparison finds the host indicator, audio fade/URI and parcel
+  autoplay paths unchanged. Backend MEDIA_LOADING counts as playing; failed
+  same-URI requests may remain latched, but that explanation is unverified.
+  No viewer/audio control or source change performed for this report.
+- 2026-11-12: Owner confirms silence persists beyond30seconds. Current
+  saved/default settings show streaming enabled but autoplay0/off; two saved
+  world-session logs contain no nonempty music-start request. OFF/ON manually
+  starts music independently of autoplay. This supports intended aggregate
+  behavior, without proving which branch was active at the reported moment.
+  No source/preferences changed; any later fix remains local pending approval.
