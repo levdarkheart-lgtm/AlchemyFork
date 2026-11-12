@@ -88,6 +88,12 @@ or shadow data and other projector validation failures need separate diagnosis.
   profile completed locally:181.041s trace saved/TOC exported0, teleport start
   and finish inside capture. Detailed metrics and owner acceptance pending.
 
+- 2026-11-12: Owner requests second retained-cache run. Exact68869/PID89531
+  recorded181.345s post-arrival; xctrace teardownSIGTRAP prevented normal save.
+  Raw ktrace cloned/imported0, CPU/frame coverage verified; exact-build function
+  names restored offline with immutable sample data. This is instrumentation recovery, not viewer
+  corrective verification or push approval. See the repair note.
+
 ## PPD-002 — Busy-region world freezes while nametags keep turning
 
 - Status: investigating

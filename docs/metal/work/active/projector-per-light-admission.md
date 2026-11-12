@@ -142,3 +142,52 @@ and analyses exit0; local plot verified. Overview zero-present anomaly49.368–6
 has continuing CPU/frame-loop work, no single long sampled CPU block; window
 visibility and actual-present/fresh-world correlation remain unknown. No PPD-002
 cause, owner acceptance, measured gain or new implementation claimed.
+
+## Second session with retained disk cache
+
+Owner requested another run using the existing cache, then said Start. Exact
+68869/source6404/hash d71560aa643d was relaunched asPID89531 without cache purge
+or graphics/location overrides. Recording-active prompt was observed before
+signaling the owner; Game Performance Overview attached for3m.
+
+Recorder reached its limit but exitedSIGTRAP(-5) during Apple ktracePlugin /
+XRTapAgent teardown (libdispatch: release of a suspended object). Viewer stayed
+running. Original partial trace and423432368-byte temporary raw ktrace were
+preserved with APFS clones (both exit0), then imported into a new recovered
+trace with the same template (exit0). TOC export0 confirms181.345001seconds,
+14:51:43.667–14:54:45.012UTC. CPU analysis must explicitly filterPID89531 because
+recovery imports AllProcesses. Original failure and sanitized crash analysis
+are retained; recovery is not a successful original recorder exit.
+
+Evidence: `artifacts/metal/ppd001-warm-profile-20261112/`, launch/capture plans,
+record-exit, recovery-preservation, recovery-import, profile-toc, runtime-events,
+crash-analysis and capture-complete receipts. No teleport event occurs within
+this recording; the latest logged teleport-finished event is20.667s before it.
+This is a post-arrival warm-session capture, not another teleport transition.
+Existing disk cache was retained; actual cache hits, decoded residency and
+matched scene/settings remain unmeasured. Recovered CPU export/analyzer exit0 verifies335315target Running samples,
+132.096main CPU-s and full0.005–181.345s main-sample span; all37five-second bins
+contain main samples. Raw imported function names are address-only; UUID/load
+verified offline main-binary symbol restoration is in progress before hotspot
+comparison. All six metric exports/analyzer exit0:180.874seconds coverage, one
+target viewer layer,22.423FPS covered cadence, nozero-FPS buckets. These are
+Overview metrics, not a fresh-world pass or causal performance comparison.
+No owner acceptance/push inferred.
+
+Warm symbol recovery now passes: recordedKCDATA PID89531/mainTID98151771 and
+UUID506571D0-455F-3A76-9DB9-C714EFADF593 prove load0x102e44000; native SDK array
+layout and exact binary SHA/UUID/text range validated. Exact-binary atos resolves
+20351/20575main-text PCs (98.91%unique addresses, not weighted CPU coverage).
+224main PCs and8086external frame definitions remain explicitly unresolved.
+Derived `time-profile-symbolicated.xml` changes only frame-name strings; all
+335315rows, weights, times, refs, raw frame addresses and non-name XML bytes
+are identical. Raw XML/ktrace/binary hashes remain unchanged. See
+`symbol-recovery/receipt.json`. Extended dSYM generation was intentionally
+interrupted; its preserved partial bundle is invalid and was not used.
+
+Next executable action: run the preserved clean CPU analyzer on the derived XML
+with `--pid 89531 --toc <warm>/profile-toc.xml --bins 5 30 --top 80`, writing
+`<warm>/cpu-analysis-symbolicated.json`; exact argv is in capture-complete.json.
+Then compare appropriate post-arrival/late windows, preserving unmatched timing,
+visibility, scene/settings and unknown actual cache-hit coverage. Recording has
+stopped; this handoff does not claim a warm-cache speedup or owner verification.
