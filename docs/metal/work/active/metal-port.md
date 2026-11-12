@@ -5,13 +5,12 @@
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
+Local [decoder sizing/codecs](texture-decoder-workers-and-codecs.md):160a selects4 workers;64f/68855 build/static+56tools pass.192complete+48partial textures; OpenJPEG retained, owner test pending. CPU benefit is not relaunch/FPS evidence; keep local.
+
 ## Current implementation — 2026-11-11
 
-Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal,
-with original-viewer inspection before fixes. No viewer, utility, host or native
-window launch initially. Owner subsequently requested ready viewer launch for
-their confirmation; fresh26.4.0d68817 was observed as PID90460. No login action
-or screenshot by agent; utility unexecuted. Owner-stopped20FPS campaign remains deferred.
+Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal with original inspection before fixes. No viewer/utility/host/native window launch initially.
+Owner later requested ready viewer launch;26.4.0d68817 observed PID90460. No agent login/screenshot; utility unexecuted, owner-stopped20FPS deferred.
 Reference source1eb44bbd1bdc76d0100c75699bad1fb337e8cb45.
 
 Latest: [native finalization/preview/media closure](native-finalization-and-media-closure.md),
@@ -164,7 +163,7 @@ facelight-cutoff-20261111/release-replacement.json; no Actions/billing changes.
 This correction is separate from the closed porting goal. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
-Local [busy-turn investigation](busy-turn-local-investigation.md):68845 failed; push reverted0f7; explicit owner approval required before future fix pushes.
+Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–004 open; explicit owner approval required before future fix pushes.
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
 utility unexecuted; prior f254 launch observation stays source-pinned.
