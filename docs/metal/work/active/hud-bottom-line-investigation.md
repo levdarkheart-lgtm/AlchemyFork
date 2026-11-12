@@ -45,3 +45,12 @@ at a boundary. Neither attribution is proved by the screenshots. If native-only,
 record offending batch/face render pool, texture identity, projected triangle
 area/height and UV bounds, then replay its exact vertices/matrix across pixel
 phases with original alpha/sampler policy. No speculative renderer fix yet.
+
+
+## Owner deferral
+
+2026-11-12: Owner answers the original-viewer comparison question: "i dont
+remember, lets park it for now". PPD-016 deferred at this explicit request.
+Evidence and hypotheses retained; no further diagnosis or implementation until
+the owner asks to resume. No native defect, asset cause, repair or dismissal
+is inferred from the deferral.

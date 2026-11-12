@@ -699,16 +699,17 @@ PPD-013 bands or the supplied coverage changes. No speculative combined fix.
 
 ## PPD-016 — Thin lower HUD line changes coverage during movement
 
-- Status: investigating
+- Status: deferred
 - Confirmation: reported
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, indexed HUD geometry capture, fullbrightV/F texture/alpha handling and ordinary AnisoWrap sampler; native lldrawpool.cpp captureMetalHUDBatch and ALMetalUIRenderer::drawHUDIndexed. No original runtime comparison yet.
 - Evidence: [Owner HUD images and source audit](work/active/hud-bottom-line-investigation.md).
-- Next action: Establish whether the same HUD shows the line in original Alchemy/Firestorm, then identify actual offending geometry/texture if native-only. Keep authored geometry versus renderer attribution separate before any repair.
+- Next action: Park at the owner’s request; resume the original-viewer/actual-face comparison only when the owner asks to revisit it.
 - Verification: Owner images21:50:15/21:50:51/21:51:50 show a thin lower line at the selected HUD frame boundary. It moves with the HUD and changes from continuous to two end segments. Source audit finds matching sampler, alpha-product/cutoff, texture transform and triangle winding; no native defect or corrective change established.
 - Owner verification: pending
 - Push approval: not_granted
+- Resolution: Owner does not recall original-viewer behavior and explicitly says "lets park it for now". Retain report and evidence without claiming a renderer defect or repair.
 
 Owner briefly suggests a horizon dependency, then explicitly withdraws it and
 notes the line could belong to the HUD itself. Do not retain the withdrawn
@@ -722,3 +723,5 @@ transparent atlas/mip edge coverage are candidates, not confirmed causes.
   line position. Read-only original/native audit finds no concrete mismatch;
   await comparison or inspect exact batch/face before changing renderer policy.
   No UI, shader, sampler, geometry or alpha-cutoff change made for this report.
+
+- 2026-11-12: Owner does not remember whether original Alchemy/Firestorm shows the line and explicitly parks this investigation. Mark deferred; no renderer change, closure or push approval.
