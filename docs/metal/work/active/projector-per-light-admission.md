@@ -99,3 +99,13 @@ world/lighting behavior. PPD-001 is `ready_for_owner`; PPD-002 attribution remai
 unproved, PPD-003 diagnostics remain a separate defect. No performance gain or
 full visual parity is claimed. Keep this scope local until owner testing and
 explicit push approval.
+
+## Owner-requested launch
+
+2026-11-12 14:05:32 UTC: owner requested starting the viewer. Verified exact
+68869 executable hash against the candidate receipt, confirmed no Alchemy viewer
+already running, then `open -n` the absolute `Alchemy Metal Projector Fix.app`
+bundle. Command exit0; exact executable observed as PID85968. Receipt:
+`artifacts/metal/ppd001-projector-fix-20261112/launch-receipt.json`.
+Owner controls login/location/settings; no scene, screenshot or visual-parity
+verification is implied. Owner acceptance/push approval remain pending.
