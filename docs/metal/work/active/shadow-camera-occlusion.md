@@ -98,3 +98,9 @@ Position regeneration/native allocation, GBuffer query-joining and D32 extent
 issues mapped to source/original. Analysis only; no further renderer change.
 Evidence artifacts/metal/three-profile-hotspots-20261112/; next implementation
 selection remains owner-directed, all proposed fixes local.
+
+2026-11-12 owner explicitly approves committing/pushing this directional-shadow
+occlusion implementation and its GPU/query tests, together with the named
+PPD-001 repair and restored4normal/6maximum decoder policy. Publish on
+codex/apple-silicon-metal. This supersedes the earlier no-push boundary; visual
+parity, controlled speedup and the unrelated full-product gates remain open.

@@ -52,10 +52,10 @@ explicitly. Evidence must link to a retained repository note or primary source.
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `indra/newview/pipeline.cpp`, `LLPipeline::setupSpotLight` and the deferred-light traversal.
 - Evidence: [Source comparison and failed-session investigation](work/active/busy-turn-local-investigation.md), [signed-range contract and regression work](work/active/projector-per-light-admission.md).
-- Next action: Owner tests local68869 in the busy location, checking lighting and current-world motion; retain PPD-002 separately until its reported symptom is verified.
+- Next action: Publish the explicitly approved repair/tests; owner verifies busy-location lighting/current-world behavior. Retain PPD-002 separately until its reported symptom is verified.
 - Verification: Local6404f9f6ad collector probe72checks/0failures versus37 baseline failures; native Metal27016assertions/1case pass with API/GPU validation. Candidate68869 build passes; bundle/signature verification recorded in the linked repair note. Owner scene verification pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Native projector collection returns before completing the entire lighting stage
 for some UI/protocol-admitted inputs. For example, independent light radius
@@ -98,6 +98,12 @@ or shadow data and other projector validation failures need separate diagnosis.
   Mainshadow42.43%, decoder142.911CPU-s but only0.645s inlast30s, cadence22.377FPS
   late. VerifiedGPUaverages remain substantial; detailedGPUevents absent even
   afterboundedreimport. No ownerverification/push inferred fromprofiling.
+
+- 2026-11-12: After explicitly approving the restored4normal/6maximum decoder
+  policy, owner asks which renderer work is local. Integrator names directional
+  shadow occlusion1a12 and this6404 projector repair/tests; owner replies
+  "commit them too and push". Push approval granted for those named changes.
+  This does not supply explicit scene-correctness verification or close PPD-002.
 
 ## PPD-002 — Busy-region world freezes while nametags keep turning
 
@@ -270,7 +276,8 @@ as a Metal-introduced regression or a cause of PPD-002.
   textures and worse FPS, exits/rejects8 and requests restoring4normal/6maximum.
   Source restored exactly98f41; prior68880 relaunchedPID63726/cache retained.
   Owner explicitly approves committing/pushing restored4/6 decoder scope;
-  unrelated renderer work remains local. No eight-worker gain is claimed.
+  then explicitly includes named shadow-occlusion/projector repairs and tests.
+  No eight-worker gain is claimed; active source returns to4/6.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 

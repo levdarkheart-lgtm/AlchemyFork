@@ -211,3 +211,10 @@ palette reuse (2.726CPU-s immediatehashcaller), followedbybroadermeasuredshadow
 prep/emission work. RGB8-specializeddirectstagingtargetsloading, notlatecadence.
 KeepacceptedOpenHT; noapplicationcodechanges orpush. PPD-001owneracceptancepending;
 PPD-002causeunproved, PPD-003diagnosticlimitsretained. Harnessrerunatthishandoff.
+
+2026-11-12 owner explicitly approves committing/pushing this named projector
+repair and its tests, together with directional-shadow occlusion and the
+restored4normal/6maximum adaptive decoder policy. Publish on
+codex/apple-silicon-metal. No explicit scene-correctness confirmation is inferred
+from permission to push: PPD-001 owner verification remains pending, PPD-002
+symptom/cause remains unresolved and raw captures stay local.

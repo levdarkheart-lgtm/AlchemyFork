@@ -5,7 +5,9 @@ resolution in the first heavy place and worse texture loading/FPS in the second,
 closes the viewer and explicitly requests restoring the previous policy. The
 three scheduler/worker test files are restored byte-for-byte to299e748^; the
 entire indra tree matches98f41e652b again. The owner then explicitly approves
-committing/pushing the restored4normal/6maximum adaptive decoder scope only.
+committing/pushing the restored4normal/6maximum adaptive decoder scope, then
+explicitly expands approval to the named directional-shadow occlusion and
+PPD-001 projector repairs and their tests.
 
 2026-11-12. Owner explicitly requests implementing the proposed larger burst
 ceiling, retaining normal4 on the M1 Max, then starting the viewer. Local scope
@@ -90,5 +92,7 @@ process path verified. Startup normal4/max6/adaptive1 and STATE_LOGIN_WAIT
 observed;33665retained cache files, no purge/migration or recording. This is the
 previous validated app, not a freshly rebuilt reversion. The rejected68884 app
 is preserved as evidence. Next: publish only the owner-approved4/6 decoder
-implementation atop the accepted remote baseline, excluding unrelated renderer
-work, then reconcile local history without pushing unapproved commits.
+implementation together with the two subsequently approved renderer repairs on
+codex/apple-silicon-metal. Raw captures and five unrelated untracked research
+notes remain private/local. The rejected8 change and explicit revert are
+retained in history; the published source must match restored98f41 exactly.

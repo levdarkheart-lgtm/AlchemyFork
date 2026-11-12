@@ -189,6 +189,8 @@ the previous4normal/6maximum policy. The three changed scheduler/test files are
 restored exactly; indra again matches98f41e652b. Exact preserved68880 is running
 PID63726 at login with adaptive1, normal4/max6, retained populated cache and no
 recording. Owner explicitly requests committing and pushing this4/6 scope.
-Publish only adaptive decoder code/tests/supporting evidence, excluding local
-unapproved renderer changes; keep raw captures private. This supersedes earlier
-pending-approval statements; it does not prove an optimum on every Mac.
+Owner then explicitly expands publication to the named directional-shadow
+occlusion and PPD-001 projector repairs with their tests. Publish these together
+on codex/apple-silicon-metal; keep raw captures/private untracked notes local.
+This supersedes earlier pending-approval statements; it does not prove an
+optimum on every Mac or resolve unrelated open defects.

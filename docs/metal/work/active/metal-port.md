@@ -5,9 +5,9 @@
 
 PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/static+76tools+736image assertions pass; PID67814/4OpenHTworkers,181.755s profile. Owner accepted and scoped decoder push completed at4842cb9460 on codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
 
-PPD-001 [projector admission](projector-per-light-admission.md):6404/68869; [warm analysis](../../research/warm-cache-profile-analysis-2026-11-12.md):142.911decodeCPU-s,42.43%main shadows; late decode0.645s/22.377FPS, GPUinflight69.823ms(avg overlapping spans). Next palette reuse + GPUencoder attribution. Owner pending; PPD-002 cause unproved.
+PPD-001 [projector admission](projector-per-light-admission.md):6404/68869; [warm analysis](../../research/warm-cache-profile-analysis-2026-11-12.md):142.911decodeCPU-s,42.43%main shadows; late decode0.645s/22.377FPS, GPUinflight69.823ms(avg overlapping spans). Owner explicitly approves push; scene verification pending, PPD-002 cause unproved. Next palette reuse + GPUencoder attribution.
 
-[Adaptive decoder admission](adaptive-decoder-concurrency.md):[eight-burst](eight-burst-decoder-experiment.md) owner-rejected for slower textures/FPS, source restored exactly98f41; both captures saved, heavy analysis stopped. Prior68880 PID63726 normal4/max6/adaptive1 relaunched, cache retained/recording off. Owner explicitly approves committing/pushing4/6 decoder scope; publish atop accepted remote without unrelated local renderer commits, then reconcile history.
+[Adaptive decoder admission](adaptive-decoder-concurrency.md):[eight-burst](eight-burst-decoder-experiment.md) owner-rejected, source restored exactly98f41(localrevert59e50), both captures saved/analysis stopped. Prior68880 PID63726 normal4/max6/adaptive1 relaunched, cache retained/recording off. Owner explicitly approves4/6 plus named shadow-occlusion/projector repairs/tests; canonical branch publication next. Five untracked notes/private captures excluded.
 ## Current implementation — 2026-11-11
 
 Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal with original inspection before fixes. No viewer/utility/host/native window launch initially.
@@ -171,7 +171,7 @@ utility unexecuted; prior f254 launch observation stays source-pinned.
 
 ## Non-negotiable open gates
 
-[Shadow queries](shadow-camera-occlusion.md): implemented/tested68849; [three-capture hotspots](../../research/three-profile-hotspots-2026-11-12.md) audited; benefit unproven; keep local pending owner acceptance.
+[Shadow queries](shadow-camera-occlusion.md): implemented/tested68849; [three-capture hotspots](../../research/three-profile-hotspots-2026-11-12.md) audited; owner explicitly approves push with PPD-001/4–6 decoder policy. Controlled benefit/visual parity unproven.
 
 Full original feature parity, prolonged stability, measured multi-scene
 performance, strict source/runtime no-GL and independent release review remain
