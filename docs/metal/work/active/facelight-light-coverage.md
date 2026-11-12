@@ -116,3 +116,13 @@ controlled. Evidence artifacts/metal/facelight-cutoff-20261111/{canonical-build-
 canonical-validation,canonical-strict-source,registered-validation,
 viewer-ready-validation,viewer-launch,integration-peer}.json. All build/check jobs
 terminal/removed; running candidate is deliberately left available for the owner.
+
+## Owner confirmation — 2026-11-12 UTC
+
+After the requested exact68841 candidate launch, owner reports that it fixes the
+issues seen with the line, then explicitly requests commit and push. This closes
+the reported attached-beard-light cutoff for tested sourcecb840 and binary736d56f5.
+It does not assert complete lighting/parity acceptance across all scenes. Root
+records owner-confirmation.json and pushes the reviewed fix plus test/handoff
+evidence normally to codex/apple-silicon-metal. No additional release publication
+or viewer operation is part of this commit/push request.

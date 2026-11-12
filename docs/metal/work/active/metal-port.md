@@ -164,8 +164,8 @@ receipt hud-preview-alpha-release.json. Scoped implementation/delivery finished;
 new attached-light follow-up below is separate. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
-New: [attached-light cutoff](facelight-light-coverage.md) doing; cb840/68841 built/
-checked. Requested exact candidate PID74291 launched; owner confirmation pending.
+New: [attached-light cutoff](facelight-light-coverage.md) scoped repair complete;
+cb840/68841 built/checked/launched and owner confirms the reported line is fixed.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
