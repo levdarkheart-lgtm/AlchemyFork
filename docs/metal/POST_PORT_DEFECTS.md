@@ -239,6 +239,11 @@ as a Metal-introduced regression or a cause of PPD-002.
   uses62.173CPU-s/peak2.43cores. Scenes differ; neither establishes a matched
   four-to-six speedup or optimal concurrency. Second cache retained warm;
   six-worker owner acceptance and push approval remain pending/not_granted.
+- 2026-11-12: Owner reports quicker HUD/world loading with six workers and
+  requests [hardware-aware adaptive admission](work/active/adaptive-decoder-concurrency.md)
+  while continuing to play in68876. Implement/build locally without changing
+  the running viewer; profile afterward. Subjective improvement is recorded;
+  cross-hardware optimum, adaptive behavior and push approval remain unverified.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 

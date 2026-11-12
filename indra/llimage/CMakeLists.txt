@@ -26,6 +26,7 @@ target_sources(
   PUBLIC
     FILE_SET HEADERS
       FILES
+        alimagedecodescheduler.h
         alj2clayout.h
         llimage.h
         llimagebmp.h
@@ -78,7 +79,7 @@ if(AL_BUILD_TESTS)
   al_add_test_binary(
     llimage_tests
     PROJECT llimage
-    SOURCES tests/llimage_test.cpp tests/alj2clayout_test.cpp ${al_j2c_experiment_tests}
+    SOURCES tests/llimage_test.cpp tests/alj2clayout_test.cpp tests/alimagedecodescheduler_test.cpp ${al_j2c_experiment_tests}
     LIBRARIES llimage ll::openjpeg
   )
 endif()

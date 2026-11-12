@@ -30,6 +30,7 @@
 #include "llimage.h"
 #include "llpointer.h"
 #include "threadpool_fwd.h"
+#include "alimagedecodescheduler.h"
 
 class LLImageDecodeThread
 {
@@ -44,6 +45,8 @@ public:
 
 public:
     LLImageDecodeThread(bool threaded = true);
+    LLImageDecodeThread(bool threaded, ALImageDecodeScheduler::Limits limits,
+                        bool adaptive = true, ALImageDecodeScheduler::Now now = {});
     virtual ~LLImageDecodeThread();
 
     // meant to resemble LLQueuedThread::handle_t
@@ -53,6 +56,10 @@ public:
                          const LLPointer<Responder>& responder);
     size_t getPending();
     size_t update(F32 max_time_ms);
+    ALImageDecodeScheduler::Snapshot getDecodeStats() const;
+    // Main-thread control tick, also used with an injected clock by the worker
+    // regression tests. Normal update() samples Darwin pressure at most 2 Hz.
+    void updateConcurrency(const ALImageDecodeScheduler::Pressure& pressure);
     S32 getTotalDecodeCount() { return mDecodeCount; }
     void shutdown();
 
@@ -60,8 +67,15 @@ private:
     // As of SL-17483, LLImageDecodeThread is no longer itself an
     // LLQueuedThread - instead this is the API by which we submit work to the
     // "ImageDecode" ThreadPool.
+    ALImageDecodeScheduler::Now mNow;
+    std::shared_ptr<ALImageDecodeScheduler> mScheduler;
     std::unique_ptr<LL::ThreadPool> mThreadPool;
     LLAtomicU32 mDecodeCount;
+    ALImageDecodeScheduler::TimePoint mLastControlUpdate;
+    ALImageDecodeScheduler::TimePoint mLastStatsLog;
+    bool mHaveControlUpdate = false;
+    bool mHaveStatsLog = false;
+    unsigned mLastLoggedLimit = 0;
 };
 
 #endif

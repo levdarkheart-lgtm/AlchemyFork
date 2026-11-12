@@ -28,10 +28,36 @@
 #define LL_LLSYS_OBJC_H
 
 #include <cstdint>
+#include <vector>
 
 // C++ land doesn't define NSInteger, and we don't want to introduce that for
 // this one case, so use int64_t instead (which is equivalent).
 bool LLGetDarwinOSInfo(int64_t &major, int64_t &minor, int64_t &patch);
+
+struct LLDarwinCPUInfo
+{
+    uint32_t active_cores = 0;
+    // Physical core counts in numeric hw.perflevel order (highest first).
+    // Empty unless the complete topology agrees with active_cores.
+    std::vector<uint32_t> performance_levels;
+    bool topology_valid = false;
+};
+
+LLDarwinCPUInfo LLGetDarwinCPUInfo();
+
+struct LLDarwinDecodePressure
+{
+    // NSProcessInfo states: 0 nominal, 1 fair, 2 serious, 3 critical.
+    int thermal_state = -1;
+    bool low_power = false;
+    // Fractions in [0, 1], or -1 on the first sample or unavailable data.
+    double system_cpu_busy = -1.;
+    double main_thread_cpu_busy = -1.;
+};
+
+// Main-thread-only delta sampler. A call from another thread returns unknown
+// pressure without changing the main thread's sampling baselines.
+LLDarwinDecodePressure LLGetDarwinDecodePressure();
 
 
 #endif // LL_LLSYS_OBJC_H

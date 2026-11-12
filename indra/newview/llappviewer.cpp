@@ -197,6 +197,9 @@
 #include "lltexturecache.h"
 #include "lltexturefetch.h"
 #include "llimageworker.h"
+#if LL_DARWIN
+#include "llsys_objc.h"
+#endif
 #include "llevents.h"
 
 // The files below handle dependencies from cleanup.
@@ -2340,31 +2343,40 @@ bool LLAppViewer::initThreads()
     //auto configure thread count
     LLSD threadCounts = gSavedSettings.getLLSD("ThreadPoolSizes");
 
-    // Apple Silicon has no SMT. Use its reported CPU count directly, without
-    // depending on graphics vendor detection before the window is initialized.
-    const S32 detected_cores = std::thread::hardware_concurrency();
-    S32 cores = detected_cores;
-    U32 max_cores = gSavedSettings.getU32("EmulateCoreCount");
-    if (max_cores != 0)
+    // Read enabled CPU topology directly, without relying on graphics-vendor
+    // initialization or assuming all Apple Silicon core types are equivalent.
+    U32 detected_cores = std::thread::hardware_concurrency();
+    std::vector<unsigned> performance_levels;
+#if LL_DARWIN
+    const auto cpu_info = LLGetDarwinCPUInfo();
+    if (cpu_info.active_cores)
     {
-        cores = llmin(cores, (S32) max_cores);
+        detected_cores = cpu_info.active_cores;
     }
-
-    // always use at least 2 threads for image decoding to prevent
-    // a single texture blocking all other textures from decoding
-    // Local loading experiment: reserve four cores, selecting six decoders
-    // on the ten-core M1 Max. Keep the effective-core override and bounds.
-    S32 image_decode_count = llclamp(cores - 4, 2, 16);
+    if (cpu_info.topology_valid)
+    {
+        performance_levels = cpu_info.performance_levels;
+    }
+#endif
+    const auto decode_limits = ALImageDecodeScheduler::Limits::fromTopology(
+        detected_cores, performance_levels, gSavedSettings.getU32("EmulateCoreCount"));
+    const auto image_decode_count = decode_limits.maximum;
+    const bool adaptive_decode = gSavedSettings.getBOOL("ImageDecodeAdaptive");
 
     LL_INFOS("InitInfo") << "ImageDecode workers: " << image_decode_count
                         << "; detected CPU cores: " << detected_cores
-                        << "; effective CPU cores: " << cores << LL_ENDL;
+                        << "; effective CPU cores: " << decode_limits.effective_cores
+                        << "; topology valid: " << decode_limits.topology_valid
+                        << "; fastest-tier cores: " << (performance_levels.empty() ? 0 : performance_levels.front())
+                        << "; normal admission: " << decode_limits.baseline
+                        << "; adaptive: " << adaptive_decode << LL_ENDL;
 
-    threadCounts["ImageDecode"] = image_decode_count;
+    threadCounts["ImageDecode"] = static_cast<S32>(image_decode_count);
     gSavedSettings.setLLSD("ThreadPoolSizes", threadCounts);
 
     // Image decoding
-    LLAppViewer::sImageDecodeThread = new LLImageDecodeThread(enable_threads && true);
+    LLAppViewer::sImageDecodeThread = new LLImageDecodeThread(
+        enable_threads && true, decode_limits, adaptive_decode);
     LLAppViewer::sTextureCache = new LLTextureCache(enable_threads && true);
     LLAppViewer::sTextureCache->start();
     LLAppViewer::sTextureFetch = new LLTextureFetch(LLAppViewer::getTextureCache(),
