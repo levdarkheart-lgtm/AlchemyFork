@@ -228,6 +228,12 @@ as a Metal-introduced regression or a cause of PPD-002.
 - 2026-11-12: Owner explicitly accepted the experiment and requested committing/pushing these changes. Acceptance covers decoder/worker changes and their scoped evidence; it does not approve unrelated shadow-renderer work or establish a controlled end-to-end speedup.
 - 2026-11-12: Approved decoder scope pushed non-destructively to codex/apple-silicon-metal at4842cb9460 and remote tip verified. Separate publication-base image5/5,56 tools and32-file harness checks pass; unrelated renderer/governance work and private data excluded.
 
+- 2026-11-12: Owner requests a separate [six-decoder cold/warm experiment](work/active/six-decoder-cold-warm-experiment.md).
+  Local reserve4 trial selects6 on ten-core M1 Max; original accepted sizing
+  defect remains verified. New concurrency policy is unaccepted, not adaptive,
+  and has no push approval. Empty dedicated cache then same populated cache
+  requested; existing cache and prior apps preserved.
+
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 
 - Status: open

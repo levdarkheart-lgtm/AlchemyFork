@@ -2352,7 +2352,9 @@ bool LLAppViewer::initThreads()
 
     // always use at least 2 threads for image decoding to prevent
     // a single texture blocking all other textures from decoding
-    S32 image_decode_count = llclamp(cores - 6, 2, 16);
+    // Local loading experiment: reserve four cores, selecting six decoders
+    // on the ten-core M1 Max. Keep the effective-core override and bounds.
+    S32 image_decode_count = llclamp(cores - 4, 2, 16);
 
     LL_INFOS("InitInfo") << "ImageDecode workers: " << image_decode_count
                         << "; detected CPU cores: " << detected_cores
