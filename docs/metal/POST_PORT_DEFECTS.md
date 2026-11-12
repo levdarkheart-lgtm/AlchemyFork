@@ -95,7 +95,7 @@ or shadow data and other projector validation failures need separate diagnosis.
 - Owner: Codex integrator
 - Discovered: 2026-11-10
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `indra/newview/llviewerdisplay.cpp`; current world and current-camera UI precede the same swap.
-- Evidence: [Initial crowded-region report](work/active/crowd-live-68643.md), [failed 68845 retest and revert](work/active/busy-turn-local-investigation.md).
+- Evidence: [Initial crowded-region report](work/active/crowd-live-68643.md), [failed 68845 retest and revert](work/active/busy-turn-local-investigation.md), [68869 pre-teleport profile analysis](research/projector-teleport-profile-2026-11-12.md).
 - Next action: Capture local/projector completion flags and the first projector return reason or renderer error during a retained-world frame, without changing draw admission.
 - Verification: Owner-run 68845 retest failed; live cause remains unknown. The previous automated impostor test did not verify this incident.
 - Owner verification: failed
@@ -120,6 +120,12 @@ reported behavior. PPD-003 limits the existing lighting-failure diagnostics.
 - 2026-11-12: Owner requests reverting the unapproved push. Normal revert
   `0f7b488264fc60e177e30d445502c8008d4fd37a` restores the pre-push source; owner
   requires explicit approval before future fix pushes.
+
+- 2026-11-12: Local68869 profile analysis observes Overview zero-present buckets
+  across49.368–64.358s while main/decoder work and viewer-loop statistics advance.
+  Per-frame exports are empty; visibility/instrumentation/publication/queued GPU
+  work remain unseparated. Relationship to the owner-reported world-only freeze
+  remains unproved; no corrective verification or closure inferred.
 
 ## PPD-003 — Continuous lighting retries can suppress failure warnings
 

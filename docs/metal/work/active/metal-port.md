@@ -6,7 +6,7 @@
 
 PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/static+76tools+736image assertions pass; PID67814/4OpenHTworkers,181.755s profile. Owner accepted and scoped decoder push completed at4842cb9460 on codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
 
-PPD-001 [projector admission](projector-per-light-admission.md): local6404f9f6ad/68869 built/launched PID86326;72CPU+27016GPU checks pass. 181.041s teleport profile saved; ready for owner; signed ranges retained, malformed lights isolated, PPD-002 cause unproved.
+PPD-001 [projector admission](projector-per-light-admission.md):6404/68869 tested/profiled; [analysis](../../research/projector-teleport-profile-2026-11-12.md):204.803decodeCPU-s,40.52%main shadows, cadence anomaly unassigned. Owner pending; PPD-002 cause unproved.
 
 ## Current implementation — 2026-11-11
 

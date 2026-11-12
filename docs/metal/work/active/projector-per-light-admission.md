@@ -130,3 +130,15 @@ DWARF cursor warnings during finalization but saved successfully; detailed CPU
 stack-symbol completeness and metrics have not yet been analyzed. No matched
 performance comparison, fresh-world/visual pass or owner fix acceptance inferred.
 PPD-001 remains ready_for_owner; PPD-002 cause remains unproved. No push.
+
+## Profile analysis completed
+
+See [decode, render and cadence analysis](../../research/projector-teleport-profile-2026-11-12.md).
+CPU410258samples/410.258CPU-s; main119.640s, four decoders204.803s.
+Shadows48.475s/40.52%main, texture updates13.139s/10.98%, geometry12.585s/10.52%.
+First30safterarrival decode115.564CPU-s; late150–180sbin2.364s. Decoder MQ/bitplane
+exclusive leaves84.23%; projector-validation leaves0.010s. All CPU/metrics exports
+and analyses exit0; local plot verified. Overview zero-present anomaly49.368–64.358s
+has continuing CPU/frame-loop work, no single long sampled CPU block; window
+visibility and actual-present/fresh-world correlation remain unknown. No PPD-002
+cause, owner acceptance, measured gain or new implementation claimed.
