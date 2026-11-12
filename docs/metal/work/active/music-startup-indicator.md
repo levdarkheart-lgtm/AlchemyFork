@@ -90,3 +90,48 @@ commit/build and candidate. Peer owns only the private extracted-production
 regression harness. Independent review confirms disabled-music/no-URL fallback,
 inverse toggle sense and pending-loading cancel behavior. Build separately from
 the preserved68880 baseline; no push until owner accepts this new correction.
+
+## Candidate evidence
+
+Local source9f8d17583097d25a7d086296d9553858f6c9853b produces26.4.0.68889,
+Alchemy Metal Music Startup Fix.app in the shadow-occlusion Release staging
+directory. Binary SHA2562670e59c1b85fa4323bf4e50070346df8a3f96efaed57f3fe8037d7494f6b873;
+full source SHA embedded, staged English XUI byte-identical. Doctor0, configure0,
+Release/O3/LTO-OFF wrapper build0, verify_app346Mach-O/zero invalid, deep strict
+signature0 and production strict audit3516files/912informational/zero blockers
+or errors. Prior68880 executable243b5787 remains unchanged. At build validation the candidate had not
+been launched; control-flow checks do not establish audible playback.
+
+Private repro/validate_music_button.py extracts actual production refresh,
+initialization/click, LLButton toggle, global media action and backend mapping
+bodies, stubbing only external media/parcel/audio boundaries. Same22checks:
+baseline967c6db9 fails7 and takes2clicks; candidate passes22 and starts music
+on first click. Active/paused/loading cancellation, disabled/no-URL aggregate
+fallback and tooltip restoration pass; autoplay remains0. All five input hashes
+stay unchanged. This is a control-flow regression, not real audible playback.
+
+Receipts: configure.json/build.json, build-identity.json, arm64/signature/
+strict-source-receipt.json, staged-ui-proof.json and repro/summary.json under
+the private evidence root. Exact build commands:
+
+```sh
+tools/metal/doctor.sh
+cmake -S indra --preset ninja-os-arm64 -B build-Darwin-ninja-os-arm64-shadow-occlusion '-DAL_CHANNEL:STRING=Alchemy Metal Music Startup Fix' -DAL_BUILD_TESTS=OFF
+AL_METAL_BUILD_DIR=build-Darwin-ninja-os-arm64-shadow-occlusion AL_METAL_CONFIG=Release AL_METAL_JOBS=3 nice -n 10 tools/metal/build.sh build
+tools/metal/verify_app.sh 'build-Darwin-ninja-os-arm64-shadow-occlusion/newview/Release/Alchemy Metal Music Startup Fix.app'
+```
+
+Owner test is next; all changes remain local. The newly reported5s start delay
+is separately tracked as [PPD-010](music-start-latency.md), with no latency fix
+included in this candidate.
+
+## Owner launch and publication approval
+
+Owner explicitly requests the new viewer. Exact68889/source9f8d175830/hash
+2670e59c starts PID77975, runtime-194511/run.json, LOGIN_WAIT verified. Populated
+cache30365files retained with equal CacheLocation/NewCacheLocation, no migration
+or purge. Runtime4normal/6maximum/adaptive1 and OpenHT0.27.0 observed. No media
+preferences/graphics overrides or profiling introduced; owner controls login.
+Owner then explicitly requests committing/pushing the music fix. The only two
+application files changed are llstatusbar.cpp and English panel_status_bar.xml.
+Any new native music backend and black-startup repair remain separate.

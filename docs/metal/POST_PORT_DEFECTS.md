@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-010 -->
+<!-- next-defect-id: PPD-011 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -370,16 +370,16 @@ unseparated. Aggregate zero-cadence buckets do not prove black pixel content.
 
 ## PPD-009 — Startup media indicator active while parcel music is silent
 
-- Status: investigating
-- Confirmation: reported
+- Status: ready_for_owner
+- Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `indra/newview/llstatusbar.cpp`, `llvieweraudio.cpp`, `llviewermedia_streamingaudio.cpp`; aggregate all-media control and stream transport/fade ownership.
 - Evidence: [Startup media-state investigation](work/active/music-startup-indicator.md).
-- Next action: Implement owner-requested music-primary status when parcel music is enabled/present, preserve all-media actions and pending-stream cancellation, test the first-click path and build a local candidate.
-- Verification: Source confirms unrelated active MOAP can select Pause while parcel music is stopped, making the first click stop media instead of starting music. Owner explicitly rejects this UX and requests correction. Exact incident/backend failure remains unproved; no backend retry or autoplay override planned.
+- Next action: Owner tests local68889: initial Play when parcel music is stopped, one click starts music, later Pause works, other-media fallback works without an enabled parcel stream. Keep the separate startup-delay report PPD-010 open.
+- Verification: Actual-body22check fixture fails7 baseline checks/takes2clicks versus zero failures/1click in candidate. Local9f8d175830/68889 doctor/build/346ARM64/signature/strict-source and staged XUI checks pass. ExactcandidatePID77975 launched with retained cache at LOGIN_WAIT; owner explicitly requests music-fix commit/push. No separate audible-timing measurement.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Owner reports initial active indicator without audible music. OFF changes the
 indicator correctly; subsequent ON starts music after several seconds, and later
@@ -407,3 +407,38 @@ owner's autoplay preferences and all-media behavior during diagnosis.
   global start/stop action, loading cancellation and autoplay preferences.
   This intentional source-confirmed UX correction supersedes the earlier
   no-repair conclusion; owner test/push approval remains pending.
+- 2026-11-12: Local9f8d175830 corrects music-primary selection, initial Play
+  and tooltips without changing global actions, decoder4/6, autoplay, fades or
+  transport.22actual-body checks pass; loading cancellation is preserved.
+  Separate68889 app built/verified, prior68880 hash unchanged. No push/launch.
+
+- 2026-11-12: Owner requests exact candidate launch;68889/PID77975 reaches
+  LOGIN_WAIT with normal4/max6/adaptive1 and retained cache, no recording or
+  music-preference override. Owner then explicitly says commit/push music fix.
+  Approval applies to PPD-009, not a new playback backend or PPD-008 repair.
+
+## PPD-010 — Parcel music starts slowly compared with Firestorm
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex integrator
+- Discovered: 2026-11-12
+- Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, viewer audio fade and plugin-backed streaming; official Firestorm `176c8a16ced2d13d455e68b06c500c8def0e40d6` macOS build/native stream selection.
+- Evidence: [Music startup latency source comparison](work/active/music-start-latency.md).
+- Next action: Time click/request, plugin-host readiness, stream opening/playing and audible output for the same stream/network; evaluate retaining the stopped player before changing buffering policy.
+- Verification: Owner reports Alchemy5s+ versus Firestorm1–2s. Source confirms cold VLC host creation/destruction in this Alchemy build and native FMOD in standard macOS Firestorm. Both use3s fade defaults. No matched timing or five-second attribution measured; no latency repair yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+Keep delayed playback separate from PPD-009's false-active/first-click UI issue.
+A fade is a volume ramp, not a fixed silent wait. The7000ms constant applies
+only to adjustable-buffer backends and is not passed to the VLC stream adapter.
+
+### History
+
+- 2026-11-12: Owner reports5s+ starts versus1–2s in Firestorm and asks which
+  backend it uses. Pinned official source confirms normal macOS ReleaseFS uses
+  FMOD; this FAudio viewer falls back to a separate VLC stream plugin. Stop
+  deletes that plugin, so later play repeats cold startup. This is a candidate
+  overhead source, not a measured explanation of the full delay. No settings,
+  stream state or latency code changed; next step is matched stage timing.
