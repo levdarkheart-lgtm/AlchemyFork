@@ -6,7 +6,7 @@
 
 PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/static+76tools+736image assertions pass; PID67814/4OpenHTworkers,181.755s profile. Owner accepted and scoped decoder push completed at4842cb9460 on codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
 
-PPD-001 [projector admission](projector-per-light-admission.md): local repair in progress; signed ranges retained, malformed lights isolated; PPD-002 cause unproved.
+PPD-001 [projector admission](projector-per-light-admission.md): local6404f9f6ad/68869 built;72CPU+27016GPU checks pass. Ready for owner; signed ranges retained, malformed lights isolated, PPD-002 cause unproved.
 
 ## Current implementation — 2026-11-11
 
@@ -164,7 +164,7 @@ facelight-cutoff-20261111/release-replacement.json; no Actions/billing changes.
 This correction is separate from the closed porting goal. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
-Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–006 unresolved; explicit owner approval required before future fix pushes.
+Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–004/006 unresolved; PPD-005 accepted. Explicit owner approval required before future fix pushes.
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
 utility unexecuted; prior f254 launch observation stays source-pinned.

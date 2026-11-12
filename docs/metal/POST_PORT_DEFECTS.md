@@ -46,14 +46,14 @@ explicitly. Evidence must link to a retained repository note or primary source.
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `indra/newview/pipeline.cpp`, `LLPipeline::setupSpotLight` and the deferred-light traversal.
 - Evidence: [Source comparison and failed-session investigation](work/active/busy-turn-local-investigation.md), [signed-range contract and regression work](work/active/projector-per-light-admission.md).
-- Next action: Preserve valid signed-range projectors, reject singular/nonfinite parameters per light, and verify remaining lights and current-frame composition; keep resource/encoder failures transactional.
-- Verification: No corrective implementation verified; source comparison establishes the failure-scope mismatch.
+- Next action: Owner tests local68869 in the busy location, checking lighting and current-world motion; retain PPD-002 separately until its reported symptom is verified.
+- Verification: Local6404f9f6ad collector probe72checks/0failures versus37 baseline failures; native Metal27016assertions/1case pass with API/GPU validation. Candidate68869 build passes; bundle/signature verification recorded in the linked repair note. Owner scene verification pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -78,6 +78,11 @@ or shadow data and other projector validation failures need separate diagnosis.
   zero-range and zero-FOV lights. Original GLSL and current MSL both support
   finite nonzero signed range; preserve that light, rather than simply skip it.
   Repair and physical Metal regression verification in progress, local only.
+
+- 2026-11-12: Local6404f9f6ad repairs per-light admission, preserves signed
+  projection, checks inverse success and shares complete packed-math validation.
+  Real cookie/shadow/encoder failures stay transactional. Automated source/GPU
+  regressions and candidate build pass; ready for owner scene test. No push.
 
 ## PPD-002 — Busy-region world freezes while nametags keep turning
 

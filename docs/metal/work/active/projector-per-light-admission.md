@@ -39,5 +39,63 @@ failed checks. Negative-range B must retain A/B/C; zero-range or FOV0 B must
 retain A/C; each successful stage must allow current-frame composition.
 Valid-only, empty, excluded attachment and real renderer/shadow failure controls
 pass at baseline. This proves CPU routing, not shader pixels or the cause of
-the owner's busy-region freeze PPD-002. Physical GPU regression and candidate
-build are the next verification boundary. Owner verification remains pending.
+the owner's busy-region freeze PPD-002. Physical GPU regression and candidate build now pass as recorded below.
+Owner verification remains pending.
+
+## Local corrective verification
+
+Implementation commit `6404f9f6ad431dda9e679f9d220b5a79ba86a20e`:
+collector zero-only input and derived finite/nonzero-range guards continue per
+light. Failed affine inverse is checked before its unwritten destination can
+be used. Complete packed-parameter admission precedes native cookie readiness;
+only admitted lights can require shared shadows. The same validator remains
+strict backend preflight before command acquisition. No shader change.
+Independent original/source review found no remaining actionable issue.
+
+- Actual production collector/composition and parameter validator: final16-case
+  fixture compiles0 (`-Wall -Wextra -Werror`); base7a49 fails37/72 checks,
+  candidate6404 passes72/72. Includes valid signed FOV/scale/range, zero FOV/range,
+  nonfinite ambiance, injected inverse API failure, malformed shadow owner,
+  cookie fallback, unavailable native cookie, empty list and real failure
+  controls. `run.py --baseline` exits1 as intended; `run.py` exits0.
+  See `artifacts/metal/ppd001-reproduction-20261112/{red,green}-receipt.json`.
+  Matrix/inverse/resource APIs are spies: routing evidence only.
+- Physical Apple M1 Max Metal test passes27016 assertions/1case, exit0, with
+  API and GPU validation confirmed in log. Original-derived forward matrices
+  with range-.35 and finite negative near produce cookie-lit pixels in legacy
+  and PBR. A direct backend batch with a valid light followed by range0 is
+  rejected at index1 and leaves the whole zero target untouched.
+- Doctor/configure-tests/build-tests/configure-viewer/build-viewer all exit0.
+  ARM64 Release, LTO off; existing accepted experimental OpenHTJ2K remains on.
+  Owner-accepted68860 app is preserved; new candidate is separate channel
+  `Alchemy Metal Projector Fix`,26.4.0.68869. No viewer launch/login performed.
+- `verify_app.sh` exit0:346Mach-O files,0non-ARM64 slices. Deep strict signature
+  verification exit0. Candidate executable SHA256
+  `d71560aa643ddd90b7aa07c79120c5d5311516a9bd58ff2761e0e71b598e94e5`.
+  Preserved68860 executable still matches its accepted SHA256.
+- Production strict source audit:3515files,912informational,0blockers/0errors,
+  exit0. This is static source evidence, not runtime/foreign-media no-GL proof.
+- Documentation harness passes33required files; no repository tool changes.
+
+Exact commands (logs and hashes retained locally under
+`artifacts/metal/ppd001-projector-fix-20261112/`, `validation-receipt.json`):
+
+```sh
+tools/metal/doctor.sh
+cmake -S indra --preset ninja-os-arm64 -B build-Darwin-ninja-os-arm64-shadow-occlusion '-DAL_CHANNEL:STRING=Alchemy Metal Projector Fix' -DAL_BUILD_TESTS=ON
+cmake --build build-Darwin-ninja-os-arm64-shadow-occlusion --config Release --target almetal_tests --parallel 6
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 MTL_SHADER_VALIDATION_REPORT_TO_STDERR=1 build-Darwin-ninja-os-arm64-shadow-occlusion/almetal/Release/almetal_tests.app/Contents/MacOS/almetal_tests 'almetal: native world G-buffer feeds exact deferred point lights' --reporter compact
+python3 artifacts/metal/ppd001-reproduction-20261112/run.py
+cmake -S indra --preset ninja-os-arm64 -B build-Darwin-ninja-os-arm64-shadow-occlusion '-DAL_CHANNEL:STRING=Alchemy Metal Projector Fix' -DAL_BUILD_TESTS=OFF
+AL_METAL_BUILD_DIR=build-Darwin-ninja-os-arm64-shadow-occlusion AL_METAL_CONFIG=Release AL_METAL_JOBS=6 tools/metal/build.sh build
+tools/metal/verify_app.sh 'build-Darwin-ninja-os-arm64-shadow-occlusion/newview/Release/Alchemy Metal Projector Fix.app'
+codesign --verify --deep --strict 'build-Darwin-ninja-os-arm64-shadow-occlusion/newview/Release/Alchemy Metal Projector Fix.app'
+python3 tools/metal/audit_gl.py --mode strict --output artifacts/metal/ppd001-projector-fix-20261112/source-audit.json
+python3 tools/metal/validate_harness.py
+```
+
+Next executable action: owner runs68869 in their busy scene and checks retained
+world/lighting behavior. PPD-001 is `ready_for_owner`; PPD-002 attribution remains
+unproved, PPD-003 diagnostics remain a separate defect. No performance gain or
+full visual parity is claimed. Keep this scope local until owner testing and
+explicit push approval.
