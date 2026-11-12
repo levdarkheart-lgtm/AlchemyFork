@@ -171,3 +171,12 @@ continue over a possible cleared background. Pixel attribution remains
 unverified; no rendering fix applied. Next source boundary is early async
 prewarm preserving all scene-publication guards, then pixel/readiness proof.
 Keep this issue separate from decode-policy acceptance. All changes stay local.
+
+Owner requests deeper explanation of mean2.484s queue wait. The [queue audit](../../research/decoder-queue-wait-forensics-2026-11-12.md)
+reconstructs12005 admissions and29818200ms wait;7120 early admissions account
+for97.555% of it (mean4.086s), later4885 average149ms. An interval admits272/s
+against477/s arrivals, reaching1860 pending while six workers are CPU-busy.
+The captured ramp is brief; reductions happen after the backlog. FIFO lacks
+decode priority/cancellation, but obsolete/low-value work prevalence is unknown.
+Read-only analysis/plot passes; no viewer/source change. Next evidence is a
+matched6/8 burst test with frame impact and queue usefulness telemetry.

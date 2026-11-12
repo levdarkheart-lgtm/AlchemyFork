@@ -255,6 +255,12 @@ as a Metal-introduced regression or a cause of PPD-002.
   cores and mean observed queue wait2.484s. Different destinations/clipped
   teleport onset prevent a controlled speedup claim. PPD-008 black-login report
   is investigated separately. No adaptive push approval inferred.
+- 2026-11-12: Owner requests why mean admission wait is2.48s. Read-only
+  [queue forensics](research/decoder-queue-wait-forensics-2026-11-12.md) validates
+  12005 starts/29818200ms wait,97.555% in the first logged27s. Arrivals outrun
+  six busy workers; gate/downshift and rounding do not explain the large burst.
+  FIFO lacks decode priority/cancellation; actual obsolete waste unmeasured.
+  No source change, new capture, fixed/adaptive speedup or push approval.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 
