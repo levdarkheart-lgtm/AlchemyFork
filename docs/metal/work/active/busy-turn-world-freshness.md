@@ -57,5 +57,27 @@ line; frame/product-presence fields retain that uncertainty explicitly.
 
 Evidence: `artifacts/metal/busy-turn-world-freshness-20261112/` and
 `/private/tmp/alchemy-native-impostor-readiness-validation-20261112/`.
-Canonical build/checks next. Root preserves concurrent uncommitted profiling
-notes and research files. No causal live reproduction or owner verification yet.
+Canonical `2c11d05d53396b45263f517e1521e1d867ae7077`, Release/LTO off,
+26.4.0.68845: doctor/configure/`tools/metal/build.sh` exit 0/0/0. Static
+`tools/metal/verify_app.sh` and strict deep signature pass: 346 ARM64 Mach-O,
+332 exact VLC modules, zero direct forbidden graphics imports in viewer/owned
+media hosts, exact native resources and zero GLSL assets. Strict production
+source audit: 3516 files, 0 blockers/errors. These are source/static checks,
+not whole-process runtime proof for foreign media dependencies.
+
+Matching full LLRender: 454985 assertions, 479 passing cases plus one known
+CPAL font-palette skip, exit 0, with API/GPU validation observed. The first
+test-path preflight incorrectly looked for an app bundle; no test ran there.
+The corrected registered Release binary completed the full suite. Harness,
+50 tool tests and diff check pass. A tracked-only staged-doc export also passes,
+independent of concurrent local research files. No tools were changed.
+
+`candidate-ready.json`, `canonical-{build-state,validation,llrender,strict-source}`
+and `tools-validation.json` record exact argv/source/logs/hashes. Old owner-passed
+68841 app was preserved by rename, and its binary remains byte-identical.
+New candidate: `build-Darwin-ninja-os-arm64-followup/newview/Release/Alchemy Metal Alpha 4.app`.
+Root preserves concurrent uncommitted profiling notes and research files.
+No viewer launch, screenshot, new profile, release replacement or Actions
+dispatch. Next: owner retests the crowded-region brief freeze with 68845;
+inspect retained-age/first-rejection receipts if it persists. The source repair
+is verified within its test scope; live incident attribution remains unverified.

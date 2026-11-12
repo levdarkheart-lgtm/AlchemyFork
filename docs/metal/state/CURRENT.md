@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-12 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `b7bc118d68`; matching source cb840/68841 built/checked/launched.
+**Renderer code checkpoint:** `2c11d05d53`; matching 68845 built/checked; candidate unlaunched.
 **Owner-passed viewer:** `cb840a5b9d`,26.4.0.68841; reported beard-light cutoff fixed.
 Alpha4 version68841 is built/tested/packaged/published. Older owner-requested
 f254 launch observed PID90460; no later launch/login/screenshots by the agent.
@@ -11,8 +11,8 @@ The owner-stopped20FPS campaign remains deferred.
 
 ## Current implementation
 
-New [busy-turn world freshness](../work/active/busy-turn-world-freshness.md) doing: per-avatar readiness repair
-and bounded frame-age diagnostics; live cause remains unverified.
+New [busy-turn world freshness](../work/active/busy-turn-world-freshness.md) source fix verified:2c11/68845.
+Build/static/fullLLRender454985 pass; retained-age diagnostics included; owner retest pending.
 [Attached-light cutoff](../work/active/facelight-light-coverage.md) cb840/68841 owner-passed; build/static/strict/fullLLRender454290 pass.
 
 [Latest finalization/preview/media closure](../work/active/native-finalization-and-media-closure.md)
