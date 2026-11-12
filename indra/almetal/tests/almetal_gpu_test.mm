@@ -4170,6 +4170,227 @@ TEST_CASE("almetal: direct spot-shadow array slices preserve strict raw raster d
     }
 }
 
+TEST_CASE("almetal: shadow visibility preserves query order and raw depth",
+          "[almetal][shadow-visibility]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = createFrameDataRenderer(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        const std::array<std::array<float, 4>, 3> positions{{
+            {{-1.f, -1.f, 0.f, 1.f}}, {{3.f, -1.f, 0.f, 1.f}}, {{-1.f, 3.f, 0.f, 1.f}},
+        }};
+        const std::array<std::array<float, 2>, 3> texcoords{};
+        const std::array<std::array<std::uint8_t, 4>, 3> colors{{
+            {{255, 255, 255, 255}}, {{255, 255, 255, 255}}, {{255, 255, 255, 255}},
+        }};
+        constexpr std::size_t texcoord_offset = sizeof(positions);
+        constexpr std::size_t color_offset = texcoord_offset + sizeof(texcoords);
+        std::array<std::uint8_t, sizeof(positions) + sizeof(texcoords) + sizeof(colors)> bytes{};
+        std::memcpy(bytes.data(), positions.data(), sizeof(positions));
+        std::memcpy(bytes.data() + texcoord_offset, texcoords.data(), sizeof(texcoords));
+        std::memcpy(bytes.data() + color_offset, colors.data(), sizeof(colors));
+        ALMetalBufferDescriptor buffer_descriptor;
+        buffer_descriptor.length = bytes.size();
+        auto vertices = ALMetalBuffer::create(*device, buffer_descriptor, &error);
+        REQUIRE(vertices);
+        REQUIRE(vertices->write(0, bytes.data(), bytes.size(), &error));
+        std::array<std::uint16_t, 128 * 3> indices{};
+        for (std::size_t i = 0; i < indices.size(); ++i) indices[i] = i % 3;
+        buffer_descriptor.length = sizeof(indices);
+        auto index_buffer = ALMetalBuffer::create(*device, buffer_descriptor, &error);
+        REQUIRE(index_buffer);
+        REQUIRE(index_buffer->write(0, indices.data(), sizeof(indices), &error));
+
+        ALMetalTextureDescriptor texture_descriptor;
+        texture_descriptor.type = ALMetalTextureType::texture_2d_array;
+        texture_descriptor.format = ALMetalPixelFormat::r32_float;
+        texture_descriptor.width = texture_descriptor.height = 32;
+        texture_descriptor.array_length = 2;
+        texture_descriptor.usage = ALMetalTextureUsage::render_target | ALMetalTextureUsage::shader_read;
+        auto target = ALMetalTexture::create(*device, texture_descriptor, &error);
+        REQUIRE(target);
+
+        ALMetalTextureDescriptor diffuse_descriptor;
+        diffuse_descriptor.width = diffuse_descriptor.height = 1;
+        diffuse_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        diffuse_descriptor.usage = ALMetalTextureUsage::shader_read;
+        auto diffuse = ALMetalTexture::create(*device, diffuse_descriptor, &error);
+        REQUIRE(diffuse);
+        const std::array<std::uint8_t, 4> white{{255, 255, 255, 255}};
+        auto upload = device->makeCommandBuffer("Shadow visibility coverage input", &error);
+        REQUIRE(upload);
+        REQUIRE(diffuse->upload(*upload, 0, 0, {}, white.data(), white.size(), &error));
+        REQUIRE(upload->commitAndWait(&error));
+
+        std::array<ALMetalWorldSpotShadowBatch, 128> batches;
+        std::array<ALMetalWorldVisibilityQuery, 8> queries{};
+        ALMetalWorldSpotShadowScene scene;
+        scene.width = scene.height = 32;
+        scene.batches = batches.data();
+        scene.batch_count = batches.size();
+        scene.visibility_queries = queries.data();
+        scene.visibility_query_count = queries.size();
+        const auto configure = [&](bool reverse_z)
+        {
+            scene.batches = batches.data();
+            scene.batch_count = batches.size();
+            scene.visibility_queries = queries.data();
+            scene.visibility_query_count = queries.size();
+            scene.reverse_z = reverse_z;
+            scene.depth_clamp = true;
+            scene.indirect_draws = false;
+            for (std::size_t i = 0; i < batches.size(); ++i)
+            {
+                auto& batch = batches[i];
+                batch = ALMetalWorldSpotShadowBatch{};
+                batch.vertices = vertices.get(); batch.vertex_count = positions.size();
+                batch.indices = index_buffer.get(); batch.index_count = 3;
+                batch.index_offset = i * 3 * sizeof(std::uint16_t);
+                for (std::size_t axis = 0; axis < 4; ++axis)
+                    batch.modelview_projection[axis * 4 + axis] = 1.f;
+                batch.modelview_projection[14] = reverse_z ? (i < 64 ? 0.5f : 0.625f)
+                                                          : (i < 64 ? 0.f : -0.25f);
+            }
+            for (auto& query : queries)
+            {
+                query = ALMetalWorldVisibilityQuery{};
+                for (std::size_t axis = 0; axis < 4; ++axis)
+                    query.modelview_projection[axis * 4 + axis] = 1.f;
+                query.modelview_projection[14] = reverse_z ? 0.5f : 0.f;
+                query.center[2] = reverse_z ? -0.25f : 0.5f;
+                query.half_extent[0] = query.half_extent[1] = 0.25f;
+                query.half_extent[2] = 0.03125f;
+                query.fan = 7;
+            }
+            queries[1].batch_offset = queries[2].batch_offset = queries[3].batch_offset = 64;
+            queries[2].center[2] = reverse_z ? 0.25f : -0.5f;
+            queries[3].center[2] = 0.f; // Equal-depth tests use LEQUAL/GEQUAL, not the caster's strict compare.
+            queries[3].half_extent[2] = 0.f;
+            for (std::size_t i = 4; i < queries.size(); ++i) queries[i].batch_offset = batches.size();
+            queries[5] = queries[2]; queries[5].batch_offset = batches.size(); queries[5].count_samples = 1;
+            queries[6] = queries[5]; queries[6].fan = 0; queries[6].fan_count = 2;
+            queries[7].center[0] = 4.f;
+        };
+
+        std::shared_ptr<ALMetalVisibilityResultBatch> results;
+        for (bool reverse_z : {false, true})
+        {
+            configure(reverse_z);
+            for (bool indirect : {false, true})
+            {
+                scene.indirect_draws = indirect;
+                const auto before = renderer->shadowIndirectStats();
+                REQUIRE(renderer->beginCommandBatch("Shadow ordered visibility test", &error));
+                REQUIRE(renderer->renderSpotShadow(*target, 0, scene, &error, &results));
+                INFO(error);
+                REQUIRE(results);
+                CHECK(results->status() == ALMetalVisibilityResultBatch::Status::pending);
+                std::uint64_t unavailable = 0;
+                CHECK_FALSE(results->result(0, unavailable));
+                REQUIRE(renderer->commitCommandBatch(&error));
+                std::uint64_t value = 0;
+                REQUIRE(results->wait(0, value, &error));
+                CHECK(value == 1);
+                const std::array<std::uint64_t, 8> expected{{1, 0, 1, 1, 0, 64, 128, 0}};
+                for (std::size_t i = 0; i < expected.size(); ++i)
+                {
+                    CAPTURE(reverse_z, indirect, i);
+                    REQUIRE(results->result(i, value));
+                    CHECK(value == expected[i]);
+                }
+                const auto after = renderer->shadowIndirectStats();
+                // Both 64-caster runs still use bulk emission. No packet may
+                // cross the queries between them, including indirect mode.
+                CHECK(after.direct_executions + after.executions -
+                      before.direct_executions - before.executions == 2);
+                std::array<float, 32 * 32> with_queries{}, without_queries{};
+                REQUIRE(target->readback(*device, 0, 0, {}, with_queries.data(), 32 * sizeof(float), &error));
+                auto reference_scene = scene;
+                reference_scene.visibility_queries = nullptr; reference_scene.visibility_query_count = 0;
+                REQUIRE(renderer->renderSpotShadow(*target, 1, reference_scene, &error));
+                REQUIRE(target->readback(*device, 0, 1, {}, without_queries.data(), 32 * sizeof(float), &error));
+                CHECK(with_queries == without_queries);
+                for (float depth : with_queries) CHECK(depth == (reverse_z ? 0.625f : 0.375f));
+            }
+
+            // Covered joining also stops at a query boundary even when all
+            // caster constants and contiguous index ranges otherwise match.
+            scene.indirect_draws = false;
+            for (auto& batch : batches)
+            {
+                batch.modelview_projection[14] = reverse_z ? 0.5f : 0.f;
+                batch.texcoord_offset = texcoord_offset; batch.color_offset = color_offset;
+                batch.coverage = ALMetalWorldSpotShadowCoverage::legacy_mask;
+                batch.texture_count = 1; batch.coverageData().textures[0] = diffuse.get();
+                batch.coverageData().alpha_cutoffs[0] = 0.5f;
+            }
+            scene.visibility_query_count = 2;
+            const auto before_covered = renderer->shadowIndirectStats();
+            REQUIRE(renderer->renderSpotShadow(*target, 0, scene, &error, &results));
+            std::uint64_t value = 0;
+            REQUIRE(results); REQUIRE(results->wait(0, value, &error)); CHECK(value == 1);
+            REQUIRE(results->result(1, value)); CHECK(value == 0);
+            CHECK(renderer->shadowIndirectStats().covered_coalesced_draws -
+                  before_covered.covered_coalesced_draws == 126);
+        }
+
+        // Every query is admitted before the first clear, including a late
+        // invalid query. Rejection resets an older output and keeps raw depth.
+        configure(false);
+        std::array<float, 32 * 32> retained_before{}, retained_after{};
+        REQUIRE(target->readback(*device, 0, 0, {}, retained_before.data(), 32 * sizeof(float), &error));
+        for (unsigned invalid_case = 0; invalid_case < 8; ++invalid_case)
+        {
+            configure(false);
+            switch (invalid_case)
+            {
+                case 0: queries.back().modelview_projection[0] = std::numeric_limits<float>::quiet_NaN(); break;
+                case 1: queries.back().half_extent[0] = -1.f; break;
+                case 2: queries.back().batch_offset = batches.size() + 1; break;
+                case 3: queries.back().batch_offset = 0; break;
+                case 4: queries.back().fan = 8; break;
+                case 5: queries.back().fan_count = 0; break;
+                case 6: queries.back().fan_count = 3; break;
+                case 7: queries.back().count_samples = 2; break;
+            }
+            error.clear();
+            CHECK_FALSE(renderer->renderSpotShadow(*target, 0, scene, &error, &results));
+            CHECK_FALSE(results);
+            CHECK(error == "Metal spot-shadow visibility query is invalid");
+            REQUIRE(target->readback(*device, 0, 0, {}, retained_after.data(), 32 * sizeof(float), &error));
+            CHECK(retained_after == retained_before);
+        }
+        configure(false);
+        scene.visibility_queries = nullptr;
+        CHECK_FALSE(renderer->renderSpotShadow(*target, 0, scene, &error, &results));
+        CHECK_FALSE(results);
+        CHECK(error == "Metal spot-shadow scene is incomplete");
+
+        // No output pointer is required, matching ordinary world visibility.
+        configure(false);
+        REQUIRE(renderer->renderSpotShadow(*target, 0, scene, &error));
+        // The empty-view case still publishes results against its far clear.
+        scene.batches = nullptr; scene.batch_count = 0;
+        scene.visibility_query_count = 1;
+        REQUIRE(renderer->beginCommandBatch("Shadow visibility lifetime test", &error));
+        REQUIRE(renderer->renderSpotShadow(*target, 0, scene, &error, &results));
+        REQUIRE(results);
+        CHECK(results->status() == ALMetalVisibilityResultBatch::Status::pending);
+        REQUIRE(renderer->commitCommandBatch(&error));
+        renderer.reset();
+        std::uint64_t empty_visible = 0;
+        REQUIRE(results->wait(0, empty_visible, &error));
+        CHECK(empty_visible == 1);
+    }
+}
+
 TEST_CASE("almetal: ordinary G-buffer binds only populated diffuse slots",
           "[almetal][diffuse-bindings]")
 {

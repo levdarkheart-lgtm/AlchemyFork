@@ -278,3 +278,120 @@ TEST_CASE("Native visibility batches preserve each ticket kind and GPU result sl
         CHECK(value == (i % 2 == 0 ? 1 : 0));
     }
 }
+
+TEST_CASE("Sequential shadow and main visibility captures preserve earlier tickets and isolate aborts",
+          "[alquerypool][native-query-lifecycle][query-view-phases-gpu]")
+{
+    NativeVisibility f;
+    constexpr U32 shadow_views = 4;
+    constexpr U32 queries_per_view = 2;
+    constexpr U32 shadow_queries = shadow_views * queries_per_view;
+    constexpr U32 accepted_queries = shadow_queries + queries_per_view;
+    constexpr U32 total_queries = accepted_queries + queries_per_view;
+    std::array<ALQueryTicket, total_queries> tickets;
+    struct DiagnosticsOffOnExit
+    {
+        ALQueryPool& pool;
+        ~DiagnosticsOffOnExit() { pool.setDiagnosticsEnabled(false); }
+    } cleanup{f.pool};
+    f.pool.setDiagnosticsEnabled(true);
+
+    // All view phases use one pool frame. A rejected nested capture must not
+    // change the current phase's owner or close its open ticket.
+    for (U32 view = 0; view < shadow_views; ++view)
+    {
+        CAPTURE(view);
+        REQUIRE(f.pool.beginVisibilityCapture(false));
+        for (U32 query = 0; query < queries_per_view; ++query)
+        {
+            const U32 index = view * queries_per_view + query;
+            tickets[index] = f.pool.begin(
+                query == 0 ? ALQueryKind::Occlusion : ALQueryKind::OcclusionExact);
+            REQUIRE(tickets[index].isValid());
+            CHECK_FALSE(f.pool.beginVisibilityCapture(true));
+            CHECK_FALSE(f.pool.canBegin(ALQueryKind::Occlusion));
+            f.pool.end(tickets[index]);
+        }
+        f.pool.endVisibilityCapture();
+        CHECK_FALSE(f.pool.visibilityCaptureActive());
+        CHECK(f.pool.getNameCount() == (view + 1) * queries_per_view);
+        CHECK(f.pool.diagnostics().acquired == 0);
+    }
+
+    REQUIRE(f.pool.beginVisibilityCapture(true));
+    for (U32 query = 0; query < queries_per_view; ++query)
+    {
+        const U32 index = shadow_queries + query;
+        tickets[index] = f.pool.begin(ALQueryKind::Occlusion);
+        REQUIRE(tickets[index].isValid());
+        CHECK_FALSE(f.pool.beginVisibilityCapture(false));
+        // A closed ticket from an earlier view cannot end the main query.
+        f.pool.end(tickets[0]);
+        CHECK_FALSE(f.pool.canBegin(ALQueryKind::Occlusion));
+        f.pool.end(tickets[index]);
+    }
+    f.pool.endVisibilityCapture();
+    CHECK(f.pool.diagnostics().acquired == queries_per_view);
+
+    // Model a later view that aborts after collecting closed tickets. Ending
+    // its scope alone does not discard those tickets; its owner must do so.
+    REQUIRE(f.pool.beginVisibilityCapture(false));
+    for (U32 query = 0; query < queries_per_view; ++query)
+    {
+        const U32 index = accepted_queries + query;
+        tickets[index] = f.pool.begin(ALQueryKind::Occlusion);
+        REQUIRE(tickets[index].isValid());
+        f.pool.end(tickets[index]);
+    }
+    f.pool.endVisibilityCapture();
+    CHECK(f.pool.getNameCount() == total_queries);
+    CHECK(f.pool.diagnostics().acquired == queries_per_view);
+
+    // The shared producer supplies real pending GPU values. Attachment is
+    // deliberately after all capture scopes ended, as the frontend handoff is.
+    auto batch = f.encode(total_queries);
+    for (U32 index = 0; index < accepted_queries; ++index)
+        REQUIRE(f.pool.attachVisibilityResult(tickets[index], batch.results, index));
+    REQUIRE(f.pool.attachVisibilityResult(
+        tickets[accepted_queries], batch.results, accepted_queries));
+    for (U32 index = accepted_queries; index < total_queries; ++index)
+    {
+        f.pool.discard(tickets[index]);
+        U64 value = 99;
+        CHECK(f.pool.result(tickets[index], value) == ALQueryPool::Status::Expired);
+        CHECK(value == 0);
+        CHECK_FALSE(f.pool.attachVisibilityResult(tickets[index], batch.results, index));
+    }
+    for (U32 index = 0; index < accepted_queries; ++index)
+    {
+        U64 value = 99;
+        CHECK(f.pool.result(tickets[index], value) == ALQueryPool::Status::Pending);
+        CHECK(value == 0);
+    }
+
+    f.commit(batch);
+    std::weak_ptr<ALMetalVisibilityResultBatch> lease = batch.results;
+    f.renderer.reset();
+    batch.target.reset();
+    batch.results.reset();
+    CHECK_FALSE(lease.expired());
+    for (U32 index = 0; index < accepted_queries; ++index)
+    {
+        CAPTURE(index);
+        U64 value = 99;
+        REQUIRE(f.pool.result(tickets[index], value) == ALQueryPool::Status::Ready);
+        CHECK(value == (index % 2 == 0 ? 1 : 0));
+    }
+    for (U32 index = accepted_queries; index < total_queries; ++index)
+    {
+        U64 value = 99;
+        CHECK(f.pool.result(tickets[index], value) == ALQueryPool::Status::Expired);
+        CHECK(value == 0);
+        CHECK_FALSE(f.pool.attachVisibilityResult(tickets[index], lease.lock(), index));
+    }
+    CHECK(f.pool.getAskedReads() == 0);
+    CHECK(f.pool.getStalls() == 0);
+    f.pool.endFrame();
+    f.pool.release();
+    CHECK(lease.expired());
+}

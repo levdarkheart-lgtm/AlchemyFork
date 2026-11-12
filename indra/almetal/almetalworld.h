@@ -280,6 +280,8 @@ private:
     std::optional<CoverageData> mCoverageData;
 };
 
+struct ALMetalWorldVisibilityQuery;
+
 struct ALMetalWorldSpotShadowScene
 {
     const ALMetalWorldSpotShadowBatch* batches = nullptr;
@@ -299,6 +301,10 @@ struct ALMetalWorldSpotShadowScene
     // Optional producer census. Zero source count means not supplied.
     std::uint64_t source_batch_count = 0;
     std::uint64_t early_merged_source_count = 0;
+    // Read-only camera-box tests at original source-record boundaries. The
+    // directional owner places these after opaque casters, before pools/alpha.
+    const ALMetalWorldVisibilityQuery* visibility_queries = nullptr;
+    std::size_t visibility_query_count = 0;
 };
 
 struct ALMetalWorldSimpleBatch
@@ -925,7 +931,7 @@ struct alignas(16) ALMetalWorldFarPlaneOverlayColumn
 
 // A retained equivalent of the original viewer's camera-facing occlusion
 // cube fan. batch_offset places the query at the exact point in the opaque
-// G-buffer stream where the GL traversal issued it. fan_count is one for the
+// G-buffer or shadow stream where the GL traversal issued it. fan_count is one for the
 // camera-facing fan and two (fan 0 plus fan 7) only for the legacy invalid-
 // camera fallback that draws the complete box.
 struct alignas(16) ALMetalWorldVisibilityQuery
@@ -2269,7 +2275,9 @@ public:
         ALMetalTexture& destination,
         std::uint32_t destination_slice,
         const ALMetalWorldSpotShadowScene& scene,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results =
+            nullptr);
 
     // Add ordinary deferred point lights directly to the existing RGBA16F
     // base-light owner, in both display modes, preserving the original

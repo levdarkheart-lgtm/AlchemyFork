@@ -6,7 +6,7 @@
 **Owner-passed viewer:** `cb840a5b9d`,26.4.0.68841; reported beard-light cutoff fixed.
 Alpha4 built/tested/packaged/published; [new profile](../research/busy-region-profile-2026-11-12.md) 301.302sec+11.912sec.
 exact68841 launched PID91442/92651, owner login/settings/logout; no source change.
-New [shadow audit](../research/shadow-preparation-audit-2026-11-12.md): 624 scratch allocations; D32 probe passes; no optimization implemented.
+New [shadow-query implementation](../work/active/shadow-camera-occlusion.md): build68849/tests pass; enabled181.281s [profile](../research/shadow-occlusion-enabled-profile-2026-11-12.md) recovered/analyzed; no benefit demonstrated.
 Raw artifacts/metal/busy-region-profile-20261112/. Utility unexecuted; stopped20FPS deferred.
 
 ## Current implementation

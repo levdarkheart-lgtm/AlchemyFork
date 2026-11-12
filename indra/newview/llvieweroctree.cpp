@@ -1250,7 +1250,12 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
                     ALQueryScope query(gGL.queries(), queryKind());
                     mOcclusionQuery[LLViewerCamera::sCurCameraID] = query.ticket();
                     if (!query.ticket().isValid())
-                    {   // the pool refused it, its target held: nothing is pending, and the group keeps its state
+                    {   // A refused shadow query has no pending result to expire an old hidden state.
+                        if (LLPipeline::sShadowRender)
+                        {
+                            discardStaleQueriesBelow();
+                            clearOcclusionState(OCCLUDED, STATE_MODE_DIFF);
+                        }
                         clearOcclusionState(QUERY_PENDING | DISCARD_QUERY);
                         return;
                     }
@@ -1274,6 +1279,13 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
                                 query_half_extent, camera,
                                 camera->getOrigin().isExactlyZero()))
                         {
+                            // An unproduced shadow query must not leave an old
+                            // hidden state with no pending ticket to expire it.
+                            if (LLPipeline::sShadowRender)
+                            {
+                                discardStaleQueriesBelow();
+                                clearOcclusionState(OCCLUDED, STATE_MODE_DIFF);
+                            }
                             clearOcclusionState(
                                 QUERY_PENDING | DISCARD_QUERY);
                             return;

@@ -1021,7 +1021,8 @@ public:
         std::size_t expected_batches, bool complete,
         const LLMatrix4a* view = nullptr,
         const LLMatrix4a* projection = nullptr);
-    void captureMetalShadowScene();
+    void captureMetalShadowScene(LLCamera* shadow_camera = nullptr,
+                                S32 occlusion = 0);
     void endMetalSpotShadowCapture();
     void setMetalSpotShadowCoverage(
         ALMetalWorldSpotShadowCoverage coverage);

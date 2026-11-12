@@ -497,6 +497,34 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::vector<ALMetalWorldSpotShadowBatch> spot_shadow_batches;
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
         spot_shadow_avatar_palettes;
+    std::vector<ALMetalWorldVisibilityQuery> shadow_visibility_queries;
+    std::vector<ALQueryTicket> shadow_visibility_tickets;
+    bool shadow_visibility_capture_active = false;
+    U32 shadow_visibility_camera = LLViewerCamera::NUM_CAMERAS;
+
+    void settleShadowVisibility(
+        std::shared_ptr<ALMetalVisibilityResultBatch> results = nullptr)
+    {
+        if (shadow_visibility_capture_active)
+        {
+            gGL.queries().endVisibilityCapture();
+            shadow_visibility_capture_active = false;
+        }
+        const bool complete_results = results &&
+            results->resultCount() == shadow_visibility_tickets.size() &&
+            shadow_visibility_queries.size() == shadow_visibility_tickets.size();
+        for (std::size_t index = 0; index < shadow_visibility_tickets.size(); ++index)
+        {
+            if (!complete_results || !gGL.queries().attachVisibilityResult(
+                    shadow_visibility_tickets[index], results, index))
+            {
+                gGL.queries().discard(shadow_visibility_tickets[index]);
+            }
+        }
+        shadow_visibility_queries.clear();
+        shadow_visibility_tickets.clear();
+        shadow_visibility_camera = LLViewerCamera::NUM_CAMERAS;
+    }
     U32 spot_shadow_map = 0;
     U32 spot_shadow_width = 0;
     U32 spot_shadow_height = 0;
@@ -1973,10 +2001,7 @@ bool LLPipeline::captureMetalVisibilityQuery(
     const LLVector4a& center, const LLVector4a& half_extent,
     LLCamera* camera, bool full_box)
 {
-    if (!ticket.isValid() || !camera ||
-        !mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->frame_active ||
-        !mMetalWorldSimpleCapture->visibility_capture_active ||
+    if (!ticket.isValid() || !camera || !mMetalWorldSimpleCapture ||
         (kind != ALQueryKind::Occlusion &&
          kind != ALQueryKind::OcclusionExact))
     {
@@ -1984,10 +2009,32 @@ bool LLPipeline::captureMetalVisibilityQuery(
     }
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool shadow = capture.spot_shadow_capture_active &&
+        capture.spot_shadow_capture_directional &&
+        capture.shadow_visibility_capture_active &&
+        capture.shadow_visibility_camera == LLViewerCamera::sCurCameraID;
+    if ((capture.spot_shadow_capture_active && !shadow) ||
+        (!shadow && (!capture.frame_active || !capture.visibility_capture_active)))
+    {
+        return false;
+    }
+    auto& queries = shadow ? capture.shadow_visibility_queries
+                           : capture.visibility_queries;
+    auto& tickets = shadow ? capture.shadow_visibility_tickets
+                           : capture.visibility_tickets;
     ALMetalWorldVisibilityQuery retained;
     LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    if (shadow)
+    {
+        // Shadow cameras install explicit native matrices, not gGL's main-view stack.
+        modelview_projection.setMul(
+            capture.spot_shadow_view, capture.spot_shadow_projection);
+    }
+    else
+    {
+        modelview_projection.setMul(
+            gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    }
     std::memcpy(retained.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(retained.modelview_projection));
@@ -1997,7 +2044,8 @@ bool LLPipeline::captureMetalVisibilityQuery(
                 sizeof(retained.half_extent));
     retained.center[3] = 1.f;
     retained.half_extent[3] = 0.f;
-    retained.batch_offset = capture.batches.size();
+    retained.batch_offset = shadow ? capture.spot_shadow_batches.size()
+                                   : capture.batches.size();
     if (!full_box)
     {
         LLVector4a camera_origin;
@@ -2011,14 +2059,14 @@ bool LLPipeline::captureMetalVisibilityQuery(
 
     try
     {
-        capture.visibility_queries.push_back(retained);
+        queries.push_back(retained);
         try
         {
-            capture.visibility_tickets.push_back(ticket);
+            tickets.push_back(ticket);
         }
         catch (const std::bad_alloc&)
         {
-            capture.visibility_queries.pop_back();
+            queries.pop_back();
             throw;
         }
     }
@@ -13577,12 +13625,24 @@ void LLPipeline::countMetalShadowBatches(
     }
 }
 
-void LLPipeline::captureMetalShadowScene()
+void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
         !mMetalWorldSimpleCapture->spot_shadow_explicit_matrices)
     {
+        if (shadow_camera && occlusion > 1 && sCull)
+        {
+            for (auto iter = sCull->beginOcclusionGroups();
+                 iter != sCull->endOcclusionGroups(); ++iter)
+            {
+                (*iter)->clearOcclusionState(
+                    LLSpatialGroup::OCCLUDED | LLSpatialGroup::QUERY_PENDING |
+                        LLSpatialGroup::DISCARD_QUERY,
+                    LLSpatialGroup::STATE_MODE_DIFF);
+                (*iter)->clearOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION);
+            }
+        }
         return;
     }
 
@@ -13627,6 +13687,40 @@ void LLPipeline::captureMetalShadowScene()
     }
     for_each_batch(LLRenderPass::PASS_GLTF_PBR, capture_opaque);
     for_each_batch(LLRenderPass::PASS_GLTF_PBR_RIGGED, capture_opaque);
+
+    // Original drawShadow queried after ordinary opaque casters, before
+    // pool-owned/avatar and alpha depth. Projectors and cube faces do not query.
+    if (shadow_camera && occlusion > 1 && !gCubeSnapshot &&
+        mMetalWorldSimpleCapture->spot_shadow_capture_directional)
+    {
+        auto& capture = *mMetalWorldSimpleCapture;
+        const U32 saved_occlusion = sUseOcclusion;
+        sUseOcclusion = occlusion;
+        capture.shadow_visibility_camera = LLViewerCamera::sCurCameraID;
+        capture.shadow_visibility_capture_active =
+            gGL.queries().beginVisibilityCapture(false);
+        if (capture.shadow_visibility_capture_active)
+        {
+            doOcclusion(*shadow_camera);
+            gGL.queries().endVisibilityCapture();
+            capture.shadow_visibility_capture_active = false;
+        }
+        else
+        {
+            // Do not borrow another view's active capture, or leave these
+            // groups permanently marked as already queued for a query.
+            for (auto iter = sCull->beginOcclusionGroups();
+                 iter != sCull->endOcclusionGroups(); ++iter)
+            {
+                (*iter)->clearOcclusionState(
+                    LLSpatialGroup::OCCLUDED | LLSpatialGroup::QUERY_PENDING |
+                        LLSpatialGroup::DISCARD_QUERY,
+                    LLSpatialGroup::STATE_MODE_DIFF);
+                (*iter)->clearOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION);
+            }
+        }
+        sUseOcclusion = saved_occlusion;
+    }
 
     const auto capture_legacy = [this](const LLDrawInfo& info)
     {
@@ -13733,6 +13827,7 @@ void LLPipeline::beginMetalSpotShadowCapture(
         return;
     }
     capture.direct_projector_shadow_valid[map] = false;
+    capture.settleShadowVisibility();
     if (!capture.beginFrameData(
             mMetalProbeWorldSimpleCapture.get(), gFrameCount))
     {
@@ -13779,6 +13874,7 @@ void LLPipeline::beginMetalDirectionalShadowCapture(
         return;
     }
     capture.direct_directional_shadow_valid[map] = false;
+    capture.settleShadowVisibility();
     if (!capture.beginFrameData(
             mMetalProbeWorldSimpleCapture.get(), gFrameCount))
     {
@@ -14772,6 +14868,13 @@ void LLPipeline::endMetalSpotShadowCapture()
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    std::shared_ptr<ALMetalVisibilityResultBatch> visibility_results;
+    struct SettleShadowVisibility
+    {
+        MetalWorldSimpleCapture& capture;
+        std::shared_ptr<ALMetalVisibilityResultBatch>& results;
+        ~SettleShadowVisibility() { capture.settleShadowVisibility(std::move(results)); }
+    } settle_visibility{capture, visibility_results};
     capture.spot_shadow_capture_active = false;
     if (capture.spot_shadow_avatar_pass_active)
     {
@@ -14793,6 +14896,7 @@ void LLPipeline::endMetalSpotShadowCapture()
     const U32 map_bit = 1u << map;
     const bool complete = capture.spot_shadow_capture_complete &&
         capture.renderer && capture.device &&
+        capture.shadow_visibility_queries.size() == capture.shadow_visibility_tickets.size() &&
         capture.spot_shadow_admission.complete(capture.spot_shadow_expected_batches);
     static std::array<U32,
         static_cast<std::size_t>(ALRenderResourcePlan::Pack::COUNT)>
@@ -14827,6 +14931,8 @@ void LLPipeline::endMetalSpotShadowCapture()
     ALMetalWorldSpotShadowScene scene;
     scene.batches = capture.spot_shadow_batches.data();
     scene.batch_count = capture.spot_shadow_batches.size();
+    scene.visibility_queries = capture.shadow_visibility_queries.data();
+    scene.visibility_query_count = capture.shadow_visibility_queries.size();
     scene.source_batch_count = capture.spot_shadow_admission.sourceCount();
     scene.early_merged_source_count = capture.spot_shadow_admission.mergedSourceCount();
     scene.width = capture.spot_shadow_width;
@@ -14886,7 +14992,7 @@ void LLPipeline::endMetalSpotShadowCapture()
     }
 
     const bool rendered = capture.renderer->renderSpotShadow(
-        *retained_texture, map, scene, &error);
+        *retained_texture, map, scene, &error, &visibility_results);
     if (!rendered)
     {
         capture.spot_shadow_batches.clear();
@@ -14897,6 +15003,20 @@ void LLPipeline::endMetalSpotShadowCapture()
             << "-shadow slice " << map
             << ": " << error << LL_ENDL;
         return;
+    }
+
+    // One admission receipt per cascade lets runtime profiling distinguish an
+    // enabled control from actual GPU query production, without per-frame logs.
+    static U32 reported_shadow_query_maps = 0;
+    if (directional && visibility_results &&
+        !capture.shadow_visibility_tickets.empty() &&
+        visibility_results->resultCount() == capture.shadow_visibility_tickets.size() &&
+        !(reported_shadow_query_maps & map_bit))
+    {
+        reported_shadow_query_maps |= map_bit;
+        LL_INFOS("Metal") << "Native directional-shadow visibility queries encoded: cascade="
+            << map << ", queries=" << visibility_results->resultCount()
+            << ", frame=" << gFrameCount << LL_ENDL;
     }
 
     // A live shadow defect can otherwise collapse three distinct states into
@@ -27504,7 +27624,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                         native_complete, &view[j], &proj[j]);
 #endif
 #if LL_DARWIN
-                    captureMetalShadowScene();
+                    captureMetalShadowScene(&shadow_cam, sun_occlusion);
 #endif
 #if LL_DARWIN
                     endMetalSpotShadowCapture();

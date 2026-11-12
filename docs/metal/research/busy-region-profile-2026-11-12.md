@@ -12,7 +12,7 @@ comparison. No renderer implementation changed.
 The [follow-up shadow audit](shadow-preparation-audit-2026-11-12.md) adds an
 original-versus-port comparison, proven scratch-texture churn, a guarded
 directional/projector GPU split from resource/order evidence, and a passing
-M1 Max depth-array capability probe. It refines the experiment priorities below.
+M1 Max depth-array capability probe. It refines the experiment priorities below. The [enabled shadow-query follow-up](shadow-occlusion-enabled-profile-2026-11-12.md) records the subsequent local implementation and181-second run; it does not establish a causal speedup.
 
 ## Build, workload and capture
 

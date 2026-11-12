@@ -171,7 +171,7 @@ utility unexecuted; prior f254 launch observation stays source-pinned.
 
 ## Non-negotiable open gates
 
-[Profile](../../research/busy-region-profile-2026-11-12.md) and [shadow audit](../../research/shadow-preparation-audit-2026-11-12.md) verified as investigation; optimization remains unimplemented.
+[Shadow queries](shadow-camera-occlusion.md): implemented/tested68849; enabled181.281s profile analyzed, benefit unproven; keep local pending owner acceptance.
 
 Full original feature parity, prolonged stability, measured multi-scene
 performance, strict source/runtime no-GL and independent release review remain

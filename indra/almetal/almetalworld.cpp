@@ -1783,6 +1783,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<TerrainPartitionPipelines, 2> terrain_pipelines;
     std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
     std::array<NormalPipelines, 2> visibility_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> shadow_visibility_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         local_light_accumulation_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -5645,6 +5646,23 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         }
     }
 
+    {
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = impl->library.get();
+        descriptor.vertex_function = "almetal_world_visibility_vertex";
+        descriptor.color_attachment_count = 1;
+        descriptor.colors[0].format = ALMetalPixelFormat::r32_float;
+        descriptor.colors[0].write_mask = ALMetalColorWriteMask::none;
+        descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+        descriptor.label = "Alchemy shadow visibility-query pipeline";
+        impl->shadow_visibility_pipeline =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->shadow_visibility_pipeline)
+        {
+            return nullptr;
+        }
+    }
+
     ALMetalDepthStencilDescriptor depth;
     depth.depth_compare = ALMetalCompareFunction::less_equal;
     depth.depth_write_enabled = true;
@@ -6306,10 +6324,16 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     ALMetalTexture& destination,
     std::uint32_t destination_slice,
     const ALMetalWorldSpotShadowScene& scene,
-    std::string* error)
+    std::string* error,
+    std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
 {
+    if (visibility_results)
+    {
+        visibility_results->reset();
+    }
     if (!mImpl || !mImpl->device || scene.width == 0 || scene.height == 0 ||
         (scene.batch_count != 0 && !scene.batches) ||
+        (scene.visibility_query_count != 0 && !scene.visibility_queries) ||
         (scene.source_batch_count != 0 &&
          (scene.source_batch_count < scene.batch_count ||
           scene.early_merged_source_count != scene.source_batch_count - scene.batch_count)) ||
@@ -6337,6 +6361,25 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         return false;
     }
 
+    std::size_t previous_query_offset = 0;
+    for (std::size_t index = 0; index < scene.visibility_query_count; ++index)
+    {
+        const ALMetalWorldVisibilityQuery& query = scene.visibility_queries[index];
+        if (!finiteValues(query.modelview_projection, 16) ||
+            !finiteValues(query.center, 4) ||
+            !finiteValues(query.half_extent, 4) ||
+            query.batch_offset > scene.batch_count ||
+            (index != 0 && query.batch_offset < previous_query_offset) ||
+            query.fan > 7 || query.fan_count == 0 || query.fan_count > 2 ||
+            query.count_samples > 1 || query.half_extent[0] < 0.f ||
+            query.half_extent[1] < 0.f || query.half_extent[2] < 0.f)
+        {
+            setError(error, "Metal spot-shadow visibility query is invalid");
+            return false;
+        }
+        previous_query_offset = query.batch_offset;
+    }
+
     constexpr std::size_t float4_stride = sizeof(float) * 4;
     constexpr std::size_t max_inline_palette_bytes = 4096;
     constexpr std::uint32_t max_skin_joints = 110;
@@ -6361,8 +6404,16 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     std::vector<const ALMetalBuffer*> palette_buffers(
         scene.batch_count, nullptr);
     std::vector<bool> inline_palettes(scene.batch_count, false);
+    std::size_t query_boundary_index = 0;
     for (std::size_t index = 0; index < scene.batch_count; ++index)
     {
+        while (query_boundary_index < scene.visibility_query_count &&
+               scene.visibility_queries[query_boundary_index].batch_offset < index)
+        {
+            ++query_boundary_index;
+        }
+        const bool query_boundary = query_boundary_index < scene.visibility_query_count &&
+            scene.visibility_queries[query_boundary_index].batch_offset == index;
         const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
         const bool valid_index_type =
             batch.index_type == ALMetalIndexType::uint16 ||
@@ -6629,7 +6680,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         }
         if (collect_bulk && !covered && !batch.avatar && !batch.skin_palette)
         {
-            if (!bulk_runs.empty() &&
+            if (!query_boundary && !bulk_runs.empty() &&
                 bulk_runs.back().first + bulk_runs.back().count == index &&
                 bulk_runs.back().double_sided == batch.double_sided)
             {
@@ -6737,7 +6788,17 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     }
 
     const double far_depth = scene.reverse_z ? 0.0 : 1.0;
+    std::shared_ptr<ALMetalVisibilityResultBatch> query_results;
+    if (scene.visibility_query_count != 0)
+    {
+        std::string visibility_error;
+        query_results = ALMetalVisibilityResultBatch::create(
+            *mImpl->device, scene.visibility_query_count, &visibility_error);
+        // Optional visibility allocation fails open, as in the world pass:
+        // preserve all casters and let the caller expire unproduced tickets.
+    }
     ALMetalRenderPassConfig pass_config;
+    pass_config.visibility_results = query_results.get();
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.colors[0].clear = {
@@ -6749,6 +6810,11 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
     ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
         "Alchemy direct spot-shadow slice", owned_command, error) : nullptr;
+    if (command && query_results && !query_results->attachCommand(*command, error))
+    {
+        mImpl->finishCommandBuffer(owned_command, false, error);
+        return false;
+    }
     std::unique_ptr<ALMetalShadowIndirectCommands::Batch> bulk_batch;
     std::uint64_t coalesced_draws = 0;
     if (command && bulk_draw_count != 0)
@@ -6919,10 +6985,61 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             error) &&
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
         (!shadow_material_pass || shadow_material_pass->declareResources(*encoder, error));
+    std::size_t visibility_index = query_results ? 0 : scene.visibility_query_count;
+    const auto encode_visibility_at = [&](std::size_t batch_offset) -> bool
+    {
+        if (visibility_index == scene.visibility_query_count ||
+            scene.visibility_queries[visibility_index].batch_offset != batch_offset)
+        {
+            return true;
+        }
+        const ALMetalDepthStencilState* readonly_depth = scene.reverse_z
+            ? mImpl->reverse_readonly_depth.get() : mImpl->forward_readonly_depth.get();
+        while (visibility_index < scene.visibility_query_count &&
+               scene.visibility_queries[visibility_index].batch_offset == batch_offset)
+        {
+            const ALMetalWorldVisibilityQuery& query = scene.visibility_queries[visibility_index];
+            WorldVisibilityConstants constants{};
+            std::memcpy(constants.modelview_projection, query.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.center, query.center, sizeof(constants.center));
+            std::memcpy(constants.half_extent, query.half_extent, sizeof(constants.half_extent));
+            constants.config[0] = query.fan;
+            constants.config[1] = scene.reverse_z ? 1u : 0u;
+            bool query_encoded =
+                encoder->setDepthStencilState(readonly_depth, error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setPipeline(*mImpl->shadow_visibility_pipeline, error) &&
+                encoder->setVisibilityResultMode(query.count_samples
+                    ? ALMetalVisibilityResultMode::counting : ALMetalVisibilityResultMode::boolean,
+                    visibility_index * sizeof(std::uint64_t), error) &&
+                mImpl->setVertexData(*encoder, *command, 0, &constants, sizeof(constants), error) &&
+                encoder->draw(ALMetalPrimitiveType::triangle, 0, 18, 1, error);
+            if (query_encoded && query.fan_count == 2)
+            {
+                constants.config[0] = 7;
+                query_encoded = mImpl->setVertexData(*encoder, *command,
+                    0, &constants, sizeof(constants), error) &&
+                    encoder->draw(ALMetalPrimitiveType::triangle, 0, 18, 1, error);
+            }
+            if (!query_encoded || !encoder->setVisibilityResultMode(
+                    ALMetalVisibilityResultMode::disabled, 0, error))
+            {
+                return false;
+            }
+            ++visibility_index;
+        }
+        return encoder->setDepthStencilState(depth, error);
+    };
     std::size_t next_bulk_run = 0;
     for (std::size_t index = 0;
          encoded && index < scene.batch_count; ++index)
     {
+        if (!(encoded = encode_visibility_at(index)))
+        {
+            break;
+        }
         const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
         if (next_bulk_run < bulk_runs.size() &&
             bulk_runs[next_bulk_run].first == index)
@@ -6980,6 +7097,8 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         if (scene.bulk_draws && !use_indirect && covered && !rigged && !batch.avatar)
         {
             while (merged_batch_count < scene.batch_count - index &&
+                   (visibility_index == scene.visibility_query_count ||
+                    scene.visibility_queries[visibility_index].batch_offset > index + merged_batch_count) &&
                    canMergeStaticCoveredShadow(batch,
                        scene.batches[index + merged_batch_count], merged_index_count))
             {
@@ -7179,7 +7298,8 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             index += merged_batch_count - 1;
         }
     }
-    const bool complete = encoded && encoder->end(error);
+    const bool complete = encoded && encode_visibility_at(scene.batch_count) &&
+        visibility_index == scene.visibility_query_count && encoder->end(error);
     if (!mImpl->finishCommandBuffer(owned_command, complete, error))
     {
         return false;
@@ -7191,6 +7311,10 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     mImpl->shadow_covered_coalesced_draws += covered_coalesced_draws;
     mImpl->shadow_encoded_records += scene.batch_count - coalesced_draws - covered_coalesced_draws;
     mImpl->shadow_early_coalesced_records += scene.early_merged_source_count;
+    if (visibility_results)
+    {
+        *visibility_results = std::move(query_results);
+    }
     return true;
 }
 
