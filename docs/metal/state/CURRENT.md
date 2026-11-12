@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-12 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `2c11d05d53`; matching 68845 built/checked; candidate unlaunched.
+**Renderer code checkpoint:** `b7bc118d68`; matching source cb840/68841 built/checked/launched.
 **Owner-passed viewer:** `cb840a5b9d`,26.4.0.68841; reported beard-light cutoff fixed.
 Alpha4 built/tested/packaged/published; [new profile](../research/busy-region-profile-2026-11-12.md) 301.302sec+11.912sec.
 exact68841 launched PID91442/92651, owner login/settings/logout; no source change.
@@ -11,9 +11,9 @@ Raw artifacts/metal/busy-region-profile-20261112/. Utility unexecuted; stopped20
 
 ## Current implementation
 
-New [busy-turn world freshness](../work/active/busy-turn-world-freshness.md) source fix verified:2c11/68845.
-Build/static/fullLLRender454985 pass; retained-age diagnostics included; owner retest pending.
-[Attached-light cutoff](../work/active/facelight-light-coverage.md) cb840/68841 owner-passed; build/static/strict/fullLLRender454290 pass.
+Owner68845 retest failed: [busy-turn investigation](../work/active/busy-turn-local-investigation.md) remains open.
+Unapproved2c11/5ed push reverted as0f7; original beard-light68841 remains owner-passed.
+Keep future fixes local until explicit owner approval to push after testing.
 
 [Latest finalization/preview/media closure](../work/active/native-finalization-and-media-closure.md)
 and [settings/resource tail](../work/active/native-settings-and-resource-tail.md)
