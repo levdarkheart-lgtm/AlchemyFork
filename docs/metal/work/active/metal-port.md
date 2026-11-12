@@ -6,7 +6,7 @@
 
 PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/static+76tools+736image assertions pass; PID67814/4OpenHTworkers,181.755s profile. Owner accepted and scoped decoder push completed at4842cb9460 on codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
 
-PPD-001 [projector admission](projector-per-light-admission.md):6404/68869 tested/profiled; [analysis](../../research/projector-teleport-profile-2026-11-12.md):204.803decodeCPU-s,40.52%main shadows, cadence anomaly unassigned. Warm-session181.345s recovered after recorderSIGTRAP; exact viewer function names restored, comparison next. Owner pending; PPD-002 cause unproved.
+PPD-001 [projector admission](projector-per-light-admission.md):6404/68869; [warm analysis](../../research/warm-cache-profile-analysis-2026-11-12.md):142.911decodeCPU-s,42.43%main shadows; late decode0.645s/22.377FPS, GPUinflight69.823ms(avg overlapping spans). Next palette reuse + GPUencoder attribution. Owner pending; PPD-002 cause unproved.
 
 ## Current implementation — 2026-11-11
 

@@ -191,3 +191,23 @@ with `--pid 89531 --toc <warm>/profile-toc.xml --bins 5 30 --top 80`, writing
 Then compare appropriate post-arrival/late windows, preserving unmatched timing,
 visibility, scene/settings and unknown actual cache-hit coverage. Recording has
 stopped; this handoff does not claim a warm-cache speedup or owner verification.
+
+## Completed retained-cache analysis
+
+[Full warm CPU/decode/GPU report](../../research/warm-cache-profile-analysis-2026-11-12.md)
+completes the analysis after the earlier capture-only handoff. Canonical/detailed
+analyzers both exit0 with335315rows/main132.096CPU-s/all335.315CPU-s exact.
+Four decoders142.911CPU-s; first30s104.310, exactlast30s0.645. Shadows56.053CPU-s /
+42.43%main, remaining44.91%main inlast30s. Recordedcadence22.423FPS, last30s22.377.
+Appleinstalledenumproof establishesdurationvariant0=Average: GPUassociated
+inflight69.823ms, GPUbegin-end70.232ms, CPUbegin-present38.254ms, frameinterval44.620ms.
+Theseareoverlappingframespans, nothardwareoccupancy orisolatedGPUexecutioncost.
+
+BoundedMetalSystemTrace reimport ofexistingraw exits0; detailedGPUencoder/label/
+command/execution tables have0rows, so per-passGPUhotspots cannotbe reconstructed.
+CApresent request/callback events exist buttheirlatencysemanticsremainunverified.
+StrongestnextCPUexperiment: generation-qualifiedvalidatedpublished attachment
+palette reuse (2.726CPU-s immediatehashcaller), followedbybroadermeasuredshadow
+prep/emission work. RGB8-specializeddirectstagingtargetsloading, notlatecadence.
+KeepacceptedOpenHT; noapplicationcodechanges orpush. PPD-001owneracceptancepending;
+PPD-002causeunproved, PPD-003diagnosticlimitsretained. Harnessrerunatthishandoff.

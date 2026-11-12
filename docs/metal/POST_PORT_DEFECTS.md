@@ -94,6 +94,11 @@ or shadow data and other projector validation failures need separate diagnosis.
   names restored offline with immutable sample data. This is instrumentation recovery, not viewer
   corrective verification or push approval. See the repair note.
 
+- 2026-11-12: Completed [retained-cache CPU/decode/GPU analysis](research/warm-cache-profile-analysis-2026-11-12.md).
+  Mainshadow42.43%, decoder142.911CPU-s but only0.645s inlast30s, cadence22.377FPS
+  late. VerifiedGPUaverages remain substantial; detailedGPUevents absent even
+  afterboundedreimport. No ownerverification/push inferred fromprofiling.
+
 ## PPD-002 — Busy-region world freezes while nametags keep turning
 
 - Status: investigating
