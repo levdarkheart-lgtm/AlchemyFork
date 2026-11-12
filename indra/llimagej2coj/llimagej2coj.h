@@ -42,6 +42,7 @@ protected:
     virtual bool initDecode(LLImageJ2C &base, LLImageRaw &raw_image, int discard_level = -1, int* region = NULL);
     virtual bool initEncode(LLImageJ2C &base, LLImageRaw &raw_image, int blocks_size = -1, int precincts_size = -1, int levels = 0);
     virtual std::string getEngineInfo() const;
+    virtual std::string getCacheInfo() const;
 };
 
 #endif
