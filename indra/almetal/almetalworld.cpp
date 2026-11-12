@@ -8971,6 +8971,61 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
     return true;
 }
 
+bool ALMetalWorldGBufferRenderer::validateProjectorLightParameters(
+    const ALMetalWorldProjectorLight& light,
+    std::uint32_t width, std::uint32_t height, std::string* error)
+{
+    const bool finite_position =
+        finiteValues(light.position_radius, 4);
+    const bool finite_color = finiteValues(light.color_falloff, 4);
+    const bool finite_matrix =
+        finiteValues(light.projector_matrix, 16);
+    const bool finite_plane = finiteValues(light.projector_plane, 4);
+    const bool finite_normal = finiteValues(light.projector_normal, 4);
+    const bool finite_origin = finiteValues(light.projector_origin, 4);
+    const bool finite_sampling = finiteValues(light.sampling, 4);
+    const bool default_screen_rect =
+        light.screen_rect[0] == 0 && light.screen_rect[1] == 0 &&
+        light.screen_rect[2] == 0 && light.screen_rect[3] == 0;
+    const bool valid_screen_rect = default_screen_rect ||
+        (light.screen_rect[0] < width &&
+         light.screen_rect[1] < height &&
+         light.screen_rect[2] > 0 && light.screen_rect[3] > 0 &&
+         light.screen_rect[2] <= width - light.screen_rect[0] &&
+         light.screen_rect[3] <= height - light.screen_rect[1]);
+    const bool valid_scalars = light.position_radius[3] > 0.f &&
+        light.color_falloff[3] > -1.f &&
+        light.projector_normal[3] != 0.f &&
+        light.sampling[0] >= 1.f && light.sampling[1] >= 0.f &&
+        light.sampling[1] <= 1.f && light.shadow_channel >= -1 &&
+        light.shadow_channel <= 1;
+    if (!finite_position || !finite_color ||
+        !finite_matrix || !finite_plane || !finite_normal ||
+        !finite_origin || !finite_sampling || !valid_screen_rect ||
+        !valid_scalars)
+    {
+        setError(error,
+            "Metal world projector parameters are invalid (position=" +
+            std::to_string(finite_position) + ", color=" +
+            std::to_string(finite_color) + ", matrix=" +
+            std::to_string(finite_matrix) + ", plane=" +
+            std::to_string(finite_plane) + ", normal=" +
+            std::to_string(finite_normal) + ", origin=" +
+            std::to_string(finite_origin) + ", sampling=" +
+            std::to_string(finite_sampling) + ", radius=" +
+            std::to_string(light.position_radius[3]) + ", falloff=" +
+            std::to_string(light.color_falloff[3]) + ", range=" +
+            std::to_string(light.projector_normal[3]) + ", focus=" +
+            std::to_string(light.projector_origin[3]) + ", lod=" +
+            std::to_string(light.sampling[0]) + ", shadow-fade=" +
+            std::to_string(light.sampling[1]) + ", shadow-channel=" +
+            std::to_string(light.shadow_channel) + ", screen-rect=" +
+            std::to_string(valid_screen_rect) + ")");
+        return false;
+    }
+    return true;
+}
+
 bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
     ALMetalRenderTarget& target,
     const ALMetalWorldProjectorLightingScene& scene,
@@ -9027,54 +9082,14 @@ bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
         const bool valid_cookie = sampleableTexture(light.cookie_texture) &&
             cookie && cookie->type == ALMetalTextureType::texture_2d &&
             cookie->sample_count == 1;
-        const bool finite_position =
-            finiteValues(light.position_radius, 4);
-        const bool finite_color = finiteValues(light.color_falloff, 4);
-        const bool finite_matrix =
-            finiteValues(light.projector_matrix, 16);
-        const bool finite_plane = finiteValues(light.projector_plane, 4);
-        const bool finite_normal = finiteValues(light.projector_normal, 4);
-        const bool finite_origin = finiteValues(light.projector_origin, 4);
-        const bool finite_sampling = finiteValues(light.sampling, 4);
-        const bool default_screen_rect =
-            light.screen_rect[0] == 0 && light.screen_rect[1] == 0 &&
-            light.screen_rect[2] == 0 && light.screen_rect[3] == 0;
-        const bool valid_screen_rect = default_screen_rect ||
-            (light.screen_rect[0] < input.width &&
-             light.screen_rect[1] < input.height &&
-             light.screen_rect[2] > 0 && light.screen_rect[3] > 0 &&
-             light.screen_rect[2] <= input.width - light.screen_rect[0] &&
-             light.screen_rect[3] <= input.height - light.screen_rect[1]);
-        const bool valid_scalars = light.position_radius[3] > 0.f &&
-            light.color_falloff[3] > -1.f &&
-            light.projector_normal[3] > 0.f &&
-            light.sampling[0] >= 1.f && light.sampling[1] >= 0.f &&
-            light.sampling[1] <= 1.f && light.shadow_channel >= -1 &&
-            light.shadow_channel <= 1;
-        if (!valid_cookie || !finite_position || !finite_color ||
-            !finite_matrix || !finite_plane || !finite_normal ||
-            !finite_origin || !finite_sampling || !valid_screen_rect ||
-            !valid_scalars)
+        std::string parameter_error;
+        if (!valid_cookie || !validateProjectorLightParameters(
+                light, input.width, input.height, &parameter_error))
         {
             setError(error,
                 "Metal world projector light is invalid at index " +
-                std::to_string(index) + " (cookie=" +
-                std::to_string(valid_cookie) + ", position=" +
-                std::to_string(finite_position) + ", color=" +
-                std::to_string(finite_color) + ", matrix=" +
-                std::to_string(finite_matrix) + ", plane=" +
-                std::to_string(finite_plane) + ", normal=" +
-                std::to_string(finite_normal) + ", origin=" +
-                std::to_string(finite_origin) + ", sampling=" +
-                std::to_string(finite_sampling) + ", radius=" +
-                std::to_string(light.position_radius[3]) + ", falloff=" +
-                std::to_string(light.color_falloff[3]) + ", range=" +
-                std::to_string(light.projector_normal[3]) + ", focus=" +
-                std::to_string(light.projector_origin[3]) + ", lod=" +
-                std::to_string(light.sampling[0]) + ", shadow-fade=" +
-                std::to_string(light.sampling[1]) + ", shadow-channel=" +
-                std::to_string(light.shadow_channel) + ", screen-rect=" +
-                std::to_string(valid_screen_rect) + ")");
+                std::to_string(index) + ": " +
+                (valid_cookie ? parameter_error : "cookie is incompatible"));
             return false;
         }
         needs_shadows = needs_shadows || light.shadow_channel >= 0;

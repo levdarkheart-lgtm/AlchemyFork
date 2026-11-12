@@ -2,10 +2,11 @@
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
 **Integrated checkpoint:** Commit `b7bc118d68`; cb840/68841 built/checked/launched.
-**Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
-[deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
+**Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md), [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
 PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/static+76tools+736image assertions pass; PID67814/4OpenHTworkers,181.755s profile. Owner accepted and scoped decoder push completed at4842cb9460 on codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
+
+PPD-001 [projector admission](projector-per-light-admission.md): local repair in progress; signed ranges retained, malformed lights isolated; PPD-002 cause unproved.
 
 ## Current implementation — 2026-11-11
 

@@ -20192,6 +20192,108 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(pbr_projector_pixels[center + 3] == 0);
         CHECK(pbr_projector_pixels[center + 0] !=
               projected_pixels[center + 0]);
+
+        // Original setupSpotLight projects a cookie with signed near/far
+        // arithmetic. An effective radius smaller than the light's Z scale
+        // gives a finite negative range; it still lights receivers inside
+        // the cookie in both legacy and PBR materials (PPD-001).
+        const auto original_projector = [&](float fov, float scale_z)
+        {
+            ALMetalWorldProjectorLight light = projector;
+            const float tangent = std::tan(fov * 0.5f);
+            const float near_clip = 0.5f / tangent;
+            const float radius = 1.1f * 1.5f;
+            const float far_clip = radius + near_clip - scale_z;
+            const float range = far_clip - near_clip;
+            const float position_z = 0.25f;
+            const float origin_z =
+                position_z - scale_z * 0.5f + near_clip;
+            light.position_radius[2] = position_z;
+            light.position_radius[3] = radius;
+            std::fill(std::begin(light.projector_matrix),
+                      std::end(light.projector_matrix), 0.f);
+            // Forward perspective followed by the original [-1,1] to
+            // cookie-space remap, with the light's eye-space translation.
+            light.projector_matrix[0] = 0.5f / tangent;
+            light.projector_matrix[5] = 0.5f / tangent;
+            light.projector_matrix[8] = -0.5f;
+            light.projector_matrix[9] = -0.5f;
+            light.projector_matrix[10] = -far_clip / range;
+            light.projector_matrix[11] = -1.f;
+            light.projector_matrix[12] = origin_z * 0.5f;
+            light.projector_matrix[13] = origin_z * 0.5f;
+            light.projector_matrix[14] =
+                far_clip * (origin_z - near_clip) / range;
+            light.projector_matrix[15] = origin_z;
+            light.projector_plane[2] = origin_z - near_clip - 0.01f;
+            light.projector_normal[3] = range;
+            light.projector_origin[2] = origin_z;
+            light.shadow_channel = -1;
+            return light;
+        };
+        const float original_pi = 3.14159265358979323846f;
+        std::array<ALMetalWorldProjectorLight, 2> signed_projectors{{
+            original_projector(original_pi * 0.5f, 2.f),
+            original_projector(original_pi, 1.f),
+        }};
+        CHECK(std::abs(signed_projectors[0].projector_normal[3] +
+                       0.35f) < 0.000001f);
+        // Float pi lies just beyond the tangent pole. The original finite
+        // cookie projection therefore also permits a negative near plane.
+        REQUIRE(0.5f / std::tan(original_pi * 0.5f) < 0.f);
+        for (const ALMetalRenderTarget* receiver :
+             {gbuffer.get(), pbr_gbuffer.get()})
+        {
+            for (const ALMetalWorldProjectorLight& signed_projector :
+                 signed_projectors)
+            {
+                ALMetalWorldProjectorLightingScene signed_scene =
+                    projector_scene;
+                signed_scene.gbuffer = receiver;
+                signed_scene.lights = &signed_projector;
+                signed_scene.light_count = 1;
+                auto signed_contribution = projectorContribution(
+                    *device, *renderer, signed_scene, &error);
+                INFO(error);
+                REQUIRE(signed_contribution);
+                std::array<std::uint8_t, 32 * 32 * 4> signed_pixels{};
+                REQUIRE(readLinearAsRGBA8(
+                    *device, signed_contribution->colorTexture(0),
+                    signed_pixels, &error));
+                INFO(error);
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    CHECK(signed_pixels[center + channel] > 0);
+                    CHECK(signed_pixels[outside + channel] == 0);
+                }
+                CHECK(signed_pixels[center + 3] == 0);
+            }
+        }
+
+        // A singular range is still invalid. Reject the complete batch
+        // before encoding even when a valid light precedes that entry.
+        std::array<ALMetalWorldProjectorLight, 2> singular_projectors{{
+            signed_projectors[0], signed_projectors[0],
+        }};
+        singular_projectors[1].projector_normal[3] = 0.f;
+        ALMetalWorldProjectorLightingScene singular_scene = projector_scene;
+        singular_scene.gbuffer = gbuffer.get();
+        singular_scene.lights = singular_projectors.data();
+        singular_scene.light_count = singular_projectors.size();
+        auto singular_target = zeroLinearTarget(
+            *device, singular_scene.gbuffer, &error);
+        REQUIRE(singular_target);
+        error.clear();
+        CHECK_FALSE(renderer->accumulateProjectorLights(
+            *singular_target, singular_scene, &error));
+        CHECK(error.find("invalid at index 1") != std::string::npos);
+        std::array<std::uint8_t, 32 * 32 * 4> singular_pixels{};
+        REQUIRE(readLinearAsRGBA8(
+            *device, singular_target->colorTexture(0), singular_pixels,
+            &error));
+        CHECK(std::all_of(singular_pixels.begin(), singular_pixels.end(),
+                          [](std::uint8_t value) { return value == 0; }));
+        error.clear();
         projector_scene.gbuffer = gbuffer.get();
 
         // Fill only the clear-depth pixels of both forward- and reverse-Z

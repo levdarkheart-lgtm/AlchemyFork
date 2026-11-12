@@ -1024,7 +1024,7 @@ struct alignas(16) ALMetalWorldProjectorLight
     float projector_matrix[16]{};
     // xyz = emitting plane point, w = projector ambiance.
     float projector_plane[4]{};
-    // xyz = emitting plane normal, w = far-minus-near range.
+    // xyz = emitting plane normal, w = finite nonzero signed far-minus-near range.
     float projector_normal[4]{};
     // xyz = projector origin, w = focus distance.
     float projector_origin[4]{};
@@ -2285,6 +2285,14 @@ public:
     bool accumulateLocalLights(
         ALMetalRenderTarget& target,
         const ALMetalWorldLocalLightingScene& scene,
+        std::string* error = nullptr);
+
+    // Per-light math admission shared by the viewer collector and encoder
+    // preflight. Cookie/device/shadow readiness remains a separate transaction
+    // check. The original projection and cookie LOD accept signed nonzero range.
+    static bool validateProjectorLightParameters(
+        const ALMetalWorldProjectorLight& light,
+        std::uint32_t width, std::uint32_t height,
         std::string* error = nullptr);
 
     // Add projector cookies, ambiance and filtered shadows after ordinary

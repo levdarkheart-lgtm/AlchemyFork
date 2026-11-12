@@ -1,7 +1,6 @@
 # Current engineering state — remaining native feature completion
 
 **Observed:** 2026-11-12 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
-**Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `b7bc118d68`; matching source cb840/68841 built/checked/launched.
 **Owner-passed viewer:** `cb840a5b9d`,26.4.0.68841; reported beard-light cutoff fixed.
 Alpha4 built/tested/packaged/published; [profile](../research/busy-region-profile-2026-11-12.md)301.302sec+11.912sec; exact68841 PID91442/92651 owner login/settings/logout, no source change.
@@ -11,6 +10,7 @@ db398/68860 build/ARM64/signature+76tools+736image assertions pass; PID67814/4Op
 
 ## Current implementation
 
+PPD-001 [projector admission](../work/active/projector-per-light-admission.md): repair in progress; original signed ranges retained, singular/nonfinite lights isolated. Keep local; PPD-002 cause unproved.
 Mandatory [post-port defects](../POST_PORT_DEFECTS.md): PPD-001–004/006 unresolved; PPD-005 owner-accepted with scoped push approval. Other source defects and busy-turn report remain distinct.
 Unapproved2c11/5ed push reverted as0f7; original beard-light68841 remains owner-passed.
 Keep future fixes local until explicit owner approval to push after testing.

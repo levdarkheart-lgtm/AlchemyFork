@@ -17547,37 +17547,6 @@ void LLPipeline::renderMetalWorldProjectorLights(
             continue;
         }
 
-        LLViewerTexture* cookie = volume->getLightTexture();
-        if (!cookie)
-        {
-            cookie = LLViewerFetchedTexture::sWhiteImagep.get();
-        }
-        LLImageGL* cookie_image = cookie ? cookie->getGLTexture() : nullptr;
-        if (!cookie_image || !cookie_image->getMetalTexture())
-        {
-            // The ordinary texture path substitutes the viewer default image
-            // when a fetched projector cookie has not published GPU storage
-            // yet. Use that same durable image for the native replay so an
-            // unavailable cookie does not stall the whole world transaction.
-            LLViewerFetchedTexture* fallback =
-                LLViewerFetchedTexture::sDefaultImagep.get();
-            LLImageGL* fallback_image = fallback
-                ? fallback->getGLTexture() : nullptr;
-            if (fallback_image && fallback_image->getMetalTexture())
-            {
-                cookie_image = fallback_image;
-            }
-        }
-        ALMetalTexture* cookie_texture = cookie_image
-            ? cookie_image->getMetalTexture() : nullptr;
-        if (!cookie_texture)
-        {
-            // A fetched cookie can arrive after the light itself. Publishing
-            // a partial accumulation would make the migration target lie;
-            // leave the probe armed and retry when its durable mirror exists.
-            return;
-        }
-
         const LLVector3 parameters = volume->getSpotLightParams();
         const F32 fov = parameters.mV[0];
         const F32 focus = parameters.mV[1];
@@ -17585,10 +17554,13 @@ void LLPipeline::renderMetalWorldProjectorLights(
         const LLQuaternion rotation = volume->getRenderRotation();
         const LLVector3 scale = volume->getScale();
         if (!std::isfinite(fov) || !std::isfinite(focus) ||
-            fov <= 0.f || scale.mV[VX] <= 0.f ||
-            scale.mV[VY] <= 0.f)
+            fov == 0.f || scale.mV[VX] == 0.f ||
+            scale.mV[VY] == 0.f)
         {
-            return;
+            LL_WARNS_ONCE("Metal")
+                << "Skipping projector with singular or nonfinite input; "
+                   "remaining world lighting continues" << LL_ENDL;
+            continue;
         }
 
         LLVector3 at_axis(0.f, 0.f, -scale.mV[VZ] * 0.5f);
@@ -17602,15 +17574,27 @@ void LLPipeline::renderMetalWorldProjectorLights(
         LLMatrix4a light_to_eye;
         light_to_eye.setMul(LLMatrix4a(light_matrix), modelview);
         LLMatrix4a eye_to_light;
-        eye_to_light.setInverse(light_to_eye);
+        if (!eye_to_light.setInverse(light_to_eye))
+        {
+            LL_WARNS_ONCE("Metal")
+                << "Skipping projector with singular light transform; "
+                   "remaining world lighting continues" << LL_ENDL;
+            continue;
+        }
 
         const F32 near_clip = distance;
         const F32 far_clip = radius + distance - scale.mV[VZ];
         const F32 projector_range = far_clip - near_clip;
-        if (!std::isfinite(distance) || near_clip <= 0.f ||
-            far_clip <= near_clip || !std::isfinite(projector_range))
+        // Original setupSpotLight and cookie LOD use signed near/range.
+        // Only a singular or nonfinite projection excludes this light; it
+        // must not prevent other lights or current-frame composition.
+        if (!std::isfinite(distance) || !std::isfinite(far_clip) ||
+            !std::isfinite(projector_range) || projector_range == 0.f)
         {
-            return;
+            LL_WARNS_ONCE("Metal")
+                << "Skipping projector with singular or nonfinite projection; "
+                   "remaining world lighting continues" << LL_ENDL;
+            continue;
         }
 
         LLVector4a plane_point;
@@ -17646,7 +17630,6 @@ void LLPipeline::renderMetalWorldProjectorLights(
         LLVector4a eye_center;
         modelview.affineTransform(center, eye_center);
         ALMetalWorldProjectorLight light;
-        light.cookie_texture = cookie_texture;
         light.position_radius[0] = eye_center[0];
         light.position_radius[1] = eye_center[1];
         light.position_radius[2] = eye_center[2];
@@ -17667,9 +17650,14 @@ void LLPipeline::renderMetalWorldProjectorLights(
         std::memcpy(light.projector_origin, eye_origin.getF32ptr(),
                     sizeof(F32) * 3);
         light.projector_origin[3] = focus;
+        LLViewerTexture* cookie = volume->getLightTexture();
+        if (!cookie)
+        {
+            cookie = LLViewerFetchedTexture::sWhiteImagep.get();
+        }
         light.sampling[0] = llmax(
-            logf(static_cast<F32>(cookie->getWidth())) / logf(2.f),
-            1.f);
+            logf(static_cast<F32>(cookie ? cookie->getWidth() : 0)) /
+                logf(2.f), 1.f);
         for (S32 shadow = 0; shadow < 2; ++shadow)
         {
             if (mShadowSpotLight[shadow] == drawable &&
@@ -17677,7 +17665,6 @@ void LLPipeline::renderMetalWorldProjectorLights(
             {
                 light.shadow_channel = shadow;
                 light.sampling[1] = 1.f - mSpotLightFade[shadow];
-                needs_projector_shadows = true;
                 break;
             }
         }
@@ -17685,6 +17672,44 @@ void LLPipeline::renderMetalWorldProjectorLights(
             light.position_radius, light.screen_rect,
             camera.getProjection(), capture.target->descriptor().width,
             capture.target->descriptor().height);
+        if (!ALMetalWorldGBufferRenderer::validateProjectorLightParameters(
+                light, capture.target->descriptor().width,
+                capture.target->descriptor().height))
+        {
+            LL_WARNS_ONCE("Metal")
+                << "Skipping projector with invalid packed parameters; "
+                   "remaining world lighting continues" << LL_ENDL;
+            continue;
+        }
+
+        LLImageGL* cookie_image = cookie ? cookie->getGLTexture() : nullptr;
+        if (!cookie_image || !cookie_image->getMetalTexture())
+        {
+            // The ordinary texture path substitutes the viewer default image
+            // when a fetched projector cookie has not published GPU storage
+            // yet. Use that same durable image for the native replay so an
+            // unavailable cookie does not stall the whole world transaction.
+            LLViewerFetchedTexture* fallback =
+                LLViewerFetchedTexture::sDefaultImagep.get();
+            LLImageGL* fallback_image = fallback
+                ? fallback->getGLTexture() : nullptr;
+            if (fallback_image && fallback_image->getMetalTexture())
+            {
+                cookie_image = fallback_image;
+            }
+        }
+        ALMetalTexture* cookie_texture = cookie_image
+            ? cookie_image->getMetalTexture() : nullptr;
+        if (!cookie_texture)
+        {
+            // Math admission cannot substitute for shared resource readiness.
+            // Retry when the cookie or its durable default mirror exists.
+            return;
+        }
+
+        light.cookie_texture = cookie_texture;
+        needs_projector_shadows = needs_projector_shadows ||
+            light.shadow_channel >= 0;
         lights.push_back(light);
     }
 

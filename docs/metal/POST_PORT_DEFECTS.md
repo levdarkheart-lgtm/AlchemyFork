@@ -46,13 +46,13 @@ explicitly. Evidence must link to a retained repository note or primary source.
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `indra/newview/pipeline.cpp`, `LLPipeline::setupSpotLight` and the deferred-light traversal.
-- Evidence: [Source comparison and failed-session investigation](work/active/busy-turn-local-investigation.md).
-- Next action: Record the exact projector rejection during the reported freeze; then specify and verify original-equivalent per-light failure behavior before implementing a repair.
+- Evidence: [Source comparison and failed-session investigation](work/active/busy-turn-local-investigation.md), [signed-range contract and regression work](work/active/projector-per-light-admission.md).
+- Next action: Preserve valid signed-range projectors, reject singular/nonfinite parameters per light, and verify remaining lights and current-frame composition; keep resource/encoder failures transactional.
 - Verification: No corrective implementation verified; source comparison establishes the failure-scope mismatch.
 - Owner verification: pending
 - Push approval: not_granted
@@ -60,9 +60,9 @@ explicitly. Evidence must link to a retained repository note or primary source.
 Native projector collection returns before completing the entire lighting stage
 for some UI/protocol-admitted inputs. For example, independent light radius
 1 metre and prim Z scale 2 metres produce `1.5 * radius - scaleZ = -0.5`;
-FOV zero is also an admitted input. The resulting projection can be degenerate
-or inverted: this record does not claim its individual light should shade
-correctly. The confirmed mismatch is that the original continues the remaining
+FOV zero is also an admitted input. A finite negative range can still shade
+correctly under the original forward cookie projection and signed LOD math;
+zero range/FOV is singular. The confirmed mismatch is that the original continues the remaining
 lights/world, while native composition and later world publication are withheld.
 
 Camera-dependent light selection can expose this path. Attribution to the
@@ -73,6 +73,11 @@ or shadow data and other projector validation failures need separate diagnosis.
 
 - 2026-11-12: Source comparison confirms the whole-stage failure-scope defect.
   Analysis only; no correction selected or approved.
+- 2026-11-12: Owner selects PPD-001 for repair. Exact production collector and
+  composition probe fails15/34 baseline checks for middle negative-range,
+  zero-range and zero-FOV lights. Original GLSL and current MSL both support
+  finite nonzero signed range; preserve that light, rather than simply skip it.
+  Repair and physical Metal regression verification in progress, local only.
 
 ## PPD-002 — Busy-region world freezes while nametags keep turning
 
