@@ -76,3 +76,8 @@ worker fix, codec benchmark/tools and OpenHTJ2K implementation/evidence on
 shadow changes. Keep those renderer changes and raw/private artifacts local.
 The published feature stays opt-in and requires the pinned local dependency;
 acceptance does not establish whole-product release readiness or a causal FPS gain.
+
+Approved scope published to `codex/apple-silicon-metal` at `4842cb9460`; remote
+tip verified. The scoped publication source passes five image groups,56 tooling
+tests and the32-file harness, with matching decoder implementation. The local
+main branch retains unrelated pending renderer/governance work without pushing it.

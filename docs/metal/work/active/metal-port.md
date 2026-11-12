@@ -5,7 +5,7 @@
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
-PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/static+76tools+736image assertions pass; PID67814/4OpenHTworkers,181.755s profile. Owner accepted and approved scoped decoder push to codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
+PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/static+76tools+736image assertions pass; PID67814/4OpenHTworkers,181.755s profile. Owner accepted and scoped decoder push completed at4842cb9460 on codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
 
 ## Current implementation — 2026-11-11
 
