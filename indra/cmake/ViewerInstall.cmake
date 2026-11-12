@@ -602,6 +602,25 @@ install(
   COMPONENT viewer
 )
 
+if(AL_EXPERIMENTAL_OPENHTJ2K)
+  # OpenHTJ2K is built outside vcpkg, whose generated notices cover the other
+  # dependencies. Install its full pinned-source licence before signing.
+  set(al_openhtj2k_license "${AL_OPENHTJ2K_SOURCE_DIR}/LICENSE")
+  if(NOT EXISTS "${al_openhtj2k_license}" OR IS_DIRECTORY "${al_openhtj2k_license}")
+    message(FATAL_ERROR "OpenHTJ2K licence is missing: ${al_openhtj2k_license}")
+  endif()
+  set_property(
+    TARGET ${AL_VIEWER_BINARY_NAME}
+    APPEND PROPERTY LINK_DEPENDS "${al_openhtj2k_license}"
+  )
+  install(
+    FILES "${al_openhtj2k_license}"
+    DESTINATION "${AL_INSTALL_DATADIR}/licenses"
+    RENAME OpenHTJ2K.txt
+    COMPONENT viewer
+  )
+endif()
+
 install(FILES "${al_newview_dir}/cube.dae" DESTINATION "${AL_INSTALL_DATADIR}" COMPONENT viewer)
 install(
   FILES "${INDRA_SOURCE_DIR}/externals/ca-certificates/ca-bundle.crt"

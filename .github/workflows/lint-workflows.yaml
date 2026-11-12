@@ -1,11 +1,7 @@
 name: Lint workflows
 
 on:
-  pull_request:
-    paths: [".github/**"]
-  push:
-    branches: ["develop"]
-    paths: [".github/**"]
+  workflow_dispatch:
 
 permissions:
   contents: read

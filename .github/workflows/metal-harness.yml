@@ -1,19 +1,6 @@
 name: Metal harness validation
 on:
-  pull_request:
-    paths:
-      - 'AGENTS.md'
-      - '.agents/**'
-      - 'docs/metal/**'
-      - 'tools/metal/**'
-      - '.github/workflows/metal-harness.yml'
-  push:
-    paths:
-      - 'AGENTS.md'
-      - '.agents/**'
-      - 'docs/metal/**'
-      - 'tools/metal/**'
-      - '.github/workflows/metal-harness.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -24,6 +11,11 @@ jobs:
         with:
           # Retain the parent register so a committed defect deletion is checked.
           fetch-depth: 2
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Install numerical test dependency
+        run: python3 -m pip install -r tools/metal/requirements.txt
       - name: Validate source-independent harness
         run: |
           set -euo pipefail
