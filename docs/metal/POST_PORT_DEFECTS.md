@@ -52,7 +52,7 @@ explicitly. Evidence must link to a retained repository note or primary source.
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `indra/newview/pipeline.cpp`, `LLPipeline::setupSpotLight` and the deferred-light traversal.
 - Evidence: [Source comparison and failed-session investigation](work/active/busy-turn-local-investigation.md), [signed-range contract and regression work](work/active/projector-per-light-admission.md).
-- Next action: Publish the explicitly approved repair/tests; owner verifies busy-location lighting/current-world behavior. Retain PPD-002 separately until its reported symptom is verified.
+- Next action: Owner verifies busy-location lighting/current-world behavior after the approved4976f233b8 publication. Retain PPD-002 separately until its reported symptom is verified.
 - Verification: Local6404f9f6ad collector probe72checks/0failures versus37 baseline failures; native Metal27016assertions/1case pass with API/GPU validation. Candidate68869 build passes; bundle/signature verification recorded in the linked repair note. Owner scene verification pending.
 - Owner verification: pending
 - Push approval: granted
@@ -104,6 +104,8 @@ or shadow data and other projector validation failures need separate diagnosis.
   shadow occlusion1a12 and this6404 projector repair/tests; owner replies
   "commit them too and push". Push approval granted for those named changes.
   This does not supply explicit scene-correctness verification or close PPD-002.
+  Approved scope pushed normally to codex/apple-silicon-metal at4976f233b8;
+  private captures and five untracked research notes excluded.
 
 ## PPD-002 — Busy-region world freezes while nametags keep turning
 

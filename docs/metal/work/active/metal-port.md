@@ -7,7 +7,7 @@ PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/
 
 PPD-001 [projector admission](projector-per-light-admission.md):6404/68869; [warm analysis](../../research/warm-cache-profile-analysis-2026-11-12.md):142.911decodeCPU-s,42.43%main shadows; late decode0.645s/22.377FPS, GPUinflight69.823ms(avg overlapping spans). Owner explicitly approves push; scene verification pending, PPD-002 cause unproved. Next palette reuse + GPUencoder attribution.
 
-[Adaptive decoder admission](adaptive-decoder-concurrency.md):[eight-burst](eight-burst-decoder-experiment.md) owner-rejected, source restored exactly98f41(localrevert59e50), both captures saved/analysis stopped. Prior68880 PID63726 normal4/max6/adaptive1 relaunched, cache retained/recording off. Owner explicitly approves4/6 plus named shadow-occlusion/projector repairs/tests; canonical branch publication next. Five untracked notes/private captures excluded.
+[Adaptive decoder admission](adaptive-decoder-concurrency.md):[eight-burst](eight-burst-decoder-experiment.md) owner-rejected, source restored exactly98f41(localrevert59e50), both captures saved/analysis stopped. Prior68880 PID63726 normal4/max6/adaptive1 relaunched, cache retained/recording off. Owner explicitly approves4/6 plus named shadow-occlusion/projector repairs/tests; published4976f233b8 on canonical branch; restored44cases1222assertions+76tools pass. Five untracked notes/private captures excluded.
 ## Current implementation — 2026-11-11
 
 Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal with original inspection before fixes. No viewer/utility/host/native window launch initially.

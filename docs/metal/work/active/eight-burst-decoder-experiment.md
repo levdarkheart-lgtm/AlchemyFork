@@ -96,3 +96,11 @@ implementation together with the two subsequently approved renderer repairs on
 codex/apple-silicon-metal. Raw captures and five unrelated untracked research
 notes remain private/local. The rejected8 change and explicit revert are
 retained in history; the published source must match restored98f41 exactly.
+
+## Published restored scope
+
+4976f233b8 pushed normally to codex/apple-silicon-metal(exit0). Restored-source
+Release worker/image target build and all7uniqueCTest entries pass44cases/1222
+assertions, unchanged input hashes equal98f41.76tools tests and33file harness
+pass. Receipts: revert-validation/summary.json, publication-tools-tests.json
+and publication-push.json. No force-push, release/upload or capture publication.
