@@ -94,6 +94,15 @@
       "license": "MPL-2.0",
       "homepage": "https://curl.se/docs/caextract.html",
       "notice": "The certificate bundle (ca-bundle.crt) is extracted from Mozilla's root store by the mk-ca-bundle tool.\n\nThis Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not distributed with this file, you can obtain one at https://mozilla.org/MPL/2.0/."
+    },
+    {
+      "name": "OpenHTJ2K",
+      "version": "0.27.0 (72ea0450d2b5)",
+      "holder": "Copyright (c) 2019-2026 Osamu Watanabe; portions Copyright (c) 2021 Aaron Boxer",
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/osamu620/OpenHTJ2K",
+      "text": "cmake/licenses/OpenHTJ2K-LICENSE.txt",
+      "when": "AL_EXPERIMENTAL_OPENHTJ2K"
     }
   ]
 }
