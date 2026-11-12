@@ -4,7 +4,7 @@
 **Renderer code checkpoint:** `b7bc118d68`; matching source cb840/68841 built/checked/launched.
 **Owner-passed viewer:** `cb840a5b9d`,26.4.0.68841; reported beard-light cutoff fixed.
 Alpha4 built/tested/packaged/published; [profile](../research/busy-region-profile-2026-11-12.md)301.302sec+11.912sec; exact68841 PID91442/92651 owner login/settings/logout, no source change.
-[Shadow queries](../work/active/shadow-camera-occlusion.md):68849/tests pass;181.281s recovered; [recurring hotspots](../research/three-profile-hotspots-2026-11-12.md) compared, benefit unproven. Raw artifacts/metal/busy-region-profile-20261112/; utility unexecuted/stopped20FPS deferred.
+[Shadow queries](../work/active/shadow-camera-occlusion.md):68849/tests pass;181.281s recovered; [hotspots](../research/three-profile-hotspots-2026-11-12.md) compared. [Apple-first study](../work/active/apple-first-architecture-study.md): M1Metal4 core objects verified, retained-data/parallel/GPU-indexed direction; no implementation or gain claim. Utility unexecuted/stopped20FPS deferred.
 Local [OpenHTJ2K experiment](../work/active/openhtj2k-local-experiment.md), PPD-005:
 db398/68860 build/ARM64/signature+76tools+736image assertions pass; PID67814/4OpenHTworkers observed,181.755s [profile](../research/openhtj2k-profile-2026-11-12.md) saved. Owner accepted decoder experiment and scoped decoder push completed at4842cb9460 on codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
 ## Current implementation

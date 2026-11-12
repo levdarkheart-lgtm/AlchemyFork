@@ -7,6 +7,10 @@ geometry another **about 12%**. Texture warmup changes the workload and FPS;
 it does not invalidate these recurring owners or prevent selecting concrete
 optimization targets from the existing evidence.
 
+The [Apple-first architecture study](apple-first-renderer-architecture-2026-11-12.md)
+maps these costs to current Apple APIs, hardware capabilities and a concrete
+retained-data/parallel/GPU-driven direction; it performs no viewer change.
+
 ## Evidence and comparable accounting
 
 Source inspected at `d537f10611386616203e3057004568467aa44dd2`; no renderer
