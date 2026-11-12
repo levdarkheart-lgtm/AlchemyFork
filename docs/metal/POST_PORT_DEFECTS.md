@@ -584,16 +584,16 @@ inference. No running viewer or published music backend was changed.
 
 ## PPD-013 — Water coverage forms camera-angle-dependent bands
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, class3/deferred/waterHazeV.glsl passes full clip-space float4; waterHazeF.glsl divides interpolated XY/W in the fragment. Native haze pre-divides before perspective interpolation.
 - Evidence: [Owner images and water investigation](work/active/water-angle-artifacts.md).
-- Next action: Owner retests the copied Alchemy Metal Water Haze Fix candidate at the same Chouchou viewpoint/yaw angles. Preserve the running68898 session until owner chooses a restart; keep correction local pending scene acceptance and explicit push approval.
-- Verification: Locala6f4e8ff41/Water Haze Fix26.4.0.68894 built and verified346ARM64/signature/strict-source. Identical physical GPU test executable fails8checks with old shader, passes171318assertions with corrected library;32197existing water/world assertions/4cases also pass, with API/GPU validation. Original shader math restored; owner-scene resolution still pending.
-- Owner verification: pending
-- Push approval: not_granted
+- Next action: Publish the owner-accepted PPD-013 correction and retain its regression evidence; reopen on recurrence. Keep PPD-015 separate and uncorrected.
+- Verification: Locala6f4e8ff41/Water Haze Fix26.4.0.68894 built and verified346ARM64/signature/strict-source. Identical physical GPU test executable fails8checks with old shader, passes171318assertions with corrected library;32197existing water/world assertions/4cases also pass, with API/GPU validation. Original shader math restored. Owner tests the exact launched candidate and confirms "fixed.you can commit and push it"; scene acceptance and scoped push approval are explicit.
+- Owner verification: passed
+- Push approval: granted
 
 Broad diagonal bands appear/disappear when the avatar/camera turns. Further
 rotation changes much of the visible shallow surface to blue water. This is
@@ -626,6 +626,12 @@ offset, disabled quality feature or changed depth admission.
   builds and passes signature/ARM64/source gates. No viewer restart, scene
   resolution claim or push; owner visual test remains next.
 
+- 2026-11-12: Owner requests the candidate launch. Exact copied Water Haze
+  Fix68894/sourcea6f4e8ff41/SHA4994146e startsPID49892 at21:48:15UTC; native
+  process path and3s stability verified. Owner retests and reports "fixed.you
+  can commit and push it". Mark verified/owner passed and approve PPD-013
+  publication; no separate PPD-015 implementation or HUD repair approved.
+
 ## PPD-014 — Automatic CI spends unwanted runs and manual releases select incompatible jobs
 
 - Status: investigating
@@ -657,6 +663,12 @@ not raising spending limits or changing billing/repository permissions.
   and its unapproved working files. Workflow publication excludes canonical
   shared records until their parallel work can be integrated safely.
 
+- 2026-11-12: Scoped workflow publication ea1ff8d9d5 pushed; canceled initial
+  incorrect source-SHA dispatch43312529221 before build. Corrected43312577772
+  reaches ARM64 runner/toolchain but fails because cached Python tools omit pip.
+  Add NumPy to that cached environment; actual pip-free imports and108tests pass.
+  Repair bfaaa21cda pushed; new manual run43314101072 targets its exact SHA.
+  Follow this run through packaging and release assets; no success claim yet.
 
 
 ## PPD-015 — Water grazing-angle steepness uses eye-space vertical

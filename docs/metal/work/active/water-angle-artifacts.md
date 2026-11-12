@@ -141,3 +141,18 @@ PPD-014 for CI/release behavior while this water followup was being recorded.
 Preserve that existing record unchanged; the newly discovered uncommitted
 water-coordinate record receives PPD-015. Corrective haze history stays under
 PPD-013, not the neighboring CI record. No shared stable ID is renumbered.
+
+
+## Owner verification and publication approval
+
+Owner-requested exact candidate launch21:48:15UTC: sourcea6f4e8ff41, channel
+Alchemy Metal Water Haze Fix26.4.0.68894, PID49892, executableSHA4994146e0fb4ab55494fc841955f67f772c261f060c42fcee84f6ac6fd5945d9.
+open exits0; nativeproc_pidpath matches the copied candidate; executable hash
+unchanged and process stable3s. No settings/login/destination/profiling overrides;
+owner logs in and performs the scene test. Private runtime-214815/run.json.
+
+Owner then states "fixed.you can commit and push it". PPD-013 is verified with
+owner scene acceptance and explicit scoped push approval. PPD-015 remains
+separate/open/unfixed. New HUD-line report is a separate investigation. Preserve
+private captures, the five unrelated research notes and independent release work.
+No automatic app replacement/restart is needed to publish identical source.
