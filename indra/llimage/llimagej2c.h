@@ -81,6 +81,8 @@ public:
     const ALJ2CLayout& getLayout() const { return mLayout; }
 
     static std::string getEngineInfo();
+    // Stable disk encoding compatibility, independent of decoder diagnostics.
+    static std::string getCacheInfo();
 
 protected:
     friend class LLImageJ2CImpl;
@@ -129,6 +131,7 @@ protected:
     virtual bool initEncode(LLImageJ2C &base, LLImageRaw &raw_image, int blocks_size = -1, int precincts_size = -1, int levels = 0) = 0;
 
     virtual std::string getEngineInfo() const = 0;
+    virtual std::string getCacheInfo() const { return getEngineInfo(); }
 
     friend class LLImageJ2C;
 };

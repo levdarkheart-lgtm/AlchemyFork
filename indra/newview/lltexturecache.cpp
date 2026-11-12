@@ -947,7 +947,7 @@ bool LLTextureCache::isInLocal(const LLUUID& id)
 F32 LLTextureCache::sHeaderCacheVersion = 1.71f;
 U32 LLTextureCache::sCacheMaxEntries = 1024 * 1024; //~1 million textures.
 S64 LLTextureCache::sCacheMaxTexturesSize = 0; // no limit
-std::string LLTextureCache::sHeaderCacheEncoderVersion = LLImageJ2C::getEngineInfo();
+std::string LLTextureCache::sHeaderCacheEncoderVersion = LLImageJ2C::getCacheInfo();
 
 #if defined(ADDRESS_SIZE)
 U32 LLTextureCache::sHeaderCacheAddressSize = ADDRESS_SIZE;
@@ -1112,7 +1112,7 @@ void LLTextureCache::setEntriesHeader()
     if (sHeaderEncoderStringSize < sHeaderCacheEncoderVersion.size() + 1)
     {
         // For simplicity we use predefined size of header, so if version string
-        // doesn't fit, either getEngineInfo() returned malformed string or
+        // doesn't fit, either getCacheInfo() returned malformed string or
         // sHeaderEncoderStringSize need to be increased.
         // Also take into account that c_str() returns additional null character
         LL_ERRS() << "Version string doesn't fit in header" << LL_ENDL;

@@ -4,10 +4,10 @@
 **Branch:** `codex/apple-silicon-metal`.
 **Renderer code checkpoint:** `b7bc118d68`; matching source cb840/68841 built/checked/launched.
 **Owner-passed viewer:** `cb840a5b9d`,26.4.0.68841; reported beard-light cutoff fixed.
-Alpha4 version68841 is built/tested/packaged/published. Older owner-requested
-f254 launch observed PID90460; no later launch/login/screenshots by the agent.
-Utility unexecuted. Device-only tests and CPU/Foundation probes are bounded.
-The owner-stopped20FPS campaign remains deferred.
+Alpha4 version68841 remains the published baseline; utility unexecuted,20FPS campaign deferred.
+Owner accepted [decoder workers/OpenHTJ2K](../work/active/openhtj2k-accepted.md) on2026-11-12 and explicitly approved push to this branch.
+Owner-tested68860 build/ARM64/signature+736image assertions pass;181.755s profile confirms4OpenHTworkers.
+Publication is decoder-only; private captures and unrelated renderer work stay local.
 
 ## Current implementation
 

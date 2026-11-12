@@ -71,10 +71,14 @@ if(AL_BUILD_TESTS)
 
   # The library itself: the locks images are read and written under, and the
   # J2C codestream layout and the byte targets it gives.
+  set(al_j2c_experiment_tests "")
+  if(AL_EXPERIMENTAL_OPENHTJ2K)
+    list(APPEND al_j2c_experiment_tests tests/alopenhtj2k_test.cpp)
+  endif()
   al_add_test_binary(
     llimage_tests
     PROJECT llimage
-    SOURCES tests/llimage_test.cpp tests/alj2clayout_test.cpp
+    SOURCES tests/llimage_test.cpp tests/alj2clayout_test.cpp ${al_j2c_experiment_tests}
     LIBRARIES llimage ll::openjpeg
   )
 endif()

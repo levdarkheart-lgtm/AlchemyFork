@@ -7,11 +7,11 @@
 
 ## Current implementation — 2026-11-11
 
-Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal,
-with original-viewer inspection before fixes. No viewer, utility, host or native
-window launch initially. Owner subsequently requested ready viewer launch for
-their confirmation; fresh26.4.0d68817 was observed as PID90460. No login action
-or screenshot by agent; utility unexecuted. Owner-stopped20FPS campaign remains deferred.
+Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal; inspect original behavior before fixes.
+Prior68817/PID90460 launch observed, no agent login/screenshot; utility unexecuted and20FPS deferred.
+Owner accepted [worker sizing/OpenHTJ2K](openhtj2k-accepted.md) and explicitly approved publication2026-11-12.
+Push only decoder/tool/evidence scope here; unrelated local renderer changes retain separate approval.
+The OpenHT integration stays opt-in, with pinned local dependency and unchanged compressed-cache identity.
 Reference source1eb44bbd1bdc76d0100c75699bad1fb337e8cb45.
 
 Latest: [native finalization/preview/media closure](native-finalization-and-media-closure.md),
