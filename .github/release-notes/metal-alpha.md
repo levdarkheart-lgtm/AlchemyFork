@@ -5,10 +5,14 @@ The download contains an ad-hoc-signed native ARM64 macOS application archive
 and its SHA-256 checksum. The viewer uses the open-source dependency set; no
 private Alchemy registry components are included.
 
-This update completes additional native RLVa and developer controls, retires
-displaced rendering code and resources, and fixes snapshot/SMAA/water behavior.
-Further corrections preserve debug feature masks, refresh avatar preview morphs,
-retry current preview buffer generations, and honor media pixel layout and alpha.
+This update includes native parcel music through Core Audio and AVFoundation,
+with song metadata, playlist/reconnect handling, and preserved WebRTC voice and
+video ownership. Renderer preparation happens during login to avoid the reported
+black startup world. The accepted OpenHTJ2K texture decoder is rebuilt from its
+pinned open-source revision instead of falling back to another decoder.
+
+It also retains prior native RLVa/developer controls, snapshot/SMAA/water fixes,
+avatar preview generation repairs and media pixel-layout corrections.
 
 The build gates strict owned-source OpenGL removal, ARM64 slices, code signing,
 direct viewer/media-host graphics imports and archive checksums. Foreign browser

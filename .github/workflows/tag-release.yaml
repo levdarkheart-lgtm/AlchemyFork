@@ -1,87 +1,244 @@
-name: Tag a Build
+name: Build Apple Silicon release (manual)
+run-name: Apple Silicon release · ${{ inputs.source_ref }} · alpha${{ inputs.alpha_number }}
 
 on:
   workflow_dispatch:
     inputs:
-      channel:
-        description: "Channel to configure the build"
+      source_ref:
+        description: Source branch, tag or commit (native Metal branch)
         required: true
-        type: choice
-        default: "Test"
-        options:
-        - "Test"
-        - "Develop"
-        - "Project"
-        - "Beta"
-        - "Release"
-      project:
-        description: "Project Name (used for channel name in project builds, and tag name for all builds)"
+        type: string
+        default: codex/apple-silicon-metal
+      alpha_number:
+        description: Alpha release number; choose a new number for a new release
+        required: true
+        type: string
+        default: '5'
+      release_tag:
+        description: Optional versioned tag; empty generates VERSION.REVISION-alphaN
         required: false
-      tag_override:
-        description: "Override the tag name (optional). If the tag already exists, a numeric suffix is appended."
-        required: false
+        type: string
 
-permissions: {}
+permissions:
+  contents: read
+
+# One deliberately requested Mac build at a time. No push, tag or timer trigger.
+concurrency:
+  group: apple-silicon-manual-release
+  cancel-in-progress: false
 
 jobs:
-  tag-release:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # The tag is created with the GITHUB_TOKEN, so its push starts no build;
-    # the build is dispatched on the tag with this run's channel and project.
-    # A dispatch is the one event the GITHUB_TOKEN may start a workflow with.
+  release:
+    name: Build and publish native macOS ARM64
+    runs-on: macos-26
+    timeout-minutes: 240
     permissions:
       contents: write
-      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_MAX_CONCURRENCY: '2'
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+      master_message_template_checkout: ${{ github.workspace }}/.master-message-template
     steps:
-      - name: Create Tag and Build It
-        uses: actions/github-script@v9
-        env:
-          # Inputs reach the script through the environment, never pasted
-          # into it, so no input can become code.
-          CHANNEL: ${{ inputs.channel }}
-          PROJECT: ${{ inputs.project }}
-          TAG_OVERRIDE: ${{ inputs.tag_override }}
+      - name: Checkout requested source
+        uses: actions/checkout@v7
         with:
-          script: |
-            const channel = process.env.CHANNEL;
-            const project = (process.env.PROJECT || '').trim();
-            if (channel === 'Project' && !project) {
-              core.setFailed('A Project build needs a project name');
-              return;
-            }
-            // A tag name cannot hold spaces; the build reads underscores back as spaces.
-            const suffix = project.replace(/\s+/g, '_') || new Date().toISOString().slice(0, 10);
-            const override = (process.env.TAG_OVERRIDE || '').trim();
-            const baseTag = override || `Alchemy_${channel}#${context.sha.slice(0, 8)}-${suffix}`;
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: recursive
 
-            // Try the base tag first, then append -2, -3, etc. if it already exists
-            let tag = baseTag;
-            for (let attempt = 1; ; attempt++) {
-              try {
-                await github.rest.git.createRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: `refs/tags/${tag}`,
-                  sha: context.sha
-                });
-                core.info(`Created tag: ${tag}`);
-                break;
-              } catch (e) {
-                if (e.status === 422 && attempt < 10) {
-                  core.info(`Tag '${tag}' already exists, trying next suffix...`);
-                  tag = `${baseTag}-${attempt + 1}`;
-                } else {
-                  throw e;
-                }
-              }
-            }
+      - name: Pin source and release identity before building
+        id: identity
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+          ALPHA_NUMBER: ${{ inputs.alpha_number }}
+        run: |
+          set -euo pipefail
+          [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]]
+          [[ "$ALPHA_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo '::error::Alpha number must be a positive integer'; exit 1; }
+          source_sha="$(git rev-parse HEAD)"
+          short_version="$(tr -d '[:space:]' < indra/newview/VIEWER_VERSION.txt)"
+          revision="$(git rev-list --count HEAD)"
+          tag="${REQUESTED_TAG:-$short_version.$revision-alpha$ALPHA_NUMBER}"
+          expected_prefix="$short_version."
+          [[ "$tag" == "$expected_prefix"* ]] || { echo '::error::Tag version must match the source version'; exit 1; }
+          tag_re='^([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+)-alpha([0-9]+)$'
+          [[ "$tag" =~ $tag_re ]] || { echo '::error::Use a tag like 26.4.0.68899-alpha5'; exit 1; }
+          revision="${BASH_REMATCH[2]}"
+          [[ "${BASH_REMATCH[3]}" == "$ALPHA_NUMBER" ]] || { echo '::error::Tag and alpha number differ'; exit 1; }
+          git check-ref-format "refs/tags/$tag"
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            [[ "$(git rev-parse "$tag^{commit}")" == "$source_sha" ]] || { echo '::error::Existing tag points at different source'; exit 1; }
+          fi
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "::error::Release $tag already exists; choose a new alpha number or tag"
+            exit 1
+          fi
+          {
+            echo "source_sha=$source_sha"
+            echo "tag=$tag"
+            echo "channel=Alchemy Metal Alpha $ALPHA_NUMBER"
+            echo "title=Alchemy Metal Alpha $ALPHA_NUMBER ($tag)"
+          } >> "$GITHUB_OUTPUT"
+          echo "revision=$revision" >> "$GITHUB_ENV"
+          printf '### Requested release\n\nSource: `%s`\n\nTag: `%s`\n' "$source_sha" "$tag" >> "$GITHUB_STEP_SUMMARY"
 
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'build.yaml',
-              ref: `refs/tags/${tag}`,
-              inputs: { channel, project }
-            });
-            core.info(`Dispatched build of ${tag} on the ${channel} channel`);
+      - name: Checkout master message template
+        uses: actions/checkout@v7
+        with:
+          repository: secondlife/master-message-template
+          path: .master-message-template
+          persist-credentials: false
+
+      - name: Verify Apple toolchain
+        id: toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          sw_vers
+          xcrun --find metal || xcodebuild -downloadComponent MetalToolchain
+          xcrun --find metal
+          sdk="$(xcrun --sdk macosx --show-sdk-version)"
+          [[ "${sdk%%.*}" -ge 26 ]] || { echo '::error::macOS SDK 26 or later is required'; exit 1; }
+          xcode="$(xcodebuild -version | tr '\n ' '--')"
+          vcpkg="$(git -C vcpkg rev-parse HEAD)"
+          echo "cache_key=$xcode-$sdk-$vcpkg" >> "$GITHUB_OUTPUT"
+          echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+          echo "MASTER_MESSAGE_TEMPLATE_SHA=$(git -C .master-message-template rev-parse HEAD)" >> "$GITHUB_ENV"
+          printf 'VCPKG_BINARY_SOURCES=clear;files,%s/vcpkg-binaries,readwrite\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Set up open-source build tools
+        uses: ./.github/actions/setup-build
+
+      - name: Verify harness Python dependencies
+        shell: bash
+        run: python -c "import numpy, yaml; print('NumPy', numpy.__version__, 'PyYAML', yaml.__version__)"
+
+      - name: Validate source and harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/metal/validate_harness.py
+          python -m unittest discover -s tools/metal/tests -v
+          python -m py_compile tools/metal/*.py
+          bash -n tools/metal/*.sh
+          python tools/metal/audit_gl.py --strict
+          git diff --check
+
+      - name: Restore dependency binary cache
+        id: cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-binaries
+          key: apple-arm64-vcpkg-${{ steps.toolchain.outputs.cache_key }}-${{ hashFiles('indra/vcpkg*.json', 'indra/cmake/ports/**', 'indra/cmake/triplets/**', '.github/actions/setup-build/action.yaml') }}
+          restore-keys: |
+            apple-arm64-vcpkg-${{ steps.toolchain.outputs.cache_key }}-
+
+      - name: Build accepted OpenHTJ2K decoder from pinned source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/metal/build_openhtj2k.sh \
+            --source-dir "$RUNNER_TEMP/openhtj2k/source" \
+            --build-dir "$RUNNER_TEMP/openhtj2k/build" \
+            --receipt "$RUNNER_TEMP/openhtj2k/build-receipt.json" --jobs 2
+
+      - name: Configure native Release build
+        id: configure
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.identity.outputs.channel }}
+        run: |
+          set -euo pipefail
+          template="$master_message_template_checkout/message_template.msg"
+          test -r "$template"
+          cmake -S indra --preset ninja-os-arm64 \
+            -DVCPKG_INSTALL_OPTIONS=--clean-after-build \
+            -DVCPKG_TARGET_TRIPLET=arm64-osx-alchemy-release \
+            -DAL_BUILD_VIEWER=ON -DAL_BUILD_APPEARANCE_UTILITY=OFF \
+            -DAL_BUILD_TESTS=OFF -DAL_BUILD_PACKAGE=ON -DAL_USE_VELOPACK=OFF \
+            -DAL_USE_LTO=OFF -DAL_USE_TRACY=OFF -DAL_ENABLE_RELEASE_DEBUG_LOGGING=OFF \
+            -DAL_USE_SENTRY=OFF -DAL_CHANNEL:STRING="$CHANNEL" -DAL_GRID=agni \
+            -DAL_TEMPLATE_VERIFIER_MASTER_URL="file://$template" \
+            -DAL_EXPERIMENTAL_OPENHTJ2K=ON \
+            -DAL_OPENHTJ2K_SOURCE_DIR="$RUNNER_TEMP/openhtj2k/source" \
+            -DAL_OPENHTJ2K_LIBRARY="$RUNNER_TEMP/openhtj2k/build/libopenhtj2k.a" \
+            -DAL_OPENHTJ2K_BUILD_RECEIPT="$RUNNER_TEMP/openhtj2k/build-receipt.json"
+
+      - name: Save dependency binaries for the next manual build
+        if: ${{ !cancelled() && steps.configure.outcome == 'success' && steps.cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-binaries
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Compile viewer
+        shell: bash
+        run: cmake --build build-Darwin-ninja-os-arm64 --config Release --parallel 2
+
+      - name: Package and verify application
+        id: package
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.identity.outputs.tag }}
+          SOURCE_SHA: ${{ steps.identity.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          package="$RUNNER_TEMP/package"
+          unpacked="$RUNNER_TEMP/unpacked"
+          mkdir -p "$package" "$unpacked"
+          cpack --config build-Darwin-ninja-os-arm64/CPackConfig.cmake -C Release -G TXZ -B "$package"
+          archives=("$package"/*.tar.xz)
+          [[ ${#archives[@]} == 1 && -f "${archives[0]}" ]]
+          tar -xJf "${archives[0]}" -C "$unpacked"
+          app="$(find "$unpacked" -maxdepth 3 -type d -name '*.app' -print -quit)"
+          test -n "$app"
+          tools/metal/verify_app.sh "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          tools/metal/verify_release.py "$app" --source-sha "$SOURCE_SHA" \
+            --tag "$RELEASE_TAG" --openht-receipt "$RUNNER_TEMP/openhtj2k/build-receipt.json" \
+            --output "$package/build-provenance.json"
+          zip="$package/Alchemy-Metal-$RELEASE_TAG-macos-arm64.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
+          (cd "$package" && shasum -a 256 "$(basename "$zip")" > "$(basename "$zip").sha256")
+          verify="$RUNNER_TEMP/zip-verification"
+          mkdir -p "$verify"
+          ditto -x -k "$zip" "$verify"
+          copied="$verify/$(basename "$app")"
+          codesign --verify --deep --strict --verbose=2 "$copied"
+          (cd "$package" && shasum -a 256 -c "$(basename "$zip").sha256")
+          {
+            echo "archive=$zip"
+            echo "checksum=$zip.sha256"
+            echo "provenance=$package/build-provenance.json"
+          } >> "$GITHUB_OUTPUT"
+
+      # Release assets avoid duplicating the large app into Actions artifact
+      # storage. Do not overwrite any existing release or reuse another tag.
+      - name: Publish the requested prerelease
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.identity.outputs.tag }}
+          SOURCE_SHA: ${{ steps.identity.outputs.source_sha }}
+          RELEASE_TITLE: ${{ steps.identity.outputs.title }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+          CHECKSUM: ${{ steps.package.outputs.checksum }}
+          PROVENANCE: ${{ steps.package.outputs.provenance }}
+        run: |
+          set -euo pipefail
+          if ! git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            gh api --method POST "repos/$GH_REPO/git/refs" \
+              -f ref="refs/tags/$RELEASE_TAG" -f sha="$SOURCE_SHA" > /dev/null
+          fi
+          gh release create "$RELEASE_TAG" "$ARCHIVE" "$CHECKSUM" "$PROVENANCE" \
+            --verify-tag --draft --prerelease --title "$RELEASE_TITLE" \
+            --notes-file .github/release-notes/metal-alpha.md
+          gh release edit "$RELEASE_TAG" --draft=false
+          url="$(gh release view "$RELEASE_TAG" --json url --jq .url)"
+          printf '\n### Published release\n\n%s\n' "$url" >> "$GITHUB_STEP_SUMMARY"
+          echo "$url"

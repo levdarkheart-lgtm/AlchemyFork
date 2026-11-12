@@ -1,0 +1,3 @@
+# Dependencies for the portable Metal harness/tool tests and workflow policy checks.
+numpy==2.4.3
+PyYAML==6.0.3
