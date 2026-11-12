@@ -84,6 +84,10 @@ or shadow data and other projector validation failures need separate diagnosis.
   Real cookie/shadow/encoder failures stay transactional. Automated source/GPU
   regressions and candidate build pass; ready for owner scene test. No push.
 
+- 2026-11-12: Owner-requested exact68869 launch/restart and pre-teleport
+  profile completed locally:181.041s trace saved/TOC exported0, teleport start
+  and finish inside capture. Detailed metrics and owner acceptance pending.
+
 ## PPD-002 — Busy-region world freezes while nametags keep turning
 
 - Status: investigating

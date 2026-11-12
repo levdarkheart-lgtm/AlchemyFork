@@ -10,7 +10,7 @@ db398/68860 build/ARM64/signature+76tools+736image assertions pass; PID67814/4Op
 
 ## Current implementation
 
-PPD-001 [projector admission](../work/active/projector-per-light-admission.md): local6404f9f6ad/68869 built/launched PID85968;72CPU+27016GPU assertions pass, signed ranges retained/malformed lights isolated. Ready for owner; PPD-002 cause unproved.
+PPD-001 [projector admission](../work/active/projector-per-light-admission.md): local6404f9f6ad/68869 built/launched PID86326;72CPU+27016GPU assertions pass, signed ranges retained/malformed lights isolated. 181.041s teleport profile saved; ready for owner; PPD-002 cause unproved.
 Mandatory [post-port defects](../POST_PORT_DEFECTS.md): PPD-001–004/006 unresolved; PPD-005 owner-accepted with scoped push approval. Other source defects and busy-turn report remain distinct.
 Unapproved2c11/5ed push reverted as0f7; original beard-light68841 remains owner-passed.
 Keep future fixes local until explicit owner approval to push after testing.

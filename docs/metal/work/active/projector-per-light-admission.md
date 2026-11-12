@@ -109,3 +109,24 @@ bundle. Command exit0; exact executable observed as PID85968. Receipt:
 `artifacts/metal/ppd001-projector-fix-20261112/launch-receipt.json`.
 Owner controls login/location/settings; no scene, screenshot or visual-parity
 verification is implied. Owner acceptance/push approval remain pending.
+
+## Owner-requested teleport profile
+
+Owner restarted the same hash-verified68869 candidate at14:15UTC (PID86326),
+then requested profiling before teleport and an explicit ready signal.
+`xcrun xctrace record --template 'Game Performance Overview' --attach 86326
+--time-limit 3m --no-prompt --output <private>/projector-before-teleport-3min.trace`
+ran to its time limit and exited0. Recording-active confirmation preceded the
+owner's teleport. Exported TOC exits0:14:23:13.598–14:26:14.638UTC,
+181.040704seconds. Sanitized viewer-log anchors place teleport start14:23:39
+and finish14:23:42UTC, both inside the trace (about25.4/28.4seconds after start).
+Owner reported arrival during recording. This captures the transition, unlike
+the earlier post-arrival decoder trace.
+
+Local ignored evidence: `artifacts/metal/ppd001-profile-20261112/`, including
+capture-plan, recording-active, owner-arrival-report, runtime-events,
+capture-complete, record.log, profile-toc.xml and raw trace. Instruments emitted
+DWARF cursor warnings during finalization but saved successfully; detailed CPU
+stack-symbol completeness and metrics have not yet been analyzed. No matched
+performance comparison, fresh-world/visual pass or owner fix acceptance inferred.
+PPD-001 remains ready_for_owner; PPD-002 cause remains unproved. No push.
