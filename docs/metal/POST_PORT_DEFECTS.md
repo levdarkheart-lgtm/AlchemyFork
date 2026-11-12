@@ -244,6 +244,11 @@ as a Metal-introduced regression or a cause of PPD-002.
   while continuing to play in68876. Implement/build locally without changing
   the running viewer; profile afterward. Subjective improvement is recorded;
   cross-hardware optimum, adaptive behavior and push approval remain unverified.
+- 2026-11-12: Local98f41/68880 adaptive candidate built/ARM64/signature/strict
+  source checks pass;44test cases/1222assertions plus platform and controller
+  sanitizer checks pass. Worker admission, callbacks, post failure and draining
+  exercised. Original apps/cache preserved. Candidate remains unlaunched;
+  runtime loading benefit, owner confirmation and push approval are pending.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 

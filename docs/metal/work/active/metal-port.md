@@ -7,7 +7,7 @@ PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/
 
 PPD-001 [projector admission](projector-per-light-admission.md):6404/68869; [warm analysis](../../research/warm-cache-profile-analysis-2026-11-12.md):142.911decodeCPU-s,42.43%main shadows; late decode0.645s/22.377FPS, GPUinflight69.823ms(avg overlapping spans). Next palette reuse + GPUencoder attribution. Owner pending; PPD-002 cause unproved.
 
-[Adaptive decoder admission](adaptive-decoder-concurrency.md): owner likes fixed6HUD/world loading and authorizes local reactive/hardware-aware build. Prior [two cold profiles](six-decoder-cold-warm-experiment.md)/apps/caches preserved. llimage compile passes; policy/worker/platform tests and distinct app build underway. No adaptive launch/push.
+[Adaptive decoder admission](adaptive-decoder-concurrency.md):98f41/68880 build/346ARM64/signature/strictsource and44cases/1222assertions+platform/sanitizers pass. M1budget2/4/6; admission/latency telemetry. App unlaunched; owner-coordinated launch/profile next. Prior [cold profiles](six-decoder-cold-warm-experiment.md)/3apps/caches preserved. Local/no push.
 ## Current implementation — 2026-11-11
 
 Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal with original inspection before fixes. No viewer/utility/host/native window launch initially.

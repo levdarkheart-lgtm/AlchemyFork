@@ -114,7 +114,32 @@ existing current-source main build is used instead, with target-only tests and
 OpenHT enabled. Both the failed request and successful replacement are retained.
 
 Preliminary full viewer build retries successfully(exit0) after the LLSD fix.
-Final source-exact configure/build/app verification is next. No adaptive viewer
-has been launched and no adaptive loading gain is observed.
+Final source-exact configure/build exits0/0. Candidate26.4.0.68880 is built from
+`98f41e652beb6150d9012cd25af102bd6c5e76df`, Release/O3/LTO off, in
+`build-Darwin-ninja-os-arm64-shadow-occlusion/newview/Release/Alchemy Metal Adaptive Decoders.app`.
+Executable SHA256 `243b5787b6b3d9789953a34b58e6b58615c859861c41c29dfe19c1400b5cd3d4`;
+the exact source SHA is present in the binary. Verify_app exits0:346Mach-O,
+zero invalid non-ARM64 slices. Strict deep codesign verification exits0.
+Production source audit exits0:3516files/912informational/0blockers/0errors.
+All three older viewer executable hashes are rechecked unchanged: fixed6/68876,
+projector68869 and acceptedOpenHT68860. Private final-build/configure receipts,
+build-identity.json, preserved-apps-after.json and validation.json bind evidence.
+
+Exact final build commands:
+
+```sh
+cmake -S indra --preset ninja-os-arm64 -B build-Darwin-ninja-os-arm64-shadow-occlusion '-DAL_CHANNEL:STRING=Alchemy Metal Adaptive Decoders' -DAL_BUILD_TESTS=OFF
+AL_METAL_BUILD_DIR=build-Darwin-ninja-os-arm64-shadow-occlusion AL_METAL_CONFIG=Release AL_METAL_JOBS=3 nice -n 10 tools/metal/build.sh build
+tools/metal/verify_app.sh 'build-Darwin-ninja-os-arm64-shadow-occlusion/newview/Release/Alchemy Metal Adaptive Decoders.app'
+codesign --verify --deep --strict 'build-Darwin-ninja-os-arm64-shadow-occlusion/newview/Release/Alchemy Metal Adaptive Decoders.app'
+```
+
+Next: owner-coordinated launch of this exact app, retain the selected existing
+cache via equal CacheLocation/NewCacheLocation without purge/migration, and
+start recording before the target arrival. Verify startup topology/normal/max
+and live ImageDecodeAdaptive, then correlate admission logs with CPU samples.
+Use ImageDecodeAdaptive=false in the same binary for a later matched fixed-max
+comparison. No adaptive viewer has been launched, owner confirmation/push
+approval remains pending, and no adaptive loading gain is observed.
 Original68876 log shows normal owner-session shutdown at17:42:22Z; no agent
 closed it. Its binary remains unchanged; cache contents remain preserved.
