@@ -30,6 +30,12 @@
 #include <algorithm>
 #include <vector>
 
+#if defined(AL_EXPERIMENTAL_OPENHTJ2K) && AL_EXPERIMENTAL_OPENHTJ2K
+#include "decoder.hpp"
+#include <limits>
+#include <stdexcept>
+#endif
+
 // this is defined so that we get static linking.
 #include "openjpeg.h"
 
@@ -40,6 +46,15 @@ LLImageJ2CImpl* fallbackCreateLLImageJ2CImpl()
 }
 
 std::string LLImageJ2COJ::getEngineInfo() const
+{
+#if defined(AL_EXPERIMENTAL_OPENHTJ2K) && AL_EXPERIMENTAL_OPENHTJ2K
+    return std::string("OpenHTJ2K 0.27.0 decode; ") + getCacheInfo();
+#else
+    return getCacheInfo();
+#endif
+}
+
+std::string LLImageJ2COJ::getCacheInfo() const
 {
 #ifdef OPENJPEG_VERSION
     return std::string("OpenJPEG: " OPENJPEG_VERSION ", Runtime: ")
@@ -952,6 +967,104 @@ bool LLImageJ2COJ::decodeImpl(LLImageJ2C &base, LLImageRaw &raw_image, F32 decod
         ++position;
     }
 
+#if defined(AL_EXPERIMENTAL_OPENHTJ2K) && AL_EXPERIMENTAL_OPENHTJ2K
+    // Keep the original per-call byte limit and raw-image contract. The outer
+    // ImageDecode pool owns parallelism; each codec stays on its calling thread.
+    static const bool announced = []
+    {
+        LL_INFOS("Texture") << "Experimental JPEG2000 decoder: OpenHTJ2K 0.27.0; "
+                            << "one caller thread per image" << LL_ENDL;
+        return true;
+    }();
+    (void)announced;
+
+    try
+    {
+        const S32 data_size = base.getDataSize();
+        const S32 max_bytes = llmin(base.getMaxBytes() ? base.getMaxBytes() : data_size, data_size);
+        if (!base.getData() || max_bytes <= 0 || first_channel < 0 || max_channel_count <= 0)
+        {
+            throw std::runtime_error("Invalid input bytes or channel range");
+        }
+
+        const U8 requested_discard = llmin<U8>(U8(base.mDiscardLevel), 31);
+        open_htj2k::openhtj2k_decoder decoder(base.getData(), size_t(max_bytes), requested_discard, 1);
+        decoder.parse();
+        const U8 effective_discard = llmin(requested_discard, decoder.get_max_safe_reduce_NL());
+        if (effective_discard != requested_discard)
+        {
+            decoder.init(base.getData(), size_t(max_bytes), effective_discard, 1);
+            decoder.parse();
+        }
+
+        const S32 image_channels = decoder.get_num_component();
+        const S32 channels = llmin(image_channels - first_channel, max_channel_count);
+        if (channels <= 0)
+        {
+            throw std::runtime_error("Requested first_channel beyond decoded components");
+        }
+
+        struct DecodedPlanes
+        {
+            std::vector<int32_t*> data;
+            ~DecodedPlanes() { for (auto* plane : data) delete[] plane; }
+        } planes;
+        std::vector<uint32_t> widths, heights;
+        std::vector<uint8_t> depths;
+        std::vector<bool> signs;
+        decoder.invoke_line_based(planes.data, widths, heights, depths, signs);
+        // A truncated codestream is a valid progressive preview, not a failure.
+        if (planes.data.size() != size_t(image_channels) || widths.size() != planes.data.size() ||
+            heights.size() != planes.data.size())
+        {
+            throw std::runtime_error("Incomplete decoded component layout");
+        }
+        const U32 width = widths[first_channel];
+        const U32 height = heights[first_channel];
+        if (!width || !height || width > std::numeric_limits<U16>::max() ||
+            height > std::numeric_limits<U16>::max())
+        {
+            throw std::runtime_error("Decoded dimensions exceed raw image limits");
+        }
+        for (S32 dest = 0; dest < channels; ++dest)
+        {
+            const S32 source = first_channel + dest;
+            if (!planes.data[source] || widths[source] != width || heights[source] != height)
+            {
+                throw std::runtime_error("Requested components have incompatible dimensions");
+            }
+        }
+        if (!raw_image.resize(U16(width), U16(height), S8(channels)) || !raw_image.getData())
+        {
+            throw std::runtime_error("Raw image allocation failed");
+        }
+
+        U8* raw = raw_image.getData();
+        for (U32 y = 0; y < height; ++y)
+        {
+            const size_t source_row = size_t(height - 1 - y) * width;
+            const size_t destination_row = size_t(y) * width * channels;
+            for (U32 x = 0; x < width; ++x)
+            {
+                for (S32 dest = 0; dest < channels; ++dest)
+                {
+                    // Preserve the viewer's integer-to-U8 conversion and channel
+                    // ordering, including the separately requested bake aux data.
+                    raw[destination_row + size_t(x) * channels + dest] =
+                        U8(planes.data[first_channel + dest][source_row + x]);
+                }
+            }
+        }
+        base.setDiscardLevel(effective_discard);
+    }
+    catch (const std::exception& error)
+    {
+        base.setLastError(std::string("OpenHTJ2K decode failed: ") + error.what());
+        base.decodeFailed();
+        LL_DEBUGS("Texture") << "OpenHTJ2K decode failed: " << error.what() << LL_ENDL;
+    }
+    return true; // done; LLImageJ2C deletes raw data when decodeFailed() was set
+#else
     // Single-shot decode. Matches KDU's per-call decode pattern: build a
     // fresh codec, parse header, decode whatever bytes are present, copy
     // out, destroy. The patched OpenJPEG handles truncation tolerantly
@@ -1056,6 +1169,7 @@ bool LLImageJ2COJ::decodeImpl(LLImageJ2C &base, LLImageRaw &raw_image, F32 decod
     base.setDiscardLevel(f);
 
     return true; // done
+#endif
 }
 
 
