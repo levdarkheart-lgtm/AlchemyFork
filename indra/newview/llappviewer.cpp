@@ -2340,14 +2340,10 @@ bool LLAppViewer::initThreads()
     //auto configure thread count
     LLSD threadCounts = gSavedSettings.getLLSD("ThreadPoolSizes");
 
-    // get the number of concurrent threads that can run
-    S32 cores = std::thread::hardware_concurrency();
-#if LL_DARWIN
-    if (!gGLManager.mIsApple)
-    {
-        cores /= 2;
-    }
-#endif
+    // Apple Silicon has no SMT. Use its reported CPU count directly, without
+    // depending on graphics vendor detection before the window is initialized.
+    const S32 detected_cores = std::thread::hardware_concurrency();
+    S32 cores = detected_cores;
     U32 max_cores = gSavedSettings.getU32("EmulateCoreCount");
     if (max_cores != 0)
     {
@@ -2357,6 +2353,10 @@ bool LLAppViewer::initThreads()
     // always use at least 2 threads for image decoding to prevent
     // a single texture blocking all other textures from decoding
     S32 image_decode_count = llclamp(cores - 6, 2, 16);
+
+    LL_INFOS("InitInfo") << "ImageDecode workers: " << image_decode_count
+                        << "; detected CPU cores: " << detected_cores
+                        << "; effective CPU cores: " << cores << LL_ENDL;
 
     threadCounts["ImageDecode"] = image_decode_count;
     gSavedSettings.setLLSD("ThreadPoolSizes", threadCounts);
