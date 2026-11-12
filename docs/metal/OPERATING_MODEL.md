@@ -3,7 +3,7 @@
 The owner gives **one product objective**. Codex manages all internal engineering tasks and context. We do not require the owner to drive phases, approve each workstream, or repeatedly restate the mission. Work is never called complete just because a plan, demo or isolated experiment works.
 
 ## Every new session
-1. Read `AGENTS.md`, `PRODUCT.md`, this document, `state/CURRENT.md` and `work/active/metal-port.md`. Use relevant `.agents/skills/` guidance only when triggered.
+1. Read `AGENTS.md`, `PRODUCT.md`, this document, [POST_PORT_DEFECTS.md](POST_PORT_DEFECTS.md), `state/CURRENT.md` and `work/active/metal-port.md`. Use relevant `.agents/skills/` guidance only when triggered.
 2. Run `git status --short --branch`, inspect `git log -3`, determine local machine capabilities; ensure not to discard uncommitted user/other-agent changes.
 3. Confirm environment and build facts; use actual source to update inaccurate assumptions. Select the highest-impact unblocked engineering action and **start modifying code**.
 4. Verify at the narrowest practical scope, then integrate. Do not defer validation indefinitely; no fake passing test reports. If GPU execution is unavailable, explicitly record that limit and use Mac when available.
@@ -12,6 +12,25 @@ The owner gives **one product objective**. Codex manages all internal engineerin
 `work/active/metal-port.md` is the single current execution plan. Add work items as needed; each has an ID, dependencies, acceptance/evidence and current state (`todo`, `doing`, `blocked`, `deferred`, `complete`). User does not need to approve every row. Long investigations may get a separate file using `work/TEMPLATE.md`; index it from the active ledger. Move chronological checkpoint detail into an indexed file under `work/archive/` and fully verified standalone records into `work/completed/` (create when needed), retaining links.
 
 `state/CURRENT.md` is a brief recovery snapshot: commit/branch, observed local build, Metal implementation status, test/profiling evidence, complete-product advancement assessment, deferred critical work and high-impact next action. Move superseded observations into the indexed `state/archive/`; do not grow the recovery file into a chronological transcript. `state/BLOCKERS.md` contains reproducible blockers only with symptoms, commands, attempted remedies, owner/decision and unblocking condition.
+
+## Mandatory defect retention
+
+[POST_PORT_DEFECTS.md](POST_PORT_DEFECTS.md) is the authoritative defect register.
+Every discovered defect and owner-reported regression must be entered before a
+repair attempt or handoff, including suspected cases with an unknown cause.
+Use its stable `PPD-NNN` ID in work notes, tests and checkpoint summaries. Keep
+source-confirmed defects distinct from incidents they have not been proved to
+cause. Update evidence, next action and dated history after failed tests,
+retests, reverts, deferrals and owner decisions. Never delete or renumber records;
+retain verified and duplicate entries, and reopen an existing ID on recurrence.
+
+Build/test success alone cannot close a record. Verification needs the register's
+evidence and owner-confirmation requirements. Proposed fixes and their records
+remain local until explicit owner push approval; verification is not publishing
+permission. Run the harness after register changes. Ordinary validation permits
+open defects, while `--release` rejects unresolved records. The harness checks
+structure, evidence links and retained IDs against available Git history; humans
+must still register discoveries and assess whether the evidence supports a claim.
 
 ## Engineering ownership and parallel agents
 - One **integrator** owns app entrypoint, shared render execution, final build and merged work queue. Independent agents may own resource memory, shaders, UI text, media, performance or tests in separate worktrees **only if edit sets do not overlap**.

@@ -21,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Retain the parent register so a committed defect deletion is checked.
+          fetch-depth: 2
       - name: Validate source-independent harness
         run: |
           set -euo pipefail

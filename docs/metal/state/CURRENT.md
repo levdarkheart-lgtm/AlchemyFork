@@ -11,7 +11,7 @@ PPD-005:160a fixes2→4;64f/68855 build/ARM64/signature+56tools pass. Actual SL 
 
 ## Current implementation
 
-Mandatory [post-port defects](../POST_PORT_DEFECTS.md): PPD-001–004 open; source defects and the busy-turn report remain distinct.
+Mandatory [post-port defects](../POST_PORT_DEFECTS.md): PPD-001–006 unresolved; source defects and the busy-turn report remain distinct.
 Unapproved2c11/5ed push reverted as0f7; original beard-light68841 remains owner-passed.
 Keep future fixes local until explicit owner approval to push after testing.
 

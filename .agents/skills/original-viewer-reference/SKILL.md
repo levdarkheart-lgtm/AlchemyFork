@@ -11,6 +11,12 @@ retain. Use this skill together with `metal-port` for implementation and
 
 ## Mandatory pre-fix gate
 
+Record the reported regression or discovered defect in
+`docs/metal/POST_PORT_DEFECTS.md`, or update its existing PPD ID, before a fix.
+Keep source proof separate from attribution to an owner-reported incident.
+Preserve failed retests and reverts; close only under the register's evidence
+and owner-confirmation rules.
+
 Before editing a fix, identify and inspect the original path that owns the same
 behavior. Prefer the exact Alchemy fork revision immediately before the relevant
 GL code was removed; find it with source history (`git log -S`, `git log -G`,

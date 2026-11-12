@@ -163,7 +163,7 @@ facelight-cutoff-20261111/release-replacement.json; no Actions/billing changes.
 This correction is separate from the closed porting goal. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
-Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–004 open; explicit owner approval required before future fix pushes.
+Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–006 unresolved; explicit owner approval required before future fix pushes.
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
 utility unexecuted; prior f254 launch observation stays source-pinned.

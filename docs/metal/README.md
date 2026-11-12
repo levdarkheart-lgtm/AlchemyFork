@@ -11,6 +11,7 @@ This directory is the persistent product and engineering record for Codex. `AGEN
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Actual source boundaries, ownership and replacement strategy |
 | [APPLE_SILICON.md](APPLE_SILICON.md) | Hardware capabilities, specialization and NPU policy |
 | [VALIDATION.md](VALIDATION.md) | Feature parity and release gates |
+| [POST_PORT_DEFECTS.md](POST_PORT_DEFECTS.md) | Mandatory retained register of discovered defects, owner reports, repair attempts and verification |
 | [PERFORMANCE.md](PERFORMANCE.md) | Comparable measurements and success thresholds |
 | [INSTRUMENTATION.md](INSTRUMENTATION.md) | Codex-owned frame telemetry and capture implementation contract |
 | [OPERATING_MODEL.md](OPERATING_MODEL.md) | Autonomous work, review and handoff conventions |

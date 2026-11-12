@@ -4,7 +4,9 @@ import argparse
 import csv
 import json
 import re
+import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +18,7 @@ MANDATORY = [
     "docs/metal/REPO_FACTS.md", "docs/metal/START_CODEX.md",
     "docs/metal/state/CURRENT.md", "docs/metal/state/BLOCKERS.md",
     "docs/metal/state/archive/INDEX.md",
+    "docs/metal/POST_PORT_DEFECTS.md",
     "docs/metal/work/active/metal-port.md",
     "docs/metal/work/active/visual-review-queue.md",
     "docs/metal/feature-matrix.csv",
@@ -35,6 +38,7 @@ LIVE_DOCUMENTS = [
     "docs/metal/VALIDATION.md",
     "docs/metal/PERFORMANCE.md",
     "docs/metal/OPERATING_MODEL.md",
+    "docs/metal/POST_PORT_DEFECTS.md",
     "docs/metal/START_CODEX.md",
     "docs/metal/state/CURRENT.md",
     "docs/metal/state/archive/INDEX.md",
@@ -64,6 +68,125 @@ SCRIPT_PATH_RE = re.compile(
 )
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 WORK_STATES = {"todo", "doing", "blocked", "deferred", "complete"}
+DEFECT_DOCUMENT = "docs/metal/POST_PORT_DEFECTS.md"
+DEFECT_HEADING_RE = re.compile(r"^## (PPD-\d{3}) — (.+)$", re.MULTILINE)
+DEFECT_STATES = {"open", "investigating", "ready_for_owner", "verified",
+                 "deferred", "dismissed", "duplicate"}
+
+
+def defect_history(root: Path):
+    """Read only this checkout's available registry history, never a parent repo."""
+    if root.resolve() != ROOT.resolve() or not (root / ".git").exists():
+        return []
+    def read(*args):
+        return subprocess.run(["git", "-C", str(root), *args],
+                              capture_output=True, text=True, check=False)
+    try:
+        top = read("rev-parse", "--show-toplevel")
+        if top.returncode or Path(top.stdout.strip()).resolve() != root.resolve():
+            return []
+        versions = [read("show", f"{revision}:{DEFECT_DOCUMENT}")
+                    for revision in ("HEAD", "HEAD^")]
+        return [version.stdout for version in versions if version.returncode == 0]
+    except OSError:
+        return []
+
+
+def validate_post_port_defects(root: Path, release: bool = False, baseline_text=None):
+    """Keep defect identities and owner-confirmed closure in one maintained register."""
+    document = root / DEFECT_DOCUMENT
+    if not document.is_file():
+        return [f"Missing post-port defect register: {DEFECT_DOCUMENT}"]
+    text = document.read_text(encoding="utf-8")
+    errors = []
+    headings = list(DEFECT_HEADING_RE.finditer(text))
+    ids = [match.group(1) for match in headings]
+    counter = re.findall(r"^<!-- next-defect-id: PPD-(\d{3}) -->$", text, re.MULTILINE)
+    if len(counter) != 1 or int(counter[0]) < 1:
+        errors.append("Defect register requires one valid next-defect-id counter")
+    elif ids != [f"PPD-{n:03d}" for n in range(1, int(counter[0]))]:
+        errors.append("Defect IDs must be unique, ordered and contiguous through next-defect-id minus one")
+    baselines = defect_history(root) if baseline_text is None else [baseline_text]
+    for baseline in baselines:
+        removed = {m.group(1) for m in DEFECT_HEADING_RE.finditer(baseline)} - set(ids)
+        if removed:
+            errors.append("Removed historical defect IDs: " + ", ".join(sorted(removed)))
+    required = {"Status", "Confirmation", "Owner", "Discovered", "Original reference",
+                "Evidence", "Next action", "Verification", "Owner verification", "Push approval"}
+    enums = {"Status": DEFECT_STATES,
+             "Confirmation": {"reported", "reproduced", "source_confirmed"},
+             "Owner verification": {"pending", "passed", "failed"},
+             "Push approval": {"not_granted", "granted"}}
+    def substantive(value):
+        value = re.sub(r"[\s_]+", " ", value).strip()
+        return bool(value) and not re.match(
+            r"^(?:pending|not run|not verified|unverified|unknown|none|n/?a|todo|tbd)(?:$|[\s.!:;-])", value, re.I)
+    duplicates = {}
+    for index, heading in enumerate(headings):
+        defect_id = heading.group(1)
+        if not heading.group(2).strip():
+            errors.append(f"Empty title for {defect_id}")
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        pairs = re.findall(r"^- ([A-Za-z][A-Za-z ]*):[ \t]*(.*)$",
+                           text[heading.end():end], re.MULTILINE)
+        fields = dict(pairs)
+        if len(fields) != len(pairs):
+            errors.append(f"Duplicate field key in {defect_id}")
+        for field in sorted(required):
+            if not fields.get(field, "").strip():
+                errors.append(f"Missing/empty {field} required for {defect_id}")
+        fields = {key: value.strip() for key, value in fields.items()}
+        for field, values in enums.items():
+            if fields.get(field) not in values:
+                errors.append(f"Invalid {field} for {defect_id}: {fields.get(field)}")
+        discovered = fields.get("Discovered", "")
+        try:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", discovered):
+                raise ValueError
+            date.fromisoformat(discovered)
+        except ValueError:
+            errors.append(f"Invalid Discovered date for {defect_id}: {discovered}")
+        citations = MARKDOWN_LINK_RE.findall(fields.get("Evidence", ""))
+        if not citations:
+            errors.append(f"Evidence must contain a Markdown citation for {defect_id}")
+        for citation in citations:
+            target = citation.strip().removeprefix("<").removesuffix(">")
+            if target.startswith(("http://", "https://")):
+                continue
+            path, separator, anchor = target.partition("#")
+            if not path and not anchor:
+                errors.append(f"Empty evidence target for {defect_id}")
+                continue
+            try:
+                relative = (document.parent / path).resolve().relative_to(root.resolve()) if path else document.relative_to(root)
+            except ValueError:
+                errors.append(f"Evidence escapes repository for {defect_id}: {target}")
+                continue
+            evidence = relative.as_posix() + (f"#{anchor}" if separator else "")
+            errors.extend(validate_evidence_reference(root, evidence, defect_id))
+        if fields.get("Confirmation") == "source_confirmed" and not substantive(fields.get("Original reference", "")):
+            errors.append(f"Source-confirmed {defect_id} requires a substantive Original reference")
+        status = fields.get("Status")
+        if status == "verified" and (fields.get("Confirmation") == "reported" or
+                not substantive(fields.get("Verification", "")) or fields.get("Owner verification") != "passed"):
+            errors.append(f"Verified {defect_id} requires confirmed evidence, substantive Verification and passed Owner verification")
+        if status in {"dismissed", "deferred"} and not substantive(fields.get("Resolution", "")):
+            errors.append(f"{status} {defect_id} requires a substantive Resolution")
+        if status == "duplicate" and (fields.get("Duplicate of") not in ids or fields.get("Duplicate of") == defect_id):
+            errors.append(f"Invalid Duplicate of for {defect_id}")
+        elif status == "duplicate":
+            duplicates[defect_id] = fields["Duplicate of"]
+        if release and status in {"open", "investigating", "ready_for_owner", "deferred"}:
+            errors.append(f"Release has unresolved defect {defect_id}: {status}")
+    for defect_id in duplicates:
+        seen, target = set(), defect_id
+        while target in duplicates:
+            if target in seen:
+                errors.append(f"Duplicate cycle from {defect_id}")
+                break
+            seen.add(target)
+            target = duplicates[target]
+    return errors
 
 
 def markdown_anchors(text: str):
@@ -300,6 +423,7 @@ def validate(root: Path, release: bool = False):
     errors.extend(validate_live_references(root))
     errors.extend(validate_current_documents(root))
     errors.extend(validate_release_invariants(root))
+    errors.extend(validate_post_port_defects(root, release=release))
     return errors
 
 

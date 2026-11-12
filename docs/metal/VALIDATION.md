@@ -8,6 +8,14 @@ The versioned `feature-matrix.csv` is the functional contract. For each critical
 
 `unverified` means untested, not passing. New functionality discovered from source must be added to the matrix. An agent must not mark a missing feature `not_applicable` without an actual reference behavior check; only owner can explicitly waive a regression.
 
+Record every discovered defect and reported regression in the mandatory
+[post-port defect register](POST_PORT_DEFECTS.md), including unknown causes.
+Retain stable IDs and failed/reverted history. The feature matrix and visual
+queue reference defect IDs; they do not replace the register. A verified repair
+requires corrective evidence and owner confirmation, and still needs explicit
+push approval. `validate_harness.py --release` also rejects unresolved defect
+records; ordinary harness validation checks retention and evidence structure.
+
 ## Pixel / GPU validation
 - Use Xcode Metal frame capture, command-buffer diagnostics and Metal API validation on real Apple Silicon hardware. Where practical, automate deterministic camera paths and capture screenshots with a consistent framebuffer color space.
 - Compare equivalent scene, exposure, shader level, avatar limit, resolution, antialiasing, SSR and reflectivity. Before scoring any paired images, capture each isolated profile's effective `Render*` plus Alchemy exposure/render settings with `tools/metal/graphics_settings.py` and require its comparison command to exit zero. A mismatch, missing required setting or unilateral visual setting invalidates the pair; image metrics from such a pair are not parity evidence. For every shadow comparison, shadows must be enabled and saved through Graphics Preferences in both viewers before capture; shadows do not require a restart, while RLVa state changes do. An off/on or both-off pair is not shadow-parity evidence. Allow defined stochastic/temporal differences; capture deviations in colors, depth, PBR normals, alpha sorting, selection and shadow edges.
