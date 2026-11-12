@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-013 -->
+<!-- next-defect-id: PPD-015 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -580,3 +580,71 @@ inference. No running viewer or published music backend was changed.
   authorizes committing/pushing the native-music replacement. Mark owner
   verification passed and scoped push approval granted; preserve prior failed
   candidates and the limits of automated versus real-call evidence.
+
+
+## PPD-013 — Water coverage forms camera-angle-dependent bands
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-12
+- Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, class3/deferred/waterHazeV.glsl passes full clip-space float4; waterHazeF.glsl divides interpolated XY/W in the fragment. Native haze pre-divides before perspective interpolation.
+- Evidence: [Owner images and water investigation](work/active/water-angle-artifacts.md).
+- Next action: Compare original and native water geometry/depth/coverage, reproduce the first incorrect producer with an actual Metal water/terrain fixture, then implement and build a local correction.
+- Verification: Owner screenshots21:27:05/21:27:42/21:29:59 at Chouchou(180,161,21), exact launched68898/f826eea135. Read-only live preflight observes striped shallow-water coverage and predominantly blue-water coverage at different yaw angles; active graphics values and original runtime parity are not measured. No correction or passing retest yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+Broad diagonal bands appear/disappear when the avatar/camera turns. Further
+rotation changes much of the visible shallow surface to blue water. This is
+separate from PPD-008 startup and PPD-002 busy-region retained-frame incidents.
+Depth conflict, coverage clipping and geometry/culling are hypotheses, not a
+confirmed attribution. Do not hide the symptom with an arbitrary water-height
+offset, disabled quality feature or changed depth admission.
+
+### History
+
+- 2026-11-12: Owner provides three screenshots and offers live camera rotation.
+  Exact app selection identifies68898; first screenshot tool request times out,
+  retry via combined accessibility/screenshot succeeds twice. Viewer controls
+  and settings remain untouched. Private images retained outside Git. Register
+  before any renderer repair; investigate locally.
+
+- 2026-11-12: Original/native audit confirms an interpolation contract defect:
+  native field haze divides clipXY/W per vertex then perspective-interpolates
+  those UVs again, unlike original full-clip interpolation. VariableW yields
+  incorrect scene-depth sampling, reconstruction and haze/water-plane coverage.
+  A physical GPU field-vs-fullscreen regression is being prepared before local
+  corrective validation. Attribution to all owner bands remains pending retest;
+  occlusion Y-flip suspicion is withdrawn after composing viewport transforms.
+
+## PPD-014 — Automatic CI spends unwanted runs and manual releases select incompatible jobs
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-12
+- Original reference:81bff208a7 `.github/workflows/metal-harness.yml`, `build.yaml` and `tag-release.yaml`; default-branch inherited schedules remain active unless disabled.
+- Evidence: [Workflow failure investigation and manual release ledger](work/active/manual-release-actions.md).
+- Next action: Finish and validate a manual-only native ARM64 release workflow, preserve accepted dependencies, dispatch the corrected current branch and follow the run through verified release assets.
+- Verification: Linked push run43306501400 fails10of76tests because NumPy is absent. Earlier tag42930335974 enters the incompatible Windows/Linux matrix. Two other prior runs were rejected before startup for account billing/spending gates; successful alpha2/3 prove xcode-27 was usable. Seven automatic workflow IDs are now disabled, but no corrected release run has succeeded yet.
+- Owner verification: pending
+- Push approval: granted
+
+Owner explicitly asks to fix unrequested automatic Actions, investigate previous
+failures and manually trigger a release from the current Metal branch. This
+approval covers the workflow repair/publication/dispatch and requested release,
+not raising spending limits or changing billing/repository permissions.
+
+### History
+
+- 2026-11-12: Registered owner report and distinct log-confirmed causes before
+  final repair validation/publication. Disable legacy automatic workflows so
+  main-branch schedules cannot keep creating runs; keep old failed history.
+  Stale queued runs reject both normal and force cancellation with contradictory
+  409s; no active jobs are observed. Do not report them successfully canceled.
+
+- 2026-11-12: Parallel canonical register already reserves PPD-013 for the water
+  report. CI receives PPD-014 before publication; preserve that unrelated report
+  and its unapproved working files. Workflow publication excludes canonical
+  shared records until their parallel work can be integrated safely.

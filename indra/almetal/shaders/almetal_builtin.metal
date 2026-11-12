@@ -550,7 +550,7 @@ struct ALMetalWorldWaterHazeConstants
 struct ALMetalWorldWaterHazeVaryings
 {
     float4 position [[position]];
-    float2 texcoord;
+    float4 clip_position;
 };
 
 struct ALMetalWorldWaterSurfaceConstants
@@ -3550,7 +3550,9 @@ static ALMetalWorldWaterHazeVaryings almetal_world_water_haze_output(
     float4 clip_position = constants.modelview_projection *
         float4(position, 1.0);
     ALMetalWorldWaterHazeVaryings output;
-    output.texcoord = clip_position.xy / clip_position.w * 0.5 + 0.5;
+    // Match the original haze: interpolate homogeneous clip coordinates and
+    // divide per fragment so projected triangles read their own scene pixels.
+    output.clip_position = clip_position;
     clip_position.y = -clip_position.y;
     output.position = constants.config.x != 0u
         ? clip_position : almetal_clip_from_gl(clip_position);
@@ -3838,10 +3840,9 @@ almetal_world_water_haze_fullscreen_vertex(
     const float2 texcoord = float2((vertex_id << 1u) & 2u,
                                    vertex_id & 2u);
     ALMetalWorldWaterHazeVaryings output;
-    output.position = float4(texcoord.x * 2.0 - 1.0,
-                             1.0 - texcoord.y * 2.0,
-                             0.0, 1.0);
-    output.texcoord = texcoord;
+    output.clip_position = float4(texcoord * 2.0 - 1.0, 0.0, 1.0);
+    output.position = output.clip_position;
+    output.position.y = -output.position.y;
     return output;
 }
 
@@ -3851,12 +3852,14 @@ fragment float4 almetal_world_water_haze_fragment(
     texture2d<float> depth_texture [[texture(33)]],
     sampler point_sampler [[sampler(1)]])
 {
+    const float2 texcoord =
+        input.clip_position.xy / input.clip_position.w * 0.5 + 0.5;
     const float depth = depth_texture.sample(point_sampler,
-                                             input.texcoord).r;
+                                             texcoord).r;
     const bool reverse_z = constants.config.x != 0u;
     const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
     float4 position = constants.inverse_projection *
-        float4(input.texcoord * 2.0 - 1.0, ndc_z, 1.0);
+        float4(texcoord * 2.0 - 1.0, ndc_z, 1.0);
     position.xyz /= max(position.w, 0.000001);
     position.w = 1.0;
 

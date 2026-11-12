@@ -199,6 +199,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_smaa_stencil_test.mm
             tests/almetal_cutout_alpha_resample_test.mm
             tests/almetal_water_normal_filter_test.mm
+            tests/almetal_water_haze_projection_test.mm
             tests/almetal_classic_avatar_pose_test.mm
             tests/almetal_avatar_resources_test.mm tests/almetal_gpu_test.mm tests/almetal_encoder_cache_test.mm
             tests/almetal_indexed_join_test.mm
@@ -243,6 +244,7 @@ if(AL_BUILD_TESTS)
                               tests/almetal_smaa_stencil_test.mm
                               tests/almetal_cutout_alpha_resample_test.mm
                               tests/almetal_water_normal_filter_test.mm
+                              tests/almetal_water_haze_projection_test.mm
                               PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_classic_avatar_pose_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_gpu_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
