@@ -43,9 +43,13 @@ public:
         bool topology_valid = false;
 
         // Performance levels must be ordered fastest first and describe the
-        // active physical cores. An incomplete/inconsistent topology falls back
-        // to total - 4. Preserve the historical two-worker floor even if the
-        // reported/effective total is 0 or 1; otherwise do not exceed that total.
+        // active physical cores. The burst budget can use the fastest tier,
+        // while leaving two enabled CPUs of nominal headroom for other work.
+        // Normal admission is budgeted separately at half that peak. Neither
+        // budget reserves cores or controls where macOS schedules the threads.
+        // Incomplete/inconsistent topology keeps the conservative total - 4
+        // fallback. Preserve the historical two-worker floor even if the
+        // reported/effective total is 0 or 1.
         static Limits fromTopology(unsigned active,
                                    const std::vector<unsigned>& performance_levels,
                                    unsigned emulate = 0)
@@ -61,14 +65,22 @@ public:
                 sum += count;
             }
             result.topology_valid = valid && sum == active;
-            const unsigned available = result.topology_valid
-                ? std::min(performance_levels.front(), result.effective_cores)
-                : result.effective_cores;
-            const unsigned headroom = result.topology_valid ? 2 : 4;
-            const unsigned candidate = available > headroom ? available - headroom : 0;
             const unsigned ceiling = std::max(2u, std::min(16u, result.effective_cores));
-            result.maximum = std::clamp(candidate, 2u, ceiling);
-            result.baseline = std::clamp((2 * result.maximum + 2) / 3, 2u, result.maximum);
+            if (result.topology_valid)
+            {
+                const unsigned headroom = result.effective_cores > 2
+                    ? result.effective_cores - 2 : 0;
+                result.maximum = std::clamp(
+                    std::min(performance_levels.front(), headroom), 2u, ceiling);
+                result.baseline = std::clamp((result.maximum + 1) / 2, 2u, result.maximum);
+            }
+            else
+            {
+                const unsigned candidate = result.effective_cores > 4
+                    ? result.effective_cores - 4 : 0;
+                result.maximum = std::clamp(candidate, 2u, ceiling);
+                result.baseline = std::clamp((2 * result.maximum + 2) / 3, 2u, result.maximum);
+            }
             return result;
         }
     };

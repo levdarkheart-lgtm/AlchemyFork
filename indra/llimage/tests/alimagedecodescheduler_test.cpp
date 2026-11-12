@@ -59,20 +59,28 @@ TEST_CASE("Decoder hardware limits use the highest performance tier", "[image][d
         bool valid;
     };
     const Case cases[] = {
-        {10, {8, 2}, 0, 6, 4, 10, true},
-        {8, {6, 2}, 0, 4, 3, 8, true},
-        {8, {4, 4}, 0, 2, 2, 8, true},
+        {10, {8, 2}, 0, 8, 4, 10, true},
+        {8, {6, 2}, 0, 6, 3, 8, true},
+        {8, {4, 4}, 0, 4, 2, 8, true},
         {6, {2, 4}, 0, 2, 2, 6, true}, // Largest tier is not necessarily fastest.
-        {24, {12, 8, 4}, 0, 10, 7, 24, true},
-        {100, {80, 20}, 0, 16, 11, 100, true},
-        {8, {8}, 0, 6, 4, 8, true},
+        {24, {12, 8, 4}, 0, 12, 6, 24, true},
+        {100, {80, 20}, 0, 16, 8, 100, true},
+        {8, {8}, 0, 6, 3, 8, true}, // No lower tier: total-minus-two bounds peak.
+        {10, {7, 3}, 0, 7, 4, 10, true}, // Odd peak rounds the normal budget up.
+        {8, {5, 3}, 0, 5, 3, 8, true},
+        {4, {4}, 0, 2, 2, 4, true},
+        {3, {3}, 0, 2, 2, 3, true},
+        {2, {2}, 0, 2, 2, 2, true},
+        {1, {1}, 0, 2, 2, 1, true},
         {10, {}, 0, 6, 4, 10, false},
         {10, {8, 1}, 0, 6, 4, 10, false},
         {10, {8, 0, 2}, 0, 6, 4, 10, false},
-        {10, {8, 2}, 6, 4, 3, 6, true},
+        {100, {}, 0, 16, 11, 100, false}, // Unknown topology retains old baseline.
+        {10, {8, 2}, 8, 6, 3, 8, true},
+        {10, {8, 2}, 6, 4, 2, 6, true},
         {10, {8, 2}, 4, 2, 2, 4, true},
         {10, {8, 2}, 1, 2, 2, 1, true}, // Historical two-worker floor exception.
-        {10, {8, 2}, 100, 6, 4, 10, true},
+        {10, {8, 2}, 100, 8, 4, 10, true},
         {10, {}, 6, 2, 2, 6, false},
         {0, {}, 0, 2, 2, 0, false},
     };
@@ -163,7 +171,8 @@ TEST_CASE("Decoder permits measure queue decode and callback lifetime", "[image]
 TEST_CASE("Decoder burst ramp requires interval occupancy and pending age", "[image][decode][scheduler]")
 {
     ManualClock clock;
-    Scheduler gate(Scheduler::Limits::fromTopology(10, {8, 2}), true, clock.now());
+    // Exercise six-slot policy mechanics independently of hardware selection.
+    Scheduler gate(Scheduler::Limits{2, 4, 6, 10, 10, true}, true, clock.now());
     const auto tickets = submit(gate, 8);
     std::vector<Scheduler::Permit> active;
     for (unsigned i = 0; i < 4; ++i)
@@ -200,6 +209,69 @@ TEST_CASE("Decoder burst ramp requires interval occupancy and pending age", "[im
     gate.tick(clock.value, cool());
     CHECK(gate.snapshot().current == 4);
     CHECK(gate.snapshot().transition_reason == "quiet");
+}
+
+TEST_CASE("M1 Max burst reaches eight and drains without interrupting active decodes", "[image][decode][scheduler]")
+{
+    ManualClock clock;
+    const auto limits = Scheduler::Limits::fromTopology(10, {8, 2});
+    REQUIRE(limits.baseline == 4);
+    REQUIRE(limits.maximum == 8);
+    Scheduler gate(limits, true, clock.now());
+    const auto tickets = submit(gate, 10);
+    std::vector<Scheduler::Permit> active;
+    for (unsigned i = 0; i < 4; ++i)
+        active.push_back(gate.acquire(tickets[i]));
+    for (unsigned limit = 5; limit <= 8; ++limit)
+    {
+        clock.at(0.5 * (limit - 4));
+        gate.tick(clock.value, cool());
+        // Fail before acquiring, so a broken ceiling cannot hang this test.
+        REQUIRE(gate.snapshot().current == limit);
+        CHECK(gate.snapshot().active == limit - 1);
+        CHECK(gate.snapshot().last_interval_occupancy == Catch::Approx(1));
+        active.push_back(gate.acquire(tickets[limit - 1]));
+        CHECK(gate.snapshot().active == limit);
+    }
+    clock.at(2.5);
+    gate.tick(clock.value, cool());
+    CHECK(gate.snapshot().current == 8);
+    CHECK(gate.snapshot().active == 8);
+    CHECK(gate.snapshot().waiting == 2);
+    CHECK(gate.snapshot().completed == 0);
+
+    auto hot = cool();
+    hot.thermal_level = 2;
+    clock.at(2.501);
+    gate.tick(clock.value, hot);
+    CHECK(gate.snapshot().current == 2);
+    CHECK(gate.snapshot().active == 8);
+    CHECK(gate.snapshot().completed == 0);
+    CHECK(std::all_of(active.begin(), active.end(), [](const auto& permit) { return bool(permit); }));
+
+    // Shutdown restores the hardware ceiling and accepts the already queued
+    // requests even though no further main-loop policy ticks will occur.
+    gate.beginDrain();
+    CHECK(gate.snapshot().current == 8);
+    CHECK(gate.snapshot().draining);
+    CHECK(gate.submit() == 0);
+    active.back().reset();
+    auto ninth = gate.acquire(tickets[8]);
+    REQUIRE(ninth);
+    CHECK(gate.snapshot().active == 8);
+    ninth.decoded();
+    ninth.reset();
+    active.clear();
+    auto tenth = gate.acquire(tickets[9]);
+    REQUIRE(tenth);
+    tenth.decoded();
+    tenth.reset();
+    const auto snapshot = gate.snapshot();
+    CHECK(snapshot.active == 0);
+    CHECK(snapshot.waiting == 0);
+    CHECK(snapshot.started == tickets.size());
+    CHECK(snapshot.completed == tickets.size());
+    CHECK(snapshot.cancelled == 0);
 }
 
 TEST_CASE("Decoder controller does not mistake an instant busy snapshot for sustained load", "[image][decode][scheduler]")
@@ -277,10 +349,17 @@ TEST_CASE("Thermal and low power caps are immediate while fixed mode stays fixed
     CHECK(gate.snapshot().transition_reason == "low-power");
 
     Scheduler fixed(limits, false, clock.now());
-    CHECK(fixed.snapshot().current == 6);
+    REQUIRE(fixed.snapshot().current == 8);
+    const auto fixed_tickets = submit(fixed, 8);
+    std::vector<Scheduler::Permit> fixed_active;
+    for (auto ticket : fixed_tickets)
+        fixed_active.push_back(fixed.acquire(ticket));
+    CHECK(fixed.snapshot().active == 8);
+    CHECK(fixed.snapshot().waiting == 0);
     clock.at(20);
     fixed.tick(clock.value, pressure);
-    CHECK(fixed.snapshot().current == 6);
+    CHECK(fixed.snapshot().current == 8);
+    CHECK(fixed.snapshot().active == 8);
     CHECK_FALSE(fixed.snapshot().adaptive);
     CHECK(fixed.snapshot().transition_reason == "fixed");
 }

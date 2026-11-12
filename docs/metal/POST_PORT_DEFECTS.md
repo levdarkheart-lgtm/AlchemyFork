@@ -261,6 +261,12 @@ as a Metal-introduced regression or a cause of PPD-002.
   six busy workers; gate/downshift and rounding do not explain the large burst.
   FIFO lacks decode priority/cancellation; actual obsolete waste unmeasured.
   No source change, new capture, fixed/adaptive speedup or push approval.
+- 2026-11-12: Owner explicitly authorizes the [larger burst candidate](work/active/eight-burst-decoder-experiment.md)
+  and viewer launch. Valid topology now budgets up to fastest-tier count within
+  enabled-total-minus2 headroom, normal half-peak; M1 Max4/8, unknown-topology
+  fallback preserved. Tests/build/launch in progress, old apps/cache preserved.
+  This approves local implementation/testing only; eight-worker gain and push
+  approval are not established.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 

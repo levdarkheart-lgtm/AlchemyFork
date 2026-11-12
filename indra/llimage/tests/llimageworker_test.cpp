@@ -642,6 +642,103 @@ namespace
     }
 
     TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: M1 Max topology ramps the real queue from four to eight",
+        "[LLImageDecodeThread]")
+    {
+        const auto hardware = ALImageDecodeScheduler::Limits::fromTopology(10, {8, 2});
+        REQUIRE(hardware.topology_valid);
+        REQUIRE(hardware.baseline == 4);
+        REQUIRE(hardware.maximum == 8);
+        decode_clock clock;
+        mThread = new LLImageDecodeThread(true, hardware, true, clock.now());
+        CHECK(LL::ThreadPoolBase::getWidth("ImageDecode", 0) == 8);
+        const auto gate = std::make_shared<decode_gate>();
+        release_decode_gate release{gate};
+        const auto completed = std::make_shared<completion_state>();
+        const auto ids = enqueue_blocked(*mThread, 16, gate, completed);
+        REQUIRE(gate->waitFor(4));
+        CHECK(mThread->getDecodeStats().current == 4);
+        CHECK(mThread->getDecodeStats().active == 4);
+        CHECK(mThread->getDecodeStats().waiting == 12);
+
+        ALImageDecodeScheduler::Pressure headroom;
+        headroom.system_busy = 0.1;
+        headroom.main_thread_busy = 0.1;
+        headroom.cpu_valid = true;
+        headroom.thermal_level = 0;
+        headroom.low_power = false;
+        for (unsigned expected = 5; expected <= 8; ++expected)
+        {
+            clock.set((expected - 4) * 500);
+            mThread->updateConcurrency(headroom);
+            REQUIRE(gate->waitFor(expected));
+            const auto stats = mThread->getDecodeStats();
+            CHECK(stats.current == expected);
+            CHECK(stats.active == expected);
+            CHECK(stats.waiting == 16 - expected);
+            CHECK(stats.started == expected);
+            CHECK(stats.completed == 0);
+            CHECK(stats.cancelled == 0);
+            CHECK(mThread->getPending() == 16);
+            CHECK(completed->copy().empty());
+        }
+        clock.set(2500);
+        mThread->updateConcurrency(headroom);
+        CHECK(mThread->getDecodeStats().current == 8);
+        CHECK(mThread->getDecodeStats().active == 8);
+        CHECK(mThread->getDecodeStats().waiting == 8);
+        gate->release();
+        mThread->shutdown();
+        check_failed_once(completed, ids);
+        const auto drained = mThread->getDecodeStats();
+        CHECK(drained.submitted == 16);
+        CHECK(drained.started == 16);
+        CHECK(drained.completed == 16);
+        CHECK(drained.cancelled == 0);
+        CHECK(drained.active == 0);
+        CHECK(drained.waiting == 0);
+        CHECK(drained.queue_wait.count == 16);
+        CHECK(drained.decode_wall.count == 16);
+        CHECK(drained.service_wall.count == 16);
+        CHECK(mThread->getPending() == 0);
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: disabling adaptation admits the eight-worker hardware maximum",
+        "[LLImageDecodeThread]")
+    {
+        const auto hardware = ALImageDecodeScheduler::Limits::fromTopology(10, {8, 2});
+        REQUIRE(hardware.baseline == 4);
+        REQUIRE(hardware.maximum == 8);
+        mThread = new LLImageDecodeThread(true, hardware, false);
+        const auto gate = std::make_shared<decode_gate>();
+        release_decode_gate release{gate};
+        const auto completed = std::make_shared<completion_state>();
+        const auto ids = enqueue_blocked(*mThread, 12, gate, completed);
+        REQUIRE(gate->waitFor(8));
+        const auto stats = mThread->getDecodeStats();
+        CHECK_FALSE(stats.adaptive);
+        CHECK(stats.baseline == 4);
+        CHECK(stats.current == 8);
+        CHECK(stats.maximum == 8);
+        CHECK(LL::ThreadPoolBase::getWidth("ImageDecode", 0) == 8);
+        CHECK(stats.active == 8);
+        CHECK(stats.waiting == 4);
+        CHECK(mThread->getPending() == 12);
+        gate->release();
+        mThread->shutdown();
+        check_failed_once(completed, ids);
+        const auto drained = mThread->getDecodeStats();
+        CHECK(drained.submitted == 12);
+        CHECK(drained.started == 12);
+        CHECK(drained.completed == 12);
+        CHECK(drained.cancelled == 0);
+        CHECK(drained.active == 0);
+        CHECK(drained.waiting == 0);
+        CHECK(mThread->getPending() == 0);
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
         "LLImageDecodeThread: missing topology retains a bounded fallback through the real queue",
         "[LLImageDecodeThread]")
     {
