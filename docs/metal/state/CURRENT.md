@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `8ce7e33f71`; combined source `9f42b86606` built/tested/packaged.
+**Renderer code checkpoint:** `b7bc118d68`; matching light-fix build pending; prior9f42 built/packaged.
 **Owner-passed viewer:** `f254feb048`,26.4.0d68817; provisional “pass...for now”.
 Alpha4 version68836 is built/tested/packaged/published. Older owner-requested
 f254 launch observed PID90460; no later launch/login/screenshots by the agent.
@@ -11,9 +11,9 @@ The owner-stopped20FPS campaign remains deferred.
 
 ## Current implementation
 
-New owner-reported [attached-light cutoff](../work/active/facelight-light-coverage.md)
-is under focused offscreen investigation: actual projected light bounds invert Y
-relative to native G-buffer rows. Root owns integration; GL-tail owns the test.
+New [attached-light cutoff](../work/active/facelight-light-coverage.md) fix b7bc
+corrects projected Y bounds. Actual helper1204/2API/GPU passes after32baseline
+failures; peer passes. Root combined build/checks and owner-requested launch next.
 
 [Latest finalization/preview/media closure](../work/active/native-finalization-and-media-closure.md)
 and [settings/resource tail](../work/active/native-settings-and-resource-tail.md)
