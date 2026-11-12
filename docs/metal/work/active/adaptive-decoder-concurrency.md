@@ -143,3 +143,31 @@ comparison. No adaptive viewer has been launched, owner confirmation/push
 approval remains pending, and no adaptive loading gain is observed.
 Original68876 log shows normal owner-session shutdown at17:42:22Z; no agent
 closed it. Its binary remains unchanged; cache contents remain preserved.
+
+## Owner-triggered runtime measurements
+
+Owner authorized launch and two destinations. Exact68880/hash243b5787 starts
+PID36734 with adaptive1/normal4/max6, retaining the previous fixed-six cache
+(30813files/4522534437logical bytes before launch, no purge/migration). Live
+LEAP history works from logged-in samples; critical observed controls remain
+stable within each capture. Both recordings save before heavy analysis begins.
+
+[Full two-destination analysis](../../research/adaptive-decoder-profiles-2026-11-12.md):
+first180.840185s includes login, second181.057662s clips teleport onset by
+2.664s. Both save normally(exit0), and CPU/metrics/admission analyses pass.
+Decoder CPU95.182/214.378s; peak5s3.607/5.901core-equivalents. Heavy first15s
+after finished callback averages5.847cores; last30s decoder CPU0.235s.
+Admission rises4→5→6 and later returns toward4. Heavy inner observed mean
+queue wait2.484s versus17.931ms process wall; sampled backlog peaks1860.
+No cancellation; conservation checks pass. Occasional small jobs delay the
+continuous5s-quiet reduction, without evidence idle permits consume CPU.
+Late presentation8.226/20.967FPS and GPU-associated spans188.272/51.695ms
+describe different workloads, not a controlled adaptive speedup.
+
+Owner additionally reports black world/visible UI at first login. PPD-008
+[source/log investigation](login-black-world-investigation.md) finds native
+renderer warm-up starts after STARTED and lasts6.60176s while UI submissions
+continue over a possible cleared background. Pixel attribution remains
+unverified; no rendering fix applied. Next source boundary is early async
+prewarm preserving all scene-publication guards, then pixel/readiness proof.
+Keep this issue separate from decode-policy acceptance. All changes stay local.

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-008 -->
+<!-- next-defect-id: PPD-009 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -249,6 +249,12 @@ as a Metal-introduced regression or a cause of PPD-002.
   sanitizer checks pass. Worker admission, callbacks, post failure and draining
   exercised. Original apps/cache preserved. Candidate remains unlaunched;
   runtime loading benefit, owner confirmation and push approval are pending.
+- 2026-11-12: Owner-triggered68880 first-login/heavy-return profiles save and
+  [fully analyze](research/adaptive-decoder-profiles-2026-11-12.md). Adaptive
+  rise/reduction and no-cancellation accounting observed; heavy peak5.901decode
+  cores and mean observed queue wait2.484s. Different destinations/clipped
+  teleport onset prevent a controlled speedup claim. PPD-008 black-login report
+  is investigated separately. No adaptive push approval inferred.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 
@@ -305,3 +311,34 @@ invalidation regression. Existing bitmap/shaping/replay caches remain functional
   chain, true local upstream ancestry, actual-body probes and seven-call-site
   machine-code audit confirm the mechanism and profile attribution. Constrained
   reuse options recorded; no implementation selected or push approval inferred.
+
+## PPD-008 — Login world stays black briefly while UI remains visible
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-12
+- Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 indra/newview/llviewerdisplay.cpp628 begins world traversal at STATE_PRECACHE; llstartup.cpp2727/2760 and llprogressview.cpp retain a1s normal curtain fade without native readiness. Candidate pipeline.cpp2130 delays asynchronous world-renderer warm-up until STARTED. No original runtime comparison completed.
+- Evidence: [Owner report and capture context](work/active/login-black-world-investigation.md).
+- Next action: Investigate early asynchronous renderer/PSO prewarm independently of STARTED scene admission, then verify curtain/first-real-world publication timing and pixels without bypassing startup ownership guards.
+- Verification: Original/current source comparison and frozen log confirm late asynchronous renderer preparation lasting6.60176s while native UI submissions continue and cleared loading background is available. Fits the owner's5–10s report; actual curtain branch/black pixels/first on-glass world frame remain unverified. No fix applied.
+- Owner verification: pending
+- Push approval: not_granted
+
+Keep this distinct from PPD-002 busy-turn retained-world freezes and PPD-001
+source-confirmed projector admission. It predates this adaptive test according
+to the owner; no causal link to decoder concurrency is established. Expected
+startup waiting, incomplete native transactions and presentation failure remain
+unseparated. Aggregate zero-cadence buckets do not prove black pixel content.
+
+### History
+
+- 2026-11-12: Owner reports black world/visible UI for roughly5–10seconds during
+  first adaptive68880 login, also observed once before. Registered before
+  diagnosis/repair; first saved180.840185s capture includes login and world
+  entry. Cause unknown, no repair attempted or push approved.
+- 2026-11-12: Eight original/candidate source reads and capture-aligned log
+  establish the late-warm-up/cleared-background mechanism: STARTED/warm start
+  +25.965s, warm complete/first logged world-source availability+32.965s,
+  worker duration6.60176s, UI submissions between. Upgrade source confirmation
+  only; visual attribution remains unproved and the record stays investigating.

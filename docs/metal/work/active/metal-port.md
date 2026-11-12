@@ -7,7 +7,7 @@ PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/
 
 PPD-001 [projector admission](projector-per-light-admission.md):6404/68869; [warm analysis](../../research/warm-cache-profile-analysis-2026-11-12.md):142.911decodeCPU-s,42.43%main shadows; late decode0.645s/22.377FPS, GPUinflight69.823ms(avg overlapping spans). Next palette reuse + GPUencoder attribution. Owner pending; PPD-002 cause unproved.
 
-[Adaptive decoder admission](adaptive-decoder-concurrency.md):98f41/68880 build/346ARM64/signature/strictsource and44cases/1222assertions+platform/sanitizers pass. M1budget2/4/6; admission/latency telemetry. App unlaunched; owner-coordinated launch/profile next. Prior [cold profiles](six-decoder-cold-warm-experiment.md)/3apps/caches preserved. Local/no push.
+[Adaptive decoder admission](adaptive-decoder-concurrency.md):98f41/68880 built/checked44cases1222assertions+sanitizers; two [profiles](../../research/adaptive-decoder-profiles-2026-11-12.md) saved/analyzed180.840/181.058s, decoder95.182/214.378CPU-s, peak3.607/5.901cores.4→6→4 observed; heavyqueue2.484s. Prior apps/caches preserved. Local/no push.
 ## Current implementation — 2026-11-11
 
 Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal with original inspection before fixes. No viewer/utility/host/native window launch initially.
@@ -164,7 +164,7 @@ facelight-cutoff-20261111/release-replacement.json; no Actions/billing changes.
 This correction is separate from the closed porting goal. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
-Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–004/006 unresolved; PPD-005 accepted. Explicit owner approval required before future fix pushes.
+Mandatory [post-port defects](../../POST_PORT_DEFECTS.md): PPD-001–004/006–008 unresolved;005 accepted. PPD-008 [black login](login-black-world-investigation.md): late async warm-up6.60176s/continued UI grounded; early prewarm/readiness proof next. Explicit owner approval before fix pushes.
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
 utility unexecuted; prior f254 launch observation stays source-pinned.
