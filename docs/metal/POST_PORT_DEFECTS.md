@@ -264,9 +264,13 @@ as a Metal-introduced regression or a cause of PPD-002.
 - 2026-11-12: Owner explicitly authorizes the [larger burst candidate](work/active/eight-burst-decoder-experiment.md)
   and viewer launch. Valid topology now budgets up to fastest-tier count within
   enabled-total-minus2 headroom, normal half-peak; M1 Max4/8, unknown-topology
-  fallback preserved. Tests/build/launch in progress, old apps/cache preserved.
-  This approves local implementation/testing only; eight-worker gain and push
-  approval are not established.
+  fallback preserved. Local299e748/68884 doctor/build/static+47cases1500assertions
+  pass; exactPID61154 normal4/max8/adaptive1 startup observed, old apps/cache
+  preserved. Both owner-triggered traces save; owner reports slower gray
+  textures and worse FPS, exits/rejects8 and requests restoring4normal/6maximum.
+  Source restored exactly98f41; prior68880 relaunchedPID63726/cache retained.
+  Owner explicitly approves committing/pushing restored4/6 decoder scope;
+  unrelated renderer work remains local. No eight-worker gain is claimed.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 

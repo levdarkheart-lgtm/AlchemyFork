@@ -7,7 +7,7 @@ PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/
 
 PPD-001 [projector admission](projector-per-light-admission.md):6404/68869; [warm analysis](../../research/warm-cache-profile-analysis-2026-11-12.md):142.911decodeCPU-s,42.43%main shadows; late decode0.645s/22.377FPS, GPUinflight69.823ms(avg overlapping spans). Next palette reuse + GPUencoder attribution. Owner pending; PPD-002 cause unproved.
 
-[Adaptive decoder admission](adaptive-decoder-concurrency.md):98f41/68880 two [profiles](../../research/adaptive-decoder-profiles-2026-11-12.md) and [queue audit](../../research/decoder-queue-wait-forensics-2026-11-12.md):97.555%wait first27s. Owner authorizes local [eight-burst candidate](eight-burst-decoder-experiment.md):hardware-derived M1normal4/max8;47cases1500assertions/doctor pass. Distinct source-exact build/launch next; four prior apps/cache retained, no gain/push claim.
+[Adaptive decoder admission](adaptive-decoder-concurrency.md):[eight-burst](eight-burst-decoder-experiment.md) owner-rejected for slower textures/FPS, source restored exactly98f41; both captures saved, heavy analysis stopped. Prior68880 PID63726 normal4/max6/adaptive1 relaunched, cache retained/recording off. Owner explicitly approves committing/pushing4/6 decoder scope; publish atop accepted remote without unrelated local renderer commits, then reconcile history.
 ## Current implementation — 2026-11-11
 
 Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal with original inspection before fixes. No viewer/utility/host/native window launch initially.

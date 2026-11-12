@@ -180,3 +180,15 @@ The captured ramp is brief; reductions happen after the backlog. FIFO lacks
 decode priority/cancellation, but obsolete/low-value work prevalence is unknown.
 Read-only analysis/plot passes; no viewer/source change. Next evidence is a
 matched6/8 burst test with frame impact and queue usefulness telemetry.
+
+## Owner acceptance after rejected larger burst
+
+Owner tests the [eight-worker trial](eight-burst-decoder-experiment.md), reports
+slower gray-texture resolution and worse FPS, closes it and explicitly requests
+the previous4normal/6maximum policy. The three changed scheduler/test files are
+restored exactly; indra again matches98f41e652b. Exact preserved68880 is running
+PID63726 at login with adaptive1, normal4/max6, retained populated cache and no
+recording. Owner explicitly requests committing and pushing this4/6 scope.
+Publish only adaptive decoder code/tests/supporting evidence, excluding local
+unapproved renderer changes; keep raw captures private. This supersedes earlier
+pending-approval statements; it does not prove an optimum on every Mac.
