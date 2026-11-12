@@ -164,8 +164,7 @@ facelight-cutoff-20261111/release-replacement.json; no Actions/billing changes.
 This correction is separate from the closed porting goal. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
-New: [attached-light cutoff](facelight-light-coverage.md) scoped repair complete;
-cb840/68841 built/checked/launched and owner confirms the reported line is fixed.
+New: [busy-turn world freshness](busy-turn-world-freshness.md) doing; beard-light cb840/68841 remains owner-passed.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all

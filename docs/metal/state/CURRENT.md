@@ -11,9 +11,9 @@ The owner-stopped20FPS campaign remains deferred.
 
 ## Current implementation
 
-New [attached-light cutoff](../work/active/facelight-light-coverage.md) fix b7bc:
-cb840/68841 build/static/strict/fullLLRender454290checks pass; source peer passes.
-Owner confirms26.4.0.68841 fixes the reported beard-light line; scoped repair complete.
+New [busy-turn world freshness](../work/active/busy-turn-world-freshness.md) doing: per-avatar readiness repair
+and bounded frame-age diagnostics; live cause remains unverified.
+[Attached-light cutoff](../work/active/facelight-light-coverage.md) cb840/68841 owner-passed; build/static/strict/fullLLRender454290 pass.
 
 [Latest finalization/preview/media closure](../work/active/native-finalization-and-media-closure.md)
 and [settings/resource tail](../work/active/native-settings-and-resource-tail.md)
