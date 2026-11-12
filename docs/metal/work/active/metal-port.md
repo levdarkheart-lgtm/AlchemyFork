@@ -165,12 +165,13 @@ This correction is separate from the closed porting goal. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
 New: [busy-turn world freshness](busy-turn-world-freshness.md) 2c11/68845 source/build/tests pass; owner retest pending.
-
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all
 utility unexecuted; prior f254 launch observation stays source-pinned.
 
 ## Non-negotiable open gates
+
+[Profile](../../research/busy-region-profile-2026-11-12.md) and [shadow audit](../../research/shadow-preparation-audit-2026-11-12.md) verified as investigation; optimization remains unimplemented.
 
 Full original feature parity, prolonged stability, measured multi-scene
 performance, strict source/runtime no-GL and independent release review remain
