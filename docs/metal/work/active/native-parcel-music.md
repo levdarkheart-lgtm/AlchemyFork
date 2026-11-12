@@ -229,3 +229,15 @@ to ready_for_owner with actual candidate acceptance/push approval retained; fina
 harness33files exits0, diff check0, and staged full non-documentation equality
 against testedf826 exits0. Independent scoped review passes all18music paths,
 retained PPD-001–009/black-publication history and absence of private artifacts.
+
+## Publication observed
+
+Owner-approved native music commit8f11241c947a019ea096460e71774c7344173f08 is
+pushed normally to origin/codex/apple-silicon-metal; git ls-remote confirms the
+exact SHA. Published parent3ea6170bc0 retains the separate startup fix. Canonical
+checkout is aligned with the scoped publication; original local tested history
+including its later startup-publication record is preserved on local branch
+codex/native-music-owner-tested-history-20261112 at8e52d2f510. The five unrelated
+untracked research notes retain identical SHA256s. No force push, release upload,
+viewer restart, preference/cache mutation or capture publication occurred.
+Private receipts: implementation/publication-{scope,reconciliation}.json.
