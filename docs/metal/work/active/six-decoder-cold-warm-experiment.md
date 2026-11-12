@@ -28,13 +28,39 @@ Keep this cache for the later warm run; do not purge it between those runs.
 
 ## Verification and next action
 
-Doctor passes on Apple M1 Max/64GiB/macOS26.5.2/Xcode26.6. Build, core-count
-admission checks, ARM64/signature validation and exact launch evidence are next.
-Local evidence root: `artifacts/metal/six-decoders-20261112/`.
-Confirm runtime six-worker selection and actual new cache directory before
-profiling. Owner controls login and location. Start recording only on the
-owner's signal, before login/teleport loads the target scene. Capture live
-settings, request/arrival timestamps and source/PID/hash provenance.
+Doctor/configure/build/ARM64/signature/strict source checks pass on Apple
+M1 Max/64GiB/macOS26.5.2/Xcode26.6. Build68876 fromc5c57a80bd, SHA256
+`6558ad34136c5deac313a17c0025503d230296d0b6c5c97d19d38770b72dd0d8`.
+Six-worker selection observed; actual-body sizing probes pass16cases each for
+accepted/current policies. Prior apps remain byte-identical. Local evidence
+root: `artifacts/metal/six-decoders-20261112/`; validation.json records commands
+and exits, including a corrected documentation-harness failure.
+
+First [cold login analysis](../../research/six-decoder-cold-profile-2026-11-12.md):
+PID8113, verified empty dedicated cache,182.128547s normal capture; six workers
+use184.944CPU-s, first5s after STATE_STARTED average5.33cores. No controlled
+four-to-six speedup or measured time-to-sharpness. Preserve this trace/cache.
+The owner felt loading was quick and requested another run at a never-visited
+login location. New independent `cold-unvisited-171832/isolated-cache` contained
+zero files/bytes before launch; PID10691 is the same exact68876 binary, six
+workers and active cache path verified. Unsupported observer query and startup
+cache-initialization timing corrected in this launcher's private copy.
+Owner explicitly requested recording now; xctracePID10817 saved normally(exit0).
+The [second cold analysis](../../research/six-decoder-unvisited-cold-profile-2026-11-12.md)
+covers181.216215s,17:19:32.032–17:22:33.248Z, with world arrival+7.968s and
+STATE_STARTED+14.968s. Six workers use62.173CPU-s; peak5s averages2.425cores,
+last30s has no sampled decoding. World cadence45.031FPS; shadows40.66% of
+post-started main CPU. This scene is lighter; no worker-count speedup inferred.
+TOC/CPU/sixmetrics exports and analyses pass. Live snapshots are late-only
+because a collector timestamp-field mismatch was corrected; full limitations
+and exact commands/hashes are in the report/private receipts.
+
+Next: owner-coordinated warm repeat with this second run's same populated cache
+and exact68876binary, after the owner finishes the current logged-in session.
+Private `warm-unvisited-plan.json` pins both paths and requires no concurrent
+session or purge. `leap_probe_history.py` records future live history directly
+to avoid sampler-field/timing gaps; syntax compiled, not yet run. No warm run,
+owner acceptance of six workers or push. Prior cache/trace remain preserved.
 
 An empty application cache at launch does not remain empty after startup/login.
 The target busy place should be first visited during recording for its cold

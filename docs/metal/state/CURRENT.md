@@ -9,7 +9,7 @@ Local [OpenHTJ2K experiment](../work/active/openhtj2k-local-experiment.md), PPD-
 db398/68860 build/ARM64/signature+76tools+736image assertions pass; PID67814/4OpenHTworkers observed,181.755s [profile](../research/openhtj2k-profile-2026-11-12.md) saved. Owner accepted decoder experiment and scoped decoder push completed at4842cb9460 on codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
 ## Current implementation
 
-[Six-decoder cold/warm experiment](../work/active/six-decoder-cold-warm-experiment.md): owner-authorized local build/launch in progress; new dedicated cache, same cache reused warm, no adaptive policy or push.
+[Six-decoder experiment](../work/active/six-decoder-cold-warm-experiment.md):c5c57/68876 build/static pass; two cold logins fully analyzed(184.944/62.173decodeCPU-s). Second181.216s/45.031worldFPS,peak2.425decodecores; lighter scene, no speedup proof. PID10691 remains open; retain cold-unvisited-171832 cache for owner-coordinated warm repeat. Local/unaccepted/no push.
 PPD-001 [projector admission](../work/active/projector-per-light-admission.md):6404/68869; [warm analysis](../research/warm-cache-profile-analysis-2026-11-12.md):142.911decodeCPU-s,42.43%main shadows; late decode0.645s/22.377FPS, GPUinflight69.823ms(avg overlapping spans). Next palette reuse + GPUencoder attribution. Owner pending; PPD-002 cause unproved.
 Mandatory [post-port defects](../POST_PORT_DEFECTS.md): PPD-001–004/006–007 unresolved; PPD-005 accepted/scoped push. PPD-007 [font audit](../work/active/font-position-cache-audit.md): source/PC attribution confirmed; reuse benefit unmeasured. Other source defects and busy-turn report remain distinct.
 Unapproved2c11/5ed push reverted as0f7; original beard-light68841 remains owner-passed.

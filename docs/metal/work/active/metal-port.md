@@ -1,13 +1,13 @@
 # Active execution plan — native Alchemy Metal
 
-**Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo. **Integrated checkpoint:** `b7bc118d68`; cb840/68841 built/checked/launched.
+**Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo. **Integrated checkpoint:** Commit `b7bc118d68`; cb840/68841 built/checked/launched.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md), [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
 PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/static+76tools+736image assertions pass; PID67814/4OpenHTworkers,181.755s profile. Owner accepted and scoped decoder push completed at4842cb9460 on codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
 
 PPD-001 [projector admission](projector-per-light-admission.md):6404/68869; [warm analysis](../../research/warm-cache-profile-analysis-2026-11-12.md):142.911decodeCPU-s,42.43%main shadows; late decode0.645s/22.377FPS, GPUinflight69.823ms(avg overlapping spans). Next palette reuse + GPUencoder attribution. Owner pending; PPD-002 cause unproved.
 
-[Six-decoder cold/warm experiment](six-decoder-cold-warm-experiment.md): owner-authorized local build/launch in progress; dedicated empty cache then reuse warm.
+[Six-decoder experiment](six-decoder-cold-warm-experiment.md):c5c57/68876 built/checked; two cold logins fully analyzed184.944/62.173decodeCPU-s; second181.216s/45.031worldFPS,peak2.425decodecores, lighter scene. PID10691 remains open; exact second cache retained for owner-coordinated warm repeat. Local/no push.
 ## Current implementation — 2026-11-11
 
 Owner requests unfinished RLVa, Debug/Developer features and OpenGL removal with original inspection before fixes. No viewer/utility/host/native window launch initially.

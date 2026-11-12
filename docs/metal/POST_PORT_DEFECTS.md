@@ -233,6 +233,12 @@ as a Metal-introduced regression or a cause of PPD-002.
   defect remains verified. New concurrency policy is unaccepted, not adaptive,
   and has no push approval. Empty dedicated cache then same populated cache
   requested; existing cache and prior apps preserved.
+- 2026-11-12: Local68876 built/checked and two verified-empty-cache login
+  captures saved/analyzed normally. [First cold run](research/six-decoder-cold-profile-2026-11-12.md)
+  uses184.944decoderCPU-s/peak5.72cores; [second new-location run](research/six-decoder-unvisited-cold-profile-2026-11-12.md)
+  uses62.173CPU-s/peak2.43cores. Scenes differ; neither establishes a matched
+  four-to-six speedup or optimal concurrency. Second cache retained warm;
+  six-worker owner acceptance and push approval remain pending/not_granted.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 
