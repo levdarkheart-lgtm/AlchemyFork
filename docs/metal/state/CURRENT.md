@@ -1,8 +1,8 @@
 # Current engineering state — remaining native feature completion
 
-**Observed:** 2026-11-11 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
+**Observed:** 2026-11-12 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 **Branch:** `codex/apple-silicon-metal`.
-**Renderer code checkpoint:** `b7bc118d68`; matching light-fix build pending; prior9f42 built/packaged.
+**Renderer code checkpoint:** `b7bc118d68`; matching source cb840/68841 built/checked/launched.
 **Owner-passed viewer:** `f254feb048`,26.4.0d68817; provisional “pass...for now”.
 Alpha4 version68836 is built/tested/packaged/published. Older owner-requested
 f254 launch observed PID90460; no later launch/login/screenshots by the agent.
@@ -11,9 +11,9 @@ The owner-stopped20FPS campaign remains deferred.
 
 ## Current implementation
 
-New [attached-light cutoff](../work/active/facelight-light-coverage.md) fix b7bc
-corrects projected Y bounds. Actual helper1204/2API/GPU passes after32baseline
-failures; peer passes. Root combined build/checks and owner-requested launch next.
+New [attached-light cutoff](../work/active/facelight-light-coverage.md) fix b7bc:
+cb840/68841 build/static/strict/fullLLRender454290checks pass; source peer passes.
+Owner-requested exact candidate PID74291 launched; beard-light confirmation pending.
 
 [Latest finalization/preview/media closure](../work/active/native-finalization-and-media-closure.md)
 and [settings/resource tail](../work/active/native-settings-and-resource-tail.md)

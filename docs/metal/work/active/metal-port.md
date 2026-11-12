@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo.
-**Integrated checkpoint:** Commit `b7bc118d68`; light-fix matching build pending.
+**Integrated checkpoint:** Commit `b7bc118d68`; cb840/68841 built/checked/launched.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
@@ -164,8 +164,8 @@ receipt hud-preview-alpha-release.json. Scoped implementation/delivery finished;
 new attached-light follow-up below is separate. Concurrent research
 files untouched/excluded; full-product completion remains unclaimed.
 
-New: [attached-light cutoff](facelight-light-coverage.md) doing; b7bc corrects Y.
-Actual helper1204/2API/GPU pass after32baseline failures; root build/launch next.
+New: [attached-light cutoff](facelight-light-coverage.md) doing; cb840/68841 built/
+checked. Requested exact candidate PID74291 launched; owner confirmation pending.
 
 Preserve screen/VT/CVPX/CEF capabilities. Foreign/runtime no-context, full feature/
 stability/performance and independent release evidence remain open. Keep all

@@ -91,3 +91,28 @@ Scope census: the helper serves bounded point lights and projectors indoors or
 outdoors; camera-inside/fullscreen point lights bypass it. Directional sun/moon
 base lighting has no such projected local-light rectangle; this finding is not
 a statement that every other lighting path is verified.
+
+## Matching build and owner test handoff — 2026-11-12 UTC
+
+Frozencb840a5b9d68eec51a6cf5e7c0d6a3e3dbaea656 builds version26.4.0.68841,
+Release/LTO OFF. Doctor/configure/tools build exit0/0/0 (build30.30sec). Existing
+stage preserved before configure; installed app and published68836ZIP unchanged.
+Matching static346ARM64/332exact VLC/signatures/owned imports/resources/zeroGLSL
+pass; strict3515files/0blockers/0errors. Identity+policy662/21 and full LLRender
+454290assertions/476passed+one known CPAL skip pass; API/GPU validation observed.
+The extra existing native point/projector regression did not run: wrapper used
+almetal/Release/almetal_tests instead of its actual .app/Contents/MacOS binary.
+Original failed wrapper receipt/log retained; do not call it a test failure or
+claim that case was in LLRender. viewer-ready-validation.json records completed
+primary checks and this explicit supplemental not-run. No passed suite repeated.
+
+Owner requests immediate viewer launch for bedtime test. At launch no old Alpha4
+process remained. Exact followup/newview/Release/Alchemy Metal Alpha 4.app starts
+via absolute open -n -a path, exit0, and exact new executable PID74291 observed.
+Binary SHA256736d56f5fd940803a2e1c24cb236cfa7a48c9fe33b88f06aa8002eed02064875.
+No settings override, login action or screenshots; explicit owner-provided region
+URL passed for manual login. Actual login/attachment confirmation remains owner-
+controlled. Evidence artifacts/metal/facelight-cutoff-20261111/{canonical-build-state,
+canonical-validation,canonical-strict-source,registered-validation,
+viewer-ready-validation,viewer-launch,integration-peer}.json. All build/check jobs
+terminal/removed; running candidate is deliberately left available for the owner.
