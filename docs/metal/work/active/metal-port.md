@@ -5,7 +5,7 @@
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md),
 [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
 
-PPD-005 [decoder sizing/codecs](texture-decoder-workers-and-codecs.md):160a selects4 workers;64f/68855 build/static+56tools pass.192complete+48partial textures; OpenJPEG retained, owner test pending. CPU benefit is not relaunch/FPS evidence; keep local.
+PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/static+76tools+736image assertions pass; launchedPID67814,4OpenHTworkers.181.755s post-arrival profile saved/analyzed; unmatched, no codecFPS claim. Owner acceptance pending; keep local/no push.
 
 ## Current implementation — 2026-11-11
 

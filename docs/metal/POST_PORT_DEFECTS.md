@@ -193,6 +193,7 @@ as a Metal-introduced regression or a cause of PPD-002.
   Registered at handoff after the mandatory register was introduced concurrently;
   no push approval granted, no push/upload performed.
 - 2026-11-12: Owner requested a separate [OpenHTJ2K experiment](work/active/openhtj2k-local-experiment.md), build and exact launch, then recording only on their signal before teleport. PPD-005 remains ready_for_owner; no acceptance or push approval inferred.
+- 2026-11-12: Local db398/68860 built/tested/launched; runtime confirms4 OpenHTJ2K workers with stable cache identity. Owner-triggered181.755s [profile](research/openhtj2k-profile-2026-11-12.md) saved and analyzed; teleport actually completed34s before recording. Keep experimental correctness/owner acceptance pending; no push approval.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 

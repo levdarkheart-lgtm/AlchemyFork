@@ -48,5 +48,21 @@ and graphics; no preset, automatic login or teleport is inferred. Prepare
 Instruments/LEAP readiness but wait for the owner's recording signal.
 
 Evidence directory: `artifacts/metal/openhtj2k-experiment-20261112/`.
-Actual viewer texture correctness, teleport stability and performance remain
-unverified until the owner session and recording occur.
+
+## Observed build, launch and recording
+
+Source db398cc3a0, local26.4.0.68860. Full build,346 ARM64 files/zero invalid,
+deep strict signature, doctor and production source audit0blockers/errors pass.
+Exact app: `build-Darwin-ninja-os-arm64-shadow-occlusion/newview/Release/Alchemy Metal OpenHTJ2K Experiment.app`.
+Executable SHA256 `6df603e39c6505634594f123f150cf5f1dde717da6f811fc2bf0788358b34807`;
+PID67814. Startup four-worker/decoder identity and actual decode receipt
+observed. Cache tag/format remain unchanged;68855 reference hash preserved.
+
+Owner signaled “profile now”;181.755495s Game Performance Overview saved,
+TOC/CPU/metric exports and analysis exit0. Recording is finished; viewer remains
+owner-controlled. No push/upload. [Profile findings and limitations](../../research/openhtj2k-profile-2026-11-12.md):
+four actual OpenHTJ2K workers70.591 sampled CPU seconds; shadows46.27% of main
+CPU; about41.76 presentedFPS over covered intervals. The teleport completed
+34s before recording, and shadow controls differ from the prior capture;
+therefore no teleport-transition or causal codec-speedup claim. Owner texture/
+alpha correctness, interactive stability and permanent adoption remain pending.
