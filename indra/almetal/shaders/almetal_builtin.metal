@@ -13487,10 +13487,15 @@ static float3 almetal_pbr_tonemap(
 
 struct ALMetalWorldExposureMeterConstants
 {
-    // xy = source texels per meter patch, zw = taps per patch axis.
+    float4 patch; // Retained direct-kernel fixture ABI: exactly 16 bytes.
+};
+struct ALMetalWorldDepthExposureMeterConstants
+{
     float4 patch;
     uint4 config; // depth classification, reverse Z
 };
+static_assert(sizeof(ALMetalWorldExposureMeterConstants) == 16, "Retained meter ABI");
+static_assert(sizeof(ALMetalWorldDepthExposureMeterConstants) == 32, "Depth meter ABI");
 
 struct ALMetalWorldExposureConstants
 {
@@ -13517,15 +13522,11 @@ static float almetal_world_meter_weight(float2 uv, float mode)
     return 1.0 - smoothstep(0.15, 0.3, sqrt(distance_squared));
 }
 
-kernel void almetal_world_exposure_meter(
-    texture2d<float> scene [[texture(0)]],
-    texture2d<float> normal_map [[texture(1)]],
-    texture2d<float, access::write> meter [[texture(2)]],
-    texture2d<float> completed_depth [[texture(3)]],
-    texture2d<float> water_map [[texture(4)]],
-    sampler scene_sampler [[sampler(0)]],
-    constant ALMetalWorldExposureMeterConstants& constants [[buffer(0)]],
-    uint2 position [[thread_position_in_grid]])
+static void almetal_world_meter_grid(
+    texture2d<float> scene, texture2d<float> normal_map,
+    texture2d<float, access::write> meter,
+    texture2d<float> completed_depth, texture2d<float> water_map,
+    sampler scene_sampler, float4 patch, uint2 config, uint2 position)
 {
     if (position.x >= meter.get_width() || position.y >= meter.get_height())
     {
@@ -13533,9 +13534,9 @@ kernel void almetal_world_exposure_meter(
     }
 
     const float2 scene_size = float2(scene.get_width(), scene.get_height());
-    const float2 patch_origin = float2(position) * constants.patch.xy;
-    const float2 tap_step = constants.patch.xy / constants.patch.zw;
-    const uint2 taps = uint2(constants.patch.zw);
+    const float2 patch_origin = float2(position) * patch.xy;
+    const float2 tap_step = patch.xy / patch.zw;
+    const uint2 taps = uint2(patch.zw);
     float ground = 0.0;
     float sky = 0.0;
     float sky_taps = 0.0;
@@ -13549,20 +13550,22 @@ kernel void almetal_world_exposure_meter(
                 scene_sampler, pixel / scene_size, level(0.0)).rgb;
             float luminance = dot(float3(0.2126, 0.7152, 0.0722), color);
             luminance = isnan(luminance) ? 0.0 : min(luminance, 60000.0);
-            const uint2 normal_position = min(
-                uint2(pixel),
-                uint2(normal_map.get_width() - 1,
-                      normal_map.get_height() - 1));
-            const float flag = normal_map.read(normal_position).a;
-            bool is_sky = abs(flag) < 0.1 || abs(flag - 1.0) < 0.1;
-            if (constants.config.x != 0u)
+            bool is_sky;
+            if (config.x != 0u)
             {
                 const uint2 px = uint2(pixel);
                 const float depth = completed_depth.read(px).r;
-                const bool far_depth = constants.config.y != 0u ? depth <= 0.0 : depth >= 1.0;
+                const bool far_depth = config.y != 0u ? depth <= 0.0 : depth >= 1.0;
                 const bool water = all(px < uint2(water_map.get_width(), water_map.get_height())) &&
                     water_map.read(px).a > 0.9;
                 is_sky = far_depth || water;
+            }
+            else
+            {
+                const uint2 normal_position = min(uint2(pixel),
+                    uint2(normal_map.get_width() - 1, normal_map.get_height() - 1));
+                const float flag = normal_map.read(normal_position).a;
+                is_sky = abs(flag) < 0.1 || abs(flag - 1.0) < 0.1;
             }
             if (is_sky)
             {
@@ -13582,6 +13585,33 @@ kernel void almetal_world_exposure_meter(
         ground_taps > 0.0 ? ground / ground_taps : 0.0,
         sky_taps > 0.0 ? sky / sky_taps : 0.0,
         sky_taps / count, 1.0), position);
+}
+
+// Retained direct fixture entry: no new resources or extra constant words.
+kernel void almetal_world_exposure_meter(
+    texture2d<float> scene [[texture(0)]],
+    texture2d<float> normal_map [[texture(1)]],
+    texture2d<float, access::write> meter [[texture(2)]],
+    sampler scene_sampler [[sampler(0)]],
+    constant ALMetalWorldExposureMeterConstants& constants [[buffer(0)]],
+    uint2 position [[thread_position_in_grid]])
+{
+    almetal_world_meter_grid(scene, normal_map, meter, normal_map, normal_map,
+        scene_sampler, constants.patch, uint2(0u), position);
+}
+// Every production sky meter reads completed post-water depth and provenance.
+kernel void almetal_world_depth_exposure_meter(
+    texture2d<float> scene [[texture(0)]],
+    texture2d<float> normal_map [[texture(1)]],
+    texture2d<float, access::write> meter [[texture(2)]],
+    texture2d<float> completed_depth [[texture(3)]],
+    texture2d<float> water_map [[texture(4)]],
+    sampler scene_sampler [[sampler(0)]],
+    constant ALMetalWorldDepthExposureMeterConstants& constants [[buffer(0)]],
+    uint2 position [[thread_position_in_grid]])
+{
+    almetal_world_meter_grid(scene, normal_map, meter, completed_depth, water_map,
+        scene_sampler, constants.patch, constants.config.xy, position);
 }
 
 static float4 almetal_world_resolve_exposure(

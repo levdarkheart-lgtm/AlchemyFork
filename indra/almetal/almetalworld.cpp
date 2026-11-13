@@ -1857,6 +1857,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> debug_buffer_pipelines;
     std::unique_ptr<ALMetalSamplerState> debug_buffer_sampler;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
+    std::unique_ptr<ALMetalComputePipeline> depth_exposure_meter_pipeline;
     std::array<std::unique_ptr<ALMetalComputePipeline>, 2>
         exposure_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -3355,6 +3356,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     {
         return nullptr;
     }
+    exposure_descriptor.function = "almetal_world_depth_exposure_meter";
+    exposure_descriptor.label = "Alchemy completed-depth exposure-meter pipeline";
+    impl->depth_exposure_meter_pipeline = ALMetalComputePipeline::create(device, exposure_descriptor, error);
+    if (!impl->depth_exposure_meter_pipeline) return nullptr;
     constexpr std::array<const char*, 2> exposure_functions{{
         "almetal_world_exposure_initial",
         "almetal_world_exposure_history",
@@ -10118,7 +10123,7 @@ ALMetalWorldGBufferRenderer::renderExposureInternal(
         *command, "Alchemy world exposure-meter encoder", error);
     const bool meter_encoded = meter_encoder &&
         meter_encoder->setPipeline(
-            *mImpl->exposure_meter_pipeline, error) &&
+            *(scene.depth ? mImpl->depth_exposure_meter_pipeline : mImpl->exposure_meter_pipeline), error) &&
         meter_encoder->setTexture(
             0, scene.source->colorTexture(0), error) &&
         meter_encoder->setTexture(1, scene.normal, error) &&
