@@ -142,3 +142,14 @@ Next live test must observe/verify/gate again and confirm actual probe publicati
 Sky shown in prior images remains exact68965, not this new executable. All local;
 no owner closure, performance claim or push permission inferred.088asyncSHerror,
 085extreme-sun cap and082transition concerns remain independently open.
+
+
+Owner handoff completed: exact68980/PID41725 launched16:21:28 and is leftopen,
+locationSpareTime105/21/24 verified live and in suppliedimagebar. 46livecontrols
+pass unchanged QAverification. Actual16:22:06 defaultHDR R11 radiance/SH queued
+milestone observed; oldcopyerrors absent in boundedreview. Owner says newcolour
+looks fixed; authoritative clean16:28:21 same-material comparison reducesRGBmean
+error94.21%, all15means within1/255 oforiginal. PPD086 and reported083 are owner-
+verified for this tested failure; fullpixel/scene/performance parity notclaimed.
+087previewowneracceptance remains pending;088error-ticket edge separatelyopen.
+No push approval. See neutral-colour note for exactimages/hashes/measurements.

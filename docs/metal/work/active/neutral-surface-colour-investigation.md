@@ -210,3 +210,34 @@ explain old native samples if realHDRprobepublication nevercompleted.
 Next: same Daylight/Lev1233/agreedLook/EXR-3/split.5 fresh image and actual live
 publication receipt. PPD083notclosed;080/081appearanceresolutionnotassumed;
 086/087ready_for_owner,088asynchronousSHerrorseparateopen. No push.
+
+
+## Owner-passed clean comparison
+
+Owner asks to compare new image and says it looks fixed; then supersedes16:23:46
+with clean16:28:21 because the earlier black square was an attached HUD. Final
+image owner-metal-fixed-clean-162821.png SHA256
+2c285b447aa8211da111135ff665bed48b47a6625db20a3880d5f21a9ee12031.
+All three before/reference/clean-after images are3456x2234 with identical embedded
+DisplayICC. Earlier after-analysis is retained separately and is NOT finalproof.
+
+Read-only exact same five previously selected open concrete/asphalt rectangles,
+visually checked for major shadow/marking exclusion, no resizing/warp/registration:
+ICC→sRGB encoded RGB patch-mean RMSE falls8.91064→.51602/255,94.21%lower
+(99.665%MSE removed); colour-ratio error92.28%lower. Every one of15channelmean
+residuals is<1/255 (max.967714); signed averageRGB+.288/+.318/+.601. RawDisplay
+RMSE8.82647→.49894 agrees. Example asphalt_B rawreference74.514/71.672/70.668,
+oldMetal67.716/63.344/60.171, fixed74.690/71.773/70.948. This verifies the reported
+visible warm/dark material discrepancy in this scene, not identical pixels or
+all-scene/performance parity. Final method/hashes/values/script and superseded
+analysis retained under colour-cause artifact/fixed-colour-comparison/clean-162821/.
+
+Exact68980 launched underLLDB at16:21:28UTC/PID41725, confirmed executableSHA8118f71c.
+Live position105.0180817/20.9263973/24.3098164, worldglobal261481.0180817/
+241428.9263973/24.3098164; ownerimagebar independently showsSpareTime105/21/24.
+Installed observe+verify passesbinary/position/46controls. Actual default-probe
+publication QUEUED milestone16:22:06, generation1/sequence2/R11G11B10F; bounded
+review finds no old matching-format/SH/GPU failure. Queue milestone alone does
+not prove completion; physical GPU and new owner image provide separate evidence.
+Viewer left running for owner. PPD083/086verified with ownerassessment;087preview
+acceptance and080/081/082/085/088 remain separate. All local, no push approval.

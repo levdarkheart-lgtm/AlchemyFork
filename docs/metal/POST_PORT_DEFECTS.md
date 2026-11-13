@@ -2266,15 +2266,15 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-083 — Owner reports a tint in neutral-looking scene surfaces
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Owner compares Metal14:08:20 with original14:31:18 and reports a hue in the Metal image's lower grey pavement/road areas while the original looks more neutral. Original1eb reference67611 and native sourceefc3dc17d0 are available; exact corresponding surface samples and colour-profile normalization are unmeasured.
 - Evidence: [Neutral surface colour investigation](work/active/neutral-surface-colour-investigation.md), [comparison](work/active/exposure-reference-comparison.md).
-- Next action: Owner repeats clean comparison on repaired Sky68980 using Daylight/Lev1233, agreed Look and Kloppenheim06/-3/.5. PPD086 actual-session missing HDR probe light is repaired locally; quantify resulting colour before declaring the tint fixed. No blanket colour/exposure correction.
+- Next action: Retain owner-passed Sky68980 colour/probe repair and evidence. Keep unrelated exposure, preview and asynchronous-SH concerns separate; explicit push approval is still required.
 - Verification: Clean same-coordinate asphalt/concrete patches reproducibly show darker and relatively warmer encoded RGB in Metal. Example asphalt means67.72/63.34/60.17 versus original74.51/71.67/70.67; identical embedded ICC bytes and same UI grey31/31/31. This confirms supplied-image differences, not a cause or full live-pipeline parity. In-viewer Metal export is unprofiled and retained separately; no repair.
-- Owner verification: pending
+- Owner verification: passed
 - Push approval: not_granted
 
 ### History
@@ -2290,6 +2290,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-13: Controlled old-folded-skirt versus final sphere HDRI ray model yields relatively warmer truncated-SH upward diffuse for one controlled EXR. Loaded ownerfile/world/actual SH still unmeasured; physical production test pending. This is intentional upstream geometry, not a proved native regression or083cause. Mip candidate084 independently dismissed by originalGL parity.
+
+- 2026-11-13: Owner reports new image looks fixed and replaces first after-image with clean16:28:21 capture (earlier black square was an attachedHUD). ExactSky68980/PID41725 is logged in atSpareTime105/21/24; installed QA verifies executable/global position/46livecontrols. Actual log16:22:06 records defaultHDR R11G11B10F radiance/SH publication queued, with no matched format/SH/GPU errors in bounded review. Clean3456x2234 image and reference/prior share identicalICC. Same five unchanged concrete/asphalt patches: normalizedRGB-mean RMSE8.91064→.51602/255 (94.21%lower); all15channelmean residuals<1/255 (max.967714). Owner assessment plus image/runtime/physical evidence verifies this reported colour failure in the tested setup. No pixel/all-scene/performance parity or push approval inferred; preview087 and async-error088 remain separate.
 
 ## PPD-084 — Native sRGB mip generation may differ from original raw-byte policy
 
@@ -2338,15 +2340,15 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-086 — HDR ordinary probe publication rejects its producer's packed-float format
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex native probe integration
 - Discovered: 2026-11-13
 - Original reference: Original ordinary HDR radiance uses packed R11/G11/B10 storage. Native updateReflectionProbeFace now produces rg11b10_float and filterReflectionProbeRadiance preserves it; LLReflectionMapManager still allocates/expects rgba16_float in bootstrap, publication and reset preservation.
 - Evidence: [HDR probe publication format investigation](work/active/hdr-probe-publication-format.md), [owner colour investigation](work/active/neutral-surface-colour-investigation.md).
-- Next action: Owner tests signed Sky68980 at saved Daylight/Lev1233 with agreed Look and confirmed Kloppenheim06 HDRI. Verify actual default radiance/SH publication and compare fresh same-material pixels; full live reset/lighting parity and owner acceptance remain pending.
+- Next action: Retain owner-passed Sky68980 colour/probe repair and evidence. Keep unrelated exposure, preview and asynchronous-SH concerns separate; explicit push approval is still required.
 - Verification: Exact owner-session copy failure physically reproduced before repair. Shared packedR11 producer/publication/reset contract plus world/preview admission repaired; scoped rollback and realtime restart preserve retryability. Canonical b81a4645e0 fullbuild, doctor, 346ARM64/signature/owned-import/source gates pass; new3903/3 plus related4504/6 GPU assertions/cases pass underLLDB with API/GPUvalidation, realchild0. Scheduled actual producer failure/retry and SH contribution measured. Full live manager reset/owner colour confirmation pending; separate088 async-error edge remains open.
-- Owner verification: pending
+- Owner verification: passed
 - Push approval: not_granted
 
 ### History
@@ -2359,6 +2361,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-13: Canonical b81a4645e0 produces signed Sky26.4.0.68980/8118f71cf6af9216a3f7c8532f4e9b22239d3e1ab38ca4a08cc847d86a6db779. Fullbuild/doctor/verify0,346ARM64,deepstrictsignature,embeddedSHA,ownedviewer/CEF/VLCimports0forbidden; strict3540files0blockers0errors. IntegratedLLDB32384 passes3903assertions/3cases;41119 passes4504/6, bothchild0/state10 with API/GPUvalidation. Actual SH ambient increases measured pixels; no full-viewer relaunch/scene parity/FPS claim. New immutable QAconfig dryrun0; old run receipts preserved. Owner logged out; viewer left closed and fix local.
+
+- 2026-11-13: Owner reports new image looks fixed and replaces first after-image with clean16:28:21 capture (earlier black square was an attachedHUD). ExactSky68980/PID41725 is logged in atSpareTime105/21/24; installed QA verifies executable/global position/46livecontrols. Actual log16:22:06 records defaultHDR R11G11B10F radiance/SH publication queued, with no matched format/SH/GPU errors in bounded review. Clean3456x2234 image and reference/prior share identicalICC. Same five unchanged concrete/asphalt patches: normalizedRGB-mean RMSE8.91064→.51602/255 (94.21%lower); all15channelmean residuals<1/255 (max.967714). Owner assessment plus image/runtime/physical evidence verifies this reported colour failure in the tested setup. No pixel/all-scene/performance parity or push approval inferred; preview087 and async-error088 remain separate.
 
 ## PPD-087 — Material preview rejects the ordinary non-HDR default radiance format
 
