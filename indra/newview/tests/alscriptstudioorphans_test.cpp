@@ -528,7 +528,10 @@ namespace
         {
             INFO("a line: the bar as tall as it was");
             CHECK(text->getLineCount() == 1);
-            CHECK(one == 28);
+            // The skin's minimum is 28, but the active font can need more
+            // room for one line and its margins (notably on macOS).
+            const S32 margin = bar->getRect().getHeight() - text->getRect().mTop;
+            CHECK(one == llmax(28, text->getTextPixelHeight() + margin * 2));
         }
         said_at(repeated(2));
         const S32 lines  = text->getLineCount();
