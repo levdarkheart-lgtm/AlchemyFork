@@ -4,6 +4,40 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// Upstream #595: sanitize before scaling, preserving finite HDR channel ratios.
+// The finite upper operand also makes infinity safe before ceiling / peak.
+static float3 almetal_bounded_radiance(float3 color, float ceiling)
+{
+    color = select(clamp(color, float3(0.0), float3(3.0e38)),
+                   float3(0.0), isnan(color));
+    float peak = max(color.r, max(color.g, color.b));
+    if (peak > 1.0e30)
+    {
+        // Fast Metal division can flush 1/peak to zero at float extremes.
+        // Exact 2^-64 rescaling keeps the reciprocal normal before bounding.
+        color *= 5.421010862427522e-20;
+        peak *= 5.421010862427522e-20;
+    }
+    return peak > ceiling ? color * (ceiling / peak) : color;
+}
+
+// The native collector can exceed upstream's 63 additive draws. Retain its
+// 512 ceiling through 63 draws, then halve it for every doubling of the bound.
+// Dyadic steps avoid a rounded-up quotient. Above 32768, a half's spacing is
+// 32: ceilings >=32 bound the blend by 32768 + 63*512 = 65024. Ceilings <=16
+// cannot round a value <=65024 past that even half (65024+16 ties downward).
+static float almetal_world_light_pass_ceiling(uint pass_count)
+{
+    float ceiling = 512.0;
+    // Divide the count instead of multiplying the coverage, avoiding overflow.
+    while (pass_count > 63u)
+    {
+        pass_count = (pass_count >> 1u) + (pass_count & 1u);
+        ceiling *= 0.5;
+    }
+    return ceiling;
+}
+
 struct ALMetalBenchmarkVaryings
 {
     float4 position [[position]];
@@ -6075,6 +6109,12 @@ static float3 almetal_probe_sh_irradiance(
     float3 ambient, texture2d<uint> irradiance,
     constant ALMetalWorldReflectionProbeConstants& probes)
 {
+    // Zero scale means sky ambient alone. Avoid fetching invalid SH and then
+    // multiplying its NaN by zero in mix().
+    if (probes.ref_params[index].x <= 0.0)
+    {
+        return ambient;
+    }
     const float3 center = probes.ref_sphere[index].xyz;
     float3 sample_position;
     if (probes.ref_index[index].w < 0)
@@ -11218,7 +11258,11 @@ kernel void almetal_world_probe_downsample(
         coord::normalized, filter::linear, address::clamp_to_edge);
     const float2 uv = (float2(position) + 0.5) /
         float2(destination.get_width(), destination.get_height());
-    destination.write(float4(source.sample(linear_sampler, uv).rgb, 0.0), position);
+    // Match reflectionmipF's 65024 ceiling at the native RG11B10Float boundary.
+    // Blue quantizes more coarsely; preserve RGB ratios before that conversion.
+    const float3 color = almetal_bounded_radiance(
+        source.sample(linear_sampler, uv).rgb, 65024.0);
+    destination.write(float4(color, 0.0), position);
 }
 
 static float almetal_world_hero_random(float2 value)
@@ -11362,7 +11406,8 @@ kernel void almetal_world_probe_sh_reduce(
         const uint packed_index = 8u * position + index;
         const uint coefficient = packed_index / 3u;
         values[index] = coefficient < 9u
-            ? sums[coefficient - first][packed_index - 3u * coefficient]
+            ? clamp(sums[coefficient - first][packed_index - 3u * coefficient],
+                    -65504.0, 65504.0)
             : 0.0;
     }
     const uint4 packed = uint4(
@@ -11759,9 +11804,7 @@ vertex ALMetalWorldLocalLightVaryings almetal_world_local_light_vertex(
 
 static float3 almetal_world_bounded_radiance(float3 color)
 {
-    color = select(color, float3(65504.0), isinf(color));
-    color = select(color, float3(0.0), isnan(color));
-    return almetal_pbr_clamp_radiance(color);
+    return almetal_bounded_radiance(color, 65504.0);
 }
 
 fragment float4 almetal_world_local_light_fragment(
@@ -11799,6 +11842,7 @@ fragment float4 almetal_world_local_light_fragment(
         point_sampler, input.texcoord);
     const bool has_pbr = abs(normal_sample.a - 0.67) < 0.1;
     const float3 view = -normalize(position.xyz);
+    const float pass_ceiling = almetal_world_light_pass_ceiling(constants.config.z);
     float3 final_color = 0.0;
 
     if (has_pbr)
@@ -11836,9 +11880,9 @@ fragment float4 almetal_world_local_light_fragment(
                 const float3 lobe = punctual.nl *
                     (punctual.diffuse +
                      punctual.specular * energy_compensation);
-                final_color +=
-                    distance_attenuation * light.color_falloff.rgb * 3.0 *
-                    almetal_world_bounded_radiance(lobe);
+                final_color += almetal_bounded_radiance(
+                    distance_attenuation * light.color_falloff.rgb * 3.0 * lobe,
+                    pass_ceiling);
             }
         }
     }
@@ -11893,11 +11937,14 @@ fragment float4 almetal_world_local_light_fragment(
                         light.color_falloff.rgb * specular.rgb;
                 }
             }
-            final_color += almetal_world_bounded_radiance(contribution);
+            final_color += almetal_bounded_radiance(
+                contribution, pass_ceiling);
         }
     }
 
-    return float4(max(final_color * constants.surface.y, float3(0.0)), 0.0);
+    return float4(almetal_bounded_radiance(
+        final_color * constants.surface.y,
+        pass_ceiling), 0.0);
 }
 
 static float3 almetal_world_pre_water_pbr_local_light(
@@ -12340,6 +12387,7 @@ fragment float4 almetal_world_projector_light_fragment(
     const float focus = constants.projector_origin.w;
     const float projector_range = constants.projector_normal.w;
     const float ambiance = constants.projector_plane.w;
+    const float pass_ceiling = almetal_world_light_pass_ceiling(constants.config.w);
     float3 final_color = 0.0;
 
     if (has_pbr)
@@ -12381,9 +12429,9 @@ fragment float4 almetal_world_projector_light_fragment(
                 const float3 lobe = nl *
                     (punctual.diffuse +
                      punctual.specular * energy_compensation);
-                final_color += distance_attenuation * projected_color *
-                    3.0 * shadow *
-                    almetal_world_bounded_radiance(lobe);
+                final_color += almetal_bounded_radiance(
+                    distance_attenuation * projected_color * 3.0 * shadow * lobe,
+                    pass_ceiling);
                 lit = clamp(nl * distance_attenuation, 0.0, 1.0);
             }
 
@@ -12506,8 +12554,9 @@ fragment float4 almetal_world_projector_light_fragment(
         }
     }
 
-    return float4(
-        max(final_color * constants.sampling.w, float3(0.0)), 0.0);
+    return float4(almetal_bounded_radiance(
+        final_color * constants.sampling.w,
+        pass_ceiling), 0.0);
 }
 
 fragment ALMetalWorldSSRHistoryOutput almetal_world_ssr_history_fragment(
@@ -12919,9 +12968,7 @@ fragment float4 almetal_world_base_light_sky_fragment(
     }
     sky_color *= windlight_sky ? constants.sky_transfer.x : 1.0;
     sky_color *= constants.config.y != 0u ? 1.1 : 1.0;
-    sky_color = select(sky_color, float3(65504.0), isinf(sky_color));
-    sky_color = select(sky_color, float3(0.0), isnan(sky_color));
-    return float4(sky_color, 0.0);
+    return float4(almetal_bounded_radiance(sky_color, 65504.0), 0.0);
 }
 
 fragment float4 almetal_world_base_light_geometry_fragment(
@@ -13231,7 +13278,7 @@ fragment float4 almetal_world_base_light_geometry_fragment(
 
     const float output_scale = classic_mode ? 1.1 : 1.0;
     return float4(max(
-        almetal_world_bounded_radiance(color * output_scale),
+        almetal_bounded_radiance(color * output_scale, 32752.0),
         float3(0.0)), 0.0);
 }
 
@@ -13430,8 +13477,8 @@ kernel void almetal_world_exposure_meter(
                 (float2(x, y) + 0.5) * tap_step;
             const float3 color = scene.sample(
                 scene_sampler, pixel / scene_size, level(0.0)).rgb;
-            const float luminance = min(
-                dot(float3(0.2126, 0.7152, 0.0722), color), 60000.0);
+            float luminance = dot(float3(0.2126, 0.7152, 0.0722), color);
+            luminance = isnan(luminance) ? 0.0 : min(luminance, 60000.0);
             const uint2 normal_position = min(
                 uint2(pixel),
                 uint2(normal_map.get_width() - 1,
@@ -13535,6 +13582,10 @@ static float4 almetal_world_resolve_exposure(
         ? kept_log / kept - constants.exposure.x
         : constants.exposure.y;
     target = clamp(target, constants.exposure.y, constants.exposure.z);
+    if (!isfinite(previous_ev))
+    {
+        previous_ev = target;
+    }
     const float rate = target > previous_ev
         ? constants.adaptation.z : constants.adaptation.w;
     const float ev = mix(
@@ -16995,7 +17046,8 @@ static float4 almetal_bloom_extract(
     constant ALMetalPBRPreviewBloomExtractConstants& constants)
 {
     const float4 source = scene.sample(scene_sampler, input.texcoord);
-    float3 color = max(source.rgb, float3(0.0));
+    float3 color = select(clamp(source.rgb, float3(0.0), float3(65504.0)),
+                          float3(0.0), isnan(source.rgb));
     const float peak = max(color.r, max(color.g, color.b));
     color *= peak > constants.params.z ? constants.params.z / peak : 1.0;
     const float luminance = max(color.r, max(color.g, color.b));

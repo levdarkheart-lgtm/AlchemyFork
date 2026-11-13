@@ -734,7 +734,7 @@ namespace
         float inverse_projection[16]{};
         // x = legacy specular exponent, y = classic-mode output scale.
         float surface[4] = {128.f, 1.f, 0.f, 0.f};
-        // x = light count in this draw, y = reverse-Z convention.
+        // x = light count in this draw, y = reverse-Z, z = shared additive draw bound.
         std::uint32_t config[4]{};
     };
     static_assert(sizeof(WorldLocalLightingConstants) == 96);
@@ -753,7 +753,7 @@ namespace
         // z = legacy specular exponent, w = classic output scale.
         float sampling[4]{};
         // x = reverse Z, y = shadow channel + 1,
-        // z = high-precision geometric-normal packing.
+        // z = high-precision geometric-normal packing, w = shared additive draw bound.
         std::uint32_t config[4]{};
     };
     static_assert(sizeof(WorldProjectorLightingConstants) == 240);
@@ -8880,6 +8880,12 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
         constants.config[0] =
             static_cast<std::uint32_t>(scene.light_count);
         constants.config[1] = scene.reverse_z ? 1u : 0u;
+        const std::size_t draw_count = scene.bounded_light_count +
+            (scene.light_count - scene.bounded_light_count + 15u) / 16u;
+        constants.config[2] = static_cast<std::uint32_t>(std::min<std::size_t>(
+            std::max(draw_count, scene.additive_pass_count != 0
+                ? scene.additive_pass_count : 2u * draw_count),
+            std::numeric_limits<std::uint32_t>::max()));
         const ALMetalViewport viewport{
             0.0, 0.0,
             static_cast<double>(input.width),
@@ -9231,6 +9237,10 @@ bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
         constants.config[1] = static_cast<std::uint32_t>(
             light.shadow_channel + 1);
         constants.config[2] = scene.normal_hdr ? 1u : 0u;
+        constants.config[3] = static_cast<std::uint32_t>(std::min<std::size_t>(
+            std::max(scene.light_count, scene.additive_pass_count != 0
+                ? scene.additive_pass_count : 2u * scene.light_count),
+            std::numeric_limits<std::uint32_t>::max()));
         encoded =
             encoder->setScissor(light_scissor, error) &&
             encoder->setFragmentBytes(

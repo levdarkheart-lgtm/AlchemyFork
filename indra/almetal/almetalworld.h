@@ -1002,6 +1002,9 @@ struct ALMetalWorldLocalLightingScene
     const ALMetalRenderTarget* gbuffer = nullptr;
     const ALMetalWorldLocalLight* lights = nullptr;
     std::size_t light_count = 0;
+    // Shared upper bound for ordinary + projector additive draws in this
+    // scene. Zero reserves an equal budget for each family's isolated callers.
+    std::size_t additive_pass_count = 0;
     // The original renderer draws camera-outside lights as individual volume
     // draws, then batches only camera-inside lights into full-screen passes.
     // The bounded lights occupy the first entries in lights.
@@ -1044,6 +1047,9 @@ struct ALMetalWorldProjectorLightingScene
     const ALMetalRenderTarget* gbuffer = nullptr;
     const ALMetalWorldProjectorLight* lights = nullptr;
     std::size_t light_count = 0;
+    // Shared upper bound for ordinary + projector additive draws in this
+    // scene. Zero reserves an equal budget for each family's isolated callers.
+    std::size_t additive_pass_count = 0;
     // Two raw spot-shadow depth slices plus the exact matrix/filter block.
     // The raw maps remain a migration input while Metal owns filtering.
     // Null is valid only when every light is unshadowed.
