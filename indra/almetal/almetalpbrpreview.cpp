@@ -537,7 +537,9 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
 
     if (!radiance_descriptor ||
         radiance_descriptor->type != ALMetalTextureType::texture_cube ||
-        radiance_descriptor->format != ALMetalPixelFormat::rgba16_float ||
+        (radiance_descriptor->format != ALMetalPixelFormat::rgba16_float &&
+         radiance_descriptor->format != ALMetalPixelFormat::rg11b10_float &&
+         radiance_descriptor->format != ALMetalPixelFormat::rgba8_unorm) ||
         radiance_descriptor->width != radiance_descriptor->height ||
         radiance_descriptor->width == 0 ||
         radiance_descriptor->sample_count != 1 ||
