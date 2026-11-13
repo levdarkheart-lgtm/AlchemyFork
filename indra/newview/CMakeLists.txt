@@ -1154,6 +1154,8 @@ if(AL_BUILD_VIEWER)
     allegacynotificationwellwindow.h
     allightboxdirectory.h
     almotionpredictor.h
+    almaturitypreference.h
+    alteleportprogress.h
     alobjectproperties.h
     alagentlocationformat.h
     alcrashreporter.h
@@ -2593,6 +2595,8 @@ if(AL_BUILD_TESTS)
       tests/almetalbenchmark_provenance_test.cpp
       tests/alprobereadiness_test.cpp
       tests/almotionpredictor_test.cpp
+      tests/almaturitypreference_test.cpp
+      tests/alteleportprogress_test.cpp
       tests/alnotecardembedded_test.cpp
       tests/alrecoverykeeper_test.cpp
       tests/alsceneexplorerpredicate_test.cpp
