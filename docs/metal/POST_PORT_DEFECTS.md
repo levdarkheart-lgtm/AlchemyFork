@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-089 -->
+<!-- next-defect-id: PPD-090 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -2621,3 +2621,20 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-13: Registered during repair review before any asynchronous-error change. PPD086 correction is specifically format publication, consumer admission and normal failed-copy retry, not a claim to solve all GPU execution failures.
+
+## PPD-089 — Immutable attachment records cost more for single-use poses
+
+- Status: open
+- Confirmation: reproduced
+- Owner: Codex Apple-first experiment integration
+- Discovered: 2026-11-13
+- Original reference: Native fork baseline `18e576cec0a05923632188ec8d7b2224657ffbfa` uses raw per-frame attachment palettes with byte-based arena deduplication; upstream `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` owns the same packed producer contract. The immutable record is new on the isolated experiment branch.
+- Evidence: [Goal-one implementation, complete-cost comparison and limits](research/apple-shadow-records-goal1-results.md), [predeclared experiment](work/active/apple-shadow-records-goal1.md).
+- Next action: Owner assesses exact G1/68987 against Alpha6 before goal two. If work proceeds, evaluate admission based on actual source reuse so a once-only pose need not pay sealing overhead. No repair or owner waiver has been selected; do not attribute an in-world slowdown without a viewer comparison.
+- Verification: At `e21fe9c21832e5af88971ae0cb4f1ec2d892c36e`, the headless one-view/32-draw/32-distinct-pose/32-joint fixture costs p50 0.038375ms raw versus 0.039916ms record (+4.02%, about1.54us); p95 0.042876ms versus0.044751ms. All ten counterbalanced blocks are slower (0.83–5.79%). Costs include copy/finite validation, binding, commit and same-frame ownership cleanup. Multi-view/repeated cases improve; this is a synthetic mechanism regression, not an observed viewer regression.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered immediately after the single declared 3,600-sample comparison. Overall predeclared mechanism gate passes, while the adverse result remains open and explicit. Native correctness passes25cases/53,601assertions; no viewer launch, owner acceptance or performance waiver. Experiment stops for owner assessment before goal two.

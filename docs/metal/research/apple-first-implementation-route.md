@@ -2,6 +2,9 @@
 
 Baseline `18e576cec0a05923632188ec8d7b2224657ffbfa`, 2026-11-13.
 Execution starts with [goal one](../work/active/apple-shadow-records-goal1.md).
+Goal one is now implemented: [measured result](apple-shadow-records-goal1-results.md)
+passes its headless gate, with single-use regression PPD-089 retained. Exact G1
+app is ready for owner assessment; subsequent goals have not started.
 The [source/evidence study](apple-first-renderer-architecture-2026-11-12.md)
 contains hardware and profile evidence; this document specifies implementation
 boundaries and decisions. Subsequent goals are conditional, not already executed.

@@ -1,8 +1,14 @@
 # Goal one — immutable native shadow pose records
 
-Status: doing. Branch: `codex/apple-shadow-records-g1`. Baseline:
+Status: complete engineering milestone; ready for owner assessment. Branch: `codex/apple-shadow-records-g1`. Baseline:
 `18e576cec0a05923632188ec8d7b2224657ffbfa` (accepted Alpha6 renderer retained).
 Worktree: `/private/tmp/alchemy-apple-shadow-records-g1`.
+
+Implementation/app source: `e21fe9c21832e5af88971ae0cb4f1ec2d892c36e`.
+[Results and exact app/evidence paths](../../research/apple-shadow-records-goal1-results.md):
+headless gate passes, 58.93%/72.13% lower CPU cost on repeated four/six-view
+fixtures; single-use one-view cost +4.02% is open PPD-089. Build/static and
+25 native cases/53,601 assertions pass. No viewer FPS claim; goal two not started.
 
 ## Objective and stopping point
 
@@ -99,15 +105,17 @@ and invalidation rules before eliminating that copy.
 Local receipts: `/private/tmp/alchemy-apple-shadow-records-g1-evidence/`.
 Root owns `pipeline.cpp`, CMake integration and canonical documentation.
 Independent backend/tests/build work will receive exclusive file ownership.
-Existing PPD records remain open as recorded; this experiment claims no closure.
+Existing PPD records remain as recorded; new single-use cost is PPD-089. This
+experiment claims no defect closure or owner acceptance.
 
 | Work | State | Result / next action |
 |---|---|---|
 | Isolate branch and pin baseline | verified | Clean worktree at `18e576cec0`. |
 | Inspect native producer/consumer and original invariant | verified | Mapping above; no skinning math change. |
-| Implement producer records and completion-safe publication | doing | Source/API review in progress. |
-| Native parity/lifetime tests and full-cost paired benchmark | todo | Declare fixtures before timing. |
-| Build separate app and assess | todo | Keep all accepted bundles unchanged. |
+| Implement producer records and completion-safe publication | verified | Actual three shadow producers, immutable identity map and every-command completion protection; source e21fe9c218. |
+| Native parity/lifetime tests and full-cost paired benchmark | verified | Nine CTest entries/25cases/53,601assertions, 18 actual-source owner-cache checks, 3,600 timing samples; adverse PPD-089 retained. |
+| Build separate app and assess | verified | G1/68987 Release/346ARM64/strict signatures/native imports pass; staged under the project artifacts directory. Owner scene/FPS assessment remains pending. |
 
-Next action: implement the bounded attachment-pose record, integrate three
-native shadow attachment producers, then run correctness before timing.
+Next action: owner compares exact staged G1/68987 with accepted Alpha6 under
+matched settings/cache/scene. Stop here; do not start goal two or push until the
+owner assesses this first milestone. The subsequent route is documented above.
