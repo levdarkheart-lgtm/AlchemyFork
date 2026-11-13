@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-084 -->
+<!-- next-defect-id: PPD-087 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -2272,7 +2272,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-13
 - Original reference: Owner compares Metal14:08:20 with original14:31:18 and reports a hue in the Metal image's lower grey pavement/road areas while the original looks more neutral. Original1eb reference67611 and native sourceefc3dc17d0 are available; exact corresponding surface samples and colour-profile normalization are unmeasured.
 - Evidence: [Neutral surface colour investigation](work/active/neutral-surface-colour-investigation.md), [comparison](work/active/exposure-reference-comparison.md).
-- Next action: Preserve the owner-confirmed matching framing; examine corresponding materials/lighting regions and embedded image profiles, then compare source colour/lighting boundaries before choosing a repair. Owner is capturing a clean Metal image after requested restart.
+- Next action: Isolate actual albedo/material, lighting/haze, effective EEP/probe state and adapted exposure. Clean images are saved; owner may log out while isolated GPU/source work continues. Do not apply a blanket colour correction.
 - Verification: Clean same-coordinate asphalt/concrete patches reproducibly show darker and relatively warmer encoded RGB in Metal. Example asphalt means67.72/63.34/60.17 versus original74.51/71.67/70.67; identical embedded ICC bytes and same UI grey31/31/31. This confirms supplied-image differences, not a cause or full live-pipeline parity. In-viewer Metal export is unprofiled and retained separately; no repair.
 - Owner verification: pending
 - Push approval: not_granted
@@ -2284,3 +2284,71 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Owner supplies clean Metal14:48:40 OS screenshot and native in-viewer Snapshot14:49:55. Clean OS pair now both3456x2234; provided original reference14:31 retained. Pixel/profile analysis in progress; no cause, colour correction or closure yet.
 
 - 2026-11-13: Read-only PNG/profile and five same-material sample measurements reproduce the image-level difference; no transforms/edits used. Raw controls/coordinates retained. Source/runtime material/lighting/post/presentation boundary still needs isolation; newer upstream algorithm changes and mismatched inputs remain candidates, not established causes. No blanket gamma/colour adjustment or owner closure.
+
+
+- 2026-11-13: Profile-normalized Metal viewer-export/OS comparison reproduces five material patches within2/255 in98.94–99.44%of pixels; tint precedes WindowServer. Actual edge-measured offset0,+66; no warp/reframe. Source lighting/haze audit finds no confirmed cause. Owner may log out; candidate12146 normal-exits0/state10 at15:12:34 without fault. No shader/global-colour fix or closure.
+
+
+- 2026-11-13: Controlled old-folded-skirt versus final sphere HDRI ray model yields relatively warmer truncated-SH upward diffuse for one controlled EXR. Loaded ownerfile/world/actual SH still unmeasured; physical production test pending. This is intentional upstream geometry, not a proved native regression or083cause. Mip candidate084 independently dismissed by originalGL parity.
+
+## PPD-084 — Native sRGB mip generation may differ from original raw-byte policy
+
+- Status: dismissed
+- Confirmation: reproduced
+- Owner: Codex texture/resource integration
+- Discovered: 2026-11-13
+- Original reference: Original1eb/final408 LLImageGL clears sampler and uses SKIP_SRGB_DECODE during mip generation for a documented raw-byte pyramid. Native LLImageGL::generateMetalMipmaps calls ALMetalTexture::generateMipmaps on the original sRGB texture; it does not select its raw linear view.
+- Evidence: [Neutral surface colour investigation](work/active/neutral-surface-colour-investigation.md).
+- Next action: Preserve verified original-driver mip behaviour; retain the bounded native regression test. Continue PPD-083 elsewhere; no raw-view producer change.
+- Verification: Actual AppleM1Max OpenGL4.1Metal90.5 immutable sRGB storage + SKIP_DECODE + sampler0 + glGenerateMipmap returns188/128/192/128, exactly matching production native LLImageGL. Explicit GL DECODE also188; raw RGBA8/raw Metal view controls128. Old comment does not describe actual driver behaviour. Both native/raw-policy and GL/raw-policy assertions intentionally fail without a fault; no producer repair applied.
+- Resolution: Proposed parity defect disproved by actual original/native GPU control. Changing native mip generation to raw128 would diverge from the reference; preserve188. This dismisses the candidate, not owner colour report PPD-083.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered semantic candidate during owner-authorized PPD083 diagnosis before any corrective edit. Source path evidence is distinct from tested GPU behaviour and the owner's tint report.
+
+
+- 2026-11-13: PPD084 native physical baseline underLLDB reproduces mip1red188 versus raw-view/linear-storage128 for actual LLImageGL coloured2x2 input; originalGL physical control remains pending. Native child14528 exits42/state10 with one intended failing policy assertion, no fault; authored sampling control31assertions passes. This does not establish083 causality.
+
+
+- 2026-11-13: External originalGL physical control on sameM1Max returns188 matching native, with allGLerrors0. LLDB14772 exits42/state10 only because the proposed raw128 expectation fails, no fault. Original EXTdecode support/storage present. Candidategap claim withdrawn; no producer edit. A source comment or method name is insufficient evidence for changing established behaviour.
+
+
+- 2026-11-13: Verified original-driver oracle retained in local test3b4ddbfdbe; canonical physical70assertions/2cases pass underLLDB26821 normal0/state10 with MetalValidation. No production change. Original/native mip parity remains matched; dismissed candidate stays in history.
+
+## PPD-085 — Upstream PBR sun contribution cap remains at the old boundary
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex shader integration
+- Discovered: 2026-11-13
+- Original reference: Original1eb clamps unscaled nl*(diffuse+specular) at65504 then multiplies sunlight*3*visibility. Upstream07094f82fe moves complete sun contribution inside clamp;977e51afe9 sets punctual512 and completed-base32752. Current native retains original sun ordering/cap while already applying completed-base32752.
+- Evidence: [PBR contribution-cap source finding](work/active/pbr-sun-contribution-cap.md).
+- Next action: Reproduce extreme sun/ambient ratio with the actual native base renderer before selecting a bounded512 contribution repair. Keep separate from PPD-083 ordinary pavement: original1eb and native share old ordering.
+- Verification: Exact original/final/native source and hashes retained. Native builtin13223–37 still uses65504 helper; final complete-base32752 protects storage but does not limit sunlight share and can scale other lighting when exceeded. No actual owner brightness or tint attribution, physical regression or repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered during PPD083 bounded surface audit. No shader edit. Source defect concerns unported upstream high-intensity behaviour; it does not establish the cause of owner ordinary-surface images.
+
+
+## PPD-086 — HDR ordinary probe publication rejects its producer's packed-float format
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native probe integration
+- Discovered: 2026-11-13
+- Original reference: Original ordinary HDR radiance uses packed R11/G11/B10 storage. Native updateReflectionProbeFace now produces rg11b10_float and filterReflectionProbeRadiance preserves it; LLReflectionMapManager still allocates/expects rgba16_float in bootstrap, publication and reset preservation.
+- Evidence: [HDR probe publication format investigation](work/active/hdr-probe-publication-format.md), [owner colour investigation](work/active/neutral-surface-colour-investigation.md).
+- Next action: Reproduce actual producer-to-manager destination copy failure and inspect six-face retry/publication state before applying a shared authoritative HDR format correction. Verify SH/radiance promotion, same-layout reset and non-HDR paths. Do not assume owner tint fixed without scene retest.
+- Verification: Actual owner-candidate68965 logs at14:46:01 and14:48:01UTC fail native reflection face5 with matching-pixel-format error, once per relevant reset. Source producer rg11b10 and manager rgba16 differ; retry may remain stuck because validFaces has reached0x3f while face5 admission expects0x1f. Exact physical manager reproduction and corrective test pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered immediately after isolating actual owner-session copy failures, before repair. Independent source and physical audits assigned. PPD083 attribution remains candidate, though missing environment contribution is consistent with darker/warmer image; no global exposure/colour adjustment selected.
