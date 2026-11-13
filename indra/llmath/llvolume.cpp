@@ -5191,6 +5191,20 @@ public:
 
 // data structures for tangent generation
 
+namespace
+{
+    // Preserve the zero fallback used for absent mesh attributes. The
+    // upstream tangent path uses this same normalization boundary.
+    LL_FORCE_INLINE void unit3_or_zero(LLVector4a& v)
+    {
+        LLVector4a length2;
+        length2.setAllDot3(v, v);
+        LLVector4a unit = v;
+        unit.normalize3();
+        v.setSelectWithMask(length2.greaterThan(LLVector4a(FLT_MIN)), unit, LLVector4a::getZero());
+    }
+}
+
 struct MikktData
 {
     LLVolumeFace* face;
@@ -5448,10 +5462,10 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
             {
                 mPositions[i].mul(inv_scale);
                 mNormals[i].mul(scale);
-                mNormals[i].normalize3();
+                unit3_or_zero(mNormals[i]);
                 F32 w = mTangents[i].getF32ptr()[3];
                 mTangents[i].mul(inv_scale);
-                mTangents[i].normalize3();
+                unit3_or_zero(mTangents[i]);
                 mTangents[i].getF32ptr()[3] = w;
             }
         }

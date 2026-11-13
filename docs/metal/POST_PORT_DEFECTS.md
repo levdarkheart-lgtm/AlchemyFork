@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-043 -->
+<!-- next-defect-id: PPD-045 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -1275,3 +1275,42 @@ Upstream reports coroutine deadlocks from thread locks and stale process/builtin
 ### History
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+
+## PPD-043 — Zero mesh normals become NaN during tangent cache preparation
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: bbd5193f99 and d1b8554520 indra/llmath/llvolume.cpp LLVolumeFace::cacheOptimize final normalized-frame conversion; upstream 7a7296abfc adds unit3_or_zero in its replacement implementation.
+- Evidence: [First upstream batch](work/active/upstream-first-batch.md), [foundation validation](research/upstream-first-foundation-validation-2026-11-13.md).
+- Next action: Retain the existing tangent algorithm and adapt upstream zero-safe normalization at its final CPU normal/tangent boundary; rerun actual compressed decoder and sanitizer controls.
+- Verification: New short-attribute test at d1b8554520 avoids out-of-bounds reads but fails18 normal checks after final unconditional normalize3 turns absent-attribute zero normals into NaN. Full-stream controls pass; the unguarded short-array control separately reproduces ASan heap overflow.
+- Owner verification: pending
+- Push approval: not_granted
+
+This inherited final normalization path is distinct from PPD-022's byte-array bounds. The short-array repair intentionally selects the original absent-attribute fallback, exposing zero normalization in the retained older tangent implementation. Upstream's replacement uses unit3_or_zero; transplant that semantic boundary without importing the geometry rewrite.
+
+### History
+
+- 2026-11-13: Registered failed fixed-candidate public-API regression before correcting the zero-normal boundary. No visible incident, runtime owner verification or push approval is inferred.
+
+## PPD-044 — High-valence mesh cache ordering has an unbounded cost report
+
+- Status: open
+- Confirmation: reported
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream dc0f4b478c describes quadratic meshoptimizer vertex-cache scoring for repeated high-valence indices. Current retained LLVolumeFace::cacheOptimize still calls the older optimizer without that cost budget.
+- Evidence: [Upstream geometry audit](research/upstream-geometry-review-2026-11-13.md), [upstream cost-bound correction](https://github.com/AlchemyViewer/Alchemy/commit/dc0f4b478c40017a1d149828131f6459863ea526).
+- Next action: Measure the current retained optimizer under a bounded pathological-input test, then adapt the order-preserving work budget with the later geometry batch if confirmed.
+- Verification: Source/upstream report only; no adversarial runtime timing or causal freeze attribution on the current fork. PPD-022 allocation/index caps do not by themselves bound vertex valence scoring.
+- Owner verification: pending
+- Push approval: not_granted
+
+Keep this reported cost mechanism separate from PPD-022 memory safety and PPD-002 owner freezes. No measured M1 CPU stall or speedup is asserted.
+
+### History
+
+- 2026-11-13: Retained after independent final review; the first malformed-array batch does not claim to resolve all algorithmic decode costs.
