@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-045 -->
+<!-- next-defect-id: PPD-054 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -967,13 +967,13 @@ A full ring overwrites an older packet after it was acknowledged. Related final 
 
 ## PPD-026 — Object cache clear and persistence mishandle retained entry state
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #602 and #630; 29eff897e3, 4bb9b798e6, fdda86251c, 79057e0958. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewerregion.cpp:852,3150–3153; llvocache.cpp:2102; cache tree/set/cursor references.
-- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Owner tests exact First Fixes68914 candidate; retain pending verification and explicit push approval. Complete the remaining disk/extras pairing in the later batch.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Deferred removal and safe entry release tests pass in registered cache suite; current source includes pending-removal gates and safe reader ordering. Disk/extras pairing remains unimplemented and this record stays investigating.
 - Owner verification: pending
 - Push approval: not_granted
@@ -987,6 +987,11 @@ Retained subcases: map clearing leaves raw cache entry references/cursors; remov
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending. PPD-026 covers cache-removal lifetime prerequisites here; disk/extras pairing remains later.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
 
 ## PPD-027 — Escaped floater names bypass resolved-name restrictions
 
@@ -1036,13 +1041,13 @@ The per-thread painter is reused without hb_raster_paint_clear. Failure after pa
 
 ## PPD-029 — Valid large texture readback reaches a fatal legacy size guard
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 45007f232d, landed in #568. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llrender/llimagegl.cpp:2355–2359.
-- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Adapt validation/nonfatal errors to the native readback path and test valid 4096 and invalid dimensions.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1053,15 +1058,20 @@ readBackRaw fatally rejects dimensions above 2048 before reaching native readbac
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-030 — URI first-call initialization races and malformed URI handling diverges
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 584b2cea53, 517072b781, 080980a07d, 3be4f909db / #604. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcommon/lluri.cpp, unchanged from fork base.
-- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport guarded static initialization and complete URI parsing tests; run a real first-call race test.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1072,15 +1082,20 @@ A plain initialized bool guards sorting of a shared string, so concurrent first 
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-031 — Shared LLSD date and string contracts retain upstream correctness defects
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #603, #605, #607–612, #643; 8000ca483b, 1d410c39b9, 15fd4bac40, 2ed88ce337, 58a1362221, 58f471334a. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcommon/llsdserialize.cpp/.xml.cpp, lldate.cpp, llstring.cpp/.h.
-- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Port coherent common-parser families and upstream regressions, preserving valid legacy data behavior.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1091,15 +1106,20 @@ Retained subcases: failed/empty unzip result interpretation, single-line deseria
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-032 — Nonfinite quaternion normalization emits invalid transforms
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 6a0a982f5f / #609. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llmath/llquaternion.h:526–577, unchanged from fork base.
-- Evidence: [Upstream geometry audit](research/upstream-geometry-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport bitwise finite checks and upstream tests; verify behavior under release fast-math/LTO.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1110,15 +1130,20 @@ An infinite or overflowing squared magnitude passes the positive threshold, prod
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-033 — New mesh faces inherit placeholder face textures and materials
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 93c320b7eb / #633; full TE prerequisite 444eb52a3e / #619. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; LLPrimitive::setNumTEs; LLViewerObject::setNumTEs.
-- Evidence: [Upstream geometry audit](research/upstream-geometry-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Integrate retained full-length TE data with per-face material/override assignment and native rebuilds; verify actual gained-face viewer behavior.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1129,15 +1154,20 @@ When a loaded mesh gains faces, old code copies the last existing face despite e
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-034 — Octree child capacity can overflow beneath a full parent
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 6ff9523744 and df5199689b / #568. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llmath/lloctree.h; LLSpatialGroup::updateInGroup.
-- Evidence: [Upstream geometry audit](research/upstream-geometry-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport both capacity rules and regressions, then verify dense-scene spatial batching with native captures.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1148,15 +1178,20 @@ A child insertion can ignore its own capacity after a parent fills. Bring legal 
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-035 — Asynchronous alpha-mask answers do not rebuild dependent faces
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction bcce2bce3c, d66e1f4852, 830be4b4f4 / #601. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llimagegl.cpp:2290,3020–3110; LLGLTexture; LLViewerFetchedTexture.
-- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport the final answer/owner notification sequence while preserving native upload lifetime; verify both pass transitions.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1167,15 +1202,20 @@ Provisional no-mask results may select a blend pass, but a later mask answer doe
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-036 — PBR bake proxies lose local composites and body-hide ownership
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #533; ca9043a267, ce67354a60, 6b6f8cd1b2, b71807bc83, 5cc8430be5. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewerobject.cpp:5488; llfetchedgltfmaterial.h:70; llvoavatar.cpp:9624; native lldrawpool/pipeline texture consumers.
-- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Port resolved texture representation and final CPU rules, then adapt every native world/alpha/HUD/shadow/selection consumer and verify editing/rebakes.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1186,15 +1226,20 @@ Fetched-only slots discard dynamic local composites; PBR base-color bake body hi
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-037 — Native HDR bloom exposure and probe paths lack complete finite boundaries
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #595; 07094f82fe, 977e51afe9, 74589add5f, 9c451dc4a2, b929675d9c. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; almetal_builtin.metal local/projector lighting, base output, bloom extract, exposure meter/history, probe downsample/SH.
-- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Specify native half-float/pass headroom, implement MSL finite semantics and run frozen-old/new physical GPU extreme-input controls.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1205,15 +1250,20 @@ Native radiance clamping is partial: later multiplication/addition can overflow,
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-038 — Placed probe admission drops lighting on stale occlusion state
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction fb1a3f1b71 and f410863587 / #595. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llreflectionmapmanager.cpp:1738,2678,2705.
-- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Adapt final frustum/placed-probe/re-entry/preview policy while retaining native query lifetimes; reproduce lighting behavior before closure.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1224,15 +1274,20 @@ Placed probes are rejected like automatic probes using occlusion state; off-frus
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-039 — Default sky swaps azimuth and altitude arguments
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 4364fdcdba / #615. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llinventory/llsettingssky.cpp:913–914.
-- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport the CPU correction and direction tests, then verify expected default sky appearance with the owner.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1243,15 +1298,20 @@ Default sun/moon construction passes altitude first to an azimuth-first API. Ups
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-040 — Texture priority and lifetime retain stale upstream demand
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #578, #601, #622; a4e519127d, 2ffcc7daf6, 3397e5f6cc, 6811bd93f6, 95df03ec7f. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; LLViewerTexture boosts; llviewertexturelist.cpp:965; llviewertexture.cpp:911,2040,3837; region retirement owners.
-- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Port scoped CPU demand/floor semantics first, reconcile native visibility/accounting, then evaluate completion-safe retirement and measure cache/loading behavior.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1262,15 +1322,20 @@ Retained subcases: permanent temporary-use boosts, stale face-walk maxima, ineff
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-041 — Upstream reports additional missing general viewer state corrections
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: reported
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #593, #606, #613, #620, #635, #640, #642, #644–647, #650, #655, #660, #665, #667. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; See the general-review inventory rows and exact commit lists; current per-case runtime evidence is not available.
-- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Implement small coherent behavioral groups after the hardening batch; establish each affected current callsite and regression before claiming a confirmed repair.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1281,16 +1346,21 @@ Retained reported subcases: object roster/orphan/region overrides; inventory IDs
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-042 — Coroutine reached locks retain upstream thread-blocking ownership reports
 
-- Status: open
+- Status: investigating
 - Confirmation: reported
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 35fc15e182 / #591; Script Studio publish correction #606. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcorehttp/_mutex.h uses std::mutex; remaining Script Studio/shared process/table owners are mapped by upstream.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Trace each current owner/coroutine call graph, port typed locks and publication lifetime changes with regressions, and preserve native thread-only contracts.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner verifies Script Studio/server lifetime behavior; retain the wider unproved lock report without asserting every upstream site is a current Mac defect. Larger scheduler/typed-lock project needs an actual native call graph/workload.
+- Verification: Scoped immutable built-in-name snapshot lifetime and coroutine-safe external-editor publication fixes integrated and tested; final197CTest +22contained UI +nativeGPU/build/static checks pass. Broad lock-type replacement is not imported: current HTTP critical sections do not suspend, glibc writer preference and Windows job publication are separate. No TSan or actual Mac deadlock reproduction claimed.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -1301,6 +1371,11 @@ Upstream reports coroutine deadlocks from thread locks and stale process/builtin
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
 
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+- 2026-11-13: d7b1bbbf1c imports independent snapshot/coroutine publication fixes. Keep this record scoped/partially addressed; no broad38-file lock refactor or unsupported precise waiter imported.
+
+
 ## PPD-043 — Zero mesh normals become NaN during tangent cache preparation
 
 - Status: ready_for_owner
@@ -1308,9 +1383,9 @@ Upstream reports coroutine deadlocks from thread locks and stale process/builtin
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: bbd5193f99 and d1b8554520 indra/llmath/llvolume.cpp LLVolumeFace::cacheOptimize final normalized-frame conversion; upstream 7a7296abfc adds unit3_or_zero in its replacement implementation.
-- Evidence: [First upstream batch](work/active/upstream-first-batch.md), [foundation validation](research/upstream-first-foundation-validation-2026-11-13.md).
-- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
-- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Expanded public compressed-decoder regression passes201/4 with ASan/UBSan and instrumented kernels; prior18zero-normal failures retained. Upstream zero-safe normal/tangent boundary reviewed; no visual scene retest.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
+- Verification: First Mikk zero boundary retained. Remaining direct legacy and65535-vertex fallback old controls fail15/17checks in2cases; cea5e68c23 preserves ordinary fast normalization and zeros missing normals. Normal/ASan/UBSan311checks/10cases pass, valid-output fingerprint remains004fd052b5f3a793. Final combined actual math suite passes with existing19geometry expected failures recorded asPPD-053.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -1322,15 +1397,23 @@ This inherited final normalization path is distinct from PPD-022's byte-array bo
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
 
+- 2026-11-13: Remaining allocation review flags the legacy createTangents normalize3fast loop as a possible unhandled zero-normal fallback. Requested an actual production-path probe before broadening the First Mikk-boundary result; do not infer complete zero-normal path coverage from the earlier three-vertex decoder tests.
+
+
+- 2026-11-13: Reopened after actual frozen51d53a6dee direct createTangents and65535-vertex cacheOptimize fallback controls produce NaN normals (15failedchecks/17assertions/2cases, normal child42 underLLDB; no fault). First201/4 Mikk decoder proof remains valid but did not cover the legacy fallback. Register this confirmed remaining path before repair.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
 ## PPD-044 — High-valence mesh cache ordering has an unbounded cost report
 
-- Status: open
-- Confirmation: reported
+- Status: ready_for_owner
+- Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream dc0f4b478c describes quadratic meshoptimizer vertex-cache scoring for repeated high-valence indices. Current retained LLVolumeFace::cacheOptimize still calls the older optimizer without that cost budget.
-- Evidence: [Upstream geometry audit](research/upstream-geometry-review-2026-11-13.md), [upstream cost-bound correction](https://github.com/AlchemyViewer/Alchemy/commit/dc0f4b478c40017a1d149828131f6459863ea526).
-- Next action: Measure the current retained optimizer under a bounded pathological-input test, then adapt the order-preserving work budget with the later geometry batch if confirmed.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source/upstream report only; no adversarial runtime timing or causal freeze attribution on the current fork. PPD-022 allocation/index caps do not by themselves bound vertex valence scoring.
 - Owner verification: pending
 - Push approval: not_granted
@@ -1340,3 +1423,208 @@ Keep this reported cost mechanism separate from PPD-022 memory safety and PPD-00
 ### History
 
 - 2026-11-13: Retained after independent final review; the first malformed-array batch does not claim to resolve all algorithmic decode costs.
+
+- 2026-11-13: Owner authorizes the remaining applicable upstream fixes. Reconfirm current source and integrate required corrections under [remaining batch](work/active/upstream-remaining-batch.md); optional replacement/performance projects require applicability evidence. No First-batch runtime acceptance or push approval inferred.
+
+
+- 2026-11-13: Independent review found the optional budget returned success for invalid no-tangent indices. Production asset callers request tangents and already reject them, but the public cacheOptimize(false) contract needs unconditional structural/index admission before the cost guard. Register this correction before repair; retain zero-work success.
+
+- 2026-11-13: Actual retained cacheOptimize(false) fan control exceeds incidence budget100040000>2^26; baseline reorders, fixed preserves all30000indices (3checks). Fixed public compressed decoder201/4 and unconditional empty/bad-index/nontriangle admission3/1 pass underASan/UBSan. No viewer freeze cause or FPS improvement demonstrated. PPD-048 separately tracks inherited allocation hazards.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
+## PPD-045 — Texture boost test registration links unused viewer-only methods
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Local remaining-candidate b17a8c5aad indra/newview/CMakeLists.txt newview_tests UNITaltextureboost.cpp; ALTextureBoostLevels tests are header-only while the RAII implementation calls real LLViewerTexture hold methods absent from the test target.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
+- Verification: Actual Debug/O0/fno-lto boost test compiles and links without dead-strip, boost implementation or viewer support library; nm has no LLViewerTexture hold dependencies. LLDB child exit0,1088assertions/6cases. Canonical production source retained and tests use the inline levels model; combined target still building.
+- Owner verification: pending
+- Push approval: not_granted
+
+This is a new local backport-integration issue, not an inherited viewer incident. No published branch or First candidate is affected.
+
+### History
+
+- 2026-11-13: Registered independent review finding before correcting CMake test ownership.
+
+- 2026-11-13: 4e230f49ad removes the unnecessary test implementation unit; independent no-dead-strip Debug probe passes. No Release-only linker inference used.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
+## PPD-046 — New HDR GPU test fixture triggers desktop crash dialogs
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex integrator and HDR test owner
+- Discovered: 2026-11-13
+- Original reference: New local indra/almetal/tests/almetal_hdr_finite_test.mm Fixture::render in the remaining-HDR worktree; this is test fixture behavior, not a published viewer incident.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner confirms unexpected dialogs cease in the normal workflow; Ignore the old dialog and do not use Reopen. Corrective runner executions already pass with explicit arguments under LLDB; no viewer launch or push.
+- Verification: Owner reports two dialogs. Actual09:47:54 PID6697 report shows strlen(nullptr) in Catch::MessageBuilder fromFixture::render.09:48:37 PID6906 shows SIGABRT from Metal render-pipeline descriptor validation; test omitted function constants. Later run manually stopped130; no further runtime until review.
+- Owner verification: pending
+- Push approval: not_granted
+
+The owner screenshot names almetal_tests. Both actual crash reports identify the scratch test app, and the source/stack confirms the two fixture defects. These are unexpected failures, not successful red controls. Raw diagnostics and private screenshot stay outside Git; source/log summaries are retained.
+
+### History
+
+- 2026-11-13: Owner reports two pop-ups. Runner paused, both reports independently inspected, implementation work continues without launching further GPU tests. New fixture fixes must pass review and corrective execution before readiness is claimed.
+
+- 2026-11-13: Null-safe diagnostics and production-equivalent function-constant specialization reviewed. Final isolated LLDB HDR1230/2 and existing243759/19 pass with actual child exit0/MetalAPIvalidation; earlier faults/interruption are not counted as passes. No viewer launched.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
+## PPD-047 — Temporary boost leaves legacy NO_DELETE state after demand expires
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: LLViewerTexture::updateBoost sets NO_DELETE for an effective boost; LLGLTexture::setActive refuses NO_DELETE. Scoped level release returns NONE without restoring the state. Inherited state contract predates the native boost import.
+- Evidence: [Remaining upstream batch](work/active/upstream-remaining-batch.md).
+- Next action: Keep nonblocking legacy state invariant visible; native residency/downscale/delete consumers do not consult NO_DELETE. Reconcile explicit pins and any future state reader before cleanup; do not invent a current native leak or perform a speculative unpin.
+- Verification: Independent source review confirms the state remains; native lazy flush and downscale do not consult it, so no memory leak, performance loss or visible incident is demonstrated.
+- Owner verification: pending
+- Push approval: not_granted
+
+Effective scoped priorities do release correctly. Keep this legacy state invariant separate from PPD-040 priority correctness and unmeasured native resource/accounting consequences.
+
+### History
+
+- 2026-11-13: Retained from independent material/texture review; no speculative unpin or accounting redesign applied.
+
+- 2026-11-13: Full source reader audit finds only state/profile bookkeeping, avatar debug logging and setActive refusal. Actual native pressure/LOD/downscale/reference deletion uses other owners/flags; scoped boost priorities release correctly. Remains unmodified and no measured functional consequence is claimed.
+
+
+## PPD-048 — Retained mesh optimizer allocation failures can lose buffers
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex integrator and geometry reviewer
+- Discovered: 2026-11-13
+- Original reference: Retained LLVolumeFace::cacheOptimize Mikk re-weld/index shuffle; upstream dc0f4b478c also repairs allocation failure handling in its replacement implementation. The local incidence-budget backport covers cost only.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
+- Verification: Required/optional allocation failure controls pass293/8 normal+ASan/UBSan and217/4 private aligned/null/new/fallback; exact old source fails both allocation cases. Ordinary fingerprint unchanged004fd052b5f3a793. Native LLFace4calls/preview1call and intersection now propagate false before raw tangent reads; final build/math/native checks pass. No physical OOM scene test.
+- Owner verification: pending
+- Push approval: not_granted
+
+Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD-044 optimizer cost. No complete dc0f4b478c allocation-safety equivalence is claimed.
+
+### History
+
+- 2026-11-13: Registered independent source findings before repair investigation; full candidate build running at2a5af4fdac. Existing hazards predate the new budget guard.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
+## PPD-049 — Scratch Script Studio test links mismatched noticebar implementation
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex general viewer test owner
+- Discovered: 2026-11-13
+- Original reference: Isolated scratch viewer links omitted matching noticebar/datapacker objects; canonical implementation units are present and rebuilt. This is a scratch linkage/setup fault, not a viewer incident.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
+- Verification: Matching noticebar fixes zero line counts. Original SIGBUS is cache unpackUUID dispatch into libc++abi type-info vtable; saved stale-datapacker control reproduces under LLDB and matching unmodified current lldatapacker.cpp alone removes it. Corrected UI518/38 and cache3998/19 pass with actual child exit0. No product workaround or viewer attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered unintended scratch fixture failure. Direct failing launches stopped; subsequent tests require LLDB containment and actual child exit/state verification. Do not treat a setup failure as product evidence.
+
+- 2026-11-13: Original09:58:08 OS report and contained stale-datapacker stack/link control preserved privately. Initial noticebar/SIGBUS association was provisional; the cache fault is independently traced to stale datapacker ABI, with corrective isolated-source proof. Canonical full build recompiles both.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
+## PPD-050 — Imported noticebar test assumes a fixed font-dependent height
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex general viewer test owner
+- Discovered: 2026-11-13
+- Original reference: Imported Script Studio noticebar regression expects28pixels for one line; actual native Mac font metrics produce30pixels.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
+- Verification: Independent test-only23cea92614 derives one-line expected height from actual text pixels/skin margins with28minimum; line count/wrap/clamp/tooltip/shrink assertions retained. Correctly linked contained UI subset passes518assertions/38cases, childexit0.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered platform-dependent test expectation before correction; root canonical target building. PPD-049 retains prior scratch linkage/SIGBUS history separately; no product attribution inferred.
+
+- 2026-11-13: Portable test correction tested in isolated worktree; production layout unchanged. Integrator will cherry-pick after current frozen-source build completes.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
+## PPD-051 — Whole assets share texture HTTP admission
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex general viewer owner
+- Discovered: 2026-11-13
+- Original reference: Upstream05c6ab9032 separates complete sound/animation/gesture asset requests from texture policy with AP_ASSET and AssetFetchConcurrency. Current fork routes these requests through AP_TEXTURE.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
+- Verification: Actual shared queue ownership confirmed by source. No measured audible delay, throughput or frame-rate consequence on M1 Max.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered independent applicable upstream admission change before repair; no renderer or asynchronous framework dependency.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
+## PPD-052 — Sculpt texture copies lose aspect and finer same-level data
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex sculpt/native texture owner
+- Discovered: 2026-11-13
+- Original reference: Upstream85bf118da5/04d9015143 and45007f232d chosen-copy correction. Current saveRaw can resize512x8 sculpt pixels to128x128, rebuild admission only follows discard decrease, and CPU-only completion lacks postCreateTexture volume notification.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
+- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
+- Verification: Source-confirmed current paths; no owner scene comparison or measured decode performance claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered producer/consumer findings before implementation. Full geometry and GL asynchronous readback architecture are unnecessary prerequisites for this correction.
+
+- 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
+## PPD-053 — Retained geometry suite has19 expected-failure contracts
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex geometry integration
+- Discovered: 2026-11-13
+- Original reference: Existing indra/llmath/tests/llvolume_test.cpp explicitly marks19 generation contracts !shouldfail; the file is unchanged fromb04d9bf6ef through this remaining batch. Corresponding normal/stitching/cap/hollow/flexible/degenerate repairs are in the larger upstream geometry stack.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [geometry audit](research/upstream-geometry-review-2026-11-13.md).
+- Next action: Evaluate and port the coherent geometry/tangent/dependency/uploader stack separately with original-output mapping, native integration and scene checks. Keep the19 known failures visible; do not remove expectations or claim complete geometry correctness from green CTest.
+- Verification: Finalaf5c263988 llvolume_test returns0 under its existing !shouldfail policy:34cases,15pass/19fail as expected;3963assertions,3940pass/23fail as expected. Separate new safety tests311/10 pass. No new unexpected failure or owner visual incident.
+- Owner verification: pending
+- Push approval: not_granted
+
+Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-area tangent contribution, normal length, hollow walls, flexible partial rebuilds and placeholder normals. This is a grouped register of existing expected-failure evidence, separate from repaired decoder bounds/cost/allocation/legacy zero/sculpt copy paths. It is not a newly introduced regression or full-stack port claim.
+
+### History
+
+- 2026-11-13: Registered known retained geometry contracts after observing actual isolated and final combined suite output. Current batch preserves all existing test expectations and records the larger project separately.
