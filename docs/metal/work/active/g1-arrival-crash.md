@@ -68,20 +68,41 @@ concurrency, image-failure policy, shadow or cache setting is changed.
 Actual worker tests cover a standard exception, a nonstandard marker/payload
 and a responder exception: stage/type/message retained, original mainloop
 rethrow retained, admission released and no duplicate callback/retry.
-Narrow build and five CTest entries (worker/image/layout/scheduler/OpenHT) pass0.
-Doctor passes0. No agent viewer launch or interactive profiler.
+A diagnostic recorder that deliberately throws also cannot replace the original
+failure. Narrow build and five CTest entries (worker/image/layout/scheduler/OpenHT)
+pass0:47cases/1,277assertions. Doctor passes0. No agent viewer launch or
+interactive profiler.
+
+Diagnostic source `efd0367ca446c4be368cbb8edd45c7cf9f662f4a`,
+version26.4.0.68989, configured and full Release wrapper-built successfully
+(28.085s incremental build). The initial development-bundle static check passes,
+including the compiled diagnostic marker, source/version and unchanged native
+renderer/media/voice/decoder configuration. Separate staging/reverification is
+complete; the crashed G1/68987 and Alpha6 apps are preserved.
+
+Verified diagnostic app:
+`/Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/ppd-090-g1-arrival-crash-20261113/diagnostic/Alchemy Metal Alpha G1.app`.
+Main executable SHA256:
+`1d423bd711caf6530f0a3a6520b23350f7861f0cb29467493cc10d59cad357eb`.
+Build and staged static checks pass0:346ARM64-only Mach-O files, deep strict
+signatures, exact code/version, native imports, retained features and compiled
+diagnostic marker. All7,841regular/symlink entries match after `ditto`; the old
+crashed bundle's executable hash remains unchanged. Receipts:
+`diagnostic-staging-receipt.json`, `diagnostic-build-static-verification.json`,
+`diagnostic/static-verification.json` and `diagnostic/bundle-content-manifest.json`
+in the private evidence directory below. No viewer was launched.
 
 ## Work and evidence
 
 Root owns production diagnostics/CMake/registration/integration. Independent
 agents preserve/symbolicate artifacts, audit source and own disjoint worker
-tests/private-corpus fixture. Diagnostic tests pass; app packaging is next.
+tests/private-corpus fixture. Diagnostic build/tests/staging verification pass.
 The actual crash remains unresolved and PPD-090 stays investigating.
 
 Local private evidence directory:
 `/Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/ppd-090-g1-arrival-crash-20261113/`.
 
-Next action: build and verify a separately staged diagnostic G1 app, then owner
-retries the same arrival once. The new log is needed because the original
+Next action: owner retries the same arrival once using the verified diagnostic
+G1/68989 app above. The new log is needed because the original
 exception details are absent from the preserved report. Do not claim a fix or
 start goal two; use the captured stage/type/input context for a contained repair.
