@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-083 -->
+<!-- next-defect-id: PPD-084 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -2263,3 +2263,24 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-13: Registered source-permitted transition concern from the PPD081 audit. No source/UI edits or failing GPU execution; preserve current owner viewer and retain concern for a bounded original/native transition check.
+
+## PPD-083 — Owner reports a tint in neutral-looking scene surfaces
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Owner compares Metal14:08:20 with original14:31:18 and reports a hue in the Metal image's lower grey pavement/road areas while the original looks more neutral. Original1eb reference67611 and native sourceefc3dc17d0 are available; exact corresponding surface samples and colour-profile normalization are unmeasured.
+- Evidence: [Neutral surface colour investigation](work/active/neutral-surface-colour-investigation.md), [comparison](work/active/exposure-reference-comparison.md).
+- Next action: Preserve the owner-confirmed matching framing; examine corresponding materials/lighting regions and embedded image profiles, then compare source colour/lighting boundaries before choosing a repair. Owner is capturing a clean Metal image after requested restart.
+- Verification: Clean same-coordinate asphalt/concrete patches reproducibly show darker and relatively warmer encoded RGB in Metal. Example asphalt means67.72/63.34/60.17 versus original74.51/71.67/70.67; identical embedded ICC bytes and same UI grey31/31/31. This confirms supplied-image differences, not a cause or full live-pipeline parity. In-viewer Metal export is unprofiled and retained separately; no repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered new colour-specific report separately from broader brightness PPD-081. Reference PID10889 had already exited normally0/state10 when owner requested switching back. Exact unchangedSky68965 restarted PID12146, explicit same destination and frozen agreed settings, HDRI.5/EV-3; owner will reload EXR and capture. No rendering code change or agent scene capture.
+
+- 2026-11-13: Owner supplies clean Metal14:48:40 OS screenshot and native in-viewer Snapshot14:49:55. Clean OS pair now both3456x2234; provided original reference14:31 retained. Pixel/profile analysis in progress; no cause, colour correction or closure yet.
+
+- 2026-11-13: Read-only PNG/profile and five same-material sample measurements reproduce the image-level difference; no transforms/edits used. Raw controls/coordinates retained. Source/runtime material/lighting/post/presentation boundary still needs isolation; newer upstream algorithm changes and mismatched inputs remain candidates, not established causes. No blanket gamma/colour adjustment or owner closure.
