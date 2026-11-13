@@ -758,14 +758,14 @@ transparent atlas/mip edge coverage are candidates, not confirmed causes.
 
 ## PPD-017 — HTTPS login redirects can resend credentials off TLS
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction cc2838504c / #637. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; login/lllogin.cpp:201; _httpoprequest.cpp:559; llxmlrpctransaction.cpp:214.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport the complete HTTPS-only redirect option and both login protections, with regression tests.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Both secure-login redirect layers and their registered tests pass; ordinary HTTPS and explicit plain-grid semantics preserved.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -777,16 +777,18 @@ The application accepts next_url without retaining HTTPS; HTTP redirects also la
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-018 — Simulator Xfer names choose local cache files
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 4fa42289ac / #614. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llmutelist.cpp:958; llviewerobject.cpp:3627; llxfermanager.cpp:439; llxfer_file.cpp:86.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport local/remote name separation, callback cleanup and short-name handling with Xfer tests.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Xfer short-name/header/callback tests pass; local task/mute filenames are viewer-generated and their client integration builds.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -798,16 +800,18 @@ A remote name is reused for the local cache target and cleanup; short names can 
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-019 — IM binary buckets can be read beyond their copied bytes
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 9063a7dfe8 / #645. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewermessage.cpp:2266; llimprocessing.cpp:1107,1381,1408.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport all size/text guards and add focused verification for both UDP and HTTP IM buckets.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Exact production bounded bucket-text body passes9 ASan/UBSan checks; old constructor control reproduces heap overflow. Full IM application builds; no live IM session test.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -819,16 +823,18 @@ Declared size is passed beyond a bounded copy, and session/inventory text is con
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-020 — Out-of-domain packet IDs can hang the main thread
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 6687792a35 / #636. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcircuit.cpp:734–749.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport the domain guard and upstream packet-ID regression, preserving legitimate wrap behavior.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Registered circuit49assertions/11cases pass; removing only the domain guard times out in the same test.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -840,16 +846,18 @@ The predicate computes distance modulo 24 bits but the loop compares against the
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-021 — Network object and layer decoders lack required payload bounds
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #619 and #634; 5ad54288ed, a0235bf308, a6c038538f, df1de743b5, 8a0c98ae13. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; LLNameValue/LLDataPacker; llvovolume.cpp:479; llviewerobject.cpp:1889,6795; llvlmanager.cpp:95; initial Xfer packet reader.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Port coherent object/layer/Xfer receiver families with helper prerequisites, tail fixes and bounded-input regressions.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Registered object/message/primitive/layer/profile tests pass, with malformed input cases and complete cache lifetime prerequisites; no malformed live simulator traffic executed.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -861,16 +869,18 @@ Retained subcases: static name-value buffer overflow/stale fields, particle/TE/e
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-022 — Mesh decoding has unsafe weights and unbounded face/index work
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #570 plus efd275c864 in #567. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llmath/llvolume.cpp:2379,2413,2616–2653.
 - Evidence: [Upstream geometry audit](research/upstream-geometry-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport bounds, trailing-weight initialization and allocation caps without requiring the full tangent/geometry rewrite.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Expanded actual compressed decoder plus SIMD kernels passes201assertions/4cases under ASan/UBSan and registered tests; old weight/short-attribute controls reproduce heap overflow. PPD-043 zero fallback corrected separately, PPD-044 cost report remains open.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -884,16 +894,18 @@ Retained subcases: an influence read can consume up to three bytes after a one-b
 
 - 2026-11-13: Independent final review identifies another inherited decoder subcase: nonempty Normal/TexCoord arrays shorter than the Position count are SIMD-read past their ends. Upstream 2a599a405c has the minimal size predicates; add compressed-input/ASan controls before the combined candidate is finalized. High-valence optimizer cost dc0f4b478c remains outside this minimal malformed-array repair.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-023 — Disconnect destroys a world still used in the current frame
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 9e06c2d585 and bd1a07cc24 / #569. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llappviewer.cpp:6622; lltextureview.cpp:559; llviewerdisplay.cpp:2750; llscenemonitor.cpp:448,453.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport empty-world lifetime/count initialization and adapt monitor guards to the native draw path.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Original-mapped world/reset/monitor guards compile in exact candidate; no actual in-world disconnect retest, so owner confirmation remains pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -905,16 +917,18 @@ Disconnect deletes LLWorld while later current-frame texture/UI work dereference
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-024 — Random UUID generation shares unsynchronized state
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 9ebf45f009 / #596. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcommon/lluuid.cpp:752–840.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport system-random thread-local v4 generation and concurrency tests while retaining deterministic hashing.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. UUID37136assertions/25cases pass, including200000 distinct concurrent IDs and unchanged deterministic asset/name vectors; original produces140214distinct/200000 in retained run.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -926,16 +940,18 @@ getCurrentTime and generate share lazy initialization, time and sequence fields 
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-025 — Reliable packet queues can lose acknowledged data and retain stale history
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #617, #630, #637; f90c8559b3, 670b85ad16, 010f7371f4, d557bdde72. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llpacketring.cpp:62–91; message.cpp:742,1166; LLCircuitData reliable history.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Port the complete circuit/queue progression and final duplicate/impairment/history tests.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Protocol20599assertions/52cases, circuit49/11 and bitpack36/9 pass; normal full-header dependency rebuild avoids the recorded narrow-link stale-ABI fixture failure.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -947,6 +963,8 @@ A full ring overwrites an older packet after it was acknowledged. Related final 
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-026 — Object cache clear and persistence mishandle retained entry state
 
 - Status: investigating
@@ -955,8 +973,8 @@ A full ring overwrites an older packet after it was acknowledged. Related final 
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #602 and #630; 29eff897e3, 4bb9b798e6, fdda86251c, 79057e0958. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewerregion.cpp:852,3150–3153; llvocache.cpp:2102; cache tree/set/cursor references.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Port complete entry-lifetime and object/extras disk-pairing fixes; validate removal during reads and next-login cache reuse.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate; retain pending verification and explicit push approval. Complete the remaining disk/extras pairing in the later batch.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Deferred removal and safe entry release tests pass in registered cache suite; current source includes pending-removal gates and safe reader ordering. Disk/extras pairing remains unimplemented and this record stays investigating.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -968,16 +986,18 @@ Retained subcases: map clearing leaves raw cache entry references/cursors; remov
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending. PPD-026 covers cache-removal lifetime prerequisites here; disk/extras pairing remains later.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-027 — Escaped floater names bypass resolved-name restrictions
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 53654b4781, landed through ec47f7a577. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewerfloaterreg.cpp openfloater command policy and handler.
 - Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Backport shared resolved-name policy and upstream app-link tests.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Registered shared decoded-name policy regression passes; full app integration builds. No restricted floater opened during testing.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -989,16 +1009,18 @@ The restriction check uses escaped params[0] while opening resolves an unescaped
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
 ## PPD-028 — Failed COLRv1 glyph painting retains stale raster surfaces
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction a55fd36959 / #600. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llrender/alfontcolrv1.cpp:164–336.
 - Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
-- Next action: Check bundled clear API, backport per-glyph reset and verify failure-then-smaller-glyph behavior under memory instrumentation.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Registered real painter failure/recovery15assertions/1case passes; original stale width116 versus expected18 reproduced. No real allocation failure or live font incident claimed.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -1009,6 +1031,8 @@ The per-thread painter is reused without hb_raster_paint_clear. Failure after pa
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
 
 ## PPD-029 — Valid large texture readback reaches a fatal legacy size guard
 
@@ -1279,14 +1303,14 @@ Upstream reports coroutine deadlocks from thread locks and stale process/builtin
 
 ## PPD-043 — Zero mesh normals become NaN during tangent cache preparation
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: bbd5193f99 and d1b8554520 indra/llmath/llvolume.cpp LLVolumeFace::cacheOptimize final normalized-frame conversion; upstream 7a7296abfc adds unit3_or_zero in its replacement implementation.
 - Evidence: [First upstream batch](work/active/upstream-first-batch.md), [foundation validation](research/upstream-first-foundation-validation-2026-11-13.md).
-- Next action: Retain the existing tangent algorithm and adapt upstream zero-safe normalization at its final CPU normal/tangent boundary; rerun actual compressed decoder and sanitizer controls.
-- Verification: New short-attribute test at d1b8554520 avoids out-of-bounds reads but fails18 normal checks after final unconditional normalize3 turns absent-attribute zero normals into NaN. Full-stream controls pass; the unguarded short-array control separately reproduces ASan heap overflow.
+- Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
+- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Expanded public compressed-decoder regression passes201/4 with ASan/UBSan and instrumented kernels; prior18zero-normal failures retained. Upstream zero-safe normal/tangent boundary reviewed; no visual scene retest.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -1295,6 +1319,8 @@ This inherited final normalization path is distinct from PPD-022's byte-array bo
 ### History
 
 - 2026-11-13: Registered failed fixed-candidate public-API regression before correcting the zero-normal boundary. No visible incident, runtime owner verification or push approval is inferred.
+
+- 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
 
 ## PPD-044 — High-valence mesh cache ordering has an unbounded cost report
 
