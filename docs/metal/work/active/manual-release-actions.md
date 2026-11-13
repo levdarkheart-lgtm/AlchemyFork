@@ -8,6 +8,32 @@ no account spending limit, billing credentials or repository permissions change.
 Source starts at81bff208a7; isolated codex/manual-apple-release worktree. Owner's
 `odex/apple-silicon-metal` spelling is interpreted as the existing codex branch.
 
+## Verified release outcome —2026-11-13
+
+[Alpha5 26.4.0.68901-alpha5](https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68901-alpha5) is published as a prerelease by
+[manual run43338929395](https://github.com/levdarkheart-lgtm/AlchemyFork/actions/runs/43338929395) from exact source `9646f4e839ed1d32d2b5bb1fcecc9a1a9601e2e5`.
+The tag points at that commit. It includes native parcel music, the login-world
+startup correction and the subsequently approved water-haze fix.
+
+Hosted116tool tests, configured-header source identity,346ARM64slices, deep
+strict signatures, owned imports/compiled features, pinned decoder receipt and
+license, ZIP roundtrip/checksum and release publication all pass. Independently
+downloaded ZIP/checksum/provenance match all three GitHub asset digests; extracted
+app ARM64/signatures and all three owned executable hashes match CI provenance.
+Native music/WebRTC/decoder/encoder compiled evidence is present; no runtime
+voice/visual parity claim or full-product completion is implied.
+
+- ZIP bytes: 318362420; SHA256 `08a6d2163dc422b7c006e9a0c5bdd37d3fa26b03253878203a16402f87bc01b7`.
+- Viewer executable SHA256 `c301a627dbf8caa19f82aea9e08cf685223e22231309b6df4e1af7c893ab9226`.
+- Local proof: `artifacts/metal/actions-manual-release-20261112/download-verification.json`;
+  full run log/provenance/downloads and final workflow state are retained there.
+- Seven legacy automatic build/test/PR workflows remain disabled. Release is
+  manual-only, one standard ARM64 job,3CPUs, reusable dependency binaries and no
+  duplicate Actions app artifact. Dependabot remains a separate service entry.
+- PPD-014 is ready for owner confirmation. No account billing/spending limit or
+  repository permission was changed. Standard public-repository runner compute
+  is free under [GitHub's policy](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+
 ## Observed failures
 
 - Run43306501400: Metal harness, push event at81bff208, docs path trigger. Harness
@@ -59,7 +85,7 @@ machine-specific archive hash. Legacy local archive guard stays unchanged.
 Fresh build/receipt gates/8real decode cases match accepted output; tool tests84
 pass. Static BSD notices must enter the bundle before package signing.
 
-## Current progress
+## Original pre-dispatch checkpoint (historical)
 
 - doing: release workflow source/ref/tag identity, native build, archive validation
   and explicit prerelease publication; manual NumPy installation fixes harness.
@@ -129,3 +155,65 @@ requirements succeeds on this M1 Max. Target venv explicitly has no pip; NumPy
 2.4.3/PyYAML6.0.3 imports and all108tool tests pass there (11.863s). Actionlint,
 harness and diff checks pass. The next dispatch uses this corrected immutable
 commit. Evidence: artifacts/metal/actions-manual-release-20261112/python-tools-rehearsal/.
+
+## Follow-up parallelism correction
+
+Owner notes the usual native build takes about52minutes, consistent with the
+prior successful runs. Inspection confirms the old native job uses all logical
+CPUs, while the initial replacement limits vcpkg/viewer compilation to2. The
+standard macos-26 runner has3CPUs; restore3for subsequent manual runs. Current
+run43314101072 retains its immutable2job workflow; do not cancel/rebuild it.
+At22:31UTC the live log reaches133/169dependencies and confirms AOM completed.
+This is observed build progress, not a successful release. Future parallelism
+change stays in this isolated worktree until the hosted outcome is recorded.
+
+Hosted checkpoint22:57UTC: all169dependency packages and native configuration
+complete successfully (configure62m30s); Actions dependency binary cache saves
+successfully. Viewer compilation is now running. Prior successful native runs
+had~20mconfigure/~30mcompile/package; this cold two-job attempt has taken longer.
+Do not report a release until packaging/signatures/provenance and assets pass.
+
+## Source identity failure before publication —2026-11-13
+
+Run43314101072 completes compilation and CPack;346ARM64slices and strict deep
+signature verification pass. At00:29UTC the release validator stops publication
+because the executable lacks its requested SHA. Minimal real-CMake reproduction
+confirms BuildVersion.cmake only discovers AL_GIT_REVISION_COMMIT in the numeric
+Git-count branch; CI's revision/GITHUB_RUN_ID branches generate an empty source
+macro. Existing local cached state hid this. This failure is recorded in PPD-014
+before repair. No release/tag was published;169dependency cache is retained.
+
+Repair source identity independently from numeric revision selection and check
+the generated header immediately after configuration. Retry the current approved
+branch (now includes owner-approved water3e17d4e) with3CPUs/cached dependencies.
+The optional question about an additional build after the first publication is
+superseded by this necessary retry: the first publication did not occur.
+
+Identity repair validation: five real-CMake cases fail before repair; all eight
+identity cases and all116tool tests pass afterward (7.364s). The exact workflow
+header guard rejects an empty SHA and wrong numeric version, and passes against
+the actual production template generated by the corrected CMake module with CI
+revision/run-ID overrides. Actionlint/harness/diff checks pass. Before dispatch,
+commit/push this scope and use its dynamically read full SHA; no hand-entered SHA.
+Evidence: source-identity-tests-red.log, source-identity-full-tool-tests.log,
+configured-identity-gate-rehearsal.json and actual-cmake-workflow-identity-gate.json
+under artifacts/metal/actions-manual-release-20261112/.
+
+Initial status append exceeds CURRENT/ledger line limits (164/184). Integrating
+CI status into their existing defect-index paragraphs restores160/180lines;
+retain this documentation-check failure and validate before publication.
+
+## Corrected retry —2026-11-13
+
+Published identity repair9646f4e839ed1d32d2b5bb1fcecc9a1a9601e2e5; manually
+dispatched run43338929395 from that immutable source, expected26.4.0.68901-alpha5.
+It includes approvedwater3e17d4e. By00:45UTC hosted tests/configuration and the
+new generated-source/header gate pass; viewer compilation is running with3CPUs.
+The saved dependency cache is reused. No release is claimed yet. Follow
+https://github.com/levdarkheart-lgtm/AlchemyFork/actions/runs/43338929395
+through package/provenance checks, publication and downloaded-asset verification.
+
+Final required action is complete: the requested manually triggered current-branch
+release is published and its downloaded assets verify. Keep existing failed run
+history and unresolved product defects. Future manual runs use the Metal branch
+workflow selector; source_ref accepts its integrated branch/tag/commit lineage.

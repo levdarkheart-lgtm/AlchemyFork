@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-017 -->
+<!-- next-defect-id: PPD-043 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -634,14 +634,14 @@ offset, disabled quality feature or changed depth admission.
 
 ## PPD-014 — Automatic CI spends unwanted runs and manual releases select incompatible jobs
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference:81bff208a7 `.github/workflows/metal-harness.yml`, `build.yaml` and `tag-release.yaml`; default-branch inherited schedules remain active unless disabled.
 - Evidence: [Workflow failure investigation and manual release ledger](work/active/manual-release-actions.md).
-- Next action: Finish and validate a manual-only native ARM64 release workflow, preserve accepted dependencies, dispatch the corrected current branch and follow the run through verified release assets.
-- Verification: Linked push run43306501400 fails10of76tests because NumPy is absent. Earlier tag42930335974 enters the incompatible Windows/Linux matrix. Two other prior runs were rejected before startup for account billing/spending gates; successful alpha2/3 prove xcode-27 was usable. Seven automatic workflow IDs are now disabled, but no corrected release run has succeeded yet.
+- Next action: Owner confirms the manual workflow/release experience if desired; retain disabled automatic workflows and use the Metal branch selector for future explicit builds.
+- Verification: Run43338929395 succeeds and publishes26.4.0.68901-alpha5 from9646f4e. Hosted116tests, precompile source identity,346ARM64slices, deep strict signatures and package/provenance checks pass. Downloaded ZIP/checksum/provenance match GitHub digests; extracted app/three owned executable hashes and license match CI. Static release evidence; owner confirmation pending.
 - Owner verification: pending
 - Push approval: granted
 
@@ -669,6 +669,36 @@ not raising spending limits or changing billing/repository permissions.
   Add NumPy to that cached environment; actual pip-free imports and108tests pass.
   Repair bfaaa21cda pushed; new manual run43314101072 targets its exact SHA.
   Follow this run through packaging and release assets; no success claim yet.
+
+- 2026-11-13: Run43314101072 compiles and packages successfully;346ARM64
+  slices and strict signature verification pass. Publication is correctly
+  stopped by missing embedded source SHA. Actual minimal CMake reproduction
+  proves BuildVersion.cmake skips source-hash discovery whenever revision or
+  GITHUB_RUN_ID supplies the numeric version. Local cached builds hid this
+  because AL_GIT_REVISION_COMMIT already existed. Separate source identity from
+  numeric version selection and add a generated-header gate before compilation.
+  No tag/release was published. Dependency binary cache saved successfully.
+
+
+- 2026-11-13: Source SHA discovery now runs independently of numeric version
+  overrides and clears stale cached identity on Git failure. Eight real-CMake
+  cases and116tool tests pass; actual workflow guard rejects empty/wrong identity
+  and passes against the corrected production header before compilation. Retry
+  current approved branch including water3e17d4e; earlier attempt published nothing.
+
+
+- 2026-11-13: Repair9646f4e published; explicit run43338929395 reuses
+  dependency cache and passes the actual configured-header identity gate before
+  compilation. Three-CPU viewer build is running; expected26.4.0.68901-alpha5.
+  Preserve the previous source-identity failure; no release success claim yet.
+
+
+- 2026-11-13: Run43338929395 publishes 26.4.0.68901-alpha5; exact tag source
+  9646f4e839ed1d32d2b5bb1fcecc9a1a9601e2e5. Independent download verifies
+  ZIP SHA256 08a6d2163dc422b7c006e9a0c5bdd37d3fa26b03253878203a16402f87bc01b7,
+  three asset digests,346ARM64slices, signatures and owned executable/notice
+  hashes. All116hosted tool tests pass. Mark ready_for_owner, not owner-verified;
+  preserve prior failed attempts and all unrelated open product defects.
 
 
 ## PPD-015 — Water grazing-angle steepness uses eye-space vertical
@@ -725,3 +755,497 @@ transparent atlas/mip edge coverage are candidates, not confirmed causes.
   No UI, shader, sampler, geometry or alpha-cutoff change made for this report.
 
 - 2026-11-12: Owner does not remember whether original Alchemy/Firestorm shows the line and explicitly parks this investigation. Mark deferred; no renderer change, closure or push approval.
+
+## PPD-017 — HTTPS login redirects can resend credentials off TLS
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction cc2838504c / #637. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; login/lllogin.cpp:201; _httpoprequest.cpp:559; llxmlrpctransaction.cpp:214.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport the complete HTTPS-only redirect option and both login protections, with regression tests.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+The application accepts next_url without retaining HTTPS; HTTP redirects also lack an HTTPS-only restriction. Both layers need the final upstream guard. No downgrade or credential exposure was reproduced.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-018 — Simulator Xfer names choose local cache files
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 4fa42289ac / #614. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llmutelist.cpp:958; llviewerobject.cpp:3627; llxfermanager.cpp:439; llxfer_file.cpp:86.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport local/remote name separation, callback cleanup and short-name handling with Xfer tests.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+A remote name is reused for the local cache target and cleanup; short names can also reach suffix substrings with invalid positions. Upstream generates independent local temporary names and bounds suffix tests.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-019 — IM binary buckets can be read beyond their copied bytes
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 9063a7dfe8 / #645. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewermessage.cpp:2266; llimprocessing.cpp:1107,1381,1408.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport all size/text guards and add focused verification for both UDP and HTTP IM buckets.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Declared size is passed beyond a bounded copy, and session/inventory text is consumed as an unbounded C string. Keep copied byte length and bounded NUL searches together.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-020 — Out-of-domain packet IDs can hang the main thread
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 6687792a35 / #636. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcircuit.cpp:734–749.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport the domain guard and upstream packet-ID regression, preserving legitimate wrap behavior.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+The predicate computes distance modulo 24 bits but the loop compares against the original 32-bit input. A high-bit number is unreachable by that wrapping loop. This is separate from PPD-002's unproved render-freeze cause.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-021 — Network object and layer decoders lack required payload bounds
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #619 and #634; 5ad54288ed, a0235bf308, a6c038538f, df1de743b5, 8a0c98ae13. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; LLNameValue/LLDataPacker; llvovolume.cpp:479; llviewerobject.cpp:1889,6795; llvlmanager.cpp:95; initial Xfer packet reader.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Port coherent object/layer/Xfer receiver families with helper prerequisites, tail fixes and bounded-input regressions.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Retained subcases: static name-value buffer overflow/stale fields, particle/TE/extra-param/motion length and type checks, fixed object-data buffers, patch-size and bitstream bounds, partial wind/land patches, and short initial Xfer headers. See the detailed general-review rows for the complete corrective sequences; not every malformed input was independently executed.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-022 — Mesh decoding has unsafe weights and unbounded face/index work
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #570 plus efd275c864 in #567. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llmath/llvolume.cpp:2379,2413,2616–2653.
+- Evidence: [Upstream geometry audit](research/upstream-geometry-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport bounds, trailing-weight initialization and allocation caps without requiring the full tangent/geometry rewrite.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Retained subcases: an influence read can consume up to three bytes after a one-byte check; missing trailing vertices leave skin weights uninitialized; face/per-face/LOD index counts are allocated without upstream work caps. These production trees are identical to the fork base.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-023 — Disconnect destroys a world still used in the current frame
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 9e06c2d585 and bd1a07cc24 / #569. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llappviewer.cpp:6622; lltextureview.cpp:559; llviewerdisplay.cpp:2750; llscenemonitor.cpp:448,453.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport empty-world lifetime/count initialization and adapt monitor guards to the native draw path.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Disconnect deletes LLWorld while later current-frame texture/UI work dereferences it. Related scene-monitor visibility paths also assume an existing singleton. Preserve both retained-world cleanup and monitor guards; no live crash was reproduced.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-024 — Random UUID generation shares unsynchronized state
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 9ebf45f009 / #596. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcommon/lluuid.cpp:752–840.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport system-random thread-local v4 generation and concurrency tests while retaining deterministic hashing.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+getCurrentTime and generate share lazy initialization, time and sequence fields without complete synchronization. Upstream reproduced duplicate IDs under concurrency; no collision benchmark was run on this Mac. Deterministic combine/name-based asset ID behavior must remain unchanged.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-025 — Reliable packet queues can lose acknowledged data and retain stale history
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #617, #630, #637; f90c8559b3, 670b85ad16, 010f7371f4, d557bdde72. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llpacketring.cpp:62–91; message.cpp:742,1166; LLCircuitData reliable history.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Port the complete circuit/queue progression and final duplicate/impairment/history tests.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+A full ring overwrites an older packet after it was acknowledged. Related final upstream corrections handle duplicate ACKs, copy windows, queue impairment and peers that never ping growing reliable history. These are protocol mechanisms, not an attribution to a rendering incident.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-026 — Object cache clear and persistence mishandle retained entry state
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #602 and #630; 29eff897e3, 4bb9b798e6, fdda86251c, 79057e0958. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewerregion.cpp:852,3150–3153; llvocache.cpp:2102; cache tree/set/cursor references.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Port complete entry-lifetime and object/extras disk-pairing fixes; validate removal during reads and next-login cache reuse.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Retained subcases: map clearing leaves raw cache entry references/cursors; removal during a cache read needs deferral; cache objects and extras are not paired when no glTF override ever made extras dirty. Upstream tests are not current-Metal runtime verification.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-027 — Escaped floater names bypass resolved-name restrictions
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 53654b4781, landed through ec47f7a577. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewerfloaterreg.cpp openfloater command policy and handler.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport shared resolved-name policy and upstream app-link tests.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+The restriction check uses escaped params[0] while opening resolves an unescaped name. The two stages can disagree on the allowed floater. No restricted floater was opened during this audit.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-028 — Failed COLRv1 glyph painting retains stale raster surfaces
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction a55fd36959 / #600. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llrender/alfontcolrv1.cpp:164–336.
+- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Check bundled clear API, backport per-glyph reset and verify failure-then-smaller-glyph behavior under memory instrumentation.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+The per-thread painter is reused without hb_raster_paint_clear. Failure after painting begins can leave a larger root surface for the next smaller glyph, allowing out-of-bounds compositing. Native font upload does not remove this CPU painter mechanism.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-029 — Valid large texture readback reaches a fatal legacy size guard
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 45007f232d, landed in #568. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llrender/llimagegl.cpp:2355–2359.
+- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Adapt validation/nonfatal errors to the native readback path and test valid 4096 and invalid dimensions.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+readBackRaw fatally rejects dimensions above 2048 before reaching native readback although accepted images extend to MAX_IMAGE_SIZE (4096). Upstream uses the accepted limit and nonfatal failure for invalid requests.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-030 — URI first-call initialization races and malformed URI handling diverges
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 584b2cea53, 517072b781, 080980a07d, 3be4f909db / #604. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcommon/lluri.cpp, unchanged from fork base.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport guarded static initialization and complete URI parsing tests; run a real first-call race test.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+A plain initialized bool guards sorting of a shared string, so concurrent first calls can race. Retained companion subcases: malformed percent escapes lose/change text, an empty query returns an array, and leading-colon scheme handling differs. No current race reproduction was run.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-031 — Shared LLSD date and string contracts retain upstream correctness defects
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #603, #605, #607–612, #643; 8000ca483b, 1d410c39b9, 15fd4bac40, 2ed88ce337, 58a1362221, 58f471334a. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcommon/llsdserialize.cpp/.xml.cpp, lldate.cpp, llstring.cpp/.h.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Port coherent common-parser families and upstream regressions, preserving valid legacy data behavior.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Retained subcases: failed/empty unzip result interpretation, single-line deserialization, empty XML keys and malformed XML/DOCTYPE acceptance, quoted URI/control serialization, nonfinite real formatting, date fraction/timezone round trips, separator/CR removal, and empty-target replace looping. The last is latent: upstream found no current empty-target caller. These are CPU contracts; no exploit or live corruption is asserted.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-032 — Nonfinite quaternion normalization emits invalid transforms
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 6a0a982f5f / #609. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llmath/llquaternion.h:526–577, unchanged from fork base.
+- Evidence: [Upstream geometry audit](research/upstream-geometry-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport bitwise finite checks and upstream tests; verify behavior under release fast-math/LTO.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+An infinite or overflowing squared magnitude passes the positive threshold, producing zero/NaN components instead of the identity fallback. This is independent of Metal and has not been assigned to a current visual incident.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-033 — New mesh faces inherit placeholder face textures and materials
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 93c320b7eb / #633; full TE prerequisite 444eb52a3e / #619. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; LLPrimitive::setNumTEs; LLViewerObject::setNumTEs.
+- Evidence: [Upstream geometry audit](research/upstream-geometry-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Integrate retained full-length TE data with per-face material/override assignment and native rebuilds; verify actual gained-face viewer behavior.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+When a loaded mesh gains faces, old code copies the last existing face despite earlier wire data describing the new faces. TE, material and glTF override can all be wrong until another update. Full viewer material assignment was not runtime tested.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-034 — Octree child capacity can overflow beneath a full parent
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 6ff9523744 and df5199689b / #568. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llmath/lloctree.h; LLSpatialGroup::updateInGroup.
+- Evidence: [Upstream geometry audit](research/upstream-geometry-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport both capacity rules and regressions, then verify dense-scene spatial batching with native captures.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+A child insertion can ignore its own capacity after a parent fills. Bring legal capacity/minimum-size clamps and retain the intentional exemption for unsplittable tiny nodes. Dense-geometry omission is a source-level risk, not a reproduced scene symptom.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-035 — Asynchronous alpha-mask answers do not rebuild dependent faces
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction bcce2bce3c, d66e1f4852, 830be4b4f4 / #601. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llimagegl.cpp:2290,3020–3110; LLGLTexture; LLViewerFetchedTexture.
+- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport the final answer/owner notification sequence while preserving native upload lifetime; verify both pass transitions.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Provisional no-mask results may select a blend pass, but a later mask answer does not notify owners to rebuild; reverse transitions and provisional answers that were consumed also need handling. The asynchronous CPU path remains live here.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-036 — PBR bake proxies lose local composites and body-hide ownership
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #533; ca9043a267, ce67354a60, 6b6f8cd1b2, b71807bc83, 5cc8430be5. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewerobject.cpp:5488; llfetchedgltfmaterial.h:70; llvoavatar.cpp:9624; native lldrawpool/pipeline texture consumers.
+- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Port resolved texture representation and final CPU rules, then adapt every native world/alpha/HUD/shadow/selection consumer and verify editing/rebakes.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Fetched-only slots discard dynamic local composites; PBR base-color bake body hiding, refresh and actual-bake shadow invalidation are missing. Retain final base-color-only/HUD exclusions and coalesced body visibility update. No owner appearance incident is assigned.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-037 — Native HDR bloom exposure and probe paths lack complete finite boundaries
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #595; 07094f82fe, 977e51afe9, 74589add5f, 9c451dc4a2, b929675d9c. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; almetal_builtin.metal local/projector lighting, base output, bloom extract, exposure meter/history, probe downsample/SH.
+- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Specify native half-float/pass headroom, implement MSL finite semantics and run frozen-old/new physical GPU extreme-input controls.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Native radiance clamping is partial: later multiplication/addition can overflow, bloom can multiply infinity by zero, exposure history can retain nonfinite values, and probe/SH writes lack final upstream protections. No flash/NaN incident was reproduced or tied to the owner's reports.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-038 — Placed probe admission drops lighting on stale occlusion state
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction fb1a3f1b71 and f410863587 / #595. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llreflectionmapmanager.cpp:1738,2678,2705.
+- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Adapt final frustum/placed-probe/re-entry/preview policy while retaining native query lifetimes; reproduce lighting behavior before closure.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Placed probes are rejected like automatic probes using occlusion state; off-frustum queries and preview mutation also remain. Native results are completion-gated, so upstream GL flicker latency is not a measured Metal fact.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-039 — Default sky swaps azimuth and altitude arguments
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 4364fdcdba / #615. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llinventory/llsettingssky.cpp:913–914.
+- Evidence: [Upstream renderer audit](research/upstream-renderer-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Backport the CPU correction and direction tests, then verify expected default sky appearance with the owner.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Default sun/moon construction passes altitude first to an azimuth-first API. Upstream deliberately changes visible default sun/moon positions when correcting the call; this is not a lighting-neutral update.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-040 — Texture priority and lifetime retain stale upstream demand
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #578, #601, #622; a4e519127d, 2ffcc7daf6, 3397e5f6cc, 6811bd93f6, 95df03ec7f. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; LLViewerTexture boosts; llviewertexturelist.cpp:965; llviewertexture.cpp:911,2040,3837; region retirement owners.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Port scoped CPU demand/floor semantics first, reconcile native visibility/accounting, then evaluate completion-safe retirement and measure cache/loading behavior.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Retained subcases: permanent temporary-use boosts, stale face-walk maxima, ineffective media decay, face area counted as visibility, and short/floor fetch results retried without upstream floor handling. Retirement/purge is a larger adaptation candidate, not a measured memory/FPS fix. Preserve current decoder admission.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-041 — Upstream reports additional missing general viewer state corrections
+
+- Status: open
+- Confirmation: reported
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #593, #606, #613, #620, #635, #640, #642, #644–647, #650, #655, #660, #665, #667. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; See the general-review inventory rows and exact commit lists; current per-case runtime evidence is not available.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Implement small coherent behavioral groups after the hardening batch; establish each affected current callsite and regression before claiming a confirmed repair.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Retained reported subcases: object roster/orphan/region overrides; inventory IDs/counts/cycle guards; friends/mutes/group replies; notecard counts; SLURL/RLVa parsing; login/maturity/local-teleport/progress; Script Studio analysis/publish; camera steering; run notices and graphics-preset key omissions. These known upstream corrections remain candidates pending focused current-source/behavior tests; optional new features are excluded.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+## PPD-042 — Coroutine reached locks retain upstream thread-blocking ownership reports
+
+- Status: open
+- Confirmation: reported
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 35fc15e182 / #591; Script Studio publish correction #606. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcorehttp/_mutex.h uses std::mutex; remaining Script Studio/shared process/table owners are mapped by upstream.
+- Evidence: [Upstream general audit](research/upstream-general-review-2026-11-13.md), [prioritized upstream backlog](research/upstream-port-review-2026-11-13.md).
+- Next action: Trace each current owner/coroutine call graph, port typed locks and publication lifetime changes with regressions, and preserve native thread-only contracts.
+- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Owner verification: pending
+- Push approval: not_granted
+
+Upstream reports coroutine deadlocks from thread locks and stale process/builtin table publication. The current HTTP mutex still uses the old type; this audit did not independently exercise every coroutine call graph or deadlock. Do not replace native per-thread locks indiscriminately.
+
+### History
+
+- 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
