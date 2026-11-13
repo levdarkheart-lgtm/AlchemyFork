@@ -76,7 +76,10 @@
     "libvorbis",
     "libwebp",
     "lsl-definitions",
-    "meshoptimizer",
+    {
+      "name": "meshoptimizer",
+      "version>=": "1.3#5"
+    },
     "minizip",
     {
       "name": "nvapi",
