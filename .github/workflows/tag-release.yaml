@@ -38,8 +38,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-      VCPKG_MAX_CONCURRENCY: '2'
-      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+      VCPKG_MAX_CONCURRENCY: '3'
+      CMAKE_BUILD_PARALLEL_LEVEL: '3'
       master_message_template_checkout: ${{ github.workspace }}/.master-message-template
     steps:
       - name: Checkout requested source
@@ -146,7 +146,7 @@ jobs:
           tools/metal/build_openhtj2k.sh \
             --source-dir "$RUNNER_TEMP/openhtj2k/source" \
             --build-dir "$RUNNER_TEMP/openhtj2k/build" \
-            --receipt "$RUNNER_TEMP/openhtj2k/build-receipt.json" --jobs 2
+            --receipt "$RUNNER_TEMP/openhtj2k/build-receipt.json" --jobs 3
 
       - name: Configure native Release build
         id: configure
@@ -170,6 +170,27 @@ jobs:
             -DAL_OPENHTJ2K_LIBRARY="$RUNNER_TEMP/openhtj2k/build/libopenhtj2k.a" \
             -DAL_OPENHTJ2K_BUILD_RECEIPT="$RUNNER_TEMP/openhtj2k/build-receipt.json"
 
+      - name: Verify configured source identity before compilation
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.identity.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PYCODE'
+          import os
+          from pathlib import Path
+          header = Path('build-Darwin-ninja-os-arm64/newview/llversioninfovars.h')
+          lines = header.read_text().splitlines()
+          expected = {
+              'LL_VIEWER_SOURCE_REVISION': '"' + os.environ['SOURCE_SHA'] + '"',
+              'LL_VIEWER_VERSION_BUILD': os.environ['revision'],
+          }
+          for macro, value in expected.items():
+              if f'#define {macro} {value}' not in lines:
+                  raise SystemExit(f'::error::{header}: {macro} does not match the requested release')
+          print('Verified configured source SHA and build revision before compilation')
+          PYCODE
+
       - name: Save dependency binaries for the next manual build
         if: ${{ !cancelled() && steps.configure.outcome == 'success' && steps.cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
@@ -179,7 +200,7 @@ jobs:
 
       - name: Compile viewer
         shell: bash
-        run: cmake --build build-Darwin-ninja-os-arm64 --config Release --parallel 2
+        run: cmake --build build-Darwin-ninja-os-arm64 --config Release --parallel 3
 
       - name: Package and verify application
         id: package

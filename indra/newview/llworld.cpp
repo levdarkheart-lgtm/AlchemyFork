@@ -95,6 +95,7 @@ LLWorld::LLWorld() :
     mLastPacketsIn(0),
     mLastPacketsOut(0),
     mLastPacketsLost(0),
+    mNumOfActiveCachedObjects(0),
     mSpaceTimeUSec(0)
 {
     LLViewerRegion::sVOCacheCullingEnabled = gSavedSettings.getBOOL("RequestFullRegionCache") && gSavedSettings.getBOOL("ObjectCacheEnabled");
@@ -110,6 +111,7 @@ void LLWorld::resetClass()
         LLViewerRegion* region_to_delete = *region_it++;
         removeRegion(region_to_delete->getHost());
     }
+    mNumOfActiveCachedObjects = 0;
 
     LLViewerPartSim::getInstance()->destroyClass();
 
@@ -681,6 +683,13 @@ void LLWorld::updateRegions(F32 max_update_time)
     {
         LLViewerRegion::sLastCameraUpdated = LLViewerOctreeEntryData::getCurrentFrame() + 1;
     }
+    // The cache removals object updates asked for, which let go of regions'
+    // cached objects, before the regions' updates walk them.
+    if (LLVOCache::instanceExists())
+    {
+        LLVOCache::getInstance()->removeRequestedEntries();
+    }
+
     LLViewerRegion::calcNewObjectCreationThrottle();
     if(LLViewerRegion::isNewObjectCreationThrottleDisabled())
     {
