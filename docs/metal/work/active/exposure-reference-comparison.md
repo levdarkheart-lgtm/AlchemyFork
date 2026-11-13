@@ -74,8 +74,9 @@ HDRI clouds on the left and very pale mostly featureless procedural background
 on the right. Both retain green sunlit foliage, deep building/tree shadows and
 textured road/crosswalks; no obvious whole-frame bloom veil. Original common
 foreground looks somewhat lighter, native somewhat darker in the available
-areas. Framing/cloud positions differ and native debug window covers much of
-world, so no exact exposure delta, parity, regression or causal inference.
+areas. Owner confirms matching framing; the native exposure dialog covers much of
+world. The earlier framing objection is withdrawn. These manual images alone
+do not measure an exact exposure delta or establish parity/regression cause.
 No numerical pixel/FPS result is asserted. Independent second opinion agrees
 on those image observations; no renderer correction follows from them alone.
 
@@ -88,3 +89,5 @@ state, then obtain fresh observe/verify/gate before agent captures. Do not rerun
 or alter owner viewer merely to make an already-supplied manual image look gated.
 
 - 2026-11-13 follow-up: Owner disputes the framing explanation and requests the exact pair side by side. Exact original image hashes confirm Metal14:08:20 and reference14:31:18 were used. Camera framing was not independently verified; attributing visible landmark/cloud differences to camera movement was premature. Retain the images and distinguish observed pixel differences from an unproved camera cause.
+
+- 2026-11-13 correction after side-by-side display: Owner explicitly confirms exactly the same framing; only the native exposure dialog obscures part of the scene. Accept the matching visual framing and withdraw the unsupported camera/framing objection. Keep numeric-camera readback as an unmeasured fact, not a reason to dismiss the owner comparison. No image pixels, renderer settings or source changed.

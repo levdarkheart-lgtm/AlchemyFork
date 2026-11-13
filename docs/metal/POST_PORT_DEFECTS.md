@@ -2220,6 +2220,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Owner disputes the asserted framing difference. Exact compared images confirmed as native14:08:20/reference14:31:18, shown side by side unaltered. Camera/framing cause was not measured and remains unknown; prior camera explanation was premature, not a validated reason for the visible differences.
 
+- 2026-11-13: After viewing the exact pair side by side, owner confirms matching framing and identifies the native exposure dialog as the visible obstruction. Framing objection withdrawn; do not discount the owner comparison on that basis. No numerical exposure delta, cause or repair is established by this correction.
+
 ## PPD-081 — Owner reports pre-existing overall scene and sky overexposure
 
 - Status: investigating
@@ -2242,6 +2244,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Owner-authorized verified original67611 launched/PID10889 after candidate normalquit0; owner supplies14:31 same-claimed Daylight/Lev1233/HDRI.5/-3 reference image. Both supplied images visibly retain left cloud detail and pale right background; original foreground appears somewhat lighter in available areas. Different framing/occlusion plus AA/profile mismatch block controlled QA, so no parity, brightness-regression attribution or closure. [Comparison record](work/active/exposure-reference-comparison.md) retains exact images/identities/failed preflight. Reference left running; no shader/default/display change or push.
 
 - 2026-11-13: Owner disputes the asserted framing difference. Exact compared images confirmed as native14:08:20/reference14:31:18, shown side by side unaltered. Camera/framing cause was not measured and remains unknown; prior camera explanation was premature, not a validated reason for the visible differences.
+
+- 2026-11-13: After viewing the exact pair side by side, owner confirms matching framing and identifies the native exposure dialog as the visible obstruction. Framing objection withdrawn; do not discount the owner comparison on that basis. No numerical exposure delta, cause or repair is established by this correction.
 
 ## PPD-082 — Classic-sky blend policy can stop exposure before history admission changes
 
