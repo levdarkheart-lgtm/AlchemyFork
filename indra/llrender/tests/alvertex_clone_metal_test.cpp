@@ -150,7 +150,8 @@ TEST_CASE("Native U32 layout cloning preserves physical capacity logical indices
     for (bool existing_u16 : {false, true})
     {
         CAPTURE(existing_u16);
-        LLPointer<LLVertexBuffer> target = existing_u16 ? fixture.buffer() : new LLVertexBuffer(mask);
+        LLPointer<LLVertexBuffer> target = new LLVertexBuffer(mask);
+        if (existing_u16) REQUIRE(target->allocateBuffer(3, 3));
         REQUIRE(source->clone(*target));
         REQUIRE(target->getIndexStride() == sizeof(U32));
         REQUIRE(target->getNumIndices() == 3);
