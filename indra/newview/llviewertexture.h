@@ -27,6 +27,7 @@
 #ifndef LL_LLVIEWERTEXTURE_H
 #define LL_LLVIEWERTEXTURE_H
 
+#include "altextureboost.h"
 #include "llatomic.h"
 #include "llgltexture.h"
 #include "lltimer.h"
@@ -130,8 +131,20 @@ public:
     /*virtual*/ bool isActiveFetching();
 
     /*virtual*/ const LLUUID& getID() const { return mID; }
-    virtual void setBoostLevel(S32 level);
+
+    // The texture's own boost level: what it is for (a UI image, a bump or sculpt map, a baked texture), as whoever
+    // made it for that says. Its boost (getBoostLevel) is the highest of this, the levels holders keep on it and one
+    // asked for frame by frame (ALTextureBoostLevels).
+    void setBoostLevel(S32 level);
     S32  getBoostLevel() { return mBoostLevel; }
+
+    // A level kept on the texture while a holder holds it, counted by holder (ALTextureBoost is the holder).
+    void addBoostHold(S32 level);
+    void removeBoostHold(S32 level);
+
+    // A level asked for every frame, as selection asks for its objects' textures and a swatch for the texture it
+    // draws: it lasts until the texture's stats are updated a frame after its last asking.
+    void boostThisFrame(S32 level);
     void setTextureListType(S32 tex_type) { mTextureListType = tex_type; }
     S32 getTextureListType() { return mTextureListType; }
 
@@ -172,6 +185,14 @@ protected:
     void reorganizeFaceList() ;
     void reorganizeVolumeList();
 
+    // Lets go of a level asked for frame by frame that was not asked for in the last frame. Called as the texture's
+    // stats are updated.
+    void lapseFrameBoost();
+    // Makes the boost again of its levels, after one of them changed.
+    void updateBoost();
+    // Called after the effective boost changes.
+    virtual void onBoostUpdated() {}
+
 private:
     friend class LLBumpImageList;
     friend class LLUIImageList;
@@ -187,6 +208,8 @@ protected:
     mutable S32  mMaxVirtualSizeResetCounter;
     mutable S32  mMaxVirtualSizeResetInterval;
     LLFrameTimer mLastReferencedTimer;
+
+    ALTextureBoostLevels mBoostLevels; // what mBoostLevel is the highest of
 
     ll_face_list_t    mFaceList[LLRender::NUM_TEXTURE_CHANNELS]; //reverse pointer pointing to the faces using this image as texture
     U32               mNumFaces[LLRender::NUM_TEXTURE_CHANNELS];
@@ -332,8 +355,10 @@ public:
     S32  getDesiredDiscardLevel()            { return mDesiredDiscardLevel; }
     void setMinDiscardLevel(S32 discard)    { mMinDesiredDiscardLevel = llmin(mMinDesiredDiscardLevel,(S8)discard); }
 
-    void setBoostLevel(S32 level) override;
     bool updateFetch();
+
+    // Rebuilds the groups of faces built into a mask or a blend pass by another answer than the analysis now gives.
+    void onAlphaMaskChanged() override;
 
     void clearFetchedResults(); //clear all fetched results, for debug use.
 
@@ -419,6 +444,7 @@ public:
 protected:
     S32 getCurrentDiscardLevelForFetching() ;
     void forceToRefetchTexture(S32 desired_discard = 0, F32 kept_time = 60.f);
+    void onBoostUpdated() override;
 
 private:
     void init(bool firstinit) ;
@@ -489,6 +515,7 @@ protected:
     LLPointer<LLImageRaw> mSavedRawImage;
     S32 mSavedRawDiscardLevel;
     S32 mDesiredSavedRawDiscardLevel;
+    bool mSavedRawFetchFailed; // a fetch for the copy brought nothing: the GPU level, mMinDiscardLevel, is the best
     F64 mLastReferencedSavedRawImageTime ;
     F32 mKeptSavedRawImageTime ;
 

@@ -888,6 +888,8 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
     ++sVisitCount;
     U32 faces_walked = 0;
 
+    // A level asked for frame by frame and no longer asked for goes before the visit is decided by it.
+    imagep->lapseFrameBoost();
     if (imagep->getBoostLevel() < LLViewerFetchedTexture::BOOST_HIGH)  // don't bother checking face list for boosted textures
     {
         static LLCachedControl<F32> texture_scale_min(gSavedSettings, "TextureScaleMinAreaFactor", 0.0095f);
@@ -958,11 +960,23 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
                     F32 cos_angle_to_view_dir;
                     ++faces_walked;
 
+                    // A face whose group no camera has drawn asks for nothing. Geometry is no sign of it: a group is
+                    // built as soon as an object joins it, seen or not.
+                    LLDrawable* drawable = face->getDrawable();
+                    LLSpatialGroup* group = drawable ? drawable->getSpatialGroup() : nullptr;
+                    if (!group || !group->getAnyVisible())
+                    {
+                        continue;
+                    }
+
                     if ((gFrameCount - face->mLastTextureUpdate) > 10)
                     { // only call calcPixelArea at most once every 10 frames for a given face
                         // this helps eliminate redundant calls to calcPixelArea for faces that have multiple textures
                         // assigned to them, such as is the case with GLTF materials or Blinn-Phong materials
-                        face->mInFrustum = face->calcPixelArea(cos_angle_to_view_dir, radius);
+                        // Seen: its drawable was drawn this frame or the last, and its own box is in view.
+                        face->mInFrustum = face->calcPixelArea(cos_angle_to_view_dir, radius)
+                            && face->mBoxInFrustum
+                            && drawable->isRecentlyVisible();
                         face->mLastTextureUpdate = gFrameCount;
                         ++sPixelAreaCalcCount;
                     }

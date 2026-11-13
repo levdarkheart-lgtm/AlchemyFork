@@ -207,7 +207,7 @@ namespace
         }
         if (img)
         {
-            img->setBoostLevel(LLGLTexture::BOOST_PREVIEW);
+            img->boostThisFrame(LLGLTexture::BOOST_PREVIEW);
             img->forceToSaveRawImage(0);
         }
     };

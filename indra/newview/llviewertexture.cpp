@@ -814,7 +814,45 @@ void LLViewerTexture::dump()
 
 void LLViewerTexture::setBoostLevel(S32 level)
 {
-    if(mBoostLevel != level)
+    mBoostLevels.setOwn(level);
+    updateBoost();
+}
+
+void LLViewerTexture::addBoostHold(S32 level)
+{
+    mBoostLevels.addHold(level);
+    updateBoost();
+}
+
+void LLViewerTexture::removeBoostHold(S32 level)
+{
+    const bool held = mBoostLevels.removeHold(level);
+    llassert_msg(held, "a boost hold let go of that was not held");
+    if (held)
+    {
+        updateBoost();
+    }
+}
+
+void LLViewerTexture::boostThisFrame(S32 level)
+{
+    mBoostLevels.askForFrame(level, LLFrameTimer::getFrameCount());
+    updateBoost();
+}
+
+void LLViewerTexture::lapseFrameBoost()
+{
+    if (mBoostLevels.lapse(LLFrameTimer::getFrameCount()))
+    {
+        updateBoost();
+    }
+}
+
+void LLViewerTexture::updateBoost()
+{
+    const S32 level = mBoostLevels.level();
+    const bool changed = mBoostLevel != level;
+    if (changed)
     {
         mBoostLevel = level;
         if(mBoostLevel != LLViewerTexture::BOOST_NONE &&
@@ -826,10 +864,19 @@ void LLViewerTexture::setBoostLevel(S32 level)
         }
     }
 
-    // strongly encourage anything boosted to load at full res
+    // strongly encourage anything boosted to load at full res. Its largest wanted size stays that once the boost ends,
+    // as any texture's largest stays, until the bias brings it down under pressure: brought down as the boost ends,
+    // each end would queue a downscale, and letting go of a selection or closing a picker a burst of them. A texture
+    // larger than RenderMaxTextureResolution, which a boost lifts, still comes back to the cap as its boost ends, one
+    // downscale each, which the downscale queue takes within its time a frame.
     if (mBoostLevel >= LLViewerTexture::BOOST_HIGH)
     {
         mMaxVirtualSize = 2048.f * 2048.f;
+    }
+    // A level asked for again, as selection and swatches ask every frame, changes nothing that follows from it.
+    if (changed)
+    {
+        onBoostUpdated();
     }
 }
 
@@ -912,6 +959,9 @@ void LLViewerTexture::resetTextureStats()
 {
     mMaxVirtualSize = 0.0f;
     mMaxVirtualSizeResetCounter = 0;
+    // The sliced face walk's carried maxima would put the old sizes back on its next visit.
+    mFaceWalkMax = 0.f;
+    mFaceWalkRotationMax = 0.f;
 }
 
 //virtual
@@ -1196,6 +1246,7 @@ void LLViewerFetchedTexture::init(bool firstinit)
     mSaveRawImage = false;
     mSavedRawDiscardLevel = -1;
     mDesiredSavedRawDiscardLevel = -1;
+    mSavedRawFetchFailed = false;
     mLastReferencedSavedRawImageTime = 0.0f;
     mKeptSavedRawImageTime = 0.f;
     mLastCallBackActiveTime = 0.f;
@@ -1326,7 +1377,7 @@ void LLViewerFetchedTexture::setForSculpt()
 
     forceToSaveRawImage(0, F32_MAX);
 
-    setBoostLevel(llmax((S32)getBoostLevel(),
+    setBoostLevel(llmax(mBoostLevels.own(),
         (S32)LLGLTexture::BOOST_SCULPTED));
 
     mForSculpt = true;
@@ -1835,6 +1886,8 @@ void LLViewerFetchedTexture::processTextureStats()
     llassert(!gCubeSnapshot);  // should only be called when the main camera is active
     llassert(!LLPipeline::sShadowRender);
 
+    lapseFrameBoost();
+
     if(mFullyLoaded)
     {
         if(mDesiredDiscardLevel > mMinDesiredDiscardLevel)//need to load more
@@ -1954,11 +2007,11 @@ bool LLViewerFetchedTexture::isActiveFetching()
     return mFetchState > 7 && mFetchState < 10 && monitor_enabled; //in state of WAIT_HTTP_REQ or DECODE_IMAGE.
 }
 
-void LLViewerFetchedTexture::setBoostLevel(S32 level)
+//virtual
+void LLViewerFetchedTexture::onBoostUpdated()
 {
-    LLViewerTexture::setBoostLevel(level);
 
-    if (level >= LLViewerTexture::BOOST_HIGH)
+    if (mBoostLevel >= LLViewerTexture::BOOST_HIGH)
     {
         mDesiredDiscardLevel = 0;
     }
@@ -2044,6 +2097,13 @@ bool LLViewerFetchedTexture::processFetchResults(S32& desired_discard, S32 curre
             LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - data not needed");
             // Data is ready but we don't need it
             // (received it already while fetcher was writing to disk)
+            if (!mIsFetching && current_discard >= 0 && fetch_discard > mRequestedDiscardLevel)
+            {
+                // Finished short of the level asked, with nothing finer than the texture's own: as for a fetch that
+                // brought no data, that is the best a fetch brings it, and updateFetch stops there. A finish at the
+                // level asked only brings again what was handed over while the fetcher wrote it.
+                mMinDiscardLevel = current_discard;
+            }
             destroyRawImage();
             return false; // done
         }
@@ -2055,8 +2115,9 @@ bool LLViewerFetchedTexture::processFetchResults(S32& desired_discard, S32 curre
             && (mRawDiscardLevel < 0 || mRawDiscardLevel == INVALID_DISCARD_LEVEL)
             && mFetchState > 1) // 1 - initial, make sure fetcher did at least something
         {
-            // We finished but received no data
-            if (getDiscardLevel() < 0)
+            // A sculpt-only texture can have no GPU level while its saved
+            // copy remains usable. A fetch with no better data must keep it.
+            if (getDiscardLevel() < 0 && mSavedRawImage.isNull())
             {
                 if (getFTType() != FTT_MAP_TILE)
                 {
@@ -2081,8 +2142,19 @@ bool LLViewerFetchedTexture::processFetchResults(S32& desired_discard, S32 curre
                 }
                 else
                 {
+                    // With no GPU level (a sculpt-only map's texture went), the copy's level is the best a fetch
+                    // brings it. With a GPU level the copy is what did not come (one forced to save, none saved
+                    // yet), and the GPU level is the best. updateFetch stops at either.
                     S32 dis_level = getDiscardLevel();
-                    mMinDiscardLevel = dis_level;
+                    if (dis_level >= 0)
+                    {
+                        mSavedRawFetchFailed = true;
+                        mMinDiscardLevel = dis_level;
+                    }
+                    else
+                    {
+                        mMinDiscardLevel = mSavedRawDiscardLevel;
+                    }
                     //desired_discard = dis_level;
                 }
             }
@@ -2100,6 +2172,35 @@ bool LLViewerFetchedTexture::processFetchResults(S32& desired_discard, S32 curre
     }
 
     return true;
+}
+
+void LLViewerFetchedTexture::onAlphaMaskChanged()
+{
+    if (mGLTexturep.isNull())
+    {
+        return;
+    }
+    const bool is_mask = mGLTexturep->getIsAlphaMask();
+
+    // A face of an alpha pool goes to a mask pass or a blend pass by the answer it was built with: one built by the
+    // other answer, or while a deferred analysis was out and the texture counted as no mask, stays in the wrong one
+    // until its group is rebuilt. The pool does not say which pass it took, so every face of one whose pass the answer
+    // decides is rebuilt; now a mask, only those that can render as one.
+    for (U32 i = 0; i < mNumFaces[LLRender::DIFFUSE_MAP]; ++i)
+    {
+        LLFace* facep = mFaceList[LLRender::DIFFUSE_MAP][i];
+        if (!facep || !facep->isInAlphaPool() || (is_mask && !facep->canRenderAsMask()))
+        {
+            continue;
+        }
+        LLDrawable* drawablep = facep->getDrawable();
+        LLSpatialGroup* group = drawablep ? drawablep->getSpatialGroup() : nullptr;
+        if (group && !group->isDead())
+        {
+            group->dirtyGeom();
+            gPipeline.markRebuild(group);
+        }
+    }
 }
 
 bool LLViewerFetchedTexture::updateFetch()
@@ -2233,8 +2334,14 @@ bool LLViewerFetchedTexture::updateFetch()
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - create or missing");
         make_request = false;
     }
-    else if (current_discard >= 0 && current_discard <= mMinDiscardLevel)
+    else if (current_discard >= 0 ? current_discard <= mMinDiscardLevel
+             : mSavedRawImage.notNull() && mSavedRawDiscardLevel >= 0
+                 ? mSavedRawDiscardLevel <= mMinDiscardLevel
+                 : mSavedRawFetchFailed && getDiscardLevel() >= 0 && getDiscardLevel() <= mMinDiscardLevel)
     {
+        // At the best a fetch has brought: the texture's own level, or with none the copy's, or, where a fetch for the
+        // copy brought nothing, the GPU level it had. Asked again, createRequest refuses a request its worker finished,
+        // and the worker would be held until the texture goes.
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - current < min");
         make_request = false;
     }
@@ -3007,6 +3114,7 @@ void LLViewerFetchedTexture::forceToRefetchTexture(S32 desired_discard, F32 kept
     mLastReferencedSavedRawImageTime = sCurrentTime ;
     mSavedRawImage = NULL ;
     mSavedRawDiscardLevel = -1 ;
+    mSavedRawFetchFailed = false;
 }
 
 void LLViewerFetchedTexture::forceToSaveRawImage(S32 desired_discard, F32 kept_time)
@@ -3077,6 +3185,7 @@ void LLViewerFetchedTexture::destroySavedRawImage()
     mSaveRawImage = false ;
     mSavedRawDiscardLevel = -1 ;
     mDesiredSavedRawDiscardLevel = -1 ;
+    mSavedRawFetchFailed = false;
     mLastReferencedSavedRawImageTime = 0.0f ;
     mKeptSavedRawImageTime = 0.f ;
 
@@ -3172,6 +3281,7 @@ bool LLViewerLODTexture::isUpdateFrozen()
 void LLViewerLODTexture::processTextureStats()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    lapseFrameBoost();
     updateVirtualSize();
 
     bool did_downscale = false;
@@ -3277,13 +3387,6 @@ void LLViewerLODTexture::processTextureStats()
     if(mForceToSaveRawImage && mDesiredSavedRawDiscardLevel >= 0)
     {
         mDesiredDiscardLevel = llmin(mDesiredDiscardLevel, (S8)mDesiredSavedRawDiscardLevel);
-    }
-
-    // selection manager will immediately reset BOOST_SELECTED but never unsets it
-    // unset it immediately after we consume it
-    if (getBoostLevel() == BOOST_SELECTED)
-    {
-        setBoostLevel(BOOST_NONE);
     }
 }
 
@@ -3834,7 +3937,10 @@ F32 LLViewerMediaTexture::getMaxVirtualSize()
 
     if(!mMaxVirtualSizeResetCounter)
     {
-        addTextureStats(0.f, false);//reset
+        // A new window: the size goes back to what the faces seen in it ask for, so the interest of media turned
+        // away from decays and its plugin drops priority. addTextureStats only ever raises it.
+        mMaxVirtualSize = 0.f;
+        resetMaxVirtualSizeResetCounter();
     }
 
     if(mIsPlaying) //media is playing
