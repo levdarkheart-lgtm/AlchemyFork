@@ -21282,6 +21282,8 @@ void LLPipeline::rebuildPriorityGroups()
 
     gMeshRepo.notifyLoadedMeshes();
 
+    LLSpatialGroup::sg_vector_t retry_groups;
+    bool retry_all = false;
     mGroupQ1Locked = true;
     // Iterate through all drawables on the priority build queue,
     for (LLSpatialGroup::sg_vector_t::iterator iter = mGroupQ1.begin();
@@ -21289,11 +21291,42 @@ void LLPipeline::rebuildPriorityGroups()
     {
         LLSpatialGroup* group = *iter;
         group->rebuildGeom();
-        group->clearState(LLSpatialGroup::IN_BUILD_Q1);
+        if (!group->isDead() && group->hasState(LLSpatialGroup::GEOM_DIRTY))
+        {
+            if (!retry_all)
+            {
+                try
+                {
+                    retry_groups.push_back(group);
+                }
+                catch (const std::bad_alloc&)
+                {
+                    // The existing queue can retain the work without allocating.
+                    retry_all = true;
+                }
+            }
+        }
+        else
+        {
+            group->clearState(LLSpatialGroup::IN_BUILD_Q1);
+        }
     }
 
-    mGroupSaveQ1 = std::move(mGroupQ1);
-    mGroupQ1.clear();
+    if (retry_all)
+    {
+        // A failed retry-list allocation keeps the original queue for one
+        // later frame. Completed groups cheaply reject an unchanged rebuild.
+        for (auto& entry : mGroupQ1)
+        {
+            entry->setState(LLSpatialGroup::IN_BUILD_Q1);
+        }
+        mGroupSaveQ1.clear();
+    }
+    else
+    {
+        mGroupSaveQ1 = std::move(mGroupQ1);
+        mGroupQ1 = std::move(retry_groups);
+    }
     mGroupQ1Locked = false;
 
 }

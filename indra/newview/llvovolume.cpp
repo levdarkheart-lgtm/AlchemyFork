@@ -114,6 +114,15 @@ LLPointer<LLObjectMediaNavigateClient> LLVOVolume::sObjectMediaNavigateClient = 
 
 extern bool gCubeSnapshot;
 
+namespace
+{
+    // A frame's volumes whose LOD moved, those of them marked for a volume
+    // rebuild, and volume spatial groups whose geometry was rebuilt.
+    S32 sNumLODMoves = 0;
+    S32 sNumLODRebuilds = 0;
+    S32 sNumGroupRebuilds = 0;
+}
+
 // Implementation class of LLMediaDataClientObject.  See llmediadataclient.h
 class LLMediaDataClientObjectImpl : public LLMediaDataClientObject
 {
@@ -1771,10 +1780,14 @@ bool LLVOVolume::updateLOD()
         return false;
     }
 
-    if (lod_changed)
+    // An LOD-invariant volume is the same at the new LOD, so its faces and
+    // its spatial group's buffers stay as they are.
+    sNumLODMoves += lod_changed ? 1 : 0;
+    if (lod_changed && !getVolume()->isLODInvariant())
     {
         gPipeline.markRebuild(mDrawable, LLDrawable::REBUILD_VOLUME);
         mLODChanged = true;
+        ++sNumLODRebuilds;
     }
     else
     {
@@ -2694,22 +2707,20 @@ bool LLVOVolume::hasMedia() const
 LLVector3 LLVOVolume::getApproximateFaceNormal(U8 face_id)
 {
     LLVolume* volume = getVolume();
-    LLVector4a result;
-    result.clear();
-
     LLVector3 ret;
 
+    // A face that faces one way, as planar texgen takes it, faces along its
+    // planar normal. One that wraps around faces no one way, and the zero
+    // returned leaves the caller to look along the camera.
     if (volume && face_id < volume->getNumVolumeFaces())
     {
-        const LLVolumeFace& face = volume->getVolumeFace(face_id);
-        for (S32 i = 0; i < (S32)face.mNumVertices; ++i)
+        const LLVector4a planar = volume->getVolumeFace(face_id).getPlanarNormal();
+        if (planar[3] > 0.f)
         {
-            result.add(face.mNormals[i]);
+            ret.set(planar.getF32ptr());
+            ret = volumeDirectionToAgent(ret);
+            ret.normVec();
         }
-
-        LLVector3 ret(result.getF32ptr());
-        ret = volumeDirectionToAgent(ret);
-        ret.normVec();
     }
 
     return ret;
@@ -4573,6 +4584,14 @@ U32 LLVOVolume::getHighLODTriangleCount()
 //static
 void LLVOVolume::preUpdateGeom()
 {
+    // Counted since the previous frame's call.
+    LL_PROFILE_PLOT("volume LOD moves", (int64_t)sNumLODMoves);
+    LL_PROFILE_PLOT("volume LOD rebuilds", (int64_t)sNumLODRebuilds);
+    LL_PROFILE_PLOT("volume LOD change faces", (int64_t)sNumLODChanges);
+    LL_PROFILE_PLOT("volume group rebuilds", (int64_t)sNumGroupRebuilds);
+    sNumLODMoves = 0;
+    sNumLODRebuilds = 0;
+    sNumGroupRebuilds = 0;
     sNumLODChanges = 0;
 }
 
@@ -5001,7 +5020,19 @@ bool LLVOVolume::lineSegmentIntersect(const LLVector4a& start, const LLVector4a&
                 // textures, so residency rather than a GL name is the gate.
                 bool no_texture = !face->getTexture() ||
                                   !face->getTexture()->hasGPUTexture();
-                bool mask       = no_texture ? false : face->getTexture()->getMask(face->surfaceToTexture(tc, p, n));
+                bool mask = false;
+                if (!no_texture)
+                {
+                    // Planar surfaceToTexture consumes an agent-space hit.
+                    LLVector4a agent_p = p;
+                    LLVector4a agent_n = n;
+                    if (transform)
+                    {
+                        agent_p.load3(volumePositionToAgent(LLVector3(p.getF32ptr())).mV);
+                        agent_n.load3(volumeDirectionToAgent(LLVector3(n.getF32ptr())).mV);
+                    }
+                    mask = face->getTexture()->getMask(face->surfaceToTexture(tc, agent_p, agent_n));
+                }
                 if (face &&
                     (ignore_alpha || pick_transparent || no_texture || mask))
                 {
@@ -6026,6 +6057,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         return;
     }
 
+    ++sNumGroupRebuilds;
     group->mBuilt = 1.f;
 
     LLSpatialBridge* bridge = group->getSpatialPartition()->asBridge();
@@ -6509,19 +6541,20 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     bool legacy_batch_enabled = gltf_batch_enabled && LLGLSLShader::sIndexedLegacyMaterials;
 
     // generate render batches for static geometry
+    bool build_failed = false;
     U32 extra_mask = LLVertexBuffer::MAP_TEXTURE_INDEX;
     bool alpha_sort = true;
     bool rigged = false;
     for (int i = 0; i < 2; ++i) //two sets, static and rigged)
     {
-        geometryBytes += genDrawInfo(group, simple_mask | extra_mask, sSimpleFaces[i], simple_count[i], false, batch_textures, rigged);
-        geometryBytes += genDrawInfo(group, fullbright_mask | extra_mask, sFullbrightFaces[i], fullbright_count[i], false, batch_textures, rigged);
-        geometryBytes += genDrawInfo(group, alpha_mask | extra_mask, sAlphaFaces[i], alpha_count[i], alpha_sort, batch_textures, rigged);
-        geometryBytes += genDrawInfo(group, bump_mask | extra_mask, sBumpFaces[i], bump_count[i], false, false, rigged);
-        geometryBytes += genDrawInfo(group, norm_mask | extra_mask, sNormFaces[i], norm_count[i], false, false, rigged, false, legacy_batch_enabled);
-        geometryBytes += genDrawInfo(group, spec_mask | extra_mask, sSpecFaces[i], spec_count[i], false, false, rigged, false, legacy_batch_enabled);
-        geometryBytes += genDrawInfo(group, normspec_mask | extra_mask, sNormSpecFaces[i], normspec_count[i], false, false, rigged, false, legacy_batch_enabled);
-        geometryBytes += genDrawInfo(group, pbr_mask | extra_mask, sPbrFaces[i], pbr_count[i], false, false, rigged, gltf_batch_enabled);
+        geometryBytes += genDrawInfo(group, simple_mask | extra_mask, sSimpleFaces[i], simple_count[i], false, batch_textures, rigged, false, false, &build_failed);
+        geometryBytes += genDrawInfo(group, fullbright_mask | extra_mask, sFullbrightFaces[i], fullbright_count[i], false, batch_textures, rigged, false, false, &build_failed);
+        geometryBytes += genDrawInfo(group, alpha_mask | extra_mask, sAlphaFaces[i], alpha_count[i], alpha_sort, batch_textures, rigged, false, false, &build_failed);
+        geometryBytes += genDrawInfo(group, bump_mask | extra_mask, sBumpFaces[i], bump_count[i], false, false, rigged, false, false, &build_failed);
+        geometryBytes += genDrawInfo(group, norm_mask | extra_mask, sNormFaces[i], norm_count[i], false, false, rigged, false, legacy_batch_enabled, &build_failed);
+        geometryBytes += genDrawInfo(group, spec_mask | extra_mask, sSpecFaces[i], spec_count[i], false, false, rigged, false, legacy_batch_enabled, &build_failed);
+        geometryBytes += genDrawInfo(group, normspec_mask | extra_mask, sNormSpecFaces[i], normspec_count[i], false, false, rigged, false, legacy_batch_enabled, &build_failed);
+        geometryBytes += genDrawInfo(group, pbr_mask | extra_mask, sPbrFaces[i], pbr_count[i], false, false, rigged, gltf_batch_enabled, false, &build_failed);
 
         // for rigged set, add weights and disable alpha sorting (rigged items use depth buffer)
         extra_mask |= LLVertexBuffer::MAP_WEIGHT4;
@@ -6545,6 +6578,12 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     group->mLastUpdateTime = gFrameTimeSeconds;
     group->mBuilt = 1.f;
     group->clearState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY);
+    if (build_failed)
+    {
+        // Keep a failed fill on the priority queue for a later frame.
+        group->setState(LLSpatialGroup::GEOM_DIRTY);
+        group->mBuilt = 0.f;
+    }
 }
 
 void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
@@ -6693,7 +6732,7 @@ struct CompareBatchBreakerRigged
     }
 };
 
-U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace** faces, U32 face_count, bool distance_sort, bool batch_textures, bool rigged, bool batch_gltf, bool batch_legacy)
+U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace** faces, U32 face_count, bool distance_sort, bool batch_textures, bool rigged, bool batch_gltf, bool batch_legacy, bool* build_failed)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
 
@@ -7144,7 +7183,8 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 
             if (buffer.isNull())
             {
-                // Bulk allocation failed
+                // Bulk allocation failed: nothing from this face is published.
+                if (build_failed) *build_failed = true;
                 facep->setVertexBuffer(buffer);
                 facep->setSize(0, 0); // mark as no geometry
                 ++face_iter;
@@ -7159,6 +7199,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                 LL_ERRS() << "Invalid texture index." << LL_ENDL;
             }
 
+            bool geometry_filled = true;
             {
                 //for debugging, set last time face was updated vs moved
                 facep->updateRebuildFlags();
@@ -7178,7 +7219,8 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                     if (!facep->getGeometryVolume(*volume, te_idx,
                         vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(), index_offset,true))
                     {
-                        LL_WARNS() << "Failed to get geometry for face!" << LL_ENDL;
+                        geometry_filled = false;
+                        LL_WARNS() << "Failed to get geometry for face; retrying its group" << LL_ENDL;
                     }
 
                     if (drawablep->isState(LLDrawable::ANIMATED_CHILD))
@@ -7190,6 +7232,15 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 
             index_offset += facep->getGeomCount();
             indices_index += facep->getIndicesCount();
+
+            if (!geometry_filled)
+            {
+                if (build_failed) *build_failed = true;
+                facep->clearVertexBuffer();
+                facep->setDrawInfo(nullptr);
+                ++face_iter;
+                continue;
+            }
 
             //append face to appropriate render batch
 

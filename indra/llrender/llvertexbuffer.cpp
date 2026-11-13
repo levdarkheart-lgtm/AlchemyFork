@@ -394,16 +394,28 @@ void LLVertexBuffer::setLabel(const char* label)
 #endif
 }
 
-void LLVertexBuffer::clone(LLVertexBuffer& target) const
+bool LLVertexBuffer::clone(LLVertexBuffer& target) const
 {
+    const bool layout_changed = target.mTypeMask != mTypeMask ||
+        target.mIndicesType != mIndicesType || target.mIndicesStride != mIndicesStride;
     target.mTypeMask = mTypeMask;
     target.mIndicesType = mIndicesType;
     target.mIndicesStride = mIndicesStride;
-    if (target.getNumVerts() != getNumVerts() ||
-        target.getNumIndices() != getNumIndices())
+    if (layout_changed || target.getNumVerts() != getNumVerts() ||
+        target.getNumIndices() != getNumIndices() || target.mIndicesSize != mIndicesSize)
     {
-        target.allocateBuffer(getNumVerts(), getNumIndices());
+        // allocateBuffer sizes in U16 units; U32 indices retain that physical
+        // capacity but expose half as many logical indices after setIndexData.
+        const bool allocated = target.allocateBuffer(getNumVerts(), mIndicesSize / sizeof(U16));
+        target.mNumIndices = mNumIndices;
+        if (!allocated)
+        {
+            return false;
+        }
     }
+    // Failed allocation can retain the requested counts without CPU storage.
+    return (getNumVerts() == 0 || target.mMappedData != nullptr) &&
+        (getNumIndices() == 0 || target.mMappedIndexData != nullptr);
 }
 
 void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const

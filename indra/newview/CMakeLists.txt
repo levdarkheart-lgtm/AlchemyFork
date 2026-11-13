@@ -2805,6 +2805,14 @@ if(AL_BUILD_TESTS)
     INCLUDES ${llui_headers}
   )
   al_add_test_binary(
+    newview_gltf_primitive_tests
+    PROJECT ${test_project}
+    SOURCES tests/gltf_primitive_test.cpp
+    UNIT gltf/primitive.cpp
+    LIBRARIES llui ${test_libs}
+    INCLUDES ${llui_headers} ${CMAKE_CURRENT_SOURCE_DIR}/gltf
+  )
+  al_add_test_binary(
     alsculptcopy_test
     PROJECT ${test_project}
     SOURCES tests/alsculptcopy_test.cpp

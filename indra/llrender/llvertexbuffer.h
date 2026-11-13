@@ -307,7 +307,7 @@ public:
     // Empty/null clears the diagnostic label; no GPU work is submitted.
     void setLabel(const char* label);
 
-    void clone(LLVertexBuffer& target) const;
+    bool clone(LLVertexBuffer& target) const;
 
 protected:
     U32     mNumVerts = 0;      // Number of vertices allocated

@@ -89,6 +89,14 @@ if(AL_BUILD_TESTS)
   target_link_libraries(llappearance_test_fakes PRIVATE al::flags llrender)
   set_target_properties(llappearance_test_fakes PROPERTIES FOLDER "Tests/llappearance")
 
+  al_add_test_binary(
+    llpolymesh_test
+    PROJECT llappearance
+    SOURCES tests/llpolymesh_test.cpp
+    LIBRARIES llappearance
+    SUPPORT llappearance_test_fakes
+  )
+
   # Ordered native morph-mask readback and encoded bake storage. The scoped
   # Metal fixture creates a device without an SDL/window surface.
   al_add_test_binary(

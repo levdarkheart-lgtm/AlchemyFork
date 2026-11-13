@@ -7,7 +7,9 @@ target_sources(
   PRIVATE
     alplaneset.cpp
     alprojection.cpp
+    almeshsimplifier.cpp
     alsimdkernels.cpp
+    alsimdplanar.cpp
     llbbox.cpp
     llbboxlocal.cpp
     llcalc.cpp
@@ -17,7 +19,6 @@ target_sources(
     llline.cpp
     llmatrix3a.cpp
     llmatrix4a.cpp
-    llmeshoptimizer.cpp
     llmodularmath.cpp
     lloctree.cpp
     llquaternion.cpp
@@ -49,6 +50,7 @@ target_sources(
         alplaneset.h
         alprojection.h
         alsimdkernels.h
+        almeshsimplifier.h
         alsimdkernels.inl
         llbbox.h
         llbboxlocal.h
@@ -63,7 +65,6 @@ target_sources(
         llmatrix3a.h
         llmatrix3a.inl
         llmatrix4a.h
-        llmeshoptimizer.h
         llmodularmath.h
         lloctree.h
         llplane.h
@@ -98,8 +99,17 @@ target_sources(
         xform.h
 )
 
-target_link_libraries(llmath PRIVATE al::flags PUBLIC llcommon ll::mikktspace ll::meshoptimizer)
+target_link_libraries(llmath PRIVATE al::flags PUBLIC llcommon ll::meshoptimizer)
 target_precompile_headers(llmath REUSE_FROM llprecompiled)
+
+# Rendering and planar picking share this exact arithmetic order. Keep the
+# strict unit out of the fast-arithmetic precompiled header contract.
+set_source_files_properties(
+  alsimdplanar.cpp
+  PROPERTIES
+    COMPILE_OPTIONS "-ffp-contract=off;-fno-associative-math;-fno-reciprocal-math"
+    SKIP_PRECOMPILE_HEADERS TRUE
+)
 
 # Add tests
 if(AL_BUILD_TESTS)
@@ -111,6 +121,7 @@ if(AL_BUILD_TESTS)
     PROJECT llmath
     SOURCES
       tests/alignment_test.cpp
+      tests/almeshsimplifier_test.cpp
       tests/alplaneset_test.cpp
       tests/alsimdkernels_test.cpp
       tests/llbbox_test.cpp

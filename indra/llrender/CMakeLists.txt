@@ -184,6 +184,8 @@ if(AL_BUILD_TESTS)
       tests/alhud_selection_metal_test.cpp
       tests/alhud_diagnostics_metal_test.cpp
       tests/alpipeline_buffer_publication_metal_test.cpp
+      tests/algeometry_metal_test.cpp
+      tests/alvertex_clone_metal_test.cpp
       tests/allight_screen_rect_native_test.cpp
       tests/alraster_state_metal_test.cpp
       tests/alscenemonitor_ui_metal_test.cpp
