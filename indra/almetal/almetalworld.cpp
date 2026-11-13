@@ -491,6 +491,19 @@ namespace
     static_assert(sizeof(WorldExposureMeterConstants) == 32);
     static_assert(sizeof(ALMetalWorldModernSkyConstants) == 816);
     static_assert(sizeof(ALMetalWorldModernSkyConstants) < 4096);
+    static_assert(sizeof(ALMetalWorldWindLightSkyConstants) == 192);
+    static_assert(sizeof(ALMetalWorldCloudConstants) == 240);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, dome) == 112);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, clouds) == 304);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, sun_quad) == 544);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, moon_quad) == 592);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, bloom_quad) == 640);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, body) == 688);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, bloom_color) == 704);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, hdri_rotation) == 720);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, transfer) == 768);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, aurora) == 784);
+    static_assert(offsetof(ALMetalWorldModernSkyConstants, config) == 800);
 
     struct alignas(16) WorldExposureConstants
     {
@@ -9905,6 +9918,13 @@ ALMetalWorldGBufferRenderer::renderExposure(
     std::string* error)
 {
     return renderExposureInternal(scene, false, error);
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderExposureMeter(
+    const ALMetalWorldExposureScene& scene, std::string* error)
+{
+    return renderExposureInternal(scene, true, error);
 }
 
 std::unique_ptr<ALMetalRenderTarget>

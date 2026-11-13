@@ -2519,6 +2519,8 @@ public:
 
     // The original luminance view still meters when adaptation is disabled.
     std::unique_ptr<ALMetalRenderTarget> renderExposureMeter(
+        const ALMetalWorldExposureScene& scene, std::string* error = nullptr);
+    std::unique_ptr<ALMetalRenderTarget> renderExposureMeter(
         const ALMetalRenderTarget& source,
         const ALMetalTexture& normal,
         std::string* error = nullptr);

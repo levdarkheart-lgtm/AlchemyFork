@@ -944,21 +944,50 @@ struct ALMetalWorldGBufferOutput
 };
 
 
+struct ALMetalWorldModernSkyDomeConstants
+{
+    float4 camera_local, light_density, blue_horizon, glow;
+    float4 haze_extinction, blue_weight, haze_weight;
+    float4 sky_light, sky_ambient, sky_light_atten, sky_ambient_below, optics;
+};
+struct ALMetalWorldModernSkyCloudConstants
+{
+    float4 camera_local, light_density, blue_horizon, glow;
+    float4 haze_extinction, blue_weight, haze_weight;
+    float4 sky_sunlight, atmos_ambient, sky_light_atten, cloud_sunlight;
+    float4 cloud_color_shadow, cloud_pos_density1, cloud_pos_density2, parameters;
+};
+
 // Pinned upstream #584 final ray-sky ABI. Meteor data is a separate <4KiB constant slot.
 struct ALMetalWorldModernSkyConstants
 {
     float4x4 inverse_projection;
     float4 eye_to_sky[3];
-    ALMetalWorldWindLightSkyConstants dome;
-    ALMetalWorldCloudConstants clouds;
+    ALMetalWorldModernSkyDomeConstants dome;
+    ALMetalWorldModernSkyCloudConstants clouds;
     float4 sun_quad[3], moon_quad[3], bloom_quad[3];
     float4 body, bloom_color;
     float4 hdri_rotation[3];
     float4 transfer, aurora;
     uint4 config;
 };
+
+static_assert(sizeof(ALMetalWorldModernSkyDomeConstants) == 192, "Modern sky CPU/MSL payload ABI");
+static_assert(sizeof(ALMetalWorldModernSkyCloudConstants) == 240, "Modern sky CPU/MSL payload ABI");
+static_assert(sizeof(ALMetalWorldModernSkyConstants) == 816, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, dome) == 112, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, clouds) == 304, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, sun_quad) == 544, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, moon_quad) == 592, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, bloom_quad) == 640, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, body) == 688, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, bloom_color) == 704, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, hdri_rotation) == 720, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, transfer) == 768, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, aurora) == 784, "Modern sky CPU/MSL payload ABI");
+static_assert(__builtin_offsetof(ALMetalWorldModernSkyConstants, config) == 800, "Modern sky CPU/MSL payload ABI");
 static float3 almetal_modern_sky_dome(float3 dir,
-    constant ALMetalWorldWindLightSkyConstants& dome,
+    constant ALMetalWorldModernSkyDomeConstants& dome,
     texture2d<float> rainbow_map, texture2d<float> halo_map, sampler optics_sampler);
 
 struct ALMetalWorldHDRISkyVaryings
@@ -1053,9 +1082,10 @@ fragment ALMetalWorldGBufferOutput almetal_world_hdri_sky_fragment(
     return output;
 }
 
+template<typename SkyConstants>
 static float3 almetal_world_windlight_sky_color(
     float3 local_position,
-    constant ALMetalWorldWindLightSkyConstants& constants,
+    constant SkyConstants& constants,
     texture2d<float> rainbow_map,
     texture2d<float> halo_map,
     sampler optics_sampler)
@@ -19875,14 +19905,14 @@ constant float STAR_FAINT_PX=1.8, STAR_BRIGHT_PX=7.0, STAR_SPIKE_START=0.90, STA
 constant float STAR_MIN_PX=2.6, STAR_TWINKLE_MAX=0.65, STAR_CHROMA=0.18, STAR_MOON_WASH=0.55;
 constant float STAR_MOON_FADE_MAX=0.95, STAR_BLOOM_BOOST=1.2, STAR_HALO=0.06, STAR_SPIKE=0.30;
 
-static float3 almetal_modern_sky_hit(float3 dir, constant ALMetalWorldWindLightSkyConstants& dome)
+static float3 almetal_modern_sky_hit(float3 dir, constant ALMetalWorldModernSkyDomeConstants& dome)
 {
     const float b=dot(dome.camera_local.xyz,dir);
     const float c=dot(dome.camera_local.xyz,dome.camera_local.xyz)-dome.camera_local.w*dome.camera_local.w;
     return (sqrt(max(b*b-c,0.0))-b)*dir;
 }
 static float3 almetal_modern_sky_dome(float3 dir,
-    constant ALMetalWorldWindLightSkyConstants& dome,
+    constant ALMetalWorldModernSkyDomeConstants& dome,
     texture2d<float> rainbow_map, texture2d<float> halo_map, sampler optics_sampler)
 {
     return almetal_world_windlight_sky_color(dome.camera_local.xyz+almetal_modern_sky_hit(dir,dome),
@@ -19914,8 +19944,8 @@ static float almetal_modern_cloud_noise(texture2d<float> first,texture2d<float> 
     if(blend>0.0)v=mix(v,next.sample(cloud_sampler,uv).r,blend);
     return v;
 }
-static float4 almetal_modern_sky_clouds(float3 dir, constant ALMetalWorldCloudConstants& c,
-    constant ALMetalWorldWindLightSkyConstants& dome,texture2d<float> noise_map,
+static float4 almetal_modern_sky_clouds(float3 dir, constant ALMetalWorldModernSkyCloudConstants& c,
+    constant ALMetalWorldModernSkyDomeConstants& dome,texture2d<float> noise_map,
     texture2d<float> next_noise_map,sampler noise_sampler)
 {
     if (c.parameters.x < 0.001)
@@ -20449,3 +20479,31 @@ fragment float4 almetal_world_modern_star_fragment(ALMetalModernStarVaryings in 
  const float spike=(exp(-abs(corner.y)*32.0)*(1.0-abs(corner.x))+exp(-abs(corner.x)*32.0)*(1.0-abs(corner.y)))*in.spike*STAR_SPIKE;
  const float shape=core+halo+spike;if(shape<0.002)discard_fragment();return float4(in.color*shape,shape);
  }
+
+
+// ABI proof before rendering: sizes/offsets then representative typed payload reads.
+kernel void almetal_world_modern_sky_layout_probe(
+    constant ALMetalWorldModernSkyConstants& c [[buffer(0)]],
+    device uint* result [[buffer(1)]], uint id [[thread_position_in_grid]])
+{
+    if (id != 0u) return;
+    result[0] = sizeof(ALMetalWorldModernSkyDomeConstants);
+    result[1] = sizeof(ALMetalWorldModernSkyCloudConstants);
+    result[2] = sizeof(ALMetalWorldModernSkyConstants);
+    result[3] = __builtin_offsetof(ALMetalWorldModernSkyConstants, dome);
+    result[4] = __builtin_offsetof(ALMetalWorldModernSkyConstants, clouds);
+    result[5] = __builtin_offsetof(ALMetalWorldModernSkyConstants, sun_quad);
+    result[6] = __builtin_offsetof(ALMetalWorldModernSkyConstants, moon_quad);
+    result[7] = __builtin_offsetof(ALMetalWorldModernSkyConstants, bloom_quad);
+    result[8] = __builtin_offsetof(ALMetalWorldModernSkyConstants, body);
+    result[9] = __builtin_offsetof(ALMetalWorldModernSkyConstants, bloom_color);
+    result[10] = __builtin_offsetof(ALMetalWorldModernSkyConstants, hdri_rotation);
+    result[11] = __builtin_offsetof(ALMetalWorldModernSkyConstants, transfer);
+    result[12] = __builtin_offsetof(ALMetalWorldModernSkyConstants, aurora);
+    result[13] = __builtin_offsetof(ALMetalWorldModernSkyConstants, config);
+    result[14] = as_type<uint>(c.dome.camera_local.w);
+    result[15] = as_type<uint>(c.clouds.parameters.z);
+    result[16] = as_type<uint>(c.body.y);
+    result[17] = as_type<uint>(c.transfer.w);
+    result[18] = c.config.w;
+}
