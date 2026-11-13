@@ -32,6 +32,7 @@
 #include <stdint.h>
 #endif
 #include <cmath>
+#include <memory>
 #include <unordered_map>
 
 #include "llerror.h"
@@ -2001,11 +2002,11 @@ void LLVolume::regen()
     createVolumeFaces();
 }
 
-void LLVolume::genTangents(S32 face)
+bool LLVolume::genTangents(S32 face)
 {
     // generate legacy tangents for the specified face
     llassert(!isMeshAssetLoaded() || mVolumeFaces[face].mTangents != nullptr); // if this is a complete mesh asset, we should already have tangents
-    mVolumeFaces[face].createTangents();
+    return mVolumeFaces[face].createTangents();
 }
 
 LLVolume::~LLVolume()
@@ -3870,7 +3871,10 @@ S32 LLVolume::lineSegmentIntersect(const LLVector4a& start, const LLVector4a& en
         {
             if (tangent_out != NULL) // if the caller wants tangents, we may need to generate them
             {
-                genTangents(i);
+                if (!genTangents(i))
+                {
+                    continue;
+                }
             }
 
             if (isUnique())
@@ -5204,6 +5208,26 @@ namespace
         v.setSelectWithMask(length2.greaterThan(LLVector4a(FLT_MIN)), unit, LLVector4a::getZero());
     }
 
+    template<size_t Alignment>
+    struct MeshAlignedFree
+    {
+        void operator()(void* buffer) const { ll_aligned_free<Alignment>(buffer); }
+    };
+
+    template<typename T, size_t Alignment>
+    using MeshAlignedBuffer = std::unique_ptr<T, MeshAlignedFree<Alignment>>;
+
+    template<typename T, size_t Alignment>
+    MeshAlignedBuffer<T, Alignment> mesh_aligned_buffer(size_t bytes)
+    {
+        MeshAlignedBuffer<T, Alignment> buffer(static_cast<T*>(ll_aligned_malloc<Alignment>(bytes)));
+        if (!buffer)
+        {
+            throw std::bad_alloc();
+        }
+        return buffer;
+    }
+
     // Bound the vertex-cache scoring work independently of the index count.
     // The upstream budget measures the sum of squared vertex incidences.
     bool cache_order_affordable(const U16* indices, size_t index_count, size_t vertex_count)
@@ -5253,24 +5277,14 @@ struct MikktData
     {
         U32 count = face->mNumIndices;
 
-        try
+        p.resize(count);
+        n.resize(count);
+        tc.resize(count);
+        t.resize(count);
+        if (face->mWeights)
         {
-            p.resize(count);
-            n.resize(count);
-            tc.resize(count);
-            t.resize(count);
-
-            if (face->mWeights)
-            {
-                w.resize(count);
-            }
+            w.resize(count);
         }
-        catch (std::bad_alloc&)
-        {
-            LLError::LLUserWarningMsg::showOutOfMemory();
-            LL_ERRS("LLCoros") << "Bad memory allocation in MikktData, elements count: " << count << LL_ENDL;
-        }
-
 
         LLVector3 inv_scale(1.f / face->mNormalizedScale.mV[0], 1.f / face->mNormalizedScale.mV[1], 1.f / face->mNormalizedScale.mV[2]);
 
@@ -5370,6 +5384,7 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
     }
 
     if (tangents)
+    try
     {
         if (mNormalizedScale.mV[0] == 0.0f || mNormalizedScale.mV[1] == 0.0f || mNormalizedScale.mV[2] == 0.0f)
         {
@@ -5386,10 +5401,9 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
         {
             ctx.genTangSpace();
         }
-        catch (std::bad_alloc&)
+        catch (const std::bad_alloc&)
         {
-            LLError::LLUserWarningMsg::showOutOfMemory();
-            LL_ERRS("LLVolume") << "Bad memory allocation in MikktData::genTangSpace" << LL_ENDL;
+            throw;
         }
         catch (...)
         {
@@ -5408,52 +5422,34 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
             { data.w.empty() ? nullptr : &data.w[0], sizeof(LLVector4), sizeof(LLVector4) }
         };
 
-        std::vector<U32> remap;
-        try
-        {
-            remap.resize(data.p.size());
-        }
-        catch (std::bad_alloc&)
-        {
-            LLError::LLUserWarningMsg::showOutOfMemory();
-            LL_ERRS("LLVOLUME") << "Failed to allocate memory for remap: " << (S32)data.p.size() << LL_ENDL;
-        }
+        std::vector<U32> remap(data.p.size());
 
         U32 stream_count = data.w.empty() ? 4 : 5;
 
         S32 vert_count = 0;
         if (!data.p.empty())
         {
-            try
-            {
-                // providing mIndices should help avoid unused vertices
-                // but those should have been filtered out on upload
-                vert_count = static_cast<S32>(meshopt_generateVertexRemapMulti(&remap[0], nullptr, data.p.size(), data.p.size(), mos, stream_count));
-            }
-            catch (std::bad_alloc&)
-            {
-                LLError::LLUserWarningMsg::showOutOfMemory();
-                LL_ERRS("LLVolume") << "Failed to allocate memory for VertexRemap: " << (S32)data.p.size() << LL_ENDL;
-            }
+            // providing mIndices should help avoid unused vertices
+            // but those should have been filtered out on upload
+            vert_count = static_cast<S32>(meshopt_generateVertexRemapMulti(remap.data(), nullptr, data.p.size(), data.p.size(), mos, stream_count));
         }
 
         // Probably should be using meshopt_remapVertexBuffer instead of remaping manually
         if (vert_count < 65535 && vert_count > 0)
         {
-            //copy results back into volume
-            resizeVertices(vert_count);
-            if (mNumVertices == 0)
-            {
-                LLError::LLUserWarningMsg::showOutOfMemory();
-                LL_ERRS("LLVolume") << "Failed to allocate memory for resizeVertices(" << vert_count << ")" << LL_ENDL;
-            }
-
+            // Allocate the whole replacement before giving up any of the face's buffers.
+            // Required tangent work fails as one transaction, leaving its original geometry intact.
+            const size_t tc_bytes = (vert_count * sizeof(LLVector2) + 0xF) & ~size_t(0xF);
+            auto positions = mesh_aligned_buffer<LLVector4a, 64>(sizeof(LLVector4a) * 2 * vert_count + tc_bytes);
+            LLVector4a* normals = positions.get() + vert_count;
+            LLVector2* texcoords = reinterpret_cast<LLVector2*>(normals + vert_count);
+            auto tangent_buffer = mesh_aligned_buffer<LLVector4a, 16>(sizeof(LLVector4a) * vert_count);
+            MeshAlignedBuffer<LLVector4a, 16> weights;
             if (!data.w.empty())
             {
-                allocateWeights(vert_count);
+                weights = mesh_aligned_buffer<LLVector4a, 16>(sizeof(LLVector4a) * vert_count);
             }
-
-            allocateTangents(mNumVertices);
+            std::vector<U16> remapped_indices(mNumIndices);
 
             for (S32 i = 0; i < mNumIndices; ++i)
             {
@@ -5462,13 +5458,13 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
                 if (dst_idx == U32_MAX)
                 {
                     // Unused indices? Probably need to resize mIndices
-                    dst_idx = mNumVertices - 1;
+                    dst_idx = vert_count - 1;
                     llassert(false);
                     LL_DEBUGS_ONCE("LLVOLUME") << "U32_MAX destination index, substituting" << LL_ENDL;
                 }
-                else if (dst_idx >= (U32)mNumVertices)
+                else if (dst_idx >= (U32)vert_count)
                 {
-                    dst_idx = mNumVertices - 1;
+                    dst_idx = vert_count - 1;
                     // Shouldn't happen, figure out what gets returned in remap and why.
                     llassert(false);
                     LL_DEBUGS_ONCE("LLVOLUME") << "Invalid destination index, substituting" << LL_ENDL;
@@ -5480,17 +5476,17 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
                     llassert(false);
                     LL_DEBUGS_ONCE("LLVOLUME") << "Invalid source index, substituting" << LL_ENDL;
                 }
-                mIndices[i] = dst_idx;
+                remapped_indices[i] = dst_idx;
 
-                mPositions[dst_idx].load3(data.p[src_idx].mV);
-                mNormals[dst_idx].load3(data.n[src_idx].mV);
-                mTexCoords[dst_idx] = data.tc[src_idx];
+                positions.get()[dst_idx].load3(data.p[src_idx].mV);
+                normals[dst_idx].load3(data.n[src_idx].mV);
+                texcoords[dst_idx] = data.tc[src_idx];
 
-                mTangents[dst_idx].loadua(data.t[src_idx].mV);
+                tangent_buffer.get()[dst_idx].loadua(data.t[src_idx].mV);
 
-                if (mWeights)
+                if (weights)
                 {
-                    mWeights[dst_idx].loadua(data.w[src_idx].mV);
+                    weights.get()[dst_idx].loadua(data.w[src_idx].mV);
                 }
             }
 
@@ -5501,16 +5497,28 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
             scale.load3(mNormalizedScale.mV);
             scale.getF32ptr()[3] = 1.f;
 
-            for (S32 i = 0; i < mNumVertices; ++i)
+            for (S32 i = 0; i < vert_count; ++i)
             {
-                mPositions[i].mul(inv_scale);
-                mNormals[i].mul(scale);
-                unit3_or_zero(mNormals[i]);
-                F32 w = mTangents[i].getF32ptr()[3];
-                mTangents[i].mul(inv_scale);
-                unit3_or_zero(mTangents[i]);
-                mTangents[i].getF32ptr()[3] = w;
+                positions.get()[i].mul(inv_scale);
+                normals[i].mul(scale);
+                unit3_or_zero(normals[i]);
+                F32 w = tangent_buffer.get()[i].getF32ptr()[3];
+                tangent_buffer.get()[i].mul(inv_scale);
+                unit3_or_zero(tangent_buffer.get()[i]);
+                tangent_buffer.get()[i].getF32ptr()[3] = w;
             }
+
+            ll_aligned_free<64>(mPositions);
+            ll_aligned_free_16(mTangents);
+            ll_aligned_free_16(mWeights);
+            mPositions = positions.release();
+            mNormals = normals;
+            mTexCoords = texcoords;
+            mTangents = tangent_buffer.release();
+            mWeights = weights.release();
+            mNumVertices = mNumAllocatedVertices = vert_count;
+            std::copy(remapped_indices.begin(), remapped_indices.end(), mIndices);
+            mJointRiggingInfoTab.clear();
         }
         else
         {
@@ -5519,8 +5527,16 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
                 LL_WARNS_ONCE("LLVOLUME") << "meshopt_generateVertexRemapMulti failed to process a model or model was invalid" << LL_ENDL;
             }
             // blew past the max vertex size limit, use legacy tangent generation which never adds verts
-            createTangents();
+            if (!createTangents())
+            {
+                return false;
+            }
         }
+    }
+    catch (const std::bad_alloc&)
+    {
+        LL_WARNS("LLVolume") << "Failed to allocate tangent generation buffers" << LL_ENDL;
+        return false;
     }
 
     // cache optimize index buffer
@@ -5530,14 +5546,23 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
         return true;
     }
 
-    // meshopt needs scratch space, do some pointer shuffling to avoid an extra index buffer copy
-    U16* src_indices = mIndices;
-    mIndices = nullptr;
-    resizeIndices(mNumIndices);
-
-    meshopt_optimizeVertexCache<U16>(mIndices, src_indices, mNumIndices, mNumVertices);
-
-    ll_aligned_free_16(src_indices);
+    try
+    {
+        // Use meshoptimizer's native index width, avoiding the U16 adapter's copying destructor
+        // during exception unwinding. Publish only a complete order into the existing index buffer.
+        std::vector<U32> source(mIndices, mIndices + mNumIndices);
+        std::vector<U32> ordered(mNumIndices);
+        meshopt_optimizeVertexCache(ordered.data(), source.data(), mNumIndices, mNumVertices);
+        for (S32 i = 0; i < mNumIndices; ++i)
+        {
+            mIndices[i] = static_cast<U16>(ordered[i]);
+        }
+    }
+    catch (const std::bad_alloc&)
+    {
+        // Cache ordering is optional; the original valid triangles remain drawable.
+        LL_WARNS("LLVolume") << "Keeping mesh triangle order after allocation failure" << LL_ENDL;
+    }
 
     return true;
 }
@@ -6232,34 +6257,36 @@ bool LLVolumeFace::createCap(LLVolume* volume, bool partial_build)
     return true;
 }
 
-void LLVolumeFace::createTangents()
+bool LLVolumeFace::createTangents()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
 
     if (!mTangents)
+    try
     {
-        allocateTangents(mNumVertices);
-
-        //generate tangents
-        LLVector4a* ptr = (LLVector4a*)mTangents;
-
-        LLVector4a* end = mTangents + mNumVertices;
-        while (ptr < end)
+        auto tangents = mesh_aligned_buffer<LLVector4a, 16>(sizeof(LLVector4a) * mNumVertices);
+        std::fill_n(tangents.get(), mNumVertices, LLVector4a::getZero());
+        if (!LLCalculateTangentArray(mNumVertices, mPositions, mNormals, mTexCoords,
+                                    mNumIndices / 3, mIndices, tangents.get()))
         {
-            (*ptr++).clear();
+            return false;
         }
 
-        LLCalculateTangentArray(mNumVertices, mPositions, mNormals, mTexCoords, mNumIndices / 3, mIndices, mTangents);
-
-        //normalize normals
+        // bump map/planar projection code requires normals to be normalized
         for (S32 i = 0; i < mNumVertices; i++)
         {
-            //bump map/planar projection code requires normals to be normalized
             mNormals[i].normalize3fast();
         }
+        mTangents = tangents.release();
     }
-
+    catch (const std::bad_alloc&)
+    {
+        LL_WARNS("LLVolume") << "Failed to allocate legacy tangent buffers" << LL_ENDL;
+        return false;
+    }
+    return true;
 }
+
 
 void LLVolumeFace::resizeVertices(S32 num_verts)
 {
@@ -6913,14 +6940,18 @@ bool LLVolumeFace::createSide(LLVolume* volume, bool partial_build)
 }
 
 //adapted from Lengyel, Eric. "Computing Tangent Space Basis Vectors for an Arbitrary Mesh". Terathon Software 3D Graphics Library, 2001. http://www.terathon.com/code/tangent.html
-void LLCalculateTangentArray(U32 vertexCount, const LLVector4a *vertex, const LLVector4a *normal,
+bool LLCalculateTangentArray(U32 vertexCount, const LLVector4a *vertex, const LLVector4a *normal,
         const LLVector2 *texcoord, U32 triangleCount, const U16* index_array, LLVector4a *tangent)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
 
-    //LLVector4a *tan1 = new LLVector4a[vertexCount * 2];
-    LLVector4a* tan1 = (LLVector4a*) ll_aligned_malloc_16(vertexCount*2*sizeof(LLVector4a));
-    // new(tan1) LLVector4a;
+    MeshAlignedBuffer<LLVector4a, 16> scratch(
+        static_cast<LLVector4a*>(ll_aligned_malloc_16(vertexCount * 2 * sizeof(LLVector4a))));
+    if (!scratch)
+    {
+        return false;
+    }
+    LLVector4a* tan1 = scratch.get();
 
     LLVector4a* tan2 = tan1 + vertexCount;
 
@@ -7014,7 +7045,7 @@ void LLCalculateTangentArray(U32 vertexCount, const LLVector4a *vertex, const LL
         }
     }
 
-    ll_aligned_free_16(tan1);
+    return true;
 }
 
 

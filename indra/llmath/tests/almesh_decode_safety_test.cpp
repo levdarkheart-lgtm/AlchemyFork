@@ -15,6 +15,7 @@
 #include <numeric>
 #include <random>
 #include <vector>
+#include <meshoptimizer.h>
 
 namespace
 {
@@ -172,6 +173,139 @@ namespace
             LLPointer<LLVolume> volume = meshVolume();
             CHECK(decode(*volume, faces) == (count == LL_SCULPT_MESH_MAX_FACES));
             CHECK(volume->getNumVolumeFaces() == (count == LL_SCULPT_MESH_MAX_FACES ? count : 0));
+        }
+    }
+
+    struct MeshAllocationFailures
+    {
+        static inline S32 remaining = -1;
+        static inline S32 calls = 0;
+        static inline S32 live = 0;
+        static inline bool failed = false;
+
+        static void* MESHOPTIMIZER_ALLOC_CALLCONV allocate(size_t bytes)
+        {
+            ++calls;
+            if (remaining == 0)
+            {
+                remaining = -1;
+                failed = true;
+                throw std::bad_alloc();
+            }
+            if (remaining > 0) --remaining;
+            void* result = ::operator new(bytes);
+            ++live;
+            return result;
+        }
+        static void MESHOPTIMIZER_ALLOC_CALLCONV deallocate(void* buffer)
+        {
+            if (buffer) --live;
+            ::operator delete(buffer);
+        }
+        static void* MESHOPTIMIZER_ALLOC_CALLCONV defaultAllocate(size_t bytes) { return ::operator new(bytes); }
+        static void MESHOPTIMIZER_ALLOC_CALLCONV defaultDeallocate(void* buffer) { ::operator delete(buffer); }
+    };
+
+    struct FailMeshAllocation
+    {
+        explicit FailMeshAllocation(S32 before_failure)
+        {
+            MeshAllocationFailures::remaining = before_failure;
+            MeshAllocationFailures::calls = MeshAllocationFailures::live = 0;
+            MeshAllocationFailures::failed = false;
+            meshopt_setAllocator(MeshAllocationFailures::allocate, MeshAllocationFailures::deallocate);
+        }
+        ~FailMeshAllocation()
+        {
+            meshopt_setAllocator(MeshAllocationFailures::defaultAllocate, MeshAllocationFailures::defaultDeallocate);
+        }
+    };
+
+    void cacheQuad(LLVolumeFace& face)
+    {
+        face.resizeVertices(4);
+        face.resizeIndices(6);
+        face.allocateWeights(4);
+        face.mNormalizedScale.set(1.f, 1.f, 1.f);
+        const U16 indices[] = {0, 1, 2, 2, 1, 3};
+        std::copy(std::begin(indices), std::end(indices), face.mIndices);
+        for (S32 i = 0; i < 4; ++i)
+        {
+            face.mPositions[i].set((F32)(i & 1), (F32)(i >> 1), 0.f, 0.f);
+            face.mNormals[i].set(0.f, 0.f, 1.f, 0.f);
+            face.mTexCoords[i].set((F32)(i & 1), (F32)(i >> 1));
+            face.mWeights[i].set(0.999f, 0.f, 0.f, 0.f);
+        }
+    }
+
+    TEST_CASE("Mesh cache: failed required weld allocation retains the original face", "[llvolume][mesh-allocation-safety]")
+    {
+        LLVolumeFace face;
+        cacheQuad(face);
+        const auto* positions = face.mPositions;
+        const auto* indices = face.mIndices;
+        const auto* weights = face.mWeights;
+        const std::vector<U16> before(face.mIndices, face.mIndices + face.mNumIndices);
+        bool optimized;
+        {
+            FailMeshAllocation fail(0);
+            optimized = face.cacheOptimize(true);
+        }
+        CHECK(MeshAllocationFailures::failed);
+        CHECK(MeshAllocationFailures::live == 0);
+        CHECK_FALSE(optimized);
+        CHECK(face.mOptimized);
+        CHECK(face.mPositions == positions);
+        CHECK(face.mIndices == indices);
+        CHECK(face.mWeights == weights);
+        CHECK(face.mTangents == nullptr);
+        REQUIRE(face.mNumVertices == 4);
+        REQUIRE(face.mNumIndices == 6);
+        CHECK(std::equal(before.begin(), before.end(), face.mIndices));
+        for (S32 i = 0; i < 4; ++i)
+        {
+            CHECK(face.mPositions[i][0] == (F32)(i & 1));
+            CHECK(face.mPositions[i][1] == (F32)(i >> 1));
+            CHECK(face.mWeights[i][0] == 0.999f);
+        }
+    }
+
+    TEST_CASE("Mesh cache: each failed optional ordering allocation keeps valid triangles", "[llvolume][mesh-allocation-safety]")
+    {
+        S32 allocation_count;
+        {
+            LLVolumeFace control;
+            cacheQuad(control);
+            FailMeshAllocation count(-1);
+            REQUIRE(control.cacheOptimize(false));
+            allocation_count = MeshAllocationFailures::calls;
+            REQUIRE(MeshAllocationFailures::live == 0);
+        }
+        REQUIRE(allocation_count > 0);
+        for (S32 nth = 0; nth < allocation_count; ++nth)
+        {
+            CAPTURE(nth);
+            LLVolumeFace face;
+            cacheQuad(face);
+            const auto* positions = face.mPositions;
+            const auto* indices = face.mIndices;
+            const auto* weights = face.mWeights;
+            const std::vector<U16> before(face.mIndices, face.mIndices + face.mNumIndices);
+            bool optimized;
+            {
+                FailMeshAllocation fail(nth);
+                optimized = face.cacheOptimize(false);
+            }
+            CHECK(MeshAllocationFailures::failed);
+            CHECK(MeshAllocationFailures::live == 0);
+            CHECK(optimized);
+            CHECK(face.mOptimized);
+            CHECK(face.mPositions == positions);
+            CHECK(face.mIndices == indices);
+            CHECK(face.mWeights == weights);
+            REQUIRE(face.mNumVertices == 4);
+            REQUIRE(face.mNumIndices == 6);
+            CHECK(std::equal(before.begin(), before.end(), face.mIndices));
         }
     }
 

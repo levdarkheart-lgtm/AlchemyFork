@@ -880,7 +880,7 @@ private:
 public:
 
     bool create(LLVolume* volume, bool partial_build = false);
-    void createTangents();
+    bool createTangents();
 
     void resizeVertices(S32 num_verts);
     void allocateTangents(S32 num_verts);
@@ -1041,7 +1041,7 @@ public:
     void setDirty() { mPathp->setDirty(); mProfilep->setDirty(); }
 
     void regen();
-    void genTangents(S32 face);
+    bool genTangents(S32 face);
 
     bool isConvex() const;
     bool isCap(S32 face);
@@ -1139,7 +1139,7 @@ public:
 
 std::ostream& operator<<(std::ostream &s, const LLVolumeParams &volume_params);
 
-void LLCalculateTangentArray(U32 vertexCount, const LLVector4a *vertex, const LLVector4a *normal, const LLVector2 *texcoord, U32 triangleCount, const U16* index_array, LLVector4a *tangent);
+bool LLCalculateTangentArray(U32 vertexCount, const LLVector4a *vertex, const LLVector4a *normal, const LLVector2 *texcoord, U32 triangleCount, const U16* index_array, LLVector4a *tangent);
 
 bool LLLineSegmentBoxIntersect(const F32* start, const F32* end, const F32* center, const F32* size);
 bool LLLineSegmentBoxIntersect(const LLVector3& start, const LLVector3& end, const LLVector3& center, const LLVector3& size);
