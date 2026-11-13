@@ -2662,7 +2662,6 @@ if(AL_BUILD_TESTS)
       alagentlocationformat.cpp
       alapplinks.cpp
       albakeproxies.cpp
-      altextureboost.cpp
       alchattimestamp.cpp
       alcolorwheelmodel.cpp
       alcrashreporter.cpp
