@@ -48,3 +48,14 @@ excluded. No blanket exposure/gamma/default change was introduced by the repair.
 Push approval is recorded for committed scopes017–079,083/084/086/087, without
 changing pending owner verification or partial/open status. Other symptom-only
 and unimplemented follow-ups retain separate authorization requirements.
+
+
+## Observed publication
+
+Normal `git push origin HEAD:refs/heads/codex/apple-silicon-metal` exits0:
+remote advancesf645294395→37989d9d66fetched via SSH origin. Independent
+`git ls-remote --heads origin refs/heads/codex/apple-silicon-metal` confirms exact
+37989d9d66 approval head, including80prior commits plus approval metadata.
+No force-push or default-branch change. This receipt-only documentation follows
+the already-published series and changes no implementation or viewer binary.
+Private machine-readable receipt stays under ignored publication artifacts.

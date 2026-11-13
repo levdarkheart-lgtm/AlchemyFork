@@ -2485,6 +2485,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+- 2026-11-13: Owner-approved full upstream series published by ordinary fast-forward37989d9d66 on origin/codex/apple-silicon-metal; exactremote verified independently. No implementation change in publication receipt.
+
+
 ## PPD-084 — Native sRGB mip generation may differ from original raw-byte policy
 
 - Status: dismissed
@@ -2561,6 +2564,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
+- 2026-11-13: Owner-approved full upstream series published by ordinary fast-forward37989d9d66 on origin/codex/apple-silicon-metal; exactremote verified independently. No implementation change in publication receipt.
+
 
 ## PPD-087 — Material preview rejects the ordinary non-HDR default radiance format
 
