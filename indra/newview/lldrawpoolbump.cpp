@@ -40,7 +40,6 @@
 #include "llcubemap.h"
 #include "lldrawable.h"
 #include "llface.h"
-#include "llsky.h"
 #include "llstartup.h"
 #include "lltextureentry.h"
 #include "llviewercamera.h"

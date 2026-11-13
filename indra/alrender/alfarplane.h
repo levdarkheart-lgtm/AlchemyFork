@@ -27,6 +27,7 @@
 
 #include "stdtypes.h"
 #include "v2math.h"
+#include "v3math.h"
 
 #include <array>
 #include <limits>
@@ -131,6 +132,9 @@ WaterFar waterFar(F32 projection_far, bool have_rim, const LLVector2& rim_min, c
 /// is altitude, and its directions agree with the sky's light directions (lightnorm), so neither changes as the
 /// camera turns.
 std::array<F32, 9> eyeToSkyFrame(const LLMatrix4a& view);
+
+/// An agent-space direction (east, north, up) in the dome's (north, up, east).
+LLVector3 skyFrame(const LLVector3& agent);
 
 /// One column of the Develop far plane overlay (ALFarPlaneOverlay), in camera-relative metres: horizontal
 /// distance, bearing in degrees clockwise from north, sideways offset, half width and height, all scaled with

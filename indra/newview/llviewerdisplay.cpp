@@ -69,7 +69,6 @@
 #include "llscenemonitor.h"
 #include "llsdjson.h"
 #include "llselectmgr.h"
-#include "llsky.h"
 #include "llspatialpartition.h"
 #include "llstartup.h"
 #include "llstartup.h"
@@ -1830,6 +1829,14 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     // Actually push all of our triangles to the screen.
     //
 
+    // Take the sky before mirror/preview views; the main view follows its environment update below.
+    if (!gDisconnected && !LLApp::isExiting())
+    {
+        LLAppViewer::instance()->pingMainloopTimeout("Display:Sky");
+        LL_PROFILE_ZONE_NAMED_CATEGORY_ENVIRONMENT("update sky");
+        gPipeline.mSky.update();
+    }
+
     // do render-to-texture stuff here
     if (gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_DYNAMIC_TEXTURES))
     {
@@ -1892,6 +1899,8 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Env Update");
             // update all the sky/atmospheric/water settings
             LLEnvironment::instance().update(LLViewerCamera::getInstance());
+            // The sky's bodies and textures as the update has moved it on, for the main view.
+            gPipeline.mSky.followEnvironment();
         }
 
         // *TODO: merge these two methods
@@ -2077,12 +2086,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         LLGLState::checkStates();
 
         LLPipeline::sUseOcclusion = occlusion;
-
-        {
-            LLAppViewer::instance()->pingMainloopTimeout("Display:Sky");
-            LL_PROFILE_ZONE_NAMED_CATEGORY_ENVIRONMENT("update sky");
-            gSky.updateSky();
-        }
 
         if(gUseWireframe)
         {
@@ -3007,7 +3010,7 @@ void render_ui_3d()
         // Render debugging beacons.
         gObjectList.renderObjectBeacons();
         gObjectList.resetObjectBeacons();
-        gSky.addSunMoonBeacons();
+        gPipeline.mSky.addSunMoonBeacons();
     }
     else
     {

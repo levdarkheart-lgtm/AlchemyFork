@@ -43,9 +43,7 @@ struct Capture
     bool legacy_glow=false,water_exclusion=false;
     bool impostor_fullbright=false,impostor_shiny=false,impostor_emboss=false;
     bool alpha_mask=false,rigged=false;
-    bool windlight_stars_active=true,windlight_stars_complete=true;
     std::vector<ALMetalWorldSimpleBatch> batches;
-    ALMetalWorldStarBatch windlight_star_batch;
     void markIncomplete(U32) {complete=false;}
 };
 struct LLPipeline
@@ -54,7 +52,6 @@ struct LLPipeline
     std::unique_ptr<Capture> mMetalWorldSimpleCapture=std::make_unique<Capture>();
     struct {bool isMirrorPass() const{return false;}} mHeroProbeManager;
     void captureMetalWorldGBufferBatch(const LLDrawInfo&,bool);
-    void captureMetalWorldWindLightStarBatch(LLVertexBuffer*,const LLMatrix4a&);
 };
 bool gCubeSnapshot=false;
 // Named fixed-camera inputs. Production's full matrix helpers remain unchanged;
@@ -177,34 +174,33 @@ TEST_CASE("Actual indexed capture rejects warm failed stores and retries only it
     }
 }
 
-TEST_CASE("Actual vertex-only star capture ignores an unpublished unused index store",
+TEST_CASE("Native star publication refreshes vertex stores without requiring index publication",
           "[almetal][pipeline-buffer-publication]")
 {
-    Publication f;Inputs::LLPipeline pipeline;auto buffer=f.buffer();
-    const auto mvp=LLMatrix4a::identity();const auto* old=buffer->getMetalVertexBuffer();
+    Publication f; auto buffer=f.buffer();
+    const auto* old=buffer->getMetalVertexBuffer();
     f.positions(*buffer,true);
-    pipeline.captureMetalWorldWindLightStarBatch(buffer,mvp);
-    auto& capture=*pipeline.mMetalWorldSimpleCapture;
-    CHECK(capture.windlight_stars_complete);REQUIRE(capture.windlight_star_batch.vertices);
-    CHECK(capture.windlight_star_batch.vertices!=old);
-    CHECK(f.copied<F32>(*capture.windlight_star_batch.vertices,0,4)[0]==.1f);
+    REQUIRE(buffer->prepareMetalBuffers(false));
+    const auto* published=buffer->getMetalVertexBuffer();
+    REQUIRE(published); CHECK(published!=old);
+    CHECK(f.copied<F32>(*published,0,4)[0]==.1f);
     {
-        MissingPublisher missing(f.device.get());const U16 indices[]{2,1,0};buffer->setIndexData(indices);buffer->unmapBuffer();
-        REQUIRE(buffer->hasPublishedMetalVertexBuffer());REQUIRE_FALSE(buffer->hasPublishedMetalIndexBuffer());
-        capture.windlight_star_batch={};pipeline.captureMetalWorldWindLightStarBatch(buffer,mvp);
-        CHECK(capture.windlight_stars_complete);CHECK(capture.windlight_star_batch.vertices==buffer->getMetalVertexBuffer());
-        REQUIRE(capture.windlight_star_batch.vertices);
+        MissingPublisher missing(f.device.get());
+        const U16 indices[]{2,1,0}; buffer->setIndexData(indices); buffer->unmapBuffer();
+        REQUIRE(buffer->hasPublishedMetalVertexBuffer());
+        REQUIRE_FALSE(buffer->hasPublishedMetalIndexBuffer());
+        CHECK(buffer->prepareMetalBuffers(false));
+        CHECK(buffer->getMetalVertexBuffer()==published);
         CHECK_FALSE(buffer->hasPublishedMetalIndexBuffer());
     }
-    CHECK(f.copied<F32>(*capture.windlight_star_batch.vertices,0,4)[0]==.1f);
+    CHECK(f.copied<F32>(*published,0,4)[0]==.1f);
     {
-        MissingPublisher missing(f.device.get());f.positions(*buffer,false);buffer->unmapBuffer();
-        pipeline.captureMetalWorldWindLightStarBatch(buffer,mvp);
-        CHECK_FALSE(capture.windlight_stars_complete);CHECK_FALSE(capture.windlight_star_batch.vertices);
+        MissingPublisher missing(f.device.get()); f.positions(*buffer,false); buffer->unmapBuffer();
+        CHECK_FALSE(buffer->prepareMetalBuffers(false));
     }
-    capture.windlight_stars_complete=true;pipeline.captureMetalWorldWindLightStarBatch(buffer,mvp);
-    CHECK(capture.windlight_stars_complete);REQUIRE(capture.windlight_star_batch.vertices);
-    CHECK(f.copied<F32>(*capture.windlight_star_batch.vertices,0,4)[0]==-1.f);
+    REQUIRE(buffer->prepareMetalBuffers(false));
+    REQUIRE(buffer->getMetalVertexBuffer());
+    CHECK(f.copied<F32>(*buffer->getMetalVertexBuffer(),0,4)[0]==-1.f);
 }
 
 TEST_CASE("Actual opaque capture preserves first-failure and inactive draw admission",

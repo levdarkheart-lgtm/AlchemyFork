@@ -27,41 +27,6 @@
  * $/LicenseInfo$
  */
 
-void LLPipeline::captureMetalWorldWindLightStarBatch(
-    LLVertexBuffer* buffer,
-    const LLMatrix4a& modelview_projection)
-{
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->windlight_stars_active)
-    {
-        return;
-    }
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (!capture.windlight_stars_complete || !buffer ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-        !buffer->prepareMetalBuffers(false) ||
-        buffer->getNumVerts() < 3 || buffer->getNumVerts() % 3 != 0)
-    {
-        capture.windlight_stars_complete = false;
-        capture.windlight_star_batch = {};
-        return;
-    }
-
-    ALMetalWorldStarBatch& batch = capture.windlight_star_batch;
-    batch.vertices = buffer->getMetalVertexBuffer();
-    batch.position_offset =
-        buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
-    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
-    batch.texcoord_offset =
-        buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
-    batch.vertex_count = buffer->getNumVerts();
-    std::memcpy(batch.modelview_projection,
-                modelview_projection.getF32ptr(),
-                sizeof(batch.modelview_projection));
-}
-
 void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                                bool batch_textures)
 {

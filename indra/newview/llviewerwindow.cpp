@@ -77,7 +77,6 @@
 #include "llfontgl.h"
 #include "llmousehandler.h"
 #include "llrect.h"
-#include "llsky.h"
 #include "llstring.h"
 #include "llui.h"
 #include "lluuid.h"
@@ -2824,9 +2823,6 @@ void LLViewerWindow::shutdownGL()
     //--------------------------------------------------------
     LLFontGL::destroyDefaultFonts();
     SUBSYSTEM_CLEANUP(LLFontManager);
-    stop_glerror();
-
-    gSky.cleanup();
     stop_glerror();
 
     LL_INFOS() << "Cleaning up pipeline" << LL_ENDL;

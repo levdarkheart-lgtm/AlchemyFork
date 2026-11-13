@@ -113,6 +113,11 @@ WaterFar waterFar(F32 projection_far, bool have_rim, const LLVector2& rim_min, c
     return water;
 }
 
+LLVector3 skyFrame(const LLVector3& agent)
+{
+    return LLVector3(agent.mV[VY], agent.mV[VZ], agent.mV[VX]);
+}
+
 std::array<F32, 9> eyeToSkyFrame(const LLMatrix4a& view)
 {
     // The view's rotation is orthonormal, so the eye axes in agent space are the rows of its rotation, which

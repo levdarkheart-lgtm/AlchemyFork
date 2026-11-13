@@ -15,6 +15,9 @@ set(
   alrenderinputrequests.cpp
   alrenderresourceplan.cpp
   alshaderinputs.cpp
+  alskycube.cpp
+  alskylayers.cpp
+  alstarfield.cpp
   alspotshadowcache.cpp
   alwaterfield.cpp
   alwaterheightbake.cpp
@@ -32,6 +35,10 @@ set(
   alrenderresourceinputs.h
   alrenderresourceplan.h
   alshaderinputs.h
+  alskycube.h
+  alskylayers.h
+  alstarfield.h
+  alstarfieldgenerate.h
   alspotshadowcache.h
   alwaterfield.h
   alwaterheightbake.h
@@ -75,6 +82,9 @@ if(AL_BUILD_TESTS)
       tests/alrender_resource_invariants_test.cpp
       tests/alfxaa_native_invariants_test.mm
       tests/alshaderinputs_test.cpp
+      tests/alskycube_test.cpp
+      tests/alskylayers_test.cpp
+      tests/alstarfield_test.cpp
       tests/alspotshadowcache_test.cpp
       tests/alwaterfield_test.cpp
       tests/alwaterheightbake_test.cpp

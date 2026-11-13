@@ -134,6 +134,7 @@ if(AL_BUILD_VIEWER)
     aoset.cpp
     alapplinks.cpp
     albakeproxies.cpp
+    alsky.cpp
     altextureboost.cpp
     alassetblocklist.cpp
     alavataractions.cpp
@@ -395,11 +396,9 @@ if(AL_BUILD_VIEWER)
     lldrawpoolmaterials.cpp
     lldrawpoolpbropaque.cpp
     lldrawpoolsimple.cpp
-    lldrawpoolsky.cpp
     lldrawpoolterrain.cpp
     lldrawpooltree.cpp
     lldrawpoolwater.cpp
-    lldrawpoolwlsky.cpp
     lldrawpoolwaterexclusion.cpp
     lldynamictexture.cpp
     lleasymessagelogentry.cpp
@@ -828,7 +827,6 @@ if(AL_BUILD_VIEWER)
     llsidepaneltaskinfo.cpp
     llsidetraypanelcontainer.cpp
     llskinningutil.cpp
-    llsky.cpp
     llslurl.cpp
     llsnapshotlivepreview.cpp
     llspatialpartition.cpp
@@ -973,11 +971,9 @@ if(AL_BUILD_VIEWER)
     llvoicewebrtc.cpp
     llvoinventorylistener.cpp
     llvopartgroup.cpp
-    llvosky.cpp
     llvosurfacepatch.cpp
     llvotree.cpp
     llvovolume.cpp
-    llvowlsky.cpp
     llwearableitemslist.cpp
     llwearablelist.cpp
     llweb.cpp
@@ -1015,6 +1011,7 @@ if(AL_BUILD_VIEWER)
     aoset.h
     alapplinks.h
     albakeproxies.h
+    alsky.h
     altextureboost.h
     alsculptcopy.h
     alassetblocklist.h
@@ -1286,11 +1283,9 @@ if(AL_BUILD_VIEWER)
     lldrawpoolmaterials.h
     lldrawpoolpbropaque.h
     lldrawpoolsimple.h
-    lldrawpoolsky.h
     lldrawpoolterrain.h
     lldrawpooltree.h
     lldrawpoolwater.h
-    lldrawpoolwlsky.h
     lldrawpoolwaterexclusion.h
     lldynamictexture.h
     lleasymessagelogentry.h
@@ -1710,7 +1705,6 @@ if(AL_BUILD_VIEWER)
     llsidepaneltaskinfo.h
     llsidetraypanelcontainer.h
     llskinningutil.h
-    llsky.h
     llslurl.h
     llsnapshotlivepreview.h
     llsnapshotmodel.h
@@ -1858,11 +1852,9 @@ if(AL_BUILD_VIEWER)
     llvoicewebrtc.h
     llvoinventorylistener.h
     llvopartgroup.h
-    llvosky.h
     llvosurfacepatch.h
     llvotree.h
     llvovolume.h
-    llvowlsky.h
     llwearableitemslist.h
     llwearablelist.h
     llweb.h

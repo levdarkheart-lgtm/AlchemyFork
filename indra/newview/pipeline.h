@@ -45,6 +45,7 @@
 #include "alrenderinputrequests.h"
 #include "alrenderresourceplan.h"
 #include "alshaderinputs.h"
+#include "alsky.h"
 #include "alspotshadowcache.h"
 #include "alwatersurface.h"
 #include "llrendertarget.h"
@@ -277,6 +278,8 @@ private:
     U64 mMetalStartupWorldEpoch = 0;
     U32 mMetalStartupWorldStartFrame = 0;
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture;
+    std::unique_ptr<ALMetalTexture> mMetalSkyEnvironment;
+    const ALMetalDevice* mMetalSkyEnvironmentDevice = nullptr;
     std::unique_ptr<MetalWorldSimpleCapture>
         mMetalProbeWorldSimpleCapture;
     bool mMetalProjectorShadowReported = false;
@@ -1144,74 +1147,6 @@ public:
     void renderMetalWorldLightingComposition();
     bool renderMetalWorldLightMap(
         LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao);
-    void beginMetalWorldHDRISky(
-        LLImageGL* environment, F32 exposure_scale,
-        const LLMatrix3& environment_rotation, F32 camera_height_local);
-    void captureMetalWorldHDRISkyBatch(
-        LLVertexBuffer* buffer,
-        const LLMatrix4a& modelview_projection);
-    void endMetalWorldHDRISky();
-    void beginMetalWorldSplitSky(
-        LLImageGL* environment, F32 exposure_scale,
-        const LLMatrix3& environment_rotation, F32 horizontal_fraction,
-        LLViewerTexture* rainbow, LLViewerTexture* halo,
-        F32 camera_height_local, F32 moisture_level,
-        F32 droplet_radius, F32 ice_level,
-        F32 sun_moon_glow_factor, F32 density_multiplier,
-        F32 sky_hdr_scale);
-    void captureMetalWorldSplitSkyBatch(
-        LLVertexBuffer* buffer,
-        const LLMatrix4a& modelview_projection);
-    void endMetalWorldSplitSky();
-    void beginMetalWorldWindLightSky(
-        LLViewerTexture* rainbow, LLViewerTexture* halo,
-        F32 camera_height_local, F32 moisture_level,
-        F32 droplet_radius, F32 ice_level,
-        F32 sun_moon_glow_factor, F32 density_multiplier,
-        F32 sky_hdr_scale);
-    void captureMetalWorldWindLightSkyBatch(
-        LLVertexBuffer* buffer,
-        const LLMatrix4a& modelview_projection);
-    void endMetalWorldWindLightSky();
-    void beginMetalWorldWindLightStars(
-        F32 star_alpha, F32 time,
-        const LLVector3& moon_direction, F32 moon_brightness,
-        const LLVector3& moon_quad_center,
-        const LLVector3& moon_quad_u,
-        const LLVector3& moon_quad_v,
-        LLViewerTexture* moon_texture, bool moon_mask);
-    void captureMetalWorldWindLightStarBatch(
-        LLVertexBuffer* buffer,
-        const LLMatrix4a& modelview_projection);
-    void endMetalWorldWindLightStars();
-    void beginMetalWorldWindLightHeavenlyBodies();
-    void captureMetalWorldWindLightHeavenlyBody(
-        LLFace* face, LLViewerTexture* texture_a,
-        LLViewerTexture* texture_b, F32 parameter,
-        F32 moon_direction_z, bool moon,
-        const LLMatrix4a& modelview_projection);
-    void endMetalWorldWindLightHeavenlyBodies();
-    void beginMetalWorldWindLightMeteors(F32 width_pixels);
-    void captureMetalWorldWindLightMeteorBatch(
-        LLVertexBuffer* buffer,
-        const LLMatrix4a& modelview_projection);
-    void endMetalWorldWindLightMeteors();
-    void beginMetalWorldWindLightAurora(
-        F32 intensity, F32 time, F32 camera_height_local);
-    void captureMetalWorldWindLightAuroraBatch(
-        LLVertexBuffer* buffer,
-        const LLMatrix4a& modelview_projection);
-    void endMetalWorldWindLightAurora();
-    void beginMetalWorldWindLightClouds(
-        LLViewerTexture* noise_texture,
-        LLViewerTexture* next_noise_texture,
-        F32 camera_height_local, F32 cloud_variance,
-        F32 blend_factor, F32 sun_moon_glow_factor,
-        F32 density_multiplier);
-    void captureMetalWorldWindLightCloudBatch(
-        LLVertexBuffer* buffer,
-        const LLMatrix4a& modelview_projection);
-    void endMetalWorldWindLightClouds();
     void renderMetalWorldBaseLighting(
         LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,
         F32 ssao_scale, F32 ssao_max);
@@ -1244,9 +1179,13 @@ public:
     // and just before rendering alpha when camera is above water
     void doAtmospherics();
 
-    // Whether this frame's native haze pass could converge anything on a Metal sky-behind texture: the main view's,
+    // Whether this frame's native haze pass converges water on the shared sky dome: the main view's,
     // with atmospherics on, the camera above the water, and water among what was sorted to draw.
-    bool skyBehindWanted() const;
+    bool hazeOnWater() const;
+    bool drawsSky() const;
+#if LL_DARWIN
+    ALMetalTexture* metalSkyEnvironment();
+#endif
 
     // apply water haze based on contents of color and depth buffer
     // should be called just before rendering pre-water alpha objects
@@ -1411,6 +1350,7 @@ public:
     void hideObject( const LLUUID& id );
     void restoreHiddenObject( const LLUUID& id );
 
+    ALSky mSky;
     LLReflectionMapManager mReflectionMapManager;
     LLHeroProbeManager mHeroProbeManager;
 
@@ -1436,8 +1376,6 @@ public:
     enum LLRenderTypeMask
     {
         // Following are pool types (some are also object types)
-        RENDER_TYPE_SKY                         = LLDrawPool::POOL_SKY,
-        RENDER_TYPE_WL_SKY                      = LLDrawPool::POOL_WL_SKY,
         RENDER_TYPE_TERRAIN                     = LLDrawPool::POOL_TERRAIN,
         RENDER_TYPE_SIMPLE                      = LLDrawPool::POOL_SIMPLE,
         RENDER_TYPE_GRASS                       = LLDrawPool::POOL_GRASS,
@@ -1526,6 +1464,8 @@ public:
         RENDER_TYPE_PARTICLES,
         RENDER_TYPE_CLOUDS,
         RENDER_TYPE_HUD_PARTICLES,
+        RENDER_TYPE_SKY,
+        RENDER_TYPE_WL_SKY,
         NUM_RENDER_TYPES,
         END_RENDER_TYPES = NUM_RENDER_TYPES
     };
@@ -1750,7 +1690,6 @@ public:
     S32                     mScenePixelY = 0;
     bool                    mScenePixelPending = false;
 
-    LLCullResult            mSky;
     LLCullResult            mReflectedObjects;
     LLCullResult            mRefractedObjects;
 
@@ -2050,7 +1989,6 @@ protected:
     std::map<uintptr_t, LLDrawPool*>    mTreePools;
     LLDrawPoolAlpha*            mAlphaPoolPreWater = nullptr;
     LLDrawPoolAlpha*            mAlphaPoolPostWater = nullptr;
-    LLDrawPool*                 mSkyPool = nullptr;
     LLDrawPool*                 mTerrainPool = nullptr;
     LLDrawPool*                 mWaterPool = nullptr;
     LLRenderPass*               mSimplePool = nullptr;
@@ -2061,7 +1999,6 @@ protected:
     LLDrawPool*                 mGlowPool = nullptr;
     LLDrawPool*                 mBumpPool = nullptr;
     LLDrawPool*                 mMaterialsPool = nullptr;
-    LLDrawPool*                 mWLSkyPool = nullptr;
     LLDrawPool*                 mPBROpaquePool = nullptr;
     LLDrawPool*                 mPBRAlphaMaskPool = nullptr;
     LLDrawPool*                 mWaterExclusionPool      = nullptr;

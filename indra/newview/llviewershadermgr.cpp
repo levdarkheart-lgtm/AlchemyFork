@@ -45,7 +45,6 @@
 #include "llenvironment.h"
 #include "llerrorcontrol.h"
 #include "llworld.h"
-#include "llsky.h"
 
 #include "pipeline.h"
 
@@ -345,9 +344,9 @@ bool LLViewerShaderMgr::setMetalShaders(
     }
 
     gPipeline.mShadersLoaded = mFailedPrograms.empty();
-    if (gPipeline.mShadersLoaded && gSky.mVOSkyp.notNull())
+    if (gPipeline.mShadersLoaded)
     {
-        gSky.mVOSkyp->forceSkyUpdate();
+        gPipeline.mSky.forceSkyUpdate();
     }
 
     if (!mFailedPrograms.empty())
