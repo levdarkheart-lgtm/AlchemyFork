@@ -87,11 +87,12 @@ public:
     // has as many faces. A triangle belongs to the face its first vertex
     // came from. A part detached from the rest is dropped only with all of
     // its faces. Returns the ratio of base's indices to the simplification's,
-    // or -1 where no triangle was left or allocation failed, in which case
-    // target's faces are as they were. A face left with no triangle is one
+    // or -1 where no triangle was left, in which case target's faces are
+    // as they were. Allocation failure throws std::bad_alloc, keeping them
+    // unchanged. A face left with no triangle is one
     // of three indices to a vertex at the origin. Where a face would take
-    // more vertices than 16-bit indices reach, each face is simplified on its own instead, as
-    // simplifyFace simplifies it.
+    // more vertices than 16-bit indices reach, each face is simplified on
+    // its own instead, as simplifyFace simplifies it.
     F32 simplifyModel(LLVolume& target, const Target& goal, Seams seams) const;
 
     // Simplifies base's face on its own into target. A face that shares a
@@ -101,8 +102,8 @@ public:
     // only one that shares none may lose its small detached parts. Where two
     // faces overlap, each is free inside its borders. Returns as
     // simplifyModel does; where no triangle is left, target is the face of
-    // three indices to a vertex at the origin. Allocation failure keeps
-    // target unchanged.
+    // three indices to a vertex at the origin. Allocation failure throws
+    // std::bad_alloc, keeping target unchanged.
     F32 simplifyFace(S32 face, LLVolumeFace& target, const Target& goal, Seams seams) const;
 
     // Whether a simplification in one mode is the simplification in the

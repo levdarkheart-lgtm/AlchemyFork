@@ -1309,14 +1309,21 @@ namespace
             const LLVector4a* positions[] = { target->getVolumeFace(0).mPositions, target->getVolumeFace(1).mPositions };
             const U16* indices[] = { target->getVolumeFace(0).mIndices, target->getVolumeFace(1).mIndices };
             std::vector<LLVolumeFace> before = target->getVolumeFaces();
-            F32 ratio;
+            bool allocation_failed = false;
             {
                 FailMeshAllocation fail(nth);
-                ratio = simplifier.simplifyModel(*target, goal, Seams::ALL);
+                try
+                {
+                    simplifier.simplifyModel(*target, goal, Seams::ALL);
+                }
+                catch (const std::bad_alloc&)
+                {
+                    allocation_failed = true;
+                }
             }
             REQUIRE(FailMeshAllocation::failed);
             CHECK(FailMeshAllocation::live == 0);
-            CHECK(ratio < 0.f);
+            CHECK(allocation_failed);
             REQUIRE(target->getNumVolumeFaces() == 2);
             for (S32 f = 0; f < 2; ++f)
             {

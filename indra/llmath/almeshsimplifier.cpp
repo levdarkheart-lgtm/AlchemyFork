@@ -891,7 +891,10 @@ try
         }
         else if (!compact(base, f, face_indices[f].data(), face_indices[f].size(), replacement[f]))
         {
-            return -1.f;
+            // Every face was already checked to fit. Keep allocation failure
+            // distinct from a no-triangle result that the uploader may replace
+            // with a lower quality simplification.
+            throw std::bad_alloc();
         }
     }
     target.getVolumeFaces().swap(replacement);
@@ -900,7 +903,7 @@ try
 catch (const std::bad_alloc&)
 {
     LL_WARNS("MeshSimplifier") << "Keeping model after simplification allocation failure" << LL_ENDL;
-    return -1.f;
+    throw;
 }
 
 bool ALMeshSimplifier::same(Seams a, Seams b) const
@@ -926,12 +929,12 @@ try
     }
     if (!compact(mBase, face, simplified.data(), count, target))
     {
-        return -1.f;
+        throw std::bad_alloc();
     }
     return (F32)(mesh.first_index[face + 1] - mesh.first_index[face]) / (F32)count;
 }
 catch (const std::bad_alloc&)
 {
     LL_WARNS("MeshSimplifier") << "Keeping face after simplification allocation failure" << LL_ENDL;
-    return -1.f;
+    throw;
 }
