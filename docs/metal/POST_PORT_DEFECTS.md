@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-066 -->
+<!-- next-defect-id: PPD-080 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -1238,9 +1238,9 @@ Fetched-only slots discard dynamic local composites; PBR base-color bake body hi
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #595; 07094f82fe, 977e51afe9, 74589add5f, 9c451dc4a2, b929675d9c. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; almetal_builtin.metal local/projector lighting, base output, bloom extract, exposure meter/history, probe downsample/SH.
-- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md), [sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Sky26.4.0.68965 HDR/exposure/lighting behavior. Keep retained HDRI boundary concern qualified by actual finite-green baseline; no nonfinite owner attribution or closure/push inferred.
+- Verification: Prior remaining-batch finite boundaries retained. Current real M1 retained HDRI baseline404checks is finite/nonnegative; new bounded sky production GPU cases and full final512781GPUassertions53cases pass. Private bound-removal control saturates to65504 rather than Inf, so source clamp concern is not a reproduced Metal overflow. Owner scene acceptance pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -1254,6 +1254,12 @@ Native radiance clamping is partial: later multiplication/addition can overflow,
 
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
+
+- 2026-11-13: Reopened narrowly before sky replacement for remaining retained native HDRI G-buffer store: current fragment clamps only at1073741824 then writes dithered R11G11B10F emissive (max65024), allowing overflow before later base-light clamp. Vintage raster intermediates clip HDR layers at1. Source-confirmed storage boundary, no flash/NaN owner attribution. Preserve prior lighting/bloom/exposure/probe corrective proof while new sky composite performs finite floating layer math and final bounded stores.
+
+- 2026-11-13: Actual retained HDRI baseline on M1 Max at finite exposure1/2/1e6 passes404finite/nonnegative/ordinary checks underLLDB, child0. Native RG11 packing did not reproduce nonfinite output; the earlier missing-clamp source concern is not a demonstrated Metal overflow. Keep this passing baseline and qualify attribution. New floating composite still validates explicit finite/range contracts separately.
+
+- 2026-11-13: Coherent sky sourceefc3dc17d0 /68965 builds and full final CPU/UI/GPU/bundle checks pass; ordinary HDRI baseline remains404finite-green. Owner scene acceptance/push remain pending; no actual overflow attributed.
 
 ## PPD-038 — Placed probe admission drops lighting on stale occlusion state
 
@@ -1920,3 +1926,273 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Registered inherited retry-state loss before narrow correction. Current source3ee full build is allowed to finish, then the final source will be rebuilt and validated; intermediate app is not owner-ready.
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+## PPD-066 — Retained raster sky lacks coherent upstream ALSky composition
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex sky integration
+- Discovered: 2026-11-13
+- Original reference: Pinned408fd6c014 #584 replaces old sky objects/pools with ALSky ray layers, packed/cullable stars, GPU environment cube; ba9da2e58b/95362a1041/d464042e3d depend on that new ownership. Native fork still uses retained raster LLVOSky/LLVOWLSky/LLDrawPoolWLSky.
+- Evidence: [Sky port](work/active/upstream-sky-port.md), [renderer audit](research/upstream-renderer-review-2026-11-13.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Native ALSky owner/layers/stars/cube and actual viewer replay integrated through efc3dc17d0. Exact68965 build,206CPU commands/24UI commands/512781GPUassertions53cases,346ARM64/signature/source/import/features checks pass. Candidate-only login/location/10live controls and visible world/sky observed; owner day/night/layer acceptance pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Owner explicitly authorizes sky after geometry. Registered before replacing sky state/pass semantics; retain geometry candidate and all prior source/test fixes. Separate in-world/owner acceptance from synthetic tests and static/source evidence.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-067 — New ray dome samples inactive optics maps
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native sky renderer
+- Discovered: 2026-11-13
+- Original reference: New local native27a948adc9 modern dome reuses sky_color, which samples rainbow/halo before multiplying zero strengths. Final408 windlightDomeAt conditionally reads maps only with active moisture/ice.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Actual new native production shader control failed1/47checks at zero optic strengths before conditional reads; repaired shader and modern242875assertions13cases pass. Ordinary UNORM optics assets cannot encode NaN; no owner incident attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered new native sky port no-read contract gap before changing frozen renderer source. Keep passing retained HDRI404checks separate and preserve all red/green outcomes.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-068 — New sky capture packs disabled body quads at degenerate directions
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex sky CPU integration
+- Discovered: 2026-11-13
+- Original reference: First uncommitted native ALSky capture adaptation calculates sun/moon/bloom rayQuad payloads unconditionally, unlike final408 layer guards. An exactly nadir body has degenerate corners and rayQuad divides by zero even while that body's layer is disabled.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Old incoming unguarded disabled-body capture fails64/206checks normally child42. Layer-gated packing passes206assertions4cases; canonical combined CPU/GPU suite and final68965 build pass. No upstream or owner incident attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before correcting the initial adaptation; preserve final upstream layer admission rather than changing pure body math or removing native finite checks.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-069 — Initial native replay treats an empty star field as frame failure
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex sky integration
+- Discovered: 2026-11-13
+- Original reference: New root native replay calls renderModernSkyStars whenever the view enables STARS, but that API rejects draw_count0/null buffer. Final ALSky renderStars simply emits no draw until asynchronous stars land, at RenderStarCount0, or after optional buffer failure.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Root skips draw_count0 while retaining STARS policy and selected attachment preopaque black clear. Actual native empty-star/selected-attachment readback and final modern242875assertions13cases pass; other optional layers and layer0 dome remain admitted.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered incoming integration completeness error before adding draw-count admission. Do not drop STARS policy or clear after opaque draws; no stars must still leave the far background defined.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-070 — Fixed exposure metering still reads obsolete sky flags
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex sky integration
+- Discovered: 2026-11-13
+- Original reference: New dynamic exposure scene supplies completed post-water depth/provenance, but retained fixed/classic renderExposureMeter wrapper at pipeline.cpp9135 still classifies old G-buffer flags.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Both production exposure routes use completed post-water target depth and water stencil. Actual GPU sky/geometry/provenance meter cases and retained HDR-finite/world exposure suite pass in final512781assertions53cases. Owner exposure behavior pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before correction during coherent native sky integration. Keep failed controls, exact source identity and owner acceptance separate.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-071 — New sky CPU and Metal constant blocks have different layouts
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native sky renderer
+- Discovered: 2026-11-13
+- Original reference: New native27a948adc9 public ModernSkyConstants is816bytes; embedded private MSL dome/cloud structs include extra raster fields, producing1008bytes. First actual modern composite draw fails Metal API validation.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Initial27a draw actually fault-stopped underLLDB PID84613 at Metal validation: CPU816/MSL1008. Backtrace saved and child killed without resume. Repaired production payload sizes/offsets pass actual canonical GPU layout19assertions1case before draws; final512781GPUassertions53cases pass/APIvalidation. Final viewer logged in underLLDB without a fault observed at handoff.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before correction during coherent native sky integration. Keep failed controls, exact source identity and owner acceptance separate.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-072 — New sky replay omits the dome when optional layer mask is zero
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex sky integration
+- Discovered: 2026-11-13
+- Original reference: New root base-light replay gates compositeModernSky on config[0]!=0. Zero optional layers is a valid WindLight dome-only sky; the dome shader renders independently of layer bits.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Distinct captured modern_sky_drawn admits optional-mask0 dome and excludes hidden/cutout views. Actual dome/layer GPU readback, CPU view controls and final68965 build pass. Owner visual acceptance pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before correction during coherent native sky integration. Keep failed controls, exact source identity and owner acceptance separate.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-073 — New environment cube capture advances sky layer state
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex sky CPU integration
+- Discovered: 2026-11-13
+- Original reference: Root metalSkyEnvironment calls full captureNativeView(bake,1,1) before current beginView, reusing prior layer bits. Full capture ticks meteor/aurora clocks and builds/culls stars, while final408 environment bake binds only the dome.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: New const dome-only capture shares packing without beginView/layer/star/clock side effects. Actual old-method control fails9/228checks; corrected236assertions3cases and actual cube/provider controls77assertions6cases pass. Canonical suite passes.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before extracting the correct dome-only ownership boundary; retain .25s key/retry and successful independent-command publication semantics.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-074 — New depth metering changes the retained direct-kernel test ABI
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native sky renderer
+- Discovered: 2026-11-13
+- Original reference: New extended almetal_world_exposure_meter expects32constant bytes plus depth/water textures, but retained actual HDR finite fixture directly calls the original16byte/three-texture kernel. Source review catches this before executing that fixture.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Legacy exposure kernel retains16B payload/textures0..2; distinct scene depth kernel uses32B/depth3/water4. Final retained HDR-finite and world exposure cases pass alongside modern completed-depth/water metering. The prior fixture ABI mismatch was registered before repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before preserving the legacy test ABI and adding the explicit production depth kernel; do not silently update old controls to hide a changed contract.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-075 — New water convergence applies the EEP dome to HDRI skies
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex sky integration
+- Discovered: 2026-11-13
+- Original reference: Root hazeOnWater lacks final408 ALSky::useHDRISky exclusion. HDRI is already shaded colour; convergence against the EEP dome changes water incorrectly in HDRI and partial-HDRI views.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Final water gate excludes HDRI in addition to probe/impostor/underwater/cutout/sky-hidden cases. Actual provider/view controls77assertions6cases and canonical native water/dome GPU checks pass; owner environment transition acceptance pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered incoming integration boundary before repair; preserve native command lifetime and final view policy rather than removing effects.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-076 — New neutral sky cube can publish from a cancelled view batch
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex sky integration
+- Discovered: 2026-11-13
+- Original reference: Root provider guards dome bake against active command batches but neutral creation can borrow one and cache its output before that enclosing batch commits. A retry after failed early allocation can then publish an uninitialized cube if the view batch cancels.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Provider returns prior/null before neutral creation or bake when a view batch is active; independent completion alone publishes cube/key. Actual provider cancel/retry/device/bake-failure controls77assertions6cases plus native cube face/mip/neutral GPU readback pass.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered incoming integration boundary before repair; preserve native command lifetime and final view policy rather than removing effects.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-077 — New sky header depends on a viewer-only Metal include path
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex sky integration
+- Discovered: 2026-11-13
+- Original reference: First combined972cda4a11 build compiles the viewer but newview_tests lens/finalization translation units include pipeline.h -> alsky.h without the viewer's private almetal include directory. Bare almetalworld.h cannot be found.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Initial972 full build exited1 on newview lens/finalization test include visibility. Relative public dependency fixed8b77; finalefc doctor/configure/build all0 and both affected canonical contained tests pass. Initial failed receipts retained.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before correcting include visibility; no broad Metal link/dependency changes or test removals.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-078 — Haze source contract forbids the new water-dome ray rotation
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex sky integration
+- Discovered: 2026-11-13
+- Original reference: Final408 class3/deferred/hazeF.glsl rotates normalized water dome rays while passing geometry positions unrotated to the atmosphere helper. The imported native source-contract fixture forbids any eye_to_sky occurrence in the haze pass.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: Canonical8b77 alfarplane test fails1/364checks normally child42. Correctedefc exact-function geometry/raw-position and separate normalized dome-ray assertions pass full actual alrender1146808assertions145cases; canonical final206CPU commands pass with13existing skips.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before correcting the fixture. Preserve failing log and distinguish an obsolete lexical assertion from an unproved rendering defect. Initial suspected overbroad substring was disproved by exact-function inspection; rotation occurs in the correct new water branch.
+
+- 2026-11-13: Local efc3dc17d0 preserves the geometry one-rotation and water dome ray contracts separately. Full actual alrender scratch-linked suite passes1,146,808assertions/145cases, LLDB child0/APIvalidation. Combined exact-source rebuild and final app verification underway.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-079 — Visual-QA diagnostic booleans lack a typed session declaration
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex sky validation
+- Discovered: 2026-11-13
+- Original reference: Native settings.xml declares HDR/emissive/reflections/dynamic exposure Boolean. The external visual-QA skill handles LLSD integer0/1 as Boolean only when its immutable session XML includes that control type; CLI-only diagnostic overrides lack that declaration.
+- Evidence: [Sky port](work/active/upstream-sky-port.md).
+- Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
+- Verification: First68965 run reached correct world position but gate blocked true versus LLSD1 without declared Boolean types. Derived local profile includes actual source type declarations; same binary PID97692 passes unchanged observe/verify/gate10live controls and global position at13:03UTC. Original profile/installed skill/blocked receipts unchanged.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before correcting task-local QA profile. Do not alter observations, falsify Boolean types, mutate immutable run receipts or modify installed skill code.
+
+- 2026-11-13: Derived local profile preserves saved graphics and adds actual source Boolean declarations. Same binary PID97692 relaunch passes unchanged observe/verify/gate with10live controls and verified world-global destination. First PID97037 was deliberately quit normally0/state10, not a crash; reopened viewer left for owner testing.
+
+- 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
