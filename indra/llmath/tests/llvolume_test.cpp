@@ -2810,6 +2810,32 @@ namespace
 
     // ------------------------------------------------------------------
 
+    TEST_CASE("llvolume: stale flexible tangents reuse their owner and arena scratch", "[llvolume][mesh-stale-tangent]")
+    {
+        LLPointer<LLVolume> volume = flexiVolume(LL_PCODE_PROFILE_SQUARE, LL_PCODE_HOLE_SAME, 0.f, 2);
+        bendPath(*volume, 16, 0.4f);
+        volume->regen();
+        genAllTangents(*volume);
+        const auto owners = buffersOf(*volume);
+
+        bendPath(*volume, 16, 1.1f);
+        volume->regen();
+        ALScratchArena::resetCounters();
+        bool generated = true;
+        for (S32 i = 0; i < volume->getNumVolumeFaces(); ++i)
+        {
+            generated &= volume->genTangents(i);
+        }
+        const auto counters = ALScratchArena::counters();
+        REQUIRE(generated);
+        for (S32 i = 0; i < volume->getNumVolumeFaces(); ++i)
+        {
+            CHECK(volume->getVolumeFace(i).mTangents == owners[i].tangents);
+        }
+        CHECK(counters.heap_blocks == 0);
+        CHECK(counters.arena_blocks >= (size_t)volume->getNumVolumeFaces());
+    }
+
     TEST_CASE("llvolume: representative prims have the face IDs texture entries map by", "[llvolume]")
     {
         const LLFaceID B = LL_FACE_PATH_BEGIN, E = LL_FACE_PATH_END, I = LL_FACE_INNER_SIDE, PB = LL_FACE_PROFILE_BEGIN, PE = LL_FACE_PROFILE_END;

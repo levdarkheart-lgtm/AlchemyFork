@@ -8268,8 +8268,20 @@ bool LLVolumeFace::createTangents()
     if (!mTangents || mTangentsStale)
     try
     {
-        auto staged = mesh_aligned_buffer<LLVector4a, 16>(sizeof(LLVector4a) * mNumVertices);
-        LLVector4a* output = staged.get();
+        ALScratchArena::Scope scratch;
+        MeshAlignedBuffer<LLVector4a, 16> initial;
+        LLVector4a* output;
+        if (mTangents)
+        {
+            // Partial flexible builds keep their permanent output owner. Stage in reusable thread
+            // scratch so a failed kernel cannot publish half a frame or allocate a new owner each frame.
+            output = scratch.allocate<LLVector4a>(mNumVertices);
+        }
+        else
+        {
+            initial = mesh_aligned_buffer<LLVector4a, 16>(sizeof(LLVector4a) * mNumVertices);
+            output = initial.get();
+        }
 
         if (mFlexible && (mTypeMask & CAP_MASK))
         {
@@ -8312,8 +8324,14 @@ bool LLVolumeFace::createTangents()
         {
             alsimd::indexed_tangents(mPositions, mNormals, mTexCoords, mNumVertices, mIndices, mNumIndices, output);
         }
-        ll_aligned_free_16(mTangents);
-        mTangents = staged.release();
+        if (mTangents)
+        {
+            std::copy_n(output, mNumVertices, mTangents);
+        }
+        else
+        {
+            mTangents = initial.release();
+        }
         mTangentsStale = false;
     }
     catch (const std::bad_alloc&)
