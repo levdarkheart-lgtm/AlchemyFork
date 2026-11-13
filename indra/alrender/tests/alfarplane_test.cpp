@@ -262,17 +262,12 @@ namespace
     TEST_CASE("alfarplane: every pass tells sky from geometry by the cleared depth alone", "[alfarplane]")
     {
         const std::string metal = metal_shader_source();
-        const size_t haze_begin = metal.find(
-            "fragment float4 almetal_world_atmospheric_haze_fragment(");
-        const size_t haze_end = metal.find(
-            "fragment float4 almetal_world_pre_water_fullbright_fragment(",
-            haze_begin);
-        REQUIRE(haze_begin != std::string::npos);
-        REQUIRE(haze_end != std::string::npos);
-        const std::string haze = metal.substr(haze_begin,
-                                              haze_end - haze_begin);
+        const std::string haze = metal_function(
+            metal, "almetal_world_atmospheric_haze_fragment");
+        const std::string haze_vertex = metal_function(
+            metal, "almetal_world_atmospheric_haze_vertex");
         UNSCOPED_INFO("native haze triangle uses the cleared far plane for both depth conventions");
-        REQUIRE(metal.find("constants.config.x != 0u ? 0.0 : 1.0,") != std::string::npos);
+        REQUIRE(haze_vertex.find("constants.config.x != 0u ? 0.0 : 1.0,") != std::string::npos);
         UNSCOPED_INFO("native haze reconstructs geometry where it is");
         REQUIRE(haze.find("constants.inverse_projection *") != std::string::npos);
         const size_t water_haze = metal.find(
@@ -289,14 +284,14 @@ namespace
         REQUIRE(flare.find(":depth>=1.0;") != std::string::npos);
         // Opaque geometry in the haze pass takes the same atmosphere helper as
         // native alpha, and the water surface alone converges on the native
-        // sky-behind texture.
+        // ray dome. The retained fixture path can still read a sky texture.
         UNSCOPED_INFO("the native haze pass uses alpha's atmosphere");
         REQUIRE(haze.find("almetal_world_alpha_atmospherics(") != std::string::npos);
         UNSCOPED_INFO("water convergence is selected by the captured configuration");
         REQUIRE(haze.find("if (constants.config.y != 0u)") != std::string::npos);
         UNSCOPED_INFO("water converges on the sky behind");
         REQUIRE(haze.find("additive = mix(") != std::string::npos);
-        UNSCOPED_INFO("the sky behind is sampled for water");
+        UNSCOPED_INFO("the retained fixture can sample a sky-behind texture");
         REQUIRE(haze.find("sky_behind_map.sample(") != std::string::npos);
         // The farthest geometry: a top corner of the edge water's extent, from as high above it as the water shows.
         const F64 edge = (F64)ALFarPlane::edgeWaterStretch(true) + MAX_FAR_CLIP;
@@ -495,20 +490,26 @@ namespace
         REQUIRE(environment_end != std::string::npos);
         REQUIRE(compact(metal.substr(environment_begin, environment_end - environment_begin))
                     .find("float4eye_to_sky[3];") != std::string::npos);
-        // The native haze passes the eye-space position to the shared native
-        // atmosphere helper; it does not apply the environment rotation again.
-        const size_t haze_begin = metal.find(
-            "fragment float4 almetal_world_atmospheric_haze_fragment(");
-        const size_t haze_end = metal.find(
-            "fragment float4 almetal_world_pre_water_fullbright_fragment(",
-            haze_begin);
-        REQUIRE(haze_begin != std::string::npos);
-        REQUIRE(haze_end != std::string::npos);
-        const std::string haze = metal.substr(haze_begin,
-                                              haze_end - haze_begin);
-        UNSCOPED_INFO("the native haze pass hands over eye space");
-        REQUIRE(haze.find("almetal_world_alpha_atmospherics(") != std::string::npos);
-        UNSCOPED_INFO("and does not turn it itself");
-        REQUIRE(haze.find("eye_to_sky") == std::string::npos);
+        // Geometry enters the shared atmosphere helper in eye space; that
+        // helper applies the environment rotation once. The water-only dome
+        // branch separately turns a normalized eye ray into its own sky frame.
+        const std::string haze = compact(metal_function(
+            metal, "almetal_world_atmospheric_haze_fragment"));
+        const std::string geometry_call =
+            "almetal_world_alpha_atmospherics("
+            "position.xyz,environment,additive,attenuation);";
+        const size_t geometry_at = haze.find(geometry_call);
+        UNSCOPED_INFO("the native haze passes the unrotated eye-space position");
+        REQUIRE(geometry_at != std::string::npos);
+        UNSCOPED_INFO("geometry is not rotated before the shared atmosphere helper");
+        REQUIRE(haze.substr(0, geometry_at).find("eye_to_sky") == std::string::npos);
+        UNSCOPED_INFO("the water dome uses the captured sky frame, not a second geometry rotation");
+        REQUIRE(haze.find(
+            "constfloat3x3eye_to_sky=float3x3(modern_sky.eye_to_sky[0].xyz,"
+            "modern_sky.eye_to_sky[1].xyz,modern_sky.eye_to_sky[2].xyz);") != std::string::npos);
+        UNSCOPED_INFO("the dome turns the original normalized eye ray once");
+        REQUIRE(haze.find(
+            "almetal_modern_sky_dome(eye_to_sky*normalize(position.xyz),"
+            "modern_sky.dome,rainbow_map,halo_map,sky_sampler)") != std::string::npos);
     }
 }
