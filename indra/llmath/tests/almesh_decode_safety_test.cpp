@@ -94,6 +94,44 @@ namespace
         }
     }
 
+    TEST_CASE("Mesh decode: short normal and UV arrays use the absent attribute fallback", "[llvolume][mesh-decode-safety]")
+    {
+        // Keep the full streams as controls, and exercise each short stream
+        // alone and together through the actual compressed decoder/optimizer.
+        for (bool shortNormals : {false, true})
+        {
+            for (bool shortUVs : {false, true})
+            {
+                CAPTURE(shortNormals, shortUVs);
+                LLSD face = wireTriangle();
+                if (shortNormals) face["Normal"] = LLSD(LLSD::Binary{0x7f});
+                if (shortUVs) face["TexCoord0"] = LLSD(LLSD::Binary{0x7f});
+                LLPointer<LLVolume> volume = meshVolume();
+                REQUIRE(decode(*volume, oneFace(face)));
+                REQUIRE(volume->getNumVolumeFaces() == 1);
+                const LLVolumeFace& decoded = volume->getVolumeFace(0);
+                REQUIRE(decoded.mNumVertices == 3);
+                for (S32 i = 0; i < decoded.mNumVertices; ++i)
+                {
+                    if (shortNormals)
+                    {
+                        CHECK(decoded.mNormals[i][0] == 0.f);
+                        CHECK(decoded.mNormals[i][1] == 0.f);
+                        CHECK(decoded.mNormals[i][2] == 0.f);
+                    }
+                    else
+                    {
+                        CHECK(decoded.mNormals[i][2] > 0.99f);
+                    }
+                    const F32 expectedU = !shortUVs && decoded.mPositions[i][0] > 0.f ? 1.f : 0.f;
+                    const F32 expectedV = !shortUVs && decoded.mPositions[i][1] > 0.f ? 1.f : 0.f;
+                    CHECK(decoded.mTexCoords[i][0] == expectedU);
+                    CHECK(decoded.mTexCoords[i][1] == expectedV);
+                }
+            }
+        }
+    }
+
     TEST_CASE("Mesh decode: face and aggregate index budgets reject compressed oversized input", "[llvolume][mesh-decode-safety]")
     {
         const S32 most = LL_SCULPT_MESH_MAX_FACE_INDICES - LL_SCULPT_MESH_MAX_FACE_INDICES % 3;

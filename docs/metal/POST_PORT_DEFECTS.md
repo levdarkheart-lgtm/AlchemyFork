@@ -882,6 +882,8 @@ Retained subcases: an influence read can consume up to three bytes after a one-b
 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
+- 2026-11-13: Independent final review identifies another inherited decoder subcase: nonempty Normal/TexCoord arrays shorter than the Position count are SIMD-read past their ends. Upstream 2a599a405c has the minimal size predicates; add compressed-input/ASan controls before the combined candidate is finalized. High-valence optimizer cost dc0f4b478c remains outside this minimal malformed-array repair.
+
 ## PPD-023 — Disconnect destroys a world still used in the current frame
 
 - Status: investigating
