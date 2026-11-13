@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-080 -->
+<!-- next-defect-id: PPD-083 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -2196,3 +2196,58 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Derived local profile preserves saved graphics and adds actual source Boolean declarations. Same binary PID97692 relaunch passes unchanged observe/verify/gate with10live controls and verified world-global destination. First PID97037 was deliberately quit normally0/state10, not a crash; reopened viewer left for owner testing.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+## PPD-080 — Owner HDRI preview appears washed out with no visible cloud detail
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex sky integration
+- Discovered: 2026-11-13
+- Original reference: Final408 ALSky HDRI uses RenderHDRIExposure in EV, multiplying sampled linear EXR by2^EV. Native ALSky capture and modern sky branch carry the same explicit exposure factor. Original same-file/runtime comparison has not run.
+- Evidence: [HDRI preview exposure investigation](work/active/hdri-preview-exposure.md).
+- Next action: Retain EV0/-2/-3 owner evidence and compare exact-file original/native output if appearance remains suspect; do not treat HDRI EV adjustment as resolution of the broader pre-existing whole-scene report PPD-081. Leave owner viewer untouched.
+- Verification: Owner split.5 screenshot atEV0 is washed out; screenshots at-2 show some clouds and-3 show clear blue/cloud detail. Control responds and HDRI cloud content is present. Native exposure/sample/linear/common-post source matches408, with no extra HDRI gain identified. No same-file original runtime comparison or numerical clipping/nonfinite reproduction; no closure.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered owner report before repair. Preserve raw supplied images locally; separate reported appearance from PPD-037's finite-storage investigation. No renderer or UI settings changed by the agent; source audit and bounded diagnosis underway.
+
+- 2026-11-13: Owner supplies Midday settings: global exposure1.0,ACES tone map/mix.70,auto exposure enabled; HDR/emissive/SSR enabled. EV-2 and-3 recover progressively more HDRI clouds. Source-only original/native audit finds no HDRI-specific gain or gamma mismatch. Owner then states overall scene and sky were overexposed before this port; PPD-081 separately tracks that broader concern.
+
+## PPD-081 — Owner reports pre-existing overall scene and sky overexposure
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: Owner says sky and overall scene looked overexposed before the current upstream sky changes. Exact first affected build and a matched original-viewer runtime are unknown. Inspect native common exposure/bloom/tonemap/display against original1eb44bb and final408 before choosing a correction.
+- Evidence: [Overall exposure investigation](work/active/overall-exposure-investigation.md), [HDRI preview report](work/active/hdri-preview-exposure.md).
+- Next action: Compare original/native at the same verified effective environment, camera, diagnostic baseline and asset state, including actual adaptation/output values. Source audits found no cause; preserve current owner viewer and do not treat HDRI EV adjustment as global repair.
+- Verification: Owner report plus images at global exposure1.0,ACESmix.70,auto exposure enabled; HDR/emissive enabled. Brighter-than-expected appearance is reported, but numerical clipping, double exposure, gamma mismatch and causal attribution to any specific commit are unproved. PPD-080 confirms the independent HDRI EV control responds.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before any repair. Broaden investigation to pre-existing common scene output, keep HDRI-specific record/history and avoid attributing it to latest sky port. Read-only parallel audits assigned; no viewer manipulation/source change yet.
+
+- 2026-11-13: Source-only meter/post/ordinary-sky/presentation audits find no duplicated exposure, gamma encode or added gain versus original/upstream; no cause diagnosed. XDR/TrueTone/auto-brightness context retained. Owner14:05 image confirms diagnostic Exposure1/ACESmix1/center meter/EV[-2,+2]/comp0/speeds3,1/trims10,95/sky.25/gradeOFF. Source defaults unchanged; no fresh original/native parity comparison, shader fix or scene acceptance. Separate transition concern retained as PPD-082.
+
+## PPD-082 — Classic-sky blend policy can stop exposure before history admission changes
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-13
+- Original reference: LLSettingsSky blend copies target canAutoAdjust while lerping probe ambiance. Original1eb/final408 generateExposure always writes fixedEV0 when classic disables metering. Native pipeline7758–65 stops history updates on classic, but8104–08/8213–19 still requires fresh history until effective ambiance reaches0.
+- Evidence: [Overall exposure investigation](work/active/overall-exposure-investigation.md).
+- Next action: Reproduce a PBR-to-legacy blend through actual native history/publication control and verify the original fixedEV0 invariant before selecting a repair. Keep separate from unproved steady overexposure PPD-081.
+- Verification: Read-only source confirms differing policy boundaries can coexist during interpolation. Steady classic skies correctly bypass history through no_post. No runtime transition reproduction, frame-withholding measurement, owner symptom attribution or correction yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered source-permitted transition concern from the PPD081 audit. No source/UI edits or failing GPU execution; preserve current owner viewer and retain concern for a bounded original/native transition check.
