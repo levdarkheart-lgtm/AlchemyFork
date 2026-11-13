@@ -1107,23 +1107,30 @@ static float3 almetal_world_windlight_sky_color(
     const float3 lower_haze = sqrt(combined_haze);
     color += (below_cloud - color) * (1.0 - sqrt(lower_haze));
 
-    float rainbow_coordinate = clamp(-0.575 - light_dot, 0.0, 1.0);
-    const float interior_coordinate =
-        max(0.0, rainbow_coordinate - 0.25) * 4.2857;
-    rainbow_coordinate = clamp(
-        rainbow_coordinate, 0.0, 0.25) + interior_coordinate;
-    const float radius = (constants.optics.y - 5.0) / 1024.0;
-    color += pow(rainbow_map.sample(
-        optics_sampler,
-        float2(radius + 0.5, rainbow_coordinate),
-        level(0.0)).rgb, float3(1.8)) * constants.optics.x;
-
-    const float halo_dot = clamp(light_dot, 0.1, 1.0);
-    const float halo_coordinate = sqrt(clamp(
-        1.0 - halo_dot * halo_dot, 0.0, 1.0));
-    color += halo_map.sample(
-        optics_sampler, float2(0.0, halo_coordinate),
-        level(0.0)).rgb * constants.optics.z;
+    // Final windlightDomeAt: an inactive optic contributes exactly zero and
+    // must not fetch its map (in particular, 0 * an undefined texel is not 0).
+    if (constants.optics.x != 0.0)
+    {
+        float rainbow_coordinate = clamp(-0.575 - light_dot, 0.0, 1.0);
+        const float interior_coordinate =
+            max(0.0, rainbow_coordinate - 0.25) * 4.2857;
+        rainbow_coordinate = clamp(
+            rainbow_coordinate, 0.0, 0.25) + interior_coordinate;
+        const float radius = (constants.optics.y - 5.0) / 1024.0;
+        color += pow(rainbow_map.sample(
+            optics_sampler,
+            float2(radius + 0.5, rainbow_coordinate),
+            level(0.0)).rgb, float3(1.8)) * constants.optics.x;
+    }
+    if (constants.optics.z != 0.0)
+    {
+        const float halo_dot = clamp(light_dot, 0.1, 1.0);
+        const float halo_coordinate = sqrt(clamp(
+            1.0 - halo_dot * halo_dot, 0.0, 1.0));
+        color += halo_map.sample(
+            optics_sampler, float2(0.0, halo_coordinate),
+            level(0.0)).rgb * constants.optics.z;
+    }
     return clamp(color * 2.0, 0.0, 5.0);
 }
 
