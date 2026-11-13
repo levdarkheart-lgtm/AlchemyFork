@@ -30,6 +30,7 @@
 #include "alscriptstudio.h"
 #include "alscripttypes.h"
 #include "alnotecarditems.h"
+#include "alteleportprogress.h"
 
 // Linden libraries
 #include "llanimationstates.h"
@@ -695,9 +696,11 @@ void send_join_group_response(LLUUID group_id, LLUUID transaction_id, bool accep
 
         EInstantMessage type = accept_invite ? IM_GROUP_INVITATION_ACCEPT : IM_GROUP_INVITATION_DECLINE;
 
+        std::string my_name;
+        LLAgentUI::buildFullname(my_name);
         send_improved_im(group_id,
-            std::string("name"),
-            std::string("message"),
+            my_name,
+            LLStringUtil::null,
             IM_ONLINE,
             type,
             transaction_id);
@@ -3019,17 +3022,7 @@ void process_teleport_progress(LLMessageSystem* msg, void**)
     msg->getStringFast(_PREHASH_Info, _PREHASH_Message, buffer);
     LL_DEBUGS("Messaging") << "teleport progress: " << buffer << " flags: " << teleport_flags << LL_ENDL;
 
-    //Sorta hacky...default to using simulator raw messages
-    //if we don't find the coresponding mapping in our progress mappings
-    std::string message = buffer;
-
-    if (LLAgent::sTeleportProgressMessages.find(buffer) !=
-        LLAgent::sTeleportProgressMessages.end() )
-    {
-        message = LLAgent::sTeleportProgressMessages[buffer];
-    }
-
-    gAgent.setTeleportMessage(LLAgent::sTeleportProgressMessages[message]);
+    gAgent.setTeleportMessage(ALTeleportProgress::text(LLAgent::sTeleportProgressMessages, buffer));
 }
 
 class LLFetchInWelcomeArea : public LLInventoryFetchDescendentsObserver
@@ -3713,43 +3706,51 @@ void send_agent_update(bool force_send, bool send_reliable)
     msg->addVector3Fast(_PREHASH_CameraLeftAxis, LLViewerCamera::getInstance()->getLeftAxis());
     msg->addVector3Fast(_PREHASH_CameraUpAxis, LLViewerCamera::getInstance()->getUpAxis());
 
-    static F32 last_draw_disatance_step = 1024;
-    F32 memory_limited_draw_distance = gAgentCamera.mDrawDistance;
-    const F32 mem_factor = LLMemory::getSystemMemoryBudgetFactor();
-    if (mem_factor > 1.f)
+    static LLCachedControl<bool> limit_draw_distance(gSavedSettings, "ALLimitDrawDistance", false);
+    if (limit_draw_distance)
     {
-        // We are critically low on memory or recovering,
-        // limit requested draw distance
-        memory_limited_draw_distance = llmax(gAgentCamera.mDrawDistance / mem_factor, gAgentCamera.mDrawDistance / 2.f);
-    }
-
-    if (tp_state == LLAgent::TELEPORT_ARRIVING || LLStartUp::getStartupState() < STATE_MISC)
-    {
-        // Inform interest list, prioritize closer area.
-        // Reason: currently server doesn't distance sort attachments, by restricting range
-        // we reduce the number of attachments sent to the viewer, thus prioritizing
-        // closer ones.
-        // Todo: revise and remove once server gets distance sorting.
-        last_draw_disatance_step = llmax((F32)(gAgentCamera.mDrawDistance / 2.f), 50.f);
-        last_draw_disatance_step = llmin(last_draw_disatance_step, memory_limited_draw_distance);
-        msg->addF32Fast(_PREHASH_Far, last_draw_disatance_step);
-    }
-    else if (last_draw_disatance_step < memory_limited_draw_distance)
-    {
-        static LLFrameTimer last_step_time;
-        if (last_step_time.getElapsedTimeF32() > 1.f)
+        static F32 last_draw_disatance_step     = 1024;
+        F32        memory_limited_draw_distance = gAgentCamera.mDrawDistance;
+        const F32  mem_factor                   = LLMemory::getSystemMemoryBudgetFactor();
+        if (mem_factor > 1.f)
         {
-            // gradually increase draw distance
-            last_step_time.reset();
-            F32 step = memory_limited_draw_distance * 0.1f;
-            last_draw_disatance_step = llmin(last_draw_disatance_step + step, memory_limited_draw_distance);
+            // We are critically low on memory or recovering,
+            // limit requested draw distance
+            memory_limited_draw_distance = llmax(gAgentCamera.mDrawDistance / mem_factor, gAgentCamera.mDrawDistance / 2.f);
         }
-        msg->addF32Fast(_PREHASH_Far, last_draw_disatance_step);
+
+        if (tp_state == LLAgent::TELEPORT_ARRIVING || LLStartUp::getStartupState() < STATE_MISC)
+        {
+            // Inform interest list, prioritize closer area.
+            // Reason: currently server doesn't distance sort attachments, by restricting range
+            // we reduce the number of attachments sent to the viewer, thus prioritizing
+            // closer ones.
+            // Todo: revise and remove once server gets distance sorting.
+            last_draw_disatance_step = llmax((F32)(gAgentCamera.mDrawDistance / 2.f), 50.f);
+            last_draw_disatance_step = llmin(last_draw_disatance_step, memory_limited_draw_distance);
+            msg->addF32Fast(_PREHASH_Far, last_draw_disatance_step);
+        }
+        else if (last_draw_disatance_step < memory_limited_draw_distance)
+        {
+            static LLFrameTimer last_step_time;
+            if (last_step_time.getElapsedTimeF32() > 1.f)
+            {
+                // gradually increase draw distance
+                last_step_time.reset();
+                F32 step                 = memory_limited_draw_distance * 0.1f;
+                last_draw_disatance_step = llmin(last_draw_disatance_step + step, memory_limited_draw_distance);
+            }
+            msg->addF32Fast(_PREHASH_Far, last_draw_disatance_step);
+        }
+        else
+        {
+            last_draw_disatance_step = memory_limited_draw_distance;
+            msg->addF32Fast(_PREHASH_Far, memory_limited_draw_distance);
+        }
     }
     else
     {
-        last_draw_disatance_step = memory_limited_draw_distance;
-        msg->addF32Fast(_PREHASH_Far, memory_limited_draw_distance);
+        msg->addF32Fast(_PREHASH_Far, gAgentCamera.mDrawDistance);
     }
 
     msg->addU32Fast(_PREHASH_ControlFlags, control_flags);

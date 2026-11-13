@@ -26,6 +26,7 @@
 
 #include "alapplinks.h"
 
+#include "llstring.h"
 #include "lluri.h"
 
 #include <algorithm>
@@ -40,4 +41,40 @@ std::string ALAppLinks::floaterName(const LLSD& params)
 bool ALAppLinks::floaterNameIn(const LLSD& params, const std::list<std::string>& floater_names)
 {
     return std::find(floater_names.begin(), floater_names.end(), floaterName(params)) != floater_names.end();
+}
+
+//static
+std::optional<ALAppLinks::ObjectMute> ALAppLinks::objectMute(const LLSD& params)
+{
+    const std::string verb = params[1].asString();
+    if ((verb != "block" && verb != "unblock") || params.size() <= 2)
+    {
+        return std::nullopt;
+    }
+    return ObjectMute{ verb == "block", LLURI::unescape(params[2].asString()) };
+}
+
+//static
+LLVector3 ALAppLinks::teleportPosition(const LLSD& tokens)
+{
+    LLVector3 coords(128, 128, 0);
+    if (tokens.size() <= 4)
+    {
+        for (LLSD::Integer axis = 0; axis < 3 && axis + 1 < static_cast<LLSD::Integer>(tokens.size()); ++axis)
+        {
+            coords.mV[axis] = (F32)tokens[axis + 1].asReal();
+        }
+    }
+    return coords;
+}
+
+//static
+bool ALAppLinks::queryFlag(const LLSD& value)
+{
+    bool flag = false;
+    if (value.isString() && LLStringUtil::convertToBOOL(value.asString(), flag))
+    {
+        return flag;
+    }
+    return value.asBoolean();
 }
