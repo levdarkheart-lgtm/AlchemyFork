@@ -758,7 +758,7 @@ transparent atlas/mip edge coverage are candidates, not confirmed causes.
 
 ## PPD-017 — HTTPS login redirects can resend credentials off TLS
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -775,9 +775,11 @@ The application accepts next_url without retaining HTTPS; HTTP redirects also la
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
 ## PPD-018 — Simulator Xfer names choose local cache files
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -794,9 +796,11 @@ A remote name is reused for the local cache target and cleanup; short names can 
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
 ## PPD-019 — IM binary buckets can be read beyond their copied bytes
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -813,9 +817,11 @@ Declared size is passed beyond a bounded copy, and session/inventory text is con
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
 ## PPD-020 — Out-of-domain packet IDs can hang the main thread
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -832,9 +838,11 @@ The predicate computes distance modulo 24 bits but the loop compares against the
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
 ## PPD-021 — Network object and layer decoders lack required payload bounds
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -851,9 +859,11 @@ Retained subcases: static name-value buffer overflow/stale fields, particle/TE/e
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
 ## PPD-022 — Mesh decoding has unsafe weights and unbounded face/index work
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -870,9 +880,11 @@ Retained subcases: an influence read can consume up to three bytes after a one-b
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
 ## PPD-023 — Disconnect destroys a world still used in the current frame
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -889,9 +901,11 @@ Disconnect deletes LLWorld while later current-frame texture/UI work dereference
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
 ## PPD-024 — Random UUID generation shares unsynchronized state
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -908,9 +922,11 @@ getCurrentTime and generate share lazy initialization, time and sequence fields 
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
 ## PPD-025 — Reliable packet queues can lose acknowledged data and retain stale history
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -927,9 +943,11 @@ A full ring overwrites an older packet after it was acknowledged. Related final 
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
 ## PPD-026 — Object cache clear and persistence mishandle retained entry state
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -946,9 +964,11 @@ Retained subcases: map clearing leaves raw cache entry references/cursors; remov
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending. PPD-026 covers cache-removal lifetime prerequisites here; disk/extras pairing remains later.
+
 ## PPD-027 — Escaped floater names bypass resolved-name restrictions
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -965,9 +985,11 @@ The restriction check uses escaped params[0] while opening resolves an unescaped
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
 
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
+
 ## PPD-028 — Failed COLRv1 glyph painting retains stale raster surfaces
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
@@ -983,6 +1005,8 @@ The per-thread painter is reused without hb_raster_paint_clear. Failure after pa
 ### History
 
 - 2026-11-13: Retained during the owner-requested upstream audit through 408fd6c014. No fix applied, existing incident attribution, defect closure or push approval inferred.
+
+- 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 ## PPD-029 — Valid large texture readback reaches a fatal legacy size guard
 
