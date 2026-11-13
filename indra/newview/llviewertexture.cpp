@@ -30,6 +30,7 @@
 #include "llviewertexture.h"
 
 #include "altexturememoryaccounting.h"
+#include "alsculptcopy.h"
 
 // Library includes
 #include "llmath.h"
@@ -1708,16 +1709,7 @@ void LLViewerFetchedTexture::postCreateTexture()
 
     setActive();
 
-    // rebuild any volumes that are using this texture for sculpts in case their LoD has changed
-    for (U32 i = 0; i < mNumVolumes[LLRender::SCULPT_TEX]; ++i)
-    {
-        LLVOVolume* volume = mVolumeList[LLRender::SCULPT_TEX][i];
-        if (volume)
-        {
-            volume->mSculptChanged = true;
-            gPipeline.markRebuild(volume->mDrawable);
-        }
-    }
+    rebuildSculptVolumes();
 
     if (!needsToSaveRawImage())
     {
@@ -3037,12 +3029,25 @@ void LLViewerFetchedTexture::destroyRawImage()
 void LLViewerFetchedTexture::saveRawImage()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-    if(mRawImage.isNull() || mRawImage == mSavedRawImage || (mSavedRawDiscardLevel >= 0 && mSavedRawDiscardLevel <= mRawDiscardLevel))
+    if (mRawImage.isNull() || mRawImage == mSavedRawImage)
     {
         return;
     }
 
     LLImageDataSharedLock lock(mRawImage);
+    const auto sculpt_dimensions = ALSculptCopy::size(
+        mRawImage->getWidth(), mRawImage->getHeight(), mRawDiscardLevel,
+        mKnownDrawWidth > 0 ? mKnownDrawWidth : sMaxSculptRez,
+        mKnownDrawHeight > 0 ? mKnownDrawHeight : sMaxSculptRez);
+    const S32 copy_pixels = mBoostLevel == LLGLTexture::BOOST_SCULPTED
+        ? sculpt_dimensions.pixels() : mRawImage->getWidth() * mRawImage->getHeight();
+    const S32 saved_pixels = mSavedRawImage.notNull()
+        ? mSavedRawImage->getWidth() * mSavedRawImage->getHeight() : 0;
+    if (!ALSculptCopy::needsSave(mRawDiscardLevel, copy_pixels,
+            mSavedRawDiscardLevel, saved_pixels, mForSculpt))
+    {
+        return;
+    }
 
     mSavedRawDiscardLevel = mRawDiscardLevel;
     if (mBoostLevel == LLGLTexture::BOOST_ICON)
@@ -3073,17 +3078,7 @@ void LLViewerFetchedTexture::saveRawImage()
     }
     else if (mBoostLevel == LLGLTexture::BOOST_SCULPTED)
     {
-        S32 expected_width = mKnownDrawWidth > 0 ? mKnownDrawWidth : sMaxSculptRez;
-        S32 expected_height = mKnownDrawHeight > 0 ? mKnownDrawHeight : sMaxSculptRez;
-        if (mRawImage->getWidth() > expected_width || mRawImage->getHeight() > expected_height)
-        {
-            mSavedRawImage = new LLImageRaw(expected_width, expected_height, mRawImage->getComponents());
-            mSavedRawImage->copyScaled(mRawImage);
-        }
-        else
-        {
-            mSavedRawImage = new LLImageRaw(mRawImage->getData(), mRawImage->getWidth(), mRawImage->getHeight(), mRawImage->getComponents());
-        }
+        mSavedRawImage = ALSculptCopy::image(mRawImage, sculpt_dimensions);
     }
     else
     {
@@ -3096,6 +3091,76 @@ void LLViewerFetchedTexture::saveRawImage()
     }
 
     mLastReferencedSavedRawImageTime = sCurrentTime;
+    // Sculpt-only decode publication has no postCreateTexture callback.
+    if (isForSculptOnly())
+    {
+        rebuildSculptVolumes();
+    }
+}
+
+void LLViewerFetchedTexture::rebuildSculptVolumes()
+{
+    for (U32 i = 0; i < mNumVolumes[LLRender::SCULPT_TEX]; ++i)
+    {
+        LLVOVolume* volume = mVolumeList[LLRender::SCULPT_TEX][i];
+        if (volume)
+        {
+            volume->mSculptChanged = true;
+            gPipeline.markRebuild(volume->mDrawable);
+        }
+    }
+}
+
+void LLViewerFetchedTexture::getSculptCopySize(S32& width, S32& height, S32& discard) const
+{
+    width = height = 0;
+    discard = -1;
+    if (mGLTexturep.isNull() || !mGLTexturep->getHasGPUTexture())
+    {
+        return;
+    }
+    const S32 current = mGLTexturep->getDiscardLevel();
+    const auto dimensions = ALSculptCopy::size(
+        mGLTexturep->getWidth(current), mGLTexturep->getHeight(current), current,
+        mKnownDrawWidth > 0 ? mKnownDrawWidth : sMaxSculptRez,
+        mKnownDrawHeight > 0 ? mKnownDrawHeight : sMaxSculptRez);
+    width = dimensions.width;
+    height = dimensions.height;
+    discard = dimensions.discard;
+}
+
+void LLViewerFetchedTexture::readbackSculptImage()
+{
+    if (mNeedsCreateTexture)
+    {
+        return;
+    }
+    S32 width = 0, height = 0, discard = -1;
+    getSculptCopySize(width, height, discard);
+    if (width <= 0 || height <= 0 ||
+        (mSavedRawImage.notNull() &&
+         mSavedRawImage->getWidth() * mSavedRawImage->getHeight() >= width * height))
+    {
+        return;
+    }
+    // Retain the synchronous native owner. Read the copy's mip where present,
+    // otherwise the published mip and reduce its CPU copy to the same budget.
+    LLPointer<LLImageRaw> raw = new LLImageRaw;
+    if (!mGLTexturep->readBackRaw(discard, raw, false))
+    {
+        if (discard == mGLTexturep->getDiscardLevel() ||
+            !mGLTexturep->readBackRaw(-1, raw, false))
+        {
+            return; // Keep the existing sculpt copy on failure.
+        }
+    }
+    const auto dimensions = ALSculptCopy::size(
+        raw->getWidth(), raw->getHeight(), mGLTexturep->getDiscardLevel(), width, height);
+    LLImageDataSharedLock lock(raw);
+    mSavedRawImage = ALSculptCopy::image(raw, dimensions);
+    mSavedRawDiscardLevel = discard;
+    mLastReferencedSavedRawImageTime = sCurrentTime;
+    rebuildSculptVolumes();
 }
 
 //force to refetch the texture to the discard level

@@ -29,6 +29,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "llvovolume.h"
+#include "alsculptcopy.h"
 
 #include <sstream>
 
@@ -1008,12 +1009,15 @@ void LLVOVolume::updateTextureVirtualSize(bool forced)
         {
             mSculptTexture->setForSculpt() ;
 
-            S32 texture_discard = mSculptTexture->getRawImageLevel(); //try to match the texture
-            S32 current_discard = getVolume() ? getVolume()->getSculptLevel() : -2 ;
+            const auto image = ALSculptCopy::select(
+                mSculptTexture->getRawImage(), mSculptTexture->getRawImageLevel(),
+                mSculptTexture->getSavedRawImage(), mSculptTexture->getSavedRawImageLevel());
+            const S32 texture_discard = image.discard;
+            const S32 pixels = image.pixels();
+            S32 current_discard = getVolume() ? getVolume()->getSculptLevel() : -2;
 
-            if (texture_discard >= 0 && //texture has some data available
-                (texture_discard < current_discard || //texture has more data than last rebuild
-                current_discard < 0)) //no previous rebuild
+            if (ALSculptCopy::needsRebuild(texture_discard, pixels, current_discard,
+                    getVolume() ? getVolume()->getSculptPixels() : 0))
             {
                 gPipeline.markRebuild(mDrawable, LLDrawable::REBUILD_VOLUME);
                 mSculptChanged = true;
@@ -1444,21 +1448,25 @@ void LLVOVolume::sculpt()
         S8 sculpt_components = 0;
         const U8* sculpt_data = NULL;
 
-        S32 discard_level = mSculptTexture->getRawImageLevel() ;
-        LLImageRaw* raw_image = mSculptTexture->getRawImage() ;
+        auto selected = ALSculptCopy::select(
+            mSculptTexture->getRawImage(), mSculptTexture->getRawImageLevel(),
+            mSculptTexture->getSavedRawImage(), mSculptTexture->getSavedRawImageLevel());
+        S32 discard_level = selected.discard;
+        LLImageRaw* raw_image = selected.image;
 
-        if (!raw_image)
+        S32 copy_width = 0, copy_height = 0, copy_discard = -1;
+        mSculptTexture->getSculptCopySize(copy_width, copy_height, copy_discard);
+        const S32 copy_pixels = copy_width * copy_height;
+        if ((!raw_image || raw_image->getWidth() * raw_image->getHeight() < copy_pixels) &&
+            getVolume()->getSculptPixels() < copy_pixels)
         {
-            raw_image = mSculptTexture->getSavedRawImage();
-            discard_level = mSculptTexture->getSavedRawImageLevel();
-        }
-
-        if (!raw_image || raw_image->getWidth() < mSculptTexture->getWidth() || raw_image->getHeight() < mSculptTexture->getHeight())
-        {
-            // last resort, read back from GL
-            mSculptTexture->readbackRawImage();
-            raw_image = mSculptTexture->getRawImage();
-            discard_level = mSculptTexture->getRawImageLevel();
+            mSculptTexture->readbackSculptImage();
+            // A failed read retains the copy that was available already.
+            selected = ALSculptCopy::select(
+                mSculptTexture->getRawImage(), mSculptTexture->getRawImageLevel(),
+                mSculptTexture->getSavedRawImage(), mSculptTexture->getSavedRawImageLevel());
+            raw_image = selected.image;
+            discard_level = selected.discard;
         }
 
         S32 max_discard = mSculptTexture->getMaxDiscardLevel();
@@ -1511,7 +1519,9 @@ void LLVOVolume::sculpt()
             return;
         }
 
-        if (current_discard == discard_level)  // no work to do here
+        const S32 pixels = raw_image ? raw_image->getWidth() * raw_image->getHeight() : 0;
+        if (ALSculptCopy::alreadyBuilt(discard_level, pixels, current_discard,
+                getVolume()->getSculptPixels()))
             return;
 
         if(!raw_image)

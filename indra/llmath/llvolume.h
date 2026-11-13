@@ -1049,6 +1049,8 @@ public:
     bool isUnique() const                                   { return mUnique; }
 
     S32 getSculptLevel() const                              { return mSculptLevel; }
+    // Original pixels supplied to sculpt(), before any coarse-LOD averaging.
+    S32 getSculptPixels() const                             { return mSculptPixels; }
     void setSculptLevel(S32 level)                          { mSculptLevel = level; }
 
 
@@ -1117,6 +1119,7 @@ public:
     bool mUnique;
     F32 mDetail;
     S32 mSculptLevel;
+    S32 mSculptPixels = 0;
     F32 mSurfaceArea; //unscaled surface area
     bool mIsMeshAssetLoaded;
     bool mIsMeshAssetUnavaliable;

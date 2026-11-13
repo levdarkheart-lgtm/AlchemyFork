@@ -401,6 +401,11 @@ public:
     void setForSculpt();
     bool forSculpt() const {return mForSculpt;}
     bool isForSculptOnly() const;
+    // Shared CPU copy size of the published native texture, within the sculpt
+    // budget at the map's proportions. No GPU texture means no readback size.
+    void getSculptCopySize(S32& width, S32& height, S32& discard) const;
+    void readbackSculptImage();
+    void rebuildSculptVolumes();
 
     //raw image management
     LLImageRaw* getRawImage()const { return mRawImage ;}
@@ -408,7 +413,7 @@ public:
     bool        isRawImageValid()const { return mIsRawImageValid ; }
     void        forceToSaveRawImage(S32 desired_discard = 0, F32 kept_time = 0.f) ;
 
-    // readback the raw image from OpenGL if mRawImage is not valid
+    // Read the published native texture if mRawImage is absent or smaller.
     void        readbackRawImage();
 
     void        destroySavedRawImage() ;
