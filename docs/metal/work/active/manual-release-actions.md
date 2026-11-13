@@ -129,3 +129,20 @@ requirements succeeds on this M1 Max. Target venv explicitly has no pip; NumPy
 2.4.3/PyYAML6.0.3 imports and all108tool tests pass there (11.863s). Actionlint,
 harness and diff checks pass. The next dispatch uses this corrected immutable
 commit. Evidence: artifacts/metal/actions-manual-release-20261112/python-tools-rehearsal/.
+
+## Follow-up parallelism correction
+
+Owner notes the usual native build takes about52minutes, consistent with the
+prior successful runs. Inspection confirms the old native job uses all logical
+CPUs, while the initial replacement limits vcpkg/viewer compilation to2. The
+standard macos-26 runner has3CPUs; restore3for subsequent manual runs. Current
+run43314101072 retains its immutable2job workflow; do not cancel/rebuild it.
+At22:31UTC the live log reaches133/169dependencies and confirms AOM completed.
+This is observed build progress, not a successful release. Future parallelism
+change stays in this isolated worktree until the hosted outcome is recorded.
+
+Hosted checkpoint22:57UTC: all169dependency packages and native configuration
+complete successfully (configure62m30s); Actions dependency binary cache saves
+successfully. Viewer compilation is now running. Prior successful native runs
+had~20mconfigure/~30mcompile/package; this cold two-job attempt has taken longer.
+Do not report a release until packaging/signatures/provenance and assets pass.
