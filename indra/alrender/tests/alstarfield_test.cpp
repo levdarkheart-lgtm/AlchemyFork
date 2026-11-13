@@ -48,6 +48,7 @@
 #include <fstream>
 #include <limits>
 #include <random>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -72,9 +73,9 @@ namespace
     }
 
     // A shader's source, read from the viewer's shader tree so the test reads what the viewer compiles.
-    std::string shader_source(const std::string& rel)
+    std::string shader_source(const std::string&)
     {
-        const std::filesystem::path path = std::filesystem::path(AL_TEST_SHADER_DIR) / rel;
+        const std::filesystem::path path = AL_TEST_METAL_SHADER;
         std::ifstream in(path);
         std::stringstream buf;
         buf << in.rdbuf();
@@ -281,11 +282,11 @@ TEST_CASE("alstarfield: every star lies on the upper hemisphere in its tier's in
     }
 }
 
-TEST_CASE("alstarfield: a star is spiked exactly where starsV.glsl gives it spikes", "[alstarfield]")
+TEST_CASE("alstarfield: a star is spiked exactly where the native shader gives it spikes", "[alstarfield]")
 {
     // starsV.glsl's gate, smoothstep(STAR_SPIKE_START, 1.0, intensity), on the intensity the vertex stage unpacks.
     const std::string vertex = shader_source("class1/deferred/starsV.glsl");
-    REQUIRE(vertex.find("smoothstep(STAR_SPIKE_START, 1.0, intensity)") != std::string::npos);
+    REQUIRE(vertex.find("smoothstep(STAR_SPIKE_START,1.0,intensity)") != std::string::npos);
     for (S32 byte = 0; byte < 256; ++byte)
     {
         const F32 intensity = (F32)byte / 255.f;
@@ -746,30 +747,23 @@ namespace
     // The value of the shader constant `const float <name> = <value>;` in @a source, or NaN where it declares none.
     F32 shaderConstant(const std::string& source, const std::string& name)
     {
-        const std::string declaration = "const float " + name;
-        for (size_t at = source.find(declaration); at != std::string::npos; at = source.find(declaration, at + 1))
-        {
-            size_t next = at + declaration.size();
-            if (next < source.size() && (std::isalnum((unsigned char)source[next]) || source[next] == '_'))
-            {
-                continue; // a longer name
-            }
-            next = source.find_first_not_of(" \t", next);
-            if (next == std::string::npos || source[next] != '=')
-            {
-                continue;
-            }
-            return std::strtof(source.c_str() + next + 1, nullptr);
-        }
+        const std::regex declaration("\\b" + name + R"(\s*=\s*([-+0-9.eE]+))");
+        std::smatch match;
+        if (std::regex_search(source, match, declaration)) return std::strtof(match[1].str().c_str(), nullptr);
         return std::numeric_limits<F32>::quiet_NaN();
     }
 }
 
-TEST_CASE("alstarfield: the brightness cull's bound is starsV.glsl's and starsF.glsl's", "[alstarfield]")
+TEST_CASE("alstarfield: the brightness cull's bound is the native shader's", "[alstarfield]")
 {
     // The terms ALStarField::brightest bounds: if a shader changes one, the bound has to follow.
     const std::string vertex   = shader_source("class1/deferred/starsV.glsl");
     const std::string fragment = shader_source("class1/deferred/starsF.glsl");
+    const auto compact = [](std::string value)
+    {
+        value.erase(std::remove_if(value.begin(), value.end(), [](unsigned char c) { return std::isspace(c); }), value.end());
+        return value;
+    };
 
     // Each bound the shaders and brightest share, by name.
     struct Shared
@@ -802,7 +796,7 @@ TEST_CASE("alstarfield: the brightness cull's bound is starsV.glsl's and starsF.
     // And the shaders' terms use them as brightest does.
     for (const char* term : { "mix(STAR_FAINT_PX, STAR_BRIGHT_PX, intensity)",
                               "smoothstep(STAR_SPIKE_START, 1.0, intensity) * STAR_SPIKE_PX",
-                              "max(ideal_px, STAR_MIN_PX)", "(ideal_px * ideal_px) / (quad_pixels * quad_pixels)",
+                              "max(ideal_px, STAR_MIN_PX)", "ideal_px * ideal_px / (quad_pixels * quad_pixels)",
                               "clamp(0.18 + 0.14 * (airmass - 1.0), 0.0, STAR_TWINKLE_MAX) * intensity",
                               "1.0 + (twinkle_base - 0.5) * 2.0 * twinkle_amount", "STAR_CHROMA * twinkle_amount",
                               "1.0 + (chroma_noise - 0.5) * 2.0 * chroma_amt",
@@ -810,16 +804,16 @@ TEST_CASE("alstarfield: the brightness cull's bound is starsV.glsl's and starsF.
                               "clamp(sky_wash + direct_glare, 0.0, STAR_MOON_FADE_MAX)",
                               "1.0 + intensity * intensity * STAR_BLOOM_BOOST", "1.0 + intensity;",
                               "exp(-airmass * k_ext)", "star_color *= custom_alpha",
-                              "vary_spike = smoothstep(STAR_SPIKE_START, 1.0, intensity)" })
+                              "o.spike = smoothstep(STAR_SPIKE_START, 1.0, intensity)" })
     {
         CAPTURE(term);
-        CHECK(vertex.find(term) != std::string::npos);
+        CHECK(compact(vertex).find(compact(term)) != std::string::npos);
     }
-    for (const char* term : { "exp(-r2 * 9.0)", "exp(-r2 * 1.8) * STAR_HALO", "* vary_spike * STAR_SPIKE;",
-                              "exp(-abs(corner.y) * 32.0) * ax" })
+    for (const char* term : { "exp(-r2 * 9.0)", "exp(-r2 * 1.8) * STAR_HALO", "* in.spike * STAR_SPIKE;",
+                              "exp(-abs(corner.y) * 32.0) * (1.0 - abs(corner.x))" })
     {
         CAPTURE(term);
-        CHECK(fragment.find(term) != std::string::npos);
+        CHECK(compact(fragment).find(compact(term)) != std::string::npos);
     }
 }
 

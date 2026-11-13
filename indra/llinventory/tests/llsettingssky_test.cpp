@@ -294,3 +294,16 @@ namespace
                         80.0f * DEG_TO_RAD + F_PI * 0.125f, F_PI * 0.125f);
     }
 }
+
+TEST_CASE("llsettingssky: bloom texture edits survive save and clone", "[llsettingssky]")
+{
+    const LLUUID texture("6e08610b-f6dd-4e57-b606-5552b1f4f562");
+    auto sky = make_sky(default_settings());
+    sky->setBloomTextureId(texture);
+    CHECK(sky->getBloomTextureId() == texture);
+    CHECK(sky->getSettings()[LLSettingsSky::SETTING_BLOOM_TEXTUREID].asUUID() == texture);
+    CHECK(sky->buildClone()->getBloomTextureId() == texture);
+    sky->setBloomTextureId(LLUUID::null);
+    CHECK(sky->getBloomTextureId().isNull());
+    CHECK(sky->getSettings()[LLSettingsSky::SETTING_BLOOM_TEXTUREID].asUUID().isNull());
+}

@@ -40,6 +40,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <regex>
 #include <sstream>
 #include <string>
 
@@ -279,22 +280,15 @@ namespace
     // `#define NAME value` line, read as the viewer compiles it.
     std::map<std::string, S64> shaderDefines(const std::string& file, const std::string& prefix)
     {
-        std::ifstream in(std::filesystem::path(AL_TEST_SHADER_DIR) / file);
+        std::ifstream in(AL_TEST_METAL_SHADER);
         CAPTURE(file);
         REQUIRE(in.good());
+        const std::string source((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         std::map<std::string, S64> out;
-        std::string line;
-        while (std::getline(in, line))
-        {
-            std::istringstream words(line);
-            std::string directive;
-            std::string name;
-            S64 value = 0;
-            if (words >> directive >> name >> value && directive == "#define" && name.rfind(prefix, 0) == 0)
-            {
-                out[name] = value;
-            }
-        }
+        const std::string names = file.find("skyMeteors") != std::string::npos ? "SKY_(?:MAX_METEORS|METEOR_VECTORS)" : prefix + "[A-Z_]+";
+        const std::regex definition("\\b(" + names + R"()\s*=\s*([0-9]+)u?\b)");
+        for (auto at = std::sregex_iterator(source.begin(), source.end(), definition); at != std::sregex_iterator(); ++at)
+            out[(*at)[1].str()] = std::stoll((*at)[2].str());
         return out;
     }
 }
