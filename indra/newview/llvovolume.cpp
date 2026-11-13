@@ -6601,6 +6601,7 @@ void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
             locked_buffer.resize(0);
 
             U32 buffer_count = 0;
+            bool build_failed = false;
 
             for (LLSpatialGroup::element_iter drawable_iter = group->getDataBegin(); drawable_iter != group->getDataEnd(); ++drawable_iter)
             {
@@ -6638,10 +6639,9 @@ void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
                                     face->getGeomIndex(),             // index_offset
                                     false,                            // force_rebuild
                                     true))                            // no_debug_assert
-                                {   // Something's gone wrong with the vertex buffer accounting,
-                                    // rebuild this group with no debug assert because MESH_DIRTY
-                                    group->dirtyGeom();
-                                    gPipeline.markRebuild(group);
+                                {
+                                    build_failed = true;
+                                    break;
                                 }
                             }
                         }
@@ -6652,8 +6652,33 @@ void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
                         vobj->updateRelativeXform();
                     }
 
+                    if (build_failed) break;
                     drawablep->clearState(LLDrawable::REBUILD_ALL);
                 }
+            }
+
+            if (build_failed)
+            {
+                // In-place fills may already have modified a shared buffer.
+                // Withdraw its merged ranges and selection admission until a
+                // complete group rebuild can fill every face again.
+                group->clearDrawMap();
+                for (auto iter = group->getDataBegin(); iter != group->getDataEnd(); ++iter)
+                {
+                    LLDrawable* drawable = static_cast<LLDrawable*>((*iter)->getDrawable());
+                    if (!drawable) continue;
+                    for (S32 i = 0; i < drawable->getNumFaces(); ++i)
+                    {
+                        if (LLFace* face = drawable->getFace(i))
+                        {
+                            face->clearVertexBuffer();
+                            face->setDrawInfo(nullptr);
+                        }
+                    }
+                }
+                group->mBuilt = 0.f;
+                group->dirtyGeom();
+                gPipeline.markRebuild(group);
             }
 
             {
