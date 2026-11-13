@@ -19,14 +19,17 @@
 
 #include "linden_common.h"
 
+#include <atomic>
 #include <cstring>
 #include <functional>
 #include <set>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
 #include <boost/unordered/unordered_flat_map.hpp>
+#include <boost/unordered/unordered_flat_set.hpp>
 
 #include "../lluuid.h"
 
@@ -374,6 +377,65 @@ namespace
         CHECK(a != b);
         // validate() should accept the generated string form
         CHECK(LLUUID::validate(a.asString()));
+    }
+
+    TEST_CASE("LLUUID: deterministic names and asset composition retain their existing bytes", "[LLUUID]")
+    {
+        CHECK(LLUUID::generateNewID("Alchemy deterministic asset key") == LLUUID("acc94a17-545d-dfb7-a73e-4ce797fd1b36"));
+        const LLUUID first("00112233-4455-6677-8899-aabbccddeeff");
+        const LLUUID second("fedcba98-7654-3210-fedc-ba9876543210");
+        CHECK(first.combine(second) == LLUUID("f4f4f98c-658b-49a3-7bbd-af3e714f43d6"));
+        LLTransactionID transaction;
+        transaction.set(first.asString());
+        CHECK(transaction.makeAssetID(second) == first.combine(second));
+        CHECK(LLTransactionID::tnull.makeAssetID(second).isNull());
+    }
+
+    TEST_CASE("LLUUID: a generated UUID is version 4 with RFC 9562's variant", "[LLUUID]")
+    {
+        // More than the generator's buffer holds, so it is filled again.
+        for (int i = 0; i < 64; ++i)
+        {
+            const LLUUID id = LLUUID::generateNewID();
+            INFO(id.asString());
+            CHECK((id.mData[6] >> 4) == 4);
+            CHECK((id.mData[8] & 0xC0) == 0x80);
+        }
+    }
+
+    TEST_CASE("LLUUID: threads generating at once make no UUID twice", "[LLUUID]")
+    {
+        constexpr size_t THREADS = 8;
+        constexpr size_t EACH    = 25000;
+        std::vector<std::vector<LLUUID>> made(THREADS);
+        std::atomic<bool>                go{ false };
+        std::vector<std::thread>         threads;
+        for (size_t t = 0; t < THREADS; ++t)
+        {
+            threads.emplace_back([&made, &go, t]()
+                {
+                    while (!go)
+                    {
+                        std::this_thread::yield();
+                    }
+                    made[t].reserve(EACH);
+                    for (size_t i = 0; i < EACH; ++i)
+                    {
+                        made[t].push_back(LLUUID::generateNewID());
+                    }
+                });
+        }
+        go = true;
+        for (std::thread& thread : threads)
+        {
+            thread.join();
+        }
+        boost::unordered_flat_set<LLUUID> all;
+        for (const std::vector<LLUUID>& one : made)
+        {
+            all.insert(one.begin(), one.end());
+        }
+        CHECK(all.size() == THREADS * EACH);
     }
 
     // to_chars emits exactly UUID_STR_LENGTH-1 chars in canonical 8-4-4-4-12 form.

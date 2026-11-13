@@ -2376,6 +2376,28 @@ bool LLVolume::unpackVolumeFacesInternal(const LLSD& mdl)
             return false;
         }
 
+        if (face_count > (size_t)LL_SCULPT_MESH_MAX_FACES)
+        {
+            LL_WARNS() << "Invalid face count " << face_count << " exceeds maximum" << LL_ENDL;
+            mVolumeFaces.clear();
+            return false;
+        }
+
+        size_t lod_indices = 0;
+        for (size_t i = 0; i < face_count; ++i)
+        {
+            if (!mdl[i].has("NoGeometry"))
+            {
+                lod_indices += mdl[i]["TriangleList"].asBinary().size() / sizeof(U16);
+            }
+        }
+        if (lod_indices > (size_t)LL_SCULPT_MESH_MAX_LOD_INDICES)
+        {
+            LL_WARNS() << "Invalid index count " << lod_indices << " exceeds maximum for a LOD of " << face_count << " faces" << LL_ENDL;
+            mVolumeFaces.clear();
+            return false;
+        }
+
         mVolumeFaces.resize(face_count);
 
         for (size_t i = 0; i < face_count; ++i)
@@ -2409,6 +2431,12 @@ bool LLVolume::unpackVolumeFacesInternal(const LLSD& mdl)
                 // Invalid number of triangle indices
                 LL_WARNS() << "Incomplete triangle discarded from face! Indices count " << num_indices << " was not divisible by 3. face index: " << i << " Total: " << face_count << LL_ENDL;
                 num_indices -= indices_to_discard;
+            }
+            if (num_indices > (size_t)LL_SCULPT_MESH_MAX_FACE_INDICES)
+            {
+                LL_WARNS() << "Invalid index count " << num_indices << " exceeds maximum for face index: " << i << LL_ENDL;
+                mVolumeFaces.clear();
+                return false;
             }
             face.resizeIndices(static_cast<S32>(num_indices));
 
@@ -2613,8 +2641,13 @@ bool LLVolume::unpackVolumeFacesInternal(const LLSD& mdl)
                     U32 joints[4] = {0,0,0,0};
                     LLVector4 joints_with_weights(0,0,0,0);
 
-                    while (joint != END_INFLUENCES && idx < weights.size())
+                    while (joint != END_INFLUENCES)
                     {
+                        if (weights.size() - idx < 2)
+                        {
+                            idx = (U32)weights.size();
+                            break;
+                        }
                         U16 influence = weights[idx++];
                         influence |= ((U16) weights[idx++] << 8);
 
@@ -2623,7 +2656,7 @@ bool LLVolume::unpackVolumeFacesInternal(const LLSD& mdl)
                         joints[cur_influence] = joint;
                         cur_influence++;
 
-                        if (cur_influence >= 4)
+                        if (cur_influence >= 4 || idx >= weights.size())
                         {
                             joint = END_INFLUENCES;
                         }
@@ -2653,6 +2686,13 @@ bool LLVolume::unpackVolumeFacesInternal(const LLSD& mdl)
                 if (cur_vertex != num_verts || idx != weights.size())
                 {
                     LL_WARNS() << "Vertex weight count does not match vertex count!" << LL_ENDL;
+                }
+
+                // Missing vertices take the existing no-influence fallback,
+                // rather than uninitialized skinning and vertex-weld input.
+                for (; cur_vertex < num_verts; ++cur_vertex)
+                {
+                    face.mWeights[cur_vertex].set(0.999f, 0.f, 0.f, 0.f);
                 }
 
             }

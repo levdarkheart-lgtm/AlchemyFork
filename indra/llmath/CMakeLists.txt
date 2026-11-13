@@ -125,6 +125,7 @@ if(AL_BUILD_TESTS)
       tests/llsdutil_math_test.cpp
       tests/llvector4a_test.cpp
       tests/llvolume_test.cpp
+      tests/almesh_decode_safety_test.cpp
       tests/m3math_test.cpp
       tests/mathmisc_test.cpp
       tests/v2math_test.cpp

@@ -204,6 +204,11 @@ constexpr U8 LL_SCULPT_FLAG_MASK = LL_SCULPT_FLAG_INVERT | LL_SCULPT_FLAG_MIRROR
 
 constexpr S32 LL_SCULPT_MESH_MAX_FACES = 8;
 
+// Bound work before allocating or optimizing untrusted mesh indices. The
+// per-LOD budget prevents many individually admitted faces bypassing the cap.
+constexpr S32 LL_SCULPT_MESH_MAX_FACE_INDICES = 65536 * 32;
+constexpr S32 LL_SCULPT_MESH_MAX_LOD_INDICES = LL_SCULPT_MESH_MAX_FACE_INDICES * 2;
+
 extern bool gDebugGL;
 
 class LLProfileParams
@@ -273,9 +278,12 @@ public:
     const U8&   getCurveType () const           { return mCurveType; }
 
     void setCurveType(const U32 type)           { mCurveType = type;}
-    void setBegin(const F32 begin)              { mBegin = (begin >= 1.0f) ? 0.0f : ((int) (begin * 100000))/100000.0f;}
-    void setEnd(const F32 end)                  { mEnd   = (end   <= 0.0f) ? 1.0f : ((int) (end * 100000))/100000.0f;}
-    void setHollow(const F32 hollow)            { mHollow = ((int) (hollow * 100000))/100000.0f;}
+    // Each is cut to five places through an int, from a fraction held to
+    // [0, 1] first: a begin at or past 1 is 0, an end at or below 0 is 1, and
+    // a value that is not finite is the one that cuts nothing.
+    void setBegin(const F32 begin)              { mBegin = (llfinite(begin) && begin > 0.0f && begin < 1.0f) ? ((int) (begin * 100000))/100000.0f : 0.0f;}
+    void setEnd(const F32 end)                  { mEnd   = (llfinite(end) && end > 0.0f && end < 1.0f) ? ((int) (end * 100000))/100000.0f : 1.0f;}
+    void setHollow(const F32 hollow)            { mHollow = (llfinite(hollow) && hollow > 0.0f) ? ((int) (llmin(hollow, 1.0f) * 100000))/100000.0f : 0.0f;}
 
     friend std::ostream& operator<<(std::ostream &s, const LLProfileParams &profile_params);
 

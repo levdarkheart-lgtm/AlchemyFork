@@ -201,6 +201,7 @@ if(AL_BUILD_TESTS)
     PROJECT llrender
     SOURCES
       tests/alfontcolrv1_test.cpp
+      tests/alfont_colrv1_failure_test.cpp
       tests/alfontshaping_test.cpp
       tests/alpacingslack_test.cpp
       tests/alrendercapabilities_test.cpp
