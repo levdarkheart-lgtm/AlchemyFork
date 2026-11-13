@@ -39,6 +39,7 @@
 
 #include "alavatargroups.h"
 #include "albakeproxies.h"
+#include "almetalworld.h"
 #include "alrenderisolation.h"
 #include "aoengine.h"
 #include "llagent.h" //  Get state values from here
@@ -127,6 +128,7 @@
 
 #include <boost/lexical_cast.hpp>
 #include <fmt/format.h>
+#include <limits>
 
 extern F32 SPEED_ADJUST_MAX;
 extern F32 SPEED_ADJUST_MAX_SEC;
@@ -10837,6 +10839,22 @@ LLViewerTexture* LLVOAvatar::getBakedTexture(const U8 te)
 
 }
 
+const std::shared_ptr<const ALMetalAttachmentPaletteRecord>&
+LLVOAvatar::MatrixPaletteCache::getMetalAttachmentPalette() const
+{
+    if (!mMetalAttachmentPaletteAttempted)
+    {
+        mMetalAttachmentPaletteAttempted = true;
+        if (mMatrixPalette.size() <= std::numeric_limits<U32>::max())
+        {
+            mMetalAttachmentPalette = ALMetalAttachmentPaletteRecord::create(
+                mGLMp.data(), mGLMp.size(),
+                static_cast<U32>(mMatrixPalette.size()), nullptr);
+        }
+    }
+    return mMetalAttachmentPalette;
+}
+
 const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(const LLMeshSkinInfo* skin)
 {
     U64 hash = skin->mHash;
@@ -10846,6 +10864,10 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
+        // Drop only this producer's reference. Already captured shadow
+        // records retain their immutable palette through their own lifetime.
+        entry.mMetalAttachmentPalette.reset();
+        entry.mMetalAttachmentPaletteAttempted = false;
         entry.mFrame = gFrameCount;
 
         //build matrix palette

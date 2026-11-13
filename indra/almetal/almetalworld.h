@@ -212,6 +212,29 @@ enum class ALMetalWorldSpotShadowCoverage : std::uint32_t
     avatar_blend = 8,
 };
 
+// One producer-sealed attachment pose: an origin vec4 followed by joint mat3x4
+// rows. Unlike system-avatar palettes, these bytes do not contain a view
+// transform. Construction owns and validates the bytes once; no mutable access
+// is exposed, so a record's identity remains valid through later pose updates.
+class ALMetalAttachmentPaletteRecord final
+{
+public:
+    static std::shared_ptr<const ALMetalAttachmentPaletteRecord> create(
+        const float* values, std::size_t count, std::uint32_t joint_count,
+        std::string* error = nullptr);
+    ALMetalAttachmentPaletteRecord(const ALMetalAttachmentPaletteRecord&) = delete;
+    ALMetalAttachmentPaletteRecord& operator=(const ALMetalAttachmentPaletteRecord&) = delete;
+    const float* data() const noexcept { return mValues.data(); }
+    std::size_t size() const noexcept { return mValues.size(); }
+    std::uint32_t jointCount() const noexcept { return mJointCount; }
+
+private:
+    ALMetalAttachmentPaletteRecord(std::vector<float> values,
+                                  std::uint32_t joint_count);
+    const std::vector<float> mValues;
+    const std::uint32_t mJointCount;
+};
+
 // One exact draw seen by a spotlight's own shadow camera. Object casters are
 // indexed triangles. Opaque ones need only position; cutout/stippled ones
 // retain diffuse UV, streamed alpha, texture ladders and exact live-shader
@@ -261,6 +284,9 @@ struct ALMetalWorldSpotShadowBatch
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;
+    // Optional certified attachment pose. Raw fields must describe these exact
+    // immutable bytes. Null retains the existing raw/system-avatar contract.
+    std::shared_ptr<const ALMetalAttachmentPaletteRecord> skin_palette_record;
     float modelview_projection[16]{};
     float texture_matrix[16] = {
         1.f, 0.f, 0.f, 0.f,
@@ -2249,6 +2275,8 @@ struct ALMetalWorldFrameDataStats
     std::uint64_t reused_bytes = 0;
     std::uint64_t pages_created = 0;
     std::uint64_t pages_reused = 0;
+    std::uint64_t record_publications = 0;
+    std::uint64_t record_reuses = 0;
     std::size_t retired_pages = 0;
 };
 
@@ -2267,6 +2295,11 @@ public:
     bool publish(ALMetalCommandBuffer& command, const void* bytes,
                  std::size_t length, ALMetalWorldDataSlice& slice,
                  std::string* error = nullptr, bool deduplicate = true);
+    // Reuse the producer-owned immutable identity within this frame. Every
+    // consuming command still registers its own completion before page reuse.
+    bool publishPalette(ALMetalCommandBuffer& command,
+        const std::shared_ptr<const ALMetalAttachmentPaletteRecord>& palette,
+        ALMetalWorldDataSlice& slice, std::string* error = nullptr);
     ALMetalWorldFrameDataStats stats() const noexcept;
     ALMetalShadowMaterials* shadowMaterials(
         const ALMetalShaderLibrary& library, std::string* error = nullptr);

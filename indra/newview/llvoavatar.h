@@ -30,6 +30,7 @@
 
 #include <map>
 #include <deque>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -77,6 +78,7 @@ class LLTexGlobalColor;
 
 struct LLAppearanceMessageContents;
 class LLViewerJointMesh;
+class ALMetalAttachmentPaletteRecord;
 
 const F32 MAX_AVATAR_LOD_FACTOR = 1.0f;
 
@@ -963,10 +965,23 @@ public:
         // the origin (see apply_matrix_palette).
         std::vector<F32> mGLMp;
 
+        // The owner thread seals only palettes a native attachment consumer
+        // requests. A retained record outlives this entry's next pose update;
+        // the mutable packed array remains the producer for existing readers.
+        const std::shared_ptr<const ALMetalAttachmentPaletteRecord>&
+            getMetalAttachmentPalette() const;
+
         MatrixPaletteCache() :
             mFrame(gFrameCount - 1)
         {
         }
+
+    private:
+        friend class LLVOAvatar;
+        mutable std::shared_ptr<const ALMetalAttachmentPaletteRecord>
+            mMetalAttachmentPalette;
+        // A failed seal is also final for this packed producer revision.
+        mutable bool mMetalAttachmentPaletteAttempted = false;
     };
 
     // Accessor for Matrix Palette Cache

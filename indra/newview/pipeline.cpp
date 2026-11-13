@@ -12984,9 +12984,20 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
             return;
         }
         batch.weight_offset = buffer->getOffset(LLVertexBuffer::TYPE_WEIGHT4);
-        batch.skin_palette = palette.mGLMp.data();
-        batch.skin_palette_float_count = palette.mGLMp.size();
-        batch.skin_joint_count = joint_count;
+        // Seal this producer revision once. All attachment batches and shadow
+        // views share immutable pose bytes; system-avatar palettes stay local
+        // to their view-dependent capture path.
+        batch.skin_palette_record = palette.getMetalAttachmentPalette();
+        if (!batch.skin_palette_record)
+        {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+        batch.skin_palette = batch.skin_palette_record->data();
+        batch.skin_palette_float_count = batch.skin_palette_record->size();
+        batch.skin_joint_count = batch.skin_palette_record->jointCount();
     }
 }
 
@@ -13144,9 +13155,20 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
         }
         batch.weight_offset = buffer->getOffset(
             LLVertexBuffer::TYPE_WEIGHT4);
-        batch.skin_palette = palette.mGLMp.data();
-        batch.skin_palette_float_count = palette.mGLMp.size();
-        batch.skin_joint_count = joint_count;
+        // Seal this producer revision once. All attachment batches and shadow
+        // views share immutable pose bytes; system-avatar palettes stay local
+        // to their view-dependent capture path.
+        batch.skin_palette_record = palette.getMetalAttachmentPalette();
+        if (!batch.skin_palette_record)
+        {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+        batch.skin_palette = batch.skin_palette_record->data();
+        batch.skin_palette_float_count = batch.skin_palette_record->size();
+        batch.skin_joint_count = batch.skin_palette_record->jointCount();
     }
 }
 
@@ -13313,9 +13335,20 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
         }
         batch.weight_offset = buffer->getOffset(
             LLVertexBuffer::TYPE_WEIGHT4);
-        batch.skin_palette = palette.mGLMp.data();
-        batch.skin_palette_float_count = palette.mGLMp.size();
-        batch.skin_joint_count = joint_count;
+        // Seal this producer revision once. All attachment batches and shadow
+        // views share immutable pose bytes; system-avatar palettes stay local
+        // to their view-dependent capture path.
+        batch.skin_palette_record = palette.getMetalAttachmentPalette();
+        if (!batch.skin_palette_record)
+        {
+            capture.spot_shadow_first_incomplete_source_line = __LINE__;
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+        batch.skin_palette = batch.skin_palette_record->data();
+        batch.skin_palette_float_count = batch.skin_palette_record->size();
+        batch.skin_joint_count = batch.skin_palette_record->jointCount();
     }
 }
 

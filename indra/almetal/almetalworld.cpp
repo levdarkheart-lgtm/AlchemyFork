@@ -1336,6 +1336,42 @@ namespace
 
 }
 
+ALMetalAttachmentPaletteRecord::ALMetalAttachmentPaletteRecord(
+    std::vector<float> values, std::uint32_t joint_count)
+    : mValues(std::move(values)), mJointCount(joint_count)
+{
+}
+
+std::shared_ptr<const ALMetalAttachmentPaletteRecord>
+ALMetalAttachmentPaletteRecord::create(
+    const float* values, std::size_t count, std::uint32_t joint_count,
+    std::string* error)
+{
+    constexpr std::uint32_t max_skin_joints = 110;
+    if (!values || joint_count == 0 || joint_count > max_skin_joints ||
+        count != 4 + static_cast<std::size_t>(joint_count) * 12)
+    {
+        setError(error, "Metal attachment palette shape is invalid");
+        return nullptr;
+    }
+    try
+    {
+        std::vector<float> owned(values, values + count);
+        if (!finiteValues(owned.data(), owned.size()))
+        {
+            setError(error, "Metal attachment palette contains non-finite values");
+            return nullptr;
+        }
+        return std::shared_ptr<const ALMetalAttachmentPaletteRecord>(
+            new ALMetalAttachmentPaletteRecord(std::move(owned), joint_count));
+    }
+    catch (const std::bad_alloc&)
+    {
+        setError(error, "Metal attachment palette allocation failed");
+        return nullptr;
+    }
+}
+
 struct ALMetalWorldFrameData::Impl
 {
     struct Page
@@ -1346,6 +1382,13 @@ struct ALMetalWorldFrameData::Impl
         std::vector<std::shared_ptr<const ALMetalCommandCompletion>> commands;
     };
     struct Entry { Page* page; std::size_t offset; std::size_t length; };
+    struct PaletteEntry
+    {
+        // Retain the identity so an allocator cannot recycle its address while
+        // it is still a lookup key. GPU readers use the page's copied bytes.
+        std::shared_ptr<const ALMetalAttachmentPaletteRecord> owner;
+        Entry range;
+    };
     const ALMetalDevice* device = nullptr;
     bool initialized = false;
     std::uint64_t generation = 0;
@@ -1353,6 +1396,7 @@ struct ALMetalWorldFrameData::Impl
     std::vector<std::unique_ptr<Page>> retired;
     std::vector<std::unique_ptr<Page>> available;
     std::unordered_multimap<std::uint64_t, Entry> entries;
+    std::unordered_map<const ALMetalAttachmentPaletteRecord*, PaletteEntry> palettes;
     ALMetalWorldFrameDataStats statistics;
     std::unique_ptr<ALMetalShadowMaterials> shadow_materials;
 };
@@ -1382,6 +1426,7 @@ void ALMetalWorldFrameData::beginFrame(std::uint64_t generation)
     mImpl->generation = generation;
     if (mImpl->shadow_materials) mImpl->shadow_materials->beginFrame(generation);
     mImpl->entries.clear();
+    mImpl->palettes.clear();
     for (auto& page : mImpl->active)
         mImpl->retired.push_back(std::move(page));
     mImpl->active.clear();
@@ -1536,6 +1581,48 @@ bool ALMetalWorldFrameData::publish(
     return true;
 }
 
+bool ALMetalWorldFrameData::publishPalette(
+    ALMetalCommandBuffer& command,
+    const std::shared_ptr<const ALMetalAttachmentPaletteRecord>& palette,
+    ALMetalWorldDataSlice& slice, std::string* error)
+{
+    slice = {};
+    if (!palette || command.isCommitted() ||
+        command.nativeDevice() != mImpl->device->nativeHandle())
+    {
+        setError(error, "Metal attachment palette publication is invalid");
+        return false;
+    }
+    const auto found = mImpl->palettes.find(palette.get());
+    if (found == mImpl->palettes.end())
+    {
+        if (!publish(command, palette->data(), palette->size() * sizeof(float),
+                     slice, error, false)) return false;
+        // A non-deduplicated publication always appends to the current page.
+        mImpl->palettes.emplace(palette.get(), Impl::PaletteEntry{
+            palette, {mImpl->active.back().get(), slice.offset, slice.length}});
+        ++mImpl->statistics.record_publications;
+        return true;
+    }
+    auto completion = command.completionToken();
+    if (!completion)
+    {
+        setError(error, "Metal attachment palette requires a completion token");
+        return false;
+    }
+    const auto& range = found->second.range;
+    auto& readers = range.page->commands;
+    if (readers.empty() || readers.back() != completion)
+    {
+        if (std::find(readers.begin(), readers.end(), completion) == readers.end())
+            readers.push_back(std::move(completion));
+    }
+    mImpl->statistics.reused_bytes += range.length;
+    ++mImpl->statistics.record_reuses;
+    slice = {range.page->buffer.get(), range.offset, range.length};
+    return true;
+}
+
 ALMetalWorldFrameDataStats ALMetalWorldFrameData::stats() const noexcept
 {
     auto result = mImpl->statistics;
@@ -1604,6 +1691,20 @@ struct ALMetalWorldGBufferRenderer::Impl
         if (!frame_data) return encoder.setVertexBytes(index, bytes, length, error);
         ALMetalWorldDataSlice slice;
         return frame_data->publish(command, bytes, length, slice, error, deduplicate) &&
+            encoder.setVertexBuffer(index, *slice.buffer, slice.offset, error);
+    }
+
+    bool setShadowPalette(ALMetalRenderEncoder& encoder,
+                          ALMetalCommandBuffer& command, std::uint32_t index,
+                          const ALMetalWorldSpotShadowBatch& batch,
+                          std::string* error)
+    {
+        if (!frame_data || !batch.skin_palette_record)
+            return setVertexData(encoder, command, index, batch.skin_palette,
+                batch.skin_palette_float_count * sizeof(float), error, true);
+        ALMetalWorldDataSlice slice;
+        return frame_data->publishPalette(command, batch.skin_palette_record,
+                                         slice, error) &&
             encoder.setVertexBuffer(index, *slice.buffer, slice.offset, error);
     }
 
@@ -6490,6 +6591,15 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         const bool query_boundary = query_boundary_index < scene.visibility_query_count &&
             scene.visibility_queries[query_boundary_index].batch_offset == index;
         const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
+        if (batch.skin_palette_record &&
+            (batch.avatar || batch.terrain ||
+             batch.skin_palette != batch.skin_palette_record->data() ||
+             batch.skin_palette_float_count != batch.skin_palette_record->size() ||
+             batch.skin_joint_count != batch.skin_palette_record->jointCount()))
+        {
+            setError(error, "Metal spot-shadow attachment palette record metadata is invalid");
+            return false;
+        }
         const bool valid_index_type =
             batch.index_type == ALMetalIndexType::uint16 ||
             batch.index_type == ALMetalIndexType::uint32;
@@ -6671,7 +6781,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             const bool weight_range_valid = rangeFits(
                 batch.weight_offset, batch.vertex_count, weight_stride,
                 batch.vertices->length());
-            const bool palette_finite = finiteValues(
+            const bool palette_finite = batch.skin_palette_record || finiteValues(
                 batch.skin_palette, batch.skin_palette_float_count);
             std::size_t first_nonfinite =
                 batch.skin_palette_float_count;
@@ -7260,10 +7370,8 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             {
                 encoded =
                     (inline_palettes[index]
-                         ? mImpl->setVertexData(*encoder, *command,
-                               4, batch.skin_palette,
-                               batch.skin_palette_float_count *
-                                   sizeof(float), error, true)
+                         ? mImpl->setShadowPalette(*encoder, *command,
+                               4, batch, error)
                          : encoder->setVertexBuffer(
                                4, *palette_buffers[index], 0, error)) &&
                     encoder->setVertexBuffer(
@@ -7336,10 +7444,8 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         {
             encoded =
                 (inline_palettes[index]
-                     ? mImpl->setVertexData(*encoder, *command,
-                           4, batch.skin_palette,
-                           batch.skin_palette_float_count * sizeof(float),
-                           error, true)
+                     ? mImpl->setShadowPalette(*encoder, *command,
+                           4, batch, error)
                      : encoder->setVertexBuffer(
                            4, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
@@ -7352,10 +7458,8 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         {
             encoded =
                 (inline_palettes[index]
-                     ? mImpl->setVertexData(*encoder, *command,
-                           2, batch.skin_palette,
-                           batch.skin_palette_float_count * sizeof(float),
-                           error, true)
+                     ? mImpl->setShadowPalette(*encoder, *command,
+                           2, batch, error)
                      : encoder->setVertexBuffer(
                            2, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(

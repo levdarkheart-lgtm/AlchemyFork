@@ -223,6 +223,8 @@ if(AL_BUILD_TESTS)
             tests/almetal_benchmark_test.mm
             tests/almetal_pipeline_cache_test.mm
             tests/almetal_shadow_capture_test.mm
+            tests/almetal_attachment_palette_test.mm
+            tests/almetal_attachment_palette_benchmark.mm
             tests/almetal_shadow_gather_test.mm
             tests/almetal_world_diagnostics_test.cpp
             tests/almetal_gbuffer_constants_test.mm
@@ -264,6 +266,9 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_indexed_join_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_completion_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_world_data_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_attachment_palette_test.mm
+                              tests/almetal_attachment_palette_benchmark.mm
+                              PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_borrowed_target_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_base_lighting_fastpath_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_debug_buffer_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
