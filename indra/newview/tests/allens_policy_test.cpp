@@ -64,22 +64,17 @@ struct LensPolicyCamera
     F32 getView() const { return fov; }
     F32 getZoomFactor() const { return zoom; }
 };
-struct LensPolicyBody { F32 getDiskRadius() const { return .5f; } };
-struct LensPolicySkyObject
+struct LensPolicyBody
 {
-    LensPolicyBody body;
-    const LensPolicyBody& getSun() const { return body; }
-    const LensPolicyBody& getMoon() const { return body; }
+    F32 half_size = .075f;
+    F32 angularHalfSize() const { return half_size; }
 };
-struct LensPolicySkyPointer
+struct LensPolicySkyOwner
 {
-    bool present = false;
-    LensPolicySkyObject object;
-    bool notNull() const { return present; }
-    const LensPolicySkyObject* operator->() const { return &object; }
+    LensPolicyBody sun, moon;
+    const LensPolicyBody& getSun() const { return sun; }
+    const LensPolicyBody& getMoon() const { return moon; }
 };
-struct { LensPolicySkyPointer mVOSkyp; } lens_policy_sky;
-constexpr F32 HEAVENLY_BODY_FACTOR = .1f; // Original llvosky.h angular-radius scale.
 struct LensPolicyCapture
 {
     std::unique_ptr<int> lens_flare_state_target;
@@ -92,6 +87,7 @@ struct LensPolicyPipeline
     using LensFlareConfig = LLPipeline::LensFlareConfig;
     LensFlareStateConfig lensFlareStateConfig();
     LensFlareConfig lensFlareConfig(bool world_frame) const;
+    LensPolicySkyOwner mSky;
     bool suppress = false;
     bool suppressesLensAndPrintEffects() const { return suppress; }
     bool mLensFlareSunUp = true;
@@ -110,7 +106,6 @@ struct LensPolicyPipeline
 #pragma push_macro("LLEnvironment")
 #pragma push_macro("LLSettingsSky")
 #pragma push_macro("LLViewerCamera")
-#pragma push_macro("gSky")
 #define LLPipeline LensPolicyPipeline
 #define LLCachedControl LensPolicyCachedControl
 #define gSavedSettings lens_policy_settings
@@ -118,9 +113,7 @@ struct LensPolicyPipeline
 #define LLEnvironment LensPolicyEnvironment
 #define LLSettingsSky LensPolicySky
 #define LLViewerCamera LensPolicyCamera
-#define gSky lens_policy_sky
 #include "../pipeline_lens_config.inl"
-#pragma pop_macro("gSky")
 #pragma pop_macro("LLViewerCamera")
 #pragma pop_macro("LLSettingsSky")
 #pragma pop_macro("LLEnvironment")
@@ -139,7 +132,6 @@ struct LensPolicyCase
         REQUIRE_FALSE(gGLManager.mInited);
         LensPolicyEnvironment::instance() = LensPolicyEnvironment{};
         LensPolicyCamera::getCurrent() = LensPolicyCamera{};
-        lens_policy_sky.mVOSkyp.present = false;
         lens_policy_program = &program;
         // Instantiate all real cached controls before resetting them.
         pipeline.lensFlareStateConfig(); pipeline.lensFlareConfig(true);
@@ -207,8 +199,8 @@ TEST_CASE("Native viewer flare CPU inputs retain projection fade clamps and body
     REQUIRE(state.enabled);
     CHECK(state.sun_uv[0] == .5f); CHECK(state.sun_uv[1] == .5f);
     CHECK(state.edge_visibility == 1.f);
-    // Half the original .1 angular factor, .5 fallback disk and1.5 horizon
-    // enlargement, divided by tan(FOV/2)==1. The state uses vertical UV units.
+    // The sky owner provides the drawn quad's .075 half-angle tangent.
+    // Divide by two and tan(FOV/2)==1 to express it in vertical UV units.
     CHECK(state.occlusion_radius == Catch::Approx(.0375f));
     lens_policy_settings.setF32(setting("RenderLensFlareOcclusionScale"), 20.f);
     lens_policy_settings.setF32(setting("RenderLensFlareFadeTime"), 0.f);
@@ -282,4 +274,24 @@ TEST_CASE("Native viewer flare CPU appearance retains authored parameter mapping
     lens_policy_settings.setBOOL(setting("RenderSkyAutoAdjustLegacy"), true);
     lens_policy_settings.setF32(setting("RenderSkyAutoAdjustHDRScale"), 3.f);
     CHECK(f.pipeline.lensFlareConfig(true).sky_hdr_scale == 3.f);
+}
+
+TEST_CASE("Native viewer flare radius reads drawn body size without a scale floor", "[native-lens-policy]")
+{
+    LensPolicyCase f; f.load();
+    f.pipeline.mSky.sun.half_size = .00025f;
+    auto state = f.pipeline.lensFlareStateConfig();
+    CHECK(state.occlusion_radius == Catch::Approx(.000125f));
+    // Changing a lighting direction alone cannot resize the cached drawn quad.
+    f.pipeline.mSunDir = LLVector4(0.f, 0.f, -.25f, 0.f);
+    CHECK(f.pipeline.lensFlareStateConfig().occlusion_radius == Catch::Approx(.000125f));
+    LensPolicyCamera::getCurrent().zoom = 2.f;
+    CHECK(f.pipeline.lensFlareStateConfig().occlusion_radius == Catch::Approx(.00025f));
+    f.pipeline.mSky.sun.half_size = 0.f; // Before the first owner update.
+    CHECK(f.pipeline.lensFlareStateConfig().occlusion_radius == 0.f);
+    LensPolicyEnvironment::instance().sun_up = false;
+    f.pipeline.mSky.moon.half_size = .12f;
+    state = f.pipeline.lensFlareStateConfig();
+    CHECK_FALSE(state.sun_up);
+    CHECK(state.occlusion_radius == Catch::Approx(.12f));
 }

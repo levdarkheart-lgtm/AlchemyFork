@@ -84,19 +84,9 @@ LLPipeline::LensFlareStateConfig LLPipeline::lensFlareStateConfig()
     config.sun_uv = {
         mLensFlareSunUV.mV[VX], mLensFlareSunUV.mV[VY]};
 
-    F32 disk_radius = 0.5f;
-    if (gSky.mVOSkyp.notNull())
-    {
-        disk_radius = (config.sun_up ? gSky.mVOSkyp->getSun()
-                                     : gSky.mVOSkyp->getMoon())
-                          .getDiskRadius();
-    }
-    const F32 body_scale = llmax(
-        config.sun_up ? sky->getSunScale() : sky->getMoonScale(), 0.01f);
-    const F32 enlargement =
-        1.f + (1.f - light_dir.mV[VZ]) * 0.25f;
-    const F32 half_tan = HEAVENLY_BODY_FACTOR * disk_radius *
-        body_scale * enlargement;
+    // The probe follows the body's drawn quad, including its authored scale
+    // and horizon growth. Before the sky's first update its corners give zero.
+    const F32 half_tan = (config.sun_up ? mSky.getSun() : mSky.getMoon()).angularHalfSize();
     const LLViewerCamera* camera = LLViewerCamera::getInstance();
     const F32 fov_y = llclamp(camera->getView(),
                               0.01f, F_PI - 0.01f);
