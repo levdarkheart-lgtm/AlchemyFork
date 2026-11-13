@@ -1460,7 +1460,10 @@ bool LLFace::getGeometryVolume(const LLVolume& volume,
 
             if (bump_code)
             {
-                mVObjp->getVolume()->genTangents(face_index);
+                if (!mVObjp->getVolume()->genTangents(face_index))
+                {
+                    return false;
+                }
                 F32 offset_multiple;
                 switch( bump_code )
                 {
@@ -1508,7 +1511,10 @@ bool LLFace::getGeometryVolume(const LLVolume& volume,
             U8 texgen = tep ? tep->getTexGen() : LLTextureEntry::TEX_GEN_DEFAULT;
             if (rebuild_tcoord && texgen != LLTextureEntry::TEX_GEN_DEFAULT)
             { //planar texgen needs binormals
-                mVObjp->getVolume()->genTangents(face_index);
+                if (!mVObjp->getVolume()->genTangents(face_index))
+                {
+                    return false;
+                }
             }
 
             U8 tex_mode = 0;
@@ -1791,7 +1797,10 @@ bool LLFace::getGeometryVolume(const LLVolume& volume,
                     LL_PROFILE_ZONE_NAMED_CATEGORY_FACE("tgd - do bump");
                     mVertexBuffer->getTexCoord1Strider(tex_coords1, mGeomIndex, mGeomCount);
 
-                    mVObjp->getVolume()->genTangents(face_index);
+                    if (!mVObjp->getVolume()->genTangents(face_index))
+                    {
+                        return false;
+                    }
 
                     for (S32 i = 0; i < num_vertices; i++)
                     {
@@ -1866,7 +1875,10 @@ bool LLFace::getGeometryVolume(const LLVolume& volume,
             LL_PROFILE_ZONE_NAMED_CATEGORY_FACE("getGeometryVolume - tangent");
             mVertexBuffer->getTangentStrider(tangent, mGeomIndex, mGeomCount);
 
-            mVObjp->getVolume()->genTangents(face_index);
+            if (!mVObjp->getVolume()->genTangents(face_index))
+            {
+                return false;
+            }
 
             // A tangent lies in the surface, so it goes through the vertex matrix as the surface does; the
             // normal's inverse transpose would turn it off the surface under a non-uniform scale. The

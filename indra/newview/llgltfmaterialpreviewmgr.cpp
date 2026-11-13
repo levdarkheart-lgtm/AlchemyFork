@@ -368,7 +368,10 @@ PreviewSphere create_preview_sphere(LLPointer<LLFetchedGLTFMaterial>& material, 
     llassert(volume);
     for (LLVolumeFace& face : volume->getVolumeFaces())
     {
-        face.createTangents();
+        if (!face.createTangents())
+        {
+            return {};
+        }
     }
 
     PreviewSphere preview_sphere;
