@@ -1016,6 +1016,7 @@ if(AL_BUILD_VIEWER)
     alapplinks.h
     albakeproxies.h
     altextureboost.h
+    alsculptcopy.h
     alassetblocklist.h
     alavataractions.h
     alavatargroups.h
@@ -2802,6 +2803,12 @@ if(AL_BUILD_TESTS)
     UNIT llsechandler_basic.cpp
     LIBRARIES ${test_libs}
     INCLUDES ${llui_headers}
+  )
+  al_add_test_binary(
+    alsculptcopy_test
+    PROJECT ${test_project}
+    SOURCES tests/alsculptcopy_test.cpp
+    LIBRARIES llimage llmath llcommon
   )
   al_add_test_binary(
     llslurl_test
