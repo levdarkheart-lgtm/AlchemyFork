@@ -942,6 +942,9 @@ public:
     bool            isMeshDirty() const { return mDirtyMesh > 0; }
     void            updateMeshData();
     void            updateMeshVisibility();
+    // updateMeshVisibility at the avatar's next idle update, once however many of its attachments' faces
+    // ask before then: a material its body's faces share completes for all of them at once
+    void            dirtyMeshVisibility() { mMeshVisibilityDirty = true; }
     LLViewerTexture*        getBakedTexture(const U8 te);
 
     // Matrix palette cache entry
@@ -983,6 +986,7 @@ private:
     LLViewerJoint*  getViewerJoint(S32 idx);
     S32             mDirtyMesh; // 0 -- not dirty, 1 -- morphed, 2 -- LOD
     bool            mMeshTexturesDirty;
+    bool            mMeshVisibilityDirty = false;
 
     //--------------------------------------------------------------------
     // Destroy invisible mesh

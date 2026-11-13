@@ -13034,23 +13034,18 @@ void LLPipeline::captureMetalWorldPBRBatch(
             }
             if (!base_texture)
             {
-                base_texture = material->mBaseColorTexture.notNull()
-                    ? material->mBaseColorTexture.get()
-                    : LLViewerFetchedTexture::sWhiteImagep.get();
+                base_texture = material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR);
+                base_texture = base_texture ? base_texture : LLViewerFetchedTexture::sWhiteImagep.get();
             }
-            normal_texture =
-                material->mNormalTexture.notNull() &&
-                material->mNormalTexture->getDiscardLevel() <= 4
-                    ? material->mNormalTexture.get()
-                    : LLViewerFetchedTexture::sFlatNormalImagep.get();
-            orm_texture = material->mMetallicRoughnessTexture.notNull()
-                ? material->mMetallicRoughnessTexture.get()
-                : LLViewerFetchedTexture::sWhiteImagep.get();
+            normal_texture = material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_NORMAL);
+            normal_texture = normal_texture && normal_texture->getDiscardLevel() <= 4
+                ? normal_texture : LLViewerFetchedTexture::sFlatNormalImagep.get();
+            orm_texture = material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_METALLIC_ROUGHNESS);
+            orm_texture = orm_texture ? orm_texture : LLViewerFetchedTexture::sWhiteImagep.get();
             if (!emissive_texture)
             {
-                emissive_texture = material->mEmissiveTexture.notNull()
-                    ? material->mEmissiveTexture.get()
-                    : LLViewerFetchedTexture::sWhiteImagep.get();
+                emissive_texture = material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE);
+                emissive_texture = emissive_texture ? emissive_texture : LLViewerFetchedTexture::sWhiteImagep.get();
             }
             for (U32 texture = 0;
                  texture < LLGLTFMaterial::GLTF_TEXTURE_INFO_COUNT;
@@ -14488,9 +14483,8 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
             ? params.mTexture.get() : nullptr;
         if (!texture)
         {
-            texture = material->mBaseColorTexture.notNull()
-                ? material->mBaseColorTexture.get()
-                : LLViewerFetchedTexture::sWhiteImagep.get();
+            texture = material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR);
+            texture = texture ? texture : LLViewerFetchedTexture::sWhiteImagep.get();
         }
         batch.coverageData().textures[slot] = metal_texture(texture);
         batch.coverageData().alpha_cutoffs[slot] =
@@ -26500,7 +26494,7 @@ namespace
         draw.add((U64)material->mDoubleSided);
         if (textured)
         {
-            add_shadow_texture(casters, draw, material->mBaseColorTexture.get());
+            add_shadow_texture(casters, draw, material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR));
             draw.add((U64)material->mAlphaMode).add(material->mAlphaCutoff).add(material->mBaseColor.mV[VALPHA]);
             LLGLTFMaterial::TextureTransform::Pack packed;
             material->mTextureTransform[LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(packed);

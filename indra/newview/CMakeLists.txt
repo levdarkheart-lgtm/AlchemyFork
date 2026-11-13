@@ -133,6 +133,7 @@ if(AL_BUILD_VIEWER)
     aoengine.cpp
     aoset.cpp
     alapplinks.cpp
+    albakeproxies.cpp
     alassetblocklist.cpp
     alavataractions.cpp
     alavatargroups.cpp
@@ -1012,6 +1013,7 @@ if(AL_BUILD_VIEWER)
     aoengine.h
     aoset.h
     alapplinks.h
+    albakeproxies.h
     alassetblocklist.h
     alavataractions.h
     alavatargroups.h
@@ -2572,6 +2574,7 @@ if(AL_BUILD_TESTS)
     SOURCES
       tests/alagentlocationformat_test.cpp
       tests/alapplinks_test.cpp
+      tests/albakeproxies_test.cpp
       tests/alchattimestamp_test.cpp
       tests/alcolorwheelmodel_test.cpp
       tests/alcrashreporter_test.cpp
@@ -2655,6 +2658,7 @@ if(AL_BUILD_TESTS)
     UNIT
       alagentlocationformat.cpp
       alapplinks.cpp
+      albakeproxies.cpp
       alchattimestamp.cpp
       alcolorwheelmodel.cpp
       alcrashreporter.cpp

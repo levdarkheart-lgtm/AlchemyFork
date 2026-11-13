@@ -672,9 +672,9 @@ void LLRenderPass::captureMetalHUDBatch(
     {
         LLFetchedGLTFMaterial* material = params.mGLTFMaterial.get();
         LLViewerTexture* base_color = params.mTexture.notNull()
-            ? params.mTexture.get() : material->mBaseColorTexture.get();
+            ? params.mTexture.get() : material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR);
         LLViewerTexture* emissive = params.mTexture.notNull()
-            ? params.mTexture.get() : material->mEmissiveTexture.get();
+            ? params.mTexture.get() : material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE);
         if (!base_color)
         {
             base_color = LLViewerFetchedTexture::sWhiteImagep.get();
