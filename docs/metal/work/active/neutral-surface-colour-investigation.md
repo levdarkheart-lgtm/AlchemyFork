@@ -187,3 +187,26 @@ black/zeroSH and can block retries atface5. This actual-runtime path takes
 priority over the small intentional sky-ray effect. Physical source→array and
 state-transition controls now underway; no owner tint closure inferred yet.
 Owner has confirmed Kloppenheim06pureSky4k filename for both screenshots.
+
+
+## Concrete local repair ready for comparison
+
+PPD086 is now locally repaired, with signed Sky68980/sourceb81a4645e0 and actual
+production GPU tests proving publication, SH pixel contribution and retry. This
+is a real port defect present in owner-session logs, introduced by2066d5c507c
+on2026-11-11 before today's sky work; it is not an unavoidable API colour drift.
+Without completedHDRprobes the scene used bootstrap/EEPambient instead of loaded
+HDRI environment light. That plausibly explains darker/warmer materials; a fresh
+owner pair is still required to measure how much of083 is resolved.
+
+New physical3903assertions/3cases and related4504/6 pass, wholebuild/ARM64/
+signature/embeddedsource/ownedimports/strictsource pass. Owner filenameconfirmed
+Kloppenheim06pureSky4k SHA0afc1fb008d04094d6a4f65906ea89c5743f4168faab73aee71dd2fbd4a9eb3b.
+Exact app nowSky26.4.0.68980/SHA8118f71cf6af9216a3f7c8532f4e9b22239d3e1ab38ca4a08cc847d86a6db779;
+leaveclosed while owneraway. No shippedbrightness/default changes or arbitrary
+channel-gain fit. Existing sphere-vs-skirt model was a counterfactual and cannot
+explain old native samples if realHDRprobepublication nevercompleted.
+
+Next: same Daylight/Lev1233/agreedLook/EXR-3/split.5 fresh image and actual live
+publication receipt. PPD083notclosed;080/081appearanceresolutionnotassumed;
+086/087ready_for_owner,088asynchronousSHerrorseparateopen. No push.
