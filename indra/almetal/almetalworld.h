@@ -25,6 +25,14 @@
 
 struct ALMetalWorldModernSkyScene;
 
+// Ordinary probe scratch/filter output and manager publication must agree on
+// storage: the publication blit copies bytes and does not convert formats.
+inline constexpr ALMetalPixelFormat alMetalReflectionProbeRadianceFormat(bool hdr) noexcept
+{
+    return hdr ? ALMetalPixelFormat::rgba16_float
+               : ALMetalPixelFormat::rgba8_unorm;
+}
+
 struct ALMetalWorldMaterialSlot
 {
     const ALMetalTexture* normal_texture = nullptr;

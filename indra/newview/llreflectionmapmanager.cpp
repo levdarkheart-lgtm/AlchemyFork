@@ -378,9 +378,7 @@ bool LLReflectionMapManager::reconcileMetalProbeArray()
 
         ALMetalTextureDescriptor radiance_descriptor;
         radiance_descriptor.type = ALMetalTextureType::texture_cube_array;
-        radiance_descriptor.format = mHDR
-            ? ALMetalPixelFormat::rgba16_float
-            : ALMetalPixelFormat::rgba8_unorm;
+        radiance_descriptor.format = alMetalReflectionProbeRadianceFormat(mHDR);
         radiance_descriptor.width = mProbeResolution;
         radiance_descriptor.height = mProbeResolution;
         radiance_descriptor.mipmap_level_count = mip_count;
@@ -848,9 +846,7 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
     {
         return false;
     }
-    const ALMetalPixelFormat format = mHDR
-        ? ALMetalPixelFormat::rgba16_float
-        : ALMetalPixelFormat::rgba8_unorm;
+    const ALMetalPixelFormat format = alMetalReflectionProbeRadianceFormat(mHDR);
     const U32 mip_count =
         static_cast<U32>(std::lround(mMaxProbeLOD)) + 1u;
     const ALMetalTextureDescriptor* current = mirror.mPublishedRadiance
@@ -2552,9 +2548,7 @@ void LLReflectionMapManager::initReflectionMaps()
         const U32 cube_count = mReflectionProbeCount + 2;
         const U32 mip_count = llfinite(mMaxProbeLOD) && mMaxProbeLOD >= 0.f
             ? static_cast<U32>(std::lround(mMaxProbeLOD)) + 1u : 0u;
-        const ALMetalPixelFormat format = mHDR
-            ? ALMetalPixelFormat::rgba16_float
-            : ALMetalPixelFormat::rgba8_unorm;
+        const ALMetalPixelFormat format = alMetalReflectionProbeRadianceFormat(mHDR);
         const auto radiance_matches = [&](const ALMetalTexture* texture,
                                           ALMetalTextureType type,
                                           U32 count)
