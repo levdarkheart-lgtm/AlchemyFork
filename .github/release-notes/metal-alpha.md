@@ -8,8 +8,10 @@ private Alchemy registry components are included.
 This update includes native parcel music through Core Audio and AVFoundation,
 with song metadata, playlist/reconnect handling, and preserved WebRTC voice and
 video ownership. Renderer preparation happens during login to avoid the reported
-black startup world. The accepted OpenHTJ2K texture decoder is rebuilt from its
-pinned open-source revision instead of falling back to another decoder.
+black startup world. It also includes the owner-verified fix for water bands
+that appeared when turning the camera. The accepted OpenHTJ2K texture decoder
+is rebuilt from its pinned open-source revision instead of falling back to
+another decoder.
 
 It also retains prior native RLVa/developer controls, snapshot/SMAA/water fixes,
 avatar preview generation repairs and media pixel-layout corrections.

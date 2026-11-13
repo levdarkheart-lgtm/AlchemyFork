@@ -640,7 +640,7 @@ offset, disabled quality feature or changed depth admission.
 - Discovered: 2026-11-12
 - Original reference:81bff208a7 `.github/workflows/metal-harness.yml`, `build.yaml` and `tag-release.yaml`; default-branch inherited schedules remain active unless disabled.
 - Evidence: [Workflow failure investigation and manual release ledger](work/active/manual-release-actions.md).
-- Next action: Finish and validate a manual-only native ARM64 release workflow, preserve accepted dependencies, dispatch the corrected current branch and follow the run through verified release assets.
+- Next action: Dispatch the source-identity correction from the current approved branch with three CPUs and cached dependencies; verify the precompile header gate and follow through published release assets.
 - Verification: Linked push run43306501400 fails10of76tests because NumPy is absent. Earlier tag42930335974 enters the incompatible Windows/Linux matrix. Two other prior runs were rejected before startup for account billing/spending gates; successful alpha2/3 prove xcode-27 was usable. Seven automatic workflow IDs are now disabled, but no corrected release run has succeeded yet.
 - Owner verification: pending
 - Push approval: granted
@@ -669,6 +669,22 @@ not raising spending limits or changing billing/repository permissions.
   Add NumPy to that cached environment; actual pip-free imports and108tests pass.
   Repair bfaaa21cda pushed; new manual run43314101072 targets its exact SHA.
   Follow this run through packaging and release assets; no success claim yet.
+
+- 2026-11-13: Run43314101072 compiles and packages successfully;346ARM64
+  slices and strict signature verification pass. Publication is correctly
+  stopped by missing embedded source SHA. Actual minimal CMake reproduction
+  proves BuildVersion.cmake skips source-hash discovery whenever revision or
+  GITHUB_RUN_ID supplies the numeric version. Local cached builds hid this
+  because AL_GIT_REVISION_COMMIT already existed. Separate source identity from
+  numeric version selection and add a generated-header gate before compilation.
+  No tag/release was published. Dependency binary cache saved successfully.
+
+
+- 2026-11-13: Source SHA discovery now runs independently of numeric version
+  overrides and clears stale cached identity on Git failure. Eight real-CMake
+  cases and116tool tests pass; actual workflow guard rejects empty/wrong identity
+  and passes against the corrected production header before compilation. Retry
+  current approved branch including water3e17d4e; earlier attempt published nothing.
 
 
 ## PPD-015 — Water grazing-angle steepness uses eye-space vertical

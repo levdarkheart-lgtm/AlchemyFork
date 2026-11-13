@@ -170,6 +170,27 @@ jobs:
             -DAL_OPENHTJ2K_LIBRARY="$RUNNER_TEMP/openhtj2k/build/libopenhtj2k.a" \
             -DAL_OPENHTJ2K_BUILD_RECEIPT="$RUNNER_TEMP/openhtj2k/build-receipt.json"
 
+      - name: Verify configured source identity before compilation
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.identity.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PYCODE'
+          import os
+          from pathlib import Path
+          header = Path('build-Darwin-ninja-os-arm64/newview/llversioninfovars.h')
+          lines = header.read_text().splitlines()
+          expected = {
+              'LL_VIEWER_SOURCE_REVISION': '"' + os.environ['SOURCE_SHA'] + '"',
+              'LL_VIEWER_VERSION_BUILD': os.environ['revision'],
+          }
+          for macro, value in expected.items():
+              if f'#define {macro} {value}' not in lines:
+                  raise SystemExit(f'::error::{header}: {macro} does not match the requested release')
+          print('Verified configured source SHA and build revision before compilation')
+          PYCODE
+
       - name: Save dependency binaries for the next manual build
         if: ${{ !cancelled() && steps.configure.outcome == 'success' && steps.cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
