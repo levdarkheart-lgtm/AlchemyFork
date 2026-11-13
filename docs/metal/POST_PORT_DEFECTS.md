@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-090 -->
+<!-- next-defect-id: PPD-091 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -2638,3 +2638,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-13: Registered immediately after the single declared 3,600-sample comparison. Overall predeclared mechanism gate passes, while the adverse result remains open and explicit. Native correctness passes25cases/53,601assertions; no viewer launch, owner acceptance or performance waiver. Experiment stops for owner assessment before goal two.
+
+## PPD-090 — G1 terminates shortly after busy-scene arrival
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex experiment crash integration
+- Discovered: 2026-11-13
+- Original reference: Native baseline `18e576cec0a05923632188ec8d7b2224657ffbfa` retains the Alpha6 image worker/codec path. Inspected upstream `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` image job and WorkQueue223–244 preserve processRequest/finishRequest and forward unexpected exceptions to mainloop; ordinary codec failures follow the existing failed-image result. New shadow records have not been established as the cause.
+- Evidence: [Owner report, existing log evidence and investigation](work/active/g1-arrival-crash.md).
+- Next action: Build/verify the diagnostic-only G1 candidate and request one owner arrival retry to capture original request stage/type/message. Then reproduce that actual failure and repair it; no blanket exception suppression, agent relaunch, goal two or push.
+- Verification: IPS proves exact G1/68987/e21 binary UUID and SIGABRT19:59:23.5246 after ImageDecode exception forwarding to mainloop. Original throw/type/input absent. Diagnostic worker tests and five image CTest entries pass0;240selected current-cache primary requests on six actual workers succeed with no escaped exception (not a live-crash reproduction). No crash fix established; owner runtime acceptance remains failed.
+- Owner verification: failed
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before repair. The delivered G1 runtime assessment fails despite prior headless correctness/timing passes. Investigating existing artifacts and source without launching the viewer; shadow-record attribution remains unproved.
+- 2026-11-13: Preserved delayed IPS/logs privately, matched exact G1 UUID/hash and symbolicated mainloop rethrow. Decode sources/archive match Alpha6; no original throw identified. Bounded read-only cache selection passes240/240real worker requests. Added stage/type/message diagnostics preserving original propagation, with std/nonstd/responder regression checks; narrow build/5CTest entries and doctor pass. This improves the missing evidence and is not a crash repair; diagnostic app packaging pending.

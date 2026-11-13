@@ -1,5 +1,11 @@
 # Goal one result — reusable native attachment poses
 
+**Runtime update, 2026-11-13:** owner reports G1 died shortly after busy-club
+arrival. Runtime acceptance has failed. [PPD-090 investigation](../work/active/g1-arrival-crash.md)
+tracks the ImageDecode exception/rethrow in the existing log; underlying cause
+and relationship to shadow records remain unknown. Headless results below are
+retained as historical evidence. Goal two remains stopped.
+
 **Engineering milestone complete; headless mechanism gate passed. Owner viewer
 assessment pending. Goal two has not started.** This result supports the pose
 ownership seam; it does not establish better in-world frame time or validate

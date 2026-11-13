@@ -1,6 +1,8 @@
 # Goal one — immutable native shadow pose records
 
-Status: complete engineering milestone; ready for owner assessment. Branch: `codex/apple-shadow-records-g1`. Baseline:
+Status: headless engineering milestone complete; owner runtime assessment failed,
+[PPD-090 under investigation](g1-arrival-crash.md). Goal two stopped.
+Branch: `codex/apple-shadow-records-g1`. Baseline:
 `18e576cec0a05923632188ec8d7b2224657ffbfa` (accepted Alpha6 renderer retained).
 Worktree: `/private/tmp/alchemy-apple-shadow-records-g1`.
 

@@ -76,10 +76,15 @@ if(AL_BUILD_TESTS)
   if(AL_EXPERIMENTAL_OPENHTJ2K)
     list(APPEND al_j2c_experiment_tests tests/alopenhtj2k_test.cpp)
   endif()
+  set(al_j2c_crash_repro "")
+  if(AL_EXPERIMENTAL_OPENHTJ2K)
+    list(APPEND al_j2c_crash_repro tests/alg1decode_corpus_test.cpp)
+  endif()
   al_add_test_binary(
     llimage_tests
     PROJECT llimage
     SOURCES tests/llimage_test.cpp tests/alj2clayout_test.cpp tests/alimagedecodescheduler_test.cpp ${al_j2c_experiment_tests}
+    BENCH_SOURCES ${al_j2c_crash_repro}
     LIBRARIES llimage ll::openjpeg
   )
 endif()

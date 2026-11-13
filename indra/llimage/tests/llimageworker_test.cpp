@@ -33,6 +33,7 @@
 #include "../llcommon/lltimer.h"
 // for lltrace class
 #include "../llcommon/lltrace.h"
+#include "../llcommon/llerrorcontrol.h"
 #include "threadpool.h"
 // Catch2 header
 #include <catch2/catch_test_macros.hpp>
@@ -45,6 +46,7 @@
 #include <mutex>
 #include <set>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 // -------------------------------------------------------------------------------------------
@@ -82,6 +84,7 @@ LLImageFormatted::LLImageFormatted(S8 codec)
 {
 }
 LLImageFormatted::~LLImageFormatted(){}
+S8 LLImageFormatted::getCodec() const { return mCodec; }
 void LLImageFormatted::dump() { }
 void LLImageFormatted::sanityCheck() { }
 void LLImageFormatted::deleteData() { }
@@ -111,6 +114,53 @@ const std::string& LLImage::getLastThreadError() { static std::string msg; retur
 
 namespace
 {
+    // Observe diagnostics emitted by the real queued request, not a copy of
+    // its exception formatting. The recorder can be called by either worker.
+    class decode_exception_log
+    {
+        struct messages
+        {
+            std::mutex mutex;
+            std::vector<std::string> entries;
+        };
+
+    public:
+        explicit decode_exception_log(bool throw_on_diagnostic = false)
+            : mSettings(LLError::saveAndResetSettings()),
+              mMessages(std::make_shared<messages>())
+        {
+            LLError::setDefaultLevel(LLError::LEVEL_WARN);
+            mRecorder = LLError::addGenericRecorder(
+                [state = mMessages, throw_on_diagnostic](LLError::ELevel, const std::string& message)
+                {
+                    if (message.find("Unexpected image request exception:") ==
+                        std::string::npos)
+                        return;
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    state->entries.push_back(message);
+                    if (throw_on_diagnostic)
+                        throw std::logic_error("controlled diagnostic recorder failure");
+                });
+        }
+
+        ~decode_exception_log()
+        {
+            LLError::removeRecorder(mRecorder);
+            LLError::restoreSettings(mSettings);
+        }
+
+        std::vector<std::string> copy() const
+        {
+            std::lock_guard<std::mutex> lock(mMessages->mutex);
+            return mMessages->entries;
+        }
+
+    private:
+        LLError::SettingsStoragePtr mSettings;
+        std::shared_ptr<messages> mMessages;
+        LLError::RecorderPtr mRecorder;
+    };
+
     // Test wrapper declarations
 
     // Note: We derive the responder class for 2 reasons:
@@ -233,6 +283,35 @@ namespace
         }
         bool decode(LLImageRaw*, F32) override { return false; }
         bool encode(const LLImageRaw*, F32) override { return false; }
+    };
+
+    struct nonstandard_decode_exception
+    {
+        int payload;
+    };
+
+    class nonstandard_throwing_image final : public LLImageFormatted
+    {
+    public:
+        nonstandard_throwing_image() : LLImageFormatted(IMG_CODEC_J2C) {}
+        std::string getExtension() override { return "nonstandard_throwing"; }
+        bool updateData() override { throw nonstandard_decode_exception{73}; }
+        bool decode(LLImageRaw*, F32) override { return false; }
+        bool encode(const LLImageRaw*, F32) override { return false; }
+    };
+
+    class throwing_responder final : public LLImageDecodeThread::Responder
+    {
+    public:
+        explicit throwing_responder(std::shared_ptr<std::atomic<unsigned>> called)
+            : mCalled(std::move(called)) {}
+        void completed(bool, const std::string&, LLImageRaw*, LLImageRaw*, U32) override
+        {
+            ++*mCalled;
+            throw std::runtime_error("controlled responder failure");
+        }
+    private:
+        std::shared_ptr<std::atomic<unsigned>> mCalled;
     };
 
     struct completion_state
@@ -545,6 +624,7 @@ namespace
         "LLImageDecodeThread: codec exceptions preserve WorkQueue propagation and release admission",
         "[LLImageDecodeThread]")
     {
+        decode_exception_log diagnostics;
         REQUIRE_FALSE(LL::WorkQueue::getInstance("mainloop"));
         LL::WorkQueue mainloop("mainloop", 1024, false);
         mThread = new LLImageDecodeThread(true, limits(2, 2), false);
@@ -561,8 +641,23 @@ namespace
         // WorkQueue path forwards it to the main loop rather than calling
         // the responder with a failure that could evict a valid cache entry.
         check_failed_once(completed, {next});
+        const auto messages = diagnostics.copy();
+        REQUIRE(messages.size() == 1);
+        CHECK(messages[0].find("request=" + std::to_string(failed) + ",") != std::string::npos);
+        CHECK(messages[0].find("stage=metadata") != std::string::npos);
+        CHECK(messages[0].find("codec=2") != std::string::npos);
+        CHECK(messages[0].find("type=std::runtime_error") != std::string::npos);
+        CHECK(messages[0].find("what=controlled decode failure") != std::string::npos);
         REQUIRE(mainloop.size() == 1);
-        CHECK_THROWS_AS(mainloop.runOne(), std::runtime_error);
+        try
+        {
+            mainloop.runOne();
+            FAIL("The original codec exception must reach mainloop");
+        }
+        catch (const std::runtime_error& error)
+        {
+            CHECK(std::string(error.what()) == "controlled decode failure");
+        }
         CHECK(mainloop.size() == 0);
         const auto stats = mThread->getDecodeStats();
         CHECK(mThread->getPending() == 0);
@@ -571,6 +666,126 @@ namespace
         CHECK(stats.completed == 2);
         CHECK(stats.decode_wall.count == 1);
         CHECK(stats.service_wall.count == 2);
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: a diagnostic recorder failure preserves the original exception",
+        "[LLImageDecodeThread]")
+    {
+        decode_exception_log diagnostics(true);
+        REQUIRE_FALSE(LL::WorkQueue::getInstance("mainloop"));
+        LL::WorkQueue mainloop("mainloop", 1024, false);
+        mThread = new LLImageDecodeThread(true, limits(2, 2), false);
+        const auto completed = std::make_shared<completion_state>();
+        LLPointer<LLImageFormatted> image = new throwing_image;
+        const auto failed = mThread->decodeImage(image, 0, false,
+                                                new counting_responder(completed));
+        REQUIRE(failed != 0);
+        mThread->shutdown();
+        CHECK(completed->copy().empty());
+        const auto messages = diagnostics.copy();
+        REQUIRE(messages.size() == 1);
+        CHECK(messages[0].find("request=" + std::to_string(failed) + ",") != std::string::npos);
+        REQUIRE(mainloop.size() == 1);
+        try
+        {
+            mainloop.runOne();
+            FAIL("A failed diagnostic must not replace the original codec exception");
+        }
+        catch (const std::runtime_error& error)
+        {
+            CHECK(std::string(error.what()) == "controlled decode failure");
+        }
+        CHECK(mainloop.size() == 0);
+        const auto stats = mThread->getDecodeStats();
+        CHECK(mThread->getPending() == 0);
+        CHECK(stats.active == 0);
+        CHECK(stats.waiting == 0);
+        CHECK(stats.completed == 1);
+        CHECK(stats.decode_wall.count == 0);
+        CHECK(stats.service_wall.count == 1);
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: nonstandard exceptions retain their type stage and payload",
+        "[LLImageDecodeThread]")
+    {
+        decode_exception_log diagnostics;
+        REQUIRE_FALSE(LL::WorkQueue::getInstance("mainloop"));
+        LL::WorkQueue mainloop("mainloop", 1024, false);
+        mThread = new LLImageDecodeThread(true, limits(2, 2), false);
+        const auto completed = std::make_shared<completion_state>();
+        LLPointer<LLImageFormatted> image = new nonstandard_throwing_image;
+        const auto failed = mThread->decodeImage(image, 0, false,
+                                                new counting_responder(completed));
+        REQUIRE(failed != 0);
+        mThread->shutdown();
+        CHECK(completed->copy().empty());
+        const auto messages = diagnostics.copy();
+        REQUIRE(messages.size() == 1);
+        CHECK(messages[0].find("request=" + std::to_string(failed) + ",") != std::string::npos);
+        CHECK(messages[0].find("stage=metadata") != std::string::npos);
+        CHECK(messages[0].find("type=") != std::string::npos);
+        CHECK(messages[0].find("nonstandard_decode_exception") != std::string::npos);
+        REQUIRE(mainloop.size() == 1);
+        try
+        {
+            mainloop.runOne();
+            FAIL("The original nonstandard exception must reach mainloop");
+        }
+        catch (const nonstandard_decode_exception& error)
+        {
+            CHECK(error.payload == 73);
+        }
+        CHECK(mainloop.size() == 0);
+        const auto stats = mThread->getDecodeStats();
+        CHECK(mThread->getPending() == 0);
+        CHECK(stats.active == 0);
+        CHECK(stats.waiting == 0);
+        CHECK(stats.completed == 1);
+        CHECK(stats.decode_wall.count == 0);
+        CHECK(stats.service_wall.count == 1);
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: responder exceptions are diagnosed once without retry or conversion",
+        "[LLImageDecodeThread]")
+    {
+        decode_exception_log diagnostics;
+        REQUIRE_FALSE(LL::WorkQueue::getInstance("mainloop"));
+        LL::WorkQueue mainloop("mainloop", 1024, false);
+        mThread = new LLImageDecodeThread(true, limits(2, 2), false);
+        const auto called = std::make_shared<std::atomic<unsigned>>(0);
+        const auto failed = mThread->decodeImage(nullptr, 0, false,
+                                                new throwing_responder(called));
+        REQUIRE(failed != 0);
+        mThread->shutdown();
+        CHECK(called->load() == 1);
+        const auto messages = diagnostics.copy();
+        REQUIRE(messages.size() == 1);
+        CHECK(messages[0].find("request=" + std::to_string(failed) + ",") != std::string::npos);
+        CHECK(messages[0].find("stage=responder") != std::string::npos);
+        CHECK(messages[0].find("type=std::runtime_error") != std::string::npos);
+        CHECK(messages[0].find("what=controlled responder failure") != std::string::npos);
+        REQUIRE(mainloop.size() == 1);
+        try
+        {
+            mainloop.runOne();
+            FAIL("The original responder exception must reach mainloop");
+        }
+        catch (const std::runtime_error& error)
+        {
+            CHECK(std::string(error.what()) == "controlled responder failure");
+        }
+        CHECK(called->load() == 1);
+        CHECK(mainloop.size() == 0);
+        const auto stats = mThread->getDecodeStats();
+        CHECK(mThread->getPending() == 0);
+        CHECK(stats.active == 0);
+        CHECK(stats.waiting == 0);
+        CHECK(stats.completed == 1);
+        CHECK(stats.decode_wall.count == 1);
+        CHECK(stats.service_wall.count == 1);
     }
 
     TEST_CASE_METHOD(imagedecodethread_test,

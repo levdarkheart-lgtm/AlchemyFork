@@ -34,6 +34,7 @@
 #endif
 
 #include <chrono>
+#include <cxxabi.h>
 #include <thread>
 
 /*--------------------------------------------------------------------------*/
@@ -49,6 +50,8 @@ public:
 
     /*virtual*/ bool processRequest();
     /*virtual*/ void finishRequest(bool completed);
+    void setStage(const char* stage) noexcept { mStage = stage; }
+    void logUnexpectedException(const char* type, const char* message) const noexcept;
 
 private:
     // LLPointers stored in ImageRequest MUST be LLPointer instances rather
@@ -64,7 +67,15 @@ private:
     bool mDecodedRaw;
     bool mDecodedAux;
     LLPointer<LLImageDecodeThread::Responder> mResponder;
-    std::string mErrorString;};
+    std::string mErrorString;
+    // Saved under the image lock, never rediscovered while handling a throw.
+    const char* mStage = "queued";
+    S32 mInputCodec = -1;
+    S32 mInputBytes = 0;
+    S32 mInputWidth = 0;
+    S32 mInputHeight = 0;
+    S32 mInputComponents = 0;
+};
 
 
 //----------------------------------------------------------------------------
@@ -196,18 +207,35 @@ LLImageDecodeThread::handle_t LLImageDecodeThread::decodeImage(
             [req = ImageRequest(image, discard, needs_aux, responder, decode_id), scheduler, ticket]
             () mutable
             {
-                auto permit = scheduler->acquire(ticket);
-                if (!permit)
+                try
                 {
-                    req.finishRequest(false);
-                    return;
+                    req.setStage("admission");
+                    auto permit = scheduler->acquire(ticket);
+                    if (!permit)
+                    {
+                        req.finishRequest(false);
+                        return;
+                    }
+                    // Keep unexpected failures on the existing WorkQueue
+                    // propagation path. Record the phase before unwinding
+                    // erases the worker's useful context (PPD-090).
+                    const auto done = req.processRequest();
+                    req.setStage("completion-accounting");
+                    permit.decoded();
+                    req.finishRequest(done);
                 }
-                // Preserve the existing decoder/error path: unexpected
-                // exceptions propagate through WorkQueue. RAII still releases
-                // admission without misclassifying them as corrupt textures.
-                const auto done = req.processRequest();
-                permit.decoded();
-                req.finishRequest(done);
+                catch (const std::exception& error)
+                {
+                    req.logUnexpectedException(typeid(error).name(), error.what());
+                    throw;
+                }
+                catch (...)
+                {
+                    const auto* type = abi::__cxa_current_exception_type();
+                    req.logUnexpectedException(type ? type->name() : "unknown",
+                                               "non-standard exception");
+                    throw;
+                }
             });
     }
     catch (...)
@@ -261,6 +289,28 @@ ImageRequest::~ImageRequest()
     mFormattedImage = NULL;
 }
 
+void ImageRequest::logUnexpectedException(
+    const char* type, const char* message) const noexcept
+{
+    // Diagnostics must neither replace the original exception nor call back
+    // into image/codec code after a failed lock, allocation or responder.
+    try
+    {
+        LL_WARNS("ImageDecode") << "Unexpected image request exception: request="
+            << mRequestId << ", stage=" << mStage << ", codec=" << mInputCodec
+            << ", bytes=" << mInputBytes << ", width=" << mInputWidth
+            << ", height=" << mInputHeight << ", components=" << mInputComponents
+            << ", discard=" << mDiscardLevel << ", aux=" << mNeedsAux
+            << ", type=" << LLError::Log::demangle(type)
+            << ", what=" << (message ? message : "(null)") << LL_ENDL;
+    }
+    catch (...)
+    {
+        // In particular, an allocation failure while logging must leave the
+        // pending exception and WorkQueue's fatal/error policy untouched.
+    }
+}
+
 //----------------------------------------------------------------------------
 
 
@@ -275,9 +325,17 @@ bool ImageRequest::processRequest()
     const F32 decode_time_slice = 0.f; //disable time slicing
     bool done = true;
 
+    mStage = "formatted-lock";
     LLImageDataLock lockFormatted(mFormattedImage);
+    mStage = "raw-lock";
     LLImageDataLock lockDecodedRaw(mDecodedImageRaw);
+    mStage = "aux-lock";
     LLImageDataLock lockDecodedAux(mDecodedImageAux);
+    mInputCodec = mFormattedImage->getCodec();
+    mInputBytes = mFormattedImage->getDataSize();
+    mInputWidth = mFormattedImage->getWidth();
+    mInputHeight = mFormattedImage->getHeight();
+    mInputComponents = mFormattedImage->getComponents();
 
     if (!mDecodedRaw)
     {
@@ -285,6 +343,7 @@ bool ImageRequest::processRequest()
         if (mDecodedImageRaw.isNull())
         {
             // parse formatted header
+            mStage = "metadata";
             if (!mFormattedImage->updateData())
             {
                 return true; // done (failed)
@@ -295,17 +354,24 @@ bool ImageRequest::processRequest()
             }
             if (mDiscardLevel >= 0)
             {
+                mStage = "discard-selection";
                 mFormattedImage->setDiscardLevel(mDiscardLevel);
             }
+            mInputWidth = mFormattedImage->getWidth();
+            mInputHeight = mFormattedImage->getHeight();
+            mInputComponents = mFormattedImage->getComponents();
+            mStage = "primary-allocation";
             mDecodedImageRaw = new LLImageRaw(mFormattedImage->getWidth(),
                                               mFormattedImage->getHeight(),
                                               mFormattedImage->getComponents());
         }
+        mStage = "primary-decode";
         done = mFormattedImage->decode(mDecodedImageRaw, decode_time_slice);
         // some decoders are removing data when task is complete and there were errors
         mDecodedRaw = done && mDecodedImageRaw->getData();
 
         // Pick up errors from decoding
+        mStage = "primary-error-copy";
         mErrorString = LLImage::getLastThreadError();
     }
     if (done && mNeedsAux && !mDecodedAux && mFormattedImage.notNull())
@@ -313,14 +379,17 @@ bool ImageRequest::processRequest()
         // Decode aux channel
         if (!mDecodedImageAux)
         {
+            mStage = "aux-allocation";
             mDecodedImageAux = new LLImageRaw(mFormattedImage->getWidth(),
                                               mFormattedImage->getHeight(),
                                               1);
         }
+        mStage = "aux-decode";
         done = mFormattedImage->decodeChannels(mDecodedImageAux, decode_time_slice, 4, 4);
         mDecodedAux = done && mDecodedImageAux->getData();
 
         // Pick up errors from decoding
+        mStage = "aux-error-copy";
         mErrorString = LLImage::getLastThreadError();
     }
 
@@ -332,6 +401,7 @@ void ImageRequest::finishRequest(bool completed)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     if (mResponder.notNull())
     {
+        mStage = "responder";
         bool success = completed && mDecodedRaw && (!mNeedsAux || mDecodedAux);
         mResponder->completed(success, mErrorString, mDecodedImageRaw, mDecodedImageAux, mRequestId);
     }
