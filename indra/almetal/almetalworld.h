@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+struct ALMetalWorldModernSkyScene;
+
 struct ALMetalWorldMaterialSlot
 {
     const ALMetalTexture* normal_texture = nullptr;
@@ -947,6 +949,8 @@ struct alignas(16) ALMetalWorldVisibilityQuery
 
 struct ALMetalWorldGBufferScene
 {
+    // Selected star attachment is black before opaque geometry; -1 keeps ordinary clear.
+    std::int32_t sky_star_attachment = -1;
     const ALMetalWorldSimpleBatch* batches = nullptr;
     std::size_t batch_count = 0;
     const ALMetalWorldVisibilityQuery* visibility_queries = nullptr;
@@ -1343,6 +1347,9 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldWaterSurface* water_surface = nullptr;
     const ALMetalWorldAtmosphericHaze* atmospheric_haze = nullptr;
     const ALMetalTexture* sky_behind = nullptr;
+    const ALMetalWorldModernSkyScene* modern_sky = nullptr;
+    // HDR metering reads the completed water depth even with waves/SSR off.
+    bool exposure_depth = false;
     const ALMetalWorldAlphaEnvironment* alpha_environment = nullptr;
     const ALMetalWorldLegacyAlphaLighting* alpha_lighting = nullptr;
     const ALMetalWorldDirectionalShadows* alpha_directional_shadows =
@@ -1779,6 +1786,10 @@ struct ALMetalWorldExposureScene
     std::unique_ptr<ALMetalRenderTarget>* meter_output = nullptr;
     const ALMetalRenderTarget* source = nullptr;
     const ALMetalTexture* normal = nullptr;
+    // Final post-water depth; original G-buffer normals retain water provenance.
+    const ALMetalTexture* depth = nullptr;
+    const ALMetalRenderTarget* water_stencil = nullptr;
+    bool reverse_z = false;
     const ALMetalTexture* previous = nullptr;
     float delta_seconds = 0.f;
     float compensation = 0.f;
@@ -2082,6 +2093,61 @@ struct ALMetalWorldCloudScene
     bool hdr = false;
     bool reverse_z = false;
     bool wireframe = false;
+};
+
+// Final sky: immutable per-view inputs; no dome or body mesh is consumed.
+struct ALMetalWorldModernSkyStarDraw
+{
+    std::uint32_t first = 0, count = 0;
+    bool quads = false;
+};
+struct ALMetalWorldModernSkyStars
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalWorldModernSkyStarDraw* draws = nullptr;
+    std::size_t draw_count = 0;
+    float modelview_projection[16]{};
+    const ALMetalTexture* moon_texture = nullptr;
+    float star_alpha = 0.f, time = 0.f, moon_brightness = 0.f;
+    float moon_direction[4]{}, moon_quad_center[4]{}, moon_quad_u[4]{}, moon_quad_v[4]{};
+    std::uint32_t width = 0, height = 0;
+    bool emissive = true, hdr = false, reverse_z = false;
+};
+struct alignas(16) ALMetalWorldModernSkyConstants
+{
+    float inverse_projection[16]{}, eye_to_sky[3][4]{};
+    // camera_local.w is the sphere radius, not a homogeneous coordinate.
+    ALMetalWorldWindLightSkyConstants dome;
+    ALMetalWorldCloudConstants clouds;
+    float sun_quad[3][4]{}, moon_quad[3][4]{}, bloom_quad[3][4]{};
+    // Sun blend, moon brightness, moon fade, bloom blend.
+    float body[4]{};
+    float bloom_color[4]{};
+    float hdri_rotation[3][4]{};
+    // HDRI exposure, split fraction, WindLight HDR scale, classic gain.
+    float transfer[4] = {1.f, 1.f, 1.f, 1.f};
+    float aurora[4]{};
+    // Layers, emissive semantics, reverse Z, packed meteor count.
+    std::uint32_t config[4]{};
+};
+struct ALMetalWorldModernSkyScene
+{
+    ALMetalWorldModernSkyConstants constants;
+    const ALMetalTexture* rainbow_texture = nullptr;
+    const ALMetalTexture* halo_texture = nullptr;
+    const ALMetalTexture* hdri_texture = nullptr;
+    const ALMetalTexture* stars_texture = nullptr;
+    const ALMetalTexture* sun_texture = nullptr;
+    const ALMetalTexture* sun_next_texture = nullptr;
+    const ALMetalTexture* moon_texture = nullptr;
+    const ALMetalTexture* bloom_texture = nullptr;
+    const ALMetalTexture* bloom_next_texture = nullptr;
+    const ALMetalTexture* cloud_texture = nullptr;
+    const ALMetalTexture* cloud_next_texture = nullptr;
+    float meteor_data[64 * 3][4]{};
+    std::uint32_t width = 0, height = 0;
 };
 
 struct alignas(16) ALMetalWorldBaseLightingConstants
@@ -2567,6 +2633,18 @@ public:
     // preserved by read-only far-plane depth testing. This does not accept a
     // split HDRI because the complementary WindLight branch is a separate
     // native owner.
+    bool clearModernSkyStars(ALMetalRenderTarget& gbuffer, bool emissive,
+                             std::string* error = nullptr);
+    bool renderModernSkyStars(ALMetalRenderTarget& gbuffer,
+                              const ALMetalWorldModernSkyStars& scene,
+                              std::string* error = nullptr);
+    bool compositeModernSky(ALMetalRenderTarget& lit, const ALMetalTexture& depth,
+                            const ALMetalWorldModernSkyScene& scene,
+                            std::string* error = nullptr);
+    std::unique_ptr<ALMetalTexture> createNeutralModernSkyCube(std::string* error = nullptr);
+    std::unique_ptr<ALMetalTexture> bakeModernSkyCube(
+        const ALMetalWorldModernSkyScene& scene, std::string* error = nullptr);
+
     bool compositeHDRISky(
         ALMetalRenderTarget& target,
         const ALMetalWorldHDRISkyScene& scene,

@@ -943,6 +943,24 @@ struct ALMetalWorldGBufferOutput
     float4 emissive [[color(3)]];
 };
 
+
+// Pinned upstream #584 final ray-sky ABI. Meteor data is a separate <4KiB constant slot.
+struct ALMetalWorldModernSkyConstants
+{
+    float4x4 inverse_projection;
+    float4 eye_to_sky[3];
+    ALMetalWorldWindLightSkyConstants dome;
+    ALMetalWorldCloudConstants clouds;
+    float4 sun_quad[3], moon_quad[3], bloom_quad[3];
+    float4 body, bloom_color;
+    float4 hdri_rotation[3];
+    float4 transfer, aurora;
+    uint4 config;
+};
+static float3 almetal_modern_sky_dome(float3 dir,
+    constant ALMetalWorldWindLightSkyConstants& dome,
+    texture2d<float> rainbow_map, texture2d<float> halo_map, sampler optics_sampler);
+
 struct ALMetalWorldHDRISkyVaryings
 {
     float4 position [[position]];
@@ -4534,6 +4552,9 @@ fragment float4 almetal_world_atmospheric_haze_fragment(
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(1)]],
     texture2d<float> depth_texture [[texture(33)]],
     texture2d<float> sky_behind_map [[texture(34)]],
+    constant ALMetalWorldModernSkyConstants& modern_sky [[buffer(2)]],
+    texture2d<float> rainbow_map [[texture(35)]],
+    texture2d<float> halo_map [[texture(36)]],
     sampler point_sampler [[sampler(1)]],
     sampler sky_sampler [[sampler(2)]])
 {
@@ -4562,11 +4583,20 @@ fragment float4 almetal_world_atmospheric_haze_fragment(
     if (constants.config.y != 0u)
     {
         attenuation *= 1.0 - constants.parameters.x;
-        const float3 sky = sky_behind_map.sample(
-            sky_sampler, input.texcoord).rgb * 0.5;
         const float3 convergence = 1.0 - attenuation;
-        additive = mix(
-            additive, sky * convergence, convergence);
+        if (constants.config.z == 0u || max(convergence.r, max(convergence.g, convergence.b)) >= 1.0 / 256.0)
+        {
+            float3 sky;
+            if (constants.config.z != 0u)
+            {
+                const float3x3 eye_to_sky = float3x3(modern_sky.eye_to_sky[0].xyz,
+                    modern_sky.eye_to_sky[1].xyz, modern_sky.eye_to_sky[2].xyz);
+                sky = almetal_modern_sky_dome(eye_to_sky * normalize(position.xyz),
+                    modern_sky.dome, rainbow_map, halo_map, sky_sampler) * 0.5;
+            }
+            else sky = sky_behind_map.sample(sky_sampler, input.texcoord).rgb * 0.5;
+            additive = mix(additive, sky * convergence, convergence);
+        }
     }
 
     const float3 color = almetal_srgb_to_linear(additive * 2.0) *
@@ -13422,6 +13452,7 @@ struct ALMetalWorldExposureMeterConstants
 {
     // xy = source texels per meter patch, zw = taps per patch axis.
     float4 patch;
+    uint4 config; // depth classification, reverse Z
 };
 
 struct ALMetalWorldExposureConstants
@@ -13453,6 +13484,8 @@ kernel void almetal_world_exposure_meter(
     texture2d<float> scene [[texture(0)]],
     texture2d<float> normal_map [[texture(1)]],
     texture2d<float, access::write> meter [[texture(2)]],
+    texture2d<float> completed_depth [[texture(3)]],
+    texture2d<float> water_map [[texture(4)]],
     sampler scene_sampler [[sampler(0)]],
     constant ALMetalWorldExposureMeterConstants& constants [[buffer(0)]],
     uint2 position [[thread_position_in_grid]])
@@ -13484,7 +13517,16 @@ kernel void almetal_world_exposure_meter(
                 uint2(normal_map.get_width() - 1,
                       normal_map.get_height() - 1));
             const float flag = normal_map.read(normal_position).a;
-            const bool is_sky = abs(flag) < 0.1 || abs(flag - 1.0) < 0.1;
+            bool is_sky = abs(flag) < 0.1 || abs(flag - 1.0) < 0.1;
+            if (constants.config.x != 0u)
+            {
+                const uint2 px = uint2(pixel);
+                const float depth = completed_depth.read(px).r;
+                const bool far_depth = constants.config.y != 0u ? depth <= 0.0 : depth >= 1.0;
+                const bool water = all(px < uint2(water_map.get_width(), water_map.get_height())) &&
+                    water_map.read(px).a > 0.9;
+                is_sky = far_depth || water;
+            }
             if (is_sky)
             {
                 sky += luminance;
@@ -19815,3 +19857,588 @@ kernel void almetal_scene_monitor_filter(
     const uint count = simd_sum(uint(changed));
     if (lane == 0u) atomic_fetch_add_explicit(&changed_samples, count, memory_order_relaxed);
 }
+
+
+// Final upstream #584: view-ray layers composite in registers, then decode once.
+constant uint SKY_LAYER_STARS=1u, SKY_LAYER_BLOOM=2u, SKY_LAYER_SUN=4u, SKY_LAYER_MOON=8u;
+constant uint SKY_LAYER_METEORS=16u, SKY_LAYER_AURORA=32u, SKY_LAYER_CLOUDS=64u, SKY_LAYER_HDRI=128u;
+constant uint SKY_MAX_METEORS=64u, SKY_METEOR_VECTORS=3u;
+constant float SKY_HDRI_MAX=65024.0;
+constant float STAR_FAINT_PX=1.8, STAR_BRIGHT_PX=7.0, STAR_SPIKE_START=0.90, STAR_SPIKE_PX=12.0;
+constant float STAR_MIN_PX=2.6, STAR_TWINKLE_MAX=0.65, STAR_CHROMA=0.18, STAR_MOON_WASH=0.55;
+constant float STAR_MOON_FADE_MAX=0.95, STAR_BLOOM_BOOST=1.2, STAR_HALO=0.06, STAR_SPIKE=0.30;
+
+static float3 almetal_modern_sky_hit(float3 dir, constant ALMetalWorldWindLightSkyConstants& dome)
+{
+    const float b=dot(dome.camera_local.xyz,dir);
+    const float c=dot(dome.camera_local.xyz,dome.camera_local.xyz)-dome.camera_local.w*dome.camera_local.w;
+    return (sqrt(max(b*b-c,0.0))-b)*dir;
+}
+static float3 almetal_modern_sky_dome(float3 dir,
+    constant ALMetalWorldWindLightSkyConstants& dome,
+    texture2d<float> rainbow_map, texture2d<float> halo_map, sampler optics_sampler)
+{
+    return almetal_world_windlight_sky_color(dome.camera_local.xyz+almetal_modern_sky_hit(dir,dome),
+        dome,rainbow_map,halo_map,optics_sampler);
+}
+static float2 almetal_modern_sky_quad(float3 dir, constant float4* quad, thread bool& hit)
+{
+    const float3 normal=cross(quad[1].xyz,quad[2].xyz);
+    const float t=dot(quad[0].xyz,normal)/dot(dir,normal);
+    const float2 offset=float2(dot(t*dir-quad[0].xyz,quad[1].xyz),dot(t*dir-quad[0].xyz,quad[2].xyz));
+    hit=t>0.0 && max(abs(offset.x),abs(offset.y))<=1.0;
+    return offset*0.5+0.5;
+}
+static float4 almetal_modern_sky_body(float3 dir, constant float4* quad,
+    texture2d<float> first, texture2d<float> next, sampler body_sampler, float blend)
+{
+    bool hit;const float2 uv=almetal_modern_sky_quad(dir,quad,hit);
+    // Derivatives must precede per-pixel quad/opaque-cloud branches.
+    const float2 dx=dfdx(uv),dy=dfdy(uv);
+    if (!hit) return 0.0;
+    float4 c=first.sample(body_sampler,uv,gradient2d(dx,dy));
+    if(blend>0.0)c=mix(c,next.sample(body_sampler,uv,gradient2d(dx,dy)),blend);
+    return c;
+}
+static float almetal_modern_cloud_noise(texture2d<float> first,texture2d<float> next,
+    sampler cloud_sampler,float blend,float2 uv)
+{
+    float v=first.sample(cloud_sampler,uv).r;
+    if(blend>0.0)v=mix(v,next.sample(cloud_sampler,uv).r,blend);
+    return v;
+}
+static float4 almetal_modern_sky_clouds(float3 dir, constant ALMetalWorldCloudConstants& c,
+    constant ALMetalWorldWindLightSkyConstants& dome,texture2d<float> noise_map,
+    texture2d<float> next_noise_map,sampler noise_sampler)
+{
+    if (c.parameters.x < 0.001)
+    {
+        return float4(0.0);
+    }
+
+    // Where the ray meets the dome, less the camera's position, and the point itself.
+    float3 hit = almetal_modern_sky_hit(dir,dome);
+    float3 pos = dome.camera_local.xyz + hit;
+
+    // The dome's texture coordinates there: ((1 - east) / 2, (1 - north) / 2) of the direction from the sphere's
+    // centre, linear in the point and continuous across the horizon, as the derivatives need.
+    float2 texcoord = (float2(1.0) - float2(pos.z, pos.x) / dome.camera_local.w) * 0.5;
+
+    // SL-13084 EEP added support for custom cloud textures -- flip them horizontally to match the preview of Clouds >
+    // Cloud Scroll (LLSettingsVOSky::applySpecial)
+    float2 uv1 = float2(-texcoord.x, texcoord.y);
+
+    uv1 -= 0.5;
+    uv1 /= c.parameters.x;
+    uv1 += 0.5;
+
+    // The density sample toward the light, for self-shadowing. c.light_density.xyz is (north, up, east)
+    // (LLEnvironment::toLightNorm), the dome's frame, and after the mirror above u grows eastward and v shrinks
+    // northward.
+    float2 uv2 = uv1;
+    uv2.x += c.light_density.xyz.z * 0.0125;
+    uv2.y -= c.light_density.xyz.x * 0.0125;
+
+    float2 uv3 = uv1 * 16.;
+    float2 uv4 = uv2 * 16.;
+
+    // The position relative to the camera, raised as windlightDome raises it.
+    float3 rel_pos = (hit+float3(0.0,50.0,0.0));
+
+    // The clouds are at full opacity above the horizon and none below it (SL-11589), the cut softened over the last
+    // two degrees above it, where the haze has already taken them most of the way to the horizon's colour. SL-10751's
+    // fade, (rel_pos.y + 512) / c.glow.w, is not used: rel_pos.y tops out near 650, so with c.glow.w above ~1160 it would
+    // cap every cloud (0.72 at the zenith for the default 1605).
+    float altitude_blend_factor = smoothstep(0.0, 0.035, rel_pos.y / length(rel_pos));
+
+    // Set altitude. c.glow.w is held at 1 m or more, as windlightDomeAt and calcAtmosphericVars hold it: the
+    // sky settings allow 0, which would scale every rising ray to the origin and normalize it into NaN.
+    if (rel_pos.y > 0)
+    {
+        rel_pos *= (max(c.glow.w, 1.0) / rel_pos.y);
+    }
+    if (rel_pos.y < 0)
+    {
+        altitude_blend_factor = 0; // SL-11589 Fix clouds drooping below horizon
+        rel_pos *= (-32000. / rel_pos.y);
+    }
+
+    // Can normalize then
+    float3  rel_pos_norm = normalize(rel_pos);
+    float rel_pos_len  = length(rel_pos);
+
+    // The sun lighting the clouds, and below the ambient raised under cloud: the Environment block's c.sky_sunlight.rgb and
+    // c.atmos_ambient.rgb (LLSettingsVOSky::applySpecial)
+    float3 sunlight = c.sky_sunlight.rgb;
+
+    // Sunlight attenuation effect (hue and brightness) due to atmosphere, per unit of the light's path: the
+    // Environment block's c.sky_light_atten.rgb
+    float3 light_atten = c.sky_light_atten.rgb;
+
+    // The relative weights, c.blue_weight.rgb and c.haze_weight.rgb, and the c.haze_extinction.rgb they are shares of, are the
+    // Environment block's (LLSettingsVOSky::applySpecial), floored there so a channel with both densities 0, which the
+    // settings allow, does not weigh 0 / 0.
+
+    // Compute sunlight from rel_pos & c.light_density.xyz (for long rays like sky)
+    float off_axis = 1.0 / max(1e-6, max(0., rel_pos_norm.y) + c.light_density.xyz.y);
+    sunlight *= exp(-light_atten * off_axis);
+
+    // Distance
+    float density_dist = rel_pos_len * c.light_density.w;
+
+    // Transparency (-> combined_haze)
+    // ATI Bugfix -- can't store combined_haze*density_dist in a variable because the ati
+    // compiler gets confused.
+    float3 combined_haze = exp(-c.haze_extinction.rgb * density_dist);
+
+    // Compute haze c.glow.xyz
+    float haze_glow = 1.0 - dot(rel_pos_norm, c.light_density.xyz);
+    // haze_glow is 0 at the sun and increases away from sun
+    haze_glow = max(haze_glow, .001);
+    // Set a minimum "angle" (smaller c.glow.xyz.y allows tighter, brighter hotspot)
+    haze_glow *= c.glow.xyz.x;
+    // Higher c.glow.xyz.x gives dimmer c.glow.xyz (because next step is 1 / "angle")
+    haze_glow = pow(haze_glow, c.glow.xyz.z);
+    // c.glow.xyz.z should be negative, so we're doing a sort of (1 / "angle") function
+
+    haze_glow *= c.parameters.w;
+
+    // Add "minimum anti-solar illumination"
+    // For sun, add to c.glow.xyz.  For moon, remove c.glow.xyz entirely. SL-13768
+    haze_glow = (c.parameters.w < 1.0) ? 0.0 : (haze_glow + 0.25);
+
+    // Increase ambient when there are more clouds
+    float3 tmpAmbient = c.atmos_ambient.rgb;
+
+    // Dim sunlight by cloud shadow percentage
+    sunlight *= (1. - c.cloud_color_shadow.w);
+
+    // Haze color below cloud
+    float3 additiveColorBelowCloud =
+        (c.blue_horizon.rgb * c.blue_weight.rgb * (sunlight + tmpAmbient) + (c.blue_horizon.w * c.haze_weight.rgb) * (sunlight * haze_glow + tmpAmbient));
+
+    // CLOUDS: the sun attenuated over twice its elevation, the Environment block's c.cloud_sunlight.rgb
+    sunlight = c.cloud_sunlight.rgb;
+
+    // Cloud color out
+    float3 cloudColorSun = (sunlight * haze_glow) * c.cloud_color_shadow.rgb;
+    float3 cloudColorAmbient = tmpAmbient * c.cloud_color_shadow.rgb;
+
+    // Attenuate cloud color by atmosphere
+    combined_haze = sqrt(combined_haze);  // less atmos opacity (more transparency) below clouds
+    cloudColorSun *= combined_haze;
+    cloudColorAmbient *= combined_haze;
+    float3 oHazeColorBelowCloud = additiveColorBelowCloud * (1. - combined_haze);
+
+    // Make a nice cloud density based on the c.cloud_color_shadow.w value that was passed in.
+    float cloudDensity = 2. * (c.cloud_color_shadow.w - 0.25);
+
+    // Combine these to minimize register use
+    cloudColorAmbient += oHazeColorBelowCloud;
+
+    // Cloud Fragment
+    float2 disturbance  = float2(almetal_modern_cloud_noise(noise_map,next_noise_map,noise_sampler,c.parameters.z,uv1 / 8.0f), almetal_modern_cloud_noise(noise_map,next_noise_map,noise_sampler,c.parameters.z,(uv3 + uv1) / 16.0f)) * c.parameters.y * (1.0f - c.parameters.x * 0.25f);
+    float2 disturbance2 = float2(almetal_modern_cloud_noise(noise_map,next_noise_map,noise_sampler,c.parameters.z,(uv1 + uv3) / 4.0f), almetal_modern_cloud_noise(noise_map,next_noise_map,noise_sampler,c.parameters.z,(uv4 + uv2) / 8.0f)) * c.parameters.y * (1.0f - c.parameters.x * 0.25f);
+
+    // Offset texture coords
+    uv1 += c.cloud_pos_density1.xyz.xy + (disturbance * 0.2);    //large texture, visible density
+    uv2 += c.cloud_pos_density1.xyz.xy;   //large texture, self shadow
+    uv3 += c.cloud_pos_density2.xyz.xy;   //small texture, visible density
+    uv4 += c.cloud_pos_density2.xyz.xy;   //small texture, self shadow
+
+    float density_variance = min(1.0, (disturbance.x* 2.0 + disturbance.y* 2.0 + disturbance2.x + disturbance2.y) * 4.0);
+
+    cloudDensity *= 1.0 - (density_variance * density_variance);
+
+    // Compute alpha1, the main cloud opacity
+
+    float alpha1 = (almetal_modern_cloud_noise(noise_map,next_noise_map,noise_sampler,c.parameters.z,uv1) - 0.5) + (almetal_modern_cloud_noise(noise_map,next_noise_map,noise_sampler,c.parameters.z,uv3) - 0.5) * c.cloud_pos_density2.xyz.z;
+    alpha1 = min(max(alpha1 + cloudDensity, 0.) * 10 * c.cloud_pos_density1.xyz.z, 1.);
+
+    // And smooth
+    alpha1 = 1. - alpha1 * alpha1;
+    alpha1 = 1. - alpha1 * alpha1;
+
+    alpha1 *= altitude_blend_factor;
+    alpha1 = clamp(alpha1, 0.0, 1.0);
+
+    // Compute alpha2, for self shadowing effect
+    // (1 - alpha2) will later be used as percentage of incoming sunlight
+    float alpha2 = (almetal_modern_cloud_noise(noise_map,next_noise_map,noise_sampler,c.parameters.z,uv2) - 0.5);
+    alpha2 = min(max(alpha2 + cloudDensity, 0.) * 2.5 * c.cloud_pos_density1.xyz.z, 1.);
+
+    // And smooth
+    alpha2 = 1. - alpha2;
+    alpha2 = 1. - alpha2 * alpha2;
+
+    // Combine
+    float3 color;
+    color = (cloudColorSun*(1.-alpha2) + cloudColorAmbient);
+    color.rgb = clamp(color.rgb, float3(0), float3(1));
+    color.rgb *= 2.0;
+
+    return float4(color, alpha1);
+}
+
+static float3 almetal_modern_sky_aurora(float3 dir,float aurora_intensity,float aurora_time,bool emissive)
+{
+    float elev = dir.y;
+
+    float2  horiz = dir.xz;
+    float hlen  = length(horiz);
+    if (hlen < 1e-3) return float3(0.0);
+    float2  az = horiz / hlen;
+
+    // Keep a generous performance cap but make sure the visible fade itself is
+    // driven by the smooth envelopes below — a tight cut near the visible
+    // edge produces a hard line where bloom amplifies sub-threshold values.
+    if (elev < -0.05) return float3(0.0);
+    if (elev > 0.90) return float3(0.0);
+
+    float t = aurora_time;
+
+    // ----- Multi-cluster coverage -----------------------------------------
+    // Two-scale noise gives several active sectors distributed around the
+    // sky with natural gaps between them, so the aurora reads as a
+    // multi-direction display rather than a single sheet stuck on one
+    // side. Slow temporal drift reshapes the clusters over minutes.
+    float cov_big = almetal_star_value_noise(float3(az * 1.0, t * 0.03));
+    float cov_med = almetal_star_value_noise(float3(az * 2.8, t * 0.07));
+    // Wider smoothstep so the sub-threshold tail fades smoothly instead of
+    // cutting off at a cov=0.01 edge. Let the final strength test handle
+    // the "no contribution" case.
+    float cov     = smoothstep(0.22, 0.90, cov_big * 0.62 + cov_med * 0.38);
+
+    // ----- Base arc with traveling wave folds -----------------------------
+    // The arc's elevation undulates as a sum of waves moving in opposite
+    // directions; interference between them produces the slow, organic
+    // curtain-folding motion seen in real displays rather than a clean
+    // periodic wobble. Amplitudes kept modest so the arc sits low on the
+    // horizon rather than bowing up into the middle of the sky.
+    float fold = 0.06 * sin(az.x * 2.0 + t * 0.18)
+               + 0.04 * sin(az.y * 3.1 + t * 0.27 + 1.4)
+               + 0.03 * sin(az.x * 4.3 - t * 0.33)
+               + 0.03 * almetal_star_value_noise(float3(az * 2.5, t * 0.11));
+    float base = 0.10 + fold;
+
+    float d_above = elev - base;
+    if (d_above > 0.55) return float3(0.0);   // no below-base cut — let it fade naturally
+
+    // ----- Soft vertical streaks ------------------------------------------
+    // Strongly anisotropic fBm: azimuth sampled at ~8x the frequency of
+    // elevation, so noise cells stretch vertically into soft streaks with
+    // gently varying widths — neither sharp filaments nor isotropic
+    // blobs. Each octave carries its own lateral drift and temporal
+    // morph rate so the pattern never settles into a visible period.
+    float2 drift = float2(t * 0.045, t * 0.028);
+    float3 p     = float3(az * 16.0 + drift, elev * 2.0);
+
+    float n  = 0.50 * almetal_star_value_noise(p             + float3(0.0, 0.0, t * 0.09));
+    n       += 0.28 * almetal_star_value_noise(p * 2.1       + float3(drift,       t * 0.14));
+    n       += 0.14 * almetal_star_value_noise(p * 4.5       + float3(drift * 1.4, t * 0.22));
+    n       += 0.08 * almetal_star_value_noise(p * 9.5       + float3(drift * 1.9, t * 0.33));
+
+    // A soft smoothstep rather than clamp+pow, so the brightest curtain peaks
+    // don't plateau at 1.0: a plateau becomes a visible "ceiling" where the
+    // elevation fade then scales it down, a hard top edge.
+    float curtain_mask = pow(smoothstep(0.05, 0.92, n), 1.6);
+
+    // ----- Elevation envelope --------------------------------------------
+    // A single smooth factor for the horizon and zenith transitions,
+    // applied uniformly across body/halo/base_line. The ranges extend
+    // slightly past the visible regions so both ends ease out below the
+    // perceptual threshold rather than ending on a smoothstep knee.
+    // Falling edges are written 1 - smoothstep(lo, hi, x): GLSL leaves smoothstep undefined for
+    // edge0 >= edge1.
+    float horizon_fade = smoothstep(-0.03, 0.28, elev);
+    float zenith_fade  = 1.0 - smoothstep(0.38, 0.88, elev);
+    float elev_env     = horizon_fade * zenith_fade;
+
+    // ----- Body envelope --------------------------------------------------
+    // A soft fade below the base, so the green trails gradually toward the
+    // horizon with no visible edge.
+    float body_top = 0.30;
+    float body_env = exp(min(d_above, 0.0) * 3.5)
+                   * (1.0 - smoothstep(body_top * 0.15, body_top, d_above));
+    body_env *= elev_env;
+
+    // ----- Top halo -------------------------------------------------------
+    // Diffuse pink/purple cap above the body. Overlaps the body top so
+    // the colour transition reads as a smooth gradient along each fold
+    // rather than a hard seam.
+    float halo_lo  = 0.18;
+    float halo_hi  = 0.45;
+    float halo_env = smoothstep(halo_lo * 0.40, halo_lo,        d_above)
+                   * (1.0 - smoothstep(halo_hi * 0.55, halo_hi * 1.15, d_above));
+    halo_env *= elev_env;
+
+    // Halo modulation is a softened version of the curtain mask — some
+    // structure is preserved so bright folds extend their colour up into
+    // the halo, but contrast is reduced so the halo feels diffuse.
+    float halo_mask = 0.5 + 0.5 * sqrt(curtain_mask);
+
+    // ----- Base line glow -------------------------------------------------
+    // Concentrated bright green at the 100km O layer. Narrow in elevation
+    // but modulated along azimuth so it isn't a painted stripe. Lower
+    // smoothstep extended so the line has a gentle skirt rather than a
+    // hard lower cut-off.
+    // Squared by multiplying: the argument is negative below the line, and pow of a negative
+    // base is undefined in GLSL (exp2(2 * log2(x)) gives NaN).
+    float bl        = (d_above - 0.02) * 20.0;
+    float base_line = exp(-bl * bl);
+    base_line *= smoothstep(-0.22, -0.02, d_above);
+    base_line *= 0.45 + 0.55 * almetal_star_value_noise(float3(az * 6.0, t * 0.10));
+    base_line *= elev_env;
+
+    // ----- Animation layers -----------------------------------------------
+    // Three independent time scales: a slow global breath with an
+    // azimuth-dependent phase offset (different sky sectors brighten at
+    // different moments), a medium pulse, and a fast shimmer sampled
+    // with time-evolving noise. Together they give a rich, non-periodic
+    // motion without any single animation reading as a repeating loop.
+    float breath_phase = almetal_star_value_noise(float3(az * 1.2, 0.0)) * 6.28318;
+    float breath  = 0.80 + 0.20 * sin(t * 0.18 + breath_phase);
+    float pulse   = 0.88 + 0.12 * sin(t * 0.65);
+    float shimmer = 0.88 + 0.12 * almetal_star_value_noise(float3(az * 22.0, t * 1.4));
+
+    // ----- Palette --------------------------------------------------------
+    float3 col_green   = float3(0.30, 1.50, 0.60);
+    float3 col_magenta = float3(1.15, 0.50, 0.95);
+    float3 col_purple  = float3(0.60, 0.35, 1.10);
+    float3 col_baseln  = float3(0.50, 1.80, 0.80);
+
+    float halo_t   = clamp((d_above - halo_lo) / (halo_hi - halo_lo), 0.0, 1.0);
+    float3  halo_col = mix(col_magenta, col_purple, smoothstep(0.35, 1.00, halo_t));
+
+    // ----- Composition ----------------------------------------------------
+    float3 body_rgb = col_green   * body_env * curtain_mask;
+    float3 halo_rgb = halo_col    * halo_env * halo_mask * 0.60;
+    float3 base_rgb = col_baseln  * base_line;
+
+    float strength = body_env * curtain_mask
+                   + halo_env * halo_mask * 0.40
+                   + base_line;
+    strength *= cov * breath * pulse * shimmer;
+    if (strength <= 0.003) return float3(0.0);
+
+    float3 aurora_rgb = (body_rgb + halo_rgb + base_rgb)
+                    * cov * breath * pulse * shimmer * aurora_intensity;
+
+    // Per-fold chromatic bias — subtle warmer/cooler variation between
+    // neighbouring sectors, matching per-column variability in O vs N2
+    // emission ratios.
+    float chroma_n = almetal_star_value_noise(float3(az * 11.0, 0.0));
+    aurora_rgb *= mix(float3(0.95, 1.05, 0.98),
+                      float3(1.05, 0.98, 1.02), chroma_n);
+
+return aurora_rgb * (emissive ? 1.5 : 1.0);
+}
+
+
+static float3 almetal_modern_sky_meteors(float2 ndc, constant float4* data,uint count,bool emissive)
+{
+    float3 sum=0.0;
+    for(uint i=0;i<count;++i){
+        const float4 a=data[i*SKY_METEOR_VECTORS],b=data[i*SKY_METEOR_VECTORS+1];
+        const float2 d=ndc-a.xy,coord=float2(dot(a.zw,d),dot(b.xy,d));
+        if(abs(coord.x)>1.0 || abs(coord.y)>b.z)continue;
+        const float t=clamp((coord.x+1.0)*0.5,0.0,1.0);
+        const float yn=coord.y/b.w;
+        const float shape=(t+pow(t,6.0)*1.2)*exp(-yn*yn*6.0);
+        if(shape>=0.003)sum+=data[i*SKY_METEOR_VECTORS+2].rgb*shape;
+    }
+    return sum*(emissive?4.0:2.0);
+}
+vertex ALMetalBenchmarkVaryings almetal_world_modern_sky_vertex(
+    constant ALMetalWorldModernSkyConstants& c [[buffer(0)]],uint id [[vertex_id]])
+{
+    const float2 tc=float2((id<<1u)&2u,id&2u);
+    ALMetalBenchmarkVaryings o;o.position=float4(tc.x*2.0-1.0,1.0-tc.y*2.0,c.config.z!=0u?0.0:1.0,1.0);o.texcoord=tc;return o;
+}
+fragment float4 almetal_world_modern_sky_fragment(ALMetalBenchmarkVaryings in [[stage_in]],
+    constant ALMetalWorldModernSkyConstants& c [[buffer(0)]],
+    constant float4* meteor_data [[buffer(1)]],
+    texture2d<float> rainbow_map [[texture(0)]],texture2d<float> halo_map [[texture(1)]],
+    texture2d<float> hdri_map [[texture(2)]],texture2d<float> stars_map [[texture(3)]],
+    texture2d<float> sun_map [[texture(4)]],texture2d<float> sun_next [[texture(5)]],
+    texture2d<float> moon_map [[texture(6)]],texture2d<float> bloom_map [[texture(7)]],
+    texture2d<float> bloom_next [[texture(8)]],texture2d<float> cloud_map [[texture(9)]],
+    texture2d<float> cloud_next [[texture(10)]],
+    sampler optics_sampler [[sampler(0)]],sampler body_sampler [[sampler(1)]],
+    sampler point_sampler [[sampler(2)]],sampler hdri_sampler [[sampler(3)]])
+{
+    const float2 ndc=in.texcoord*2.0-1.0;
+    const float4 eye=c.inverse_projection*float4(ndc,0.5,1.0);
+    const float3x3 eye_to_sky=float3x3(c.eye_to_sky[0].xyz,c.eye_to_sky[1].xyz,c.eye_to_sky[2].xyz);
+    const float3 dir=normalize(eye_to_sky*(eye.xyz/eye.w));
+    const uint layers=c.config.x;const bool emissive=c.config.y!=0u;
+    if((layers&SKY_LAYER_HDRI)!=0u){
+        float3 color;
+        if(-ndc.x>(1.0-c.transfer.y)*2.0-1.0){
+            const float3x3 rotation=float3x3(c.hdri_rotation[0].xyz,c.hdri_rotation[1].xyz,c.hdri_rotation[2].xyz);
+            const float3 pos=rotation*normalize(almetal_modern_sky_hit(dir,c.dome)+float3(0,50,0));
+            const float2 uv=float2(atan2(pos.z,pos.x)+M_PI_F,acos(clamp(pos.y,-1.0,1.0)))/float2(2.0*M_PI_F,M_PI_F);
+            color=clamp(hdri_map.sample(hdri_sampler,uv,level(0.0)).rgb*c.transfer.x,0.0,SKY_HDRI_MAX);
+        }else color=almetal_srgb_to_linear(almetal_modern_sky_dome(dir,c.dome,rainbow_map,halo_map,optics_sampler))*c.transfer.z;
+        return float4(almetal_bounded_radiance(color*c.transfer.w,65504.0),0.0);
+    }
+    float4 clouds=0.0,bloom=0.0,sun=0.0,moon=0.0;
+    if((layers&SKY_LAYER_CLOUDS)!=0u)clouds=almetal_modern_sky_clouds(dir,c.clouds,c.dome,cloud_map,cloud_next,optics_sampler);
+    if((layers&SKY_LAYER_BLOOM)!=0u){bloom=almetal_modern_sky_body(dir,c.bloom_quad,bloom_map,bloom_next,body_sampler,c.body.w);bloom.rgb*=c.bloom_color.rgb;bloom.a*=0.9;}
+    if((layers&SKY_LAYER_SUN)!=0u)sun=almetal_modern_sky_body(dir,c.sun_quad,sun_map,sun_next,body_sampler,c.body.x);
+    if((layers&SKY_LAYER_MOON)!=0u){moon=almetal_modern_sky_body(dir,c.moon_quad,moon_map,moon_map,body_sampler,0.0);if(moon.a<=2.0/255.0)moon=0.0;moon.rgb*=c.body.y;moon.a*=c.body.z;}
+    float3 color=0.0;
+    if(clouds.a<1.0){
+        color=almetal_modern_sky_dome(dir,c.dome,rainbow_map,halo_map,optics_sampler);
+        if((layers&SKY_LAYER_STARS)!=0u){float3 stars=stars_map.sample(point_sampler,in.texcoord,level(0.0)).rgb;if(!emissive)stars=almetal_linear_to_srgb(stars);color+=stars;}
+        if((layers&SKY_LAYER_BLOOM)!=0u)color=mix(color,bloom.rgb,bloom.a);
+        if((layers&SKY_LAYER_SUN)!=0u)color=mix(color,sun.rgb,sun.a);
+        if((layers&SKY_LAYER_MOON)!=0u)color=mix(color,moon.rgb,moon.a);
+        if((layers&SKY_LAYER_METEORS)!=0u)color+=almetal_modern_sky_meteors(ndc,meteor_data,c.config.w,emissive);
+        if((layers&SKY_LAYER_AURORA)!=0u)color+=almetal_modern_sky_aurora(dir,c.aurora.x,c.aurora.y,emissive);
+    }
+    if((layers&SKY_LAYER_CLOUDS)!=0u)color=mix(color,clouds.rgb,clouds.a);
+    return float4(almetal_bounded_radiance(almetal_srgb_to_linear(color)*c.transfer.z*c.transfer.w,65504.0),0.0);
+}
+fragment float4 almetal_world_modern_sky_cube_fragment(ALMetalBenchmarkVaryings in [[stage_in]],
+    constant ALMetalWorldModernSkyConstants& c [[buffer(0)]],
+    texture2d<float> rainbow_map [[texture(0)]],texture2d<float> halo_map [[texture(1)]],sampler optics_sampler [[sampler(0)]])
+{
+    const float across=in.texcoord.x*6.0;const uint face=min(uint(across),5u);
+    const float2 st=float2(fract(across),in.texcoord.y)*2.0-1.0;
+    // GL cube face order, agent basis converted to dome (north,up,east).
+    constexpr float3 forward[6]={float3(0,0,1),float3(0,0,-1),float3(1,0,0),float3(-1,0,0),float3(0,1,0),float3(0,-1,0)};
+    constexpr float3 right[6]={float3(0,-1,0),float3(0,1,0),float3(0,0,1),float3(0,0,1),float3(0,0,1),float3(0,0,-1)};
+    constexpr float3 up[6]={float3(-1,0,0),float3(-1,0,0),float3(0,1,0),float3(0,-1,0),float3(-1,0,0),float3(-1,0,0)};
+    return float4(almetal_modern_sky_dome(normalize(forward[face]+st.x*right[face]+st.y*up[face]),c.dome,rainbow_map,halo_map,optics_sampler)*0.5,1.0);
+}
+fragment float4 almetal_world_meter_water_fragment(ALMetalBenchmarkVaryings in [[stage_in]],
+    texture2d<float> normal_map [[texture(0)]],sampler point_sampler [[sampler(0)]])
+{return normal_map.sample(point_sampler,in.texcoord,level(0.0));}
+
+
+struct ALMetalModernStarVaryings {
+ float4 position [[position]];
+ float point_size [[point_size]];
+ float2 corner;
+ float3 point [[flat]];
+ float3 color [[flat]];
+ float spike [[flat]];
+ uint quad [[flat]];
+};
+static ALMetalModernStarVaryings almetal_modern_star_vertex(
+ const device float4* positions,constant ALMetalWorldStarConstants& c,uint id,bool quads,
+ texture2d<float> moon_map,sampler moon_sampler)
+{
+ const float4 position=positions[id];const float3 dir=normalize(position.xyz);
+ const uint packed=as_type<uint>(position.w);
+ const float4 star=float4(packed&255u,(packed>>8u)&255u,(packed>>16u)&255u,packed>>24u)/255.0;
+ const float intensity=star.a,custom_alpha=c.screen_alpha_time.z,time=c.screen_alpha_time.w;
+ const float3 moon_dir=c.moon_direction_brightness.xyz;const float moon_brightness=c.moon_direction_brightness.w;
+ const bool emissive=c.config.y!=0u;
+ ALMetalModernStarVaryings o;o.position=float4(2,2,2,1);o.point_size=1;o.corner=0;o.point=float3(0,0,1);o.color=0;o.spike=0;o.quad=quads?1u:0u;
+ const float facing=dot(dir,c.moon_quad_center.xyz);
+ if(facing>0.0){const float3 on_quad=dir/facing-c.moon_quad_center.xyz;const float2 q=float2(dot(on_quad,c.moon_quad_u.xyz),dot(on_quad,c.moon_quad_v.xyz));
+ if(all(abs(q)<float2(1.0)) && moon_map.sample(moon_sampler,q*0.5+0.5,level(0.0)).a>2.0/255.0)return o;}
+ float4 clip=c.modelview_projection*float4(position.xyz,1.0);
+ const float ideal_px=mix(STAR_FAINT_PX,STAR_BRIGHT_PX,intensity)+smoothstep(STAR_SPIKE_START,1.0,intensity)*STAR_SPIKE_PX;
+ const float quad_pixels=max(ideal_px,STAR_MIN_PX);const float subpixel_fade=ideal_px*ideal_px/(quad_pixels*quad_pixels);
+ constexpr float2 corners[6]={float2(-1,-1),float2(1,-1),float2(1,1),float2(-1,-1),float2(1,1),float2(-1,1)};
+ if(quads){o.corner=corners[id%6u];clip.xy+=o.corner*quad_pixels/max(c.screen_alpha_time.xy,float2(1.0))*clip.w;}
+ else{o.point=float3((clip.xy/clip.w*float2(0.5,-0.5)+0.5)*c.screen_alpha_time.xy,quad_pixels*0.5);o.point_size=quad_pixels+1.0;}
+ clip.y=-clip.y;clip.z=c.config.x!=0u?0.0:clip.w;o.position=clip;
+    // This linearises the sRGB black-body colour, and the composite decodes it a second time: it adds what the stars
+    // left in their attachment to the display-encoded dome, decodes the sum and multiplies it by sky_hdr_scale, the
+    // dome's fake-HDR boost (deferred/skyCompositeF.glsl). Star brightness is tuned against that double decode, the
+    // gains here (the bloom boost, the 1 + intensity gain) and sky_hdr_scale together: retune the chain, not one line.
+    float3 color = pow(max(star.rgb,float3(0.0)),float3(2.2));
+
+    // --- Atmospheric extinction ----------------------------------------------
+    // Airmass grows sharply near the horizon. The wavelength-dependent
+    // extinction (Rayleigh-dominated) reddens low stars, matching the familiar
+    // deep-orange appearance of rising/setting bright stars.
+    float cos_zenith = dir.z; // +Z is up in sky local space
+    float airmass    = almetal_star_airmass(cos_zenith);
+
+    // Extinction coefficients tuned for a clear night (blue scatters ~5x more
+    // than red). Multiplied by a small overall factor so the zenith is nearly
+    // transparent while the horizon meaningfully dims.
+    const float3 k_ext = float3(0.05, 0.13, 0.30);
+    float3 extinction  = exp(-airmass * k_ext);
+
+    // --- Scintillation -------------------------------------------------------
+    // Per-star seed via the full 3D direction so nearby stars with similar xy
+    // but different elevations don't share the same twinkle pattern. Two
+    // noise samples at different frequencies give an organic beat instead of
+    // a periodic pulse.
+    float3 seed = dir * 120.0;
+
+    float n_fast = almetal_star_value_noise(seed + float3(0.0, 0.0, time * 2.3));
+    float n_slow = almetal_star_value_noise(seed * 0.37 + float3(0.0, 0.0, time * 0.7));
+    float twinkle_base = mix(n_fast, n_slow, 0.35);
+
+    // Scintillation is much stronger near the horizon (airmass) and for the
+    // brighter stars our eye actually resolves flickering on.
+    float twinkle_amount = clamp(0.18 + 0.14 * (airmass - 1.0), 0.0, STAR_TWINKLE_MAX) * intensity;
+    float twinkle = 1.0 + (twinkle_base - 0.5) * 2.0 * twinkle_amount;
+
+    // Subtle color scintillation: each channel samples its own noise with a
+    // phase shift, so the twinkle occasionally tints the star.
+    float3 chroma_noise = float3(
+        almetal_star_value_noise(seed * 0.55 + float3(0.0, 0.0, time * 1.7 +  0.0)),
+        almetal_star_value_noise(seed * 0.55 + float3(0.0, 0.0, time * 1.3 +  5.7)),
+        almetal_star_value_noise(seed * 0.55 + float3(0.0, 0.0, time * 2.1 + 13.1)));
+    float chroma_amt = STAR_CHROMA * twinkle_amount;
+    float3  color_jitter = 1.0 + (chroma_noise - 0.5) * 2.0 * chroma_amt;
+
+    // --- Moon glare ----------------------------------------------------------
+    // Two contributions: a broad "sky wash" that dims faint stars when a bright
+    // moon is up (scattered moonlight raising the night-sky floor), and a
+    // narrow direct glare around the moon itself that kills anything nearby.
+    // Bright stars are almost immune to sky wash (they still outshine the
+    // scattered background), but nothing survives direct glare at a full moon.
+    float moon_up    = max(0.0, moon_dir.z);                  // horizon clip
+    float moon_power = moon_brightness * moon_up;             // 0..~1
+    float sky_wash   = moon_power * (1.0 - intensity) * STAR_MOON_WASH;
+    float moon_cos   = max(0.0, dot(dir, moon_dir));
+    float direct_glare = pow(moon_cos, 10.0) * moon_power * 0.85;
+    float moon_fade  = clamp(sky_wash + direct_glare, 0.0, STAR_MOON_FADE_MAX);
+
+    // --- Composition ---------------------------------------------------------
+    float3 star_color = color * color_jitter * extinction * twinkle;
+    star_color *= intensity;
+    star_color *= custom_alpha;
+    star_color *= (1.0 - moon_fade);
+    star_color *= subpixel_fade;
+
+if (emissive) {
+    // HDR boost for the emissive/bloom buffer: bright stars should feed the
+    // bloom pyramid with a larger signal than their on-screen dot suggests.
+    // Kept modest so the bloom pass doesn't smear every mid-tier star into a
+    // halo blob.
+    star_color *= 1.0 + intensity * intensity * STAR_BLOOM_BOOST;
+} else {
+    // No emissive buffer - the stars go to diffuse. The glow extraction still catches
+    // the bright peaks via thresholding, so scale slightly up to compensate.
+    star_color *= 1.0 + intensity;
+}
+
+
+ o.color=star_color;o.spike=smoothstep(STAR_SPIKE_START,1.0,intensity);return o;
+}
+vertex ALMetalModernStarVaryings almetal_world_modern_star_point_vertex(
+ const device float4* p [[buffer(0)]],constant ALMetalWorldStarConstants& c [[buffer(1)]],
+ texture2d<float> moon [[texture(0)]],sampler smp [[sampler(0)]],uint id [[vertex_id]])
+ {return almetal_modern_star_vertex(p,c,id,false,moon,smp);}
+vertex ALMetalModernStarVaryings almetal_world_modern_star_quad_vertex(
+ const device float4* p [[buffer(0)]],constant ALMetalWorldStarConstants& c [[buffer(1)]],
+ texture2d<float> moon [[texture(0)]],sampler smp [[sampler(0)]],uint id [[vertex_id]])
+ {return almetal_modern_star_vertex(p,c,id,true,moon,smp);}
+fragment float4 almetal_world_modern_star_fragment(ALMetalModernStarVaryings in [[stage_in]])
+ {
+ float2 corner=in.quad!=0u?in.corner:(in.position.xy-in.point.xy)/in.point.z;
+ if(in.quad==0u && max(abs(corner.x),abs(corner.y))>=1.0)discard_fragment();
+ const float r2=dot(corner,corner);const float core=exp(-r2*9.0),halo=exp(-r2*1.8)*STAR_HALO;
+ const float spike=(exp(-abs(corner.y)*32.0)*(1.0-abs(corner.x))+exp(-abs(corner.x)*32.0)*(1.0-abs(corner.y)))*in.spike*STAR_SPIKE;
+ const float shape=core+halo+spike;if(shape<0.002)discard_fragment();return float4(in.color*shape,shape);
+ }

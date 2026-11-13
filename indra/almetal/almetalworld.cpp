@@ -33,6 +33,7 @@
 
 namespace
 {
+    bool modernSkyValid(const ALMetalWorldModernSkyScene&, bool composite, std::string*);
     // Matches almetal_probe_shadow_single_tap in almetal_builtin.metal.
     constexpr std::uint32_t probe_shadow_function_constant = 0;
     // Matches almetal_world_presentation_cutout_coverage in the same module.
@@ -485,8 +486,11 @@ namespace
     struct alignas(16) WorldExposureMeterConstants
     {
         float patch[4]{};
+        std::uint32_t config[4]{};
     };
-    static_assert(sizeof(WorldExposureMeterConstants) == 16);
+    static_assert(sizeof(WorldExposureMeterConstants) == 32);
+    static_assert(sizeof(ALMetalWorldModernSkyConstants) == 816);
+    static_assert(sizeof(ALMetalWorldModernSkyConstants) < 4096);
 
     struct alignas(16) WorldExposureConstants
     {
@@ -1951,6 +1955,9 @@ struct ALMetalWorldGBufferRenderer::Impl
         post_water_pbr_glow_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> light_map_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> light_map_blur_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> modern_sky_pipeline, modern_cube_pipeline, meter_water_pipeline;
+    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 3> modern_star_pipelines;
+    std::unique_ptr<ALMetalDepthStencilState> modern_sky_depth, meter_water_depth;
     std::array<NormalPipelines, 2> hdri_sky_pipelines;
     std::array<NormalPipelines, 2> windlight_sky_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -6316,6 +6323,55 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->avatar_volume_sphere_index_count =
         static_cast<std::uint32_t>(sphere_indices.size());
 
+    ALMetalRenderPipelineDescriptor modern;
+    modern.library = impl->library.get();
+    modern.vertex_function = "almetal_world_modern_sky_vertex";
+    modern.fragment_function = "almetal_world_modern_sky_fragment";
+    modern.colors[0].format = ALMetalPixelFormat::rgba16_float;
+    modern.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+    modern.label = "Alchemy ray sky composite";
+    impl->modern_sky_pipeline = ALMetalRenderPipeline::create(device, modern, error);
+    modern.fragment_function = "almetal_world_modern_sky_cube_fragment";
+    modern.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+    modern.depth_stencil_format = ALMetalPixelFormat::invalid;
+    modern.label = "Alchemy ray sky cube bake";
+    impl->modern_cube_pipeline = ALMetalRenderPipeline::create(device, modern, error);
+    modern.vertex_function = "almetal_benchmark_vertex";
+    modern.fragment_function = "almetal_world_meter_water_fragment";
+    modern.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+    modern.label = "Alchemy exposure water provenance";
+    impl->meter_water_pipeline = ALMetalRenderPipeline::create(device, modern, error);
+    if (!impl->modern_sky_pipeline || !impl->modern_cube_pipeline || !impl->meter_water_pipeline) return nullptr;
+    for (std::size_t format = 0; format < 3; ++format)
+    {
+        modern.colors[0].format = format == 1 ? ALMetalPixelFormat::rg11b10_float : ALMetalPixelFormat::rgba8_unorm;
+        modern.colors[0].blending_enabled = true;
+        modern.colors[0].source_rgb = modern.colors[0].destination_rgb = ALMetalBlendFactor::one;
+        modern.colors[0].source_alpha = modern.colors[0].destination_alpha = ALMetalBlendFactor::one;
+        modern.fragment_function = "almetal_world_modern_star_fragment";
+        for (std::size_t quads = 0; quads < 2; ++quads)
+        {
+            modern.vertex_function = quads ? "almetal_world_modern_star_quad_vertex" : "almetal_world_modern_star_point_vertex";
+            modern.label = "Alchemy packed sky stars";
+            impl->modern_star_pipelines[format][quads] = ALMetalRenderPipeline::create(device, modern, error);
+            if (!impl->modern_star_pipelines[format][quads]) return nullptr;
+        }
+    }
+    ALMetalDepthStencilDescriptor sky_depth;
+    sky_depth.depth_compare = ALMetalCompareFunction::equal;
+    sky_depth.depth_write_enabled = false;
+    sky_depth.label = "Alchemy clear-depth sky only";
+    impl->modern_sky_depth = ALMetalDepthStencilState::create(device, sky_depth, error);
+    sky_depth.depth_compare = ALMetalCompareFunction::always;
+    sky_depth.stencil_enabled = true;
+    sky_depth.front_stencil.compare = ALMetalCompareFunction::equal;
+    sky_depth.front_stencil.read_mask = 2u;
+    sky_depth.front_stencil.write_mask = 0u;
+    sky_depth.back_stencil = sky_depth.front_stencil;
+    sky_depth.label = "Alchemy water surface provenance only";
+    impl->meter_water_depth = ALMetalDepthStencilState::create(device, sky_depth, error);
+    if (!impl->modern_sky_depth || !impl->meter_water_depth) return nullptr;
+
     return std::unique_ptr<ALMetalWorldGBufferRenderer>(
         new ALMetalWorldGBufferRenderer(std::move(impl)));
 }
@@ -7974,6 +8030,15 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                      : scene.clear_color[2],
             scene.clear_color[3],
         };
+    }
+    if (scene.sky_star_attachment != -1)
+    {
+        if (scene.sky_star_attachment != 0 && scene.sky_star_attachment != 3)
+        {
+            setError(error, "Metal world star clear attachment is invalid");
+            return nullptr;
+        }
+        pass_config.colors[scene.sky_star_attachment].clear = {0.0, 0.0, 0.0, 0.0};
     }
     pass_config.depth_load = ALMetalLoadAction::clear;
     pass_config.depth_store = ALMetalStoreAction::store;
@@ -9884,6 +9949,18 @@ ALMetalWorldGBufferRenderer::renderExposureInternal(
         return nullptr;
     }
 
+    if ((scene.water_stencil && !scene.depth) ||
+        (scene.depth && (!sampleableTexture(scene.depth) ||
+            scene.depth->width() != source.width || scene.depth->height() != source.height ||
+            (scene.depth->descriptor().format != ALMetalPixelFormat::depth32_float_stencil8 &&
+             scene.depth->descriptor().format != ALMetalPixelFormat::depth32_float))) ||
+        (scene.water_stencil && (scene.water_stencil->depthStencilTexture() != scene.depth ||
+            scene.water_stencil->descriptor().width != source.width ||
+            scene.water_stencil->descriptor().height != source.height)))
+    {
+        setError(error, "Metal exposure completed depth/provenance is incompatible");
+        return nullptr;
+    }
     if (scene.previous)
     {
         const ALMetalTextureDescriptor& previous =
@@ -9949,6 +10026,8 @@ ALMetalWorldGBufferRenderer::renderExposureInternal(
     }
 
     WorldExposureMeterConstants meter_constants;
+    meter_constants.config[0] = scene.depth ? 1u : 0u;
+    meter_constants.config[1] = scene.reverse_z ? 1u : 0u;
     meter_constants.patch[0] =
         static_cast<float>(source.width) / static_cast<float>(meter_width);
     meter_constants.patch[1] =
@@ -9982,6 +10061,39 @@ ALMetalWorldGBufferRenderer::renderExposureInternal(
     {
         return nullptr;
     }
+    std::unique_ptr<ALMetalRenderTarget> water_mask;
+    const ALMetalTexture* water_map = mImpl->inactive_ssr_color.get();
+    if (scene.water_stencil)
+    {
+        ALMetalRenderTargetDescriptor desc;
+        desc.width = source.width; desc.height = source.height;
+        desc.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        desc.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+        desc.depth_stencil_texture = scene.depth;
+        desc.depth_stencil_shader_read = true;
+        desc.label = "Alchemy exposure water provenance mask";
+        water_mask = mImpl->makeRenderTarget(*mImpl->device, desc, error);
+        ALMetalRenderPassConfig config;
+        config.colors[0].load = ALMetalLoadAction::clear;
+        config.colors[0].store = ALMetalStoreAction::store;
+        config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+        config.depth_load = config.stencil_load = ALMetalLoadAction::load;
+        config.depth_store = config.stencil_store = ALMetalStoreAction::store;
+        auto pass = water_mask ? water_mask->makeRenderPass(config, error) : nullptr;
+        auto encoder = pass ? ALMetalRenderEncoder::begin(*command, *pass,
+            "Alchemy exposure water provenance encoder", error) : nullptr;
+        const bool copied = encoder && encoder->setPipeline(*mImpl->meter_water_pipeline, error) &&
+            encoder->setDepthStencilState(mImpl->meter_water_depth.get(), error) &&
+            encoder->setStencilReferenceValue(2u, error) &&
+            encoder->setViewport({0, 0, double(source.width), double(source.height), 0, 1}, error) &&
+            encoder->setScissor({0, 0, source.width, source.height}, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setFragmentTexture(0, scene.normal, error) &&
+            encoder->setFragmentSampler(0, mImpl->point_clamp_sampler.get(), error) &&
+            encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error) && encoder->end(error);
+        if (!copied) { mImpl->finishCommandBuffer(owned_command, false, error); return nullptr; }
+        water_map = water_mask->colorTexture(0);
+    }
     auto meter_encoder = ALMetalComputeEncoder::begin(
         *command, "Alchemy world exposure-meter encoder", error);
     const bool meter_encoded = meter_encoder &&
@@ -9991,6 +10103,8 @@ ALMetalWorldGBufferRenderer::renderExposureInternal(
             0, scene.source->colorTexture(0), error) &&
         meter_encoder->setTexture(1, scene.normal, error) &&
         meter_encoder->setTexture(2, meter->colorTexture(0), error) &&
+        meter_encoder->setTexture(3, scene.depth ? scene.depth : mImpl->inactive_ssr_depth.get(), error) &&
+        meter_encoder->setTexture(4, water_map, error) &&
         meter_encoder->setSampler(
             0, mImpl->linear_clamp_sampler.get(), error) &&
         meter_encoder->setBytes(
@@ -15807,9 +15921,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
              haze.above_water == scene.water_surface->underwater) ||
             (haze.sky_behind &&
              (!haze.above_water || !has_water_surface)) ||
-            haze.sky_behind != (scene.sky_behind != nullptr) ||
+            haze.sky_behind != (scene.sky_behind != nullptr || scene.modern_sky != nullptr) ||
+            (scene.sky_behind && scene.modern_sky) ||
+            (scene.modern_sky && !modernSkyValid(*scene.modern_sky, false, error)) ||
             (!haze.sky_behind && haze.water_ground_fade != 0.f) ||
-            (haze.sky_behind &&
+            (haze.sky_behind && !scene.modern_sky &&
              (!sky || sky->type != ALMetalTextureType::texture_2d ||
               sky->format != sky_format ||
               sky->width != std::max(scene.width / 2u, 1u) ||
@@ -16489,7 +16605,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
 
-    const bool needs_shader_read_depth = water_wave_occlusion ||
+    const bool needs_shader_read_depth = water_wave_occlusion || scene.exposure_depth ||
         scene.publish_screen_space_reflection_history;
     if (continue_composed_target && needs_shader_read_depth &&
         !lighting.depth_stencil_shader_read)
@@ -17155,7 +17271,14 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         sizeof(constants.inverse_projection));
             constants.parameters[0] = haze.water_ground_fade;
             constants.config[0] = scene.reverse_z ? 1u : 0u;
-            const ALMetalTexture* sky_behind = haze.sky_behind
+            constants.config[2] = scene.modern_sky ? 1u : 0u;
+            const ALMetalWorldModernSkyConstants empty_sky{};
+            const auto& modern = scene.modern_sky ? scene.modern_sky->constants : empty_sky;
+            const ALMetalTexture* rainbow = scene.modern_sky && scene.modern_sky->rainbow_texture
+                ? scene.modern_sky->rainbow_texture : mImpl->inactive_ssr_color.get();
+            const ALMetalTexture* halo = scene.modern_sky && scene.modern_sky->halo_texture
+                ? scene.modern_sky->halo_texture : mImpl->inactive_ssr_color.get();
+            const ALMetalTexture* sky_behind = scene.sky_behind
                 ? scene.sky_behind : mImpl->inactive_ssr_color.get();
             const ALMetalDepthStencilState* depth = haze.sky_behind
                 ? (scene.reverse_z
@@ -17182,10 +17305,14 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     haze_depth_snapshot->depthStencilTexture(),
                     error) &&
                 encoder->setFragmentTexture(34, sky_behind, error) &&
+                encoder->setFragmentTextureLinear(35, rainbow, error) &&
+                encoder->setFragmentTextureLinear(36, halo, error) &&
+                encoder->setFragmentBytes(2, &modern, sizeof(modern), error) &&
                 encoder->setFragmentSampler(
                     1, mImpl->point_clamp_sampler.get(), error) &&
                 encoder->setFragmentSampler(
-                    2, mImpl->linear_clamp_sampler.get(), error) &&
+                    2, scene.modern_sky ? mImpl->diffuse_sampler.get()
+                                        : mImpl->linear_clamp_sampler.get(), error) &&
                 mImpl->setFragmentData(*encoder, *command,
                     1, scene.alpha_environment,
                     sizeof(*scene.alpha_environment), error);
@@ -22574,4 +22701,251 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         }
     }
     return command->commit(error);
+}
+
+namespace
+{
+    bool modernSkyValid(const ALMetalWorldModernSkyScene& scene, bool composite, std::string* error)
+    {
+        const auto& c = scene.constants;
+        const auto valid_map = [](const ALMetalTexture* map) {
+            return sampleableTexture(map) && map->descriptor().type == ALMetalTextureType::texture_2d &&
+                map->descriptor().sample_count == 1;
+        };
+        const std::uint32_t layers = c.config[0];
+        if (!finiteValues(reinterpret_cast<const float*>(&c), offsetof(ALMetalWorldModernSkyConstants, config) / sizeof(float)) ||
+            c.dome.camera_local[3] <= 0.f || c.dome.light_density[3] < 0.f ||
+            c.dome.glow[3] < 0.f || c.transfer[0] < 0.f || c.transfer[1] < 0.f || c.transfer[1] > 1.f ||
+            c.transfer[2] < 0.f || c.transfer[3] < 0.f || c.config[3] > 64u ||
+            (layers & ~255u) != 0u || (composite && (scene.width == 0 || scene.height == 0)) ||
+            (c.dome.optics[0] != 0.f && !valid_map(scene.rainbow_texture)) ||
+            (c.dome.optics[2] != 0.f && !valid_map(scene.halo_texture)))
+        {
+            setError(error, "Metal ray sky dome/constants are invalid");
+            return false;
+        }
+        if (!composite) return true;
+        if (((layers & 128u) && !valid_map(scene.hdri_texture)) ||
+            ((layers & 1u) && !valid_map(scene.stars_texture)) ||
+            ((layers & 4u) && (!valid_map(scene.sun_texture) || (c.body[0] > 0.f && !valid_map(scene.sun_next_texture)))) ||
+            ((layers & 8u) && !valid_map(scene.moon_texture)) ||
+            ((layers & 2u) && (!valid_map(scene.bloom_texture) || (c.body[3] > 0.f && !valid_map(scene.bloom_next_texture)))) ||
+            ((layers & 64u) && (!valid_map(scene.cloud_texture) || (c.clouds.parameters[2] > 0.f && !valid_map(scene.cloud_next_texture)))) ||
+            !finiteValues(&scene.meteor_data[0][0], std::size_t(c.config[3]) * 3u * 4u))
+        {
+            setError(error, "Metal ray sky layer resources are invalid");
+            return false;
+        }
+        return true;
+    }
+}
+
+bool ALMetalWorldGBufferRenderer::clearModernSkyStars(ALMetalRenderTarget& gbuffer, bool emissive, std::string* error)
+{
+    if (!mImpl || !mImpl->device || gbuffer.descriptor().color_attachment_count != 4)
+    {
+        setError(error, "Metal star clear requires a G-buffer"); return false;
+    }
+    const std::uint32_t attachment = emissive ? 3u : 0u;
+    ALMetalRenderTargetDescriptor desc;
+    desc.width = gbuffer.descriptor().width; desc.height = gbuffer.descriptor().height;
+    desc.colors[0].format = gbuffer.descriptor().colors[attachment].format;
+    desc.colors[0].texture = gbuffer.colorTexture(attachment);
+    desc.label = "Alchemy selected sky star clear";
+    auto target = mImpl->makeRenderTarget(*mImpl->device, desc, error);
+    ALMetalRenderPassConfig config;
+    config.colors[0].load = ALMetalLoadAction::clear;
+    config.colors[0].store = ALMetalStoreAction::store;
+    config.colors[0].clear = {0, 0, 0, 0};
+    auto pass = target ? target->makeRenderPass(config, error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned;
+    auto command = pass ? mImpl->acquireCommandBuffer("Alchemy star attachment clear", owned, error) : nullptr;
+    auto encoder = command ? ALMetalRenderEncoder::begin(*command, *pass, "Alchemy star attachment clear", error) : nullptr;
+    return encoder && mImpl->finishCommandBuffer(owned, encoder->end(error), error);
+}
+
+bool ALMetalWorldGBufferRenderer::renderModernSkyStars(ALMetalRenderTarget& gbuffer,
+    const ALMetalWorldModernSkyStars& scene, std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.vertices || !scene.draws || scene.draw_count == 0 ||
+        scene.width == 0 || scene.height == 0 || !finiteValues(scene.modelview_projection, 16) ||
+        !finiteValues(scene.moon_direction, 4) || !finiteValues(scene.moon_quad_center, 4) ||
+        !finiteValues(scene.moon_quad_u, 4) || !finiteValues(scene.moon_quad_v, 4) ||
+        !std::isfinite(scene.star_alpha) || scene.star_alpha < 0.f || !std::isfinite(scene.time) ||
+        !std::isfinite(scene.moon_brightness) || scene.moon_brightness < 0.f ||
+        scene.position_offset % 16 != 0 || !rangeFits(scene.position_offset, scene.vertex_count, 16, scene.vertices->length()))
+    { setError(error, "Metal packed sky stars are invalid"); return false; }
+    for (std::size_t i = 0; i < scene.draw_count; ++i)
+    {
+        const auto& draw = scene.draws[i];
+        if (draw.first > scene.vertex_count || draw.count > scene.vertex_count - draw.first ||
+            (draw.quads && (draw.first % 6 != 0 || draw.count % 6 != 0)))
+        { setError(error, "Metal packed star draw is out of range"); return false; }
+    }
+    const auto& input = gbuffer.descriptor();
+    const std::uint32_t attachment = scene.emissive ? 3u : 0u;
+    const auto expected = scene.emissive ? (scene.hdr ? ALMetalPixelFormat::rg11b10_float : ALMetalPixelFormat::rgba8_unorm)
+                                         : ALMetalPixelFormat::rgba8_unorm_srgb;
+    if (input.width != scene.width || input.height != scene.height || input.sample_count != 1 ||
+        input.color_attachment_count != 4 || input.colors[attachment].format != expected ||
+        input.depth_stencil_format != ALMetalPixelFormat::depth32_float_stencil8 ||
+        (scene.moon_texture && !sampleableTexture(scene.moon_texture)))
+    { setError(error, "Metal packed sky star target is incompatible"); return false; }
+    ALMetalRenderTargetDescriptor desc;
+    desc.width = input.width; desc.height = input.height;
+    desc.colors[0].format = input.colors[attachment].format;
+    desc.colors[0].texture = gbuffer.colorTexture(attachment);
+    desc.depth_stencil_format = input.depth_stencil_format;
+    desc.depth_stencil_texture = gbuffer.depthStencilTexture();
+    desc.depth_stencil_shader_read = input.depth_stencil_shader_read;
+    desc.label = "Alchemy selected sky star attachment";
+    auto target = mImpl->makeRenderTarget(*mImpl->device, desc, error);
+    ALMetalRenderPassConfig config;
+    config.colors[0].load = ALMetalLoadAction::load; config.colors[0].store = ALMetalStoreAction::store;
+    config.colors[0].linear_storage_view = !scene.emissive;
+    config.depth_load = config.stencil_load = ALMetalLoadAction::load;
+    config.depth_store = config.stencil_store = ALMetalStoreAction::store;
+    auto pass = target ? target->makeRenderPass(config, error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned;
+    auto command = pass ? mImpl->acquireCommandBuffer("Alchemy packed sky stars", owned, error) : nullptr;
+    auto encoder = command ? ALMetalRenderEncoder::begin(*command, *pass, "Alchemy packed sky stars", error) : nullptr;
+    if (!encoder) return false;
+    WorldStarConstants c{};
+    std::memcpy(c.modelview_projection, scene.modelview_projection, sizeof(c.modelview_projection));
+    c.screen_alpha_time[0] = float(scene.width); c.screen_alpha_time[1] = float(scene.height);
+    c.screen_alpha_time[2] = scene.star_alpha; c.screen_alpha_time[3] = scene.time;
+    std::memcpy(c.moon_direction_brightness, scene.moon_direction, sizeof(c.moon_direction_brightness));
+    c.moon_direction_brightness[3] = scene.moon_brightness;
+    std::memcpy(c.moon_quad_center, scene.moon_quad_center, sizeof(c.moon_quad_center));
+    std::memcpy(c.moon_quad_u, scene.moon_quad_u, sizeof(c.moon_quad_u));
+    std::memcpy(c.moon_quad_v, scene.moon_quad_v, sizeof(c.moon_quad_v));
+    c.config[0] = scene.reverse_z; c.config[1] = scene.emissive;
+    const auto* moon = scene.moon_texture ? scene.moon_texture : mImpl->inactive_ssr_color.get();
+    bool ok = encoder->setViewport({0, 0, double(scene.width), double(scene.height), 0, 1}, error) &&
+        encoder->setScissor({0, 0, scene.width, scene.height}, error) && encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setDepthStencilState(mImpl->modern_sky_depth.get(), error) &&
+        encoder->setVertexBuffer(0, *scene.vertices, scene.position_offset, error) &&
+        encoder->setVertexBytes(1, &c, sizeof(c), error) && encoder->setVertexTexture(0, moon, error) &&
+        encoder->setVertexSampler(0, mImpl->ramp_sampler.get(), error);
+    const std::size_t format = scene.emissive ? (scene.hdr ? 1 : 2) : 0;
+    for (std::size_t i = 0; ok && i < scene.draw_count; ++i)
+    {
+        const auto& draw = scene.draws[i];
+        if (!draw.count) continue;
+        ok = encoder->setPipeline(*mImpl->modern_star_pipelines[format][draw.quads ? 1 : 0], error) &&
+            encoder->draw(draw.quads ? ALMetalPrimitiveType::triangle : ALMetalPrimitiveType::point,
+                          draw.first, draw.count, 1, error);
+    }
+    const bool ended = encoder->end(error);
+    return mImpl->finishCommandBuffer(owned, ok && ended, error);
+}
+
+bool ALMetalWorldGBufferRenderer::compositeModernSky(ALMetalRenderTarget& lit, const ALMetalTexture& depth,
+    const ALMetalWorldModernSkyScene& scene, std::string* error)
+{
+    if (!mImpl || !mImpl->device || !modernSkyValid(scene, true, error)) return false;
+    const auto& input = lit.descriptor();
+    if (input.width != scene.width || input.height != scene.height || input.sample_count != 1 ||
+        input.color_attachment_count != 1 || input.colors[0].format != ALMetalPixelFormat::rgba16_float ||
+        depth.width() != input.width || depth.height() != input.height ||
+        depth.descriptor().format != ALMetalPixelFormat::depth32_float_stencil8)
+    { setError(error, "Metal ray sky lit/depth target is incompatible"); return false; }
+    ALMetalRenderTargetDescriptor desc;
+    desc.width = input.width; desc.height = input.height;
+    desc.colors[0].format = input.colors[0].format; desc.colors[0].texture = lit.colorTexture(0);
+    desc.depth_stencil_format = depth.descriptor().format; desc.depth_stencil_texture = &depth;
+    desc.depth_stencil_shader_read = alMetalHasUsage(depth.descriptor().usage, ALMetalTextureUsage::shader_read);
+    desc.label = "Alchemy borrowed ray sky lit target";
+    auto target = mImpl->makeRenderTarget(*mImpl->device, desc, error);
+    ALMetalRenderPassConfig config;
+    config.colors[0].load = ALMetalLoadAction::load; config.colors[0].store = ALMetalStoreAction::store;
+    config.depth_load = config.stencil_load = ALMetalLoadAction::load;
+    config.depth_store = config.stencil_store = ALMetalStoreAction::store;
+    auto pass = target ? target->makeRenderPass(config, error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned;
+    auto command = pass ? mImpl->acquireCommandBuffer("Alchemy ray sky composite", owned, error) : nullptr;
+    auto encoder = command ? ALMetalRenderEncoder::begin(*command, *pass, "Alchemy ray sky composite", error) : nullptr;
+    if (!encoder) return false;
+    bool ok = encoder->setPipeline(*mImpl->modern_sky_pipeline, error) &&
+        encoder->setDepthStencilState(mImpl->modern_sky_depth.get(), error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setViewport({0, 0, double(scene.width), double(scene.height), 0, 1}, error) &&
+        encoder->setScissor({0, 0, scene.width, scene.height}, error) &&
+        encoder->setVertexBytes(0, &scene.constants, sizeof(scene.constants), error) &&
+        encoder->setFragmentBytes(0, &scene.constants, sizeof(scene.constants), error) &&
+        encoder->setFragmentBytes(1, scene.meteor_data, sizeof(scene.meteor_data), error);
+    const ALMetalTexture* maps[] = {scene.rainbow_texture, scene.halo_texture, scene.hdri_texture, scene.stars_texture,
+        scene.sun_texture, scene.sun_next_texture, scene.moon_texture, scene.bloom_texture,
+        scene.bloom_next_texture, scene.cloud_texture, scene.cloud_next_texture};
+    for (std::uint32_t i = 0; ok && i < 11; ++i)
+    {
+        const auto* map = maps[i] ? maps[i] : mImpl->inactive_ssr_color.get();
+        ok = i == 3 ? encoder->setFragmentTexture(i, map, error) : encoder->setFragmentTextureLinear(i, map, error);
+    }
+    ok = ok && encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error) &&
+        encoder->setFragmentSampler(1, mImpl->ramp_sampler.get(), error) &&
+        encoder->setFragmentSampler(2, mImpl->point_clamp_sampler.get(), error) &&
+        encoder->setFragmentSampler(3, mImpl->hdri_sampler.get(), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    const bool ended = encoder->end(error);
+    return mImpl->finishCommandBuffer(owned, ok && ended, error);
+}
+
+std::unique_ptr<ALMetalTexture> ALMetalWorldGBufferRenderer::createNeutralModernSkyCube(std::string* error)
+{
+    if (!mImpl || !mImpl->device) return nullptr;
+    ALMetalTextureDescriptor desc;
+    desc.type = ALMetalTextureType::texture_cube; desc.format = ALMetalPixelFormat::rgba8_unorm;
+    desc.width = desc.height = 64; desc.mipmap_level_count = 7;
+    desc.usage = ALMetalTextureUsage::shader_read; desc.label = "Alchemy WindLight dome environment cube";
+    auto cube = ALMetalTexture::create(*mImpl->device, desc, error);
+    std::unique_ptr<ALMetalCommandBuffer> owned;
+    auto command = cube ? mImpl->acquireCommandBuffer("Alchemy neutral sky cube", owned, error) : nullptr;
+    if (!command) return nullptr;
+    std::vector<std::uint8_t> pixels(64 * 64 * 4, 64);
+    for (std::size_t a = 3; a < pixels.size(); a += 4) pixels[a] = 255;
+    bool ok = true;
+    for (std::uint32_t mip = 0; ok && mip < 7; ++mip)
+        for (std::uint32_t face = 0; ok && face < 6; ++face)
+            ok = cube->upload(*command, mip, face, {0, 0, 64u >> mip, 64u >> mip}, pixels.data(), (64u >> mip) * 4u, error);
+    if (!mImpl->finishCommandBuffer(owned, ok, error)) return nullptr;
+    return cube;
+}
+
+std::unique_ptr<ALMetalTexture> ALMetalWorldGBufferRenderer::bakeModernSkyCube(
+    const ALMetalWorldModernSkyScene& scene, std::string* error)
+{
+    if (!mImpl || !mImpl->device || !modernSkyValid(scene, false, error)) return nullptr;
+    auto cube = createNeutralModernSkyCube(error);
+    ALMetalRenderTargetDescriptor desc;
+    desc.width = 6 * 64; desc.height = 64; desc.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+    desc.label = "Alchemy sky cube strip";
+    auto strip = cube ? mImpl->makeRenderTarget(*mImpl->device, desc, error) : nullptr;
+    ALMetalRenderPassConfig config;
+    config.colors[0].load = ALMetalLoadAction::dont_care; config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = strip ? strip->makeRenderPass(config, error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned;
+    auto command = pass ? mImpl->acquireCommandBuffer("Alchemy ray dome cube bake", owned, error) : nullptr;
+    auto encoder = command ? ALMetalRenderEncoder::begin(*command, *pass, "Alchemy ray dome cube bake", error) : nullptr;
+    if (!encoder) return nullptr;
+    const auto* rainbow = scene.rainbow_texture ? scene.rainbow_texture : mImpl->inactive_ssr_color.get();
+    const auto* halo = scene.halo_texture ? scene.halo_texture : mImpl->inactive_ssr_color.get();
+    bool ok = encoder->setPipeline(*mImpl->modern_cube_pipeline, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setViewport({0, 0, 384, 64, 0, 1}, error) && encoder->setScissor({0, 0, 384, 64}, error) &&
+        encoder->setVertexBytes(0, &scene.constants, sizeof(scene.constants), error) &&
+        encoder->setFragmentBytes(0, &scene.constants, sizeof(scene.constants), error) &&
+        encoder->setFragmentTextureLinear(0, rainbow, error) && encoder->setFragmentTextureLinear(1, halo, error) &&
+        encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    const bool ended = encoder->end(error); ok = ok && ended;
+    for (std::uint32_t face = 0; ok && face < 6; ++face)
+    {
+        ALMetalTextureCopy copy;
+        copy.source_region = {face * 64u, 0, 64, 64}; copy.destination_slice = face;
+        ok = cube->copyFrom(*command, *strip->colorTexture(0), copy, error);
+    }
+    ok = ok && cube->generateMipmaps(*command, error);
+    if (!mImpl->finishCommandBuffer(owned, ok, error)) return nullptr;
+    return cube;
 }
