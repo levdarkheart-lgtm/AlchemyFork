@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-054 -->
+<!-- next-defect-id: PPD-066 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -1511,9 +1511,9 @@ Effective scoped priorities do release correctly. Keep this legacy state invaria
 - Owner: Codex integrator and geometry reviewer
 - Discovered: 2026-11-13
 - Original reference: Retained LLVolumeFace::cacheOptimize Mikk re-weld/index shuffle; upstream dc0f4b478c also repairs allocation failure handling in its replacement implementation. The local incidence-budget backport covers cost only.
-- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Required/optional allocation failure controls pass293/8 normal+ASan/UBSan and217/4 private aligned/null/new/fallback; exact old source fails both allocation cases. Ordinary fingerprint unchanged004fd052b5f3a793. Native LLFace4calls/preview1call and intersection now propagate false before raw tangent reads; final build/math/native checks pass. No physical OOM scene test.
+- Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md), [geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Combined source3ee7786e67 preserves strong face constructors/copy/remap/normals/tangents, staged simplifier/LOD and optional avatar ordering; actual allocation controls and targeted sanitizer checks pass. Expanded geometry evidence is in upstream-geometry-port.md; parent68936 history retained. Final combined candidate checks pass; owner scene acceptance pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -1524,6 +1524,19 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 - 2026-11-13: Registered independent source findings before repair investigation; full candidate build running at2a5af4fdac. Existing hazards predate the new budget guard.
 
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
+
+
+- 2026-11-13: Reopened for owner-authorized full geometry port before adaptation. Final upstream generateNormals/remap/createTangents contain uncaught allocation exceptions, unchecked aligned results or destructive partial publication. Source-confirmed incoming-path hazards, not a new viewer OOM incident. Preserve current68836 safety semantics under the replacement; stage required output and retain valid face onfailure.
+
+- 2026-11-13: Core source review adds retained/default face constructor and copy/assignment allocation boundaries to the reopened scope before repair: null extents dereference, fatal copy bad_alloc and destructive unchecked copies would defeat uploader model transactions. Adapt nonfatal constructors/strong assignment with real allocation controls; no physical OOM attribution.
+
+- 2026-11-13: Incoming simplifier compact/makeEmpty and previewLOD generation add destructive allocation/publication boundaries: target resized before all allocations, existing LOD models/buffers cleared before replacements ready. Uploader stages complete replacement faces/model lists before swap; preregistered before adaptation.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Retained preceding-batch verification checkpoint: Required/optional allocation failure controls pass293/8 normal+ASan/UBSan and217/4 private aligned/null/new/fallback; exact old source fails both allocation cases. Ordinary fingerprint unchanged004fd052b5f3a793. Native LLFace4calls/preview1call and intersection now propagate false before raw tangent reads; final build/math/native checks pass. No physical OOM scene test.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
 
 ## PPD-049 — Scratch Script Studio test links mismatched noticebar implementation
@@ -1612,14 +1625,14 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 
 ## PPD-053 — Retained geometry suite has19 expected-failure contracts
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex geometry integration
 - Discovered: 2026-11-13
 - Original reference: Existing indra/llmath/tests/llvolume_test.cpp explicitly marks19 generation contracts !shouldfail; the file is unchanged fromb04d9bf6ef through this remaining batch. Corresponding normal/stitching/cap/hollow/flexible/degenerate repairs are in the larger upstream geometry stack.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [geometry audit](research/upstream-geometry-review-2026-11-13.md).
-- Next action: Evaluate and port the coherent geometry/tangent/dependency/uploader stack separately with original-output mapping, native integration and scene checks. Keep the19 known failures visible; do not remove expectations or claim complete geometry correctness from green CTest.
-- Verification: Finalaf5c263988 llvolume_test returns0 under its existing !shouldfail policy:34cases,15pass/19fail as expected;3963assertions,3940pass/23fail as expected. Separate new safety tests311/10 pass. No new unexpected failure or owner visual incident.
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Old0c68 exact archive with only expected-failure tags removed:44cases25pass/19fail,4274assertions/23fail, normal child42. Final geometry suite now uses ordinary tests; mapped former19 pass and final core ASan+UBSan334840assertions/138cases (one optional corpus skip), child0. Combined canonical candidate checks pass; owner acceptance pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -1628,3 +1641,282 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-13: Registered known retained geometry contracts after observing actual isolated and final combined suite output. Current batch preserves all existing test expectations and records the larger project separately.
+
+- 2026-11-13: Owner explicitly requests geometry next and sky afterward. Begin coherent final upstream geometry port from0c68a66e21, preserving all prior native/backport fixes. No owner acceptance or push approval is inferred; retain original expected-failure history and remove annotations only with actual corrective evidence.
+
+- 2026-11-13: Real0c68 production math library linked with its existing test file after removing only !shouldfail annotations:44cases,25pass/19fail;4274assertions,4251pass/23fail. LLDB child42/state10, no fault. Frozenbaseline executable and exact compile/link receipts in artifacts/metal/upstream-geometry-20261113/baseline/. This establishes active failing contracts before replacement.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Retained preceding-batch verification checkpoint: Finalaf5c263988 llvolume_test returns0 under its existing !shouldfail policy:34cases,15pass/19fail as expected;3963assertions,3940pass/23fail as expected. Separate new safety tests311/10 pass. No new unexpected failure or owner visual incident.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-054 — Uploader Restore Normals loses original model faces
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex uploader integration
+- Discovered: 2026-11-13
+- Original reference: Current llmodelpreview.cpp generateNormals rewrites shared mBaseModel/high-LOD objects before capturing mModelFacesCopy. Restore then overwrites base originals with generated high-LOD normals; ordinal saved-face lists can target replacement models. Upstream ea8e64184b/0bf5fe1633 capture model identities before rewrite and discard obsolete copies.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md), [geometry audit](research/upstream-geometry-review-2026-11-13.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Actual old preview methods21failed checks versus corrected66assertions/3cases. Registered simplifier/model1244assertions/25cases and transactional LOD controls96/5 pass. Native preview blocks remain byte-identical to base. No live uploader/owner acceptance.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered actual shared-model ordering/lifetime defect before repair in the owner-authorized geometry batch. No remote upload or account operation.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-055 — Planar mapping, tangent frames and alpha picking disagree
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex geometry/native consumer integration
+- Discovered: 2026-11-13
+- Original reference: Current LLFace planarProjection picks axes per vertex normal; planar normal-map frames still use ordinary UV tangents. LLVOVolume::lineSegmentIntersect sends volume-space p/n to surfaceToTexture, which expects agent-space hits. Upstream120e1fe63d/b003070a1d/bff2be1727 and final planar tails align mapping, frames and opaque hit tests.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md), [geometry audit](research/upstream-geometry-review-2026-11-13.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Shared strict-planar arithmetic and native tangent consumers integrated; CPU plane/UV/frame/picking contracts and real GLTF primitive192assertions/5cases pass. Generated volume/native G-buffer851assertions/1case and combined native269602/35 pass; owner scene parity unverified.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered source mapping and hit-space mismatch before native consumer changes. Final planar math requires strict arithmetic compilation and tests, including per-vertex fallback.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-056 — Refilled shared geometry can exceed an individual face slot
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native geometry integration
+- Discovered: 2026-11-13
+- Original reference: Current LLFace::getGeometryVolume validates writes against the whole vertex/index buffer, without requiring the current volume face to fit mGeomCount/mIndicesCount. New geometry sculpt triangle omission can change shared face counts at the same level. Upstreamd1da0360ee rejects refills whose individual slots no longer fit and requests group relayout.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Exact local slot admission precedes any writes in native LLFace, while failed fills propagate to group relayout instead of registration. Native producer compiles; exact guard with real adjacent LLVB slots/SIMD index helper old19failed assertions versus fixed87/1pass. Rejected fills preserve adjacent bytes/content stamp. No complete LLFace execution or owner scene attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered ownership-boundary guard required by coherent new geometry before LLFace changes. Keep distinct from whole-buffer allocation failurePPD-048 and old decoder boundsPPD-022.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-057 — Incoming typed scratch allocation can wrap its byte count
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex geometry prerequisite integration
+- Discovered: 2026-11-13
+- Original reference: Pinned upstream408 ALScratchArena::Scope::allocate<T>(count) multiplies count*sizeof(T) without checking overflow; raw allocate guards later rounding only. A wrapped typed count can produce an undersized allocation.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Actual scratch/compact62assertions/14cases pass, including typed overflow before multiplication and no allocator/counter mutation. Actual custom registry hostile remap/allocator controls pass; ARM64 package built with pinned provenance.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered typed scratch pre-multiply overflow before adapting new geometry prerequisite. Keep separate from allocator lifetime/face publicationPPD-048.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-058 — Failed geometry fills can still publish draw batches and lose retries
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native geometry integration
+- Discovered: 2026-11-13
+- Original reference: LLVolumeGeometryManager::genDrawInfo warns after getGeometryVolume returnsfalse but still registers the face; rebuildGeom clears dirty flags afterward. LLPipeline::rebuildPriorityGroups unconditionally clears queue flags/removes every group. New fallible tangent/planar allocation and slot admission make this boundary required.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Exact queue control old7/20failed, fixed20/20pass, including retry-vector OOM. Exact in-place rebuildMesh control old14/66failed, fixed66/66 across3scenarios: all merged ranges/face admissions withdrawn, child transform restored, retry preserved. Child42/0 normally underLLDB; no physical OOM/owner incident.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered ignored failure publication and retry loss before integrating fallible geometry. Preserve normal successful scheduling and all native render consumers.
+
+- 2026-11-13: Exact old/current rebuildPriorityGroups function bodies compiled with a small queue-collaborator harness. Existing source fails failure-retention/allocation-fallback checks (normal child42); repaired normal/failing/recovery/dead/allocation-fallback cases pass20checks (child0), both underLLDB without fault. Root LLFace/LLVOVolume/pipeline/preview TUs also compile against fresh core headers; full app still required.
+
+
+- 2026-11-13: Final review extended the same admission defect to existing in-place rebuildMesh: failed fill dirtied/queued the group but retained draw-map ranges and flushed a partially modified buffer. Before correction, record the need to withdraw all group draw admission on failure and rebuild complete geometry on retry. No owner incident or observed physical OOM attributed.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-059 — glTF primitive attributes can be shorter than positions
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex geometry loader integration
+- Discovered: 2026-11-13
+- Original reference: Current newview/gltf/primitive.cpp Primitive::prep reads attributes at each POSITION index without matching count checks or requiring JOINTS_0/WEIGHTS_0 together; old triangle unroll also subtracts2 from short strip/fan counts. Final upstream2bb25308c2 validates attribute counts/skin pairing before geometry work;7a7296abfc replaces Mikk dependency with compatible tangent API.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Actual primitive.cpp final192assertions/5cases pass; old bounded control49failed/70checks in4cases. Short attribute/skin/topology rejection, generated/authored tangents, strips/fans/unindexed picking and points/lines covered. Native tangent arrays retained for fork consumers.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered source-confirmed attribute/skin and short-topology admission before loader adaptation. Keep direct primitive tangent behavior where this fork still stores/reads it; exclude unrelated sky or backend changes.
+
+- 2026-11-13: Core inspection adds serialized-vs-runtime topology divergence and old fan corner: unroll writes TRIANGLES runtime data but preserves original mMode; octree branches on mMode and its first fan triangle repeats vertex0 (index-2). Before repair, authorize actual runtime-mode topology and valid strip/fan minimums, preserving serialized fields and authored-tangent paths. Inspect unindexed admission too; no picking incident attributed.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-060 — Avatar mesh loader ignores its detail-UV header flag
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex avatar geometry integration
+- Discovered: 2026-11-13
+- Original reference: LLPolyMeshSharedData::loadMesh reads HasDetailTexCoords but never assigns mHasDetailTexCoords. A valid flagged binary contains an extra UV stream that the loader can skip before interpreting the following face fields. The issue also exists in pinned upstream.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Valid real LLM fixture safely returns incorrect data in old loader (child42), corrected flag consumes exact detail UVs and LOD inherits pointer/flag. Final avatar suite19555assertions/6cases pass. All29bundled LLM headers have detailflag0; no bundled visual incident asserted.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered pre-existing ignored loader flag before bounded fixture/repair. Do not infer it affects ordinary bundled meshes without inspecting their flags.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-061 — Avatar morph instances initialize binormals from normals
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex avatar geometry integration
+- Discovered: 2026-11-13
+- Original reference: Existing LLPolyMesh::initializeForMorph copies mBaseNormals into both instance binormal arrays despite retaining distinct mBaseBinormals. Same path exists in pinned upstream408.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Real LLM fixture distinct normal/binormal detects old instance initialization (child42); corrected instance/scaled binormals match base and actual morph consumers. Final avatar19555assertions/6cases pass, including LOD aliases. Owner shading acceptance pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered real initialized-data mismatch before narrow geometry repair. Keep separate from cache triangle order and avoid an unproved avatar lighting/FPS claim.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-062 — Transactional tangent import loses flexible-frame buffer reuse
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex geometry core integration
+- Discovered: 2026-11-13
+- Original reference: New local core d81f565dff createTangents adapter allocates a fresh aligned output even when mTangentsStale has an existing buffer. Final upstream reuses that buffer for flexible partial frames.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Oldd81 stale path7failed/9checks replacing6owners; final arena stage/copyback9/9checks passes with warm owner reuse. Final core ASan+UBSan334840assertions/138cases child0, one optional corpus skip. No measured frame-rate claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered new local integration issue before correction. Preserve both transactional failure safetyPPD-048 and upstream intended buffer reuse rather than trading one for the other.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-063 — Selected material buffer clone ignores native allocation failure
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native geometry integration
+- Discovered: 2026-11-13
+- Original reference: LLVertexBuffer::clone returnsvoid and ignores allocateBuffer false; native allocation updates requested counts even if CPU storage is null. LLFace selection recursion can pass count admission then dereference absent stores. Matching counts also bypass layout-change offset recalculation. U32 index sources expose logical half-counts while allocateBuffer sizes U16 units; old clone underallocates those stores.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Real native clone5265assertions/4cases pass with Metal validation and five indexed pixel draws; safe old-method control8failed assertions before unsafe writes. Verbatim clone allocation collaborator old5/17failed, fixed17/17pass. Layout offsets, U32 physical/logical capacity, null CPU rejection and warm reuse covered; no physical OOM claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered ignored result and null storage boundary before narrow clone/selection correction. Existing slot-count and recursive-result guards remain necessary but insufficient on their own.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-064 — Partition buffer reuse compares vertex count with index count
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native geometry integration
+- Discovered: 2026-11-13
+- Original reference: LLSpatialPartition::rebuildGeom compares getNumVerts()!=index_count instead of getNumIndices. Grass uses8vertices/12indices per blade, so a dirty grass group always reallocates even at matching dimensions; terrain also inherits the base path.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Exact production dimension predicate control old1/4failed, fixed4/4pass for unchanged8vertex/12index grass-sized slots, changed dimensions and null buffer. Normal native publication retained; no measured timing or frame-rate claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered source-confirmed dimensional comparison before repair; distinguish dirty rebuilds from every rendered frame.
+
+- 2026-11-13: Integrated into local combined geometry source3ee7786e67; focused corrective verification above. Full canonical candidate validation is still running; owner verification and push approval remain pending. See linked geometry work note for exact scope and controls.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+## PPD-065 — Base grass and terrain allocation failure clears geometry retry state
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native geometry integration
+- Discovered: 2026-11-13
+- Original reference: Retained base LLSpatialPartition::rebuildGeom clears GEOM_DIRTY after allocateBuffer(false), nulling its buffer/map but losing the failed group from priority retries. Grass and terrain inherit this path; distinct from PPD-058 volume fill rejection and PPD-064 dimension reuse.
+- Evidence: [Geometry port](work/active/upstream-geometry-port.md).
+- Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
+- Verification: Exact old3ee function control12pass/7failed checks, finalb16 function67assertions/2cases pass underLLDB child42/0 normally. Failed required allocation keeps dirty state, retry succeeds; warm8v12reuse, empty/dead/clean paths and owner lifetimes covered. No physical OOM/GPU/owner scene attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered inherited retry-state loss before narrow correction. Current source3ee full build is allowed to finish, then the final source will be rebuilt and validated; intermediate app is not owner-ready.
+
+- 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
