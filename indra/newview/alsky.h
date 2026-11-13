@@ -32,7 +32,7 @@
 
 #include "alskylayers.h"
 #include "alstarfield.h"
-#include "almetalworld.h"
+#include "../almetal/almetalworld.h"
 #include "lllegacyatmospherics.h"
 #include "llimagegl.h"
 #include "llpointer.h"
