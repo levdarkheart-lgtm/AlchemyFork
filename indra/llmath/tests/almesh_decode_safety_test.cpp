@@ -175,6 +175,34 @@ namespace
         }
     }
 
+    TEST_CASE("Mesh cache: optional ordering validates triangle indices", "[llvolume][mesh-cache-admission]")
+    {
+        SECTION("empty no-tangent work remains successful")
+        {
+            LLVolumeFace face;
+            CHECK(face.cacheOptimize(false));
+        }
+        SECTION("invalid indices fail without tangent generation")
+        {
+            LLVolumeFace face;
+            face.resizeVertices(3);
+            face.resizeIndices(3);
+            face.mIndices[0] = 0;
+            face.mIndices[1] = 1;
+            face.mIndices[2] = 3;
+            CHECK_FALSE(face.cacheOptimize(false));
+        }
+        SECTION("incomplete triangles fail without tangent generation")
+        {
+            LLVolumeFace face;
+            face.resizeVertices(3);
+            face.resizeIndices(2);
+            face.mIndices[0] = 0;
+            face.mIndices[1] = 1;
+            CHECK_FALSE(face.cacheOptimize(false));
+        }
+    }
+
     TEST_CASE("Mesh cache: high valence keeps the existing triangle order", "[llvolume][mesh-cache-budget]")
     {
         constexpr U32 rim = 10000;

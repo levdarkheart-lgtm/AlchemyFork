@@ -5334,10 +5334,15 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
     llassert(!mOptimized);
     mOptimized = true;
 
-    if (gen_tangents && mNormals && mTexCoords)
+    const bool tangents = gen_tangents && mNormals && mTexCoords;
     {
         if (!mPositions || !mIndices || mNumVertices <= 0 || mNumIndices <= 0)
         {
+            if (!tangents)
+            {
+                // Nothing to order.
+                return true;
+            }
             LL_WARNS_ONCE("LLVolume") << "Invalid volume face data for tangent generation: "
                 << "mPositions=" << (void*)mPositions
                 << ", mIndices=" << (void*)mIndices
@@ -5362,6 +5367,10 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
             }
         }
 
+    }
+
+    if (tangents)
+    {
         if (mNormalizedScale.mV[0] == 0.0f || mNormalizedScale.mV[1] == 0.0f || mNormalizedScale.mV[2] == 0.0f)
         {
             LL_WARNS_ONCE("LLVolume") << "Invalid normalized scale: " << mNormalizedScale << LL_ENDL;
