@@ -59,6 +59,7 @@ public:
     ~LLJointRiggingInfoTab();
     void resize(S32 size);
     void clear();
+    void swap(LLJointRiggingInfoTab& other) noexcept;
     S32 size() const { return mSize; }
     void merge(const LLJointRiggingInfoTab& src);
     LLJointRiggingInfo& operator[](S32 i) { return mRigInfoPtr[i]; }

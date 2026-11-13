@@ -16,6 +16,7 @@
 #include <random>
 #include <vector>
 #include <meshoptimizer.h>
+#include "alscratcharena.h"
 
 namespace
 {
@@ -217,7 +218,7 @@ namespace
         }
         ~FailMeshAllocation()
         {
-            meshopt_setAllocator(MeshAllocationFailures::defaultAllocate, MeshAllocationFailures::defaultDeallocate);
+            meshopt_setAllocator(ALScratchArena::allocate, ALScratchArena::deallocate);
         }
     };
 
@@ -309,6 +310,106 @@ namespace
         }
     }
 
+    TEST_CASE("Mesh normals: failed generation retains the original face", "[llvolume][mesh-normal-allocation]")
+    {
+        S32 allocation_count;
+        {
+            LLVolumeFace control;
+            cacheQuad(control);
+            FailMeshAllocation count(-1);
+            REQUIRE(control.generateNormals(1.f, 0.f));
+            allocation_count = MeshAllocationFailures::calls;
+            REQUIRE(MeshAllocationFailures::live == 0);
+        }
+        REQUIRE(allocation_count > 0);
+        for (S32 nth = 0; nth < allocation_count; ++nth)
+        {
+            CAPTURE(nth);
+            LLVolumeFace face;
+            cacheQuad(face);
+            face.allocateTangents(4);
+            std::fill_n(face.mTangents, 4, LLVector4a(1.f, 0.f, 0.f, 1.f));
+            const auto* positions = face.mPositions;
+            const auto* indices = face.mIndices;
+            const auto* normals = face.mNormals;
+            const auto* weights = face.mWeights;
+            const auto* tangents = face.mTangents;
+            const std::vector<U16> before(face.mIndices, face.mIndices + face.mNumIndices);
+            bool generated;
+            {
+                FailMeshAllocation fail(nth);
+                generated = face.generateNormals(1.f, 0.f);
+            }
+            CHECK(MeshAllocationFailures::failed);
+            CHECK(MeshAllocationFailures::live == 0);
+            CHECK_FALSE(generated);
+            CHECK(face.mPositions == positions);
+            CHECK(face.mIndices == indices);
+            CHECK(face.mNormals == normals);
+            CHECK(face.mWeights == weights);
+            CHECK(face.mTangents == tangents);
+            REQUIRE(face.mNumVertices == 4);
+            REQUIRE(face.mNumIndices == 6);
+            CHECK(std::equal(before.begin(), before.end(), face.mIndices));
+        }
+    }
+
+    TEST_CASE("Mesh remap: failed welding retains the original face", "[llvolume][mesh-remap-allocation]")
+    {
+        LLVolumeFace face;
+        cacheQuad(face);
+        const auto* positions = face.mPositions;
+        const auto* indices = face.mIndices;
+        const auto* weights = face.mWeights;
+        const std::vector<U16> before(face.mIndices, face.mIndices + face.mNumIndices);
+        bool remapped;
+        {
+            FailMeshAllocation fail(0);
+            remapped = face.remap();
+        }
+        CHECK(MeshAllocationFailures::failed);
+        CHECK(MeshAllocationFailures::live == 0);
+        CHECK_FALSE(remapped);
+        CHECK(face.mPositions == positions);
+        CHECK(face.mIndices == indices);
+        CHECK(face.mWeights == weights);
+        REQUIRE(face.mNumVertices == 4);
+        REQUIRE(face.mNumIndices == 6);
+        CHECK(std::equal(before.begin(), before.end(), face.mIndices));
+    }
+
+    TEST_CASE("Mesh faces: swapping transfers complete resource ownership", "[llvolume][mesh-face-ownership]")
+    {
+        LLVolumeFace left;
+        LLVolumeFace right;
+        cacheQuad(left);
+        cacheQuad(right);
+        left.mID = 7;
+        right.mID = 9;
+        left.mJointRiggingInfoTab.resize(1);
+        left.mJointRiggingInfoTab[0].setIsRiggedTo(true);
+        left.mJointRiggingInfoTab.setNeedsUpdate(false);
+        left.createOctree(1.f, LLVector4a(0.5f, 0.5f, 0.f), LLVector4a(1.f, 1.f, 1.f));
+        const auto* positions = left.mPositions;
+        const auto* extents = left.mExtents;
+        const auto* octree = left.getOctree();
+        const auto planar = left.getPlanarNormal();
+        STATIC_REQUIRE(noexcept(left.swap(right)));
+        left.swap(right);
+        CHECK(left.mID == 9);
+        CHECK(right.mID == 7);
+        CHECK(right.mPositions == positions);
+        CHECK(right.mExtents == extents);
+        CHECK(right.mCenter == right.mExtents + 2);
+        CHECK(left.mCenter == left.mExtents + 2);
+        CHECK(right.getOctree() == octree);
+        CHECK(left.getOctree() == nullptr);
+        REQUIRE(right.mJointRiggingInfoTab.size() == 1);
+        CHECK(right.mJointRiggingInfoTab[0].isRiggedTo());
+        CHECK_FALSE(right.mJointRiggingInfoTab.needsUpdate());
+        CHECK(right.getPlanarNormal().equals3(planar));
+    }
+
     TEST_CASE("Legacy tangents: absent normals remain zero", "[llvolume][mesh-zero-normal]")
     {
         LLVolumeFace face;
@@ -381,6 +482,12 @@ namespace
         LLVolumeFace face;
         face.resizeVertices(rim + 1);
         face.resizeIndices(rim * 3);
+        for (U32 i = 0; i <= rim; ++i)
+        {
+            face.mPositions[i].set((F32)i, 0.f, 0.f, 0.f);
+            face.mNormals[i].set(0.f, 0.f, 1.f, 0.f);
+            face.mTexCoords[i].set((F32)i, 0.f);
+        }
         std::vector<U32> order(rim);
         std::iota(order.begin(), order.end(), 0u);
         std::shuffle(order.begin(), order.end(), std::mt19937(7));
@@ -393,6 +500,12 @@ namespace
         const std::vector<U16> before(face.mIndices, face.mIndices + face.mNumIndices);
         REQUIRE(face.cacheOptimize(false));
         REQUIRE(face.mNumIndices == rim * 3);
-        CHECK(std::equal(before.begin(), before.end(), face.mIndices));
+        // Fetch-order compaction may renumber vertices; the original triangle/corner sequence must remain.
+        bool same_corners = true;
+        for (U32 i = 0; i < rim * 3; ++i)
+        {
+            same_corners &= face.mPositions[face.mIndices[i]][0] == (F32)before[i];
+        }
+        CHECK(same_corners);
     }
 }

@@ -89,6 +89,13 @@ LLJointRiggingInfoTab::LLJointRiggingInfoTab():
 {
 }
 
+void LLJointRiggingInfoTab::swap(LLJointRiggingInfoTab& other) noexcept
+{
+    std::swap(mRigInfoPtr, other.mRigInfoPtr);
+    std::swap(mSize, other.mSize);
+    std::swap(mNeedsUpdate, other.mNeedsUpdate);
+}
+
 LLJointRiggingInfoTab::~LLJointRiggingInfoTab()
 {
     clear();
