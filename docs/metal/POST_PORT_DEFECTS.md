@@ -2216,6 +2216,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Owner supplies Midday settings: global exposure1.0,ACES tone map/mix.70,auto exposure enabled; HDR/emissive/SSR enabled. EV-2 and-3 recover progressively more HDRI clouds. Source-only original/native audit finds no HDRI-specific gain or gamma mismatch. Owner then states overall scene and sky were overexposed before this port; PPD-081 separately tracks that broader concern.
 
+- 2026-11-13: Owner-authorized verified original67611 launched/PID10889 after candidate normalquit0; owner supplies14:31 same-claimed Daylight/Lev1233/HDRI.5/-3 reference image. Both supplied images visibly retain left cloud detail and pale right background; original foreground appears somewhat lighter in available areas. Different framing/occlusion plus AA/profile mismatch block controlled QA, so no parity, brightness-regression attribution or closure. [Comparison record](work/active/exposure-reference-comparison.md) retains exact images/identities/failed preflight. Reference left running; no shader/default/display change or push.
+
 ## PPD-081 — Owner reports pre-existing overall scene and sky overexposure
 
 - Status: investigating
@@ -2234,6 +2236,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Registered before any repair. Broaden investigation to pre-existing common scene output, keep HDRI-specific record/history and avoid attributing it to latest sky port. Read-only parallel audits assigned; no viewer manipulation/source change yet.
 
 - 2026-11-13: Source-only meter/post/ordinary-sky/presentation audits find no duplicated exposure, gamma encode or added gain versus original/upstream; no cause diagnosed. XDR/TrueTone/auto-brightness context retained. Owner14:05 image confirms diagnostic Exposure1/ACESmix1/center meter/EV[-2,+2]/comp0/speeds3,1/trims10,95/sky.25/gradeOFF. Source defaults unchanged; no fresh original/native parity comparison, shader fix or scene acceptance. Separate transition concern retained as PPD-082.
+
+- 2026-11-13: Owner-authorized verified original67611 launched/PID10889 after candidate normalquit0; owner supplies14:31 same-claimed Daylight/Lev1233/HDRI.5/-3 reference image. Both supplied images visibly retain left cloud detail and pale right background; original foreground appears somewhat lighter in available areas. Different framing/occlusion plus AA/profile mismatch block controlled QA, so no parity, brightness-regression attribution or closure. [Comparison record](work/active/exposure-reference-comparison.md) retains exact images/identities/failed preflight. Reference left running; no shader/default/display change or push.
 
 ## PPD-082 — Classic-sky blend policy can stop exposure before history admission changes
 
