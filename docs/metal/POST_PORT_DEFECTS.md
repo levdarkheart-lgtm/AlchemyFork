@@ -2218,6 +2218,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Owner-authorized verified original67611 launched/PID10889 after candidate normalquit0; owner supplies14:31 same-claimed Daylight/Lev1233/HDRI.5/-3 reference image. Both supplied images visibly retain left cloud detail and pale right background; original foreground appears somewhat lighter in available areas. Different framing/occlusion plus AA/profile mismatch block controlled QA, so no parity, brightness-regression attribution or closure. [Comparison record](work/active/exposure-reference-comparison.md) retains exact images/identities/failed preflight. Reference left running; no shader/default/display change or push.
 
+- 2026-11-13: Owner disputes the asserted framing difference. Exact compared images confirmed as native14:08:20/reference14:31:18, shown side by side unaltered. Camera/framing cause was not measured and remains unknown; prior camera explanation was premature, not a validated reason for the visible differences.
+
 ## PPD-081 — Owner reports pre-existing overall scene and sky overexposure
 
 - Status: investigating
@@ -2238,6 +2240,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Source-only meter/post/ordinary-sky/presentation audits find no duplicated exposure, gamma encode or added gain versus original/upstream; no cause diagnosed. XDR/TrueTone/auto-brightness context retained. Owner14:05 image confirms diagnostic Exposure1/ACESmix1/center meter/EV[-2,+2]/comp0/speeds3,1/trims10,95/sky.25/gradeOFF. Source defaults unchanged; no fresh original/native parity comparison, shader fix or scene acceptance. Separate transition concern retained as PPD-082.
 
 - 2026-11-13: Owner-authorized verified original67611 launched/PID10889 after candidate normalquit0; owner supplies14:31 same-claimed Daylight/Lev1233/HDRI.5/-3 reference image. Both supplied images visibly retain left cloud detail and pale right background; original foreground appears somewhat lighter in available areas. Different framing/occlusion plus AA/profile mismatch block controlled QA, so no parity, brightness-regression attribution or closure. [Comparison record](work/active/exposure-reference-comparison.md) retains exact images/identities/failed preflight. Reference left running; no shader/default/display change or push.
+
+- 2026-11-13: Owner disputes the asserted framing difference. Exact compared images confirmed as native14:08:20/reference14:31:18, shown side by side unaltered. Camera/framing cause was not measured and remains unknown; prior camera explanation was premature, not a validated reason for the visible differences.
 
 ## PPD-082 — Classic-sky blend policy can stop exposure before history admission changes
 

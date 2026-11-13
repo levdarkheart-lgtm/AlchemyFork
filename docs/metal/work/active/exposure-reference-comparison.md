@@ -86,3 +86,5 @@ unreproduced. If a controlled follow-up is needed, prepare the intended HDRI.5
 profile before launch, match actual AA/camera/effective environment and scene
 state, then obtain fresh observe/verify/gate before agent captures. Do not rerun
 or alter owner viewer merely to make an already-supplied manual image look gated.
+
+- 2026-11-13 follow-up: Owner disputes the framing explanation and requests the exact pair side by side. Exact original image hashes confirm Metal14:08:20 and reference14:31:18 were used. Camera framing was not independently verified; attributing visible landmark/cloud differences to camera movement was premature. Retain the images and distinguish observed pixel differences from an unproved camera cause.
