@@ -394,6 +394,8 @@ void LLSpatialPartition::rebuildGeom(LLSpatialGroup* group)
                         << index_count << " indices" << LL_ENDL;
                     group->mVertexBuffer = NULL;
                     group->mBufferMap.clear();
+                    group->mBuilt = 0.f;
+                    return; // Keep GEOM_DIRTY so the priority queue retries.
                 }
             }
         }
