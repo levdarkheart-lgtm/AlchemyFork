@@ -34,6 +34,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <limits>
+#include <random>
 #include <sstream>
 
 #define VALID_DATE                                  "2003-04-30T04:00:00Z"
@@ -53,10 +54,10 @@
 #define INVALID_DATE_EMPTY                          ""
 
 // invalid values
-// LLDate::fromStream checks only the format: it hands the fields to timegm,
-// which normalizes a value out of range rather than rejecting it (24:00:00 is
-// the next day's midnight, 2003-02-29 is 2003-03-01). Turn the case below on
-// when the parser checks the ranges.
+// LLDate::fromStream checks only the format: a field out of range rolls over
+// into the field above it rather than being refused (24:00:00 is the next
+// day's midnight, 2003-02-29 is 2003-03-01). Turn the case below on when the
+// parser checks the ranges.
 #define LL_DATE_PARSER_CHECKS_BOUNDARY 0
 #if LL_DATE_PARSER_CHECKS_BOUNDARY
 #define INVALID_DATE_24HOUR_BOUNDARY                "2003-04-30T24:00:00Z"
@@ -306,10 +307,10 @@ namespace
         }
     }
 
-    TEST_CASE("LLDate: fields past nine digits fail, and offsets past an S32 parse without overflowing", "[LLDate]")
+    TEST_CASE("LLDate: fields past nine digits fail and offsets past an S32 parse without overflowing", "[LLDate]")
     {
         LLDate date;
-        // past an S32, and within one but carried by timegm() into another date
+        // a field past nine digits is no date
         CHECK_FALSE(date.fromString("99999999999-01-01T00:00:00Z"));
         CHECK_FALSE(date.fromString("-99999999999-01-01T00:00:00Z"));
         CHECK_FALSE(date.fromString("2000-01-01T00:00:1000000000Z"));
@@ -326,5 +327,215 @@ namespace
         // strftime() leaves its buffer indeterminate when the result does not fit
         LLDate d;
         CHECK(d.toHTTPDateString(std::string(200, 'x')).empty());
+    }
+
+    // Windows' C runtime refuses dates before 1970 and past 3000; every
+    // platform reads, writes and splits them alike.
+    TEST_CASE("LLDate: dates before 1970 and past 3000 read and write and split on every platform", "[LLDate]")
+    {
+        struct Case
+        {
+            const char* text;
+            F64 seconds;
+        };
+        const Case cases[] =
+        {
+            { "1969-07-20T20:17:40Z", -14182940.0 },
+            { "1900-01-01T00:00:00Z", -2208988800.0 },
+            { "0001-01-01T00:00:00Z", -62135596800.0 },
+            { "3001-01-01T00:00:00Z", 32535216000.0 },
+        };
+        for (const Case& c : cases)
+        {
+            CAPTURE(c.text);
+            LLDate date;
+            REQUIRE(date.fromString(c.text));
+            CHECK(date.secondsSinceEpoch() == c.seconds);
+            CHECK(LLDate(c.seconds).asString() == c.text);
+        }
+
+        LLDate date(-14182940.0);
+        S32 year = 0, month = 0, day = 0, hour = 0, min = 0, sec = 0;
+        REQUIRE(date.split(&year, &month, &day, &hour, &min, &sec));
+        CHECK(year == 1969);
+        CHECK(month == 7);
+        CHECK(day == 20);
+        CHECK(hour == 20);
+        CHECK(min == 17);
+        CHECK(sec == 40);
+        // a Sunday, the 201st day of its year
+        CHECK(date.toHTTPDateString(std::string("%Y-%m-%d %H:%M:%S %w %j")) == "1969-07-20 20:17:40 0 201");
+    }
+
+    TEST_CASE("LLDate: a year before 0 is written as its sign and four digits", "[LLDate]")
+    {
+        LLDate date;
+        REQUIRE(date.fromYMDHMS(-1, 1, 1, 0, 0, 0));
+        CHECK(date.secondsSinceEpoch() == -62198755200.0);
+        CHECK(date.asString() == "-0001-01-01T00:00:00Z");
+        LLDate read;
+        REQUIRE(read.fromString("-0001-01-01T00:00:00Z"));
+        CHECK(read.secondsSinceEpoch() == date.secondsSinceEpoch());
+
+        REQUIRE(date.fromYMDHMS(0, 1, 1, 0, 0, 0));
+        CHECK(date.asString() == "0000-01-01T00:00:00Z");
+    }
+
+    TEST_CASE("LLDate: split refuses a year an S32 cannot hold", "[LLDate]")
+    {
+        const S32 last_year = std::numeric_limits<S32>::max();
+        LLDate date;
+        REQUIRE(date.fromYMDHMS(last_year, 12, 31, 0, 0, 0));
+        S32 year = 0;
+        REQUIRE(date.split(&year, nullptr, nullptr, nullptr, nullptr, nullptr));
+        CHECK(year == last_year);
+
+        // the first day of the year after, month 13 rolling over into it
+        REQUIRE(date.fromYMDHMS(last_year, 13, 1, 0, 0, 0));
+        CHECK_FALSE(date.split(&year, nullptr, nullptr, nullptr, nullptr, nullptr));
+    }
+
+    TEST_CASE("LLDate: the second before 1970 reads like any other", "[LLDate]")
+    {
+        LLDate date;
+        REQUIRE(date.fromString("1969-12-31T23:59:59Z"));
+        CHECK(date.secondsSinceEpoch() == -1.0);
+        CHECK(LLDate(-1.0).asString() == "1969-12-31T23:59:59Z");
+    }
+
+    TEST_CASE("LLDate: a fraction before 1970 counts on from the second before it", "[LLDate]")
+    {
+        CHECK(LLDate(-1.5).asString() == "1969-12-31T23:59:58.50Z");
+        CHECK(LLDate(-0.25).asString() == "1969-12-31T23:59:59.75Z");
+        LLDate date;
+        REQUIRE(date.fromString("1969-12-31T23:59:58.50Z"));
+        CHECK(date.secondsSinceEpoch() == -1.5);
+    }
+
+    TEST_CASE("LLDate: a fraction is written only when its hundredths are not zero and is cut", "[LLDate]")
+    {
+        // 7.8125 ms: microseconds, but no hundredth
+        CHECK(LLDate(946684800.0078125).asString() == "2000-01-01T00:00:00Z");
+        CHECK(LLDate(946684800.25).asString() == "2000-01-01T00:00:00.25Z");
+        CHECK(LLDate(946684800.999).asString() == "2000-01-01T00:00:00.99Z");
+    }
+
+    TEST_CASE("LLDate: a date written in hundredths reads back and writes as itself", "[LLDate]")
+    {
+        // A date read from text is its whole seconds plus the fraction ".hh"
+        // read as a double, and that sum can land just below the hundredth.
+        // Written again, it is still that hundredth.
+        const auto seconds_at = [](S32 year, S32 month, S32 day)
+        {
+            LLDate date;
+            date.fromYMDHMS(year, month, day, 0, 0, 0);
+            return (S64)date.secondsSinceEpoch();
+        };
+        struct Range
+        {
+            const char* what;
+            S64         first;
+            S64         last;
+        };
+        const Range ranges[] = {
+            { "1900 to 9999", seconds_at(1900, 1, 1), seconds_at(10000, 1, 1) - 1 },
+            { "10000 to 99999", seconds_at(10000, 1, 1), seconds_at(100000, 1, 1) - 1 },
+            { "a day either side of 1970", -86400, 86400 },
+            { "years before 0", seconds_at(-9999, 1, 1), seconds_at(0, 1, 1) - 1 },
+        };
+        std::mt19937_64 random(20261101);
+        for (const Range& range : ranges)
+        {
+            std::uniform_int_distribution<S64> pick_second(range.first, range.last);
+            std::uniform_int_distribution<int> pick_hundredth(0, 99);
+            int differ = 0;
+            std::string first_written, first_rewritten;
+            for (int i = 0; i < 50000; ++i)
+            {
+                const F64 seconds = (F64)pick_second(random) + pick_hundredth(random) / 100.0;
+                const std::string written = LLDate(seconds).asString();
+                LLDate read;
+                REQUIRE(read.fromString(written));
+                const std::string rewritten = read.asString();
+                if (rewritten != written && differ++ == 0)
+                {
+                    first_written = written;
+                    first_rewritten = rewritten;
+                }
+            }
+            INFO(range.what << ": " << first_written << " read back and written as " << first_rewritten);
+            CHECK(differ == 0);
+        }
+
+        // A genuine fraction still cuts to the hundredth at or before it.
+        CHECK(LLDate(-1.5).asString() == "1969-12-31T23:59:58.50Z");
+        CHECK(LLDate(1.256).asString() == "1970-01-01T00:00:01.25Z");
+        LLDate hundredth;
+        REQUIRE(hundredth.fromString("2009-02-13T23:31:30.29Z"));
+        CHECK(LLDate(hundredth.secondsSinceEpoch() - 0.000001).asString() == "2009-02-13T23:31:30.28Z");
+    }
+
+    TEST_CASE("LLDate: an offset reads as hours and minutes with or without its colon", "[LLDate]")
+    {
+        const char* const same_instant[] =
+        {
+            "2000-01-01T05:30:00+0530",
+            "2000-01-01T05:30:00+05:30",
+            "1999-12-31T22:30:00-0130",
+            "1999-12-31T22:30:00-01:30",
+            "2000-01-01T05:00:00+05",
+        };
+        for (const char* text : same_instant)
+        {
+            CAPTURE(text);
+            LLDate date;
+            REQUIRE(date.fromString(text));
+            CHECK(date.secondsSinceEpoch() == 946684800.0);
+
+            // an offset that ends the stream leaves it at its end, not failed
+            std::istringstream stream(text);
+            LLDate streamed;
+            stream >> streamed;
+            CHECK_FALSE(stream.fail());
+            CHECK(streamed.secondsSinceEpoch() == 946684800.0);
+        }
+        LLDate date;
+        CHECK_FALSE(date.fromString("2000-01-01T00:00:00+"));
+    }
+
+    TEST_CASE("LLDate: a fraction is digits only", "[LLDate]")
+    {
+        LLDate date;
+        CHECK_FALSE(date.fromString("2000-01-01T00:00:00.5e3Z"));
+        CHECK_FALSE(date.fromString("2000-01-01T00:00:00.Z"));
+        REQUIRE(date.fromString("2000-01-01T00:00:00.125Z"));
+        CHECK(date.secondsSinceEpoch() == 946684800.125);
+    }
+
+    TEST_CASE("LLDate: a field out of range rolls over into the field above it", "[LLDate]")
+    {
+        struct Case
+        {
+            const char* text;
+            const char* same_as;
+        };
+        const Case cases[] =
+        {
+            { "2003-04-30T24:00:00Z", "2003-05-01T00:00:00Z" },
+            { "2003-02-29T00:00:00Z", "2003-03-01T00:00:00Z" },
+            { "2003-13-01T00:00:00Z", "2004-01-01T00:00:00Z" },
+            { "2003-03-00T00:00:00Z", "2003-02-28T00:00:00Z" },
+            { "2003-01-01T00:00:-1Z", "2002-12-31T23:59:59Z" },
+            { "2016-12-31T23:59:60Z", "2017-01-01T00:00:00Z" },
+        };
+        for (const Case& c : cases)
+        {
+            CAPTURE(c.text);
+            LLDate date;
+            LLDate expected;
+            REQUIRE(date.fromString(c.text));
+            REQUIRE(expected.fromString(c.same_as));
+            CHECK(date.secondsSinceEpoch() == expected.secondsSinceEpoch());
+        }
     }
 }
