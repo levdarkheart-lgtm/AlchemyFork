@@ -1,5 +1,12 @@
 # Concrete route from the native fork to Apple-first render ownership
 
+**Execution update 2026-11-13:** owner authorizes completing G2–G5 continuously,
+then testing one combined app. The earlier per-goal runtime stopping points in
+this historical route are superseded by the [active combined goal](../work/active/apple-first-architecture-g2-g5.md).
+G1/crash-repair/profile checkout is preserved; implementation proceeds on the
+isolated `codex/apple-first-architecture-g2-g5` branch. Runtime acceptance and
+in-world performance remain future owner checks, not assumed results.
+
 Baseline `18e576cec0a05923632188ec8d7b2224657ffbfa`, 2026-11-13.
 Execution starts with [goal one](../work/active/apple-shadow-records-goal1.md).
 Goal one is now implemented: [measured result](apple-shadow-records-goal1-results.md)
