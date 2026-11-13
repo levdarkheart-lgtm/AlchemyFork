@@ -39,6 +39,9 @@
 #include "llvolume.h"
 #include "llendianswizzle.h"
 
+#include <meshoptimizer.h>
+#include <new>
+#include <vector>
 
 #define HEADER_ASCII "Linden Mesh 1.0"
 #define HEADER_BINARY "Linden Binary Mesh 1.0"
@@ -269,7 +272,7 @@ bool LLPolyMeshSharedData::allocateJointNames( U32 numJointNames )
 //--------------------------------------------------------------------
 // LLPolyMeshSharedData::loadMesh()
 //--------------------------------------------------------------------
-bool LLPolyMeshSharedData::loadMesh( const std::string& fileName )
+bool LLPolyMeshSharedData::loadMesh( const std::string& fileName, bool keep_order )
 {
         //-------------------------------------------------------------------------
         // Open the file
@@ -333,6 +336,10 @@ bool LLPolyMeshSharedData::loadMesh( const std::string& fileName )
                 {
                         LL_ERRS() << "can't read HasDetailTexCoords flag from " << fileName << LL_ENDL;
                         return false;
+                }
+                if (!isLOD())
+                {
+                        mHasDetailTexCoords = hasDetailTexCoords > 0;
                 }
 
                 //----------------------------------------------------------------
@@ -557,6 +564,37 @@ bool LLPolyMeshSharedData::loadMesh( const std::string& fileName )
 //                      }
 
                         numTris++;
+                }
+
+                // The triangles in an order a vertex cache reuses, once for
+                // the file and every avatar that shares it. Morphs and skin
+                // weights address vertices, which keep their order, and an
+                // LOD's faces are its own.
+                const U32 vertex_count = (U32)mNumVertices;
+                bool in_range = numFaces > 0 && !keep_order;
+                for (i = 0; i < (U32)numFaces * 3 && in_range; i++)
+                {
+                        in_range = (U32)mFaces[i / 3][i % 3] < vertex_count;
+                }
+                if (in_range)
+                {
+                        // Ordering is optional. Stage every output index so an
+                        // allocation failure leaves the file's faces intact.
+                        try
+                        {
+                                const size_t count = (size_t)numFaces * 3;
+                                std::vector<unsigned int> reordered(count);
+                                meshopt_optimizeVertexCache(reordered.data(),
+                                        reinterpret_cast<const unsigned int*>(mFaces), count, vertex_count);
+                                for (size_t index = 0; index < count; ++index)
+                                {
+                                        mFaces[index / 3][index % 3] = (S32)reordered[index];
+                                }
+                        }
+                        catch (const std::bad_alloc&)
+                        {
+                                LL_WARNS_ONCE("Mesh") << "Skipping optional avatar triangle ordering after allocation failure" << LL_ENDL;
+                        }
                 }
 
                 LL_DEBUGS() << "verts: " << numVertices
@@ -818,7 +856,7 @@ LLPolyMesh::~LLPolyMesh()
 //-----------------------------------------------------------------------------
 // LLPolyMesh::getMesh()
 //-----------------------------------------------------------------------------
-LLPolyMesh *LLPolyMesh::getMesh(const std::string &name, LLPolyMesh* reference_mesh)
+LLPolyMesh *LLPolyMesh::getMesh(const std::string &name, LLPolyMesh* reference_mesh, bool keep_order)
 {
         //-------------------------------------------------------------------------
         // search for an existing mesh by this name
@@ -842,7 +880,7 @@ LLPolyMesh *LLPolyMesh::getMesh(const std::string &name, LLPolyMesh* reference_m
         {
                 mesh_data->setupLOD(reference_mesh->getSharedData());
         }
-        if ( ! mesh_data->loadMesh( full_path ) )
+        if ( ! mesh_data->loadMesh( full_path, keep_order ) )
         {
                 delete mesh_data;
                 return NULL;
@@ -980,8 +1018,8 @@ void LLPolyMesh::initializeForMorph()
     LLVector4a::memcpyNonAliased16((F32*) mCoords, (F32*) mSharedData->mBaseCoords, sizeof(LLVector4a) * mSharedData->mNumVertices);
     LLVector4a::memcpyNonAliased16((F32*) mNormals, (F32*) mSharedData->mBaseNormals, sizeof(LLVector4a) * mSharedData->mNumVertices);
     LLVector4a::memcpyNonAliased16((F32*) mScaledNormals, (F32*) mSharedData->mBaseNormals, sizeof(LLVector4a) * mSharedData->mNumVertices);
-    LLVector4a::memcpyNonAliased16((F32*) mBinormals, (F32*) mSharedData->mBaseNormals, sizeof(LLVector4a) * mSharedData->mNumVertices);
-    LLVector4a::memcpyNonAliased16((F32*) mScaledBinormals, (F32*) mSharedData->mBaseNormals, sizeof(LLVector4a) * mSharedData->mNumVertices);
+    LLVector4a::memcpyNonAliased16((F32*) mBinormals, (F32*) mSharedData->mBaseBinormals, sizeof(LLVector4a) * mSharedData->mNumVertices);
+    LLVector4a::memcpyNonAliased16((F32*) mScaledBinormals, (F32*) mSharedData->mBaseBinormals, sizeof(LLVector4a) * mSharedData->mNumVertices);
     memcpy((F32*) mTexCoords, (F32*) mSharedData->mTexCoords, sizeof(LLVector2) * (mSharedData->mNumVertices)); // allocated in LLPolyMeshSharedData::allocateVertexData
 
     for (S32 i = 0; i < mSharedData->mNumVertices; ++i)
