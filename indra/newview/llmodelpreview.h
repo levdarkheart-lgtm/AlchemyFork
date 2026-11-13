@@ -33,6 +33,7 @@
 #include "llmeshrepository.h"
 #include "llmodelloader.h" //NUM_LOD
 #include "llmodel.h"
+#include "almeshsimplifier.h"
 
 #include <memory>
 
@@ -122,8 +123,8 @@ public:
     typedef enum
     {
         LOD_FROM_FILE = 0,
-        MESH_OPTIMIZER_AUTO, // automatically selects method based on model or face
-        MESH_OPTIMIZER_PRECISE, // combines faces into a single model, simplifies, then splits back into faces
+        MESH_OPTIMIZER_AUTO, // simplifies a model's faces together, crossing more seams until it reaches the target
+        MESH_OPTIMIZER_PRECISE, // simplifies each face on its own, keeping every seam
         MESH_OPTIMIZER_SLOPPY, // uses sloppy method, works per face
         USE_LOD_ABOVE,
     } eLoDMode;
@@ -215,6 +216,9 @@ protected:
 
     void warnTextureScaling();
     void lookupLODModelFiles(S32 lod);
+    // Drops the face copies of models no LOD and not the base holds any
+    // longer, which nothing restores into and the copies alone keep.
+    void dropFacesCopiesOfLostModels();
 
 private:
 #if LL_DARWIN
@@ -228,6 +232,8 @@ private:
     LLVOAvatar* getPreviewAvatar(void) { return mPreviewAvatar; }
     // Count amount of original models, excluding sub-models
     static U32 countRootModels(LLModelLoader::model_list models);
+    // The simplifier of mBaseModel[mdl_idx], kept in mSimplifiers.
+    const ALMeshSimplifier& simplifierFor(U32 mdl_idx);
     LLVector3   mGroundPlane[4];
     /// Indicates whether we should warn of high-lod meshes that do not have a corresponding physics mesh.
     /// Reset when resetting the modelpreview (i.e., when the uploader dialog is created or reset), and when
@@ -247,22 +253,6 @@ private:
 
     S32 mNumOfFetchingTextures;
     bool mTexturesNeedScaling;
-
-    typedef enum
-    {
-        MESH_OPTIMIZER_FULL,
-        MESH_OPTIMIZER_NO_NORMALS,
-        MESH_OPTIMIZER_NO_UVS,
-        MESH_OPTIMIZER_NO_TOPOLOGY,
-    } eSimplificationMode;
-
-    // Merges faces into single mesh, simplifies using mesh optimizer,
-    // then splits back into faces.
-    // Returns reached simplification ratio. -1 in case of a failure.
-    F32 genMeshOptimizerPerModel(LLModel *base_model, LLModel *target_model, F32 indices_ratio, F32 error_threshold, eSimplificationMode simplification_mode);
-    // Simplifies specified face using mesh optimizer.
-    // Returns reached simplification ratio. -1 in case of a failure.
-    F32 genMeshOptimizerPerFace(LLModel *base_model, LLModel *target_model, U32 face_idx, F32 indices_ratio, F32 error_threshold, eSimplificationMode simplification_mode);
 
 protected:
     friend class LLModelLoader;
@@ -310,10 +300,26 @@ protected:
     LLModelLoader::model_list mBaseModel;
 
     typedef std::vector<LLVolumeFace>       v_LLVolumeFace_t;
-    typedef std::vector<v_LLVolumeFace_t>   vv_LLVolumeFace_t;
+    // Each model's faces as they were before generateNormals first rewrote
+    // them, for restoreNormals to put back into that model: a model the
+    // base and a LOD share is copied once, before either is rewritten, and
+    // a model loaded or made since takes nothing of another's.
+    typedef std::vector<std::pair<LLPointer<LLModel>, v_LLVolumeFace_t>> faces_copy_t;
 
-    vv_LLVolumeFace_t mModelFacesCopy[LLModel::NUM_LODS];
-    vv_LLVolumeFace_t mBaseModelFacesCopy;
+    faces_copy_t mModelFacesCopy[LLModel::NUM_LODS];
+    faces_copy_t mBaseModelFacesCopy;
+
+    // A simplifier of each of mBaseModel's models, made the first time a
+    // level of detail is generated from the model and kept for the levels
+    // after, while it is the same model with the faces it had. They are
+    // dropped where the base models are replaced or their faces rewritten.
+    struct BaseSimplifier
+    {
+        LLPointer<LLModel> mModel;
+        LLModel::material_list mMaterialList; // the model's when it was made
+        std::unique_ptr<const ALMeshSimplifier> mSimplifier;
+    };
+    std::vector<BaseSimplifier> mSimplifiers;
 
     U32 mGroup;
 

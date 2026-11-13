@@ -209,7 +209,8 @@ public:
         U32 num_verts,
         U32 num_indices);
 
-    void generateNormals(F32 angle_cutoff);
+    // Keeps this model's faces unchanged if any face cannot be generated.
+    bool generateNormals(F32 angle_cutoff);
 
     void addFace(const LLVolumeFace& face);
 
@@ -218,7 +219,6 @@ public:
     void normalizeVolumeFacesAndWeights();
     void trimVolumeFacesToSize(U32 new_count = LL_SCULPT_MESH_MAX_FACES, LLVolume::face_list_t* remainder = NULL);
     void remapVolumeFaces();
-    void optimizeVolumeFaces();
     void offsetMesh( const LLVector3& pivotPoint );
     void getNormalizedScaleTranslation(LLVector3& scale_out, LLVector3& translation_out) const;
     LLVector3 getTransformedCenter(const LLMatrix4& mat);
