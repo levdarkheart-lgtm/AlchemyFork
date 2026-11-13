@@ -76,3 +76,11 @@ PBR/sculpt/probe/default-sky appearance, teleport/crossings, inventory/social/
 ScriptStudio and retained audio/voice behavior. Record actual results perPPD.
 Keep changes local until owner tests, agrees they work and explicitly approves
 push. Full product parity/stability/runtime/performance gates remain open.
+
+
+2026-11-13 publication authorization: owner confirms the colour issue resolved
+and explicitly approves pushing the ENTIRE committed upstream-port series,
+including this work and its tests/records. [Publication scope](upstream-port-publication-20261113.md).
+Earlier local-only statements are historical; unverified/partial defect status
+and independent release/performance gates remain unchanged. No future unrelated
+fixes, raw captures or release artifacts are included in this approval.

@@ -767,7 +767,7 @@ transparent atlas/mip edge coverage are candidates, not confirmed causes.
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Both secure-login redirect layers and their registered tests pass; ordinary HTTPS and explicit plain-grid semantics preserved.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 The application accepts next_url without retaining HTTPS; HTTP redirects also lack an HTTPS-only restriction. Both layers need the final upstream guard. No downgrade or credential exposure was reproduced.
 
@@ -778,6 +778,9 @@ The application accepts next_url without retaining HTTPS; HTTP redirects also la
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-018 — Simulator Xfer names choose local cache files
 
@@ -790,7 +793,7 @@ The application accepts next_url without retaining HTTPS; HTTP redirects also la
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Xfer short-name/header/callback tests pass; local task/mute filenames are viewer-generated and their client integration builds.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 A remote name is reused for the local cache target and cleanup; short names can also reach suffix substrings with invalid positions. Upstream generates independent local temporary names and bounds suffix tests.
 
@@ -801,6 +804,9 @@ A remote name is reused for the local cache target and cleanup; short names can 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-019 — IM binary buckets can be read beyond their copied bytes
 
@@ -813,7 +819,7 @@ A remote name is reused for the local cache target and cleanup; short names can 
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Exact production bounded bucket-text body passes9 ASan/UBSan checks; old constructor control reproduces heap overflow. Full IM application builds; no live IM session test.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Declared size is passed beyond a bounded copy, and session/inventory text is consumed as an unbounded C string. Keep copied byte length and bounded NUL searches together.
 
@@ -824,6 +830,9 @@ Declared size is passed beyond a bounded copy, and session/inventory text is con
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-020 — Out-of-domain packet IDs can hang the main thread
 
@@ -836,7 +845,7 @@ Declared size is passed beyond a bounded copy, and session/inventory text is con
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Registered circuit49assertions/11cases pass; removing only the domain guard times out in the same test.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 The predicate computes distance modulo 24 bits but the loop compares against the original 32-bit input. A high-bit number is unreachable by that wrapping loop. This is separate from PPD-002's unproved render-freeze cause.
 
@@ -847,6 +856,9 @@ The predicate computes distance modulo 24 bits but the loop compares against the
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-021 — Network object and layer decoders lack required payload bounds
 
@@ -859,7 +871,7 @@ The predicate computes distance modulo 24 bits but the loop compares against the
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Registered object/message/primitive/layer/profile tests pass, with malformed input cases and complete cache lifetime prerequisites; no malformed live simulator traffic executed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Retained subcases: static name-value buffer overflow/stale fields, particle/TE/extra-param/motion length and type checks, fixed object-data buffers, patch-size and bitstream bounds, partial wind/land patches, and short initial Xfer headers. See the detailed general-review rows for the complete corrective sequences; not every malformed input was independently executed.
 
@@ -870,6 +882,9 @@ Retained subcases: static name-value buffer overflow/stale fields, particle/TE/e
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-022 — Mesh decoding has unsafe weights and unbounded face/index work
 
@@ -882,7 +897,7 @@ Retained subcases: static name-value buffer overflow/stale fields, particle/TE/e
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Expanded actual compressed decoder plus SIMD kernels passes201assertions/4cases under ASan/UBSan and registered tests; old weight/short-attribute controls reproduce heap overflow. PPD-043 zero fallback corrected separately, PPD-044 cost report remains open.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Retained subcases: an influence read can consume up to three bytes after a one-byte check; missing trailing vertices leave skin weights uninitialized; face/per-face/LOD index counts are allocated without upstream work caps. These production trees are identical to the fork base.
 
@@ -896,6 +911,9 @@ Retained subcases: an influence read can consume up to three bytes after a one-b
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-023 — Disconnect destroys a world still used in the current frame
 
 - Status: ready_for_owner
@@ -907,7 +925,7 @@ Retained subcases: an influence read can consume up to three bytes after a one-b
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Original-mapped world/reset/monitor guards compile in exact candidate; no actual in-world disconnect retest, so owner confirmation remains pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Disconnect deletes LLWorld while later current-frame texture/UI work dereferences it. Related scene-monitor visibility paths also assume an existing singleton. Preserve both retained-world cleanup and monitor guards; no live crash was reproduced.
 
@@ -918,6 +936,9 @@ Disconnect deletes LLWorld while later current-frame texture/UI work dereference
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-024 — Random UUID generation shares unsynchronized state
 
@@ -930,7 +951,7 @@ Disconnect deletes LLWorld while later current-frame texture/UI work dereference
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. UUID37136assertions/25cases pass, including200000 distinct concurrent IDs and unchanged deterministic asset/name vectors; original produces140214distinct/200000 in retained run.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 getCurrentTime and generate share lazy initialization, time and sequence fields without complete synchronization. Upstream reproduced duplicate IDs under concurrency; no collision benchmark was run on this Mac. Deterministic combine/name-based asset ID behavior must remain unchanged.
 
@@ -941,6 +962,9 @@ getCurrentTime and generate share lazy initialization, time and sequence fields 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-025 — Reliable packet queues can lose acknowledged data and retain stale history
 
@@ -953,7 +977,7 @@ getCurrentTime and generate share lazy initialization, time and sequence fields 
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Protocol20599assertions/52cases, circuit49/11 and bitpack36/9 pass; normal full-header dependency rebuild avoids the recorded narrow-link stale-ABI fixture failure.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 A full ring overwrites an older packet after it was acknowledged. Related final upstream corrections handle duplicate ACKs, copy windows, queue impairment and peers that never ping growing reliable history. These are protocol mechanisms, not an attribution to a rendering incident.
 
@@ -964,6 +988,9 @@ A full ring overwrites an older packet after it was acknowledged. Related final 
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-026 — Object cache clear and persistence mishandle retained entry state
 
@@ -976,7 +1003,7 @@ A full ring overwrites an older packet after it was acknowledged. Related final 
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Deferred removal and safe entry release tests pass in registered cache suite; current source includes pending-removal gates and safe reader ordering. Disk/extras pairing remains unimplemented and this record stays investigating.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Retained subcases: map clearing leaves raw cache entry references/cursors; removal during a cache read needs deferral; cache objects and extras are not paired when no glTF override ever made extras dirty. Upstream tests are not current-Metal runtime verification.
 
@@ -993,6 +1020,9 @@ Retained subcases: map clearing leaves raw cache entry references/cursors; remov
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-027 — Escaped floater names bypass resolved-name restrictions
 
 - Status: ready_for_owner
@@ -1004,7 +1034,7 @@ Retained subcases: map clearing leaves raw cache entry references/cursors; remov
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Registered shared decoded-name policy regression passes; full app integration builds. No restricted floater opened during testing.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 The restriction check uses escaped params[0] while opening resolves an unescaped name. The two stages can disagree on the allowed floater. No restricted floater was opened during this audit.
 
@@ -1015,6 +1045,9 @@ The restriction check uses escaped params[0] while opening resolves an unescaped
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-028 — Failed COLRv1 glyph painting retains stale raster surfaces
 
@@ -1027,7 +1060,7 @@ The restriction check uses escaped params[0] while opening resolves an unescaped
 - Next action: Owner tests exact First Fixes68914 candidate for ordinary login/world/inventory/fonts and retained media/voice behavior; do not close or push without the required owner decisions.
 - Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Registered real painter failure/recovery15assertions/1case passes; original stale width116 versus expected18 reproduced. No real allocation failure or live font incident claimed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 The per-thread painter is reused without hb_raster_paint_clear. Failure after painting begins can leave a larger root surface for the next smaller glyph, allowing out-of-bounds compositing. Native font upload does not remove this CPU painter mechanism.
 
@@ -1038,6 +1071,9 @@ The per-thread painter is reused without hb_raster_paint_clear. Failure after pa
 - 2026-11-13: Owner authorizes the First upstream security/crash batch. Local backport and regression validation in progress; retain original findings and keep owner verification/push approval pending.
 
 - 2026-11-13: Combined candidate1f635/68914 passes build, affected tests and static bundle checks; [final validation](research/upstream-first-batch-validation-2026-11-13.md). Five unrelated pre-existing HTTP cases remain skipped. Owner runtime verification and push approval remain pending.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-029 — Valid large texture readback reaches a fatal legacy size guard
 
@@ -1050,7 +1086,7 @@ The per-thread painter is reused without hb_raster_paint_clear. Failure after pa
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 readBackRaw fatally rejects dimensions above 2048 before reaching native readback although accepted images extend to MAX_IMAGE_SIZE (4096). Upstream uses the accepted limit and nonfatal failure for invalid requests.
 
@@ -1063,6 +1099,9 @@ readBackRaw fatally rejects dimensions above 2048 before reaching native readbac
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-030 — URI first-call initialization races and malformed URI handling diverges
 
 - Status: ready_for_owner
@@ -1074,7 +1113,7 @@ readBackRaw fatally rejects dimensions above 2048 before reaching native readbac
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 A plain initialized bool guards sorting of a shared string, so concurrent first calls can race. Retained companion subcases: malformed percent escapes lose/change text, an empty query returns an array, and leading-colon scheme handling differs. No current race reproduction was run.
 
@@ -1087,6 +1126,9 @@ A plain initialized bool guards sorting of a shared string, so concurrent first 
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-031 — Shared LLSD date and string contracts retain upstream correctness defects
 
 - Status: ready_for_owner
@@ -1098,7 +1140,7 @@ A plain initialized bool guards sorting of a shared string, so concurrent first 
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Retained subcases: failed/empty unzip result interpretation, single-line deserialization, empty XML keys and malformed XML/DOCTYPE acceptance, quoted URI/control serialization, nonfinite real formatting, date fraction/timezone round trips, separator/CR removal, and empty-target replace looping. The last is latent: upstream found no current empty-target caller. These are CPU contracts; no exploit or live corruption is asserted.
 
@@ -1111,6 +1153,9 @@ Retained subcases: failed/empty unzip result interpretation, single-line deseria
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-032 — Nonfinite quaternion normalization emits invalid transforms
 
 - Status: ready_for_owner
@@ -1122,7 +1167,7 @@ Retained subcases: failed/empty unzip result interpretation, single-line deseria
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 An infinite or overflowing squared magnitude passes the positive threshold, producing zero/NaN components instead of the identity fallback. This is independent of Metal and has not been assigned to a current visual incident.
 
@@ -1135,6 +1180,9 @@ An infinite or overflowing squared magnitude passes the positive threshold, prod
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-033 — New mesh faces inherit placeholder face textures and materials
 
 - Status: ready_for_owner
@@ -1146,7 +1194,7 @@ An infinite or overflowing squared magnitude passes the positive threshold, prod
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 When a loaded mesh gains faces, old code copies the last existing face despite earlier wire data describing the new faces. TE, material and glTF override can all be wrong until another update. Full viewer material assignment was not runtime tested.
 
@@ -1159,6 +1207,9 @@ When a loaded mesh gains faces, old code copies the last existing face despite e
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-034 — Octree child capacity can overflow beneath a full parent
 
 - Status: ready_for_owner
@@ -1170,7 +1221,7 @@ When a loaded mesh gains faces, old code copies the last existing face despite e
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 A child insertion can ignore its own capacity after a parent fills. Bring legal capacity/minimum-size clamps and retain the intentional exemption for unsplittable tiny nodes. Dense-geometry omission is a source-level risk, not a reproduced scene symptom.
 
@@ -1183,6 +1234,9 @@ A child insertion can ignore its own capacity after a parent fills. Bring legal 
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-035 — Asynchronous alpha-mask answers do not rebuild dependent faces
 
 - Status: ready_for_owner
@@ -1194,7 +1248,7 @@ A child insertion can ignore its own capacity after a parent fills. Bring legal 
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Provisional no-mask results may select a blend pass, but a later mask answer does not notify owners to rebuild; reverse transitions and provisional answers that were consumed also need handling. The asynchronous CPU path remains live here.
 
@@ -1207,6 +1261,9 @@ Provisional no-mask results may select a blend pass, but a later mask answer doe
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-036 — PBR bake proxies lose local composites and body-hide ownership
 
 - Status: ready_for_owner
@@ -1218,7 +1275,7 @@ Provisional no-mask results may select a blend pass, but a later mask answer doe
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Fetched-only slots discard dynamic local composites; PBR base-color bake body hiding, refresh and actual-bake shadow invalidation are missing. Retain final base-color-only/HUD exclusions and coalesced body visibility update. No owner appearance incident is assigned.
 
@@ -1231,6 +1288,9 @@ Fetched-only slots discard dynamic local composites; PBR base-color bake body hi
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-037 — Native HDR bloom exposure and probe paths lack complete finite boundaries
 
 - Status: ready_for_owner
@@ -1242,7 +1302,7 @@ Fetched-only slots discard dynamic local composites; PBR base-color bake body hi
 - Next action: Owner tests exact Sky26.4.0.68965 HDR/exposure/lighting behavior. Keep retained HDRI boundary concern qualified by actual finite-green baseline; no nonfinite owner attribution or closure/push inferred.
 - Verification: Prior remaining-batch finite boundaries retained. Current real M1 retained HDRI baseline404checks is finite/nonnegative; new bounded sky production GPU cases and full final512781GPUassertions53cases pass. Private bound-removal control saturates to65504 rather than Inf, so source clamp concern is not a reproduced Metal overflow. Owner scene acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Native radiance clamping is partial: later multiplication/addition can overflow, bloom can multiply infinity by zero, exposure history can retain nonfinite values, and probe/SH writes lack final upstream protections. No flash/NaN incident was reproduced or tied to the owner's reports.
 
@@ -1261,6 +1321,9 @@ Native radiance clamping is partial: later multiplication/addition can overflow,
 
 - 2026-11-13: Coherent sky sourceefc3dc17d0 /68965 builds and full final CPU/UI/GPU/bundle checks pass; ordinary HDRI baseline remains404finite-green. Owner scene acceptance/push remain pending; no actual overflow attributed.
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-038 — Placed probe admission drops lighting on stale occlusion state
 
 - Status: ready_for_owner
@@ -1272,7 +1335,7 @@ Native radiance clamping is partial: later multiplication/addition can overflow,
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Placed probes are rejected like automatic probes using occlusion state; off-frustum queries and preview mutation also remain. Native results are completion-gated, so upstream GL flicker latency is not a measured Metal fact.
 
@@ -1285,6 +1348,9 @@ Placed probes are rejected like automatic probes using occlusion state; off-frus
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-039 — Default sky swaps azimuth and altitude arguments
 
 - Status: ready_for_owner
@@ -1296,7 +1362,7 @@ Placed probes are rejected like automatic probes using occlusion state; off-frus
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Default sun/moon construction passes altitude first to an azimuth-first API. Upstream deliberately changes visible default sun/moon positions when correcting the call; this is not a lighting-neutral update.
 
@@ -1309,6 +1375,9 @@ Default sun/moon construction passes altitude first to an azimuth-first API. Ups
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-040 — Texture priority and lifetime retain stale upstream demand
 
 - Status: ready_for_owner
@@ -1320,7 +1389,7 @@ Default sun/moon construction passes altitude first to an azimuth-first API. Ups
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Retained subcases: permanent temporary-use boosts, stale face-walk maxima, ineffective media decay, face area counted as visibility, and short/floor fetch results retried without upstream floor handling. Retirement/purge is a larger adaptation candidate, not a measured memory/FPS fix. Preserve current decoder admission.
 
@@ -1333,6 +1402,9 @@ Retained subcases: permanent temporary-use boosts, stale face-walk maxima, ineff
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-041 — Upstream reports additional missing general viewer state corrections
 
 - Status: ready_for_owner
@@ -1344,7 +1416,7 @@ Retained subcases: permanent temporary-use boosts, stale face-walk maxima, ineff
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Retained reported subcases: object roster/orphan/region overrides; inventory IDs/counts/cycle guards; friends/mutes/group replies; notecard counts; SLURL/RLVa parsing; login/maturity/local-teleport/progress; Script Studio analysis/publish; camera steering; run notices and graphics-preset key omissions. These known upstream corrections remain candidates pending focused current-source/behavior tests; optional new features are excluded.
 
@@ -1357,6 +1429,9 @@ Retained reported subcases: object roster/orphan/region overrides; inventory IDs
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-042 — Coroutine reached locks retain upstream thread-blocking ownership reports
 
 - Status: investigating
@@ -1368,7 +1443,7 @@ Retained reported subcases: object roster/orphan/region overrides; inventory IDs
 - Next action: Owner verifies Script Studio/server lifetime behavior; retain the wider unproved lock report without asserting every upstream site is a current Mac defect. Larger scheduler/typed-lock project needs an actual native call graph/workload.
 - Verification: Scoped immutable built-in-name snapshot lifetime and coroutine-safe external-editor publication fixes integrated and tested; final197CTest +22contained UI +nativeGPU/build/static checks pass. Broad lock-type replacement is not imported: current HTTP critical sections do not suspend, glibc writer preference and Windows job publication are separate. No TSan or actual Mac deadlock reproduction claimed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Upstream reports coroutine deadlocks from thread locks and stale process/builtin table publication. The current HTTP mutex still uses the old type; this audit did not independently exercise every coroutine call graph or deadlock. Do not replace native per-thread locks indiscriminately.
 
@@ -1382,6 +1457,9 @@ Upstream reports coroutine deadlocks from thread locks and stale process/builtin
 - 2026-11-13: d7b1bbbf1c imports independent snapshot/coroutine publication fixes. Keep this record scoped/partially addressed; no broad38-file lock refactor or unsupported precise waiter imported.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-043 — Zero mesh normals become NaN during tangent cache preparation
 
 - Status: ready_for_owner
@@ -1393,7 +1471,7 @@ Upstream reports coroutine deadlocks from thread locks and stale process/builtin
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: First Mikk zero boundary retained. Remaining direct legacy and65535-vertex fallback old controls fail15/17checks in2cases; cea5e68c23 preserves ordinary fast normalization and zeros missing normals. Normal/ASan/UBSan311checks/10cases pass, valid-output fingerprint remains004fd052b5f3a793. Final combined actual math suite passes with existing19geometry expected failures recorded asPPD-053.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 This inherited final normalization path is distinct from PPD-022's byte-array bounds. The short-array repair intentionally selects the original absent-attribute fallback, exposing zero normalization in the retained older tangent implementation. Upstream's replacement uses unit3_or_zero; transplant that semantic boundary without importing the geometry rewrite.
 
@@ -1411,6 +1489,9 @@ This inherited final normalization path is distinct from PPD-022's byte-array bo
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-044 — High-valence mesh cache ordering has an unbounded cost report
 
 - Status: ready_for_owner
@@ -1422,7 +1503,7 @@ This inherited final normalization path is distinct from PPD-022's byte-array bo
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source/upstream report only; no adversarial runtime timing or causal freeze attribution on the current fork. PPD-022 allocation/index caps do not by themselves bound vertex valence scoring.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Keep this reported cost mechanism separate from PPD-022 memory safety and PPD-002 owner freezes. No measured M1 CPU stall or speedup is asserted.
 
@@ -1440,6 +1521,9 @@ Keep this reported cost mechanism separate from PPD-022 memory safety and PPD-00
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-045 — Texture boost test registration links unused viewer-only methods
 
 - Status: ready_for_owner
@@ -1451,7 +1535,7 @@ Keep this reported cost mechanism separate from PPD-022 memory safety and PPD-00
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Actual Debug/O0/fno-lto boost test compiles and links without dead-strip, boost implementation or viewer support library; nm has no LLViewerTexture hold dependencies. LLDB child exit0,1088assertions/6cases. Canonical production source retained and tests use the inline levels model; combined target still building.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 This is a new local backport-integration issue, not an inherited viewer incident. No published branch or First candidate is affected.
 
@@ -1464,6 +1548,9 @@ This is a new local backport-integration issue, not an inherited viewer incident
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-046 — New HDR GPU test fixture triggers desktop crash dialogs
 
 - Status: ready_for_owner
@@ -1475,7 +1562,7 @@ This is a new local backport-integration issue, not an inherited viewer incident
 - Next action: Owner confirms unexpected dialogs cease in the normal workflow; Ignore the old dialog and do not use Reopen. Corrective runner executions already pass with explicit arguments under LLDB; no viewer launch or push.
 - Verification: Owner reports two dialogs. Actual09:47:54 PID6697 report shows strlen(nullptr) in Catch::MessageBuilder fromFixture::render.09:48:37 PID6906 shows SIGABRT from Metal render-pipeline descriptor validation; test omitted function constants. Later run manually stopped130; no further runtime until review.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 The owner screenshot names almetal_tests. Both actual crash reports identify the scratch test app, and the source/stack confirms the two fixture defects. These are unexpected failures, not successful red controls. Raw diagnostics and private screenshot stay outside Git; source/log summaries are retained.
 
@@ -1488,6 +1575,9 @@ The owner screenshot names almetal_tests. Both actual crash reports identify the
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-047 — Temporary boost leaves legacy NO_DELETE state after demand expires
 
 - Status: investigating
@@ -1499,7 +1589,7 @@ The owner screenshot names almetal_tests. Both actual crash reports identify the
 - Next action: Keep nonblocking legacy state invariant visible; native residency/downscale/delete consumers do not consult NO_DELETE. Reconcile explicit pins and any future state reader before cleanup; do not invent a current native leak or perform a speculative unpin.
 - Verification: Independent source review confirms the state remains; native lazy flush and downscale do not consult it, so no memory leak, performance loss or visible incident is demonstrated.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Effective scoped priorities do release correctly. Keep this legacy state invariant separate from PPD-040 priority correctness and unmeasured native resource/accounting consequences.
 
@@ -1509,6 +1599,9 @@ Effective scoped priorities do release correctly. Keep this legacy state invaria
 
 - 2026-11-13: Full source reader audit finds only state/profile bookkeeping, avatar debug logging and setActive refusal. Actual native pressure/LOD/downscale/reference deletion uses other owners/flags; scoped boost priorities release correctly. Remains unmodified and no measured functional consequence is claimed.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-048 — Retained mesh optimizer allocation failures can lose buffers
 
@@ -1521,7 +1614,7 @@ Effective scoped priorities do release correctly. Keep this legacy state invaria
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Combined source3ee7786e67 preserves strong face constructors/copy/remap/normals/tangents, staged simplifier/LOD and optional avatar ordering; actual allocation controls and targeted sanitizer checks pass. Expanded geometry evidence is in upstream-geometry-port.md; parent68936 history retained. Final combined candidate checks pass; owner scene acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD-044 optimizer cost. No complete dc0f4b478c allocation-safety equivalence is claimed.
 
@@ -1545,6 +1638,9 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-049 — Scratch Script Studio test links mismatched noticebar implementation
 
 - Status: ready_for_owner
@@ -1556,7 +1652,7 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Matching noticebar fixes zero line counts. Original SIGBUS is cache unpackUUID dispatch into libc++abi type-info vtable; saved stale-datapacker control reproduces under LLDB and matching unmodified current lldatapacker.cpp alone removes it. Corrected UI518/38 and cache3998/19 pass with actual child exit0. No product workaround or viewer attribution.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1566,6 +1662,9 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-050 — Imported noticebar test assumes a fixed font-dependent height
 
@@ -1578,7 +1677,7 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Independent test-only23cea92614 derives one-line expected height from actual text pixels/skin margins with28minimum; line count/wrap/clamp/tooltip/shrink assertions retained. Correctly linked contained UI subset passes518assertions/38cases, childexit0.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1588,6 +1687,9 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-051 — Whole assets share texture HTTP admission
 
@@ -1600,7 +1702,7 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Actual shared queue ownership confirmed by source. No measured audible delay, throughput or frame-rate consequence on M1 Max.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1608,6 +1710,9 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-052 — Sculpt texture copies lose aspect and finer same-level data
 
@@ -1620,7 +1725,7 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 - Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
 - Verification: Source-confirmed current paths; no owner scene comparison or measured decode performance claim.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1628,6 +1733,9 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 
 - 2026-11-13: Final combined sourceaf5c263988 /26.4.0.68936 Release/LTOOFF: doctor/configure/build,197CTest entries,22contained UI processes, native texture/HDR245071assertions/25cases,346ARM64files/signature/source/import/features pass.13existing skipped cases and19legacy geometry expected-failure cases retained unchanged; scoped evidence above remains authoritative. No viewer launch, owner acceptance or push.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-053 — Retained geometry suite has19 expected-failure contracts
 
@@ -1640,7 +1748,7 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Old0c68 exact archive with only expected-failure tags removed:44cases25pass/19fail,4274assertions/23fail, normal child42. Final geometry suite now uses ordinary tests; mapped former19 pass and final core ASan+UBSan334840assertions/138cases (one optional corpus skip), child0. Combined canonical candidate checks pass; owner acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-area tangent contribution, normal length, hollow walls, flexible partial rebuilds and placeholder normals. This is a grouped register of existing expected-failure evidence, separate from repaired decoder bounds/cost/allocation/legacy zero/sculpt copy paths. It is not a newly introduced regression or full-stack port claim.
 
@@ -1659,6 +1767,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-054 — Uploader Restore Normals loses original model faces
 
 - Status: ready_for_owner
@@ -1670,7 +1781,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Actual old preview methods21failed checks versus corrected66assertions/3cases. Registered simplifier/model1244assertions/25cases and transactional LOD controls96/5 pass. Native preview blocks remain byte-identical to base. No live uploader/owner acceptance.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1680,6 +1791,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-055 — Planar mapping, tangent frames and alpha picking disagree
 
@@ -1692,7 +1806,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Shared strict-planar arithmetic and native tangent consumers integrated; CPU plane/UV/frame/picking contracts and real GLTF primitive192assertions/5cases pass. Generated volume/native G-buffer851assertions/1case and combined native269602/35 pass; owner scene parity unverified.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1702,6 +1816,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-056 — Refilled shared geometry can exceed an individual face slot
 
@@ -1714,7 +1831,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Exact local slot admission precedes any writes in native LLFace, while failed fills propagate to group relayout instead of registration. Native producer compiles; exact guard with real adjacent LLVB slots/SIMD index helper old19failed assertions versus fixed87/1pass. Rejected fills preserve adjacent bytes/content stamp. No complete LLFace execution or owner scene attribution.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1724,6 +1841,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-057 — Incoming typed scratch allocation can wrap its byte count
 
@@ -1736,7 +1856,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Actual scratch/compact62assertions/14cases pass, including typed overflow before multiplication and no allocator/counter mutation. Actual custom registry hostile remap/allocator controls pass; ARM64 package built with pinned provenance.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1746,6 +1866,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-058 — Failed geometry fills can still publish draw batches and lose retries
 
@@ -1758,7 +1881,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Exact queue control old7/20failed, fixed20/20pass, including retry-vector OOM. Exact in-place rebuildMesh control old14/66failed, fixed66/66 across3scenarios: all merged ranges/face admissions withdrawn, child transform restored, retry preserved. Child42/0 normally underLLDB; no physical OOM/owner incident.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1774,6 +1897,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-059 — glTF primitive attributes can be shorter than positions
 
 - Status: ready_for_owner
@@ -1785,7 +1911,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Actual primitive.cpp final192assertions/5cases pass; old bounded control49failed/70checks in4cases. Short attribute/skin/topology rejection, generated/authored tangents, strips/fans/unindexed picking and points/lines covered. Native tangent arrays retained for fork consumers.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1798,6 +1924,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-060 — Avatar mesh loader ignores its detail-UV header flag
 
 - Status: ready_for_owner
@@ -1809,7 +1938,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Valid real LLM fixture safely returns incorrect data in old loader (child42), corrected flag consumes exact detail UVs and LOD inherits pointer/flag. Final avatar suite19555assertions/6cases pass. All29bundled LLM headers have detailflag0; no bundled visual incident asserted.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1819,6 +1948,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-061 — Avatar morph instances initialize binormals from normals
 
@@ -1831,7 +1963,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Real LLM fixture distinct normal/binormal detects old instance initialization (child42); corrected instance/scaled binormals match base and actual morph consumers. Final avatar19555assertions/6cases pass, including LOD aliases. Owner shading acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1841,6 +1973,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-062 — Transactional tangent import loses flexible-frame buffer reuse
 
@@ -1853,7 +1988,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Oldd81 stale path7failed/9checks replacing6owners; final arena stage/copyback9/9checks passes with warm owner reuse. Final core ASan+UBSan334840assertions/138cases child0, one optional corpus skip. No measured frame-rate claim.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1863,6 +1998,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-063 — Selected material buffer clone ignores native allocation failure
 
@@ -1875,7 +2013,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Real native clone5265assertions/4cases pass with Metal validation and five indexed pixel draws; safe old-method control8failed assertions before unsafe writes. Verbatim clone allocation collaborator old5/17failed, fixed17/17pass. Layout offsets, U32 physical/logical capacity, null CPU rejection and warm reuse covered; no physical OOM claim.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1885,6 +2023,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-064 — Partition buffer reuse compares vertex count with index count
 
@@ -1897,7 +2038,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Exact production dimension predicate control old1/4failed, fixed4/4pass for unchanged8vertex/12index grass-sized slots, changed dimensions and null buffer. Normal native publication retained; no measured timing or frame-rate claim.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -1907,6 +2048,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-065 — Base grass and terrain allocation failure clears geometry retry state
 
@@ -1919,13 +2063,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Geometry26.4.0.68952 candidate for this record’s affected behavior; retain local scope until owner verification and explicit push approval.
 - Verification: Exact old3ee function control12pass/7failed checks, finalb16 function67assertions/2cases pass underLLDB child42/0 normally. Failed required allocation keeps dirty state, retry succeeds; warm8v12reuse, empty/dead/clean paths and owner lifetimes covered. No physical OOM/GPU/owner scene attribution.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered inherited retry-state loss before narrow correction. Current source3ee full build is allowed to finish, then the final source will be rebuilt and validated; intermediate app is not owner-ready.
 
 - 2026-11-13: Final combined sourceb16fa27efa /Alchemy Metal Geometry26.4.0.68952: doctor/configure/build,192contained CPU commands (13existing case skips),22UI processes,269602nativeGPU assertions/35cases,116tools,346ARM64/signature/source/import/features and strict3540file audit0blockers/0errors pass. Corrective evidence above remains scoped; no viewer launch, owner acceptance, measured FPS or push. Status ready_for_owner, not closed.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-066 — Retained raster sky lacks coherent upstream ALSky composition
 
@@ -1938,13 +2085,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Native ALSky owner/layers/stars/cube and actual viewer replay integrated through efc3dc17d0. Exact68965 build,206CPU commands/24UI commands/512781GPUassertions53cases,346ARM64/signature/source/import/features checks pass. Candidate-only login/location/10live controls and visible world/sky observed; owner day/night/layer acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Owner explicitly authorizes sky after geometry. Registered before replacing sky state/pass semantics; retain geometry candidate and all prior source/test fixes. Separate in-world/owner acceptance from synthetic tests and static/source evidence.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-067 — New ray dome samples inactive optics maps
 
@@ -1957,13 +2107,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Actual new native production shader control failed1/47checks at zero optic strengths before conditional reads; repaired shader and modern242875assertions13cases pass. Ordinary UNORM optics assets cannot encode NaN; no owner incident attributed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered new native sky port no-read contract gap before changing frozen renderer source. Keep passing retained HDRI404checks separate and preserve all red/green outcomes.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-068 — New sky capture packs disabled body quads at degenerate directions
 
@@ -1976,13 +2129,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Old incoming unguarded disabled-body capture fails64/206checks normally child42. Layer-gated packing passes206assertions4cases; canonical combined CPU/GPU suite and final68965 build pass. No upstream or owner incident attributed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered before correcting the initial adaptation; preserve final upstream layer admission rather than changing pure body math or removing native finite checks.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-069 — Initial native replay treats an empty star field as frame failure
 
@@ -1995,13 +2151,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Root skips draw_count0 while retaining STARS policy and selected attachment preopaque black clear. Actual native empty-star/selected-attachment readback and final modern242875assertions13cases pass; other optional layers and layer0 dome remain admitted.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered incoming integration completeness error before adding draw-count admission. Do not drop STARS policy or clear after opaque draws; no stars must still leave the far background defined.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-070 — Fixed exposure metering still reads obsolete sky flags
 
@@ -2014,13 +2173,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Both production exposure routes use completed post-water target depth and water stencil. Actual GPU sky/geometry/provenance meter cases and retained HDR-finite/world exposure suite pass in final512781assertions53cases. Owner exposure behavior pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered before correction during coherent native sky integration. Keep failed controls, exact source identity and owner acceptance separate.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-071 — New sky CPU and Metal constant blocks have different layouts
 
@@ -2033,13 +2195,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Initial27a draw actually fault-stopped underLLDB PID84613 at Metal validation: CPU816/MSL1008. Backtrace saved and child killed without resume. Repaired production payload sizes/offsets pass actual canonical GPU layout19assertions1case before draws; final512781GPUassertions53cases pass/APIvalidation. Final viewer logged in underLLDB without a fault observed at handoff.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered before correction during coherent native sky integration. Keep failed controls, exact source identity and owner acceptance separate.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-072 — New sky replay omits the dome when optional layer mask is zero
 
@@ -2052,13 +2217,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Distinct captured modern_sky_drawn admits optional-mask0 dome and excludes hidden/cutout views. Actual dome/layer GPU readback, CPU view controls and final68965 build pass. Owner visual acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered before correction during coherent native sky integration. Keep failed controls, exact source identity and owner acceptance separate.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-073 — New environment cube capture advances sky layer state
 
@@ -2071,13 +2239,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: New const dome-only capture shares packing without beginView/layer/star/clock side effects. Actual old-method control fails9/228checks; corrected236assertions3cases and actual cube/provider controls77assertions6cases pass. Canonical suite passes.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered before extracting the correct dome-only ownership boundary; retain .25s key/retry and successful independent-command publication semantics.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-074 — New depth metering changes the retained direct-kernel test ABI
 
@@ -2090,13 +2261,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Legacy exposure kernel retains16B payload/textures0..2; distinct scene depth kernel uses32B/depth3/water4. Final retained HDR-finite and world exposure cases pass alongside modern completed-depth/water metering. The prior fixture ABI mismatch was registered before repair.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered before preserving the legacy test ABI and adding the explicit production depth kernel; do not silently update old controls to hide a changed contract.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-075 — New water convergence applies the EEP dome to HDRI skies
 
@@ -2109,13 +2283,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Final water gate excludes HDRI in addition to probe/impostor/underwater/cutout/sky-hidden cases. Actual provider/view controls77assertions6cases and canonical native water/dome GPU checks pass; owner environment transition acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered incoming integration boundary before repair; preserve native command lifetime and final view policy rather than removing effects.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-076 — New neutral sky cube can publish from a cancelled view batch
 
@@ -2128,13 +2305,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Provider returns prior/null before neutral creation or bake when a view batch is active; independent completion alone publishes cube/key. Actual provider cancel/retry/device/bake-failure controls77assertions6cases plus native cube face/mip/neutral GPU readback pass.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered incoming integration boundary before repair; preserve native command lifetime and final view policy rather than removing effects.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-077 — New sky header depends on a viewer-only Metal include path
 
@@ -2147,13 +2327,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Initial972 full build exited1 on newview lens/finalization test include visibility. Relative public dependency fixed8b77; finalefc doctor/configure/build all0 and both affected canonical contained tests pass. Initial failed receipts retained.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-13: Registered before correcting include visibility; no broad Metal link/dependency changes or test removals.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-078 — Haze source contract forbids the new water-dome ray rotation
 
@@ -2166,7 +2349,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: Canonical8b77 alfarplane test fails1/364checks normally child42. Correctedefc exact-function geometry/raw-position and separate normalized dome-ray assertions pass full actual alrender1146808assertions145cases; canonical final206CPU commands pass with13existing skips.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -2175,6 +2358,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Local efc3dc17d0 preserves the geometry one-rotation and water dome ray contracts separately. Full actual alrender scratch-linked suite passes1,146,808assertions/145cases, LLDB child0/APIvalidation. Combined exact-source rebuild and final app verification underway.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-079 — Visual-QA diagnostic booleans lack a typed session declaration
 
@@ -2187,7 +2373,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests exact Alchemy Metal Sky26.4.0.68965 for this record’s affected behavior; retain local scope until owner verification/agreement and explicit push approval.
 - Verification: First68965 run reached correct world position but gate blocked true versus LLSD1 without declared Boolean types. Derived local profile includes actual source type declarations; same binary PID97692 passes unchanged observe/verify/gate10live controls and global position at13:03UTC. Original profile/installed skill/blocked receipts unchanged.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -2196,6 +2382,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Derived local profile preserves saved graphics and adds actual source Boolean declarations. Same binary PID97692 relaunch passes unchanged observe/verify/gate with10live controls and verified world-global destination. First PID97037 was deliberately quit normally0/state10, not a crash; reopened viewer left for owner testing.
 
 - 2026-11-13: Final sourceefc3dc17d0 /Sky68965 validation passes; corrective evidence above and linked sky note retain all failed controls/builds/faults. Ready for owner, not closed; no push approval.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-080 — Owner HDRI preview appears washed out with no visible cloud detail
 
@@ -2272,10 +2461,10 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-13
 - Original reference: Owner compares Metal14:08:20 with original14:31:18 and reports a hue in the Metal image's lower grey pavement/road areas while the original looks more neutral. Original1eb reference67611 and native sourceefc3dc17d0 are available; exact corresponding surface samples and colour-profile normalization are unmeasured.
 - Evidence: [Neutral surface colour investigation](work/active/neutral-surface-colour-investigation.md), [comparison](work/active/exposure-reference-comparison.md).
-- Next action: Retain owner-passed Sky68980 colour/probe repair and evidence. Keep unrelated exposure, preview and asynchronous-SH concerns separate; explicit push approval is still required.
+- Next action: Retain owner-passed Sky68980 colour/probe repair and evidence. Keep unrelated exposure, preview and asynchronous-SH concerns separate; the owner explicitly approved publication of the full committed upstream-port series on2026-11-13.
 - Verification: Clean same-coordinate asphalt/concrete patches reproducibly show darker and relatively warmer encoded RGB in Metal. Example asphalt means67.72/63.34/60.17 versus original74.51/71.67/70.67; identical embedded ICC bytes and same UI grey31/31/31. This confirms supplied-image differences, not a cause or full live-pipeline parity. In-viewer Metal export is unprofiled and retained separately; no repair.
 - Owner verification: passed
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -2293,6 +2482,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Owner reports new image looks fixed and replaces first after-image with clean16:28:21 capture (earlier black square was an attachedHUD). ExactSky68980/PID41725 is logged in atSpareTime105/21/24; installed QA verifies executable/global position/46livecontrols. Actual log16:22:06 records defaultHDR R11G11B10F radiance/SH publication queued, with no matched format/SH/GPU errors in bounded review. Clean3456x2234 image and reference/prior share identicalICC. Same five unchanged concrete/asphalt patches: normalizedRGB-mean RMSE8.91064→.51602/255 (94.21%lower); all15channelmean residuals<1/255 (max.967714). Owner assessment plus image/runtime/physical evidence verifies this reported colour failure in the tested setup. No pixel/all-scene/performance parity or push approval inferred; preview087 and async-error088 remain separate.
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-084 — Native sRGB mip generation may differ from original raw-byte policy
 
 - Status: dismissed
@@ -2305,7 +2497,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Verification: Actual AppleM1Max OpenGL4.1Metal90.5 immutable sRGB storage + SKIP_DECODE + sampler0 + glGenerateMipmap returns188/128/192/128, exactly matching production native LLImageGL. Explicit GL DECODE also188; raw RGBA8/raw Metal view controls128. Old comment does not describe actual driver behaviour. Both native/raw-policy and GL/raw-policy assertions intentionally fail without a fault; no producer repair applied.
 - Resolution: Proposed parity defect disproved by actual original/native GPU control. Changing native mip generation to raw128 would diverge from the reference; preserve188. This dismisses the candidate, not owner colour report PPD-083.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -2319,6 +2511,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-13: Verified original-driver oracle retained in local test3b4ddbfdbe; canonical physical70assertions/2cases pass underLLDB26821 normal0/state10 with MetalValidation. No production change. Original/native mip parity remains matched; dismissed candidate stays in history.
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-085 — Upstream PBR sun contribution cap remains at the old boundary
 
@@ -2346,10 +2541,10 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-13
 - Original reference: Original ordinary HDR radiance uses packed R11/G11/B10 storage. Native updateReflectionProbeFace now produces rg11b10_float and filterReflectionProbeRadiance preserves it; LLReflectionMapManager still allocates/expects rgba16_float in bootstrap, publication and reset preservation.
 - Evidence: [HDR probe publication format investigation](work/active/hdr-probe-publication-format.md), [owner colour investigation](work/active/neutral-surface-colour-investigation.md).
-- Next action: Retain owner-passed Sky68980 colour/probe repair and evidence. Keep unrelated exposure, preview and asynchronous-SH concerns separate; explicit push approval is still required.
-- Verification: Exact owner-session copy failure physically reproduced before repair. Shared packedR11 producer/publication/reset contract plus world/preview admission repaired; scoped rollback and realtime restart preserve retryability. Canonical b81a4645e0 fullbuild, doctor, 346ARM64/signature/owned-import/source gates pass; new3903/3 plus related4504/6 GPU assertions/cases pass underLLDB with API/GPUvalidation, realchild0. Scheduled actual producer failure/retry and SH contribution measured. Full live manager reset/owner colour confirmation pending; separate088 async-error edge remains open.
+- Next action: Retain owner-passed Sky68980 colour/probe repair and evidence. Keep unrelated exposure, preview and asynchronous-SH concerns separate; the owner explicitly approved publication of the full committed upstream-port series on2026-11-13.
+- Verification: Exact owner-session copy failure physically reproduced before repair. Shared packedR11 producer/publication/reset contract plus world/preview admission repaired; scoped rollback and realtime restart preserve retryability. Canonical b81a4645e0 fullbuild, doctor, 346ARM64/signature/owned-import/source gates pass; new3903/3 plus related4504/6 GPU assertions/cases pass underLLDB with API/GPUvalidation, realchild0. Scheduled actual producer failure/retry and SH contribution measured. Owner clean-image colour confirmation passed; full live reset coverage remains incomplete and separate088 async-error edge stays open.
 - Owner verification: passed
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -2364,6 +2559,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Owner reports new image looks fixed and replaces first after-image with clean16:28:21 capture (earlier black square was an attachedHUD). ExactSky68980/PID41725 is logged in atSpareTime105/21/24; installed QA verifies executable/global position/46livecontrols. Actual log16:22:06 records defaultHDR R11G11B10F radiance/SH publication queued, with no matched format/SH/GPU errors in bounded review. Clean3456x2234 image and reference/prior share identicalICC. Same five unchanged concrete/asphalt patches: normalizedRGB-mean RMSE8.91064→.51602/255 (94.21%lower); all15channelmean residuals<1/255 (max.967714). Owner assessment plus image/runtime/physical evidence verifies this reported colour failure in the tested setup. No pixel/all-scene/performance parity or push approval inferred; preview087 and async-error088 remain separate.
 
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
 ## PPD-087 — Material preview rejects the ordinary non-HDR default radiance format
 
 - Status: ready_for_owner
@@ -2375,7 +2573,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Owner tests material/mesh previews in HDR and SDR on signed Sky68980. Retain actual-format regression checks; do not infer scene-tint closure from preview success.
 - Verification: Actual preview baseline4format rejections reproduced underLLDB; minimal47d7991dea whitelist acceptsRGBA16/R11/RGBA8. Fixed2202assertions/2cases pass, including actualSHreadback, identical blue radiance/diffuse output, alpha invariance, invalidsRGB/type rejection. Canonical integrated3903/3 and related4504/6 pass with fullbuild/signature/ARM64/source/import gates. Owner verification remains pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -2384,6 +2582,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Actual preview baseline28271 underLLDB reproduces four R11/SDR render-null failures (1166/1170assertions pass, child42/state10, nofault). RGBA16, actualSHprojection/readback and invalid-format/type rejection pass. Exclusive minimal validator repair now under physical test.
 
+
+
+- 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
 ## PPD-088 — Errored asynchronous probe SH can strand a scheduled radiance update
 

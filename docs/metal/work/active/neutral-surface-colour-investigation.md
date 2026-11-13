@@ -241,3 +241,11 @@ review finds no old matching-format/SH/GPU failure. Queue milestone alone does
 not prove completion; physical GPU and new owner image provide separate evidence.
 Viewer left running for owner. PPD083/086verified with ownerassessment;087preview
 acceptance and080/081/082/085/088 remain separate. All local, no push approval.
+
+
+2026-11-13 publication authorization: owner confirms the colour issue resolved
+and explicitly approves pushing the ENTIRE committed upstream-port series,
+including this work and its tests/records. [Publication scope](upstream-port-publication-20261113.md).
+Earlier local-only statements are historical; unverified/partial defect status
+and independent release/performance gates remain unchanged. No future unrelated
+fixes, raw captures or release artifacts are included in this approval.

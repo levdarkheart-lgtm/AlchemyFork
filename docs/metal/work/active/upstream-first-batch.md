@@ -109,3 +109,11 @@ No viewer launch/login, actual grid-cache/disconnect incident, voice call or
 visual/performance test. Owner tests the candidate; local-only pending owner
 acceptance and explicit push approval. Later scope remains separate; PPD-026
 disk pairing and PPD-044 cost report are not closed by this batch.
+
+
+2026-11-13 publication authorization: owner confirms the colour issue resolved
+and explicitly approves pushing the ENTIRE committed upstream-port series,
+including this work and its tests/records. [Publication scope](upstream-port-publication-20261113.md).
+Earlier local-only statements are historical; unverified/partial defect status
+and independent release/performance gates remain unchanged. No future unrelated
+fixes, raw captures or release artifacts are included in this approval.

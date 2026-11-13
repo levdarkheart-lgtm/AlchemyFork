@@ -176,3 +176,11 @@ hair/skirt/eyelash, uploader normals/restore/Auto LOD). Keep source/local commit
 until owner agreement and explicit scoped push approval. Sky is the following
 batch; it remains unchanged. Full product parity/runtime no-GL/performance gates
 remain open independently of this geometry delivery.
+
+
+2026-11-13 publication authorization: owner confirms the colour issue resolved
+and explicitly approves pushing the ENTIRE committed upstream-port series,
+including this work and its tests/records. [Publication scope](upstream-port-publication-20261113.md).
+Earlier local-only statements are historical; unverified/partial defect status
+and independent release/performance gates remain unchanged. No future unrelated
+fixes, raw captures or release artifacts are included in this approval.

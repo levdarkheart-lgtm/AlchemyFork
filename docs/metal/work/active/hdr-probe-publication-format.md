@@ -153,3 +153,11 @@ error94.21%, all15means within1/255 oforiginal. PPD086 and reported083 are owner
 verified for this tested failure; fullpixel/scene/performance parity notclaimed.
 087previewowneracceptance remains pending;088error-ticket edge separatelyopen.
 No push approval. See neutral-colour note for exactimages/hashes/measurements.
+
+
+2026-11-13 publication authorization: owner confirms the colour issue resolved
+and explicitly approves pushing the ENTIRE committed upstream-port series,
+including this work and its tests/records. [Publication scope](upstream-port-publication-20261113.md).
+Earlier local-only statements are historical; unverified/partial defect status
+and independent release/performance gates remain unchanged. No future unrelated
+fixes, raw captures or release artifacts are included in this approval.
