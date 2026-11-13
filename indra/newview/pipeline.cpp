@@ -17547,6 +17547,7 @@ void LLPipeline::renderMetalWorldLocalLights(
     scene.gbuffer = capture.target.get();
     scene.lights = lights.empty() ? nullptr : lights.data();
     scene.light_count = lights.size();
+    scene.additive_pass_count = light_capacity;
     scene.bounded_light_count = bounded_light_count;
     LLMatrix4a inverse_projection;
     inverse_projection.setInverse(camera.getProjection());
@@ -17611,9 +17612,10 @@ void LLPipeline::renderMetalWorldProjectorLights(
     }
 
     std::vector<ALMetalWorldProjectorLight> lights;
-    lights.reserve(std::min<std::size_t>(
+    const std::size_t light_capacity = std::min<std::size_t>(
         static_cast<std::size_t>(std::max(local_light_count, 0)),
-        mNearbyLights.size()));
+        mNearbyLights.size());
+    lights.reserve(light_capacity);
     const U32 unbuilt_projector_shadows =
         (unbuiltShadowMaps() >> 4u) & 0x3u;
     bool needs_projector_shadows = false;
@@ -17827,6 +17829,7 @@ void LLPipeline::renderMetalWorldProjectorLights(
     scene.gbuffer = capture.target.get();
     scene.lights = lights.empty() ? nullptr : lights.data();
     scene.light_count = lights.size();
+    scene.additive_pass_count = light_capacity;
     scene.projector_shadows = needs_projector_shadows
         ? &capture.projector_shadows : nullptr;
     LLMatrix4a inverse_projection;
