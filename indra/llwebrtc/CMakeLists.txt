@@ -24,8 +24,27 @@ target_link_libraries(llwebrtc PRIVATE al::flags)
 # for typeinfo symbols that libwebrtc.a does not provide.
 if(WINDOWS)
   target_compile_options(llwebrtc PRIVATE /GR-)
+elseif(DARWIN)
+  # PPD-091: Apple Clang's no-RTTI exception tables otherwise define private
+  # std::exception typeinfo in this static archive. Once linked into the viewer,
+  # that copy breaks base catches for runtime errors thrown by system libc++.
+  # Keep the vendor-facing wrapper a no-RTTI/no-exception boundary; callers,
+  # image codecs and all other viewer targets retain normal exception handling.
+  # Allocation/container contract failures inside this boundary are fail-fast.
+  target_compile_options(llwebrtc PRIVATE -fno-rtti -fno-exceptions)
 else()
   target_compile_options(llwebrtc PRIVATE -fno-rtti)
+endif()
+
+if(AL_BUILD_TESTS AND DARWIN)
+  # Exercise the production voice wrapper and image codec in one executable:
+  # their exception/typeinfo link interaction is not covered by isolated tests.
+  al_add_test_binary(
+    alwebrtc_exception_abi_tests
+    PROJECT llwebrtc
+    SOURCES tests/alwebrtc_exception_abi_test.cpp
+    LIBRARIES llwebrtc llimage
+  )
 endif()
 
 target_link_libraries(llwebrtc PRIVATE unofficial::webrtc::webrtc)

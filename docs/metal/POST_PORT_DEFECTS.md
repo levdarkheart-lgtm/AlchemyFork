@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-091 -->
+<!-- next-defect-id: PPD-092 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -2658,3 +2658,23 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Preserved delayed IPS/logs privately, matched exact G1 UUID/hash and symbolicated mainloop rethrow. Decode sources/archive match Alpha6; no original throw identified. Bounded read-only cache selection passes240/240real worker requests. Added stage/type/message diagnostics preserving original propagation, with std/nonstd/responder regression checks; narrow build/5CTest entries and doctor pass. This improves the missing evidence and is not a crash repair; diagnostic app packaging pending.
 - 2026-11-13: Diagnostic efd0367ca4/68989 full Release build passes0;47cases/1,277assertions include diagnostic-recorder failure retaining the original exception. Initial static source/signature/architecture/native-feature/marker check passes. Separate staging/verification in progress; PPD-090 remains investigating and owner acceptance remains failed. No viewer launch, crash-fix claim, goal two or push.
 - 2026-11-13: Separately staged diagnostic68989 passes346ARM64/native/features/source/marker/deepstrict-signature checks;7,841copied entries match. MainSHA1d423bd711caf6530f0a3a6520b23350f7861f0cb29467493cc10d59cad357eb; original crashed bundle unchanged. Ready for one owner arrival retry to capture missing exception evidence. No fix established; owner verification stays failed and no new-goal/push authorization inferred.
+- 2026-11-13: Owner retry on exact diagnostic68989/efd crashes20:23:26.8084. New context identifies primary J2C decode,282193bytes,1024x1024,5components,discard0; native thrown type is std::runtime_error but the catch-all handles it, proving std::exception matching failed. Private executable typeinfo mismatch is separately registered PPD-091 and reproduced headlessly with the actual linked voice-wrapper archive. Prior240-case corpus excluded components>4; it did not cover this bake class. No agent viewer launch or corrective runtime success.
+- 2026-11-13: Joint real voice-wrapper/image regression fails3cases/SIGABRT before correction, then passes3cases/34assertions after scoped PPD-091 compiler-boundary repair; all6image/worker/ABI entries pass50cases/1,311assertions. Representative real5channel bakes pass12requests; exact offending input remains unavailable. Repairing the demonstrated abort mechanism, not declaring the codec input valid or owner scene stable. Full-app build/verification next; owner verification remains failed.
+
+## PPD-091 — Private standard-exception RTTI breaks base-class catches
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex C++ exception ABI integration
+- Discovered: 2026-11-13
+- Original reference: Upstream `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` llwebrtc/CMakeLists.txt disables RTTI for subclasses of vendor WebRTC classes. Native fork combines this with hidden visibility. The standard C++ contract requires a thrown std::runtime_error to match catch(const std::exception&); the original WorkQueue intentionally forwards unexpected failures, while ordinary codec errors should remain failed image requests.
+- Evidence: [ABI correction and actual-library regression](work/active/exception-abi-repair.md), [G1 crash investigation](work/active/g1-arrival-crash.md).
+- Next action: Complete corrected G1 build/static/signature/typeinfo verification, then owner retries the scene. Preserve the voice vendor no-RTTI/no-exception boundary; leave viewer/codec exception handling enabled and retain the boundary's fail-fast allocation/contract limitation explicitly.
+- Verification: Baseline G1 private std::exception RTTI comes from two libllwebrtc archive members and breaks system runtime_error base catches. Actual-library probe fails exit42; joint voice+codec regression fails3cases/SIGABRT. Darwin-only PRIVATE -fno-exceptions alongside -fno-rtti eliminates private standard RTTI; joint3cases/34assertions and total50cases/1,311assertions pass. Actual vendor generated flags prove matching no-RTTI/no-exception boundary. Final app/typeinfo and owner retest pending; not closed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before production repair after diagnostic retry exposed a standard exception handled by catch-all. Actual archive reproduction fails as observed; source/linker option trials are isolated under private evidence. PPD-090 remains the owner-visible crash, and both records stay open until corrective evidence and owner confirmation.
+- 2026-11-13: Visibility-only and RTTI-enabled compiler trials rejected (ineffective or missing vendor RTTI). Applied Darwin-only private no-exception wrapper flag matching verified vendor flags; preserved normal caller/codec EH. Actual joint-library regression changes failed3cases/SIGABRT to passed3cases/34assertions;6CTest entries50cases/1,311assertions pass. Final app build/verification and owner acceptance remain pending.

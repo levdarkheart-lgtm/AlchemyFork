@@ -4,6 +4,43 @@ Status: investigating. Branch `codex/apple-shadow-records-g1`, HEAD
 `694e59760a6b5f9ecb675165bb66657def1a3ca3`; delivered app code
 `e21fe9c21832e5af88971ae0cb4f1ec2d892c36e`, G1/68987.
 
+## Second owner crash — concrete exception ABI failure
+
+The owner retried diagnostic68989/efd. Its new IPS matches the frozen binary
+and records SIGABRT at20:23:26.8084. The new worker diagnostic identifies
+primary-decode/J2C,282193bytes,1024x1024,5components,discard0,aux0. The active
+thrown type is `std::runtime_error`, yet the catch-all executes rather than
+`catch(const std::exception&)`. This explains both the codec failure escaping
+its handler and the former uninformative terminate diagnostic.
+
+Binary inspection found private-local `std::exception` type information in the
+app alongside imported system `std::runtime_error` type information. Of192actual
+linked archives, only `libllwebrtc.a` members `alaudioechobuffer.cpp.o` and
+`llwebrtc.cpp.o` define the conflicting private standard exception RTTI.
+The wrapper uses `-fno-rtti` for vendor subclass compatibility and the fork's
+hidden visibility flags. [PPD-091](../../POST_PORT_DEFECTS.md) tracks this
+source/link defect separately from the observed PPD-090 crash.
+
+A small headless executable calling the actual echo-buffer archive member
+reproduces the failure: a thrown runtime_error misses its std::exception base
+catch, exit42. No fake RTTI, viewer, voice device or GPU is involved.
+Visibility/compiler correction trials and an actual-library regression are
+in progress before a production fix is selected.
+
+**Repair update:** [PPD-091 correction](exception-abi-repair.md) now passes the
+actual joint-library regression. Darwin llwebrtc privately matches the vendor's
+no-RTTI/no-exception boundary; callers/codecs keep exceptions enabled. The
+combined baseline fails3cases/SIGABRT; corrected6CTest entries pass50cases/
+1,311assertions. This removes the demonstrated exception-matching failure;
+full-app verification and owner scene retry remain pending.
+
+The first cache extractor excludes components>4; its240passing requests did
+not cover five-component bakes. A direct read-only scan found1387five-component
+entries,416at1024square, but not the exact282193byte input. Cache writes occur
+only after successful decode, so the throwing input may not have reached disk.
+Four representative real five-component bakes are retained privately for
+12requests at discard0/1/3; do not label them the exact offending asset.
+
 Owner reports the experiment viewer died shortly after arriving at the busy
 club used for earlier shadow measurements. Runtime acceptance has failed;
 the earlier headless timing result does not override this failure. Goal two
