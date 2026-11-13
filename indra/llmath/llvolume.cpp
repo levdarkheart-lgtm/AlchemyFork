@@ -5203,6 +5203,40 @@ namespace
         unit.normalize3();
         v.setSelectWithMask(length2.greaterThan(LLVector4a(FLT_MIN)), unit, LLVector4a::getZero());
     }
+
+    // Bound the vertex-cache scoring work independently of the index count.
+    // The upstream budget measures the sum of squared vertex incidences.
+    bool cache_order_affordable(const U16* indices, size_t index_count, size_t vertex_count)
+    {
+        constexpr U64 budget = 1ull << 26;
+        try
+        {
+            std::vector<U32> incidences(vertex_count, 0u);
+            for (size_t i = 0; i < index_count; ++i)
+            {
+                if (indices[i] >= vertex_count)
+                {
+                    return false;
+                }
+                ++incidences[indices[i]];
+            }
+            U64 cost = 0;
+            for (U32 count : incidences)
+            {
+                cost += (U64)count * count;
+                if (cost > budget)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+        catch (const std::bad_alloc&)
+        {
+            // Ordering is optional: the original triangles remain drawable.
+            return false;
+        }
+    }
 }
 
 struct MikktData
@@ -5481,6 +5515,11 @@ bool LLVolumeFace::cacheOptimize(bool gen_tangents)
     }
 
     // cache optimize index buffer
+
+    if (!cache_order_affordable(mIndices, mNumIndices, mNumVertices))
+    {
+        return true;
+    }
 
     // meshopt needs scratch space, do some pointer shuffling to avoid an extra index buffer copy
     U16* src_indices = mIndices;

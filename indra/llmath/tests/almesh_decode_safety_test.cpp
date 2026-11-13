@@ -11,6 +11,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cstring>
 #include <sstream>
+#include <algorithm>
+#include <numeric>
+#include <random>
+#include <vector>
 
 namespace
 {
@@ -169,5 +173,26 @@ namespace
             CHECK(decode(*volume, faces) == (count == LL_SCULPT_MESH_MAX_FACES));
             CHECK(volume->getNumVolumeFaces() == (count == LL_SCULPT_MESH_MAX_FACES ? count : 0));
         }
+    }
+
+    TEST_CASE("Mesh cache: high valence keeps the existing triangle order", "[llvolume][mesh-cache-budget]")
+    {
+        constexpr U32 rim = 10000;
+        LLVolumeFace face;
+        face.resizeVertices(rim + 1);
+        face.resizeIndices(rim * 3);
+        std::vector<U32> order(rim);
+        std::iota(order.begin(), order.end(), 0u);
+        std::shuffle(order.begin(), order.end(), std::mt19937(7));
+        for (U32 i = 0; i < rim; ++i)
+        {
+            face.mIndices[i * 3] = 0;
+            face.mIndices[i * 3 + 1] = (U16)(1 + order[i]);
+            face.mIndices[i * 3 + 2] = (U16)(1 + (order[i] + 1) % rim);
+        }
+        const std::vector<U16> before(face.mIndices, face.mIndices + face.mNumIndices);
+        REQUIRE(face.cacheOptimize(false));
+        REQUIRE(face.mNumIndices == rim * 3);
+        CHECK(std::equal(before.begin(), before.end(), face.mIndices));
     }
 }
