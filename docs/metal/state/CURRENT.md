@@ -1,5 +1,5 @@
 # Current engineering state — remaining native feature completion
-
+**Active isolated experiment:** `codex/apple-shadow-records-g1` at baseline `18e576cec0`, worktree `/private/tmp/alchemy-apple-shadow-records-g1`; [goal one](../work/active/apple-shadow-records-goal1.md) implements immutable attachment-pose records for native shadows. [Full route](../research/apple-first-implementation-route.md). Doctor passes; implementation/tests/build pending. No viewer launch, FPS claim, push or PPD closure; stop for owner assessment before goal two. Next: complete backend/producer integration and run native parity/lifetime tests.
 **Observed:** 2026-11-13 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6. [Alpha6 publication](../work/active/release-alpha6-20261113.md): exactaf72868396/tag26.4.0.68984-alpha6 localbuild/346ARM64/signatures/116tools/source/provenance/ZIP pass; published444559882 with ZIP/SHA256/provenance and independent download checks passed. Hosted43473591856 deliberately canceled after local package finished first; no billing change, PPD-014 retained.
 **Renderer code checkpoint:** `b81a4645e0`; prior owner-tested Sky26.4.0.68980/PID41725 colour/probe repair PPD083/086 verified; Alpha6 package built without a new viewer launch, broader gates remain open.
 **Owner-passed viewer:** `cb840a5b9d`,26.4.0.68841; reported beard-light cutoff fixed.
