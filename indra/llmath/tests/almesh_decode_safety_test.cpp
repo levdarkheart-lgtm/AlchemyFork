@@ -309,6 +309,44 @@ namespace
         }
     }
 
+    TEST_CASE("Legacy tangents: absent normals remain zero", "[llvolume][mesh-zero-normal]")
+    {
+        LLVolumeFace face;
+        cacheQuad(face);
+        for (S32 i = 0; i < face.mNumVertices; ++i) face.mNormals[i].clear();
+        REQUIRE(face.createTangents());
+        REQUIRE(face.mTangents != nullptr);
+        for (S32 i = 0; i < face.mNumVertices; ++i)
+        {
+            for (S32 j = 0; j < 3; ++j) CHECK(face.mNormals[i][j] == 0.f);
+        }
+    }
+
+    TEST_CASE("Mesh cache: wide tangent weld fallback preserves absent normals", "[llvolume][mesh-zero-normal]")
+    {
+        constexpr S32 count = 65535; // A weld this wide uses the retained legacy tangent fallback.
+        LLVolumeFace face;
+        face.resizeVertices(count);
+        face.resizeIndices(count);
+        for (S32 i = 0; i < count; ++i)
+        {
+            const S32 corner = i % 3;
+            face.mIndices[i] = static_cast<U16>(i);
+            face.mPositions[i].set((F32)(2 * (i / 3) + (corner == 1)), (F32)(corner == 2), 0.f, 0.f);
+            face.mNormals[i].clear();
+            face.mTexCoords[i].set(corner == 1, corner == 2);
+        }
+        REQUIRE(face.cacheOptimize(true));
+        REQUIRE(face.mNumVertices == count);
+        REQUIRE(face.mTangents != nullptr);
+        bool all_zero = true;
+        for (S32 i = 0; i < count; ++i)
+        {
+            for (S32 j = 0; j < 3; ++j) all_zero &= face.mNormals[i][j] == 0.f;
+        }
+        CHECK(all_zero);
+    }
+
     TEST_CASE("Mesh cache: optional ordering validates triangle indices", "[llvolume][mesh-cache-admission]")
     {
         SECTION("empty no-tangent work remains successful")

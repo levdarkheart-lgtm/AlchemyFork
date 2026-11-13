@@ -6336,7 +6336,15 @@ bool LLVolumeFace::createTangents()
         // bump map/planar projection code requires normals to be normalized
         for (S32 i = 0; i < mNumVertices; i++)
         {
-            mNormals[i].normalize3fast();
+            // Preserve absent/degenerate normals; keep the established fast path for nonzero normals.
+            if (mNormals[i].dot3(mNormals[i]).getF32() > FLT_MIN)
+            {
+                mNormals[i].normalize3fast();
+            }
+            else
+            {
+                mNormals[i].clear();
+            }
         }
         mTangents = tangents.release();
     }
