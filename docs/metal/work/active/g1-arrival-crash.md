@@ -32,7 +32,9 @@ actual joint-library regression. Darwin llwebrtc privately matches the vendor's
 no-RTTI/no-exception boundary; callers/codecs keep exceptions enabled. The
 combined baseline fails3cases/SIGABRT; corrected6CTest entries pass50cases/
 1,311assertions. This removes the demonstrated exception-matching failure;
-full-app verification and owner scene retry remain pending.
+full-app verification now passes for corrected fef1e756fd/G1/68991, staged in
+the PPD-091 candidate directory. Owner scene retry remains pending. The older
+diagnostic app/path below is historical; use the corrected app in the repair note.
 
 The first cache extractor excludes components>4; its240passing requests did
 not cover five-component bakes. A direct read-only scan found1387five-component
@@ -139,7 +141,7 @@ The actual crash remains unresolved and PPD-090 stays investigating.
 Local private evidence directory:
 `/Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/ppd-090-g1-arrival-crash-20261113/`.
 
-Next action: owner retries the same arrival once using the verified diagnostic
-G1/68989 app above. The new log is needed because the original
-exception details are absent from the preserved report. Do not claim a fix or
-start goal two; use the captured stage/type/input context for a contained repair.
+Next action: owner retries the same arrival with the **corrected G1/68991** in
+the [ABI repair note](exception-abi-repair.md), then verify stability/ordinary
+decoder errors. The diagnostic retry supplied the evidence used for this repair;
+do not reuse the older68989 diagnostic app as the current candidate. No goal two.

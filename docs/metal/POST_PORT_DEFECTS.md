@@ -2641,14 +2641,14 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-090 — G1 terminates shortly after busy-scene arrival
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex experiment crash integration
 - Discovered: 2026-11-13
 - Original reference: Native baseline `18e576cec0a05923632188ec8d7b2224657ffbfa` retains the Alpha6 image worker/codec path. Inspected upstream `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` image job and WorkQueue223–244 preserve processRequest/finishRequest and forward unexpected exceptions to mainloop; ordinary codec failures follow the existing failed-image result. New shadow records have not been established as the cause.
 - Evidence: [Owner report, existing log evidence and investigation](work/active/g1-arrival-crash.md).
-- Next action: Build/verify the diagnostic-only G1 candidate and request one owner arrival retry to capture original request stage/type/message. Then reproduce that actual failure and repair it; no blanket exception suppression, agent relaunch, goal two or push.
-- Verification: IPS proves exact G1/68987/e21 binary UUID and SIGABRT19:59:23.5246 after ImageDecode exception forwarding to mainloop. Original throw/type/input absent. Diagnostic worker tests and five image CTest entries pass0;240selected current-cache primary requests on six actual workers succeed with no escaped exception (not a live-crash reproduction). No crash fix established; owner runtime acceptance remains failed.
+- Next action: Owner retries corrected G1/68991 from the PPD-091 candidate directory. Verify scene stability and inspect any ordinary decoder errors before closure; no agent relaunch, goal two or push.
+- Verification: Diagnostic68989 retry identifies std::runtime_error primary5channel decode bypassing base catch. Joint real voice/codec baseline fails3cases/SIGABRT; scoped PPD-091 boundary repair passes3cases/34assertions and total50cases/1,311assertions. Corrected fef/68991 builds/verifies346ARM64/signatures/native/features/source and zero private standard RTTI. Staged copy7,841entries matches. Abort mechanism repaired; exact original input/error reason unavailable and owner runtime acceptance still pending after prior failure.
 - Owner verification: failed
 - Push approval: not_granted
 
@@ -2660,17 +2660,18 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Separately staged diagnostic68989 passes346ARM64/native/features/source/marker/deepstrict-signature checks;7,841copied entries match. MainSHA1d423bd711caf6530f0a3a6520b23350f7861f0cb29467493cc10d59cad357eb; original crashed bundle unchanged. Ready for one owner arrival retry to capture missing exception evidence. No fix established; owner verification stays failed and no new-goal/push authorization inferred.
 - 2026-11-13: Owner retry on exact diagnostic68989/efd crashes20:23:26.8084. New context identifies primary J2C decode,282193bytes,1024x1024,5components,discard0; native thrown type is std::runtime_error but the catch-all handles it, proving std::exception matching failed. Private executable typeinfo mismatch is separately registered PPD-091 and reproduced headlessly with the actual linked voice-wrapper archive. Prior240-case corpus excluded components>4; it did not cover this bake class. No agent viewer launch or corrective runtime success.
 - 2026-11-13: Joint real voice-wrapper/image regression fails3cases/SIGABRT before correction, then passes3cases/34assertions after scoped PPD-091 compiler-boundary repair; all6image/worker/ABI entries pass50cases/1,311assertions. Representative real5channel bakes pass12requests; exact offending input remains unavailable. Repairing the demonstrated abort mechanism, not declaring the codec input valid or owner scene stable. Full-app build/verification next; owner verification remains failed.
+- 2026-11-13: Corrected fef1e756fd/68991 full build/static/deep signatures/346ARM64/source/native/retained features and final imported system exception RTTI pass; staged7,841entries identical, original apps preserved. Ready for owner same-scene retry. No agent launch, owner confirmation/closure, goal two or push.
 
 ## PPD-091 — Private standard-exception RTTI breaks base-class catches
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex C++ exception ABI integration
 - Discovered: 2026-11-13
 - Original reference: Upstream `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` llwebrtc/CMakeLists.txt disables RTTI for subclasses of vendor WebRTC classes. Native fork combines this with hidden visibility. The standard C++ contract requires a thrown std::runtime_error to match catch(const std::exception&); the original WorkQueue intentionally forwards unexpected failures, while ordinary codec errors should remain failed image requests.
 - Evidence: [ABI correction and actual-library regression](work/active/exception-abi-repair.md), [G1 crash investigation](work/active/g1-arrival-crash.md).
-- Next action: Complete corrected G1 build/static/signature/typeinfo verification, then owner retries the scene. Preserve the voice vendor no-RTTI/no-exception boundary; leave viewer/codec exception handling enabled and retain the boundary's fail-fast allocation/contract limitation explicitly.
-- Verification: Baseline G1 private std::exception RTTI comes from two libllwebrtc archive members and breaks system runtime_error base catches. Actual-library probe fails exit42; joint voice+codec regression fails3cases/SIGABRT. Darwin-only PRIVATE -fno-exceptions alongside -fno-rtti eliminates private standard RTTI; joint3cases/34assertions and total50cases/1,311assertions pass. Actual vendor generated flags prove matching no-RTTI/no-exception boundary. Final app/typeinfo and owner retest pending; not closed.
+- Next action: Owner retries corrected G1/68991; close only after corrective owner confirmation. Preserve the voice vendor no-RTTI/no-exception boundary; viewer/codec exception handling stays enabled and wrapper no-unwinding/fail-fast limitations remain explicit.
+- Verification: Baseline actual-library probe fails42; joint voice/codec3cases fail/SIGABRT. Darwin-only PRIVATE wrapper -fno-exceptions alongside -fno-rtti restores std catches;3cases/34assertions and total50cases/1,311assertions pass. Corrected fef/68991 final app imports system exception RTTI with0private standard typeinfos;346ARM64/signature/source/native/features pass and7,841staged entries match. Actual vendor flags prove the boundary configuration. Owner retest pending; not closed.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -2678,3 +2679,4 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Registered before production repair after diagnostic retry exposed a standard exception handled by catch-all. Actual archive reproduction fails as observed; source/linker option trials are isolated under private evidence. PPD-090 remains the owner-visible crash, and both records stay open until corrective evidence and owner confirmation.
 - 2026-11-13: Visibility-only and RTTI-enabled compiler trials rejected (ineffective or missing vendor RTTI). Applied Darwin-only private no-exception wrapper flag matching verified vendor flags; preserved normal caller/codec EH. Actual joint-library regression changes failed3cases/SIGABRT to passed3cases/34assertions;6CTest entries50cases/1,311assertions pass. Final app build/verification and owner acceptance remain pending.
+- 2026-11-13: Final corrected G1/68991 and staged copy pass0private standard exception typeinfos (system imports), source/version/native/features/346ARM64/deep signature gates; sourcefef1e756fd, mainSHA c188ebdfd45139677fcb7c45a9bfcacaa80f11867dcc9184090ba88a0dec9d08. Ready for owner verification; no closure/push or agent viewer launch.

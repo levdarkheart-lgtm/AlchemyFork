@@ -1,6 +1,6 @@
 # Standard exception ABI repair — PPD-091 / PPD-090
 
-Status: implementation and headless regression pass; full-app verification next.
+Status: corrected app built, staged and verified; ready for owner scene retry.
 Branch `codex/apple-shadow-records-g1`. No viewer/audio-device launch, interactive
 profiling, goal two or push. Preserve original G1/68987 and diagnostic68989 apps.
 
@@ -40,10 +40,12 @@ and tests retain normal exception handling. This removes the conflicting type
 information at its producer, without adding a catch-all conversion or RTTI shim.
 
 Boundary limitation: allocation/container contract failures **inside** this
-vendor-facing wrapper are fail-fast rather than recoverable C++ unwinding.
-This is scoped to the no-exception vendor boundary; do not describe it as
-disabling exceptions throughout the viewer or as unchanged allocation-failure
-semantics. Normal voice/ring-buffer behavior remains exercised in the tests.
+vendor-facing wrapper use no-exception standard-library paths, which may
+fail-fast; C++ unwinding cleanup is not provided by this target. External
+exceptions must not be relied upon to unwind this boundary. This is scoped
+to the vendor boundary; do not describe it as disabling exceptions throughout
+the viewer or unchanged allocation-failure semantics. Normal ring-buffer
+behavior remains exercised in the tests.
 
 ## Actual-library regression
 
@@ -83,7 +85,29 @@ vendor boundary proof, fixed tests, typeinfo inventories and later app receipts.
 actual-archive and combined baseline failures; retry evidence retains the
 owner's exact log/IPS privately. Do not commit private inputs/session logs.
 
-Next: commit this coherent correction, run doctor/configure/Release wrapper
-build, verify final app's standard exception RTTI imports and native/voice/media
-payloads/signatures, stage a distinct corrected G1 bundle, then owner scene
-retry. No automatic start of goal two.
+## Verified corrected app
+
+Source `fef1e756fd3b0a988113c64c0e0e2bb5898fe955`,
+**Alchemy Metal Alpha G1,26.4.0.68991**. Doctor/configure/Release wrapper build
+exit0; full incremental build26.553s. The final build and staged main executable
+import std::exception/runtime_error/logic_error/out_of_range/bad_alloc RTTI from
+system libc++; **zero private standard exception typeinfos** remain.
+
+Candidate:
+`/Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/ppd-091-exception-rtti-20261113/candidate/Alchemy Metal Alpha G1.app`.
+Main executable SHA256:
+`c188ebdfd45139677fcb7c45a9bfcacaa80f11867dcc9184090ba88a0dec9d08`.
+346ARM64-only Mach-O files, deep strict signatures, source/version/native imports
+and retained voice/media/decoder/render-record/diagnostic symbols/flags pass.
+All7,841regular/symlink entries match after `ditto`. Frozen original and
+diagnostic apps remain byte-identical. No viewer/audio/GPU launch.
+
+Receipts in the PPD-091 evidence directory include `candidate-build.json`,
+`compile-contract.json`, `fixed-tests.json`, `fixed-ctest-last.log`,
+`candidate-build-static-verification.json`, `candidate-staging-receipt.json`
+and `candidate/static-verification.json`. A private verifier regex typo was
+corrected with its failed attempt retained; it was not an app/code failure.
+
+Next: owner retries the same club with this corrected68991 app. Read any
+remaining decode errors and confirm scene stability before closing PPD-090/091.
+No automatic start of goal two, push or feature-parity/performance claim.
