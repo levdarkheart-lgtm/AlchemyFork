@@ -171,6 +171,7 @@ if(AL_BUILD_TESTS)
       tests/alvertex_label_metal_test.mm
       tests/alvertex_publication_metal_test.cpp
       tests/alimagegl_metal_test.cpp
+      tests/altexture_mip_parity_native_test.mm
       tests/llimagegl_test.cpp
       tests/alimage_preview_native_test.cpp
       tests/alfont_atlas_metal_test.cpp
@@ -224,6 +225,7 @@ if(AL_BUILD_TESTS)
   if(DARWIN)
     target_link_libraries(llrender_tests PRIVATE almetal)
     set_source_files_properties(tests/alvertex_label_metal_test.mm
+                                tests/altexture_mip_parity_native_test.mm
                                 tests/almetal_tessellation_invariants_test.mm
                                 tests/alframefences_metal_test.mm
                                 tests/alinfiniteprojection_metal_test.mm
