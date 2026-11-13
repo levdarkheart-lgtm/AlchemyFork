@@ -70,6 +70,42 @@ namespace
         ~ArenaInstalled() { meshopt_setAllocator(newBlock, deleteBlock); }
     };
 
+    struct FailMeshAllocation
+    {
+        static inline S32 remaining = -1;
+        static inline S32 calls = 0;
+        static inline S32 live = 0;
+        static inline bool failed = false;
+
+        static void* MESHOPTIMIZER_ALLOC_CALLCONV allocate(size_t bytes)
+        {
+            ++calls;
+            if (remaining == 0)
+            {
+                remaining = -1;
+                failed = true;
+                throw std::bad_alloc();
+            }
+            if (remaining > 0) --remaining;
+            void* block = ::operator new(bytes);
+            ++live;
+            return block;
+        }
+        static void MESHOPTIMIZER_ALLOC_CALLCONV deallocate(void* block)
+        {
+            if (block) --live;
+            ::operator delete(block);
+        }
+        explicit FailMeshAllocation(S32 before_failure)
+        {
+            remaining = before_failure;
+            calls = live = 0;
+            failed = false;
+            meshopt_setAllocator(allocate, deallocate);
+        }
+        ~FailMeshAllocation() { meshopt_setAllocator(ArenaInstalled::newBlock, ArenaInstalled::deleteBlock); }
+    };
+
     LLVector3 v3(const LLVector4a& v)
     {
         return LLVector3(v.getF32ptr());
@@ -1249,6 +1285,53 @@ namespace
 
     // ------------------------------------------------------------------
     // Compaction
+
+    TEST_CASE("almeshsimplifier: each failed mesh allocation preserves every target face", "[almeshsimplifier][allocation]")
+    {
+        LLPointer<LLVolume> base = volumeOf({ sphere(12, 6), cube(2) });
+        const ALMeshSimplifier simplifier(*base);
+        ALMeshSimplifier::Target goal;
+        goal.decimator = 3.f;
+        S32 allocations;
+        {
+            auto target = volumeOf({ cube(1), cube(1) });
+            FailMeshAllocation count(-1);
+            REQUIRE(simplifier.simplifyModel(*target, goal, Seams::ALL) > 0.f);
+            allocations = FailMeshAllocation::calls;
+            REQUIRE(FailMeshAllocation::live == 0);
+        }
+        REQUIRE(allocations > 0);
+        REQUIRE(allocations < 256);
+        for (S32 nth = 0; nth < allocations; ++nth)
+        {
+            CAPTURE(nth);
+            auto target = volumeOf({ cube(1), cube(1) });
+            const LLVector4a* positions[] = { target->getVolumeFace(0).mPositions, target->getVolumeFace(1).mPositions };
+            const U16* indices[] = { target->getVolumeFace(0).mIndices, target->getVolumeFace(1).mIndices };
+            std::vector<LLVolumeFace> before = target->getVolumeFaces();
+            F32 ratio;
+            {
+                FailMeshAllocation fail(nth);
+                ratio = simplifier.simplifyModel(*target, goal, Seams::ALL);
+            }
+            REQUIRE(FailMeshAllocation::failed);
+            CHECK(FailMeshAllocation::live == 0);
+            CHECK(ratio < 0.f);
+            REQUIRE(target->getNumVolumeFaces() == 2);
+            for (S32 f = 0; f < 2; ++f)
+            {
+                const LLVolumeFace& face = target->getVolumeFace(f);
+                CHECK(face.mPositions == positions[f]);
+                CHECK(face.mIndices == indices[f]);
+                REQUIRE(face.mNumVertices == before[f].mNumVertices);
+                REQUIRE(face.mNumIndices == before[f].mNumIndices);
+                CHECK(std::equal(face.mIndices, face.mIndices + face.mNumIndices, before[f].mIndices));
+                CHECK(memcmp(face.mPositions, before[f].mPositions, face.mNumVertices * sizeof(LLVector4a)) == 0);
+                CHECK(memcmp(face.mNormals, before[f].mNormals, face.mNumVertices * sizeof(LLVector4a)) == 0);
+                CHECK(memcmp(face.mTexCoords, before[f].mTexCoords, face.mNumVertices * sizeof(LLVector2)) == 0);
+            }
+        }
+    }
 
     TEST_CASE("almeshsimplifier: compaction keeps each vertex the triangles name, and no other", "[almeshsimplifier]")
     {

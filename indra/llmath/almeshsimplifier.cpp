@@ -652,24 +652,64 @@ namespace
         face.mOptimized = false;
     }
 
+    template<typename T, size_t Alignment>
+    T* allocate(size_t bytes)
+    {
+        auto* result = static_cast<T*>(ll_aligned_malloc<Alignment>(bytes));
+        if (!result)
+        {
+            throw std::bad_alloc();
+        }
+        return result;
+    }
+
+    // An empty temporary owns every successful allocation immediately, so a
+    // later failure frees it without touching the face being replaced.
+    void allocateFace(LLVolumeFace& face, size_t vertices, size_t indices, bool weights, bool tangents)
+    {
+        if (vertices)
+        {
+            const size_t texcoord_bytes = (vertices * sizeof(LLVector2) + 15) & ~size_t(15);
+            face.mPositions = allocate<LLVector4a, 64>(vertices * sizeof(LLVector4a) * 2 + texcoord_bytes);
+            face.mNormals = face.mPositions + vertices;
+            face.mTexCoords = reinterpret_cast<LLVector2*>(face.mNormals + vertices);
+            memset(face.mTexCoords, 0, texcoord_bytes);
+            if (weights)
+            {
+                face.mWeights = allocate<LLVector4a, 16>(vertices * sizeof(LLVector4a));
+            }
+            if (tangents)
+            {
+                face.mTangents = allocate<LLVector4a, 16>(vertices * sizeof(LLVector4a));
+            }
+        }
+        if (indices)
+        {
+            const size_t bytes = (indices * sizeof(U16) + 15) & ~size_t(15);
+            face.mIndices = allocate<U16, 16>(bytes);
+            memset(face.mIndices, 0, bytes);
+        }
+        face.mNumVertices = face.mNumAllocatedVertices = (S32)vertices;
+        face.mNumIndices = (S32)indices;
+    }
+
     // The face of one vertex at the origin and one triangle of it, that a
     // face left with no triangle becomes.
     void makeEmpty(const LLVolumeFace& layout, LLVolumeFace& face)
     {
-        copyLayout(layout, face);
-        ll_aligned_free_16(face.mWeights);
-        face.mWeights = nullptr;
-        face.resizeVertices(1);
-        face.resizeIndices(3);
-        memset(face.mIndices, 0, sizeof(U16) * 3);
-        face.mPositions[0].clear();
-        face.mNormals[0].clear();
-        face.mTexCoords[0].setZero();
+        LLVolumeFace replacement;
+        copyLayout(layout, replacement);
+        allocateFace(replacement, 1, 3, false, false);
+        replacement.mPositions[0].clear();
+        replacement.mNormals[0].clear();
+        replacement.mTexCoords[0].setZero();
+        face.swap(replacement);
     }
 } // namespace
 
 // static
 bool ALMeshSimplifier::compact(const LLVolume& base, S32 face, const U32* indices, size_t index_count, LLVolumeFace& target)
+try
 {
     const S32 faces = base.getNumVolumeFaces();
     std::vector<U32> first(faces + 1, 0);
@@ -690,19 +730,9 @@ bool ALMeshSimplifier::compact(const LLVolume& base, S32 face, const U32* indice
     }
 
     const LLVolumeFace& layout = base.getVolumeFace(face);
-    copyLayout(layout, target);
-    target.resizeVertices((S32)kept);
-    target.resizeIndices((S32)index_count);
-    ll_aligned_free_16(target.mWeights);
-    target.mWeights = nullptr;
-    if (layout.mWeights)
-    {
-        target.allocateWeights((S32)kept);
-    }
-    if (layout.mTangents)
-    {
-        target.allocateTangents((S32)kept);
-    }
+    LLVolumeFace replacement;
+    copyLayout(layout, replacement);
+    allocateFace(replacement, kept, index_count, layout.mWeights != nullptr, layout.mTangents != nullptr);
 
     for (S32 f = 0; f < faces; ++f)
     {
@@ -715,43 +745,43 @@ bool ALMeshSimplifier::compact(const LLVolume& base, S32 face, const U32* indice
                 continue;
             }
             const U32 at = v - first[f];
-            target.mPositions[to] = from.mPositions[at];
+            replacement.mPositions[to] = from.mPositions[at];
             if (from.mNormals)
             {
-                target.mNormals[to] = from.mNormals[at];
+                replacement.mNormals[to] = from.mNormals[at];
             }
             else
             {
-                target.mNormals[to].clear();
+                replacement.mNormals[to].clear();
             }
             if (from.mTexCoords)
             {
-                target.mTexCoords[to] = from.mTexCoords[at];
+                replacement.mTexCoords[to] = from.mTexCoords[at];
             }
             else
             {
-                target.mTexCoords[to].setZero();
+                replacement.mTexCoords[to].setZero();
             }
-            if (target.mWeights)
+            if (replacement.mWeights)
             {
                 if (from.mWeights)
                 {
-                    target.mWeights[to] = from.mWeights[at];
+                    replacement.mWeights[to] = from.mWeights[at];
                 }
                 else
                 {
-                    target.mWeights[to].clear();
+                    replacement.mWeights[to].clear();
                 }
             }
-            if (target.mTangents)
+            if (replacement.mTangents)
             {
                 if (from.mTangents)
                 {
-                    target.mTangents[to] = from.mTangents[at];
+                    replacement.mTangents[to] = from.mTangents[at];
                 }
                 else
                 {
-                    target.mTangents[to].clear();
+                    replacement.mTangents[to].clear();
                 }
             }
         }
@@ -759,18 +789,24 @@ bool ALMeshSimplifier::compact(const LLVolume& base, S32 face, const U32* indice
 
     for (size_t i = 0; i < index_count; ++i)
     {
-        target.mIndices[i] = (U16)place[indices[i]];
+        replacement.mIndices[i] = (U16)place[indices[i]];
     }
 
     if (!layout.mNormals)
     {
-        target.mNormals = nullptr;
+        replacement.mNormals = nullptr;
     }
     if (!layout.mTexCoords)
     {
-        target.mTexCoords = nullptr;
+        replacement.mTexCoords = nullptr;
     }
+    target.swap(replacement);
     return true;
+}
+catch (const std::bad_alloc&)
+{
+    LL_WARNS("MeshSimplifier") << "Keeping face after compaction allocation failure" << LL_ENDL;
+    return false;
 }
 
 ALMeshSimplifier::ALMeshSimplifier(const LLVolume& base)
@@ -784,6 +820,7 @@ ALMeshSimplifier::ALMeshSimplifier(const LLVolume& base)
 ALMeshSimplifier::~ALMeshSimplifier() = default;
 
 F32 ALMeshSimplifier::simplifyModel(LLVolume& target, const Target& goal, Seams seams) const
+try
 {
     const LLVolume& base = mBase;
     const Mesh& mesh = *mMesh;
@@ -845,16 +882,25 @@ F32 ALMeshSimplifier::simplifyModel(LLVolume& target, const Target& goal, Seams 
         }
     }
 
+    std::vector<LLVolumeFace> replacement(faces);
     for (S32 f = 0; f < faces; ++f)
     {
-        if (face_indices[f].size() < 3 || !compact(base, f, face_indices[f].data(), face_indices[f].size(), target.getVolumeFace(f)))
+        if (face_indices[f].size() < 3)
         {
-            // Every face fits, as counted above.
-            llassert(face_indices[f].size() < 3);
-            makeEmpty(base.getVolumeFace(f), target.getVolumeFace(f));
+            makeEmpty(base.getVolumeFace(f), replacement[f]);
+        }
+        else if (!compact(base, f, face_indices[f].data(), face_indices[f].size(), replacement[f]))
+        {
+            return -1.f;
         }
     }
+    target.getVolumeFaces().swap(replacement);
     return (F32)index_count / (F32)count;
+}
+catch (const std::bad_alloc&)
+{
+    LL_WARNS("MeshSimplifier") << "Keeping model after simplification allocation failure" << LL_ENDL;
+    return -1.f;
 }
 
 bool ALMeshSimplifier::same(Seams a, Seams b) const
@@ -866,16 +912,26 @@ bool ALMeshSimplifier::same(Seams a, Seams b) const
 }
 
 F32 ALMeshSimplifier::simplifyFace(S32 face, LLVolumeFace& target, const Target& goal, Seams seams) const
+try
 {
     const Mesh& mesh = *mMesh;
     std::vector<U32> simplified;
     const size_t count = simplifyOwnFace(mesh, face, goal, seams, simplified);
-    if (count < 3 || !compact(mBase, face, simplified.data(), count, target))
+    if (count < 3)
     {
         // A face's own vertices are never more than 16-bit indices reach.
         llassert(count < 3);
         makeEmpty(mBase.getVolumeFace(face), target);
         return -1.f;
     }
+    if (!compact(mBase, face, simplified.data(), count, target))
+    {
+        return -1.f;
+    }
     return (F32)(mesh.first_index[face + 1] - mesh.first_index[face]) / (F32)count;
+}
+catch (const std::bad_alloc&)
+{
+    LL_WARNS("MeshSimplifier") << "Keeping face after simplification allocation failure" << LL_ENDL;
+    return -1.f;
 }

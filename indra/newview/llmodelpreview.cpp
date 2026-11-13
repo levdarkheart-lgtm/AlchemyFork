@@ -1941,6 +1941,7 @@ void LLModelPreview::resetPreviewTarget()
 }
 
 void LLModelPreview::generateNormals()
+try
 {
     assert_main_thread();
 
@@ -2005,6 +2006,10 @@ void LLModelPreview::generateNormals()
     refresh();
     updateStatusMessages();
 }
+catch (const std::bad_alloc&)
+{
+    LL_WARNS("Upload") << "Keeping original normals after face backup allocation failure" << LL_ENDL;
+}
 
 void LLModelPreview::restoreNormals()
 {
@@ -2023,11 +2028,22 @@ void LLModelPreview::restoreNormals()
     // Each model takes back its own faces, whatever the LOD's models are now.
     const auto restore = [](faces_copy_t& copy)
     {
-        for (const faces_copy_t::value_type& kept : copy)
+        for (auto kept = copy.begin(); kept != copy.end();)
         {
-            kept.first->copyFacesFrom(kept.second);
+            try
+            {
+                auto faces = kept->second;
+                kept->first->getVolumeFaces().swap(faces);
+                kept->first->setSculptLevel(0);
+                kept = copy.erase(kept);
+            }
+            catch (const std::bad_alloc&)
+            {
+                // Keep both this model and its original backup for a retry.
+                LL_WARNS("Upload") << "Keeping model and saved normals after restore allocation failure" << LL_ENDL;
+                ++kept;
+            }
         }
-        copy.clear();
     };
     restore(mBaseModelFacesCopy);
     restore(mModelFacesCopy[which_lod]);
@@ -2086,6 +2102,7 @@ void LLModelPreview::dropFacesCopiesOfLostModels()
 }
 
 void LLModelPreview::genMeshOptimizerLODs(S32 which_lod, S32 meshopt_mode, U32 decimation, bool enforce_tri_limit)
+try
 {
     LL_DEBUGS("Upload") << "Generating lod " << which_lod << " using meshoptimizer" << LL_ENDL;
     // Allow LoD from -1 to LLModel::LOD_PHYSICS
@@ -2193,13 +2210,9 @@ void LLModelPreview::genMeshOptimizerLODs(S32 which_lod, S32 meshopt_mode, U32 d
             }
         }
 
-        mRequestedTriangleCount[lod] = (S32)triangle_limit;
-        mRequestedErrorThreshold[lod] = lod_error_threshold * 100;
-        mRequestedLoDMode[lod] = lod_mode;
-
-        mModel[lod].clear();
-        mModel[lod].resize(mBaseModel.size());
-        mVertexBuffer[lod].clear();
+        // Retain the current models, scene and native buffers until this
+        // entire level of detail has a valid replacement.
+        LLModelLoader::model_list generated_models(mBaseModel.size());
 
 
         for (U32 mdl_idx = 0; mdl_idx < mBaseModel.size(); ++mdl_idx)
@@ -2208,15 +2221,15 @@ void LLModelPreview::genMeshOptimizerLODs(S32 which_lod, S32 meshopt_mode, U32 d
 
             LLVolumeParams volume_params;
             volume_params.setType(LL_PCODE_PROFILE_SQUARE, LL_PCODE_PATH_LINE);
-            mModel[lod][mdl_idx] = new LLModel(volume_params, 0.f);
+            generated_models[mdl_idx] = new LLModel(volume_params, 0.f);
 
             std::string name = base->mLabel + getLodSuffix(lod);
 
-            mModel[lod][mdl_idx]->mLabel = name;
-            mModel[lod][mdl_idx]->mSubmodelID = base->mSubmodelID;
-            mModel[lod][mdl_idx]->setNumVolumeFaces(base->getNumVolumeFaces());
+            generated_models[mdl_idx]->mLabel = name;
+            generated_models[mdl_idx]->mSubmodelID = base->mSubmodelID;
+            generated_models[mdl_idx]->setNumVolumeFaces(base->getNumVolumeFaces());
 
-            LLModel* target_model = mModel[lod][mdl_idx];
+            LLModel* target_model = generated_models[mdl_idx];
 
             // carry over normalized transform into simplified model
             for (S32 i = 0; i < base->getNumVolumeFaces(); ++i)
@@ -2450,21 +2463,21 @@ void LLModelPreview::genMeshOptimizerLODs(S32 which_lod, S32 meshopt_mode, U32 d
 
             if (!validate_model(target_model))
             {
-                LL_ERRS() << "Invalid model generated when creating LODs" << LL_ENDL;
+                LL_WARNS("Upload") << "Keeping existing LOD after invalid generated model" << LL_ENDL;
+                return;
             }
         }
 
         //rebuild scene based on mBaseScene
-        mScene[lod].clear();
-        mScene[lod] = mBaseScene;
+        LLModelLoader::scene generated_scene(mBaseScene);
 
         for (U32 i = 0; i < mBaseModel.size(); ++i)
         {
             LLModel* mdl = mBaseModel[i];
-            LLModel* target = mModel[lod][i];
+            LLModel* target = generated_models[i];
             if (target)
             {
-                for (LLModelLoader::scene::iterator iter = mScene[lod].begin(); iter != mScene[lod].end(); ++iter)
+                for (LLModelLoader::scene::iterator iter = generated_scene.begin(); iter != generated_scene.end(); ++iter)
                 {
                     for (U32 j = 0; j < iter->second.size(); ++j)
                     {
@@ -2476,6 +2489,13 @@ void LLModelPreview::genMeshOptimizerLODs(S32 which_lod, S32 meshopt_mode, U32 d
                 }
             }
         }
+        mModel[lod].swap(generated_models);
+        mScene[lod].swap(generated_scene);
+        mVertexBuffer[lod].clear();
+        mRequestedTriangleCount[lod] = (S32)triangle_limit;
+        mRequestedErrorThreshold[lod] = lod_error_threshold * 100;
+        mRequestedLoDMode[lod] = lod_mode;
+        dropFacesCopiesOfLostModels();
     }
 
     dropFacesCopiesOfLostModels();
@@ -2484,6 +2504,10 @@ void LLModelPreview::genMeshOptimizerLODs(S32 which_lod, S32 meshopt_mode, U32 d
         <<" simplified: " << meshes_simplified
         << ", slopily simplified: " << meshes_sloppy_simplified
         << ", failures: " << meshes_fail_count << LL_ENDL;
+}
+catch (const std::bad_alloc&)
+{
+    LL_WARNS("Upload") << "Keeping existing LOD after simplification allocation failure" << LL_ENDL;
 }
 
 void LLModelPreview::updateStatusMessages()
