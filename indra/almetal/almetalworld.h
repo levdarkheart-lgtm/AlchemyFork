@@ -29,7 +29,7 @@ struct ALMetalWorldModernSkyScene;
 // storage: the publication blit copies bytes and does not convert formats.
 inline constexpr ALMetalPixelFormat alMetalReflectionProbeRadianceFormat(bool hdr) noexcept
 {
-    return hdr ? ALMetalPixelFormat::rgba16_float
+    return hdr ? ALMetalPixelFormat::rg11b10_float
                : ALMetalPixelFormat::rgba8_unorm;
 }
 

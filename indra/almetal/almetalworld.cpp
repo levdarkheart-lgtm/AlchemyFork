@@ -1006,6 +1006,7 @@ namespace
             probes->radiance_texture->descriptor();
         if (descriptor.type != ALMetalTextureType::texture_cube_array ||
             (descriptor.format != ALMetalPixelFormat::rgba16_float &&
+             descriptor.format != ALMetalPixelFormat::rg11b10_float &&
              descriptor.format != ALMetalPixelFormat::rgba8_unorm) ||
             descriptor.width == 0 || descriptor.width != descriptor.height ||
             descriptor.array_length == 0 ||
@@ -12733,8 +12734,7 @@ bool ALMetalWorldGBufferRenderer::updateReflectionProbeFace(
     const bool color_format = input.color_attachment_count == 1 &&
         (input.colors[0].format == ALMetalPixelFormat::rgba16_float ||
          input.colors[0].format == ALMetalPixelFormat::rgba8_unorm);
-    const ALMetalPixelFormat probe_format = hdr
-        ? ALMetalPixelFormat::rg11b10_float : ALMetalPixelFormat::rgba8_unorm;
+    const ALMetalPixelFormat probe_format = alMetalReflectionProbeRadianceFormat(hdr);
     const std::uint32_t supersample = probe_resolution == 0
         ? 0 : input.width / probe_resolution;
     if (!color_format || !input_texture || probe_resolution < 2 ||
