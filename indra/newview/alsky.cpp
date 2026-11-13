@@ -114,6 +114,18 @@ namespace
         return {};
     }
 
+    const ALMetalTexture* retainSkyImage(ALSky::NativeView& out, LLImageGL* image)
+    {
+        if (!image || !image->getMetalTexture()) return nullptr;
+        out.textures.emplace_back(image);
+        return image->getMetalTexture();
+    }
+
+    const ALMetalTexture* retainSkyTexture(ALSky::NativeView& out, LLViewerTexture* texture)
+    {
+        return texture ? retainSkyImage(out, texture->getGLTexture()) : nullptr;
+    }
+
     // @a texture for @a id: null for none, fetched again where it is not the one held.
     void fetch(LLPointer<LLViewerFetchedTexture>& texture, const LLUUID& id)
     {
@@ -752,31 +764,16 @@ void ALSky::environmentUpdated(bool success)
     mEnvironmentPending = false;
 }
 
-bool ALSky::captureNativeView(NativeView& out, U32 width, U32 height, bool emissive, bool hdr, bool reverse_z)
+bool ALSky::captureNativeDome(NativeView& out) const
 {
     out.reset();
-    if (!mReady || !width || !height) return false;
-    const LLSettingsSky::ptr_t sky = LLEnvironment::instance().getCurrentSky();
-    if (!sky) return false;
+    if (!mReady || !LLEnvironment::instance().getCurrentSky()) return false;
     try
     {
-        const auto nativeImage = [&out](LLImageGL* image) -> const ALMetalTexture*
-        {
-            if (!image || !image->getMetalTexture()) return nullptr;
-            out.textures.emplace_back(image);
-            return image->getMetalTexture();
-        };
-        const auto native = [&nativeImage](LLViewerTexture* texture) -> const ALMetalTexture*
-        {
-            return texture ? nativeImage(texture->getGLTexture()) : nullptr;
-        };
-        ALMetalWorldModernSkyScene& scene = out.scene;
-        ALMetalWorldModernSkyConstants& constants = scene.constants;
-        scene.width = width;
-        scene.height = height;
-        constants.config[0] = mViewLayers;
-        constants.config[1] = emissive;
-        constants.config[2] = reverse_z;
+        auto& scene = out.scene;
+        auto& constants = scene.constants;
+        scene.width = 1;
+        scene.height = 1;
         const LLEnvironment& environment = LLEnvironment::instance();
         const auto& block = environment.getEnvironmentUBOData();
         const DomeUniforms dome = domeUniforms();
@@ -801,10 +798,47 @@ bool ALSky::captureNativeView(NativeView& out, U32 width, U32 height, bool emiss
         d.optics[1] = dome.mDroplet;
         d.optics[2] = dome.mIce;
         d.optics[3] = dome.mGlowFactor;
-        scene.rainbow_texture = native(mRainbowMap);
-        scene.halo_texture = native(mHaloMap);
+        scene.rainbow_texture = retainSkyTexture(out, mRainbowMap);
+        scene.halo_texture = retainSkyTexture(out, mHaloMap);
         if (!scene.rainbow_texture) d.optics[0] = 0.f;
         if (!scene.halo_texture) d.optics[2] = 0.f;
+
+        return true;
+    }
+    catch (const std::bad_alloc&)
+    {
+        out.reset();
+        LL_WARNS("Sky") << "Could not capture the native sky's dome inputs" << LL_ENDL;
+        return false;
+    }
+}
+
+bool ALSky::captureNativeView(NativeView& out, U32 width, U32 height, bool emissive, bool hdr, bool reverse_z)
+{
+    out.reset();
+    if (!width || !height || !captureNativeDome(out)) return false;
+    const LLSettingsSky::ptr_t sky = LLEnvironment::instance().getCurrentSky();
+    if (!sky) return false;
+    try
+    {
+        const auto nativeImage = [&out](LLImageGL* image) -> const ALMetalTexture*
+        {
+            return retainSkyImage(out, image);
+        };
+        const auto native = [&out](LLViewerTexture* texture) -> const ALMetalTexture*
+        {
+            return retainSkyTexture(out, texture);
+        };
+        ALMetalWorldModernSkyScene& scene = out.scene;
+        ALMetalWorldModernSkyConstants& constants = scene.constants;
+        scene.width = width;
+        scene.height = height;
+        constants.config[0] = mViewLayers;
+        constants.config[1] = emissive;
+        constants.config[2] = reverse_z;
+        const LLEnvironment& environment = LLEnvironment::instance();
+        const auto& block = environment.getEnvironmentUBOData();
+        const auto& d = constants.dome;
 
         auto& c = constants.clouds;
         std::memcpy(c.camera_local, d.camera_local, sizeof(c.camera_local));
@@ -828,7 +862,7 @@ bool ALSky::captureNativeView(NativeView& out, U32 width, U32 height, bool emiss
         c.parameters[0] = block.cloud_scale;
         c.parameters[1] = (F32)sky->getCloudVariance();
         c.parameters[2] = cloud.mBlend;
-        c.parameters[3] = dome.mGlowFactor;
+        c.parameters[3] = d.optics[3];
         scene.cloud_texture = native(cloud.mFirst);
         scene.cloud_next_texture = cloud.mNext ? native(cloud.mNext) : scene.cloud_texture;
         const auto& camera = LLViewerCamera::getCurrent();

@@ -109,6 +109,8 @@ public:
     void beginView(bool draws_sky);
     S32 viewLayers() const { return mViewLayers; }
     // Captures the current camera and the view policy begun above. Retain NativeView until encoding ends.
+    // Environment bakes take only the dome: no view policy, layer simulation, clock or star work.
+    bool captureNativeDome(NativeView& out) const;
     bool captureNativeView(NativeView& out, U32 width, U32 height, bool emissive, bool hdr, bool reverse_z);
     static bool useHDRISky();
     void addSunMoonBeacons();
