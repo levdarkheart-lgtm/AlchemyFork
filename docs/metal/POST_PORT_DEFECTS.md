@@ -634,14 +634,14 @@ offset, disabled quality feature or changed depth admission.
 
 ## PPD-014 — Automatic CI spends unwanted runs and manual releases select incompatible jobs
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference:81bff208a7 `.github/workflows/metal-harness.yml`, `build.yaml` and `tag-release.yaml`; default-branch inherited schedules remain active unless disabled.
 - Evidence: [Workflow failure investigation and manual release ledger](work/active/manual-release-actions.md).
-- Next action: Dispatch the source-identity correction from the current approved branch with three CPUs and cached dependencies; verify the precompile header gate and follow through published release assets.
-- Verification: Linked push run43306501400 fails10of76tests because NumPy is absent. Earlier tag42930335974 enters the incompatible Windows/Linux matrix. Two other prior runs were rejected before startup for account billing/spending gates; successful alpha2/3 prove xcode-27 was usable. Seven automatic workflow IDs are now disabled, but no corrected release run has succeeded yet.
+- Next action: Owner confirms the manual workflow/release experience if desired; retain disabled automatic workflows and use the Metal branch selector for future explicit builds.
+- Verification: Run43338929395 succeeds and publishes26.4.0.68901-alpha5 from9646f4e. Hosted116tests, precompile source identity,346ARM64slices, deep strict signatures and package/provenance checks pass. Downloaded ZIP/checksum/provenance match GitHub digests; extracted app/three owned executable hashes and license match CI. Static release evidence; owner confirmation pending.
 - Owner verification: pending
 - Push approval: granted
 
@@ -685,6 +685,20 @@ not raising spending limits or changing billing/repository permissions.
   cases and116tool tests pass; actual workflow guard rejects empty/wrong identity
   and passes against the corrected production header before compilation. Retry
   current approved branch including water3e17d4e; earlier attempt published nothing.
+
+
+- 2026-11-13: Repair9646f4e published; explicit run43338929395 reuses
+  dependency cache and passes the actual configured-header identity gate before
+  compilation. Three-CPU viewer build is running; expected26.4.0.68901-alpha5.
+  Preserve the previous source-identity failure; no release success claim yet.
+
+
+- 2026-11-13: Run43338929395 publishes 26.4.0.68901-alpha5; exact tag source
+  9646f4e839ed1d32d2b5bb1fcecc9a1a9601e2e5. Independent download verifies
+  ZIP SHA256 08a6d2163dc422b7c006e9a0c5bdd37d3fa26b03253878203a16402f87bc01b7,
+  three asset digests,346ARM64slices, signatures and owned executable/notice
+  hashes. All116hosted tool tests pass. Mark ready_for_owner, not owner-verified;
+  preserve prior failed attempts and all unrelated open product defects.
 
 
 ## PPD-015 — Water grazing-angle steepness uses eye-space vertical

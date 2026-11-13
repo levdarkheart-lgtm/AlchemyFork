@@ -8,6 +8,32 @@ no account spending limit, billing credentials or repository permissions change.
 Source starts at81bff208a7; isolated codex/manual-apple-release worktree. Owner's
 `odex/apple-silicon-metal` spelling is interpreted as the existing codex branch.
 
+## Verified release outcome —2026-11-13
+
+[Alpha5 26.4.0.68901-alpha5](https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.68901-alpha5) is published as a prerelease by
+[manual run43338929395](https://github.com/levdarkheart-lgtm/AlchemyFork/actions/runs/43338929395) from exact source `9646f4e839ed1d32d2b5bb1fcecc9a1a9601e2e5`.
+The tag points at that commit. It includes native parcel music, the login-world
+startup correction and the subsequently approved water-haze fix.
+
+Hosted116tool tests, configured-header source identity,346ARM64slices, deep
+strict signatures, owned imports/compiled features, pinned decoder receipt and
+license, ZIP roundtrip/checksum and release publication all pass. Independently
+downloaded ZIP/checksum/provenance match all three GitHub asset digests; extracted
+app ARM64/signatures and all three owned executable hashes match CI provenance.
+Native music/WebRTC/decoder/encoder compiled evidence is present; no runtime
+voice/visual parity claim or full-product completion is implied.
+
+- ZIP bytes: 318362420; SHA256 `08a6d2163dc422b7c006e9a0c5bdd37d3fa26b03253878203a16402f87bc01b7`.
+- Viewer executable SHA256 `c301a627dbf8caa19f82aea9e08cf685223e22231309b6df4e1af7c893ab9226`.
+- Local proof: `artifacts/metal/actions-manual-release-20261112/download-verification.json`;
+  full run log/provenance/downloads and final workflow state are retained there.
+- Seven legacy automatic build/test/PR workflows remain disabled. Release is
+  manual-only, one standard ARM64 job,3CPUs, reusable dependency binaries and no
+  duplicate Actions app artifact. Dependabot remains a separate service entry.
+- PPD-014 is ready for owner confirmation. No account billing/spending limit or
+  repository permission was changed. Standard public-repository runner compute
+  is free under [GitHub's policy](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+
 ## Observed failures
 
 - Run43306501400: Metal harness, push event at81bff208, docs path trigger. Harness
@@ -59,7 +85,7 @@ machine-specific archive hash. Legacy local archive guard stays unchanged.
 Fresh build/receipt gates/8real decode cases match accepted output; tool tests84
 pass. Static BSD notices must enter the bundle before package signing.
 
-## Current progress
+## Original pre-dispatch checkpoint (historical)
 
 - doing: release workflow source/ref/tag identity, native build, archive validation
   and explicit prerelease publication; manual NumPy installation fixes harness.
@@ -176,3 +202,18 @@ under artifacts/metal/actions-manual-release-20261112/.
 Initial status append exceeds CURRENT/ledger line limits (164/184). Integrating
 CI status into their existing defect-index paragraphs restores160/180lines;
 retain this documentation-check failure and validate before publication.
+
+## Corrected retry —2026-11-13
+
+Published identity repair9646f4e839ed1d32d2b5bb1fcecc9a1a9601e2e5; manually
+dispatched run43338929395 from that immutable source, expected26.4.0.68901-alpha5.
+It includes approvedwater3e17d4e. By00:45UTC hosted tests/configuration and the
+new generated-source/header gate pass; viewer compilation is running with3CPUs.
+The saved dependency cache is reused. No release is claimed yet. Follow
+https://github.com/levdarkheart-lgtm/AlchemyFork/actions/runs/43338929395
+through package/provenance checks, publication and downloaded-asset verification.
+
+Final required action is complete: the requested manually triggered current-branch
+release is published and its downloaded assets verify. Keep existing failed run
+history and unresolved product defects. Future manual runs use the Metal branch
+workflow selector; source_ref accepts its integrated branch/tag/commit lineage.
