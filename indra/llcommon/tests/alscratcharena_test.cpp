@@ -38,6 +38,20 @@
 
 namespace
 {
+    // The current fork's sanitizer helper predates SANITIZER_ALLOCATOR.
+#if defined(__SANITIZE_ADDRESS__)
+    constexpr bool ADDRESS_ALLOCATOR = true;
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+    constexpr bool ADDRESS_ALLOCATOR = true;
+#else
+    constexpr bool ADDRESS_ALLOCATOR = false;
+#endif
+#else
+    constexpr bool ADDRESS_ALLOCATOR = false;
+#endif
+    constexpr bool SANITIZER_ALLOCATOR = ADDRESS_ALLOCATOR || ll_test::THREAD_SANITIZER;
+
     std::uintptr_t address(const void* p)
     {
         return reinterpret_cast<std::uintptr_t>(p);
@@ -124,7 +138,7 @@ namespace
     // its size would overflow, so that the heap refuses it.
     TEST_CASE("alscratcharena: a size no arena could hold is the heap's to refuse", "[alscratcharena]")
     {
-        if constexpr (ll_test::SANITIZER_ALLOCATOR)
+        if constexpr (SANITIZER_ALLOCATOR)
         {
             SKIP("a sanitizer's operator new ends the process rather than throw");
         }
