@@ -126,6 +126,7 @@ target_sources(
       almetalpbrpreview.h
       almetalpipeline.h
       almetalpipelinecache.h
+      almetalprobepublication.h
       almetalprobeworkload.h
       almetalresource.h
       almetalretainedbackground.h
@@ -192,6 +193,8 @@ if(AL_BUILD_TESTS)
             tests/almetal_lens_policy_admission_test.mm
             tests/almetal_linear_screen_boundary_test.mm
             tests/almetal_reflection_policy_test.mm
+            tests/almetal_probe_hdr_publication_test.mm
+            tests/almetal_pbr_probe_formats_test.mm
             tests/almetal_finalize_admission_test.mm
             tests/almetal_ssr_isolation_test.mm
             tests/almetal_reference_format_test.mm
@@ -239,6 +242,8 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_lens_policy_admission_test.mm
                               tests/almetal_linear_screen_boundary_test.mm
                               tests/almetal_reflection_policy_test.mm
+                              tests/almetal_probe_hdr_publication_test.mm
+                              tests/almetal_pbr_probe_formats_test.mm
                               tests/almetal_finalize_admission_test.mm
                               tests/almetal_ssr_isolation_test.mm
                               tests/almetal_reference_format_test.mm

@@ -53,6 +53,7 @@
 
 #if LL_DARWIN
 #include "../almetal/almetalpbrpreview.h"
+#include "../almetal/almetalprobepublication.h"
 #include "../almetal/almetalresource.h"
 #include "../almetal/almetalstagetiming.h"
 #include "../almetal/almetalworld.h"
@@ -698,6 +699,10 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
         return false;
     }
 
+    // The renderer accepts the last face before the manager can filter and
+    // publish its coherent pair. A later failure must leave that logical
+    // face admissible on retry instead of stranding the updater at face five.
+    ALMetalProbeFacePublication face_publication(mirror.mNativeValidFaces);
     const U32 max_probe_lod =
         static_cast<U32>(std::lround(mMaxProbeLOD));
     if (!renderer.updateReflectionProbeFace(
@@ -709,6 +714,7 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
     }
     if (face != 5)
     {
+        face_publication.commit();
         return true;
     }
     if (mirror.mNativeValidFaces != 0x3fu)
@@ -785,6 +791,7 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
         mirror.mNativePendingSHGeneration = generation;
         mirror.mNativePendingSHSequence = mirror.mNativeCaptureSequence;
         mirror.mNativeSHPublishedThisPass = true;
+        face_publication.commit();
         return true;
     }
 
@@ -1037,9 +1044,21 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
     mirror.mNativeReadySHCube = 0;
     mirror.mNativeReadySHGeneration = 0;
     mirror.mNativeReadySHSequence = 0;
+    static U32 reported_default_formats = 0;
+    const U32 format_bit = mHDR ? 2u : 1u;
+    if (cube == 0 && !(reported_default_formats & format_bit))
+    {
+        reported_default_formats |= format_bit;
+        LL_INFOS("Metal")
+            << "Native default-probe radiance/SH publication queued: hdr="
+            << mHDR << ", format=" << (mHDR ? "R11G11B10F" : "RGBA8")
+            << ", generation=" << generation
+            << ", sequence=" << mirror.mNativeCaptureSequence << LL_ENDL;
+    }
     // Release the shared scratch transaction only after the coherent
     // radiance + SH pair is ordered on the Metal queue.
     mirror.mNativeCaptureSequence = 0;
+    face_publication.commit();
     return true;
 }
 
@@ -1603,12 +1622,17 @@ void LLReflectionMapManager::update()
                 updateProbeFace(closestDynamic, i, true) &&
                 native_realtime_pass_complete;
         }
-        // A native probe pass is transactional. Keep the same half selected
-        // when any face fails so the next frame retries it instead of
-        // treating the retained GL work as a usable fallback generation.
+        // Each realtime attempt starts again at face zero. A failed radiance
+        // half no longer has the complete irradiance-face admission state;
+        // restart with fresh irradiance rather than repeatedly requesting a
+        // radiance sequence which the native owner must reject.
         if (native_realtime_pass_complete)
         {
             mRealtimeRadiancePass = !mRealtimeRadiancePass;
+        }
+        else
+        {
+            mRealtimeRadiancePass = false;
         }
 
         // Reserve the following frame for the dependent radiance half when
