@@ -701,6 +701,19 @@ not raising spending limits or changing billing/repository permissions.
   preserve prior failed attempts and all unrelated open product defects.
 
 
+- 2026-11-13: Owner requests the complete pushed upstream-port release as Alpha6,
+  with local packaging if hosted budget blocks it. Manual43473591856 at exact
+  af72868396 starts on ARM64 and passes source/toolchain/dependency/configured
+  identity gates; no current billing rejection. A verified local incremental
+  package finishes ahead of the fresh hosted compile, so the run is deliberately
+  canceled and its publication step skipped. Local346ARM64/signatures/source/
+  dependency/116tools and full ZIP roundtrip checks pass. Alpha6 published as
+  release444559882/tag26.4.0.68984-alpha6, with ZIP/SHA/provenance. Independent
+  downloaded bytes match all three GitHub digests; extracted app/source/import/
+  feature/signature/ARM64 checks pass. Owner workflow confirmation remains pending.
+  See [Alpha6 release ledger](work/active/release-alpha6-20261113.md). No new
+  workflow/source fix, billing change or unrelated defect closure.
+
 ## PPD-015 — Water grazing-angle steepness uses eye-space vertical
 
 - Status: open

@@ -1,7 +1,7 @@
 # Active execution plan — native Alchemy Metal
 
-**Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo. **Integrated checkpoint:** Commit `b81a4645e0`; Sky26.4.0.68980/PID41725 live; owner clean-image colour/probe repair PPD083/086 verified, broader gates remain open.
-**Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md), [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md).
+**Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo. **Integrated checkpoint:** Commit `b81a4645e0`; prior owner-tested Sky26.4.0.68980 colour/probe repair PPD083/086 verified; exactaf72868396 Alpha6 local package passes static gates, no new runtime claim.
+**Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md), [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md). [Alpha6 publication](release-alpha6-20261113.md): complete exactaf72868396/tag26.4.0.68984-alpha6 published444559882 with ZIP/SHA/provenance after localbuild/346ARM64/signatures/116tools/source/ZIP and remote-download gates pass; hosted43473591856 deliberately canceled. PPD-014 retained.
 
 PPD-005 [OpenHTJ2K experiment](openhtj2k-local-experiment.md):db398/68860 build/static+76tools+736image assertions pass; PID67814/4OpenHTworkers,181.755s profile. Owner accepted and scoped decoder push completed at4842cb9460 on codex/apple-silicon-metal; unrelated work stays local, no causal FPS claim.
 

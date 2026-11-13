@@ -1,7 +1,7 @@
 # Current engineering state — remaining native feature completion
 
-**Observed:** 2026-11-13 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
-**Renderer code checkpoint:** `b81a4645e0`; Sky26.4.0.68980/PID41725 live; owner clean-image colour/probe repair PPD083/086 verified, broader gates remain open.
+**Observed:** 2026-11-13 UTC, Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6. [Alpha6 publication](../work/active/release-alpha6-20261113.md): exactaf72868396/tag26.4.0.68984-alpha6 localbuild/346ARM64/signatures/116tools/source/provenance/ZIP pass; published444559882 with ZIP/SHA256/provenance and independent download checks passed. Hosted43473591856 deliberately canceled after local package finished first; no billing change, PPD-014 retained.
+**Renderer code checkpoint:** `b81a4645e0`; prior owner-tested Sky26.4.0.68980/PID41725 colour/probe repair PPD083/086 verified; Alpha6 package built without a new viewer launch, broader gates remain open.
 **Owner-passed viewer:** `cb840a5b9d`,26.4.0.68841; reported beard-light cutoff fixed.
 Alpha4 built/tested/packaged/published; [profile](../research/busy-region-profile-2026-11-12.md)301.302sec+11.912sec; exact68841 PID91442/92651 owner login/settings/logout, no source change.
 [Shadow queries](../work/active/shadow-camera-occlusion.md):68849/tests pass;181.281s recovered; [hotspots](../research/three-profile-hotspots-2026-11-12.md) compared. [Apple-first study](../work/active/apple-first-architecture-study.md): M1Metal4 core objects verified, retained-data/parallel/GPU-indexed direction; no implementation or gain claim. Utility unexecuted/stopped20FPS deferred.
