@@ -30,15 +30,80 @@
 #include "buffer_util.h"
 #include "../llviewershadermgr.h"
 
-#include "mikktspace/mikktspace.hh"
-
 #include <meshoptimizer.h>
 
 
 using namespace LL::GLTF;
 
 
-// Mesh data useful for Mikktspace tangent generation (and flat normal generation)
+LLRender::eGeomModes gltf_mode_to_gl_mode(Primitive::Mode mode);
+
+namespace
+{
+    bool attributes_match_positions(const Primitive& prim)
+    {
+        for (size_t count : { prim.mNormals.size(), prim.mTangents.size(), prim.mColors.size(), prim.mTexCoords0.size(),
+                              prim.mTexCoords1.size(), prim.mJoints.size(), prim.mWeights.size() })
+        {
+            if (count != 0 && count != prim.mPositions.size())
+            {
+                LL_WARNS("GLTF") << "Attribute of " << count << " elements for " << prim.mPositions.size() << " positions" << LL_ENDL;
+                return false;
+            }
+        }
+        if (prim.mJoints.empty() != prim.mWeights.empty())
+        {
+            LL_WARNS("GLTF") << "Joints and weights not given together" << LL_ENDL;
+            return false;
+        }
+        return true;
+    }
+
+    bool triangle_count(LLRender::eGeomModes mode, size_t count, size_t& triangles)
+    {
+        if (mode == LLRender::TRIANGLES)
+        {
+            if (count < 3 || count % 3 != 0) return false;
+            triangles = count / 3;
+        }
+        else if (mode == LLRender::TRIANGLE_STRIP || mode == LLRender::TRIANGLE_FAN)
+        {
+            if (count < 3) return false;
+            triangles = count - 2;
+        }
+        else
+        {
+            return false;
+        }
+        // The unrolled runtime index stream must fit the same S32 storage upload uses.
+        return triangles <= size_t(S32_MAX) / 6;
+    }
+
+    void triangle_corners(LLRender::eGeomModes mode, U32 triangle, U32* corners)
+    {
+        if (mode == LLRender::TRIANGLES)
+        {
+            corners[0] = triangle * 3;
+            corners[1] = triangle * 3 + 1;
+            corners[2] = triangle * 3 + 2;
+        }
+        else if (mode == LLRender::TRIANGLE_STRIP)
+        {
+            corners[0] = triangle;
+            corners[1] = triangle + 1;
+            corners[2] = triangle + 2;
+            if (triangle % 2 != 0) std::swap(corners[1], corners[2]);
+        }
+        else
+        {
+            corners[0] = 0;
+            corners[1] = triangle + 1;
+            corners[2] = triangle + 2;
+        }
+    }
+}
+
+// A primitive unrolled into a triangle list, for its tangents and flat normals
 struct MikktMesh
 {
     std::vector<LLVector3> p;       //positions
@@ -59,18 +124,10 @@ struct MikktMesh
 
         size_t triangle_count = 0;
 
-        if (prim->mMode == Primitive::Mode::TRIANGLE_STRIP ||
-            prim->mMode == Primitive::Mode::TRIANGLE_FAN)
+        const auto mode = gltf_mode_to_gl_mode(prim->mMode);
+        if (!::triangle_count(mode, vert_count, triangle_count))
         {
-            triangle_count = vert_count - 2;
-        }
-        else if (prim->mMode == Primitive::Mode::TRIANGLES)
-        {
-            triangle_count = vert_count / 3;
-        }
-        else
-        {
-            LL_WARNS("GLTF") << "Unsupported primitive mode for conversion to triangles: " << (S32)prim->mMode << LL_ENDL;
+            LL_WARNS("GLTF") << "Invalid primitive topology for conversion to triangles" << LL_ENDL;
             return false;
         }
 
@@ -110,29 +167,7 @@ struct MikktMesh
         {
             U32 idx[3] = {0, 0, 0};
 
-            if (prim->mMode == Primitive::Mode::TRIANGLES)
-            {
-                idx[0] = tri_idx * 3;
-                idx[1] = tri_idx * 3 + 1;
-                idx[2] = tri_idx * 3 + 2;
-            }
-            else if (prim->mMode == Primitive::Mode::TRIANGLE_STRIP)
-            {
-                idx[0] = tri_idx;
-                idx[1] = tri_idx + 1;
-                idx[2] = tri_idx + 2;
-
-                if (tri_idx % 2 != 0)
-                {
-                    std::swap(idx[1], idx[2]);
-                }
-            }
-            else if (prim->mMode == Primitive::Mode::TRIANGLE_FAN)
-            {
-                idx[0] = 0;
-                idx[1] = tri_idx + 1;
-                idx[2] = tri_idx + 2;
-            }
+            triangle_corners(mode, tri_idx, idx);
 
             if (indexed)
             {
@@ -187,11 +222,23 @@ struct MikktMesh
         }
     }
 
+    // MikkTSpace's tangents, as meshoptimizer's compatible mode computes
+    // them. GLTF's V runs down the texture, the other way from the V a
+    // tangent's handedness is taken against, so the tangents are those of
+    // the UVs as they are with w the other way.
     void genTangents()
     {
         t.resize(p.size());
-        mikk::Mikktspace ctx(*this);
-        ctx.genTangSpace();
+        if (p.empty())
+        {
+            return;
+        }
+        meshopt_generateTangents(t[0].mV, nullptr, p.size(), p[0].mV, p.size(), sizeof(LLVector3), n[0].mV, sizeof(LLVector3), tc0[0].mV,
+                                 sizeof(LLVector2), meshopt_TangentCompatible);
+        for (LLVector4& tangent : t)
+        {
+            tangent.mV[3] = -tangent.mV[3];
+        }
     }
 
     // write to target primitive as an indexed triangle list
@@ -270,40 +317,6 @@ struct MikktMesh
 
         prim->mGLMode = LLRender::TRIANGLES;
     }
-
-    uint32_t GetNumFaces()
-    {
-        return uint32_t(p.size()/3);
-    }
-
-    uint32_t GetNumVerticesOfFace(const uint32_t face_num)
-    {
-        return 3;
-    }
-
-    mikk::float3 GetPosition(const uint32_t face_num, const uint32_t vert_num)
-    {
-        F32* v = p[face_num * 3 + vert_num].mV;
-        return mikk::float3(v);
-    }
-
-    mikk::float3 GetTexCoord(const uint32_t face_num, const uint32_t vert_num)
-    {
-        F32* uv = tc0[face_num * 3 + vert_num].mV;
-        return mikk::float3(uv[0], 1.f-uv[1], 1.0f);
-    }
-
-    mikk::float3 GetNormal(const uint32_t face_num, const uint32_t vert_num)
-    {
-        F32* normal = n[face_num * 3 + vert_num].mV;
-        return mikk::float3(normal);
-    }
-
-    void SetTangentSpace(const uint32_t face_num, const uint32_t vert_num, mikk::float3 T, bool orientation)
-    {
-        S32 i = face_num * 3 + vert_num;
-        t[i].set(T.x, T.y, T.z, orientation ? 1.0f : -1.0f);
-    }
 };
 
 
@@ -317,6 +330,22 @@ static void vertical_flip(std::vector<LLVector2>& texcoords)
 
 bool Primitive::prep(Asset& asset)
 {
+    switch (mMode)
+    {
+    case Mode::POINTS:
+    case Mode::LINES:
+    case Mode::LINE_LOOP:
+    case Mode::LINE_STRIP:
+    case Mode::TRIANGLES:
+    case Mode::TRIANGLE_STRIP:
+    case Mode::TRIANGLE_FAN:
+        break;
+    default:
+        LL_WARNS("GLTF") << "Invalid primitive mode" << LL_ENDL;
+        return false;
+    }
+    mGLMode = gltf_mode_to_gl_mode(mMode);
+
     // allocate vertex buffer
     // We diverge from the intent of the GLTF format here to work with our existing render pipeline
     // GLTF wants us to copy the buffer views into GPU storage as is and build render commands that source that data.
@@ -364,6 +393,10 @@ bool Primitive::prep(Asset& asset)
         }
     }
 
+    // Every attribute is read at each position's index, and skinning takes joints and weights together.
+    if (!attributes_match_positions(*this)) return false;
+    if (mPositions.size() > size_t(S32_MAX)) return false;
+
     // copy index buffer
     if (mIndices != INVALID_INDEX)
     {
@@ -385,6 +418,17 @@ bool Primitive::prep(Asset& asset)
         for (U32 i = 0; i < mPositions.size(); ++i)
         {
             mIndexArray[i] = i;
+        }
+    }
+
+    if (mIndexArray.size() > size_t(S32_MAX) / 2) return false;
+    if (mMode == Mode::TRIANGLES || mMode == Mode::TRIANGLE_STRIP || mMode == Mode::TRIANGLE_FAN)
+    {
+        size_t triangles;
+        if (!triangle_count(mGLMode, mIndexArray.size(), triangles))
+        {
+            LL_WARNS("GLTF") << "Invalid triangle primitive count" << LL_ENDL;
+            return false;
         }
     }
 
@@ -459,7 +503,6 @@ bool Primitive::prep(Asset& asset)
 
     if (mTangents.empty() && !unlit)
     { // NOTE: must be done last because tangent generation rewrites the other arrays
-        // adapted from usage of Mikktspace in llvolume.cpp
         if (mMode == Mode::POINTS || mMode == Mode::LINES || mMode == Mode::LINE_LOOP || mMode == Mode::LINE_STRIP)
         {
             // for points and lines, just make sure tangent is perpendicular to normal
@@ -607,100 +650,43 @@ void initOctreeTriangle(LLVolumeTriangle* tri, F32 scaler, S32 i0, S32 i1, S32 i
 
 void Primitive::createOctree()
 {
-    // create octree
+    mOctree = nullptr;
+    mOctreeTriangles.clear();
+    const bool indexed = !mIndexArray.empty();
+    const size_t count = indexed ? mIndexArray.size() : mPositions.size();
+    size_t triangles = 0;
+    const bool surface = mGLMode == LLRender::TRIANGLES || mGLMode == LLRender::TRIANGLE_STRIP || mGLMode == LLRender::TRIANGLE_FAN;
+    if (surface && !triangle_count(mGLMode, count, triangles))
+    {
+        LL_WARNS("GLTF") << "Invalid triangle topology for picking" << LL_ENDL;
+        return;
+    }
+    if (indexed && std::any_of(mIndexArray.begin(), mIndexArray.end(),
+                              [this](U32 index) { return index >= mPositions.size(); }))
+    {
+        LL_WARNS("GLTF") << "Invalid vertex index for picking" << LL_ENDL;
+        return;
+    }
+
     mOctree = new LLVolumeOctree();
-
-    F32 scaler = 0.25f;
-
-    if (mMode == Mode::TRIANGLES)
+    mOctreeTriangles.resize(triangles);
+    for (U32 triangle = 0; triangle < triangles; ++triangle)
     {
-        const U32 num_triangles = getIndexCount() / 3;
-        // Initialize all the triangles we need
-        mOctreeTriangles.resize(num_triangles);
-
-        for (U32 triangle_index = 0; triangle_index < num_triangles; ++triangle_index)
-        { //for each triangle
-            const U32 index = triangle_index * 3;
-            LLVolumeTriangle* tri = &mOctreeTriangles[triangle_index];
-            S32 i0 = mIndexArray[index];
-            S32 i1 = mIndexArray[index + 1];
-            S32 i2 = mIndexArray[index + 2];
-
-            const LLVector4a& v0 = mPositions[i0];
-            const LLVector4a& v1 = mPositions[i1];
-            const LLVector4a& v2 = mPositions[i2];
-
-            initOctreeTriangle(tri, scaler, i0, i1, i2, v0, v1, v2);
-
-            //insert
-            mOctree->insert(tri);
+        U32 indices[3];
+        // The draw and raycast consume the runtime topology. mMode remains the serialized file's.
+        triangle_corners(mGLMode, triangle, indices);
+        if (indexed)
+        {
+            for (U32& index : indices) index = mIndexArray[index];
         }
-    }
-    else if (mMode == Mode::TRIANGLE_STRIP)
-    {
-        const U32 num_triangles = getIndexCount() - 2;
-        // Initialize all the triangles we need
-        mOctreeTriangles.resize(num_triangles);
-
-        for (U32 triangle_index = 0; triangle_index < num_triangles; ++triangle_index)
-        { //for each triangle
-            const U32 index = triangle_index + 2;
-            LLVolumeTriangle* tri = &mOctreeTriangles[triangle_index];
-            S32 i0 = mIndexArray[index];
-            S32 i1 = mIndexArray[index - 1];
-            S32 i2 = mIndexArray[index - 2];
-
-            const LLVector4a& v0 = mPositions[i0];
-            const LLVector4a& v1 = mPositions[i1];
-            const LLVector4a& v2 = mPositions[i2];
-
-            initOctreeTriangle(tri, scaler, i0, i1, i2, v0, v1, v2);
-
-            //insert
-            mOctree->insert(tri);
-        }
-    }
-    else if (mMode == Mode::TRIANGLE_FAN)
-    {
-        const U32 num_triangles = getIndexCount() - 2;
-        // Initialize all the triangles we need
-        mOctreeTriangles.resize(num_triangles);
-
-        for (U32 triangle_index = 0; triangle_index < num_triangles; ++triangle_index)
-        { //for each triangle
-            const U32 index = triangle_index + 2;
-            LLVolumeTriangle* tri = &mOctreeTriangles[triangle_index];
-            S32 i0 = mIndexArray[0];
-            S32 i1 = mIndexArray[index - 1];
-            S32 i2 = mIndexArray[index - 2];
-
-            const LLVector4a& v0 = mPositions[i0];
-            const LLVector4a& v1 = mPositions[i1];
-            const LLVector4a& v2 = mPositions[i2];
-
-            initOctreeTriangle(tri, scaler, i0, i1, i2, v0, v1, v2);
-
-            //insert
-            mOctree->insert(tri);
-        }
-    }
-    else if (mMode == Mode::POINTS ||
-            mMode == Mode::LINES ||
-        mMode == Mode::LINE_LOOP ||
-        mMode == Mode::LINE_STRIP)
-    {
-        // nothing to do, no volume... maybe add some collision geometry around these primitive types?
+        LLVolumeTriangle* tri = &mOctreeTriangles[triangle];
+        initOctreeTriangle(tri, 0.25f, indices[0], indices[1], indices[2],
+                           mPositions[indices[0]], mPositions[indices[1]], mPositions[indices[2]]);
+        mOctree->insert(tri);
     }
 
-    else
-    {
-        LL_ERRS() << "Unsupported Primitive mode" << LL_ENDL;
-    }
-
-    //remove unneeded octree layers
+    // Points and lines keep an empty picking tree, as before.
     while (!mOctree->balance()) {}
-
-    //calculate AABB for each node
     LLVolumeOctreeRebound rebound;
     rebound.traverse(mOctree);
 }
