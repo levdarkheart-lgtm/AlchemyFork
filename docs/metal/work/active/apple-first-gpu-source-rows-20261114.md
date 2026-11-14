@@ -198,3 +198,21 @@ API/GPU command-bank+device/group cases, earlier owner/row/resource/oldlibrary
 checks; actualbank costs48pairs plus retained negative scalar baseline; then
 combined contained suites/strict audit. No default activation from component-only
 success, no final staging/product/whole-viewer performance claim.
+
+## Combined gate14 and narrow follow-up
+
+Clean2be731c135ce26113dfe2e209f5a1d9dcb10e526 required14 passes171.330s,
+static69041 passes sevenOFFdiagnostics+minimumrun2/ARM64/signature/provenance.
+Native banks1942/5 and oldbank84/1 pass under API/GPU validation; FrameBudget
+194/14, admission311/4, sharedlibrary331/3+old82/1, region64/5 pass. Actual
+publication has42/43cases passing (9223/9225assertions): PPD190 test's raw
+getter marks a fresh reader before asserting in-place reuse. leased_orphans
+remains unchanged. Fix observes old weak-layout identity instead; resource
+lifetime protections remain. Earlier suites after that failing process were
+not executed by runner14 and must be rerun at15.
+
+Integrated source-declaration batching4af07b777e asce131ee554: the prebuilt
+geometry resource union now uses one Metal useResources call, preserving
+stages/ownership. Command helper already avoids duplicate index declarations.
+Required15/native gates and actual48pair bank cost run follow at a clean source.
+No bank/default/performance acceptance until complete-path data; PPD183 staysopen.

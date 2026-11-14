@@ -1548,7 +1548,12 @@ TEST_CASE("Actual material cohort churn restores weak cached rows without redisc
         for(const auto& info:f.infos)CHECK_FALSE(info->state->publication());
         CHECK(f.group->publication());const auto before=f.reads();const auto before_builds=Inputs::ALSceneGroupPublicationNative::statistics.cpu_source_builds;
         const auto before_restores=Inputs::ALSceneGroupPublicationNative::statistics.material_restores;
-        auto& dirty=*f.infos[1];const auto* original=dirty.mVertexBuffer->getMetalVertexBuffer();const auto uploads=LLVertexBuffer::metalUploadStats();
+        auto& dirty=*f.infos[1];
+        // The raw getter records a new frame reader. Observe the retained
+        // CPU layout's non-owning identity instead when testing cache-only
+        // retirement; a genuine raw reader correctly requires orphaning.
+        const auto* original=old_rows[1]->prototype.vertices;
+        const auto uploads=LLVertexBuffer::metalUploadStats();
         const std::array<LLColor4U,3> green{LLColor4U(0,255,0,255),LLColor4U(0,255,0,255),LLColor4U(0,255,0,255)};
         dirty.mVertexBuffer->setColorData(green.data());dirty.mVertexBuffer->unmapBuffer();
         CHECK_FALSE(f.group->publication());CHECK(dirty.mVertexBuffer->getMetalVertexBuffer()==original);
