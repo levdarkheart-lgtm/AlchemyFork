@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-113 -->
+<!-- next-defect-id: PPD-117 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3125,7 +3125,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: Repaired native G1 sourcefef1e756fd/68991,301.864885s busy-club capture2026-11-13, same M1Max64GiB host. This is a sequential live workload comparison, not original OpenGL or a controlled identical-world replay.
 - Evidence: [G2–G5 busy-club capture and comparison](research/g2g5-busy-club-profile-2026-11-14.md), [headless implementation results and limits](research/apple-first-architecture-g2-g5-results.md).
-- Next action: Prioritize producer-amortized source generation publication and whole-frame streaming/residency/command admission, using the measured per-present and per-work costs. Add missing cache-hit/run-size/COW-byte/producer-command census at existing owners before attributing extra commands or lowering thresholds. Preserve quality, query/probe/projector semantics and whole-frame latency/texture-response acceptance; no new runtime action was taken during analysis.
+- Next action: Owner runs exact4918fd7/68999 retest candidate. Use whole-frame cadence plus new source/opaque/streaming/residency operands to choose further architecture work. Prior adverse FPS comparison remains unresolved; no new performance capture.
 - Verification: Actual302.345784s Game Performance Overview attach to verified6bae/68995/PID19459 exits0 at its5m limit. Whole presentedFPS17.773vs20.364(−12.72%); associateddisplay56.385vs49.135ms, associatedGPUspan87.220vs85.394ms(+2.14%); commandbuffers/frame32.842vs23.882(+37.52%). Last60FPS17.925vs20.113(−10.88%). Nominal thermals throughout. Both individual-frame tables empty: no framep95. Saved graphics match before/after/current/G1; live camera/population/cache/probe/viewport equivalence and causal attribution remain unverified.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3138,16 +3138,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Streaming is normal engine work, not dismissal of the adverse result:56,104vs453 decode completions (~124.7×rate),628.601vs10.103decoderCPU-s; maintextureupdate4.39vs0.99ms/present; waiting peaks2508/4.64soldest. Texture creations16.22vs6.97/frame, buffers256.26vs217.99/frame but buffer/s only+2.39%. Currentpressure system-low17/30,bias1–3.029vs1; pool+200.074MiB at same published resolution,0evictions. Cause of churn/extra commands is not isolated. Source graph confirms separately bounded main/shadow/probe/upload producers on common nativequeue; +19.91%estimatedCB/s. Full assessment/report and safe receipts are retained. No codefix/newcapture/restart/push, no closure or causalFPS claim.
 
+- 2026-11-14: Owner explicitly requests logging silent opaque preparation outcomes and needed workload diagnostics, fix process-cap issue and prepare next candidate for owner run. New bounded retest goal active; no viewer/profile/push. Root owns pipeline log integration and final delivery, disjoint agents own native stats, memory policy and residency census.
+
+
+- 2026-11-14: Retest candidate4918fd7/68999 delivered with aggregate opaque/source/publication/residency telemetry and PPD111/113/114 repairs. Doctor/build/static/61CTest+10exact+3archive+corpus stages pass; no new viewer/profile/FPS evidence. Larger architecture remains partial. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
+
 
 ## PPD-111 — Legacy process-cap headroom feeds texture system-pressure control on Apple UMA
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native resource/streaming budget integration
 - Discovered: 2026-11-14
 - Original reference: Original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 already has post-create immediate-downscale handling; repaired native G1fef1e756fd and current6bae share the inspected memory/texture governor source. MaxHeapSize64 is a configured process limit, not measured physical RAM availability.
 - Evidence: [Architecture, fast-path and log follow-up audit](research/apple-first-architecture-audit-2026-11-14.md), [original profile assessment](research/g2g5-busy-club-profile-2026-11-14.md).
-- Next action: Separate real OS headroom, configured process cap, native working set, CPU/raw cache and retained generation operands; reproduce the16GiB crossing/desired-LOD/publication interaction and design a coherent Apple UMA budget. Preserve configured user limits and memory safety; do not simply remove the guard or allocate all64GiB. No source/settings fix or new runtime capture performed.
+- Next action: Owner confirms automatic startup ceiling48GiB on64GiB hardware (or intentional positive saved limit), separates rawOS/process pressure and checks desired-LOD/create/decode/COW churn alongside changed object residency. No runtime repair claim before this check.
 - Verification: Sourcechain initMaxHeapSizeGB→updateMemoryInfo clamps available=min(OSavailable,max(heapcap−processallocation,0)); Darwin getFreeSystemMemory feeds that clamped value into the512MiB low-memory test. DefaultMaxHeapSize64=16.0 has noAlchemy/user override. All5current and5G1 logpairs match max(16384MiB−allocation,0). Current allocation14902.05–16890.92MiB produces0–1481.95MiB headroom and crossescap; G1allocation12722.55–12987.67 leaves3396.33–3661.45MiB. True pre-clamp OS availability was not logged, so system_low is not proof physical64GiB RAM was exhausted. Current14emergency low/overbudget transition actions and ONCE milestones700→4500 prove at least3800finer-than-desired create-list conditions/scaleDown calls during274s; G1bothwarning patterns0. Redundant-load skipping and queued/coalesced/declined scaleDown paths mean these are not3800fresh uploads/GPU copies.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3155,6 +3160,11 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered before any repair after independent verification of shipped/alchemy/user numeric settings, exact source chain and10log pairs. Process-cap pressure is confirmed; the whole FPS delta, actual pre-clamp OS pressure, G2retention contribution and exact repeated-asset/copy counts remain unproved. This inherited policy conflict is material to the promised Apple UMA architecture and must be considered with decode/publication/retirement work. No runtime setting was changed.
+
+- 2026-11-14: Owner authorizes repair before next run. Source-equivalent safety/user limits must remain; replace legacy default with explicit automatic physical-aware policy and distinguish rawOS/process/native operands. Add regression coverage for the observed16GiB crossing and real pressure/explicit limits; no claim of runtime repair before owner test.
+
+
+- 2026-11-14: Implemented finite RAM-aware automatic default0 (64→48GiB), preserved explicit positive caps and real OS/process pressure protection; rawOS availability no longer overwritten by process headroom. Memory108assertions/7cases and LLVOCache residency regressions pass; larger cap also changes existing object-retention bounds, now logged. Exact4918fd7/68999 build/static/separate stage and broader checks pass. Owner runtime outcome pending. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
 
 
 ## PPD-112 — Earlier direct bulk selection can consume the opaque ICB candidate budget
@@ -3165,7 +3175,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: Native static bulk selection retained from G1, extended by the selective opaque ICB experiment in6bae; original OpenGL has no ICB packet budget. Query/cull/caster ordering and direct rendering must remain preserved.
 - Evidence: [Architecture, fast-path and log follow-up audit](research/apple-first-architecture-audit-2026-11-14.md).
-- Next action: Reproduce the selection boundary with valid>16k native scene input, document whether the16k bound is intended globally or per prepared packet, and compare opportunity/cost before choosing a change. Preserve bounded memory and direct caster membership. No implementation/test repair performed and no occurrence in the captured club is established.
+- Next action: Use newly logged run histogram/16k rejection census in owner run before selecting a different bounded-packet policy.18,432-record native fixture reproduces the edge while preserving direct casters; policy remains unchanged.
 - Verification: almetalworld.cpp7227–7242 applies cumulative16384-record static bulk budget before7244–7256 extracts runs>=2048 for opaqueICB. Valid preceding16runs×1024 can consume thatbudget and exclude a later2048run before opaque eligibility is considered. renderSpotShadow scene validation has no16384total-scene cap; the cap belongs to prepared packets. This is a source-visible selection/lost-opportunity edge, not a visual defect, a measured policy-speedup or proof of why the actual zero-ICB capture occurred.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3173,3 +3183,95 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered before any repair. Actual runtime support/allocation and enabled caller are confirmed, but eligibility/run histograms and optional opaque fallback reasons are unlogged. Those missing observations must remain unknown; the source-visible budget edge must not be substituted as the captured cause.
+
+- 2026-11-14: Retest changes will expose selection/oversize/threshold/fallback reasons. Do not forceactivation or lower thresholds. Fix this conditional edge only if independent bounded-packet policy is established and covered, otherwise retain explicit diagnostic evidence for the next run.
+
+
+- 2026-11-14: Native fixture reproduces16×1024 preceding records excluding later2048 opaque run at16384 cumulative direct budget while every caster/query remains correct. New census exposes small/budget/oversize/state/query causes without threshold or policy change. No captured-club occurrence inferred. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
+
+
+## PPD-113 — Native shadow packet wrapper allocation can leave a slot leased
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native opaque preparation diagnostics
+- Discovered: 2026-11-14
+- Original reference: Native indirect/direct command helper at6bae; no originalGL packet wrapper equivalent. Preserve actual command-completion and packet-lease ownership during optional direct fallback.
+- Evidence: [Retest readiness implementation ledger](work/active/apple-first-retest-20261114.md).
+- Next action: Owner retests exact4918fd7/68999. Inner-owner unwind repair and actual completion-gated native tests pass; ordinary runtime acceptance and any real OOM occurrence remain distinct.
+- Verification: prepare sets slot.leased=true and transfers slot into Batch::Impl before allocating the final public Batch wrapper. Existing lease release occurs only in Batch::~Batch. If final wrapper new throws, local Impl destruction does not clear leased, stranding the pool slot. The direct packet route has the same ownership shape. This is a source-confirmed allocation-failure hazard; no actualOOM/capture incident is proved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before repair after root/source peer inspection during typed failure diagnostics. The retest logging change must not turn recoverable host allocation failure into persistent pool loss. Failed captures and all earlier lifetime tests remain retained; no runtime memory fault injection or viewer launch.
+
+
+- 2026-11-14: First focused native attempt preserved: wrapper allocation test passes, but combined opaque parity case fails renderSpotShadow on rigged family1 under API/shader validation; source owner investigating before candidate delivery. No defect closure from build/review. See retest ledger and focused-correctness-1.json.
+
+- 2026-11-14: Moved CPU lease release into Batch::Impl destructor; final wrapper allocation failure now unwinds ownership. Native tests exercise direct+ICB throw, no reuse behind pending token, then actual completion/reuse and rendered pixels. Focused633assertions/3cases and final combined suite pass; failure success counters advance after wrapper allocation. No actual prior OOM attribution or owner closure. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
+
+
+## PPD-114 — Optional rigged opaque data-publication failure aborts a shadow view
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native opaque preparation diagnostics
+- Discovered: 2026-11-14
+- Original reference: Native6bae selectiveopaque route is an optional optimization over original/G1 direct caster rendering. Static optional preparation already preserves scalar membership on publication failure.
+- Evidence: [Retest readiness implementation ledger](work/active/apple-first-retest-20261114.md).
+- Next action: Owner retests exact4918fd7/68999 shadow/caster/query behavior. Optional static and rigged typed preparation/publication-failure parity tests pass; required full-indirect failure remains hard.
+- Verification: In the rigged extended preparation branch, publishShadowData failure returns false/unwinds the view even when only opaque_indirect is selected. Static optional preparation returns null to its caller, clears selectedruns and continues direct rendering. This source-confirmed asymmetry violates the selected path's optional contract; no actual prior capture failure is attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before repair after root/agent source review. Needed for meaningful failure diagnostics and feature-preserving fallback, not a claim the previous zero-execution capture was caused by publication failure. No runtime launch or capture.
+
+- 2026-11-14: First focused native parity attempt fails at rigged family1 renderSpotShadow before full expected result. Failed receipt retained; investigate actual error/source before repairing or relaxing tests. Static/gate and wrapper cases pass, not owner runtime acceptance.
+
+
+- 2026-11-14: Optional rigged data publication now records typed fallback, clears stale error/selected runs and preserves direct rendering; static parity remains. Both families tested for six preparation reasons, publication failure, exact depth/query results and one-shot recovery. Focused633/3 and final suite pass after separately registered PPD115 fixture correction. No past-profile causal claim. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
+
+
+## PPD-115 — New rigged fallback fixture omits the current pose palette
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex opaque failure regression integration
+- Discovered: 2026-11-14
+- Original reference: The immutable source prototype intentionally clears per-pose skin palette pointers; production preparation attaches the current owned palette. This is a new diagnostic test fixture defect, not proof of a production caster failure.
+- Evidence: [Retest readiness ledger](work/active/apple-first-retest-20261114.md).
+- Next action: Retain corrected current-pose fixture and failed first receipt; owner acceptance of retest candidate pending. Production skin validation was not relaxed.
+- Verification: First focused filter exits42,3cases2pass1fail. Family1 baseline render fails before fault injection because weight_offset48 has no palette. Native source validation correctly rejects incomplete skinning input. Failed focused-correctness-1-opaque.log is retained locally.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before fixture correction; no production validation relaxation, new viewer launch or prior-profile attribution.
+
+
+- 2026-11-14: Corrected test-only current owned110-joint identity palette attachment, retaining all depth/query/fallback assertions and adding error INFO. Second focused native filter passes633assertions/3cases; final suite passes. First failure retained, no production source workaround. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
+
+
+## PPD-116 — New authored-mip publication fixture disables the required creation policy
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native publication regression integration
+- Discovered: 2026-11-14
+- Original reference: Authored multi-level native texture creation requires mipmaps enabled, whereas later partial writes require generation disabled. Public setUseMipMaps changes future policy without deleting already authored native levels.
+- Evidence: [Retest readiness ledger](work/active/apple-first-retest-20261114.md).
+- Next action: Retain corrected public-policy fixture with four-mip340-byte COW and old/new lower-mip parity coverage; owner candidate acceptance pending. Production API requirements unchanged.
+- Verification: First focused native generation filter exits42,8cases7pass1fail. createMetalTexture rejects the new fixture at318 because mUseMipMaps is false. This is rejected API input, not observed native allocation failure. Failed focused-correctness-1-generation.log is retained locally.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before fixture correction. Do not weaken production texture validation or infer runtime residency performance from synthetic correctness fixtures.
+
+- 2026-11-14: Corrected test-only creation policy to mipmaps=true, then existing public setUseMipMaps(false) before partial update. Preserved4mips/340logical bytes, old lease pixels, current level0 and successful/declined downscale checks; added current lower-mip parity. Second native generation filter481assertions/8cases and final suite pass. First rejection retained; no production API relaxation. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
