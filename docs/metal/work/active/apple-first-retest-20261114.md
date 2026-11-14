@@ -233,3 +233,66 @@ extra blank line at the defect register EOF. Removed it; failed receipt retained
 Final read-only integration review matched source/version/hash, counts, policy
 and open architecture limits to actual receipts. Historical pending-build text
 above is explicitly marked as historical; delivery state is the final section.
+
+## Owner-authorized five-minute retest capture — initial state (historical)
+
+Owner manually started the staged68999 app, reported being at the busy club and
+explicitly requested profiling. Exact PID58603/path/SHA13e44a15 verified before
+attaching Game Performance Overview with a5m time limit. Root recorder PID59088;
+private evidence `artifacts/metal/retest-busy-club-profile-20261114-101904/`.
+Actual command/source/time/trace path in recording.json. No agent app launch,
+settings/camera/cache change or new build. Location is owner-reported, not an
+agent visual observation. All7new diagnostic prefixes are present; startup
+logs automatic1,physical65536MiB,process limit49152MiB. Capture completion and
+performance outcome are not yet inferred. Owner should keep viewer open until
+measurement ends; trace symbol processing may outlast measurement.
+
+## Completed owner-authorized capture and analysis
+
+[Full retest report](../../research/apple-first-retest-profile-2026-11-14.md).
+Exact4918fd7/26.4.0.68999/PID58603; Game Performance Overview5m attach exits0,
+TOC10:19:21.899–10:24:23.667UTC/301.767390s/time limit. Recorder421.533s includes
+symbol processing; owner told can close only after the actual stop message.
+Viewer absent afterward is not a crash report. No agent launch/settings/camera/
+cache change/restart, additional live capture, renderer repair or push.
+
+Evidence `artifacts/metal/retest-busy-club-profile-20261114-101904/`:
+recording.json/capture-verification.json, full saved CPU/GPU exports and bounded
+analysis,420saved settings equal to68995 and within-session, actual3456×2168.
+Current20.3569FPS vs prior17.7729 (+14.54%), G120.3639 (effectively same).
+CPU-to-display association97.144ms vs G191.662 (+5.98%); no individual-frame
+p50/p95, nominal thermals. Architectural performance objective remains unmet.
+
+New census resolves this run's zero opaque execution: main36,720/probe8,488
+active views all no_candidate,0attempts/prepared/executed/typed fallback,
+no >=2048draw runs and0detached preparation activation. It does not reconstruct
+unlogged preparation outcomes in prior68995. Main/probe source hits97.03/58.80%;
+continued shadow-capture cost6.832CPUms/present vs G12.221 despite reused records.
+Main inputs7747.78/present vs G16547.72; source count alone does not explain
+approximately3.08× cost, but source/mat/rigged mix is unisolated.
+
+Thirty complete-bin pressure samples over291s: bias1, no low OS/process/native
+flags or emergency logs; actualauto48GiB ceiling active. Allocation11.27–11.47GiB
+would also leave ample room under the old16GiB cap: no causal cap-fix speedup
+claim. Decoder869completions over297s/18.892sampledCPU-s vs prior56,104/628.601s;
+churn relief observed, mechanism causality qualified. Buffer generation traffic
+and probe rebuilds remain substantial; raw/copy/retention scopes are not added
+as if separate physical memory pools.
+
+Window0ERROR/0FATAL,11warnings (10HTTP timeout codes,1unconditional complexity
+notice), no native failure warning. PPD117 is newly exposed inherited negative
+raw-image statistics bookkeeping, source-confirmed against original, not a
+pressure-control/memory-corruption cause. Registered before any repair; no code
+change in this profile. Records110–117 retained; next118. Source/opaque report
+and root independent numeric check agree; CPU normalization uses one consistent
+present count per trace. Initial comparison schema mismatch, recorder stop-text
+probe and partial boundary-bin correction are retained in private preparation
+notes; none is a viewer/capture failure.
+
+Next concrete implementation owner is pipeline.cpp captureMetalShadowScene /
+shadowSourceKey / source-cache and aggregate-lease publication. Amortize current
+immutable source validation/ownership across views while preserving dirty
+revision, pose/material/coverage and actual completion invariants. Use real
+small-run fragmentation for subsequent packet trials and coordinate whole-frame
+main/probe/streaming budgets. Full architecture remains partial; this analysis
+is not a product/release completion or approval to push.

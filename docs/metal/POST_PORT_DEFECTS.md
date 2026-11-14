@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-117 -->
+<!-- next-defect-id: PPD-118 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3125,7 +3125,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: Repaired native G1 sourcefef1e756fd/68991,301.864885s busy-club capture2026-11-13, same M1Max64GiB host. This is a sequential live workload comparison, not original OpenGL or a controlled identical-world replay.
 - Evidence: [G2–G5 busy-club capture and comparison](research/g2g5-busy-club-profile-2026-11-14.md), [headless implementation results and limits](research/apple-first-architecture-g2-g5-results.md).
-- Next action: Owner runs exact4918fd7/68999 retest candidate. Use whole-frame cadence plus new source/opaque/streaming/residency operands to choose further architecture work. Prior adverse FPS comparison remains unresolved; no new performance capture.
+- Next action: Implement producer-amortized immutable source publication at pipeline.cpp captureMetalShadowScene/shadowSourceKey/cache/aggregate ownership using the new real workload census; preserve exact invalidation/completion and assess whole-frame cadence/latency/quality. Recovered FPS alone does not close architectural performance regression.
 - Verification: Actual302.345784s Game Performance Overview attach to verified6bae/68995/PID19459 exits0 at its5m limit. Whole presentedFPS17.773vs20.364(−12.72%); associateddisplay56.385vs49.135ms, associatedGPUspan87.220vs85.394ms(+2.14%); commandbuffers/frame32.842vs23.882(+37.52%). Last60FPS17.925vs20.113(−10.88%). Nominal thermals throughout. Both individual-frame tables empty: no framep95. Saved graphics match before/after/current/G1; live camera/population/cache/probe/viewport equivalence and causal attribution remain unverified.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3142,6 +3142,11 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-14: Retest candidate4918fd7/68999 delivered with aggregate opaque/source/publication/residency telemetry and PPD111/113/114 repairs. Doctor/build/static/61CTest+10exact+3archive+corpus stages pass; no new viewer/profile/FPS evidence. Larger architecture remains partial. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
+
+
+- 2026-11-14: Owner authorizes five-minute profiling after manually starting exact4918fd7/68999 and reporting arrival. Root attaches to verifiedPID58603, Game Performance Overview5m, evidence retest-busy-club-profile-20261114-101904. Capture in progress; no new performance outcome or defect closure inferred. No app launch/settings change/push.
+
+- 2026-11-14: Owner-authorized retest4918fd7/68999/PID58603 completes301.767390s/time limit/exit0.20.3569FPS vs prior17.7729 (+14.54%) and G120.3639 (same); mean display interval49.131ms, command buffers24.404/present. CPU-to-display97.144ms remains+5.98% vs G1.420saved controls and3456×2168 match; live demand quantified, no p50/p95. Main capture6.832CPUms/present vs G12.221 with18.33% more source inputs; decoder storm absent. Recovery is observed, full architectural superiority/cap-fix causality unproved. No new renderer code, launch or push. Evidence: [completed retest analysis](research/apple-first-retest-profile-2026-11-14.md), private retest-busy-club-profile-20261114-101904 receipts.
 
 
 ## PPD-111 — Legacy process-cap headroom feeds texture system-pressure control on Apple UMA
@@ -3167,6 +3172,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Implemented finite RAM-aware automatic default0 (64→48GiB), preserved explicit positive caps and real OS/process pressure protection; rawOS availability no longer overwritten by process headroom. Memory108assertions/7cases and LLVOCache residency regressions pass; larger cap also changes existing object-retention bounds, now logged. Exact4918fd7/68999 build/static/separate stage and broader checks pass. Owner runtime outcome pending. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
 
 
+- 2026-11-14: Retest verifies actual automatic49152MiB cap on65536MiB physical RAM;30complete-bin samples bias1, no OS/process/native low flags or emergency logs. Process allocation11542.9–11746.4MiB would also be non-low under old16384MiB cap, so prior cap crossing not exercised and FPS recovery not isolated to repair. Create-list/COW churn low; LLVOCache factor1 and effective bounds/radii exposed. Keep owner verification pending; no closure or new source fix. Evidence: [completed retest analysis](research/apple-first-retest-profile-2026-11-14.md), private retest-busy-club-profile-20261114-101904 receipts.
+
+
 ## PPD-112 — Earlier direct bulk selection can consume the opaque ICB candidate budget
 
 - Status: investigating
@@ -3175,7 +3183,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: Native static bulk selection retained from G1, extended by the selective opaque ICB experiment in6bae; original OpenGL has no ICB packet budget. Query/cull/caster ordering and direct rendering must remain preserved.
 - Evidence: [Architecture, fast-path and log follow-up audit](research/apple-first-architecture-audit-2026-11-14.md).
-- Next action: Use newly logged run histogram/16k rejection census in owner run before selecting a different bounded-packet policy.18,432-record native fixture reproduces the edge while preserving direct casters; policy remains unchanged.
+- Next action: Preserve diagnosed16k selection edge, but use current small-run distribution for any later bounded packet-policy trial. No eligibility/attempt exists in this retest; do not attribute it to preparation failure or force activation without complete-path evidence.
 - Verification: almetalworld.cpp7227–7242 applies cumulative16384-record static bulk budget before7244–7256 extracts runs>=2048 for opaqueICB. Valid preceding16runs×1024 can consume thatbudget and exclude a later2048run before opaque eligibility is considered. renderSpotShadow scene validation has no16384total-scene cap; the cap belongs to prepared packets. This is a source-visible selection/lost-opportunity edge, not a visual defect, a measured policy-speedup or proof of why the actual zero-ICB capture occurred.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3188,6 +3196,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-14: Native fixture reproduces16×1024 preceding records excluding later2048 opaque run at16384 cumulative direct budget while every caster/query remains correct. New census exposes small/budget/oversize/state/query causes without threshold or policy change. No captured-club occurrence inferred. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
+
+
+- 2026-11-14: New retest census proves no eligible2048draw run:36,720main/8,488probe active/completed views all no_candidate; selected/attempted/prepared/executed/fallback/budget/oversize deltas0. Earlier16k edge did not occur here. This resolves current zero execution as eligibility, not preparation failure; original68995 lacked these counters, so its exact cause remains unobserved. Keep bounded policy and conditional edge history; no threshold lowering or code repair. Evidence: [completed retest analysis](research/apple-first-retest-profile-2026-11-14.md), private retest-busy-club-profile-20261114-101904 receipts.
 
 
 ## PPD-113 — Native shadow packet wrapper allocation can leave a slot leased
@@ -3275,3 +3286,23 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before fixture correction. Do not weaken production texture validation or infer runtime residency performance from synthetic correctness fixtures.
 
 - 2026-11-14: Corrected test-only creation policy to mipmaps=true, then existing public setUseMipMaps(false) before partial update. Preserved4mips/340logical bytes, old lease pixels, current level0 and successful/declined downscale checks; added current lower-mip parity. Second native generation filter481assertions/8cases and final suite pass. First rejection retained; no production API relaxation. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
+
+
+## PPD-117 — Raw-image live-count statistic becomes negative during retest
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex retest instrumentation audit
+- Discovered: 2026-11-14
+- Original reference: Original1eb44bbd and current4918fd7 LLImageRaw(const U8*,U16,U16,S8) omit the sRawImageCount increment while the destructor always decrements. Other constructors increment; this inherited statistic is not a memory-pressure control operand.
+- Evidence: [Retest checkpoint and capture](work/active/apple-first-retest-20261114.md).
+- Next action: Retain the observed negative statistic and map all constructor/destructor count paths before a separate bounded bookkeeping repair. Do not interpret it as negative memory, allocation failure, memory corruption or a performance cause; no source fix during the captured experiment.
+- Verification: Exact68999 five-minute retest numeric publication logs contain26/30 negative raw_images samples: first negative10:19:44UTC −12, minimum−21, last−20. Root inspects llimage.cpp constructor823–830/destructor852–857; constructor copies allocated pixels without incrementing, destructor decrements. Uses are statistics/UI/new telemetry, not the texture pressure governor. This is newly exposed inherited accounting, not proof of native COW/resource corruption.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered during read-only capture analysis before any repair. Private evidence retest-busy-club-profile-20261114-101904/memory-analysis/memory-summary.json. No renderer/policy/code change or push; raw count excluded from memory occupancy conclusions.
+
+- 2026-11-14: Root independently confirms omitted increment in original1eb44bbd and current LLImageRaw const-pixel constructor, unconditional decrement in destructor; capture count remains negative26/30samples (min−21). Stat consumers only; not a pressure operand or GPU/memory-corruption explanation. Retain for bounded bookkeeping repair with constructor/lifetime coverage; no fix mixed into capture. Evidence: [completed retest analysis](research/apple-first-retest-profile-2026-11-14.md), private retest-busy-club-profile-20261114-101904 receipts.
