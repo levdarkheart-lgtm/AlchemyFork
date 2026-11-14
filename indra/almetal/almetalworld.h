@@ -24,6 +24,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -2551,6 +2552,11 @@ public:
     ~ALMetalWorldFrameData();
     static std::shared_ptr<ALMetalWorldFrameData> create(
         const ALMetalDevice& device, std::string* error = nullptr);
+    // Submission-owner only: acquire before posting renderer preparation.
+    // Workers hold this exact immutable native library; attaching frame data
+    // later never changes an already-created renderer's executable owners.
+    std::shared_ptr<const ALMetalShaderLibrary> builtinLibrary(std::string* error = nullptr);
+    std::uint64_t builtinLibraryEpoch() const noexcept;
     void beginFrame(std::uint64_t generation);
     bool publish(ALMetalCommandBuffer& command, const void* bytes,
                  std::size_t length, ALMetalWorldDataSlice& slice,
@@ -2575,6 +2581,9 @@ public:
     std::shared_ptr<ALMetalWorldSourcePages> worldSourcePages(
         const ALMetalShaderLibrary&, std::uint32_t max_anisotropy,
         std::string* error = nullptr);
+    // Application-owner policy injection, normally before any source context
+    // exists. Generic native callers have no global frame-budget dependency.
+    void setSourcePublicationAdmission(ALMetalWorldSourcePages::PublicationAdmission);
     ALMetalShadowMaterialStats shadowMaterialStats() const noexcept;
     // Retire only shader-derived material encoders/tables. Existing command
     // leases remain valid; draw-data arenas and their frame generation stay.
@@ -2584,6 +2593,7 @@ private:
     struct Impl;
     explicit ALMetalWorldFrameData(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> mImpl;
+    friend class ALMetalWorldGBufferRenderer;
 };
 
 struct ALMetalShadowIndirectStats;
@@ -2603,11 +2613,25 @@ public:
         const ALMetalDevice& device,
         std::uint32_t max_anisotropy,
         std::string* error = nullptr);
+    static std::unique_ptr<ALMetalWorldGBufferRenderer> create(
+        const ALMetalDevice& device, std::uint32_t max_anisotropy,
+        std::shared_ptr<const ALMetalShaderLibrary> library,
+        std::string* error = nullptr);
+
+    // Stage one builtin library and every supplied owner before any shared
+    // state changes. All owners must use data and be outside a command batch.
+    // Pending native readers retain the old executable/resource generations.
+    static bool reloadSharedShaders(ALMetalWorldFrameData& data,
+        std::span<ALMetalWorldGBufferRenderer* const> owners,
+        std::string* error = nullptr);
+    std::shared_ptr<const ALMetalShaderLibrary> shaderLibrary() const noexcept;
+    void failNextShaderReloadForTesting() noexcept;
 
     // Explicit frame-boundary shader rebuild. A complete replacement library
     // and pipeline set is staged before publication; failure leaves this
     // renderer usable. External targets, histories and frame data stay owned
-    // by their existing producers. An open command batch is rejected.
+    // by their existing producers. An open command batch is rejected. A
+    // member of a shared builtin epoch must use reloadSharedShaders instead.
     bool reloadShaders(std::string* error = nullptr);
     // Explicit owner-selected native library, without a process-global asset
     // override. Empty selects the ordinary builtin reload behavior.
@@ -3085,7 +3109,11 @@ private:
     static std::unique_ptr<ALMetalWorldGBufferRenderer> create(
         const ALMetalDevice& device, std::uint32_t max_anisotropy,
         bool initialize_diagnostics, std::string* error,
-        const std::string* library_path = nullptr);
+        std::shared_ptr<const ALMetalShaderLibrary> library = {});
+    std::unique_ptr<ALMetalWorldGBufferRenderer> stageShaderReload(
+        std::shared_ptr<const ALMetalShaderLibrary> library, std::string* error,
+        bool allow_missing_optional = false);
+    void commitShaderReload(std::unique_ptr<ALMetalWorldGBufferRenderer> replacement) noexcept;
 
     struct Impl;
     explicit ALMetalWorldGBufferRenderer(std::unique_ptr<Impl> impl);

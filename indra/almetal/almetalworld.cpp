@@ -1570,6 +1570,8 @@ struct ALMetalWorldFrameData::Impl
     std::unordered_multimap<std::uint64_t, Entry> entries;
     std::unordered_map<const ALMetalAttachmentPaletteRecord*, PaletteEntry> palettes;
     ALMetalWorldFrameDataStats statistics;
+    std::shared_ptr<const ALMetalShaderLibrary> builtin_library;
+    std::uint64_t builtin_library_epoch = 0;
     std::unique_ptr<ALMetalShadowMaterials> shadow_materials;
     struct ResourceContext
     {
@@ -1579,11 +1581,28 @@ struct ALMetalWorldFrameData::Impl
     };
     std::vector<ResourceContext> resource_contexts;
     std::vector<std::weak_ptr<ALMetalWorldSourcePages>> source_contexts;
+    ALMetalWorldSourcePages::PublicationAdmission source_publication_admission;
 };
 
 ALMetalWorldFrameData::ALMetalWorldFrameData(std::unique_ptr<Impl> impl)
     : mImpl(std::move(impl)) {}
 ALMetalWorldFrameData::~ALMetalWorldFrameData() = default;
+
+std::shared_ptr<const ALMetalShaderLibrary>
+ALMetalWorldFrameData::builtinLibrary(std::string* error)
+{
+    if (!mImpl->builtin_library)
+    {
+        auto library = ALMetalShaderLibrary::loadBuiltin(*mImpl->device, error);
+        if (!library) return {};
+        mImpl->builtin_library = std::move(library);
+        mImpl->builtin_library_epoch = 1;
+    }
+    return mImpl->builtin_library;
+}
+
+std::uint64_t ALMetalWorldFrameData::builtinLibraryEpoch() const noexcept
+{ return mImpl->builtin_library_epoch; }
 
 std::shared_ptr<ALMetalWorldFrameData> ALMetalWorldFrameData::create(
     const ALMetalDevice& device, std::string* error)
@@ -1675,10 +1694,23 @@ try
         if (auto value = weak.lock(); value && value->belongsTo(*mImpl->device, library, max_anisotropy))
             return value;
     auto value = ALMetalWorldSourcePages::create(*mImpl->device, library, max_anisotropy, {}, error);
-    if (value) contexts.push_back(value);
+    if (value)
+    {
+        value->setPublicationAdmission(mImpl->source_publication_admission);
+        contexts.push_back(value);
+    }
     return value;
 }
 catch (const std::bad_alloc&) { return {}; }
+
+void ALMetalWorldFrameData::setSourcePublicationAdmission(
+    ALMetalWorldSourcePages::PublicationAdmission admission)
+{
+    mImpl->source_publication_admission = std::move(admission);
+    for (const auto& weak : mImpl->source_contexts)
+        if (auto context = weak.lock())
+            context->setPublicationAdmission(mImpl->source_publication_admission);
+}
 
 bool ALMetalWorldFrameData::reloadShadowMaterials(
     const ALMetalShaderLibrary& library, std::string* error)
@@ -1965,8 +1997,11 @@ struct ALMetalWorldGBufferRenderer::Impl
                 fragment_index, *slice.buffer, slice.offset, error);
     }
     std::shared_ptr<ALMetalRenderTargetPool> render_target_pool;
-    std::unique_ptr<ALMetalShaderLibrary> library;
+    std::shared_ptr<const ALMetalShaderLibrary> library;
     std::uint64_t shader_generation = 1;
+    bool private_library = false;
+    bool shared_builtin_member = false;
+    bool fail_shader_reload_for_testing = false;
     std::unique_ptr<ALMetalCommandBuffer> command_batch;
     std::deque<std::unique_ptr<ALMetalCommandBuffer>>
         pending_command_batches;
@@ -2845,12 +2880,49 @@ bool ALMetalWorldGBufferRenderer::reloadShaders(const std::string& library_path,
         setError(error, "Metal world shader reload requires an idle renderer");
         return false;
     }
-    // The original forced program load did not destroy render targets or
-    // histories. Build native executable owners independently, then publish
-    // only after every eager PSO and sampler has succeeded.
-    auto replacement = create(*mImpl->device, mImpl->max_anisotropy, false, error,
-                              library_path.empty() ? nullptr : &library_path);
+    if (library_path.empty() && mImpl->frame_data &&
+        (mImpl->shared_builtin_member ||
+         mImpl->library == mImpl->frame_data->mImpl->builtin_library))
+    {
+        setError(error, "A shared builtin world renderer requires a coherent owner-group shader reload");
+        return false;
+    }
+    // Explicit library selection remains private to this renderer, including
+    // its shadow encoders. It must never replace the shared builtin epoch.
+    std::shared_ptr<const ALMetalShaderLibrary> library = library_path.empty()
+        ? ALMetalShaderLibrary::loadBuiltin(*mImpl->device, error)
+        : ALMetalShaderLibrary::loadFile(*mImpl->device, library_path, error);
+    if (!library) return false;
+    auto replacement = stageShaderReload(std::move(library), error, !library_path.empty());
     if (!replacement) return false;
+    const bool legacy_arena = library_path.empty() && mImpl->frame_data &&
+        !mImpl->frame_data->mImpl->builtin_library;
+    // Preserve standalone create()+fresh-arena callers. This arena has never
+    // published a shared builtin epoch, so its one shadow pool may be staged
+    // as before. A real shared epoch is never modified by a private reload.
+    if (legacy_arena &&
+        !mImpl->frame_data->reloadShadowMaterials(*replacement->mImpl->library, error)) return false;
+    replacement->mImpl->private_library = !legacy_arena;
+    commitShaderReload(std::move(replacement));
+    return true;
+}
+
+std::unique_ptr<ALMetalWorldGBufferRenderer>
+ALMetalWorldGBufferRenderer::stageShaderReload(
+    std::shared_ptr<const ALMetalShaderLibrary> library, std::string* error,
+    bool allow_missing_optional)
+{
+    if (mImpl->fail_shader_reload_for_testing)
+    {
+        mImpl->fail_shader_reload_for_testing = false;
+        setError(error, "Injected native world shader staging failure");
+        return {};
+    }
+    // Recreate every eager and previously used lazy PSO before publication.
+    // No pending commands, shared caches or original owner state move here.
+    auto replacement = create(*mImpl->device, mImpl->max_anisotropy, false,
+                              error, std::move(library));
+    if (!replacement) return {};
     auto& next = *replacement->mImpl;
     const auto rebuild_optional = [&](auto&& self, const auto& old, auto& fresh) -> bool
     {
@@ -2877,20 +2949,53 @@ bool ALMetalWorldGBufferRenderer::reloadShaders(const std::string& library_path,
         !rebuild_optional(rebuild_optional, mImpl->probe_above_water_wave_pipelines,
                           next.probe_above_water_wave_pipelines) ||
         !rebuild_optional(rebuild_optional, mImpl->probe_pre_water_pbr_pipelines,
-                          next.probe_pre_water_pbr_pipelines)) return false;
-    // Resource-table PSOs remain optional and lazy, including when an explicit
-    // older library has no resource entrypoints. Its ordinary path stays valid.
+                          next.probe_pre_water_pbr_pipelines)) return {};
+    // Rebuild every already-used optional executable too. An explicitly
+    // selected older library may lack these diagnostic entrypoints; only that
+    // private path deliberately returns to its ordinary native binding path.
+    const auto rebuild_diagnostic = [&](const auto& old, auto& fresh) -> bool
+    {
+        const auto rebuild = [&](auto&& self, const auto& previous, auto& current) -> bool
+        {
+            if constexpr (std::is_same_v<std::decay_t<decltype(previous)>,
+                                         std::unique_ptr<ALMetalRenderPipeline>>)
+            {
+                if (!previous) return true;
+                const auto& descriptor = previous->descriptor();
+                if (allow_missing_optional &&
+                    (!next.library->hasFunction(descriptor.vertex_function) ||
+                     !next.library->hasFunction(descriptor.fragment_function))) return true;
+                return rebuild_optional(rebuild_optional, previous, current);
+            }
+            else
+            {
+                for (std::size_t index = 0; index < previous.size(); ++index)
+                    if (!self(self, previous[index], current[index])) return false;
+                return true;
+            }
+        };
+        return rebuild(rebuild, old, fresh);
+    };
+    if (!rebuild_diagnostic(mImpl->resource_material_pipelines, next.resource_material_pipelines) ||
+        !rebuild_diagnostic(mImpl->resource_pbr_pipelines, next.resource_pbr_pipelines) ||
+        !rebuild_diagnostic(mImpl->source_material_pipelines, next.source_material_pipelines) ||
+        !rebuild_diagnostic(mImpl->source_pbr_pipelines, next.source_pbr_pipelines)) return {};
     for (const auto& entry : mImpl->custom_pre_water_alpha_pipelines)
     {
         std::unique_ptr<ALMetalRenderPipeline> pipeline;
-        if (!rebuild_optional(rebuild_optional, entry.pipeline, pipeline)) return false;
+        if (!rebuild_optional(rebuild_optional, entry.pipeline, pipeline)) return {};
         next.custom_pre_water_alpha_pipelines.push_back({entry.family, entry.hdr,
             entry.rigged, entry.shadows, entry.coverage, entry.source,
             entry.destination, std::move(pipeline)});
     }
+    return replacement;
+}
+
+void ALMetalWorldGBufferRenderer::commitShaderReload(
+    std::unique_ptr<ALMetalWorldGBufferRenderer> replacement) noexcept
+{
+    auto& next = *replacement->mImpl;
     next.frame_data = mImpl->frame_data;
-    if (next.frame_data &&
-        !next.frame_data->reloadShadowMaterials(*next.library, error)) return false;
     next.render_target_pool = mImpl->render_target_pool;
     next.pending_command_batches.swap(mImpl->pending_command_batches);
     next.pending_shadow_batches.swap(mImpl->pending_shadow_batches);
@@ -2919,10 +3024,65 @@ bool ALMetalWorldGBufferRenderer::reloadShaders(const std::string& library_path,
     next.shadow_certified_source_validations = mImpl->shadow_certified_source_validations;
     next.shader_generation = mImpl->shader_generation + 1;
     mImpl.swap(replacement->mImpl);
-    // Metal command buffers retain their encoded pipelines/resources; pending
-    // completion wrappers moved above retain throttling/error observation.
+    // Native commands retain the encoded executable/resources. Completion
+    // wrappers moved above keep their original admission/error observation.
+}
+
+bool ALMetalWorldGBufferRenderer::reloadSharedShaders(
+    ALMetalWorldFrameData& data,
+    std::span<ALMetalWorldGBufferRenderer* const> owners, std::string* error)
+try
+{
+    if (data.mImpl->builtin_library_epoch == std::numeric_limits<std::uint64_t>::max())
+    {
+        setError(error, "Metal world shader epoch is exhausted");
+        return false;
+    }
+    for (std::size_t index = 0; index < owners.size(); ++index)
+    {
+        const auto* owner = owners[index];
+        if (!owner || !owner->mImpl || owner->mImpl->command_batch ||
+            owner->mImpl->device != data.mImpl->device ||
+            owner->mImpl->frame_data.get() != &data ||
+            std::find(owners.begin(), owners.begin() + index, owner) != owners.begin() + index)
+        {
+            setError(error, "Shared Metal world shader reload requires distinct idle owners of one frame data object");
+            return false;
+        }
+    }
+    std::shared_ptr<const ALMetalShaderLibrary> library =
+        ALMetalShaderLibrary::loadBuiltin(*data.mImpl->device, error);
+    if (!library) return false;
+    std::vector<std::unique_ptr<ALMetalWorldGBufferRenderer>> replacements;
+    replacements.reserve(owners.size());
+    for (auto* owner : owners)
+    {
+        auto replacement = owner->stageShaderReload(library, error);
+        if (!replacement) return false;
+        replacement->mImpl->shared_builtin_member = true;
+        replacements.push_back(std::move(replacement));
+    }
+    // This is the final fallible step, called once for the coherent group.
+    // Shadow Passes/commands independently retain the former immutable pool.
+    if (!data.reloadShadowMaterials(*library, error)) return false;
+    for (std::size_t index = 0; index < owners.size(); ++index)
+        owners[index]->commitShaderReload(std::move(replacements[index]));
+    data.mImpl->builtin_library = std::move(library);
+    ++data.mImpl->builtin_library_epoch;
     return true;
 }
+catch (const std::bad_alloc&)
+{
+    setError(error, "Metal world shader reload allocation failed");
+    return false;
+}
+
+std::shared_ptr<const ALMetalShaderLibrary>
+ALMetalWorldGBufferRenderer::shaderLibrary() const noexcept
+{ return mImpl ? mImpl->library : nullptr; }
+
+void ALMetalWorldGBufferRenderer::failNextShaderReloadForTesting() noexcept
+{ if (mImpl) mImpl->fail_shader_reload_for_testing = true; }
 
 std::uint64_t ALMetalWorldGBufferRenderer::shaderGeneration() const noexcept
 {
@@ -2932,12 +3092,15 @@ std::uint64_t ALMetalWorldGBufferRenderer::shaderGeneration() const noexcept
 void ALMetalWorldGBufferRenderer::setFrameData(
     std::shared_ptr<ALMetalWorldFrameData> data)
 {
+    if (data && data->mImpl->builtin_library == mImpl->library)
+        mImpl->shared_builtin_member = true;
     mImpl->frame_data = std::move(data);
 }
 
 ALMetalShadowMaterialStats ALMetalWorldGBufferRenderer::shadowMaterialStats() const noexcept
 {
-    if (mImpl->frame_data) return mImpl->frame_data->shadowMaterialStats();
+    if (mImpl->frame_data && !mImpl->private_library)
+        return mImpl->frame_data->shadowMaterialStats();
     return mImpl->standalone_shadow_materials
         ? mImpl->standalone_shadow_materials->stats() : ALMetalShadowMaterialStats{};
 }
@@ -3299,10 +3462,23 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
 
 std::unique_ptr<ALMetalWorldGBufferRenderer>
 ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
+    std::uint32_t max_anisotropy, std::shared_ptr<const ALMetalShaderLibrary> library,
+    std::string* error)
+{
+    if (!library)
+    {
+        setError(error, "Metal world renderer requires an explicit shader library lease");
+        return {};
+    }
+    return create(device, max_anisotropy, true, error, std::move(library));
+}
+
+std::unique_ptr<ALMetalWorldGBufferRenderer>
+ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                                     std::uint32_t max_anisotropy,
                                     bool initialize_diagnostics,
                                     std::string* error,
-                                    const std::string* library_path)
+                                    std::shared_ptr<const ALMetalShaderLibrary> library)
 {
     if (max_anisotropy < 1 || max_anisotropy > 16)
     {
@@ -3329,8 +3505,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         }
     }
     impl->render_target_pool = ALMetalRenderTargetPool::create(device);
-    impl->library = library_path ? ALMetalShaderLibrary::loadFile(device, *library_path, error)
-                                : ALMetalShaderLibrary::loadBuiltin(device, error);
+    if (library) impl->library = std::move(library);
+    else impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->render_target_pool || !impl->library ||
         !impl->library->hasFunction("almetal_resample_vertex") ||
         !impl->library->hasFunction("almetal_resample_fragment") ||
@@ -7576,7 +7752,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     // Standalone owners have no external frame callback. Age their material
     // cache on every admitted shadow invocation, including empty/direct-only
     // views, so a former material cannot pin streamed images indefinitely.
-    if (!mImpl->frame_data)
+    if (!mImpl->frame_data || mImpl->private_library)
     {
         ++mImpl->standalone_shadow_material_generation;
         if (mImpl->standalone_shadow_materials)
@@ -7915,7 +8091,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             if (!requests.empty())
             {
                 ALMetalShadowMaterials* materials = nullptr;
-                if (mImpl->frame_data)
+                if (mImpl->frame_data && !mImpl->private_library)
                     materials = mImpl->frame_data->shadowMaterials(*mImpl->library, error);
                 else
                 {
@@ -10053,7 +10229,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 if (mImpl->source_pages)
                 {
                     stats.last_failure = "publication";
-                    source_frame = mImpl->source_pages->freeze(requests, metadata.regions, globals, &optional_error);
+                    source_frame = mImpl->source_pages->freezeForCommand(
+                        *command, requests, metadata.regions, globals, &optional_error);
                 }
             }
         }

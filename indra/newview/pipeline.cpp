@@ -536,6 +536,9 @@ struct LLPipeline::MetalWorldSimpleCapture
         std::string owner;
         U32 max_anisotropy = 1;
         U64 shader_generation = 0;
+        U64 library_epoch = 0;
+        std::shared_ptr<ALMetalWorldFrameData> frame_data;
+        std::shared_ptr<const ALMetalShaderLibrary> library;
         std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
         std::string error;
         F64 seconds = 0.0;
@@ -1024,12 +1027,9 @@ struct LLPipeline::MetalWorldSimpleCapture
         first_incomplete_source_line = 0;
     }
 
-    bool beginFrameData(const MetalWorldSimpleCapture* other, U64 frame)
+    bool ensureFrameData(const MetalWorldSimpleCapture* other)
     {
-        if (!device || !renderer)
-        {
-            return false;
-        }
+        if (!device) return false;
         if (!frame_data && other && other->device == device)
         {
             frame_data = other->frame_data;
@@ -1045,7 +1045,27 @@ struct LLPipeline::MetalWorldSimpleCapture
                     << LL_ENDL;
                 return false;
             }
+            frame_data->setSourcePublicationAdmission(
+                [pending_since = std::optional<ALNativeFrameBudget::Frame>{}](
+                    const ALMetalWorldSourcePublicationWork& work) mutable -> std::shared_ptr<const void>
+                {
+                    auto& budget = ALNativeFrameBudget::instance();
+                    // Each source context receives its own copied closure.
+                    // Keep its first denied dirty frame across retries; a
+                    // warm view never calls this policy or consumes a ticket.
+                    if (!pending_since) pending_since = budget.snapshot().frame;
+                    auto decision = budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,
+                        work.chargedBytes(), *pending_since);
+                    if (decision) pending_since.reset();
+                    return decision.credit;
+                });
         }
+        return true;
+    }
+
+    bool beginFrameData(const MetalWorldSimpleCapture* other, U64 frame)
+    {
+        if (!renderer || !ensureFrameData(other)) return false;
         // Main, hero and ordinary-probe owners swap slots, but all views in
         // this viewer frame share immutable data and completion-safe pages.
         // Repeated beginFrame calls for the same generation do not retire it.
@@ -2500,12 +2520,22 @@ void LLPipeline::prepareMetalWorldRenderer(
         return;
     }
 
+    // The owner acquires one exact builtin library before either asynchronous
+    // main/probe builder starts. Hero and ordinary faces reuse the probe owner.
+    const auto* other = mMetalWorldSimpleCapture.get() == &capture
+        ? mMetalProbeWorldSimpleCapture.get() : mMetalWorldSimpleCapture.get();
+    if (!capture.ensureFrameData(other)) return;
+    auto library = capture.frame_data->builtinLibrary(&capture.renderer_error);
+    if (!library) return;
     auto build =
         std::make_shared<MetalWorldSimpleCapture::RendererBuild>();
     build->device = device;
     build->owner = probe_face ? "probe" : "main-world";
     build->max_anisotropy = effectiveMetalWorldAnisotropy();
     build->shader_generation = ALMetalShaderLibrary::builtinReloadGeneration();
+    build->frame_data = capture.frame_data;
+    build->library = std::move(library);
+    build->library_epoch = capture.frame_data->builtinLibraryEpoch();
     capture.renderer_build = build;
     const bool posted = main_queue->postTo(
         general_queue,
@@ -2515,7 +2545,8 @@ void LLPipeline::prepareMetalWorldRenderer(
             try
             {
                 build->renderer = ALMetalWorldGBufferRenderer::create(
-                    *build->device, build->max_anisotropy, &build->error);
+                    *build->device, build->max_anisotropy, build->library, &build->error);
+                if (build->renderer) build->renderer->setFrameData(build->frame_data);
             }
             catch (const std::exception& error)
             {
@@ -2547,6 +2578,8 @@ void LLPipeline::prepareMetalWorldRenderer(
                 owner.renderer_build.reset();
                 if (completed->device != getViewerMetalDevice() ||
                     completed->device != owner.device ||
+                    completed->frame_data != owner.frame_data ||
+                    completed->library_epoch != owner.frame_data->builtinLibraryEpoch() ||
                     completed->shader_generation !=
                         ALMetalShaderLibrary::builtinReloadGeneration())
                 {
@@ -3083,6 +3116,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", rows/hits/publications=" << stats.pages.rows << '/' << stats.pages.hits << '/' << stats.pages.row_publications
                     << ", encoded/copied_page/copied_bank/view_bytes=" << stats.pages.encoded_row_bytes << '/'
                     << stats.pages.copied_page_bytes << '/' << stats.pages.copied_bank_bytes << '/' << stats.pages.view_bytes
+                    << ", publication_admission_requests/denials=" << stats.pages.admission_requests << '/' << stats.pages.admission_denials
+                    << ", admitted_charged_logical_work_bytes=" << stats.pages.admitted_bytes
                     << ", live_metadata_bytes=" << stats.pages.live_metadata_bytes << LL_ENDL;
             };
             log_source_rows("main", capture.renderer.get());
@@ -17550,19 +17585,34 @@ bool LLPipeline::reloadMetalShaders(std::string* error)
         }
     }
     if (!gGL.reloadMetalShaders(error)) return false;
+    std::array<ALMetalWorldGBufferRenderer*, 2> renderers{};
+    std::size_t renderer_count = 0;
+    std::shared_ptr<ALMetalWorldFrameData> frame_data;
+    for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
+    {
+        if (!owner) continue;
+        if (owner->frame_data)
+        {
+            if (frame_data && frame_data != owner->frame_data)
+            {
+                if (error) *error = "Native world owners have different frame data during shader reload";
+                return false;
+            }
+            frame_data = owner->frame_data;
+        }
+        if (owner->renderer) renderers[renderer_count++] = owner->renderer.get();
+    }
+    if (frame_data && !ALMetalWorldGBufferRenderer::reloadSharedShaders(
+            *frame_data, std::span(renderers.data(), renderer_count), error)) return false;
     resetMetalStartupWorld();
     for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
     {
         if (!owner) continue;
-        // Retire in-flight builds; their worker and result keep private ownership,
-        // but an old shader generation must never publish into this capture.
+        // Only the successful shared-epoch commit retires asynchronous builds.
+        // A failed second owner leaves both old renderers and build epochs live.
         owner->renderer_build.reset();
         owner->renderer_error.clear();
         owner->attempted = false;
-    }
-    for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
-    {
-        if (owner && owner->renderer && !owner->renderer->reloadShaders(error)) return false;
     }
     return true;
 }
