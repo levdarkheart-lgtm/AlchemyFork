@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-188 -->
+<!-- next-defect-id: PPD-189 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4698,3 +4698,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Recorded in isolated notes tree while required build13 keeps the source checkout frozen and clean.
+
+
+## PPD-188 — Source FrameView does not prove native buffer device ownership
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native source-generation proof
+- Discovered: 2026-11-14
+- Original reference: Indirect resource use must retain the ordinary native encoder's exact device rejection before any Metal command encodes a foreign resource.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Independent command-bank review: SourcePages validates geometry ranges/material/resource matches, but not native MTLBuffer.device for vertex/index/numeric buffers. A validly shaped manual source can combine A textures with B index/numeric buffers and obtain a FrameView, unlike direct drawIndexed which rejects foreign index devices. One-device M1 runtime cannot reproduce a distinct GPU; this is a source-confirmed API proof gap.
+- Next action: Establish exact native-device proof once per unique buffer/generation before indirect row publication; retain bounded hot proofs without producer pins. Add defensive cold bank index-device check. Preserve same-native-device wrapper compatibility and report unavailable multi-device execution honestly.
+- Verification: Source-confirmed counterexample, registered before repair; no multi-device runtime claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Independent reviewer and command-bank author reported the missing prerequisite before native bank execution.
