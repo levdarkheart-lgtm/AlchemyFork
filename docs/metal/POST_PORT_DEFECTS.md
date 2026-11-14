@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-185 -->
+<!-- next-defect-id: PPD-186 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4644,3 +4644,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Backend author reported before freeze; finite-progress repair is required before integration.
+
+
+## PPD-185 — Asynchronous renderer attachment reads owner-only library state
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared world-library integration
+- Discovered: 2026-11-14
+- Original reference: Workers must consume an acquired immutable library lease/epoch; mutable FrameData and renderer publication remain on their owner.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Unbuilt shared-world implementation a4726cdf6d worker invokes renderer.setFrameData(build.frame_data); that setter now reads FrameData.builtin_library to mark shared membership. Owner reload can assign this same non-atomic shared_ptr while worker attaches. Epoch callback rejection occurs later and cannot prevent the data race. No runtime race is claimed.
+- Next action: Keep worker construction limited to its captured device/library lease; move FrameData attachment to the main callback after device/FrameData/epoch/global-generation qualification, before publication. Explicitly retain owner-only library APIs.
+- Verification: Source-confirmed threading defect registered before repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Root integration review identified the worker-to-owner state read before native build.
