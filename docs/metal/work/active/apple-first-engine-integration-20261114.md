@@ -326,3 +326,33 @@ PPD156 source repair removes authored material-array copying from sealed per-vie
 values while preserving original mutable aliases and manual value semantics.
 Independent bounded PPD152 review found no semantic/ABI/lifetime counterexample.
 Next source freeze and contained gates include156; no viewer launch/profile/push.
+
+
+## Exact combined candidate delivered — original architecture remains partial
+
+[Final results and gaps](../../research/apple-first-whole-engine-integration-2026-11-14.md).
+Code/test pinf3a7ac5f58ee1acddabc8443a9a63022f13dc24f,69008. Requiredbuild7
+0/157.170s; finalnative3621assertions/17cases0;86CTestgroups0/124.778s plus
+10exactnative+3archiveprocesses0; functional642599/579 (overlapping focused/cost
+runs excluded). Correctedcosts5 all0; PBR scalar encode medians improve atallthree
+sizes, legacy at2/3; legacy1024+1.3%/highermaximum retained, not hidden. Additional
+jobs lack reliable crossover and stay nonpersistentOFF, as does GPUvisibility.
+Native material/default source ownership/admission remainactive.
+
+346ARM64/strictsignatures/ownednativeimports/codecprovenance/systemexceptionRTTI/
+source/defaultsettings allpass; strictsource3567files/0blocking/903info/0errors.
+Exact staging7839files/432directories/2links inventories match before/after/copy;
+stagedstatic passes. Appcanonical artifacts/metal/apple-first-engine-integration-
+20261114/staged/69008/Alchemy Metal Alpha G2G5.app. MainSHA256
+9fccffeef72549cf9ed17bd2f8253b02ceceaee8760a287db61f9bf650fa5dea. Baseline68999
+13e44a15... executable recheckedunchanged. No viewer launch/profile/push.
+
+PPD118–156 retain actualfailures/repairhistory;125/126 attribution remains
+investigating, others ready_for_owner, none newly ownerverified. Next157.
+Independent bounded source review finds no additional mandatoryownership/safety
+blocker before currentcandidate delivery, but fullpre-cullGPUscene/workproduction,
+broaderdetachedcull/encoding andcompletepass/uniquememorygraph remainunfinished.
+Original goal/performanceacceptance stayspartial/active. Next ownerwhole-engine
+runtimeassessment ofthissinglecandidate, then proceedremainingboundaries with
+actualworkload andframe/input/streaming/probefreshness evidence. No per-shadow
+stoppingpoint, nominalutilizationclaim or productcompletion.

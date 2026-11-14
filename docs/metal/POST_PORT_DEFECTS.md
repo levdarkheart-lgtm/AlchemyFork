@@ -3310,13 +3310,13 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-118 — A replenished downscale queue can starve fetched texture creation
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex whole-engine streaming admission integration
 - Discovered: 2026-11-14
 - Original reference: Existing updateImagesCreateTextures drains queued pressure downscales first and may return BudgetExhausted before serving creates. Preserve original raw/callback ordering and minimum useful progress across streaming stages; do not change desired LOD or hide pressure work.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
-- Next action: Give pending downscale and create work bounded shared service, preserve queued ownership/age on denial and actual completion credits. Verify replenished pressure/create fairness, callback/ref lifetime, retry and drain before combined delivery.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Read-only streaming audit finds the downscale-first BudgetExhausted return can repeat under a continually replenished pressure queue, leaving creates unserved. This is a conditional source hazard, not a proved cause in the68995/68999 captured intervals. Agent reports fairness change while integration is in progress; no test/runtime acceptance inferred.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3326,15 +3326,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered from the streaming ownership audit during implementation before integrated acceptance. Proposed policy shares the slice when both queues wait and still permits a create admission attempt; native in-flight and true pressure safety remain. No source-quality/LOD target reduction or prior-profile causal claim.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-119 — New scene working-set admission can evict a newer source or undercount a duplicate
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex shared source residency integration
 - Discovered: 2026-11-14
 - Original reference: New ALNativeSourceWorkingSet native publication policy; original GL has no detached producer publication cache. Preserve current source and actual-reader ownership under stale/invalid input, and account each immutable native allocation consistently.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
-- Next action: Reject stale serial or mismatched publication owner before removing the current entry; reject conflicting duplicate allocation sizes before deduplication. Add late-retain and duplicate-capacity regression coverage, then run contained ownership tests before integration.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Peer source review finds retain removes the current entry before validating an older serial; removal can clear the current State payload. The candidate resource loop skips same-control-block duplicates before checking capacity, so100/200byte declarations can be silently counted100. New code is not in the profiled68999 app; no runtime incident is attributed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3344,15 +3346,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before repair from independent pre-integration review. Initial simple CPU cases do not cover these adversarial admission inputs. No app launch/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-120 — Reentrant source destruction can make State publication report stale success
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex shared publication lifecycle integration
 - Discovered: 2026-11-14
 - Original reference: New ALNativePublication::State native immutable-input boundary; original GL has no corresponding shared payload seal. Publication must remain dirty/failed if destruction invalidates the source during replacement.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
-- Next action: Finish old payload destruction before the final revision/owner success check, preserve any reentrant invalidation/new publication, and add actual custom-deleter regression coverage.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: State::publish checks revision, replaces mPublication (which can destroy the prior payload), then sets mDirty=false. A prior payload deleter can reenter invalidate, resetting the new payload/incrementing revision; outer publish then reports true with an empty clean state. This is a pre-integration source edge, not a bug observed in68999.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3362,15 +3366,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before repair after independent review. Initial common policies compile and basic tests do not establish this reentrant lifecycle contract. No new viewer/capture/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-121 — Shared decoder backpressure omits in-flight upload byte debt
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex whole-engine streaming admission
 - Discovered: 2026-11-14
 - Original reference: New ALNativeFrameBudget downstream admission; original accepted decode responders and active jobs must survive pressure changes. Byte debt and request count are separate resource operands.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
-- Next action: Include actual in-flight upload bytes at their configured ceiling in downstream-full admission and test one large outstanding upload with empty raw queue and count below the request limit; retain decoder progress/active jobs and recovery after credit retirement.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Source review finds decodeCeiling considers in-flight upload count, queued logical input bytes and pending publications, but not upload_bytes_in_flight. An individually admitted large upload can occupy the byte lane while request count remains low. Pre-integration policy gap, not an observed68999 incident.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3380,15 +3386,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before repair after streaming owner review; common files were frozen for root checks. No source/client runtime acceptance or causal performance claim.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-122 — HTTP 4xx warning demotion checks the internal flag instead of the HTTP code
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex warning audit / LLCore HTTP logging
 - Discovered: 2026-11-14
 - Original reference: Compiled4918fd7 indra/llcorehttp/_httppolicy.cpp406–407 and httpcommon.h263–270/307–311. HTTP encodes (code,success/error flag), so getType carries the code and getStatus the flag.
 - Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
-- Next action: Use the HTTP code for intended4xx severity classification with focused status representation coverage; preserve real request failure and retry semantics. No repair in this audit.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Full session75HTTP warnings:47HTTP403,2HTTP404,26Easy_28. Intended4xx demotion calls getStatus()>=400, so it never matches ordinary HTTP error flags. Actual delivery failures remain real; their causes are unproved.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3402,15 +3410,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-123 — Live SMAA readers request an undeclared RenderSMAAUseSample control
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex warning audit / Native graphics setting schema
 - Discovered: 2026-11-14
 - Original reference: Compiled4918fd7 pipeline/resource-plan live RenderSMAAUseSample readers and shipped setting declarations. Missing-control path returnsfalse.
 - Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
-- Next action: Map intended native AA behavior and original setting contract, then declare the setting or remove a proven obsolete reader. Do not guess a new AA default or claim visual change from logs.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Six missing-control warnings for RenderSMAAUseSample during startup; static readers exist and the compiled setting declaration is absent. Resulting AA effect remains unproved.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3424,15 +3434,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-124 — Picks context-menu enable callbacks have no Pick.Enable registration
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex warning audit / Picks UI callback integration
 - Discovered: 2026-11-14
 - Original reference: Compiled4918fd7 menu_picks.xml enable bindings and LLUICtrl::initEnableCallback failure path. Literal Pick.Enable registration not found.
 - Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
-- Next action: Restore or correctly scope Picks enable rules after tracing intended conditions; test enabled/disabled behavior separately from click handlers. No source repair here.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Five warnings cover Teleport, Info, Edit, Map and Delete enable rules. The enable callback lookup fails; commit handlers are separate, so five broken actions are not established.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3446,6 +3458,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-125 — Hero-probe face transactions are rejected during teleport
 
 - Status: investigating
@@ -3468,6 +3482,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 
+
+- 2026-11-14 final candidate handoff: Combined69008 builds/contained native checks pass, but this incident attribution remains unproved; no live teleport/shutdown retest or owner closure. Keep investigating.
 ## PPD-126 — Shutdown reports one remaining volume and LOD reference
 
 - Status: investigating
@@ -3490,15 +3506,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 
+
+- 2026-11-14 final candidate handoff: Combined69008 builds/contained native checks pass, but this incident attribution remains unproved; no live teleport/shutdown retest or owner closure. Keep investigating.
 ## PPD-127 — Startup XUI parameter parsing emits an unresolved warning
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reported
 - Owner: Codex warning audit / XUI schema and parser integration
 - Discovered: 2026-11-14
 - Original reference: Compiled4918fd7 llinitparam.cpp115 parserWarning callsite; exact parameter effect remains unknown.
 - Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
-- Next action: Identify the exact static parameter and owning XUI declaration privately before choosing a correction; distinguish intentional compatibility warnings from lost behavior.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: One generic parser warning occurs outside measurement. It is recorded separately from five known Picks enable failures; resulting UI behavior and root cause remain unverified.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3510,15 +3528,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Coordinated import from codex/retest-warning-audit-20261114 branch audit. Retained branch-qualified alias `codex/retest-warning-audit-20261114:PPD-123` maps to this canonical record; original audit history remains on that branch. No conflicting canonical ID was renumbered or removed. Source fixes are owned in the separate warning-fix worktree; root integration/test acceptance remains pending.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-128 — Accelerated media checks COW leases before invalidating publisher ownership
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex cross-engine publication integration
 - Discovered: 2026-11-14
 - Original reference: LLViewerMediaImpl::updateAcceleratedTexture reads the current native destination and tests image leases before native blitToMetal; successful replacement/adopt or in-place/mark follows commit. Preserve original media frame/readers/failure and playing-state semantics; native shared source publication is new.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
-- Next action: Notify willWrite on the media image before selecting destination/testing COW leases, preserving actual reader leases and existing replacement/commit/adopt/mark/failure paths. Verify with publication/reader native cases; no blanket changes to fresh replacement producers.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Source audit locates active llviewermedia.cpp3331–3365 and llcefaccelinterop.cpp158–195. Post-write mark is too late to release cache-only publication ownership before the COW decision, forcing avoidable replacement when no actual reader requires it. No actual prior media/COW profile cause is established; current retest COW counters were zero.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3528,15 +3548,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before scoped hook repair. Fresh bump/terrain/preview replacements are distinct safe paths; unused LLRenderTarget external attachment API has no production caller and is not silently redesigned. No viewer launch/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-129 — Attachment pose cache can mark an incomplete palette current before allocation finishes
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex immutable pose publication
 - Discovered: 2026-11-14
 - Original reference: Existing LLVOAvatar::updateSkinInfoMatrixPalette writes entry.mFrame before vector resize/packing; preserve the original exact matrix and frame-cache result, but publish cache validity only after the complete tuple exists.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
-- Next action: Commit frame/pose/lifecycle validity stamps after successful complete palette construction, preserving retry on allocation failure. Add focused failure/retry contract coverage without changing matrix packing or caller ownership.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Pose producer review identifies early mFrame assignment before allocation/packing. An exception can leave an entry apparently current with incomplete storage; new pose/lifecycle stamps must not repeat that ordering. Source hazard, not an actual prior runtime exception attribution.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3546,15 +3568,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before validity-stamp repair during immutable body/attachment publication integration. Body snapshot creation already seals only complete records; keep attachment cache consistent with that transaction rule. No viewer/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-130 — New direct-shared void setters can leave stale native data accepted after both fallbacks fail
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex direct shared-write integration
 - Discovered: 2026-11-14
 - Original reference: New opt-in LLVB direct shared path for fresh immediate/UI storage; ordinary CPU-shadow producers retain existing behavior. A requested write must not silently leave the old store certified current after an unrecoverable allocation failure.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
-- Next action: Fail closed when native replacement and CPU-shadow materialization both fail; preserve actual readers, withdraw current publication and distinguish this from an ordinary retriable upload. Add meaningful dual-failure injection and successful producer retry coverage before integration acceptance.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Independent source review finds prepareNativeSharedWrite returnsfalse on double allocation failure; flush_vbo logs/returns before mVerticesWritten, allowing prepareMetalBuffers/hasPublishedMetalVertexBuffer to accept the old initialized generation despite lost void-setter edit. Existing fallback case exercises native-unavailable plus successful shadow materialization, not this arm. New code is not in68999 and no runtime failure is attributed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3564,15 +3588,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before repair from cross-agent ownership review. Exact layout/normal reader-retirement paths appear sound; double failure needs explicit publication-failure state rather than invented saved edit bytes. No app launch/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-131 — Empty direct-shared maps can rotate and copy an unchanged native store
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex direct shared-write integration
 - Discovered: 2026-11-14
 - Original reference: Existing zero-count LLVB mapping is an empty declared edit; no native publication/copy is expected. New opt-in direct-shared producer must preserve that range contract and backing reader ownership.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
-- Next action: Bypass direct generation rotation for a valid count0 map; preserve empty-range pointer/offset behavior, no write authorization or native publication traffic. Add borrowed/incomplete-reader direct-shared empty-map coverage.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Independent source review finds mapVertexBuffer calls prepareNativeSharedWrite before count>0, so an empty map can clone/preserve the entire borrowed generation, mark it uninitialized and republish without a declared edit. Existing empty-range tests use the unchanged ordinary CPU-shadow path. No actual68999/runtime incident is attributed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3582,15 +3608,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before repair with PPD130 as a separate direct-policy edge. Normal exact layout/alias/reader paths remain; new direct policy is not accepted from source review alone. No viewer/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-132 — Hero removal invalidates its active vector traversal
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex whole-engine probe integration
 - Discovered: 2026-11-14
 - Original reference: Existing LLHeroProbeManager::update maintains scene ownership before optional native reflection work; erasing an element must not invalidate the next traversal step.
 - Evidence: Independent probe-owner source audit during [whole-engine integration](work/active/apple-first-engine-integration-20261114.md).
-- Next action: Replace the erase-during-range-for with an iterator-safe removal traversal, preserving all unregistration side effects and scene-owner retirement semantics; exercise contained checks and retain owner validation pending.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: update range-iterates mHeroVOList while unregisterViewerObject erases that same vector. This is a concrete C++ iterator invalidation hazard; no captured crash or remaining-volume attribution is claimed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3600,15 +3628,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before narrow iterator-safe correction by the exclusively assigned probe owner. No viewer launch/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-133 — Special shadow resources must join their actual command owner
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native source integration
 - Discovered: 2026-11-14
 - Original reference: Existing synchronous special terrain/tree/body captures are retained. New shared source/job architecture requires exact wrapper generations to follow the shadow packet command owner, independently of the next main G-buffer capture.
 - Evidence: Independent resource-ownership review during [whole-engine integration](work/active/apple-first-engine-integration-20261114.md).
-- Next action: Pin special geometry, actual fallback images and generated terrain height into the shadow source lease consumed by scene.source_owner; preserve scalar special ordering and current pose snapshots.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Main world_resources and shadow_source_lease are separate owners. Main-only resource retention cannot establish special-shadow ownership, and generated terrain height was a raw wrapper field. This is an integration coverage gap, not an attributed prior viewer crash.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3618,15 +3648,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before explicit special-shadow packet ownership integration. No viewer launch/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-134 — Animated UV native test used reverse-Z depth equal to its clear value
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex native preparation validation
 - Discovered: 2026-11-14
 - Original reference: Forward/reverse-Z shadow conversion and animated cutout pixels must remain equivalent between direct and prepared inputs.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Private apple-first-engine-integration-20261114/native-correctness-1-shadow-uv.log; actual exit42. All direct/prepared pixel comparisons pass; four reverse-Z combinations fail animation-change/clear assertions.
-- Next action: Give both direct MVP and compact context projection the same distinguishable reverse-Z depth, preserving parity, clear, animation-change and invalid-input assertions; rerun native validation.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Fixture clip Z0 is unchanged by reverse-Z shadow conversion and equals clear0. Both alpha states produce the same all-zero output despite correct UV parity. Production shader/UV changes are not justified by this fixture failure.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3636,15 +3668,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered actual failure before test-only correction. Previous failed evidence retained.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-135 — Fetched terrain binding owners do not pin exact native generations
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex scene publication integration
 - Discovered: 2026-11-14
 - Original reference: Existing fetched fallback selection remains owner-controlled. Prepared native scene packets require exact resource generations independently of mutable LLImageGL facade ownership.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent source review of ALMetalFetchedTextureBinding::nativeTexture during whole-engine integration.
-- Next action: Retain every resolved fetched binding image's exact native lease when capturing terrain, and carry only native owners in detached/command packets; preserve current fallback and source-owner selection.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: ALMetalTerrainFetchedBindings retains LLTexture/LLImageGL owners, while nativeTexture dynamically reads current backing. Retaining the requested image alone misses the actual resolved default/null fallback. No runtime regression or leak attribution is claimed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3654,15 +3688,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before exact resolved-native lease capture. Existing synchronous binding behavior remains authoritative.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-136 — New PBR publication copied a fourth float from a three-component emissive color
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex scene publication integration
 - Discovered: 2026-11-14
 - Original reference: Original PBR collector copies sizeof(material->mEmissiveColor.mV), preserving the destination fourth lane default.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent source review of new shared PBR factory; LLGLTFMaterial::mEmissiveColor is LLColor3.
-- Next action: Copy the actual source array size, retain zero fourth lane, add an emissive packing assertion to the real factory fixture, and validate the combined viewer.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: New destination emissive_color has four floats; source mV has three. Copying destination size reads beyond the source subobject. No prior viewer rendering failure is attributed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3672,15 +3708,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before restoring the original exact copy size. No viewer launch/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-137 — New packet resource deduplication must roll back failed retention
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex scene packet integration
 - Discovered: 2026-11-14
 - Original reference: Existing shadow source/palette retention rolls back an inserted identity if its strong-owner vector insertion fails.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent review of new WorldResourceLease::retain and ShadowSourceLease::retainResource.
-- Next action: Apply the same exception rollback to the two new resource-owner vectors so an allocation failure cannot leave an unowned resource marked retained.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Inserting into identity set before vector push can leave the set entry behind when push throws. Subsequent retention would otherwise skip the missing owner. No runtime allocation failure is attributed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3690,15 +3728,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before matching established retention unwind semantics. No viewer launch/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-138 — Shared shadow factory rejected GLTF blended alpha coverage
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex scene publication integration
 - Discovered: 2026-11-14
 - Original reference: PASS_ALPHA uses legacy_blend as the sweep policy; the actual GLTF capture intentionally emits pbr_blend for scalar/indexed GLTF materials.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent source comparison of captureMetalShadowScene and captureMetalSpotShadowPBRBatch.
-- Next action: Select the existing effective GLTF pbr_blend coverage before cache lookup/certification and test real factory acceptance/reuse; keep strict coverage validation for other mismatches.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: New factory compared prototype.coverage with the unconverted sweep policy and would discard a shadow view with GLTF blended casters. This new code has not been delivered/launched.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3708,15 +3748,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before preserving original GLTF alpha coverage conversion in the shared factory.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-139 — Qualified bounds must cover actual referenced indices
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native visibility integration
 - Discovered: 2026-11-14
 - Original reference: Native direct draws consume actual index bytes; LLVB validateRange checks declared vertex/index capacities but does not inspect each index value.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Source audit of the new bounds qualification against LLVertexBuffer::validateRange.
-- Next action: Derive source bounds from actual published referenced indices and finite positions, failing visible when CPU-readable data or valid exact bounds are unavailable.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Trusting only declared mStart/mEnd would not independently prove the bound encloses the submitted indexed geometry. Native visibility remains off pending cost gates; no displayed omission is attributed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3726,15 +3768,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before strengthening conservative source qualification.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-140 — Realtime probe continuation could admit successive fresh groups on one credit
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex shared probe scheduling
 - Discovered: 2026-11-14
 - Original reference: Existing scheduled12-face and realtime irradiance/radiance sequences retain their configured work. A new optional group requires a new admission after the prior coherent transaction finishes.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent read-only probe scheduling review during whole-engine integration.
-- Next action: Retire the completed CPU group before starting a fresh scheduled owner when no scheduled continuation and no realtime half remain; commands retain their previous actual-completion credit copies.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Realtime radiance completion can fall through to new oldest-probe selection with the previous retained credit, chaining fresh groups around admission. New integration is not in the profiled viewer.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3744,15 +3788,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before narrowing group continuation to its actual transaction boundary.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-141 — Forward and impostor consumers need shared-source completion ownership
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex shared scene integration
 - Discovered: 2026-11-14
 - Original reference: Prepared G-buffer/shadow consumers retain immutable source input owners through actual command completion; forward and impostor phases consuming the same shared sources require the same boundary.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent source review of renderOpaquePostDeferred/compositeImpostorPostDeferred and their pipeline scene construction.
-- Next action: Add an explicit source_owner to these scene inputs, assign the actual capture resource owner, and retain it on the actual consuming command. Preserve nested probe admission credit independently.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Cached shared sources skip the old raw-getter read-stamp path. State invalidation plus next-capture aggregate reset must not permit native in-place updates while forward commands are pending. Current prepared/shadow commands already pin their packet correctly; forward paths did not.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3762,15 +3808,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before extending exact command ownership to every consumer of the new shared source. Initial dirty integration build is diagnostic only and will be followed by a frozen-source build.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-142 — Realtime probe progress could starve pending scheduled refreshes
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex shared ordinary probe scheduling
 - Discovered: 2026-11-14
 - Original reference: Realtime and scheduled probe work share bounded capacity, while both must retain bounded progress under main/memory pressure.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent control-flow audit after PPD140 credit rollover repair.
-- Next action: Preserve a separately aged pending scheduled group and give it a finite turn before a new realtime group can consume the same progress admission repeatedly; test the actual admission-state helper used by the manager.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Realtime work runs first and can consume/reset the manager's one shared deferral age every eight-frame progress window. After realtime radiance retires its credit, the scheduled request starts at age0 again and can be denied indefinitely. This integration is not in the profiled app.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3780,15 +3828,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before finite-turn fairness correction. Do not restore unbounded old-credit rollover to avoid starvation.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-143 — Failed world preparation/encoding can leave a borrowed batch committable
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native world transaction integration
 - Discovered: 2026-11-14
 - Original reference: A failed constituent pass must invalidate its borrowed outer command transaction. Existing actual main/hero callers explicitly cancel failed transactions.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent query/cancel audit of frozen snapshot1; qualified API concern rather than an observed viewer publication failure.
-- Next action: Ensure direct/prepared G-buffer error exits poison an active borrowed batch, including stale epoch and post-acquisition publication/encoder failures; add an actual failed-pass then outer-commit regression.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Some renderInternal early returns after acquireCommandBuffer do not call finishCommandBuffer(false). Existing owner cancellation prevents an established live corruption counterexample; newly added preparation/retention failures should not rely on every future caller remembering that cancellation.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3798,15 +3848,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered qualified API-level concern, retaining actual caller protections and absence of observed corruption/performance attribution. No viewer launch/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-144 — New pose helper omitted the SIMD math include prerequisite
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex body pose integration
 - Discovered: 2026-11-14
 - Original reference: llmatrix4a/llvector4a require the llmath SIMD declarations; a new reusable pose helper must include its actual prerequisites independently of the viewer PCH.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). integration-viewer-build-1 exit1 after649.919s, alavatarpose_test.cpp unknown LLSimdScalar/LLVector4Logical types.
-- Next action: Include llmath before matrix/vector SIMD headers in the helper, then rebuild the actual CPU pose tests and combined viewer.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Viewer translation units compiled through the PCH, but the contained test exposed the missing header prerequisite. The failed build/changed-source manifest is retained and is not a delivery binary.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3816,15 +3868,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered actual integration build failure before header correction. No viewer launch/profile/push.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-145 — Small prepared-world tickets add avoidable mechanism overhead
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex measured world preparation integration
 - Discovered: 2026-11-14
 - Original reference: Same native direct/prepared shaders and ordered input data; preparation/jobs must earn their scheduling/allocation cost while shared immutable source ownership remains intact.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). complete-path-costs-1:16/128/1024 mixed draws, direct/prepared native completion included, no competing compiler or validation layers.
-- Next action: Keep small owned input packets on native scalar encoding, use two-job preparation at the measured1024draw point, retain packet completion ownership, and log actual scalar/prepared/credited view counts.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: At128 draws serial ticket median0.563750ms versus direct0.541479ms; two-job16draw tail1.10346ms versus direct0.276292ms. At1024, two-job median2.03013ms versus direct2.07631ms and tail2.36046ms versus2.53175ms. Isolated mechanism data, not live viewer FPS.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3834,15 +3888,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered measured small-work overhead before selecting execution policy inside the same owned-source architecture. GPU visibility also loses all six contained cost rows and remains OFF.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-146 — Disabled GPU visibility should not scan every newly published source index range
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex persistent source visibility integration
 - Discovered: 2026-11-14
 - Original reference: Native visibility is a cost-gated optional consumer; ordinary shared source publication must not pay its unused index/position scan.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). New Payload extension qualifies conservative bounds unconditionally, while RenderMetalNativeVisibility defaultsfalse and fails contained cost gates.
-- Next action: Qualify bounds only for an explicitly requested world visibility variant, retaining exact index-generation proof and old-reader ownership when enabled; test disabled publication and explicit qualification.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Default-off visibility currently leaves a per-dirty-source indexed position scan in the main/probe/shadow factory. This is source-confirmed avoidable work; no live FPS attribution is claimed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3852,15 +3908,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before removing inactive-consumer work while retaining its tested opt-in architecture.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-147 — Visibility cost fixture labeled a periodic mask as an exact offscreen percentage
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native mechanism measurement
 - Discovered: 2026-11-14
 - Original reference: A stated50percent offscreen fixture should contain exactly half the even draw count; correctness/cost claims must describe the generated workload.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). complete-path-costs-1 and almetal_world_visibility_test.mm's index%100 mask.
-- Next action: Use exact count-based offscreen membership, retain prior measurements with actual mask qualification, and rerun the changed cost fixture. GPU visibility stays off regardless of this correction.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: The first16draw50label row actually makes16draws offscreen;128makes78;1024makes524. The observed optional path still loses every row, but these are not exact50percent workloads.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3870,15 +3928,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered benchmark reporting/fixture discrepancy before exact half-membership correction. No live performance attribution.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-148 — Prepared world constants counted reuse but rebound duplicate slab offsets
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex prepared world integration
 - Discovered: 2026-11-14
 - Original reference: Existing native G-buffer reuses the previous400byte common constant slice when equal, including after another family overwrites its binding slot. Alchemy region/agent-space geometry often shares these per-view values.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Source comparison of bind_world_constants plus retained-constant-reuse-census.json from the actual68999 busy-club retest, and corrected complete-path-costs-2 showing4096draw regression.
-- Next action: Preserve the previous prepared common slice offset on an actual equality hit instead of merely incrementing the reuse counter, retain exact binding restoration after terrain/impostor slots, then retest native parity and complete-path cost.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: New prepared branch memcmp-detects equal WorldSimpleConstants and increments reused_bindings but always binds current record.offset. Direct path rebinds previous_world_slice. This defeats native binding cache reuse and repeatedly addresses duplicate bytes; actual prior club log has substantial main/probe reuse. No live new-architecture FPS attribution is claimed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3888,15 +3948,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before preserving existing Second Life per-view constant reuse; retained4096draw measured loss rather than hiding it by assuming unique object transforms in a generic engine benchmark. Existing prior app was68999; counter evidence is its captured run.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-149 — Prepared slabs still published duplicate common constant bytes
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex prepared world data publication
 - Discovered: 2026-11-14
 - Original reference: Direct native constant reuse avoids both new bindings and repeated GPU arena publication of identical400byte common constants. Preserve this across worker preparation.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). PPD148 sharing repair passes762assertions/6native cases, but complete-path-costs-3 still shows4096median loss6.61208ms vs6.37077ms. Prepared constants allocation/publication retains one duplicate range per original record.
-- Next action: After bounded CPU jobs join, compact the prepared slab in place with exact consecutive common-value reuse (including across noncommon families), remap all authored offsets without reordering records/queries, and publish only the resulting span. Validate actual reduced native publication bytes plus MRT/depth/stencil/query parity and complete-path cost.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Rebinding the previous offset fixes binding identity but does not remove duplicate CPU slab/GPU publication bytes. Existing Alchemy per-view common-value reuse is measured in the retained club run; no new app FPS claim follows from a contained fix.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3906,15 +3968,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered remaining physical publication redundancy after PPD148, retaining all measured large-view losses. No fabricated unique-transform benchmark or nominal worker-utilization success claim.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-150 — GPU packet ownership unnecessarily held reusable CPU capture storage
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex CPU/native publication lifecycle integration
 - Discovered: 2026-11-14
 - Original reference: Existing capture clears and reuses batch/query vector capacity after synchronous native encoding. Detached CPU work needs owned immutable arrays until join/encoding, while GPU commands need exact native resource generations and published constant pages afterward.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). WorldViewInputs adopts moved capture vectors and prepared.inputLease retains whole input/constant metadata through GPU completion; next capture must allocate new vector capacity.
-- Next action: Separate GPU resource lease from CPU packet storage, retain all native generations/pages to actual completion, and reclaim consumed batch/query capacity only on the scene owner after all jobs and encoding finish with no remaining CPU readers. Prove delayed-GPU resource/pixel lifetime and CPU storage reuse/refusal with real native tests.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Entire CPU view arrays are not read by the GPU after native constant publication/encoding; holding them in the GPU lease defeats previous capture capacity reuse. Source-confirmed unnecessary lifetime/allocation churn, not an attributed new runtime leak or FPS result.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3926,15 +3990,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14 repair attempt for PPD150: Split native resource ownership and add owner-only CPU storage reclamation. Empty/sky-only inputs may legitimately have a null native resource lease; renderer retention now checks nonnull before retainUntilCompletion, preserving successful empty clear. Actual delayed-GPU and empty prepared rendering tests are required before acceptance.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-151 — Compaction byte assertion omitted real query-uniform publication
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex native publication validation
 - Discovered: 2026-11-14
 - Original reference: Actual frame-data published bytes include both prepared geometry constants and ordered query constants.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). compaction-cpu-retirement-correctness-1 exit42:11/12cases and1473/1475assertions pass; both failures are8416publishedbytes versus7968preparedspan.
-- Next action: Independently measure native query-only publication for the same four query inputs, then assert the geometry portion equals compacted span; retain exact pixel/query/3200byte-saving assertions.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: The448byte difference is four112byte query constant publications. Warming a previous command does not remove command-local query publication. Rendering/lifetime/reclaim assertions pass; this is fixture accounting, not a proven renderer over-upload bug.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3944,15 +4010,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered actual failed receipt before correcting the independent accounting baseline.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-152 — Stable material constants were still rebuilt and published for every view
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex persistent native material publication
 - Discovered: 2026-11-14
 - Original reference: Original architecture publishes stable geometry/material data from dirty owners once; main/probe views consume immutable native resources while camera/pose/UV values stay per-view.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Shared factory caches material prototypes, but direct/prepared G-buffer paths still repack/publish the same material/PBR constant tables on each consuming view.
-- Next action: Publish sealed immutable native material/PBR uniform tables at source revision, reuse exact shared buffers through a bounded weak content cache, consume those tables from scalar/prepared world rendering and preserve untrusted/direct native fallback and per-view state. Validate actual publication reuse, edits/COW, all native outputs and whole mechanism cost.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Material/PBR constant builders depend on stable batch/material inputs; current publication stops at CPU templates. This is a remaining original GPU-publication boundary, not a claimed measured viewer regression.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3962,15 +4030,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered remaining stable GPU material-table work before implementation; no shader, texture quality, draw/query order or rendering backend change authorized by this record alone.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-153 — Actual-owner fixture first included native cache inside its frontend namespace
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex native material integration validation
 - Discovered: 2026-11-14
 - Original reference: Actual native cache/type definitions must be global and linked to the actual renderer, while only viewer-frontier dependencies live in fixture Inputs namespace.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). frozen-source-build-5 exit1, alpipeline_buffer_publication_metal_test.cpp cannot pass Inputs::ALMetalWorldMaterialDataCache to the global native source publisher.
-- Next action: Include the real native cache header at fixture global scope before including production capture/factory bodies, then rebuild.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Header first inclusion inside namespace Inputs created an unintended distinct type. Production pipeline includes it globally. No viewer runtime defect is attributed.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3980,15 +4050,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered actual build failure before fixture include repair.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-154 — Cost fixture samples never advanced native frame-data ownership
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex mechanism cost validation
 - Discovered: 2026-11-14
 - Original reference: Actual outer display frames advance ALMetalWorldFrameData generation; completed pages can retire/reuse and frame-local cache entries reset. Multiple views within a frame share that generation.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Existing cost fixture initializes generation1 once, then runs every timed sample/method/count in that same frame; beginFrame source confirms retirement only on generation change.
-- Next action: Advance frame-data generation once per timed sample/outer-frame fixture, include that policy in timing, retain legitimate within-frame view sharing, and rerun corrected costs before selecting defaults.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Hundreds of samples in one protected frame bias arena growth/reuse and method ordering. Earlier contained costs remain retained as provisional same-generation observations; they do not establish steady per-frame performance.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3998,15 +4070,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered missing frame lifecycle before cost-fixture correction and a representative main-plus-probe uniform-publication comparison.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-155 — Draw-count-only CPU preparation policy adds work after native material reuse
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex whole-engine cost policy
 - Discovered: 2026-11-14
 - Original reference: Worker preparation must improve complete native cost and frame latency; unchanged immutable source/input ownership does not require an extra worker for each view.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Corrected complete-path-costs-4 uses one FrameData generation per outer frame. Native material scalar encoding at main1024 plus2probe128 beats adaptive: legacy0.510104ms versus0.562480ms, PBR0.601104ms versus0.648125ms. At4096 aggregate CPU also increases with workers.
-- Next action: Preserve all published inputs/native materials/resource retirement by default; make extra G-buffer preparation an explicitly logged nonpersistent diagnostic until representative complete-path benefit is proved. Do not automatically dispatch from draw count alone.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Native material mechanism reduces main/probe encoding/publication work, but its now-cheaper scalar path changes the worker crossover. Simple1024 improves in this diagnostic while4096 regresses;12samples do not establish a safe general live-view threshold. Not a claimed viewer FPS regression.
 - Owner verification: pending
 - Push approval: not_granted
@@ -4016,15 +4090,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered measured combined mechanism mismatch before policy correction; costs1–3 retained as provisional same-generation observations under PPD154. No nominal utilization gate.
 
 
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-156 — Sealed per-view batches still copy inactive authored material arrays
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex scene source publication
 - Discovered: 2026-11-14
 - Original reference: A published source shares immutable stable material data across per-view references; a mutable original author may retain earlier references without reaching that sealed snapshot.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Default ALMetalWorldSimpleBatch copies engaged private optional arrays even when const consumers exclusively use sealed shared snapshots.
-- Next action: Make private table storage copies omit inactive authored bytes when a sealed snapshot exists, preserving manual value copies, original mutable aliases and detached-copy edits; validate native output/lifetime and complete-path costs.
+- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
 - Verification: Source-confirmed redundant CPU copy, not a proved viewer performance loss. Do not reset original authored optionals while old producer mutable references can exist.
 - Owner verification: pending
 - Push approval: not_granted
@@ -4032,3 +4108,5 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Independent bounded review found no PPD152 semantic/ABI/lifetime counterexample and identified this remaining stable-source CPU copy. Registered before implementation.
+
+- 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.

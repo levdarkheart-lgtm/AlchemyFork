@@ -1,6 +1,6 @@
 # Concrete route from the native fork to Apple-first render ownership
 
-**Whole-engine integration underway,2026-11-14:** [active work](../work/active/apple-first-engine-integration-20261114.md) connects producer publications, main/probe/shadow consumers, bounded world jobs, poses and frame-wide streaming/probe admission. Native visibility remains cost-gated; no new combined runtime result or completion claim. The original acceptance gates below remain authoritative.
+**Combined ownership candidate ready,2026-11-14:** [exact69008 results](apple-first-whole-engine-integration-2026-11-14.md) records default main/probe/shadow source/material publication, poses, frame admission, CPU/native lifetime and UMA writes; required build/tests/static/stage pass. Extra G-buffer jobs and GPU visibility remain diagnostic OFF after mixed/adverse costs. The original full architecture/performance gates remain partial, including GPU work before CPU discovery and broader cull/encoding/pass/memory boundaries. No new viewer launch/profile or FPS claim.
 
 **Completion correction,2026-11-14:** the original G2–G5 architecture remains
 **partially implemented**. A built/tested/staged experimental app was delivered,
