@@ -68,7 +68,7 @@ scene LOD/occlusion/texture priority/RLVa policies cannot be silently removed.
 Owner testing will assess the combined engine across representative scenes,
 frame pacing, image/feature correctness, streaming and memory. Partial helpers,
 nominal Metal4 adoption, CPU microbenchmarks and a shadow-only result cannot
-establish the product objective. Next global defect ID186; root allocates IDs.
+establish the product objective. Next global defect ID187; root allocates IDs.
 
 ## First coherent freeze
 
@@ -127,3 +127,14 @@ Shared world-library/atomicreload PPD181 implementation a4726cdf6d is frozen in
 its isolated tree, unbuilt/untested, including app-only opaque budget injection.
 Independent source publication policy/backend are in the budget tree; root must
 integrate both and new CMake fixtures before the next required build/native gate.
+
+## Integrated shared owner and dirty-work continuation (unbuilt)
+
+Root integrated policy51a0436611 asdf8ce06617, backend013d43bbb0 asdd92f1dcca,
+shared world-library a4726cdf6d as45a75b1f08 and owner attachment21f8657342 as
+f37a68d4ef. PPD184 callback holder repair is included; PPD185 moves FrameData
+attachment to the qualified main callback, so workers use immutable leases only.
+Root adds native library/admission fixtures to CMake; next clean required build13
+and native owner/context/atomic-reload/budget/credit-lifetime gates. No new
+validation is claimed until executed. Command-bank and material-group work
+continues independently; default scalar source-row activation remains rejected.

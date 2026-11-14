@@ -280,6 +280,8 @@ if(AL_BUILD_TESTS)
             tests/almetal_source_row_draw_test.mm
             tests/almetal_world_source_pages_test.mm
             tests/almetal_world_source_rows_test.mm
+            tests/almetal_world_source_admission_test.mm
+            tests/almetal_world_library_test.mm
     LIBRARIES almetal llcommon
     RESOURCE_LOCK apple_gpu
   )
@@ -383,3 +385,5 @@ set_source_files_properties(tests/almetal_world_resources_test.mm PROPERTIES SKI
 set_source_files_properties(almetalworldsourcepages.mm
   tests/almetal_source_row_draw_test.mm tests/almetal_world_source_pages_test.mm
   tests/almetal_world_source_rows_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+set_source_files_properties(tests/almetal_world_source_admission_test.mm
+  tests/almetal_world_library_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

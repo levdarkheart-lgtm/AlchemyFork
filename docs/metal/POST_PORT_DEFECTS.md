@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-186 -->
+<!-- next-defect-id: PPD-187 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4662,3 +4662,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Root integration review identified the worker-to-owner state read before native build.
+
+
+## PPD-186 — Material-group admission failure can leave an unbudgeted publication
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex material-group publication
+- Discovered: 2026-11-14
+- Original reference: Published immutable groups require bounded residency; failed admission must withdraw only its own candidate and preserve any newer reentrant publication.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), unfrozen isolated material-group producer. New State.publish followed by native/CPU admission has only an outer bad_alloc catch; unlike the Simple guards retained from PPD165/166, it can leave that exact candidate published after admission OOM. No built/runtime attribution.
+- Next action: Guard post-publish admission with exact candidate/revision cleanup on failure, retaining newer reentrant state. Add actual-owner failure/reentrancy cases; preserve visibility-disabled material admission qualification.
+- Verification: Source-confirmed author review finding recorded before repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Material producer author reported before freeze; bounded exact-owner repair is required.
