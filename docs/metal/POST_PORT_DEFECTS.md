@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-184 -->
+<!-- next-defect-id: PPD-185 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4626,3 +4626,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered before command-bank/group work. Source-row layer is retained as a qualified native mechanism, while scalar default activation is rejected.
+
+
+## PPD-184 — Publication callback copies can discard denied-work retry age
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex dirty-source publication admission
+- Discovered: 2026-11-14
+- Original reference: Optional dirty work must preserve finite retry age under a persistently busy or memory-constrained engine.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), unfrozen isolated publication-budget implementation. SourcePages.freeze copies std::function admission by value per call; the actual app policy captures mutable pendingFrame by value, so the updated age dies with each copy. Shared-pointer test closures initially conceal this. No built/runtime attribution.
+- Next action: Store one shared callback holder per context and invoke its same mutable closure, with reentrant setter lifetime/epoch protection; add a real value-captured retry-age regression.
+- Verification: Source-confirmed new implementation defect, registered before repair. No execution claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Backend author reported before freeze; finite-progress repair is required before integration.
