@@ -92,7 +92,10 @@ TEST_CASE("almetal: ordinary cohort seals private static values and exact weak p
         REQUIRE(certificate->matchesOwners(f.cpu,f.resources));
         CHECK_FALSE(certificate->matchesOwners(std::make_shared<CohortCpu>(),f.resources));
         CHECK_FALSE(certificate->matchesOwners(f.cpu,std::make_shared<Resources>()));
-        std::shared_ptr<const void> wrong_alias(f.cpu,&f.cpu->sources);
+        // PPD-192: the first member can share the enclosing object's address.
+        // This negative case needs a genuinely different stored address.
+        std::shared_ptr<const void> wrong_alias(f.cpu,&f.cpu->keys);
+        REQUIRE(wrong_alias.get()!=f.cpu.get());
         CHECK_FALSE(certificate->matchesOwners(wrong_alias,f.resources));
         const auto original_key=certificate->key(0);const auto original_count=certificate->source(0).index_count;
         const auto original_uv=certificate->source(0).texture_matrix[12];

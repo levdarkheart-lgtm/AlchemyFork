@@ -1591,7 +1591,7 @@ TEST_CASE("Actual material cohort admission rejects mutable scope and keeps whol
     CHECK_FALSE(f.group_dependencies);CHECK_FALSE(f.group_layout);
 }
 
-TEST_CASE("Actual material cohort native tables outlive CPU descriptors and preserve an encoded old generation",
+TEST_CASE("Actual direct material cohort native resources outlive CPU descriptors and preserve an encoded old generation",
           "[almetal][pipeline-buffer-publication][native-material-group][native-tuple]")
 {
     for(U32 family:{1u,2u})
@@ -1608,10 +1608,14 @@ TEST_CASE("Actual material cohort native tables outlive CPU descriptors and pres
         auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
         auto expected_target=renderer->render(f.scene(capture),&f.error);INFO(f.error);REQUIRE(expected_target);
         const auto expected_image=f.read(*expected_target);
+        const auto cohort_before=renderer->worldCohortStats();
+        const auto resources_before=renderer->worldResourceStats();
         REQUIRE(renderer->beginCommandBatch("Material cohort old native generation",&f.error));
         auto scene=f.scene(capture);scene.material_argument_buffers=true;
         auto target=renderer->render(scene,&f.error);INFO(f.error);REQUIRE(target);
-        CHECK(renderer->worldResourceStats().bound_draws==1);
+        // PPD-193: this mechanism uses ordinary shaders, not argument tables.
+        CHECK(renderer->worldCohortStats().draws==cohort_before.draws+1);
+        CHECK(renderer->worldResourceStats().bound_draws==resources_before.bound_draws);
         auto completion=renderer->commandBatchCompletion();REQUIRE(completion);CHECK_FALSE(completion->isComplete());
         scene={};cull.clear();packet.reset();capture.clearDraws();capture.world_resources=std::make_shared<Inputs::WorldResources>();
         f.group->invalidate();f.group_layout.reset();f.group_dependencies.reset();

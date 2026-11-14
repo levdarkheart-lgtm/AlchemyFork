@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-192 -->
+<!-- next-defect-id: PPD-194 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4770,3 +4770,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered after real bank-path correctness/cost proof. No indirect-bank performance/default acceptance.
+
+
+## PPD-192 — Cohort owner-rejection fixture aliases the producer's first member
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex direct cohort native fixture
+- Discovered: 2026-11-14
+- Original reference: Exact type-erased ownership proof requires the original shared control block and stored address; an alias with both equal is indistinguishable from the original owner.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Clean c57b223531 build16/static69046 pass. API/GPU validation cohort suite has4/5 cases passing,969/970 assertions. Its supposed wrong alias is &CohortCpu::sources, the first data member, which has the same address as CohortCpu. matchesOwners correctly accepts the identical address/control block; no production owner-proof defect is established.
+- Next action: Use a distinct non-first-member address, assert that the aliased address differs, and rerun the exact-owner/isolation suite. Preserve independent wrong-control-block, expired-owner and pending-native-generation checks.
+- Verification: Executed fixture failure with source-confirmed alias address mistake; remaining renderer and actual-owner checks are separate.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before correcting the fixture; no viewer crash or rendering regression attributed.
+
+
+## PPD-193 — Material cohort lifetime fixture still requires the displaced argument-table path
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex actual producer cohort fixture
+- Discovered: 2026-11-14
+- Original reference: The retained direct path must preserve actual native-generation lifetime and old pixels; optional argument-table bindings are a different rendering mechanism.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Build16 actual-publication API/GPU suite passes43/44 cases and9419/9421 assertions. The two failures are Legacy/PBR bound_draws==1 expectations in the old-generation lifetime fixture. Cohorts deliberately use ordinary direct shaders even when the resource-table flag is enabled, so their argument-table bound count is zero. Native COW/orphan, CPU graph expiration, pending completion and old-image assertions pass. Separate resource-table and prior-library tests remain required.
+- Next action: Assert accepted direct cohort draws and unchanged resource-table bind counters in this lifetime fixture. Keep all generation-retention, CPU expiration and image assertions and rerun the actual producer suite.
+- Verification: Executed stale mechanism assertion, distinct from a resource lifetime failure or viewer runtime report.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before updating the fixture to prove the actual selected direct-cohort mechanism.
