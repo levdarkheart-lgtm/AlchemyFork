@@ -146,6 +146,7 @@ struct Capture
 {
     bool frame_active=true,pass_active=true,complete=true;
     bool legacy_glow=false,water_exclusion=false;
+    bool impostor_alpha_active=false,world_post_deferred_active=false;
     bool impostor_fullbright=false,impostor_shiny=false,impostor_emboss=false;
     bool alpha_mask=false,rigged=false;
     bool material_normal_map=false,material_specular_map=false,pbr_glow=false;

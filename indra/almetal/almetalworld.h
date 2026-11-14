@@ -28,6 +28,8 @@ struct ALMetalWorldModernSkyScene;
 class ALMetalShadowSourceRecord;
 class ALMetalPreparedWorldView;
 class ALMetalWorldVisibilityView;
+class ALMetalWorldMaterialSource;
+class ALMetalWorldMaterialDataCache;
 
 // Ordinary probe scratch/filter output and manager publication must agree on
 // storage: the publication blit copies bytes and does not convert formats.
@@ -470,24 +472,40 @@ struct ALMetalWorldSimpleBatch
 
     MaterialSlots& materialSlots()
     {
+        if (mSealedMaterialSlots)
+        {
+            mMaterialSlots = *mSealedMaterialSlots;
+            mSealedMaterialSlots.reset();
+            native_material_source.reset();
+        }
         if (!mMaterialSlots) mMaterialSlots.emplace();
         return *mMaterialSlots;
     }
     const MaterialSlots& materialSlots() const noexcept
     {
         static const MaterialSlots defaults;
-        return mMaterialSlots ? *mMaterialSlots : defaults;
+        return mSealedMaterialSlots ? *mSealedMaterialSlots : mMaterialSlots ? *mMaterialSlots : defaults;
     }
     PBRSlots& pbrSlots()
     {
+        if (mSealedPBRSlots)
+        {
+            mPBRSlots = *mSealedPBRSlots;
+            mSealedPBRSlots.reset();
+            native_material_source.reset();
+        }
         if (!mPBRSlots) mPBRSlots.emplace();
         return *mPBRSlots;
     }
     const PBRSlots& pbrSlots() const noexcept
     {
         static const PBRSlots defaults;
-        return mPBRSlots ? *mPBRSlots : defaults;
+        return mSealedPBRSlots ? *mSealedPBRSlots : mPBRSlots ? *mPBRSlots : defaults;
     }
+
+    // Valid only with this batch's private sealed table identity and matching
+    // scalar modes/counts. Manual or mutated batches retain ordinary packing.
+    std::shared_ptr<const ALMetalWorldMaterialSource> native_material_source;
 
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
@@ -621,6 +639,33 @@ struct ALMetalWorldSimpleBatch
 private:
     std::optional<MaterialSlots> mMaterialSlots;
     std::optional<PBRSlots> mPBRSlots;
+    // Publication clones the authored optional value. Previously returned
+    // mutable references still refer to the retained optional storage, never
+    // to this immutable certificate; later mutable access detaches it.
+    std::shared_ptr<const MaterialSlots> mSealedMaterialSlots;
+    std::shared_ptr<const PBRSlots> mSealedPBRSlots;
+    friend class ALMetalWorldMaterialSource;
+};
+
+// Immutable stable G-buffer material uniforms, shared across main/probe views.
+// Publication leaves the prototype unchanged on failure and seals/installs
+// native_material_source only after every required native buffer succeeds.
+class ALMetalWorldMaterialSource final
+{
+public:
+    static std::shared_ptr<const ALMetalWorldMaterialSource> publish(
+        const ALMetalDevice&, ALMetalWorldSimpleBatch& mutable_prototype,
+        ALMetalWorldMaterialDataCache&, std::string* error = nullptr);
+    ~ALMetalWorldMaterialSource();
+    bool matches(const ALMetalWorldSimpleBatch&) const noexcept;
+    std::shared_ptr<const ALMetalBuffer> materialLease() const noexcept;
+    // The existing PBR ABI carries the normal-target format in config[2].
+    // Both immutable variants are published once; account both leases.
+    std::shared_ptr<const ALMetalBuffer> pbrLease(bool normal_hdr = false) const noexcept;
+private:
+    struct Impl;
+    explicit ALMetalWorldMaterialSource(std::unique_ptr<Impl>);
+    std::unique_ptr<Impl> mImpl;
 };
 
 // Legacy edit-face and touch highlights are rendered after the ordered world

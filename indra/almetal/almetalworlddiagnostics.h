@@ -21,6 +21,11 @@ struct ALMetalWorldConstantStats
 {
     std::uint64_t bindings = 0;
     std::uint64_t reused_bindings = 0;
+    // Accepted legacy/PBR G-buffer draw commands using sealed native tables
+    // versus dynamic packing (including absent or mismatched source records).
+    // Terrain/other families are excluded; these are not GPU invocation counts.
+    std::uint64_t material_source_draws = 0;
+    std::uint64_t material_source_fallback_draws = 0;
 };
 
 enum class ALMetalWorldPostFamily : std::size_t

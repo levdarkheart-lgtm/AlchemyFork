@@ -2997,6 +2997,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ordinary.admitted_groups << '/' << ordinary.deferred_attempts << '/' << ordinary.required_steps
                 << ", hero(admitted/deferred/required)=" << hero.admitted_groups << '/' << hero.deferred_attempts << '/' << hero.required_steps
                 << LL_ENDL;
+            const auto material_data = ALScenePublicationNative::materialDataStats();
+            LL_INFOS("MetalScene") << "Native persistent material data: source_records/fallbacks="
+                << ALScenePublicationNative::material_source_publications << '/' << ALScenePublicationNative::material_source_fallbacks
+                << ", buffers/bytes/hits/failures/entries=" << material_data.publications << '/' << material_data.published_bytes
+                << '/' << material_data.hits << '/' << material_data.failures << '/' << material_data.entries
+                << ", main_native/dynamic_draws=" << constants.material_source_draws << '/' << constants.material_source_fallback_draws
+                << ", probe_native/dynamic_draws=" << probe_constants.material_source_draws << '/' << probe_constants.material_source_fallback_draws
+                << LL_ENDL;
             const auto publication = LLImageGL::metalPublicationStats();
             const auto uploads = LLVertexBuffer::metalUploadStats();
             LL_INFOS("MetalMemory")
@@ -17296,6 +17304,7 @@ LLPipeline::~LLPipeline()
 void LLPipeline::cleanup()
 {
     sNativeSceneSources.clear();
+    ALScenePublicationNative::clearMaterialDataCache();
     sNativeSceneVisibility.reset();
     sNativeSceneVisibilityDevice = nullptr;
     mSky.cleanup();

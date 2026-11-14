@@ -9,6 +9,7 @@
 #include "alnativesourceworkingset.h"
 #include "almetalshadowprepare.h"
 #include "almetalworldvisibility.h"
+#include "almetalworldmaterialdata.h"
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -19,12 +20,19 @@
 namespace ALScenePublicationNative
 {
 enum class WorldFamily : U8 { simple, legacy, pbr };
+inline std::unique_ptr<ALMetalWorldMaterialDataCache> material_data_cache;
+inline U64 material_source_publications = 0, material_source_fallbacks = 0;
+inline void clearMaterialDataCache() noexcept { material_data_cache.reset(); }
+inline ALMetalWorldMaterialDataCache::Stats materialDataStats() noexcept
+{ return material_data_cache ? material_data_cache->stats() : ALMetalWorldMaterialDataCache::Stats{}; }
+
 
 struct WorldFlavor
 {
     WorldFamily family = WorldFamily::simple;
     bool indexed_textures = false, indexed_materials = false;
     bool visibility_bounds = false;
+    bool native_materials = true;
     bool normal_map = false, specular_map = false;
     bool alpha_mask = false, rigged = false, pbr_glow = false;
     bool impostor_fullbright = false, impostor_shiny = false, impostor_emboss = false;
@@ -36,7 +44,7 @@ struct WorldFlavor
             (U64(specular_map) << 5) | (U64(alpha_mask) << 6) |
             (U64(rigged) << 7) | (U64(pbr_glow) << 8) |
             (U64(impostor_fullbright) << 9) | (U64(impostor_shiny) << 10) |
-            (U64(impostor_emboss) << 11) | (U64(visibility_bounds) << 12) | (U64(material_alpha_mode) << 32);
+            (U64(impostor_emboss) << 11) | (U64(visibility_bounds) << 12) | (U64(native_materials && family != WorldFamily::simple) << 13) | (U64(material_alpha_mode) << 32);
     }
 };
 
@@ -398,6 +406,36 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         variant.key = key;
         if (!buildWorld(info, flavor, *value, variant.prototype))
             return {{}, nullptr, "Native scene world material/layout is incomplete"};
+        if (flavor.native_materials && flavor.family != WorldFamily::simple)
+        {
+            // Optional native table publication never removes required draws.
+            // Failures preserve the existing native per-view packing path.
+            try
+            {
+                // Reserve accounting before publication mutates the staged
+                // prototype, keeping optional OOM fallback transactional.
+                value->resources.reserve(value->resources.size() + 3);
+                auto* device = LLImageGL::getMetalDevice();
+                if (device)
+                {
+                    if (!material_data_cache || !material_data_cache->belongsTo(*device))
+                        material_data_cache = std::make_unique<ALMetalWorldMaterialDataCache>(*device);
+                    auto source = ALMetalWorldMaterialSource::publish(*device, variant.prototype, *material_data_cache);
+                    if (source)
+                    {
+                        const auto retain = [&](std::shared_ptr<const ALMetalBuffer> lease)
+                        { if (lease) account(*value, lease, lease->length()); };
+                        retain(source->materialLease());
+                        retain(source->pbrLease(false));
+                        retain(source->pbrLease(true));
+                        ++material_source_publications;
+                    }
+                    else ++material_source_fallbacks;
+                }
+                else ++material_source_fallbacks;
+            }
+            catch (const std::bad_alloc&) { ++material_source_fallbacks; }
+        }
         if (!publish(info, value, working_set, frame))
             return {{}, nullptr, "Native scene producer changed while sealing"};
         const auto* prototype = &value->worlds.back().prototype;

@@ -97,6 +97,10 @@ void LLPipeline::captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 f
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     ALScenePublicationNative::WorldFlavor flavor;
     flavor.visibility_bounds = native_visibility();
+    // Forward/alpha passes have their own lighting ABI. Publish stable tables
+    // for the ordinary G-buffer consumer, including opaque impostor bakes.
+    flavor.native_materials = !capture.impostor_alpha_active &&
+        !capture.world_post_deferred_active && !capture.pbr_glow;
     flavor.family = static_cast<ALScenePublicationNative::WorldFamily>(family);
     flavor.indexed_textures = family == 0 && indexed;
     flavor.indexed_materials = family != 0 && indexed;

@@ -64,6 +64,8 @@ struct ALMetalWorldPreparedRecord
     enum class Family : std::uint8_t { simple, terrain, impostor };
     Family family = Family::simple;
     std::size_t offset = 0, length = 0;
+    // A zero table length with an active material/PBR family means the batch
+    // has a matched immutable native material source, not an inline table.
     std::size_t material_offset = 0, material_length = 0;
     std::size_t pbr_offset = 0, pbr_length = 0;
     bool avatar = false, rigged = false, bump = false, material = false, pbr = false;

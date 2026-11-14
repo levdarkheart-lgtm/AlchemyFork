@@ -120,6 +120,7 @@ target_sources(
     almetaluirenderer.cpp
     almetalworld.cpp
     almetalworldvisibility.mm
+    almetalworldmaterialdata.mm
     almetalworldprepare.mm
     almetalworlddiagnostics.cpp
   PUBLIC
@@ -151,6 +152,7 @@ target_sources(
       almetaluirenderer.h
       almetalworld.h
       almetalworldvisibility.h
+      almetalworldmaterialdata.h
       almetalworldprepare.h
       almetalworlddiagnostics.h
       almetalshadowprepare.h
@@ -234,6 +236,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_completion_test.mm tests/almetal_world_data_test.mm
             tests/almetal_submission_owner_test.mm
             tests/almetal_world_visibility_test.mm
+            tests/almetal_world_material_source_test.mm
             tests/almetal_world_source_owner_test.mm
             tests/almetal_world_prepare_test.mm
             tests/almetal_borrowed_target_test.mm
@@ -361,3 +364,5 @@ configure_file(almetalworldvisibilitysource.h.in "${CMAKE_CURRENT_BINARY_DIR}/al
 set_source_files_properties(tests/almetal_world_visibility_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
 set_source_files_properties(tests/almetal_world_source_owner_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+
+set_source_files_properties(tests/almetal_world_material_source_test.mm almetalworldmaterialdata.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

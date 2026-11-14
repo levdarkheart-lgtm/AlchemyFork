@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-151 -->
+<!-- next-defect-id: PPD-153 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3924,3 +3924,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before splitting CPU-ready and native-completion ownership. Unique strong ownership is a backstop; caller must establish joined/quiescent CPU consumers, not race a weak-reader lock.
 
 - 2026-11-14 repair attempt for PPD150: Split native resource ownership and add owner-only CPU storage reclamation. Empty/sky-only inputs may legitimately have a null native resource lease; renderer retention now checks nonnull before retainUntilCompletion, preserving successful empty clear. Actual delayed-GPU and empty prepared rendering tests are required before acceptance.
+
+
+## PPD-151 — Compaction byte assertion omitted real query-uniform publication
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native publication validation
+- Discovered: 2026-11-14
+- Original reference: Actual frame-data published bytes include both prepared geometry constants and ordered query constants.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). compaction-cpu-retirement-correctness-1 exit42:11/12cases and1473/1475assertions pass; both failures are8416publishedbytes versus7968preparedspan.
+- Next action: Independently measure native query-only publication for the same four query inputs, then assert the geometry portion equals compacted span; retain exact pixel/query/3200byte-saving assertions.
+- Verification: The448byte difference is four112byte query constant publications. Warming a previous command does not remove command-local query publication. Rendering/lifetime/reclaim assertions pass; this is fixture accounting, not a proven renderer over-upload bug.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered actual failed receipt before correcting the independent accounting baseline.
+
+
+## PPD-152 — Stable material constants were still rebuilt and published for every view
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex persistent native material publication
+- Discovered: 2026-11-14
+- Original reference: Original architecture publishes stable geometry/material data from dirty owners once; main/probe views consume immutable native resources while camera/pose/UV values stay per-view.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Shared factory caches material prototypes, but direct/prepared G-buffer paths still repack/publish the same material/PBR constant tables on each consuming view.
+- Next action: Publish sealed immutable native material/PBR uniform tables at source revision, reuse exact shared buffers through a bounded weak content cache, consume those tables from scalar/prepared world rendering and preserve untrusted/direct native fallback and per-view state. Validate actual publication reuse, edits/COW, all native outputs and whole mechanism cost.
+- Verification: Material/PBR constant builders depend on stable batch/material inputs; current publication stops at CPU templates. This is a remaining original GPU-publication boundary, not a claimed measured viewer regression.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered remaining stable GPU material-table work before implementation; no shader, texture quality, draw/query order or rendering backend change authorized by this record alone.

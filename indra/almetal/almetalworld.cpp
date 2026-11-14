@@ -11,6 +11,7 @@
 #include "almetalworld.h"
 #include "almetalworldprepare.h"
 #include "almetalworldvisibility.h"
+#include "almetalworldmaterialdata.h"
 #include "almetalshadowindirect.h"
 #include "almetalshadowmaterials.h"
 #include "almetalshadowprepare.h"
@@ -8716,6 +8717,160 @@ WorldPBRConstants buildWorldPBRConstants(const ALMetalWorldGBufferScene& scene,
     pbr_constants.config[2] = scene.normal_hdr ? 1u : 0u;
     return pbr_constants;
 }
+
+bool validateWorldMaterialTables(const ALMetalWorldSimpleBatch& batch,
+    bool material_normal_map, bool material_specular_map, std::string* error)
+{
+    if (batch.material_slot_count > ALMetalWorldSimpleBatch::max_material_slots ||
+        batch.pbr_slot_count > ALMetalWorldSimpleBatch::max_material_slots)
+    {
+        setError(error, "Metal world stable material count is invalid");
+        return false;
+    }
+    for (std::uint32_t slot = 0;
+         slot < batch.material_slot_count; ++slot)
+    {
+        const ALMetalWorldMaterialSlot& material_slot =
+            batch.materialSlots()[slot];
+        if (!finiteValues(material_slot.specular_color, 4) ||
+            !std::isfinite(material_slot.env_intensity) ||
+            !std::isfinite(material_slot.alpha_cutoff) ||
+            !std::isfinite(material_slot.fullbright) ||
+            (material_normal_map !=
+             (material_slot.normal_texture != nullptr)) ||
+            (material_specular_map !=
+             (material_slot.specular_texture != nullptr)) ||
+            (material_normal_map &&
+             !sampleableTexture(material_slot.normal_texture)) ||
+            (material_specular_map &&
+             !sampleableTexture(material_slot.specular_texture)))
+        {
+            setError(error, "Metal world material slot is invalid");
+            return false;
+        }
+    }
+    for (std::uint32_t slot = 0; slot < batch.pbr_slot_count; ++slot)
+    {
+        const ALMetalWorldPBRSlot& pbr_slot = batch.pbrSlots()[slot];
+        if (!sampleableTexture(pbr_slot.normal_texture) ||
+            !sampleableTexture(pbr_slot.orm_texture) ||
+            !sampleableTexture(pbr_slot.emissive_texture) ||
+            !finiteValues(&pbr_slot.texture_transform[0][0], 32) ||
+            !finiteValues(pbr_slot.emissive_color, 4) ||
+            !std::isfinite(pbr_slot.roughness_factor) ||
+            !std::isfinite(pbr_slot.metallic_factor) ||
+            !std::isfinite(pbr_slot.alpha_cutoff) ||
+            pbr_slot.roughness_factor < 0.f ||
+            pbr_slot.roughness_factor > 1.f ||
+            pbr_slot.metallic_factor < 0.f ||
+            pbr_slot.metallic_factor > 1.f ||
+            pbr_slot.alpha_cutoff < -1.f ||
+            pbr_slot.alpha_cutoff > 1.f)
+        {
+            setError(error, "Metal world PBR slot is invalid");
+            return false;
+        }
+    }
+    return true;
+}
+}
+
+struct ALMetalWorldMaterialSource::Impl
+{
+    std::shared_ptr<const ALMetalWorldSimpleBatch::MaterialSlots> material_slots;
+    std::shared_ptr<const ALMetalWorldSimpleBatch::PBRSlots> pbr_slots;
+    std::shared_ptr<const ALMetalBuffer> material;
+    std::array<std::shared_ptr<const ALMetalBuffer>, 2> pbr;
+    void* device = nullptr;
+    std::uint32_t texture_count = 0, material_count = 0, pbr_count = 0, material_alpha_mode = 0;
+    bool alpha_mask = false;
+};
+ALMetalWorldMaterialSource::ALMetalWorldMaterialSource(std::unique_ptr<Impl> impl) : mImpl(std::move(impl)) {}
+ALMetalWorldMaterialSource::~ALMetalWorldMaterialSource() = default;
+bool ALMetalWorldMaterialSource::matches(const ALMetalWorldSimpleBatch& batch) const noexcept
+{
+    return !batch.terrain && !batch.impostor &&
+        batch.texture_count == mImpl->texture_count &&
+        batch.material_slot_count == mImpl->material_count &&
+        batch.pbr_slot_count == mImpl->pbr_count &&
+        batch.material_alpha_mode == mImpl->material_alpha_mode &&
+        batch.alpha_mask == mImpl->alpha_mask &&
+        batch.mSealedMaterialSlots == mImpl->material_slots &&
+        batch.mSealedPBRSlots == mImpl->pbr_slots;
+}
+std::shared_ptr<const ALMetalBuffer> ALMetalWorldMaterialSource::materialLease() const noexcept { return mImpl->material; }
+std::shared_ptr<const ALMetalBuffer> ALMetalWorldMaterialSource::pbrLease(bool normal_hdr) const noexcept { return mImpl->pbr[normal_hdr ? 1 : 0]; }
+
+std::shared_ptr<const ALMetalWorldMaterialSource> ALMetalWorldMaterialSource::publish(
+    const ALMetalDevice& device, ALMetalWorldSimpleBatch& prototype,
+    ALMetalWorldMaterialDataCache& cache, std::string* error)
+try
+{
+    if (!cache.belongsTo(device))
+    {
+        setError(error, "Metal world material cache belongs to another device");
+        return {};
+    }
+    if (prototype.native_material_source && prototype.native_material_source->matches(prototype) &&
+        prototype.native_material_source->mImpl->device == device.nativeHandle())
+        return prototype.native_material_source;
+    const bool material = prototype.material_slot_count != 0;
+    const bool pbr = prototype.pbr_slot_count != 0;
+    if (material == pbr || prototype.terrain || prototype.impostor ||
+        prototype.texture_count != (material ? prototype.material_slot_count : prototype.pbr_slot_count) ||
+        (material && (prototype.material_alpha_mode > 3 || prototype.alpha_mask)) ||
+        (pbr && prototype.material_alpha_mode != 0))
+    {
+        setError(error, "Metal world material source family/count is invalid");
+        return {};
+    }
+    const bool normal = materialHasNormalMap(prototype), specular = materialHasSpecularMap(prototype);
+    if (!validateWorldMaterialTables(prototype, normal, specular, error)) return {};
+    auto impl = std::make_unique<Impl>();
+    impl->device = device.nativeHandle();
+    impl->texture_count = prototype.texture_count;
+    impl->material_count = prototype.material_slot_count;
+    impl->pbr_count = prototype.pbr_slot_count;
+    impl->material_alpha_mode = prototype.material_alpha_mode;
+    impl->alpha_mask = prototype.alpha_mask;
+    // Clone before certifying. Old mutable references remain backed by the
+    // authored optional values in prototype and cannot reach these snapshots.
+    if (material) impl->material_slots = std::make_shared<const ALMetalWorldSimpleBatch::MaterialSlots>(
+        static_cast<const ALMetalWorldSimpleBatch&>(prototype).materialSlots());
+    if (pbr) impl->pbr_slots = std::make_shared<const ALMetalWorldSimpleBatch::PBRSlots>(
+        static_cast<const ALMetalWorldSimpleBatch&>(prototype).pbrSlots());
+    ALMetalWorldSimpleBatch staged = prototype;
+    staged.mSealedMaterialSlots = impl->material_slots;
+    staged.mSealedPBRSlots = impl->pbr_slots;
+    ALMetalWorldGBufferScene scene;
+    if (material)
+    {
+        const auto constants = buildWorldMaterialConstants(scene, staged, normal, specular);
+        impl->material = cache.getOrPublish(std::as_bytes(std::span(&constants, 1)),
+            "Alchemy immutable legacy material uniforms", error);
+        if (!impl->material) return {};
+    }
+    if (pbr)
+    {
+        for (unsigned hdr = 0; hdr < 2; ++hdr)
+        {
+            scene.normal_hdr = hdr != 0;
+            const auto constants = buildWorldPBRConstants(scene, staged);
+            impl->pbr[hdr] = cache.getOrPublish(std::as_bytes(std::span(&constants, 1)),
+                "Alchemy immutable PBR material uniforms", error);
+            if (!impl->pbr[hdr]) return {};
+        }
+    }
+    auto result = std::shared_ptr<const ALMetalWorldMaterialSource>(new ALMetalWorldMaterialSource(std::move(impl)));
+    prototype.mSealedMaterialSlots = result->mImpl->material_slots;
+    prototype.mSealedPBRSlots = result->mImpl->pbr_slots;
+    prototype.native_material_source = result;
+    return result;
+}
+catch (const std::bad_alloc&)
+{
+    if (error) error->clear();
+    return {};
 }
 
 bool alMetalValidateWorldView(const ALMetalWorldGBufferScene& scene, std::string* error)
@@ -9017,50 +9172,9 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
         setError(error, "Metal world simple batch is invalid");
         return false;
     }
-    for (std::uint32_t slot = 0;
-         slot < batch.material_slot_count; ++slot)
-    {
-        const ALMetalWorldMaterialSlot& material_slot =
-            batch.materialSlots()[slot];
-        if (!finiteValues(material_slot.specular_color, 4) ||
-            !std::isfinite(material_slot.env_intensity) ||
-            !std::isfinite(material_slot.alpha_cutoff) ||
-            !std::isfinite(material_slot.fullbright) ||
-            (material_normal_map !=
-             (material_slot.normal_texture != nullptr)) ||
-            (material_specular_map !=
-             (material_slot.specular_texture != nullptr)) ||
-            (material_normal_map &&
-             !sampleableTexture(material_slot.normal_texture)) ||
-            (material_specular_map &&
-             !sampleableTexture(material_slot.specular_texture)))
-        {
-            setError(error, "Metal world material slot is invalid");
-            return false;
-        }
-    }
-    for (std::uint32_t slot = 0; slot < batch.pbr_slot_count; ++slot)
-    {
-        const ALMetalWorldPBRSlot& pbr_slot = batch.pbrSlots()[slot];
-        if (!sampleableTexture(pbr_slot.normal_texture) ||
-            !sampleableTexture(pbr_slot.orm_texture) ||
-            !sampleableTexture(pbr_slot.emissive_texture) ||
-            !finiteValues(&pbr_slot.texture_transform[0][0], 32) ||
-            !finiteValues(pbr_slot.emissive_color, 4) ||
-            !std::isfinite(pbr_slot.roughness_factor) ||
-            !std::isfinite(pbr_slot.metallic_factor) ||
-            !std::isfinite(pbr_slot.alpha_cutoff) ||
-            pbr_slot.roughness_factor < 0.f ||
-            pbr_slot.roughness_factor > 1.f ||
-            pbr_slot.metallic_factor < 0.f ||
-            pbr_slot.metallic_factor > 1.f ||
-            pbr_slot.alpha_cutoff < -1.f ||
-            pbr_slot.alpha_cutoff > 1.f)
-        {
-            setError(error, "Metal world PBR slot is invalid");
-            return false;
-        }
-    }
+    if ((!batch.native_material_source || !batch.native_material_source->matches(batch)) &&
+        !validateWorldMaterialTables(batch, material_normal_map, material_specular_map, error))
+        return false;
     if (!rangeFits(batch.position_offset, batch.vertex_count,
                    float4_stride, batch.vertices->length()) ||
         !rangeFits(batch.normal_offset, batch.vertex_count,
@@ -9191,8 +9305,9 @@ bool alMetalLayoutWorldRecord(const ALMetalWorldSimpleBatch& batch,
     }
     if (!batch.impostor && !batch.terrain)
     {
-        record.material_length = batch.material_slot_count ? sizeof(WorldMaterialConstants) : 0;
-        record.pbr_length = batch.pbr_slot_count ? sizeof(WorldPBRConstants) : 0;
+        const bool stable_tables = batch.native_material_source && batch.native_material_source->matches(batch);
+        record.material_length = batch.material_slot_count && !stable_tables ? sizeof(WorldMaterialConstants) : 0;
+        record.pbr_length = batch.pbr_slot_count && !stable_tables ? sizeof(WorldPBRConstants) : 0;
         if (!append(record.material_length, record.material_offset) ||
             !append(record.pbr_length, record.pbr_offset))
         {
@@ -9224,10 +9339,17 @@ bool alMetalPrepareWorldRecord(const ALMetalWorldGBufferScene& scene, std::size_
     record.material_normal_map = materialHasNormalMap(batch);
     record.material_specular_map = materialHasSpecularMap(batch);
     record.avatar_variant = batch.avatar_rigid ? 0 : (batch.avatar_cloth ? 2 : 1);
+    const bool stable_tables = batch.native_material_source && batch.native_material_source->matches(batch);
+    if ((!stable_tables && record.material && record.material_length != sizeof(WorldMaterialConstants)) ||
+        (!stable_tables && record.pbr && record.pbr_length != sizeof(WorldPBRConstants)))
+    {
+        setError(error, "Prepared material certificate changed after layout");
+        return false;
+    }
     return copy(record.offset, buildWorldSimpleConstants(scene, batch)) &&
-        (!record.material || copy(record.material_offset, buildWorldMaterialConstants(scene, batch,
+        (!record.material || stable_tables || copy(record.material_offset, buildWorldMaterialConstants(scene, batch,
             record.material_normal_map, record.material_specular_map))) &&
-        (!record.pbr || copy(record.pbr_offset, buildWorldPBRConstants(scene, batch)));
+        (!record.pbr || stable_tables || copy(record.pbr_offset, buildWorldPBRConstants(scene, batch)));
 }
 
 std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
@@ -9665,6 +9787,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     std::size_t previous_prepared_world_offset = 0;
     bool have_previous_world_constants = false;
     ALMetalWorldConstantStats constant_stats;
+    // One completion owner avoids adding/scanning an individual command
+    // retainer per draw. Consecutive source repeats need no extra refcount;
+    // the vector is linear even for a view with many distinct materials.
+    std::shared_ptr<std::vector<std::shared_ptr<const ALMetalWorldMaterialSource>>> material_owners;
     const auto bind_world_constants = [&](const void* constants, std::size_t offset)
     {
         if (!mImpl->frame_data)
@@ -9920,6 +10046,21 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         const bool pbr = prepared ? prepared_records[index].pbr : isPBRBatch(batch);
         const bool material_normal_map = prepared ? prepared_records[index].material_normal_map : materialHasNormalMap(batch);
         const bool material_specular_map = prepared ? prepared_records[index].material_specular_map : materialHasSpecularMap(batch);
+        const bool stable_tables = batch.native_material_source && batch.native_material_source->matches(batch);
+        if (stable_tables)
+        {
+            if (!material_owners)
+            {
+                material_owners = std::make_shared<std::vector<std::shared_ptr<const ALMetalWorldMaterialSource>>>();
+                if (!command->retainUntilCompletion(material_owners, error))
+                {
+                    encoded = false;
+                    break;
+                }
+            }
+            if (material_owners->empty() || material_owners->back() != batch.native_material_source)
+                material_owners->push_back(batch.native_material_source);
+        }
         const std::size_t avatar_variant = prepared ? prepared_records[index].avatar_variant :
             batch.avatar_rigid ? 0 : (batch.avatar_cloth ? 2 : 1);
         const ALMetalRenderPipeline* pipeline = avatar
@@ -10009,28 +10150,42 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     material_specular_map
                         ? batch.texcoord2_offset : batch.texcoord_offset,
                     error);
-            std::optional<WorldMaterialConstants> owned_material_constants;
-            if (!prepared) owned_material_constants = buildWorldMaterialConstants(scene, batch, material_normal_map, material_specular_map);
-            const void* material_constants_data = prepared
-                ? prepared_constants.data() + prepared_records[index].material_offset
-                : static_cast<const void*>(&*owned_material_constants);
-            encoded = encoded && (prepared ? bind_prepared_fragment(prepared_records[index].material_offset, sizeof(WorldMaterialConstants), 0)
-                : mImpl->setFragmentData(*encoder, *command,
-                    0, material_constants_data, sizeof(WorldMaterialConstants), error, true));
+            if (stable_tables)
+                encoded = encoded && encoder->setFragmentBuffer(0, *batch.native_material_source->materialLease(), 0, error);
+            else
+            {
+                std::optional<WorldMaterialConstants> owned_material_constants;
+                if (!prepared) owned_material_constants = buildWorldMaterialConstants(scene, batch, material_normal_map, material_specular_map);
+                const void* material_constants_data = prepared
+                    ? prepared_constants.data() + prepared_records[index].material_offset
+                    : static_cast<const void*>(&*owned_material_constants);
+                encoded = encoded && (prepared ? bind_prepared_fragment(prepared_records[index].material_offset, sizeof(WorldMaterialConstants), 0)
+                    : mImpl->setFragmentData(*encoder, *command,
+                        0, material_constants_data, sizeof(WorldMaterialConstants), error, true));
+            }
         }
         if (encoded && pbr)
         {
             encoded = encoder->setVertexBuffer(
                 8, *batch.vertices, batch.tangent_offset, error);
-            std::optional<WorldPBRConstants> owned_pbr_constants;
-            if (!prepared) owned_pbr_constants = buildWorldPBRConstants(scene, batch);
-            const void* pbr_constants_data = prepared
-                ? prepared_constants.data() + prepared_records[index].pbr_offset
-                : static_cast<const void*>(&*owned_pbr_constants);
-            encoded = encoded &&
-                (prepared ? bind_prepared(prepared_records[index].pbr_offset, sizeof(WorldPBRConstants), 11, 0)
-                    : mImpl->setVertexAndFragmentData(*encoder, *command,
-                        11, 0, pbr_constants_data, sizeof(WorldPBRConstants), error, true));
+            if (stable_tables)
+            {
+                const auto buffer = batch.native_material_source->pbrLease(scene.normal_hdr);
+                encoded = encoded && encoder->setVertexBuffer(11, *buffer, 0, error) &&
+                    encoder->setFragmentBuffer(0, *buffer, 0, error);
+            }
+            else
+            {
+                std::optional<WorldPBRConstants> owned_pbr_constants;
+                if (!prepared) owned_pbr_constants = buildWorldPBRConstants(scene, batch);
+                const void* pbr_constants_data = prepared
+                    ? prepared_constants.data() + prepared_records[index].pbr_offset
+                    : static_cast<const void*>(&*owned_pbr_constants);
+                encoded = encoded &&
+                    (prepared ? bind_prepared(prepared_records[index].pbr_offset, sizeof(WorldPBRConstants), 11, 0)
+                        : mImpl->setVertexAndFragmentData(*encoder, *command,
+                            11, 0, pbr_constants_data, sizeof(WorldPBRConstants), error, true));
+            }
         }
         for (std::size_t texture_index = 0;
              encoded && texture_index < batch.texture_count;
@@ -10099,6 +10254,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 *batch.indices, batch.index_offset, batch.index_count, error)
             : encoder->drawIndexed(ALMetalPrimitiveType::triangle,
                 batch.index_count, batch.index_type, *batch.indices, batch.index_offset, 1, error));
+        if (encoded && (material || pbr))
+        {
+            if (stable_tables) ++constant_stats.material_source_draws;
+            else ++constant_stats.material_source_fallback_draws;
+        }
     }
 
     encoded = encoded && encoder->setIndexedTriangleJoining(false, error) &&
@@ -10176,6 +10336,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     }
     mImpl->constant_stats.bindings += constant_stats.bindings;
     mImpl->constant_stats.reused_bindings += constant_stats.reused_bindings;
+    mImpl->constant_stats.material_source_draws += constant_stats.material_source_draws;
+    mImpl->constant_stats.material_source_fallback_draws += constant_stats.material_source_fallback_draws;
     transaction.succeeded = true;
     return target;
 }

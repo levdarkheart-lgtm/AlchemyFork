@@ -136,13 +136,27 @@ TEST_CASE("almetal: repeated prepared common ranges restore after terrain and qu
             CHECK(ready->stats().prepared_count==batches.size());
             CHECK(ready->stats().shared_common_records==8);
             CHECK(ready->stats().uncompacted_constant_bytes-ready->stats().constant_bytes==8*400);
+            // Independently measure the real native query publication cost.
+            // Query offsets order CPU replay but are absent from the shader
+            // constants, so an empty scene can publish the identical values.
+            auto query_only_scene=s;
+            auto query_only=queries;
+            for(auto& query:query_only)query.batch_offset=0;
+            query_only_scene.batches=nullptr;query_only_scene.batch_count=0;
+            query_only_scene.visibility_queries=query_only.data();
+            const auto query_before=f.data->stats().published_bytes;
+            auto query_target=f.renderer->render(query_only_scene,&f.error);INFO(f.error);REQUIRE(query_target);
+            const auto query_bytes=f.data->stats().published_bytes-query_before;
+            REQUIRE(query_bytes>0);
             const auto before=f.data->stats();
             auto prepared=f.renderer->renderPrepared(*ready,&f.error,&prepared_queries);INFO(f.error);REQUIRE(prepared);REQUIRE(prepared_queries);
-            // Queries were already published by the direct render in this
-            // same frame, and no palettes are present. This is the actual
-            // native slab upload, not merely a CPU packing statistic.
-            CHECK(f.data->stats().published_bytes-before.published_bytes==ready->stats().constant_bytes);
-            CHECK(f.data->stats().published_bytes-before.published_bytes<ready->stats().uncompacted_constant_bytes);
+            const auto published=f.data->stats().published_bytes-before.published_bytes;
+            REQUIRE(published>=query_bytes);
+            const auto geometry_bytes=published-query_bytes;
+            // No palettes are present. Compare the actual geometry slab
+            // publication separately from the independently measured queries.
+            CHECK(geometry_bytes==ready->stats().constant_bytes);
+            CHECK(geometry_bytes<ready->stats().uncompacted_constant_bytes);
             CHECK(f.read(*prepared)==expected);
             for(unsigned q=0;q<queries.size();++q)
             {

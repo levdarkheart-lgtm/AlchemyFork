@@ -246,3 +246,30 @@ legal for empty prepared clears. Native tests poison/reuse retired CPU vectors
 while GPU is held pending and require exact MRT/depth/stencil/query results.
 No new test results claimed until actual final build/run. Source counter logs
 include compact/original bytes and CPU packet reclamation/refusal.
+
+
+PPD151/152 integration checkpoint: actual69005 native compaction/retirement run
+passes11/12cases,1473/1475assertions; remaining byte assertions omitted448bytes
+of query uniforms. Source test now measures independent query-only publication,
+retains exact geometry/slab saving and pixel/query/lifetime assertions.
+
+The remaining stable material publication boundary is now implemented in source:
+legacy/PBR G-buffer constant tables publish once at source revision into native
+shared buffers, with sealed COW input identity and exact bounded weak content
+reuse. PBR publishes both normal-target formats required by its actual ABI.
+Dynamic camera/UV/poses remain per-view. Direct/prepared G-buffer consumers bind
+certified native tables, while manual/mutated data keeps original validation and
+native packing. Terrain/forward lighting use different/view-dependent ABIs and
+retain those exact paths; factory avoids publishing unused forward-only tables.
+The source working set accounts all native table buffers; cache metadata owns no
+extra resource lease and is reset at device/scene cleanup. Device identity check
+compares captured wrapper+native handles without dereferencing an old wrapper.
+Runtime logs distinguish native table draws from dynamic table draws as well as
+publications/content hits/failures. No source-only success or FPS claim.
+
+New native material-source tests cover packed single/indexed legacy/PBR, both
+normal formats, direct/prepared output, actual publication-byte savings, mutable
+alias sealing, COW edits, pending/abandoned GPU work, stale/manual fallback and
+malformed data. Root owns serialized build/run; all source/test assignments are
+frozen. GPU visibility remains OFF; CPU sharing/native resource lifetime remain
+required regardless of its optional gate.
