@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-189 -->
+<!-- next-defect-id: PPD-190 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4716,3 +4716,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Independent reviewer and command-bank author reported the missing prerequisite before native bank execution.
+
+
+## PPD-189 — Material capture bridge skips invalid direct-probe input
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex material-group capture bridge
+- Discovered: 2026-11-14
+- Original reference: Native probe capture must retain its incomplete-transaction handling when a required draw record is unavailable.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Unfrozen group capture raw lambda skips null DrawInfo like main pools; corresponding direct-probe Legacy/PBR loops mark incomplete and clear. Pipeline glue review found the scope mismatch. No runtime attribution.
+- Next action: Keep main null-skip, but mark incomplete/clear when direct_probe_scene_active; test both scopes and raw/group order.
+- Verification: Source-confirmed new bridge regression registered before repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Producer and glue authors reported before freeze.
