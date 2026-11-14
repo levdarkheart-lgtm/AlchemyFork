@@ -115,6 +115,7 @@ TEST_CASE("Native vertex diagnostic labels follow real stores and completed gene
         positions[0].set(-.5f, -.5f, 0.f, 1.f);
         buffer->setPositionData(positions.data()); buffer->unmapBuffer();
         REQUIRE(buffer->getMetalVertexBuffer()->nativeHandle() != (__bridge void*)first_vertices);
+        id<MTLBuffer> second_vertices = (__bridge id<MTLBuffer>)buffer->getMetalVertexBuffer()->nativeHandle();
         check_label((__bridge id<MTLBuffer>)buffer->getMetalVertexBuffer()->nativeHandle(), @"PASS_SECOND vertex data");
         LL_LABEL_VERTEX_BUFFER(buffer, "PASS_THIRD");
         check_label((__bridge id<MTLBuffer>)buffer->getMetalVertexBuffer()->nativeHandle(), @"PASS_THIRD vertex data");
@@ -123,23 +124,45 @@ TEST_CASE("Native vertex diagnostic labels follow real stores and completed gene
         gGL.frameFences().endFrame(); gGL.frameFences().waitFinished(old_frame);
         CHECK(read(*copy) == initial_bytes);
 
-        // Reuse the now-complete first store. Its old pass label must not leak
-        // back into the newly published current generation.
+        // PPD107: the completed unleased current store needs no orphan.
+        // Its live label changes; the unused retired first store stays labelled
+        // for the pass that last owned it until it is actually recycled.
         positions[1].set(.5f, -.5f, 0.f, 1.f);
+        buffer->setPositionData(positions.data()); buffer->unmapBuffer();
+        CHECK(buffer->getMetalVertexBuffer()->nativeHandle() == (__bridge void*)second_vertices);
+        check_label(second_vertices, @"PASS_THIRD vertex data");
+        check_label(first_vertices, @"PASS_SECOND vertex data");
+        CHECK(read(*buffer->getMetalVertexBuffer()) != initial_bytes);
+
+        // Force the real retirement path with a current-generation CPU lease.
+        // The completed first store is eligible, the leased second is not.
+        auto vertex_lease = buffer->getMetalVertexBufferLease(); REQUIRE(vertex_lease);
+        const auto leased_vertices = read(*vertex_lease);
+        positions[2].set(0.f, .5f, 0.f, 1.f);
         buffer->setPositionData(positions.data()); buffer->unmapBuffer();
         CHECK(buffer->getMetalVertexBuffer()->nativeHandle() == (__bridge void*)first_vertices);
         check_label(first_vertices, @"PASS_THIRD vertex data");
+        check_label(second_vertices, @"PASS_THIRD vertex data");
+        CHECK(read(*vertex_lease) == leased_vertices);
         CHECK(read(*copy) == initial_bytes);
-        CHECK(read(*buffer->getMetalVertexBuffer()) != initial_bytes);
+        CHECK(read(*buffer->getMetalVertexBuffer()) != leased_vertices);
         const std::array<U16, 3> reversed{2,1,0};
         buffer->setIndexData(reversed.data()); buffer->unmapBuffer();
+        CHECK(buffer->getMetalIndexBuffer()->nativeHandle() == (__bridge void*)first_indices);
+        check_label(first_indices, @"PASS_THIRD index data");
+        const auto reversed_bytes = read(*buffer->getMetalIndexBuffer());
+        REQUIRE(reversed_bytes.size() == sizeof(reversed));
+        CHECK(std::memcmp(reversed_bytes.data(), reversed.data(), sizeof(reversed)) == 0);
+        auto index_lease = buffer->getMetalIndexBufferLease(); REQUIRE(index_lease);
+        buffer->setIndexData(indices.data()); buffer->unmapBuffer();
         REQUIRE(buffer->getMetalIndexBuffer()->nativeHandle() != (__bridge void*)first_indices);
         id<MTLBuffer> current_indices = (__bridge id<MTLBuffer>)buffer->getMetalIndexBuffer()->nativeHandle();
         check_label(current_indices, @"PASS_THIRD index data");
         CHECK(buffer->getMetalVertexBuffer()->nativeHandle() == (__bridge void*)first_vertices);
         const auto changed_indices = read(*buffer->getMetalIndexBuffer());
-        REQUIRE(changed_indices.size() == sizeof(reversed));
-        CHECK(std::memcmp(changed_indices.data(), reversed.data(), sizeof(reversed)) == 0);
+        REQUIRE(changed_indices.size() == sizeof(indices));
+        CHECK(std::memcmp(changed_indices.data(), indices.data(), sizeof(indices)) == 0);
+        CHECK(read(*index_lease) == reversed_bytes);
         const auto final_stamp = buffer->getContentStamp();
         const auto final_submissions = ALMetalDevice::committedCommandBufferCount();
         buffer->setLabel(nullptr); buffer->setLabel("");

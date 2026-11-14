@@ -136,11 +136,27 @@ TEST_CASE(
     gGL.frameFences().waitFinished(first_frame);
     CHECK(read_store(*result) == initial_vertices);
 
-    // Completed generations are reused rather than growing without bound.
+    // PPD107: a completed, unleased current store is updated in place. No
+    // unnecessary orphan/recycle should precede that safe publication path.
     REQUIRE(buffer->getVertexStrider(positions));
     positions[1].set(0.5f, 0.f, 0.f);
     buffer->unmapBuffer();
+    CHECK(buffer->getMetalVertexBuffer() == second_vertices);
+    CHECK(read_store(*second_vertices) != updated_vertices);
+    CHECK(read_store(*first_vertices) == initial_vertices);
+
+    // A real unencoded CPU lease excludes that current store from writes.
+    // The already-completed first generation can then be recycled, while
+    // every byte borrowed from the second generation must remain immutable.
+    auto current_lease = buffer->getMetalVertexBufferLease();
+    REQUIRE(current_lease.get() == second_vertices);
+    const auto leased_vertices = read_store(*current_lease);
+    REQUIRE(buffer->getVertexStrider(positions));
+    positions[2].set(0.f, 0.75f, 0.f);
+    buffer->unmapBuffer();
     CHECK(buffer->getMetalVertexBuffer() == first_vertices);
+    CHECK(read_store(*current_lease) == leased_vertices);
+    CHECK(read_store(*buffer->getMetalVertexBuffer()) != leased_vertices);
 
     // Native authority deliberately has no mGLIndices. Resizing must still
     // release the old CPU and Metal index stores before allocating new ones.
