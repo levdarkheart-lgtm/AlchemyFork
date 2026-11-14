@@ -138,3 +138,34 @@ Root adds native library/admission fixtures to CMake; next clean required build1
 and native owner/context/atomic-reload/budget/credit-lifetime gates. No new
 validation is claimed until executed. Command-bank and material-group work
 continues independently; default scalar source-row activation remains rejected.
+
+## Observed shared owner/admission checkpoint13
+
+Main clean4a76fa00b8a7a71b97fc204d92b01bb775dcd9db required doctor/configure/
+build13 all0, build838.085s after common-header rebuild. Static69032 passes346
+ARM64/signature/import/source/media/voice/sixOFFcontrols. Native owner checks0:
+FrameBudget194/14; SourceAdmission311/4; shared-library331/3 and explicit old
+library82/1; region64/5; actualpublish7042/35; GPUrows7165/8; compact1990/8;
+resources12379/7; oldresource4721/1; oldrows283/1; no-layout13/1. Receipts
+frozen-source-build-13.json, built-app-static-13.json,
+native-source-owner-correctness-13.json. These are real contained M1 API/GPU
+validation, not viewer launch or owner FPS evidence.
+
+Next integration candidates are frozen commandbanks86b2d22797 (parenta472,
+8files; addhelper+nativefixture CMake), exact-buffer deviceproof2e77c5f3eb
+(parent013d,3files), and material-group producer/glue currently under combined
+review. New modules unbuilt/untested. Main source checkout stayed frozen while
+notes0c7aa0/05e63bc/7c7214 registerPPD187–189; integrate notes before next
+source freeze so history/IDs stay contiguous. PPD187 now uses copied/pinned
+command keys after callback; PPD188 caches bounded weak native device proof,
+distinct-GPU negative unavailable; PPD189 preserves direct-probe null failure.
+Next190global, root assigns. No defaultactivation/push or finalapp staged.
+
+Active ownership: opaque owns pipeline.cpp group glue only in material-group
+tree; architecture owns group publication/capture/cull/pool+actualowner fixture
+there; residency PPD188 fix is committed/clean in publication-budget tree. Root
+owns all CMake/docs/build/tests/integration. Command-bank tree frozen86b.
+True compact cohort Scene transport is explicitly later; current material-group
+bridge still packs existing per-source refs/candidates, while avoiding LL getter/
+factory/dependency walks and repeated matrices. Do not present bridge as final
+O(groups) rendering or claim CPU-cull/GPU-discovery work already finished.
