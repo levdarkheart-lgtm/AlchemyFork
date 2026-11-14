@@ -166,6 +166,12 @@ void LLSpatialGroup::invalidateMetalGroupPublication() noexcept
 {
     if (mMetalGroupPublication) mMetalGroupPublication->invalidate();
     mMetalGroupLayout.reset();
+    for (auto& [type, cohort] : mMetalMaterialCohorts)
+    {
+        if (cohort.state) cohort.state->invalidate();
+        cohort.layout.reset();
+        cohort.dependencies.reset();
+    }
 }
 
 bool LLSpatialGroup::isHUDGroup() const
@@ -3877,6 +3883,8 @@ void LLCullResult::clear()
 {
     mNativeSimpleRanges.clear();
     mNativeSimpleDrawCount = 0;
+    mNativeMaterialRanges.clear();
+    mNativeMaterialDrawCount.fill(0);
     mVisibleGroupsSize = 0;
     mVisibleGroupsEnd = &mVisibleGroups[0];
 

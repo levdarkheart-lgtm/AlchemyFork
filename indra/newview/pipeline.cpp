@@ -3171,6 +3171,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", captured_groups/draws=" << groups.captured_groups << '/' << groups.captured_draws
                 << ", cpu_source_builds/reuses=" << groups.cpu_source_builds << '/' << groups.cpu_source_reuses
                 << ", resource_union_builds=" << groups.resource_union_builds
+                << ", material_builds/restores=" << groups.material_builds << '/' << groups.material_restores
+                << ", material_admitted_groups/draws=" << groups.material_admitted_groups << '/' << groups.material_admitted_draws
+                << ", material_captured_groups/draws=" << groups.material_captured_groups << '/' << groups.material_captured_draws
                 << ", cpu_layout_cache(entries/rows/estimated_bytes)=" << layouts.layouts << '/' << layouts.rows << '/' << layouts.estimated_bytes
                 << ", cpu_layout_evictions/rejections=" << layouts.evictions << '/' << layouts.rejections << LL_ENDL;
             const auto publication = LLImageGL::metalPublicationStats();
@@ -11178,27 +11181,7 @@ void LLPipeline::captureMetalReflectionProbeScene()
             beginMetalWorldMaterialPass(
                 rigged, pass.alphaMode(), pass.hasNormalMap(),
                 pass.hasSpecularMap());
-            auto* at = beginRenderMap(
-                pass.render_type + (rigged ? 1 : 0));
-            auto* end = endRenderMap(
-                pass.render_type + (rigged ? 1 : 0));
-            for (; at != end; )
-            {
-                LLDrawInfo* info = *at;
-                LLCullResult::increment_iterator(at, end);
-                if (!info)
-                {
-                    capture.markIncomplete(__LINE__);
-                    capture.clearDraws();
-                    break;
-                }
-                captureMetalWorldMaterialBatch(
-                    *info, info->mMaterialSlotList.size() > 1);
-                if (!capture.complete)
-                {
-                    break;
-                }
-            }
+            captureMetalWorldMaterialPass(pass.render_type + (rigged ? 1 : 0));
             endMetalWorldGBufferPass();
             if (!capture.complete)
             {
@@ -11312,25 +11295,7 @@ void LLPipeline::captureMetalReflectionProbeScene()
             break;
         }
         beginMetalWorldPBRPass(pass.rigged, pass.alpha_mask);
-        auto* at = beginRenderMap(pass.type);
-        auto* end = endRenderMap(pass.type);
-        for (; at != end; )
-        {
-            LLDrawInfo* info = *at;
-            LLCullResult::increment_iterator(at, end);
-            if (!info)
-            {
-                capture.markIncomplete(__LINE__);
-                capture.clearDraws();
-                break;
-            }
-            captureMetalWorldPBRBatch(
-                *info, info->mGLTFMaterialList.size() > 1);
-            if (!capture.complete)
-            {
-                break;
-            }
-        }
+        captureMetalWorldPBRPass(pass.type);
         endMetalWorldGBufferPass();
     }
 
@@ -21312,6 +21277,31 @@ const LLMatrix4a* nativeSimpleGroupModel(LLSpatialGroup& group)
         return nullptr;
     return &partition->mRegionp->mRenderMatrix;
 }
+
+bool nativeMaterialGroupFlavor(U32 type, ALScenePublicationNative::WorldFlavor& flavor)
+{
+    // Use the same authoritative ordinary-pass masks as the native pool and
+    // direct-probe consumers. Rigged (+1), blended, glow and special passes
+    // retain their original maps and capture paths.
+    flavor = {};
+    flavor.native_materials = flavor.native_resources = true;
+    for (const auto& pass : LLDrawPoolMaterials::DEFERRED_PASSES)
+    {
+        if (type != pass.render_type) continue;
+        flavor.family = ALScenePublicationNative::WorldFamily::legacy;
+        flavor.normal_map = pass.hasNormalMap();
+        flavor.specular_map = pass.hasSpecularMap();
+        flavor.material_alpha_mode = pass.alphaMode();
+        return true;
+    }
+    if (type == LLRenderPass::PASS_GLTF_PBR || type == LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK)
+    {
+        flavor.family = ALScenePublicationNative::WorldFamily::pbr;
+        flavor.alpha_mask = type == LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK;
+        return true;
+    }
+    return false;
+}
 }
 
 void LLPipeline::postSort(LLCamera &camera)
@@ -21344,11 +21334,12 @@ void LLPipeline::postSort(LLCamera &camera)
     static LLCachedControl<bool> native_group_sources(gSavedSettings, "RenderMetalGroupSources", false);
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     static LLCachedControl<bool> depth_prepass(gSavedSettings, "RenderDepthPrePass", false);
-    const bool native_groups = native_group_sources() && hasRenderType(LLRenderPass::PASS_SIMPLE) &&
+    const bool native_group_view = native_group_sources() &&
         !native_visibility() && !depth_prepass() &&
         !sShadowRender && !sImpostorRender && !sRenderingHUDs && !mRenderDebugMask &&
         !cullingToCutoutSubject() &&
         ((isMainWorldPass() && mRT == &mMainRT) || isMetalProbeFaceCaptureActive());
+    const bool native_groups = native_group_view && hasRenderType(LLRenderPass::PASS_SIMPLE);
 
     // build render map
     for (LLCullResult::sg_iterator i = sCull->beginVisibleGroups(); i != sCull->endVisibleGroups(); ++i)
@@ -21403,6 +21394,47 @@ void LLPipeline::postSort(LLCamera &camera)
                             }
                         }
                         continue;
+                    }
+                }
+            }
+            if (native_group_view)
+            {
+                ALScenePublicationNative::WorldFlavor flavor;
+                const auto cohort = group->mMetalMaterialCohorts.find(j->first);
+                if (cohort != group->mMetalMaterialCohorts.end() &&
+                    nativeMaterialGroupFlavor(j->first, flavor))
+                {
+                    if (nativeSimpleGroupModel(*group))
+                    {
+                        const auto region = group->getSpatialPartition()->mRegionp->nativeModelSnapshot();
+                        try
+                        {
+                            auto packet = ALSceneGroupPublicationNative::currentMaterial(
+                                cohort->second.state, region, flavor, sNativeSceneSources, gFrameCount);
+                            if (packet && packet->sources.size() == src_vec.size() &&
+                                packet->keyed_sources.size() == src_vec.size() && packet->native_tuple &&
+                                packet->sources.size() <= std::numeric_limits<U32>::max() &&
+                                sCull->pushNativeMaterialRange(j->first, packet,
+                                    static_cast<U32>(packet->sources.size()), region))
+                            {
+                                ++ALSceneGroupPublicationNative::statistics.hits;
+                                ++ALSceneGroupPublicationNative::statistics.admitted_groups;
+                                ALSceneGroupPublicationNative::statistics.admitted_draws += packet->sources.size();
+                                ++ALSceneGroupPublicationNative::statistics.material_admitted_groups;
+                                ALSceneGroupPublicationNative::statistics.material_admitted_draws += packet->sources.size();
+                                if (!sShadowRender && !gCubeSnapshot)
+                                {
+                                    U64 remaining = packet->index_count;
+                                    while (remaining)
+                                    {
+                                        const auto count = static_cast<S32>(std::min<U64>(remaining, std::numeric_limits<S32>::max()));
+                                        addTrianglesDrawn(count);remaining -= count;
+                                    }
+                                }
+                                continue; // Only a whole accepted range replaces raw rows.
+                            }
+                        }
+                        catch (const std::bad_alloc&) { ++ALSceneGroupPublicationNative::statistics.failures; }
                     }
                 }
             }
@@ -21592,7 +21624,7 @@ void LLPipeline::postSort(LLCamera &camera)
     }
 
     LLVertexBuffer::flushBuffers();
-    if (native_groups)
+    if (native_group_view)
     {
         // Mesh fills can be deferred until this point. Seal only complete
         // native tuples for a later view, retaining this view's admitted raw
@@ -21608,15 +21640,33 @@ void LLPipeline::postSort(LLCamera &camera)
             const auto* model = nativeSimpleGroupModel(*group);
             if (!model) continue;
             const auto draws = group->mDrawMap.find(LLRenderPass::PASS_SIMPLE);
-            if (draws == group->mDrawMap.end() || draws->second.empty()) continue;
-            try
+            if (native_groups && draws != group->mDrawMap.end() && !draws->second.empty())
             {
-                const auto& state = group->metalGroupPublication();
-                if (state->dirty())
-                    ALSceneGroupPublicationNative::seal(state, group->mMetalGroupDependencies, group->mMetalGroupLayout, *model, draws->second,
-                        sNativeSceneSources, sNativeSceneSerial, gFrameCount);
+                try
+                {
+                    const auto& state = group->metalGroupPublication();
+                    if (state->dirty())
+                        ALSceneGroupPublicationNative::seal(state, group->mMetalGroupDependencies, group->mMetalGroupLayout, *model, draws->second,
+                            sNativeSceneSources, sNativeSceneSerial, gFrameCount);
+                }
+                catch (const std::bad_alloc&) { ++ALSceneGroupPublicationNative::statistics.failures; }
             }
-            catch (const std::bad_alloc&) { ++ALSceneGroupPublicationNative::statistics.failures; }
+            const auto region = group->getSpatialPartition()->mRegionp->nativeModelSnapshot();
+            for (const auto& [type, sources] : group->mDrawMap)
+            {
+                ALScenePublicationNative::WorldFlavor flavor;
+                if (sources.empty() || !hasRenderType(type) || !nativeMaterialGroupFlavor(type, flavor)) continue;
+                try
+                {
+                    auto& cohort = group->mMetalMaterialCohorts[type];
+                    if (!cohort.state) cohort.state = std::make_shared<ALNativePublication::State>();
+                    if (cohort.state->dirty())
+                        ALSceneGroupPublicationNative::sealMaterial(cohort.state, cohort.dependencies,
+                            cohort.layout, *model, region, sources, flavor,
+                            sNativeSceneSources, sNativeSceneSerial, gFrameCount);
+                }
+                catch (const std::bad_alloc&) { ++ALSceneGroupPublicationNative::statistics.failures; }
+            }
         }
     }
     // LLSpatialGroup::sNoDelete = false;

@@ -1075,6 +1075,9 @@ public:
         ALMetalWorldLegacyAlphaLighting& lighting);
     void captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 family, bool indexed, bool editable = false);
     void captureMetalWorldSimplePass();
+    void captureMetalWorldMaterialPass(U32 type);
+    void captureMetalWorldPBRPass(U32 type);
+    void captureMetalWorldPublishedPass(U32 type, U32 family);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures, bool editable = false);
     void captureMetalReflectionProbeScene();

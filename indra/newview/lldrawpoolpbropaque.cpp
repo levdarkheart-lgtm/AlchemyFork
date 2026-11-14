@@ -55,18 +55,7 @@ static void capture_metal_pbr_batches(
     U32 type, bool rigged, bool alpha_mask)
 {
     gPipeline.beginMetalWorldPBRPass(rigged, alpha_mask);
-    auto* at = gPipeline.beginRenderMap(type);
-    auto* end = gPipeline.endRenderMap(type);
-    while (at != end)
-    {
-        LLDrawInfo* info = *at;
-        LLCullResult::increment_iterator(at, end);
-        if (info)
-        {
-            gPipeline.captureMetalWorldPBRBatch(
-                *info, info->mGLTFMaterialList.size() > 1);
-        }
-    }
+    gPipeline.captureMetalWorldPBRPass(type);
     gPipeline.endMetalWorldGBufferPass();
 }
 

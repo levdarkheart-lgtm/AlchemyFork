@@ -82,6 +82,54 @@ try
 }
 catch (const std::bad_alloc&) { failSourceRowsMetadata(); }
 
+// The group producer already certified immutable keyed sources. Qualification
+// is once per copied regional model, with no LLDrawInfo lookup or dependency
+// walk. Per-source candidate/reference packing is retained as the explicit
+// bridge until Scene can borrow this keyed cohort directly.
+template<class Sources>
+void captureCachedSourceRows(const Sources& sources, const ALNativeRegionModel::Snapshot& model,
+                             const ALMetalWorldViewMatrices& view) noexcept
+try
+{
+    if (!source_rows_active || sources.empty()) return;
+    const auto count = sources.size();source_rows_stats.requested_ordinary_rows += count;
+    bool owner_proved = false;
+    if (model)
+        for (const auto& [pointer, observed] : source_model_pointers)
+            if (observed.identity == model.identity && observed.revision == model.revision &&
+                std::memcmp(observed.model.data(), model.model.data(), sizeof(model.model)) == 0)
+            { owner_proved = true;break; }
+    if (!owner_proved) { source_rows_stats.owner_proof_skips += count;return; }
+    for (const auto& source : sources)
+    {
+        const auto family = source.key.flavor & 3;
+        if (!source.prototype || !source.key.identity || !source.key.revision || (family != 1 && family != 2) ||
+            !source.prototype->native_material_source || !source.prototype->native_resource_source)
+        { source_rows_stats.unsupported_skips += count;return; }
+    }
+    const auto prior = source_rows ? source_rows->candidates.size() : 0;
+    if (prior > alMetalWorldSourceMaximumRows || count > alMetalWorldSourceMaximumRows - prior ||
+        logicalDrawCount() > std::numeric_limits<std::size_t>::max() - count)
+    { failSourceRowsMetadata();return; }
+    if (!source_rows) source_rows = std::make_shared<ALMetalWorldSourceView>();
+    SourceRegionKey key;key.identity = model.identity;key.revision = model.revision;
+    std::memcpy(key.view.modelview_projection, view.modelview_projection, sizeof(key.view.modelview_projection));
+    std::memcpy(key.view.modelview, view.modelview, sizeof(key.view.modelview));
+    std::memcpy(key.view.normal_matrix, view.normal_matrix, sizeof(key.view.normal_matrix));
+    std::uint32_t region = 0;const auto found = source_region_rows.find(key);
+    if (found != source_region_rows.end()) region = found->second;
+    else
+    {
+        if (source_rows->regions.size() >= alMetalWorldSourceMaximumRows) { failSourceRowsMetadata();return; }
+        region = static_cast<std::uint32_t>(source_rows->regions.size());
+        source_region_rows.emplace(key, region);source_rows->regions.push_back(key.view);
+    }
+    source_rows->candidates.reserve(prior + count);const auto first = logicalDrawCount();std::size_t offset = 0;
+    for (const auto& source : sources) source_rows->candidates.push_back({source.key, first + offset++, region});
+    source_rows_stats.emitted_candidates += count;
+}
+catch (const std::bad_alloc&) { failSourceRowsMetadata(); }
+
 void captureSourceRow(const LLDrawInfo& info,
                       const ALScenePublicationNative::WorldLease& source,
                       const ALScenePublicationNative::WorldFlavor& flavor,

@@ -42,8 +42,11 @@
 #include "llvector4a.h"
 #include "llvoavatar.h"
 #include "llfetchedgltfmaterial.h"
+#include "alnativeregionmodel.h"
 
 #include <boost/unordered_map.hpp>
+#include <array>
+#include <map>
 #include <memory>
 
 #define SG_STATE_INHERIT_MASK (OCCLUDED)
@@ -385,6 +388,16 @@ public:
     // CPU descriptions survive backing-store mutation; membership changes
     // discard them. The layout owns only weak native generation identities.
     std::shared_ptr<ALSceneGroupPublicationNative::Layout> mMetalGroupLayout;
+    struct MetalMaterialCohort
+    {
+        std::shared_ptr<ALNativePublication::State> state;
+        std::shared_ptr<ALNativePublication::Observer> dependencies;
+        std::shared_ptr<ALSceneGroupPublicationNative::Layout> layout;
+    };
+    // One completed ordinary material pass, preserving its original map order.
+    // Dirty geometry/membership withdraws every cohort; child resource signals
+    // invalidate only affected publishers while CPU descriptions stay weak.
+    std::map<U32, MetalMaterialCohort> mMetalMaterialCohorts;
 
     bridge_list_t mBridgeList;
     buffer_map_t mBufferMap; //used by volume buffers to attempt to reuse vertex buffers
@@ -589,6 +602,20 @@ public:
     bool pushNativeSimpleRange(std::shared_ptr<const void>, U32 draw_count) noexcept;
     const std::vector<NativeSimpleRange>& nativeSimpleRanges() const noexcept
     { return mNativeSimpleRanges; }
+    struct NativeMaterialRange
+    {
+        std::shared_ptr<const void> publication;
+        U32 legacy_offset = 0, draw_count = 0;
+        ALNativeRegionModel::Snapshot model;
+    };
+    bool pushNativeMaterialRange(U32 type, std::shared_ptr<const void>, U32 draw_count,
+                                 const ALNativeRegionModel::Snapshot&) noexcept;
+    const std::vector<NativeMaterialRange>& nativeMaterialRanges(U32 type) const noexcept
+    {
+        static const std::vector<NativeMaterialRange> empty;
+        const auto found = mNativeMaterialRanges.find(type);
+        return found == mNativeMaterialRanges.end() ? empty : found->second;
+    }
 
     U32 getVisibleGroupsSize()      { return mVisibleGroupsSize; }
     U32 getAlphaGroupsSize()        { return mAlphaGroupsSize; }
@@ -597,13 +624,15 @@ public:
     U32 getVisibleListSize()        { return mVisibleListSize; }
     U32 getVisibleBridgeSize()      { return mVisibleBridgeSize; }
     U32 getRenderMapSize(U32 type)  { return mRenderMapSize[type] +
-        (type == LLRenderPass::PASS_SIMPLE ? mNativeSimpleDrawCount : 0); }
+        (type == LLRenderPass::PASS_SIMPLE ? mNativeSimpleDrawCount : mNativeMaterialDrawCount[type]); }
 
     void assertDrawMapsEmpty();
 
 private:
     std::vector<NativeSimpleRange> mNativeSimpleRanges;
     U32 mNativeSimpleDrawCount = 0;
+    std::map<U32, std::vector<NativeMaterialRange>> mNativeMaterialRanges;
+    std::array<U32, LLRenderPass::NUM_RENDER_TYPES> mNativeMaterialDrawCount{};
 
     template <class T, class V> void pushBack(T &head, U32& count, V* val);
 

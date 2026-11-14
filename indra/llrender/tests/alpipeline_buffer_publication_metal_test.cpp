@@ -17,6 +17,7 @@
 #include "alnativesourceworkingset.h"
 #include <array>
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -161,7 +162,7 @@ template<class T> struct LLCachedControl
 // Only cull admission is a typed frontier. Native range admission and simple
 // capture below are the exact production bodies, including their ordering and
 // whole-packet failure behavior. The scalar input list retains its sentinel.
-struct LLRenderPass {enum : U32 {PASS_SIMPLE};};
+struct LLRenderPass {enum : U32 {PASS_SIMPLE, PASS_MATERIAL, PASS_GLTF_PBR, NUM_RENDER_TYPES};};
 struct LLCullResult
 {
     using drawinfo_iterator=LLDrawInfo**;
@@ -171,19 +172,34 @@ struct LLCullResult
         U32 legacy_offset=0,draw_count=0;
     };
     std::vector<LLDrawInfo*> raw{nullptr};
-    std::array<U32,1> mRenderMapSize{};
+    std::array<U32,LLRenderPass::NUM_RENDER_TYPES> mRenderMapSize{};
+    std::array<std::vector<LLDrawInfo*>,LLRenderPass::NUM_RENDER_TYPES-1> material_raw;
+    struct NativeMaterialRange
+    {
+        std::shared_ptr<const void> publication;U32 legacy_offset=0,draw_count=0;
+        ALNativeRegionModel::Snapshot model;
+    };
+    std::map<U32,std::vector<NativeMaterialRange>> mNativeMaterialRanges;
+    std::array<U32,LLRenderPass::NUM_RENDER_TYPES> mNativeMaterialDrawCount{};
     std::vector<NativeSimpleRange> mNativeSimpleRanges;
     U32 mNativeSimpleDrawCount=0;
-    void pushDrawInfo(LLDrawInfo* info)
-    {raw.insert(raw.end()-1,info);++mRenderMapSize[LLRenderPass::PASS_SIMPLE];}
-    drawinfo_iterator beginRenderMap(U32){return raw.data();}
-    drawinfo_iterator endRenderMap(U32){return raw.data()+mRenderMapSize[LLRenderPass::PASS_SIMPLE];}
+    LLCullResult(){for(auto& values:material_raw)values.assign(1,nullptr);}
+    auto& rawMap(U32 type){return type==LLRenderPass::PASS_SIMPLE?raw:material_raw[type-1];}
+    void pushDrawInfo(U32 type,LLDrawInfo* info)
+    {auto& values=rawMap(type);values.insert(values.end()-1,info);++mRenderMapSize[type];}
+    void pushDrawInfo(LLDrawInfo* info){pushDrawInfo(LLRenderPass::PASS_SIMPLE,info);}
+    drawinfo_iterator beginRenderMap(U32 type){return rawMap(type).data();}
+    drawinfo_iterator endRenderMap(U32 type){return rawMap(type).data()+mRenderMapSize[type];}
     static void increment_iterator(drawinfo_iterator& at,drawinfo_iterator){++at;}
     const auto& nativeSimpleRanges() const{return mNativeSimpleRanges;}
-    U32 getRenderMapSize(U32) const{return mRenderMapSize[LLRenderPass::PASS_SIMPLE]+mNativeSimpleDrawCount;}
+    const auto& nativeMaterialRanges(U32 type) const
+    {static const std::vector<NativeMaterialRange> empty;auto at=mNativeMaterialRanges.find(type);return at==mNativeMaterialRanges.end()?empty:at->second;}
+    U32 getRenderMapSize(U32 type) const{return mRenderMapSize[type]+(type==LLRenderPass::PASS_SIMPLE?mNativeSimpleDrawCount:mNativeMaterialDrawCount[type]);}
     bool pushNativeSimpleRange(std::shared_ptr<const void>,U32) noexcept;
+    bool pushNativeMaterialRange(U32,std::shared_ptr<const void>,U32,const ALNativeRegionModel::Snapshot&) noexcept;
     void clear()
-    {mNativeSimpleRanges.clear();mNativeSimpleDrawCount=0;raw.assign(1,nullptr);mRenderMapSize.fill(0);}
+    {mNativeSimpleRanges.clear();mNativeSimpleDrawCount=0;raw.assign(1,nullptr);mRenderMapSize.fill(0);
+     mNativeMaterialRanges.clear();mNativeMaterialDrawCount.fill(0);for(auto& values:material_raw)values.assign(1,nullptr);}
 };
 #include "../../newview/llcullresult_native_ranges.inl"
 LLCullResult* sCull=nullptr;
@@ -207,10 +223,10 @@ struct Capture
 {
     using WorldResourceLease=WorldResources;
     bool frame_active=true,pass_active=true,complete=true;
-    bool legacy_glow=false,water_exclusion=false;
+    bool legacy_glow=false,water_exclusion=false,direct_probe_scene_active=false;
     bool impostor_alpha_active=false,world_post_deferred_active=false,impostor_bake=false;
     bool impostor_fullbright=false,impostor_shiny=false,impostor_emboss=false;
-    bool alpha_mask=false,rigged=false;
+    bool alpha_mask=false,rigged=false,pbr=true;
     bool material_normal_map=false,material_specular_map=false,pbr_glow=false;
     U32 material_alpha_mode=0;
     U64 scene_source_hits=0,scene_source_builds=0;
@@ -242,15 +258,22 @@ struct LLPipeline
     void captureMetalWorldGBufferBatch(const LLDrawInfo&,bool,bool editable=false);
     void captureMetalPublishedWorldBatch(const LLDrawInfo&,U32,bool,bool editable=false);
     void captureMetalWorldSimplePass();
+    void captureMetalWorldMaterialPass(U32);
+    void captureMetalWorldPBRPass(U32);
+    void captureMetalWorldPublishedPass(U32,U32);
+    void captureMetalWorldMaterialBatch(const LLDrawInfo& info,bool indexed){captureMetalPublishedWorldBatch(info,1,indexed);}
+    void captureMetalWorldPBRBatch(const LLDrawInfo& info,bool indexed)
+    {if(mMetalWorldSimpleCapture->pbr)captureMetalPublishedWorldBatch(info,2,indexed);}
     LLCullResult::drawinfo_iterator beginRenderMap(U32 type){return sCull->beginRenderMap(type);}
     LLCullResult::drawinfo_iterator endRenderMap(U32 type){return sCull->endRenderMap(type);}
 };
 bool gCubeSnapshot=false;
+U64 matrix_builds=0;
 // Named identity-camera inputs shared identically by raw and group capture.
 // These preserve the actual owner model values, including region rebases;
 // camera/gGL policy itself is outside this fixture's declared frontier.
 void buildMetalWorldDrawMatrices(const LLMatrix4a* model,LLMatrix4a& view,LLMatrix4a& mvp)
-{view=model?*model:LLMatrix4a::identity();mvp=view;}
+{++matrix_builds;view=model?*model:LLMatrix4a::identity();mvp=view;}
 bool buildMetalWorldDrawMatrices(const LLMatrix4a* model,LLMatrix4a& view,LLMatrix4a& inverse,LLMatrix4a& mvp)
 {buildMetalWorldDrawMatrices(model,view,mvp);return inverse.setAffineInverse(view);}
 void buildMetalWorldDrawMatrices(const LLDrawInfo& info,LLMatrix4a& view,LLMatrix4a& mvp)
@@ -260,6 +283,7 @@ bool buildMetalWorldDrawMatrices(const LLDrawInfo& info,LLMatrix4a& view,LLMatri
 #include "../../newview/pipeline_buffer_publication_native.inl"
 #include "../../newview/pipeline_group_capture_native.inl"
 }
+
 
 struct MissingPublisher
 {
@@ -420,6 +444,92 @@ struct GroupPublication : Publication
         REQUIRE(target.depthStencilTexture());result.depth.resize(side*side);
         REQUIRE(target.depthStencilTexture()->readback(*device,0,0,{},result.depth.data(),side*sizeof(F32),&error));
         return result;
+    }
+};
+
+struct MaterialGroupPublication : GroupPublication
+{
+    ALNativeRegionModel region;
+    Inputs::ALScenePublicationNative::WorldFlavor flavor;
+    std::vector<std::unique_ptr<Inputs::LLFetchedGLTFMaterial>> materials;
+    U32 type=Inputs::LLRenderPass::PASS_MATERIAL;
+    MaterialGroupPublication(U32 family=1,U32 mask=0)
+    {
+        REQUIRE(region.update(model,LLVector3(0.f,0.f,0.f)));
+        flavor.family=static_cast<Inputs::ALScenePublicationNative::WorldFamily>(family);
+        flavor.native_materials=flavor.native_resources=true;
+        if(family==1){flavor.normal_map=(mask&8)!=0;flavor.specular_map=(mask&4)!=0;flavor.material_alpha_mode=mask&3;}
+        else {type=Inputs::LLRenderPass::PASS_GLTF_PBR;flavor.alpha_mask=mask!=0;}
+        Inputs::gSavedSettings.native_resources=true;
+    }
+    ~MaterialGroupPublication()
+    {
+        if(group)group->invalidate();
+        group_layout.reset();group_dependencies.reset();infos.clear();
+    }
+    Inputs::LLDrawInfo& materialDraw(bool indexed=false)
+    {
+        auto& info=draw();U32 extra=indexed?LLVertexBuffer::MAP_TEXTURE_INDEX:0;
+        if(flavor.normal_map || flavor.family==Inputs::ALScenePublicationNative::WorldFamily::pbr)extra|=LLVertexBuffer::MAP_TANGENT;
+        if(flavor.normal_map)extra|=LLVertexBuffer::MAP_TEXCOORD1;
+        if(flavor.specular_map)extra|=LLVertexBuffer::MAP_TEXCOORD2;
+        info.mVertexBuffer=buffer(true,extra);
+        if(extra&LLVertexBuffer::MAP_TANGENT)
+        {
+            std::array<LLVector4a,3> tangents;for(auto& tangent:tangents)tangent.set(1.f,0.f,0.f,1.f);
+            info.mVertexBuffer->setTangentData(tangents.data());
+        }
+        if(indexed)
+        {
+            std::array<LLVector4a,3> positions;
+            positions[0].set(-1.f,-1.f,0.f,std::bit_cast<float>(1u));
+            positions[1].set(-.1f,-1.f,0.f,std::bit_cast<float>(1u));
+            positions[2].set(-1.f,1.f,0.f,std::bit_cast<float>(1u));
+            info.mVertexBuffer->setPositionData(positions.data());
+        }
+        info.mVertexBuffer->unmapBuffer();
+        if(flavor.family==Inputs::ALScenePublicationNative::WorldFamily::legacy)
+        {
+            if(flavor.normal_map)info.mNormalMap.value=&image;
+            if(flavor.specular_map)info.mSpecularMap.value=&image;
+            if(indexed)
+            {
+                info.mMaterialSlotList.resize(2);
+                for(auto& slot:info.mMaterialSlotList)
+                {slot.mDiffuse.value=&image;if(flavor.normal_map)slot.mNormalMap.value=&image;if(flavor.specular_map)slot.mSpecularMap.value=&image;}
+            }
+        }
+        else
+        {
+            for(U32 slot=0;slot<(indexed?2u:1u);++slot)
+            {
+                auto material=std::make_unique<Inputs::LLFetchedGLTFMaterial>();
+                material->mAlphaMode=flavor.alpha_mask?Inputs::LLGLTFMaterial::ALPHA_MODE_MASK:Inputs::LLGLTFMaterial::ALPHA_MODE_OPAQUE;
+                if(!slot)info.mGLTFMaterial.value=material.get();
+                if(indexed)info.mGLTFMaterialList.push_back({material.get()});
+                materials.push_back(std::move(material));
+            }
+        }
+        return info;
+    }
+    std::shared_ptr<const NativeGroup> sealMaterial(ALNativeSourceWorkingSet& working_set=Inputs::sNativeSceneSources,U32 frame=Inputs::gFrameCount)
+    {
+        return Inputs::ALSceneGroupPublicationNative::sealMaterial(group,group_dependencies,group_layout,model,region.snapshot(),draws(),flavor,
+            working_set,Inputs::sNativeSceneSerial,frame);
+    }
+    std::shared_ptr<const NativeGroup> currentMaterial(ALNativeSourceWorkingSet& working_set=Inputs::sNativeSceneSources,U32 frame=Inputs::gFrameCount)
+    {return Inputs::ALSceneGroupPublicationNative::currentMaterial(group,region.snapshot(),flavor,working_set,frame);}
+    void configure(Inputs::Capture& capture,bool compact=true,bool rows=true)
+    {
+        capture.compact_gbuffer_active=compact;capture.beginSourceRows(rows);
+        capture.registerSourceModel(&model,region.snapshot());
+        capture.material_normal_map=flavor.normal_map;capture.material_specular_map=flavor.specular_map;
+        capture.material_alpha_mode=flavor.material_alpha_mode;capture.alpha_mask=flavor.alpha_mask;capture.pbr=type==Inputs::LLRenderPass::PASS_GLTF_PBR;
+    }
+    void capture(Inputs::LLPipeline& pipeline)
+    {
+        if(type==Inputs::LLRenderPass::PASS_MATERIAL)pipeline.captureMetalWorldMaterialPass(type);
+        else pipeline.captureMetalWorldPBRPass(type);
     }
 };
 }
@@ -1312,6 +1422,249 @@ TEST_CASE("Actual published compact families preserve masks and explicit raw con
                 if(boundary==4)CHECK(capture.world_visibility_members.size()==1);
             }
         }
+    }
+}
+
+TEST_CASE("Actual material cohorts bypass draw-info discovery and share each view matrix and owner",
+          "[almetal][pipeline-buffer-publication][native-material-group]")
+{
+    for(U32 family:{1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);
+        f.materialDraw();f.materialDraw(true);f.materialDraw();auto packet=f.sealMaterial();REQUIRE(packet);
+        REQUIRE(packet->sources.size()==3);REQUIRE(packet->keyed_sources.size()==3);
+        const auto reads=f.reads();const auto serial=Inputs::sNativeSceneSerial;
+        for(U32 view=0;view<3;++view)
+        {
+            CAPTURE(view);REQUIRE(f.currentMaterial()==packet);Inputs::LLCullResult cull;
+            REQUIRE(cull.pushNativeMaterialRange(f.type,packet,3,f.region.snapshot()));
+            CHECK(cull.getRenderMapSize(f.type)==3);CHECK(cull.beginRenderMap(f.type)==cull.endRenderMap(f.type));
+            Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture);
+            const auto matrices=Inputs::matrix_builds;{CullScope scope(cull);f.capture(pipeline);}
+            REQUIRE(capture.complete);CHECK(Inputs::matrix_builds==matrices+1);
+            CHECK(capture.source_references.size()==3);CHECK(capture.batches.empty());
+            REQUIRE(capture.cpu_sources);CHECK(capture.cpu_sources->owners.size()==1);
+            CHECK(capture.world_resources->owners.size()==1);
+            REQUIRE(capture.source_rows);REQUIRE(capture.source_rows->candidates.size()==3);
+            CHECK(capture.source_rows->regions.size()==1);
+            for(U32 row=0;row<3;++row)
+            {
+                CHECK(capture.source_references[row].source==packet->sources[row].prototype);
+                CHECK(capture.source_rows->candidates[row].draw_index==row);
+                CHECK(capture.source_rows->candidates[row].key.identity==packet->sources[row].owner->identity);
+                CHECK_FALSE(packet->sources[row].owner->prototype.native_material_source);
+                CHECK_FALSE(packet->sources[row].owner->prototype.native_resource_source);
+            }
+            CHECK(f.reads()==reads);CHECK(Inputs::sNativeSceneSerial==serial);
+        }
+        const auto geometry_packet=packet;const auto old_model=f.region.snapshot();
+        REQUIRE(f.region.update(f.model,LLVector3(.25f,-.5f,0.f)));
+        CHECK(f.currentMaterial()==geometry_packet);CHECK(f.region.snapshot().revision==old_model.revision+1);
+        Inputs::LLCullResult rebased;REQUIRE(rebased.pushNativeMaterialRange(f.type,packet,3,f.region.snapshot()));
+        Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture);
+        {CullScope scope(rebased);f.capture(pipeline);}REQUIRE(capture.complete);
+        CHECK(capture.source_references[0].view.modelview[12]==.25f);
+        CHECK(capture.source_references[0].view.modelview[13]==-.5f);
+        CHECK(f.reads()==reads);CHECK(Inputs::sNativeSceneSerial==serial);
+    }
+}
+
+TEST_CASE("Actual scalar and indexed material cohorts preserve every legacy family and PBR mask output",
+          "[almetal][pipeline-buffer-publication][native-material-group]")
+{
+    const std::array<U32,12> masks{0,2,3,4,6,7,8,10,11,12,14,15};
+    for(U32 family:{1u,2u})for(U32 index=0;index<(family==1?masks.size():2);++index)
+    {
+        const U32 mask=family==1?masks[index]:index;CAPTURE(family,mask);
+        MaterialGroupPublication f(family,mask);f.materialDraw();f.materialDraw(true);
+        auto packet=f.sealMaterial();REQUIRE(packet);
+        Inputs::LLPipeline flat,grouped;f.configure(*flat.mMetalWorldSimpleCapture,true,false);
+        f.configure(*grouped.mMetalWorldSimpleCapture,true,false);
+        Inputs::LLCullResult raw,cohort;for(auto* info:f.draws())raw.pushDrawInfo(f.type,info);
+        REQUIRE(cohort.pushNativeMaterialRange(f.type,packet,2,f.region.snapshot()));
+        {CullScope scope(raw);f.capture(flat);}{CullScope scope(cohort);f.capture(grouped);}
+        REQUIRE(flat.mMetalWorldSimpleCapture->complete);REQUIRE(grouped.mMetalWorldSimpleCapture->complete);
+        const auto& a=flat.mMetalWorldSimpleCapture->source_references;
+        const auto& b=grouped.mMetalWorldSimpleCapture->source_references;
+        REQUIRE(a.size()==2);REQUIRE(b.size()==2);
+        CHECK(b[0].source->texture_count==1);CHECK(b[1].source->texture_count==2);
+        auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
+        auto flat_target=renderer->render(f.scene(*flat.mMetalWorldSimpleCapture),&f.error);INFO(f.error);REQUIRE(flat_target);
+        auto group_target=renderer->render(f.scene(*grouped.mMetalWorldSimpleCapture),&f.error);INFO(f.error);REQUIRE(group_target);
+        CHECK(f.read(*flat_target)==f.read(*group_target));
+    }
+}
+
+TEST_CASE("Actual material cull ranges preserve raw group raw logical order and query attachments",
+          "[almetal][pipeline-buffer-publication][native-material-group]")
+{
+    for(U32 family:{1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);auto& before=f.materialDraw();
+        auto& first=f.materialDraw(true);auto& second=f.materialDraw();auto& after=f.materialDraw();
+        auto packet=Inputs::ALSceneGroupPublicationNative::sealMaterial(f.group,f.group_dependencies,f.group_layout,f.model,f.region.snapshot(),
+            std::vector<Inputs::LLDrawInfo*>{&first,&second},f.flavor,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(packet);
+        Inputs::LLCullResult raw,mixed;for(auto* info:f.draws())raw.pushDrawInfo(f.type,info);
+        mixed.pushDrawInfo(f.type,&before);REQUIRE(mixed.pushNativeMaterialRange(f.type,packet,2,f.region.snapshot()));mixed.pushDrawInfo(f.type,&after);
+        REQUIRE(mixed.nativeMaterialRanges(f.type).size()==1);CHECK(mixed.nativeMaterialRanges(f.type)[0].legacy_offset==1);
+        Inputs::LLPipeline flat,grouped;f.configure(*flat.mMetalWorldSimpleCapture);f.configure(*grouped.mMetalWorldSimpleCapture);
+        {CullScope scope(raw);f.capture(flat);}{CullScope scope(mixed);f.capture(grouped);}
+        auto& capture=*grouped.mMetalWorldSimpleCapture;REQUIRE(capture.complete);REQUIRE(capture.flushDrawOrder());
+        REQUIRE(capture.source_rows);REQUIRE(capture.source_rows->candidates.size()==4);
+        const std::array<U64,4> identities{before.state->identity(),first.state->identity(),second.state->identity(),after.state->identity()};
+        for(U32 draw=0;draw<4;++draw)
+        {CHECK(capture.source_rows->candidates[draw].draw_index==draw);CHECK(capture.source_rows->candidates[draw].key.identity==identities[draw]);}
+        std::array<ALMetalWorldVisibilityQuery,5> queries{};
+        for(U32 index=0;index<queries.size();++index)
+        {
+            auto& query=queries[index];std::memcpy(query.modelview_projection,f.model.getF32ptr(),sizeof(query.modelview_projection));
+            query.center[0]=.35f;query.center[1]=-.5f;query.center[2]=.75f;
+            query.half_extent[0]=query.half_extent[1]=query.half_extent[2]=.08f;query.batch_offset=index;query.fan=7;query.count_samples=1;
+        }
+        auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
+        std::array<GroupPublication::Image,2> images;std::array<std::array<std::uint64_t,5>,2> counts{};
+        for(U32 mode=0;mode<2;++mode)
+        {
+            auto scene=f.scene(mode?capture:*flat.mMetalWorldSimpleCapture);scene.source_rows.reset();
+            scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
+            std::shared_ptr<ALMetalVisibilityResultBatch> result;auto target=renderer->render(scene,&f.error,&result);INFO(f.error);REQUIRE(target);REQUIRE(result);
+            for(U32 query=0;query<queries.size();++query)REQUIRE(result->wait(query,counts[mode][query],&f.error));images[mode]=f.read(*target);
+        }
+        CHECK(images[0]==images[1]);CHECK(counts[0]==counts[1]);
+    }
+}
+
+TEST_CASE("Actual material cohort churn restores weak cached rows without rediscovering unchanged draw infos",
+          "[almetal][pipeline-buffer-publication][native-material-group]")
+{
+    for(U32 family:{1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);for(U32 row=0;row<4;++row)f.materialDraw(row%2);
+        ALNativeSourceWorkingSet bounded(32,8*1024*1024,2);auto packet=f.sealMaterial(bounded,1);REQUIRE(packet);
+        const auto old_rows=f.group_layout->sources;packet.reset();gGL.frameFences().release();
+        REQUIRE(f.currentMaterial(bounded,4));
+        auto unrelated=std::make_shared<ALNativePublication::State>();auto payload=std::make_shared<int>(1);
+        REQUIRE(unrelated->publish(unrelated->revision(),payload));REQUIRE(bounded.retain(unrelated,900,payload,{},5));
+        for(const auto& info:f.infos)CHECK_FALSE(info->state->publication());
+        CHECK(f.group->publication());const auto before=f.reads();const auto before_builds=Inputs::ALSceneGroupPublicationNative::statistics.cpu_source_builds;
+        const auto before_restores=Inputs::ALSceneGroupPublicationNative::statistics.material_restores;
+        auto& dirty=*f.infos[1];const auto* original=dirty.mVertexBuffer->getMetalVertexBuffer();const auto uploads=LLVertexBuffer::metalUploadStats();
+        const std::array<LLColor4U,3> green{LLColor4U(0,255,0,255),LLColor4U(0,255,0,255),LLColor4U(0,255,0,255)};
+        dirty.mVertexBuffer->setColorData(green.data());dirty.mVertexBuffer->unmapBuffer();
+        CHECK_FALSE(f.group->publication());CHECK(dirty.mVertexBuffer->getMetalVertexBuffer()==original);
+        CHECK(LLVertexBuffer::metalUploadStats().leased_orphans==uploads.leased_orphans);
+        auto refreshed=f.sealMaterial(bounded,5);REQUIRE(refreshed);const auto after=f.reads();
+        CHECK(Inputs::ALSceneGroupPublicationNative::statistics.cpu_source_builds==before_builds+1);
+        CHECK(Inputs::ALSceneGroupPublicationNative::statistics.material_restores==before_restores+3);
+        CHECK(after[0]>before[0]);CHECK(after[1]==before[1]+2); // only the dirty source's actual factory dependency frontier.
+        for(U32 row=0;row<4;++row)
+        {if(row==1)CHECK(refreshed->sources[row].owner!=old_rows[row]);else CHECK(refreshed->sources[row].owner==old_rows[row]);}
+        const auto stable=f.reads();Inputs::LLCullResult cull;REQUIRE(cull.pushNativeMaterialRange(f.type,refreshed,4,f.region.snapshot()));
+        Inputs::LLPipeline pipeline;f.configure(*pipeline.mMetalWorldSimpleCapture);{CullScope scope(cull);f.capture(pipeline);}
+        REQUIRE(pipeline.mMetalWorldSimpleCapture->complete);CHECK(f.reads()==stable);
+    }
+}
+
+TEST_CASE("Actual material cohort admission rejects mutable scope and keeps whole publisher budgets",
+          "[almetal][pipeline-buffer-publication][native-material-group]")
+{
+    for(U32 family:{1u,2u})for(U32 gate=0;gate<5;++gate)
+    {
+        CAPTURE(family,gate);MaterialGroupPublication f(family);auto& info=f.materialDraw();LLMatrix4 uv;uv.setIdentity();LLMatrix4a other=f.model;
+        Inputs::LLVOAvatar avatar;int skin=0;
+        if(gate==0)info.mTextureMatrix=&uv;if(gate==1)info.mModelMatrix=&other;
+        if(gate==2)info.mAvatar=&avatar;if(gate==3)info.mSkinInfo=&skin;if(gate==4)f.flavor.visibility_bounds=true;
+        CHECK_FALSE(f.sealMaterial());CHECK_FALSE(f.group->publication());
+    }
+    MaterialGroupPublication f;f.materialDraw();ALNativeSourceWorkingSet tiny(1,1,100);
+    CHECK_FALSE(f.sealMaterial(tiny,1));CHECK_FALSE(f.group->publication());
+    CHECK_FALSE(f.group_dependencies);CHECK_FALSE(f.group_layout);
+}
+
+TEST_CASE("Actual material cohort native tables outlive CPU descriptors and preserve an encoded old generation",
+          "[almetal][pipeline-buffer-publication][native-material-group][native-tuple]")
+{
+    for(U32 family:{1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);auto& info=f.materialDraw(true);auto buffer=info.mVertexBuffer;
+        auto packet=f.sealMaterial();REQUIRE(packet);std::weak_ptr<const NativeGroup> weak_group=packet;
+        std::weak_ptr<const Inputs::ALScenePublicationNative::Payload> weak_source=packet->sources[0].world_owner;
+        std::weak_ptr<ALNativePublication::State> weak_state=info.state;
+        Inputs::LLCullResult cull;REQUIRE(cull.pushNativeMaterialRange(f.type,packet,1,f.region.snapshot()));
+        Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture,true,false);
+        {CullScope scope(cull);f.capture(pipeline);}REQUIRE(capture.complete);
+        const auto* original=capture.source_references[0].source->vertices;
+        auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
+        auto expected_target=renderer->render(f.scene(capture),&f.error);INFO(f.error);REQUIRE(expected_target);
+        const auto expected_image=f.read(*expected_target);
+        REQUIRE(renderer->beginCommandBatch("Material cohort old native generation",&f.error));
+        auto scene=f.scene(capture);scene.material_argument_buffers=true;
+        auto target=renderer->render(scene,&f.error);INFO(f.error);REQUIRE(target);
+        CHECK(renderer->worldResourceStats().bound_draws==1);
+        auto completion=renderer->commandBatchCompletion();REQUIRE(completion);CHECK_FALSE(completion->isComplete());
+        scene={};cull.clear();packet.reset();capture.clearDraws();capture.world_resources=std::make_shared<Inputs::WorldResources>();
+        f.group->invalidate();f.group_layout.reset();f.group_dependencies.reset();
+        for(const auto& source:f.infos)source->state->invalidate();
+        Inputs::sNativeSceneSources.clear();f.infos.clear();
+        CHECK(weak_group.expired());CHECK(weak_source.expired());CHECK(weak_state.expired());
+        gGL.frameFences().release();const auto before=LLVertexBuffer::metalUploadStats();
+        const std::array<LLColor4U,3> blue{LLColor4U(0,0,255,255),LLColor4U(0,0,255,255),LLColor4U(0,0,255,255)};
+        buffer->setColorData(blue.data());buffer->unmapBuffer();
+        CHECK(buffer->getMetalVertexBuffer()!=original);CHECK(LLVertexBuffer::metalUploadStats().leased_orphans==before.leased_orphans+1);
+        REQUIRE(renderer->commitCommandBatch(&f.error));REQUIRE(f.device->waitUntilIdle(&f.error));CHECK(completion->isComplete());
+        CHECK(f.read(*target)==expected_image);
+    }
+}
+
+TEST_CASE("Actual material cohort CPU admission rejection and reentrant replacement preserve exact publisher ownership",
+          "[almetal][pipeline-buffer-publication][native-material-group][PPD-186]")
+{
+    using namespace Inputs::ALSceneGroupPublicationNative;
+    struct RestorePolicy{CpuLayoutLimits before=cpu_layouts.limits();~RestorePolicy(){cpu_layouts.configure(before);}} restore;
+    SECTION("post-publication CPU budget failure releases only the candidate")
+    {
+        MaterialGroupPublication f;f.materialDraw();auto limits=cpu_layouts.limits();
+        limits.maximum_bytes=sizeof(Layout)+sizeof(NativeGroup)+sizeof(Source)+sizeof(std::shared_ptr<const Source>)+sizeof(SourceLease);
+        cpu_layouts.configure(limits);REQUIRE(cpu_layouts.acceptsRows(1));
+        CHECK_FALSE(f.sealMaterial());CHECK_FALSE(f.group->publication());CHECK(f.group->dirty());
+        CHECK_FALSE(f.group_layout);CHECK_FALSE(f.group_dependencies);
+    }
+    SECTION("a newer callback publication wins over the stale outer candidate")
+    {
+        auto limits=cpu_layouts.limits();limits.maximum_layouts=1;cpu_layouts.configure(limits);
+        auto victim=std::make_shared<ALNativePublication::State>();auto victim_layout=std::make_shared<Layout>();
+        victim_layout->group_identity=victim->identity();auto victim_packet=std::make_shared<NativeGroup>();victim_packet->serial=90001;
+        REQUIRE(victim->publish(victim->revision(),victim_packet));REQUIRE(cpu_layouts.retain(victim_layout,victim,*victim_packet,1));
+        MaterialGroupPublication f;f.materialDraw();std::shared_ptr<const NativeGroup> newer,queued;
+        struct Reenter final:ALNativePublication::Observer
+        {
+            std::function<void()> action;bool fired=false,failed=false;
+            void nativePublicationChanged(ALNativePublication::Phase phase) noexcept override
+            {if(phase!=ALNativePublication::Phase::withdrawn||fired)return;fired=true;try{action();}catch(...){failed=true;}}
+        };
+        auto observer=std::make_shared<Reenter>();observer->action=[&]
+        {
+            queued=std::static_pointer_cast<const NativeGroup>(f.group->publication());
+            f.group->invalidate();newer=f.sealMaterial(Inputs::sNativeSceneSources,2);
+        };
+        victim->observe(observer);auto outer=f.sealMaterial(Inputs::sNativeSceneSources,2);
+        CHECK(observer->fired);CHECK_FALSE(observer->failed);CHECK_FALSE(outer);REQUIRE(newer);REQUIRE(queued);
+        CHECK(f.group->publication().get()==newer.get());CHECK(f.group_layout);CHECK(f.group_dependencies);
+        CHECK(f.currentMaterial(Inputs::sNativeSceneSources,2)==newer);CHECK(queued->sources[0].prototype->vertices);
+    }
+}
+
+TEST_CASE("Actual material pass null rows retain direct-probe failure and ordinary pool skip semantics",
+          "[almetal][pipeline-buffer-publication][native-material-group][PPD-189]")
+{
+    for(U32 family:{1u,2u})for(bool direct:{false,true})
+    {
+        CAPTURE(family,direct);MaterialGroupPublication f(family);auto& info=f.materialDraw();
+        Inputs::LLCullResult cull;cull.pushDrawInfo(f.type,&info);cull.pushDrawInfo(f.type,nullptr);
+        Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture);
+        capture.direct_probe_scene_active=direct;{CullScope scope(cull);f.capture(pipeline);}
+        CHECK(capture.complete==!direct);CHECK(capture.logicalDrawCount()==(direct?0:1));
+        if(direct){CHECK_FALSE(capture.cpu_sources);CHECK_FALSE(capture.source_rows);}
     }
 }
 
@@ -2543,3 +2896,5 @@ TEST_CASE("Actual Legacy and PBR source rows include capture publication encodin
         }
     }
 }
+
+#include "alpipeline_source_command_cost_native.inl"

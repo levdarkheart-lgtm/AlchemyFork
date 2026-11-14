@@ -71,18 +71,7 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     gPipeline.beginMetalWorldMaterialPass(
         rigged, description.alphaMode(),
         description.hasNormalMap(), description.hasSpecularMap());
-    auto* at = gPipeline.beginRenderMap(type);
-    auto* end = gPipeline.endRenderMap(type);
-    while (at != end)
-    {
-        LLDrawInfo* info = *at;
-        LLCullResult::increment_iterator(at, end);
-        if (info)
-        {
-            gPipeline.captureMetalWorldMaterialBatch(
-                *info, info->mMaterialSlotList.size() > 1);
-        }
-    }
+    gPipeline.captureMetalWorldMaterialPass(type);
     gPipeline.endMetalWorldGBufferPass();
 #endif
 }
