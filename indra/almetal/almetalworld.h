@@ -18,12 +18,14 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 struct ALMetalWorldModernSkyScene;
+class ALMetalShadowSourceRecord;
 
 // Ordinary probe scratch/filter output and manager publication must agree on
 // storage: the publication blit copies bytes and does not convert formats.
@@ -217,6 +219,7 @@ enum class ALMetalWorldSpotShadowCoverage : std::uint32_t
 // transform. Construction owns and validates the bytes once; no mutable access
 // is exposed, so a record's identity remains valid through later pose updates.
 class ALMetalAttachmentPaletteRecord final
+    : public std::enable_shared_from_this<ALMetalAttachmentPaletteRecord>
 {
 public:
     static std::shared_ptr<const ALMetalAttachmentPaletteRecord> create(
@@ -241,34 +244,8 @@ private:
 // cutoffs; rigged ones also retain the packed object-skin palette and weight
 // plane. Terrain instead retains one four-control-point tessellated patch,
 // its height surface and the six factors computed by the live shadow pass.
-struct ALMetalWorldSpotShadowBatch
+struct ALMetalWorldSpotShadowValues
 {
-    static constexpr std::size_t max_textures = 32;
-    static constexpr std::size_t max_pbr_slots = 8;
-
-    struct CoverageData
-    {
-        std::array<const ALMetalTexture*, max_textures> textures{};
-        std::array<float, max_textures> alpha_cutoffs{};
-        std::array<std::array<std::array<float, 4>, 2>, max_pbr_slots>
-            pbr_base_color_transforms{};
-    };
-
-    // A user-provided constructor leaves inactive optional storage alone.
-    // Opaque casters must not initialize the covered shader's texture arrays.
-    ALMetalWorldSpotShadowBatch() noexcept {}
-
-    CoverageData& coverageData()
-    {
-        if (!mCoverageData) mCoverageData.emplace();
-        return *mCoverageData;
-    }
-    const CoverageData& coverageData() const noexcept
-    {
-        static const CoverageData defaults;
-        return mCoverageData ? *mCoverageData : defaults;
-    }
-
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
     std::size_t normal_offset = 0;
@@ -284,9 +261,6 @@ struct ALMetalWorldSpotShadowBatch
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;
-    // Optional certified attachment pose. Raw fields must describe these exact
-    // immutable bytes. Null retains the existing raw/system-avatar contract.
-    std::shared_ptr<const ALMetalAttachmentPaletteRecord> skin_palette_record;
     float modelview_projection[16]{};
     float texture_matrix[16] = {
         1.f, 0.f, 0.f, 0.f,
@@ -303,23 +277,143 @@ struct ALMetalWorldSpotShadowBatch
     std::uint16_t terrain_tessellation_factors[6]{};
     float terrain_grid_scale = 0.f;
     std::uint32_t texture_count = 0;
-    ALMetalWorldSpotShadowCoverage coverage =
-        ALMetalWorldSpotShadowCoverage::opaque;
+    ALMetalWorldSpotShadowCoverage coverage = ALMetalWorldSpotShadowCoverage::opaque;
     bool double_sided = false;
     bool terrain = false;
     bool avatar = false;
     bool avatar_cloth = false;
     bool terrain_smoothing = false;
     bool terrain_tessellation_pinned = false;
+};
+
+struct ALMetalWorldSpotShadowBatch : ALMetalWorldSpotShadowValues
+{
+    static constexpr std::size_t max_textures = 32;
+    static constexpr std::size_t max_pbr_slots = 8;
+
+    struct CoverageData
+    {
+        std::array<const ALMetalTexture*, max_textures> textures{};
+        std::array<float, max_textures> alpha_cutoffs{};
+        std::array<std::array<std::array<float, 4>, 2>, max_pbr_slots>
+            pbr_base_color_transforms{};
+    };
+
+    // Coverage storage is lazy. Opaque casters must not initialize the covered
+    // shader's texture arrays.
+    ALMetalWorldSpotShadowBatch() noexcept {}
+
+    CoverageData& coverageData()
+    {
+        if (!mCoverageData || mCoverageData.use_count() != 1 || !mWritableCoverageData)
+        {
+            const auto* existing = coverageDataIdentity();
+            auto writable = existing ? std::make_shared<CoverageData>(*existing)
+                                     : std::make_shared<CoverageData>();
+            mWritableCoverageData = writable.get();
+            mCoverageData = std::move(writable);
+            mBorrowedCoverageData = nullptr;
+        }
+        return *mWritableCoverageData;
+    }
+    const CoverageData& coverageData() const noexcept
+    {
+        static const CoverageData defaults;
+        const auto* values = coverageDataIdentity();
+        return values ? *values : defaults;
+    }
+
+    // Publication severs any outstanding mutable producer reference once.
+    // Copies of a sealed batch share immutable coverage; a later producer
+    // write detaches. Mutable coverage references must not cross publication.
+    void freezeCoverageData()
+    {
+        if (mBorrowedCoverageData || (mCoverageData && mWritableCoverageData))
+        {
+            auto frozen = std::make_shared<const CoverageData>(*coverageDataIdentity());
+            mCoverageData = std::move(frozen);
+            mWritableCoverageData = nullptr;
+            mBorrowedCoverageData = nullptr;
+        }
+    }
+    const std::shared_ptr<const CoverageData>& sharedCoverageData() const noexcept
+    {
+        return mCoverageData;
+    }
+    const CoverageData* coverageDataIdentity() const noexcept
+    {
+        return mCoverageData ? mCoverageData.get() : mBorrowedCoverageData;
+    }
+    const ALMetalAttachmentPaletteRecord* skinPaletteRecord() const noexcept
+    {
+        return skin_palette_record ? skin_palette_record.get() : mBorrowedPaletteRecord;
+    }
+    const ALMetalShadowSourceRecord* sourceRecord() const noexcept
+    {
+        return source_record ? source_record.get() : mBorrowedSourceRecord;
+    }
+    bool hasBorrowedInputs() const noexcept
+    {
+        return mBorrowedSourceRecord || mBorrowedPaletteRecord || mBorrowedCoverageData;
+    }
+    // Preparation calls this on its owner before dispatch, so overwriting
+    // reusable output never releases shared ownership on a worker.
+    void clearInputOwnership() noexcept
+    {
+        skin_palette_record.reset(); source_record.reset(); mCoverageData.reset();
+        mWritableCoverageData = nullptr;
+        clearBorrowedInputs();
+    }
+    void clearBorrowedInputs() noexcept
+    {
+        mBorrowedSourceRecord = nullptr; mBorrowedPaletteRecord = nullptr;
+        mBorrowedCoverageData = nullptr;
+    }
+    // Only for outputs scoped to an immutable input packet. These assignments
+    // perform no reference-count operations. A renderer requires source_owner
+    // on the scene and retains that aggregate packet through GPU completion.
+    void borrowPreparedInputs(const ALMetalShadowSourceRecord* source,
+                              const ALMetalAttachmentPaletteRecord* palette,
+                              const CoverageData* coverage) noexcept
+    {
+        mBorrowedSourceRecord = source; mBorrowedPaletteRecord = palette;
+        mBorrowedCoverageData = coverage;
+    }
+    // Optional certified attachment pose. Raw fields must describe these exact
+    // immutable bytes. Null retains the existing raw/system-avatar contract.
+    std::shared_ptr<const ALMetalAttachmentPaletteRecord> skin_palette_record;
+    // Legacy owned inputs remain compatible. Detached preparation borrows
+    // immutable records instead; its aggregate scene owner supplies lifetime.
+    std::shared_ptr<const ALMetalShadowSourceRecord> source_record;
 
 private:
-    std::optional<CoverageData> mCoverageData;
+    std::shared_ptr<const CoverageData> mCoverageData;
+    // Non-null only for a non-const allocation created by coverageData(). The
+    // shared owner keeps it alive; uniqueness is rechecked before every write.
+    CoverageData* mWritableCoverageData = nullptr;
+    const ALMetalShadowSourceRecord* mBorrowedSourceRecord = nullptr;
+    const ALMetalAttachmentPaletteRecord* mBorrowedPaletteRecord = nullptr;
+    const CoverageData* mBorrowedCoverageData = nullptr;
 };
 
 struct ALMetalWorldVisibilityQuery;
 
+struct ALMetalShadowBounds
+{
+    // Exact post-deformation space consumed by modelview_projection. Attachment
+    // bounds include their agent-space rebase origin. Unknown, moving body,
+    // cloth and terrain bounds must remain conservative=false (always visible).
+    float min[3]{};
+    float max[3]{};
+    bool conservative = false;
+};
+
 struct ALMetalWorldSpotShadowScene
 {
+    // The immutable admitted packet pins native producer generations through
+    // encoded/uncommitted work and actual GPU completion. The renderer retains
+    // this owner once per consuming command; source prototypes never own it.
+    std::shared_ptr<const void> source_owner;
     const ALMetalWorldSpotShadowBatch* batches = nullptr;
     std::size_t batch_count = 0;
     std::uint32_t width = 0;
@@ -330,10 +424,22 @@ struct ALMetalWorldSpotShadowScene
     // Indirect commands remain opt-in for isolated equivalence/perf tests;
     // both switches off selects the original scalar reference encoder.
     bool indirect_draws = false;
+    // CPU-encoded ICBs only for eligible opaque runs of at least 2048 draws;
+    // covered/body/terrain keep ordinary encoding. No GPU visibility implied.
+    bool opaque_indirect_draws = false;
     bool bulk_draws = true;
+    // Completion-owned fixed constants/certified-palette slab experiment.
+    // Remains opt-in until its complete native cost gate passes.
+    bool stable_shadow_data = false;
     // Material tables remain opt-in until whole-view measurements establish
     // a benefit over the existing encoder-local direct binding cache.
     bool material_buffers = false;
+    // Capability-tested native GPU visibility is opt-in. Missing/uncertain
+    // bounds remain visible, and this cannot reorder admitted source records.
+    bool gpu_visibility = false;
+    bool metal4_visibility = false;
+    const ALMetalShadowBounds* visibility_bounds = nullptr;
+    std::size_t visibility_bounds_count = 0;
     // Optional producer census. Zero source count means not supplied.
     std::uint64_t source_batch_count = 0;
     std::uint64_t early_merged_source_count = 0;
@@ -2300,6 +2406,12 @@ public:
     bool publishPalette(ALMetalCommandBuffer& command,
         const std::shared_ptr<const ALMetalAttachmentPaletteRecord>& palette,
         ALMetalWorldDataSlice& slice, std::string* error = nullptr);
+    // Borrowed packet views avoid a shared_ptr operation on every cache hit.
+    // A miss acquires the factory-created record's shared owner once; the
+    // caller must retain its aggregate input owner for the duration of this call.
+    bool publishPaletteRecord(ALMetalCommandBuffer& command,
+        const ALMetalAttachmentPaletteRecord* palette,
+        ALMetalWorldDataSlice& slice, std::string* error = nullptr);
     ALMetalWorldFrameDataStats stats() const noexcept;
     ALMetalShadowMaterials* shadowMaterials(
         const ALMetalShaderLibrary& library, std::string* error = nullptr);
@@ -2361,6 +2473,18 @@ public:
         const std::string& label,
         std::string* error = nullptr,
         std::size_t max_pending_command_batches = 2);
+    // The identity is a monotonic logical shadow-view GROUP serial, which
+    // need not equal the simulation/presentation gFrameCount. Production
+    // streams up to six view commands per group with two pending groups,
+    // preserving CPU/GPU overlap. Borrowed/test owners may encode multiple
+    // passes in one command; admission never waits on its own unsubmitted work.
+    bool beginShadowFrameBatch(std::uint64_t frame, const std::string& label,
+                               std::string* error = nullptr);
+    // Exactly-once commit/cancel settlement notification. True means native
+    // commit succeeded, NOT that the GPU completed; native completion tokens
+    // remain the authority for resource retirement.
+    bool observeCommandBatchSettlement(std::function<void(bool)> observer,
+                                       std::string* error = nullptr);
     bool commitCommandBatch(std::string* error = nullptr);
     void cancelCommandBatch();
     bool commandBatchActive() const;
@@ -2381,7 +2505,7 @@ public:
 
     // Render one spotlight-camera slice directly into the caller's persistent
     // R32F array. R32F stores the exact raster depth sampled by the shadow
-    // owner; a cached private D32 attachment supplies the authoritative depth
+    // owner; a memoryless D32 attachment supplies the authoritative depth
     // test while its contents are discarded after each pass. No retention
     // texture or copy is introduced between caster rendering and sampling.
     bool renderSpotShadow(

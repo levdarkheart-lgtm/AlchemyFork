@@ -1,0 +1,5 @@
+// Generated from the single authoritative native shader source at configure.
+#pragma once
+inline constexpr const char* alMetalShadowVisibilitySource = R"ALMETAL(
+@AL_METAL_SHADOW_VISIBILITY_SOURCE@
+)ALMETAL";

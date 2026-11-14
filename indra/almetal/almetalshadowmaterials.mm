@@ -112,13 +112,13 @@ bool requestKey(const Pool& pool, const ALMetalShadowMaterialRequest& request,
     }
     key = {};
     key.sampler = request.sampler->nativeHandle();
-    if (!key.sampler || (pool.supported && request.texture_count > 1 &&
+    if (!key.sampler || (pool.supported && (request.texture_count > 1 || request.require_argument_buffer) &&
                          !request.sampler->supportsArgumentBuffers()))
     {
         setError(error, "Metal shadow material sampler is invalid or not argument-buffer capable");
         return false;
     }
-    key.slots = request.texture_count == 1 ? 1 :
+    key.slots = request.texture_count == 1 && !request.require_argument_buffer ? 1 :
         (request.texture_count <= 8 ? 8 : 32);
     for (std::size_t i = 0; i < key.slots; ++i)
     {
@@ -671,6 +671,11 @@ std::size_t ALMetalShadowMaterials::Pass::requestCount() const noexcept
 bool ALMetalShadowMaterials::Pass::usesArgumentBuffer(std::size_t request) const noexcept
 {
     return request < mImpl->requests.size() && mImpl->requests[request] != nullptr;
+}
+
+const ALMetalBuffer* ALMetalShadowMaterials::Pass::argumentBuffer(std::size_t request) const noexcept
+{
+    return usesArgumentBuffer(request) ? mImpl->requests[request]->slot->buffer.get() : nullptr;
 }
 
 bool ALMetalShadowMaterials::Pass::declareResources(

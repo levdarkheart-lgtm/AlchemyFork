@@ -11,6 +11,8 @@
 #include "almetalworld.h"
 #include "almetalshadowindirect.h"
 #include "almetalshadowmaterials.h"
+#include "almetalshadowprepare.h"
+#include "almetalframeadmission.h"
 
 #include "../newview/SMAAAreaTex.h"
 #include "../newview/SMAASearchTex.h"
@@ -22,6 +24,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <limits>
 #include <new>
 #include <functional>
@@ -33,6 +36,27 @@
 
 namespace
 {
+    using CommandSettlementObserver = std::function<void(bool)>;
+
+    void notifyCommandSettlement(std::vector<CommandSettlementObserver> observers,
+                                const std::shared_ptr<std::uint64_t>& failures,
+                                bool committed) noexcept
+    {
+        for (auto& observer : observers)
+        {
+            try { observer(committed); }
+            catch (const std::exception& error)
+            {
+                ++*failures;
+                std::fprintf(stderr, "Alchemy Metal settlement observer failed: %s\n", error.what());
+            }
+            catch (...)
+            {
+                ++*failures;
+                std::fprintf(stderr, "Alchemy Metal settlement observer failed: non-standard exception\n");
+            }
+        }
+    }
     bool modernSkyValid(const ALMetalWorldModernSkyScene&, bool composite, std::string*);
     // Matches almetal_probe_shadow_single_tap in almetal_builtin.metal.
     constexpr std::uint32_t probe_shadow_function_constant = 0;
@@ -1586,6 +1610,13 @@ bool ALMetalWorldFrameData::publishPalette(
     const std::shared_ptr<const ALMetalAttachmentPaletteRecord>& palette,
     ALMetalWorldDataSlice& slice, std::string* error)
 {
+    return publishPaletteRecord(command, palette.get(), slice, error);
+}
+
+bool ALMetalWorldFrameData::publishPaletteRecord(
+    ALMetalCommandBuffer& command, const ALMetalAttachmentPaletteRecord* palette,
+    ALMetalWorldDataSlice& slice, std::string* error)
+{
     slice = {};
     if (!palette || command.isCommitted() ||
         command.nativeDevice() != mImpl->device->nativeHandle())
@@ -1593,14 +1624,21 @@ bool ALMetalWorldFrameData::publishPalette(
         setError(error, "Metal attachment palette publication is invalid");
         return false;
     }
-    const auto found = mImpl->palettes.find(palette.get());
+    const auto found = mImpl->palettes.find(palette);
     if (found == mImpl->palettes.end())
     {
+        std::shared_ptr<const ALMetalAttachmentPaletteRecord> owner;
+        try { owner = palette->shared_from_this(); }
+        catch (const std::bad_weak_ptr&)
+        {
+            setError(error, "Metal attachment palette has no immutable owner");
+            return false;
+        }
         if (!publish(command, palette->data(), palette->size() * sizeof(float),
                      slice, error, false)) return false;
         // A non-deduplicated publication always appends to the current page.
-        mImpl->palettes.emplace(palette.get(), Impl::PaletteEntry{
-            palette, {mImpl->active.back().get(), slice.offset, slice.length}});
+        mImpl->palettes.emplace(palette, Impl::PaletteEntry{
+            std::move(owner), {mImpl->active.back().get(), slice.offset, slice.length}});
         ++mImpl->statistics.record_publications;
         return true;
     }
@@ -1699,11 +1737,11 @@ struct ALMetalWorldGBufferRenderer::Impl
                           const ALMetalWorldSpotShadowBatch& batch,
                           std::string* error)
     {
-        if (!frame_data || !batch.skin_palette_record)
+        if (!frame_data || !batch.skinPaletteRecord())
             return setVertexData(encoder, command, index, batch.skin_palette,
                 batch.skin_palette_float_count * sizeof(float), error, true);
         ALMetalWorldDataSlice slice;
-        return frame_data->publishPalette(command, batch.skin_palette_record,
+        return frame_data->publishPaletteRecord(command, batch.skinPaletteRecord(),
                                          slice, error) &&
             encoder.setVertexBuffer(index, *slice.buffer, slice.offset, error);
     }
@@ -1742,9 +1780,84 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalCommandBuffer> command_batch;
     std::deque<std::unique_ptr<ALMetalCommandBuffer>>
         pending_command_batches;
+    struct PendingShadowBatch
+    {
+        ALMetalFrameAdmission::Ticket ticket;
+        std::unique_ptr<ALMetalCommandBuffer> command;
+    };
+    std::deque<PendingShadowBatch> pending_shadow_batches;
+    ALMetalFrameAdmission shadow_admission{2, 6};
+    ALMetalFrameAdmission::Ticket shadow_reservation = 0;
+    std::vector<CommandSettlementObserver> command_settlement_observers;
+    std::shared_ptr<std::uint64_t> settlement_observer_failures = std::make_shared<std::uint64_t>(0);
     bool command_batch_valid = true;
     std::string command_batch_failure;
     bool command_batch_generates_brdf_lut = false;
+
+    struct ShadowDataSlab
+    {
+        std::unique_ptr<ALMetalBuffer> buffer;
+        std::uint8_t* mapped = nullptr;
+        std::shared_ptr<const ALMetalCommandCompletion> completion;
+    };
+    std::vector<std::shared_ptr<ShadowDataSlab>> shadow_data_slabs;
+    ALMetalShadowIndirectStats shadow_data_statistics;
+
+    bool publishShadowData(ALMetalCommandBuffer& command, const void* bytes,
+                           std::size_t length, ALMetalWorldDataSlice& slice,
+                           bool stable, std::string* error)
+    {
+        if (!stable) return frame_data->publish(command, bytes, length, slice, error, false);
+        constexpr std::size_t maximum_bytes = 128 * 1024 * 1024;
+        constexpr std::size_t maximum_slots = 32;
+        std::shared_ptr<ShadowDataSlab> selected;
+        std::size_t allocated = 0;
+        for (const auto& slab : shadow_data_slabs)
+        {
+            allocated += slab->buffer->length();
+            if ((!slab->completion || slab->completion->isComplete()) &&
+                slab->buffer->length() >= length &&
+                (!selected || slab->buffer->length() < selected->buffer->length())) selected = slab;
+        }
+        bool reused = static_cast<bool>(selected);
+        if (!selected && length <= maximum_bytes && shadow_data_slabs.size() < maximum_slots)
+        {
+            std::size_t capacity = 64 * 1024;
+            while (capacity < length) capacity *= 2;
+            if (capacity <= maximum_bytes - std::min(allocated, maximum_bytes))
+            {
+                selected = std::make_shared<ShadowDataSlab>();
+                ALMetalBufferDescriptor descriptor; descriptor.length = capacity;
+                descriptor.storage = ALMetalStorageMode::shared;
+                descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+                descriptor.label = "Alchemy completion-owned stable shadow constants and poses";
+                selected->buffer = ALMetalBuffer::create(*device, descriptor, error);
+                if (selected->buffer)
+                    selected->mapped = static_cast<std::uint8_t*>(selected->buffer->mappedBytes());
+                if (selected->mapped) shadow_data_slabs.push_back(selected);
+                else selected.reset();
+            }
+        }
+        if (!selected)
+        {
+            ++shadow_data_statistics.stable_data_fallbacks;
+            // The packed ABI is identical in either storage. Capacity pressure
+            // preserves the ordinary arena path and every admitted caster.
+            return frame_data->publish(command, bytes, length, slice, error, false);
+        }
+        auto completion = command.completionToken();
+        if (!completion || !command.retainUntilCompletion(selected, error)) return false;
+        // A discarded legacy consumer is also safe: independent Metal4 work
+        // reads copied addresses/bounds, never these constant/pose bytes.
+        // Actual render readers must have completed before this overwrite.
+        selected->completion = std::move(completion);
+        std::memcpy(selected->mapped, bytes, length);
+        slice = {selected->buffer.get(), 0, length};
+        ++shadow_data_statistics.stable_data_publications;
+        shadow_data_statistics.stable_data_reuses += reused;
+        shadow_data_statistics.stable_data_bytes += length;
+        return true;
+    }
 
     std::unique_ptr<ALMetalRenderTarget> makeRenderTarget(
         const ALMetalDevice&,
@@ -1796,6 +1909,78 @@ struct ALMetalWorldGBufferRenderer::Impl
             }
         }
         return encoded;
+    }
+
+    bool pruneShadowBatches(std::string* error)
+    {
+        std::vector<ALMetalFrameAdmission::CompletionReceipt> receipts;
+        std::string first_failure;
+        for (const auto& pending : pending_shadow_batches)
+        {
+            const auto status = pending.command->status();
+            if (status == ALMetalCommandStatus::completed)
+                receipts.push_back({pending.ticket, ALMetalFrameAdmission::CompletionState::completed});
+            else if (status == ALMetalCommandStatus::error)
+            {
+                receipts.push_back({pending.ticket, ALMetalFrameAdmission::CompletionState::failed});
+                if (first_failure.empty()) first_failure = pending.command->errorDescription();
+                if (first_failure.empty()) first_failure = "A pending Metal shadow frame failed";
+            }
+        }
+        if (!receipts.empty())
+        {
+            const auto retired = shadow_admission.prune(receipts);
+            std::erase_if(pending_shadow_batches, [&](const auto& pending) {
+                return std::any_of(receipts.begin(), receipts.end(), [&](const auto& receipt) {
+                    return receipt.ticket == pending.ticket;
+                });
+            });
+            if (retired.ignored_receipts && first_failure.empty())
+                first_failure = "Metal shadow frame completion lost its admission ticket";
+        }
+        if (!first_failure.empty()) { setError(error, first_failure); return false; }
+        return true;
+    }
+
+    ALMetalFrameAdmission::Ticket reserveShadowFrame(std::uint64_t frame, std::string* error)
+    {
+        for (;;)
+        {
+            if (!pruneShadowBatches(error)) return 0;
+            const auto decision = shadow_admission.reserve(frame);
+            if (decision) return decision.reservation;
+            if (decision.outcome != ALMetalFrameAdmission::Outcome::wait_for_prior_frame)
+            {
+                const char* message = decision.outcome == ALMetalFrameAdmission::Outcome::same_frame_limit
+                    ? "Metal shadow frame exceeds its six-invocation bound"
+                    : decision.outcome == ALMetalFrameAdmission::Outcome::stale_frame
+                        ? "Metal shadow frame serial moved backwards"
+                        : decision.outcome == ALMetalFrameAdmission::Outcome::unsubmitted_prior_frame
+                            ? "An older Metal shadow frame has an unsettled reservation"
+                            : "Metal shadow frame admission is exhausted";
+                setError(error, message);
+                return 0;
+            }
+            // Wait only on the complete older frame group selected by policy.
+            // Repeated views of this frame never wait on their own submissions.
+            const auto tickets = shadow_admission.submittedTickets(decision.blocking_frame);
+            bool waited = false;
+            std::string first_failure;
+            for (auto& pending : pending_shadow_batches)
+            {
+                if (std::find(tickets.begin(), tickets.end(), pending.ticket) == tickets.end()) continue;
+                waited = true;
+                std::string wait_error;
+                if (!pending.command->waitUntilCompleted(&wait_error) && first_failure.empty())
+                    first_failure = wait_error.empty() ? "An older Metal shadow frame failed" : wait_error;
+            }
+            std::string retirement_error;
+            const bool retired = pruneShadowBatches(&retirement_error);
+            if (!first_failure.empty() || !retired)
+            { setError(error, first_failure.empty() ? retirement_error : first_failure); return 0; }
+            if (!waited)
+            { setError(error, "Metal shadow frame admission has no matching pending commands"); return 0; }
+        }
     }
 
     bool makeCommandBatchSlot(
@@ -1850,13 +2035,14 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_pipelines;
     std::unique_ptr<ALMetalShadowIndirectCommands> shadow_indirect;
-    std::unique_ptr<ALMetalRenderPipeline> spot_shadow_indirect_pipeline;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> spot_shadow_indirect_pipelines;
     std::uint64_t shadow_coalesced_draws = 0;
     std::uint64_t shadow_covered_input_draws = 0;
     std::uint64_t shadow_covered_coalesced_draws = 0;
     std::uint64_t shadow_source_records = 0;
     std::uint64_t shadow_encoded_records = 0;
     std::uint64_t shadow_early_coalesced_records = 0;
+    std::uint64_t shadow_certified_source_validations = 0;
     std::uint64_t opaque_diagnostic_calls = 0;
     ALMetalWorldPostDiagnostics opaque_diagnostics;
     std::array<ALMetalWorldSimpleShadowPSOCensus, 13> simple_shadow_pso_diagnostics{};
@@ -1874,6 +2060,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         spot_shadow_coverage_pipelines;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
         spot_shadow_material_pipelines;
+    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
+        spot_shadow_indirect_material_pipelines;
     std::unique_ptr<ALMetalShadowMaterials> standalone_shadow_materials;
     std::uint64_t standalone_shadow_material_generation = 0;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
@@ -2379,7 +2567,10 @@ ALMetalWorldGBufferRenderer::ALMetalWorldGBufferRenderer(
 {
 }
 
-ALMetalWorldGBufferRenderer::~ALMetalWorldGBufferRenderer() = default;
+ALMetalWorldGBufferRenderer::~ALMetalWorldGBufferRenderer()
+{
+    cancelCommandBatch();
+}
 
 bool ALMetalWorldGBufferRenderer::reloadShaders(std::string* error)
 {
@@ -2433,6 +2624,11 @@ bool ALMetalWorldGBufferRenderer::reloadShaders(std::string* error)
         !next.frame_data->reloadShadowMaterials(*next.library, error)) return false;
     next.render_target_pool = mImpl->render_target_pool;
     next.pending_command_batches.swap(mImpl->pending_command_batches);
+    next.pending_shadow_batches.swap(mImpl->pending_shadow_batches);
+    next.shadow_data_slabs.swap(mImpl->shadow_data_slabs);
+    next.shadow_data_statistics = mImpl->shadow_data_statistics;
+    next.shadow_admission = std::move(mImpl->shadow_admission);
+    next.settlement_observer_failures = mImpl->settlement_observer_failures;
     next.probe_workload.swap(mImpl->probe_workload);
     next.opaque_family_split_requested = mImpl->opaque_family_split_requested;
     next.opaque_family_split_saw_timing = mImpl->opaque_family_split_saw_timing;
@@ -2448,6 +2644,7 @@ bool ALMetalWorldGBufferRenderer::reloadShaders(std::string* error)
     next.shadow_source_records = mImpl->shadow_source_records;
     next.shadow_encoded_records = mImpl->shadow_encoded_records;
     next.shadow_early_coalesced_records = mImpl->shadow_early_coalesced_records;
+    next.shadow_certified_source_validations = mImpl->shadow_certified_source_validations;
     next.shader_generation = mImpl->shader_generation + 1;
     mImpl.swap(replacement->mImpl);
     // Metal command buffers retain their encoded pipelines/resources; pending
@@ -2486,6 +2683,22 @@ ALMetalWorldGBufferRenderer::shadowIndirectStats() const noexcept
         stats.source_records = mImpl->shadow_source_records;
         stats.encoded_records = mImpl->shadow_encoded_records;
         stats.early_coalesced_records = mImpl->shadow_early_coalesced_records;
+        stats.certified_source_validations = mImpl->shadow_certified_source_validations;
+        stats.settlement_observer_failures = *mImpl->settlement_observer_failures;
+        const auto& data = mImpl->shadow_data_statistics;
+        stats.stable_data_publications = data.stable_data_publications;
+        stats.stable_data_reuses = data.stable_data_reuses;
+        stats.stable_data_fallbacks = data.stable_data_fallbacks;
+        stats.stable_palette_copies = data.stable_palette_copies;
+        stats.stable_data_bytes = data.stable_data_bytes;
+        stats.opaque_indirect_prepared_draws = data.opaque_indirect_prepared_draws;
+        stats.opaque_indirect_executed_draws = data.opaque_indirect_executed_draws;
+        stats.opaque_indirect_runs = data.opaque_indirect_runs;
+        stats.opaque_indirect_fallbacks = data.opaque_indirect_fallbacks;
+        stats.opaque_indirect_skipped_draws = data.opaque_indirect_skipped_draws;
+        stats.stable_data_slots = mImpl->shadow_data_slabs.size();
+        for (const auto& slab : mImpl->shadow_data_slabs)
+            stats.stable_data_allocated_bytes += slab->buffer->length();
     }
     return stats;
 }
@@ -2590,25 +2803,64 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
     const std::string failure = mImpl->command_batch_failure;
     const bool generates_brdf_lut =
         mImpl->command_batch_generates_brdf_lut;
+    const auto shadow_ticket = mImpl->shadow_reservation;
     mImpl->command_batch_valid = true;
     mImpl->command_batch_failure.clear();
     mImpl->command_batch_generates_brdf_lut = false;
     if (!valid)
     {
+        if (shadow_ticket) mImpl->shadow_admission.cancel(shadow_ticket);
+        mImpl->shadow_reservation = 0;
+        command.reset();
         setError(error, failure.empty()
             ? "Metal world command batch was invalidated"
             : failure);
+        auto observers = std::move(mImpl->command_settlement_observers);
+        mImpl->command_settlement_observers.clear();
+        const auto census = mImpl->settlement_observer_failures;
+        notifyCommandSettlement(std::move(observers), census, false);
         return false;
     }
-    const bool committed = command->commit(error);
+    // Reserve the native retirement entry before committing. A post-commit
+    // container allocation must not lose the only submission receipt.
+    ALMetalCommandBuffer* queued = nullptr;
+    if (shadow_ticket)
+    {
+        mImpl->pending_shadow_batches.push_back({shadow_ticket, std::move(command)});
+        queued = mImpl->pending_shadow_batches.back().command.get();
+    }
+    else
+    {
+        mImpl->pending_command_batches.push_back(std::move(command));
+        queued = mImpl->pending_command_batches.back().get();
+    }
+    const bool committed = queued->commit(error);
     if (committed && generates_brdf_lut)
     {
         mImpl->brdf_lut_ready = true;
     }
-    if (committed)
+    if (shadow_ticket)
     {
-        mImpl->pending_command_batches.push_back(std::move(command));
+        if (committed)
+        {
+            if (!mImpl->shadow_admission.submitted(shadow_ticket))
+                std::fprintf(stderr, "Alchemy Metal committed shadow lost its reservation\n");
+        }
+        else
+        {
+            mImpl->pending_shadow_batches.pop_back();
+            mImpl->shadow_admission.cancel(shadow_ticket);
+        }
     }
+    else if (!committed) mImpl->pending_command_batches.pop_back();
+    mImpl->shadow_reservation = 0;
+    auto observers = std::move(mImpl->command_settlement_observers);
+    mImpl->command_settlement_observers.clear();
+    const auto census = mImpl->settlement_observer_failures;
+    // Admission/commit and resource retirement identity are settled first.
+    // Observers may begin/register a later transaction without being consumed
+    // by this one. Their exceptions cannot change an actual commit result.
+    notifyCommandSettlement(std::move(observers), census, committed);
     return committed;
 }
 
@@ -2617,10 +2869,59 @@ void ALMetalWorldGBufferRenderer::cancelCommandBatch()
     if (mImpl)
     {
         mImpl->command_batch.reset();
+        if (mImpl->shadow_reservation)
+            mImpl->shadow_admission.cancel(mImpl->shadow_reservation);
+        mImpl->shadow_reservation = 0;
         mImpl->command_batch_valid = true;
         mImpl->command_batch_failure.clear();
         mImpl->command_batch_generates_brdf_lut = false;
+        auto observers = std::move(mImpl->command_settlement_observers);
+        mImpl->command_settlement_observers.clear();
+        const auto census = mImpl->settlement_observer_failures;
+        notifyCommandSettlement(std::move(observers), census, false);
     }
+}
+
+bool ALMetalWorldGBufferRenderer::beginShadowFrameBatch(
+    std::uint64_t frame, const std::string& label, std::string* error)
+{
+    if (!mImpl || !mImpl->device || mImpl->command_batch)
+    {
+        setError(error, "Metal shadow frame requires an available renderer and no active batch");
+        return false;
+    }
+    const auto ticket = mImpl->reserveShadowFrame(frame, error);
+    if (!ticket) return false;
+    std::unique_ptr<ALMetalCommandBuffer> command;
+    try { command = mImpl->device->makeCommandBuffer(label, error); }
+    catch (...)
+    {
+        mImpl->shadow_admission.cancel(ticket);
+        throw;
+    }
+    if (!command)
+    {
+        mImpl->shadow_admission.cancel(ticket);
+        return false;
+    }
+    mImpl->shadow_reservation = ticket;
+    mImpl->command_batch = std::move(command);
+    mImpl->command_batch_valid = true;
+    mImpl->command_batch_failure.clear();
+    mImpl->command_batch_generates_brdf_lut = false;
+    return true;
+}
+
+bool ALMetalWorldGBufferRenderer::observeCommandBatchSettlement(
+    std::function<void(bool)> observer, std::string* error)
+{
+    if (!mImpl || !mImpl->command_batch || !observer)
+    {
+        setError(error, "Metal command settlement observer requires an active batch and callback");
+        return false;
+    }
+    mImpl->command_settlement_observers.push_back(std::move(observer));
+    return true;
 }
 
 bool ALMetalWorldGBufferRenderer::commandBatchActive() const
@@ -2974,13 +3275,13 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             return nullptr;
         }
 
-        if (rigged == 0 && impl->shadow_indirect->supported())
+        if (impl->shadow_indirect->supported())
         {
             descriptor.support_indirect_commands = true;
             descriptor.label = "Alchemy indirect static spot-shadow depth pipeline";
-            impl->spot_shadow_indirect_pipeline =
+            impl->spot_shadow_indirect_pipelines[rigged] =
                 ALMetalRenderPipeline::create(device, descriptor, error);
-            if (!impl->spot_shadow_indirect_pipeline) return nullptr;
+            if (!impl->spot_shadow_indirect_pipelines[rigged]) return nullptr;
         }
 
         descriptor.support_indirect_commands = false;
@@ -3015,6 +3316,14 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             impl->spot_shadow_material_pipelines[rigged][slots] =
                 ALMetalRenderPipeline::create(device, descriptor, error);
             if (!impl->spot_shadow_material_pipelines[rigged][slots]) return nullptr;
+            if (impl->shadow_indirect->supported())
+            {
+                descriptor.support_indirect_commands = true;
+                impl->spot_shadow_indirect_material_pipelines[rigged][slots] =
+                    ALMetalRenderPipeline::create(device, descriptor, error);
+                descriptor.support_indirect_commands = false;
+                if (!impl->spot_shadow_indirect_material_pipelines[rigged][slots]) return nullptr;
+            }
         }
     }
 
@@ -6569,11 +6878,22 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     };
     constexpr std::size_t minimum_bulk_run = 64;
     constexpr std::size_t minimum_bulk_draws = 128;
+    constexpr std::size_t minimum_opaque_indirect_run = 2048;
     const bool use_indirect = scene.indirect_draws &&
         mImpl->shadow_indirect && mImpl->shadow_indirect->supported();
-    const bool collect_bulk = (use_indirect || scene.bulk_draws) &&
+    const bool opaque_indirect = !use_indirect && scene.opaque_indirect_draws &&
+        mImpl->frame_data && mImpl->shadow_indirect && mImpl->shadow_indirect->supported();
+    if (scene.gpu_visibility && ((scene.visibility_bounds == nullptr) !=
+            (scene.visibility_bounds_count == 0) ||
+            (scene.visibility_bounds && scene.visibility_bounds_count != scene.batch_count)))
+    {
+        setError(error, "Metal shadow visibility bounds must match the admitted source list");
+        return false;
+    }
+    const bool collect_bulk = (use_indirect || opaque_indirect || scene.bulk_draws) &&
         mImpl->frame_data && mImpl->shadow_indirect;
     std::vector<ShadowRun> bulk_runs;
+    std::uint64_t opaque_considered=0,opaque_encoded=0;
     std::uint64_t covered_input_draws = 0, covered_coalesced_draws = 0;
     std::vector<std::uint16_t> terrain_factors;
     std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
@@ -6591,11 +6911,22 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         const bool query_boundary = query_boundary_index < scene.visibility_query_count &&
             scene.visibility_queries[query_boundary_index].batch_offset == index;
         const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
-        if (batch.skin_palette_record &&
+        if(scene.opaque_indirect_draws&&!scene.indirect_draws&&!batch.avatar&&!batch.terrain&&
+           batch.coverage==ALMetalWorldSpotShadowCoverage::opaque)++opaque_considered;
+        if (batch.hasBorrowedInputs() && !scene.source_owner)
+        {
+            setError(error, "Metal borrowed shadow inputs require an aggregate source owner");
+            return false;
+        }
+        const auto* source_record = batch.sourceRecord();
+        const auto* palette_record = batch.skinPaletteRecord();
+        const bool certified_source = source_record && source_record->matchesStableInputs(batch);
+        if (certified_source) ++mImpl->shadow_certified_source_validations;
+        if (palette_record &&
             (batch.avatar || batch.terrain ||
-             batch.skin_palette != batch.skin_palette_record->data() ||
-             batch.skin_palette_float_count != batch.skin_palette_record->size() ||
-             batch.skin_joint_count != batch.skin_palette_record->jointCount()))
+             batch.skin_palette != palette_record->data() ||
+             batch.skin_palette_float_count != palette_record->size() ||
+             batch.skin_joint_count != palette_record->jointCount()))
         {
             setError(error, "Metal spot-shadow attachment palette record metadata is invalid");
             return false;
@@ -6657,17 +6988,17 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                         sizeof(batch.terrain_tessellation_factors));
             continue;
         }
-        if (!batch.vertices || !batch.indices || batch.vertex_count == 0 ||
+        if (!finiteValues(batch.modelview_projection, 16) ||
+            (!certified_source && (!batch.vertices || !batch.indices || batch.vertex_count == 0 ||
             batch.index_count == 0 || !valid_index_type ||
             coverage > static_cast<std::uint32_t>(
                 ALMetalWorldSpotShadowCoverage::avatar_blend) ||
             batch.position_offset % float4_stride != 0 ||
             batch.index_offset % index_stride != 0 ||
-            !finiteValues(batch.modelview_projection, 16) ||
             !rangeFits(batch.position_offset, batch.vertex_count,
                        float4_stride, batch.vertices->length()) ||
             !rangeFits(batch.index_offset, batch.index_count,
-                       index_stride, batch.indices->length()))
+                       index_stride, batch.indices->length()))))
         {
             setError(error, "Metal spot-shadow batch geometry is invalid");
             return false;
@@ -6717,7 +7048,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         }
         else if (covered)
         {
-            if (batch.texture_count == 0 ||
+            if (!certified_source && (batch.texture_count == 0 ||
                 batch.texture_count >
                     ALMetalWorldSpotShadowBatch::max_textures ||
                 (pbr_coverage && batch.texture_count >
@@ -6735,13 +7066,14 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                 (pbr_coverage &&
                  !finiteValues(
                      &batch.coverageData().pbr_base_color_transforms[0][0][0],
-                     batch.texture_count * 8)))
+                     batch.texture_count * 8))))
             {
                 setError(error,
                          "Metal spot-shadow coverage data is invalid");
                 return false;
             }
             for (std::size_t texture = 0;
+                 !certified_source &&
                  texture < batch.texture_count; ++texture)
             {
                 if (!sampleableTexture(batch.coverageData().textures[texture]) ||
@@ -6781,7 +7113,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             const bool weight_range_valid = rangeFits(
                 batch.weight_offset, batch.vertex_count, weight_stride,
                 batch.vertices->length());
-            const bool palette_finite = batch.skin_palette_record || finiteValues(
+            const bool palette_finite = palette_record || finiteValues(
                 batch.skin_palette, batch.skin_palette_float_count);
             std::size_t first_nonfinite =
                 batch.skin_palette_float_count;
@@ -6909,6 +7241,18 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         bulk_runs.clear();
         bulk_draw_count = 0;
     }
+    std::vector<ShadowRun> opaque_static_runs;
+    std::size_t opaque_static_count = 0;
+    if (opaque_indirect)
+    {
+        std::erase_if(bulk_runs,[&](const ShadowRun& run) {
+            if(run.count>=minimum_opaque_indirect_run)
+            {opaque_static_runs.push_back(run);opaque_static_count+=run.count;return true;}
+            return !scene.bulk_draws;
+        });
+        bulk_draw_count=0;
+        for(const auto& run:bulk_runs)bulk_draw_count+=run.count;
+    }
 
     std::unique_ptr<ALMetalBuffer> terrain_factor_buffer;
     if (!terrain_factors.empty())
@@ -6939,7 +7283,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         depth_descriptor.format = ALMetalPixelFormat::depth32_float;
         depth_descriptor.width = scene.width;
         depth_descriptor.height = scene.height;
-        depth_descriptor.storage = ALMetalStorageMode::private_gpu;
+        depth_descriptor.storage = ALMetalStorageMode::memoryless;
         depth_descriptor.usage = ALMetalTextureUsage::render_target;
         depth_descriptor.label =
             "Alchemy reusable spot-shadow depth test";
@@ -6964,6 +7308,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         ALMetalPixelFormat::depth32_float;
     target_descriptor.depth_stencil_texture =
         mImpl->spot_shadow_depth_attachment.get();
+    target_descriptor.memoryless_depth_stencil = true;
     target_descriptor.label = "Alchemy direct spot-shadow slice";
     auto target = mImpl->makeRenderTarget(
         *mImpl->device, target_descriptor, error);
@@ -6995,23 +7340,31 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
     ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
         "Alchemy direct spot-shadow slice", owned_command, error) : nullptr;
+    if (command && scene.source_owner &&
+        !command->retainUntilCompletion(scene.source_owner, error))
+    {
+        mImpl->finishCommandBuffer(owned_command, false, error);
+        return false;
+    }
     if (command && query_results && !query_results->attachCommand(*command, error))
     {
         mImpl->finishCommandBuffer(owned_command, false, error);
         return false;
     }
     std::unique_ptr<ALMetalShadowIndirectCommands::Batch> bulk_batch;
+    std::unique_ptr<ALMetalShadowIndirectCommands::Batch> opaque_static_batch;
     std::uint64_t coalesced_draws = 0;
-    if (command && bulk_draw_count != 0)
+    const auto prepare_static = [&](std::vector<ShadowRun>& runs,std::size_t draw_count,
+                                    bool indirect,bool stable) -> std::unique_ptr<ALMetalShadowIndirectCommands::Batch>
     {
         // One immutable slab replaces per-draw arena publication. Each command
         // binds its 80-byte, 16-byte-aligned record directly; the frame arena
         // and draw-packet owner retire their resources on command completion.
         std::vector<WorldOpaqueShadowConstants> constants;
-        constants.reserve(bulk_draw_count);
+        constants.reserve(draw_count);
         std::vector<ALMetalShadowIndirectDraw> draws;
-        draws.reserve(bulk_draw_count);
-        for (ShadowRun& run : bulk_runs)
+        draws.reserve(draw_count);
+        for (ShadowRun& run : runs)
         {
             run.command_first = draws.size();
             for (std::size_t n = 0; n < run.count; ++n)
@@ -7032,7 +7385,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                 // Only complete adjacent triangle ranges with identical static
                 // state may be joined. Never cross a caster-family/cull run,
                 // reorder indices, or join a trailing incomplete primitive.
-                if (!use_indirect && draws.size() > run.command_first)
+                if (!indirect && draws.size() > run.command_first)
                 {
                     auto& previous = draws.back();
                     const std::size_t stride = draw.index_type ==
@@ -7060,24 +7413,40 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             run.command_count = draws.size() - run.command_first;
         }
         ALMetalWorldDataSlice slice;
-        if (!mImpl->frame_data->publish(*command, constants.data(),
-                constants.size() * sizeof(constants.front()), slice, error, false))
+        if (!mImpl->publishShadowData(*command, constants.data(),
+                constants.size() * sizeof(constants.front()), slice, stable, error))
         {
-            mImpl->finishCommandBuffer(owned_command, false, error);
-            return false;
+            return nullptr;
         }
         for (std::size_t n = 0; n < draws.size(); ++n)
         {
             draws[n].constants = slice.buffer;
             draws[n].constant_offset = slice.offset + n * sizeof(constants.front());
         }
-        bulk_batch = use_indirect
-            ? mImpl->shadow_indirect->prepare(*command, draws, error)
+        return indirect
+            ? mImpl->shadow_indirect->prepare(*command, draws, error, use_indirect&&scene.gpu_visibility)
             : mImpl->shadow_indirect->prepareDirect(*command, draws, error);
+    };
+    if (command && bulk_draw_count != 0)
+    {
+        bulk_batch=prepare_static(bulk_runs,bulk_draw_count,use_indirect,scene.stable_shadow_data);
         if (!bulk_batch)
         {
             mImpl->finishCommandBuffer(owned_command, false, error);
             return false;
+        }
+    }
+    if (command && opaque_static_count)
+    {
+        opaque_static_batch=prepare_static(opaque_static_runs,opaque_static_count,true,true);
+        if(opaque_static_batch)
+            mImpl->shadow_data_statistics.opaque_indirect_prepared_draws+=opaque_static_count;
+        else
+        {
+            // Optional command-storage pressure never changes membership.
+            // These original source records remain in the scalar loop below.
+            ++mImpl->shadow_data_statistics.opaque_indirect_fallbacks;
+            opaque_static_runs.clear();opaque_static_count=0;
         }
     }
     // Material tables retain the exact native views and sampler. Prepare all
@@ -7087,7 +7456,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     std::unique_ptr<ALMetalShadowMaterials::Pass> shadow_material_pass;
     constexpr std::size_t no_material = std::numeric_limits<std::size_t>::max();
     std::vector<std::size_t> material_requests;
-    if (command && scene.material_buffers)
+    if (command && (scene.material_buffers || use_indirect))
     {
         try
         {
@@ -7095,7 +7464,8 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             for (std::size_t i = 0; i < scene.batch_count; ++i)
             {
                 const auto& batch = scene.batches[i];
-                if (batch.terrain || batch.avatar || batch.texture_count <= 1 ||
+                if (batch.terrain || batch.avatar || batch.texture_count == 0 ||
+                    (!use_indirect && batch.texture_count == 1) ||
                     batch.coverage == ALMetalWorldSpotShadowCoverage::opaque)
                     continue;
                 if (!mImpl->shadow_material_sampler)
@@ -7112,7 +7482,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                     material_requests.assign(scene.batch_count, no_material);
                 material_requests[i] = requests.size();
                 requests.push_back({batch.coverageData().textures.data(),
-                    batch.texture_count, mImpl->shadow_material_sampler.get()});
+                    batch.texture_count, mImpl->shadow_material_sampler.get(), use_indirect});
             }
             if (!requests.empty())
             {
@@ -7142,6 +7512,269 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             // Source admission is already complete; preserve direct emission.
             shadow_material_pass.reset();
             material_requests.clear();
+        }
+    }
+    // Extended ICB commands retain the same scalar shader ABI. Per-command
+    // palette/material bindings let adjacent attachment and cutout casters
+    // execute together without changing admission or query ordering.
+    struct ExtendedRun
+    {
+        std::size_t first, count, command_first = 0;
+        bool rigged, covered, double_sided;
+        std::size_t material_family;
+    };
+    std::vector<ExtendedRun> extended_runs;
+    std::unique_ptr<ALMetalShadowIndirectCommands::Batch> extended_batch;
+    if (command && (use_indirect||opaque_indirect) && mImpl->frame_data)
+    {
+        std::size_t query = 0;
+        for (std::size_t i = 0; i < scene.batch_count; ++i)
+        {
+            const auto& batch = scene.batches[i];
+            while (query < scene.visibility_query_count &&
+                   scene.visibility_queries[query].batch_offset < i) ++query;
+            const bool boundary = query < scene.visibility_query_count &&
+                scene.visibility_queries[query].batch_offset == i;
+            const bool rigged = batch.skin_palette != nullptr;
+            const bool covered = batch.coverage != ALMetalWorldSpotShadowCoverage::opaque;
+            const auto request = material_requests.empty() ? no_material : material_requests[i];
+            if (batch.terrain || batch.avatar || (!rigged && !covered) ||
+                (opaque_indirect&&(covered||!batch.skinPaletteRecord())) ||
+                (covered && (!shadow_material_pass || !shadow_material_pass->usesArgumentBuffer(request))))
+                continue;
+            const std::size_t family = batch.texture_count <= 8 ? 0 : 1;
+            if (!boundary && !extended_runs.empty() &&
+                extended_runs.back().first + extended_runs.back().count == i &&
+                extended_runs.back().rigged == rigged && extended_runs.back().covered == covered &&
+                extended_runs.back().double_sided == batch.double_sided &&
+                extended_runs.back().material_family == family)
+                ++extended_runs.back().count;
+            else extended_runs.push_back({i, 1, 0, rigged, covered, batch.double_sided, family});
+        }
+        std::size_t count = 0;
+        std::erase_if(extended_runs, [&](const auto& run) {
+            if (run.count < (opaque_indirect?minimum_opaque_indirect_run:minimum_bulk_run) || run.count >
+                ALMetalShadowIndirectCommands::maximum_draw_count - count) return true;
+            count += run.count;
+            return false;
+        });
+        if (count < (opaque_indirect?minimum_opaque_indirect_run:minimum_bulk_draws)) extended_runs.clear();
+        if (!extended_runs.empty())
+        {
+            std::vector<ALMetalShadowIndirectDraw> draws;
+            std::vector<std::uint8_t> constants;
+            struct PendingPalette {const ALMetalAttachmentPaletteRecord* record;std::size_t offset=0;};
+            std::vector<PendingPalette> palettes;
+            std::unordered_map<const ALMetalAttachmentPaletteRecord*,std::size_t> palette_indices;
+            draws.reserve(count);
+            constants.reserve(count * (sizeof(WorldSpotShadowConstants) + 16));
+            for (auto& run : extended_runs)
+            {
+                run.command_first = draws.size();
+                for (std::size_t n = 0; n < run.count; ++n)
+                {
+                    const auto& batch = scene.batches[run.first + n];
+                    ALMetalShadowIndirectDraw draw;
+                    draw.positions = batch.vertices; draw.indices = batch.indices;
+                    draw.position_offset = batch.position_offset; draw.index_offset = batch.index_offset;
+                    draw.vertex_count = batch.vertex_count; draw.index_count = batch.index_count;
+                    draw.index_type = batch.index_type;
+                    draw.constant_offset = constants.size();
+                    WorldOpaqueShadowConstants opaque{};
+                    WorldSpotShadowConstants covered{};
+                    const void* bytes = &opaque;
+                    draw.constant_length = sizeof(opaque);
+                    std::memcpy(opaque.modelview_projection, batch.modelview_projection, sizeof(opaque.modelview_projection));
+                    opaque.config[0] = scene.reverse_z;
+                    if (run.covered)
+                    {
+                        std::memcpy(covered.modelview_projection, batch.modelview_projection, sizeof(covered.modelview_projection));
+                        std::memcpy(covered.texture_matrix, batch.texture_matrix, sizeof(covered.texture_matrix));
+                        std::memcpy(covered.pbr_base_color_transforms, batch.coverageData().pbr_base_color_transforms.data(), sizeof(covered.pbr_base_color_transforms));
+                        std::memcpy(covered.alpha_cutoffs, batch.coverageData().alpha_cutoffs.data(), sizeof(covered.alpha_cutoffs));
+                        covered.config[0] = scene.reverse_z;
+                        covered.config[1] = static_cast<std::uint32_t>(batch.coverage);
+                        covered.config[2] = batch.texture_count; covered.config[3] = scene.height;
+                        bytes = &covered; draw.constant_length = sizeof(covered);
+                        draw.vertex_bindings[0] = {batch.vertices, batch.texcoord_offset, std::size_t(batch.vertex_count) * 8};
+                        draw.vertex_bindings[1] = {batch.vertices, batch.color_offset, std::size_t(batch.vertex_count) * 4};
+                        const auto* table = shadow_material_pass->argumentBuffer(material_requests[run.first + n]);
+                        draw.fragment_bindings[1] = {table, 0, table->length()};
+                    }
+                    const auto* begin = static_cast<const std::uint8_t*>(bytes);
+                    constants.insert(constants.end(), begin, begin + draw.constant_length);
+                    if (run.rigged)
+                    {
+                        ALMetalWorldDataSlice palette;
+                        const auto* palette_record = batch.skinPaletteRecord();
+                        const bool pending = (scene.stable_shadow_data||opaque_indirect) && palette_record;
+                        if (pending)
+                        {
+                            const auto [entry,inserted] = palette_indices.emplace(palette_record,palettes.size());
+                            if (inserted) palettes.push_back({palette_record});
+                            palette.offset = entry->second;
+                            palette.length = palette_record->size()*sizeof(float);
+                        }
+                        const bool published = pending || (palette_record
+                            ? mImpl->frame_data->publishPaletteRecord(*command, batch.skinPaletteRecord(), palette, error)
+                            : mImpl->frame_data->publish(*command, batch.skin_palette,
+                                batch.skin_palette_float_count * sizeof(float), palette, error));
+                        if (!published) { mImpl->finishCommandBuffer(owned_command, false, error); return false; }
+                        const auto slot = run.covered ? 2u : 0u;
+                        draw.vertex_bindings[slot] = {palette.buffer, palette.offset, palette.length};
+                        draw.vertex_bindings[slot + 1] = {batch.vertices, batch.weight_offset, std::size_t(batch.vertex_count) * 16};
+                        draw.vertex_bindings[slot + 2] = {nullptr, constants.size(), sizeof(std::uint32_t)};
+                        const auto* joint_bytes = reinterpret_cast<const std::uint8_t*>(&batch.skin_joint_count);
+                        constants.insert(constants.end(), joint_bytes, joint_bytes + sizeof(batch.skin_joint_count));
+                        constants.resize((constants.size() + 15) & ~std::size_t(15));
+                    }
+                    draws.push_back(draw);
+                }
+            }
+            for (auto& palette : palettes)
+            {
+                palette.offset = constants.size();
+                const auto* bytes = reinterpret_cast<const std::uint8_t*>(palette.record->data());
+                constants.insert(constants.end(),bytes,bytes+palette.record->size()*sizeof(float));
+                constants.resize((constants.size()+15)&~std::size_t(15));
+            }
+            ALMetalWorldDataSlice slab;
+            if (!mImpl->publishShadowData(*command, constants.data(), constants.size(), slab, scene.stable_shadow_data||opaque_indirect, error))
+            { mImpl->finishCommandBuffer(owned_command, false, error); return false; }
+            mImpl->shadow_data_statistics.stable_palette_copies += palettes.size();
+            for (auto& draw : draws)
+            {
+                draw.constants = slab.buffer; draw.constant_offset += slab.offset;
+                if (draw.constant_length == sizeof(WorldSpotShadowConstants))
+                    draw.fragment_bindings[0] = {slab.buffer, draw.constant_offset, draw.constant_length};
+                for (auto& binding : draw.vertex_bindings)
+                    if (!binding.buffer && binding.length)
+                    {
+                        // Only the 4-byte joint-count scalar and certified
+                        // palettes use deferred bindings. Every palette has
+                        // at least one joint (64 bytes), so they are distinct.
+                        if (binding.length > sizeof(std::uint32_t))
+                            binding.offset = palettes[binding.offset].offset;
+                        binding.buffer = slab.buffer; binding.offset += slab.offset;
+                    }
+            }
+            extended_batch = mImpl->shadow_indirect->prepare(*command, draws, error, use_indirect&&scene.gpu_visibility);
+            if (!extended_batch)
+            {
+                if(!opaque_indirect){mImpl->finishCommandBuffer(owned_command,false,error);return false;}
+                ++mImpl->shadow_data_statistics.opaque_indirect_fallbacks;
+                extended_runs.clear();
+            }
+            else if(opaque_indirect)mImpl->shadow_data_statistics.opaque_indirect_prepared_draws+=count;
+        }
+    }
+    if (command && use_indirect && scene.gpu_visibility)
+    {
+        const auto prepare_visibility = [&](ALMetalShadowIndirectCommands::Batch& prepared,
+                                             const auto& runs) -> bool
+        {
+            std::vector<ALMetalShadowVisibilityInput> inputs;
+            std::vector<ALMetalShadowVisibilityRun> boundaries;
+            inputs.reserve(prepared.drawCount()); boundaries.reserve(runs.size());
+            for (const auto& run : runs)
+            {
+                boundaries.push_back({std::uint32_t(inputs.size()), std::uint32_t(run.count)});
+                for (std::size_t n = 0; n < run.count; ++n)
+                {
+                    const auto index = run.first + n;
+                    ALMetalShadowVisibilityInput input;
+                    std::memcpy(input.matrix, scene.batches[index].modelview_projection, sizeof(input.matrix));
+                    if (scene.visibility_bounds)
+                    {
+                        const auto& bounds = scene.visibility_bounds[index];
+                        std::copy_n(bounds.min, 3, input.minimum);
+                        std::copy_n(bounds.max, 3, input.maximum);
+                        input.config[0] = bounds.conservative;
+                    }
+                    input.config[1] = scene.depth_clamp;
+                    inputs.push_back(input);
+                }
+            }
+            return mImpl->shadow_indirect->prepareVisibility(*command, prepared, inputs,
+                boundaries, scene.metal4_visibility, error);
+        };
+        if ((bulk_batch && !prepare_visibility(*bulk_batch, bulk_runs)) ||
+            (extended_batch && !prepare_visibility(*extended_batch, extended_runs)))
+        { mImpl->finishCommandBuffer(owned_command, false, error); return false; }
+    }
+    struct DirectShadowData
+    {
+        ALMetalWorldDataSlice constants, palette, joints;
+    };
+    std::vector<DirectShadowData> direct_shadow_data;
+    if (command && scene.stable_shadow_data && !use_indirect && mImpl->frame_data)
+    {
+        // Preserve the ordinary direct PSOs, textures, query boundaries and
+        // draw ordering. Only immutable payload publication is consolidated.
+        direct_shadow_data.resize(scene.batch_count);
+        std::vector<std::uint8_t> bytes;
+        struct Palette {const ALMetalAttachmentPaletteRecord* record;std::size_t offset=0;};
+        std::vector<Palette> palettes;
+        std::unordered_map<const ALMetalAttachmentPaletteRecord*,std::size_t> palette_indices;
+        std::size_t bulk_index=0;
+        for(std::size_t index=0;index<scene.batch_count;++index)
+        {
+            while(bulk_index<bulk_runs.size()&&bulk_runs[bulk_index].first+bulk_runs[bulk_index].count<=index)++bulk_index;
+            if(bulk_index<bulk_runs.size()&&bulk_runs[bulk_index].first<=index)continue;
+            const auto& batch=scene.batches[index];
+            if(batch.avatar||batch.terrain)continue;
+            auto& data=direct_shadow_data[index];
+            WorldOpaqueShadowConstants opaque{};
+            WorldSpotShadowConstants covered{};
+            const void* constants=&opaque;
+            data.constants.offset=bytes.size();data.constants.length=sizeof(opaque);
+            std::memcpy(opaque.modelview_projection,batch.modelview_projection,sizeof(opaque.modelview_projection));
+            opaque.config[0]=scene.reverse_z;
+            if(batch.coverage!=ALMetalWorldSpotShadowCoverage::opaque)
+            {
+                std::memcpy(covered.modelview_projection,batch.modelview_projection,sizeof(covered.modelview_projection));
+                std::memcpy(covered.texture_matrix,batch.texture_matrix,sizeof(covered.texture_matrix));
+                std::memcpy(covered.pbr_base_color_transforms,batch.coverageData().pbr_base_color_transforms.data(),sizeof(covered.pbr_base_color_transforms));
+                std::memcpy(covered.alpha_cutoffs,batch.coverageData().alpha_cutoffs.data(),sizeof(covered.alpha_cutoffs));
+                covered.config[0]=scene.reverse_z;covered.config[1]=static_cast<std::uint32_t>(batch.coverage);
+                covered.config[2]=batch.texture_count;covered.config[3]=scene.height;
+                constants=&covered;data.constants.length=sizeof(covered);
+            }
+            const auto* start=static_cast<const std::uint8_t*>(constants);
+            bytes.insert(bytes.end(),start,start+data.constants.length);
+            if(batch.skin_palette)
+            {
+                data.joints.offset=bytes.size();data.joints.length=sizeof(batch.skin_joint_count);
+                start=reinterpret_cast<const std::uint8_t*>(&batch.skin_joint_count);
+                bytes.insert(bytes.end(),start,start+sizeof(batch.skin_joint_count));
+                bytes.resize((bytes.size()+15)&~std::size_t(15));
+                if(const auto* record=batch.skinPaletteRecord())
+                {
+                    const auto [entry,inserted]=palette_indices.emplace(record,palettes.size());
+                    if(inserted)palettes.push_back({record});
+                    data.palette.offset=entry->second;data.palette.length=record->size()*sizeof(float);
+                }
+            }
+        }
+        for(auto& palette:palettes)
+        {
+            palette.offset=bytes.size();
+            const auto* start=reinterpret_cast<const std::uint8_t*>(palette.record->data());
+            bytes.insert(bytes.end(),start,start+palette.record->size()*sizeof(float));
+            bytes.resize((bytes.size()+15)&~std::size_t(15));
+        }
+        if(!bytes.empty())
+        {
+            ALMetalWorldDataSlice slab;
+            if(!mImpl->publishShadowData(*command,bytes.data(),bytes.size(),slab,true,error))
+            {mImpl->finishCommandBuffer(owned_command,false,error);return false;}
+            mImpl->shadow_data_statistics.stable_palette_copies+=palettes.size();
+            for(auto& data:direct_shadow_data)
+            {
+                if(data.palette.length)data.palette.offset=palettes[data.palette.offset].offset;
+                for(auto* slice:{&data.constants,&data.palette,&data.joints})
+                    if(slice->length){slice->buffer=slab.buffer;slice->offset+=slab.offset;}
+            }
         }
     }
     auto encoder = command ? ALMetalRenderEncoder::begin(
@@ -7218,6 +7851,8 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         return encoder->setDepthStencilState(depth, error);
     };
     std::size_t next_bulk_run = 0;
+    std::size_t next_opaque_static_run = 0;
+    std::size_t next_extended_run = 0;
     for (std::size_t index = 0;
          encoded && index < scene.batch_count; ++index)
     {
@@ -7226,6 +7861,28 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             break;
         }
         const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
+        if(next_opaque_static_run<opaque_static_runs.size()&&opaque_static_runs[next_opaque_static_run].first==index)
+        {
+            const auto& run=opaque_static_runs[next_opaque_static_run++];
+            encoded=encoder->setCullMode(run.double_sided?ALMetalCullMode::none:ALMetalCullMode::back,error)&&
+                encoder->setPipeline(*mImpl->spot_shadow_indirect_pipelines[0],error)&&
+                mImpl->shadow_indirect->execute(*encoder,*opaque_static_batch,run.command_first,run.command_count,error);
+            if(encoded){opaque_encoded+=run.count;++mImpl->shadow_data_statistics.opaque_indirect_runs;}
+            index+=run.count-1;continue;
+        }
+        if (next_extended_run < extended_runs.size() && extended_runs[next_extended_run].first == index)
+        {
+            const auto& run = extended_runs[next_extended_run++];
+            const auto& pipeline = run.covered
+                ? mImpl->spot_shadow_indirect_material_pipelines[run.rigged][run.material_family]
+                : mImpl->spot_shadow_indirect_pipelines[run.rigged];
+            encoded = encoder->setCullMode(run.double_sided ? ALMetalCullMode::none : ALMetalCullMode::back, error) &&
+                encoder->setPipeline(*pipeline, error) &&
+                mImpl->shadow_indirect->execute(*encoder, *extended_batch, run.command_first, run.count, error);
+            if(encoded&&opaque_indirect){opaque_encoded+=run.count;++mImpl->shadow_data_statistics.opaque_indirect_runs;}
+            index += run.count - 1;
+            continue;
+        }
         if (next_bulk_run < bulk_runs.size() &&
             bulk_runs[next_bulk_run].first == index)
         {
@@ -7234,7 +7891,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                 run.double_sided ? ALMetalCullMode::none : ALMetalCullMode::back,
                 error) &&
                 encoder->setPipeline(use_indirect
-                    ? *mImpl->spot_shadow_indirect_pipeline
+                    ? *mImpl->spot_shadow_indirect_pipelines[0]
                     : *mImpl->spot_shadow_pipelines[0], error) &&
                 (use_indirect
                     ? mImpl->shadow_indirect->execute(*encoder, *bulk_batch,
@@ -7293,10 +7950,12 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         }
         WorldOpaqueShadowConstants opaque_constants;
         WorldSpotShadowConstants constants;
+        const DirectShadowData empty_data;
+        const auto& fixed=direct_shadow_data.empty()?empty_data:direct_shadow_data[index];
         const bool full_constants = covered || batch.avatar;
         const void* constant_bytes = &opaque_constants;
         std::size_t constant_length = sizeof(opaque_constants);
-        if (full_constants)
+        if (!fixed.constants.buffer && full_constants)
         {
             constant_bytes = &constants;
             constant_length = sizeof(constants);
@@ -7327,7 +7986,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             constants.config[2] = batch.texture_count;
             constants.config[3] = scene.height;
         }
-        else
+        else if (!fixed.constants.buffer)
         {
             std::memcpy(opaque_constants.modelview_projection,
                         batch.modelview_projection,
@@ -7412,7 +8071,10 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                 error) &&
             encoder->setVertexBuffer(
                 0, *batch.vertices, batch.position_offset, error) &&
-            (covered
+            (fixed.constants.buffer
+                ? encoder->setVertexBuffer(1,*fixed.constants.buffer,fixed.constants.offset,error) &&
+                    (!covered||encoder->setFragmentBuffer(0,*fixed.constants.buffer,fixed.constants.offset,error))
+                : covered
                 ? mImpl->setVertexAndFragmentData(*encoder, *command,
                       1, 0, constant_bytes, constant_length, error)
                 : mImpl->setVertexData(*encoder, *command,
@@ -7443,30 +8105,38 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         if (encoded && rigged && covered)
         {
             encoded =
-                (inline_palettes[index]
+                (fixed.palette.buffer
+                     ? encoder->setVertexBuffer(4,*fixed.palette.buffer,fixed.palette.offset,error)
+                     : inline_palettes[index]
                      ? mImpl->setShadowPalette(*encoder, *command,
                            4, batch, error)
                      : encoder->setVertexBuffer(
                            4, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
                     5, *batch.vertices, batch.weight_offset, error) &&
-                mImpl->setVertexData(*encoder, *command,
+                (fixed.joints.buffer
+                    ? encoder->setVertexBuffer(6,*fixed.joints.buffer,fixed.joints.offset,error)
+                    : mImpl->setVertexData(*encoder, *command,
                     6, &batch.skin_joint_count,
-                    sizeof(batch.skin_joint_count), error);
+                    sizeof(batch.skin_joint_count), error));
         }
         else if (encoded && rigged)
         {
             encoded =
-                (inline_palettes[index]
+                (fixed.palette.buffer
+                     ? encoder->setVertexBuffer(2,*fixed.palette.buffer,fixed.palette.offset,error)
+                     : inline_palettes[index]
                      ? mImpl->setShadowPalette(*encoder, *command,
                            2, batch, error)
                      : encoder->setVertexBuffer(
                            2, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
                     3, *batch.vertices, batch.weight_offset, error) &&
-                mImpl->setVertexData(*encoder, *command,
+                (fixed.joints.buffer
+                    ? encoder->setVertexBuffer(4,*fixed.joints.buffer,fixed.joints.offset,error)
+                    : mImpl->setVertexData(*encoder, *command,
                     4, &batch.skin_joint_count,
-                    sizeof(batch.skin_joint_count), error);
+                    sizeof(batch.skin_joint_count), error));
         }
         encoded = encoded && encoder->drawIndexed(
             ALMetalPrimitiveType::triangle, merged_index_count,
@@ -7489,6 +8159,8 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     mImpl->shadow_covered_input_draws += covered_input_draws;
     mImpl->shadow_covered_coalesced_draws += covered_coalesced_draws;
     mImpl->shadow_encoded_records += scene.batch_count - coalesced_draws - covered_coalesced_draws;
+    mImpl->shadow_data_statistics.opaque_indirect_executed_draws+=opaque_encoded;
+    mImpl->shadow_data_statistics.opaque_indirect_skipped_draws+=opaque_considered-opaque_encoded;
     mImpl->shadow_early_coalesced_records += scene.early_merged_source_count;
     if (visibility_results)
     {

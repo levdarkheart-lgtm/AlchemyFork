@@ -263,6 +263,16 @@ public:
     LLGLuint getTexName() const { return mTexName; }
 #if LL_DARWIN
     ALMetalTexture* getMetalTexture() const noexcept { return mMetalTexture.get(); }
+    // Render-produced updates must allocate/adopt a replacement while leased,
+    // rather than blitting into backing already borrowed by a CPU/GPU packet.
+    bool hasMetalTextureLeases() const noexcept { return mMetalTexture.use_count() > 1; }
+    // Acquire on the published-image owner. Keep the lease through detached
+    // preparation and actual command completion. Pixel updates copy leased
+    // backing before changing it; pending worker generations are not exposed.
+    std::shared_ptr<const ALMetalTexture> getMetalTextureLease() const noexcept
+    {
+        return mMetalTexture;
+    }
     // Allocate a descriptor-compatible private render target for a GPU-owned
     // producer (for example a shared CEF IOSurface). The caller encodes and
     // commits the write before publishing it with adoptMetalRenderTexture().
@@ -483,8 +493,10 @@ private:
     void touchContents();
     LLGLuint mTexName;
 #if LL_DARWIN
-    std::unique_ptr<ALMetalTexture> mMetalTexture;
-    std::unique_ptr<ALMetalTexture> mPendingMetalTexture;
+    std::shared_ptr<ALMetalTexture> mMetalTexture;
+    std::shared_ptr<ALMetalTexture> mPendingMetalTexture;
+    // Main-thread COW rollback owner, cleared only after the upload commits.
+    std::shared_ptr<ALMetalTexture> mMetalTextureBeforeWrite;
     U64 mAccountedMetalTextureBytes = 0;
 #endif
     U16      mWidth;
@@ -624,6 +636,8 @@ private:
                            ALMetalCommandBuffer*& command_buffer);
     bool preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 height);
     ALMetalTexture* metalTextureForUpload() noexcept;
+    bool prepareMetalTextureWrite(ALMetalCommandBuffer& command, std::string& error);
+    void rollbackMetalTextureWrite() noexcept;
     std::size_t metalSourceBytesPerRow(U32 width) const;
 #endif
 

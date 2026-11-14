@@ -273,8 +273,20 @@ public:
     // Retry this buffer's queued stores before capturing native handles.
     // Nonindexed draws require only the current vertex store.
     bool prepareMetalBuffers(bool require_indices);
-    ALMetalBuffer* getMetalVertexBuffer() const noexcept { return mMetalBuffer.get(); }
-    ALMetalBuffer* getMetalIndexBuffer() const noexcept { return mMetalIndices.get(); }
+    struct MetalUploadStats
+    {
+        U64 full_uploads = 0, partial_uploads = 0, uploaded_bytes = 0;
+        U64 recycled_generations = 0, leased_orphans = 0;
+    };
+    // Cumulative render-owner counters, for complete publication benchmarks.
+    static MetalUploadStats metalUploadStats() noexcept;
+    ALMetalBuffer* getMetalVertexBuffer() const noexcept;
+    ALMetalBuffer* getMetalIndexBuffer() const noexcept;
+    // Acquire on the render owner after prepareMetalBuffers. Retain the lease
+    // through queued preparation and native command completion; a live lease
+    // prevents the backing generation from being reused for later CPU writes.
+    std::shared_ptr<const ALMetalBuffer> getMetalVertexBufferLease() const noexcept;
+    std::shared_ptr<const ALMetalBuffer> getMetalIndexBufferLease() const noexcept;
     // Raw getters above also expose allocated/prior generations to resource
     // owners. New draws require the corresponding current CPU store published.
     bool hasPublishedMetalVertexBuffer() const noexcept
@@ -326,18 +338,23 @@ protected:
     U32     mIndicesSize = 0;   // size in bytes of mMappedIndexData
 
 #if LL_DARWIN
-    std::unique_ptr<ALMetalBuffer> mMetalBuffer;
-    std::unique_ptr<ALMetalBuffer> mMetalIndices;
+    std::shared_ptr<ALMetalBuffer> mMetalBuffer;
+    std::shared_ptr<ALMetalBuffer> mMetalIndices;
     // glBufferData gave an existing GL name a fresh backing store: draws
     // already queued kept the old bytes while later draws saw the new ones.
     // Metal shared buffers do not orphan on a CPU write, so retain the old
     // generations until the logical frame that may read them has completed.
     using MetalBufferGeneration =
-        std::pair<std::unique_ptr<ALMetalBuffer>, U32>;
+        std::pair<std::shared_ptr<ALMetalBuffer>, U32>;
     std::vector<MetalBufferGeneration> mRetiredMetalBuffers;
     std::vector<MetalBufferGeneration> mRetiredMetalIndices;
     bool mMetalBufferInitialized = false;
     bool mMetalIndicesInitialized = false;
+    mutable U32 mMetalBufferLastReadFrame = 0;
+    mutable U32 mMetalIndicesLastReadFrame = 0;
+    using MetalDirtyRange = std::pair<U32, U32>; // [begin,end)
+    std::vector<MetalDirtyRange> mMetalVertexDirtyRanges, mMetalIndexDirtyRanges;
+    void markMetalDirty(bool indices, U32 begin, U32 end);
 #endif
 
 private:

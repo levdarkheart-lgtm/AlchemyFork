@@ -10,12 +10,21 @@
 #pragma once
 
 #include "almetalpipeline.h"
+#include "almetalshadowvisibility.h"
 
 #include <cstddef>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
+
+struct ALMetalShadowIndirectBinding
+{
+    const ALMetalBuffer* buffer = nullptr;
+    std::size_t offset = 0;
+    std::size_t length = 0;
+};
 
 struct ALMetalShadowIndirectDraw
 {
@@ -28,6 +37,12 @@ struct ALMetalShadowIndirectDraw
     std::uint32_t vertex_count = 0;
     std::uint32_t index_count = 0;
     ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::size_t constant_length = 80;
+    // Fixed shader ABI: extra vertex slots2..6 and fragment slots0..1.
+    // The caller validates the family-specific element strides; this helper
+    // validates every published range and retains every native resource.
+    std::array<ALMetalShadowIndirectBinding, 5> vertex_bindings{};
+    std::array<ALMetalShadowIndirectBinding, 2> fragment_bindings{};
 };
 
 struct ALMetalShadowIndirectStats
@@ -53,6 +68,28 @@ struct ALMetalShadowIndirectStats
     std::uint64_t encoded_records = 0;
     std::uint64_t early_coalesced_records = 0;
     std::size_t direct_slot_count = 0;
+    std::uint64_t extended_prepared_draws = 0;
+    std::uint64_t visibility_dispatches = 0;
+    std::uint64_t metal4_visibility_dispatches = 0;
+    std::uint64_t visibility_failures = 0;
+    // Admitted GPU-generation input records, not post-compaction visible draws.
+    std::uint64_t gpu_generated_draws = 0;
+    std::uint64_t certified_source_validations = 0;
+    std::uint64_t settlement_observer_failures = 0;
+    std::uint64_t metal4_timed_dispatches = 0;
+    std::uint64_t metal4_gpu_time_nanoseconds = 0;
+    std::uint64_t stable_data_publications = 0;
+    std::uint64_t stable_data_reuses = 0;
+    std::uint64_t stable_data_fallbacks = 0;
+    std::uint64_t stable_palette_copies = 0;
+    std::uint64_t stable_data_bytes = 0;
+    std::size_t stable_data_slots = 0;
+    std::size_t stable_data_allocated_bytes = 0;
+    std::uint64_t opaque_indirect_prepared_draws = 0;
+    std::uint64_t opaque_indirect_executed_draws = 0;
+    std::uint64_t opaque_indirect_runs = 0;
+    std::uint64_t opaque_indirect_fallbacks = 0;
+    std::uint64_t opaque_indirect_skipped_draws = 0;
 };
 
 // Single-CPU-owner helper. It changes neither draw admission nor render state.
@@ -88,10 +125,14 @@ public:
     std::unique_ptr<Batch> prepare(
         ALMetalCommandBuffer& command,
         std::span<const ALMetalShadowIndirectDraw> draws,
-        std::string* error = nullptr);
+        std::string* error = nullptr, bool gpu_generated = false);
     bool execute(ALMetalRenderEncoder& encoder, const Batch& batch,
                  std::size_t first, std::size_t count,
                  std::string* error = nullptr);
+    bool prepareVisibility(ALMetalCommandBuffer&, Batch&,
+        std::span<const ALMetalShadowVisibilityInput>,
+        std::span<const ALMetalShadowVisibilityRun>, bool request_metal4,
+        std::string* error = nullptr);
     // Ordinary native draws keep the same immutable packet/slab contract
     // without requiring ICB-compatible pipeline state or indirect resources.
     std::unique_ptr<Batch> prepareDirect(

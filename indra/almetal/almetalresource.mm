@@ -910,6 +910,7 @@ struct ALMetalVisibilityResultBatch::Impl
     id<MTLDevice> device = nil;
     std::unique_ptr<ALMetalBuffer> buffer;
     id<MTLCommandBuffer> command = nil;
+    std::shared_ptr<const ALMetalCommandCompletion> completion;
     std::size_t result_count = 0;
 };
 
@@ -969,6 +970,13 @@ ALMetalVisibilityResultBatch::status() const noexcept
     {
         return Status::failed;
     }
+    if (mImpl->command.status < MTLCommandBufferStatusCommitted &&
+        mImpl->completion && mImpl->completion->isComplete())
+    {
+        // The C++ producer was abandoned. Retaining the native command here
+        // must not leave query consumers pending forever (PPD-097).
+        return Status::failed;
+    }
     switch (mImpl->command.status)
     {
         case MTLCommandBufferStatusCompleted:
@@ -1004,7 +1012,7 @@ bool ALMetalVisibilityResultBatch::wait(
         return false;
     }
     const MTLCommandBufferStatus command_status = mImpl->command.status;
-    if (command_status == MTLCommandBufferStatusNotEnqueued)
+    if (command_status < MTLCommandBufferStatusCommitted)
     {
         setError(error,
                  "Metal visibility command has not been committed");
@@ -1041,6 +1049,7 @@ bool ALMetalVisibilityResultBatch::attachCommand(
     }
     mImpl->command =
         (__bridge id<MTLCommandBuffer>)command.nativeHandle();
+    mImpl->completion = command.completionToken();
     return true;
 }
 
@@ -1387,6 +1396,11 @@ void* ALMetalTexture::nativeLinearHandle() const noexcept
 const ALMetalTextureDescriptor& ALMetalTexture::descriptor() const noexcept
 {
     return mDescriptor;
+}
+
+std::uint64_t ALMetalTexture::estimatedAllocationBytes() const noexcept
+{
+    return textureAllocationBytes(mDescriptor);
 }
 
 void ALMetalTexture::setLabel(const std::string& label)

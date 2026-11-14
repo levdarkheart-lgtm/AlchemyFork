@@ -25,6 +25,7 @@ struct ALMetalShadowMaterialRequest
     std::uint32_t texture_count = 0;
     // Must have been created with supportArgumentBuffers=YES; quality unchanged.
     const ALMetalSamplerState* sampler = nullptr;
+    bool require_argument_buffer = false;
 };
 
 struct ALMetalShadowMaterialLimits
@@ -73,6 +74,9 @@ public:
         Pass& operator=(const Pass&) = delete;
         std::size_t requestCount() const noexcept;
         bool usesArgumentBuffer(std::size_t request) const noexcept;
+        // Immutable table already pinned to the command passed to prepare().
+        // The returned wrapper is borrowed for that command's encoding only.
+        const ALMetalBuffer* argumentBuffer(std::size_t request) const noexcept;
         // One native encoder per Pass. Exactly once before draws on that
         // encoder. Declares all indirect
         // textures together. It does not replace command resource retention.

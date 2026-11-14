@@ -3330,7 +3330,7 @@ bool LLViewerMediaImpl::updateAcceleratedTexture()
     std::string metal_error;
     ALMetalTexture* metal_destination = media_image->getMetalTexture();
     std::unique_ptr<ALMetalTexture> replacement;
-    if (!metal_destination ||
+    if (!metal_destination || media_image->hasMetalTextureLeases() ||
         !alMetalHasUsage(metal_destination->descriptor().usage,
                          ALMetalTextureUsage::render_target))
     {

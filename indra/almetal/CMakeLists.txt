@@ -97,6 +97,7 @@ target_sources(
     almetaldevice.mm
     almetalavatarresources.cpp
     almetalframe.mm
+    almetalframeadmission.cpp
     almetalframecapture.mm
     almetalpbrpreview.cpp
     almetalpipeline.mm
@@ -105,8 +106,11 @@ target_sources(
     almetalresource.mm
     almetalretainedbackground.mm
     almetalscenemonitor.cpp
+    almetalshadowcache.cpp
     almetalshadowindirect.mm
     almetalshadowmaterials.mm
+    almetalshadowprepare.mm
+    almetalshadowvisibility.mm
     almetalstagetiming.mm
     almetalsculptpreview.cpp
     almetalsurface.mm
@@ -122,6 +126,7 @@ target_sources(
       almetaldevice.h
       almetalavatarresources.h
       almetalframe.h
+      almetalframeadmission.h
       almetalframecapture.h
       almetalpbrpreview.h
       almetalpipeline.h
@@ -131,6 +136,7 @@ target_sources(
       almetalresource.h
       almetalretainedbackground.h
       almetalscenemonitor.h
+      almetalshadowcache.h
       almetalshadowindirect.h
       almetalshadowmaterials.h
       almetalstagetiming.h
@@ -143,11 +149,21 @@ target_sources(
       almetaluirenderer.h
       almetalworld.h
       almetalworlddiagnostics.h
+      almetalshadowprepare.h
+      almetalshadowvisibility.h
 )
 target_compile_definitions(
   almetal
   PRIVATE AL_METAL_BUILTIN_SOURCE_PATH="${AL_METAL_BUILTIN_SOURCE}"
 )
+set(AL_METAL_SHADOW_VISIBILITY_SHADER
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/almetal_shadow_visibility.metal")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${AL_METAL_SHADOW_VISIBILITY_SHADER}")
+file(READ "${AL_METAL_SHADOW_VISIBILITY_SHADER}" AL_METAL_SHADOW_VISIBILITY_SOURCE)
+configure_file(almetalshadowvisibilitysource.h.in
+               "${CMAKE_CURRENT_BINARY_DIR}/almetalshadowvisibilitysource.h" @ONLY)
+target_include_directories(almetal PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(
   almetal
   PRIVATE
@@ -173,6 +189,8 @@ set_source_files_properties(
   almetalretainedbackground.mm
   almetalshadowindirect.mm
   almetalshadowmaterials.mm
+  almetalshadowprepare.mm
+  almetalshadowvisibility.mm
   almetalstagetiming.mm
   almetalsurface.mm
   almetaltexturebenchmark.mm
@@ -222,7 +240,14 @@ if(AL_BUILD_TESTS)
             tests/almetal_frame_profile_test.mm
             tests/almetal_benchmark_test.mm
             tests/almetal_pipeline_cache_test.mm
+            tests/almetal_shadow_cache_test.mm
             tests/almetal_shadow_capture_test.mm
+            tests/almetal_shadow_prepare_test.mm
+            tests/almetal_shadow_extended_test.mm
+            tests/almetal_shadow_generation_benchmark.mm
+            tests/almetal_shadow_source_benchmark.mm
+            tests/almetal_frame_admission_test.cpp
+            tests/almetal_visibility_abandon_test.mm
             tests/almetal_attachment_palette_test.mm
             tests/almetal_attachment_palette_benchmark.mm
             tests/almetal_shadow_gather_test.mm
@@ -266,6 +291,14 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_indexed_join_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_completion_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_world_data_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_shadow_cache_test.mm
+                              tests/almetal_shadow_prepare_test.mm
+                              tests/almetal_shadow_extended_test.mm
+                              tests/almetal_shadow_generation_benchmark.mm
+                              tests/almetal_shadow_source_benchmark.mm
+                              tests/almetal_frame_admission_test.cpp
+                              tests/almetal_visibility_abandon_test.mm
+                              PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_attachment_palette_test.mm
                               tests/almetal_attachment_palette_benchmark.mm
                               PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

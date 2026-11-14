@@ -33,9 +33,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <limits>
+#include <list>
 #include <new>
 #include <sstream>
 #include <string_view>
@@ -81,6 +83,8 @@
 #include "../almetal/almetaltextureops.h"
 #include "../almetal/almetaluirenderer.h"
 #include "../almetal/almetalworld.h"
+#include "../almetal/almetalshadowprepare.h"
+#include "../almetal/almetalshadowcache.h"
 #include "../almetal/almetalpipeline.h"
 #include "../almetal/almetalavatarresources.h"
 #include "../almetal/almetalretainedbackground.h"
@@ -403,10 +407,162 @@ static constexpr U32 SHADOW_MASKED_PASSES[] = {
 };
 
 #if LL_DARWIN
+struct ALViewerMetalShadowSourceCache
+{
+    std::vector<U64> key;
+    // Overflow has no cache-owned native lease. Reuse only while an actual
+    // queued/encoded/submitted packet still owns this exact producer record.
+    std::weak_ptr<const ALMetalShadowSourceRecord> transient_record;
+};
+
+namespace
+{
+// Main-owner working set. Current-display entries resist one-pass overflow
+// scans; weak overflow handles never increase cache residency or replace the
+// actual packet/command lease. The helper owns unique wrapper-byte accounting.
+ALMetalShadowSourceCache sShadowSourceCache;
+
+void trimShadowSourceWorkingSet()
+{
+    sShadowSourceCache.trim(gFrameCount);
+}
+
+struct ShadowSourceImages
+{
+    std::array<LLImageGL*, 96> images;
+    std::size_t count = 0;
+};
+
+// Equality compares the complete producer key, never just a hash. A key is
+// rebuilt cheaply on the owner; native/material arrays are constructed only
+// when it changes. Matrices/pose are explicit per-view inputs, not cache keys.
+bool shadowSourceKey(const LLDrawInfo& info, U32 type,
+                     ALMetalWorldSpotShadowCoverage coverage, bool texture_matrix,
+                     std::vector<U64>& key, ShadowSourceImages& images)
+{
+    key.clear();
+    images.count = 0;
+    const auto word = [&](U64 value) { key.push_back(value); };
+    const auto pointer = [&](const auto* value)
+    { word(reinterpret_cast<std::uintptr_t>(value)); };
+    const auto scalar = [&](F32 value)
+    { U32 bits; std::memcpy(&bits, &value, sizeof(bits)); word(bits); };
+    auto* buffer = info.mVertexBuffer.get();
+    word(type); word(static_cast<U32>(coverage)); pointer(buffer);
+    if (!buffer) return false;
+    word(buffer->getContentStamp());
+    pointer(buffer->getMetalVertexBuffer()); pointer(buffer->getMetalIndexBuffer());
+    word(buffer->hasPublishedMetalVertexBuffer());
+    word(buffer->hasPublishedMetalIndexBuffer());
+    word(buffer->getNumVerts()); word(buffer->getNumIndices());
+    word(buffer->getIndexStride()); word(info.mCount); word(info.mOffset);
+    pointer(info.mAvatar.get()); pointer(info.mSkinInfo.get());
+    const auto material = [&](const LLFetchedGLTFMaterial* value)
+    {
+        pointer(value);
+        if (!value) return;
+        word(value->mDoubleSided);
+        if (coverage != ALMetalWorldSpotShadowCoverage::opaque)
+        {
+            scalar(value->mAlphaCutoff);
+            LLGLTFMaterial::TextureTransform::Pack packed;
+            value->mTextureTransform[LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(packed);
+            std::array<U32, sizeof(packed) / sizeof(U32)> bits;
+            std::memcpy(bits.data(), packed, sizeof(packed));
+            for (auto part : bits) word(part);
+        }
+    };
+    material(info.mGLTFMaterial.get()); word(info.mGLTFMaterialList.size());
+    for (const auto& value : info.mGLTFMaterialList) material(value.get());
+    if (coverage == ALMetalWorldSpotShadowCoverage::opaque) return true;
+    word(texture_matrix); pointer(info.mTextureMatrix);
+    if (texture_matrix && info.mTextureMatrix)
+    {
+        const F32* values = &info.mTextureMatrix->mMatrix[0][0];
+        for (std::size_t at = 0; at < 16; ++at) scalar(values[at]);
+    }
+    scalar(info.mAlphaMaskCutoff);
+    bool valid = true;
+    const auto image = [&](LLViewerTexture* texture)
+    {
+        pointer(texture);
+        auto* gl = texture ? texture->getGLTexture() : nullptr;
+        pointer(gl);
+        if (!gl) return;
+        word(gl->getContentStamp()); pointer(gl->getMetalTexture());
+        for (std::size_t at = 0; at < images.count; ++at)
+            if (images.images[at] == gl) return;
+        if (images.count == images.images.size()) { valid = false; return; }
+        images.images[images.count++] = gl;
+    };
+    image(info.mTexture.get()); word(info.mTextureList.size());
+    for (const auto& value : info.mTextureList) image(value.get());
+    word(info.mMaterialSlotList.size());
+    for (const auto& value : info.mMaterialSlotList)
+    { image(value.mDiffuse.get()); scalar(value.mAlphaMaskCutoff); }
+    if (info.mGLTFMaterial)
+        image(info.mGLTFMaterial->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR));
+    for (const auto& value : info.mGLTFMaterialList)
+        if (value) image(value->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR));
+    image(LLViewerFetchedTexture::sDefaultImagep.get());
+    image(LLViewerFetchedTexture::sWhiteImagep.get());
+    return valid;
+}
+}
+
 struct LLPipeline::MetalWorldSimpleCapture
 {
     static constexpr U32 max_failed_frames = 120;
     static constexpr U32 max_world_ui_probe_attempts = 3;
+
+    struct ShadowSourceLease
+    {
+        std::vector<std::shared_ptr<const ALMetalShadowSourceRecord>> sources;
+        std::vector<std::shared_ptr<const ALMetalAttachmentPaletteRecord>> palettes;
+        std::unordered_set<const ALMetalShadowSourceRecord*> source_set;
+        std::unordered_set<const ALMetalAttachmentPaletteRecord*> palette_set;
+        const ALMetalShadowSourceRecord* retain(
+            const std::shared_ptr<const ALMetalShadowSourceRecord>& source)
+        {
+            const auto* record = source.get();
+            if (!record) return nullptr;
+            const auto [at, inserted] = source_set.insert(record);
+            if (inserted)
+            {
+                try { sources.push_back(source); }
+                catch (...) { source_set.erase(at); throw; }
+            }
+            return record;
+        }
+        const ALMetalAttachmentPaletteRecord* retain(
+            const std::shared_ptr<const ALMetalAttachmentPaletteRecord>& palette)
+        {
+            const auto* record = palette.get();
+            if (!record) return nullptr;
+            const auto [at, inserted] = palette_set.insert(record);
+            if (inserted)
+            {
+                try { palettes.push_back(palette); }
+                catch (...) { palette_set.erase(at); throw; }
+            }
+            return record;
+        }
+    };
+    struct ShadowInvocation { bool complete = false; };
+    struct ShadowPublication
+    {
+        std::shared_ptr<const ALMetalCommandCompletion> completion;
+        std::shared_ptr<ShadowInvocation> invocation;
+        U64 revision = 0;
+    };
+
+    ~MetalWorldSimpleCapture()
+    {
+        // Settlement callbacks borrow this capture. Cancel while every member
+        // is still alive, before the renderer member's later destruction.
+        if (renderer) renderer->cancelCommandBatch();
+        settleShadowVisibility();
+    }
 
     struct RendererBuild
     {
@@ -500,7 +656,99 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::array<bool, 2> direct_projector_shadow_valid{};
     ALSpotShadowCache direct_projector_shadow_cache;
     std::array<bool, 4> direct_directional_shadow_valid{};
+    std::array<ShadowPublication, 4> directional_shadow_publication;
+    std::array<ShadowPublication, 2> projector_shadow_publication;
+    std::shared_ptr<ShadowInvocation> shadow_invocation;
+    bool spot_shadow_encoded_ok = false;
+    bool spot_shadow_owns_batch = false;
+    U64 shadow_group_serial = 0;
+    U64 shadow_current_group = 0;
+    bool beginShadowViewBatch(std::string* error)
+    {
+        spot_shadow_owns_batch = false;
+        if (!renderer) return false;
+        if (renderer->commandBatchActive()) return true;
+        // Cube faces share gFrameCount but are distinct shadow view groups.
+        // Only this budget identity advances; simulation/presentation identity
+        // and native buffer read/completion frame accounting stay unchanged.
+        const U64 group = shadow_current_group ? shadow_current_group : ++shadow_group_serial;
+        spot_shadow_owns_batch = renderer->beginShadowFrameBatch(
+            group, "Alchemy streamed shadow view", error);
+        return spot_shadow_owns_batch;
+    }
+    void cancelOwnedShadowViewBatch()
+    {
+        if (!spot_shadow_owns_batch) return;
+        spot_shadow_owns_batch = false;
+        renderer->cancelCommandBatch();
+    }
+
+    ShadowPublication& shadowPublication(bool directional, U32 map)
+    {
+        return directional ? directional_shadow_publication[map]
+                           : projector_shadow_publication[map];
+    }
+    void resetShadowSlice(bool directional, U32 map)
+    {
+        (directional ? direct_directional_shadow_valid[map]
+                     : direct_projector_shadow_valid[map]) = false;
+        auto& publication = shadowPublication(directional, map);
+        publication.completion.reset();
+        publication.invocation.reset();
+        ++publication.revision;
+    }
+    void invalidateShadowMaps()
+    {
+        for (U32 i = 0; i < 4; ++i) resetShadowSlice(true, i);
+        for (U32 i = 0; i < 2; ++i) resetShadowSlice(false, i);
+        direct_projector_shadow_cache.invalidate();
+    }
+    bool shadowSliceUsable(bool directional, U32 map) const
+    {
+        if (directional ? direct_directional_shadow_valid[map]
+                        : direct_projector_shadow_valid[map]) return true;
+        const auto& publication = directional
+            ? directional_shadow_publication[map]
+            : projector_shadow_publication[map];
+        // A consumer encoded in this SAME native transaction may read earlier
+        // passes before commit. Other commands cannot observe pending maps.
+        return publication.completion &&
+            (!publication.invocation || publication.invocation->complete) &&
+            renderer && renderer->commandBatchActive() &&
+            renderer->commandBatchCompletion() == publication.completion;
+    }
     std::vector<ALMetalWorldSpotShadowBatch> spot_shadow_batches;
+    ALMetalWorldSpotShadowBatch* spot_shadow_source_build = nullptr;
+    std::vector<ALMetalShadowPrepareInstance> spot_shadow_inputs;
+    std::shared_ptr<ShadowSourceLease> shadow_source_lease;
+    std::shared_ptr<const ALMetalCommandCompletion> shadow_source_lease_command;
+    bool acquireShadowSourceLease()
+    {
+        const auto command = renderer ? renderer->commandBatchCompletion() : nullptr;
+        if (command && shadow_source_lease && command == shadow_source_lease_command) return true;
+        auto lease = std::make_shared<ShadowSourceLease>();
+        if (command && !renderer->observeCommandBatchSettlement(
+                [this, command](bool)
+                {
+                    if (shadow_source_lease_command == command)
+                    {
+                        shadow_source_lease.reset();
+                        shadow_source_lease_command.reset();
+                    }
+                })) return false;
+        shadow_source_lease = std::move(lease);
+        shadow_source_lease_command = command;
+        return true;
+    }
+    std::vector<ALMetalWorldSpotShadowBatch> spot_shadow_prepared;
+    std::vector<U64> spot_shadow_source_key;
+    std::atomic<std::uint64_t> spot_shadow_prepare_epoch{0};
+    U64 spot_shadow_source_generation = 0;
+    // The live scene map is read once per view on its owner. These references
+    // never enter a worker; detached native records are the job boundary.
+    std::vector<LLPointer<LLDrawInfo>> spot_shadow_admitted_sources;
+    std::array<std::pair<std::size_t, std::size_t>,
+               LLRenderPass::NUM_RENDER_TYPES> spot_shadow_source_ranges{};
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
         spot_shadow_avatar_palettes;
     std::vector<ALMetalWorldVisibilityQuery> shadow_visibility_queries;
@@ -509,27 +757,62 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 shadow_visibility_camera = LLViewerCamera::NUM_CAMERAS;
 
     void settleShadowVisibility(
-        std::shared_ptr<ALMetalVisibilityResultBatch> results = nullptr)
+        std::shared_ptr<ALMetalVisibilityResultBatch> results = nullptr) noexcept
     {
         if (shadow_visibility_capture_active)
         {
             gGL.queries().endVisibilityCapture();
             shadow_visibility_capture_active = false;
         }
+        if (shadow_visibility_tickets.empty())
+        {
+            shadow_visibility_queries.clear();
+            shadow_visibility_camera = LLViewerCamera::NUM_CAMERAS;
+            return;
+        }
         const bool complete_results = results &&
             results->resultCount() == shadow_visibility_tickets.size() &&
             shadow_visibility_queries.size() == shadow_visibility_tickets.size();
-        for (std::size_t index = 0; index < shadow_visibility_tickets.size(); ++index)
-        {
-            if (!complete_results || !gGL.queries().attachVisibilityResult(
-                    shadow_visibility_tickets[index], results, index))
-            {
-                gGL.queries().discard(shadow_visibility_tickets[index]);
-            }
-        }
+        auto pending = std::move(shadow_visibility_tickets);
         shadow_visibility_queries.clear();
         shadow_visibility_tickets.clear();
         shadow_visibility_camera = LLViewerCamera::NUM_CAMERAS;
+        if (!complete_results)
+        {
+            for (const auto& ticket : pending) gGL.queries().discard(ticket);
+            return;
+        }
+        std::shared_ptr<std::vector<ALQueryTicket>> tickets;
+        try
+        {
+            tickets = std::make_shared<std::vector<ALQueryTicket>>(std::move(pending));
+            const auto settle = [tickets, results = std::move(results),
+                                 invocation = shadow_invocation](bool submitted)
+            {
+                const bool publish = submitted && (!invocation || invocation->complete);
+                for (std::size_t index = 0; index < tickets->size(); ++index)
+                {
+                    if (!publish || !gGL.queries().attachVisibilityResult(
+                            (*tickets)[index], results, index))
+                        gGL.queries().discard((*tickets)[index]);
+                }
+            };
+            if (renderer && renderer->commandBatchActive())
+            {
+                if (!renderer->observeCommandBatchSettlement(settle)) settle(false);
+            }
+            else settle(true);
+        }
+        catch (...)
+        {
+            // Allocation/observer registration is allowed to fail during this
+            // noexcept capture cleanup. Keep the moved tickets recoverable and
+            // discard every result, including a partially attached prefix.
+            const auto& abandoned = tickets ? *tickets : pending;
+            for (const auto& ticket : abandoned) gGL.queries().discard(ticket);
+            std::fputs("Alchemy Metal shadow query settlement failed; tickets discarded\n", stderr);
+        }
+
     }
     U32 spot_shadow_map = 0;
     U32 spot_shadow_width = 0;
@@ -660,6 +943,7 @@ struct LLPipeline::MetalWorldSimpleCapture
 
     ALMetalWorldSpotShadowBatch* appendSeparateShadowBatch(U32 source_line)
     {
+        if (spot_shadow_source_build) return spot_shadow_source_build;
         if (spot_shadow_admission.admitSeparate())
         {
             try
@@ -2087,9 +2371,7 @@ void LLPipeline::initializeMetalWorldCaptureDevice(
         capture.direct_directional_shadow_texture.reset();
         capture.projector_shadows = {};
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
-        capture.direct_projector_shadow_valid = {};
-        capture.direct_projector_shadow_cache.invalidate();
-        capture.direct_directional_shadow_valid = {};
+        capture.invalidateShadowMaps();
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
         capture.legacy_glow_noise_texture.reset();
@@ -2366,6 +2648,14 @@ ALMetalTexture* LLPipeline::metalSkyEnvironment()
 
 void LLPipeline::beginMetalWorldGBufferCapture()
 {
+    // Bound cached generations by the actual Apple GPU working-set advice.
+    // Count shared native resources once; active command leases are separate.
+    if (const auto* device = getViewerMetalDevice())
+        sShadowSourceCache.setByteBudget(std::clamp<std::uint64_t>(
+            device->info().recommended_working_set_size / 16,
+            256ull * 1024 * 1024, 4ull * 1024 * 1024 * 1024));
+    // Expire inactive source generations even when shadows are disabled.
+    trimShadowSourceWorkingSet();
     const bool snapshot_request =
         gSnapshot && mMetalWorldSnapshotRequested;
     if (!isMetalWorldCapturePass() ||
@@ -3248,9 +3538,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.direct_directional_shadow_texture.reset();
         capture.projector_shadows = {};
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
-        capture.direct_projector_shadow_valid = {};
-        capture.direct_projector_shadow_cache.invalidate();
-        capture.direct_directional_shadow_valid = {};
+        capture.invalidateShadowMaps();
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
         capture.legacy_glow_noise_texture.reset();
@@ -12427,18 +12715,24 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
     for (U32 cascade = 0; direct_complete && cascade < 4; ++cascade)
     {
         direct_complete = (unbuilt & (1u << cascade)) != 0 ||
-            source.direct_directional_shadow_valid[cascade];
+            source.shadowSliceUsable(true, cascade);
     }
     return direct_complete &&
         publish(source.direct_directional_shadow_texture.get());
 }
 
-void LLPipeline::countMetalShadowBatches(
+void LLPipeline::admitMetalShadowSources(
     std::size_t& batches, bool& complete)
 {
+    batches = 0;
+    complete = false;
+    if (!mMetalWorldSimpleCapture) return;
+    auto& capture = *mMetalWorldSimpleCapture;
+    capture.spot_shadow_admitted_sources.clear();
+    capture.spot_shadow_source_ranges.fill({0, 0});
     const auto counted_batches = [&](U32 type)
     {
-        std::size_t count = 0;
+        const std::size_t first = capture.spot_shadow_admitted_sources.size();
         auto* begin = beginRenderMap(type);
         auto* end = endRenderMap(type);
         for (auto* at = begin; at != end; )
@@ -12447,9 +12741,12 @@ void LLPipeline::countMetalShadowBatches(
             LLCullResult::increment_iterator(at, end);
             if (info && info->mCount)
             {
-                ++count;
+                capture.spot_shadow_admitted_sources.emplace_back(info);
             }
         }
+        const std::size_t count =
+            capture.spot_shadow_admitted_sources.size() - first;
+        capture.spot_shadow_source_ranges[type] = {first, count};
         return count;
     };
 
@@ -12534,25 +12831,227 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         return;
     }
 
+    auto& transaction = *mMetalWorldSimpleCapture;
+    trimShadowSourceWorkingSet();
+    transaction.spot_shadow_inputs.clear();
+    if (!transaction.spot_shadow_admitted_sources.empty() &&
+        !transaction.acquireShadowSourceLease())
+    {
+        transaction.spot_shadow_capture_complete = false;
+        transaction.spot_shadow_first_incomplete_source_line = __LINE__;
+        return;
+    }
+    const auto epoch = transaction.spot_shadow_prepare_epoch.fetch_add(
+        1, std::memory_order_acq_rel) + 1;
     const bool saved_shadow_render = sShadowRender;
     sShadowRender = true;
-    mMetalWorldSimpleCapture->spot_shadow_source_merge_active = true;
-    const auto for_each_batch = [this](U32 type, const auto& capture)
+    transaction.spot_shadow_source_merge_active = true;
+    const auto for_each_batch = [this, epoch](U32 type, const auto& build_source)
     {
-        // A render family is an ordering/state boundary even when two
-        // neighbouring sources happen to share native geometry and matrices.
-        mMetalWorldSimpleCapture->spot_shadow_admission.barrier();
-        auto* at = beginRenderMap(type);
-        auto* end = endRenderMap(type);
-        while (at != end)
+        auto& owner = *mMetalWorldSimpleCapture;
+        owner.spot_shadow_admission.barrier();
+        if (!owner.spot_shadow_capture_complete) return;
+        const auto [first, count] = owner.spot_shadow_source_ranges[type];
+        if (count == 0) return;
+        const bool detached = count >= 8192;
+        if (detached)
         {
-            LLDrawInfo* info = *at;
-            LLCullResult::increment_iterator(at, end);
-            if (info && info->mCount)
+            owner.spot_shadow_inputs.clear();
+            owner.spot_shadow_inputs.reserve(count);
+        }
+        const bool texture_matrix = !gCubeSnapshot || mHeroProbeManager.isMirrorPass();
+        const auto fail = [&]
+        {
+            owner.spot_shadow_first_incomplete_source_line = __LINE__;
+            owner.spot_shadow_capture_complete = false;
+            owner.spot_shadow_batches.clear();
+        };
+        const auto append_prepared = [&](ALMetalWorldSpotShadowBatch& batch)
+        {
+            if (batch.coverage == ALMetalWorldSpotShadowCoverage::opaque &&
+                !batch.skin_palette)
             {
-                capture(*info);
+                ALMetalOpaqueShadowSource source;
+                source.vertices = batch.vertices; source.indices = batch.indices;
+                source.position_offset = batch.position_offset;
+                source.vertex_count = batch.vertex_count;
+                source.index_offset = batch.index_offset; source.index_count = batch.index_count;
+                source.index_type = batch.index_type;
+                source.modelview_projection = batch.modelview_projection;
+                source.double_sided = batch.double_sided; source.reverse_z = owner.reverse_z;
+                const auto previous_size = owner.spot_shadow_batches.size();
+                if (!owner.spot_shadow_admission.appendOpaque(owner.spot_shadow_batches, source))
+                { fail(); return false; }
+                if (owner.spot_shadow_batches.size() != previous_size)
+                {
+                    auto& appended = owner.spot_shadow_batches.back();
+                    if (const auto* record = batch.sourceRecord())
+                    {
+                        appended.borrowPreparedInputs(record, nullptr, nullptr);
+                        if (!record->matchesStableInputs(appended))
+                            appended.clearBorrowedInputs();
+                    }
+                }
+                else
+                {
+                    // Joined index ranges are a new tuple. Their individual
+                    // source certificates do not cover the combined draw.
+                    owner.spot_shadow_batches.back().clearBorrowedInputs();
+                }
+            }
+            else
+            {
+                if (!owner.spot_shadow_admission.admitSeparate()) { fail(); return false; }
+                owner.spot_shadow_batches.push_back(std::move(batch));
+            }
+            return true;
+        };
+        for (std::size_t index = first; index < first + count; ++index)
+        {
+            const auto& info = *owner.spot_shadow_admitted_sources[index];
+            ShadowSourceImages images;
+            if (!shadowSourceKey(info, type, owner.spot_shadow_coverage,
+                                 texture_matrix, owner.spot_shadow_source_key, images))
+            { fail(); return; }
+            auto& cached = info.mMetalShadowSource;
+            if (!cached) cached = std::make_shared<ALViewerMetalShadowSourceCache>();
+            const auto* retained = sShadowSourceCache.find(cached.get());
+            const bool retained_hit = retained && cached->key == owner.spot_shadow_source_key;
+            const std::shared_ptr<const ALMetalShadowSourceRecord>* published =
+                retained_hit ? retained : nullptr;
+            std::shared_ptr<const ALMetalShadowSourceRecord> fresh_source;
+            if (!published && cached->key == owner.spot_shadow_source_key)
+            {
+                fresh_source = cached->transient_record.lock();
+                if (fresh_source) published = &fresh_source;
+            }
+            if (!published)
+            {
+                ALMetalWorldSpotShadowBatch prototype;
+                {
+                    struct SourceBuild
+                    {
+                        MetalWorldSimpleCapture& capture;
+                        bool merge;
+                        ~SourceBuild()
+                        {
+                            capture.spot_shadow_source_build = nullptr;
+                            capture.spot_shadow_source_merge_active = merge;
+                        }
+                    } building{owner, owner.spot_shadow_source_merge_active};
+                    owner.spot_shadow_source_build = &prototype;
+                    owner.spot_shadow_source_merge_active = false;
+                    build_source(info);
+                }
+                if (!owner.spot_shadow_capture_complete) return;
+                // Native publication/fallback may have completed while the
+                // producer populated this prototype. Seal its actual tuple.
+                if (!shadowSourceKey(info, type, owner.spot_shadow_coverage,
+                                     texture_matrix, owner.spot_shadow_source_key, images))
+                { fail(); return; }
+                std::vector<std::shared_ptr<const ALMetalTexture>> textures;
+                for (std::size_t slot = 0; slot < prototype.texture_count; ++slot)
+                {
+                    const auto* native =
+                        static_cast<const ALMetalWorldSpotShadowBatch&>(prototype).
+                            coverageData().textures[slot];
+                    std::shared_ptr<const ALMetalTexture> lease;
+                    for (std::size_t at = 0; at < images.count; ++at)
+                    {
+                        auto candidate = images.images[at]->getMetalTextureLease();
+                        if (candidate.get() == native)
+                        { lease = std::move(candidate); break; }
+                    }
+                    if (!lease) { fail(); return; }
+                    // Material slot numbering is shader-visible even when
+                    // several slots share white/default/current pixel data.
+                    textures.push_back(std::move(lease));
+                }
+                std::string error;
+                auto* buffer = info.mVertexBuffer.get();
+                const auto generation = ++owner.spot_shadow_source_generation;
+                fresh_source = ALMetalShadowSourceRecord::create(generation, prototype,
+                    buffer->getMetalVertexBufferLease(),
+                    buffer->getMetalIndexBufferLease(), std::move(textures), &error);
+                if (!fresh_source)
+                {
+                    LL_WARNS_ONCE("Metal") << "Shadow source publication failed: "
+                        << error << LL_ENDL;
+                    fail(); return;
+                }
+                cached->key = owner.spot_shadow_source_key;
+                published = &fresh_source;
+            }
+            if (retained_hit)
+                sShadowSourceCache.touch(cached.get(), gFrameCount);
+            else
+            {
+                cached->transient_record = *published;
+                sShadowSourceCache.publish(cached, *published, gFrameCount);
+            }
+            const auto* source = owner.shadow_source_lease->retain(*published);
+            const ALMetalAttachmentPaletteRecord* palette = nullptr;
+            if (source->requiresPalette())
+            {
+                if (!info.mAvatar || !info.mSkinInfo) { fail(); return; }
+                palette = owner.shadow_source_lease->retain(
+                    info.mAvatar->updateSkinInfoMatrixPalette(
+                        info.mSkinInfo).getMetalAttachmentPalette());
+                if (!palette) { fail(); return; }
+            }
+            if (!detached)
+            {
+                // Small families consume the immutable producer tuple directly.
+                // Public native batches retain ordinary validation: comparing a
+                // copied tuple to its certificate cost more than those checks.
+                ALMetalWorldSpotShadowBatch batch;
+                const auto& prototype = source->prototype();
+                static_cast<ALMetalWorldSpotShadowValues&>(batch) = prototype;
+                batch.borrowPreparedInputs(nullptr, palette, prototype.coverageDataIdentity());
+                LLMatrix4a matrix;
+                if (!getMetalSpotShadowModelviewProjection(info.mModelMatrix, matrix))
+                { fail(); return; }
+                std::memcpy(batch.modelview_projection, matrix.getF32ptr(), sizeof(batch.modelview_projection));
+                if (palette)
+                {
+                    batch.skin_palette = palette->data();
+                    batch.skin_palette_float_count = palette->size();
+                    batch.skin_joint_count = palette->jointCount();
+                }
+                if (!append_prepared(batch)) return;
+            }
+            else
+            {
+                ALMetalShadowPrepareInstance input;
+                input.source = source; input.palette = palette;
+                input.source_generation = source->generation();
+                input.epoch = epoch;
+                input.has_model = info.mModelMatrix != nullptr;
+                if (input.has_model)
+                    std::memcpy(input.model.data(), info.mModelMatrix->getF32ptr(), sizeof(input.model));
+                owner.spot_shadow_inputs.push_back(input);
             }
         }
+        if (!detached) return;
+        owner.spot_shadow_prepared.clear();
+        owner.spot_shadow_prepared.resize(count);
+        const std::span<const ALMetalShadowPrepareInstance> inputs(
+            owner.spot_shadow_inputs.data(), count);
+        ALMetalShadowPrepareContext context;
+        std::memcpy(context.view.data(), owner.spot_shadow_view.getF32ptr(), sizeof(context.view));
+        std::memcpy(context.projection.data(), owner.spot_shadow_projection.getF32ptr(), sizeof(context.projection));
+        std::string error;
+        // The compact fixed trial wins median/tail at8192, while2048 regresses.
+        // Two synchronous jobs consume only immutable sources and this context.
+        if (!alMetalPrepareShadowBatches(inputs, context, owner.spot_shadow_prepared,
+                epoch, &owner.spot_shadow_prepare_epoch, true, nullptr, &error))
+        {
+            LL_WARNS_ONCE("Metal") << "Shadow packet preparation failed: " << error << LL_ENDL;
+            fail(); return;
+        }
+        for (auto& batch : owner.spot_shadow_prepared)
+            if (!append_prepared(batch)) return;
+        owner.spot_shadow_prepared.clear();
     };
     const auto capture_opaque = [this](const LLDrawInfo& info)
     {
@@ -12714,11 +13213,19 @@ void LLPipeline::beginMetalSpotShadowCapture(
     {
         return;
     }
-    capture.direct_projector_shadow_valid[map] = false;
+    capture.resetShadowSlice(false, map);
+    capture.spot_shadow_encoded_ok = false;
     capture.settleShadowVisibility();
+    std::string batch_error;
+    if (!capture.beginShadowViewBatch(&batch_error))
+    {
+        LL_WARNS("Metal") << "Could not admit streamed shadow view: " << batch_error << LL_ENDL;
+        return;
+    }
     if (!capture.beginFrameData(
             mMetalProbeWorldSimpleCapture.get(), gFrameCount))
     {
+        capture.cancelOwnedShadowViewBatch();
         return;
     }
     capture.spot_shadow_batches.clear();
@@ -12761,11 +13268,19 @@ void LLPipeline::beginMetalDirectionalShadowCapture(
     {
         return;
     }
-    capture.direct_directional_shadow_valid[map] = false;
+    capture.resetShadowSlice(true, map);
+    capture.spot_shadow_encoded_ok = false;
     capture.settleShadowVisibility();
+    std::string batch_error;
+    if (!capture.beginShadowViewBatch(&batch_error))
+    {
+        LL_WARNS("Metal") << "Could not admit streamed shadow view: " << batch_error << LL_ENDL;
+        return;
+    }
     if (!capture.beginFrameData(
             mMetalProbeWorldSimpleCapture.get(), gFrameCount))
     {
+        capture.cancelOwnedShadowViewBatch();
         return;
     }
     capture.spot_shadow_batches.clear();
@@ -13793,7 +14308,25 @@ void LLPipeline::endMetalSpotShadowCapture()
     {
         MetalWorldSimpleCapture& capture;
         std::shared_ptr<ALMetalVisibilityResultBatch>& results;
-        ~SettleShadowVisibility() { capture.settleShadowVisibility(std::move(results)); }
+        ~SettleShadowVisibility()
+        {
+            // An early return/exception abandons only this independently owned
+            // view. A probe/hero transaction remains its caller's responsibility.
+            capture.cancelOwnedShadowViewBatch();
+            capture.settleShadowVisibility(capture.spot_shadow_encoded_ok
+                ? std::move(results) : nullptr);
+            // Native commands have retained the immutable packet. Stale CPU
+            // scratch must not keep old stores pinned into next frame's writes.
+            capture.spot_shadow_admitted_sources.clear();
+            capture.spot_shadow_inputs.clear();
+            capture.spot_shadow_prepared.clear();
+            capture.spot_shadow_batches.clear();
+            if (!capture.renderer || !capture.renderer->commandBatchActive())
+            {
+                capture.shadow_source_lease.reset();
+                capture.shadow_source_lease_command.reset();
+            }
+        }
     } settle_visibility{capture, visibility_results};
     capture.spot_shadow_capture_active = false;
     if (capture.spot_shadow_avatar_pass_active)
@@ -13849,6 +14382,11 @@ void LLPipeline::endMetalSpotShadowCapture()
     }
 
     ALMetalWorldSpotShadowScene scene;
+    // The mixed-view gate supports only CPU-encoded opaque runs >=2048.
+    // Covered/body/terrain and ineligible/oversized runs retain native direct
+    // encoding; GPU generation and global stable-data mode stay independently off.
+    scene.opaque_indirect_draws = true;
+    scene.source_owner = capture.shadow_source_lease;
     scene.batches = capture.spot_shadow_batches.data();
     scene.batch_count = capture.spot_shadow_batches.size();
     scene.visibility_queries = capture.shadow_visibility_queries.data();
@@ -13890,14 +14428,8 @@ void LLPipeline::endMetalSpotShadowCapture()
     {
         retained_texture = ALMetalTexture::create(
             *capture.device, descriptor, &error);
-        if (directional)
-        {
-            capture.direct_directional_shadow_valid = {};
-        }
-        else
-        {
-            capture.direct_projector_shadow_valid = {};
-        }
+        for (U32 slice = 0; slice < (directional ? 4u : 2u); ++slice)
+            capture.resetShadowSlice(directional, slice);
         if (!retained_texture)
         {
             capture.spot_shadow_batches.clear();
@@ -13923,6 +14455,17 @@ void LLPipeline::endMetalSpotShadowCapture()
             << "-shadow slice " << map
             << ": " << error << LL_ENDL;
         return;
+    }
+
+    if (capture.spot_shadow_owns_batch)
+    {
+        const bool committed = capture.renderer->commitCommandBatch(&error);
+        capture.spot_shadow_owns_batch = false;
+        if (!committed)
+        {
+            LL_WARNS("Metal") << "Could not commit streamed shadow view: " << error << LL_ENDL;
+            return;
+        }
     }
 
     // One admission receipt per cascade lets runtime profiling distinguish an
@@ -14124,35 +14667,55 @@ void LLPipeline::endMetalSpotShadowCapture()
 
     capture.spot_shadow_batches.clear();
     capture.spot_shadow_avatar_palettes.clear();
-    if (directional)
+    capture.spot_shadow_encoded_ok = true;
+    auto& publication = capture.shadowPublication(directional, map);
+    const U64 revision = publication.revision;
+    const auto invocation = capture.shadow_invocation;
+    if (capture.renderer->commandBatchActive())
     {
-        capture.direct_directional_shadow_valid[map] = true;
-        capture.impostor_directional_shadow_frame =
-            std::numeric_limits<U32>::max();
-        if (!mMetalDirectionalShadowReported)
+        publication.completion = capture.renderer->commandBatchCompletion();
+        publication.invocation = invocation;
+    }
+    const auto publish = [this, owner = &capture, directional, map,
+                          revision, invocation](bool submitted)
+    {
+        auto& current = owner->shadowPublication(directional, map);
+        if (current.revision != revision) return;
+        const bool valid = submitted && (!invocation || invocation->complete);
+        current.completion.reset();
+        current.invocation.reset();
+        if (directional)
         {
-            mMetalDirectionalShadowReported = true;
-            LL_INFOS("Metal")
-                << "Direct Metal directional-shadow slices are rendered "
-                   "in place from native caster draws; no retention copy "
-                   "or GL depth import remains"
-                << LL_ENDL;
+            owner->direct_directional_shadow_valid[map] = valid;
+            owner->impostor_directional_shadow_frame = std::numeric_limits<U32>::max();
+            if (valid && !mMetalDirectionalShadowReported)
+            {
+                mMetalDirectionalShadowReported = true;
+                LL_INFOS("Metal") << "Direct Metal directional-shadow slices committed from native casters" << LL_ENDL;
+            }
+        }
+        else
+        {
+            owner->direct_projector_shadow_valid[map] = valid;
+            owner->projector_shadow_frame = std::numeric_limits<U32>::max();
+            if (!valid) owner->direct_projector_shadow_cache.invalidate(map);
+            if (valid && !mMetalProjectorShadowReported)
+            {
+                mMetalProjectorShadowReported = true;
+                LL_INFOS("Metal") << "Direct Metal projector-shadow slices committed from native casters" << LL_ENDL;
+            }
+        }
+    };
+    if (capture.renderer->commandBatchActive())
+    {
+        if (!capture.renderer->observeCommandBatchSettlement(publish, &error))
+        {
+            capture.spot_shadow_encoded_ok = false;
+            publish(false);
         }
     }
-    else
-    {
-        capture.direct_projector_shadow_valid[map] = true;
-        capture.projector_shadow_frame = std::numeric_limits<U32>::max();
-        if (!mMetalProjectorShadowReported)
-        {
-            mMetalProjectorShadowReported = true;
-            LL_INFOS("Metal")
-                << "Direct Metal projector-shadow slices are rendered "
-                   "in place from native caster draws; no retention copy "
-                   "or GL depth import remains"
-                << LL_ENDL;
-        }
-    }
+    else publish(true);
+
 }
 
 bool LLPipeline::fillMetalWorldProjectorShadows()
@@ -14241,7 +14804,7 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
     for (U32 index = 0; direct_complete && index < 2; ++index)
     {
         direct_complete = (unbuilt & (1u << index)) != 0 ||
-            shadow_owner->direct_projector_shadow_valid[index];
+            shadow_owner->shadowSliceUsable(false, index);
     }
     // Publish from the current owner every time: multiple cube faces can
     // share a frame number while their receiver matrices differ, and an
@@ -16762,6 +17325,7 @@ LLPipeline::~LLPipeline()
 
 void LLPipeline::cleanup()
 {
+    sShadowSourceCache.clear();
     mSky.cleanup();
     mMetalSkyEnvironment.reset();
     mMetalSkyEnvironmentDevice = nullptr;
@@ -25223,7 +25787,7 @@ U32 LLPipeline::unbuiltShadowMaps() const
         const std::optional<ALRenderTargetDesc>& planned =
             mResourcePlan.desc(ALRenderResourcePlan::sunShadow(renderPack(), i));
         if (i >= cascades || !planned || planned->width == 0 || planned->height == 0 || !capture ||
-            !capture->direct_directional_shadow_valid[i])
+            !capture->shadowSliceUsable(true, i))
         {
             unbuilt |= 1u << i;
         }
@@ -25238,7 +25802,7 @@ U32 LLPipeline::unbuiltShadowMaps() const
                                        : ALRenderResourcePlan::Id::SpotShadow1) ||
             !projector_capture ||
             (capture && projector_capture->device != capture->device) ||
-            !projector_capture->direct_projector_shadow_valid[i])
+            !projector_capture->shadowSliceUsable(false, i))
         {
             unbuilt |= 1u << (4 + i);
         }
@@ -25335,6 +25899,37 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("generateSunShadow");
+
+    struct ShadowInvocationScope
+    {
+        MetalWorldSimpleCapture* capture;
+        std::shared_ptr<MetalWorldSimpleCapture::ShadowInvocation> previous;
+        std::shared_ptr<MetalWorldSimpleCapture::ShadowInvocation> invocation;
+        U64 previous_group = 0;
+        bool ready = false;
+        explicit ShadowInvocationScope(MetalWorldSimpleCapture* owner) : capture(owner)
+        {
+            if (!capture || !capture->renderer) return;
+            previous = capture->shadow_invocation;
+            previous_group = capture->shadow_current_group;
+            if (capture->renderer->commandBatchActive())
+                invocation = std::make_shared<MetalWorldSimpleCapture::ShadowInvocation>();
+            else
+                capture->shadow_current_group = ++capture->shadow_group_serial;
+            capture->shadow_invocation = invocation;
+            ready = true;
+        }
+        void finish() { if (invocation) invocation->complete = true; }
+        ~ShadowInvocationScope()
+        {
+            if (ready)
+            {
+                capture->shadow_invocation = std::move(previous);
+                capture->shadow_current_group = previous_group;
+            }
+        }
+    } shadow_transaction(mMetalWorldSimpleCapture.get());
+    if (!shadow_transaction.ready) return;
 
     LLDisableOcclusionCulling no_occlusion;
     // Metal owns every Darwin shadow map. If the native device, renderer or
@@ -26156,7 +26751,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 #if LL_DARWIN
                     std::size_t native_batches = 0;
                     bool native_complete = true;
-                    countMetalShadowBatches(
+                    admitMetalShadowSources(
                         native_batches, native_complete);
                     beginMetalDirectionalShadowCapture(
                         j, shadow_width, shadow_height, native_batches,
@@ -26376,7 +26971,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 #if LL_DARWIN
                     std::size_t native_batches = 0;
                     bool native_complete = true;
-                    countMetalShadowBatches(
+                    admitMetalShadowSources(
                         native_batches, native_complete);
                     beginMetalSpotShadowCapture(
                         i, shadow_width, shadow_height, native_batches,
@@ -26390,11 +26985,26 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 #endif
 
 #if LL_DARWIN
-                    if (mMetalWorldSimpleCapture->
-                            direct_projector_shadow_valid[i])
+                    auto& shadow_owner = *mMetalWorldSimpleCapture;
+                    if (shadow_owner.spot_shadow_encoded_ok)
                     {
-                        mMetalWorldSimpleCapture->
-                            direct_projector_shadow_cache.drawn(i, key);
+                        const U64 revision = shadow_owner.shadowPublication(false, i).revision;
+                        const auto invocation = shadow_owner.shadow_invocation;
+                        const auto remember = [owner = &shadow_owner, i, key,
+                                               revision, invocation](bool submitted)
+                        {
+                            if (owner->shadowPublication(false, i).revision != revision) return;
+                            if (submitted && (!invocation || invocation->complete) &&
+                                owner->direct_projector_shadow_valid[i])
+                                owner->direct_projector_shadow_cache.drawn(i, key);
+                            else owner->direct_projector_shadow_cache.invalidate(i);
+                        };
+                        if (shadow_owner.renderer->commandBatchActive())
+                        {
+                            if (!shadow_owner.renderer->observeCommandBatchSettlement(remember))
+                                remember(false);
+                        }
+                        else remember(true);
                     }
 #endif
                     ++spot_draws;
@@ -26432,6 +27042,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     {
         gAgentAvatarp->updateAttachmentVisibility(gAgentCamera.getCameraMode());
     }
+    shadow_transaction.finish();
 }
 
 void LLPipeline::renderGroups(LLRenderPass* pass, U32 type, bool texture)

@@ -153,6 +153,7 @@ if(AL_BUILD_TESTS)
   if(DARWIN)
     list(APPEND llrender_native_test_sources
       tests/almetal_buffer_storage_test.cpp
+      tests/alnative_generation_leases_metal_test.cpp
       tests/aldebug_immediate_metal_test.cpp
       tests/albaking_shader_metal_test.cpp
       tests/alshader_native_lifecycle_test.cpp

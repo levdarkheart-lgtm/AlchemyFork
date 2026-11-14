@@ -44,6 +44,7 @@
 #include "llfetchedgltfmaterial.h"
 
 #include <boost/unordered_map.hpp>
+#include <memory>
 
 #define SG_STATE_INHERIT_MASK (OCCLUDED)
 #define SG_INITIAL_STATE_MASK (static_cast<U32>(DIRTY) | static_cast<U32>(GEOM_DIRTY))
@@ -53,6 +54,7 @@ class LLSpatialPartition;
 class LLSpatialBridge;
 class LLSpatialGroup;
 class LLViewerRegion;
+struct ALViewerMetalShadowSourceCache;
 class LLReflectionMap;
 
 void pushVerts(LLFace* face);
@@ -86,6 +88,9 @@ public:
     U64 getSkinHash();
 
     LLPointer<LLVertexBuffer> mVertexBuffer;
+    // Render-owner cache only. Detached jobs receive its immutable native
+    // record, never this scene object or its non-atomic LLRefCount.
+    mutable std::shared_ptr<ALViewerMetalShadowSourceCache> mMetalShadowSource;
     U16 mStart = 0;
     U16 mEnd = 0;
     U32 mCount = 0;

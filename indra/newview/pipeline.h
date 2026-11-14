@@ -1024,7 +1024,7 @@ public:
     bool fillMetalImpostorScreenSpaceReflections();
     bool fillMetalImpostorDirectionalShadows();
     bool fillMetalWorldProjectorShadows();
-    void countMetalShadowBatches(std::size_t& batches,
+    void admitMetalShadowSources(std::size_t& batches,
                                  bool& complete);
     void beginMetalSpotShadowCapture(U32 map, U32 width, U32 height,
                                      std::size_t expected_batches,

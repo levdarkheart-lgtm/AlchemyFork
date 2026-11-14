@@ -61,7 +61,7 @@ static std::atomic<U64> sContentStamps{ 0 };
 namespace
 {
     using MetalBufferGeneration =
-        std::pair<std::unique_ptr<ALMetalBuffer>, U32>;
+        std::pair<std::shared_ptr<ALMetalBuffer>, U32>;
     using MetalBufferGenerations = std::vector<MetalBufferGeneration>;
 
     // A vertex buffer may disappear after its native pointer was captured but
@@ -84,12 +84,13 @@ namespace
                 sRetiredMetalBuffers.begin(), sRetiredMetalBuffers.end(),
                 [&frames](const MetalBufferGeneration& generation)
                 {
-                    return frames.isComplete(generation.second);
+                    return generation.first.use_count() == 1 &&
+                           frames.isComplete(generation.second);
                 }),
             sRetiredMetalBuffers.end());
     }
 
-    void retire_metal_buffer(std::unique_ptr<ALMetalBuffer> buffer,
+    void retire_metal_buffer(std::shared_ptr<ALMetalBuffer> buffer,
                              U32 last_read_frame)
     {
         if (buffer)
@@ -99,15 +100,16 @@ namespace
         }
     }
 
-    std::unique_ptr<ALMetalBuffer> take_completed_metal_buffer(
+    std::shared_ptr<ALMetalBuffer> take_completed_metal_buffer(
         MetalBufferGenerations& generations)
     {
         const ALFrameFences& frames = gGL.frameFences();
-        std::unique_ptr<ALMetalBuffer> reusable;
+        std::shared_ptr<ALMetalBuffer> reusable;
         for (auto generation = generations.begin();
              generation != generations.end();)
         {
-            if (frames.isComplete(generation->second))
+            if (generation->first.use_count() == 1 &&
+                frames.isComplete(generation->second))
             {
                 if (!reusable)
                 {
@@ -529,6 +531,28 @@ void LLVertexBuffer::touchContents()
 static ALMetalDevice* sMetalDevice = nullptr;
 static std::atomic<bool> sMetalMirrorReported{false};
 static std::atomic<bool> sMetalBufferAuthority{false};
+static LLVertexBuffer::MetalUploadStats sMetalUploadStats;
+
+LLVertexBuffer::MetalUploadStats LLVertexBuffer::metalUploadStats() noexcept
+{
+    return sMetalUploadStats;
+}
+
+void LLVertexBuffer::markMetalDirty(bool indices, U32 begin, U32 end)
+{
+    if (begin >= end) return;
+    auto& ranges = indices ? mMetalIndexDirtyRanges : mMetalVertexDirtyRanges;
+    // Keep sorted, disjoint spans, joining adjacency without copying gaps.
+    auto position = ranges.begin();
+    while (position != ranges.end() && position->second < begin) ++position;
+    while (position != ranges.end() && position->first <= end)
+    {
+        begin = std::min(begin, position->first);
+        end = std::max(end, position->second);
+        position = ranges.erase(position);
+    }
+    ranges.insert(position, {begin, end});
+}
 
 void LLVertexBuffer::setMetalDevice(ALMetalDevice* device)
 {
@@ -545,7 +569,33 @@ bool LLVertexBuffer::isMetalBufferAuthority() noexcept
     return sMetalBufferAuthority.load(std::memory_order_acquire);
 }
 
-static std::unique_ptr<ALMetalBuffer> allocate_metal_buffer(U32 size, const char* label)
+ALMetalBuffer* LLVertexBuffer::getMetalVertexBuffer() const noexcept
+{
+    if (mMetalBuffer) mMetalBufferLastReadFrame = gGL.frameFences().frame();
+    return mMetalBuffer.get();
+}
+
+ALMetalBuffer* LLVertexBuffer::getMetalIndexBuffer() const noexcept
+{
+    if (mMetalIndices) mMetalIndicesLastReadFrame = gGL.frameFences().frame();
+    return mMetalIndices.get();
+}
+
+std::shared_ptr<const ALMetalBuffer> LLVertexBuffer::getMetalVertexBufferLease() const noexcept
+{
+    if (!hasPublishedMetalVertexBuffer()) return {};
+    getMetalVertexBuffer();
+    return mMetalBuffer;
+}
+
+std::shared_ptr<const ALMetalBuffer> LLVertexBuffer::getMetalIndexBufferLease() const noexcept
+{
+    if (!hasPublishedMetalIndexBuffer()) return {};
+    getMetalIndexBuffer();
+    return mMetalIndices;
+}
+
+static std::shared_ptr<ALMetalBuffer> allocate_metal_buffer(U32 size, const char* label)
 {
     if (!sMetalDevice || size == 0)
     {
@@ -572,13 +622,15 @@ static std::unique_ptr<ALMetalBuffer> allocate_metal_buffer(U32 size, const char
                                << label << " is " << size << " bytes" << LL_ENDL;
         }
     }
-    return buffer;
+    return std::shared_ptr<ALMetalBuffer>(std::move(buffer));
 }
 
 static bool upload_metal_buffer(
-    std::unique_ptr<ALMetalBuffer>& current,
+    std::shared_ptr<ALMetalBuffer>& current,
     MetalBufferGenerations& retired,
     bool& initialized,
+    U32& last_read_frame,
+    const std::vector<std::pair<U32, U32>>& dirty_ranges,
     const void* bytes,
     U32 size,
     const char* label,
@@ -591,8 +643,8 @@ static bool upload_metal_buffer(
     }
 
     // The first upload cannot race a reader: no complete native generation
-    // has been published yet. Every later upload gets another store, just as
-    // the original Apple glBufferData path orphaned the name's old store.
+    // has been published yet. Later uploads can modify a completed, unleased
+    // generation, otherwise they orphan just as Apple's glBufferData did.
     if (!initialized)
     {
         if (!current)
@@ -604,11 +656,39 @@ static bool upload_metal_buffer(
             return false;
         }
         initialized = true;
+        ++sMetalUploadStats.full_uploads;
+        sMetalUploadStats.uploaded_bytes += size;
         return true;
     }
 
-    std::unique_ptr<ALMetalBuffer> next =
+    // CPU packets and committed commands retain the same wrapper lease.
+    // Neither a completed frame alone nor a native-object retain permits
+    // overwriting bytes still borrowed by an unencoded CPU packet.
+    if (current.use_count() == 1 &&
+        gGL.frameFences().isComplete(last_read_frame))
+    {
+        for (const auto& range : dirty_ranges)
+        {
+            if (range.first > range.second || range.second > size)
+            {
+                error = "Native vertex dirty range exceeds its published store";
+                return false;
+            }
+            if (!current->write(range.first,
+                    static_cast<const U8*>(bytes) + range.first,
+                    range.second - range.first, &error))
+                return false;
+        }
+        ++sMetalUploadStats.partial_uploads;
+        for (const auto& range : dirty_ranges)
+            sMetalUploadStats.uploaded_bytes += range.second - range.first;
+        return true;
+    }
+
+    const bool leased = current.use_count() > 1;
+    std::shared_ptr<ALMetalBuffer> next =
         take_completed_metal_buffer(retired);
+    const bool recycled = static_cast<bool>(next);
     if (!next)
     {
         next = allocate_metal_buffer(size, label);
@@ -622,8 +702,13 @@ static bool upload_metal_buffer(
     next->setLabel(label);
 
     retired.emplace_back(
-        std::move(current), gGL.frameFences().frame());
+        std::move(current), last_read_frame);
     current = std::move(next);
+    last_read_frame = 0;
+    if (leased) ++sMetalUploadStats.leased_orphans;
+    if (recycled) ++sMetalUploadStats.recycled_generations;
+    ++sMetalUploadStats.full_uploads;
+    sMetalUploadStats.uploaded_bytes += size;
     return true;
 }
 #endif
@@ -770,6 +855,8 @@ bool LLVertexBuffer::createGLBuffer(U32 size)
 #if LL_DARWIN
     mMetalBuffer = allocate_metal_buffer(size, bufferLabel(mLabel, " vertex data").c_str());
     mMetalBufferInitialized = false;
+    mMetalBufferLastReadFrame = 0;
+    mMetalVertexDirtyRanges.clear();
     if (sMetalDevice && !mMetalBuffer)
     {
         success = false;
@@ -802,6 +889,8 @@ bool LLVertexBuffer::createGLIndices(U32 size)
 #if LL_DARWIN
     mMetalIndices = allocate_metal_buffer(size, bufferLabel(mLabel, " index data").c_str());
     mMetalIndicesInitialized = false;
+    mMetalIndicesLastReadFrame = 0;
+    mMetalIndexDirtyRanges.clear();
     if (sMetalDevice && !mMetalIndices)
     {
         success = false;
@@ -828,7 +917,7 @@ void LLVertexBuffer::destroyGLBuffer()
     if (mMetalBufferInitialized)
     {
         retire_metal_buffer(
-            std::move(mMetalBuffer), gGL.frameFences().frame());
+            std::move(mMetalBuffer), mMetalBufferLastReadFrame);
     }
     else
     {
@@ -862,7 +951,7 @@ void LLVertexBuffer::destroyGLIndices()
     if (mMetalIndicesInitialized)
     {
         retire_metal_buffer(
-            std::move(mMetalIndices), gGL.frameFences().frame());
+            std::move(mMetalIndices), mMetalIndicesLastReadFrame);
     }
     else
     {
@@ -940,21 +1029,41 @@ bool LLVertexBuffer::allocateBuffer(U32 nverts, U32 nindices)
 // Mapping edits the CPU shadow and records which complete native store must
 // be republished. Partial setters below modify that same shadow; no mapped
 // GL range list or driver upload remains.
-U8* LLVertexBuffer::mapVertexBuffer(LLVertexBuffer::AttributeType type, U32 index, S32)
+U8* LLVertexBuffer::mapVertexBuffer(LLVertexBuffer::AttributeType type, U32 index, S32 count)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
+    if (static_cast<U32>(type) >= TYPE_MAX || index > mNumVerts || !mMappedData) return nullptr;
+    if (count == -1) count = mNumVerts - index;
+    if (count < 0 || static_cast<U32>(count) > mNumVerts - index) return nullptr;
     _mapBuffer();
     touchContents();
-    mVerticesWritten = true;
+    if (count > 0) mVerticesWritten = true;
+#if LL_DARWIN
+    // Texture index aliases the four-byte position.w lane. Its stride is
+    // sixteen bytes, but the final lane must not extend past the position
+    // plane (PPD-094), especially in a position-only allocation.
+    const U32 begin = mOffsets[type] + sTypeSize[type] * index;
+    const U32 width = type == TYPE_TEXTURE_INDEX ? sizeof(U32) : sTypeSize[type];
+    const U32 end = count > 0 ? begin + sTypeSize[type] * (count - 1) + width : begin;
+    markMetalDirty(false, begin, end);
+#endif
     return mMappedData + mOffsets[type] + sTypeSize[type] * index;
 }
 
-U8* LLVertexBuffer::mapIndexBuffer(U32 index, S32)
+U8* LLVertexBuffer::mapIndexBuffer(U32 index, S32 count)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
+    if (index > mNumIndices || !mMappedIndexData) return nullptr;
+    if (count == -1) count = mNumIndices - index;
+    if (count < 0 || static_cast<U32>(count) > mNumIndices - index) return nullptr;
     _mapBuffer();
     touchContents();
-    mIndicesWritten = true;
+    if (count > 0) mIndicesWritten = true;
+#if LL_DARWIN
+    // This mapping API exposes U16 striders. U32 setters below track their
+    // own four-byte spans and retain their existing logical count contract.
+    markMetalDirty(true, sizeof(U16) * index, sizeof(U16) * (index + count));
+#endif
     return mMappedIndexData + sizeof(U16) * index;
 }
 
@@ -968,6 +1077,9 @@ void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8
         mIndicesWritten = true;
     else
         mVerticesWritten = true;
+#if LL_DARWIN
+    markMetalDirty(target == GL_ELEMENT_ARRAY_BUFFER, start, end + 1);
+#endif
     LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vb memcpy");
     memcpy(dst + start, data, end - start + 1);
 }
@@ -1003,7 +1115,7 @@ void LLVertexBuffer::_unmapBuffer()
             std::string error;
             vertices_uploaded = upload_metal_buffer(
                 mMetalBuffer, mRetiredMetalBuffers, mMetalBufferInitialized,
-                mMappedData, mSize, bufferLabel(mLabel, " vertex data").c_str(), error);
+                mMetalBufferLastReadFrame, mMetalVertexDirtyRanges, mMappedData, mSize, bufferLabel(mLabel, " vertex data").c_str(), error);
             if (!vertices_uploaded)
                 LL_WARNS("Metal") << "Could not upload vertex data: " << error << LL_ENDL;
         }
@@ -1014,6 +1126,7 @@ void LLVertexBuffer::_unmapBuffer()
         }
     }
     mVerticesWritten = upload_vertices && !vertices_uploaded;
+    if (vertices_uploaded) mMetalVertexDirtyRanges.clear();
 
     const bool upload_indices = mIndicesWritten || !mMetalIndicesInitialized;
     bool indices_uploaded = true;
@@ -1024,7 +1137,7 @@ void LLVertexBuffer::_unmapBuffer()
             std::string error;
             indices_uploaded = upload_metal_buffer(
                 mMetalIndices, mRetiredMetalIndices, mMetalIndicesInitialized,
-                mMappedIndexData, mIndicesSize, bufferLabel(mLabel, " index data").c_str(), error);
+                mMetalIndicesLastReadFrame, mMetalIndexDirtyRanges, mMappedIndexData, mIndicesSize, bufferLabel(mLabel, " index data").c_str(), error);
             if (!indices_uploaded)
                 LL_WARNS("Metal") << "Could not upload index data: " << error << LL_ENDL;
         }
@@ -1035,6 +1148,7 @@ void LLVertexBuffer::_unmapBuffer()
         }
     }
     mIndicesWritten = upload_indices && !indices_uploaded;
+    if (indices_uploaded) mMetalIndexDirtyRanges.clear();
 #endif
 }
 

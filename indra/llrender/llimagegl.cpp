@@ -1581,6 +1581,38 @@ ALMetalTexture* LLImageGL::metalTextureForUpload() noexcept
     return mMetalTexture.get();
 }
 
+void LLImageGL::rollbackMetalTextureWrite() noexcept
+{
+    if (mMetalTextureBeforeWrite)
+        mMetalTexture = std::move(mMetalTextureBeforeWrite);
+}
+
+bool LLImageGL::prepareMetalTextureWrite(ALMetalCommandBuffer& command,
+                                        std::string& error)
+{
+    auto& destination = mUploadInFlight ? mPendingMetalTexture : mMetalTexture;
+    if (!destination || destination.use_count() == 1) return true;
+
+    // A queued CPU packet can outlive the LLImageGL publication or its frame.
+    // Copy every existing level before a subimage/mipmap write so it observes
+    // the original immutable generation, including untouched pixels and mips.
+    auto replacement = ALMetalTexture::create(*sImageMetalDevice,
+                                               destination->descriptor(), &error);
+    if (!replacement) return false;
+    for (U32 mip = 0; mip < destination->descriptor().mipmap_level_count; ++mip)
+    {
+        ALMetalTextureCopy copy;
+        copy.source_mip_level = mip;
+        copy.destination_mip_level = mip;
+        if (!replacement->copyFrom(command, *destination, copy, &error))
+            return false;
+    }
+    if (!command.retainUntilCompletion(destination, &error)) return false;
+    if (!mUploadInFlight) mMetalTextureBeforeWrite = destination;
+    destination = std::move(replacement);
+    return true;
+}
+
 std::size_t LLImageGL::metalSourceBytesPerRow(U32 width) const
 {
     switch (mFormatPrimary)
@@ -1609,7 +1641,7 @@ bool LLImageGL::prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& comma
 
     const MetalUploadFormat upload_format =
         metal_upload_format(getStorageInternalFormat(), mFormatPrimary, mFormatType);
-    std::unique_ptr<ALMetalTexture>& destination =
+    std::shared_ptr<ALMetalTexture>& destination =
         mUploadInFlight ? mPendingMetalTexture : mMetalTexture;
     if (upload_format.format == ALMetalPixelFormat::invalid)
     {
@@ -1717,15 +1749,24 @@ bool LLImageGL::uploadMetalTextureRegion(ALMetalCommandBuffer& command_buffer,
                                      source_bytes_per_row, upload_pixels,
                                      upload_bytes_per_row, converted))
     {
+        rollbackMetalTextureWrite();
         LL_WARNS("Metal") << "Byte-swapped RGB expansion is not supported for Metal upload" << LL_ENDL;
         return false;
     }
 
     std::string error;
+    if (!prepareMetalTextureWrite(command_buffer, error))
+    {
+        rollbackMetalTextureWrite();
+        LL_WARNS("Metal") << "Could not preserve a leased image generation: " << error << LL_ENDL;
+        return false;
+    }
+    texture = metalTextureForUpload();
     if (!texture->upload(command_buffer, mip_level, 0,
                          {x, y, width, height}, upload_pixels,
                          upload_bytes_per_row, &error))
     {
+        rollbackMetalTextureWrite();
         LL_WARNS("Metal") << "Could not upload LLImageGL Metal texture: " << error << LL_ENDL;
         return false;
     }
@@ -1740,8 +1781,16 @@ bool LLImageGL::generateMetalMipmaps(ALMetalCommandBuffer& command_buffer)
         return true;
     }
     std::string error;
+    if (!prepareMetalTextureWrite(command_buffer, error))
+    {
+        rollbackMetalTextureWrite();
+        LL_WARNS("Metal") << "Could not preserve leased image mipmaps: " << error << LL_ENDL;
+        return false;
+    }
+    texture = metalTextureForUpload();
     if (!texture->generateMipmaps(command_buffer, &error))
     {
+        rollbackMetalTextureWrite();
         LL_WARNS("Metal") << "Could not generate LLImageGL Metal mipmaps: " << error << LL_ENDL;
         return false;
     }
@@ -1767,9 +1816,11 @@ bool LLImageGL::commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command
     std::string error;
     if (!command_owner->commit(&error))
     {
+        rollbackMetalTextureWrite();
         LL_WARNS("Metal") << "Could not commit LLImageGL Metal upload: " << error << LL_ENDL;
         return false;
     }
+    mMetalTextureBeforeWrite.reset();
     command_owner.reset();
     command_buffer = nullptr;
     return true;

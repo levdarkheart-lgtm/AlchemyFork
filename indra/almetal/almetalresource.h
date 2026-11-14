@@ -369,6 +369,9 @@ public:
     // formats without a supported linear view.
     void* nativeLinearHandle() const noexcept;
     const ALMetalTextureDescriptor& descriptor() const noexcept;
+    // Same format/block/mip estimate used by native allocation telemetry.
+    // Includes backing size, not just the currently visible image level.
+    std::uint64_t estimatedAllocationBytes() const noexcept;
     // Update diagnostic metadata and the actual native backing/views. Empty
     // explicitly clears a label; storage and allocation identity stay intact.
     void setLabel(const std::string& label);
