@@ -70,6 +70,9 @@ public:
     std::size_t size() const noexcept;
     std::uint32_t rowId(std::size_t request_index) const noexcept;
     std::uint32_t allocationGeneration(std::size_t request_index) const noexcept;
+    // Weak diagnostic observation of a unique table lease (not draw order).
+    // Does not add a publisher/native generation pin to the source cache.
+    std::weak_ptr<const ALMetalWorldResourceTable> tableGenerationForTesting(std::size_t unique_table_index=0) const noexcept;
     // Binds bank0 VS/FS, regions1 VS, globals2 VS/FS and source_regions3 VS.
     // Retains this native-only view before exposing any indirect resource.
     bool bind(ALMetalRenderEncoder&, ALMetalCommandBuffer&, std::string* error=nullptr) const;

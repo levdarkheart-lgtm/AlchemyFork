@@ -5,6 +5,7 @@
  */
 #include "almetalworldsourcepages.h"
 #include "almetalworldprepare.h"
+#import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #include <algorithm>
 #include <atomic>
@@ -66,6 +67,7 @@ struct Row
     std::list<std::uint32_t>::iterator lru;
     std::weak_ptr<const ALMetalWorldMaterialSource> material;
     std::weak_ptr<const ALMetalWorldResourceSource> resources;
+    std::weak_ptr<const ALMetalWorldResourceTable> table;
 };
 struct Context
 {
@@ -121,6 +123,8 @@ std::uint32_t ALMetalWorldSourceFrameView::rowId(std::size_t index)const noexcep
 {return index<mImpl->rows.size()?mImpl->rows[index]:std::numeric_limits<std::uint32_t>::max();}
 std::uint32_t ALMetalWorldSourceFrameView::allocationGeneration(std::size_t index)const noexcept
 {return index<mImpl->generations.size()?mImpl->generations[index]:0;}
+std::weak_ptr<const ALMetalWorldResourceTable> ALMetalWorldSourceFrameView::tableGenerationForTesting(std::size_t index)const noexcept
+{return index<mImpl->tables.size()?std::weak_ptr<const ALMetalWorldResourceTable>(mImpl->tables[index]):std::weak_ptr<const ALMetalWorldResourceTable>{};}
 bool ALMetalWorldSourceFrameView::bind(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,std::string* error)const
 try
 {
@@ -224,12 +228,24 @@ try
     context.library=(__bridge id<MTLLibrary>)library.nativeHandle();context.anisotropy=anisotropy;
     if(context.library.device!=context.native || context.native.argumentBuffersSupport!=MTLArgumentBuffersTier2)
     {fail(error,"Native source rows require an exact Tier2 shader context");return {};}
-    auto function=[context.library newFunctionWithName:@"almetal_world_material_source_rows_vertex"];
-    context.bank_encoder=[function newArgumentEncoderWithBufferIndex:0];
-    context.row_encoder=[context.bank_encoder newArgumentEncoderForBufferAtIndex:0];
+    constexpr const char* names[]{"almetal_world_material_source_rows_vertex","almetal_world_pbr_source_rows_vertex",
+        "almetal_world_material_source_rows_fragment","almetal_world_pbr_source_rows_fragment","almetal_world_source_rows_layout"};
+    std::array<id<MTLFunction>,5> functions;
+    for(std::size_t index=0;index<functions.size();++index)
+    {
+        functions[index]=[context.library newFunctionWithName:[NSString stringWithUTF8String:names[index]]];
+        const auto expected=index<2?MTLFunctionTypeVertex:index<4?MTLFunctionTypeFragment:MTLFunctionTypeKernel;
+        if(!functions[index]||functions[index].functionType!=expected)
+        {fail(error,"Native source shader functions are unavailable");return {};}
+    }
+    context.bank_encoder=[functions[0] newArgumentEncoderWithBufferIndex:0];
+    // A pointer inside the bank is not itself an argument-buffer argument of
+    // that encoder. Reflect the identical row type from its direct ABI kernel.
+    context.row_encoder=[functions[4] newArgumentEncoderWithBufferIndex:0];
     const auto length=context.row_encoder.encodedLength,alignment=context.row_encoder.alignment;
     context.bank_length=context.bank_encoder.encodedLength;
-    if(!length||!alignment||length>std::numeric_limits<std::size_t>::max()-(alignment-1)||!context.bank_length)
+    if(!context.bank_encoder||!context.row_encoder||!length||!alignment||!context.bank_encoder.alignment||
+       length>std::numeric_limits<std::size_t>::max()-(alignment-1)||!context.bank_length)
     {fail(error,"Native source argument shader ABI is unavailable");return {};}
     context.stride=((length+alignment-1)/alignment)*alignment;
     if(context.stride>std::numeric_limits<std::size_t>::max()/alMetalWorldSourceRowsPerPage)
@@ -357,7 +373,7 @@ try
                 }
                 old.valid=false;old.allocated=false;old.revision=old.minimum_revision=0;
                 if(auto source=old.resources.lock())state.context->resources->releaseSourceCache(source);
-                old.material.reset();old.resources.reset();state.free.push_back(victim);
+                old.material.reset();old.resources.reset();old.table.reset();state.free.push_back(victim);
             }
             slot=state.free.back();
             auto& identity=state.identities[key.identity];identity.push_back(slot);
@@ -374,8 +390,9 @@ try
             (row.revision!=request.key.revision||row.signature!=signature))
             return reject("Native source row has conflicting immutable inputs");
         mapping[slot]=request.region;
+        const bool same_table=!row.table.owner_before(table)&&!table.owner_before(row.table);
         const bool hit=row.valid&&row.revision==request.key.revision&&row.signature==signature &&
-            !row.material.expired()&&!row.resources.expired();
+            !row.material.expired()&&!row.resources.expired()&&same_table;
         if(!hit)
         {
             // No actual reader may see these bytes change. Idle bank/cache
@@ -394,7 +411,7 @@ try
             std::memcpy([state.context->row_encoder constantDataAtIndex:14],signature.values.data()+20,16);
             [state.context->row_encoder setArgumentBuffer:nil offset:0];
             row.signature=signature;row.revision=request.key.revision;
-            row.material=source.native_material_source;row.resources=source.native_resource_source;row.valid=true;
+            row.material=source.native_material_source;row.resources=source.native_resource_source;row.table=table;row.valid=true;
             ++state.statistics.row_publications;state.statistics.encoded_row_bytes+=state.context->row_encoder.encodedLength;
         }
         else ++state.statistics.hits;
@@ -440,7 +457,7 @@ void ALMetalWorldSourcePages::invalidate(std::uint64_t identity,std::uint64_t mi
     {
         auto& row=mImpl->rows[slot];row.valid=false;
         if(auto source=row.resources.lock())mImpl->context->resources->releaseSourceCache(source);
-        row.material.reset();row.resources.reset();
+        row.material.reset();row.resources.reset();row.table.reset();
         const auto next=minimum_revision?minimum_revision:(row.revision==std::numeric_limits<std::uint64_t>::max()?row.revision:row.revision+1);
         row.minimum_revision=std::max(row.minimum_revision,next);
     }
@@ -452,7 +469,7 @@ void ALMetalWorldSourcePages::withdraw(std::uint64_t identity)noexcept
     {
         auto& row=mImpl->rows[slot];row.valid=false;
         if(auto source=row.resources.lock())mImpl->context->resources->releaseSourceCache(source);
-        row.material.reset();row.resources.reset();
+        row.material.reset();row.resources.reset();row.table.reset();
     }
 }
 void ALMetalWorldSourcePages::clear()noexcept
@@ -461,7 +478,7 @@ void ALMetalWorldSourcePages::clear()noexcept
     for(std::size_t slot=mImpl->rows.size();slot>0;--slot)
     {auto& row=mImpl->rows[slot-1];row.valid=false;row.allocated=false;row.revision=0;row.minimum_revision=0;
         if(auto source=row.resources.lock())mImpl->context->resources->releaseSourceCache(source);
-        row.material.reset();row.resources.reset();
+        row.material.reset();row.resources.reset();row.table.reset();
         if(row.generation!=std::numeric_limits<std::uint32_t>::max())mImpl->free.push_back(static_cast<std::uint32_t>(slot-1));}
 }
 ALMetalWorldSourcePageStats ALMetalWorldSourcePages::stats()const noexcept

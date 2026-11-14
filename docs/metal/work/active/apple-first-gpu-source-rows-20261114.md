@@ -91,3 +91,11 @@ and PPD179 nested argument reflection assertion. Neither is viewer runtime
 evidence. Fix at a new coherent source and rerun; no GPU source acceptance.
 PPD180 exact derived table ownership and PPD181 group shader reload are
 source-confirmed review findings; no observed runtime attribution.
+
+PPD178–180 repair frozen in isolated source-row-repair tree: reserved fixture
+identifier corrected; directly reflected shared MSL row type replaces the invalid
+nested encoder lookup; exact weak derived-table identity closes the cache proof
+gap. Native context-churn/gated-reader and missing-layout cases are authored.
+Root integrates with append-only actual-owner cost fixture eaebc05256, then runs
+required build11 and all new native gates at one exact clean source. No product
+execution/performance acceptance is inferred.

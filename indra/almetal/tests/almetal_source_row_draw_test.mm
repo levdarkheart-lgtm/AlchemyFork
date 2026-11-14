@@ -16,9 +16,9 @@ constexpr const char* shaders = R"metal(
 using namespace metal;
 struct Output { float4 position [[position]]; uint source [[flat]]; };
 vertex Output source_vertex(const device float4* positions [[buffer(0)]],
-    uint vertex [[vertex_id]], uint source [[instance_id]])
+    uint vertex_index [[vertex_id]], uint source [[instance_id]])
 {
-    return {positions[vertex], source};
+    return {positions[vertex_index], source};
 }
 fragment float4 source_fragment(Output input [[stage_in]])
 {

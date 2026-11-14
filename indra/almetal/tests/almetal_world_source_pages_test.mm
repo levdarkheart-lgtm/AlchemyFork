@@ -6,6 +6,8 @@
 #include "almetal_world_prepare_fixture.h"
 #include "../almetalworldsourcepages.h"
 #include "../almetalworldmaterialdata.h"
+#include <cstdlib>
+#include <filesystem>
 
 namespace
 {
@@ -14,6 +16,12 @@ void waitPageResources(const std::weak_ptr<Resources>& weak)
     const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(2);
     while(!weak.expired()&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
     CHECK(weak.expired());
+}
+void waitPageTable(const std::weak_ptr<const ALMetalWorldResourceTable>& weak)
+{
+    const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+    while(!weak.expired()&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
+    REQUIRE(weak.expired());
 }
 struct PageDescription {ALMetalWorldSimpleBatch source;};
 struct PageFixture : Fixture
@@ -268,5 +276,91 @@ TEST_CASE("almetal: source publication rejects stale proofs malformed scopes spe
         ALMetalWorldSourcePageLimits limits;limits.maximum_metadata_bytes=256;
         auto bounded=f.pages(limits);CHECK_FALSE(bounded->freeze(std::span(&request,1),std::span(&f.region,1),f.globals,&f.error));
         CHECK(bounded->stats().live_metadata_bytes<=limits.maximum_metadata_bytes);
+    }
+}
+
+TEST_CASE("almetal: source rows reprove derived table generations after real context churn",
+          "[almetal][world-source-pages]")
+{
+    @autoreleasepool
+    {
+        PageFixture f;auto pages=f.pages();auto request=f.request();
+        auto first=f.freeze(pages,std::span(&request,1));
+        const auto row_id=first->rowId(0),allocation=first->allocationGeneration(0);
+        auto old_table=first->tableGenerationForTesting();REQUIRE_FALSE(old_table.expired());
+        auto baseline=f.encode(*first,f.cpu->source);REQUIRE(baseline.command->commitAndWait(&f.error));
+        const auto expected=f.read(*baseline.target);baseline.command.reset();
+        ALMetalSamplerDescriptor descriptor;descriptor.support_argument_buffers=true;
+        auto sampler=ALMetalSamplerState::create(*f.device,descriptor,&f.error);REQUIRE(sampler);
+        std::vector<std::shared_ptr<ALMetalWorldResources>> contexts;
+        for(unsigned index=0;index<5;++index)
+        {
+            auto context=ALMetalWorldResources::create(*f.device,*f.library,{},&f.error);REQUIRE(context);
+            contexts.push_back(std::move(context));
+        }
+        const auto churn=[&]
+        {
+            // Keep these real contexts alive. More than four exact contexts
+            // evicts ContextA from the Source's bounded strong table cache.
+            for(const auto& context:contexts)
+            {
+                auto table=context->prepare(f.cpu->source.native_resource_source,*sampler,&f.error);
+                INFO(f.error);REQUIRE(table);
+            }
+        };
+        churn();
+        CHECK(f.cpu->source.native_material_source->matches(f.cpu->source));
+        CHECK(f.cpu->source.native_resource_source->matches(f.cpu->source));
+        CHECK_FALSE(old_table.expired());first.reset();waitPageTable(old_table);
+        const auto before=pages->stats();
+        auto restored=f.freeze(pages,std::span(&request,1));
+        auto restored_table=restored->tableGenerationForTesting();REQUIRE_FALSE(restored_table.expired());
+        // This exercises actual ownership turnover, not a forced allocator
+        // ABA. No assertion depends on native-object address reuse.
+        CHECK(old_table.owner_before(restored_table)||restored_table.owner_before(old_table));
+        CHECK(pages->stats().row_publications==before.row_publications+1);
+        CHECK(restored->rowId(0)==row_id);CHECK(restored->allocationGeneration(0)==allocation);
+        auto replay=f.encode(*restored,f.cpu->source);REQUIRE(replay.command->commitAndWait(&f.error));
+        CHECK(f.read(*replay.target)==expected);replay.command.reset();
+
+        id<MTLSharedEvent> gate=[(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];REQUIRE(gate);
+        struct OpenGate {id<MTLSharedEvent> gate;~OpenGate(){gate.signaledValue=1;}} open{gate};
+        auto blocker=f.device->makeCommandBuffer("Hold derived table through context churn",&f.error);REQUIRE(blocker);
+        [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];REQUIRE(blocker->commit(&f.error));
+        auto pending=f.encode(*restored,f.cpu->source);REQUIRE(pending.command->commit(&f.error));restored.reset();
+        churn();CHECK_FALSE(restored_table.expired());
+        const auto held=pages->stats();
+        auto still_live=f.freeze(pages,std::span(&request,1));
+        auto same_table=still_live->tableGenerationForTesting();
+        CHECK_FALSE(same_table.owner_before(restored_table));CHECK_FALSE(restored_table.owner_before(same_table));
+        CHECK(pages->stats().row_publications==held.row_publications);still_live.reset();
+        // Remove the reinserted source-cache lease again; only the pending
+        // GPU view now keeps that exact ContextA table alive.
+        churn();CHECK_FALSE(restored_table.expired());
+        gate.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));CHECK(f.read(*pending.target)==expected);
+        waitPageTable(restored_table);
+        const auto settled=pages->stats();auto after_completion=f.freeze(pages,std::span(&request,1));
+        CHECK(pages->stats().row_publications==settled.row_publications+1);
+    }
+}
+
+TEST_CASE("almetal: source pages reject a source shader library missing direct row layout reflection",
+          "[almetal][.world-source-pages-no-layout]")
+{
+    @autoreleasepool
+    {
+        const char* selected=std::getenv("ALCHEMY_SOURCE_ROWS_NO_LAYOUT_LIBRARY");
+        REQUIRE(selected);REQUIRE(*selected);
+        const std::filesystem::path path(selected);
+        REQUIRE(path.is_absolute());REQUIRE(std::filesystem::is_regular_file(path));
+        std::string error;auto device=ALMetalDevice::create(&error);REQUIRE(device);
+        auto library=ALMetalShaderLibrary::loadFile(*device,path.string(),&error);INFO(error);REQUIRE(library);
+        REQUIRE(library->hasFunction("almetal_world_material_source_rows_vertex"));
+        REQUIRE(library->hasFunction("almetal_world_pbr_source_rows_vertex"));
+        REQUIRE(library->hasFunction("almetal_world_material_source_rows_fragment"));
+        REQUIRE(library->hasFunction("almetal_world_pbr_source_rows_fragment"));
+        REQUIRE_FALSE(library->hasFunction("almetal_world_source_rows_layout"));
+        auto pages=ALMetalWorldSourcePages::create(*device,*library,1,{},&error);
+        CHECK_FALSE(pages);CHECK_FALSE(error.empty());
     }
 }

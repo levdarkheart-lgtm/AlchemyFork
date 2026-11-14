@@ -7384,6 +7384,40 @@ struct ALMetalWorldSourceRow
     uint4 source_policy [[id(14)]]; // x=texture count, yzw=reserved producer data
 };
 
+// Direct reflection contract for the exact row type used by both render
+// stages. A pointer-bank element is a buffer pointer, not a nested argument
+// buffer encoder. The native owner obtains its row encoder from buffer0 of
+// this function; the renderer never dispatches this layout entrypoint.
+kernel void almetal_world_source_rows_layout(
+    constant ALMetalWorldSourceRow& row [[buffer(0)]],
+    device uint* result [[buffer(1)]], uint index [[thread_position_in_grid]])
+{
+    if (index != 0u) return;
+    // Reference every resource field without dereferencing inactive-family
+    // pointers. This keeps the complete id0..14 schema visible to reflection.
+    uint pointers = uint(row.positions != nullptr);
+    pointers |= uint(row.normals != nullptr) << 1;
+    pointers |= uint(row.uv0 != nullptr) << 2;
+    pointers |= uint(row.colors != nullptr) << 3;
+    pointers |= uint(row.tangents != nullptr) << 4;
+    pointers |= uint(row.uv1 != nullptr) << 5;
+    pointers |= uint(row.uv2 != nullptr) << 6;
+    pointers |= uint(row.legacy != nullptr) << 7;
+    pointers |= uint(row.pbr_ldr != nullptr) << 8;
+    pointers |= uint(row.pbr_hdr != nullptr) << 9;
+    pointers |= uint(row.legacy_resources != nullptr) << 10;
+    pointers |= uint(row.pbr_resources != nullptr) << 11;
+    result[0] = pointers;
+    for (uint column = 0; column < 4; ++column)
+        for (uint lane = 0; lane < 4; ++lane)
+            result[1 + column * 4 + lane] = as_type<uint>(row.fixed_texture_matrix[column][lane]);
+    for (uint lane = 0; lane < 4; ++lane)
+    {
+        result[17 + lane] = as_type<uint>(row.material_policy[lane]);
+        result[21 + lane] = row.source_policy[lane];
+    }
+}
+
 struct ALMetalWorldSourceBank
 {
     array<constant ALMetalWorldSourceRow*, 4096> rows [[id(0)]];

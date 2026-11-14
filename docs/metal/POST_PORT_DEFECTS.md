@@ -4532,6 +4532,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Recorded validation/review finding; source-row experiment remains defaultOFF and full architecture stays partial.
 
 
+- 2026-11-14: Fixture parameter renamed vertex_index, assertions unchanged; clean build11/native retest pending.
+
 ## PPD-179 — Nested source-pointer reflection aborts under Metal API validation
 
 - Status: investigating
@@ -4550,6 +4552,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Recorded validation/review finding; source-row experiment remains defaultOFF and full architecture stays partial.
 
 
+- 2026-11-14: Added shared-type reflection-only layout kernel and direct function-buffer argument encoder, with function/type/size/alignment checks. Missing-layout compiled69020 negative fixture authored. Build11/native retest pending.
+
 ## PPD-180 — Derived resource-table generation is absent from source-row hit proof
 
 - Status: investigating
@@ -4567,6 +4571,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Recorded validation/review finding; source-row experiment remains defaultOFF and full architecture stays partial.
 
+
+- 2026-11-14: Weak exact derived Table control-block proof added/reset at all retirement paths. Real5-context churn, old gated-reader survival and renewed publication/pixel cases authored without allocator-reuse assumptions. Build11/native retest pending.
 
 ## PPD-181 — World shader reload can commit one owner before the other is ready
 
