@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-182 -->
+<!-- next-defect-id: PPD-183 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4590,3 +4590,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Recorded validation/review finding; source-row experiment remains defaultOFF and full architecture stays partial.
+
+
+## PPD-182 — Derived-table fixture repeats unsupported Catch OR decomposition
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native table-generation fixture
+- Discovered: 2026-11-14
+- Original reference: New native regression assertions must compile with the repository Catch version without weakening their intended ownership check.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Build11 atd17e9a0a8c doctor/configure0, build1 after60.117s; source_pages_test.mm320 CHECK(a.owner_before(b) || b.owner_before(a)) lacks outer expression parentheses. This repeats the Catch rule previously recorded at a different site in PPD169. New direct-layout MSL compiled.
+- Next action: Fully parenthesize this ownership comparison; retain its meaning and rerun required build/native gates.
+- Verification: Compiler diagnostic and failed frozen-source-build-11 receipt retained; no native success is inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before repairing the new assertion site.

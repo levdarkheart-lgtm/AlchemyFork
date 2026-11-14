@@ -68,7 +68,7 @@ scene LOD/occlusion/texture priority/RLVa policies cannot be silently removed.
 Owner testing will assess the combined engine across representative scenes,
 frame pacing, image/feature correctness, streaming and memory. Partial helpers,
 nominal Metal4 adoption, CPU microbenchmarks and a shadow-only result cannot
-establish the product objective. Next global defect ID182; root allocates IDs.
+establish the product objective. Next global defect ID183; root allocates IDs.
 
 ## First coherent freeze
 
@@ -99,3 +99,7 @@ gap. Native context-churn/gated-reader and missing-layout cases are authored.
 Root integrates with append-only actual-owner cost fixture eaebc05256, then runs
 required build11 and all new native gates at one exact clean source. No product
 execution/performance acceptance is inferred.
+
+Build11 d17e9a0a8c doctor/configure0, build1 at60.117s: PPD182 new Catch
+OR assertion requires outer parentheses. Source-row direct-layout MSL compiled.
+Only assertion grouping changes; required build12/native execution follows.

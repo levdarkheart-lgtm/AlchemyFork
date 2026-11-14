@@ -317,7 +317,7 @@ TEST_CASE("almetal: source rows reprove derived table generations after real con
         auto restored_table=restored->tableGenerationForTesting();REQUIRE_FALSE(restored_table.expired());
         // This exercises actual ownership turnover, not a forced allocator
         // ABA. No assertion depends on native-object address reuse.
-        CHECK(old_table.owner_before(restored_table)||restored_table.owner_before(old_table));
+        CHECK((old_table.owner_before(restored_table)||restored_table.owner_before(old_table)));
         CHECK(pages->stats().row_publications==before.row_publications+1);
         CHECK(restored->rowId(0)==row_id);CHECK(restored->allocationGeneration(0)==allocation);
         auto replay=f.encode(*restored,f.cpu->source);REQUIRE(replay.command->commitAndWait(&f.error));
