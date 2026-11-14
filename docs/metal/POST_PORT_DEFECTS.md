@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-110 -->
+<!-- next-defect-id: PPD-111 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3115,3 +3115,25 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Correct escaped exact PBR terrain case now executes and passes128assertions/1case under native validation. This closes the investigative attribution question, not owner runtime acceptance; no terrain code was changed.
 
 - 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-110 — Combined candidate profile has slower cadence and higher submission pressure than G1
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex Apple-first performance assessment
+- Discovered: 2026-11-14
+- Original reference: Repaired native G1 sourcefef1e756fd/68991,301.864885s busy-club capture2026-11-13, same M1Max64GiB host. This is a sequential live workload comparison, not original OpenGL or a controlled identical-world replay.
+- Evidence: [G2–G5 busy-club capture and comparison](research/g2g5-busy-club-profile-2026-11-14.md), [headless implementation results and limits](research/apple-first-architecture-g2-g5-results.md).
+- Next action: Prioritize producer-amortized source generation publication and whole-frame streaming/residency/command admission, using the measured per-present and per-work costs. Add missing cache-hit/run-size/COW-byte/producer-command census at existing owners before attributing extra commands or lowering thresholds. Preserve quality, query/probe/projector semantics and whole-frame latency/texture-response acceptance; no new runtime action was taken during analysis.
+- Verification: Actual302.345784s Game Performance Overview attach to verified6bae/68995/PID19459 exits0 at its5m limit. Whole presentedFPS17.773vs20.364(−12.72%); associateddisplay56.385vs49.135ms, associatedGPUspan87.220vs85.394ms(+2.14%); commandbuffers/frame32.842vs23.882(+37.52%). Last60FPS17.925vs20.113(−10.88%). Nominal thermals throughout. Both individual-frame tables empty: no framep95. Saved graphics match before/after/current/G1; live camera/population/cache/probe/viewport equivalence and causal attribution remain unverified.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered the adverse observed comparison before any repair attempt. Owner explicitly requested this capture after prior no-agent-launch/profile delivery; only attachment to the already running viewer occurred. Owner permitted normal quit after measurement ended; process absence after trace finalization is not a crash report. Headless gates remain mechanism evidence, not a live performance claim. CPU attribution/333DWARF-warning coverage check is next; raw trace/logs stay private/local.
+
+- 2026-11-14: Completed whole-engine analysis under owner steering. Actual published3456×2168 matches both runs,420saved controls match. Main CPU49.30vs33.97ms/estimatedpresent; sourcecapture7.34vs2.22 while admittedmain sources8482vs6548/frame(+29.54%). Positively observed key/cache/aggregate ownership costs1.40/1.05/1.36ms separately. Logged generic indirect draw/run/prepared deltas0 cover new opaque execution path too, so the accepted ICB mechanism has no recorded successful execution in the periodic window; Dispatch/cache-hit/eligibility counts remain unknown.
+
+- 2026-11-14: Streaming is normal engine work, not dismissal of the adverse result:56,104vs453 decode completions (~124.7×rate),628.601vs10.103decoderCPU-s; maintextureupdate4.39vs0.99ms/present; waiting peaks2508/4.64soldest. Texture creations16.22vs6.97/frame, buffers256.26vs217.99/frame but buffer/s only+2.39%. Currentpressure system-low17/30,bias1–3.029vs1; pool+200.074MiB at same published resolution,0evictions. Cause of churn/extra commands is not isolated. Source graph confirms separately bounded main/shadow/probe/upload producers on common nativequeue; +19.91%estimatedCB/s. Full assessment/report and safe receipts are retained. No codefix/newcapture/restart/push, no closure or causalFPS claim.

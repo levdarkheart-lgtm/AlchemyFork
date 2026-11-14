@@ -474,3 +474,76 @@ viewer threading rewrite. Next owner sameclub/camera/quality/warm-cache check,
 including movingattachments/PBRalpha/probes/media/voice; no agent viewer/window/
 audio launch, login, newprofile/capture or push occurred. Runtime activation,
 FPS/latency, full feature parity and long stability remain unverified.
+
+
+## Owner-authorized five-minute runtime profile —2026-11-14
+
+Owner manually started staged68995, arrived at the busy club and explicitly
+requested five-minute profiling. This supersedes the prior no-new-profile
+constraint for this one attach capture; no agent launch/settings/camera change.
+Verified livePID19459/path/main96dcc743/compiled6bae before attachment. Exact
+Game Performance Overview5m command is in newevidence recording.json; actual
+run1TOC08:00:41.550–08:05:43.895UTC/302.345784s/time-limit/recorderexit0.
+Finalization498.799s totalwall includesDWARF processing, notextra measurement.
+Owneraskedcanclose and was toldyes afterthetime-limit; subsequentnormalquit
+is not a crash. Trace and302s numeric tables preserved locally/private.
+
+[Profile assessment](../../research/g2g5-busy-club-profile-2026-11-14.md),
+PPD110: wholeFPS17.773vsG120.364(−12.72%), associateddisplay56.385vs49.135ms,
+associatedGPUspan87.220vs85.394ms(+2.14%)/notGPUbusy, CB/frame32.842vs23.882
+(+37.52%). Last60FPS17.925vs20.113(−10.88%). Nominalthermal302.346s; empty
+individual-frame tables mean noframep95.420savedgraphicssettingsmatchG1 and
+currentbefore/after, but livecamera/population/cache/probe/viewportunmatched.
+This capture doesnotdemonstrate thedesiredviewerspeedup or isolateacause.
+CPUattribution/333DWARFwarningcoverage is beingfinalized fromsaveddata only.
+No newimplementationchange/capture/push. Original completed deliverygoal remains
+complete forimplementation/build/stage; runtimeperformanceassessment isseparate.
+
+Newevidence root artifacts/metal/g2g5-busy-club-profile-20261114-080031/:
+recording.json,toc.xml,capture-verification.json,originaltrace,sevenGPUexports/
+analysisreceipts,gpu-summary.md/gpu-g1-comparison.json,numericlog-metrics.json
+and420controlgraphicsreceipts. CPU firstsandboxcachefailure−6 ispreserved; root
+unrestrictedofflineexportpasses0/31.917s,271,352,656B XML, no duplicatecapture.
+
+
+## Whole-engine analysis finalized — owner steering retained
+
+[Final profile assessment](../../research/g2g5-busy-club-profile-2026-11-14.md)
+now covers the actual frame and input/resource economy. Owner explicitly
+rejects treating liveworld variation as grounds to dismiss poorFPS or treating
+anisolated shadowpass/helper win asengine success. No quality/light/projector
+reduction is proposed. Frame-time/pacing/texture response andwork scaling across
+variableonline load areacceptance, alongsidecorrectness.
+
+Samepublished3456×2168/420savedcontrols match. Main CPU49.30vs33.97ms/proxy
+present; sourcecapture7.34vs2.22(+231%) whilemain admittedsources/frame+29.54%,
+probe+25.26%; Gbufferbinds+57.81%. Key/cache/aggregate leases1.40/1.05/1.36ms
+separately, sealing.641CPU-s, matrixprep.495CPU-s. Decode629CPU-s islegitimate
+parallelenginework, notframe latency andnotanexcuse:56,104vs453completions,
+backloglimit6/waiting2508/oldest4.64s; maintextureupdate4.39vs.99ms/present.
+Textureallocations16.22vs6.97/frame; buffercreation/s+2.39%only. Pressure
+system-low17/30,bias1–3.029vs1; targetpool+200.074MiB/noevictions atsame
+publishedsize. Countersdonotprove COW/redecodefeedback cause.
+
+SuccessfulopaqueICBexecutionisabsent fromloggedmonotonicgenericcounters for
+bothmain/probe. Source tracing verifies selectedopaqueexecute increments those
+samepoolcounters; notmerely samplerfunctionabsence. Eligibility/fallback/cache
+hits/8192Dispatch/uploadbytes/producer-commandlabels remainunknown. Lowering
+thresholds isnotsupported bypreviousadversesmallcasegates. Commonqueue app/
+probe/upload sourcegraph demonstrates separatelyboundedproducerinteraction;
+estimatedCB/s+19.91% notjustFPSdenominator. Exactextrapassoriginunproved.
+
+CPUonepass0/26.03s,990,368Runningrows; target990.368CPU-s,main264.914CPU-s
+(87.62%onecore),decoder628.601. Mainaddress-only1.410s(.532%),missing.002s;
+333DWARFwarningsretained. Boundedanalysiscompleted,noextrasymbolicationloop.
+Allagentprocessesterminal. Newreceipts/census/CPU-GPUreportsarelocalonly.
+PPD110remainsinvestigating/noowneracceptance/nopush.
+
+Nextengineeringboundary: publishchangedsource/material/resourcegenerationsat
+realproducers once, compactper-viewreadreferences; correlate/admitstreaming
+publication/residency/COWbytes underinteractiveframebudget; coordinateexisting
+main/shadow/probe/upload completion/admission without giantbatching orfeature
+loss. Evaluatewholeframes/p95/throughput+quality acrosssettled/streaming/traversal/
+probe-avatarload, notonlyfixed16-source/2k-runsyntheticmechanisms. Current
+implementationdeliverywascomplete, architecturalperformanceobjectiveisunmet.
+Analysisrequestdoesnotitselfstartanothercaptureorimplementationcycle.

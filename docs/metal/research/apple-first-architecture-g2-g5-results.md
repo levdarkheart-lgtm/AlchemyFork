@@ -17,11 +17,21 @@ Evidence is under `artifacts/metal/apple-first-architecture-20261113/`.
 The combined implementation/comparison/build delivery is complete and ready
 for the owner's runtime assessment. The tracked experiment does not claim full
 viewer architecture or product-release completion. No agent viewer/window/audio
-launch, login, interactive profile/capture or push has occurred.
+launch, login, interactive profile/capture or push occurred during that delivery.
+The later owner-authorized attached profile is recorded below.
 
 Staged application:
 `/Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/apple-first-architecture-20261113/staged/Alchemy Metal Alpha G2G5.app`.
 The existing G1 and other viewer apps were preserved.
+
+**Runtime assessment,2026-11-14:** the owner subsequently requested a five-minute
+profile of this delivered app. [Whole-engine analysis](g2g5-busy-club-profile-2026-11-14.md)
+records17.77FPS versus20.36G1 at matched published resolution/saved controls,
+substantial serial source bookkeeping and streaming/publication work, and zero
+logged successful opaque ICB execution. PPD-110 remains investigating. The
+architectural performance objective is unmet; the delivery/headless results
+below do not establish a live viewer upgrade. No code fix or new capture was
+performed during that analysis.
 
 ## Concrete ownership and execution changes
 
