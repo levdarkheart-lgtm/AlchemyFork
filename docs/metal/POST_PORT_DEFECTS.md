@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-196 -->
+<!-- next-defect-id: PPD-197 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4845,3 +4845,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Independent reviewer reported before the PPD194 source freeze/build.
 - 2026-11-14: Repair also checks the exact original publication before committing a successful promotion. The deterministic callback can install a newer same-revision publication and return normally; the stale outer promotion must reject it as well as the throwing replacement case. This extends the same promotion ownership regression, not viewer-incident attribution.
+
+
+## PPD-196 — Promotion parity fixture renders a source prototype without its view transform
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native capability-promotion fixture
+- Discovered: 2026-11-14
+- Original reference: Retained source prototypes contain static scene facts; actual capture supplies current modelview/projection/normal transforms before ordinary rendering.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Clean e5fd8bd98e required18/static69048 pass. Native cohort1080/6, renderer764/1 and prior library286/1 pass. Actual producer suite passes46/47 cases,9787/9788 assertions; the new promotion parity case passes semantic-key/native-tuple/revision/lease checks, then directly renders a view-independent prototype with its unset modelview transform. Ordinary validation correctly rejects it. Other new source-record reuse and allocation/reentrancy cases pass.
+- Next action: Copy the two static prototypes and apply the same actual fixture view matrices before comparing rendered output. Preserve source-publication and old-tuple assertions; rerun the exact actual-producer suite.
+- Verification: Executed incomplete fixture input, not an observed viewer regression.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before repairing the promotion parity input; failed18 evidence retained.

@@ -1748,8 +1748,18 @@ TEST_CASE("Actual material capabilities promote one semantic source without rebu
         auto reused=world(info,ordinary,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(reused);
         CHECK(reused.owner==promoted.owner);CHECK(Inputs::sNativeSceneSerial==serial);CHECK(cohort_source_publications==records_before+1);
         auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
-        ALMetalWorldGBufferScene before;before.width=before.height=f.side;before.batches=raw.prototype;before.batch_count=1;before.source_owner=raw.owner->native_tuple;
-        auto after=before;after.batches=promoted.prototype;after.source_owner=promoted.owner->native_tuple;
+        // PPD-196: source publication is camera-independent. Apply the actual
+        // fixture view to both snapshots, as ordinary capture does.
+        auto original_draw=*raw.prototype,promoted_draw=*promoted.prototype;
+        for(auto* draw:{&original_draw,&promoted_draw})
+        {
+            std::memcpy(draw->modelview_projection,f.model.getF32ptr(),sizeof(draw->modelview_projection));
+            std::memcpy(draw->modelview,f.model.getF32ptr(),sizeof(draw->modelview));
+            for(U32 axis=0;axis<3;++axis)
+                draw->normal_matrix[axis][axis]=draw->rigged_normal_matrix[axis][axis]=1.f;
+        }
+        ALMetalWorldGBufferScene before;before.width=before.height=f.side;before.batches=&original_draw;before.batch_count=1;before.source_owner=raw.owner->native_tuple;
+        auto after=before;after.batches=&promoted_draw;after.source_owner=promoted.owner->native_tuple;
         auto a=renderer->render(before,&f.error);INFO(f.error);REQUIRE(a);
         auto b=renderer->render(after,&f.error);INFO(f.error);REQUIRE(b);CHECK(f.read(*a)==f.read(*b));
     }
