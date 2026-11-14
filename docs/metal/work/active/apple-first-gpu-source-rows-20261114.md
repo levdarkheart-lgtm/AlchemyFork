@@ -68,7 +68,7 @@ scene LOD/occlusion/texture priority/RLVa policies cannot be silently removed.
 Owner testing will assess the combined engine across representative scenes,
 frame pacing, image/feature correctness, streaming and memory. Partial helpers,
 nominal Metal4 adoption, CPU microbenchmarks and a shadow-only result cannot
-establish the product objective. Next global defect ID178; root allocates IDs.
+establish the product objective. Next global defect ID182; root allocates IDs.
 
 ## First coherent freeze
 
@@ -79,3 +79,15 @@ regressions. Capture telemetry records enabled views/models, ordinary candidates
 unsupported/owner-proof skips and metadata failures; renderer logs setup attempts,
 accepted draws and source-page bytes. No silent unused-path success is inferred.
 Root will commit/integrate locally and execute required build9, then native gates.
+
+## Executed first native gate
+
+Source244ed38006 build9 doctor/configure0, build1 (PPD177 missing narrow
+encoder friend). Repaired ea7ca55efc required build10 passes297.878s; static
+69020 passes346ARM64/signatures/imports/source/media/voice/sixOFFcontrols.
+Native API/GPU validation region64assertions/5cases and actualpublish7042/35
+pass. GPU source-row process exits-6: PPD178 fixture MSL reserved identifier
+and PPD179 nested argument reflection assertion. Neither is viewer runtime
+evidence. Fix at a new coherent source and rerun; no GPU source acceptance.
+PPD180 exact derived table ownership and PPD181 group shader reload are
+source-confirmed review findings; no observed runtime attribution.

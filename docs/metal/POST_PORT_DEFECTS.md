@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-178 -->
+<!-- next-defect-id: PPD-182 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4512,3 +4512,75 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered exact compile failure before repair. No native test/runtime success is claimed for this checkpoint.
+
+
+## PPD-178 — Native source draw fixture uses a reserved MSL keyword
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native source draw fixture
+- Discovered: 2026-11-14
+- Original reference: Native tests must compile their own ordered-draw shader before testing the production encoder.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Required native-source-row-correctness-10 at ea7ca55efc: source_row_draw_test runtime shader names its vertex_id parameter vertex, a reserved MSL stage keyword; newLibraryWithSource rejects it.
+- Next action: Rename only the fixture parameter and rerun native ordered-draw correctness. Production builtin MSL compiled in build9/10.
+- Verification: Registered before repair. Exact build10/native/static receipts retained privately; source-confirmed counterexamples are distinguished from executed failures.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Recorded validation/review finding; source-row experiment remains defaultOFF and full architecture stays partial.
+
+
+## PPD-179 — Nested source-pointer reflection aborts under Metal API validation
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native source-page ABI
+- Discovered: 2026-11-14
+- Original reference: A reflected source-row ABI must use supported Metal API operations and retain graceful optional failure.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Required native-source-row-correctness-10 SIGABRT: MTLDebugArgumentEncoder newArgumentEncoderForBufferAtIndex:0 reports No argument buffer at that index when called on the pointer bank encoder. Build10/static69020 pass but GPU source path is unverified and fails this API gate.
+- Next action: Replace unsupported nested lookup with an explicit directly reflected SourceRow layout entrypoint sharing the exact MSL type, then prove real bank-to-row shader reads, layouts and fallback on M1 validation.
+- Verification: Registered before repair. Exact build10/native/static receipts retained privately; source-confirmed counterexamples are distinguished from executed failures.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Recorded validation/review finding; source-row experiment remains defaultOFF and full architecture stays partial.
+
+
+## PPD-180 — Derived resource-table generation is absent from source-row hit proof
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native source-page cache
+- Discovered: 2026-11-14
+- Original reference: Stable source revisions do not guarantee that a derived context/sampler argument table allocation still exists.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Independent review: a live ResourceSource can evict its old derived Table after more than four other contexts/samplers. Row keeps only weak Source/Material plus raw native handle signature; recycled native buffer address can falsely hit while encoded GPU table address is stale. This is a permitted address-reuse counterexample, not a runtime reproduction.
+- Next action: Keep weak exact ResourceTable control-block identity in Row; require the current prepared table to match on hit, and reset it on eviction/invalidation. Test real table/context churn and output/lifetime without assuming allocator address reuse.
+- Verification: Registered before repair. Exact build10/native/static receipts retained privately; source-confirmed counterexamples are distinguished from executed failures.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Recorded validation/review finding; source-row experiment remains defaultOFF and full architecture stays partial.
+
+
+## PPD-181 — World shader reload can commit one owner before the other is ready
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared world shader-context continuation
+- Discovered: 2026-11-14
+- Original reference: Shared main/probe library epochs require one staged coherent owner group while old native readers retain old contexts.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Actual pipeline reload calls world owners sequentially; each Renderer.reloadShaders stages then swaps its own Impl, and shared shadowMaterials reload mutates FrameData before that swap. A later owner failure can split world shader state. Global builtinReloadGeneration advances later, so it cannot alone key an atomic shared-world lease. No runtime symptom is attributed.
+- Next action: Stage one explicit shared builtin lease and both owner replacements, perform fallible shared shadow work once, then commit no-fail swaps. Keep explicit older-library reload private; test second-stage failure and old native FrameView survival.
+- Verification: Registered before repair. Exact build10/native/static receipts retained privately; source-confirmed counterexamples are distinguished from executed failures.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Recorded validation/review finding; source-row experiment remains defaultOFF and full architecture stays partial.
