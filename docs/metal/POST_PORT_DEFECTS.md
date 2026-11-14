@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-163 -->
+<!-- next-defect-id: PPD-168 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4164,6 +4164,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered actual diagnostic compilation failure before private friendship repair. Earlier shader compilation/core steps remain diagnostic only; no full app result.
+- 2026-11-14: Clean144aa7 full required build0 and clean7422 build2 pass. The narrow friend declaration resolves the actual compiler failure; actual native resource8889assertions/5cases and prior-compiled-library4721/1 pass. No viewer/owner test or push.
 
 
 ## PPD-160 — New group publisher neither refreshes nor independently accounts retained residency
@@ -4182,6 +4183,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Root review identified the source age2 policy and missing group retention/touch before the first native run. Registered before group residency repair; retained source/GPU reader semantics must still pass.
+- 2026-11-14: Actual group-owner/capture/range native1152assertions/18cases pass on clean7422 with validation, including unique union/age/count/byte retention and pre-COW readers. Independent churn regressionPPD164 is retained and being repaired; no owner runtime verification.
 
 
 ## PPD-161 — Resource query fixture boxes contain no pixel centers
@@ -4200,6 +4202,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered actual failed native receipt before fixture raster calibration repair. Full required build1 at144aa7 passes0/839.404s; group-owner native1152/18passes separately. Previous-shader process was not reached because the focused runner correctly stopped on the first failing group.
+- 2026-11-14: Fixture half-extent.08 repair on7422 passes all8889resource assertions/5cases and4721old-compiled-library parity assertions/1case with positive query coverage and identical ordered results. This closes no production viewer incident; owner acceptance remains pending.
 
 
 ## PPD-162 — New group publisher prepares a disabled simple render pass
@@ -4218,3 +4221,99 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered after first frozen source build and before the disabled-pass guard repair. New controls remain OFF pending complete-path cost gates.
+- 2026-11-14: PASS_SIMPLE policy guard is implemented in7422. Required build2 and native correctness pass; no live disabled-pass performance/render outcome has been inferred.
+
+
+## PPD-163 — Native resource hot hits repeat immutable validation and command ownership work
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex persistent native command preparation
+- Discovered: 2026-11-14
+- Original reference: Producer-qualified immutable resource tables should avoid revalidating/rebuilding their unchanged texture tuple on every draw; each command needs exact source/table ownership, not duplicate retain operations for repeated inputs.
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). Corrected costs1: warm512 single-slot legacy CPU0.189521->0.217187ms shared,0.205709->0.229458ms distinct; PBR0.223563->0.249770ms shared. Eight-slot warm tuples improve, so no unconditional resource-table default is justified.
+- Next action: Use private source/cache/sampler epoch proof for the hot table path, preserve slow-path validation, and deduplicate already-retained source/table pairs within a command using bounded identity checks. Apply equivalent numeric-source retention improvements to the scalar path and rerun full costs/correctness.
+- Verification: prepare currently copies the32view key and repeats weak-context/native-sampler validation on every hit; bind repeats the full tuple comparison. Command ownership only deduplicates adjacent sources. Measured mechanism regression, not attributed live viewer FPS.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered actual warm single-slot losses and source-confirmed repeated immutable work before cache-proof/command-retention repair. Cold/churn overhead also remains in evidence.
+- 2026-11-14: Frozen resource component diagnostic build0/9.446s and native12379assertions/7cases0/4.909s pass with Metal validation, including17source retention collisions and old table lease semantics. Quiet component costs0/2.254s show eight-slot warm benefits23–50% CPU, but single-slot/shared legacy three-view CPU+4.47% and an adverse completion row remain. Exact component hashes/receipts retained; full frozen app/native/cost checks still next.
+
+
+## PPD-164 — One changed source rebuilds every native descriptor in its group
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex producer group publication
+- Discovered: 2026-11-14
+- Original reference: Dirty producers publish changed native descriptions once; unchanged immutable scene membership should not require whole-group LLDrawInfo/native prototype rediscovery after a single resource update. Before-write invalidation must still release cache-induced GPU reader leases.
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). costs1 warm512/oneview CPU0.592084->0.241459ms, but one-change-per16source-group churn0.705292->2.267620ms; three-view churn1.964000->2.763170ms.
+- Next action: Separate persistent CPU-only source descriptions/weak native generation identities from completion-owned strong native view leases, refresh only changed source revisions, and rebuild the group resource union only when allocation identities actually change. Preserve byte/count/age budgets and all COW/reader tests.
+- Verification: Group publisher drops all source payloads before COW; after child-cache age eviction this destroys unchanged CPU descriptions too. seal revisits/reconstructs every source and resource union. Measured complete-path churn regression; no live scene/FPS attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered warm improvement together with cold/churn regressions before incremental CPU/source-lifetime separation. Do not enable solely on favorable warm512 results.
+- 2026-11-14: Incremental CPU-only rows/weak native tuple reuse authored, four new actual-group cases frozen; native execution/cost3 pending. No viewer/owner acceptance or push.
+
+
+## PPD-165 — Persistent CPU group layout needs a separate bounded residency policy
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex incremental group publication
+- Discovered: 2026-11-14
+- Original reference: Native working-set age/count/bytes limit strong GPU publishers. CPU-only descriptions retained after those publishers are evicted must also have an explicit bound without reintroducing strong native reader leases.
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). The PPD164 in-progress Layout retains one full CPU Batch/weak-resource record per source through LLSpatialGroup even after group/child publisher age eviction; that metadata is outside native working-set accounting.
+- Next action: Bound owner-side CPU layout retention independently, reclaim old/inactive layouts conservatively, report actual CPU occupancy, and retain before-write/native completion semantics. Compact source/instance work remains a separate subsequent boundary.
+- Verification: New-source review finding before the first execution of incremental layouts; no observed viewer memory growth or failure attributed. Unbounded is with respect to the native cache policy, not an allegation of leaked scene objects.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered the distinct CPU retention requirement before adding layout admission/eviction policy; existing native budgets alone cannot certify CPU bounds.
+- 2026-11-14: Owner-only bounded CPU LRU and current-frame admission protection implemented; row/byte/pressure/reader cases authored, execution pending. No viewer/owner acceptance or push.
+
+
+## PPD-166 — CPU layout eviction callbacks can invalidate an in-progress admission
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex group CPU residency integration
+- Discovered: 2026-11-14
+- Original reference: ALNativePublication State permits owner-thread reentrant notifications; older admission/withdrawal must not replace or remove a newer exact tuple (PPD120).
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). Independent source review found CpuLayoutResidency victim removal invokes State::evict observers. A callback may reentrantly admit a newer tuple for the incoming publisher before outer retain resumes; ignored map insertion failure then duplicates list/charges, and old-entry removal can erase a newer lookup.
+- Next action: Recheck the exact publisher tuple after callbacks; honor duplicate insertion outcomes, erase only an entry's own lookup, and prevent stale seal from installing its old Layout after a newer publication. Add actual State observer reentrancy coverage.
+- Verification: Source-confirmed new-policy integration defect before first native execution of incremental group code. No observed viewer memory/FPS incident or native test failure attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Independent residency review reported the concrete callback sequence; registered before transactional admission repair. Resource component checks remain independently passing and are not group-policy validation.
+- 2026-11-14: Exact tuple checks after both ledgers, protected lookup insertion/erase and stale holder cleanup implemented; actual recursive seal and invalidate-only observer cases authored, execution pending. No viewer/owner acceptance or push.
+
+
+## PPD-167 — Native source residency admission also lacks post-callback tuple guards
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared native source residency
+- Discovered: 2026-11-14
+- Original reference: State dependent notifications and existing PPD120 publication reentrancy require exact tuple identity throughout admission/retirement.
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). Root follow-through from PPD166 found ALNativeSourceWorkingSet::retain checks the caller tuple only on entry, then removes/trims entries with State::evict callbacks, builds a candidate from the possibly newer state publication, and ignores lookup insertion success. remove erases lookup by identity unconditionally.
+- Next action: Preserve the caller's exact tuple across callback boundaries, protect newer lookup entries, and transact accounting/insertion so reentrant admissions cannot duplicate or misattribute resource charges. Add focused native-source-working-set observer regressions; preserve current-frame protection and bounded admission.
+- Verification: Source-confirmed contract defect after State dependent notifications were introduced; no live viewer fault/FPS effect attributed. Keep distinct from CPU-only policy PPD166 while testing their shared callback interaction.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered root source finding before the shared native-ledger repair. Existing passing tests did not include eviction-observer reentrant admission; no previous evidence is relabeled as coverage.
+- 2026-11-14: Shared native ledger freezes caller tuple/revision, rechecks after each callback, protects lookup/accounting and detaches clear ledger before notification; four actual Observer regressions authored, execution pending. No viewer/owner acceptance or push.

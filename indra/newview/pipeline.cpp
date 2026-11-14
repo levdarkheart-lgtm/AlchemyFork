@@ -3045,10 +3045,15 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             log_resource_tables("main", capture.renderer.get());
             log_resource_tables("probe", mMetalProbeWorldSimpleCapture ? mMetalProbeWorldSimpleCapture->renderer.get() : nullptr);
             const auto groups = ALSceneGroupPublicationNative::statistics;
+            const auto layouts = ALSceneGroupPublicationNative::cpuLayoutStats();
             LL_INFOS("MetalScene") << "Native group membership: hit/build/declined/failures="
                 << groups.hits << '/' << groups.builds << '/' << groups.declined << '/' << groups.failures
                 << ", admitted_groups/draws=" << groups.admitted_groups << '/' << groups.admitted_draws
-                << ", captured_groups/draws=" << groups.captured_groups << '/' << groups.captured_draws << LL_ENDL;
+                << ", captured_groups/draws=" << groups.captured_groups << '/' << groups.captured_draws
+                << ", cpu_source_builds/reuses=" << groups.cpu_source_builds << '/' << groups.cpu_source_reuses
+                << ", resource_union_builds=" << groups.resource_union_builds
+                << ", cpu_layout_cache(entries/rows/estimated_bytes)=" << layouts.layouts << '/' << layouts.rows << '/' << layouts.estimated_bytes
+                << ", cpu_layout_evictions/rejections=" << layouts.evictions << '/' << layouts.rejections << LL_ENDL;
             const auto publication = LLImageGL::metalPublicationStats();
             const auto uploads = LLVertexBuffer::metalUploadStats();
             LL_INFOS("MetalMemory")
@@ -21443,7 +21448,7 @@ void LLPipeline::postSort(LLCamera &camera)
             {
                 const auto& state = group->metalGroupPublication();
                 if (state->dirty())
-                    ALSceneGroupPublicationNative::seal(state, group->mMetalGroupDependencies, *model, draws->second,
+                    ALSceneGroupPublicationNative::seal(state, group->mMetalGroupDependencies, group->mMetalGroupLayout, *model, draws->second,
                         sNativeSceneSources, sNativeSceneSerial, gFrameCount);
             }
             catch (const std::bad_alloc&) { ++ALSceneGroupPublicationNative::statistics.failures; }

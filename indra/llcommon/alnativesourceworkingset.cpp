@@ -46,7 +46,9 @@ struct ALNativeSourceWorkingSet::Impl
     {
         auto state = at->state;
         const auto publication = at->publication;
-        lookup.erase(state->identity());
+        const auto found_identity = lookup.find(state->identity());
+        const bool owns_identity = found_identity != lookup.end() && found_identity->second == at;
+        if (owns_identity) lookup.erase(found_identity);
         for (const auto& resource : at->resources)
         {
             const auto found = resources.find(resource.allocation);
@@ -59,7 +61,7 @@ struct ALNativeSourceWorkingSet::Impl
         entries.erase(at);
         // Eviction is not a producer mutation. Never erase a newer source that
         // the same State published while an older packet remained in flight.
-        if (sameOwner(publication, Weak(state->publication()))) state->evict();
+        if (owns_identity && sameOwner(publication, Weak(state->publication()))) state->evict();
     }
 
     std::uint64_t additionalBytes(const std::vector<Resource>& values) const noexcept
@@ -86,50 +88,83 @@ bool ALNativeSourceWorkingSet::retain(
     const std::shared_ptr<const void>& publication,
     std::span<const Resource> resources, std::uint32_t frame)
 {
-    if (!state || !serial || state->dirty() || !publication ||
-        !sameOwner(Weak(publication), Weak(state->publication()))) return false;
+    if (!state || !serial || !publication) return false;
+    // The argument can alias State::publication(). Freeze its owner and keep
+    // its resource span alive even when an eviction callback replaces State.
+    const auto requested_publication = publication;
+    const Weak requested(requested_publication);
+    const auto revision = state->revision();
+    const auto current = [&]
+    {
+        return state->revision() == revision && !state->dirty() &&
+            sameOwner(requested, Weak(state->publication()));
+    };
+    if (!current()) return false;
+    const auto reject = [&]
+    {
+        if (current() && !mImpl->lookup.contains(state->identity())) state->evict();
+        return false;
+    };
+    // A notification may have already retained this exact request, or a newer
+    // publication. Never overwrite either reentrant ledger entry.
+    const auto resume = [&]
+    {
+        if (!current()) return -1;
+        const auto found = mImpl->lookup.find(state->identity());
+        if (found == mImpl->lookup.end()) return 0;
+        if (found->second->serial == serial && sameOwner(found->second->publication, requested))
+            return touch(state->identity(), serial, frame) ? 1 : -1;
+        return -1;
+    };
     try
     {
         const auto prior = mImpl->lookup.find(state->identity());
         if (prior != mImpl->lookup.end())
         {
             if (serial < prior->second->serial) return false;
-            const bool same_publication = sameOwner(prior->second->publication, Weak(publication));
+            const bool same_publication = sameOwner(prior->second->publication, requested);
             if (serial == prior->second->serial)
                 return same_publication && touch(state->identity(), serial, frame);
             // A new serial qualifies a newly sealed payload, not a relabeling
             // of the current one. Invalid admission never withdraws it.
             if (same_publication) return false;
             mImpl->remove(prior->second);
+            const auto status = resume();
+            if (status) return status > 0;
         }
         // remove() may evict only a matching old payload. A replacement is
         // checked again before admitting it into the residency ledger.
-        if (!state->publication()) return false;
-        trim(frame);
-        Impl::Entry candidate{state, Weak(state->publication()), serial, frame, {}};
+        while (!mImpl->entries.empty() &&
+               std::uint32_t(frame - mImpl->entries.front().frame) > mImpl->max_age)
+        {
+            mImpl->remove(mImpl->entries.begin());
+            const auto status = resume();
+            if (status) return status > 0;
+        }
+        Impl::Entry candidate{state, requested, serial, frame, {}};
         std::uint64_t source_bytes = 0;
         for (const auto& resource : resources)
         {
-            if (!resource.allocation) { state->evict(); return false; }
+            if (!resource.allocation) return reject();
             const Weak weak(resource.allocation);
             const auto duplicate = std::find_if(candidate.resources.begin(), candidate.resources.end(),
                 [&](const auto& prior_resource) { return sameOwner(prior_resource.allocation, weak); });
             if (duplicate != candidate.resources.end())
             {
-                if (duplicate->bytes != resource.bytes) { state->evict(); return false; }
+                if (duplicate->bytes != resource.bytes) return reject();
                 continue;
             }
             if (resource.bytes > mImpl->max_bytes - source_bytes)
-            { state->evict(); return false; }
+                return reject();
             const auto existing = mImpl->resources.find(weak);
             // Native wrapper allocations have immutable capacity. An
             // inconsistent estimate must not silently under-account residency.
             if (existing != mImpl->resources.end() && existing->second.bytes != resource.bytes)
-            { state->evict(); return false; }
+                return reject();
             source_bytes += resource.bytes;
             candidate.resources.push_back({weak, resource.bytes});
         }
-        if (!mImpl->max_entries) { state->evict(); return false; }
+        if (!mImpl->max_entries) return reject();
         auto additional = mImpl->additionalBytes(candidate.resources);
         while (mImpl->entries.size() >= mImpl->max_entries ||
                additional > mImpl->max_bytes - std::min(mImpl->bytes, mImpl->max_bytes))
@@ -137,10 +172,21 @@ bool ALNativeSourceWorkingSet::retain(
             // Preserve the current-frame working subset instead of making a
             // repeated overflow scan reconstruct every source on every view.
             if (mImpl->entries.empty() || mImpl->entries.front().frame == frame)
-            { state->evict(); return false; }
+                return reject();
             mImpl->remove(mImpl->entries.begin());
+            const auto status = resume();
+            if (status) return status > 0;
+            if (source_bytes > mImpl->max_bytes) return reject();
             additional = mImpl->additionalBytes(candidate.resources);
         }
+        const auto status = resume();
+        if (status) return status > 0;
+        // Victim notifications may also have admitted shared allocations.
+        // Validate their capacity before changing any reference accounting.
+        for (const auto& resource : candidate.resources)
+            if (const auto existing = mImpl->resources.find(resource.allocation);
+                existing != mImpl->resources.end() && existing->second.bytes != resource.bytes)
+                return reject();
         for (const auto& resource : candidate.resources)
         {
             auto& accounting = mImpl->resources[resource.allocation];
@@ -149,13 +195,17 @@ bool ALNativeSourceWorkingSet::retain(
         }
         mImpl->entries.push_back(std::move(candidate));
         const auto at = std::prev(mImpl->entries.end());
-        mImpl->lookup.emplace(state->identity(), at);
+        if (!mImpl->lookup.emplace(state->identity(), at).second)
+        {
+            mImpl->remove(at);
+            return resume() > 0;
+        }
         return true;
     }
     catch (...)
     {
         clear();
-        state->evict();
+        if (current() && !mImpl->lookup.contains(state->identity())) state->evict();
         throw;
     }
 }
@@ -189,13 +239,15 @@ void ALNativeSourceWorkingSet::trim(std::uint32_t frame) noexcept
 
 void ALNativeSourceWorkingSet::clear() noexcept
 {
-    // Clear identity lookup first: a payload's destruction may call erase().
+    // Detach the old ledger before notifications. Reentrant publications and
+    // their accounting belong to the live ledger and survive this clear.
+    Impl::Entries previous;
+    previous.splice(previous.end(), mImpl->entries);
     mImpl->lookup.clear();
-    for (const auto& entry : mImpl->entries)
-        if (sameOwner(entry.publication, Weak(entry.state->publication()))) entry.state->evict();
-    mImpl->entries.clear();
     mImpl->resources.clear();
     mImpl->bytes = 0;
+    for (const auto& entry : previous)
+        if (sameOwner(entry.publication, Weak(entry.state->publication()))) entry.state->evict();
 }
 
 void ALNativeSourceWorkingSet::setByteBudget(std::uint64_t bytes) noexcept

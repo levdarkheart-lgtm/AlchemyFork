@@ -48,6 +48,13 @@ struct State
     std::uint64_t epoch=1;
     bool supported=false,force_failure=false;
 };
+bool sameContext(const std::weak_ptr<State>& weak,
+                 const std::shared_ptr<State>& owner) noexcept
+{
+    // Control-block identity needs no temporary strong owner. The caller
+    // already keeps this exact context alive for the entire operation.
+    return !weak.owner_before(owner) && !owner.owner_before(weak);
+}
 void rejected(State& state,ALMetalWorldResourceFallback value,ALMetalWorldResourceFallback* output) noexcept
 {
     ++state.stats.failures;state.stats.last_failure=value;reason(output,value);
@@ -56,6 +63,23 @@ struct CommandOwner
 {
     struct Held {std::shared_ptr<const ALMetalWorldResourceSource> source;std::shared_ptr<const ALMetalWorldResourceTable> table;};
     std::vector<Held> held;
+    struct Identity {const ALMetalWorldResourceSource* source=nullptr;const ALMetalWorldResourceTable* table=nullptr;};
+    std::array<Identity,16> seen{};
+
+    void retain(const std::shared_ptr<const ALMetalWorldResourceSource>& source,
+                const std::shared_ptr<const ALMetalWorldResourceTable>& table)
+    {
+        const auto source_bits=reinterpret_cast<std::uintptr_t>(source.get());
+        const auto table_bits=reinterpret_cast<std::uintptr_t>(table.get());
+        const auto slot=((source_bits>>4)^(source_bits>>12)^
+                         (table_bits>>6)^(table_bits>>14))&(seen.size()-1);
+        auto& identity=seen[slot];
+        if(identity.source==source.get() && identity.table==table.get()) return;
+        held.push_back({source,table});
+        // Mark only after ownership succeeds. Collisions cause another retain,
+        // never a false hit; held prevents either raw identity being recycled.
+        identity={source.get(),table.get()};
+    }
 };
 }
 
@@ -187,15 +211,24 @@ std::shared_ptr<const ALMetalWorldResourceTable> ALMetalWorldResources::prepare(
 try
 {
     reason(failure,ALMetalWorldResourceFallback::none);
-    auto state=mImpl->state;++state->stats.requests;
+    const auto& state=mImpl->state;++state->stats.requests;
     if(state->force_failure){state->force_failure=false;rejected(*state,ALMetalWorldResourceFallback::injected,failure);fail(error,"Forced optional native resource preparation failure");return {};}
     id<MTLSamplerState> native=(__bridge id<MTLSamplerState>)sampler.nativeHandle();
+    // These tables were installed only after validating this immutable
+    // source's complete native tuple. A live exact context, current epoch and
+    // retained sampler identity preserve that proof without copying/comparing
+    // 32 views or asking Objective-C for immutable device properties again.
+    if(state->supported && source && sampler.supportsArgumentBuffers() && native)
+        for(const auto& table:source->mImpl->tables)
+            if(sameContext(table->mImpl->context,state) &&
+               table->mImpl->epoch==state->epoch && table->mImpl->key.sampler==(__bridge void*)native)
+            {++state->stats.cache_hits;return table;}
     if(!state->supported ||!source ||source->mImpl->device!=(__bridge void*)state->device ||!sampler.supportsArgumentBuffers() ||!native ||native.device!=state->device)
     {rejected(*state,state->supported?ALMetalWorldResourceFallback::validation:ALMetalWorldResourceFallback::unsupported,failure);fail(error,"Native world resource preparation is unsupported or invalid");return {};}
     Key key=source->mImpl->key;key.sampler=(__bridge void*)native;
     auto& cached=source->mImpl->tables;
-    std::erase_if(cached,[&](const auto& table){auto owner=table->mImpl->context.lock();return !owner||(owner==state&&(table->mImpl->epoch!=state->epoch||table->mImpl->key.sampler!=key.sampler));});
-    for(const auto& table:cached)if(table->mImpl->context.lock()==state &&table->mImpl->key==key){++state->stats.cache_hits;return table;}
+    std::erase_if(cached,[&](const auto& table){return table->mImpl->context.expired()||
+        (sameContext(table->mImpl->context,state)&&(table->mImpl->epoch!=state->epoch||table->mImpl->key.sampler!=key.sampler));});
     if(auto at=state->lookup.find(key);at!=state->lookup.end())
     {
         if(auto table=at->second.lock()){++state->stats.cache_hits;if(cached.size()==4)cached.erase(cached.begin());cached.push_back(table);return table;}
@@ -236,8 +269,14 @@ bool ALMetalWorldResources::bind(ALMetalRenderEncoder& encoder,ALMetalCommandBuf
 try
 {
     reason(failure,ALMetalWorldResourceFallback::none);
-    auto state=mImpl->state;
-    if(!source||!table||table->mImpl->context.lock()!=state ||table->mImpl->key.views!=source->mImpl->key.views ||table->mImpl->key.pbr!=source->mImpl->key.pbr ||
+    const auto& state=mImpl->state;
+    // Source-held membership certifies the immutable tuple. An older valid
+    // table can outlive lookup invalidation/eviction, so preserve the complete
+    // tuple check for such direct callers instead of rejecting their lease.
+    const bool source_table=source && table && std::any_of(source->mImpl->tables.begin(),source->mImpl->tables.end(),
+        [&](const auto& cached){return cached.get()==table.get();});
+    if(!source||!table||!sameContext(table->mImpl->context,state) ||
+        (!source_table&&(table->mImpl->key.views!=source->mImpl->key.views ||table->mImpl->key.pbr!=source->mImpl->key.pbr)) ||
         encoder.nativeDeviceForIndirect()!=(__bridge void*)state->device||encoder.nativeCommandBufferForIndirect()!=command.nativeHandle()||command.isCommitted())
     {rejected(*state,ALMetalWorldResourceFallback::validation,failure);return false;}
     auto completion=command.completionToken();if(!completion){rejected(*state,ALMetalWorldResourceFallback::retention,failure);return false;}
@@ -247,7 +286,7 @@ try
         owner=std::make_shared<CommandOwner>();if(!command.retainUntilCompletion(owner,error)){rejected(*state,ALMetalWorldResourceFallback::retention,failure);return false;}
         mImpl->owner=owner;mImpl->owner_command=completion;
     }
-    if(owner->held.empty()||owner->held.back().source!=source||owner->held.back().table!=table)owner->held.push_back({source,table});
+    owner->retain(source,table);
     id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
     if(!native){rejected(*state,ALMetalWorldResourceFallback::declaration,failure);return false;}
     if(table->mImpl->declared_encoder!=native)

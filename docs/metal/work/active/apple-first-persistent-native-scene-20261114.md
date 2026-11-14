@@ -165,3 +165,98 @@ shared-only cases remain in earlier source144aa7 for history, not falsely taken
 as comprehensive small mixed workload acceptance. Normal group cases unchanged.
 All assignments frozen, next163. Native1152/18 group results at144 remainprior
 evidence; rerun altered resource/previous-library cases on exact rebuilt source.
+
+
+### Measured source2 and incremental repair
+
+Clean7422adf812 required doctor/configure/build2 all exit0 (build155.560s).
+Actual native group1152assertions/18cases, resources8889/5 including rigged,
+and previous69008compiled-library parity4721/1 all pass with Metal validation.
+Exact receipts: native-focused-correctness-2.json, frozen-source-build-2.json.
+Neither a new viewer run nor a live performance improvement is claimed.
+
+Quiet complete-path-costs-1 has both processes exit0. Warm512 native groups
+reduce CPU0.592084->0.241459ms(oneview),1.819750->0.812500ms(threeviews).
+One changed source per16-source group instead costs0.705292->2.267620ms and
+1.964000->2.763170ms: PPD164 registered before repair. Resource eight-slot warm
+paths reduce CPU, but single-slot warm512 loses4–15% and cold/churn also costs
+more (PPD163). Full adverse/small/shared/distinct rows are retained in
+complete-path-costs-1-summary.json; group fixture has5samples, not a tail gate.
+No unconditional group/resource default is justified from favorable rows.
+
+Active repair: architecture agent exclusively owns group publication .inl and
+existing group fixture, splitting persistent CPU-only descriptions/weak native
+generation identities from completion-owned strong leases; refresh only changed
+rows after producer writes. Root owns spatial-group Layout lifecycle and call
+site integration. Opaque agent exclusively owns resource .mm and world.cpp:
+use certified immutable hot proof and bounded command retention identity cache;
+apply matching numeric-source retain improvements to direct encoding too.
+Residency agent is read-only auditing next compact source/instance and mixed
+command boundaries. No builds/tests run concurrently with edits. Next defect165.
+Next: freeze/review integrated repairs, build3, rerun actual native correctness,
+old-library parity and complete costs; preserve failures and reject regressions.
+Original whole-engine architecture/performance goal stays ACTIVE/partial.
+
+
+Independent PPD163 component diagnostic uses exact file hashes while disjoint
+newview/llrender group tests are authored: resource-hot-proof-diagnostic-build-1
+exits0/9.446s; native-1 exits0/4.909s,12379assertions/7cases with Metal validation.
+New tests cover >16 recurring sources, command-owner cache collisions, pending
+completion/abandon and old valid table leases after context/sampler invalidation.
+No clean whole-viewer build claim. Quiet component costs-1 exits0/2.254s; warm
+512/eight-slot CPU gains23–50% and completion gains are observed, but legacy
+single-slot/shared three-view CPU still+4.47%, with a distinct one-view completion
+outlier. Keep all120rows, small/cold/churn included; no final default selected.
+
+PPD165 separately records CPU-only Layout metadata outside native-cache bounds.
+New owner-only weak layout LRU caps2048layouts/8192rows/32MiB estimated metadata,
+evicts only matching publisher serial, leaves immutable queued readers valid,
+and logs occupancy/evictions/rejections. Root integrates Layoutreset only at
+membership mutation; child source writes preserve descriptions, release native
+publisher leases before COW. Native budgets and actual completion stay separate.
+Next compact slice is specified in private /tmp/apple-first-compact-contract.md:
+general nonrigged main/probe simple/legacy/PBR source references plus copied view
+fields and ordered raw/ref indices, with explicit bump-edit/raw preservation.
+Current CPU-vector reclamation does not retire every Source/GroupPayload before
+GPU completion: separate CPU-description and native-tuple aggregates remain
+part of that next slice. Mixed persistent commands follow compact inputs;
+CPU cull LOD/visibility/texture-priority side effects remain on scene owner.
+Next defect166. All new controls remain diagnosticOFF, original goal ACTIVE.
+
+
+Final policy review extends PPD165 with current-frame CPU-cache protection:
+when a busy frame fills the budget, decline incoming optional cache admission
+instead of cycling already-used groups across main/probe views. Cost-fixture
+12samples/max/raw output and exact one-changed-row getter checks are authored.
+Independent review found PPD166 CPU eviction-observer reentrancy; root traced
+the same missing exact tuple/insertion guard into native source ledgerPPD167.
+Both registered before repairs; group code has NOT yet executed. Architecture
+agent owns CPU group helper/fixture fixes; residency agent now exclusively owns
+llcommon/alnativesourceworkingset.cpp and existing focused tests. Root owns
+pipeline/lifecycle/docs and all execution. Recheck caller tuple after callbacks,
+never erase a newer lookup, and retain exact accounting with no duplicate entry.
+Resource component source/tests remain frozen and independently passing.
+Next defect168; clean combined build3 is pending both source freezes/review.
+
+
+ARM64 native-batch-layout-size standalone Clang compile/run both exit0:
+ALMetalWorldSimpleBatch3672bytes/alignment8, MaterialSlots384, PBRSlots1600.
+Receipt pins exact world.h hash and command. The next304byte view/reference
+proposal addresses measured representation size, not a copied sizeof estimate.
+Private persistent-command contract records physical constant-page identity and
+source/table/PSO generations required before small mixed ICB reuse; keep real
+400byte common dedup and original query/cull/depth barriers. A lower old2048
+threshold alone cannot supply those ownership guarantees. No new GPU command
+implementation or acceptance is claimed by these private source contracts.
+
+
+Source freeze3: all PPD163–167 repairs and fixtures authored/reviewed, diff clean.
+Group adds four actual cases including reentrant replacement and current-frame
+CPU-cache protection; common native residency adds four Observer cases covering
+age/pressure, invalidation, same-request admission and clear/newer publication.
+No group/common new execution result yet. Resource12379/7 remains component
+only. All agent assignments returned; root runs common focused validation then
+required clean-source doctor/configure/build3/native correctness/costs. Private
+compact and persistent-command contracts are copied into E2 with checksums in
+next-source-contracts.json; /tmp copies are convenience, not sole recovery.
+No launch/profile/push; subsequent compact/source-instance work remains next.

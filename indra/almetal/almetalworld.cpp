@@ -9921,9 +9921,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     ALMetalWorldConstantStats constant_stats;
     ALMetalWorldResourceStats resource_stats;
     // One completion owner avoids adding/scanning an individual command
-    // retainer per draw. Consecutive source repeats need no extra refcount;
-    // the vector is linear even for a view with many distinct materials.
+    // retainer per draw. A small raw identity cache also avoids duplicate
+    // strong leases for recurring nonadjacent sources. The vector owns every
+    // cached identity, so collisions can only cause an additional retain.
     std::shared_ptr<std::vector<std::shared_ptr<const ALMetalWorldMaterialSource>>> material_owners;
+    std::array<const ALMetalWorldMaterialSource*,16> retained_material_sources{};
     const auto bind_world_constants = [&](const void* constants, std::size_t offset)
     {
         if (!mImpl->frame_data)
@@ -10213,8 +10215,15 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     break;
                 }
             }
-            if (material_owners->empty() || material_owners->back() != batch.native_material_source)
+            const auto* source = batch.native_material_source.get();
+            const auto bits = reinterpret_cast<std::uintptr_t>(source);
+            const auto slot = ((bits >> 4) ^ (bits >> 12)) & (retained_material_sources.size() - 1);
+            if (retained_material_sources[slot] != source)
+            {
                 material_owners->push_back(batch.native_material_source);
+                // A throwing push must not certify an unretained source.
+                retained_material_sources[slot] = source;
+            }
         }
         const std::size_t avatar_variant = prepared ? prepared_records[index].avatar_variant :
             batch.avatar_rigid ? 0 : (batch.avatar_cloth ? 2 : 1);

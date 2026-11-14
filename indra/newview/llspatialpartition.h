@@ -55,6 +55,7 @@ class LLSpatialBridge;
 class LLSpatialGroup;
 class LLViewerRegion;
 struct ALViewerMetalShadowSourceCache;
+namespace ALSceneGroupPublicationNative { struct Layout; }
 class LLReflectionMap;
 
 void pushVerts(LLFace* face);
@@ -317,7 +318,7 @@ public:
     // Scene-owner native pass membership. A queued view retains its immutable
     // publication independently of this group's mutable draw map/lifetime.
     const std::shared_ptr<ALNativePublication::State>& metalGroupPublication() const;
-    void invalidateMetalGroupPublication() const noexcept;
+    void invalidateMetalGroupPublication() noexcept;
     void validate();
     void validateDrawMap();
 
@@ -381,6 +382,9 @@ public:
     draw_map_t mDrawMap;
     mutable std::shared_ptr<ALNativePublication::State> mMetalGroupPublication;
     std::shared_ptr<ALNativePublication::Observer> mMetalGroupDependencies;
+    // CPU descriptions survive backing-store mutation; membership changes
+    // discard them. The layout owns only weak native generation identities.
+    std::shared_ptr<ALSceneGroupPublicationNative::Layout> mMetalGroupLayout;
 
     bridge_list_t mBridgeList;
     buffer_map_t mBufferMap; //used by volume buffers to attempt to reuse vertex buffers

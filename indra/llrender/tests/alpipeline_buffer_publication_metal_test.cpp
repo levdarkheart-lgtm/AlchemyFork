@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -327,12 +328,15 @@ struct GroupPublication : Publication
     // Scene-owner relay lifetime only; immutable packets/GPU readers never
     // retain this observer or an LL owner.
     std::shared_ptr<ALNativePublication::Observer> group_dependencies;
+    std::shared_ptr<Inputs::ALSceneGroupPublicationNative::Layout> group_layout;
     Inputs::LLDrawInfo& draw(const LLColor4U& tint=LLColor4U(255,0,0,255))
     {
         auto value=std::make_unique<Inputs::LLDrawInfo>();
         value->mVertexBuffer=buffer();value->mTexture.value=&image;value->mModelMatrix=&model;
         const std::array<LLColor4U,3> colors{tint,tint,tint};
         value->mVertexBuffer->setColorData(colors.data());value->mVertexBuffer->unmapBuffer();
+        if(group_layout)
+        {group->invalidate();group_layout.reset();group_dependencies.reset();}
         infos.push_back(std::move(value));return *infos.back();
     }
     std::vector<Inputs::LLDrawInfo*> draws() const
@@ -347,7 +351,7 @@ struct GroupPublication : Publication
     }
     std::shared_ptr<const NativeGroup> seal(ALNativeSourceWorkingSet& working_set,U32 frame)
     {
-        return Inputs::ALSceneGroupPublicationNative::seal(group,group_dependencies,model,draws(),
+        return Inputs::ALSceneGroupPublicationNative::seal(group,group_dependencies,group_layout,model,draws(),
             working_set,Inputs::sNativeSceneSerial,frame);
     }
     std::shared_ptr<const NativeGroup> current(ALNativeSourceWorkingSet& working_set,U32 frame)
@@ -809,7 +813,7 @@ TEST_CASE("Actual native raw group raw capture preserves equal-depth MRT depth a
     auto& after=f.draw(LLColor4U(255,255,0,255));
     f.positions(*second.mVertexBuffer,true);second.mVertexBuffer->unmapBuffer();
     const std::vector<Inputs::LLDrawInfo*> members{&first,&second};
-    auto packet=Inputs::ALSceneGroupPublicationNative::seal(f.group,f.group_dependencies,f.model,members,
+    auto packet=Inputs::ALSceneGroupPublicationNative::seal(f.group,f.group_dependencies,f.group_layout,f.model,members,
         Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(packet);
     Inputs::LLPipeline flat,grouped;Inputs::LLCullResult flat_cull,group_cull;
     for(auto* info:f.draws())flat_cull.pushDrawInfo(info);
@@ -871,7 +875,7 @@ TEST_CASE("Actual native groups reject incomplete membership and malformed range
     CHECK_FALSE(f.seal());CHECK_FALSE(f.group->publication());
     CHECK(f.group_dependencies==old_dependencies); // A failed replacement does not publish a partial relay graph.
     broken.mVertexBuffer=f.buffer();auto replacement=f.seal();REQUIRE(replacement);
-    CHECK(f.group_dependencies!=old_dependencies);old_dependencies.reset();
+    CHECK(f.group_dependencies==old_dependencies);old_dependencies.reset(); // The owner relay is stable across row updates.
     Inputs::LLCullResult cull;
     CHECK_FALSE(cull.pushNativeSimpleRange({},3));CHECK_FALSE(cull.pushNativeSimpleRange(packet,0));
     cull.pushDrawInfo(&first);REQUIRE(cull.pushNativeSimpleRange(packet,3));
@@ -1002,8 +1006,9 @@ TEST_CASE("Actual native group invalidation eviction destruction and transient r
     ALNativeSourceWorkingSet tiny(1,1,0);
     auto transient_group=std::make_shared<ALNativePublication::State>();
     std::shared_ptr<ALNativePublication::Observer> transient_dependencies;
+    std::shared_ptr<Inputs::ALSceneGroupPublicationNative::Layout> transient_layout;
     const std::vector<Inputs::LLDrawInfo*> members{&transient_info};
-    CHECK_FALSE(Inputs::ALSceneGroupPublicationNative::seal(transient_group,transient_dependencies,f.model,members,tiny,
+    CHECK_FALSE(Inputs::ALSceneGroupPublicationNative::seal(transient_group,transient_dependencies,transient_layout,f.model,members,tiny,
         Inputs::sNativeSceneSerial,Inputs::gFrameCount));
     CHECK_FALSE(transient_group->publication());CHECK(transient_group->dirty());
     CHECK_FALSE(transient_dependencies);
@@ -1013,14 +1018,16 @@ TEST_CASE("Actual native group invalidation eviction destruction and transient r
     auto raw_reader=Inputs::ALScenePublicationNative::world(transient_info,flavor,tiny,
         Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(raw_reader);
     CHECK_FALSE(transient_info.state->publication());
-    auto rejected=Inputs::ALSceneGroupPublicationNative::seal(transient_group,transient_dependencies,f.model,members,tiny,
+    auto rejected=Inputs::ALSceneGroupPublicationNative::seal(transient_group,transient_dependencies,transient_layout,f.model,members,tiny,
         Inputs::sNativeSceneSerial,Inputs::gFrameCount);CHECK_FALSE(rejected);
     CHECK_FALSE(transient_group->publication());CHECK_FALSE(transient_dependencies);
     CHECK(tiny.entryCount()==0);
     ALNativeSourceWorkingSet enough(4,1024*1024,2);
-    auto retry=Inputs::ALSceneGroupPublicationNative::seal(transient_group,transient_dependencies,f.model,members,enough,
+    auto retry=Inputs::ALSceneGroupPublicationNative::seal(transient_group,transient_dependencies,transient_layout,f.model,members,enough,
         Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(retry);
-    CHECK(retry->sources[0].owner==raw_reader.owner);CHECK(retry->sources[0].prototype==raw_reader.prototype);
+    CHECK(retry->sources[0].prototype!=raw_reader.prototype);
+    CHECK(retry->sources[0].prototype->vertices==raw_reader.prototype->vertices);
+    CHECK(retry->sources[0].owner->producer.lock()==transient_info.state);
     CHECK_FALSE(transient_info.state->publication());CHECK(enough.entryCount()==1);
     CHECK(enough.estimatedRetainedBytes()>1);CHECK(transient_dependencies);
 }
@@ -1094,6 +1101,216 @@ TEST_CASE("Actual native group byte count and age eviction drop only publisher r
     }
 }
 
+TEST_CASE("Actual native group churn refreshes only dirty CPU rows after child residency ages out",
+          "[almetal][pipeline-buffer-publication][native-group-publication]")
+{
+    GroupPublication f;for(U32 i=0;i<4;++i)f.draw();
+    ALNativeSourceWorkingSet bounded(16,1024*1024,2);
+    auto packet=f.seal(bounded,1);REQUIRE(packet);REQUIRE(f.group_layout);
+    const auto old_rows=f.group_layout->sources;
+    const auto old_union=f.group_layout->resources;
+    const auto old_dependencies=f.group_dependencies;
+    for(U32 frame=2;frame<=5;++frame)
+    {REQUIRE(f.current(bounded,frame));bounded.trim(frame);}
+    for(const auto& info:f.infos)CHECK_FALSE(info->state->publication());
+    packet.reset();gGL.frameFences().release();
+    const auto reads=f.reads();const auto before=Inputs::ALSceneGroupPublicationNative::statistics;
+    std::array<std::array<U64,2>,4> before_rows{};
+    for(U32 row=0;row<4;++row)
+        before_rows[row]={f.infos[row]->publication_reads,f.infos[row]->dependency_walks};
+    const auto uploads=LLVertexBuffer::metalUploadStats();
+    const std::array<LLColor4U,3> green{LLColor4U(0,255,0,255),LLColor4U(0,255,0,255),LLColor4U(0,255,0,255)};
+    f.infos[1]->mVertexBuffer->setColorData(green.data());f.infos[1]->mVertexBuffer->unmapBuffer();
+    CHECK_FALSE(f.group->publication());CHECK(f.group_layout->sources==old_rows);
+    CHECK(LLVertexBuffer::metalUploadStats().leased_orphans==uploads.leased_orphans);
+    auto refreshed=f.seal(bounded,6);REQUIRE(refreshed);REQUIRE(refreshed->sources.size()==4);
+    const auto after=Inputs::ALSceneGroupPublicationNative::statistics;
+    CHECK(after.cpu_source_builds==before.cpu_source_builds+1);
+    CHECK(after.cpu_source_reuses==before.cpu_source_reuses+3);
+    CHECK(after.resource_union_builds==before.resource_union_builds);
+    CHECK(f.group_layout->resources==old_union);CHECK(f.group_dependencies==old_dependencies);
+    for(U32 row=0;row<4;++row)
+    {
+        if(row==1)CHECK(refreshed->sources[row].owner!=old_rows[row]);
+        else
+        {
+            CHECK(refreshed->sources[row].owner==old_rows[row]);
+            CHECK(f.infos[row]->publication_reads==before_rows[row][0]);
+            CHECK(f.infos[row]->dependency_walks==before_rows[row][1]);
+            CHECK_FALSE(f.infos[row]->state->publication());
+        }
+    }
+    const auto updated_reads=f.reads();CHECK(updated_reads[0]>reads[0]);CHECK(updated_reads[1]>reads[1]);
+    const auto row_reads=std::array<U64,3>{f.infos[0]->publication_reads,f.infos[2]->publication_reads,f.infos[3]->publication_reads};
+    const auto group_revision=f.group->revision();
+    // A second dirty row keeps every other CPU identity, and does not cause
+    // any source getter/dependency walk for their aged-out child publishers.
+    auto rows=f.group_layout->sources;refreshed.reset();gGL.frameFences().release();
+    f.infos[1]->mVertexBuffer->setColorData(green.data());f.infos[1]->mVertexBuffer->unmapBuffer();
+    auto again=f.seal(bounded,7);REQUIRE(again);CHECK(f.group->revision()!=group_revision);
+    CHECK(f.infos[0]->publication_reads==row_reads[0]);CHECK(f.infos[2]->publication_reads==row_reads[1]);
+    CHECK(f.infos[3]->publication_reads==row_reads[2]);
+    CHECK(again->sources[0].owner==rows[0]);CHECK(again->sources[2].owner==rows[2]);CHECK(again->sources[3].owner==rows[3]);
+}
+
+TEST_CASE("Actual native CPU layout weak generations cannot replay expired resources",
+          "[almetal][pipeline-buffer-publication][native-group-publication]")
+{
+    GroupPublication f;auto& info=f.draw();auto packet=f.seal();REQUIRE(packet);
+    const auto old_record=f.group_layout->sources[0];
+    const auto producer_revision=info.state->revision();
+    std::weak_ptr<const void> generation=old_record->resources[0].allocation;
+    packet.reset();f.group->evict();info.state->evict();gGL.frameFences().release();
+    // Deliberately detach the old fixture signal and omit a binding event to
+    // exercise the independent weak-generation proof. Actual owners retain
+    // that subscription and invalidate on buffer destruction/rebinding.
+    info.mVertexBuffer->nativePublication().forget(info.state);
+    info.mVertexBuffer=f.buffer();
+    REQUIRE(generation.expired());CHECK(info.state->revision()==producer_revision);
+    const auto before=Inputs::ALSceneGroupPublicationNative::statistics.cpu_source_builds;
+    auto fresh=f.seal();REQUIRE(fresh);CHECK(fresh->sources[0].owner!=old_record);
+    CHECK(fresh->sources[0].prototype->vertices==info.mVertexBuffer->getMetalVertexBuffer());
+    CHECK(Inputs::ALSceneGroupPublicationNative::statistics.cpu_source_builds==before+1);
+    CHECK_FALSE(fresh->sources[0].owner->resources[0].allocation.expired());
+}
+
+TEST_CASE("Actual native CPU layout cache bounds rows bytes and publishers without dropping readers",
+          "[almetal][pipeline-buffer-publication][native-group-publication]")
+{
+    using namespace Inputs::ALSceneGroupPublicationNative;
+    struct PolicyRestore
+    {
+        CpuLayoutLimits saved=cpu_layouts.limits();
+        PolicyRestore(){auto zero=saved;zero.maximum_layouts=0;cpu_layouts.configure(zero);}
+        ~PolicyRestore(){auto zero=saved;zero.maximum_layouts=0;cpu_layouts.configure(zero);cpu_layouts.configure(saved);}
+    } restore;
+    CpuLayoutLimits limits;limits.maximum_layouts=1;limits.maximum_rows=4;limits.maximum_bytes=1024*1024;
+    cpu_layouts.configure(limits);
+    GroupPublication f;f.draw();auto old=f.seal();REQUIRE(old);REQUIRE(f.group_layout);
+    auto old_layout=f.group_layout;const auto old_record=old->sources[0].owner;
+    const auto initial=cpuLayoutStats();CHECK(initial.layouts==1);CHECK(initial.rows==1);CHECK(initial.estimated_bytes>sizeof(Source));
+    Inputs::LLDrawInfo second;second.mVertexBuffer=f.buffer();second.mTexture.value=&f.image;second.mModelMatrix=&f.model;
+    auto second_state=std::make_shared<ALNativePublication::State>();
+    std::shared_ptr<ALNativePublication::Observer> second_dependencies;
+    std::shared_ptr<Layout> second_layout;
+    auto next=seal(second_state,second_dependencies,second_layout,f.model,std::vector<Inputs::LLDrawInfo*>{&second},
+        Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);CHECK_FALSE(next);
+    CHECK_FALSE(second_state->publication());CHECK_FALSE(second_layout);
+    CHECK(f.current(Inputs::sNativeSceneSources,Inputs::gFrameCount)==old);
+    CHECK(cpuLayoutStats().layouts==1);CHECK(cpuLayoutStats().rejections==initial.rejections+1);
+    // The next frame may replace an older subset; the same frame must not
+    // repeatedly discard and rebuild it for subsequent main/probe views.
+    next=seal(second_state,second_dependencies,second_layout,f.model,std::vector<Inputs::LLDrawInfo*>{&second},
+        Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount+1);REQUIRE(next);
+    const auto evicted=cpuLayoutStats();CHECK(evicted.layouts==1);CHECK(evicted.rows==1);
+    CHECK(evicted.evictions==initial.evictions+1);CHECK_FALSE(f.group->publication());
+    CHECK(old_layout->sources.empty());CHECK(old_layout->sources.capacity()==0);CHECK_FALSE(old_layout->resources);
+    CHECK(old->sources[0].owner==old_record);CHECK(old->sources[0].prototype->vertices);
+    CHECK(f.copied<F32>(*old->sources[0].prototype->vertices,old->sources[0].prototype->position_offset,4)[0]==-1.f);
+    // Native cache admission alone cannot keep an unbudgeted CPU publisher.
+    for(U32 reason=0;reason<2;++reason)
+    {
+        auto rejected_limits=limits;
+        if(reason==0)rejected_limits.maximum_rows=0;else rejected_limits.maximum_bytes=1;
+        cpu_layouts.configure(rejected_limits);
+        Inputs::LLDrawInfo rejected;rejected.mVertexBuffer=f.buffer();rejected.mTexture.value=&f.image;rejected.mModelMatrix=&f.model;
+        auto rejected_state=std::make_shared<ALNativePublication::State>();
+        std::shared_ptr<ALNativePublication::Observer> rejected_dependencies;
+        std::shared_ptr<Layout> rejected_layout;
+        const auto before_rejection=cpuLayoutStats().rejections;
+        CHECK_FALSE(seal(rejected_state,rejected_dependencies,rejected_layout,f.model,
+            std::vector<Inputs::LLDrawInfo*>{&rejected},Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount));
+        CHECK_FALSE(rejected_state->publication());CHECK_FALSE(rejected_layout);
+        CHECK(cpuLayoutStats().rejections==before_rejection+1);
+        CHECK(cpuLayoutStats().rows==0);CHECK(cpuLayoutStats().estimated_bytes==0);
+    }
+}
+
+TEST_CASE("Actual native group CPU eviction callbacks preserve reentrant replacements and accounting",
+          "[almetal][pipeline-buffer-publication][native-group-publication]")
+{
+    using namespace Inputs::ALSceneGroupPublicationNative;
+    struct PolicyRestore
+    {
+        CpuLayoutLimits saved=cpu_layouts.limits();
+        PolicyRestore(){auto zero=saved;zero.maximum_layouts=0;cpu_layouts.configure(zero);}
+        ~PolicyRestore(){auto zero=saved;zero.maximum_layouts=0;cpu_layouts.configure(zero);cpu_layouts.configure(saved);}
+    } restore;
+    struct Reenter final : ALNativePublication::Observer
+    {
+        std::function<void()> action;bool fired=false,failed=false;
+        void nativePublicationChanged(ALNativePublication::Phase phase) noexcept override
+        {
+            if(phase!=ALNativePublication::Phase::withdrawn || fired)return;
+            fired=true;try{action();}catch(...){failed=true;}
+        }
+    };
+    GroupPublication f;auto& info=f.draw();const std::vector<Inputs::LLDrawInfo*> members{&info};
+    for(bool replace:{false,true})
+    {
+        CAPTURE(replace);
+        const U32 frame=replace?5u:1u;
+        auto zero=restore.saved;zero.maximum_layouts=0;cpu_layouts.configure(zero);
+        CpuLayoutLimits limits;limits.maximum_layouts=2;limits.maximum_rows=8;limits.maximum_bytes=1024*1024;
+        cpu_layouts.configure(limits);
+        auto a=std::make_shared<ALNativePublication::State>(),b=std::make_shared<ALNativePublication::State>();
+        std::shared_ptr<ALNativePublication::Observer> a_dependencies,b_dependencies;
+        std::shared_ptr<Layout> a_layout,b_layout;
+        auto pa=seal(a,a_dependencies,a_layout,f.model,members,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,frame);
+        auto pb=seal(b,b_dependencies,b_layout,f.model,members,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,frame);
+        REQUIRE(pa);REQUIRE(pb);CHECK(cpuLayoutStats().layouts==2);
+        auto target=std::make_shared<ALNativePublication::State>();
+        std::shared_ptr<ALNativePublication::Observer> target_dependencies;
+        std::shared_ptr<Layout> target_layout;
+        std::shared_ptr<const Payload> queued_t1,replacement;
+        std::shared_ptr<Layout> installed_layout;
+        std::shared_ptr<ALNativePublication::Observer> installed_dependencies;
+        auto observer=std::make_shared<Reenter>();
+        observer->action=[&]
+        {
+            queued_t1=std::static_pointer_cast<const Payload>(target->publication());
+            if(replace)
+            {
+                replacement=seal(target,target_dependencies,target_layout,f.model,members,
+                    Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,frame+1);
+                installed_layout=target_layout;installed_dependencies=target_dependencies;
+            }
+            else target->invalidate();
+        };
+        a->observe(observer);
+        const auto rejected_before=cpuLayoutStats().rejections;
+        auto stale=seal(target,target_dependencies,target_layout,f.model,members,
+            Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,frame+1);
+        CHECK_FALSE(stale);CHECK(observer->fired);CHECK_FALSE(observer->failed);REQUIRE(queued_t1);
+        CHECK(cpuLayoutStats().rejections==rejected_before+1);
+        CHECK(b->publication().get()==pb.get()); // The stale outer attempt cannot evict the second victim.
+        if(replace)
+        {
+            REQUIRE(replacement);CHECK(target->publication().get()==replacement.get());
+            CHECK(target_layout==installed_layout);CHECK(target_dependencies==installed_dependencies);
+            CHECK(replacement->serial!=queued_t1->serial);
+            CHECK(current(target,f.model,Inputs::sNativeSceneSources,frame+1)==replacement);
+            CHECK(cpuLayoutStats().layouts==2);CHECK(cpuLayoutStats().rows==2);
+            // Subsequent pressure must find the newer identity/serial, with
+            // no stale duplicate node to erase its lookup or double charge.
+            auto c=std::make_shared<ALNativePublication::State>();
+            std::shared_ptr<ALNativePublication::Observer> c_dependencies;std::shared_ptr<Layout> c_layout;
+            auto pc=seal(c,c_dependencies,c_layout,f.model,members,
+                Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,frame+2);REQUIRE(pc);
+            CHECK(current(target,f.model,Inputs::sNativeSceneSources,frame+2)==replacement);
+            CHECK(cpuLayoutStats().layouts==2);CHECK(cpuLayoutStats().rows==2);
+        }
+        else
+        {
+            CHECK_FALSE(target->publication());CHECK_FALSE(target_layout);CHECK_FALSE(target_dependencies);
+            CHECK(cpuLayoutStats().layouts==1);CHECK(cpuLayoutStats().rows==1);
+        }
+        CHECK(queued_t1->sources.size()==1);CHECK(queued_t1->resources.size()>0);
+        CHECK(f.copied<F32>(*queued_t1->sources[0].prototype->vertices,
+            queued_t1->sources[0].prototype->position_offset,4)[0]==-1.f);
+    }
+}
+
 TEST_CASE("Actual native group full capture and encode costs include cold warm churn and three views",
           "[almetal][.native-group-cost]")
 {
@@ -1111,6 +1328,7 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
     {
         std::shared_ptr<ALNativePublication::State> state=std::make_shared<ALNativePublication::State>();
         std::shared_ptr<ALNativePublication::Observer> dependencies;
+        std::shared_ptr<Inputs::ALSceneGroupPublicationNative::Layout> layout;
         std::vector<Inputs::LLDrawInfo*> members;
     };
     struct Arm
@@ -1125,8 +1343,11 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
         return U64(value.tv_sec)*1'000'000'000ULL+value.tv_nsec;
     };
     const auto median=[](auto values)
-    {std::sort(values.begin(),values.end());return values[values.size()/2];};
-    constexpr U32 repetitions=5,warmups=2,draws_per_group=16;
+    {
+        std::sort(values.begin(),values.end());const auto middle=values.size()/2;
+        return values.size()%2?values[middle]:(values[middle-1]+values[middle])*.5;
+    };
+    constexpr U32 repetitions=12,warmups=2,draws_per_group=16;
     for(U32 count:{1u,4u,8u,16u,512u})
     {
         std::array<Arm,2> arms;
@@ -1140,7 +1361,7 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
         for(U32 views:{1u,3u})for(U32 condition=0;condition<3;++condition)
         {
             for(auto& arm:arms)for(auto& group:arm.groups)
-            {group.state->invalidate();for(auto* info:group.members)info->state->invalidate();}
+            {group.state->invalidate();group.layout.reset();for(auto* info:group.members)info->state->invalidate();}
             struct Costs
             {
                 std::array<double,repetitions> cpu{},encode{},complete{},gpu{};
@@ -1168,7 +1389,7 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
                         // Cold source/packet caches, with the producer event
                         // and every publication/admission inside the interval.
                         for(auto& group:arm.groups)
-                        {group.state->invalidate();for(auto* info:group.members)info->state->invalidate();}
+                        {group.state->invalidate();group.layout.reset();for(auto* info:group.members)info->state->invalidate();}
                     }
                     if(condition==2)
                     {
@@ -1202,7 +1423,7 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
                             for(auto& group:arm.groups)if(group.state->dirty())
                             {
                                 ++seals;
-                                if(!Inputs::ALSceneGroupPublicationNative::seal(group.state,group.dependencies,f.model,group.members,
+                                if(!Inputs::ALSceneGroupPublicationNative::seal(group.state,group.dependencies,group.layout,f.model,group.members,
                                     Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount))++declines;
                             }
                         }
@@ -1260,13 +1481,22 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
                     <<" updated_records_per_view="<<(condition==2?(count+draws_per_group-1)/draws_per_group:0)
                     <<" mode="<<(mode?"native_group":"flat_per_draw")<<" repetitions="<<repetitions<<" warmups="<<warmups
                     <<" owner_cpu_median_ms="<<median(cost.cpu)<<" capture_encode_median_ms="<<median(cost.encode)
+                    <<" owner_cpu_max_ms="<<*std::max_element(cost.cpu.begin(),cost.cpu.end())
+                    <<" capture_encode_max_ms="<<*std::max_element(cost.encode.begin(),cost.encode.end())
                     <<" completion_envelope_median_ms="<<median(cost.complete)<<" gpu_sum_median_ms="<<median(cost.gpu)
+                    <<" completion_envelope_max_ms="<<*std::max_element(cost.complete.begin(),cost.complete.end())
+                    <<" gpu_sum_max_ms="<<*std::max_element(cost.gpu.begin(),cost.gpu.end())
                     <<" gpu_ready_commands="<<cost.gpu_ready<<" admitted_native_draws="<<cost.group_draws
                     <<" group_seal_attempts="<<cost.group_seals<<" group_declines="<<cost.group_declines
                     <<" source_and_group_serials="<<cost.source_publications<<" source_getter_reads="<<cost.source_reads
                     <<" dependency_walks="<<cost.dependency_walks<<" image_getter_reads="<<cost.image_reads
                     <<" native_frame_bytes="<<cost.published_bytes
                     <<" geometry_creation_excluded=1 identity_camera=1 whole_viewer_fps_claim=0\n";
+                for(U32 sample=0;sample<repetitions;++sample)
+                    std::cout<<"NATIVE_GROUP_PATH_RAW draws_per_view="<<count<<" views="<<views
+                        <<" condition="<<condition<<" mode="<<mode<<" sample="<<sample
+                        <<" owner_cpu_ms="<<cost.cpu[sample]<<" capture_encode_ms="<<cost.encode[sample]
+                        <<" completion_envelope_ms="<<cost.complete[sample]<<" gpu_sum_ms="<<cost.gpu[sample]<<'\n';
             }
         }
     }

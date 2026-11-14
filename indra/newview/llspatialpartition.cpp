@@ -162,9 +162,10 @@ const std::shared_ptr<ALNativePublication::State>& LLSpatialGroup::metalGroupPub
     return mMetalGroupPublication;
 }
 
-void LLSpatialGroup::invalidateMetalGroupPublication() const noexcept
+void LLSpatialGroup::invalidateMetalGroupPublication() noexcept
 {
     if (mMetalGroupPublication) mMetalGroupPublication->invalidate();
+    mMetalGroupLayout.reset();
 }
 
 bool LLSpatialGroup::isHUDGroup() const

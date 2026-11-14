@@ -8,6 +8,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <array>
+#include <exception>
+#include <functional>
 
 namespace
 {
@@ -17,6 +19,19 @@ struct Source
     std::shared_ptr<const void> image;
 };
 using State = ALNativePublication::State;
+struct OnWithdrawal final : ALNativePublication::Observer
+{
+    std::function<void()> action;
+    std::exception_ptr error;
+    bool called = false;
+    void nativePublicationChanged(ALNativePublication::Phase phase) noexcept override
+    {
+        if (phase != ALNativePublication::Phase::withdrawn || called) return;
+        called = true;
+        try { action(); }
+        catch (...) { error = std::current_exception(); }
+    }
+};
 std::shared_ptr<const Source> publish(const std::shared_ptr<State>& state,
     const std::shared_ptr<const void>& geometry, const std::shared_ptr<const void>& image = {})
 {
@@ -191,4 +206,125 @@ TEST_CASE("Conflicting duplicate native capacity is rejected before resource ded
     CHECK(cache.entryCount() == 0);
     CHECK(cache.estimatedRetainedBytes() == 0);
     CHECK(packet->geometry.get() == geometry.get());
+}
+
+TEST_CASE("Native source admission cannot relabel a callback replacement during trim or pressure",
+          "[native-source-working-set][publication-reentrancy]")
+{
+    for (bool age_trim : {false, true})
+    {
+        CAPTURE(age_trim);
+        ALNativeSourceWorkingSet cache(2, 1024, age_trim ? 2 : 100);
+        auto victim = std::make_shared<State>(), other = std::make_shared<State>(), incoming = std::make_shared<State>();
+        auto a = std::make_shared<int>(1), b = std::make_shared<int>(2);
+        auto old_geometry = std::make_shared<int>(3), new_geometry = std::make_shared<int>(4);
+        auto victim_packet = publish(victim, a), other_packet = publish(other, b);
+        const std::array<ALNativeSourceWorkingSet::Resource, 1> ra{{{a, 100}}}, rb{{{b, 120}}};
+        const std::array<ALNativeSourceWorkingSet::Resource, 1> old_resources{{{old_geometry, 80}}}, new_resources{{{new_geometry, 320}}};
+        REQUIRE(cache.retain(victim, 1, victim->publication(), ra, 1));
+        REQUIRE(cache.retain(other, 2, other->publication(), rb, 1));
+        auto old_packet = publish(incoming, old_geometry);
+        std::shared_ptr<const Source> replacement;
+        const std::uint32_t frame = age_trim ? 4 : 2;
+        auto observer = std::make_shared<OnWithdrawal>();
+        observer->action = [&]
+        {
+            replacement = publish(incoming, new_geometry);
+            REQUIRE(cache.retain(incoming, 51, incoming->publication(), new_resources, frame));
+        };
+        victim->observe(observer);
+        // Deliberately pass State's shared_ptr member by reference: replacement
+        // must not turn the old caller resources/serial into a new admission.
+        CHECK_FALSE(cache.retain(incoming, 50, incoming->publication(), old_resources, frame));
+        REQUIRE(observer->called); REQUIRE_FALSE(observer->error);
+        REQUIRE(replacement);
+        CHECK(incoming->publication().get() == replacement.get());
+        CHECK_FALSE(incoming->dirty());
+        CHECK(cache.touch(incoming->identity(), 51, frame));
+        CHECK_FALSE(cache.touch(incoming->identity(), 50, frame));
+        CHECK_FALSE(cache.erase(incoming->identity(), 50));
+        CHECK(cache.entryCount() == (age_trim ? 1 : 2));
+        CHECK(cache.estimatedRetainedBytes() == (age_trim ? 320 : 440));
+        if (!age_trim) CHECK(cache.touch(other->identity(), 2, frame));
+        CHECK(old_packet->geometry.get() == old_geometry.get());
+        CHECK(victim_packet->geometry.get() == a.get());
+        CHECK(other_packet->geometry.get() == b.get());
+        REQUIRE(cache.erase(incoming->identity(), 51));
+        CHECK(cache.estimatedRetainedBytes() == (age_trim ? 0 : 120));
+        CHECK(replacement->geometry.get() == new_geometry.get());
+    }
+}
+
+TEST_CASE("Native source eviction callbacks can invalidate an incoming publication without admitting it",
+          "[native-source-working-set][publication-reentrancy]")
+{
+    ALNativeSourceWorkingSet cache(1, 1024, 100);
+    auto victim = std::make_shared<State>(), incoming = std::make_shared<State>();
+    auto a = std::make_shared<int>(1), b = std::make_shared<int>(2);
+    publish(victim, a); auto reader = publish(incoming, b);
+    const std::array<ALNativeSourceWorkingSet::Resource, 1> ra{{{a, 100}}}, rb{{{b, 200}}};
+    REQUIRE(cache.retain(victim, 1, victim->publication(), ra, 1));
+    auto observer = std::make_shared<OnWithdrawal>();
+    observer->action = [&] { incoming->invalidate(); };
+    victim->observe(observer);
+    CHECK_FALSE(cache.retain(incoming, 2, incoming->publication(), rb, 2));
+    REQUIRE(observer->called); REQUIRE_FALSE(observer->error);
+    CHECK(incoming->dirty()); CHECK_FALSE(incoming->publication());
+    CHECK(cache.entryCount() == 0); CHECK(cache.estimatedRetainedBytes() == 0);
+    CHECK_FALSE(cache.touch(incoming->identity(), 2, 2));
+    CHECK(reader->geometry.get() == b.get());
+}
+
+TEST_CASE("A callback that already retained the exact native request is acknowledged once",
+          "[native-source-working-set][publication-reentrancy]")
+{
+    ALNativeSourceWorkingSet cache(1, 1024, 100);
+    auto victim = std::make_shared<State>(), incoming = std::make_shared<State>();
+    auto a = std::make_shared<int>(1), b = std::make_shared<int>(2);
+    publish(victim, a); auto reader = publish(incoming, b);
+    const std::array<ALNativeSourceWorkingSet::Resource, 1> ra{{{a, 100}}}, rb{{{b, 200}}};
+    REQUIRE(cache.retain(victim, 1, victim->publication(), ra, 1));
+    auto observer = std::make_shared<OnWithdrawal>();
+    observer->action = [&] { REQUIRE(cache.retain(incoming, 2, incoming->publication(), rb, 2)); };
+    victim->observe(observer);
+    REQUIRE(cache.retain(incoming, 2, incoming->publication(), rb, 2));
+    REQUIRE(observer->called); REQUIRE_FALSE(observer->error);
+    CHECK(incoming->publication().get() == reader.get());
+    CHECK_FALSE(incoming->dirty());
+    CHECK(cache.entryCount() == 1); CHECK(cache.estimatedRetainedBytes() == 200);
+    CHECK(cache.touch(incoming->identity(), 2, 2));
+    REQUIRE(cache.erase(incoming->identity(), 2));
+    CHECK(cache.entryCount() == 0); CHECK(cache.estimatedRetainedBytes() == 0);
+}
+
+TEST_CASE("Native source clear preserves a newer tuple admitted by an eviction observer",
+          "[native-source-working-set][publication-reentrancy]")
+{
+    ALNativeSourceWorkingSet cache(4, 1024, 100);
+    auto a = std::make_shared<State>(), b = std::make_shared<State>();
+    auto ga = std::make_shared<int>(1), gb = std::make_shared<int>(2), fresh = std::make_shared<int>(3);
+    auto reader_a = publish(a, ga), reader_b = publish(b, gb);
+    const std::array<ALNativeSourceWorkingSet::Resource, 1> ra{{{ga, 100}}}, rb{{{gb, 120}}}, rc{{{fresh, 320}}};
+    REQUIRE(cache.retain(a, 1, a->publication(), ra, 1));
+    REQUIRE(cache.retain(b, 2, b->publication(), rb, 1));
+    std::shared_ptr<const Source> replacement;
+    auto observer = std::make_shared<OnWithdrawal>();
+    observer->action = [&]
+    {
+        replacement = publish(b, fresh);
+        REQUIRE(cache.retain(b, 3, b->publication(), rc, 2));
+    };
+    a->observe(observer);
+    cache.clear();
+    REQUIRE(observer->called); REQUIRE_FALSE(observer->error);
+    CHECK_FALSE(a->publication());
+    REQUIRE(replacement); CHECK(b->publication().get() == replacement.get());
+    CHECK_FALSE(b->dirty());
+    CHECK(cache.entryCount() == 1); CHECK(cache.estimatedRetainedBytes() == 320);
+    CHECK(cache.touch(b->identity(), 3, 2));
+    CHECK_FALSE(cache.erase(b->identity(), 2));
+    CHECK(reader_a->geometry.get() == ga.get()); CHECK(reader_b->geometry.get() == gb.get());
+    cache.clear();
+    CHECK_FALSE(b->publication());
+    CHECK(cache.entryCount() == 0); CHECK(cache.estimatedRetainedBytes() == 0);
 }

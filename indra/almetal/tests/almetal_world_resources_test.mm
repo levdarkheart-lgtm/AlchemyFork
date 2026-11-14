@@ -574,6 +574,202 @@ TEST_CASE("almetal: argument resource declarations preserve adjacent native inde
     }
 }
 
+TEST_CASE("almetal: immutable resource hot proofs preserve invalidation and old table leases",
+          "[almetal][world-resources]")
+{
+    @autoreleasepool
+    {
+        WorldResourceFixture f;
+        ALMetalWorldMaterialDataCache material_cache(*f.device);
+        auto batch = f.material(1, 1);
+        publishResourceBatch(f, batch, material_cache);
+        auto changed = batch;
+        changed.diffuse_textures[0] = f.diffuse[1];
+        publishResourceBatch(f, changed, material_cache);
+        auto library = ALMetalShaderLibrary::loadBuiltin(*f.device, &f.error);
+        INFO(f.error); REQUIRE(library);
+        ALMetalSamplerDescriptor sampler_descriptor;
+        sampler_descriptor.support_argument_buffers = true;
+        auto sampler = ALMetalSamplerState::create(*f.device, sampler_descriptor, &f.error);
+        INFO(f.error); REQUIRE(sampler);
+        std::array<std::shared_ptr<ALMetalWorldResources>, 6> contexts;
+        for (auto& context : contexts)
+        {
+            context = ALMetalWorldResources::create(*f.device, *library, {}, &f.error);
+            INFO(f.error); REQUIRE(context); REQUIRE(context->supported());
+        }
+        auto old_table = contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error);
+        INFO(f.error); REQUIRE(old_table);
+        const auto warm_before = contexts[0]->stats();
+        CHECK(contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error) == old_table);
+        CHECK(contexts[0]->stats().cache_hits == warm_before.cache_hits + 1);
+        contexts[0]->failNextPreparationForTesting();
+        ALMetalWorldResourceFallback failure = ALMetalWorldResourceFallback::none;
+        CHECK_FALSE(contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error, &failure));
+        CHECK(failure == ALMetalWorldResourceFallback::injected);
+        REQUIRE(contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error) == old_table);
+
+        sampler_descriptor.max_anisotropy = 4;
+        auto edited_sampler = ALMetalSamplerState::create(*f.device, sampler_descriptor, &f.error);
+        REQUIRE(edited_sampler);
+        auto edited_table = contexts[0]->prepare(batch.native_resource_source, *edited_sampler, &f.error);
+        INFO(f.error); REQUIRE(edited_table); CHECK(edited_table != old_table);
+        REQUIRE(contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error) == old_table);
+        contexts[0]->clearLookup();
+        const auto cleared_before = contexts[0]->stats();
+        auto current_table = contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error);
+        INFO(f.error); REQUIRE(current_table); CHECK(current_table != old_table);
+        CHECK(contexts[0]->stats().table_creates == cleared_before.table_creates + 1);
+        sampler_descriptor.support_argument_buffers = false;
+        auto unsupported_sampler = ALMetalSamplerState::create(*f.device, sampler_descriptor, &f.error);
+        REQUIRE(unsupported_sampler);
+        CHECK_FALSE(contexts[0]->prepare(batch.native_resource_source, *unsupported_sampler, &f.error, &failure));
+        CHECK(failure == ALMetalWorldResourceFallback::validation);
+
+        // More live contexts than the source's four private fast slots force
+        // the original tables out without changing their native tuple/lease.
+        for (unsigned context = 1; context < contexts.size(); ++context)
+        {
+            auto table = contexts[context]->prepare(batch.native_resource_source, *sampler, &f.error);
+            INFO(f.error); REQUIRE(table); CHECK(table != current_table);
+        }
+        auto target = f.renderer->render(f.scene(), &f.error);
+        INFO(f.error); REQUIRE(target);
+        ALMetalRenderPassConfig config;
+        auto pass = target->makeRenderPass(config, &f.error); REQUIRE(pass);
+        auto command = f.device->makeCommandBuffer("Old native resource lease proof", &f.error); REQUIRE(command);
+        auto encoder = ALMetalRenderEncoder::begin(*command, *pass, "Old native resource lease proof", &f.error);
+        INFO(f.error); REQUIRE(encoder);
+        CHECK_FALSE(contexts[0]->bind(*encoder, *command, changed.native_resource_source, old_table, &f.error, &failure));
+        CHECK(failure == ALMetalWorldResourceFallback::validation);
+        CHECK_FALSE(contexts[1]->bind(*encoder, *command, batch.native_resource_source, old_table, &f.error, &failure));
+        CHECK(failure == ALMetalWorldResourceFallback::validation);
+        // Lookup clear and fast-slot eviction invalidate reuse, not a valid
+        // table already leased by an independently ordered command.
+        REQUIRE(contexts[0]->bind(*encoder, *command, batch.native_resource_source, old_table, &f.error, &failure));
+        CHECK(failure == ALMetalWorldResourceFallback::none);
+        REQUIRE(contexts[0]->bind(*encoder, *command, batch.native_resource_source, current_table, &f.error));
+        REQUIRE(encoder->end(&f.error));
+        REQUIRE(command->commitAndWait(&f.error));
+    }
+}
+
+TEST_CASE("almetal: recurring source ownership survives bounded cache collisions and settlement",
+          "[almetal][world-resources]")
+{
+    @autoreleasepool
+    {
+        for (unsigned family : {1u, 2u})
+        for (bool arguments : {false, true})
+        for (bool abandon : {false, true})
+        {
+            CAPTURE(family, arguments, abandon);
+            WorldResourceFixture f;
+            ALMetalWorldMaterialDataCache material_cache(*f.device);
+            constexpr unsigned source_count = 17; // Pigeonhole collision in either 16-entry owner cache.
+            std::vector<ALMetalWorldSimpleBatch> sources;
+            std::vector<std::weak_ptr<const ALMetalWorldMaterialSource>> material_sources;
+            std::vector<std::weak_ptr<const ALMetalWorldResourceSource>> resource_sources;
+            std::vector<std::weak_ptr<const ALMetalBuffer>> uniforms;
+            for (unsigned source = 0; source < source_count; ++source)
+            {
+                auto batch = f.material(family, 1);
+                if (family == 1) batch.materialSlots()[0].env_intensity = .02f * source;
+                else batch.pbrSlots()[0].roughness_factor = .1f + .04f * source;
+                publishResourceBatch(f, batch, material_cache);
+                material_sources.emplace_back(batch.native_material_source);
+                resource_sources.emplace_back(batch.native_resource_source);
+                uniforms.emplace_back(family == 1 ? batch.native_material_source->materialLease()
+                    : batch.native_material_source->pbrLease(true));
+                sources.push_back(std::move(batch));
+            }
+            std::vector<ALMetalWorldSimpleBatch> batches;
+            for (unsigned repetition = 0; repetition < 2; ++repetition)
+                batches.insert(batches.end(), sources.begin(), sources.end());
+            batches.push_back(sources.front());
+            auto queries = resourceQueries(1);
+            queries[1].batch_offset = source_count;
+            queries[2].batch_offset = source_count * 2;
+            auto scene = f.scene(); scene.hdr = true;
+            const auto expected = renderResourceView(f, *f.renderer, scene, batches, queries, false, 2);
+            REQUIRE(expected.queries.front() > 0);
+            scene.material_argument_buffers = arguments;
+            if (arguments) renderResourceView(f, *f.renderer, scene, batches, queries, false, 3);
+            auto geometry = std::make_shared<Resources>();
+            geometry->buffers = f.resources->buffers;
+            // Numeric uniform sources own no texture generations. Their
+            // ordinary scene owner still supplies that independent contract.
+            scene.source_owner = arguments ? geometry : f.resources;
+            scene.batches = batches.data(); scene.batch_count = batches.size();
+            scene.visibility_queries = queries.data(); scene.visibility_query_count = queries.size();
+            std::weak_ptr<const ALMetalTexture> old_texture;
+            for (const auto& texture : f.resources->textures)
+                if (texture.get() == f.diffuse[0]) old_texture = texture;
+            REQUIRE_FALSE(old_texture.expired());
+            id<MTLSharedEvent> gate = [(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];
+            REQUIRE(gate);
+            struct ReleaseGate { id<MTLSharedEvent> value; ~ReleaseGate() { value.signaledValue = 1; } } release{gate};
+            if (!abandon)
+            {
+                auto blocker = f.device->makeCommandBuffer("Recurring source ownership gate", &f.error); REQUIRE(blocker);
+                [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];
+                REQUIRE(blocker->commit(&f.error));
+            }
+            REQUIRE(f.renderer->beginCommandBatch("Recurring source ownership", &f.error));
+            const auto before = f.renderer->worldResourceStats();
+            std::shared_ptr<ALMetalVisibilityResultBatch> results;
+            std::unique_ptr<ALMetalRenderTarget> target;
+            if (family == 2)
+            {
+                auto inputs = ALMetalWorldViewInputs::adopt(scene, batches, queries, scene.source_owner, 4, &f.error);
+                INFO(f.error); REQUIRE(inputs);
+                auto work = ALMetalWorldPreparation::create(inputs, 1, {}, &f.error); REQUIRE(work);
+                REQUIRE(work->runJob(0)); auto ready = work->finish(&f.error); REQUIRE(ready);
+                target = f.renderer->renderPrepared(*ready, &f.error, &results);
+            }
+            else target = f.renderer->render(scene, &f.error, &results);
+            INFO(f.error); REQUIRE(target); REQUIRE(results);
+            if (arguments) checkResourcePath(before, f.renderer->worldResourceStats(), batches.size());
+            auto completion = f.renderer->commandBatchCompletion(); REQUIRE(completion);
+            if (!abandon) REQUIRE(f.renderer->commitCommandBatch(&f.error));
+            f.renderer->clearWorldResourceLookup();
+            sources.clear(); batches.clear();
+            if (arguments) f.resources->textures.clear();
+            for (const auto& source : material_sources) CHECK_FALSE(source.expired());
+            for (const auto& uniform : uniforms) CHECK_FALSE(uniform.expired());
+            if (arguments)
+            {
+                for (const auto& source : resource_sources) CHECK_FALSE(source.expired());
+                CHECK_FALSE(old_texture.expired());
+            }
+            CHECK_FALSE(completion->isComplete());
+            if (abandon) f.renderer->cancelCommandBatch();
+            else
+            {
+                gate.signaledValue = 1;
+                REQUIRE(f.device->waitUntilIdle(&f.error));
+                CHECK(f.read(*target) == expected.pixels);
+                REQUIRE(results->resultCount() == expected.queries.size());
+                for (unsigned query = 0; query < expected.queries.size(); ++query)
+                {
+                    std::uint64_t samples = 0;
+                    REQUIRE(results->wait(query, samples, &f.error));
+                    CHECK(samples == expected.queries[query]);
+                }
+            }
+            const auto retired = [&]
+            {
+                return std::all_of(material_sources.begin(), material_sources.end(), [](const auto& source) { return source.expired(); }) &&
+                    std::all_of(resource_sources.begin(), resource_sources.end(), [](const auto& source) { return source.expired(); }) &&
+                    std::all_of(uniforms.begin(), uniforms.end(), [](const auto& uniform) { return uniform.expired(); });
+            };
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+            while (!retired() && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+            CHECK(retired());
+        }
+    }
+}
+
 TEST_CASE("almetal: world resources preserve the previous compiled scalar shader",
           "[almetal][.world-resources-previous-shader]")
 {
