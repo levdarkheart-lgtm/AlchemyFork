@@ -21174,7 +21174,8 @@ void LLPipeline::postSort(LLCamera &camera)
     static LLCachedControl<bool> native_group_sources(gSavedSettings, "RenderMetalGroupSources", false);
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     static LLCachedControl<bool> depth_prepass(gSavedSettings, "RenderDepthPrePass", false);
-    const bool native_groups = native_group_sources() && !native_visibility() && !depth_prepass() &&
+    const bool native_groups = native_group_sources() && hasRenderType(LLRenderPass::PASS_SIMPLE) &&
+        !native_visibility() && !depth_prepass() &&
         !sShadowRender && !sImpostorRender && !sRenderingHUDs && !mRenderDebugMask &&
         !cullingToCutoutSubject() &&
         ((isMainWorldPass() && mRT == &mMainRT) || isMetalProbeFaceCaptureActive());

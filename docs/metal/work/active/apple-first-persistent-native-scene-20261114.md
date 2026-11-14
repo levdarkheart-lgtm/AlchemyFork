@@ -144,3 +144,24 @@ Release configure and tools/metal/build.sh build, then focused actual-group and
 resource tests with MetalAPI/shader validation, old-library parity, quiet complete
 costs, broad native/source/static checks and separately staged combined app.
 Never launch/login/profile the viewer or push during this phase.
+
+Required clean144aa7 build1 doctor/configure/build allpass0 (build839.404s,1507
+steps). Native actual group/publisher/capture/ranges1152assertions/18cases pass
+with MetalAPI/shader validation. Resource4cases3pass,7670/7734assertionspass;
+all64fails identical before-query>0 using a subpixel box with no raster centers
+(PPD161). Pixel/table/lifetime/fallback/joining results otherwisepass. Old shader
+parity notyetexecuted; stoppedonfailure. Fixfixturecalibration and expand actual
+small group/varied texture costcoverage before defaultselection. Next162.
+
+
+Source2 repairs PPD161 fixture raster coverage (.08halfextent at32pixel viewport)
+and PPD162 inactive-pass publication. Resource correctness also exercises actual
+rigged material/PBR PSOs with owned16float joint1 palettes across formats. Hidden
+cost coverage now includes group1/4/8 aswellas16/512, and resource1/4/16/512
+standalone plus512main/two128probe. Resource cases distinguish shared vs8distinct
+native texture tuples, not merely8uniform variants overoneidenticalresourcetable.
+Cold/warm/churn keys and actualsourcevariants are reported; original short/
+shared-only cases remain in earlier source144aa7 for history, not falsely taken
+as comprehensive small mixed workload acceptance. Normal group cases unchanged.
+All assignments frozen, next163. Native1152/18 group results at144 remainprior
+evidence; rerun altered resource/previous-library cases on exact rebuilt source.

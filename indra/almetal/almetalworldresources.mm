@@ -1,3 +1,9 @@
+/**
+ * @file almetalworldresources.mm
+ * @brief Completion-owned native G-buffer resource tables.
+ * Copyright (C) 2026, Alchemy Viewer Project
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ */
 #include "almetalworldresources.h"
 #include "almetalworld.h"
 #import <Foundation/Foundation.h>

@@ -1127,7 +1127,7 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
     const auto median=[](auto values)
     {std::sort(values.begin(),values.end());return values[values.size()/2];};
     constexpr U32 repetitions=5,warmups=2,draws_per_group=16;
-    for(U32 count:{16u,512u})
+    for(U32 count:{1u,4u,8u,16u,512u})
     {
         std::array<Arm,2> arms;
         for(auto& arm:arms)
@@ -1172,7 +1172,8 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
                     }
                     if(condition==2)
                     {
-                        // One real LLVB color update per 16-draw group. Its
+                        // One real LLVB color update per actual group (up to
+                        // 16 records, including the short 1/4/8-record cases). Its
                         // signal, source/group invalidation and native upload
                         // are charged, not replaced by a prebuilt prototype.
                         const LLColor4U tint=sample%2?LLColor4U(0,255,0,255):LLColor4U(0,0,255,255);
@@ -1253,7 +1254,10 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
             {
                 const auto& cost=costs[mode];
                 std::cout<<"NATIVE_GROUP_PATH_COST draws_per_view="<<count<<" views="<<views
-                    <<" group_size="<<draws_per_group<<" condition="<<(condition==0?"cold":condition==1?"warm":"churn_1_in_16")
+                    <<" records_per_group="<<std::min(count,draws_per_group)
+                    <<" groups_per_view="<<(count+draws_per_group-1)/draws_per_group
+                    <<" condition="<<(condition==0?"cold":condition==1?"warm":"churn_one_per_group")
+                    <<" updated_records_per_view="<<(condition==2?(count+draws_per_group-1)/draws_per_group:0)
                     <<" mode="<<(mode?"native_group":"flat_per_draw")<<" repetitions="<<repetitions<<" warmups="<<warmups
                     <<" owner_cpu_median_ms="<<median(cost.cpu)<<" capture_encode_median_ms="<<median(cost.encode)
                     <<" completion_envelope_median_ms="<<median(cost.complete)<<" gpu_sum_median_ms="<<median(cost.gpu)

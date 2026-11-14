@@ -197,7 +197,9 @@ std::vector<ALMetalWorldVisibilityQuery> resourceQueries(unsigned count)
         query.center[0] = count == 1 ? 0.f : -.25f;
         query.center[1] = count == 1 ? -.1f : -.5f;
         query.center[2] = .75f;
-        query.half_extent[0] = query.half_extent[1] = query.half_extent[2] = .015f;
+        // At the 32 px fixture size these centers lie between pixel centers.
+        // Cover the adjacent samples while keeping the box behind geometry.
+        query.half_extent[0] = query.half_extent[1] = query.half_extent[2] = .08f;
         query.fan = 7; query.count_samples = 1;
         query.batch_offset = index;
     }
@@ -405,6 +407,45 @@ TEST_CASE("almetal: world resource generations survive pending GPU work and reti
             CHECK_FALSE(actual.pixels == expected);
             checkResourcePath(new_before, f.renderer->worldResourceStats(), 1);
             if (!abandon) CHECK(f.renderer->worldResourceStats().table_creates > new_before.table_creates);
+        }
+    }
+}
+
+TEST_CASE("almetal: rigged world resource pipelines preserve single material output",
+          "[almetal][world-resources]")
+{
+    @autoreleasepool
+    {
+        WorldResourceFixture f;
+        ALMetalWorldMaterialDataCache material_cache(*f.device);
+        std::uint64_t frame = 1;
+        for (unsigned family : {1u, 2u})
+        {
+            auto batch = f.material(family, 1);
+            batch.weight_offset = offsetof(Fixture::Geometry, weights);
+            batch.skin_palette = f.attachment_pose.data();
+            batch.skin_palette_float_count = f.attachment_pose.size();
+            batch.skin_joint_count = 1;
+            publishResourceBatch(f, batch, material_cache);
+            for (unsigned format = 0; format < 8; ++format)
+            {
+                CAPTURE(family, format);
+                auto scene = f.scene(); scene.normal_hdr = format & 1;
+                scene.hdr = format & 2; scene.reverse_z = format & 4;
+                const auto expected = renderResourceView(f, *f.renderer, scene, {batch}, {}, false, ++frame);
+                CHECK(std::any_of(expected.pixels.depth.begin(), expected.pixels.depth.end(),
+                    [reverse = scene.reverse_z](auto value) { return value != (reverse ? 0u : 0x3f800000u); }));
+                const auto prepared = renderResourceView(f, *f.renderer, scene, {batch}, {}, true, ++frame);
+                CHECK(prepared.pixels == expected.pixels);
+                scene.material_argument_buffers = true;
+                for (bool prepare : {false, true})
+                {
+                    const auto before = f.renderer->worldResourceStats();
+                    const auto actual = renderResourceView(f, *f.renderer, scene, {batch}, {}, prepare, ++frame);
+                    CHECK(actual.pixels == expected.pixels);
+                    checkResourcePath(before, f.renderer->worldResourceStats(), 1);
+                }
+            }
         }
     }
 }
@@ -644,19 +685,39 @@ TEST_CASE("almetal: world resource complete path cold warm and churn costs",
             }
             return leases;
         };
+        const auto resource_key_count = [](const auto& sources, unsigned used)
+        {
+            // Within one view the family, sampler and other maps are fixed.
+            // Count actual diffuse native-view tuples, not uniform variants.
+            std::vector<std::array<void*, 8>> keys;
+            for (unsigned variant = 0; variant < used; ++variant)
+            {
+                std::array<void*, 8> key{};
+                for (unsigned slot = 0; slot < sources[variant].texture_count; ++slot)
+                    key[slot] = sources[variant].diffuse_textures[slot]->nativeHandle();
+                if (std::find(keys.begin(), keys.end(), key) == keys.end()) keys.push_back(key);
+            }
+            return keys.size();
+        };
         constexpr unsigned samples = 12, warmups = 2;
         // New allocations have identical texels, but genuinely distinct native
         // generations. Upload and owner-span construction are outside timing.
-        std::array<const ALMetalTexture*, samples + warmups> churn;
-        for (auto& texture : churn) texture = f.patternedTexture(0, 0);
+        std::array<std::array<const ALMetalTexture*, 8>, samples + warmups> churn;
+        for (auto& generation : churn)
+            for (unsigned variant = 0; variant < generation.size(); ++variant)
+                generation[variant] = f.patternedTexture(variant, 0);
 
         for (unsigned family : {1u, 2u})
         for (unsigned slots : {1u, 8u})
+        for (bool distinct_resources : {false, true})
         {
             std::array<ALMetalWorldSimpleBatch, 8> prototypes;
             for (unsigned variant = 0; variant < prototypes.size(); ++variant)
             {
                 prototypes[variant] = f.material(family, slots);
+                if (distinct_resources)
+                    for (unsigned slot = 0; slot < slots; ++slot)
+                        prototypes[variant].diffuse_textures[slot] = f.diffuse[(slot + variant) % f.slots];
                 if (family == 1) prototypes[variant].materialSlots()[0].env_intensity = .05f * variant;
                 else prototypes[variant].pbrSlots()[0].roughness_factor = .1f + .1f * variant;
             }
@@ -666,33 +727,42 @@ TEST_CASE("almetal: world resource complete path cold warm and churn costs",
                 REQUIRE(ALMetalWorldMaterialSource::publish(*f.device, prototype, material_cache, &f.error));
             const auto uniform_cpu = cpu_ns() - uniform_start;
             const auto uniform_after = material_cache.stats().published_bytes;
-            const auto base_leases = exact_leases(prototypes[0]);
-            std::array<std::vector<std::shared_ptr<const ALMetalTexture>>, samples + warmups> churn_leases;
+            std::array<std::vector<std::shared_ptr<const ALMetalTexture>>, 8> base_leases;
+            for (unsigned variant = 0; variant < prototypes.size(); ++variant)
+                base_leases[variant] = exact_leases(prototypes[variant]);
+            std::array<std::array<std::vector<std::shared_ptr<const ALMetalTexture>>, 8>, samples + warmups> churn_leases;
             for (unsigned sample = 0; sample < churn.size(); ++sample)
-            {
-                auto changed = prototypes[0]; changed.diffuse_textures[0] = churn[sample];
-                churn_leases[sample] = exact_leases(changed);
-            }
+                for (unsigned variant = 0; variant < prototypes.size(); ++variant)
+                {
+                    auto changed = prototypes[variant];
+                    changed.diffuse_textures[0] = churn[sample][distinct_resources ? variant : 0];
+                    churn_leases[sample][variant] = exact_leases(changed);
+                }
             std::cout << "world_resources_setup family=" << family << " slots=" << slots
+                << " resource_pattern=" << (distinct_resources ? "distinct_texture_tuples" : "shared_texture_tuple")
                 << " uniform_publication_cpu_ms=" << uniform_cpu / 1e6
                 << " uniform_publication_bytes=" << uniform_after - uniform_before
-                << " variants=8 native_texture_generations_precreated=14 owner_spans_prebuilt=1"
+                << " source_variants_available=8 resource_keys_available_per_view=" << resource_key_count(prototypes, 8)
+                << " churn_texture_generations_precreated=112 owner_spans_prebuilt=1"
                    " renderer_owners=2 shared_frame_data=1 encode_clock=host_wall cpu_clock=owner_thread\n";
-            for (unsigned shape = 0; shape < 3; ++shape)
+            constexpr std::array main_counts{1u, 4u, 16u, 512u, 512u};
+            for (unsigned shape = 0; shape < main_counts.size(); ++shape)
             for (unsigned pattern = 0; pattern < 3; ++pattern)
             {
                 std::array<Pixels, 3> reference;
                 for (bool arguments : {false, true})
                 {
-                    const unsigned main_count = shape == 0 ? 16 : 512;
-                    const unsigned views = shape == 2 ? 3 : 1;
+                    const unsigned main_count = main_counts[shape];
+                    const unsigned views = shape == main_counts.size() - 1 ? 3 : 1;
+                    const unsigned used_sources = std::min<unsigned>(prototypes.size(), main_count);
                     const std::array<unsigned, 3> counts{main_count, 128, 128};
                     auto sources = prototypes;
+                    const auto keys_per_view = resource_key_count(sources, used_sources);
                     f.renderer->clearWorldResourceLookup(); probes->clearWorldResourceLookup();
                     const auto setup_start = cpu_ns();
                     if (arguments && pattern == 1)
-                        for (auto& source : sources)
-                            REQUIRE(ALMetalWorldResourceSource::publish(*f.device, source, base_leases, &f.error));
+                        for (unsigned variant = 0; variant < used_sources; ++variant)
+                            REQUIRE(ALMetalWorldResourceSource::publish(*f.device, sources[variant], base_leases[variant], &f.error));
                     const auto resource_setup_cpu = cpu_ns() - setup_start;
                     std::array<std::vector<ALMetalWorldSimpleBatch>, 3> capture;
                     std::array<std::vector<ALMetalWorldVisibilityQuery>, 3> queries;
@@ -711,16 +781,18 @@ TEST_CASE("almetal: world resource complete path cold warm and churn costs",
                         f.data->beginFrame(++serial);
                         if (arguments && pattern == 0)
                         {
-                            for (auto& source : sources) source.native_resource_source.reset();
+                            for (unsigned variant = 0; variant < used_sources; ++variant)
+                                sources[variant].native_resource_source.reset();
                             f.renderer->clearWorldResourceLookup(); probes->clearWorldResourceLookup();
                         }
                         if (pattern == 2)
-                            for (auto& source : sources) source.diffuse_textures[0] = churn[sample];
+                            for (unsigned variant = 0; variant < used_sources; ++variant)
+                                sources[variant].diffuse_textures[0] = churn[sample][distinct_resources ? variant : 0];
                         const auto source_cpu_start = cpu_ns();
                         if (arguments && pattern != 1)
-                            for (auto& source : sources)
-                                REQUIRE(ALMetalWorldResourceSource::publish(*f.device, source,
-                                    pattern == 2 ? churn_leases[sample] : base_leases, &f.error));
+                            for (unsigned variant = 0; variant < used_sources; ++variant)
+                                REQUIRE(ALMetalWorldResourceSource::publish(*f.device, sources[variant],
+                                    pattern == 2 ? churn_leases[sample][variant] : base_leases[variant], &f.error));
                         const auto source_cpu = cpu_ns() - source_cpu_start;
                         for (unsigned view = 0; view < views; ++view)
                         {
@@ -763,12 +835,15 @@ TEST_CASE("almetal: world resource complete path cold warm and churn costs",
                         const auto completed = std::chrono::steady_clock::now();
                         const auto after = total_stats();
                         if (sample == 1)
+                        {
+                            CHECK(resource_key_count(sources, used_sources) == keys_per_view);
                             for (unsigned view = 0; view < views; ++view)
                             {
                                 const auto actual = f.read(*targets[view]);
                                 if (!arguments) reference[view] = actual;
                                 else CHECK(actual == reference[view]);
                             }
+                        }
                         if (sample >= warmups)
                         {
                             const unsigned at = sample - warmups;
@@ -800,6 +875,8 @@ TEST_CASE("almetal: world resource complete path cold warm and churn costs",
                     const auto encode = summary(encode_ms), cpu = summary(cpu_ms), complete = summary(complete_ms), tail = summary(tail_ms);
                     std::cout << "world_resources_complete_path family=" << family << " slots=" << slots
                         << " main_count=" << main_count << " views=" << views
+                        << " resource_pattern=" << (distinct_resources ? "distinct_texture_tuples" : "shared_texture_tuple")
+                        << " source_variants_used=" << used_sources << " resource_keys_per_view=" << keys_per_view
                         << " pattern=" << (pattern == 0 ? "cold" : pattern == 1 ? "warm" : "churn")
                         << " mode=" << (arguments ? "argument_resources" : "native_direct")
                         << " samples=12 warmups=2 source_setup_cpu_ms=" << resource_setup_cpu / 1e6

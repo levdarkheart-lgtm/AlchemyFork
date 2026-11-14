@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-161 -->
+<!-- next-defect-id: PPD-163 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4182,3 +4182,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Root review identified the source age2 policy and missing group retention/touch before the first native run. Registered before group residency repair; retained source/GPU reader semantics must still pass.
+
+
+## PPD-161 — Resource query fixture boxes contain no pixel centers
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex world-resource validation
+- Discovered: 2026-11-14
+- Original reference: A before-geometry visibility query must cover actual raster samples at the fixture viewport, not just a nonempty continuous-space box.
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). native-focused-correctness-1 world-resources exits42:4cases/3pass,7734assertions/7670pass; all64 failures are the same expected.queries.front()>0 assertion returning0 across formats/families.
+- Next action: Enlarge the fixture's0.015 NDC half-extents to cover known pixel centers at side32, retain positive-before-query and exact old/new ordered result/output assertions, then rerun native validation and previous-library parity.
+- Verification: Query center coordinates0/-0.25 lie between32pixel viewport sample centers spaced0.0625 NDC; nearest X centers differ0.03125, so0.03wide boxes miss both neighbors. Direct/prepared/table pixels, actual bound counters, lifetime/fallback/joining checks otherwise pass. This is not attributed to a production renderer query bug.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered actual failed native receipt before fixture raster calibration repair. Full required build1 at144aa7 passes0/839.404s; group-owner native1152/18passes separately. Previous-shader process was not reached because the focused runner correctly stopped on the first failing group.
+
+
+## PPD-162 — New group publisher prepares a disabled simple render pass
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native group admission
+- Discovered: 2026-11-14
+- Original reference: Original/current postSort checks hasRenderType(pass) before populating a view's render map; disabled passes must not acquire new optional native source preparation.
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). New after-flush group publication loop could prepare PASS_SIMPLE sources while that render type is disabled, although the map-admission loop correctly skips it.
+- Next action: Include PASS_SIMPLE enablement in the shared group-path policy predicate, preserving the existing disabled native pass behavior and avoiding unused publication work.
+- Verification: Source-confirmed inactive CPU work under the new diagnostic feature; no runtime timing or visible regression attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered after first frozen source build and before the disabled-pass guard repair. New controls remain OFF pending complete-path cost gates.
