@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-092 -->
+<!-- next-defect-id: PPD-110 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -2630,7 +2630,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-13
 - Original reference: Native fork baseline `18e576cec0a05923632188ec8d7b2224657ffbfa` uses raw per-frame attachment palettes with byte-based arena deduplication; upstream `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` owns the same packed producer contract. The immutable record is new on the isolated experiment branch.
 - Evidence: [Goal-one implementation, complete-cost comparison and limits](research/apple-shadow-records-goal1-results.md), [predeclared experiment](work/active/apple-shadow-records-goal1.md).
-- Next action: Owner assesses exact G1/68987 against Alpha6 before goal two. If work proceeds, evaluate admission based on actual source reuse so a once-only pose need not pay sealing overhead. No repair or owner waiver has been selected; do not attribute an in-world slowdown without a viewer comparison.
+- Next action: Assess single-use overhead with the combined68995 candidate. Owner authorization to continue all goals supersedes the earlier per-goal stop. G2–G5 removes avoidable per-output ownership work but does not establish a single-use live-scene gain; preserve this measured regression.
 - Verification: At `e21fe9c21832e5af88971ae0cb4f1ec2d892c36e`, the headless one-view/32-draw/32-distinct-pose/32-joint fixture costs p50 0.038375ms raw versus 0.039916ms record (+4.02%, about1.54us); p95 0.042876ms versus0.044751ms. All ten counterbalanced blocks are slower (0.83–5.79%). Costs include copy/finite validation, binding, commit and same-frame ownership cleanup. Multi-view/repeated cases improve; this is a synthetic mechanism regression, not an observed viewer regression.
 - Owner verification: pending
 - Push approval: not_granted
@@ -2639,17 +2639,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Registered immediately after the single declared 3,600-sample comparison. Overall predeclared mechanism gate passes, while the adverse result remains open and explicit. Native correctness passes25cases/53,601assertions; no viewer launch, owner acceptance or performance waiver. Experiment stops for owner assessment before goal two.
 
+- 2026-11-14: Combined continuation source d5ae05f2 is built locally as68994. SourceV3 small cases still show no consistent complete-cost improvement; the8192-family mechanism gain does not close the original single-use cost record. Owner combined-app assessment remains pending.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
 ## PPD-090 — G1 terminates shortly after busy-scene arrival
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex experiment crash integration
 - Discovered: 2026-11-13
 - Original reference: Native baseline `18e576cec0a05923632188ec8d7b2224657ffbfa` retains the Alpha6 image worker/codec path. Inspected upstream `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` image job and WorkQueue223–244 preserve processRequest/finishRequest and forward unexpected exceptions to mainloop; ordinary codec failures follow the existing failed-image result. New shadow records have not been established as the cause.
 - Evidence: [Owner report, existing log evidence and investigation](work/active/g1-arrival-crash.md).
-- Next action: Owner retries corrected G1/68991 from the PPD-091 candidate directory. Verify scene stability and inspect any ordinary decoder errors before closure; no agent relaunch, goal two or push.
-- Verification: Diagnostic68989 retry identifies std::runtime_error primary5channel decode bypassing base catch. Joint real voice/codec baseline fails3cases/SIGABRT; scoped PPD-091 boundary repair passes3cases/34assertions and total50cases/1,311assertions. Corrected fef/68991 builds/verifies346ARM64/signatures/native/features/source and zero private standard RTTI. Staged copy7,841entries matches. Abort mechanism repaired; exact original input/error reason unavailable and owner runtime acceptance still pending after prior failure.
-- Owner verification: failed
+- Next action: Retain the owner-confirmed exception-ABI repair in every continuation build; preserve the vendor boundary contract. No push permission is inferred. Broader architecture/scene performance remains separately unverified.
+- Verification: Diagnostic68989 retry identifies std::runtime_error primary5channel decode bypassing base catch. Joint real voice/codec baseline fails3cases/SIGABRT; scoped PPD-091 boundary repair passes3cases/34assertions and total50cases/1,311assertions. Corrected fef/68991 builds/verifies346ARM64/signatures/native/features/source and zero private standard RTTI. Staged copy7,841entries matches. Abort mechanism repaired; exact original input/error reason unavailable and owner confirms crash gone on the repaired G1 source; combined architecture runtime acceptance remains separate.
+- Owner verification: passed
 - Push approval: not_granted
 
 ### History
@@ -2662,17 +2667,24 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Joint real voice-wrapper/image regression fails3cases/SIGABRT before correction, then passes3cases/34assertions after scoped PPD-091 compiler-boundary repair; all6image/worker/ABI entries pass50cases/1,311assertions. Representative real5channel bakes pass12requests; exact offending input remains unavailable. Repairing the demonstrated abort mechanism, not declaring the codec input valid or owner scene stable. Full-app build/verification next; owner verification remains failed.
 - 2026-11-13: Corrected fef1e756fd/68991 full build/static/deep signatures/346ARM64/source/native/retained features and final imported system exception RTTI pass; staged7,841entries identical, original apps preserved. Ready for owner same-scene retry. No agent launch, owner confirmation/closure, goal two or push.
 
+- 2026-11-13: Owner explicitly reports that the other chat fixed this crash and that they confirmed it gone, then authorizes continuation through all architecture goals before one combined test. The continuation baseline contains fef1e756fd; the existing five-minute G1 profile is pinned to that repaired source. This records owner confirmation, not a new agent launch, universal stability claim or push approval.
+
+- 2026-11-14: Combined G2–G5 source d5ae05f2/68994 retains the repair. Full Release build and final static verifier pass; final viewer imports libc++ standard exception typeinfo with zero private standard exception RTTI. This is regression evidence, not a new owner runtime test or push approval.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred. Earlier owner-confirmed repair verification remains valid and is not replaced by this build evidence.
+
+
 ## PPD-091 — Private standard-exception RTTI breaks base-class catches
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex C++ exception ABI integration
 - Discovered: 2026-11-13
 - Original reference: Upstream `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` llwebrtc/CMakeLists.txt disables RTTI for subclasses of vendor WebRTC classes. Native fork combines this with hidden visibility. The standard C++ contract requires a thrown std::runtime_error to match catch(const std::exception&); the original WorkQueue intentionally forwards unexpected failures, while ordinary codec errors should remain failed image requests.
 - Evidence: [ABI correction and actual-library regression](work/active/exception-abi-repair.md), [G1 crash investigation](work/active/g1-arrival-crash.md).
-- Next action: Owner retries corrected G1/68991; close only after corrective owner confirmation. Preserve the voice vendor no-RTTI/no-exception boundary; viewer/codec exception handling stays enabled and wrapper no-unwinding/fail-fast limitations remain explicit.
-- Verification: Baseline actual-library probe fails42; joint voice/codec3cases fail/SIGABRT. Darwin-only PRIVATE wrapper -fno-exceptions alongside -fno-rtti restores std catches;3cases/34assertions and total50cases/1,311assertions pass. Corrected fef/68991 final app imports system exception RTTI with0private standard typeinfos;346ARM64/signature/source/native/features pass and7,841staged entries match. Actual vendor flags prove the boundary configuration. Owner retest pending; not closed.
-- Owner verification: pending
+- Next action: Retain the owner-confirmed exception-ABI repair in every continuation build; preserve the vendor boundary contract. No push permission is inferred. Broader architecture/scene performance remains separately unverified.
+- Verification: Baseline actual-library probe fails42; joint voice/codec3cases fail/SIGABRT. Darwin-only PRIVATE wrapper -fno-exceptions alongside -fno-rtti restores std catches;3cases/34assertions and total50cases/1,311assertions pass. Corrected fef/68991 final app imports system exception RTTI with0private standard typeinfos;346ARM64/signature/source/native/features pass and7,841staged entries match. Actual vendor flags prove the boundary configuration. Owner confirms the repaired crash gone; keep the scoped vendor boundary and all evidence. No push approval.
+- Owner verification: passed
 - Push approval: not_granted
 
 ### History
@@ -2680,3 +2692,426 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Registered before production repair after diagnostic retry exposed a standard exception handled by catch-all. Actual archive reproduction fails as observed; source/linker option trials are isolated under private evidence. PPD-090 remains the owner-visible crash, and both records stay open until corrective evidence and owner confirmation.
 - 2026-11-13: Visibility-only and RTTI-enabled compiler trials rejected (ineffective or missing vendor RTTI). Applied Darwin-only private no-exception wrapper flag matching verified vendor flags; preserved normal caller/codec EH. Actual joint-library regression changes failed3cases/SIGABRT to passed3cases/34assertions;6CTest entries50cases/1,311assertions pass. Final app build/verification and owner acceptance remain pending.
 - 2026-11-13: Final corrected G1/68991 and staged copy pass0private standard exception typeinfos (system imports), source/version/native/features/346ARM64/deep signature gates; sourcefef1e756fd, mainSHA c188ebdfd45139677fcb7c45a9bfcacaa80f11867dcc9184090ba88a0dec9d08. Ready for owner verification; no closure/push or agent viewer launch.
+
+- 2026-11-13: Owner explicitly reports that the other chat fixed this crash and that they confirmed it gone, then authorizes continuation through all architecture goals before one combined test. The continuation baseline contains fef1e756fd; the existing five-minute G1 profile is pinned to that repaired source. This records owner confirmation, not a new agent launch, universal stability claim or push approval.
+
+- 2026-11-14: Combined G2–G5 source d5ae05f2/68994 retains the Darwin wrapper exception boundary. Full Release build and final static verifier pass, importing system std::exception RTTI with zero private standard typeinfos. Owner-confirmed G1 verification is retained; no new runtime or publication claim.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred. Earlier owner-confirmed repair verification remains valid and is not replaced by this build evidence.
+
+
+## PPD-092 — Accelerated media can overwrite a leased native texture generation
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex Apple-first architecture integration
+- Discovered: 2026-11-13
+- Original reference: Native IOSurface media paint uses a reusable render-target mirror in LLViewerMediaImpl::paintMetal from the G1 baseline; original GL binding did not provide the new immutable native CPU-record lease contract.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Owner checks accelerated media playback and texture replacement in the combined68995 viewer; native generation lease/COW tests already pass. Keep actual IOSurface/media behavior unverified until observed.
+- Verification: Source integration now allocates a fresh IOSurface mirror when its current LLImageGL native generation is leased, keeping copy/commit/adoption ordering. Coherent native resource/COW suites pass; actual accelerated media playback/owner acceptance remains untested.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before adapting the external writer to the new lease model. LLImageGL upload COW alone is insufficient because the IOSurface blit bypasses it. Existing media and all old evidence remain retained.
+- 2026-11-13: Added the accelerated writer lease check alongside native COW publication. Coherent validation18/18 passes with API/shader checks, including351assertions/7native generation cases; this is not a new browser/media runtime test.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-093 — Metal 4 allocation failure can strand an unused visibility slot
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native GPU scheduling
+- Discovered: 2026-11-13
+- Original reference: Apple-first G2–G5 implementation on baseline5836d41753; this is a pre-delivery source-review finding, not a reported owner regression.
+- Evidence: [Combined architecture implementation ledger](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Keep the slower Metal4 visibility mode disabled. If revisiting it, inject pre-submission event-allocation failure and verify slot reclamation separately from submitted-event/consumer completion.
+- Verification: Slot reuse now separates actual compute submission from chosen Metal4 mode: pre-submission failures need no GPU signal, while submitted compute still waits for its event and consumer completion. Coherent extended GPU lifetime/cancel/parity suite passes; forced native event-allocation failure is not independently injected.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before repair after independent source review during the first native-slice build. Preserve failed paths and test actual reclamation/range semantics before enabling the combined app.
+- 2026-11-13: Applied compute_submitted guard and retained dual completion requirements. Real GPU generation/classic/Metal4 cancel/lifetime tests pass in coherent18/18; no claim of forced event-allocation-failure execution.
+
+- 2026-11-14: Actual compute-submission tracking is integrated in d5ae05f2 and native cancellation/lifetime suites pass. Full-cost classic/Metal4 GPU generation remains slower and off; native event-allocation failure itself has not been injected.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred. Metal4/GPU-generation variants remain disabled after adverse net-cost gates.
+
+
+## PPD-094 — Texture-index map span can exceed the vertex storage lane
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native generation publication
+- Discovered: 2026-11-13
+- Original reference: Apple-first G2–G5 implementation on baseline5836d41753; this is a pre-delivery source-review finding, not a reported owner regression.
+- Evidence: [Combined architecture implementation ledger](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Owner exercises geometry/attachment updates in the combined68995 viewer; retain exact final-lane and leased/unleased dirty-publication tests and the unchanged full-copy path for leased generations.
+- Verification: Repaired span to (count-1)*stride+lane_size with zero-count handling. The coherent native resource suite passes351assertions/7cases, including the exact final texture-index lane and leased/unleased dirty publication; owner viewer acceptance pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before repair after independent source review during the first native-slice build. Preserve failed paths and test actual reclamation/range semantics before enabling the combined app.
+- 2026-11-13: Corrected candidate passes exact native final-lane and partial-range tests,351assertions/7cases, and coherent18/18 validation.32small safe writes publish2,048B versus2,621,440B under forced full orphans; byte reduction only, not CPU/FPS.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-095 — Extended indirect shadows fail native depth parity
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native shadow execution integration
+- Discovered: 2026-11-13
+- Original reference: Existing native scalar shadow shader/binding path on baseline5836d41753 is the comparison. The new rigged/covered indirect path must preserve its R32 output.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Retain passing actual-command-emission parity tests and keep classic/Metal4 GPU-generation variants off because they fail complete-cost gates. Reconsider only with a changed persistent-input/visibility implementation and a new correctness/net-cost gate.
+- Verification: Actual MSL render_command emission repairs the initial CPU-copy depth mismatch. Coherent native output/query/current-pose/cancellation/lifetime suites pass, including multi-tile ordering. Serial and repaired parallel GPU generation both fail net-cost controls on M1 Max, so production enables only separately tested selective CPU-encoded opaque ICB runs.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered immediately after first actual GPU execution and before correction. Resource leases/native publication and detached preparation suites pass independently. The extended indirect path is not eligible for the combined app until parity is repaired.
+- 2026-11-13: Real GPU generation repairs the demonstrated copy-command parity failure. Coherent validation18/18 includes latest generated-only setup and ordered query runs; scalar/CPUICB/classic/M4 R32 parity passes. Performance selection and owner scene acceptance remain separate.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred. Metal4/GPU-generation variants remain disabled after adverse net-cost gates.
+
+
+## PPD-096 — Source lease deduplication loses indexed coverage slots
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native source admission integration
+- Discovered: 2026-11-13
+- Original reference: Existing indexed material shadow contract preserves every texture slot, including repeated white/default/diffuse handles. New ALMetalShadowSourceRecord factory validates one ordered lease per slot.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Owner checks repeated/aliased alpha and PBR coverage textures in the combined68995 viewer. Retain ordered per-slot texture leases, including aliases; native two/eight-slot cases pass.
+- Verification: Actual pipeline source builder now preserves one native texture lease per shader-visible slot, including aliases. Two/eight repeated-slot source cases pass in the coherent native prepare suite; pipeline compiles, owner scene acceptance pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before repair during independent review of actual pipeline integration. Existing native helpers passed their initial single-slot fixtures; those tests did not cover this caller contract.
+- 2026-11-13: Replaced deduplicated push with ordered per-slot lease publication. Coherent native repeated-texture prepare cases pass and actual pipeline syntax passes0; no owner scene regression was claimed or observed.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-097 — Abandoned batched shadow work can retain published validity and pending queries
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex frame transaction integration
+- Discovered: 2026-11-13
+- Original reference: Native G1 shadow capture may borrow an existing probe/hero command batch. Original GL draws did not expose an uncommitted native transaction; native validity/cache/query publication must follow actual commit or cancellation.
+- Evidence: [Combined architecture implementation goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Owner checks shadows, occlusion, ordinary probe faces and cancellation/reload in the combined68995 viewer. Preserve streamed per-view commits, borrowed outer ownership and exactly-once validity/query settlement.
+- Verification: Exactly-once synchronous commit/cancel observers, per-slice pending/revision validity and deferred cache/query publication are integrated. Abandoned native query batches fail instead of remaining pending. Native settlement/observer/cancel/lifetime suites pass; fixed headless comparisons prove six streamed commands per group. Whole-invocation batching was slower and rejected (PPD-101); logical group identity repairs probe admission (PPD-103).
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before transaction changes. Four/six shadow views can share one command only after failure/publication semantics and logical-frame admission are explicit; reducing command count alone is not sufficient.
+- 2026-11-13: Coherent Release build0 and18/18 API/shader-validated suites pass: native admission/reload/cancel/observer semantics and25assertions/2query abandonment cases. Pipeline compile0 and independent source review cover same-command receiver validity and per-slice revision guards; one-command/six-real-slice output proof is next.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-098 — Shadow query settlement can throw during capture cleanup
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex frame transaction integration
+- Discovered: 2026-11-13
+- Original reference: Native G2–G5 SettleShadowVisibility capture cleanup; original query ticket ownership must fail open when native work is not published.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Retain recoverable query ticket ownership and noexcept cleanup in the combined68995 viewer; fault injection of actual allocation failure remains unexecuted.
+- Verification: Source repair keeps local/shared ticket ownership recoverable across allocation and observer registration failures, discards every ticket including any partial prefix, and catches cleanup exceptions. Coherent native settlement/observer-exception/cancel cases pass. Actual allocation failure was not injected; no owner incident is attributed to this source-confirmed hazard.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before repair after coherent ordinary native tests pass. This is an exceptional-path source finding, not a reproduced owner crash or attribution to PPD-090.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-099 — Retained-source candidate adds complete native CPU cost
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native source architecture
+- Discovered: 2026-11-13
+- Original reference: Same-binary current-owned/raw native API versus retained-certified sources on the G2–G5 candidate. This is not an untouched Alpha6 comparison or a live pipeline benchmark.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Owner assesses the combined68995 viewer. Keep the large-family8192 threshold, ordinary small-family owner path and exact cost limitations; do not infer live key/admission/cull or unique-source throughput from a16-source fixture.
+- Verification: Initial600-row retained candidate and second compact trial remain rejected. Changed owner fast path plus compact8192 threshold passes sourceV3 exact800-row analysis: six-view8192 family CPU median/p95−8.50/−8.68%, completed wall−7.55/−6.89%, all10 CPU/wall blocks positive. Small cases CPU+4.53/+0.39/+0.04% show no consistent net win. Fixture includes source seals/command ownership but excludes live LLDrawInfo key/LRU/admission/cull and pose solve;8192 instances reuse16 sources.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered immediately after the first complete-cost run; ordinary depth/lifetime parity had passed. Successful correctness does not make this performance result acceptable. No combined viewer delivered and no in-world attribution claimed.
+- 2026-11-13: Compact-instance/shared-context/one-command aggregate lease candidate implemented with current raw control strengthened to explicit model/context setup; original600-row failure retained. Pipeline syntax/source lifetime review pass; native correctness and new fixed cost trials pending. No activation pass yet.
+- 2026-11-14: Compact V2 fixes most overhead but still fails strengthened raw control (busy median+0.935%,light+9.699%); fixed compact Dispatch supports8192 only, not2048. V3 owner-direct source consumption below8192 plus streamed per-view command ownership implemented; new declared8192 single-family control added. Native parity/cost validation next, all earlier failures retained.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-100 — Serial GPU command generation causes severe completion-time regression
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native GPU scheduling
+- Discovered: 2026-11-13
+- Original reference: Same production native renderer, current bulk direct versus CPU ICB/classic GPU generation/Metal4 GPU generation; identical source packets, six views and depth parity. This is not viewer frame/FPS evidence.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Keep classic and Metal4 GPU command generation off. A future implementation must move persistent dirty-source visibility before repeated CPU discovery and pass full-cost controls; retain actual-emission/multi-tile parity tests.
+- Verification: Baseline1 passes exact9000rows/90groups,100samples per arm/case,10balancedblocks, source/binary unchanged, actual Metal4 timing feedback required. Static256 all-visible completion-plus-cleanup wall medians regress784.87% classic/811.36% Metal4; static2048 regress1503.99%/1513.22%. Mixed25%reject still regresses1283.47%/1355.77% at2048. CPU ICB saves19.02% CPU at static2048 but wall p95 regresses6.38%; this is not an activation pass. Current compact kernel emits every command serially in one thread per run.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered immediately after first complete-cost GPU trial. Correctness previously passed all tested modes; nominal CPU/API benefits do not offset this measured completion-time regression. New GPU modes remain disabled in the production scene. All baseline scripts, raw rows, feedback counters and hashes retained.
+- 2026-11-13:256-lane stable tiled-prefix command emission and GPU-only resource/template cleanup candidate implemented; native/offline MSL syntax passes. New multi-tile/query-run ordering proof added; full native correctness and original9,000-row cost comparison pending. Modes remain disabled.
+- 2026-11-14: Parallel candidate passes80,364/27native correctness but new9,000-row cost still fails completion-wall gate (static2048 classic+39.71%,Metal4+20.89%). Slab/direct-data experiment is next; GPU modes remain off. PPD-102 separately records benchmark epoch aging concern without overturning prior negative results.
+
+- 2026-11-14: Parallel stable SIMD-prefix generation repairs the serial emission bottleneck and preserves ordered257/511/259-draw runs in a1027-input native case, but the fixed9000-row comparison still fails activation. The corrected9600-row streamed shared-data comparison also does not justify GPU/Metal4 defaults. Only the separate400-row mixed opaque CPU-ICB selector passes and is enabled in d5ae05f2.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred. Metal4/GPU-generation variants remain disabled after adverse net-cost gates.
+
+
+## PPD-101 — Whole-invocation shadow batching loses useful CPU/GPU overlap
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native frame scheduling
+- Discovered: 2026-11-13
+- Original reference: Same native current-bulk renderer, six streamed commits versus one transaction containing four directional and two projector passes. Quality/source preparation held equal; no viewer frame/FPS claim.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Owner assesses streamed shadow behavior in68995. Retain six per-view commits and two pending logical groups with borrowed probe/hero ownership, successful-commit publication and actual completion reuse; whole-invocation batching remains rejected.
+- Verification: Fixed1200rows/12groups,100samples per arm/case,10balancedABBA/BAAB blocks, native6vs1command counts and source/binary unchanged. One transaction saves1–2%CPU at2048draws but completion-plus-cleanup wall medians regress27.53%rigged opaque/27.86%riggedPBR/35.13%static; p95+20.26%/+25.24%/+25.59%, zero positive wall blocks. LightPBR wallmedian+7.34%/p95+22.93%. Reduced commit count alone is not a performance benefit.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before replacing the candidate batching default. Six-slice/query pixel parity passed; whole-mechanism performance fails because GPU work waits for all CPU preparation instead of overlapping successive views. Existing G1 standalone output/order remains the comparison, outer owned batches remain borrowed.
+- 2026-11-14: Root restored streamed per-view commit with exact failure/query/publication guards and preserved borrowed owners. Source syntax passes0 before group-ID followup; PPD-103 fixes ordinary-probe admission identity. No runtime acceptance claimed.
+
+- 2026-11-14: Source d5ae05f2 preserves streamed per-view commits with corrected logical group identity. Accepted source800 and mixed-selector400 timing receipts use actual six-command streaming; no rejected one-command result was relabeled.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred. Rejected whole-invocation batching remains off; streamed per-view commands are retained.
+
+
+## PPD-102 — GPU cost fixture advances material-cache epochs twice per frame
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native performance evidence
+- Discovered: 2026-11-13
+- Original reference: Production advances frame data once per gFrameCount; generation cost fixture advances at start and again during same-arm retirement. Native material cache retains immediately preceding generations.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Retain corrected once-per-frame fixture lifecycle, independent warm renderer/arena per arm and material key/create counters. Preserve the earlier receipts and do not reinterpret them as passing.
+- Verification: The corrected streamed shared-data comparison passes strict9600-row/96-group structural checks with independent warmed arm state and correct material epoch lifecycle. Global covered/PBR shared-data and GPU/Metal4 variants still fail cost gates. Selective opaque CPU ICB is separately accepted by400 mixed-control rows with zero covered-table creations/misses.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before fixture repair while implementing the declared completion-owned slab trial. All previous9,000-row receipts remain immutable with their exact fixture source/hash and limitations.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-103 — Main-display frame identity can exhaust shadow admission across probe faces
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex shadow view admission
+- Discovered: 2026-11-13
+- Original reference: display() increments gFrameCount; display_cube_face() does not. Ordinary reflection faces plan two or four sun cascades and beginMetalWorldGBufferCapture starts an outer command only for the hero specialization, not every ordinary probe.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Owner checks ordinary reflection-probe faces and shadows in68995. Keep monotonic shadow-group identity separate from gFrameCount, two pending logical groups and six commands per group, while preserving existing outer owners.
+- Verification: Source d5ae05f2 allocates/restores a logical shadow-group serial for each independently generated invocation. Native32-command/eight-group admission proof and coherent settlement/lifetime suites pass; actual pipeline and full Release build pass. No simulation/display frame fence was reassigned.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-13: Registered before repair while reviewing streamed per-view admission. Earlier assumption that every probe had a pre-existing outer batch was incorrect; source shows only hero face begin creates that command. Do not raise an arbitrary global width or silently drop later faces.
+- 2026-11-14: Capture-local monotonic shadow group serial/current scope now feeds admission independently of gFrameCount. Independent source review confirms ordinary-probe call chain, group/renderer swap alignment and reload retention. Two pending logical groups/six commands per group; simulation/presentation/native-resource frame accounting unchanged. Native policy regression and final app test pending.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-104 — Slab lifetime fixture lacks a dependency on the purported GPU gate
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native lifetime validation
+- Discovered: 2026-11-14
+- Original reference: New stable shadow slab lifetime fixture on db90ed329f2c630a7fac47233506861018315f95b708a6755b5efe9a68140434; actual native completion token must be the retirement authority.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Retain the corrected actual-resource gate for blocked lifetime/cancel/destruction and the separate completed-reload test. Do not demand an earlier reader remain pending after synchronous reload uploads.
+- Verification: Both failed29/30-case snapshots are retained. Gate3 gives the wait a tracked dependency on actual geometry and tests all original three-slot/weak-owner/cancel/retry/renderer-destruction assertions before release; completed reload is tested separately because reload performs synchronous commitAndWait uploads. Coherent final native suite passes81,815assertions/39cases plus351/7resource checks; no production allocator change or timeout increase was needed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before test-oracle repair. All3failed assertions/receipts/source hashes retained; native lifetime proof is required before slab activation. Hidden slab cost will also use streamed six-view submissions to match the selected production policy, retaining all prior rejected one-command results.
+- 2026-11-14: Gate2 adds tracked exact-position write/read dependency and preserves assertions, but29/30cases still fail (81,422/81,429assertions) because five-second watchdog releases the gate during reload. Independent source proof: reloadShaders calls create(), whose SMAA/default/hero/probe/SSR/grade uploads synchronously commitAndWait on the same device queue. Requiring prior readers still pending after that synchronous operation creates a fixture self-wait. Approved split: retain all original blocked slot/lifetime/cancel/renderer-destruction checks before gate release; completed reload pool-transfer/content proof remains in its separate case. No timeout increase, production allocator repair or timing result claimed.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-105 — Streamed source-cost parser incorrectly orders overlapping GPU intervals
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native performance evidence
+- Discovered: 2026-11-14
+- Original reference: Per-command GPU timestamp intervals may overlap; their sum is not a logical frame span or GPU busy time.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Retain original native800-row receipt and failed parser alongside analysis-only repaired results. Continue treating GPU interval sums as overlapping envelopes, not GPU busy time or a logical span.
+- Verification: Native sourceV3 exits0 with800 rows and unchanged5038ce41 binary. Analysis-only v2 replaces the invalid sum<=span condition with finite/positive/per-view envelope bounds and preserves exact source/count/counter checks. The same rows pass without native rerun:8192 family CPU−8.50%, completed wall−7.55%; small cases remain non-wins.129 evidence files are copied with verified hashes.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before analysis-only repair. Native receipt, source snapshots, parser hash and failed traceback remain immutable; no V3 performance acceptance claim yet.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-106 — Bounded source LRU can thrash on repeated scans exceeding entry capacity
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native source-cache admission
+- Discovered: 2026-11-14
+- Original reference: G2 per-LLDrawInfo retained source working set,8192entry/count and byte budget. Repeated per-view ordered scans must not turn bounded caching into reconstructing every source each view.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Owner assesses bounded cache behavior in68995. Keep current-epoch protected admission, generation replacement, count/byte/age bounds and weak overflow reuse only while actual packet/command ownership survives. Live source-key/admission/unique-source cost remains unmeasured.
+- Verification: Actual helper reproduction: old8192-entry LRU yields0hits/8193admissions on each subsequent8193-source scan (failure exit42). Protected admission yields8192hits/0admissions on all five subsequent scans with constant8192entries/262estimated shared-wrapper bytes. Final native154assertions/7cache cases pass and helper is used by pipeline in d5ae05f2; no capacity increase.8192 preparation fixture still reuses16 sources and does not prove whole-pipeline unique-source throughput.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before cache-policy repair after independent cardinality review. The valid8192 native preparation/encoder mechanism win remains bounded to its declared reuse fixture; key/admission/unique-source costs remain unmeasured until the added cache stress proof.
+
+- 2026-11-14: Integrated repair and final coherent native checks are retained in source d5ae05f2/68994; full Release build/static verification pass. Updated next action reflects owner combined-app testing. Automated evidence does not close this record or grant push permission.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-107 — Broader vertex generation and label expectations fail on combined source
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex combined regression integration
+- Discovered: 2026-11-14
+- Original reference: Vertex generation/lifetime contracts originate in LLVertexBuffer; native safe-current publication is new in G5. No owner scene failure is attributed.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Retain both safe-current and actual leased/retired-store fixture branches in final broad verification. No production buffer or label change is indicated; preserve the original failure and independent lease-only-after-completion coverage.
+- Verification: Final contained broad regression at d5ae05f2/68994 fails llvertexbuffer_test line143 and alvertex_label_metal_test lines62/130/136. Expected first vertex generation differs; one buffer label differs; expected index orphan remains the same pointer. These are observed assertion failures, not yet proof of unsafe generation reuse or a stale test. Evidence files final-broad-contained-1.json and matching ctest/specialization logs remain local under the combined evidence root.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered after the first final broad run:57/60CTest entries and9/10exact specializations pass; bounded private codec corpus and actual voice/codec exception ABI pass. App build/static checks pass, but combined app acceptance remains held until triage and corrective verification. No viewer launch or push.
+
+- 2026-11-14: Independent source review confirms the failing pointer/label checks assume unconditional retired-first reuse. G5 intentionally prefers a completed unleased current store before scanning retired stores. Retired first retains its old label correctly; index remains current when unleased/completed. No byte/lifetime defect is established. Authorized fixture repair must explicitly cover safe-current in-place bytes/labels AND force a real current lease to exercise retired reuse/index orphan; queued GPU old-byte checks stay intact.
+
+- 2026-11-14: Two-fixture repair reviewed independently by root and CPU peer, then committed locally as6baeb0340a1ddeb89aa265a1a64321ad1e0cd57a (+45/−6; production/CMake/tools unchanged from d5ae05f2). Narrow build exits0 in2.12s; API/shader-validated fixtures plus native generation suite pass573assertions/11cases. Both safe-current and forced leased orphan/recycle bytes/labels, selective index updates and queued GPU old-byte checks remain. Lease acquisition also marks a new open read epoch; separate generation cases isolate lease-only-after-completion protection. Broader final-source recheck remains required.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-108 — Pipeline archive test fails under validation instrumentation
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex combined regression integration
+- Discovered: 2026-11-14
+- Original reference: Native pipeline binary archive policy has no original OpenGL equivalent; inspect ALMetalDevice producer and cache test together.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Retain the corrected separate disk, actual-instrumented and selective environments in final broad verification. Preserve the original failed globally instrumented receipt; no archive policy or assertion relaxation is needed.
+- Verification: Existing suite is correct; external broad runner wrongly combined disk persistence assertions with shader instrumentation. Correct native probes pass without skips: disk5905assertions/6cases proves persistence/hits, actual instrumented bypass882/1, selective native label-validation98/1. Same almetal binary hash before/after, no production/test source change. Receipt ppd108-109-native-probes-1.json preserves three environments and logs.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered after the first final broad run:57/60CTest entries and9/10exact specializations pass; bounded private codec corpus and actual voice/codec exception ABI pass. App build/static checks pass, but combined app acceptance remains held until triage and corrective verification. No viewer launch or push.
+
+- 2026-11-14: Source attribution confirms an external runner environment mismatch: cache.mm build() preserves actual shader-validation PSOs and deliberately bypasses archive persistence. Existing tests already separate disk, instrumented-bypass and selective-validation tags. No production/test source repair needed; rerun disk checks with API validation and shader instrumentation off, plus separate actual-instrumented/selective checks with their required environments. Do not weaken disk-hit or bypass expectations.
+
+- 2026-11-14: All three policy probes pass without skips in their existing required environments. Mandatory disk persistence/hits and actual shader validation/bypass/selective assertions remain unchanged; PPD108 is a verification-runner mismatch, not a production archive regression.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.
+
+
+## PPD-109 — Exact PBR terrain specialization selection exits without running
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex combined regression integration
+- Discovered: 2026-11-14
+- Original reference: Catch test selection/harness is a verification mechanism, not the terrain rendering contract.
+- Evidence: [Combined architecture goal](work/active/apple-first-architecture-g2-g5.md).
+- Next action: Keep the escaped exact literal in final headless runner and require one executed case. No terrain implementation change is indicated; preserve the no-match exit5 as a selector failure.
+- Verification: Metadata proves original quoted comma-bearing selector exits5 with no case. Escaping the comma selects exactly the intended registered case; actual API/shader-validated PBR terrain rendering then passes128assertions/1case, no skip. Same almetal binary hash before/after, no terrain source change. Receipt ppd108-109-native-probes-1.json preserves original failure and corrected native probe.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered after the first final broad run:57/60CTest entries and9/10exact specializations pass; bounded private codec corpus and actual voice/codec exception ABI pass. App build/static checks pass, but combined app acceptance remains held until triage and corrective verification. No viewer launch or push.
+
+- 2026-11-14: The selected PBR terrain case contains a comma, unlike passing exact selections. Runner must validate Catch registered name/filter syntax and require exactly one case; no terrain implementation repair is authorized without a rendered failure.
+
+- 2026-11-14: Metadata-only selection receipt ppd109-selection/receipt.json confirms the original quoted comma-bearing literal exits5 without a selected case. Escaping the comma returns0 and lists exactly one matching registered case; a unique-prefix control selects that same case. Native rendering retest with the corrected escaped literal remains next, not inferred from enumeration.
+
+- 2026-11-14: Correct escaped exact PBR terrain case now executes and passes128assertions/1case under native validation. This closes the investigative attribution question, not owner runtime acceptance; no terrain code was changed.
+
+- 2026-11-14: Final combined code/test6baeb0340a/Release68995 is built and separately staged. Final59CTest+10exact+3archive-policy+private corpus stages all pass0 (563,974assertions/301cases;240/240requests); actual voice/codec ABI, built/staged346ARM64/signatures/nativeownedimports/source/features/systemexceptionRTTI and strictproduction3548files0block/0errors pass. Full7839file/2link/432directory staged inventories equal; oldapps preserved. Exact receipts and headless/performance limits are in the combined results/ledger. No agent launch or push; no new owner runtime acceptance inferred.

@@ -1,6 +1,8 @@
 # Standard exception ABI repair — PPD-091 / PPD-090
 
-Status: corrected app built, staged and verified; ready for owner scene retry.
+Status: owner subsequently confirms the crash gone (2026-11-13). PPD-090/091
+are verified on this continuation branch; the repair and all earlier failure
+evidence remain retained. No push approval or universal stability claim.
 Branch `codex/apple-shadow-records-g1`. No viewer/audio-device launch, interactive
 profiling, goal two or push. Preserve original G1/68987 and diagnostic68989 apps.
 
@@ -108,6 +110,17 @@ Receipts in the PPD-091 evidence directory include `candidate-build.json`,
 and `candidate/static-verification.json`. A private verifier regex typo was
 corrected with its failed attempt retained; it was not an app/code failure.
 
-Next: owner retries the same club with this corrected68991 app. Read any
+Historical next action at the68991 build checkpoint: owner retries the same club
+with this corrected68991 app. Read any
 remaining decode errors and confirm scene stability before closing PPD-090/091.
 No automatic start of goal two, push or feature-parity/performance claim.
+
+
+2026-11-14continuation: owner subsequently confirmed the repaired crash gone;
+PPD090/091 are owner-verified, with no push approval inferred. Combined G2–G5
+source6baeb0340a/26.4.0.68995 retains the scoped vendor boundary. Actual-library
+voice/codec exceptionABI and240-request decoder corpus pass; built/stagedviewer
+imports systemstandard exceptionRTTI with0private typeinfos. [Combined results](../../research/apple-first-architecture-g2-g5-results.md) identifies exact app/source/receipts.
+The old per-goal stopping point above is superseded by the owner's explicit
+continuous G2–G5 authorization; combined app is staged for owner runtime testing.
+No agent launch or push.

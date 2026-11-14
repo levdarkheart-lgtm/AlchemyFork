@@ -7,14 +7,17 @@ G1/crash-repair/profile checkout is preserved; implementation proceeds on the
 isolated `codex/apple-first-architecture-g2-g5` branch. Runtime acceptance and
 in-world performance remain future owner checks, not assumed results.
 
+**Implementation/delivery update 2026-11-14:** [integrated G2–G5 candidate and measured choices](apple-first-architecture-g2-g5-results.md) is built and separately staged as26.4.0.68995 from local code/test pin `6baeb0340a1ddeb89aa265a1a64321ad1e0cd57a` (renderer implementation `d5ae05f2ffec7c243667d0414b5fc003a9164fb4`). Required build, corrected contained tests, native static/source/ABI/signature and exact-copy checks pass. The historical future-tense route below is retained, with accepted and rejected variants explained by the results. This does not claim a wholly GPU-owned viewer, observed scene speedup or release completion. Owner combined-app runtime assessment is next; no agent launch or push.
+
 Baseline `18e576cec0a05923632188ec8d7b2224657ffbfa`, 2026-11-13.
 Execution starts with [goal one](../work/active/apple-shadow-records-goal1.md).
-Goal one is now implemented: [measured result](apple-shadow-records-goal1-results.md)
-passes its headless gate, with single-use regression PPD-089 retained. Exact G1
-app is ready for owner assessment; subsequent goals have not started.
+At that historical checkpoint, [goal one's measured result](apple-shadow-records-goal1-results.md)
+passed its headless gate, with single-use regression PPD-089 retained, and G2–G5
+had not started. The execution updates above supersede that historical state.
 The [source/evidence study](apple-first-renderer-architecture-2026-11-12.md)
-contains hardware and profile evidence; this document specifies implementation
-boundaries and decisions. Subsequent goals are conditional, not already executed.
+contains hardware and profile evidence; this document retains the original
+implementation route and conditional decisions. Consult the linked integrated
+results for what is now implemented, enabled, rejected and still unverified.
 
 ## Current Second Life path and the ownership change
 
