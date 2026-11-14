@@ -166,3 +166,31 @@ Preparation.create already qualified their inputs; no algorithm change there.
 New malformed borrowed-copy, owned per-draw, parity/cancel/lifetime tests frozen.
 Root production and both cost arms use same typed entry. All assignments returned;
 next clean build7/native/full costs. Next defect173; no new acceptance claimed.
+
+
+Clean75c7ae61 build7 doctor/configure/build0/0/0 (157.703s),69017. Native actual
+2471/28, compact1990/8, resources12379/7, old69008shader4721/1 all pass. Broad
+88CTest groups plus10native specialization and3archive processes pass; static
+346ARM64/signature/import/identity/source/provenance pass. Strict3575files,
+0blocking/904informational/0scanerrors pass. No new viewer launch or staging.
+Costs7 all4processes pass, corrected churn384/384publications for32updates*12
+instead of3264; PPD171 normalization verified. Actual512unique-source refs still
+lose CPU6.6–9.4% across measured cold/warm/churn, despite shared-prototype packet
+wins~9–13%warm. Keep this adverse fact: PPD170 remains investigating. PPD172
+owned scalar type boundary is implemented/correctness-tested but does not alone
+establish net actual-source benefit. No live FPS/p95 claim.
+
+Default policy repair: RenderMetalCompactInputs is explicit nonpersistentOFF;
+normal viewer capture keeps authored native batches until a real consumer earns
+activation. NativeTuple/typedInputs/lifetime work stays active. Group sources,
+resource tables, extra preparation and native visibility retain their diagnostic
+OFF defaults. This is selective native submission, no extra graphics backend.
+Do not present flags-off pilots as completed architecture or performance gains.
+Next: required build8/static default verification, then IMPLEMENT native GPU
+source rows/scalar vertex-pulling proof, region producer provenance and bounded
+page/FrameView lifetime. Three source/SDK/Apple-doc contracts persisted in E2
+next-native-gpu-contracts.json with hashes. First proof is actual Legacy/PBR
+scalar rendering, exact CPU-computed regional matrices, rowID/baseInstance-aware
+ordering; only then inherited-buffer group command banks. No per-source-one-ICB
+execute default, unmeasured GPU cull or unused helper-only stopping point.
+Original complete architecture/performance goal remains ACTIVE/partial.

@@ -8035,6 +8035,13 @@
     <key>Type</key><string>Boolean</string>
     <key>Value</key><integer>0</integer>
   </map>
+  <key>RenderMetalCompactInputs</key>
+  <map>
+    <key>Comment</key><string>Diagnostic immutable native source references; retain authored native batches until complete viewer-source costs improve.</string>
+    <key>Persist</key><integer>0</integer>
+    <key>Type</key><string>Boolean</string>
+    <key>Value</key><integer>0</integer>
+  </map>
   <key>RenderMetalGroupSources</key>
   <map>
     <key>Comment</key><string>Diagnostic completed native group membership for static region-space simple geometry.</string>

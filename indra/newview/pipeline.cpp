@@ -3405,7 +3405,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     capture.clearDraws();
-    capture.compact_gbuffer_active = true;
+    // Keep the immutable reference consumer available for native scene work,
+    // but real unique-source costs have not earned unconditional activation.
+    static LLCachedControl<bool> compact_inputs(gSavedSettings, "RenderMetalCompactInputs", false);
+    capture.compact_gbuffer_active = compact_inputs();
     capture.world_visibility_members.clear();
     capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
     capture.visibility_queries.clear();

@@ -4374,6 +4374,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Registered the real-frontier regression before ownership-allocation repair. Preserve all24actual and45component cost pairs; no default compact performance acceptance is claimed from component-only gains.
 - 2026-11-14: CPU-only WorldCpuLease vector+16-slot retention cache implemented; native aggregate unchanged. Actual-owner fixture shares the production helper, adds17source collision/nonadjacent retention and cancellation/abandon coverage; execution/build6 pending.
+- 2026-11-14: Source7 actual corrected costs still regress6.6–9.4% for512unique sources despite passing native cases. Default compact activation is rejected; nonpersistent RenderMetalCompactInputs OFF preserves the native authored-batch path. Keep shared ownership/type changes and continue next concrete GPU source consumer; do not close this performance record.
 
 
 ## PPD-171 — Paired capture cost arms advance source-cache age twice per viewer frame
@@ -4393,6 +4394,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Registered the exact3264=6*512+6*32 source census before timing-fixture normalization. Prior costs retained; no live viewer/frame regression attributed to this benchmark artifact.
 - 2026-11-14: Both actual and group fixtures now advance one paired logical viewer frame with independent native epochs per arm. Exact cold/warm/churn source-publication assertions authored; production max_age2 unchanged. Build7/retest pending.
+- 2026-11-14: Clean75c7ae61 full costs7 pass exact publication assertions:512source churn has384publications per arm across12samples/32updates, oneview andthreeviews. Prior3264collateral age artifacts retained; production age2 unchanged. Owner/runtime performance remains unverified.
 
 
 ## PPD-172 — Owned compact packets are fully revalidated through the borrowed-scene entry point
@@ -4415,3 +4417,4 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Exact99d33 source review corrects the initial scope assumptions: prepare.mm validates the whole view only in adopt, and renderInternal guards full shape validation with if(!prepared). Create/prepared already use qualified inputs; repair only the scalar type-discarding entry. No create/prepared algorithm change.
 
 - 2026-11-14: Explicit renderOwnedInputs entry implemented; private shape qualification is inaccessible to borrowed Scene callers. Per-draw checks remain; new malformed borrowed-copy and owned per-draw rejection/parity/cancel/lifetime cases authored. Both actual/native packet cost arms use the same typed entry. Build7 pending.
+- 2026-11-14: Clean75c7ae61 required build7 and native actual2471/28+compact1990/8+resource12379/7+oldshader4721/1 pass. New borrowed-copy and typed per-draw rejection/lifetime/parity cases pass. Actual compact cost remains adverse, so no causal net performance success is claimed.
