@@ -44,6 +44,7 @@
 #endif
 
 #include "llmemory.h"
+#include "almemorybudget.h"
 
 #include "llsys.h"
 #include "llframetimer.h"
@@ -56,18 +57,16 @@
 // On windows commit charge information is vital for OOM diagnosis.
 U32Megabytes LLMemory::sAvailCommitMemInMB(U32_MAX);
 
-// most important memory metric for texture streaming
-//  On Windows, this should agree with resource monitor -> performance -> memory -> available
-//  On OS X, this should be activity monitor -> memory -> (physical memory - memory used)
-// NOTE: this number MAY be less than the actual available memory on systems with more than MaxHeapSize64 GB of physical memory (default 16GB)
-//  In that case, should report min(available, sMaxHeapSizeInKB-sAllocateMemInKB)
+// Raw operating-system availability. Process-policy headroom is deliberately
+// separate so a configured limit cannot masquerade as exhausted physical RAM.
 U32Kilobytes LLMemory::sAvailPhysicalMemInKB(U32_MAX);
 
 // Installed physical memory
 U32Kilobytes LLMemory::sMaxPhysicalMemInKB(0);
 
-// Maximimum heap size according to the user's settings (default 16GB)
+// Finite process admission ceiling, resolved from installed RAM for setting 0.
 U32Kilobytes LLMemory::sMaxHeapSizeInKB(U32_MAX);
+bool LLMemory::sMaxHeapSizeAutomatic = true;
 
 // Current memory usage
 U32Kilobytes LLMemory::sAllocatedMemInKB(0);
@@ -105,7 +104,17 @@ void ll_assert_aligned_func(uintptr_t ptr,U32 alignment)
 //static
 void LLMemory::initMaxHeapSizeGB(F32Gigabytes max_heap_size)
 {
-    sMaxHeapSizeInKB = U32Kilobytes::convert(max_heap_size);
+    sMaxPhysicalMemInKB = gSysMemory.getPhysicalMemoryKB();
+    const auto policy = ALMemoryBudget::resolveProcessLimitKB(
+        static_cast<double>(max_heap_size.value()), sMaxPhysicalMemInKB.value());
+    sMaxHeapSizeInKB = U32Kilobytes(policy.limit_kb);
+    sMaxHeapSizeAutomatic = policy.automatic;
+    if (policy.invalid_setting)
+        LL_WARNS("Memory") << "Invalid process memory limit; using automatic policy" << LL_ENDL;
+    LL_INFOS("Memory") << "Process memory budget: automatic=" << policy.automatic
+        << ", physical_mib=" << sMaxPhysicalMemInKB.value() / 1024.0
+        << ", process_limit_mib=" << policy.limit_kb / 1024.0
+        << ", physical_known=" << policy.physical_memory_known << LL_ENDL;
 }
 
 //static
@@ -156,18 +165,6 @@ void LLMemory::updateMemoryInfo()
 #endif
     sample(sAllocatedMem, sAllocatedMemInKB);
 
-    // Headroom under the heap cap. The units are unsigned, so an allocation
-    // past the cap has to read as no room left rather than wrap around. A
-    // platform that could not say what is available leaves the sentinel in
-    // place, so the readers know there is no figure rather than a large one.
-    if (sAvailPhysicalMemInKB != U32Kilobytes(U32_MAX))
-    {
-        const U32Kilobytes heap_headroom = sAllocatedMemInKB < sMaxHeapSizeInKB
-            ? U32Kilobytes(sMaxHeapSizeInKB - sAllocatedMemInKB)
-            : U32Kilobytes(0);
-        sAvailPhysicalMemInKB = llmin(sAvailPhysicalMemInKB, heap_headroom);
-    }
-
     return ;
 }
 
@@ -208,6 +205,12 @@ void LLMemory::logMemoryInfo(bool update)
     LL_INFOS() << llformat("Current allocated page size: %.2f MB", sAllocatedPageSizeInKB / 1024.0) << LL_ENDL;
     LL_INFOS() << llformat("Current available physical memory: %.2f MB", sAvailPhysicalMemInKB / 1024.0) << LL_ENDL;
     LL_INFOS() << llformat("Current max usable memory: %.2f MB", sMaxPhysicalMemInKB / 1024.0) << LL_ENDL;
+    const auto budget = getMemoryBudgetSnapshot();
+    LL_INFOS("Memory") << "Process memory policy: automatic=" << budget.automatic_process_limit
+        << ", process_limit_mib=" << budget.process_limit_kb.value() / 1024.0
+        << ", process_headroom_mib=" << budget.process_headroom_kb.value() / 1024.0
+        << ", effective_free_mib=" << budget.effective_available_kb.value() / 1024.0
+        << LL_ENDL;
 }
 
 void LLMemory::updateFreeSystemMemory()
@@ -230,9 +233,11 @@ void LLMemory::setSystemMemoryBudgetEnabled(bool enabled)
     }
 }
 
-S32Megabytes LLMemory::getScarcestFreeMemMB()
+LLMemory::MemoryBudgetSnapshot LLMemory::getMemoryBudgetSnapshot()
 {
-    S32Megabytes free_mem = getAvailableMemKB();
+    const U32 process_headroom = ALMemoryBudget::processHeadroomKB(
+        sMaxHeapSizeInKB.value(), sAllocatedMemInKB.value());
+    U32 commit_headroom = ALMemoryBudget::unknown_kb;
 #if LL_WINDOWS
     // Running out of commit charge kills us just as fast as running out of
     // physical memory, so budget against whichever is scarcer. Physical is
@@ -241,10 +246,20 @@ S32Megabytes LLMemory::getScarcestFreeMemMB()
     const U32Megabytes avail_commit = getAvailableCommitMemMB();
     if (avail_commit != U32Megabytes(U32_MAX)) // unset would convert to -1MB
     {
-        free_mem = llmin(free_mem, S32Megabytes(avail_commit));
+        commit_headroom = static_cast<U32>(std::min<U64>(
+            static_cast<U64>(avail_commit.value()) * 1024,
+            ALMemoryBudget::maximum_known_kb));
     }
 #endif
-    return free_mem;
+    return {sAvailPhysicalMemInKB, sMaxPhysicalMemInKB, sAllocatedMemInKB,
+        sMaxHeapSizeInKB, U32Kilobytes(process_headroom),
+        U32Kilobytes(ALMemoryBudget::availableKB(sAvailPhysicalMemInKB.value(),
+            process_headroom, commit_headroom)), sMaxHeapSizeAutomatic};
+}
+
+S32Megabytes LLMemory::getScarcestFreeMemMB()
+{
+    return S32Megabytes(getMemoryBudgetSnapshot().effective_available_kb);
 }
 
 //static
@@ -265,9 +280,9 @@ F32 LLMemory::getSystemMemoryBudgetFactor()
 
     updateFreeSystemMemory();
 
-    if (sAvailPhysicalMemInKB == U32Kilobytes(U32_MAX))
+    if (getMemoryBudgetSnapshot().effective_available_kb == U32Kilobytes(U32_MAX))
     {
-        // Counters have never been read; every value is still its sentinel.
+        // No availability scope has produced a known figure yet.
         return sSysMemoryFactor;
     }
 

@@ -38,6 +38,114 @@ namespace
 {
     using CommandSettlementObserver = std::function<void(bool)>;
 
+    template <typename T, std::size_t Count>
+    void addOpaqueDiagnosticCounts(std::array<T, Count>& destination,
+                                   const std::array<T, Count>& source) noexcept
+    {
+        for (std::size_t index = 0; index < Count; ++index)
+        {
+            if constexpr (std::is_integral_v<T>) destination[index] += source[index];
+            else addOpaqueDiagnosticCounts(destination[index], source[index]);
+        }
+    }
+
+    struct OpaqueDiagnosticView
+    {
+        ALMetalOpaqueIndirectDiagnostics value;
+        ALMetalOpaqueIndirectDiagnostics& cumulative;
+        ALMetalOpaqueIndirectDiagnostics& last;
+        bool selection_complete = false;
+
+        OpaqueDiagnosticView(ALMetalOpaqueIndirectDiagnostics& totals,
+                             ALMetalOpaqueIndirectDiagnostics& previous) noexcept
+        : cumulative(totals), last(previous) {}
+
+        ~OpaqueDiagnosticView() noexcept
+        {
+            value.no_candidate_views = value.active_views && selection_complete &&
+                value.selected_runs[0] == 0 && value.selected_runs[1] == 0;
+            value.fallback_views = value.last_fallback != ALMetalOpaqueIndirectFallback::none;
+            last = value;
+            cumulative.views += value.views;
+            cumulative.requested_views += value.requested_views;
+            cumulative.active_views += value.active_views;
+            cumulative.completed_views += value.completed_views;
+            cumulative.no_candidate_views += value.no_candidate_views;
+            cumulative.fallback_views += value.fallback_views;
+            addOpaqueDiagnosticCounts(cumulative.gate_views, value.gate_views);
+            addOpaqueDiagnosticCounts(cumulative.input_draws, value.input_draws);
+            addOpaqueDiagnosticCounts(cumulative.excluded_draws, value.excluded_draws);
+            addOpaqueDiagnosticCounts(cumulative.run_count, value.run_count);
+            for (std::size_t family = 0; family < value.family_count; ++family)
+                cumulative.run_max[family] = std::max(cumulative.run_max[family], value.run_max[family]);
+            addOpaqueDiagnosticCounts(cumulative.run_buckets, value.run_buckets);
+            addOpaqueDiagnosticCounts(cumulative.run_splits, value.run_splits);
+            addOpaqueDiagnosticCounts(cumulative.rejected_small_runs, value.rejected_small_runs);
+            addOpaqueDiagnosticCounts(cumulative.rejected_small_draws, value.rejected_small_draws);
+            addOpaqueDiagnosticCounts(cumulative.rejected_budget_runs, value.rejected_budget_runs);
+            addOpaqueDiagnosticCounts(cumulative.rejected_budget_draws, value.rejected_budget_draws);
+            addOpaqueDiagnosticCounts(cumulative.rejected_oversize_runs, value.rejected_oversize_runs);
+            addOpaqueDiagnosticCounts(cumulative.rejected_oversize_draws, value.rejected_oversize_draws);
+            addOpaqueDiagnosticCounts(cumulative.selected_runs, value.selected_runs);
+            addOpaqueDiagnosticCounts(cumulative.selected_draws, value.selected_draws);
+            addOpaqueDiagnosticCounts(cumulative.attempted_packets, value.attempted_packets);
+            addOpaqueDiagnosticCounts(cumulative.attempted_draws, value.attempted_draws);
+            addOpaqueDiagnosticCounts(cumulative.prepared_packets, value.prepared_packets);
+            addOpaqueDiagnosticCounts(cumulative.prepared_draws, value.prepared_draws);
+            addOpaqueDiagnosticCounts(cumulative.executed_runs, value.executed_runs);
+            addOpaqueDiagnosticCounts(cumulative.executed_draws, value.executed_draws);
+            addOpaqueDiagnosticCounts(cumulative.fallback_reasons, value.fallback_reasons);
+            if (value.last_fallback != ALMetalOpaqueIndirectFallback::none)
+            {
+                cumulative.last_fallback = value.last_fallback;
+                cumulative.last_fallback_family = value.last_fallback_family;
+            }
+        }
+    };
+
+    void recordOpaqueRun(ALMetalOpaqueIndirectDiagnostics& diagnostics,
+                         std::size_t family, std::size_t count) noexcept
+    {
+        ++diagnostics.run_count[family];
+        diagnostics.run_max[family] = std::max<std::uint64_t>(diagnostics.run_max[family], count);
+        const std::size_t bucket = count < 64 ? 0 : count < 256 ? 1 :
+            count < 1024 ? 2 : count < 2048 ? 3 :
+            count <= ALMetalShadowIndirectCommands::maximum_draw_count ? 4 : 5;
+        ++diagnostics.run_buckets[family][bucket];
+    }
+
+    ALMetalOpaqueIndirectFallback opaquePreparationFallback(
+        ALMetalShadowPrepareFailure failure) noexcept
+    {
+        switch (failure)
+        {
+            case ALMetalShadowPrepareFailure::completion_tracking:
+                return ALMetalOpaqueIndirectFallback::prepare_completion;
+            case ALMetalShadowPrepareFailure::validation:
+                return ALMetalOpaqueIndirectFallback::prepare_validation;
+            case ALMetalShadowPrepareFailure::retention:
+                return ALMetalOpaqueIndirectFallback::prepare_retention;
+            case ALMetalShadowPrepareFailure::native_allocation:
+                return ALMetalOpaqueIndirectFallback::prepare_native_allocation;
+            case ALMetalShadowPrepareFailure::host_allocation:
+                return ALMetalOpaqueIndirectFallback::host_allocation;
+            case ALMetalShadowPrepareFailure::none:
+            case ALMetalShadowPrepareFailure::unavailable:
+            case ALMetalShadowPrepareFailure::count:
+                return ALMetalOpaqueIndirectFallback::prepare_unavailable;
+        }
+        return ALMetalOpaqueIndirectFallback::prepare_unavailable;
+    }
+
+    void recordOpaqueFallback(ALMetalOpaqueIndirectDiagnostics& diagnostics,
+                              std::size_t family,
+                              ALMetalOpaqueIndirectFallback reason) noexcept
+    {
+        ++diagnostics.fallback_reasons[static_cast<std::size_t>(reason)];
+        diagnostics.last_fallback = reason;
+        diagnostics.last_fallback_family = static_cast<std::uint8_t>(family);
+    }
+
     void notifyCommandSettlement(std::vector<CommandSettlementObserver> observers,
                                 const std::shared_ptr<std::uint64_t>& failures,
                                 bool committed) noexcept
@@ -1802,6 +1910,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     };
     std::vector<std::shared_ptr<ShadowDataSlab>> shadow_data_slabs;
     ALMetalShadowIndirectStats shadow_data_statistics;
+    ALMetalShadowPrepareFailure opaque_failure_for_testing = ALMetalShadowPrepareFailure::none;
+    bool opaque_publication_failure_for_testing = false;
 
     bool publishShadowData(ALMetalCommandBuffer& command, const void* bytes,
                            std::size_t length, ALMetalWorldDataSlice& slice,
@@ -2696,11 +2806,24 @@ ALMetalWorldGBufferRenderer::shadowIndirectStats() const noexcept
         stats.opaque_indirect_runs = data.opaque_indirect_runs;
         stats.opaque_indirect_fallbacks = data.opaque_indirect_fallbacks;
         stats.opaque_indirect_skipped_draws = data.opaque_indirect_skipped_draws;
+        stats.opaque_diagnostics = data.opaque_diagnostics;
+        stats.opaque_last_view = data.opaque_last_view;
         stats.stable_data_slots = mImpl->shadow_data_slabs.size();
         for (const auto& slab : mImpl->shadow_data_slabs)
             stats.stable_data_allocated_bytes += slab->buffer->length();
     }
     return stats;
+}
+
+void ALMetalWorldGBufferRenderer::failNextOpaqueIndirectPreparationForTesting(
+    ALMetalShadowPrepareFailure failure) noexcept
+{
+    if (mImpl) mImpl->opaque_failure_for_testing = failure;
+}
+
+void ALMetalWorldGBufferRenderer::failNextOpaqueIndirectPublicationForTesting() noexcept
+{
+    if (mImpl) mImpl->opaque_publication_failure_for_testing = true;
 }
 
 ALMetalWorldPostDiagnostics
@@ -6883,6 +7006,18 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         mImpl->shadow_indirect && mImpl->shadow_indirect->supported();
     const bool opaque_indirect = !use_indirect && scene.opaque_indirect_draws &&
         mImpl->frame_data && mImpl->shadow_indirect && mImpl->shadow_indirect->supported();
+    OpaqueDiagnosticView opaque_view(
+        mImpl->shadow_data_statistics.opaque_diagnostics,
+        mImpl->shadow_data_statistics.opaque_last_view);
+    auto& opaque_diagnostics = opaque_view.value;
+    opaque_diagnostics.views = 1;
+    opaque_diagnostics.requested_views = scene.opaque_indirect_draws;
+    if (!scene.opaque_indirect_draws) ++opaque_diagnostics.gate_views[0];
+    else if (use_indirect) ++opaque_diagnostics.gate_views[1];
+    else if (!mImpl->shadow_indirect || !mImpl->shadow_indirect->supported())
+        ++opaque_diagnostics.gate_views[2];
+    else if (!mImpl->frame_data) ++opaque_diagnostics.gate_views[3];
+    else opaque_diagnostics.active_views = 1;
     if (scene.gpu_visibility && ((scene.visibility_bounds == nullptr) !=
             (scene.visibility_bounds_count == 0) ||
             (scene.visibility_bounds && scene.visibility_bounds_count != scene.batch_count)))
@@ -6911,8 +7046,19 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         const bool query_boundary = query_boundary_index < scene.visibility_query_count &&
             scene.visibility_queries[query_boundary_index].batch_offset == index;
         const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
-        if(scene.opaque_indirect_draws&&!scene.indirect_draws&&!batch.avatar&&!batch.terrain&&
-           batch.coverage==ALMetalWorldSpotShadowCoverage::opaque)++opaque_considered;
+        if (scene.opaque_indirect_draws && !scene.indirect_draws)
+        {
+            if (!batch.avatar && !batch.terrain &&
+                batch.coverage == ALMetalWorldSpotShadowCoverage::opaque)
+                ++opaque_considered;
+            if (batch.terrain) ++opaque_diagnostics.excluded_draws[2];
+            else if (batch.avatar) ++opaque_diagnostics.excluded_draws[1];
+            else if (batch.coverage != ALMetalWorldSpotShadowCoverage::opaque)
+                ++opaque_diagnostics.excluded_draws[0];
+            else if (batch.skin_palette && !batch.skinPaletteRecord())
+                ++opaque_diagnostics.excluded_draws[3];
+            else ++opaque_diagnostics.input_draws[batch.skin_palette ? 1 : 0];
+        }
         if (batch.hasBorrowedInputs() && !scene.source_owner)
         {
             setError(error, "Metal borrowed shadow inputs require an aggregate source owner");
@@ -7205,6 +7351,11 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             }
             else
             {
+                if (opaque_indirect && !bulk_runs.empty())
+                {
+                    const bool gap = bulk_runs.back().first + bulk_runs.back().count != index;
+                    ++opaque_diagnostics.run_splits[query_boundary ? 0 : gap ? 2 : 1];
+                }
                 bulk_runs.push_back({index, 1, 0, batch.double_sided});
             }
         }
@@ -7224,12 +7375,29 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     std::size_t bulk_draw_count = 0;
     std::erase_if(bulk_runs, [&](ShadowRun& run)
     {
+        if (opaque_indirect)
+        {
+            recordOpaqueRun(opaque_diagnostics, 0, run.count);
+            if (run.count < minimum_opaque_indirect_run)
+            {
+                ++opaque_diagnostics.rejected_small_runs[0];
+                opaque_diagnostics.rejected_small_draws[0] += run.count;
+            }
+        }
         // Keep short or oversized runs scalar. Never change caster membership
         // or reorder draws across alpha, avatar, terrain or culling boundaries.
         if (run.count < minimum_bulk_run ||
             run.count > ALMetalShadowIndirectCommands::maximum_draw_count -
                 bulk_draw_count)
         {
+            if (opaque_indirect && run.count >= minimum_opaque_indirect_run)
+            {
+                auto& runs = run.count > ALMetalShadowIndirectCommands::maximum_draw_count
+                    ? opaque_diagnostics.rejected_oversize_runs : opaque_diagnostics.rejected_budget_runs;
+                auto& draws = run.count > ALMetalShadowIndirectCommands::maximum_draw_count
+                    ? opaque_diagnostics.rejected_oversize_draws : opaque_diagnostics.rejected_budget_draws;
+                ++runs[0]; draws[0] += run.count;
+            }
             return true;
         }
         run.command_first = bulk_draw_count;
@@ -7247,7 +7415,12 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     {
         std::erase_if(bulk_runs,[&](const ShadowRun& run) {
             if(run.count>=minimum_opaque_indirect_run)
-            {opaque_static_runs.push_back(run);opaque_static_count+=run.count;return true;}
+            {
+                opaque_static_runs.push_back(run);opaque_static_count+=run.count;
+                ++opaque_diagnostics.selected_runs[0];
+                opaque_diagnostics.selected_draws[0] += run.count;
+                return true;
+            }
             return !scene.bulk_draws;
         });
         bulk_draw_count=0;
@@ -7355,7 +7528,9 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     std::unique_ptr<ALMetalShadowIndirectCommands::Batch> opaque_static_batch;
     std::uint64_t coalesced_draws = 0;
     const auto prepare_static = [&](std::vector<ShadowRun>& runs,std::size_t draw_count,
-                                    bool indirect,bool stable) -> std::unique_ptr<ALMetalShadowIndirectCommands::Batch>
+                                    bool indirect,bool stable,
+                                    ALMetalShadowPrepareFailure* preparation_failure = nullptr,
+                                    bool* publication_failure = nullptr) -> std::unique_ptr<ALMetalShadowIndirectCommands::Batch>
     {
         // One immutable slab replaces per-draw arena publication. Each command
         // binds its 80-byte, 16-byte-aligned record directly; the frame arena
@@ -7413,9 +7588,15 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             run.command_count = draws.size() - run.command_first;
         }
         ALMetalWorldDataSlice slice;
+        if (publication_failure && std::exchange(mImpl->opaque_publication_failure_for_testing, false))
+        {
+            *publication_failure = true;
+            return nullptr;
+        }
         if (!mImpl->publishShadowData(*command, constants.data(),
                 constants.size() * sizeof(constants.front()), slice, stable, error))
         {
+            if (publication_failure) *publication_failure = true;
             return nullptr;
         }
         for (std::size_t n = 0; n < draws.size(); ++n)
@@ -7423,9 +7604,16 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             draws[n].constants = slice.buffer;
             draws[n].constant_offset = slice.offset + n * sizeof(constants.front());
         }
+        if (preparation_failure && mImpl->opaque_failure_for_testing != ALMetalShadowPrepareFailure::none)
+        {
+            *preparation_failure = std::exchange(mImpl->opaque_failure_for_testing,
+                                                ALMetalShadowPrepareFailure::none);
+            return nullptr;
+        }
         return indirect
-            ? mImpl->shadow_indirect->prepare(*command, draws, error, use_indirect&&scene.gpu_visibility)
-            : mImpl->shadow_indirect->prepareDirect(*command, draws, error);
+            ? mImpl->shadow_indirect->prepare(*command, draws, error,
+                use_indirect&&scene.gpu_visibility, preparation_failure)
+            : mImpl->shadow_indirect->prepareDirect(*command, draws, error, preparation_failure);
     };
     if (command && bulk_draw_count != 0)
     {
@@ -7438,14 +7626,36 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     }
     if (command && opaque_static_count)
     {
-        opaque_static_batch=prepare_static(opaque_static_runs,opaque_static_count,true,true);
+        ++opaque_diagnostics.attempted_packets[0];
+        opaque_diagnostics.attempted_draws[0] += opaque_static_count;
+        ALMetalShadowPrepareFailure preparation_failure = ALMetalShadowPrepareFailure::none;
+        bool publication_failure = false;
+        try
+        {
+            opaque_static_batch = prepare_static(opaque_static_runs, opaque_static_count,
+                true, true, &preparation_failure, &publication_failure);
+        }
+        catch (const std::bad_alloc&)
+        {
+            preparation_failure = ALMetalShadowPrepareFailure::host_allocation;
+        }
         if(opaque_static_batch)
+        {
             mImpl->shadow_data_statistics.opaque_indirect_prepared_draws+=opaque_static_count;
+            ++opaque_diagnostics.prepared_packets[0];
+            opaque_diagnostics.prepared_draws[0] += opaque_static_batch->drawCount();
+        }
         else
         {
             // Optional command-storage pressure never changes membership.
             // These original source records remain in the scalar loop below.
             ++mImpl->shadow_data_statistics.opaque_indirect_fallbacks;
+            recordOpaqueFallback(opaque_diagnostics, 0, publication_failure
+                ? ALMetalOpaqueIndirectFallback::data_publication
+                : opaquePreparationFallback(preparation_failure));
+            // The optional failure is retained as a typed reason. Successful
+            // ordinary rendering must not leak this stale error to its caller.
+            if (error) error->clear();
             opaque_static_runs.clear();opaque_static_count=0;
         }
     }
@@ -7549,125 +7759,202 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                 extended_runs.back().double_sided == batch.double_sided &&
                 extended_runs.back().material_family == family)
                 ++extended_runs.back().count;
-            else extended_runs.push_back({i, 1, 0, rigged, covered, batch.double_sided, family});
+            else
+            {
+                if (opaque_indirect && !extended_runs.empty())
+                {
+                    const bool gap = extended_runs.back().first + extended_runs.back().count != i;
+                    ++opaque_diagnostics.run_splits[boundary ? 0 : gap ? 2 : 1];
+                }
+                extended_runs.push_back({i, 1, 0, rigged, covered, batch.double_sided, family});
+            }
         }
         std::size_t count = 0;
         std::erase_if(extended_runs, [&](const auto& run) {
-            if (run.count < (opaque_indirect?minimum_opaque_indirect_run:minimum_bulk_run) || run.count >
-                ALMetalShadowIndirectCommands::maximum_draw_count - count) return true;
+            if (opaque_indirect) recordOpaqueRun(opaque_diagnostics, 1, run.count);
+            if (run.count < (opaque_indirect?minimum_opaque_indirect_run:minimum_bulk_run))
+            {
+                if (opaque_indirect)
+                {
+                    ++opaque_diagnostics.rejected_small_runs[1];
+                    opaque_diagnostics.rejected_small_draws[1] += run.count;
+                }
+                return true;
+            }
+            if (run.count > ALMetalShadowIndirectCommands::maximum_draw_count - count)
+            {
+                if (opaque_indirect)
+                {
+                    auto& runs = run.count > ALMetalShadowIndirectCommands::maximum_draw_count
+                        ? opaque_diagnostics.rejected_oversize_runs : opaque_diagnostics.rejected_budget_runs;
+                    auto& draws = run.count > ALMetalShadowIndirectCommands::maximum_draw_count
+                        ? opaque_diagnostics.rejected_oversize_draws : opaque_diagnostics.rejected_budget_draws;
+                    ++runs[1]; draws[1] += run.count;
+                }
+                return true;
+            }
             count += run.count;
+            if (opaque_indirect)
+            {
+                ++opaque_diagnostics.selected_runs[1];
+                opaque_diagnostics.selected_draws[1] += run.count;
+            }
             return false;
         });
         if (count < (opaque_indirect?minimum_opaque_indirect_run:minimum_bulk_draws)) extended_runs.clear();
         if (!extended_runs.empty())
         {
-            std::vector<ALMetalShadowIndirectDraw> draws;
-            std::vector<std::uint8_t> constants;
-            struct PendingPalette {const ALMetalAttachmentPaletteRecord* record;std::size_t offset=0;};
-            std::vector<PendingPalette> palettes;
-            std::unordered_map<const ALMetalAttachmentPaletteRecord*,std::size_t> palette_indices;
-            draws.reserve(count);
-            constants.reserve(count * (sizeof(WorldSpotShadowConstants) + 16));
-            for (auto& run : extended_runs)
+            if (opaque_indirect)
             {
-                run.command_first = draws.size();
-                for (std::size_t n = 0; n < run.count; ++n)
+                ++opaque_diagnostics.attempted_packets[1];
+                opaque_diagnostics.attempted_draws[1] += count;
+            }
+            try
+            {
+                std::vector<ALMetalShadowIndirectDraw> draws;
+                std::vector<std::uint8_t> constants;
+                struct PendingPalette {const ALMetalAttachmentPaletteRecord* record;std::size_t offset=0;};
+                std::vector<PendingPalette> palettes;
+                std::unordered_map<const ALMetalAttachmentPaletteRecord*,std::size_t> palette_indices;
+                draws.reserve(count);
+                constants.reserve(count * (sizeof(WorldSpotShadowConstants) + 16));
+                for (auto& run : extended_runs)
                 {
-                    const auto& batch = scene.batches[run.first + n];
-                    ALMetalShadowIndirectDraw draw;
-                    draw.positions = batch.vertices; draw.indices = batch.indices;
-                    draw.position_offset = batch.position_offset; draw.index_offset = batch.index_offset;
-                    draw.vertex_count = batch.vertex_count; draw.index_count = batch.index_count;
-                    draw.index_type = batch.index_type;
-                    draw.constant_offset = constants.size();
-                    WorldOpaqueShadowConstants opaque{};
-                    WorldSpotShadowConstants covered{};
-                    const void* bytes = &opaque;
-                    draw.constant_length = sizeof(opaque);
-                    std::memcpy(opaque.modelview_projection, batch.modelview_projection, sizeof(opaque.modelview_projection));
-                    opaque.config[0] = scene.reverse_z;
-                    if (run.covered)
+                    run.command_first = draws.size();
+                    for (std::size_t n = 0; n < run.count; ++n)
                     {
-                        std::memcpy(covered.modelview_projection, batch.modelview_projection, sizeof(covered.modelview_projection));
-                        std::memcpy(covered.texture_matrix, batch.texture_matrix, sizeof(covered.texture_matrix));
-                        std::memcpy(covered.pbr_base_color_transforms, batch.coverageData().pbr_base_color_transforms.data(), sizeof(covered.pbr_base_color_transforms));
-                        std::memcpy(covered.alpha_cutoffs, batch.coverageData().alpha_cutoffs.data(), sizeof(covered.alpha_cutoffs));
-                        covered.config[0] = scene.reverse_z;
-                        covered.config[1] = static_cast<std::uint32_t>(batch.coverage);
-                        covered.config[2] = batch.texture_count; covered.config[3] = scene.height;
-                        bytes = &covered; draw.constant_length = sizeof(covered);
-                        draw.vertex_bindings[0] = {batch.vertices, batch.texcoord_offset, std::size_t(batch.vertex_count) * 8};
-                        draw.vertex_bindings[1] = {batch.vertices, batch.color_offset, std::size_t(batch.vertex_count) * 4};
-                        const auto* table = shadow_material_pass->argumentBuffer(material_requests[run.first + n]);
-                        draw.fragment_bindings[1] = {table, 0, table->length()};
-                    }
-                    const auto* begin = static_cast<const std::uint8_t*>(bytes);
-                    constants.insert(constants.end(), begin, begin + draw.constant_length);
-                    if (run.rigged)
-                    {
-                        ALMetalWorldDataSlice palette;
-                        const auto* palette_record = batch.skinPaletteRecord();
-                        const bool pending = (scene.stable_shadow_data||opaque_indirect) && palette_record;
-                        if (pending)
+                        const auto& batch = scene.batches[run.first + n];
+                        ALMetalShadowIndirectDraw draw;
+                        draw.positions = batch.vertices; draw.indices = batch.indices;
+                        draw.position_offset = batch.position_offset; draw.index_offset = batch.index_offset;
+                        draw.vertex_count = batch.vertex_count; draw.index_count = batch.index_count;
+                        draw.index_type = batch.index_type;
+                        draw.constant_offset = constants.size();
+                        WorldOpaqueShadowConstants opaque{};
+                        WorldSpotShadowConstants covered{};
+                        const void* bytes = &opaque;
+                        draw.constant_length = sizeof(opaque);
+                        std::memcpy(opaque.modelview_projection, batch.modelview_projection, sizeof(opaque.modelview_projection));
+                        opaque.config[0] = scene.reverse_z;
+                        if (run.covered)
                         {
-                            const auto [entry,inserted] = palette_indices.emplace(palette_record,palettes.size());
-                            if (inserted) palettes.push_back({palette_record});
-                            palette.offset = entry->second;
-                            palette.length = palette_record->size()*sizeof(float);
+                            std::memcpy(covered.modelview_projection, batch.modelview_projection, sizeof(covered.modelview_projection));
+                            std::memcpy(covered.texture_matrix, batch.texture_matrix, sizeof(covered.texture_matrix));
+                            std::memcpy(covered.pbr_base_color_transforms, batch.coverageData().pbr_base_color_transforms.data(), sizeof(covered.pbr_base_color_transforms));
+                            std::memcpy(covered.alpha_cutoffs, batch.coverageData().alpha_cutoffs.data(), sizeof(covered.alpha_cutoffs));
+                            covered.config[0] = scene.reverse_z;
+                            covered.config[1] = static_cast<std::uint32_t>(batch.coverage);
+                            covered.config[2] = batch.texture_count; covered.config[3] = scene.height;
+                            bytes = &covered; draw.constant_length = sizeof(covered);
+                            draw.vertex_bindings[0] = {batch.vertices, batch.texcoord_offset, std::size_t(batch.vertex_count) * 8};
+                            draw.vertex_bindings[1] = {batch.vertices, batch.color_offset, std::size_t(batch.vertex_count) * 4};
+                            const auto* table = shadow_material_pass->argumentBuffer(material_requests[run.first + n]);
+                            draw.fragment_bindings[1] = {table, 0, table->length()};
                         }
-                        const bool published = pending || (palette_record
-                            ? mImpl->frame_data->publishPaletteRecord(*command, batch.skinPaletteRecord(), palette, error)
-                            : mImpl->frame_data->publish(*command, batch.skin_palette,
-                                batch.skin_palette_float_count * sizeof(float), palette, error));
-                        if (!published) { mImpl->finishCommandBuffer(owned_command, false, error); return false; }
-                        const auto slot = run.covered ? 2u : 0u;
-                        draw.vertex_bindings[slot] = {palette.buffer, palette.offset, palette.length};
-                        draw.vertex_bindings[slot + 1] = {batch.vertices, batch.weight_offset, std::size_t(batch.vertex_count) * 16};
-                        draw.vertex_bindings[slot + 2] = {nullptr, constants.size(), sizeof(std::uint32_t)};
-                        const auto* joint_bytes = reinterpret_cast<const std::uint8_t*>(&batch.skin_joint_count);
-                        constants.insert(constants.end(), joint_bytes, joint_bytes + sizeof(batch.skin_joint_count));
-                        constants.resize((constants.size() + 15) & ~std::size_t(15));
+                        const auto* begin = static_cast<const std::uint8_t*>(bytes);
+                        constants.insert(constants.end(), begin, begin + draw.constant_length);
+                        if (run.rigged)
+                        {
+                            ALMetalWorldDataSlice palette;
+                            const auto* palette_record = batch.skinPaletteRecord();
+                            const bool pending = (scene.stable_shadow_data||opaque_indirect) && palette_record;
+                            if (pending)
+                            {
+                                const auto [entry,inserted] = palette_indices.emplace(palette_record,palettes.size());
+                                if (inserted) palettes.push_back({palette_record});
+                                palette.offset = entry->second;
+                                palette.length = palette_record->size()*sizeof(float);
+                            }
+                            const bool published = pending || (palette_record
+                                ? mImpl->frame_data->publishPaletteRecord(*command, batch.skinPaletteRecord(), palette, error)
+                                : mImpl->frame_data->publish(*command, batch.skin_palette,
+                                    batch.skin_palette_float_count * sizeof(float), palette, error));
+                            if (!published) { mImpl->finishCommandBuffer(owned_command, false, error); return false; }
+                            const auto slot = run.covered ? 2u : 0u;
+                            draw.vertex_bindings[slot] = {palette.buffer, palette.offset, palette.length};
+                            draw.vertex_bindings[slot + 1] = {batch.vertices, batch.weight_offset, std::size_t(batch.vertex_count) * 16};
+                            draw.vertex_bindings[slot + 2] = {nullptr, constants.size(), sizeof(std::uint32_t)};
+                            const auto* joint_bytes = reinterpret_cast<const std::uint8_t*>(&batch.skin_joint_count);
+                            constants.insert(constants.end(), joint_bytes, joint_bytes + sizeof(batch.skin_joint_count));
+                            constants.resize((constants.size() + 15) & ~std::size_t(15));
+                        }
+                        draws.push_back(draw);
                     }
-                    draws.push_back(draw);
+                }
+                for (auto& palette : palettes)
+                {
+                    palette.offset = constants.size();
+                    const auto* bytes = reinterpret_cast<const std::uint8_t*>(palette.record->data());
+                    constants.insert(constants.end(),bytes,bytes+palette.record->size()*sizeof(float));
+                    constants.resize((constants.size()+15)&~std::size_t(15));
+                }
+                ALMetalWorldDataSlice slab;
+                const bool publication_failure = opaque_indirect &&
+                    std::exchange(mImpl->opaque_publication_failure_for_testing, false);
+                const bool published = !publication_failure &&
+                    mImpl->publishShadowData(*command, constants.data(), constants.size(), slab,
+                        scene.stable_shadow_data || opaque_indirect, error);
+                if (!published)
+                {
+                    if (!opaque_indirect)
+                    { mImpl->finishCommandBuffer(owned_command, false, error); return false; }
+                    ++mImpl->shadow_data_statistics.opaque_indirect_fallbacks;
+                    recordOpaqueFallback(opaque_diagnostics, 1, ALMetalOpaqueIndirectFallback::data_publication);
+                    if (error) error->clear();
+                    extended_runs.clear();
+                }
+                else
+                {
+                    mImpl->shadow_data_statistics.stable_palette_copies += palettes.size();
+                    for (auto& draw : draws)
+                    {
+                        draw.constants = slab.buffer; draw.constant_offset += slab.offset;
+                        if (draw.constant_length == sizeof(WorldSpotShadowConstants))
+                            draw.fragment_bindings[0] = {slab.buffer, draw.constant_offset, draw.constant_length};
+                        for (auto& binding : draw.vertex_bindings)
+                            if (!binding.buffer && binding.length)
+                            {
+                                // Only the 4-byte joint-count scalar and certified
+                                // palettes use deferred bindings. Every palette has
+                                // at least one joint (64 bytes), so they are distinct.
+                                if (binding.length > sizeof(std::uint32_t))
+                                    binding.offset = palettes[binding.offset].offset;
+                                binding.buffer = slab.buffer; binding.offset += slab.offset;
+                            }
+                    }
+                    ALMetalShadowPrepareFailure preparation_failure = ALMetalShadowPrepareFailure::none;
+                    if (opaque_indirect && mImpl->opaque_failure_for_testing != ALMetalShadowPrepareFailure::none)
+                        preparation_failure = std::exchange(mImpl->opaque_failure_for_testing, ALMetalShadowPrepareFailure::none);
+                    else
+                        extended_batch = mImpl->shadow_indirect->prepare(*command, draws, error,
+                            use_indirect && scene.gpu_visibility, &preparation_failure);
+                    if (!extended_batch)
+                    {
+                        if(!opaque_indirect){mImpl->finishCommandBuffer(owned_command,false,error);return false;}
+                        ++mImpl->shadow_data_statistics.opaque_indirect_fallbacks;
+                        recordOpaqueFallback(opaque_diagnostics, 1, opaquePreparationFallback(preparation_failure));
+                        if (error) error->clear();
+                        extended_runs.clear();
+                    }
+                    else if (opaque_indirect)
+                    {
+                        mImpl->shadow_data_statistics.opaque_indirect_prepared_draws += count;
+                        ++opaque_diagnostics.prepared_packets[1];
+                        opaque_diagnostics.prepared_draws[1] += extended_batch->drawCount();
+                    }
                 }
             }
-            for (auto& palette : palettes)
+            catch (const std::bad_alloc&)
             {
-                palette.offset = constants.size();
-                const auto* bytes = reinterpret_cast<const std::uint8_t*>(palette.record->data());
-                constants.insert(constants.end(),bytes,bytes+palette.record->size()*sizeof(float));
-                constants.resize((constants.size()+15)&~std::size_t(15));
-            }
-            ALMetalWorldDataSlice slab;
-            if (!mImpl->publishShadowData(*command, constants.data(), constants.size(), slab, scene.stable_shadow_data||opaque_indirect, error))
-            { mImpl->finishCommandBuffer(owned_command, false, error); return false; }
-            mImpl->shadow_data_statistics.stable_palette_copies += palettes.size();
-            for (auto& draw : draws)
-            {
-                draw.constants = slab.buffer; draw.constant_offset += slab.offset;
-                if (draw.constant_length == sizeof(WorldSpotShadowConstants))
-                    draw.fragment_bindings[0] = {slab.buffer, draw.constant_offset, draw.constant_length};
-                for (auto& binding : draw.vertex_bindings)
-                    if (!binding.buffer && binding.length)
-                    {
-                        // Only the 4-byte joint-count scalar and certified
-                        // palettes use deferred bindings. Every palette has
-                        // at least one joint (64 bytes), so they are distinct.
-                        if (binding.length > sizeof(std::uint32_t))
-                            binding.offset = palettes[binding.offset].offset;
-                        binding.buffer = slab.buffer; binding.offset += slab.offset;
-                    }
-            }
-            extended_batch = mImpl->shadow_indirect->prepare(*command, draws, error, use_indirect&&scene.gpu_visibility);
-            if (!extended_batch)
-            {
-                if(!opaque_indirect){mImpl->finishCommandBuffer(owned_command,false,error);return false;}
+                if (!opaque_indirect) throw;
                 ++mImpl->shadow_data_statistics.opaque_indirect_fallbacks;
+                recordOpaqueFallback(opaque_diagnostics, 1, ALMetalOpaqueIndirectFallback::host_allocation);
+                if (error) error->clear();
                 extended_runs.clear();
             }
-            else if(opaque_indirect)mImpl->shadow_data_statistics.opaque_indirect_prepared_draws+=count;
         }
     }
+    opaque_view.selection_complete = command != nullptr;
     if (command && use_indirect && scene.gpu_visibility)
     {
         const auto prepare_visibility = [&](ALMetalShadowIndirectCommands::Batch& prepared,
@@ -7867,7 +8154,13 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             encoded=encoder->setCullMode(run.double_sided?ALMetalCullMode::none:ALMetalCullMode::back,error)&&
                 encoder->setPipeline(*mImpl->spot_shadow_indirect_pipelines[0],error)&&
                 mImpl->shadow_indirect->execute(*encoder,*opaque_static_batch,run.command_first,run.command_count,error);
-            if(encoded){opaque_encoded+=run.count;++mImpl->shadow_data_statistics.opaque_indirect_runs;}
+            if (encoded)
+            {
+                opaque_encoded += run.count;
+                ++mImpl->shadow_data_statistics.opaque_indirect_runs;
+                ++opaque_diagnostics.executed_runs[0];
+                opaque_diagnostics.executed_draws[0] += run.count;
+            }
             index+=run.count-1;continue;
         }
         if (next_extended_run < extended_runs.size() && extended_runs[next_extended_run].first == index)
@@ -7879,7 +8172,13 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             encoded = encoder->setCullMode(run.double_sided ? ALMetalCullMode::none : ALMetalCullMode::back, error) &&
                 encoder->setPipeline(*pipeline, error) &&
                 mImpl->shadow_indirect->execute(*encoder, *extended_batch, run.command_first, run.count, error);
-            if(encoded&&opaque_indirect){opaque_encoded+=run.count;++mImpl->shadow_data_statistics.opaque_indirect_runs;}
+            if (encoded && opaque_indirect)
+            {
+                opaque_encoded += run.count;
+                ++mImpl->shadow_data_statistics.opaque_indirect_runs;
+                ++opaque_diagnostics.executed_runs[1];
+                opaque_diagnostics.executed_draws[1] += run.count;
+            }
             index += run.count - 1;
             continue;
         }
@@ -8166,6 +8465,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     {
         *visibility_results = std::move(query_results);
     }
+    opaque_diagnostics.completed_views = 1;
     return true;
 }
 

@@ -45,8 +45,103 @@ struct ALMetalShadowIndirectDraw
     std::array<ALMetalShadowIndirectBinding, 2> fragment_bindings{};
 };
 
+// Typed preparation failures deliberately contain no native error text or
+// resource identities. The optional opaque route can preserve direct rendering
+// while recording the exact failed stage in its periodic diagnostics.
+enum class ALMetalShadowPrepareFailure : std::uint8_t
+{
+    none,
+    unavailable,
+    completion_tracking,
+    validation,
+    retention,
+    native_allocation,
+    host_allocation,
+    count
+};
+
+enum class ALMetalOpaqueIndirectFallback : std::uint8_t
+{
+    none,
+    data_publication,
+    prepare_unavailable,
+    prepare_completion,
+    prepare_validation,
+    prepare_retention,
+    prepare_native_allocation,
+    host_allocation,
+    count
+};
+
+constexpr const char* alMetalOpaqueIndirectFallbackName(
+    ALMetalOpaqueIndirectFallback reason) noexcept
+{
+    switch (reason)
+    {
+        case ALMetalOpaqueIndirectFallback::none: return "none";
+        case ALMetalOpaqueIndirectFallback::data_publication: return "data_publication";
+        case ALMetalOpaqueIndirectFallback::prepare_unavailable: return "prepare_unavailable";
+        case ALMetalOpaqueIndirectFallback::prepare_completion: return "prepare_completion";
+        case ALMetalOpaqueIndirectFallback::prepare_validation: return "prepare_validation";
+        case ALMetalOpaqueIndirectFallback::prepare_retention: return "prepare_retention";
+        case ALMetalOpaqueIndirectFallback::prepare_native_allocation: return "prepare_native_allocation";
+        case ALMetalOpaqueIndirectFallback::host_allocation: return "host_allocation";
+        case ALMetalOpaqueIndirectFallback::count: break;
+    }
+    return "invalid";
+}
+
+struct ALMetalOpaqueIndirectDiagnostics
+{
+    // Family arrays: 0=static opaque, 1=certified opaque attachment.
+    static constexpr std::size_t family_count = 2;
+    static constexpr std::size_t bucket_count = 6;
+    static constexpr std::size_t fallback_count =
+        static_cast<std::size_t>(ALMetalOpaqueIndirectFallback::count);
+    std::uint64_t views = 0;
+    std::uint64_t requested_views = 0;
+    std::uint64_t active_views = 0;
+    // Renderer returned success; this is not an actual GPU-completion count.
+    std::uint64_t completed_views = 0;
+    std::uint64_t no_candidate_views = 0;
+    std::uint64_t fallback_views = 0;
+    // Exclusive gate reasons: disabled, full-indirect route, unsupported,
+    // missing frame arena. Gates are counted before packet selection.
+    std::array<std::uint64_t, 4> gate_views{};
+    std::array<std::uint64_t, family_count> input_draws{};
+    // Exclusive input exclusions: covered, avatar, terrain, raw skin palette.
+    std::array<std::uint64_t, 4> excluded_draws{};
+    std::array<std::uint64_t, family_count> run_count{};
+    std::array<std::uint64_t, family_count> run_max{};
+    // Runs before filtering/budgeting: <64,64..255,256..1023,1024..2047,
+    // 2048..16384,>16384. These describe native records, not source admissions.
+    std::array<std::array<std::uint64_t, bucket_count>, family_count> run_buckets{};
+    // An additional eligible record starts a run after query, state or gap.
+    // A gap includes an intervening excluded caster/family. Exclusive priority
+    // is query, then gap, then state; these are not counts of all scene queries.
+    std::array<std::uint64_t, 3> run_splits{};
+    std::array<std::uint64_t, family_count> rejected_small_runs{};
+    std::array<std::uint64_t, family_count> rejected_small_draws{};
+    std::array<std::uint64_t, family_count> rejected_budget_runs{};
+    std::array<std::uint64_t, family_count> rejected_budget_draws{};
+    std::array<std::uint64_t, family_count> rejected_oversize_runs{};
+    std::array<std::uint64_t, family_count> rejected_oversize_draws{};
+    std::array<std::uint64_t, family_count> selected_runs{};
+    std::array<std::uint64_t, family_count> selected_draws{};
+    std::array<std::uint64_t, family_count> attempted_packets{};
+    std::array<std::uint64_t, family_count> attempted_draws{};
+    std::array<std::uint64_t, family_count> prepared_packets{};
+    std::array<std::uint64_t, family_count> prepared_draws{};
+    std::array<std::uint64_t, family_count> executed_runs{};
+    std::array<std::uint64_t, family_count> executed_draws{};
+    std::array<std::uint64_t, fallback_count> fallback_reasons{};
+    ALMetalOpaqueIndirectFallback last_fallback = ALMetalOpaqueIndirectFallback::none;
+    std::uint8_t last_fallback_family = 0;
+};
+
 struct ALMetalShadowIndirectStats
 {
+    bool indirect_supported = false;
     std::uint64_t slot_allocations = 0;
     std::uint64_t slot_reuses = 0;
     std::uint64_t prepared_draws = 0;
@@ -90,6 +185,8 @@ struct ALMetalShadowIndirectStats
     std::uint64_t opaque_indirect_runs = 0;
     std::uint64_t opaque_indirect_fallbacks = 0;
     std::uint64_t opaque_indirect_skipped_draws = 0;
+    ALMetalOpaqueIndirectDiagnostics opaque_diagnostics;
+    ALMetalOpaqueIndirectDiagnostics opaque_last_view;
 };
 
 // Single-CPU-owner helper. It changes neither draw admission nor render state.
@@ -122,10 +219,14 @@ public:
     ALMetalShadowIndirectCommands& operator=(const ALMetalShadowIndirectCommands&) = delete;
 
     bool supported() const noexcept;
+    // One-shot host-allocation failure after the packet acquired its slot.
+    // Native tests verify release and reuse without an actual OOM condition.
+    void failNextWrapperAllocationForTesting() noexcept;
     std::unique_ptr<Batch> prepare(
         ALMetalCommandBuffer& command,
         std::span<const ALMetalShadowIndirectDraw> draws,
-        std::string* error = nullptr, bool gpu_generated = false);
+        std::string* error = nullptr, bool gpu_generated = false,
+        ALMetalShadowPrepareFailure* failure = nullptr);
     bool execute(ALMetalRenderEncoder& encoder, const Batch& batch,
                  std::size_t first, std::size_t count,
                  std::string* error = nullptr);
@@ -138,7 +239,8 @@ public:
     std::unique_ptr<Batch> prepareDirect(
         ALMetalCommandBuffer& command,
         std::span<const ALMetalShadowIndirectDraw> draws,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        ALMetalShadowPrepareFailure* failure = nullptr);
     bool executeDirect(ALMetalRenderEncoder& encoder, const Batch& batch,
                        std::size_t first, std::size_t count,
                        std::string* error = nullptr);

@@ -30,6 +30,8 @@
 
 #include "../llvocache.h"
 
+#include "almemorybudget.h"
+
 #include "lldir.h"
 #include "../llhudobject.h"
 #include "llregionhandle.h"
@@ -599,6 +601,23 @@ namespace
         CHECK(close_to(factor(10444.8f, 65536.f, cap, 750.f, 2048.f), 0.5f));
         UNSCOPED_INFO("past the cap is still a factor");
         CHECK(factor(2.f * cap, 65536.f, cap, 750.f, 2048.f) == 0.f);
+
+        // Automatic memory policy resolves a finite ceiling before the object
+        // cache consumes it. On this 64 GiB target the observed 15-16.5 GiB
+        // process footprint no longer forces minimum object-retention radii.
+        // This changes the live workload and must remain visible in the census.
+        const auto automatic = ALMemoryBudget::resolveProcessLimitKB(
+            0.0, 64 * ALMemoryBudget::kib_per_gib);
+        const F32 auto_cap_MB = automatic.limit_kb / 1024.f;
+        REQUIRE(auto_cap_MB == 49152.f);
+        CHECK(close_to(factor(15934.45f, 65536.f, auto_cap_MB, 750.f, 2048.f), 1.f));
+        const F32 loaded_factor = factor(16890.92f, 65536.f, auto_cap_MB, 750.f, 2048.f);
+        CHECK(loaded_factor > 0.97f);
+        CHECK(loaded_factor < 1.f);
+        CHECK(close_to(factor(39321.6f, 65536.f, auto_cap_MB, 750.f, 2048.f), 0.f));
+        CHECK(factor(auto_cap_MB, 65536.f, auto_cap_MB, 750.f, 2048.f) == 0.f);
+        // An explicit legacy cap still applies the established tighter policy.
+        CHECK(factor(15934.45f, 65536.f, cap, 750.f, 2048.f) == 0.f);
 
         // settings the wrong way round: the low one is the bound, and the high
         // one is taken as just past it

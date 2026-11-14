@@ -85,6 +85,27 @@ static U32 sFaceWalkCount = 0;
 static U32 sFaceOffScreenCount = 0;
 static U32 sPixelAreaCalcCount = 0;
 
+// Main-thread cumulative create-list work, independent of the repeat-throttled
+// warning logger. A successful create/scaleDown return is not proof of a new
+// physical upload/downscale: callbacks can skip, queue or coalesce that work.
+struct TexturePublicationCensus
+{
+    U64 dequeued = 0;
+    U64 create_attempts = 0;
+    U64 create_returned_true = 0;
+    U64 native_create_retries = 0;
+    U64 redundant_skips = 0;
+    U64 finalized = 0;
+    U64 finer_than_desired = 0;
+    U64 finer_redundant = 0;
+    U64 finer_after_create = 0;
+    U64 scale_down_requested = 0;
+    U64 scale_down_accepted = 0;
+    U64 create_raw_input_bytes = 0;
+    U64 redundant_raw_input_bytes = 0;
+};
+static TexturePublicationCensus sTexturePublicationCensus;
+
 LLViewerTextureList gTextureList;
 
 ETexListType get_element_type(S32 priority)
@@ -855,6 +876,35 @@ void LLViewerTextureList::updateImages(F32 max_time)
     }
 
     updateImagesUpdateStats();
+
+#if LL_DARWIN
+    static LLFrameTimer publication_sample_timer;
+    if (LLImageGL::isMetalTextureAuthority() &&
+        publication_sample_timer.getElapsedTimeF32() >= 10.f)
+    {
+        publication_sample_timer.reset();
+        const auto& stats = sTexturePublicationCensus;
+        LL_INFOS("MetalMemory")
+            << "Native texture publication: dequeued=" << stats.dequeued
+            << " create_attempts=" << stats.create_attempts
+            << " create_returned_true=" << stats.create_returned_true
+            << " native_create_retries=" << stats.native_create_retries
+            << " redundant_skips=" << stats.redundant_skips
+            << " finalized=" << stats.finalized
+            << " finer_than_desired=" << stats.finer_than_desired
+            << " finer_redundant=" << stats.finer_redundant
+            << " finer_after_create=" << stats.finer_after_create
+            << " scale_down_requested=" << stats.scale_down_requested
+            << " scale_down_accepted=" << stats.scale_down_accepted
+            << " create_raw_input_bytes=" << stats.create_raw_input_bytes
+            << " redundant_raw_input_bytes=" << stats.redundant_raw_input_bytes
+            << " create_pending=" << mCreateTextureList.size()
+            << " downscale_pending=" << mDownScaleQueue.size()
+            << " raw_images=" << LLImageRaw::sRawImageCount.load(std::memory_order_relaxed)
+            << " formatted_bytes=" << LLImageFormatted::sGlobalFormattedMemory.load(std::memory_order_relaxed)
+            << LL_ENDL;
+    }
+#endif
 }
 
 void LLViewerTextureList::clearFetchingRequests()
@@ -1210,6 +1260,10 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         }
 
         llassert(imagep->mCreatePending);
+        ++sTexturePublicationCensus.dequeued;
+        const auto* raw_image = imagep->getRawImage();
+        const U64 raw_input_bytes = raw_image
+            ? static_cast<U64>(llmax(raw_image->getDataSize(), 0)) : 0;
 
         // desired discard may change while an image is being decoded. If the texture in VRAM is sufficient
         // for the current desired discard level, skip the texture creation.  This happens more often than it probably
@@ -1217,9 +1271,17 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         bool redundant_load = imagep->hasGPUTexture() && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
 
         bool created = redundant_load;
-        if (!created)
+        if (redundant_load)
         {
+            ++sTexturePublicationCensus.redundant_skips;
+            sTexturePublicationCensus.redundant_raw_input_bytes += raw_input_bytes;
+        }
+        else
+        {
+            ++sTexturePublicationCensus.create_attempts;
+            sTexturePublicationCensus.create_raw_input_bytes += raw_input_bytes;
             created = imagep->createTexture();
+            if (created) ++sTexturePublicationCensus.create_returned_true;
         }
         // The established GL path finalizes a failed create exactly as before.
         // With Metal authoritative there is no fallback object to publish: retain
@@ -1227,6 +1289,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 #if LL_DARWIN
         if (!created && LLImageGL::isMetalTextureAuthority())
         {
+            ++sTexturePublicationCensus.native_create_retries;
             mCreateTextureList.push(imagep);
             break;
         }
@@ -1234,6 +1297,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
         imagep->postCreateTexture();
         imagep->mCreatePending = false;
+        ++sTexturePublicationCensus.finalized;
 
         if (imagep->hasGPUTexture() && imagep->getDiscardLevel() < imagep->getDesiredDiscardLevel() &&
            (imagep->getDesiredDiscardLevel() <= MAX_DISCARD_LEVEL))
@@ -1242,7 +1306,11 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             // necessarily indicate a problem, but if log occurrences excede that of dsiplay_stats: FPS,
             // something has probably gone wrong.
             LL_WARNS_ONCE("Texture") << "Texture will be downscaled immediately after loading." << LL_ENDL;
-            imagep->scaleDown();
+            ++sTexturePublicationCensus.finer_than_desired;
+            if (redundant_load) ++sTexturePublicationCensus.finer_redundant;
+            else ++sTexturePublicationCensus.finer_after_create;
+            ++sTexturePublicationCensus.scale_down_requested;
+            if (imagep->scaleDown()) ++sTexturePublicationCensus.scale_down_accepted;
         }
 
         if (create_timer.getElapsedTimeF32() > max_time)

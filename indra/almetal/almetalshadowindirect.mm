@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -138,6 +139,7 @@ namespace
         const ALMetalDevice* device_wrapper = nullptr;
         id<MTLDevice> device = nil;
         bool supported = false;
+        bool fail_next_wrapper_allocation_for_testing = false;
         std::vector<std::shared_ptr<Slot>> slots;
         std::vector<std::shared_ptr<DirectSlot>> direct_slots;
         std::vector<NativeDraw> scratch;
@@ -316,16 +318,19 @@ struct ALMetalShadowIndirectCommands::Batch::Impl
     std::size_t count = 0;
     bool indirect = true;
     std::vector<ALMetalShadowVisibilityRun> visibility_runs;
+    ~Impl()
+    {
+        // The inner owner also covers failure of the final public Batch
+        // allocation. A completion token still prevents premature GPU reuse.
+        if (slot) slot->leased = false;
+        if (direct_slot) direct_slot->leased = false;
+    }
 };
 
 ALMetalShadowIndirectCommands::Batch::Batch(std::unique_ptr<Impl> impl)
     : mImpl(std::move(impl)) {}
 
-ALMetalShadowIndirectCommands::Batch::~Batch()
-{
-    if (mImpl->slot) mImpl->slot->leased = false;
-    if (mImpl->direct_slot) mImpl->direct_slot->leased = false;
-}
+ALMetalShadowIndirectCommands::Batch::~Batch() = default;
 
 std::size_t ALMetalShadowIndirectCommands::Batch::drawCount() const noexcept
 {
@@ -372,36 +377,55 @@ bool ALMetalShadowIndirectCommands::supported() const noexcept
     return mImpl->pool->supported;
 }
 
+void ALMetalShadowIndirectCommands::failNextWrapperAllocationForTesting() noexcept
+{
+    mImpl->pool->fail_next_wrapper_allocation_for_testing = true;
+}
+
 std::unique_ptr<ALMetalShadowIndirectCommands::Batch>
 ALMetalShadowIndirectCommands::prepare(
     ALMetalCommandBuffer& command,
-    std::span<const ALMetalShadowIndirectDraw> draws, std::string* error, bool gpu_generated)
+    std::span<const ALMetalShadowIndirectDraw> draws, std::string* error, bool gpu_generated,
+    ALMetalShadowPrepareFailure* failure)
+try
 {
+    if (failure) *failure = ALMetalShadowPrepareFailure::none;
     auto& pool = *mImpl->pool;
     if (!pool.supported || !command.nativeHandle() || command.isCommitted() ||
         command.nativeDevice() != (__bridge void*)pool.device ||
         draws.size() > maximum_draw_count)
     {
+        if (failure) *failure = ALMetalShadowPrepareFailure::unavailable;
         setError(error, "Metal shadow indirect preparation is unavailable or invalid");
         return nullptr;
     }
     auto completion = command.completionToken();
     if (!completion)
     {
+        if (failure) *failure = ALMetalShadowPrepareFailure::completion_tracking;
         setError(error, "Metal shadow indirect preparation requires completion tracking");
         return nullptr;
     }
-    if (!validateDraws(pool, draws, error)) return nullptr;
+    if (!validateDraws(pool, draws, error))
+    {
+        if (failure) *failure = ALMetalShadowPrepareFailure::validation;
+        return nullptr;
+    }
     auto batch_impl = std::make_unique<Batch::Impl>();
     batch_impl->owner = mImpl->pool;
     batch_impl->command = (__bridge id<MTLCommandBuffer>)command.nativeHandle();
     batch_impl->count = draws.size();
+    std::uint64_t extended_count = 0;
     if (!draws.empty())
     {
         // useResources declares indirect access but does not retain buffers.
         // Keep the slot pool alive even if its renderer and public lease are
         // destroyed before submission/completion of the prepared command.
-        if (!command.retainUntilCompletion(mImpl->pool, error)) return nullptr;
+        if (!command.retainUntilCompletion(mImpl->pool, error))
+        {
+            if (failure) *failure = ALMetalShadowPrepareFailure::retention;
+            return nullptr;
+        }
         std::shared_ptr<Slot> slot;
         for (const auto& candidate : pool.slots)
         {
@@ -413,7 +437,11 @@ ALMetalShadowIndirectCommands::prepare(
                 slot = candidate;
         }
         if (!slot) slot = makeSlot(pool, draws.size(), error, gpu_generated);
-        if (!slot) return nullptr;
+        if (!slot)
+        {
+            if (failure) *failure = ALMetalShadowPrepareFailure::native_allocation;
+            return nullptr;
+        }
         if (slot->used) ++pool.statistics.slot_reuses;
         slot->visibility.reset();
         slot->used = true;
@@ -430,7 +458,6 @@ ALMetalShadowIndirectCommands::prepare(
             slot->generated_resources.reserve(pool.validated_handles.size());
             for (void* handle : pool.validated_handles)
                 slot->generated_resources.push_back((__bridge id<MTLBuffer>)handle);
-            pool.statistics.gpu_generated_draws += draws.size();
         }
         else
         {
@@ -498,7 +525,7 @@ ALMetalShadowIndirectCommands::prepare(
                 if (slot->resource_set.insert(input.extra_buffers[binding]))
                     slot->resources.push_back(input.extra_buffers[binding]);
             }
-            if (input.binding_mask) ++pool.statistics.extended_prepared_draws;
+            if (input.binding_mask) ++extended_count;
             for (void* handle : {input.positions, input.constants, input.indices})
                 if (slot->resource_set.insert(handle)) slot->resources.push_back(handle);
         }
@@ -519,8 +546,21 @@ ALMetalShadowIndirectCommands::prepare(
         slot->completion = std::move(completion);
         batch_impl->slot = std::move(slot);
     }
+    if (std::exchange(pool.fail_next_wrapper_allocation_for_testing, false))
+        throw std::bad_alloc{};
+    auto result = std::unique_ptr<Batch>(new Batch(std::move(batch_impl)));
     pool.statistics.prepared_draws += draws.size();
-    return std::unique_ptr<Batch>(new Batch(std::move(batch_impl)));
+    pool.statistics.extended_prepared_draws += extended_count;
+    if (gpu_generated) pool.statistics.gpu_generated_draws += draws.size();
+    return result;
+}
+catch (const std::bad_alloc&)
+{
+    if (failure) *failure = ALMetalShadowPrepareFailure::host_allocation;
+    // Do not allocate another diagnostic string while handling allocation
+    // failure. The typed reason remains available to the optional caller.
+    if (error) error->clear();
+    return nullptr;
 }
 
 bool ALMetalShadowIndirectCommands::execute(
@@ -659,23 +699,32 @@ bool ALMetalShadowIndirectCommands::prepareVisibility(
 std::unique_ptr<ALMetalShadowIndirectCommands::Batch>
 ALMetalShadowIndirectCommands::prepareDirect(
     ALMetalCommandBuffer& command,
-    std::span<const ALMetalShadowIndirectDraw> draws, std::string* error)
+    std::span<const ALMetalShadowIndirectDraw> draws, std::string* error,
+    ALMetalShadowPrepareFailure* failure)
+try
 {
+    if (failure) *failure = ALMetalShadowPrepareFailure::none;
     auto& pool = *mImpl->pool;
     if (!command.nativeHandle() || command.isCommitted() ||
         command.nativeDevice() != (__bridge void*)pool.device ||
         draws.size() > maximum_draw_count)
     {
+        if (failure) *failure = ALMetalShadowPrepareFailure::unavailable;
         setError(error, "Metal static shadow preparation requires a compatible uncommitted command");
         return nullptr;
     }
     auto completion = command.completionToken();
     if (!completion)
     {
+        if (failure) *failure = ALMetalShadowPrepareFailure::completion_tracking;
         setError(error, "Metal static shadow preparation requires completion tracking");
         return nullptr;
     }
-    if (!validateDraws(pool, draws, error)) return nullptr;
+    if (!validateDraws(pool, draws, error))
+    {
+        if (failure) *failure = ALMetalShadowPrepareFailure::validation;
+        return nullptr;
+    }
     auto batch_impl = std::make_unique<Batch::Impl>();
     batch_impl->owner = mImpl->pool;
     batch_impl->command = (__bridge id<MTLCommandBuffer>)command.nativeHandle();
@@ -683,7 +732,11 @@ ALMetalShadowIndirectCommands::prepareDirect(
     batch_impl->indirect = false;
     if (!draws.empty())
     {
-        if (!command.retainUntilCompletion(mImpl->pool, error)) return nullptr;
+        if (!command.retainUntilCompletion(mImpl->pool, error))
+        {
+            if (failure) *failure = ALMetalShadowPrepareFailure::retention;
+            return nullptr;
+        }
         std::shared_ptr<DirectSlot> slot;
         for (const auto& candidate : pool.direct_slots)
         {
@@ -711,8 +764,17 @@ ALMetalShadowIndirectCommands::prepareDirect(
         slot->leased = true;
         batch_impl->direct_slot = std::move(slot);
     }
+    if (std::exchange(pool.fail_next_wrapper_allocation_for_testing, false))
+        throw std::bad_alloc{};
+    auto result = std::unique_ptr<Batch>(new Batch(std::move(batch_impl)));
     pool.statistics.direct_prepared_draws += draws.size();
-    return std::unique_ptr<Batch>(new Batch(std::move(batch_impl)));
+    return result;
+}
+catch (const std::bad_alloc&)
+{
+    if (failure) *failure = ALMetalShadowPrepareFailure::host_allocation;
+    if (error) error->clear();
+    return nullptr;
 }
 
 bool ALMetalShadowIndirectCommands::executeDirect(
@@ -798,6 +860,7 @@ bool ALMetalShadowIndirectCommands::executeDirect(
 ALMetalShadowIndirectStats ALMetalShadowIndirectCommands::stats() const noexcept
 {
     auto result = mImpl->pool->statistics;
+    result.indirect_supported = mImpl->pool->supported;
     result.slot_count = mImpl->pool->slots.size();
     result.direct_slot_count = mImpl->pool->direct_slots.size();
     result.visibility_failures = mImpl->pool->visibility ? mImpl->pool->visibility->failures() : 0;

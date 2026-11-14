@@ -76,6 +76,25 @@ static std::atomic<bool> sMetalTextureReported{false};
 static std::atomic<bool> sMetalScaleDownReported{false};
 static std::atomic<bool> sMetalResampleReported{false};
 
+struct MetalPublicationCounters
+{
+    std::atomic<U64> cow_attempts{0};
+    std::atomic<U64> cow_replacements{0};
+    std::atomic<U64> cow_allocation_failures{0};
+    std::atomic<U64> cow_copy_failures{0};
+    std::atomic<U64> cow_retention_failures{0};
+    std::atomic<U64> cow_encoded_mips{0};
+    std::atomic<U64> cow_encoded_bytes{0};
+    std::atomic<U64> scale_down_requests{0};
+    std::atomic<U64> scale_down_successes{0};
+    std::atomic<U64> worker_batch_commits{0};
+    std::atomic<U64> worker_batch_failures{0};
+    std::atomic<U64> worker_uploads{0};
+    std::atomic<U64> immediate_upload_commits{0};
+    std::atomic<U64> immediate_upload_failures{0};
+};
+static MetalPublicationCounters sMetalPublicationCounters;
+
 // The image thread is deliberately one worker. Textures decoded in one queue burst can
 // therefore share a Metal command buffer without locking, while uploads outside this worker
 // retain their immediate-submit behavior. A queued barrier commits the burst after the work
@@ -104,6 +123,9 @@ void flush_worker_metal_upload_batch()
 
     std::string error;
     const bool committed = batch.mCommand->commit(&error);
+    (committed ? sMetalPublicationCounters.worker_batch_commits
+               : sMetalPublicationCounters.worker_batch_failures)
+        .fetch_add(1, std::memory_order_relaxed);
     if (!committed)
     {
         LL_WARNS("Metal") << "Could not commit LLImageGL worker upload batch: "
@@ -201,6 +223,19 @@ void LLImageGL::touchContents()
 // Pending replacement storage is accounted only when it publishes.
 static std::atomic<U64> sMetalTextureBytes{0};
 
+static U64 metal_texture_mip_slice_bytes(const ALMetalTexture& texture,
+                                        U32 mip) noexcept
+{
+    const U64 block_width = llmax<U64>(texture.blockWidth(), 1);
+    const U64 block_height = llmax<U64>(texture.blockHeight(), 1);
+    const U64 blocks_wide =
+        (static_cast<U64>(texture.width(mip)) + block_width - 1) / block_width;
+    const U64 blocks_high =
+        (static_cast<U64>(texture.height(mip)) + block_height - 1) / block_height;
+    return blocks_wide * blocks_high * texture.bytesPerBlock() *
+           llmax<U64>(texture.descriptor().sample_count, 1);
+}
+
 static U64 metal_texture_bytes(const ALMetalTexture& texture) noexcept
 {
     const ALMetalTextureDescriptor& descriptor = texture.descriptor();
@@ -220,19 +255,12 @@ static U64 metal_texture_bytes(const ALMetalTexture& texture) noexcept
             break;
     }
 
-    const U64 block_width = llmax<U64>(texture.blockWidth(), 1);
-    const U64 block_height = llmax<U64>(texture.blockHeight(), 1);
-    const U64 bytes_per_block = texture.bytesPerBlock();
     U64 bytes = 0;
     for (U32 mip = 0; mip < descriptor.mipmap_level_count; ++mip)
     {
-        const U64 blocks_wide =
-            (static_cast<U64>(texture.width(mip)) + block_width - 1) / block_width;
-        const U64 blocks_high =
-            (static_cast<U64>(texture.height(mip)) + block_height - 1) / block_height;
-        bytes += blocks_wide * blocks_high * bytes_per_block;
+        bytes += metal_texture_mip_slice_bytes(texture, mip);
     }
-    return bytes * slices * llmax<U64>(descriptor.sample_count, 1);
+    return bytes * slices;
 }
 #endif
 
@@ -254,6 +282,32 @@ U64 LLImageGL::getDeviceBytesAllocated()
 #else
     return 0;
 #endif
+}
+
+LLImageGL::MetalPublicationStats LLImageGL::metalPublicationStats() noexcept
+{
+    MetalPublicationStats result;
+#if LL_DARWIN
+    const auto load = [](const std::atomic<U64>& counter)
+    {
+        return counter.load(std::memory_order_relaxed);
+    };
+    result.cow_replacements = load(sMetalPublicationCounters.cow_replacements);
+    result.cow_allocation_failures = load(sMetalPublicationCounters.cow_allocation_failures);
+    result.cow_copy_failures = load(sMetalPublicationCounters.cow_copy_failures);
+    result.cow_retention_failures = load(sMetalPublicationCounters.cow_retention_failures);
+    result.cow_encoded_mips = load(sMetalPublicationCounters.cow_encoded_mips);
+    result.cow_encoded_bytes = load(sMetalPublicationCounters.cow_encoded_bytes);
+    result.cow_attempts = load(sMetalPublicationCounters.cow_attempts);
+    result.scale_down_successes = load(sMetalPublicationCounters.scale_down_successes);
+    result.scale_down_requests = load(sMetalPublicationCounters.scale_down_requests);
+    result.worker_batch_commits = load(sMetalPublicationCounters.worker_batch_commits);
+    result.worker_batch_failures = load(sMetalPublicationCounters.worker_batch_failures);
+    result.worker_uploads = load(sMetalPublicationCounters.worker_uploads);
+    result.immediate_upload_commits = load(sMetalPublicationCounters.immediate_upload_commits);
+    result.immediate_upload_failures = load(sMetalPublicationCounters.immediate_upload_failures);
+#endif
+    return result;
 }
 
 //statics
@@ -1593,23 +1647,50 @@ bool LLImageGL::prepareMetalTextureWrite(ALMetalCommandBuffer& command,
     auto& destination = mUploadInFlight ? mPendingMetalTexture : mMetalTexture;
     if (!destination || destination.use_count() == 1) return true;
 
+    sMetalPublicationCounters.cow_attempts.fetch_add(1, std::memory_order_relaxed);
+
     // A queued CPU packet can outlive the LLImageGL publication or its frame.
     // Copy every existing level before a subimage/mipmap write so it observes
     // the original immutable generation, including untouched pixels and mips.
     auto replacement = ALMetalTexture::create(*sImageMetalDevice,
                                                destination->descriptor(), &error);
-    if (!replacement) return false;
+    if (!replacement)
+    {
+        sMetalPublicationCounters.cow_allocation_failures.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+    U64 encoded_mips = 0;
+    U64 encoded_bytes = 0;
+    const auto record_encoded_copies = [&]
+    {
+        sMetalPublicationCounters.cow_encoded_mips.fetch_add(encoded_mips, std::memory_order_relaxed);
+        sMetalPublicationCounters.cow_encoded_bytes.fetch_add(encoded_bytes, std::memory_order_relaxed);
+    };
     for (U32 mip = 0; mip < destination->descriptor().mipmap_level_count; ++mip)
     {
         ALMetalTextureCopy copy;
         copy.source_mip_level = mip;
         copy.destination_mip_level = mip;
         if (!replacement->copyFrom(command, *destination, copy, &error))
+        {
+            record_encoded_copies();
+            sMetalPublicationCounters.cow_copy_failures.fetch_add(1, std::memory_order_relaxed);
             return false;
+        }
+        ++encoded_mips;
+        // Each copy above preserves one slice at this mip. Do not count the
+        // allocation's other array/cube faces as if they were copied too.
+        encoded_bytes += metal_texture_mip_slice_bytes(*destination, mip);
     }
-    if (!command.retainUntilCompletion(destination, &error)) return false;
+    record_encoded_copies();
+    if (!command.retainUntilCompletion(destination, &error))
+    {
+        sMetalPublicationCounters.cow_retention_failures.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
     if (!mUploadInFlight) mMetalTextureBeforeWrite = destination;
     destination = std::move(replacement);
+    sMetalPublicationCounters.cow_replacements.fetch_add(1, std::memory_order_relaxed);
     return true;
 }
 
@@ -1809,6 +1890,7 @@ bool LLImageGL::commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command
         // Borrowed from the image worker's burst. syncMetalToMainThread() attaches the
         // batch completion token to this texture's pending publication.
         ++sWorkerMetalUploadBatch.mEncodedUploads;
+        sMetalPublicationCounters.worker_uploads.fetch_add(1, std::memory_order_relaxed);
         command_buffer = nullptr;
         return true;
     }
@@ -1816,10 +1898,12 @@ bool LLImageGL::commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command
     std::string error;
     if (!command_owner->commit(&error))
     {
+        sMetalPublicationCounters.immediate_upload_failures.fetch_add(1, std::memory_order_relaxed);
         rollbackMetalTextureWrite();
         LL_WARNS("Metal") << "Could not commit LLImageGL Metal upload: " << error << LL_ENDL;
         return false;
     }
+    sMetalPublicationCounters.immediate_upload_commits.fetch_add(1, std::memory_order_relaxed);
     mMetalTextureBeforeWrite.reset();
     command_owner.reset();
     command_buffer = nullptr;
@@ -3368,6 +3452,9 @@ S32 LLImageGL::getStorageInternalFormat() const
 bool LLImageGL::scaleDown(S32 desired_discard)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+#if LL_DARWIN
+    sMetalPublicationCounters.scale_down_requests.fetch_add(1, std::memory_order_relaxed);
+#endif
 
     if (mTarget != GL_TEXTURE_2D
         || mFormatInternal == -1
@@ -3419,6 +3506,7 @@ bool LLImageGL::scaleDown(S32 desired_discard)
     updateMetalTextureAccounting();
     mLastBindTime = sLastFrameTime;
     llassert(!getHasGLTexture());
+    sMetalPublicationCounters.scale_down_successes.fetch_add(1, std::memory_order_relaxed);
     return true;
 #endif
 }

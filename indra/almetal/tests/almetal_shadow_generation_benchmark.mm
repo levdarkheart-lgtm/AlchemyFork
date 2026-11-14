@@ -20,6 +20,7 @@
 #include <memory>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -607,12 +608,30 @@ TEST_CASE("almetal: selective opaque commands preserve mixed covered pixels and 
             const Scenario scenario{4608,3,mixed};
             fixture.frame(scenario,bulk,phase,true);const auto reference=fixture.pixels();
             const auto queries=fixture.last_queries;
+            const auto diagnostic_before=fixture.renderer->shadowIndirectStats();
             const auto candidate=fixture.frame(scenario,bulk,phase,true,false,false,true);
+            const auto diagnostic_after=fixture.renderer->shadowIndirectStats();
             CHECK(fixture.pixels()==reference);CHECK(fixture.last_queries==queries);
             CHECK(candidate.opaque_prepared==Fixture::views*4096);
             CHECK(candidate.opaque_executed==Fixture::views*4096);CHECK(candidate.opaque_runs==Fixture::views*2);
             CHECK(candidate.stable_publications==Fixture::views*2);CHECK(candidate.stable_palettes==Fixture::views*16);
             CHECK(candidate.material_misses==0);CHECK(candidate.material_creates==0);CHECK(candidate.visibility==0);
+            CHECK(diagnostic_after.indirect_supported);
+            const auto& old_diagnostic=diagnostic_before.opaque_diagnostics;
+            const auto& diagnostic=diagnostic_after.opaque_diagnostics;
+            CHECK(diagnostic.active_views-old_diagnostic.active_views==Fixture::views);
+            CHECK(diagnostic.completed_views-old_diagnostic.completed_views==Fixture::views);
+            CHECK(diagnostic.excluded_draws[0]-old_diagnostic.excluded_draws[0]==Fixture::views*512);
+            for(std::size_t family=0;family<2;++family)
+            {
+                CHECK(diagnostic.input_draws[family]-old_diagnostic.input_draws[family]==Fixture::views*2048);
+                CHECK(diagnostic.selected_runs[family]-old_diagnostic.selected_runs[family]==Fixture::views);
+                CHECK(diagnostic.attempted_packets[family]-old_diagnostic.attempted_packets[family]==Fixture::views);
+                CHECK(diagnostic.prepared_packets[family]-old_diagnostic.prepared_packets[family]==Fixture::views);
+                CHECK(diagnostic.executed_draws[family]-old_diagnostic.executed_draws[family]==Fixture::views*2048);
+                CHECK(diagnostic.run_buckets[family][4]-old_diagnostic.run_buckets[family][4]==Fixture::views);
+                CHECK(diagnostic_after.opaque_last_view.run_max[family]==2048);
+            }
         }
         for(unsigned family=0;family<3;++family)
         {
@@ -621,6 +640,7 @@ TEST_CASE("almetal: selective opaque commands preserve mixed covered pixels and 
             const auto candidate=fixture.frame(scenario,bulk,0,true,false,false,true);
             CHECK(fixture.pixels()==reference);CHECK(candidate.opaque_prepared==0);CHECK(candidate.stable_publications==0);
             CHECK(candidate.material_creates==0);CHECK(candidate.material_misses==0);
+            CHECK(fixture.renderer->shadowIndirectStats().opaque_last_view.no_candidate_views==1);
         }
     }
 }
@@ -665,11 +685,207 @@ TEST_CASE("almetal: selective opaque limits and missing certification preserve e
                 CHECK(after.opaque_indirect_prepared_draws==before.opaque_indirect_prepared_draws);
                 CHECK(after.stable_data_publications==before.stable_data_publications);
                 CHECK(after.opaque_indirect_skipped_draws-before.opaque_indirect_skipped_draws==(candidate?count:0));
+                if(candidate)
+                {
+                    const auto& diagnostic=after.opaque_last_view;
+                    CHECK(diagnostic.active_views==1);CHECK(diagnostic.completed_views==1);
+                    CHECK(diagnostic.no_candidate_views==1);CHECK(diagnostic.fallback_views==0);
+                    CHECK(diagnostic.attempted_packets[0]==0);CHECK(diagnostic.attempted_packets[1]==0);
+                    if(kind==0)
+                    {
+                        CHECK(diagnostic.run_max[0]==16385);
+                        CHECK(diagnostic.run_buckets[0][5]==1);
+                        CHECK(diagnostic.rejected_oversize_runs[0]==1);
+                    }
+                    else if(kind==1)
+                    {
+                        CHECK(diagnostic.run_max[0]==1024);
+                        CHECK(diagnostic.run_buckets[0][3]==2);
+                        CHECK(diagnostic.rejected_small_runs[0]==2);
+                        CHECK(diagnostic.run_splits[0]==1);
+                    }
+                    else CHECK(diagnostic.excluded_draws[3]==2048);
+                }
             }
             CHECK(pixels[0]==pixels[1]);CHECK(samples[0]==samples[1]);
             const auto center=Fixture::height/2*Fixture::width+Fixture::width/2;
             CHECK(std::abs(pixels[1][center]-(kind==0?.25f:kind==2?.6f:.5f))<1.e-6f);
         }
+    }
+}
+
+TEST_CASE("almetal: opaque preparation failures retain direct pixels, queries and typed diagnostics",
+          "[almetal][shadow-opaque-only-parity][shadow-opaque-diagnostics]")
+{
+    @autoreleasepool
+    {
+        Fixture fixture;
+        std::uint64_t frame=0;
+        constexpr std::array failures{
+            ALMetalShadowPrepareFailure::unavailable,
+            ALMetalShadowPrepareFailure::completion_tracking,
+            ALMetalShadowPrepareFailure::validation,
+            ALMetalShadowPrepareFailure::retention,
+            ALMetalShadowPrepareFailure::native_allocation,
+            ALMetalShadowPrepareFailure::host_allocation};
+        constexpr std::array reasons{
+            ALMetalOpaqueIndirectFallback::prepare_unavailable,
+            ALMetalOpaqueIndirectFallback::prepare_completion,
+            ALMetalOpaqueIndirectFallback::prepare_validation,
+            ALMetalOpaqueIndirectFallback::prepare_retention,
+            ALMetalOpaqueIndirectFallback::prepare_native_allocation,
+            ALMetalOpaqueIndirectFallback::host_allocation};
+        for(std::size_t family=0;family<2;++family)
+        {
+            CAPTURE(family);
+            std::vector<Batch> batches(2048,fixture.sources[family][0]->prototype());
+            // A retained source deliberately excludes the changing pose.
+            // Supply the current certified pose just as production preparation
+            // does, rather than submitting an unposed rigged prototype.
+            std::shared_ptr<const ALMetalAttachmentPaletteRecord> current_pose;
+            if(family)
+            {
+                std::vector<float> pose(4+Fixture::joints*12,0.f);
+                for(std::size_t joint=0;joint<Fixture::joints;++joint)
+                    pose[4+joint*12]=pose[9+joint*12]=pose[14+joint*12]=1.f;
+                current_pose=ALMetalAttachmentPaletteRecord::create(
+                    pose.data(),pose.size(),Fixture::joints,&fixture.error);
+                INFO(fixture.error);REQUIRE(current_pose);
+            }
+            for(auto& batch:batches)
+            {
+                std::memcpy(batch.modelview_projection,alMetalShadowIdentity.data(),64);
+                if(current_pose)
+                {
+                    batch.skin_palette_record=current_pose;
+                    batch.skin_palette=current_pose->data();
+                    batch.skin_palette_float_count=current_pose->size();
+                    batch.skin_joint_count=current_pose->jointCount();
+                }
+            }
+            std::array<ALMetalWorldVisibilityQuery,2> queries{};
+            for(std::size_t q=0;q<queries.size();++q)
+            {
+                queries[q].batch_offset=q?batches.size():0;
+                queries[q].count_samples=1;
+                std::memcpy(queries[q].modelview_projection,alMetalShadowIdentity.data(),64);
+                queries[q].half_extent[0]=queries[q].half_extent[1]=queries[q].half_extent[2]=.3f;
+            }
+            ALMetalWorldSpotShadowScene scene;
+            scene.batches=batches.data();scene.batch_count=batches.size();
+            scene.width=Fixture::width;scene.height=Fixture::height;
+            scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
+            const auto draw=[&](unsigned slice)
+            {
+                fixture.arena->beginFrame(++frame);
+                std::shared_ptr<ALMetalVisibilityResultBatch> result;
+                const bool rendered=fixture.renderer->renderSpotShadow(
+                    *fixture.target,slice,scene,&fixture.error,&result);
+                INFO(fixture.error);REQUIRE(rendered);
+                REQUIRE(result);
+                std::array<std::uint64_t,2> samples{};
+                for(std::size_t q=0;q<queries.size();++q)
+                    REQUIRE(result->wait(q,samples[q],&fixture.error));
+                std::vector<float> pixels(Fixture::width*Fixture::height);
+                REQUIRE(fixture.target->readback(*fixture.device,0,slice,{},pixels.data(),Fixture::width*sizeof(float),&fixture.error));
+                return std::pair{std::move(pixels),samples};
+            };
+            const auto reference=draw(0);
+            scene.opaque_indirect_draws=true;
+            for(std::size_t stage=0;stage<=failures.size();++stage)
+            {
+                CAPTURE(stage);
+                const bool publication=stage==failures.size();
+                const auto expected=publication?ALMetalOpaqueIndirectFallback::data_publication:reasons[stage];
+                const auto before=fixture.renderer->shadowIndirectStats();
+                if(publication)fixture.renderer->failNextOpaqueIndirectPublicationForTesting();
+                else fixture.renderer->failNextOpaqueIndirectPreparationForTesting(failures[stage]);
+                fixture.error="stale optional failure";
+                const auto fallback=draw(1);
+                CHECK(fixture.error.empty());
+                CHECK(fallback==reference);
+                const auto after=fixture.renderer->shadowIndirectStats();
+                const auto& diagnostic=after.opaque_last_view;
+                CHECK(diagnostic.active_views==1);CHECK(diagnostic.completed_views==1);
+                CHECK(diagnostic.no_candidate_views==0);CHECK(diagnostic.fallback_views==1);
+                CHECK(diagnostic.selected_runs[family]==1);
+                CHECK(diagnostic.attempted_packets[family]==1);
+                CHECK(diagnostic.attempted_draws[family]==2048);
+                CHECK(diagnostic.prepared_packets[family]==0);
+                CHECK(diagnostic.executed_draws[family]==0);
+                CHECK(diagnostic.last_fallback==expected);
+                CHECK(diagnostic.last_fallback_family==family);
+                CHECK(diagnostic.fallback_reasons[static_cast<std::size_t>(expected)]==1);
+                CHECK(after.opaque_indirect_fallbacks==before.opaque_indirect_fallbacks+1);
+                CHECK(after.opaque_indirect_prepared_draws==before.opaque_indirect_prepared_draws);
+                CHECK(after.encoded_records-before.encoded_records==2048);
+                CHECK(draw(2)==reference); // The injected fault is one-shot.
+                const auto& recovered=fixture.renderer->shadowIndirectStats().opaque_last_view;
+                CHECK(recovered.fallback_views==0);CHECK(recovered.prepared_packets[family]==1);
+                CHECK(recovered.executed_runs[family]==1);CHECK(recovered.executed_draws[family]==2048);
+            }
+        }
+        const auto before_reload=fixture.renderer->shadowIndirectStats().opaque_diagnostics;
+        REQUIRE(fixture.renderer->reloadShaders(&fixture.error));
+        const auto after_reload=fixture.renderer->shadowIndirectStats().opaque_diagnostics;
+        CHECK(after_reload.views==before_reload.views);
+        CHECK(after_reload.attempted_packets==before_reload.attempted_packets);
+        CHECK(after_reload.fallback_reasons==before_reload.fallback_reasons);
+        CHECK(after_reload.last_fallback==before_reload.last_fallback);
+    }
+}
+
+TEST_CASE("almetal: opaque diagnostics distinguish disabled, missing-arena and packet-budget selection",
+          "[almetal][shadow-opaque-only-parity][shadow-opaque-diagnostics]")
+{
+    @autoreleasepool
+    {
+        Fixture fixture;std::uint64_t frame=0;
+        std::vector<Batch> batches(32,fixture.sources[0][0]->prototype());
+        for(auto& batch:batches)std::memcpy(batch.modelview_projection,alMetalShadowIdentity.data(),64);
+        ALMetalWorldSpotShadowScene scene;scene.batches=batches.data();scene.batch_count=batches.size();
+        scene.width=Fixture::width;scene.height=Fixture::height;
+        const auto draw=[&]
+        {
+            fixture.arena->beginFrame(++frame);
+            REQUIRE(fixture.renderer->renderSpotShadow(*fixture.target,0,scene,&fixture.error));
+            REQUIRE(fixture.device->waitUntilIdle(&fixture.error));
+            return fixture.renderer->shadowIndirectStats();
+        };
+        auto stats=draw();CHECK(stats.indirect_supported);
+        CHECK(stats.opaque_last_view.gate_views[0]==1);
+        scene.opaque_indirect_draws=true;
+        fixture.renderer->setFrameData({});
+        stats=draw();CHECK(stats.opaque_last_view.gate_views[3]==1);
+        CHECK(stats.opaque_last_view.active_views==0);
+        CHECK(stats.opaque_last_view.attempted_packets[0]==0);
+        fixture.renderer->setFrameData(fixture.arena);
+        scene.indirect_draws=true;
+        stats=draw();CHECK(stats.opaque_last_view.gate_views[1]==1);
+        CHECK(stats.opaque_last_view.active_views==0);
+        scene.indirect_draws=false;
+
+        // Preserve PPD112's current bounded selection policy, but make the
+        // missed 2k run observable instead of confusing it with API failure.
+        batches.assign(16*1024+2048,fixture.sources[0][0]->prototype());
+        for(auto& batch:batches)std::memcpy(batch.modelview_projection,alMetalShadowIdentity.data(),64);
+        scene.batches=batches.data();scene.batch_count=batches.size();
+        std::array<ALMetalWorldVisibilityQuery,16> queries{};
+        for(std::size_t q=0;q<queries.size();++q)
+        {
+            queries[q].batch_offset=(q+1)*1024;
+            std::memcpy(queries[q].modelview_projection,alMetalShadowIdentity.data(),64);
+            queries[q].half_extent[0]=queries[q].half_extent[1]=queries[q].half_extent[2]=.1f;
+        }
+        scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
+        stats=draw();const auto& diagnostic=stats.opaque_last_view;
+        CHECK(diagnostic.completed_views==1);CHECK(diagnostic.no_candidate_views==1);
+        CHECK(diagnostic.run_count[0]==17);CHECK(diagnostic.run_max[0]==2048);
+        CHECK(diagnostic.run_buckets[0][3]==16);CHECK(diagnostic.run_buckets[0][4]==1);
+        CHECK(diagnostic.rejected_small_runs[0]==16);
+        CHECK(diagnostic.rejected_budget_runs[0]==1);CHECK(diagnostic.rejected_budget_draws[0]==2048);
+        CHECK(diagnostic.selected_runs[0]==0);CHECK(diagnostic.attempted_packets[0]==0);
+        CHECK(diagnostic.run_splits[0]==16);CHECK(diagnostic.fallback_views==0);
     }
 }
 

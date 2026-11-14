@@ -2427,6 +2427,7 @@ private:
 };
 
 struct ALMetalShadowIndirectStats;
+enum class ALMetalShadowPrepareFailure : std::uint8_t;
 
 class ALMetalWorldGBufferRenderer final
 {
@@ -2494,6 +2495,11 @@ public:
     std::shared_ptr<const ALMetalCommandCompletion> commandBatchCompletion() const;
     ALMetalRenderTargetPoolStats renderTargetPoolStats() const noexcept;
     ALMetalShadowIndirectStats shadowIndirectStats() const noexcept;
+    // One-shot deterministic fault injection for native fallback tests. It has
+    // no UI/environment setting and is never requested by production callers.
+    void failNextOpaqueIndirectPreparationForTesting(
+        ALMetalShadowPrepareFailure failure) noexcept;
+    void failNextOpaqueIndirectPublicationForTesting() noexcept;
     ALMetalWorldConstantStats constantStats() const noexcept;
     ALMetalWorldPostDiagnostics opaquePostDiagnostics() const noexcept;
 

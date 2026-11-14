@@ -316,6 +316,17 @@ inline void ll_memcpy_nonaliased_aligned_16(char* __restrict dst, const char* __
 class LL_COMMON_API LLMemory
 {
 public:
+    struct MemoryBudgetSnapshot
+    {
+        U32Kilobytes os_available_kb;
+        U32Kilobytes installed_physical_kb;
+        U32Kilobytes process_allocated_kb;
+        U32Kilobytes process_limit_kb;
+        U32Kilobytes process_headroom_kb;
+        U32Kilobytes effective_available_kb;
+        bool automatic_process_limit;
+    };
+
     // Return the resident set size of the current process, in bytes.
     // Return value is zero if not known.
     static U64 getCurrentRSS();
@@ -339,11 +350,12 @@ public:
     // Commit charge is a Windows-only concept, combines page file and ram
     static U32Megabytes getAvailableCommitMemMB();
 #endif
+    // Raw OS availability, never replaced by space under the process policy.
     static U32Kilobytes getAvailableMemKB() ;
-    // The free memory that runs out first: physical, or on Windows the commit
-    // charge when that is the scarcer. Everything that acts on memory pressure
-    // reads this one figure, so the texture bias and the draw-distance factor
-    // escalate in the order they were designed to.
+    // A coherent view of the cached sample; no additional platform query.
+    static MemoryBudgetSnapshot getMemoryBudgetSnapshot();
+    // The first exhausted policy: OS availability, process headroom, or Windows
+    // commit. Texture bias and draw distance use the same effective figure.
     static S32Megabytes getScarcestFreeMemMB();
     static U32Kilobytes getMaxMemKB() ;
     static U32Kilobytes getMaxHeapSizeKB() { return sMaxHeapSizeInKB; }
@@ -359,6 +371,7 @@ private:
     static U32Kilobytes sAllocatedPageSizeInKB ;
 
     static U32Kilobytes sMaxHeapSizeInKB;
+    static bool sMaxHeapSizeAutomatic;
 
     static LLFrameTimer sMemoryCheckTimer;
     static F32 sSysMemoryFactor;

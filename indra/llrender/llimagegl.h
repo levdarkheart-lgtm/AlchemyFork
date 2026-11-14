@@ -100,6 +100,29 @@ public:
     // resources. Returns zero when no native device is active.
     static U64 getDeviceBytesAllocated();
 
+    // Cumulative native publication work. Copy bytes are logical format/mip
+    // bytes encoded into commands, not driver allocation, completed GPU work
+    // or bandwidth. Independent upload-thread counters are sampled without
+    // stopping publication; their snapshot is not a transaction boundary.
+    struct MetalPublicationStats
+    {
+        U64 cow_attempts = 0;
+        U64 cow_replacements = 0;
+        U64 cow_allocation_failures = 0;
+        U64 cow_copy_failures = 0;
+        U64 cow_retention_failures = 0;
+        U64 cow_encoded_mips = 0;
+        U64 cow_encoded_bytes = 0;
+        U64 scale_down_requests = 0;
+        U64 scale_down_successes = 0;
+        U64 worker_batch_commits = 0;
+        U64 worker_batch_failures = 0;
+        U64 worker_uploads = 0;
+        U64 immediate_upload_commits = 0;
+        U64 immediate_upload_failures = 0;
+    };
+    static MetalPublicationStats metalPublicationStats() noexcept;
+
     // Size calculation
     //
     // dataFormatBits/Bytes report the *tight host-side* layout — i.e. the

@@ -515,6 +515,34 @@ struct LLPipeline::MetalWorldSimpleCapture
     static constexpr U32 max_failed_frames = 120;
     static constexpr U32 max_world_ui_probe_attempts = 3;
 
+    struct ShadowSourceDiagnostics
+    {
+        U64 views = 0, admitted_inputs = 0, visited_inputs = 0;
+        U64 key_builds = 0, retained_hits = 0, transient_hits = 0;
+        U64 build_attempts = 0, records_created = 0, key_changes = 0;
+        U64 cache_admitted = 0, cache_declined = 0;
+        U64 families = 0, max_family_inputs = 0;
+        U64 detached_eligible = 0, detached_calls = 0, detached_completed = 0;
+        U64 source_pins = 0, palette_pins = 0, failed_views = 0;
+        U64 capture_wall_ns = 0, max_view_wall_ns = 0;
+
+        void accumulate(const ShadowSourceDiagnostics& value) noexcept
+        {
+            views += value.views; admitted_inputs += value.admitted_inputs;
+            visited_inputs += value.visited_inputs; key_builds += value.key_builds;
+            retained_hits += value.retained_hits; transient_hits += value.transient_hits;
+            build_attempts += value.build_attempts; records_created += value.records_created;
+            key_changes += value.key_changes; cache_admitted += value.cache_admitted;
+            cache_declined += value.cache_declined; families += value.families;
+            max_family_inputs = std::max(max_family_inputs, value.max_family_inputs);
+            detached_eligible += value.detached_eligible;
+            detached_calls += value.detached_calls; detached_completed += value.detached_completed;
+            source_pins += value.source_pins; palette_pins += value.palette_pins;
+            failed_views += value.failed_views; capture_wall_ns += value.capture_wall_ns;
+            max_view_wall_ns = std::max(max_view_wall_ns, value.max_view_wall_ns);
+        }
+    } shadow_source_diagnostics;
+
     struct ShadowSourceLease
     {
         std::vector<std::shared_ptr<const ALMetalShadowSourceRecord>> sources;
@@ -2845,6 +2873,116 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << probe_indirect.early_coalesced_records
                 << ", probe_shadow_covered=" << probe_indirect.covered_coalesced_draws
                 << '/' << probe_indirect.covered_input_draws << " merged/input draws"
+                << LL_ENDL;
+            // Aggregate per owner/packet; no log work is performed per draw.
+            const auto counts = [](const auto& values)
+            {
+                std::ostringstream output;
+                bool first = true;
+                for (const auto value : values)
+                {
+                    if (!first) output << '/';
+                    output << value;
+                    first = false;
+                }
+                return output.str();
+            };
+            const auto log_opaque = [&counts](const char* owner,
+                const ALMetalShadowIndirectStats& stats)
+            {
+                const auto& d = stats.opaque_diagnostics;
+                const auto& last = stats.opaque_last_view;
+                LL_INFOS("MetalShadow")
+                    << "Native opaque indirect census: owner=" << owner
+                    << ", supported=" << stats.indirect_supported
+                    << ", views=" << d.views << ", requested=" << d.requested_views
+                    << ", active=" << d.active_views << ", completed=" << d.completed_views
+                    << ", no_candidate=" << d.no_candidate_views
+                    << ", fallback_views=" << d.fallback_views
+                    << ", gates(disabled/full_indirect/unsupported/no_arena)=" << counts(d.gate_views)
+                    << ", inputs(static/rigged)=" << counts(d.input_draws)
+                    << ", excluded(covered/avatar/terrain/raw_palette)=" << counts(d.excluded_draws)
+                    << ", splits(query/state/gap)=" << counts(d.run_splits)
+                    << ", opaque_prepared/executed/runs/fallbacks/skipped="
+                    << stats.opaque_indirect_prepared_draws << '/'
+                    << stats.opaque_indirect_executed_draws << '/' << stats.opaque_indirect_runs
+                    << '/' << stats.opaque_indirect_fallbacks << '/' << stats.opaque_indirect_skipped_draws
+                    << ", fallback_reasons(none/data_publication/unavailable/completion/validation/retention/native_allocation/host_allocation)="
+                    << counts(d.fallback_reasons)
+                    << ", last_fallback=" << alMetalOpaqueIndirectFallbackName(d.last_fallback)
+                    << ", last_fallback_family=" << static_cast<U32>(d.last_fallback_family)
+                    << ", last_view(active/completed/no_candidate/fallback)="
+                    << last.active_views << '/' << last.completed_views << '/'
+                    << last.no_candidate_views << '/' << last.fallback_views
+                    << ", last_view_run_max(static/rigged)=" << counts(last.run_max)
+                    << ", last_view_selected(static/rigged)=" << counts(last.selected_draws)
+                    << LL_ENDL;
+                for (std::size_t family = 0; family < ALMetalOpaqueIndirectDiagnostics::family_count; ++family)
+                {
+                    LL_INFOS("MetalShadow")
+                        << "Native opaque run census: owner=" << owner
+                        << ", family=" << (family == 0 ? "static" : "rigged")
+                        << ", runs=" << d.run_count[family] << ", max=" << d.run_max[family]
+                        << ", buckets(under64/64_255/256_1023/1024_2047/2048_16384/over16384)="
+                        << counts(d.run_buckets[family])
+                        << ", rejected_small(runs/draws)=" << d.rejected_small_runs[family]
+                        << '/' << d.rejected_small_draws[family]
+                        << ", rejected_budget(runs/draws)=" << d.rejected_budget_runs[family]
+                        << '/' << d.rejected_budget_draws[family]
+                        << ", rejected_oversize(runs/draws)=" << d.rejected_oversize_runs[family]
+                        << '/' << d.rejected_oversize_draws[family]
+                        << ", selected(runs/draws)=" << d.selected_runs[family] << '/' << d.selected_draws[family]
+                        << ", attempted(packets/draws)=" << d.attempted_packets[family] << '/' << d.attempted_draws[family]
+                        << ", prepared(packets/draws)=" << d.prepared_packets[family] << '/' << d.prepared_draws[family]
+                        << ", executed(runs/draws)=" << d.executed_runs[family] << '/' << d.executed_draws[family]
+                        << LL_ENDL;
+                }
+            };
+            log_opaque("main", indirect);
+            log_opaque("probe", probe_indirect);
+            const auto log_sources = [](const char* owner, const MetalWorldSimpleCapture* source)
+            {
+                if (!source) return;
+                const auto& d = source->shadow_source_diagnostics;
+                LL_INFOS("MetalShadowSources")
+                    << "Native shadow source census: owner=" << owner
+                    << ", views=" << d.views << ", admitted=" << d.admitted_inputs
+                    << ", visited=" << d.visited_inputs << ", key_builds=" << d.key_builds
+                    << ", retained_hits=" << d.retained_hits << ", transient_hits=" << d.transient_hits
+                    << ", build_attempts=" << d.build_attempts << ", records_created=" << d.records_created
+                    << ", key_changes=" << d.key_changes << ", cache_admitted=" << d.cache_admitted
+                    << ", cache_declined=" << d.cache_declined
+                    << ", families=" << d.families << ", max_family_inputs=" << d.max_family_inputs
+                    << ", detached_eligible/calls/completed=" << d.detached_eligible << '/'
+                    << d.detached_calls << '/' << d.detached_completed
+                    << ", unique_source/palette_pins=" << d.source_pins << '/' << d.palette_pins
+                    << ", failed_views=" << d.failed_views
+                    << ", capture_wall_ms=" << static_cast<F64>(d.capture_wall_ns) / 1000000.0
+                    << ", max_view_wall_ms=" << static_cast<F64>(d.max_view_wall_ns) / 1000000.0
+                    << LL_ENDL;
+            };
+            log_sources("main", &capture);
+            log_sources("probe", mMetalProbeWorldSimpleCapture.get());
+            const auto publication = LLImageGL::metalPublicationStats();
+            const auto uploads = LLVertexBuffer::metalUploadStats();
+            LL_INFOS("MetalMemory")
+                << "Native generation publication census: source_cache_entries=" << sShadowSourceCache.entryCount()
+                << ", source_cache_estimated_bytes=" << sShadowSourceCache.estimatedRetainedBytes()
+                << ", vertex_full/partial/bytes/recycled/leased_orphans=" << uploads.full_uploads
+                << '/' << uploads.partial_uploads << '/' << uploads.uploaded_bytes
+                << '/' << uploads.recycled_generations << '/' << uploads.leased_orphans
+                << ", texture_cow_attempts/replacements=" << publication.cow_attempts
+                << '/' << publication.cow_replacements
+                << ", texture_cow_failures(allocation/copy/retention)=" << publication.cow_allocation_failures
+                << '/' << publication.cow_copy_failures << '/' << publication.cow_retention_failures
+                << ", texture_cow_encoded_mips/bytes=" << publication.cow_encoded_mips
+                << '/' << publication.cow_encoded_bytes
+                << ", native_scale_down_requests/committed=" << publication.scale_down_requests
+                << '/' << publication.scale_down_successes
+                << ", worker_uploads/batch_commits/failures=" << publication.worker_uploads
+                << '/' << publication.worker_batch_commits << '/' << publication.worker_batch_failures
+                << ", immediate_upload_commits/failures=" << publication.immediate_upload_commits
+                << '/' << publication.immediate_upload_failures
                 << LL_ENDL;
             if (ALMetalDevice::commandTimingEnabled())
             {
@@ -12832,6 +12970,34 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
     }
 
     auto& transaction = *mMetalWorldSimpleCapture;
+    using SourceDiagnostics = MetalWorldSimpleCapture::ShadowSourceDiagnostics;
+    SourceDiagnostics source_diagnostics;
+    source_diagnostics.views = 1;
+    source_diagnostics.admitted_inputs = transaction.spot_shadow_admitted_sources.size();
+    struct SourceDiagnosticScope
+    {
+        MetalWorldSimpleCapture& capture;
+        SourceDiagnostics& local;
+        const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+        const MetalWorldSimpleCapture::ShadowSourceLease* lease = nullptr;
+        std::size_t initial_sources = 0, initial_palettes = 0;
+        ~SourceDiagnosticScope()
+        {
+            if (lease && capture.shadow_source_lease.get() == lease)
+            {
+                if (lease->sources.size() >= initial_sources)
+                    local.source_pins = lease->sources.size() - initial_sources;
+                if (lease->palettes.size() >= initial_palettes)
+                    local.palette_pins = lease->palettes.size() - initial_palettes;
+            }
+            local.failed_views = !capture.spot_shadow_capture_complete;
+            const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - start).count();
+            local.capture_wall_ns = elapsed > 0 ? static_cast<U64>(elapsed) : 0;
+            local.max_view_wall_ns = local.capture_wall_ns;
+            capture.shadow_source_diagnostics.accumulate(local);
+        }
+    } source_scope{transaction, source_diagnostics};
     trimShadowSourceWorkingSet();
     transaction.spot_shadow_inputs.clear();
     if (!transaction.spot_shadow_admitted_sources.empty() &&
@@ -12841,21 +13007,31 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         transaction.spot_shadow_first_incomplete_source_line = __LINE__;
         return;
     }
+    source_scope.lease = transaction.shadow_source_lease.get();
+    if (source_scope.lease)
+    {
+        source_scope.initial_sources = source_scope.lease->sources.size();
+        source_scope.initial_palettes = source_scope.lease->palettes.size();
+    }
     const auto epoch = transaction.spot_shadow_prepare_epoch.fetch_add(
         1, std::memory_order_acq_rel) + 1;
     const bool saved_shadow_render = sShadowRender;
     sShadowRender = true;
     transaction.spot_shadow_source_merge_active = true;
-    const auto for_each_batch = [this, epoch](U32 type, const auto& build_source)
+    const auto for_each_batch = [this, epoch, &source_diagnostics](U32 type, const auto& build_source)
     {
         auto& owner = *mMetalWorldSimpleCapture;
         owner.spot_shadow_admission.barrier();
         if (!owner.spot_shadow_capture_complete) return;
         const auto [first, count] = owner.spot_shadow_source_ranges[type];
         if (count == 0) return;
+        ++source_diagnostics.families;
+        source_diagnostics.max_family_inputs = std::max<U64>(
+            source_diagnostics.max_family_inputs, count);
         const bool detached = count >= 8192;
         if (detached)
         {
+            ++source_diagnostics.detached_eligible;
             owner.spot_shadow_inputs.clear();
             owner.spot_shadow_inputs.reserve(count);
         }
@@ -12908,25 +13084,35 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         };
         for (std::size_t index = first; index < first + count; ++index)
         {
+            ++source_diagnostics.visited_inputs;
             const auto& info = *owner.spot_shadow_admitted_sources[index];
             ShadowSourceImages images;
+            ++source_diagnostics.key_builds;
             if (!shadowSourceKey(info, type, owner.spot_shadow_coverage,
                                  texture_matrix, owner.spot_shadow_source_key, images))
             { fail(); return; }
             auto& cached = info.mMetalShadowSource;
             if (!cached) cached = std::make_shared<ALViewerMetalShadowSourceCache>();
             const auto* retained = sShadowSourceCache.find(cached.get());
-            const bool retained_hit = retained && cached->key == owner.spot_shadow_source_key;
+            const bool same_key = cached->key == owner.spot_shadow_source_key;
+            const bool retained_hit = retained && same_key;
+            if (retained_hit) ++source_diagnostics.retained_hits;
+            if (!same_key && !cached->key.empty()) ++source_diagnostics.key_changes;
             const std::shared_ptr<const ALMetalShadowSourceRecord>* published =
                 retained_hit ? retained : nullptr;
             std::shared_ptr<const ALMetalShadowSourceRecord> fresh_source;
-            if (!published && cached->key == owner.spot_shadow_source_key)
+            if (!published && same_key)
             {
                 fresh_source = cached->transient_record.lock();
-                if (fresh_source) published = &fresh_source;
+                if (fresh_source)
+                {
+                    published = &fresh_source;
+                    ++source_diagnostics.transient_hits;
+                }
             }
             if (!published)
             {
+                ++source_diagnostics.build_attempts;
                 ALMetalWorldSpotShadowBatch prototype;
                 {
                     struct SourceBuild
@@ -12946,6 +13132,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                 if (!owner.spot_shadow_capture_complete) return;
                 // Native publication/fallback may have completed while the
                 // producer populated this prototype. Seal its actual tuple.
+                ++source_diagnostics.key_builds;
                 if (!shadowSourceKey(info, type, owner.spot_shadow_coverage,
                                      texture_matrix, owner.spot_shadow_source_key, images))
                 { fail(); return; }
@@ -12979,6 +13166,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                         << error << LL_ENDL;
                     fail(); return;
                 }
+                ++source_diagnostics.records_created;
                 cached->key = owner.spot_shadow_source_key;
                 published = &fresh_source;
             }
@@ -12987,7 +13175,10 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
             else
             {
                 cached->transient_record = *published;
-                sShadowSourceCache.publish(cached, *published, gFrameCount);
+                if (sShadowSourceCache.publish(cached, *published, gFrameCount))
+                    ++source_diagnostics.cache_admitted;
+                else
+                    ++source_diagnostics.cache_declined;
             }
             const auto* source = owner.shadow_source_lease->retain(*published);
             const ALMetalAttachmentPaletteRecord* palette = nullptr;
@@ -13043,12 +13234,14 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         std::string error;
         // The compact fixed trial wins median/tail at8192, while2048 regresses.
         // Two synchronous jobs consume only immutable sources and this context.
+        ++source_diagnostics.detached_calls;
         if (!alMetalPrepareShadowBatches(inputs, context, owner.spot_shadow_prepared,
                 epoch, &owner.spot_shadow_prepare_epoch, true, nullptr, &error))
         {
             LL_WARNS_ONCE("Metal") << "Shadow packet preparation failed: " << error << LL_ENDL;
             fail(); return;
         }
+        ++source_diagnostics.detached_completed;
         for (auto& batch : owner.spot_shadow_prepared)
             if (!append_prepared(batch)) return;
         owner.spot_shadow_prepared.clear();

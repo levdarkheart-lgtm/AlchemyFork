@@ -310,6 +310,7 @@ if(AL_BUILD_TESTS)
     SOURCES
       tests/alenumtable_test.cpp
       tests/alfilewrite_test.cpp
+      tests/almemorybudget_test.cpp
       tests/alrecoverystore_test.cpp
       tests/alregex_test.cpp
       tests/alsavehistory_test.cpp

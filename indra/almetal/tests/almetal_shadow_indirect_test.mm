@@ -646,3 +646,92 @@ TEST_CASE("almetal: native direct shadow packets isolate pending views and valid
         CHECK(std::abs(fixture.pixels(*target_a)[0] - (601.f / 1024.f + .25f / 8.f)) < 1e-6f);
     }
 }
+
+TEST_CASE("almetal: failed shadow packet wrappers release leases without bypassing completion",
+          "[almetal][shadow-indirect][shadow-wrapper-failure]")
+{
+    @autoreleasepool
+    {
+        Fixture fixture;
+        for (const bool indirect : {true, false})
+        {
+            CAPTURE(indirect);
+            Draws draws(fixture, 3, 700);
+            const auto prepare = [&](ALMetalCommandBuffer& command,
+                                     ALMetalShadowPrepareFailure& reason)
+            {
+                return indirect
+                    ? fixture.indirect->prepare(command, draws.values, &fixture.error, false, &reason)
+                    : fixture.indirect->prepareDirect(command, draws.values, &fixture.error, &reason);
+            };
+            const auto slots = [indirect](const ALMetalShadowIndirectStats& stats)
+            { return indirect ? stats.slot_count : stats.direct_slot_count; };
+            const auto reuses = [indirect](const ALMetalShadowIndirectStats& stats)
+            { return indirect ? stats.slot_reuses : stats.direct_slot_reuses; };
+            const auto prepared = [indirect](const ALMetalShadowIndirectStats& stats)
+            { return indirect ? stats.prepared_draws : stats.direct_prepared_draws; };
+
+            auto failed = fixture.device->makeCommandBuffer("Failed public packet owner", &fixture.error);
+            REQUIRE(failed);
+            const auto before = fixture.indirect->stats();
+            fixture.indirect->failNextWrapperAllocationForTesting();
+            ALMetalShadowPrepareFailure reason = ALMetalShadowPrepareFailure::none;
+            fixture.error = "prior optional error";
+            CHECK_FALSE(prepare(*failed, reason));
+            CHECK(reason == ALMetalShadowPrepareFailure::host_allocation);
+            CHECK(fixture.error.empty());
+            const auto after_failure = fixture.indirect->stats();
+            CHECK(prepared(after_failure) == prepared(before));
+            CHECK(slots(after_failure) == 1);
+
+            // Releasing the failed wrapper's CPU lease is insufficient while
+            // its command token is pending. A second command needs another slot.
+            auto pending = fixture.device->makeCommandBuffer("Pending packet after failed owner", &fixture.error);
+            REQUIRE(pending);
+            auto pending_batch = prepare(*pending, reason); REQUIRE(pending_batch);
+            CHECK(reason == ALMetalShadowPrepareFailure::none);
+            const auto after_pending = fixture.indirect->stats();
+            CHECK(slots(after_pending) == 2);
+            CHECK(reuses(after_pending) == reuses(after_failure));
+            REQUIRE(failed->commitAndWait(&fixture.error));
+            CHECK(failed->completionToken()->isComplete());
+
+            // The first slot becomes reusable only after actual completion.
+            // The other slot still has a live uncommitted packet owner.
+            auto recovered = fixture.device->makeCommandBuffer("Recovered packet owner", &fixture.error);
+            REQUIRE(recovered);
+            auto recovered_batch = prepare(*recovered, reason); REQUIRE(recovered_batch);
+            const auto after_recovery = fixture.indirect->stats();
+            CHECK(slots(after_recovery) == 2);
+            CHECK(reuses(after_recovery) == reuses(after_pending) + 1);
+            CHECK(prepared(after_recovery) == prepared(before) + 6);
+            auto target = fixture.target();
+            auto encoder = fixture.encoder(*recovered, *target, indirect);
+            const bool encoded = indirect
+                ? fixture.indirect->execute(*encoder, *recovered_batch, 0, 3, &fixture.error)
+                : fixture.indirect->executeDirect(*encoder, *recovered_batch, 0, 3, &fixture.error);
+            REQUIRE(encoded);
+            REQUIRE(encoder->end(&fixture.error));
+            REQUIRE(recovered->commitAndWait(&fixture.error));
+            CHECK(std::abs(fixture.pixels(*target)[0] - (703.f / 1024.f + 2.25f / 8.f)) < 1e-6f);
+            pending_batch.reset();
+            REQUIRE(pending->commitAndWait(&fixture.error));
+
+            auto invalid = draws.values;
+            invalid.front().indices = nullptr;
+            auto invalid_command = fixture.device->makeCommandBuffer("Typed invalid packet reason", &fixture.error);
+            REQUIRE(invalid_command);
+            auto invalid_batch = indirect
+                ? fixture.indirect->prepare(*invalid_command, invalid, &fixture.error, false, &reason)
+                : fixture.indirect->prepareDirect(*invalid_command, invalid, &fixture.error, &reason);
+            CHECK_FALSE(invalid_batch);
+            CHECK(reason == ALMetalShadowPrepareFailure::validation);
+            REQUIRE(invalid_command->commitAndWait(&fixture.error));
+            auto after_commit = indirect
+                ? fixture.indirect->prepare(*invalid_command, draws.values, &fixture.error, false, &reason)
+                : fixture.indirect->prepareDirect(*invalid_command, draws.values, &fixture.error, &reason);
+            CHECK_FALSE(after_commit);
+            CHECK(reason == ALMetalShadowPrepareFailure::unavailable);
+        }
+    }
+}

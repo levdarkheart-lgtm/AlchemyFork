@@ -1360,18 +1360,9 @@ bool LLAppViewer::init()
 
 void LLAppViewer::initMaxHeapSize()
 {
-    //set the max heap size.
-    //here is some info regarding to the max heap size:
-    //------------------------------------------------------------------------------------------
-    // OS       | setting | SL address bits | max manageable memory space | max heap size
-    // Win 32   | default | 32-bit          | 2GB                         | < 1.7GB
-    // Win 32   | /3G     | 32-bit          | 3GB                         | < 1.7GB or 2.7GB
-    //Linux 32  | default | 32-bit          | 3GB                         | < 2.7GB
-    //Linux 32  |HUGEMEM  | 32-bit          | 4GB                         | < 3.7GB
-    //64-bit OS |default  | 32-bit          | 4GB                         | < 3.7GB
-    //64-bit OS |default  | 64-bit          | N/A (> 4GB)                 | N/A (> 4GB)
-    //------------------------------------------------------------------------------------------
-    //currently SL is built under 32-bit setting, we set its max heap size no more than 1.6 GB.
+    // A positive setting remains an intentional process-policy ceiling. The
+    // native 64-bit default is automatic (0), resolved from installed RAM by
+    // LLMemory while real operating-system pressure remains independently read.
 
  #if !defined(LL_X86_64) && !defined(LL_ARM64)
     F32Gigabytes max_heap_size_gb = (F32Gigabytes)gSavedSettings.getF32("MaxHeapSize") ;

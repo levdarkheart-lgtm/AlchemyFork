@@ -262,7 +262,18 @@ TEST_CASE("Native texture leases retain old pixels through partial writes pendin
     const U64 old_stamp = image->getContentStamp();
     auto updated = red_pixels;
     std::memcpy(updated.data() + (1 * 4 + 2) * 4, &green, 4);
+    const auto before = LLImageGL::metalPublicationStats();
     REQUIRE(image->uploadMetalSubImage(updated.data(), 4, 4, 2, 1, 1, 1));
+    const auto after = LLImageGL::metalPublicationStats();
+    CHECK(after.cow_attempts == before.cow_attempts + 1);
+    CHECK(after.cow_replacements == before.cow_replacements + 1);
+    CHECK(after.cow_encoded_mips == before.cow_encoded_mips + 1);
+    CHECK(after.cow_encoded_bytes == before.cow_encoded_bytes + 4 * 4 * 4);
+    CHECK(after.cow_allocation_failures == before.cow_allocation_failures);
+    CHECK(after.cow_copy_failures == before.cow_copy_failures);
+    CHECK(after.cow_retention_failures == before.cow_retention_failures);
+    CHECK(after.immediate_upload_commits == before.immediate_upload_commits + 1);
+    CHECK(after.immediate_upload_failures == before.immediate_upload_failures);
     CHECK(image->getContentStamp() != old_stamp);
     CHECK(image->getMetalTexture() != lease.get());
     CHECK(f.pixels(*lease) == red_pixels);
@@ -278,6 +289,78 @@ TEST_CASE("Native texture leases retain old pixels through partial writes pendin
     image = nullptr;
     CHECK(f.pixels(*lease) == red_pixels);
     CHECK(f.pixels(*published) == updated);
+}
+
+TEST_CASE("Native publication diagnostics count preserved mip bytes and successful versus declined scale-down",
+          "[almetal][native-generation-leases][texture-publication-diagnostics]")
+{
+    Fixture f;
+    std::vector<U8> pixels(8 * 8 * 4);
+    for (std::size_t pixel = 0; pixel < pixels.size(); pixel += 4)
+        std::memcpy(pixels.data() + pixel, &red, 4);
+    // Author a complete native mip chain, then use the public policy setter
+    // to disable automatic mip generation for subsequent partial updates.
+    // Changing producer policy preserves the existing authored storage.
+    LLPointer<LLImageGL> image = new LLImageGL(8, 8, 4, true);
+    image->setNeedsAlphaAndPickMask(false);
+    image->setExplicitFormat(GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    std::array<std::vector<U8>, 4> mip_pixels;
+    std::array<LLImageGL::MetalMipLevel, 4> levels;
+    for (U32 mip = 0; mip < levels.size(); ++mip)
+    {
+        const U32 width = 8u >> mip;
+        mip_pixels[mip].resize(width * width * 4);
+        for (std::size_t pixel = 0; pixel < mip_pixels[mip].size(); pixel += 4)
+            std::memcpy(mip_pixels[mip].data() + pixel, &red, 4);
+        levels[mip] = {mip_pixels[mip].data(), width, width};
+    }
+    const auto fresh_before = LLImageGL::metalPublicationStats();
+    REQUIRE(image->createMetalTexture(0, std::span<const LLImageGL::MetalMipLevel>(levels)));
+    const auto fresh_after = LLImageGL::metalPublicationStats();
+    CHECK(fresh_after.cow_attempts == fresh_before.cow_attempts);
+    auto old = image->getMetalTextureLease(); REQUIRE(old);
+    REQUIRE(old->descriptor().mipmap_level_count == 4);
+    image->setUseMipMaps(false);
+    auto updated = pixels;
+    std::memcpy(updated.data() + (1 * 8 + 2) * 4, &blue, 4);
+    const auto before = LLImageGL::metalPublicationStats();
+    REQUIRE(image->uploadMetalSubImage(updated.data(), 8, 8, 2, 1, 1, 1));
+    const auto after = LLImageGL::metalPublicationStats();
+    CHECK(after.cow_attempts == before.cow_attempts + 1);
+    CHECK(after.cow_replacements == before.cow_replacements + 1);
+    CHECK(after.cow_encoded_mips == before.cow_encoded_mips + 4);
+    // RGBA8: 8x8 + 4x4 + 2x2 + 1x1, one encoded copy per mip.
+    CHECK(after.cow_encoded_bytes == before.cow_encoded_bytes + 340);
+    CHECK(f.pixels(*image->getMetalTexture()) == updated);
+    for (U32 mip = 0; mip < old->descriptor().mipmap_level_count; ++mip)
+    {
+        CAPTURE(mip);
+        std::vector<U8> old_pixels(old->width(mip) * old->height(mip) * 4);
+        REQUIRE(old->readback(*f.device, mip, 0, {}, old_pixels.data(), old->width(mip) * 4, &f.error));
+        for (std::size_t pixel = 0; pixel < old_pixels.size(); pixel += 4)
+            CHECK(std::memcmp(old_pixels.data() + pixel, &red, 4) == 0);
+        if (mip > 0)
+        {
+            std::vector<U8> preserved_pixels(old_pixels.size());
+            REQUIRE(image->getMetalTexture()->readback(
+                *f.device, mip, 0, {}, preserved_pixels.data(), old->width(mip) * 4, &f.error));
+            CHECK(preserved_pixels == mip_pixels[mip]);
+        }
+    }
+    auto updated_lease = image->getMetalTextureLease(); REQUIRE(updated_lease);
+    const auto scale_before = LLImageGL::metalPublicationStats();
+    CHECK_FALSE(image->scaleDown(0)); // Already at this discard; no command.
+    auto scale_after = LLImageGL::metalPublicationStats();
+    CHECK(scale_after.scale_down_requests == scale_before.scale_down_requests + 1);
+    CHECK(scale_after.scale_down_successes == scale_before.scale_down_successes);
+    REQUIRE(image->scaleDown(1));
+    scale_after = LLImageGL::metalPublicationStats();
+    CHECK(scale_after.scale_down_requests == scale_before.scale_down_requests + 2);
+    CHECK(scale_after.scale_down_successes == scale_before.scale_down_successes + 1);
+    CHECK(image->getMetalTexture() != updated_lease.get());
+    CHECK(image->getMetalTexture()->width() == 4);
+    CHECK(f.pixels(*updated_lease) == updated);
+    CHECK(f.pixels(*old) == pixels);
 }
 
 TEST_CASE("Native texture generation leases retain every old mip during replacement",

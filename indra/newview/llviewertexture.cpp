@@ -500,6 +500,7 @@ void LLViewerTexture::updateClass()
     // A nonzero manual texture budget bypasses it, as in the original viewer.
     static LLCachedControl<U32> tex_vram_divisor(gSavedSettings, "RenderTextureVRAMDivisor", 2);
     static LLCachedControl<U32> max_vram_budget(gSavedSettings, "RenderMaxVRAMBudget", 0);
+    static LLCachedControl<U32> min_free_main_memory(gSavedSettings, "RenderMinFreeMainMemoryThreshold", 512);
 
     constexpr F64 bytes_per_mib = 1024.0 * 1024.0;
     const F64 texture_bytes_alloc =
@@ -557,6 +558,12 @@ void LLViewerTexture::updateClass()
         accounting_sample_timer.getElapsedTimeF32() >= 10.f)
     {
         accounting_sample_timer.reset();
+        const auto memory = LLMemory::getMemoryBudgetSnapshot();
+        const bool os_known = memory.os_available_kb != U32Kilobytes(U32_MAX);
+        const bool process_known = memory.process_headroom_kb != U32Kilobytes(U32_MAX);
+        const U32Megabytes low_threshold(min_free_main_memory);
+        const bool os_low = os_known && U32Megabytes(memory.os_available_kb) < low_threshold;
+        const bool process_low = process_known && U32Megabytes(memory.process_headroom_kb) < low_threshold;
         LL_INFOS("MetalMemory")
             << "Native texture pressure: image=" << used
             << " MiB, image_target=" << target
@@ -565,7 +572,21 @@ void LLViewerTexture::updateClass()
             << " MiB, non_image_estimate=" << capacity.non_image_estimate_mb
             << " MiB, automatic_capacity=" << capacity.automatic_capacity_mb
             << " MiB, over_fraction=" << over_pct
+            // Keep system_low for existing capture readers, but identify its
+            // policy scopes instead of equating process headroom with OS RAM.
             << ", system_low=" << is_sys_low
+            << ", os_known=" << os_known
+            << ", os_low=" << os_low
+            << ", os_available_mib=" << memory.os_available_kb.value() / 1024.0
+            << ", physical_mib=" << memory.installed_physical_kb.value() / 1024.0
+            << ", process_allocated_mib=" << memory.process_allocated_kb.value() / 1024.0
+            << ", process_limit_mib=" << memory.process_limit_kb.value() / 1024.0
+            << ", process_limit_auto=" << memory.automatic_process_limit
+            << ", process_known=" << process_known
+            << ", process_low=" << process_low
+            << ", process_headroom_mib=" << memory.process_headroom_kb.value() / 1024.0
+            << ", effective_free_mib=" << memory.effective_available_kb.value() / 1024.0
+            << ", low_threshold_mib=" << low_threshold.value()
             << ", discard_bias_before=" << sDesiredDiscardBias
             << LL_ENDL;
     }
@@ -586,8 +607,18 @@ void LLViewerTexture::updateClass()
         }
 
         if (is_sys_low || over_pct > 2.f)
-        { // if we're low on system memory, emergency purge off screen textures to avoid a death spiral
-            LL_WARNS() << "Low system memory detected, emergency downrezzing off screen textures" << LL_ENDL;
+        { // Trim offscreen detail for exhausted policy headroom or severe device overage.
+            const auto memory = LLMemory::getMemoryBudgetSnapshot();
+            LL_WARNS("MetalMemory") << "Memory pressure: emergency downrezzing off screen textures"
+                << ", policy_low=" << is_sys_low
+                << ", os_known=" << (memory.os_available_kb != U32Kilobytes(U32_MAX))
+                << ", os_available_mib=" << memory.os_available_kb.value() / 1024.0
+                << ", process_allocated_mib=" << memory.process_allocated_kb.value() / 1024.0
+                << ", process_limit_mib=" << memory.process_limit_kb.value() / 1024.0
+                << ", process_limit_auto=" << memory.automatic_process_limit
+                << ", process_headroom_mib=" << memory.process_headroom_kb.value() / 1024.0
+                << ", effective_free_mib=" << memory.effective_available_kb.value() / 1024.0
+                << ", over_fraction=" << over_pct << LL_ENDL;
             for (auto& image : gTextureList)
             {
                 gTextureList.updateImageDecodePriority(image, false /*will modify gTextureList otherwise!*/);
@@ -616,7 +647,6 @@ void LLViewerTexture::updateClass()
         // lower discard bias over time when at least 10% of budget is free
         constexpr F32 FREE_PERCENTAGE_TRESHOLD = -0.1f;
         constexpr U32 FREE_SYS_MEM_TRESHOLD = 100;
-        static LLCachedControl<U32> min_free_main_memory(gSavedSettings, "RenderMinFreeMainMemoryThreshold", 512);
         const S32Megabytes MIN_FREE_MAIN_MEMORY(min_free_main_memory() + FREE_SYS_MEM_TRESHOLD);
         if (sDesiredDiscardBias > 1.f
             && over_pct < FREE_PERCENTAGE_TRESHOLD

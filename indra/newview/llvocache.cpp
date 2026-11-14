@@ -586,10 +586,11 @@ void LLVOCacheEntry::updateDebugSettings()
     static const U32 high_default = gSavedSettings.getControl("SceneLoadHighMemoryBound")->getDefault().asInteger();
     const F32 physical_MB = LLMemory::getMaxMemKB().value() * KB_to_MB;
     const F32 heap_cap_MB = LLMemory::getMaxHeapSizeKB().value() * KB_to_MB;
+    const bool low_is_explicit = (U32)low_mem_bound_MB != low_default;
+    const bool high_is_explicit = (U32)high_mem_bound_MB != high_default;
     const F32 adjust_factor = memoryAdjustFactor(allocated_MB, physical_MB, heap_cap_MB,
                                                  (F32)low_mem_bound_MB, (F32)high_mem_bound_MB,
-                                                 (U32)low_mem_bound_MB != low_default,
-                                                 (U32)high_mem_bound_MB != high_default); // [0, 1]
+                                                 low_is_explicit, high_is_explicit); // [0, 1]
     sMemoryAdjustFactor = adjust_factor;
 
     //min radius: all objects within this radius remain loaded in memory
@@ -621,6 +622,53 @@ void LLVOCacheEntry::updateDebugSettings()
     static const U32 MAX_FRAMES = 64;
     const U32 clamped_frames = inv_obj_time ? llclamp((U32) inv_obj_time, MIN_FRAMES, MAX_FRAMES) : MAX_FRAMES; // [10, 64], with zero => 64
     sMinFrameRange = MIN_FRAMES + (U32)((clamped_frames - MIN_FRAMES) * adjust_factor);
+
+#if LL_DARWIN
+    // A larger resolved process ceiling also changes object residency under
+    // the established RAM-relative policy. Keep its operands/radii visible
+    // alongside texture pressure; a changed workload is not a free FPS gain.
+    static LLFrameTimer residency_sample_timer;
+    if (residency_sample_timer.getElapsedTimeF32() >= 10.f)
+    {
+        residency_sample_timer.reset();
+        F32 effective_low = low_is_explicit ? (F32)low_mem_bound_MB
+            : llmax((F32)low_mem_bound_MB, physical_MB * 0.25f);
+        F32 effective_high = high_is_explicit ? (F32)high_mem_bound_MB
+            : llmax((F32)high_mem_bound_MB, physical_MB * 0.6f);
+        effective_high = llmax(effective_high, effective_low + 1.f);
+        const F32 policy_high_cap = heap_cap_MB * 0.9f;
+        if (effective_high > policy_high_cap)
+        {
+            effective_low *= policy_high_cap / effective_high;
+            effective_high = policy_high_cap;
+        }
+        const auto memory = LLMemory::getMemoryBudgetSnapshot();
+        LL_INFOS("MetalMemory")
+            << "Native object residency: allocated_mib=" << allocated_MB
+            << " physical_mib=" << physical_MB
+            << " process_limit_mib=" << heap_cap_MB
+            << " process_limit_auto=" << memory.automatic_process_limit
+            << " adjust_factor=" << adjust_factor
+            << " system_memory_factor=" << mem_factor
+            << " low_setting_mib=" << (U32)low_mem_bound_MB
+            << " high_setting_mib=" << (U32)high_mem_bound_MB
+            << " low_explicit=" << low_is_explicit
+            << " high_explicit=" << high_is_explicit
+            << " effective_low_mib=" << effective_low
+            << " effective_high_mib=" << effective_high
+            << " requested_draw_radius=" << gAgentCamera.mDrawDistance
+            << " effective_draw_radius=" << draw_radius
+            << " requested_min_radius=" << (F32)min_radius
+            << " near_radius=" << sNearRadius
+            << " rear_radius=" << sRearFarRadius
+            << " evict_radius=" << sEvictFarRadius
+            << " front_pixel_threshold=" << sFrontPixelThreshold
+            << " rear_pixel_threshold=" << sRearPixelThreshold
+            << " invisible_frames_setting=" << (U32)inv_obj_time
+            << " retained_invisible_frames=" << sMinFrameRange
+            << LL_ENDL;
+    }
+#endif
 }
 #endif // LL_TEST
 
