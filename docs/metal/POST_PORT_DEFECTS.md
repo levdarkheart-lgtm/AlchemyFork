@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-187 -->
+<!-- next-defect-id: PPD-188 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4680,3 +4680,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Material producer author reported before freeze; bounded exact-owner repair is required.
+
+
+## PPD-187 — Command-bank encoding rereads mutable caller records after admission
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native source command banks
+- Discovered: 2026-11-14
+- Original reference: An admitted immutable command bank must encode exactly the already-validated key/index/range snapshot.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), unfrozen command-helper reviewed at b88bb2e0e5e734a70df51d6ef12aa2d880b93da0b597f10a2f310de3bc397863. Helper copies/proves keys and native index leases before admission, then rereads borrowed Draw records when encoding after callback. A callback can change index/count/offset without changing helper epoch, causing bank key and native leases to certify A while GPU commands encode B. No runtime attribution.
+- Next action: Encode only the validated native-pinned key snapshot; never reread caller Draw fields after callback. Add actual callback-mutation pixel/key/warm-hit regression and preserve epoch/command checks.
+- Verification: Independent source review finding, registered before repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Recorded in isolated notes tree while required build13 keeps the source checkout frozen and clean.
