@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-170 -->
+<!-- next-defect-id: PPD-171 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4355,3 +4355,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Registered the failed frozen-source build before fixture assertion syntax repair; retain build4 log/receipt rather than overwriting it.
 - 2026-11-14: Both owner-before OR expressions are fully parenthesized; assertion meaning is retained. New clean required build5 and native execution are pending.
+
+
+## PPD-170 — Compact capture adds a second per-source hash allocation on the actual viewer frontier
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex compact capture integration
+- Discovered: 2026-11-14
+- Original reference: Compact per-view references must improve complete source-capture/ownership/encoding work, including actual owner retention rather than shared-prototype component construction alone.
+- Evidence: [Compact source/view work](work/active/apple-first-compact-source-instances-20261114.md). fa96867 required build5 and native correctness pass. Costs5 actual512unique LL sources warm CPU0.640125->0.715146ms(oneview),1.975270->2.178540ms(threeviews); other cold/churn actual rows also regress. Manual eight-prototype native packets improve, so their gain cannot certify real capture.
+- Next action: Give the CPU-only descriptor aggregate bounded identity dedupe with a strong vector instead of a second allocating unordered set; keep exact native-resource aggregate behavior unchanged, verify collision/reader lifetime, and rerun full actual-source costs.
+- Verification: Source-confirmed retainCpu currently allocates the same WorldResourceLease hash-set node per unique source in addition to the native tuple aggregate. Each reference needs a CPU lifetime pin, but that pin does not require per-source hash-node allocation. No live viewer FPS effect attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered the real-frontier regression before ownership-allocation repair. Preserve all24actual and45component cost pairs; no default compact performance acceptance is claimed from component-only gains.
+- 2026-11-14: CPU-only WorldCpuLease vector+16-slot retention cache implemented; native aggregate unchanged. Actual-owner fixture shares the production helper, adds17source collision/nonadjacent retention and cancellation/abandon coverage; execution/build6 pending.

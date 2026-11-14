@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <iostream>
@@ -198,6 +199,7 @@ struct WorldResources
         }
     }
 };
+#include "../../newview/pipeline_cpu_source_lease_native.inl"
 struct Capture
 {
     using WorldResourceLease=WorldResources;
@@ -216,7 +218,7 @@ struct Capture
     std::vector<ALMetalWorldSourceReference> source_references;
     std::vector<ALMetalWorldDrawIndex> draw_order;
     std::size_t raw_draw_watermark=0;
-    std::shared_ptr<WorldResourceLease> cpu_sources;
+    std::shared_ptr<WorldCpuLease> cpu_sources;
     bool compact_gbuffer_active=false;
     std::vector<ALMetalWorldVisibilityMember> world_visibility_members;
     std::shared_ptr<WorldResources> world_resources=std::make_shared<WorldResources>();
@@ -1156,6 +1158,65 @@ TEST_CASE("Actual compact source and group descriptions retire before native com
         const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
         while(!weak_tuple.expired() && std::chrono::steady_clock::now()<deadline)std::this_thread::yield();
         CHECK(weak_tuple.expired());CHECK(observer->calls==owner_calls);
+    }
+}
+
+TEST_CASE("Actual compact CPU lease collisions retain nonadjacent sources through pending and abandoned work",
+          "[almetal][pipeline-buffer-publication][compact-capture][cpu-source-lease]")
+{
+    for(bool pending:{false,true})
+    {
+        CAPTURE(pending);GroupPublication f;Inputs::LLPipeline pipeline;
+        auto& capture=*pipeline.mMetalWorldSimpleCapture;capture.compact_gbuffer_active=true;
+        std::array<Inputs::LLDrawInfo*,17> sources{};
+        std::array<std::weak_ptr<const void>,17> descriptions;
+        std::array<int,16> slots;slots.fill(-1);
+        int first=-1,second=-1;
+        for(std::size_t index=0;index<sources.size();++index)
+        {
+            sources[index]=&f.draw();pipeline.captureMetalWorldGBufferBatch(*sources[index],true);
+            REQUIRE(capture.complete);const auto& owner=sources[index]->state->publication();REQUIRE(owner);
+            descriptions[index]=owner;
+            const auto bits=reinterpret_cast<std::uintptr_t>(owner.get());
+            const auto slot=((bits>>4)^(bits>>12))&15;
+            if(slots[slot]>=0 && first<0){first=slots[slot];second=static_cast<int>(index);}
+            slots[slot]=static_cast<int>(index);
+        }
+        // Seventeen actual source publications necessarily collide in the
+        // sixteen-slot production cache. Revisit the colliders with another
+        // source between them, rather than testing consecutive duplicate hits.
+        REQUIRE(first>=0);REQUIRE(second>=0);int separator=0;
+        while(separator==first || separator==second)++separator;
+        const auto before=capture.cpu_sources->owners.size();
+        for(const int index:{first,separator,second,separator,first})
+            pipeline.captureMetalWorldGBufferBatch(*sources[index],true);
+        REQUIRE(capture.complete);CHECK(capture.logicalDrawCount()==22);
+        CHECK(capture.cpu_sources->owners.size()>=before+2);
+        const auto duplicate_pins=capture.cpu_sources->owners.size();
+        pipeline.captureMetalWorldGBufferBatch(*sources[first],true);
+        CHECK(capture.cpu_sources->owners.size()==duplicate_pins);
+        for(auto* source:sources)source->state->invalidate();
+        Inputs::sNativeSceneSources.clear();
+        for(const auto& description:descriptions)CHECK_FALSE(description.expired());
+        if(pending)
+        {
+            REQUIRE(capture.flushDrawOrder());auto scene=f.scene(capture);
+            std::vector<ALMetalWorldVisibilityQuery> queries;
+            auto inputs=ALMetalWorldViewInputs::adopt(scene,std::move(capture.batches),
+                std::move(capture.source_references),std::move(capture.draw_order),std::move(queries),
+                std::move(capture.cpu_sources),capture.world_resources,1,&f.error);INFO(f.error);REQUIRE(inputs);
+            scene={};auto work=ALMetalWorldPreparation::create(inputs,1,{},&f.error);INFO(f.error);REQUIRE(work);
+            CHECK_FALSE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,capture.batches,
+                capture.source_references,capture.draw_order,queries));
+            inputs.reset();capture.clearDraws();
+            for(const auto& description:descriptions)CHECK_FALSE(description.expired());
+            work->cancel();work.reset();
+        }
+        else capture.clearDraws();
+        // The native-only tuple aggregate may remain alive; abandoning the
+        // last CPU reader still releases every description and cache address.
+        REQUIRE(capture.world_resources);CHECK_FALSE(capture.world_resources->owners.empty());
+        for(const auto& description:descriptions)CHECK(description.expired());
     }
 }
 

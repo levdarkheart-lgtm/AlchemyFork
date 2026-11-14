@@ -19,7 +19,7 @@ void clearDraws() noexcept
 }
 void retainCpu(std::shared_ptr<const void> owner)
 {
-    if (!cpu_sources) cpu_sources = std::make_shared<WorldResourceLease>();
+    if (!cpu_sources) cpu_sources = std::make_shared<WorldCpuLease>();
     cpu_sources->retain(std::move(owner));
 }
 bool flushRawDrawPrefix() noexcept

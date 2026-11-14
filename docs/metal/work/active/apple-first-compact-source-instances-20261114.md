@@ -127,3 +127,22 @@ meaning, then freezes a new source and required build5. Build4 receipt/log remai
 All agents' assignments are returned; root alone edits original G2G5 tree now.
 Compact worktree remains the unchanged2eb22a0a9f implementation pin until synced.
 Next global defect170. Source/native tuple architecture and goal remain active.
+
+
+Cleanfa96867 build5 doctor/configure/build0/0/0 (133.750s). Native focused5
+all pass with validation: actual owners2048/27, compact draws1588/7,
+resources12379/7, previous69008compiled library4721/1. All four quiet cost5
+processes exit0; complete-path-costs-5-compact-summary.json separates24actual
+source pairs from45manual native packet pairs. Actual512-source compact capture
+regresses~7–14% CPU despite manual shared-prototype gains~9–13%. PPD170
+registered before repair: the extra CPU-description aggregate copied native
+resource aggregate's allocating unordered_set for every unique source.
+
+Root adds shared WorldCpuLease vector+16-slot identity cache: successful strong
+pin precedes cache mark; held owners prevent address reuse; collisions only add
+pins. Native resource union/hash behavior unchanged. Fixture mirrors the exact
+shared helper and adds17actual-source collisions/nonadjacent repeats, abandon
+and queued cancellation lifetime coverage. All source frozen for build6; no
+new cost result/acceptance claimed. Next defect171. Keep all cost5 adverse rows.
+Next GPU source-row/inherited-global audits stay read-only until this actual
+frontier cost is resolved; no one-source-one-ICB-execute default is assumed.

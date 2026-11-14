@@ -846,6 +846,7 @@ struct LLPipeline::MetalWorldSimpleCapture
             }
         }
     };
+#include "pipeline_cpu_source_lease_native.inl"
     static constexpr std::size_t parallel_world_minimum = 1024;
     U64 scene_source_hits = 0, scene_source_builds = 0;
     U64 scalar_world_views = 0, prepared_world_views = 0, credited_world_views = 0;
@@ -877,7 +878,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::vector<ALMetalWorldSourceReference> source_references;
     std::vector<ALMetalWorldDrawIndex> draw_order;
     std::size_t raw_draw_watermark = 0;
-    std::shared_ptr<WorldResourceLease> cpu_sources;
+    std::shared_ptr<WorldCpuLease> cpu_sources;
     bool compact_gbuffer_active = false;
 #include "pipeline_compact_capture_native.inl"
     std::vector<ALMetalWorldVisibilityQuery> visibility_queries;
@@ -16309,7 +16310,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
         std::vector<ALMetalWorldSimpleBatch>& batches;
         std::vector<ALMetalWorldSourceReference>& references;
         std::vector<ALMetalWorldDrawIndex>& order;
-        std::shared_ptr<MetalWorldSimpleCapture::WorldResourceLease>& cpu_sources;
+        std::shared_ptr<MetalWorldSimpleCapture::WorldCpuLease>& cpu_sources;
         std::vector<ALMetalWorldVisibilityQuery>& queries;
         U64& reclaimed;
         U64& retained;
