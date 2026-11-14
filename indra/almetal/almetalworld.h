@@ -12,6 +12,7 @@
 
 #include "almetalworlddiagnostics.h"
 #include "almetalprobeworkload.h"
+#include "almetalworldresources.h"
 
 #include "almetalpipeline.h"
 
@@ -544,7 +545,7 @@ public:
 
     MaterialSlots& materialSlots()
     {
-        if (mMaterialStorage.sealed) native_material_source.reset();
+        if (mMaterialStorage.sealed) { native_material_source.reset(); native_resource_source.reset(); }
         return mMaterialStorage.writable();
     }
     const MaterialSlots& materialSlots() const noexcept
@@ -553,7 +554,7 @@ public:
     }
     PBRSlots& pbrSlots()
     {
-        if (mPBRStorage.sealed) native_material_source.reset();
+        if (mPBRStorage.sealed) { native_material_source.reset(); native_resource_source.reset(); }
         return mPBRStorage.writable();
     }
     const PBRSlots& pbrSlots() const noexcept
@@ -564,6 +565,7 @@ public:
     // Valid only with this batch's private sealed table identity and matching
     // scalar modes/counts. Manual or mutated batches retain ordinary packing.
     std::shared_ptr<const ALMetalWorldMaterialSource> native_material_source;
+    std::shared_ptr<const ALMetalWorldResourceSource> native_resource_source;
 
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
@@ -1200,6 +1202,8 @@ struct alignas(16) ALMetalWorldVisibilityQuery
 
 struct ALMetalWorldGBufferScene
 {
+    // Diagnostic native resource-table path; optional failure stays direct.
+    bool material_argument_buffers = false;
     // Immutable producer-generation leases for borrowed batch resources.
     // Each consuming command retains this aggregate until actual completion
     // or uncommitted abandonment, independently of any submission-scope credit.
@@ -2537,6 +2541,9 @@ public:
     ALMetalWorldFrameDataStats stats() const noexcept;
     ALMetalShadowMaterials* shadowMaterials(
         const ALMetalShaderLibrary& library, std::string* error = nullptr);
+    std::shared_ptr<ALMetalWorldResources> worldResources(
+        const ALMetalShaderLibrary&, ALMetalWorldResourceLimits = {}, std::string* error = nullptr,
+        ALMetalWorldResourceFallback* failure = nullptr);
     ALMetalShadowMaterialStats shadowMaterialStats() const noexcept;
     // Retire only shader-derived material encoders/tables. Existing command
     // leases remain valid; draw-data arenas and their frame generation stay.
@@ -2571,6 +2578,9 @@ public:
     // renderer usable. External targets, histories and frame data stay owned
     // by their existing producers. An open command batch is rejected.
     bool reloadShaders(std::string* error = nullptr);
+    // Explicit owner-selected native library, without a process-global asset
+    // override. Empty selects the ordinary builtin reload behavior.
+    bool reloadShaders(const std::string& library_path, std::string* error = nullptr);
     std::uint64_t shaderGeneration() const noexcept;
 
     // Metal sampler states are immutable. Replacing these three persistent
@@ -2623,6 +2633,10 @@ public:
         ALMetalShadowPrepareFailure failure) noexcept;
     void failNextOpaqueIndirectPublicationForTesting() noexcept;
     ALMetalWorldConstantStats constantStats() const noexcept;
+    ALMetalWorldResourceStats worldResourceStats() const noexcept;
+    void configureWorldResources(ALMetalWorldResourceLimits) noexcept;
+    void clearWorldResourceLookup() noexcept;
+    void failNextWorldResourcePreparationForTesting() noexcept;
     ALMetalWorldPostDiagnostics opaquePostDiagnostics() const noexcept;
 
     std::unique_ptr<ALMetalRenderTarget> render(
@@ -3028,7 +3042,8 @@ private:
         std::string* error);
     static std::unique_ptr<ALMetalWorldGBufferRenderer> create(
         const ALMetalDevice& device, std::uint32_t max_anisotropy,
-        bool initialize_diagnostics, std::string* error);
+        bool initialize_diagnostics, std::string* error,
+        const std::string* library_path = nullptr);
 
     struct Impl;
     explicit ALMetalWorldGBufferRenderer(std::unique_ptr<Impl> impl);

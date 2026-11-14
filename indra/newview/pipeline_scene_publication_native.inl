@@ -10,6 +10,7 @@
 #include "almetalshadowprepare.h"
 #include "almetalworldvisibility.h"
 #include "almetalworldmaterialdata.h"
+#include "almetalworldresources.h"
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -22,6 +23,16 @@ namespace ALScenePublicationNative
 enum class WorldFamily : U8 { simple, legacy, pbr };
 inline std::unique_ptr<ALMetalWorldMaterialDataCache> material_data_cache;
 inline U64 material_source_publications = 0, material_source_fallbacks = 0;
+inline U64 resource_source_publications = 0, resource_source_fallbacks = 0;
+inline std::array<U64, static_cast<std::size_t>(ALMetalWorldResourceFallback::count)> resource_source_failure_reasons{};
+inline ALMetalWorldResourceFallback resource_source_last_failure = ALMetalWorldResourceFallback::none;
+inline void resourceSourceFailed(ALMetalWorldResourceFallback reason) noexcept
+{
+    ++resource_source_fallbacks;
+    resource_source_last_failure = reason;
+    const auto index = static_cast<std::size_t>(reason);
+    if (index < resource_source_failure_reasons.size()) ++resource_source_failure_reasons[index];
+}
 inline void clearMaterialDataCache() noexcept { material_data_cache.reset(); }
 inline ALMetalWorldMaterialDataCache::Stats materialDataStats() noexcept
 { return material_data_cache ? material_data_cache->stats() : ALMetalWorldMaterialDataCache::Stats{}; }
@@ -33,10 +44,17 @@ struct WorldFlavor
     bool indexed_textures = false, indexed_materials = false;
     bool visibility_bounds = false;
     bool native_materials = true;
+    bool native_resources = false;
     bool normal_map = false, specular_map = false;
     bool alpha_mask = false, rigged = false, pbr_glow = false;
     bool impostor_fullbright = false, impostor_shiny = false, impostor_emboss = false;
     U32 material_alpha_mode = 0;
+    bool hasResourceConsumer() const noexcept
+    {
+        return native_materials && family != WorldFamily::simple &&
+            !(family == WorldFamily::legacy && material_alpha_mode == 1) &&
+            !pbr_glow && !impostor_fullbright && !impostor_shiny && !impostor_emboss;
+    }
     U64 key() const noexcept
     {
         return static_cast<U64>(family) | (U64(indexed_textures) << 2) |
@@ -44,7 +62,10 @@ struct WorldFlavor
             (U64(specular_map) << 5) | (U64(alpha_mask) << 6) |
             (U64(rigged) << 7) | (U64(pbr_glow) << 8) |
             (U64(impostor_fullbright) << 9) | (U64(impostor_shiny) << 10) |
-            (U64(impostor_emboss) << 11) | (U64(visibility_bounds) << 12) | (U64(native_materials && family != WorldFamily::simple) << 13) | (U64(material_alpha_mode) << 32);
+            (U64(impostor_emboss) << 11) | (U64(visibility_bounds) << 12) |
+            (U64(native_materials && family != WorldFamily::simple) << 13) |
+            (U64(native_resources && native_materials && family != WorldFamily::simple) << 14) |
+            (U64(material_alpha_mode) << 32);
     }
 };
 
@@ -390,6 +411,7 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         info.observeMetalSourceDependencies();
         if (flavor.family == WorldFamily::simple)
             flavor.indexed_textures = flavor.indexed_textures && info.mTextureList.size() > 1;
+        flavor.native_resources = flavor.native_resources && flavor.hasResourceConsumer();
         const U64 key = flavor.key();
         if (auto value = current(info))
             if (const auto* prototype = findWorld(*value, key))
@@ -435,6 +457,52 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                 else ++material_source_fallbacks;
             }
             catch (const std::bad_alloc&) { ++material_source_fallbacks; }
+        }
+        if (flavor.native_resources && flavor.native_materials &&
+            flavor.family != WorldFamily::simple)
+        {
+            // Seal exact generation leases at the same dirty-source boundary.
+            // A native texture retain alone would not participate in LLImageGL
+            // reader/COW protection. Resolve only the already-accounted tuple;
+            // no later view or worker rereads a mutable viewer texture facade.
+            try
+            {
+                std::vector<std::shared_ptr<const ALMetalTexture>> images;
+                const auto& batch = static_cast<const ALMetalWorldSimpleBatch&>(variant.prototype);
+                images.reserve(batch.texture_count * 4);
+                const auto image = [&](const ALMetalTexture* texture)
+                {
+                    if (!texture) return;
+                    for (const auto& existing : images)
+                        if (existing.get() == texture) return;
+                    for (const auto& resource : value->resources)
+                        if (resource.allocation.get() == texture)
+                        {
+                            images.emplace_back(resource.allocation, texture);
+                            return;
+                        }
+                };
+                for (U32 slot = 0; slot < batch.texture_count; ++slot)
+                    image(batch.diffuse_textures[slot]);
+                for (U32 slot = 0; slot < batch.material_slot_count; ++slot)
+                {
+                    image(batch.materialSlots()[slot].normal_texture);
+                    image(batch.materialSlots()[slot].specular_texture);
+                }
+                for (U32 slot = 0; slot < batch.pbr_slot_count; ++slot)
+                {
+                    image(batch.pbrSlots()[slot].normal_texture);
+                    image(batch.pbrSlots()[slot].orm_texture);
+                    image(batch.pbrSlots()[slot].emissive_texture);
+                }
+                auto* device = LLImageGL::getMetalDevice();
+                auto failure = ALMetalWorldResourceFallback::unsupported;
+                if (device && ALMetalWorldResourceSource::publish(
+                        *device, variant.prototype, images, nullptr, &failure))
+                    ++resource_source_publications;
+                else resourceSourceFailed(failure);
+            }
+            catch (const std::bad_alloc&) { resourceSourceFailed(ALMetalWorldResourceFallback::host_allocation); }
         }
         if (!publish(info, value, working_set, frame))
             return {{}, nullptr, "Native scene producer changed while sealing"};

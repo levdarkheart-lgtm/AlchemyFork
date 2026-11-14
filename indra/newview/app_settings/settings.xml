@@ -8035,6 +8035,20 @@
     <key>Type</key><string>Boolean</string>
     <key>Value</key><integer>0</integer>
   </map>
+  <key>RenderMetalGroupSources</key>
+  <map>
+    <key>Comment</key><string>Diagnostic completed native group membership for static region-space simple geometry.</string>
+    <key>Persist</key><integer>0</integer>
+    <key>Type</key><string>Boolean</string>
+    <key>Value</key><integer>0</integer>
+  </map>
+  <key>RenderMetalWorldResourceTables</key>
+  <map>
+    <key>Comment</key><string>Diagnostic persistent native G-buffer material resource tables for complete-path cost comparisons.</string>
+    <key>Persist</key><integer>0</integer>
+    <key>Type</key><string>Boolean</string>
+    <key>Value</key><integer>0</integer>
+  </map>
   <key>RenderMetalNativeVisibility</key>
   <map>
     <key>Comment</key><string>Experimental shared native conservative visibility for measured workload comparisons.</string>

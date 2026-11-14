@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-159 -->
+<!-- next-defect-id: PPD-161 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4146,3 +4146,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Independent audit found the raw-map consumer; new group guard now excludes the setting. Shadows use their own shadow-flagged stateSort and do not reuse converted main ranges. Tests/build pending.
+
+
+## PPD-159 — New world-resource helper lacks the encoder's narrow private access grant
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native world-resource integration
+- Discovered: 2026-11-14
+- Original reference: Existing native shadow/resource helpers access encoder internals through explicit private friendship. Resource declarations must not use the indirect accessor that flushes indexed joining.
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). native-core-diagnostic-build-1 fails new almetalworldresources.mm access to nativeDeviceForIndirect/nativeCommandBufferForIndirect/nativeHandleForResources;3 compiler errors.
+- Next action: Add only ALMetalWorldResources to the encoder's existing private friend list, preserving restricted resource declaration access; rebuild and run joining/resource/order fixtures.
+- Verification: Actual compiler integration failure in new helper, not a viewer/runtime bug. No successful candidate build claimed from this diagnostic.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered actual diagnostic compilation failure before private friendship repair. Earlier shader compilation/core steps remain diagnostic only; no full app result.
+
+
+## PPD-160 — New group publisher neither refreshes nor independently accounts retained residency
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native group publication integration
+- Discovered: 2026-11-14
+- Original reference: ALNativeSourceWorkingSet bounds strong publisher retention by count, unique native bytes and age; ordinary hits touch the corresponding entry. View/GPU reader leases are separate.
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). New group hits bypass per-source touch, while source max_age defaults2. Child eviction invalidates the group, and a transient source can then be placed into an unaccounted group publisher after its child entry is gone.
+- Next action: Give complete group publications their own unique resource/serial residency entry and O(1) warm touch; distinguish ordinary child cache eviction from actual producer mutation using a weak owner relay, retaining before-write invalidation. Reject group cache admission when its residency cannot be retained.
+- Verification: Source-confirmed integration defect before native group execution. Potential cache churn and unbounded publisher retention; no live viewer memory/FPS incident attributed. Existing synthetic tiny-budget test acceptance must be corrected to preserve the real budget contract.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Root review identified the source age2 policy and missing group retention/touch before the first native run. Registered before group residency repair; retained source/GPU reader semantics must still pass.

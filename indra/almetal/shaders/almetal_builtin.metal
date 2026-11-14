@@ -5448,15 +5448,15 @@ fragment ALMetalWorldGBufferOutput almetal_world_impostor_fragment(
     return output;
 }
 
-fragment ALMetalWorldGBufferOutput almetal_world_pbr_fragment(
-    ALMetalWorldPBRVaryings input [[stage_in]],
-    array<texture2d<float>, 8> base_color_textures [[texture(0)]],
-    array<texture2d<float>, 8> normal_textures [[texture(8)]],
-    array<texture2d<float>, 8> orm_textures [[texture(16)]],
-    array<texture2d<float>, 8> emissive_textures [[texture(24)]],
-    sampler material_sampler [[sampler(0)]],
-    constant ALMetalWorldPBRConstants& constants [[buffer(0)]],
-    bool front_facing [[front_facing]])
+static ALMetalWorldGBufferOutput almetal_world_pbr_shade(
+    ALMetalWorldPBRVaryings input,
+    array<texture2d<float>, 8> base_color_textures,
+    array<texture2d<float>, 8> normal_textures,
+    array<texture2d<float>, 8> orm_textures,
+    array<texture2d<float>, 8> emissive_textures,
+    sampler material_sampler,
+    constant ALMetalWorldPBRConstants& constants,
+    bool front_facing)
 {
     const uint material_index = min(input.material_index, 7u);
     const ALMetalWorldPBRSlotConstants material =
@@ -5521,6 +5521,37 @@ fragment ALMetalWorldGBufferOutput almetal_world_pbr_fragment(
         almetal_world_oct_encode(normal), packed_geometric_normal, 0.67);
     output.emissive = max(float4(emissive, 0.0), float4(0.0));
     return output;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_pbr_fragment(
+    ALMetalWorldPBRVaryings input [[stage_in]],
+    array<texture2d<float>, 8> base_color_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> orm_textures [[texture(16)]],
+    array<texture2d<float>, 8> emissive_textures [[texture(24)]],
+    sampler material_sampler [[sampler(0)]],
+    constant ALMetalWorldPBRConstants& constants [[buffer(0)]],
+    bool front_facing [[front_facing]])
+{
+    return almetal_world_pbr_shade(input, base_color_textures, normal_textures, orm_textures, emissive_textures, material_sampler, constants, front_facing);
+}
+
+struct ALMetalWorldPBRResources
+{
+    array<texture2d<float>, 8> base_color_textures [[id(0)]];
+    array<texture2d<float>, 8> normal_textures [[id(8)]];
+    array<texture2d<float>, 8> orm_textures [[id(16)]];
+    array<texture2d<float>, 8> emissive_textures [[id(24)]];
+    sampler material_sampler [[id(32)]];
+};
+
+fragment ALMetalWorldGBufferOutput almetal_world_pbr_resources_fragment(
+    ALMetalWorldPBRVaryings input [[stage_in]],
+    constant ALMetalWorldPBRConstants& constants [[buffer(0)]],
+    constant ALMetalWorldPBRResources& resources [[buffer(1)]],
+    bool front_facing [[front_facing]])
+{
+    return almetal_world_pbr_shade(input, resources.base_color_textures, resources.normal_textures, resources.orm_textures, resources.emissive_textures, resources.material_sampler, constants, front_facing);
 }
 
 fragment float4 almetal_world_fullbright_fragment(
@@ -7216,13 +7247,13 @@ struct ALMetalWorldMaterialConstants
     uint4 config;
 };
 
-fragment ALMetalWorldGBufferOutput almetal_world_material_fragment(
-    ALMetalWorldSimpleVaryings input [[stage_in]],
-    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
-    array<texture2d<float>, 8> normal_textures [[texture(8)]],
-    array<texture2d<float>, 8> specular_textures [[texture(16)]],
-    sampler diffuse_sampler [[sampler(0)]],
-    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]])
+static ALMetalWorldGBufferOutput almetal_world_material_shade(
+    ALMetalWorldSimpleVaryings input,
+    array<texture2d<float>, 8> diffuse_textures,
+    array<texture2d<float>, 8> normal_textures,
+    array<texture2d<float>, 8> specular_textures,
+    sampler diffuse_sampler,
+    constant ALMetalWorldMaterialConstants& constants)
 {
     const uint slot_count = max(constants.config.x, 1u);
     const uint material_index = min(input.texture_index, slot_count - 1u);
@@ -7301,6 +7332,33 @@ fragment ALMetalWorldGBufferOutput almetal_world_material_fragment(
                            material.properties.x * specular.a, 0.34);
     output.emissive = 0.0;
     return output;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_material_fragment(
+    ALMetalWorldSimpleVaryings input [[stage_in]],
+    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> specular_textures [[texture(16)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]])
+{
+    return almetal_world_material_shade(input, diffuse_textures, normal_textures, specular_textures, diffuse_sampler, constants);
+}
+
+struct ALMetalWorldLegacyResources
+{
+    array<texture2d<float>, 8> diffuse_textures [[id(0)]];
+    array<texture2d<float>, 8> normal_textures [[id(8)]];
+    array<texture2d<float>, 8> specular_textures [[id(16)]];
+    sampler diffuse_sampler [[id(24)]];
+};
+
+fragment ALMetalWorldGBufferOutput almetal_world_material_resources_fragment(
+    ALMetalWorldSimpleVaryings input [[stage_in]],
+    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
+    constant ALMetalWorldLegacyResources& resources [[buffer(1)]])
+{
+    return almetal_world_material_shade(input, resources.diffuse_textures, resources.normal_textures, resources.specular_textures, resources.diffuse_sampler, constants);
 }
 
 static float almetal_legacy_blinn_phong_lobe(

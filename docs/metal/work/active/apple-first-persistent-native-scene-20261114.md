@@ -108,3 +108,39 @@ Source hashes/argv/logs in derived-publication-1.json at the new evidence direct
 This tests actual sixnew dependent-publisher/reentrancy cases and retained source
 publication cases; it does not validate the unfinished renderer integration or
 a new viewer candidate. Common source assignments are frozen.
+
+Common prerequisite committed29f0140686. Existing affected working-set cases
+[native-source-working-set] also exit0,82assertions/7cases (derived-working-set-1
+receipt). No common source change after the passing binary. New GPU/group owners
+remain dirty implementation; do not treat69008 checks as validation of them.
+
+Native core diagnostic build1 failed (PPD159): three private encoder access errors
+in the new resource helper. Add narrow friend grant then rebuild. Shader/core
+source edits overlapped this diagnostic, so it cannot qualify as a frozen viewer
+build even after repair. No live viewer execution. Next defect160.
+
+
+### Source freeze before the combined required build
+
+PPD159 narrow friend repair is implemented; encoder internals remain private.
+PPD160 review found group residency was not charged/touched independently: child
+source age defaults2, not a long grace interval. Repaired with a unique group
+serial/resource union in the SAME working set, O(1) warm touch, and owner-held
+weak dependency relay that ignores child cache eviction while still withdrawing
+on true producer mutation before COW. Failed group budget admission never creates
+a strong unaccounted publisher, even from a valid transient raw reader. Eight
+actual native group cases plus cold/warm/churn costs are now authored/frozen.
+
+Resource core/wrapper/shaders and four normal resource cases plus old69008shader
+parity/cost cases are authored/frozen. The prior library is explicitly pinned by
+path/hash in previous-shader-baseline.json; hidden parity rejects accidentally
+loading a library containing the new argument entrypoints. No native result is
+yet claimed. Source factory excludes unused forward-only resource flavors.
+Every resource fallback stage has typed counters/logging. New group/resource
+controls remain nonpersistentOFF until measured selection. Current nextID161.
+
+Next exact commands: freeze/commit all integrated source, required doctor, exact
+Release configure and tools/metal/build.sh build, then focused actual-group and
+resource tests with MetalAPI/shader validation, old-library parity, quiet complete
+costs, broad native/source/static checks and separately staged combined app.
+Never launch/login/profile the viewer or push during this phase.

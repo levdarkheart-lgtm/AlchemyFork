@@ -121,6 +121,7 @@ target_sources(
     almetalworld.cpp
     almetalworldvisibility.mm
     almetalworldmaterialdata.mm
+    almetalworldresources.mm
     almetalworldprepare.mm
     almetalworlddiagnostics.cpp
   PUBLIC
@@ -153,6 +154,7 @@ target_sources(
       almetalworld.h
       almetalworldvisibility.h
       almetalworldmaterialdata.h
+      almetalworldresources.h
       almetalworldprepare.h
       almetalworlddiagnostics.h
       almetalshadowprepare.h
@@ -201,6 +203,7 @@ set_source_files_properties(
   almetalsurface.mm
   almetaltexturebenchmark.mm
   almetalworldprepare.mm
+  almetalworldresources.mm
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
 
@@ -237,6 +240,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_submission_owner_test.mm
             tests/almetal_world_visibility_test.mm
             tests/almetal_world_material_source_test.mm
+            tests/almetal_world_resources_test.mm
             tests/almetal_world_source_owner_test.mm
             tests/almetal_world_prepare_test.mm
             tests/almetal_borrowed_target_test.mm
@@ -366,3 +370,5 @@ set_source_files_properties(tests/almetal_world_visibility_test.mm PROPERTIES SK
 set_source_files_properties(tests/almetal_world_source_owner_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
 set_source_files_properties(tests/almetal_world_material_source_test.mm almetalworldmaterialdata.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+
+set_source_files_properties(tests/almetal_world_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

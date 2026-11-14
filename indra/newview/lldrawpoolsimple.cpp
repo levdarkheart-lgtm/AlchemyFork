@@ -96,6 +96,12 @@ static void capture_metal_gbuffer_batches(
     bool skip_indexed_materials = false)
 {
     gPipeline.beginMetalWorldGBufferPass(rigged, alpha_mask);
+    if (type == LLRenderPass::PASS_SIMPLE && !rigged && !alpha_mask)
+    {
+        gPipeline.captureMetalWorldSimplePass();
+        gPipeline.endMetalWorldGBufferPass();
+        return;
+    }
     auto* at = gPipeline.beginRenderMap(type);
     auto* end = gPipeline.endRenderMap(type);
     while (at != end)

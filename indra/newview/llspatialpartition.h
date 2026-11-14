@@ -314,6 +314,10 @@ public:
     bool isHUDGroup() const;
 
     void clearDrawMap();
+    // Scene-owner native pass membership. A queued view retains its immutable
+    // publication independently of this group's mutable draw map/lifetime.
+    const std::shared_ptr<ALNativePublication::State>& metalGroupPublication() const;
+    void invalidateMetalGroupPublication() const noexcept;
     void validate();
     void validateDrawMap();
 
@@ -375,6 +379,8 @@ protected:
 public:
     LLPointer<LLVertexBuffer> mVertexBuffer;
     draw_map_t mDrawMap;
+    mutable std::shared_ptr<ALNativePublication::State> mMetalGroupPublication;
+    std::shared_ptr<ALNativePublication::Observer> mMetalGroupDependencies;
 
     bridge_list_t mBridgeList;
     buffer_map_t mBufferMap; //used by volume buffers to attempt to reuse vertex buffers
@@ -569,6 +575,16 @@ public:
     void pushDrawable(LLDrawable* drawable);
     void pushBridge(LLSpatialBridge* bridge);
     void pushDrawInfo(U32 type, LLDrawInfo* draw_info);
+    struct NativeSimpleRange
+    {
+        std::shared_ptr<const void> publication;
+        U32 legacy_offset = 0;
+        U32 draw_count = 0;
+    };
+    // Optional owner publication; failure leaves the legacy native map intact.
+    bool pushNativeSimpleRange(std::shared_ptr<const void>, U32 draw_count) noexcept;
+    const std::vector<NativeSimpleRange>& nativeSimpleRanges() const noexcept
+    { return mNativeSimpleRanges; }
 
     U32 getVisibleGroupsSize()      { return mVisibleGroupsSize; }
     U32 getAlphaGroupsSize()        { return mAlphaGroupsSize; }
@@ -576,11 +592,14 @@ public:
     U32 getDrawableGroupsSize()     { return mDrawableGroupsSize; }
     U32 getVisibleListSize()        { return mVisibleListSize; }
     U32 getVisibleBridgeSize()      { return mVisibleBridgeSize; }
-    U32 getRenderMapSize(U32 type)  { return mRenderMapSize[type]; }
+    U32 getRenderMapSize(U32 type)  { return mRenderMapSize[type] +
+        (type == LLRenderPass::PASS_SIMPLE ? mNativeSimpleDrawCount : 0); }
 
     void assertDrawMapsEmpty();
 
 private:
+    std::vector<NativeSimpleRange> mNativeSimpleRanges;
+    U32 mNativeSimpleDrawCount = 0;
 
     template <class T, class V> void pushBack(T &head, U32& count, V* val);
 

@@ -1804,6 +1804,11 @@ bool ALMetalRenderEncoder::end(std::string* error)
     return true;
 }
 
+void* ALMetalRenderEncoder::nativeHandleForResources() const noexcept
+{
+    return mImpl && !mImpl->ended ? (__bridge void*)mImpl->encoder : nullptr;
+}
+
 void* ALMetalRenderEncoder::nativeHandleForIndirect() const noexcept
 {
     if (mImpl && !mImpl->ended)

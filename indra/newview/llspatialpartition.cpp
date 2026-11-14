@@ -25,6 +25,8 @@
  */
 
 #include "llviewerprecompiledheaders.h"
+#include <limits>
+#include <new>
 
 #include "llspatialpartition.h"
 
@@ -143,12 +145,26 @@ LLSpatialGroup::~LLSpatialGroup()
 
 void LLSpatialGroup::clearDrawMap()
 {
+    invalidateMetalGroupPublication();
+    mMetalGroupDependencies.reset();
     // A rebuild must release obsolete publisher leases before filling shared
     // vertex stores. Queued views retain their own immutable native inputs.
     for (const auto& [type, draws] : mDrawMap)
         for (const auto& draw : draws)
             if (draw) draw->invalidateMetalSource();
     mDrawMap.clear();
+}
+
+const std::shared_ptr<ALNativePublication::State>& LLSpatialGroup::metalGroupPublication() const
+{
+    if (!mMetalGroupPublication)
+        mMetalGroupPublication = std::make_shared<ALNativePublication::State>();
+    return mMetalGroupPublication;
+}
+
+void LLSpatialGroup::invalidateMetalGroupPublication() const noexcept
+{
+    if (mMetalGroupPublication) mMetalGroupPublication->invalidate();
 }
 
 bool LLSpatialGroup::isHUDGroup() const
@@ -474,6 +490,7 @@ bool LLSpatialGroup::removeObject(LLDrawable *drawablep, bool from_octree)
 
 void LLSpatialGroup::shift(const LLVector4a &offset)
 {
+    invalidateMetalGroupPublication();
     LLVector4a t = mOctreeNode->getCenter();
     t.add(offset);
     mOctreeNode->setCenter(t);
@@ -3857,6 +3874,8 @@ void LLCullResult::pushBack(T& head, U32& count, V* val)
 
 void LLCullResult::clear()
 {
+    mNativeSimpleRanges.clear();
+    mNativeSimpleDrawCount = 0;
     mVisibleGroupsSize = 0;
     mVisibleGroupsEnd = &mVisibleGroups[0];
 
@@ -4092,6 +4111,7 @@ void LLCullResult::pushDrawInfo(U32 type, LLDrawInfo* draw_info)
     mRenderMapEnd[type] = &(mRenderMap[type][mRenderMapSize[type]]);
 }
 
+#include "llcullresult_native_ranges.inl"
 
 void LLCullResult::assertDrawMapsEmpty()
 {

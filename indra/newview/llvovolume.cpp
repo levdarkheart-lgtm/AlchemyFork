@@ -5587,6 +5587,9 @@ void LLVolumeGeometryManager::freeFaces()
 void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep, U32 type, bool material_slot)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
+    // Membership is sealed only after the complete group/native fill. Later
+    // faces may merge into and extend an existing draw-info range.
+    group->invalidateMetalGroupPublication();
     if (   type == LLRenderPass::PASS_ALPHA
         && facep->getTextureEntry()->getMaterialParams().notNull()
         && !facep->getVertexBuffer()->hasDataType(LLVertexBuffer::TYPE_TANGENT)

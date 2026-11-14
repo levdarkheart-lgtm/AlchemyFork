@@ -426,6 +426,7 @@ struct ALViewerMetalShadowSourceCache
     }
 };
 #include "pipeline_scene_publication_native.inl"
+#include "pipeline_group_publication_native.inl"
 namespace
 {
 ALNativeSourceWorkingSet sNativeSceneSources;
@@ -3007,6 +3008,47 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", main_native/dynamic_draws=" << constants.material_source_draws << '/' << constants.material_source_fallback_draws
                 << ", probe_native/dynamic_draws=" << probe_constants.material_source_draws << '/' << probe_constants.material_source_fallback_draws
                 << LL_ENDL;
+            std::ostringstream source_resource_reasons;
+            for (std::size_t index = 0; index < ALScenePublicationNative::resource_source_failure_reasons.size(); ++index)
+                if (ALScenePublicationNative::resource_source_failure_reasons[index])
+                    source_resource_reasons << alMetalWorldResourceFallbackName(static_cast<ALMetalWorldResourceFallback>(index))
+                        << ':' << ALScenePublicationNative::resource_source_failure_reasons[index] << ',';
+            LL_INFOS("MetalScene") << "Native material resource sources: published/fallback="
+                << ALScenePublicationNative::resource_source_publications << '/'
+                << ALScenePublicationNative::resource_source_fallbacks
+                << ", failure_reasons=" << source_resource_reasons.str()
+                << ", last_failure=" << alMetalWorldResourceFallbackName(ALScenePublicationNative::resource_source_last_failure)
+                << LL_ENDL;
+            const auto log_resource_tables = [](const char* owner, const ALMetalWorldGBufferRenderer* renderer)
+            {
+                if (!renderer) return;
+                const auto stats = renderer->worldResourceStats();
+                std::ostringstream reasons;
+                for (std::size_t index = 0; index < stats.fallback_reasons.size(); ++index)
+                    if (stats.fallback_reasons[index])
+                        reasons << alMetalWorldResourceFallbackName(static_cast<ALMetalWorldResourceFallback>(index))
+                            << ':' << stats.fallback_reasons[index] << ',';
+                LL_INFOS("MetalScene") << "Native material resource tables: view=" << owner
+                    << ", cache_scope=shader_context, draw_scope=renderer"
+                    << ", requested/bound/fallback_draws=" << stats.requested_draws << '/'
+                    << stats.bound_draws << '/' << stats.fallback_draws
+                    << ", requests/hits/creates/bytes/failures=" << stats.requests << '/' << stats.cache_hits
+                    << '/' << stats.table_creates << '/' << stats.published_bytes << '/' << stats.failures
+                    << ", encoders/declarations/binds=" << stats.argument_encoder_creations << '/'
+                    << stats.declared_resources << '/' << stats.buffer_bind_calls
+                    << ", live_tables/bytes/lookup=" << stats.live_tables << '/' << stats.live_buffer_bytes
+                    << '/' << stats.lookup_entries
+                    << ", accepted_fallback_reasons=" << reasons.str()
+                    << ", last_fallback=" << alMetalWorldResourceFallbackName(stats.last_fallback)
+                    << ", last_helper_failure=" << alMetalWorldResourceFallbackName(stats.last_failure) << LL_ENDL;
+            };
+            log_resource_tables("main", capture.renderer.get());
+            log_resource_tables("probe", mMetalProbeWorldSimpleCapture ? mMetalProbeWorldSimpleCapture->renderer.get() : nullptr);
+            const auto groups = ALSceneGroupPublicationNative::statistics;
+            LL_INFOS("MetalScene") << "Native group membership: hit/build/declined/failures="
+                << groups.hits << '/' << groups.builds << '/' << groups.declined << '/' << groups.failures
+                << ", admitted_groups/draws=" << groups.admitted_groups << '/' << groups.admitted_draws
+                << ", captured_groups/draws=" << groups.captured_groups << '/' << groups.captured_draws << LL_ENDL;
             const auto publication = LLImageGL::metalPublicationStats();
             const auto uploads = LLVertexBuffer::metalUploadStats();
             LL_INFOS("MetalMemory")
@@ -10903,6 +10945,8 @@ static bool buildMetalWorldDrawMatrices(
         modelview_projection);
 }
 
+#include "pipeline_group_capture_native.inl"
+
 void LLPipeline::invalidateMetalReflectionProbeScene()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -10948,6 +10992,13 @@ void LLPipeline::captureMetalReflectionProbeScene()
     for (const DirectPass& pass : passes)
     {
         beginMetalWorldGBufferPass(pass.rigged, pass.alpha_mask);
+        if (pass.type == LLRenderPass::PASS_SIMPLE)
+        {
+            captureMetalWorldSimplePass();
+            endMetalWorldGBufferPass();
+            if (!capture.complete) break;
+            continue;
+        }
         auto* at = beginRenderMap(pass.type);
         auto* end = endRenderMap(pass.type);
         for (; at != end; )
@@ -16065,6 +16116,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.normal_hdr = capture.normal_hdr;
     scene.hdr = capture.hdr;
     scene.reverse_z = capture.reverse_z;
+    static LLCachedControl<bool> native_resource_tables(gSavedSettings, "RenderMetalWorldResourceTables", false);
+    scene.material_argument_buffers = native_resource_tables();
     if (capture.modern_sky_valid &&
         (capture.modern_sky.scene.constants.config[0] & ALSkyLayers::STARS))
         scene.sky_star_attachment = ALSkyLayers::starAttachment(mResourceInputs.mEmissive);
@@ -21078,6 +21131,19 @@ void renderSoundHighlights(LLDrawable *drawablep)
     }
 }
 
+namespace
+{
+const LLMatrix4a* nativeSimpleGroupModel(LLSpatialGroup& group)
+{
+    auto* partition = group.getSpatialPartition();
+    if (group.isDead() || group.hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::MESH_DIRTY) ||
+        !partition || !partition->mRegionp || partition->asBridge() || group.isHUDGroup() ||
+        partition->mPartitionType != LLViewerRegion::PARTITION_VOLUME)
+        return nullptr;
+    return &partition->mRegionp->mRenderMatrix;
+}
+}
+
 void LLPipeline::postSort(LLCamera &camera)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -21104,6 +21170,14 @@ void LLPipeline::postSort(LLCamera &camera)
 
         rebuildPriorityGroups();
     }
+
+    static LLCachedControl<bool> native_group_sources(gSavedSettings, "RenderMetalGroupSources", false);
+    static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
+    static LLCachedControl<bool> depth_prepass(gSavedSettings, "RenderDepthPrePass", false);
+    const bool native_groups = native_group_sources() && !native_visibility() && !depth_prepass() &&
+        !sShadowRender && !sImpostorRender && !sRenderingHUDs && !mRenderDebugMask &&
+        !cullingToCutoutSubject() &&
+        ((isMainWorldPass() && mRT == &mMainRT) || isMetalProbeFaceCaptureActive());
 
     // build render map
     for (LLCullResult::sg_iterator i = sCull->beginVisibleGroups(); i != sCull->endVisibleGroups(); ++i)
@@ -21135,6 +21209,32 @@ void LLPipeline::postSort(LLCamera &camera)
                 continue;
             }
 
+            if (native_groups && j->first == LLRenderPass::PASS_SIMPLE &&
+                group->mMetalGroupPublication)
+            {
+                if (const auto* model = nativeSimpleGroupModel(*group))
+                {
+                    auto packet = ALSceneGroupPublicationNative::current(group->mMetalGroupPublication, *model, sNativeSceneSources, gFrameCount);
+                    if (packet && packet->sources.size() <= std::numeric_limits<U32>::max() &&
+                        sCull->pushNativeSimpleRange(packet, static_cast<U32>(packet->sources.size())))
+                    {
+                        ++ALSceneGroupPublicationNative::statistics.hits;
+                        ++ALSceneGroupPublicationNative::statistics.admitted_groups;
+                        ALSceneGroupPublicationNative::statistics.admitted_draws += packet->sources.size();
+                        if (!gCubeSnapshot)
+                        {
+                            U64 remaining = packet->index_count;
+                            while (remaining)
+                            {
+                                const S32 count = static_cast<S32>(std::min<U64>(remaining, std::numeric_limits<S32>::max()));
+                                addTrianglesDrawn(count);
+                                remaining -= count;
+                            }
+                        }
+                        continue;
+                    }
+                }
+            }
             for (LLSpatialGroup::drawmap_elem_t::iterator k = src_vec.begin(); k != src_vec.end(); ++k)
             {
                 LLDrawInfo *info = *k;
@@ -21321,6 +21421,33 @@ void LLPipeline::postSort(LLCamera &camera)
     }
 
     LLVertexBuffer::flushBuffers();
+    if (native_groups)
+    {
+        // Mesh fills can be deferred until this point. Seal only complete
+        // native tuples for a later view, retaining this view's admitted raw
+        // inputs when any publication, eligibility or allocation check fails.
+        for (auto* at = sCull->beginVisibleGroups(); at != sCull->endVisibleGroups(); ++at)
+        {
+            auto* group = *at;
+            if (!group || group->isDead() ||
+                (sUseOcclusion && group->isOcclusionState(LLSpatialGroup::OCCLUDED)) ||
+                (RenderAutoHideSurfaceAreaLimit > 0.f &&
+                 group->mSurfaceArea > RenderAutoHideSurfaceAreaLimit * llmax(group->mObjectBoxSize, 10.f)))
+                continue;
+            const auto* model = nativeSimpleGroupModel(*group);
+            if (!model) continue;
+            const auto draws = group->mDrawMap.find(LLRenderPass::PASS_SIMPLE);
+            if (draws == group->mDrawMap.end() || draws->second.empty()) continue;
+            try
+            {
+                const auto& state = group->metalGroupPublication();
+                if (state->dirty())
+                    ALSceneGroupPublicationNative::seal(state, group->mMetalGroupDependencies, *model, draws->second,
+                        sNativeSceneSources, sNativeSceneSerial, gFrameCount);
+            }
+            catch (const std::bad_alloc&) { ++ALSceneGroupPublicationNative::statistics.failures; }
+        }
+    }
     // LLSpatialGroup::sNoDelete = false;
 }
 

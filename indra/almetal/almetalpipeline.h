@@ -454,6 +454,9 @@ private:
     // Narrow native bridge for the owned shadow-command helper. Indirect
     // execution must preserve the parent state and invalidate buffer caches.
     void* nativeHandleForIndirect() const noexcept;
+    // Read-only encoder access for resource declarations, never command/state
+    // emission. Actual binding changes retain the wrapper's join barriers.
+    void* nativeHandleForResources() const noexcept;
     void* nativeDeviceForIndirect() const noexcept;
     void* nativeCommandBufferForIndirect() const noexcept;
     bool canExecuteIndirect() const noexcept;
@@ -464,6 +467,7 @@ private:
     void recordIndirectSubmission(std::uint32_t command_slots) noexcept;
     friend class ALMetalShadowIndirectCommands;
     friend class ALMetalShadowMaterials;
+    friend class ALMetalWorldResources;
 };
 
 class ALMetalComputeEncoder final

@@ -1545,6 +1545,13 @@ struct ALMetalWorldFrameData::Impl
     std::unordered_map<const ALMetalAttachmentPaletteRecord*, PaletteEntry> palettes;
     ALMetalWorldFrameDataStats statistics;
     std::unique_ptr<ALMetalShadowMaterials> shadow_materials;
+    struct ResourceContext
+    {
+        void* library = nullptr;
+        ALMetalWorldResourceLimits limits;
+        std::weak_ptr<ALMetalWorldResources> value;
+    };
+    std::vector<ResourceContext> resource_contexts;
 };
 
 ALMetalWorldFrameData::ALMetalWorldFrameData(std::unique_ptr<Impl> impl)
@@ -1611,6 +1618,25 @@ ALMetalShadowMaterialStats ALMetalWorldFrameData::shadowMaterialStats() const no
     return mImpl->shadow_materials
         ? mImpl->shadow_materials->stats() : ALMetalShadowMaterialStats{};
 }
+
+std::shared_ptr<ALMetalWorldResources> ALMetalWorldFrameData::worldResources(
+    const ALMetalShaderLibrary& library, ALMetalWorldResourceLimits limits, std::string* error,
+    ALMetalWorldResourceFallback* failure)
+try
+{
+    if (failure) *failure = ALMetalWorldResourceFallback::none;
+    auto& contexts = mImpl->resource_contexts;
+    std::erase_if(contexts, [](const auto& context) { return context.value.expired(); });
+    for (const auto& context : contexts)
+        if (context.library == library.nativeHandle() &&
+            context.limits.maximum_tables == limits.maximum_tables &&
+            context.limits.maximum_buffer_bytes == limits.maximum_buffer_bytes)
+            if (auto value = context.value.lock()) return value;
+    auto value = ALMetalWorldResources::create(*mImpl->device, library, limits, error, failure);
+    if (value) contexts.push_back({library.nativeHandle(), limits, value});
+    return value;
+}
+catch (const std::bad_alloc&) { if (failure) *failure = ALMetalWorldResourceFallback::host_allocation; if (error) error->clear(); return {}; }
 
 bool ALMetalWorldFrameData::reloadShadowMaterials(
     const ALMetalShaderLibrary& library, std::string* error)
@@ -2220,6 +2246,13 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
+    std::array<MaterialRiggedPipelines, 2> resource_material_pipelines;
+    std::array<MaterialRiggedPipelines, 2> resource_pbr_pipelines;
+    ALMetalWorldResourceLimits world_resource_limits;
+    std::shared_ptr<ALMetalWorldResources> world_resources;
+    std::unique_ptr<ALMetalSamplerState> world_resource_sampler;
+    ALMetalWorldResourceStats world_resource_draw_stats;
+    bool fail_world_resource_preparation = false;
     std::array<MaskPipelines, 2> fullbright_pipelines;
     std::array<RiggedPipelines, 2> shiny_pipelines;
     std::array<RiggedPipelines, 2> emboss_pipelines;
@@ -2527,6 +2560,23 @@ struct ALMetalWorldGBufferRenderer::Impl
         return cached.get();
     }
 
+    ALMetalRenderPipeline* resourcePipeline(bool hdr, bool rigged, bool normal_hdr,
+                                          bool pbr, std::string* error)
+    {
+        auto& result = (pbr ? resource_pbr_pipelines : resource_material_pipelines)[hdr][rigged][normal_hdr];
+        if (!result)
+        {
+            const auto* original = (pbr ? pbr_pipelines : material_pipelines)[hdr][rigged][normal_hdr].get();
+            if (!original) return nullptr;
+            auto descriptor = original->descriptor();
+            descriptor.library = library.get();
+            descriptor.fragment_function = pbr ? "almetal_world_pbr_resources_fragment" : "almetal_world_material_resources_fragment";
+            descriptor.label = "Alchemy G-buffer immutable native resource table pipeline";
+            result = ALMetalRenderPipeline::create(*device, descriptor, error);
+        }
+        return result.get();
+    }
+
     ALMetalRenderPipeline* probePBRAlphaPipeline(
         bool hdr, bool coverage, bool rigged, std::string* error)
     {
@@ -2723,6 +2773,11 @@ ALMetalWorldGBufferRenderer::~ALMetalWorldGBufferRenderer()
 
 bool ALMetalWorldGBufferRenderer::reloadShaders(std::string* error)
 {
+    return reloadShaders(std::string{}, error);
+}
+
+bool ALMetalWorldGBufferRenderer::reloadShaders(const std::string& library_path, std::string* error)
+{
     if (!mImpl || !mImpl->device || mImpl->command_batch)
     {
         setError(error, "Metal world shader reload requires an idle renderer");
@@ -2731,7 +2786,8 @@ bool ALMetalWorldGBufferRenderer::reloadShaders(std::string* error)
     // The original forced program load did not destroy render targets or
     // histories. Build native executable owners independently, then publish
     // only after every eager PSO and sampler has succeeded.
-    auto replacement = create(*mImpl->device, mImpl->max_anisotropy, false, error);
+    auto replacement = create(*mImpl->device, mImpl->max_anisotropy, false, error,
+                              library_path.empty() ? nullptr : &library_path);
     if (!replacement) return false;
     auto& next = *replacement->mImpl;
     const auto rebuild_optional = [&](auto&& self, const auto& old, auto& fresh) -> bool
@@ -2760,6 +2816,8 @@ bool ALMetalWorldGBufferRenderer::reloadShaders(std::string* error)
                           next.probe_above_water_wave_pipelines) ||
         !rebuild_optional(rebuild_optional, mImpl->probe_pre_water_pbr_pipelines,
                           next.probe_pre_water_pbr_pipelines)) return false;
+    // Resource-table PSOs remain optional and lazy, including when an explicit
+    // older library has no resource entrypoints. Its ordinary path stays valid.
     for (const auto& entry : mImpl->custom_pre_water_alpha_pipelines)
     {
         std::unique_ptr<ALMetalRenderPipeline> pipeline;
@@ -2787,6 +2845,8 @@ bool ALMetalWorldGBufferRenderer::reloadShaders(std::string* error)
     next.pbr_shadow_pso_diagnostics = mImpl->pbr_shadow_pso_diagnostics;
     next.water_shadow_pso_diagnostics = mImpl->water_shadow_pso_diagnostics;
     next.constant_stats = mImpl->constant_stats;
+    next.world_resource_limits = mImpl->world_resource_limits;
+    next.world_resource_draw_stats = mImpl->world_resource_draw_stats;
     next.shadow_coalesced_draws = mImpl->shadow_coalesced_draws;
     next.shadow_covered_input_draws = mImpl->shadow_covered_input_draws;
     next.shadow_covered_coalesced_draws = mImpl->shadow_covered_coalesced_draws;
@@ -2885,6 +2945,37 @@ ALMetalWorldGBufferRenderer::constantStats() const noexcept
     return mImpl ? mImpl->constant_stats : ALMetalWorldConstantStats{};
 }
 
+ALMetalWorldResourceStats ALMetalWorldGBufferRenderer::worldResourceStats() const noexcept
+{
+    auto result = mImpl && mImpl->world_resources ? mImpl->world_resources->stats() : ALMetalWorldResourceStats{};
+    if (mImpl)
+    {
+        result.requested_draws = mImpl->world_resource_draw_stats.requested_draws;
+        result.bound_draws = mImpl->world_resource_draw_stats.bound_draws;
+        result.fallback_draws = mImpl->world_resource_draw_stats.fallback_draws;
+        result.fallback_reasons = mImpl->world_resource_draw_stats.fallback_reasons;
+        result.last_fallback = mImpl->world_resource_draw_stats.last_fallback;
+        result.failures += mImpl->world_resource_draw_stats.failures;
+        if (result.last_failure == ALMetalWorldResourceFallback::none)
+            result.last_failure = mImpl->world_resource_draw_stats.last_failure;
+    }
+    return result;
+}
+void ALMetalWorldGBufferRenderer::configureWorldResources(ALMetalWorldResourceLimits limits) noexcept
+{
+    if (!mImpl) return;
+    mImpl->world_resource_limits = limits;
+    mImpl->world_resources.reset();
+}
+void ALMetalWorldGBufferRenderer::clearWorldResourceLookup() noexcept
+{
+    if (mImpl && mImpl->world_resources) mImpl->world_resources->clearLookup();
+}
+void ALMetalWorldGBufferRenderer::failNextWorldResourcePreparationForTesting() noexcept
+{
+    if (mImpl) mImpl->fail_world_resource_preparation = true;
+}
+
 bool ALMetalWorldGBufferRenderer::setAnisotropy(
     std::uint32_t max_anisotropy,
     std::string* error)
@@ -2918,6 +3009,7 @@ bool ALMetalWorldGBufferRenderer::setAnisotropy(
     // Recreate the optional material sampler with the new filtering settings
     // on its next use. Pending material tables own their previous sampler.
     mImpl->shadow_material_sampler.reset();
+    mImpl->world_resource_sampler.reset();
     return true;
 }
 
@@ -3139,7 +3231,8 @@ std::unique_ptr<ALMetalWorldGBufferRenderer>
 ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                                     std::uint32_t max_anisotropy,
                                     bool initialize_diagnostics,
-                                    std::string* error)
+                                    std::string* error,
+                                    const std::string* library_path)
 {
     if (max_anisotropy < 1 || max_anisotropy > 16)
     {
@@ -3166,7 +3259,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         }
     }
     impl->render_target_pool = ALMetalRenderTargetPool::create(device);
-    impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
+    impl->library = library_path ? ALMetalShaderLibrary::loadFile(device, *library_path, error)
+                                : ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->render_target_pool || !impl->library ||
         !impl->library->hasFunction("almetal_resample_vertex") ||
         !impl->library->hasFunction("almetal_resample_fragment") ||
@@ -8865,6 +8959,7 @@ try
     prototype.mMaterialStorage.sealed = result->mImpl->material_slots;
     prototype.mPBRStorage.sealed = result->mImpl->pbr_slots;
     prototype.native_material_source = result;
+    prototype.native_resource_source.reset();
     return result;
 }
 catch (const std::bad_alloc&)
@@ -9657,6 +9752,43 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     {
         return nullptr;
     }
+    auto resource_setup_failure = ALMetalWorldResourceFallback::unsupported;
+    if (scene.material_argument_buffers)
+    {
+        // Entirely optional. Preserve the ordinary native path on unsupported
+        // devices, shader/resource allocation pressure or sampler failure.
+        try
+        {
+            std::string optional_error;
+            if (!mImpl->world_resources)
+                mImpl->world_resources = mImpl->frame_data
+                    ? mImpl->frame_data->worldResources(*mImpl->library, mImpl->world_resource_limits, &optional_error, &resource_setup_failure)
+                    : ALMetalWorldResources::create(*mImpl->device, *mImpl->library, mImpl->world_resource_limits, &optional_error, &resource_setup_failure);
+            if (mImpl->world_resources && mImpl->world_resources->supported())
+            {
+                if (!mImpl->world_resource_sampler)
+                {
+                    auto descriptor = worldDiffuseSamplerDescriptor(mImpl->max_anisotropy, true);
+                    descriptor.label = "Alchemy world resource-table anisotropic wrap sampler";
+                    mImpl->world_resource_sampler = ALMetalSamplerState::create(*mImpl->device, descriptor, &optional_error);
+                }
+                resource_setup_failure = mImpl->world_resource_sampler
+                    ? ALMetalWorldResourceFallback::none : ALMetalWorldResourceFallback::native_allocation;
+                if (mImpl->fail_world_resource_preparation)
+                {
+                    mImpl->world_resources->failNextPreparationForTesting();
+                    mImpl->fail_world_resource_preparation = false;
+                }
+            }
+            else if (mImpl->world_resources) resource_setup_failure = ALMetalWorldResourceFallback::unsupported;
+        }
+        catch (const std::bad_alloc&) { resource_setup_failure = ALMetalWorldResourceFallback::host_allocation; }
+        if (resource_setup_failure != ALMetalWorldResourceFallback::none)
+        {
+            ++mImpl->world_resource_draw_stats.failures;
+            mImpl->world_resource_draw_stats.last_failure = resource_setup_failure;
+        }
+    }
     auto encoder = ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world simple G-buffer encoder", error);
     if (!encoder)
@@ -9787,6 +9919,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     std::size_t previous_prepared_world_offset = 0;
     bool have_previous_world_constants = false;
     ALMetalWorldConstantStats constant_stats;
+    ALMetalWorldResourceStats resource_stats;
     // One completion owner avoids adding/scanning an individual command
     // retainer per draw. Consecutive source repeats need no extra refcount;
     // the vector is linear even for a view with many distinct materials.
@@ -10047,7 +10180,29 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         const bool material_normal_map = prepared ? prepared_records[index].material_normal_map : materialHasNormalMap(batch);
         const bool material_specular_map = prepared ? prepared_records[index].material_specular_map : materialHasSpecularMap(batch);
         const bool stable_tables = batch.native_material_source && batch.native_material_source->matches(batch);
-        if (stable_tables)
+        const ALMetalRenderPipeline* resource_pipeline = nullptr;
+        bool resource_bound = false;
+        auto resource_failure = resource_setup_failure;
+        if (scene.material_argument_buffers && (material || pbr))
+        {
+            ++resource_stats.requested_draws;
+            if (!batch.native_resource_source) resource_failure = ALMetalWorldResourceFallback::missing_source;
+            else if (!batch.native_resource_source->matches(batch)) resource_failure = ALMetalWorldResourceFallback::unmatched_source;
+            else if (
+                mImpl->world_resources && mImpl->world_resource_sampler)
+            {
+                try
+                {
+                    std::string optional_error;
+                    auto table = mImpl->world_resources->prepare(batch.native_resource_source, *mImpl->world_resource_sampler, &optional_error, &resource_failure);
+                    resource_pipeline = table ? mImpl->resourcePipeline(scene.hdr, rigged, scene.normal_hdr, pbr, &optional_error) : nullptr;
+                    if (table && !resource_pipeline) resource_failure = ALMetalWorldResourceFallback::pipeline_creation;
+                    resource_bound = resource_pipeline && mImpl->world_resources->bind(*encoder, *command, batch.native_resource_source, table, &optional_error, &resource_failure);
+                }
+                catch (const std::bad_alloc&) { resource_failure = ALMetalWorldResourceFallback::host_allocation; }
+            }
+        }
+        if (stable_tables && !resource_bound)
         {
             if (!material_owners)
             {
@@ -10080,6 +10235,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                                       [batch.alpha_mask ? 1 : 0]
                                       [rigged ? 1 : 0]
                                       [scene.normal_hdr ? 1 : 0].get()));
+        if (resource_bound) pipeline = resource_pipeline;
 
         encoded =
             encoder->setCullMode(
@@ -10094,7 +10250,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             encoder->setVertexBuffer(2, *batch.vertices,
                                      batch.texcoord_offset, error) &&
             bind_world_constants(constants_data, prepared ? prepared_records[index].offset : 0) &&
-            encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
+            (resource_bound || encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error));
         if (encoded && !avatar)
         {
             encoded = encoder->setVertexBuffer(
@@ -10188,7 +10344,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             }
         }
         for (std::size_t texture_index = 0;
-             encoded && texture_index < batch.texture_count;
+             encoded && !resource_bound && texture_index < batch.texture_count;
              ++texture_index)
         {
             encoded = avatar && !batch.avatar_diffuse_srgb
@@ -10199,7 +10355,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                       static_cast<std::uint32_t>(texture_index),
                       batch.diffuse_textures[texture_index], error);
         }
-        if (encoded && material)
+        if (encoded && material && !resource_bound)
         {
             for (std::size_t slot = 0;
                  encoded && slot < batch.material_slot_count;
@@ -10225,7 +10381,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                         specular_texture, error);
             }
         }
-        if (encoded && pbr)
+        if (encoded && pbr && !resource_bound)
         {
             for (std::size_t slot = 0;
                  encoded && slot < batch.pbr_slot_count;
@@ -10258,6 +10414,16 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         {
             if (stable_tables) ++constant_stats.material_source_draws;
             else ++constant_stats.material_source_fallback_draws;
+            if (scene.material_argument_buffers)
+            {
+                if (resource_bound) ++resource_stats.bound_draws;
+                else
+                {
+                    ++resource_stats.fallback_draws;
+                    ++resource_stats.fallback_reasons[static_cast<std::size_t>(resource_failure)];
+                    resource_stats.last_fallback = resource_failure;
+                }
+            }
         }
     }
 
@@ -10338,6 +10504,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     mImpl->constant_stats.reused_bindings += constant_stats.reused_bindings;
     mImpl->constant_stats.material_source_draws += constant_stats.material_source_draws;
     mImpl->constant_stats.material_source_fallback_draws += constant_stats.material_source_fallback_draws;
+    mImpl->world_resource_draw_stats.requested_draws += resource_stats.requested_draws;
+    mImpl->world_resource_draw_stats.bound_draws += resource_stats.bound_draws;
+    mImpl->world_resource_draw_stats.fallback_draws += resource_stats.fallback_draws;
+    for (std::size_t index = 0; index < resource_stats.fallback_reasons.size(); ++index)
+        mImpl->world_resource_draw_stats.fallback_reasons[index] += resource_stats.fallback_reasons[index];
+    if (resource_stats.fallback_draws) mImpl->world_resource_draw_stats.last_fallback = resource_stats.last_fallback;
     transaction.succeeded = true;
     return target;
 }
