@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-155 -->
+<!-- next-defect-id: PPD-157 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3996,3 +3996,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered missing frame lifecycle before cost-fixture correction and a representative main-plus-probe uniform-publication comparison.
+
+
+## PPD-155 — Draw-count-only CPU preparation policy adds work after native material reuse
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex whole-engine cost policy
+- Discovered: 2026-11-14
+- Original reference: Worker preparation must improve complete native cost and frame latency; unchanged immutable source/input ownership does not require an extra worker for each view.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Corrected complete-path-costs-4 uses one FrameData generation per outer frame. Native material scalar encoding at main1024 plus2probe128 beats adaptive: legacy0.510104ms versus0.562480ms, PBR0.601104ms versus0.648125ms. At4096 aggregate CPU also increases with workers.
+- Next action: Preserve all published inputs/native materials/resource retirement by default; make extra G-buffer preparation an explicitly logged nonpersistent diagnostic until representative complete-path benefit is proved. Do not automatically dispatch from draw count alone.
+- Verification: Native material mechanism reduces main/probe encoding/publication work, but its now-cheaper scalar path changes the worker crossover. Simple1024 improves in this diagnostic while4096 regresses;12samples do not establish a safe general live-view threshold. Not a claimed viewer FPS regression.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered measured combined mechanism mismatch before policy correction; costs1–3 retained as provisional same-generation observations under PPD154. No nominal utilization gate.
+
+
+## PPD-156 — Sealed per-view batches still copy inactive authored material arrays
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex scene source publication
+- Discovered: 2026-11-14
+- Original reference: A published source shares immutable stable material data across per-view references; a mutable original author may retain earlier references without reaching that sealed snapshot.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Default ALMetalWorldSimpleBatch copies engaged private optional arrays even when const consumers exclusively use sealed shared snapshots.
+- Next action: Make private table storage copies omit inactive authored bytes when a sealed snapshot exists, preserving manual value copies, original mutable aliases and detached-copy edits; validate native output/lifetime and complete-path costs.
+- Verification: Source-confirmed redundant CPU copy, not a proved viewer performance loss. Do not reset original authored optionals while old producer mutable references can exist.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Independent bounded review found no PPD152 semantic/ABI/lifetime counterexample and identified this remaining stable-source CPU copy. Registered before implementation.

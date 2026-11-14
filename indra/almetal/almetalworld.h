@@ -22,6 +22,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 struct ALMetalWorldModernSkyScene;
@@ -466,41 +468,97 @@ struct ALMetalWorldSimpleBatch
         std::array<ALMetalWorldMaterialSlot, max_material_slots>;
     using PBRSlots = std::array<ALMetalWorldPBRSlot, max_material_slots>;
 
+private:
+    template<class Slots>
+    struct SlotStorage
+    {
+        static_assert(std::is_nothrow_default_constructible_v<Slots> &&
+                      std::is_nothrow_copy_constructible_v<Slots> &&
+                      std::is_nothrow_copy_assignable_v<Slots> &&
+                      std::is_nothrow_move_constructible_v<Slots> &&
+                      std::is_nothrow_move_assignable_v<Slots>);
+        std::optional<Slots> authored;
+        std::shared_ptr<const Slots> sealed;
+
+        SlotStorage() noexcept = default;
+        SlotStorage(const SlotStorage& other) noexcept : sealed(other.sealed)
+        {
+            if (!sealed && other.authored) authored.emplace(*other.authored);
+        }
+        SlotStorage& operator=(const SlotStorage& other) noexcept
+        {
+            if (this == &other) return *this;
+            if (other.sealed)
+            {
+                authored.reset();
+                sealed = other.sealed;
+            }
+            else
+            {
+                authored = other.authored;
+                sealed.reset();
+            }
+            return *this;
+        }
+        SlotStorage(SlotStorage&& other) noexcept : sealed(std::move(other.sealed))
+        {
+            if (!sealed && other.authored) authored.emplace(std::move(*other.authored));
+        }
+        SlotStorage& operator=(SlotStorage&& other) noexcept
+        {
+            if (this == &other) return *this;
+            if (other.sealed)
+            {
+                authored.reset();
+                sealed = std::move(other.sealed);
+            }
+            else
+            {
+                authored = std::move(other.authored);
+                sealed.reset();
+            }
+            return *this;
+        }
+        Slots& writable() noexcept
+        {
+            if (sealed)
+            {
+                authored = *sealed;
+                sealed.reset();
+            }
+            if (!authored) authored.emplace();
+            return *authored;
+        }
+        const Slots& read() const noexcept
+        {
+            static const Slots defaults;
+            return sealed ? *sealed : authored ? *authored : defaults;
+        }
+    };
+
+public:
+
     // Most draws need neither material family. Keep their inline storage
     // inactive until a producer writes it, preserving every slot default.
     ALMetalWorldSimpleBatch() noexcept {}
 
     MaterialSlots& materialSlots()
     {
-        if (mSealedMaterialSlots)
-        {
-            mMaterialSlots = *mSealedMaterialSlots;
-            mSealedMaterialSlots.reset();
-            native_material_source.reset();
-        }
-        if (!mMaterialSlots) mMaterialSlots.emplace();
-        return *mMaterialSlots;
+        if (mMaterialStorage.sealed) native_material_source.reset();
+        return mMaterialStorage.writable();
     }
     const MaterialSlots& materialSlots() const noexcept
     {
-        static const MaterialSlots defaults;
-        return mSealedMaterialSlots ? *mSealedMaterialSlots : mMaterialSlots ? *mMaterialSlots : defaults;
+        return mMaterialStorage.read();
     }
     PBRSlots& pbrSlots()
     {
-        if (mSealedPBRSlots)
-        {
-            mPBRSlots = *mSealedPBRSlots;
-            mSealedPBRSlots.reset();
-            native_material_source.reset();
-        }
-        if (!mPBRSlots) mPBRSlots.emplace();
-        return *mPBRSlots;
+        if (mPBRStorage.sealed) native_material_source.reset();
+        return mPBRStorage.writable();
     }
     const PBRSlots& pbrSlots() const noexcept
     {
-        static const PBRSlots defaults;
-        return mSealedPBRSlots ? *mSealedPBRSlots : mPBRSlots ? *mPBRSlots : defaults;
+        return mPBRStorage.read();
     }
 
     // Valid only with this batch's private sealed table identity and matching
@@ -637,15 +695,17 @@ struct ALMetalWorldSimpleBatch
     bool terrain_tessellation_pinned = false;
 
 private:
-    std::optional<MaterialSlots> mMaterialSlots;
-    std::optional<PBRSlots> mPBRSlots;
     // Publication clones the authored optional value. Previously returned
-    // mutable references still refer to the retained optional storage, never
-    // to this immutable certificate; later mutable access detaches it.
-    std::shared_ptr<const MaterialSlots> mSealedMaterialSlots;
-    std::shared_ptr<const PBRSlots> mSealedPBRSlots;
+    // mutable references on the original prototype retain their storage.
+    // Sealed copies/moves share only the immutable snapshot; first mutable
+    // access reconstructs private authored values and detaches the proof.
+    SlotStorage<MaterialSlots> mMaterialStorage;
+    SlotStorage<PBRSlots> mPBRStorage;
     friend class ALMetalWorldMaterialSource;
 };
+
+static_assert(std::is_nothrow_move_constructible_v<ALMetalWorldSimpleBatch> &&
+              std::is_nothrow_move_assignable_v<ALMetalWorldSimpleBatch>);
 
 // Immutable stable G-buffer material uniforms, shared across main/probe views.
 // Publication leaves the prototype unchanged on failure and seals/installs

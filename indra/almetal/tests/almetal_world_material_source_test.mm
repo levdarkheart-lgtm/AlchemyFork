@@ -365,6 +365,117 @@ TEST_CASE("almetal: stale material certificates preserve native fallback and mal
     }
 }
 
+TEST_CASE("almetal: sealed table copies and moves preserve source aliases and native values",
+          "[almetal][world-material-source][world-material-storage]")
+{
+    STATIC_REQUIRE(std::is_nothrow_move_constructible_v<ALMetalWorldSimpleBatch>);
+    STATIC_REQUIRE(std::is_nothrow_move_assignable_v<ALMetalWorldSimpleBatch>);
+    @autoreleasepool
+    {
+        Fixture f;
+        ALMetalWorldMaterialDataCache cache(*f.device);
+        std::uint64_t frame=700;
+        for(unsigned family:{1u,2u})
+        {
+            CAPTURE(family);
+            auto original=materialBatch(f,family,true);
+            original.modelview_projection[12]=.1f;
+            original.texture_matrix[12]=.125f;
+            ALMetalWorldMaterialSlot* material_alias=family==1?original.materialSlots().data():nullptr;
+            ALMetalWorldPBRSlot* pbr_alias=family==2?original.pbrSlots().data():nullptr;
+            auto source=ALMetalWorldMaterialSource::publish(*f.device,original,cache,&f.error);
+            INFO(f.error);REQUIRE(source);REQUIRE(source->matches(original));
+            const auto scene=f.scene();
+            const auto expected=renderMaterial(f,scene,original,false,++frame).pixels;
+            ALMetalWorldSimpleBatch copied(original);
+            auto assigned=materialBatch(f,family,false);
+            assigned=original;
+            auto move_input=copied;
+            ALMetalWorldSimpleBatch moved(std::move(move_input));
+            auto move_assigned=materialBatch(f,family,false);
+            move_assigned=std::move(assigned);
+            copied.operator=(copied);
+            copied.operator=(std::move(copied));
+
+            // These aliases still refer to the ORIGINAL authored array. No
+            // copied certificate may expose it, including after move/assign.
+            if(material_alias)material_alias[0].env_intensity=material_alias[1].env_intensity=std::numeric_limits<float>::quiet_NaN();
+            if(pbr_alias)pbr_alias[0].roughness_factor=pbr_alias[1].roughness_factor=std::numeric_limits<float>::quiet_NaN();
+            for(const auto* batch:{&original,&copied,&moved,&move_assigned})
+            {
+                REQUIRE(source->matches(*batch));
+                CHECK(batch->native_material_source==source);
+                CHECK(batch->modelview_projection[12]==.1f);
+                CHECK(batch->texture_matrix[12]==.125f);
+                if(family==1)CHECK(&batch->materialSlots()==&std::as_const(original).materialSlots());
+                else CHECK(&batch->pbrSlots()==&std::as_const(original).pbrSlots());
+                CHECK(renderMaterial(f,scene,*batch,false,++frame).pixels==expected);
+                CHECK(renderMaterial(f,scene,*batch,true,++frame).pixels==expected);
+            }
+
+            // First mutable access materializes a private finite snapshot;
+            // editing the copied value detaches only its own certificate.
+            if(family==1)copied.materialSlots()[1].env_intensity=.05f;
+            else copied.pbrSlots()[1].roughness_factor=.05f;
+            CHECK_FALSE(copied.native_material_source);
+            CHECK_FALSE(source->matches(copied));
+            CHECK(source->matches(original));CHECK(source->matches(moved));
+            const auto edited=renderMaterial(f,scene,copied,false,++frame).pixels;
+            CHECK_FALSE(edited==expected);
+            CHECK(renderMaterial(f,scene,copied,true,++frame).pixels==edited);
+            CHECK(renderMaterial(f,scene,original,true,++frame).pixels==expected);
+
+            // Moving the original producer also leaves its old authored
+            // aliases alive; only the destination retains the sealed proof.
+            ALMetalWorldSimpleBatch moved_original(std::move(original));
+            CHECK(source->matches(moved_original));
+            if(material_alias)CHECK(original.materialSlots().data()==material_alias);
+            if(pbr_alias)CHECK(original.pbrSlots().data()==pbr_alias);
+            CHECK(renderMaterial(f,scene,moved_original,true,++frame).pixels==expected);
+        }
+    }
+}
+
+TEST_CASE("almetal: manual table copies and moves retain defaults and independent values",
+          "[almetal][world-material-source][world-material-storage]")
+{
+    ALMetalWorldSimpleBatch defaults;
+    CHECK(std::as_const(defaults).materialSlots()[7].specular_color[0]==1.f);
+    CHECK(std::as_const(defaults).materialSlots()[7].alpha_cutoff==.5f);
+    CHECK(std::as_const(defaults).pbrSlots()[7].roughness_factor==1.f);
+    CHECK(std::as_const(defaults).pbrSlots()[7].texture_transform[3][1]==1.f);
+    ALMetalWorldSimpleBatch original;
+    auto& material_alias=original.materialSlots();
+    auto& pbr_alias=original.pbrSlots();
+    material_alias[7].env_intensity=.37f;pbr_alias[7].roughness_factor=.63f;
+    original.modelview_projection[12]=.25f;
+    ALMetalWorldSimpleBatch copied(original),assigned;
+    assigned.materialSlots()[7].env_intensity=.99f;
+    assigned.pbrSlots()[7].roughness_factor=.01f;
+    assigned=original;
+    material_alias[7].env_intensity=.11f;pbr_alias[7].roughness_factor=.22f;
+    ALMetalWorldSimpleBatch moved(std::move(copied)),move_assigned;
+    move_assigned.materialSlots()[7].env_intensity=.88f;
+    move_assigned=std::move(assigned);
+    moved.operator=(moved);
+    moved.operator=(std::move(moved));
+    for(const auto* batch:{&moved,&move_assigned})
+    {
+        CHECK_FALSE(batch->native_material_source);
+        CHECK(batch->materialSlots()[7].env_intensity==.37f);
+        CHECK(batch->pbrSlots()[7].roughness_factor==.63f);
+        CHECK(batch->modelview_projection[12]==.25f);
+    }
+    moved.materialSlots()[7].env_intensity=.77f;
+    moved.pbrSlots()[7].roughness_factor=.44f;
+    CHECK(material_alias[7].env_intensity==.11f);CHECK(pbr_alias[7].roughness_factor==.22f);
+    CHECK(std::as_const(move_assigned).materialSlots()[7].env_intensity==.37f);
+    CHECK(std::as_const(move_assigned).pbrSlots()[7].roughness_factor==.63f);
+    moved=defaults;
+    CHECK(std::as_const(moved).materialSlots()[7].env_intensity==0.f);
+    CHECK(std::as_const(moved).pbrSlots()[7].roughness_factor==1.f);
+}
+
 // Complete owner-side work, including capture construction, adoption, real
 // credited GCD preparation, native encoding, CPU storage retirement and submit.
 // The final interval additionally waits for all three views on the native GPU.

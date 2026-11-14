@@ -294,3 +294,35 @@ Second warmup checks exact MRT/depth/stencil outputs. No viewer FPS inference.
 Next: clean required build6, focused native material/preparation/owner checks,
 corrected cost matrix with no competing build, then complete86groups/static and
 separate exact candidate staging. No viewer launch or push.
+
+
+## Combined costs, corrected outer-frame lifecycle — source4d26af2892
+
+Required doctor/configure/build6 pass0 (build135.911s), focused material/prepare/
+owner native checks pass3194assertions/15cases with Metal API/shader validation.
+Hidden costs4 all pass: preparation1083/1, visibility1042/1, three-view material
+6598/1. Each cost uses2warmups+12samples and actual per-frame generation; these
+are rejection/selection diagnostics, not300frame product gates or viewer FPS.
+
+Stable material source scalar encoding reduces all six material/count medians.
+At main1024+two128probe views, legacy raw0.542145ms vs stable0.510104ms;
+PBR0.779458ms vs0.601104ms. At4096, legacy2.220980ms vs1.951270ms and
+PBR3.072310ms vs2.232940ms. Total-to-GPU-completion medians at4096 improve
+3.541620ms->3.087500ms and4.389080ms->3.659900ms;12sample maxima are notp95.
+Per-frame publication falls3376->1200bytes legacy and11568->1200bytes PBR,
+after one-time eightvariant publications2176/20736bytes respectively. Actual
+secondwarmup allthreeview MRT/depth/stencil parity passes.
+
+PPD155: adaptive main1024 costs0.562480ms legacy/0.648125ms PBR encode, giving
+back part of native reuse savings. At4096 CPU also rises despite similar wall.
+Simple1024 prep improves1.965980ms->1.807230ms but4096 loses6.412500->6.655080.
+There is no reliable general draw-count crossover. G-buffer jobs therefore
+remain nonpersistent opt-in RenderMetalWorldPreparation (OFF), with requested
+policy and actual scalar/prepared/credited counters logged. Both paths consume
+the same owned immutable scene/resources; default native material reuse staysON.
+Visibility again lacks reliable median-and-tail benefit and staysOFF.
+
+PPD156 source repair removes authored material-array copying from sealed per-view
+values while preserving original mutable aliases and manual value semantics.
+Independent bounded PPD152 review found no semantic/ABI/lifetime counterexample.
+Next source freeze and contained gates include156; no viewer launch/profile/push.

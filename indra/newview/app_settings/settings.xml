@@ -8028,6 +8028,13 @@
       <real>0.00</real>
     </array>
   </map>
+  <key>RenderMetalWorldPreparation</key>
+  <map>
+    <key>Comment</key><string>Diagnostic bounded G-buffer preparation jobs for complete-path cost comparisons. Published scene and material inputs are shared regardless.</string>
+    <key>Persist</key><integer>0</integer>
+    <key>Type</key><string>Boolean</string>
+    <key>Value</key><integer>0</integer>
+  </map>
   <key>RenderMetalNativeVisibility</key>
   <map>
     <key>Comment</key><string>Experimental shared native conservative visibility for measured workload comparisons.</string>

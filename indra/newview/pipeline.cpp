@@ -2970,9 +2970,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             const auto log_publication = [](const char* view, const MetalWorldSimpleCapture* value)
             {
                 if (!value) return;
+                static LLCachedControl<bool> preparation_requested(gSavedSettings, "RenderMetalWorldPreparation", false);
                 LL_INFOS("MetalScene") << "Native shared scene publication: view=" << view
                     << ", world_source_hit/build=" << value->scene_source_hits << '/' << value->scene_source_builds
                     << ", source_failures=" << value->scene_source_failures
+                    << ", preparation_requested=" << preparation_requested()
                     << ", encoded_views(scalar/prepared/credited)=" << value->scalar_world_views << '/' << value->prepared_world_views << '/' << value->credited_world_views
                     << ", prepared_constant_bytes(compact/original)=" << value->prepared_world_constant_bytes << '/' << value->prepared_world_uncompacted_bytes
                     << ", shared_common_records=" << value->prepared_world_shared_common_records
@@ -16231,7 +16233,12 @@ void LLPipeline::endMetalWorldGBufferCapture()
         }
     } retire_cpu_capture{inputs, prepared, capture.batches, capture.visibility_queries,
         capture.cpu_packets_reclaimed, capture.cpu_packets_retained};
-    const bool prepare_world = inputs && inputs->scene().batch_count >= MetalWorldSimpleCapture::parallel_world_minimum;
+    // Stable source tables make the scalar native path substantially cheaper.
+    // Draw count alone did not predict a complete-path worker benefit; keep
+    // this diagnostic explicit until its frame/CPU cost gate is established.
+    static LLCachedControl<bool> prepare_world_inputs(gSavedSettings, "RenderMetalWorldPreparation", false);
+    const bool prepare_world = inputs && prepare_world_inputs() &&
+        inputs->scene().batch_count >= MetalWorldSimpleCapture::parallel_world_minimum;
     bool credited_preparation = false;
     if (inputs) scene = inputs->scene();
     if (prepare_world)
@@ -16258,7 +16265,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
             prepared = preparation->finish(&error);
         }
     }
-    // Small views use the same immutable packet, avoiding a second ticket,
+    // Scalar views use the same immutable packet, avoiding a second ticket,
     // layout pass and temporary constant slab. Encoding consumes its copied
     // poses synchronously; only native resource generations need GPU lifetime.
     if (inputs && !prepare_world) scene.source_owner = inputs->resourceLease();

@@ -8795,8 +8795,8 @@ bool ALMetalWorldMaterialSource::matches(const ALMetalWorldSimpleBatch& batch) c
         batch.pbr_slot_count == mImpl->pbr_count &&
         batch.material_alpha_mode == mImpl->material_alpha_mode &&
         batch.alpha_mask == mImpl->alpha_mask &&
-        batch.mSealedMaterialSlots == mImpl->material_slots &&
-        batch.mSealedPBRSlots == mImpl->pbr_slots;
+        batch.mMaterialStorage.sealed == mImpl->material_slots &&
+        batch.mPBRStorage.sealed == mImpl->pbr_slots;
 }
 std::shared_ptr<const ALMetalBuffer> ALMetalWorldMaterialSource::materialLease() const noexcept { return mImpl->material; }
 std::shared_ptr<const ALMetalBuffer> ALMetalWorldMaterialSource::pbrLease(bool normal_hdr) const noexcept { return mImpl->pbr[normal_hdr ? 1 : 0]; }
@@ -8840,8 +8840,8 @@ try
     if (pbr) impl->pbr_slots = std::make_shared<const ALMetalWorldSimpleBatch::PBRSlots>(
         static_cast<const ALMetalWorldSimpleBatch&>(prototype).pbrSlots());
     ALMetalWorldSimpleBatch staged = prototype;
-    staged.mSealedMaterialSlots = impl->material_slots;
-    staged.mSealedPBRSlots = impl->pbr_slots;
+    staged.mMaterialStorage.sealed = impl->material_slots;
+    staged.mPBRStorage.sealed = impl->pbr_slots;
     ALMetalWorldGBufferScene scene;
     if (material)
     {
@@ -8862,8 +8862,8 @@ try
         }
     }
     auto result = std::shared_ptr<const ALMetalWorldMaterialSource>(new ALMetalWorldMaterialSource(std::move(impl)));
-    prototype.mSealedMaterialSlots = result->mImpl->material_slots;
-    prototype.mSealedPBRSlots = result->mImpl->pbr_slots;
+    prototype.mMaterialStorage.sealed = result->mImpl->material_slots;
+    prototype.mPBRStorage.sealed = result->mImpl->pbr_slots;
     prototype.native_material_source = result;
     return result;
 }
