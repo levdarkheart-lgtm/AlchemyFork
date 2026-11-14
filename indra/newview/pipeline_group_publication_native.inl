@@ -11,6 +11,7 @@
 #include <iterator>
 #include <list>
 #include <unordered_map>
+#include "../almetal/almetalworldcohort.h"
 namespace ALSceneGroupPublicationNative
 {
 struct WeakResource
@@ -55,17 +56,16 @@ struct Layout
 };
 struct Payload
 {
-    struct KeyedSource
-    {
-        ALMetalWorldSourceKey key;
-        const ALMetalWorldSimpleBatch* prototype = nullptr;
-    };
+    using KeyedSource = ALMetalWorldKeyedSource;
     std::vector<SourceLease> sources;
-    // Built once on dirty publication. A future Scene cohort can borrow this
-    // exact immutable span instead of repacking per-source view references.
+    // Producer-only ordered span, built once dirty. The private certificate
+    // copies its source values once before allowing warm validation bypass.
     std::vector<KeyedSource> keyed_sources;
     std::vector<ALNativeSourceWorkingSet::Resource> resources;
     std::shared_ptr<const ALScenePublicationNative::NativeTuple> native_tuple;
+    // The certificate owns const source snapshots and weak backing/native
+    // identities. It cannot keep this payload alive through a parent cycle.
+    std::shared_ptr<const ALMetalWorldSourceCohort> cohort;
     std::array<float, 16> model{};
     U64 serial = 0;
     U64 index_count = 0;
@@ -212,6 +212,7 @@ public:
         if (payload.native_tuple)
             bytes += sizeof(ALScenePublicationNative::NativeTuple) +
                 U64(payload.native_tuple->resources.capacity()) * sizeof(ALNativeSourceWorkingSet::Resource);
+        if (payload.cohort) bytes += payload.cohort->metadataBytes();
         for (const auto& source : layout->sources)
         {
             bytes += sizeof(Source) + U64(source->resources.capacity()) * sizeof(WeakResource) +
@@ -668,6 +669,34 @@ try
     if (layout == layout_owner) layout = std::make_shared<Layout>(*layout);
     layout->resources = std::move(weak_union);++statistics.resource_union_builds;
     value->native_tuple = ALScenePublicationNative::nativeTuple(value->resources);value->serial = ++source_serial;
+    // Only this completed producer knows the typed generation union. A void
+    // owner passed to the certificate cannot independently prove ownership.
+    // Certify all native addresses against the already-built exact union now,
+    // once dirty, before issuing the private immutable cohort certificate.
+    const auto contains = [&](const auto& allocation, U64 bytes)
+    {
+        if (!allocation) return true;
+        const auto at = resources.find(std::weak_ptr<const void>(allocation));
+        return at != resources.end() && at->second.bytes == bytes &&
+            at->second.allocation.lock().get() == allocation.get();
+    };
+    for (const auto& source : value->sources)
+    {
+        const auto& prototype = *source.prototype;
+        const auto& world = source.world_owner;
+        const auto& material = prototype.native_material_source;
+        const auto buffer_present = [&](const auto& buffer) { return !buffer || contains(buffer, buffer->length()); };
+        if (world->vertices.get() != prototype.vertices || world->indices.get() != prototype.indices ||
+            !buffer_present(world->vertices) || !buffer_present(world->indices) ||
+            !buffer_present(material->materialLease()) || !buffer_present(material->pbrLease(false)) ||
+            !buffer_present(material->pbrLease(true)))
+        { ++statistics.failures;return {}; }
+        for (const auto& texture : prototype.native_resource_source->generationLeases())
+            if (!texture || !contains(texture, ALScenePublicationNative::textureBytes(*texture)))
+            { ++statistics.failures;return {}; }
+    }
+    value->cohort = ALMetalWorldSourceCohort::seal(value->keyed_sources, value, value->native_tuple, region.identity);
+    if (!value->cohort) { ++statistics.failures;return {}; }
     if (!state->publish(revision, value)) { ++statistics.failures;return {}; }
     const auto still_current = [&] { return state->revision() == revision && !state->dirty() && state->publication().get() == value.get(); };
     const auto drop_candidate = [&]

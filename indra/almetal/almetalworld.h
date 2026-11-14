@@ -16,6 +16,7 @@
 #include "almetalworlddraws.h"
 #include "almetalworldsourceview.h"
 #include "almetalworldsourcecommands.h"
+#include "almetalworldcohort.h"
 
 #include "almetalpipeline.h"
 
@@ -1238,6 +1239,11 @@ struct ALMetalWorldGBufferScene
     std::size_t reference_count = 0;
     const ALMetalWorldDrawIndex* draw_order = nullptr;
     std::size_t draw_order_count = 0;
+    // Ordered insertions into the raw/reference permutation. Each private
+    // certificate owns immutable ordinary material source facts; one copied
+    // transform applies to the complete group, with fixed UVs per source.
+    const ALMetalWorldSourceCohortView* cohorts = nullptr;
+    std::size_t cohort_count = 0;
     std::size_t drawCount() const noexcept;
     // Requires validated storage/order and an index smaller than drawCount().
     ALMetalWorldDraw draw(std::size_t index) const noexcept;
@@ -1296,6 +1302,12 @@ struct ALMetalWorldSourceCommandDrawStats
     std::array<std::uint64_t,static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::count)> fallback_reasons{};
     ALMetalWorldSourceCommandFailure last_fallback=ALMetalWorldSourceCommandFailure::none;
     ALMetalWorldSourceCommandStats cache;
+};
+
+struct ALMetalWorldCohortStats
+{
+    // Successfully encoded/accepted direct G-buffer work, not GPU completion.
+    std::uint64_t views=0,groups=0,draws=0;
 };
 
 struct alignas(16) ALMetalWorldLocalLight
@@ -2708,6 +2720,7 @@ public:
     ALMetalWorldResourceStats worldResourceStats() const noexcept;
     ALMetalWorldSourceDrawStats worldSourceStats() const noexcept;
     ALMetalWorldSourceCommandDrawStats worldSourceCommandStats() const noexcept;
+    ALMetalWorldCohortStats worldCohortStats() const noexcept;
     void clearWorldSourceCommands() noexcept;
     void failNextWorldSourceCommandPublicationForTesting() noexcept;
     void configureWorldResources(ALMetalWorldResourceLimits) noexcept;

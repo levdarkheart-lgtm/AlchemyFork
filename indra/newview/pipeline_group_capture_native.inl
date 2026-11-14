@@ -128,11 +128,10 @@ void LLPipeline::captureMetalWorldPublishedPass(U32 type, U32 family)
             if (capture.rigged || capture.impostor_bake || capture.impostor_alpha_active || capture.world_post_deferred_active ||
                 capture.pbr_glow || capture.impostor_fullbright || capture.impostor_shiny || capture.impostor_emboss ||
                 group->region_identity != range.model.identity || group->material_flavor != ALSceneGroupPublicationNative::materialFlavorKey(flavor) ||
-                group->sources.size() != range.draw_count || group->keyed_sources.size() != range.draw_count || !group->native_tuple)
+                !group->cohort || group->cohort->size() != range.draw_count ||
+                group->cohort->family() != family || group->cohort->regionIdentity() != range.model.identity ||
+                !group->cohort->matchesOwners(group, group->native_tuple))
             { capture.markIncomplete(__LINE__);break; }
-            bool complete = true;
-            for (const auto& source : group->sources) if (!source) { complete = false;break; }
-            if (!complete) { capture.markIncomplete(__LINE__);break; }
             LLMatrix4a model(range.model.model.data()), modelview, inverse, projection;
             if (!buildMetalWorldDrawMatrices(&model, modelview, inverse, projection))
             { capture.markIncomplete(__LINE__);break; }
@@ -145,28 +144,12 @@ void LLPipeline::captureMetalWorldPublishedPass(U32 type, U32 family)
                 view.normal_matrix[column][row] = inverse_values[row * 4 + column];
                 view.rigged_normal_matrix[column][row] = model_values[column * 4 + row];
             }
-            capture.world_resources->retain(group->native_tuple);
-            if (capture.compact_gbuffer_active) capture.retainCpu(group);
-            capture.captureCachedSourceRows(group->keyed_sources, range.model, view);
-            for (const auto& source : group->sources)
-            {
-                std::memcpy(view.texture_matrix, source.prototype->texture_matrix, sizeof(view.texture_matrix));
-                if (capture.compact_gbuffer_active)
-                {
-                    if (!capture.appendReference(*source.prototype, view)) { capture.markIncomplete(__LINE__);break; }
-                }
-                else
-                {
-                    auto& batch = capture.batches.emplace_back(*source.prototype);
-                    std::memcpy(batch.modelview_projection, view.modelview_projection, sizeof(batch.modelview_projection));
-                    std::memcpy(batch.modelview, view.modelview, sizeof(batch.modelview));
-                    std::memcpy(batch.normal_matrix, view.normal_matrix, sizeof(batch.normal_matrix));
-                    std::memcpy(batch.rigged_normal_matrix, view.rigged_normal_matrix, sizeof(batch.rigged_normal_matrix));
-                    std::memcpy(batch.texture_matrix, view.texture_matrix, sizeof(batch.texture_matrix));
-                }
-                ++ALSceneGroupPublicationNative::statistics.captured_draws;
-            }
-            if (!capture.complete) break;
+            // The private producer certificate already validated every static
+            // source. One view retains its exact CPU/native owners; fixed UV
+            // transforms remain in each immutable source, not this shared view.
+            if (!capture.appendCohort(group->cohort, group, group->native_tuple, view))
+            { capture.markIncomplete(__LINE__);break; }
+            ALSceneGroupPublicationNative::statistics.captured_draws += range.draw_count;
             ++ALSceneGroupPublicationNative::statistics.captured_groups;
             ++ALSceneGroupPublicationNative::statistics.material_captured_groups;
             ALSceneGroupPublicationNative::statistics.material_captured_draws += range.draw_count;

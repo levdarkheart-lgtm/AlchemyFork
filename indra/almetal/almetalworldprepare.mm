@@ -10,6 +10,7 @@
 #include <cstring>
 #include <limits>
 #include <new>
+#include <set>
 #include <unordered_map>
 
 namespace
@@ -18,6 +19,10 @@ void fail(std::string* error, const char* message)
 {
     if (error) *error = message;
 }
+struct NativeOwners
+{
+    std::vector<std::shared_ptr<const void>> owners;
+};
 }
 
 struct ALMetalWorldViewInputs::Impl
@@ -26,6 +31,7 @@ struct ALMetalWorldViewInputs::Impl
     std::vector<ALMetalWorldSimpleBatch> batches;
     std::vector<ALMetalWorldSourceReference> references;
     std::vector<ALMetalWorldDrawIndex> draw_order;
+    std::vector<ALMetalWorldSourceCohortView> cohorts;
     std::vector<ALMetalWorldVisibilityQuery> queries;
     std::shared_ptr<const void> resources;
     std::vector<std::vector<float>> poses;
@@ -48,7 +54,7 @@ bool ALMetalWorldViewInputs::reclaimCpuStorage(
     if (!input || input.use_count() != 1 || !empty_batches.empty() || !empty_queries.empty()) return false;
     auto& impl = *input->mImpl;
     // The raw compatibility API must not silently discard compact records.
-    if (!impl.references.empty() || !impl.draw_order.empty()) return false;
+    if (!impl.references.empty() || !impl.draw_order.empty() || !impl.cohorts.empty()) return false;
     empty_batches.swap(impl.batches);
     empty_queries.swap(impl.queries);
     empty_batches.clear();
@@ -67,6 +73,7 @@ bool ALMetalWorldViewInputs::reclaimCpuStorage(
     if (!input || input.use_count() != 1 || !empty_batches.empty() || !empty_references.empty() ||
         !empty_draw_order.empty() || !empty_queries.empty()) return false;
     auto& impl = *input->mImpl;
+    if (!impl.cohorts.empty()) return false;
     empty_batches.swap(impl.batches);
     empty_references.swap(impl.references);
     empty_draw_order.swap(impl.draw_order);
@@ -76,13 +83,30 @@ bool ALMetalWorldViewInputs::reclaimCpuStorage(
     return true;
 }
 
+bool ALMetalWorldViewInputs::reclaimCpuStorage(
+    std::shared_ptr<const ALMetalWorldViewInputs>& input,
+    std::vector<ALMetalWorldSimpleBatch>& empty_batches,
+    std::vector<ALMetalWorldSourceReference>& empty_references,
+    std::vector<ALMetalWorldDrawIndex>& empty_draw_order,
+    std::vector<ALMetalWorldSourceCohortView>& empty_cohorts,
+    std::vector<ALMetalWorldVisibilityQuery>& empty_queries) noexcept
+{
+    if(!input || input.use_count()!=1 || !empty_batches.empty() || !empty_references.empty() ||
+       !empty_draw_order.empty() || !empty_cohorts.empty() || !empty_queries.empty())return false;
+    auto& impl=*input->mImpl;
+    empty_batches.swap(impl.batches);empty_references.swap(impl.references);empty_draw_order.swap(impl.draw_order);
+    empty_cohorts.swap(impl.cohorts);empty_queries.swap(impl.queries);
+    empty_batches.clear();empty_references.clear();empty_draw_order.clear();empty_cohorts.clear();empty_queries.clear();
+    input.reset();return true;
+}
+
 std::shared_ptr<const ALMetalWorldViewInputs> ALMetalWorldViewInputs::adopt(
     ALMetalWorldGBufferScene scene, std::vector<ALMetalWorldSimpleBatch> batches,
     std::vector<ALMetalWorldVisibilityQuery> queries,
     std::shared_ptr<const void> resource_owner, std::uint64_t epoch, std::string* error)
 try
 {
-    if (scene.reference_count || scene.draw_order_count)
+    if (scene.reference_count || scene.draw_order_count || scene.cohort_count)
     {
         fail(error, "Raw world adoption cannot discard compact references or order");
         return {};
@@ -104,6 +128,19 @@ std::shared_ptr<const ALMetalWorldViewInputs> ALMetalWorldViewInputs::adopt(
     std::vector<ALMetalWorldVisibilityQuery> queries,
     std::shared_ptr<const void> cpu_description_owner,
     std::shared_ptr<const void> native_resource_owner, std::uint64_t epoch, std::string* error)
+{
+    if(scene.cohort_count)
+    {fail(error,"Compact world adoption cannot discard cohort storage");return {};}
+    return adopt(std::move(scene),std::move(batches),std::move(references),std::move(draw_order),{},
+        std::move(queries),std::move(cpu_description_owner),std::move(native_resource_owner),epoch,error);
+}
+
+std::shared_ptr<const ALMetalWorldViewInputs> ALMetalWorldViewInputs::adopt(
+    ALMetalWorldGBufferScene scene,std::vector<ALMetalWorldSimpleBatch> batches,
+    std::vector<ALMetalWorldSourceReference> references,std::vector<ALMetalWorldDrawIndex> draw_order,
+    std::vector<ALMetalWorldSourceCohortView> cohorts,std::vector<ALMetalWorldVisibilityQuery> queries,
+    std::shared_ptr<const void> cpu_description_owner,std::shared_ptr<const void> native_resource_owner,
+    std::uint64_t epoch,std::string* error)
 try
 {
     if ((!batches.empty() || !references.empty() || scene.destination) && !native_resource_owner)
@@ -120,8 +157,18 @@ try
     impl->batches = std::move(batches);
     impl->references = std::move(references);
     impl->draw_order = std::move(draw_order);
+    impl->cohorts = std::move(cohorts);
     impl->queries = std::move(queries);
     impl->resources = std::move(native_resource_owner);
+    if(!impl->cohorts.empty())
+    {
+        auto native=std::make_shared<NativeOwners>();native->owners.reserve(impl->cohorts.size()+1);
+        std::set<std::shared_ptr<const void>,std::owner_less<std::shared_ptr<const void>>> unique;
+        if(impl->resources){unique.insert(impl->resources);native->owners.push_back(impl->resources);}
+        for(const auto& view:impl->cohorts)
+            if(view.native_owner && unique.insert(view.native_owner).second)native->owners.push_back(view.native_owner);
+        impl->resources=std::move(native);
+    }
     impl->epoch = epoch;
     // The caller's transient array addresses are deliberately replaced.
     scene.batches = impl->batches.data();
@@ -130,6 +177,8 @@ try
     scene.reference_count = impl->references.size();
     scene.draw_order = impl->draw_order.data();
     scene.draw_order_count = impl->draw_order.size();
+    scene.cohorts = impl->cohorts.data();
+    scene.cohort_count = impl->cohorts.size();
     scene.visibility_queries = impl->queries.data();
     scene.visibility_query_count = impl->queries.size();
     scene.cpu_source_owner = std::move(cpu_description_owner);
@@ -325,8 +374,9 @@ try
     impl->jobs = std::clamp<std::size_t>(requested_jobs, 1, count >= 2 ? 2 : 1);
     impl->prepared->records.resize(count);
     std::size_t bytes = 0;
-    for (std::size_t index = 0; index < count; ++index)
-        if (!alMetalLayoutWorldRecord(scene.draw(index).source(), bytes, impl->prepared->records[index], error)) return {};
+    ALMetalWorldDrawCursor cursor(scene);
+    for (std::size_t index = 0; index < count; ++index,cursor.advance())
+        if (!alMetalLayoutWorldRecord(cursor.draw().source(), bytes, impl->prepared->records[index], error)) return {};
     impl->prepared->constants.resize(bytes);
     impl->prepared->statistics = {count, 0, bytes, impl->jobs, false};
     impl->prepared->statistics.uncompacted_constant_bytes = bytes;

@@ -39,31 +39,6 @@
 #include <utility>
 #include <vector>
 
-const float* ALMetalWorldDraw::modelviewProjection() const noexcept
-{ return mView ? mView->modelview_projection : mSource->modelview_projection; }
-const float* ALMetalWorldDraw::modelview() const noexcept
-{ return mView ? mView->modelview : mSource->modelview; }
-const float* ALMetalWorldDraw::normalMatrix() const noexcept
-{ return mView ? &mView->normal_matrix[0][0] : &mSource->normal_matrix[0][0]; }
-const float* ALMetalWorldDraw::riggedNormalMatrix() const noexcept
-{ return mView ? &mView->rigged_normal_matrix[0][0] : &mSource->rigged_normal_matrix[0][0]; }
-const float* ALMetalWorldDraw::textureMatrix() const noexcept
-{ return mView ? mView->texture_matrix : mSource->texture_matrix; }
-
-std::size_t ALMetalWorldGBufferScene::drawCount() const noexcept
-{ return draw_order_count ? draw_order_count : batch_count; }
-
-ALMetalWorldDraw ALMetalWorldGBufferScene::draw(std::size_t index) const noexcept
-{
-    // Storage, complete ordered membership and this index are validated before
-    // resolving. Tokens never point into a raw vector while it is growing.
-    if (!draw_order_count) return ALMetalWorldDraw(batches[index]);
-    const auto token = draw_order[index];
-    const auto storage_index = alMetalWorldDrawStorageIndex(token);
-    if (!alMetalWorldDrawIsReference(token)) return ALMetalWorldDraw(batches[storage_index]);
-    const auto& reference = references[storage_index];
-    return ALMetalWorldDraw(*reference.source, &reference.view);
-}
 
 namespace
 {
@@ -2347,6 +2322,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::shared_ptr<ALMetalWorldSourceCommands> source_commands;
     ALMetalWorldSourceDrawStats source_draw_stats;
     ALMetalWorldSourceCommandDrawStats source_command_stats;
+    ALMetalWorldCohortStats cohort_stats;
     ALMetalWorldResourceLimits world_resource_limits;
     std::shared_ptr<ALMetalWorldResources> world_resources;
     std::unique_ptr<ALMetalSamplerState> world_resource_sampler;
@@ -3042,6 +3018,7 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.world_resource_draw_stats = mImpl->world_resource_draw_stats;
     next.source_draw_stats = mImpl->source_draw_stats;
     next.source_command_stats = mImpl->source_command_stats;
+    next.cohort_stats = mImpl->cohort_stats;
     next.shadow_coalesced_draws = mImpl->shadow_coalesced_draws;
     next.shadow_covered_input_draws = mImpl->shadow_covered_input_draws;
     next.shadow_covered_coalesced_draws = mImpl->shadow_covered_coalesced_draws;
@@ -3227,6 +3204,8 @@ ALMetalWorldSourceCommandDrawStats ALMetalWorldGBufferRenderer::worldSourceComma
     if (mImpl && mImpl->source_commands) result.cache = mImpl->source_commands->stats();
     return result;
 }
+ALMetalWorldCohortStats ALMetalWorldGBufferRenderer::worldCohortStats() const noexcept
+{ return mImpl ? mImpl->cohort_stats : ALMetalWorldCohortStats{}; }
 void ALMetalWorldGBufferRenderer::clearWorldSourceCommands() noexcept
 { if (mImpl && mImpl->source_commands) mImpl->source_commands->clear(); }
 void ALMetalWorldGBufferRenderer::failNextWorldSourceCommandPublicationForTesting() noexcept
@@ -9283,10 +9262,10 @@ bool compactWorldSourceSupported(const ALMetalWorldSimpleBatch& batch) noexcept
 // Detached record preparation is also a public helper. Its owner validates the
 // complete permutation once, but a direct caller must never dereference an
 // invalid local mapping before ordinary draw validation can reject it.
-bool worldDrawStorageIndexAvailable(const ALMetalWorldGBufferScene& scene,
+bool worldBaseDrawStorageIndexAvailable(const ALMetalWorldGBufferScene& scene,
                                    std::size_t index) noexcept
 {
-    if (index >= scene.drawCount()) return false;
+    if (index >= (scene.draw_order_count ? scene.draw_order_count : scene.batch_count)) return false;
     if (!scene.draw_order_count) return scene.batches != nullptr && scene.reference_count == 0;
     if (!scene.draw_order) return false;
     const auto token = scene.draw_order[index];
@@ -9304,6 +9283,7 @@ bool alMetalValidateWorldView(const ALMetalWorldGBufferScene& scene, std::string
         (scene.reference_count != 0 && (!scene.references || !scene.draw_order_count ||
                                       !scene.cpu_source_owner || !scene.source_owner)) ||
         (scene.draw_order_count != 0 && !scene.draw_order) ||
+        (scene.cohort_count != 0 && !scene.cohorts) ||
         (scene.visibility_query_count != 0 &&
          !scene.visibility_queries) ||
         scene.width == 0 || scene.height == 0 || !validOpaqueCoverage(scene))
@@ -9327,7 +9307,7 @@ bool alMetalValidateWorldView(const ALMetalWorldGBufferScene& scene, std::string
                 (scene.draw_order_count % 64 != 0), 0);
             for (std::size_t index = 0; index < scene.draw_order_count; ++index)
             {
-                if (!worldDrawStorageIndexAvailable(scene, index))
+                if (!worldBaseDrawStorageIndexAvailable(scene, index))
                 {
                     setError(error, "Metal world draw storage index is invalid");
                     return false;
@@ -9361,6 +9341,32 @@ bool alMetalValidateWorldView(const ALMetalWorldGBufferScene& scene, std::string
             setError(error, "Metal world source reference family is unsupported");
             return false;
         }
+    }
+    const auto base_count=scene.draw_order_count ? scene.draw_order_count : scene.batch_count;
+    std::size_t inserted=0,previous_end=0;
+    for (std::size_t index=0;index<scene.cohort_count;++index)
+    {
+        const auto& cohort=scene.cohorts[index];
+        if (!cohort.cohort || cohort.cohort->size()==0 ||
+            !cohort.cohort->matchesOwners(cohort.cpu_owner,cohort.native_owner) ||
+            !ALMetalWorldSourceCohort::validView(cohort.view) ||
+            cohort.base_before>base_count ||
+            inserted>std::numeric_limits<std::size_t>::max()-cohort.base_before ||
+            cohort.logical_begin!=cohort.base_before+inserted ||
+            cohort.logical_begin<previous_end ||
+            cohort.cohort->size()>std::numeric_limits<std::size_t>::max()-cohort.logical_begin ||
+            cohort.cohort->size()>std::numeric_limits<std::size_t>::max()-inserted)
+        {
+            setError(error,"Metal world cohort interval, owner or view is invalid");
+            return false;
+        }
+        inserted+=cohort.cohort->size();
+        previous_end=cohort.logical_begin+cohort.cohort->size();
+    }
+    if (inserted>std::numeric_limits<std::size_t>::max()-base_count)
+    {
+        setError(error,"Metal world cohort draw count overflows");
+        return false;
     }
     if (!finiteValues(scene.clear_color, 4) ||
         !finiteValues(scene.mirror_clip_plane, 4))
@@ -9812,13 +9818,20 @@ bool alMetalLayoutWorldRecord(const ALMetalWorldSimpleBatch& batch,
 bool alMetalPrepareWorldRecord(const ALMetalWorldGBufferScene& scene, std::size_t index,
     ALMetalWorldPreparedRecord& record, std::span<std::byte> bytes, std::string* error)
 {
-    if (!worldDrawStorageIndexAvailable(scene, index))
+    if (!alMetalWorldDrawStorageAvailable(scene, index))
     {
         setError(error, "Prepared world draw storage index is invalid");
         return false;
     }
     const auto draw = scene.draw(index);
-    if (!alMetalValidateWorldBatch(scene, draw, error)) return false;
+    const auto* cohort = alMetalWorldCohortAt(scene,index);
+    if (cohort)
+    {
+        if (!cohort->cohort->matchesOwners(cohort->cpu_owner,cohort->native_owner) ||
+            !ALMetalWorldSourceCohort::validView(cohort->view))
+        { setError(error,"Prepared world cohort view is invalid");return false; }
+    }
+    else if (!alMetalValidateWorldBatch(scene, draw, error)) return false;
     const auto& batch = draw.source();
     const auto copy = [&](std::size_t offset, const auto& value)
     {
@@ -9899,28 +9912,39 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     if (!prepared)
     {
         if (!validated_shape && !alMetalValidateWorldView(scene, error)) return nullptr;
-        for (std::size_t index = 0; index < draw_count; ++index)
-            if (!alMetalValidateWorldBatch(scene, scene.draw(index), error)) return nullptr;
+        ALMetalWorldDrawCursor cursor(scene);
+        for (std::size_t index=0; index<draw_count;)
+        {
+            if (const auto* cohort=cursor.cohort())
+            {
+                const auto remaining=cohort->logical_begin+cohort->cohort->size()-index;
+                cursor.advance(remaining);index+=remaining;
+                continue; // Static sources were validated by the private seal.
+            }
+            if (!alMetalValidateWorldBatch(scene,cursor.draw(),error)) return nullptr;
+            cursor.advance();++index;
+        }
     }
 
     const auto prepared_records = prepared ? prepared->records() : std::span<const ALMetalWorldPreparedRecord>{};
     const auto prepared_constants = prepared ? prepared->constants() : std::span<const std::byte>{};
     std::unique_ptr<ALMetalBuffer> terrain_factor_buffer;
-    std::vector<std::uint16_t> terrain_factors(draw_count * 6, 0);
-    bool has_terrain = false;
-    for (std::size_t index = 0; index < draw_count; ++index)
+    std::vector<std::uint16_t> terrain_factors;
+    ALMetalWorldDrawCursor terrain_cursor(scene);
+    for (std::size_t index=0;index<draw_count;)
     {
-        const ALMetalWorldSimpleBatch& batch = scene.draw(index).source();
-        if (!batch.terrain)
+        if (const auto* cohort=terrain_cursor.cohort())
         {
-            continue;
+            const auto remaining=cohort->logical_begin+cohort->cohort->size()-index;
+            terrain_cursor.advance(remaining);index+=remaining;continue;
         }
-        has_terrain = true;
-        std::memcpy(terrain_factors.data() + index * 6,
-                    batch.terrain_tessellation_factors,
-                    sizeof(batch.terrain_tessellation_factors));
+        const auto& batch=terrain_cursor.draw().source();
+        if (batch.terrain)
+            terrain_factors.insert(terrain_factors.end(),std::begin(batch.terrain_tessellation_factors),
+                                   std::end(batch.terrain_tessellation_factors));
+        terrain_cursor.advance();++index;
     }
-    if (has_terrain)
+    if (!terrain_factors.empty())
     {
         ALMetalBufferDescriptor factor_descriptor;
         factor_descriptor.length = terrain_factors.size() *
@@ -9939,58 +9963,42 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     }
 
     std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
-    std::vector<const ALMetalBuffer*> palette_buffers(
-        draw_count, nullptr);
-    std::vector<bool> inline_palettes(draw_count, false);
-    for (std::size_t batch_index = 0;
-         batch_index < draw_count; ++batch_index)
+    std::unordered_map<std::size_t,const ALMetalBuffer*> palette_buffers;
+    // Arena-backed palettes are published inline at the consuming draw. Only
+    // standalone large palettes require this preparation pass, over base rows.
+    if (!mImpl->frame_data)
     {
-        const ALMetalWorldSimpleBatch& batch = scene.draw(batch_index).source();
-        if (batch.terrain || !batch.skin_palette)
+        ALMetalWorldDrawCursor cursor(scene);
+        for (std::size_t index=0;index<draw_count;)
         {
-            continue;
-        }
-        constexpr std::size_t max_inline_palette_bytes = 4096;
-        const std::size_t palette_bytes =
-            batch.skin_palette_float_count * sizeof(float);
-        if (mImpl->frame_data || palette_bytes <= max_inline_palette_bytes)
-        {
-            // Inline command data is completion-safe and avoids rebuilding
-            // the same small native buffer for every probe/mirror view.
-            inline_palettes[batch_index] = true;
-            continue;
-        }
-        for (std::size_t previous = 0; previous < batch_index; ++previous)
-        {
-            const ALMetalWorldSimpleBatch& candidate = scene.draw(previous).source();
-            if (palette_buffers[previous] &&
-                candidate.skin_palette == batch.skin_palette &&
-                candidate.skin_palette_float_count ==
-                    batch.skin_palette_float_count &&
-                candidate.skin_joint_count == batch.skin_joint_count)
+            if (const auto* cohort=cursor.cohort())
             {
-                palette_buffers[batch_index] = palette_buffers[previous];
-                break;
+                const auto remaining=cohort->logical_begin+cohort->cohort->size()-index;
+                cursor.advance(remaining);index+=remaining;continue;
             }
+            const auto logical_index=index;
+            const auto& batch=cursor.draw().source();cursor.advance();++index;
+            if (batch.terrain || !batch.skin_palette ||
+                batch.skin_palette_float_count*sizeof(float)<=4096) continue;
+            const ALMetalBuffer* shared=nullptr;
+            for (const auto& [previous,palette] : palette_buffers)
+            {
+                const auto& candidate=scene.draw(previous).source();
+                if (candidate.skin_palette==batch.skin_palette &&
+                    candidate.skin_palette_float_count==batch.skin_palette_float_count)
+                { shared=palette;break; }
+            }
+            if (shared) { palette_buffers.emplace(logical_index,shared);continue; }
+            ALMetalBufferDescriptor descriptor;
+            descriptor.length=batch.skin_palette_float_count*sizeof(float);
+            descriptor.storage=ALMetalStorageMode::shared;
+            descriptor.cpu_cache=ALMetalCpuCacheMode::write_combined;
+            descriptor.label="Alchemy world skin palette";
+            auto palette=ALMetalBuffer::create(*mImpl->device,descriptor,error);
+            if (!palette || !palette->write(0,batch.skin_palette,descriptor.length,error)) return nullptr;
+            palette_buffers.emplace(logical_index,palette.get());
+            palette_storage.push_back(std::move(palette));
         }
-        if (palette_buffers[batch_index])
-        {
-            continue;
-        }
-        ALMetalBufferDescriptor palette_descriptor;
-        palette_descriptor.length = palette_bytes;
-        palette_descriptor.storage = ALMetalStorageMode::shared;
-        palette_descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
-        palette_descriptor.label = "Alchemy world skin palette";
-        auto palette = ALMetalBuffer::create(
-            *mImpl->device, palette_descriptor, error);
-        if (!palette || !palette->write(
-                0, batch.skin_palette, palette_descriptor.length, error))
-        {
-            return nullptr;
-        }
-        palette_buffers[batch_index] = palette.get();
-        palette_storage.push_back(std::move(palette));
     }
 
     ALMetalRenderTargetDescriptor target_descriptor;
@@ -10147,6 +10155,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     {
         return nullptr;
     }
+    for (std::size_t i=0;i<scene.cohort_count;++i)
+        if (!command->retainUntilCompletion(scene.cohorts[i].native_owner,error)) return nullptr;
+
     const auto prepared_resources = prepared ? prepared->inputLease() : nullptr;
     if (prepared &&
         ((prepared_resources && !command->retainUntilCompletion(prepared_resources, error)) ||
@@ -10167,7 +10178,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         return nullptr;
     }
     auto resource_setup_failure = ALMetalWorldResourceFallback::unsupported;
-    if (scene.material_argument_buffers)
+    if (scene.material_argument_buffers && (scene.batch_count || scene.reference_count))
     {
         // Entirely optional. Preserve the ordinary native path on unsupported
         // devices, shader/resource allocation pressure or sampler failure.
@@ -10235,6 +10246,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     !candidate.key.identity || !candidate.key.revision ||
                     source_request_for_draw[candidate.draw_index] != no_source_row)
                 { valid = false; break; }
+                if (alMetalWorldCohortAt(scene,candidate.draw_index))
+                { valid=false;break; }
                 const auto draw = scene.draw(candidate.draw_index);
                 const auto& batch = draw.source();
                 const auto& region = metadata.regions[candidate.region];
@@ -10310,6 +10323,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             std::size_t query=0;
             for (std::size_t first=0; first<draw_count;)
             {
+                if (const auto* cohort=alMetalWorldCohortAt(scene,first))
+                { first=cohort->logical_begin+cohort->cohort->size();continue; }
                 if (source_request_for_draw[first] == no_source_row) { ++first; continue; }
                 const auto& initial = scene.draw(first).source();
                 const bool pbr = isPBRBatch(initial);
@@ -10537,14 +10552,18 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                                          previous_world_slice.offset, error);
     };
 
-    for (std::size_t index = 0; encoded && index < draw_count; ++index)
+    ALMetalWorldDrawCursor draw_cursor(scene);
+    std::size_t terrain_factor_index=0;
+    std::uint64_t cohort_draws=0;
+    for (std::size_t index = 0; encoded && index < draw_count; ++index,draw_cursor.advance())
     {
         encoded = encode_visibility_at(index);
         if (!encoded)
         {
             break;
         }
-        const auto draw = scene.draw(index);
+        const auto draw = draw_cursor.draw();
+        const auto* current_cohort=draw_cursor.cohort();
         const ALMetalWorldSimpleBatch& batch = draw.source();
         const bool join_static = scene.join_adjacent_static_draws &&
             scene.visibility_query_count == 0 && !scene.wireframe &&
@@ -10737,12 +10756,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             encoded = encoded &&
                 encoder->setTessellationFactorBuffer(
                     *terrain_factor_buffer,
-                    index * sizeof(batch.terrain_tessellation_factors),
+                    terrain_factor_index++ * sizeof(batch.terrain_tessellation_factors),
                     0, error) &&
                 encoder->drawPatches(4, 0, 1, 1, 0, error);
             continue;
         }
-        if (source_bank_cursor < source_banks.size() && source_banks[source_bank_cursor].first == index)
+        if (!current_cohort && source_bank_cursor < source_banks.size() && source_banks[source_bank_cursor].first == index)
         {
             const auto& run=source_banks[source_bank_cursor++];
             std::string optional_error;
@@ -10756,6 +10775,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 source_bound_draws += run.count;
                 source_bank_stats.bank_draws += run.count;
                 ++source_bank_stats.execute_calls;
+                draw_cursor.advance(run.count-1);
                 index += run.count-1;
                 continue;
             }
@@ -10765,7 +10785,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             source_bank_stats.fallback_reasons[static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::execution)] += run.count;
             source_bank_stats.last_fallback=ALMetalWorldSourceCommandFailure::execution;
         }
-        if (!scene.source_command_banks && source_frame && source_request_for_draw[index] != no_source_row)
+        if (!current_cohort && !scene.source_command_banks && source_frame && source_request_for_draw[index] != no_source_row)
         {
             // This branch deliberately precedes packing the 400-byte common
             // record. Matrix rows and source resources are bound as a view,
@@ -10795,11 +10815,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         const bool pbr = prepared ? prepared_records[index].pbr : isPBRBatch(batch);
         const bool material_normal_map = prepared ? prepared_records[index].material_normal_map : materialHasNormalMap(batch);
         const bool material_specular_map = prepared ? prepared_records[index].material_specular_map : materialHasSpecularMap(batch);
-        const bool stable_tables = batch.native_material_source && batch.native_material_source->matches(batch);
+        const bool stable_tables = current_cohort ||
+            (batch.native_material_source && batch.native_material_source->matches(batch));
         const ALMetalRenderPipeline* resource_pipeline = nullptr;
         bool resource_bound = false;
         auto resource_failure = resource_setup_failure;
-        if (scene.material_argument_buffers && (material || pbr))
+        if (!current_cohort && scene.material_argument_buffers && (material || pbr))
         {
             ++resource_stats.requested_draws;
             if (!batch.native_resource_source) resource_failure = ALMetalWorldResourceFallback::missing_source;
@@ -10818,7 +10839,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 catch (const std::bad_alloc&) { resource_failure = ALMetalWorldResourceFallback::host_allocation; }
             }
         }
-        if (stable_tables && !resource_bound)
+        if (!current_cohort && stable_tables && !resource_bound)
         {
             if (!material_owners)
             {
@@ -10882,13 +10903,13 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         if (encoded && batch.skin_palette)
         {
             encoded =
-                (inline_palettes[index]
+                ((mImpl->frame_data || batch.skin_palette_float_count*sizeof(float)<=4096)
                      ? mImpl->setVertexData(*encoder, *command,
                            5, batch.skin_palette,
                            batch.skin_palette_float_count * sizeof(float),
                            error, true)
                      : encoder->setVertexBuffer(
-                           5, *palette_buffers[index], 0, error)) &&
+                           5, *palette_buffers.at(index), 0, error)) &&
                 encoder->setVertexBuffer(
                     6, *batch.vertices, batch.weight_offset, error) &&
                 mImpl->setVertexData(*encoder, *command,
@@ -11026,18 +11047,19 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                         pbr_slot.emissive_texture, error);
             }
         }
-        const bool shared_visible_draw = shared_visibility_arguments && !avatar && !rigged &&
+        const bool shared_visible_draw = !current_cohort && shared_visibility_arguments && !avatar && !rigged &&
             !batch.avatar_cloth && shared_visibility_arguments->appliesTo(index, batch.index_count, draw.modelviewProjection());
         encoded = encoded && (shared_visible_draw
             ? shared_visibility_arguments->drawIndexed(*encoder, *command, index, batch.index_type,
                 *batch.indices, batch.index_offset, batch.index_count, error)
             : encoder->drawIndexed(ALMetalPrimitiveType::triangle,
                 batch.index_count, batch.index_type, *batch.indices, batch.index_offset, 1, error));
+        if (encoded && current_cohort) ++cohort_draws;
         if (encoded && (material || pbr))
         {
             if (stable_tables) ++constant_stats.material_source_draws;
             else ++constant_stats.material_source_fallback_draws;
-            if (scene.material_argument_buffers)
+            if (!current_cohort && scene.material_argument_buffers)
             {
                 if (resource_bound) ++resource_stats.bound_draws;
                 else
@@ -11142,6 +11164,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     if (source_bank_stats.fallback_draws)
         mImpl->source_command_stats.last_fallback = source_bank_stats.last_fallback;
     mImpl->source_draw_stats.bound += source_bound_draws;
+    if (scene.cohort_count)
+    {
+        ++mImpl->cohort_stats.views;
+        mImpl->cohort_stats.groups+=scene.cohort_count;
+        mImpl->cohort_stats.draws+=cohort_draws;
+    }
     transaction.succeeded = true;
     return target;
 }

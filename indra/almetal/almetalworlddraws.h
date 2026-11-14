@@ -10,6 +10,8 @@
 #include <type_traits>
 
 struct ALMetalWorldSimpleBatch;
+struct ALMetalWorldGBufferScene;
+struct ALMetalWorldSourceCohortView;
 
 // These are the only per-view overrides for the first compact slice. Source
 // geometry, material, coverage and native generation facts remain immutable.
@@ -48,15 +50,16 @@ constexpr ALMetalWorldDrawIndex alMetalWorldDrawStorageIndex(ALMetalWorldDrawInd
 constexpr bool alMetalWorldDrawIndexFits(std::size_t index) noexcept
 { return index <= alMetalWorldDrawIndexMask; }
 
-// A resolved draw is two borrowed pointers. No consumer may reconstruct a full
+// A resolved draw is three borrowed pointers. No consumer may reconstruct a full
 // batch just to apply view overrides. Matrix getters are defined after the
 // native batch is complete, alongside its existing packing/validation code.
 class ALMetalWorldDraw final
 {
 public:
     explicit ALMetalWorldDraw(const ALMetalWorldSimpleBatch& source,
-        const ALMetalWorldViewMatrices* view = nullptr) noexcept
-        : mSource(&source), mView(view) {}
+        const ALMetalWorldViewMatrices* view = nullptr,
+        const float* fixed_texture_matrix = nullptr) noexcept
+        : mSource(&source), mView(view), mFixedTextureMatrix(fixed_texture_matrix) {}
     const ALMetalWorldSimpleBatch& source() const noexcept { return *mSource; }
     const ALMetalWorldViewMatrices* view() const noexcept { return mView; }
     const float* modelviewProjection() const noexcept;
@@ -68,5 +71,28 @@ public:
 private:
     const ALMetalWorldSimpleBatch* mSource;
     const ALMetalWorldViewMatrices* mView;
+    const float* mFixedTextureMatrix;
 };
-static_assert(sizeof(ALMetalWorldDraw) == sizeof(void*) * 2);
+static_assert(sizeof(ALMetalWorldDraw) == sizeof(void*) * 3);
+
+// Local storage checks, also used before resolving an untrusted direct helper
+// request. Whole scene ordering/owner proofs are validated on adoption/render.
+const ALMetalWorldSourceCohortView* alMetalWorldCohortAt(
+    const ALMetalWorldGBufferScene&,std::size_t logical_index) noexcept;
+bool alMetalWorldDrawStorageAvailable(
+    const ALMetalWorldGBufferScene&,std::size_t logical_index) noexcept;
+
+// Sequential native consumption advances through cohort ranges, not through
+// their constituent rows when skipping a certified group or an encoded run.
+class ALMetalWorldDrawCursor final
+{
+public:
+    explicit ALMetalWorldDrawCursor(const ALMetalWorldGBufferScene&,
+                                   std::size_t first=0) noexcept;
+    ALMetalWorldDraw draw() const noexcept;
+    const ALMetalWorldSourceCohortView* cohort() const noexcept;
+    void advance(std::size_t count=1) noexcept;
+private:
+    const ALMetalWorldGBufferScene* mScene;
+    std::size_t mLogical=0,mBase=0,mCohort=0;
+};

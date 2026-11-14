@@ -25,6 +25,20 @@ public:
         std::shared_ptr<const void> resource_owner,
         std::uint64_t epoch,
         std::string* error = nullptr);
+    // Cohort rows are not raw/ref order tokens. Each copied group view pins
+    // its exact CPU backing through jobs/encode and its native tuple through
+    // a separate native-only completion aggregate.
+    static std::shared_ptr<const ALMetalWorldViewInputs> adopt(
+        ALMetalWorldGBufferScene scene,
+        std::vector<ALMetalWorldSimpleBatch> batches,
+        std::vector<ALMetalWorldSourceReference> references,
+        std::vector<ALMetalWorldDrawIndex> draw_order,
+        std::vector<ALMetalWorldSourceCohortView> cohorts,
+        std::vector<ALMetalWorldVisibilityQuery> queries,
+        std::shared_ptr<const void> cpu_description_owner,
+        std::shared_ptr<const void> native_resource_owner,
+        std::uint64_t epoch,
+        std::string* error = nullptr);
     // Compact references borrow immutable descriptions from cpu_description_owner.
     // Only native_resource_owner is retained by consuming GPU commands.
     static std::shared_ptr<const ALMetalWorldViewInputs> adopt(
@@ -51,6 +65,13 @@ public:
     static bool reclaimCpuStorage(
         std::shared_ptr<const ALMetalWorldViewInputs>& input,
         std::vector<ALMetalWorldSimpleBatch>& empty_batches,
+        std::vector<ALMetalWorldVisibilityQuery>& empty_queries) noexcept;
+    static bool reclaimCpuStorage(
+        std::shared_ptr<const ALMetalWorldViewInputs>& input,
+        std::vector<ALMetalWorldSimpleBatch>& empty_batches,
+        std::vector<ALMetalWorldSourceReference>& empty_references,
+        std::vector<ALMetalWorldDrawIndex>& empty_draw_order,
+        std::vector<ALMetalWorldSourceCohortView>& empty_cohorts,
         std::vector<ALMetalWorldVisibilityQuery>& empty_queries) noexcept;
     // Returns raw, reference, order and query capacities together. The raw-only
     // overload refuses packets containing compact records or ordered storage.

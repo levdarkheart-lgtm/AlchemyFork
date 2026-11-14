@@ -83,6 +83,7 @@
 #include "../almetal/almetaltextureops.h"
 #include "../almetal/almetaluirenderer.h"
 #include "../almetal/almetalworld.h"
+#include "../almetal/almetalworldcohort.h"
 #include "../almetal/almetalshadowprepare.h"
 #include "../almetal/almetalshadowcache.h"
 #include "../almetal/almetalworldprepare.h"
@@ -1583,9 +1584,10 @@ static void describe_metal_gbuffer_draw_encoding(
         << ", view=" << view_kind << '/' << face
         << ", joining_requested=" << scene.join_adjacent_static_draws
         << ", source_batches=" << scene.drawCount()
-        << ", raw_batches/references=" << scene.batch_count << '/' << scene.reference_count
+        << ", raw_batches/references/cohorts=" << scene.batch_count << '/' << scene.reference_count << '/' << scene.cohort_count
         << ", cpu_draw_array_bytes=" << scene.batch_count * sizeof(ALMetalWorldSimpleBatch) +
-            scene.reference_count * sizeof(ALMetalWorldSourceReference) + scene.draw_order_count * sizeof(ALMetalWorldDrawIndex)
+            scene.reference_count * sizeof(ALMetalWorldSourceReference) + scene.draw_order_count * sizeof(ALMetalWorldDrawIndex) +
+            scene.cohort_count * sizeof(ALMetalWorldSourceCohortView)
         << ", encoded_draws=" << encoded_draws
         << ", queries=" << scene.visibility_query_count
         << ", outline_batches=" << outlines
@@ -3036,6 +3038,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             {
                 if (!value) return;
                 static LLCachedControl<bool> preparation_requested(gSavedSettings, "RenderMetalWorldPreparation", false);
+                const auto cohorts = value->renderer ? value->renderer->worldCohortStats() : ALMetalWorldCohortStats{};
                 LL_INFOS("MetalScene") << "Native shared scene publication: view=" << view
                     << ", world_source_hit/build=" << value->scene_source_hits << '/' << value->scene_source_builds
                     << ", source_failures=" << value->scene_source_failures
@@ -3044,6 +3047,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", prepared_constant_bytes(compact/original)=" << value->prepared_world_constant_bytes << '/' << value->prepared_world_uncompacted_bytes
                     << ", shared_common_records=" << value->prepared_world_shared_common_records
                     << ", cpu_packet_reclaimed/retained=" << value->cpu_packets_reclaimed << '/' << value->cpu_packets_retained
+                    << ", direct_cohort_appends/draws=" << value->direct_cohort_appends << '/' << value->direct_cohort_draws
+                    << ", direct_cohort_accepted(views/groups/draws)=" << cohorts.views << '/' << cohorts.groups << '/' << cohorts.draws
                     << ", last_failure=" << (value->last_scene_source_failure ? value->last_scene_source_failure : "none")
                     << LL_ENDL;
             };
@@ -16217,6 +16222,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.reference_count = capture.source_references.size();
     scene.draw_order = capture.draw_order.data();
     scene.draw_order_count = capture.draw_order.size();
+    scene.cohorts = capture.source_cohorts.data();
+    scene.cohort_count = capture.source_cohorts.size();
     scene.batches = capture.batches.data();
     scene.batch_count = capture.batches.size();
     scene.visibility_queries = capture.visibility_queries.data();
@@ -16369,6 +16376,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     const auto epoch = capture.world_prepare_epoch->fetch_add(1, std::memory_order_acq_rel) + 1;
     auto inputs = ALMetalWorldViewInputs::adopt(scene, std::move(capture.batches),
         std::move(capture.source_references), std::move(capture.draw_order),
+        std::move(capture.source_cohorts),
         std::move(capture.visibility_queries), capture.cpu_sources, capture.world_resources, epoch, &error);
     // Required work never disappears when optional worker admission is denied.
     // One owner range and at most one credited GCD range share the same packet.
@@ -16381,6 +16389,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
         std::vector<ALMetalWorldSimpleBatch>& batches;
         std::vector<ALMetalWorldSourceReference>& references;
         std::vector<ALMetalWorldDrawIndex>& order;
+        std::vector<ALMetalWorldSourceCohortView>& cohorts;
+        std::size_t& cohort_draw_count;
         std::shared_ptr<MetalWorldSimpleCapture::WorldCpuLease>& cpu_sources;
         std::vector<ALMetalWorldVisibilityQuery>& queries;
         U64& reclaimed;
@@ -16396,22 +16406,25 @@ void LLPipeline::endMetalWorldGBufferCapture()
             batches.clear();
             references.clear();
             order.clear();
+            cohorts.clear();
+            cohort_draw_count = 0;
             cpu_sources.reset();
             queries.clear();
             if (inputs)
             {
-                if (ALMetalWorldViewInputs::reclaimCpuStorage(inputs, batches, references, order, queries)) ++reclaimed;
+                if (ALMetalWorldViewInputs::reclaimCpuStorage(inputs, batches, references, order, cohorts, queries)) ++reclaimed;
                 else ++retained;
             }
         }
     } retire_cpu_capture{inputs, prepared, scene, capture.batches, capture.source_references, capture.draw_order,
+        capture.source_cohorts, capture.source_cohort_draw_count,
         capture.cpu_sources, capture.visibility_queries,
         capture.cpu_packets_reclaimed, capture.cpu_packets_retained};
     // Stable source tables make the scalar native path substantially cheaper.
     // Draw count alone did not predict a complete-path worker benefit; keep
     // this diagnostic explicit until its frame/CPU cost gate is established.
     static LLCachedControl<bool> prepare_world_inputs(gSavedSettings, "RenderMetalWorldPreparation", false);
-    const bool prepare_world = inputs && prepare_world_inputs() && !scene.source_rows &&
+    const bool prepare_world = inputs && prepare_world_inputs() && !scene.source_rows && !scene.cohort_count &&
         inputs->scene().drawCount() >= MetalWorldSimpleCapture::parallel_world_minimum;
     bool credited_preparation = false;
     if (inputs) scene = inputs->scene();
@@ -21411,11 +21424,13 @@ void LLPipeline::postSort(LLCamera &camera)
                         {
                             auto packet = ALSceneGroupPublicationNative::currentMaterial(
                                 cohort->second.state, region, flavor, sNativeSceneSources, gFrameCount);
-                            if (packet && packet->sources.size() == src_vec.size() &&
-                                packet->keyed_sources.size() == src_vec.size() && packet->native_tuple &&
-                                packet->sources.size() <= std::numeric_limits<U32>::max() &&
+                            if (packet && packet->cohort && packet->cohort->size() == src_vec.size() &&
+                                packet->cohort->family() == static_cast<U32>(flavor.family) &&
+                                packet->cohort->regionIdentity() == region.identity &&
+                                packet->cohort->matchesOwners(packet, packet->native_tuple) &&
+                                packet->cohort->size() <= std::numeric_limits<U32>::max() &&
                                 sCull->pushNativeMaterialRange(j->first, packet,
-                                    static_cast<U32>(packet->sources.size()), region))
+                                    static_cast<U32>(packet->cohort->size()), region))
                             {
                                 ++ALSceneGroupPublicationNative::statistics.hits;
                                 ++ALSceneGroupPublicationNative::statistics.admitted_groups;

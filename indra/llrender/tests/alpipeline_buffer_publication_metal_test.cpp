@@ -7,6 +7,7 @@
 #include "llfontmetal_fixture.h"
 #include "../../almetal/almetalpipeline.h"
 #include "../../almetal/almetalworld.h"
+#include "../../almetal/almetalworldcohort.h"
 #include "../../almetal/almetalworldprepare.h"
 #include "../../almetal/almetalworldmaterialdata.h"
 #include "../../almetal/almetalworldresources.h"
@@ -426,6 +427,7 @@ struct GroupPublication : Publication
         result.batches=capture.batches.data();result.batch_count=capture.batches.size();
         result.references=capture.source_references.data();result.reference_count=capture.source_references.size();
         result.draw_order=capture.draw_order.data();result.draw_order_count=capture.draw_order.size();
+        result.cohorts=capture.source_cohorts.data();result.cohort_count=capture.source_cohorts.size();
         result.cpu_source_owner=capture.cpu_sources;
         result.source_rows=capture.source_rows;
         result.source_owner=capture.world_resources;result.width=result.height=side;
@@ -1442,16 +1444,18 @@ TEST_CASE("Actual material cohorts bypass draw-info discovery and share each vie
             Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture);
             const auto matrices=Inputs::matrix_builds;{CullScope scope(cull);f.capture(pipeline);}
             REQUIRE(capture.complete);CHECK(Inputs::matrix_builds==matrices+1);
-            CHECK(capture.source_references.size()==3);CHECK(capture.batches.empty());
-            REQUIRE(capture.cpu_sources);CHECK(capture.cpu_sources->owners.size()==1);
-            CHECK(capture.world_resources->owners.size()==1);
-            REQUIRE(capture.source_rows);REQUIRE(capture.source_rows->candidates.size()==3);
-            CHECK(capture.source_rows->regions.size()==1);
+            CHECK(capture.source_references.empty());CHECK(capture.batches.empty());
+            REQUIRE(capture.source_cohorts.size()==1);CHECK(capture.logicalDrawCount()==3);
+            CHECK(capture.direct_cohort_appends==1);CHECK(capture.direct_cohort_draws==3);
+            CHECK(capture.source_cohorts[0].cpu_owner.get()==packet.get());
+            CHECK(capture.source_cohorts[0].native_owner.get()==packet->native_tuple.get());
+            CHECK_FALSE(capture.cpu_sources);CHECK(capture.world_resources->owners.empty());
+            CHECK_FALSE(capture.source_rows); // Required cohorts do not request the rejected GPU-row path.
             for(U32 row=0;row<3;++row)
             {
-                CHECK(capture.source_references[row].source==packet->sources[row].prototype);
-                CHECK(capture.source_rows->candidates[row].draw_index==row);
-                CHECK(capture.source_rows->candidates[row].key.identity==packet->sources[row].owner->identity);
+                CHECK(capture.source_cohorts[0].cohort->source(row).vertices==packet->sources[row].prototype->vertices);
+                CHECK(capture.source_cohorts[0].cohort->source(row).index_offset==packet->sources[row].prototype->index_offset);
+                CHECK(capture.source_cohorts[0].cohort->key(row).identity==packet->sources[row].owner->identity);
                 CHECK_FALSE(packet->sources[row].owner->prototype.native_material_source);
                 CHECK_FALSE(packet->sources[row].owner->prototype.native_resource_source);
             }
@@ -1463,8 +1467,8 @@ TEST_CASE("Actual material cohorts bypass draw-info discovery and share each vie
         Inputs::LLCullResult rebased;REQUIRE(rebased.pushNativeMaterialRange(f.type,packet,3,f.region.snapshot()));
         Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture);
         {CullScope scope(rebased);f.capture(pipeline);}REQUIRE(capture.complete);
-        CHECK(capture.source_references[0].view.modelview[12]==.25f);
-        CHECK(capture.source_references[0].view.modelview[13]==-.5f);
+        CHECK(capture.source_cohorts[0].view.modelview[12]==.25f);
+        CHECK(capture.source_cohorts[0].view.modelview[13]==-.5f);
         CHECK(f.reads()==reads);CHECK(Inputs::sNativeSceneSerial==serial);
     }
 }
@@ -1485,9 +1489,9 @@ TEST_CASE("Actual scalar and indexed material cohorts preserve every legacy fami
         {CullScope scope(raw);f.capture(flat);}{CullScope scope(cohort);f.capture(grouped);}
         REQUIRE(flat.mMetalWorldSimpleCapture->complete);REQUIRE(grouped.mMetalWorldSimpleCapture->complete);
         const auto& a=flat.mMetalWorldSimpleCapture->source_references;
-        const auto& b=grouped.mMetalWorldSimpleCapture->source_references;
-        REQUIRE(a.size()==2);REQUIRE(b.size()==2);
-        CHECK(b[0].source->texture_count==1);CHECK(b[1].source->texture_count==2);
+        const auto& b=grouped.mMetalWorldSimpleCapture->source_cohorts;
+        REQUIRE(a.size()==2);REQUIRE(b.size()==1);
+        CHECK(b[0].cohort->source(0).texture_count==1);CHECK(b[0].cohort->source(1).texture_count==2);
         auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
         auto flat_target=renderer->render(f.scene(*flat.mMetalWorldSimpleCapture),&f.error);INFO(f.error);REQUIRE(flat_target);
         auto group_target=renderer->render(f.scene(*grouped.mMetalWorldSimpleCapture),&f.error);INFO(f.error);REQUIRE(group_target);
@@ -1510,10 +1514,11 @@ TEST_CASE("Actual material cull ranges preserve raw group raw logical order and 
         Inputs::LLPipeline flat,grouped;f.configure(*flat.mMetalWorldSimpleCapture);f.configure(*grouped.mMetalWorldSimpleCapture);
         {CullScope scope(raw);f.capture(flat);}{CullScope scope(mixed);f.capture(grouped);}
         auto& capture=*grouped.mMetalWorldSimpleCapture;REQUIRE(capture.complete);REQUIRE(capture.flushDrawOrder());
-        REQUIRE(capture.source_rows);REQUIRE(capture.source_rows->candidates.size()==4);
-        const std::array<U64,4> identities{before.state->identity(),first.state->identity(),second.state->identity(),after.state->identity()};
-        for(U32 draw=0;draw<4;++draw)
-        {CHECK(capture.source_rows->candidates[draw].draw_index==draw);CHECK(capture.source_rows->candidates[draw].key.identity==identities[draw]);}
+        REQUIRE(capture.source_cohorts.size()==1);CHECK(capture.source_cohorts[0].logical_begin==1);
+        CHECK(capture.source_cohorts[0].base_before==1);CHECK(capture.source_cohorts[0].cohort->size()==2);
+        REQUIRE(capture.source_rows);REQUIRE(capture.source_rows->candidates.size()==2);
+        CHECK(capture.source_rows->candidates[0].draw_index==0);CHECK(capture.source_rows->candidates[0].key.identity==before.state->identity());
+        CHECK(capture.source_rows->candidates[1].draw_index==3);CHECK(capture.source_rows->candidates[1].key.identity==after.state->identity());
         std::array<ALMetalWorldVisibilityQuery,5> queries{};
         for(U32 index=0;index<queries.size();++index)
         {
@@ -1598,7 +1603,8 @@ TEST_CASE("Actual material cohort native tables outlive CPU descriptors and pres
         Inputs::LLCullResult cull;REQUIRE(cull.pushNativeMaterialRange(f.type,packet,1,f.region.snapshot()));
         Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture,true,false);
         {CullScope scope(cull);f.capture(pipeline);}REQUIRE(capture.complete);
-        const auto* original=capture.source_references[0].source->vertices;
+        REQUIRE(capture.source_cohorts.size()==1);
+        const auto* original=capture.source_cohorts[0].cohort->source(0).vertices;
         auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
         auto expected_target=renderer->render(f.scene(capture),&f.error);INFO(f.error);REQUIRE(expected_target);
         const auto expected_image=f.read(*expected_target);
@@ -1670,6 +1676,44 @@ TEST_CASE("Actual material pass null rows retain direct-probe failure and ordina
         capture.direct_probe_scene_active=direct;{CullScope scope(cull);f.capture(pipeline);}
         CHECK(capture.complete==!direct);CHECK(capture.logicalDrawCount()==(direct?0:1));
         if(direct){CHECK_FALSE(capture.cpu_sources);CHECK_FALSE(capture.source_rows);}
+    }
+}
+
+TEST_CASE("Actual direct material cohorts retain mixed raw reference order through adoption and reclamation",
+          "[almetal][pipeline-buffer-publication][native-material-group][native-direct-cohort]")
+{
+    for(U32 family:{1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);
+        auto& raw=f.materialDraw();auto& a=f.materialDraw();auto& b=f.materialDraw(true);auto& reference=f.materialDraw();
+        const auto packet=Inputs::ALSceneGroupPublicationNative::sealMaterial(f.group,f.group_dependencies,f.group_layout,
+            f.model,f.region.snapshot(),std::vector<Inputs::LLDrawInfo*>{&a,&b},f.flavor,
+            Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(packet);REQUIRE(packet->cohort);
+        Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture,true,false);
+        pipeline.captureMetalPublishedWorldBatch(raw,family,false,true);
+        Inputs::LLCullResult cull;REQUIRE(cull.pushNativeMaterialRange(f.type,packet,2,f.region.snapshot()));
+        {CullScope scope(cull);f.capture(pipeline);}
+        pipeline.captureMetalPublishedWorldBatch(reference,family,false);
+        REQUIRE(capture.complete);REQUIRE(capture.flushDrawOrder());CHECK(capture.logicalDrawCount()==4);
+        REQUIRE(capture.batches.size()==1);REQUIRE(capture.source_references.size()==1);
+        REQUIRE(capture.draw_order.size()==2);REQUIRE(capture.source_cohorts.size()==1);
+        CHECK(capture.source_cohorts[0].logical_begin==1);CHECK(capture.source_cohorts[0].base_before==1);
+        std::vector<ALMetalWorldVisibilityQuery> queries;
+        auto inputs=ALMetalWorldViewInputs::adopt(f.scene(capture),std::move(capture.batches),
+            std::move(capture.source_references),std::move(capture.draw_order),std::move(capture.source_cohorts),
+            std::move(queries),std::move(capture.cpu_sources),capture.world_resources,Inputs::gFrameCount,&f.error);
+        INFO(f.error);REQUIRE(inputs);CHECK(inputs->scene().drawCount()==4);
+        CHECK(&inputs->scene().draw(1).source()==&packet->cohort->source(0));
+        CHECK(&inputs->scene().draw(2).source()==&packet->cohort->source(1));
+        CHECK(inputs->scene().draw(3).source().vertices==reference.mVertexBuffer->getMetalVertexBuffer());
+        CHECK_FALSE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,capture.batches,
+            capture.source_references,capture.draw_order,queries)); // Old API must not discard cohorts.
+        REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,capture.batches,capture.source_references,
+            capture.draw_order,capture.source_cohorts,queries));
+        CHECK(capture.source_cohorts.empty());capture.clearDraws();CHECK(capture.logicalDrawCount()==0);
+        pipeline.captureMetalPublishedWorldBatch(raw,family,false,true);REQUIRE(capture.logicalDrawCount()==1);
+        CHECK_FALSE(capture.appendCohort(packet->cohort,{},packet->native_tuple,{}));
+        CHECK(capture.logicalDrawCount()==0);CHECK(capture.source_cohorts.empty());
     }
 }
 
@@ -2903,3 +2947,184 @@ TEST_CASE("Actual Legacy and PBR source rows include capture publication encodin
 }
 
 #include "alpipeline_source_command_cost_native.inl"
+
+TEST_CASE("Actual direct material cohorts include dirty publication raw admission and CPU retirement costs",
+          "[almetal][.native-direct-cohort-cost]")
+{
+    constexpr U32 samples=12,warmups=2;
+    const auto cpu_ns=[] {timespec value{};REQUIRE(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&value)==0);
+        return U64(value.tv_sec)*1'000'000'000ULL+value.tv_nsec;};
+    const auto median=[](auto values){std::sort(values.begin(),values.end());return (values[5]+values[6])*.5;};
+    struct Sample
+    {
+        double cpu=0,encode=0,complete=0,gpu=0;
+        U64 publications=0,group_builds=0,source_builds=0,restores=0,getters=0,dependencies=0,images=0;
+        U64 raw_bytes=0,ref_bytes=0,order_bytes=0,cohort_bytes=0,cert_bytes=0,native_bytes=0;
+        U64 cohort_draws=0,cpu_pins=0,native_pins=0,gpu_ready=0;
+        U64 accepted_views=0,accepted_groups=0,accepted_draws=0;
+    };
+    for(U32 family:{1u,2u})
+    {
+        MaterialGroupPublication f(family);Inputs::gSavedSettings.native_resources=false;
+        auto data=ALMetalWorldFrameData::create(*f.device,&f.error);INFO(f.error);REQUIRE(data);
+        auto library=data->builtinLibrary(&f.error);INFO(f.error);REQUIRE(library);
+        auto main=ALMetalWorldGBufferRenderer::create(*f.device,1,library,&f.error);
+        auto probes=ALMetalWorldGBufferRenderer::create(*f.device,1,library,&f.error);
+        INFO(f.error);REQUIRE(main);REQUIRE(probes);main->setFrameData(data);probes->setFrameData(data);
+        U64 native_epoch=0;
+        struct Arm {Inputs::LLPipeline pipeline;std::vector<Inputs::LLDrawInfo*> sources;std::vector<ALMetalWorldVisibilityQuery> queries;};
+        for(U32 count:{1u,4u,16u,512u})
+        {
+            std::array<Arm,2> arms;
+            for(auto& arm:arms)for(U32 source=0;source<count;++source)arm.sources.push_back(&f.materialDraw());
+            for(U32 views:{1u,3u})for(U32 condition=0;condition<3;++condition)
+            {
+                CAPTURE(family,count,views,condition);
+                f.group->invalidate();f.group_layout.reset();f.group_dependencies.reset();
+                for(auto& arm:arms)for(auto* source:arm.sources)source->state->invalidate();
+                std::array<std::array<Sample,samples>,2> costs;
+                for(U32 sample=0;sample<samples+warmups;++sample)
+                {
+                    ++Inputs::gFrameCount;
+                    std::array<std::array<GroupPublication::Image,3>,2> pixels;
+                    std::array<std::array<std::array<std::uint64_t,2>,3>,2> queries{};
+                    for(U32 position=0;position<2;++position)
+                    {
+                        const U32 mode=(sample+position)%2;auto& arm=arms[mode];CAPTURE(mode,sample);
+                        auto& capture=*arm.pipeline.mMetalWorldSimpleCapture;
+                        const auto before_reads=f.reads();const auto before_serial=Inputs::sNativeSceneSerial;
+                        const auto before_stats=Inputs::ALSceneGroupPublicationNative::statistics;
+                        const auto before_native=data->stats().published_bytes;
+                        const std::array<ALMetalWorldCohortStats,2> before_render{main->worldCohortStats(),probes->worldCohortStats()};
+                        std::array<std::unique_ptr<ALMetalRenderTarget>,3> targets;
+                        std::array<std::shared_ptr<const ALMetalCommandCompletion>,3> completions;
+                        std::array<std::shared_ptr<ALMetalVisibilityResultBatch>,3> results;
+                        Sample value;const auto begin=std::chrono::steady_clock::now();const auto begin_cpu=cpu_ns();
+                        data->beginFrame(++native_epoch);
+                        if(condition==0)
+                        {
+                            for(auto* source:arm.sources)source->state->invalidate();
+                            if(mode){f.group->invalidate();f.group_layout.reset();f.group_dependencies.reset();}
+                        }
+                        if(condition==2)
+                        {
+                            const auto tint=sample%2?LLColor4U(0,255,0,255):LLColor4U(0,0,255,255);
+                            const std::array<LLColor4U,3> colors{tint,tint,tint};
+                            for(U32 source=0;source<count;source+=16)
+                            {auto& vb=*arm.sources[source]->mVertexBuffer;vb.setColorData(colors.data());vb.unmapBuffer();}
+                        }
+                        for(U32 view=0;view<views;++view)
+                        {
+                            capture.clearDraws();capture.complete=true;f.configure(capture,false,false);
+                            capture.world_resources=std::make_shared<Inputs::WorldResources>();
+                            Inputs::LLCullResult cull;
+                            auto packet=mode?f.currentMaterial():std::shared_ptr<const NativeGroup>{};
+                            if(packet)REQUIRE(cull.pushNativeMaterialRange(f.type,packet,count,f.region.snapshot()));
+                            else for(auto* source:arm.sources)cull.pushDrawInfo(f.type,source);
+                            // Actual postSort admits raw first, then seals after
+                            // deferred native stores flush. A newly sealed group
+                            // first benefits a later view, not this dirty view.
+                            if(mode&&!packet)
+                            {
+                                auto sealed=Inputs::ALSceneGroupPublicationNative::sealMaterial(f.group,f.group_dependencies,f.group_layout,
+                                    f.model,f.region.snapshot(),arm.sources,f.flavor,Inputs::sNativeSceneSources,
+                                    Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(sealed);
+                                value.cert_bytes+=sealed->cohort->metadataBytes();
+                            }
+                            {CullScope scope(cull);f.capture(arm.pipeline);}REQUIRE(capture.complete);REQUIRE(capture.logicalDrawCount()==count);
+                            REQUIRE(capture.flushDrawOrder());CHECK_FALSE(capture.source_rows);CHECK(capture.source_references.empty());
+                            value.raw_bytes+=capture.batches.size()*sizeof(ALMetalWorldSimpleBatch);
+                            value.ref_bytes+=capture.source_references.size()*sizeof(ALMetalWorldSourceReference);
+                            value.order_bytes+=capture.draw_order.size()*sizeof(ALMetalWorldDrawIndex);
+                            value.cohort_bytes+=capture.source_cohorts.size()*sizeof(ALMetalWorldSourceCohortView);
+                            value.cohort_draws+=capture.source_cohort_draw_count;
+                            value.cpu_pins+=capture.source_cohorts.size()+(capture.cpu_sources?capture.cpu_sources->owners.size():0);
+                            value.native_pins+=capture.source_cohorts.size()+capture.world_resources->owners.size();
+                            arm.queries.resize(2);
+                            for(U32 query=0;query<2;++query)
+                            {
+                                auto& q=arm.queries[query];q={};std::memcpy(q.modelview_projection,f.model.getF32ptr(),sizeof(q.modelview_projection));
+                                q.center[0]=.35f;q.center[1]=-.5f;q.center[2]=.75f;
+                                q.half_extent[0]=q.half_extent[1]=q.half_extent[2]=.08f;q.batch_offset=query?count:count/2;q.fan=7;q.count_samples=1;
+                            }
+                            auto scene=f.scene(capture);scene.visibility_queries=arm.queries.data();scene.visibility_query_count=arm.queries.size();
+                            scene.material_argument_buffers=false;scene.source_command_banks=false;
+                            auto inputs=ALMetalWorldViewInputs::adopt(scene,std::move(capture.batches),std::move(capture.source_references),
+                                std::move(capture.draw_order),std::move(capture.source_cohorts),std::move(arm.queries),
+                                std::move(capture.cpu_sources),capture.world_resources,native_epoch,&f.error);INFO(f.error);REQUIRE(inputs);scene={};
+                            auto& renderer=view==0?*main:*probes;
+                            REQUIRE(renderer.beginCommandBatch("Actual ordinary/direct-cohort complete cost",&f.error));
+                            targets[view]=renderer.renderOwnedInputs(*inputs,&f.error,&results[view]);INFO(f.error);REQUIRE(targets[view]);REQUIRE(results[view]);
+                            completions[view]=renderer.commandBatchCompletion();
+                            REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,capture.batches,capture.source_references,
+                                capture.draw_order,capture.source_cohorts,arm.queries));
+                            capture.clearDraws();capture.world_resources=std::make_shared<Inputs::WorldResources>();
+                            cull.clear();packet.reset();REQUIRE(renderer.commitCommandBatch(&f.error));
+                        }
+                        const auto encoded=std::chrono::steady_clock::now();
+                        REQUIRE(f.device->waitUntilIdle(&f.error));
+                        for(U32 view=0;view<views;++view)for(U32 query=0;query<2;++query)
+                        {REQUIRE(results[view]->wait(query,queries[mode][view][query],&f.error));CHECK(queries[mode][view][query]>0);}
+                        gGL.frameFences().release();const auto completed=std::chrono::steady_clock::now();
+                        value.cpu=(cpu_ns()-begin_cpu)/1e6;value.encode=std::chrono::duration<double,std::milli>(encoded-begin).count();
+                        value.complete=std::chrono::duration<double,std::milli>(completed-begin).count();
+                        for(U32 view=0;view<views;++view)
+                        {ALMetalCommandGPUTime time;if(completions[view]&&completions[view]->gpuTime(time)==ALMetalCommandTimingStatus::ready)
+                            {value.gpu+=time.elapsed_nanoseconds/1e6;++value.gpu_ready;}}
+                        const auto after_reads=f.reads();const auto after_stats=Inputs::ALSceneGroupPublicationNative::statistics;
+                        value.publications=Inputs::sNativeSceneSerial-before_serial;value.group_builds=after_stats.material_builds-before_stats.material_builds;
+                        value.source_builds=after_stats.cpu_source_builds-before_stats.cpu_source_builds;value.restores=after_stats.material_restores-before_stats.material_restores;
+                        value.getters=after_reads[0]-before_reads[0];value.dependencies=after_reads[1]-before_reads[1];value.images=after_reads[2]-before_reads[2];
+                        value.native_bytes=data->stats().published_bytes-before_native;
+                        const std::array<ALMetalWorldCohortStats,2> after_render{main->worldCohortStats(),probes->worldCohortStats()};
+                        for(U32 owner=0;owner<2;++owner)
+                        {value.accepted_views+=after_render[owner].views-before_render[owner].views;
+                         value.accepted_groups+=after_render[owner].groups-before_render[owner].groups;
+                         value.accepted_draws+=after_render[owner].draws-before_render[owner].draws;}
+                        if(sample>=warmups)
+                        {
+                            const U64 updated=condition==0?count:condition==1?0:(count+15)/16;
+                            CHECK(value.group_builds==(mode&&condition!=1?1:0));
+                            CHECK(value.source_builds==(mode?updated:0));
+                            CHECK(value.publications==(mode?2*updated+value.group_builds:updated));
+                            CHECK(value.cohort_draws==(mode?U64(count)*(condition==1?views:views-1):0));
+                            CHECK(value.accepted_draws==value.cohort_draws);
+                            CHECK(value.accepted_groups==(mode?(condition==1?views:views-1):0));
+                            CHECK(value.accepted_views==value.accepted_groups);
+                            if(mode&&condition==1){CHECK(value.getters==0);CHECK(value.dependencies==0);CHECK(value.images==0);}
+                            costs[mode][sample-warmups]=value;
+                        }
+                        if(sample==warmups-1)for(U32 view=0;view<views;++view)pixels[mode][view]=f.read(*targets[view]);
+                        std::cout<<"NATIVE_DIRECT_COHORT_RAW family="<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
+                            <<" condition="<<condition<<" mode="<<mode<<" sample="<<sample<<" warmup="<<(sample<warmups)
+                            <<" owner_cpu_ms="<<value.cpu<<" capture_adopt_encode_reclaim_ms="<<value.encode<<" completion_and_query_settle_ms="<<value.complete
+                            <<" gpu_sum_ms="<<value.gpu<<" gpu_ready_commands="<<value.gpu_ready<<" source_and_group_publications="<<value.publications
+                            <<" group_builds="<<value.group_builds<<" source_factory_builds="<<value.source_builds<<" source_restores="<<value.restores
+                            <<" source_getters="<<value.getters<<" dependency_walks="<<value.dependencies<<" image_getters="<<value.images
+                            <<" direct_cohort_draws="<<value.cohort_draws<<" raw_value_bytes="<<value.raw_bytes<<" reference_value_bytes="<<value.ref_bytes
+                            <<" accepted_cohort_views="<<value.accepted_views<<" accepted_cohort_groups="<<value.accepted_groups<<" accepted_cohort_draws="<<value.accepted_draws
+                            <<" order_value_bytes="<<value.order_bytes<<" cohort_value_bytes="<<value.cohort_bytes<<" dirty_certificate_bytes="<<value.cert_bytes
+                            <<" native_frame_bytes="<<value.native_bytes<<" cpu_description_pins="<<value.cpu_pins<<" native_generation_pins="<<value.native_pins<<'\n';
+                    }
+                    if(sample==warmups-1)for(U32 view=0;view<views;++view)CHECK(pixels[0][view]==pixels[1][view]);
+                    for(U32 view=0;view<views;++view)CHECK(queries[0][view]==queries[1][view]);
+                }
+                for(U32 mode=0;mode<2;++mode)
+                {
+                    std::array<double,samples> cpu{},encode{},complete{},gpu{};
+                    for(U32 sample=0;sample<samples;++sample){const auto& value=costs[mode][sample];cpu[sample]=value.cpu;encode[sample]=value.encode;complete[sample]=value.complete;gpu[sample]=value.gpu;}
+                    std::cout<<"NATIVE_DIRECT_COHORT_COST family="<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
+                        <<" condition="<<(condition==0?"cold":condition==1?"warm":"churn")
+                        <<" mode="<<(mode?"direct_cohort":"ordinary_native")<<" samples="<<samples<<" warmups="<<warmups
+                        <<" owner_cpu_median_ms="<<median(cpu)<<" owner_cpu_max_ms="<<*std::max_element(cpu.begin(),cpu.end())
+                        <<" capture_adopt_encode_reclaim_median_ms="<<median(encode)<<" capture_adopt_encode_reclaim_max_ms="<<*std::max_element(encode.begin(),encode.end())
+                        <<" completion_and_query_settle_median_ms="<<median(complete)<<" completion_and_query_settle_max_ms="<<*std::max_element(complete.begin(),complete.end())
+                        <<" gpu_sum_median_ms="<<median(gpu)<<" gpu_sum_max_ms="<<*std::max_element(gpu.begin(),gpu.end())
+                        <<" update_stride=16 paired_logical_frame=1 independent_native_arm_epochs=1 shared_exact_library=1"
+                        <<" dirty_view_raw_admission_before_seal=1 source_rows=0 command_banks=0 resource_table_flag=0"
+                        <<" geometry_texture_drawinfo_creation_excluded=1 viewer_dependency_frontier=typed_native_signals whole_viewer_fps_claim=0\n";
+                }
+            }
+        }
+    }
+}
