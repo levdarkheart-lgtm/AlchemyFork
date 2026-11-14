@@ -220,8 +220,11 @@ try
         declare(*view.bank->bank->buffer->value,MTLRenderStageVertex|MTLRenderStageFragment);
         for(const auto& page:view.pages)declare(*page->page->buffer->value,MTLRenderStageVertex|MTLRenderStageFragment);
         for(const auto& buffer:view.buffers)declare(*buffer,MTLRenderStageVertex|MTLRenderStageFragment);
-        for(auto handle:view.geometry)
-            [native useResource:(__bridge id<MTLBuffer>)handle usage:MTLResourceUsageRead stages:MTLRenderStageVertex];
+        if(!view.geometry.empty())
+        {
+            const auto* geometry=reinterpret_cast<id<MTLResource> __unsafe_unretained const*>(view.geometry.data());
+            [native useResources:geometry count:view.geometry.size() usage:MTLResourceUsageRead stages:MTLRenderStageVertex];
+        }
         for(const auto& table:view.tables)
             if(!view.context->resources->declareResources(encoder,command,table,error))return false;
         view.declared_encoder=native;
