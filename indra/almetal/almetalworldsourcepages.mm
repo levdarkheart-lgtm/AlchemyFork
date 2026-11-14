@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <iterator>
 #include <list>
 #include <new>
 #include <set>
@@ -238,6 +239,11 @@ catch(const std::bad_alloc&){if(error)error->clear();return false;}
 
 struct ALMetalWorldSourcePages::Impl
 {
+    struct DeviceProof
+    {
+        __weak id<MTLBuffer> buffer=nil;
+        std::list<void*>::iterator lru;
+    };
     std::shared_ptr<Context> context;
     ALMetalWorldSourcePageLimits limits;
     std::vector<Row> rows;
@@ -245,6 +251,11 @@ struct ALMetalWorldSourcePages::Impl
     std::unordered_map<Key,std::uint32_t,KeyHash> lookup;
     std::unordered_map<std::uint64_t,std::vector<std::uint32_t>> identities;
     std::list<std::uint32_t> lru;
+    // No strong native/C++ generation ownership. A zeroed weak object rejects
+    // native-address reuse; a live MTLBuffer's device is immutable. Five is
+    // the maximum vertex/index/legacy/PBR-LDR/PBR-HDR union per source row.
+    std::unordered_map<void*,DeviceProof> device_proofs;
+    std::list<void*> device_proof_lru;
     std::array<std::shared_ptr<Page>,alMetalWorldSourceMaximumRows/alMetalWorldSourceRowsPerPage> pages;
     std::shared_ptr<Bank> bank;
     ALMetalWorldSourcePageStats statistics;
@@ -252,6 +263,38 @@ struct ALMetalWorldSourcePages::Impl
     bool supported=false,force_failure=false;
     std::shared_ptr<ALMetalWorldSourcePages::PublicationAdmission> admission;
     std::uint64_t epoch=0;
+
+    bool proveDevice(const ALMetalBuffer& buffer,std::string* error)
+    {
+        void* const handle=buffer.nativeHandle();
+        id<MTLBuffer> native=(__bridge id<MTLBuffer>)handle;
+        auto found=device_proofs.find(handle);
+        if(found!=device_proofs.end())
+        {
+            id<MTLBuffer> proven=found->second.buffer;
+            if(proven && proven==native)
+            {
+                device_proof_lru.splice(device_proof_lru.end(),device_proof_lru,found->second.lru);
+                ++statistics.device_proof_hits;return true;
+            }
+            device_proof_lru.erase(found->second.lru);device_proofs.erase(found);
+        }
+        ++statistics.device_checks;
+        if(!native || native.device!=context->native)
+        {
+            ++statistics.device_rejections;
+            fail(error,"Native source buffer belongs to a different Metal device");return false;
+        }
+        const auto capacity=limits.maximum_rows*5;
+        if(device_proofs.size()>=capacity)
+        {
+            device_proofs.erase(device_proof_lru.front());device_proof_lru.pop_front();
+        }
+        device_proof_lru.push_back(handle);
+        try{device_proofs.emplace(handle,DeviceProof{native,std::prev(device_proof_lru.end())});}
+        catch(...){device_proof_lru.pop_back();throw;}
+        return true;
+    }
 
     bool preparePage(std::uint32_t page_index,std::string* error)
     {
@@ -411,12 +454,20 @@ try
     rows.reserve(requests.size());request_rows.reserve(requests.size());selected.reserve(requests.size());
     const auto epoch=state.epoch;
     std::uint32_t highest_slot=0;
+    std::unordered_set<void*> proven_buffers;
+    proven_buffers.reserve(std::min(requests.size(),state.limits.maximum_rows)*5);
     // Read-only plan: no row/LRU/cache mutation, GPU allocation or mapped write.
     for(const auto& request:requests)
     {
         ++state.statistics.requests;
         if(!request.key.identity||!request.key.revision||request.region>=regions.size())return reject("Native source request is incomplete");
         SourceInput input;if(!captureInput(request,regions[request.region],globals,input,error)){++state.statistics.failures;return {};}
+        // Check the entire unique geometry/index/numeric union before any
+        // resource-table allocation or argument-buffer write. Resource-source
+        // certification proves textures, not these independent buffers.
+        for(const ALMetalBuffer* buffer:{input.vertices,input.indices,input.numeric[0].get(),input.numeric[1].get(),input.numeric[2].get()})
+            if(buffer && proven_buffers.insert(buffer->nativeHandle()).second && !state.proveDevice(*buffer,error))
+            {++state.statistics.failures;return {};}
         const Key key{request.key.identity,request.key.flavor};
         if(auto existing=selected.find(key);existing!=selected.end())
         {
@@ -661,6 +712,7 @@ void ALMetalWorldSourcePages::clear()noexcept
 ALMetalWorldSourcePageStats ALMetalWorldSourcePages::stats()const noexcept
 {
     auto result=mImpl->statistics;result.rows=mImpl->lookup.size();result.binds=mImpl->context->binds.load(std::memory_order_relaxed);
+    result.device_proof_entries=mImpl->device_proofs.size();
     result.live_metadata_bytes=mImpl->context->budget->bytes.load(std::memory_order_relaxed)+mImpl->context->resources->stats().live_buffer_bytes;
     return result;
 }

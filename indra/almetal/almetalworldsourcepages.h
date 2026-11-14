@@ -63,6 +63,10 @@ struct ALMetalWorldSourcePageStats
     std::uint64_t page_allocations=0,bank_allocations=0,view_bytes=0,binds=0;
     std::size_t rows=0,live_metadata_bytes=0;
     std::uint64_t admission_requests=0,admission_denials=0,admitted_bytes=0;
+    // Unique native buffers per freeze, not attributes/draws. A proof hit
+    // reuses a live weak native object's immutable device, without querying it.
+    std::uint64_t device_checks=0,device_proof_hits=0,device_rejections=0;
+    std::size_t device_proof_entries=0;
 };
 
 // Logical encoder ranges and exact CPU copy/zero operations are separate
@@ -84,6 +88,7 @@ public:
     std::size_t size() const noexcept;
     std::uint32_t rowId(std::size_t request_index) const noexcept;
     std::uint32_t allocationGeneration(std::size_t request_index) const noexcept;
+    // Includes the exact index generation whose native device freeze proved.
     bool matchesSourceCommand(std::size_t request_index,const ALMetalWorldSourceKey&,
                               const ALMetalBuffer& indices) const noexcept;
     // Weak diagnostic observation of a unique table lease (not draw order).

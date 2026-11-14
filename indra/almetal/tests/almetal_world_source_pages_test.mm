@@ -6,7 +6,86 @@
 #include "almetal_world_source_pages_fixture.h"
 #include <cstdlib>
 #include <filesystem>
+#include <unordered_set>
 
+TEST_CASE("almetal: source pages prove unique native buffer devices and reuse bounded weak proofs",
+          "[almetal][world-source-pages]")
+{
+    @autoreleasepool
+    {
+        for(unsigned family:{1u,2u})
+        {
+            CAPTURE(family);PageFixture f;
+            if(family==2){f.cpu->source=f.batch(2);f.publish(f.cpu->source);}
+            ALMetalWorldSourcePageLimits limits;limits.maximum_rows=1;auto pages=f.pages(limits);
+            const auto uniqueBuffers=[&](const ALMetalWorldSimpleBatch& source)
+            {
+                std::unordered_set<void*> handles{source.vertices->nativeHandle(),source.indices->nativeHandle()};
+                const auto& material=*source.native_material_source;
+                for(const auto& buffer:{material.materialLease(),material.pbrLease(false),material.pbrLease(true)})
+                    if(buffer)handles.insert(buffer->nativeHandle());
+                for(auto handle:handles)
+                    CHECK([(__bridge id<MTLBuffer>)handle device]==(__bridge id<MTLDevice>)f.device->nativeHandle());
+                return handles.size();
+            };
+            const auto expected=uniqueBuffers(f.cpu->source);
+            // Repeated requests and seven geometry attributes still require
+            // one native device query for each distinct buffer generation.
+            std::array<ALMetalWorldSourceRequest,4> requests;requests.fill(f.request());
+            auto first=f.freeze(pages,requests);const auto cold=pages->stats();
+            CHECK(cold.device_checks==expected);CHECK(cold.device_proof_hits==0);
+            CHECK(cold.device_rejections==0);CHECK(cold.device_proof_entries==expected);
+            auto warm=f.freeze(pages,requests);const auto reused=pages->stats();
+            CHECK(reused.device_checks==cold.device_checks);
+            CHECK(reused.device_proof_hits-cold.device_proof_hits==expected);
+            CHECK(reused.row_publications==cold.row_publications);
+            CHECK(warm->matchesSourceCommand(0,requests[0].key,*f.cpu->source.indices));
+
+            // Wrapper identity is not Metal device identity. Publish all new
+            // geometry/index/numeric buffers through a second real wrapper
+            // for the same native device and preserve actual scalar pixels.
+            auto same_device=ALMetalDevice::create(&f.error);INFO(f.error);REQUIRE(same_device);
+            REQUIRE(same_device.get()!=f.device.get());
+            REQUIRE(same_device->nativeHandle()==f.device->nativeHandle());
+            ALMetalWorldMaterialDataCache other_cache(*same_device);
+            auto changed=std::make_shared<PageDescription>(*f.cpu);
+            auto owner=std::make_shared<Resources>(*f.resources);
+            const auto copyBuffer=[&](const ALMetalBuffer& original)
+            {
+                ALMetalBufferDescriptor descriptor;descriptor.length=original.length();descriptor.storage=ALMetalStorageMode::shared;
+                std::shared_ptr<const ALMetalBuffer> value;
+                auto mutable_value=ALMetalBuffer::create(*same_device,descriptor,&f.error);REQUIRE(mutable_value);
+                REQUIRE(mutable_value->write(0,original.mappedBytes(),original.length(),&f.error));
+                value=std::move(mutable_value);owner->buffers.push_back(value);return value;
+            };
+            auto new_vertices=copyBuffer(*f.cpu->source.vertices),new_indices=copyBuffer(*f.cpu->source.indices);
+            changed->source.vertices=new_vertices.get();changed->source.indices=new_indices.get();
+            changed->source.native_material_source.reset();
+            REQUIRE(ALMetalWorldMaterialSource::publish(*same_device,changed->source,other_cache,&f.error));
+            REQUIRE(ALMetalWorldResourceSource::publish(*f.device,changed->source,owner->textures,&f.error));
+            auto request=f.request(1,2);request.source=&changed->source;request.cpu_owner=changed;
+            request.native={owner,new_vertices,new_indices};
+            const auto replacement_count=uniqueBuffers(changed->source);
+            auto replacement=f.freeze(pages,std::span(&request,1));const auto replaced=pages->stats();
+            CHECK(replaced.device_checks-reused.device_checks==replacement_count);
+            CHECK(replaced.device_rejections==0);CHECK(replaced.device_proof_entries<=5);
+            REQUIRE(replacement->matchesSourceCommand(0,request.key,*new_indices));
+            CHECK_FALSE(replacement->matchesSourceCommand(0,request.key,*f.cpu->source.indices));
+            // PageFixture's native pipeline is Legacy; PBR native output is
+            // covered by the renderer's source-row format/parity fixture.
+            if(family==1)
+            {
+                auto before=f.encode(*first,f.cpu->source),after=f.encode(*replacement,changed->source);
+                REQUIRE(before.command->commitAndWait(&f.error));REQUIRE(after.command->commitAndWait(&f.error));
+                CHECK(f.read(*before.target)==f.read(*after.target));
+            }
+            // Only the default built-in Apple GPU is constructible through
+            // ALMetalDevice's supported API. No distinct-device negative is
+            // manufactured by spoofing a foreign native object.
+            INFO("Distinct native GPU negative not run: supported device factory selects the default built-in Apple GPU");
+        }
+    }
+}
 
 TEST_CASE("almetal: reflected source pages copy only a dirty reader page and reuse idle metadata",
           "[almetal][world-source-pages]")
