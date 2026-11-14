@@ -160,7 +160,7 @@ there is no shader/cache or second-cull-pass expansion in this next boundary.
 Original goal remains ACTIVE, with no owner-ready architecture/performance
 candidate. Root experiment tree is clean at21efebeb18cf61ab9d9ca08db86c386a61713702.
 Required19 passes28.588s, static69049 passes; native cohort1080/6 and actual
-producer9882/47 pass. Native19 runner is still finishing the resource/old-library
+producer9882/47 pass. Native19 runner completed all focused gates with exit0, including the resource/old-library
 tail: `/tmp/run_source_cohort_correctness.py 19 native-direct-cohort-correctness-19`.
 Receipt native-direct-cohort-correctness-19.json is authoritative for completion;
 do not infer final success from the earlier passing commands.
@@ -174,10 +174,15 @@ span, allow equal-begin warm ranges before replacement and equal-end ranges
 after it, and reject duplicate/overlapping replacements without mutating raw
 storage. Actual fixture includes the shared production range bodies.
 
-Next finish native19, obtain both source freezes, review replacement order/
+Next obtain the remaining source freeze, review replacement order/
 failure/query invariants, commit/integrate locally and run fresh required20,
 native correctness and the unchanged48-case complete cost scope with actual
 post-flush same-view promotion included. Preserve18 costs and GPU outlier.
 Do not enable the path or stage it as a completed architecture before evidence.
 Next global defect197. No viewer operation or push; canonical owner tree and
 earlier staged owner/reference applications remain untouched.
+
+Native19 terminal receipt confirms all17 focused processes exit0. PPD196 parity
+fixture and PPD195 promotion/exception/reentrancy cases pass in actual9882/47.
+Residency native-range API/source is frozen; architecture postSort/capture and
+actual-case/cost updates remain in progress. No app or test job is running.
