@@ -477,6 +477,7 @@ private:
     friend class ALMetalShadowMaterials;
     friend class ALMetalWorldResources;
     friend class ALMetalWorldSourceFrameView;
+    friend class ALMetalWorldSourceCommands;
 };
 
 class ALMetalComputeEncoder final

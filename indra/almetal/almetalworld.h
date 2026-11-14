@@ -15,6 +15,7 @@
 #include "almetalworldresources.h"
 #include "almetalworlddraws.h"
 #include "almetalworldsourceview.h"
+#include "almetalworldsourcecommands.h"
 
 #include "almetalpipeline.h"
 
@@ -1209,6 +1210,10 @@ struct ALMetalWorldGBufferScene
     // Optional copied owner provenance for native GPU source rows. CPU-only;
     // commands retain a separate native FrameView after publication.
     std::shared_ptr<const ALMetalWorldSourceView> source_rows;
+    // Separate, default-off ordered native command-bank experiment. Failed or
+    // short runs use the ordinary native shader, not the scalar row pilot.
+    bool source_command_banks = false;
+    std::uint32_t source_command_minimum_run = 2;
     // Diagnostic native resource-table path; optional failure stays direct.
     bool material_argument_buffers = false;
     // Immutable producer-generation leases for borrowed batch resources.
@@ -1280,6 +1285,17 @@ struct ALMetalWorldSourceDrawStats
     std::uint64_t requested = 0, bound = 0, fallback = 0, setup_failures = 0;
     const char* last_failure = "none";
     ALMetalWorldSourcePageStats pages;
+};
+
+struct ALMetalWorldSourceCommandDrawStats
+{
+    bool shared_cache=false;
+    // Accepted-render requests/fallbacks count candidate intents (including
+    // rejected metadata); bank_draws counts actual encoded logical commands.
+    std::uint64_t requested_draws=0,bank_draws=0,fallback_draws=0,execute_calls=0;
+    std::array<std::uint64_t,static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::count)> fallback_reasons{};
+    ALMetalWorldSourceCommandFailure last_fallback=ALMetalWorldSourceCommandFailure::none;
+    ALMetalWorldSourceCommandStats cache;
 };
 
 struct alignas(16) ALMetalWorldLocalLight
@@ -2584,6 +2600,7 @@ public:
     // Application-owner policy injection, normally before any source context
     // exists. Generic native callers have no global frame-budget dependency.
     void setSourcePublicationAdmission(ALMetalWorldSourcePages::PublicationAdmission);
+    std::shared_ptr<ALMetalWorldSourceCommands> worldSourceCommands(std::string* error=nullptr);
     ALMetalShadowMaterialStats shadowMaterialStats() const noexcept;
     // Retire only shader-derived material encoders/tables. Existing command
     // leases remain valid; draw-data arenas and their frame generation stay.
@@ -2690,6 +2707,9 @@ public:
     ALMetalWorldConstantStats constantStats() const noexcept;
     ALMetalWorldResourceStats worldResourceStats() const noexcept;
     ALMetalWorldSourceDrawStats worldSourceStats() const noexcept;
+    ALMetalWorldSourceCommandDrawStats worldSourceCommandStats() const noexcept;
+    void clearWorldSourceCommands() noexcept;
+    void failNextWorldSourceCommandPublicationForTesting() noexcept;
     void configureWorldResources(ALMetalWorldResourceLimits) noexcept;
     void clearWorldResourceLookup() noexcept;
     void failNextWorldResourcePreparationForTesting() noexcept;

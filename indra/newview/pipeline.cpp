@@ -3122,6 +3122,32 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", publication_admission_requests/denials=" << stats.pages.admission_requests << '/' << stats.pages.admission_denials
                     << ", admitted_charged_logical_work_bytes=" << stats.pages.admitted_bytes
                     << ", live_metadata_bytes=" << stats.pages.live_metadata_bytes << LL_ENDL;
+                const auto banks=renderer->worldSourceCommandStats();
+                LL_INFOS("MetalScene") << "Native source command banks: view=" << owner
+                    << ", enabled=" << gSavedSettings.getBOOL("RenderMetalSourceCommandBanks")
+                    << ", accepted_requested_candidates=" << banks.requested_draws
+                    << ", accepted_bank_logical_draws=" << banks.bank_draws
+                    << ", accepted_fallback_candidates=" << banks.fallback_draws
+                    << ", accepted_native_execute_calls=" << banks.execute_calls
+                    << ", last_fallback=" << alMetalWorldSourceCommandFailureName(banks.last_fallback)
+                    << ", cache_scope=" << (banks.shared_cache ? "shared_frame_data" : "renderer")
+                    << ", cache_run_prepares/hits/bank_builds/evictions=" << banks.cache.requests << '/' << banks.cache.hits << '/'
+                    << banks.cache.builds << '/' << banks.cache.evictions
+                    << ", cache_encoded_execute_calls/logical_draws=" << banks.cache.executions << '/' << banks.cache.logical_draws
+                    << ", publication_admission_requests/denials=" << banks.cache.admission_requests << '/' << banks.cache.admission_denials
+                    << ", charged_logical_indexed_argument_bytes=" << banks.cache.charged_logical_argument_bytes
+                    << ", live_icb_allocated_bytes=" << banks.cache.live_icb_allocated_bytes
+                    << ", unique_retained_existing_index_bytes=" << banks.cache.unique_retained_index_bytes
+                    << ", cached/live_banks=" << banks.cache.cached_banks << '/' << banks.cache.live_banks
+                    << ", cache_last_failure=" << alMetalWorldSourceCommandFailureName(banks.cache.last_failure)
+                    << LL_ENDL;
+                for (std::size_t reason=1;reason<banks.fallback_reasons.size();++reason)
+                    if (banks.fallback_reasons[reason] || banks.cache.failures[reason])
+                        LL_INFOS("MetalScene") << "Native source command fallback: view=" << owner
+                            << ", reason=" << alMetalWorldSourceCommandFailureName(
+                                static_cast<ALMetalWorldSourceCommandFailure>(reason))
+                            << ", accepted_fallback_candidates=" << banks.fallback_reasons[reason]
+                            << ", cache_preparation_or_execution_failures=" << banks.cache.failures[reason] << LL_ENDL;
             };
             log_source_rows("main", capture.renderer.get());
             log_source_rows("probe", mMetalProbeWorldSimpleCapture ? mMetalProbeWorldSimpleCapture->renderer.get() : nullptr);
@@ -3475,7 +3501,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // but real unique-source costs have not earned unconditional activation.
     static LLCachedControl<bool> compact_inputs(gSavedSettings, "RenderMetalCompactInputs", false);
     static LLCachedControl<bool> source_rows(gSavedSettings, "RenderMetalSourceRows", false);
-    capture.beginSourceRows(source_rows() && !capture.impostor_bake);
+    static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
+    capture.beginSourceRows((source_rows() || source_banks()) && !capture.impostor_bake);
     capture.compact_gbuffer_active = compact_inputs() || capture.source_rows_active;
     if (capture.source_rows_active)
         for (const auto* region : LLWorld::getInstance()->getRegionList())
@@ -16217,6 +16244,10 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.source_owner = capture.world_resources;
     scene.cpu_source_owner = capture.cpu_sources;
     scene.source_rows = capture.source_rows;
+    static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
+    static LLCachedControl<S32> source_bank_minimum(gSavedSettings, "RenderMetalSourceCommandMinimumRun", 2);
+    scene.source_command_banks = source_banks() && !impostor_bake;
+    scene.source_command_minimum_run = static_cast<U32>(llclamp(source_bank_minimum(), 2, 4096));
     scene.references = capture.source_references.data();
     scene.reference_count = capture.source_references.size();
     scene.draw_order = capture.draw_order.data();
