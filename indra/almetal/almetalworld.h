@@ -14,6 +14,7 @@
 #include "almetalprobeworkload.h"
 #include "almetalworldresources.h"
 #include "almetalworlddraws.h"
+#include "almetalworldsourceview.h"
 
 #include "almetalpipeline.h"
 
@@ -1204,6 +1205,9 @@ struct alignas(16) ALMetalWorldVisibilityQuery
 
 struct ALMetalWorldGBufferScene
 {
+    // Optional copied owner provenance for native GPU source rows. CPU-only;
+    // commands retain a separate native FrameView after publication.
+    std::shared_ptr<const ALMetalWorldSourceView> source_rows;
     // Diagnostic native resource-table path; optional failure stays direct.
     bool material_argument_buffers = false;
     // Immutable producer-generation leases for borrowed batch resources.
@@ -1266,6 +1270,15 @@ struct ALMetalWorldGBufferScene
     const ALMetalWorldLegacyAlphaLighting* legacy_alpha_lighting = nullptr;
     const ALMetalWorldDirectionalShadows* directional_shadows = nullptr;
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};
+};
+
+struct ALMetalWorldSourceDrawStats
+{
+    // requested/fallback/setup_failures count optional setup attempts. bound
+    // counts draws in accepted G-buffer renders, never GPU completion.
+    std::uint64_t requested = 0, bound = 0, fallback = 0, setup_failures = 0;
+    const char* last_failure = "none";
+    ALMetalWorldSourcePageStats pages;
 };
 
 struct alignas(16) ALMetalWorldLocalLight
@@ -2559,6 +2572,9 @@ public:
     std::shared_ptr<ALMetalWorldResources> worldResources(
         const ALMetalShaderLibrary&, ALMetalWorldResourceLimits = {}, std::string* error = nullptr,
         ALMetalWorldResourceFallback* failure = nullptr);
+    std::shared_ptr<ALMetalWorldSourcePages> worldSourcePages(
+        const ALMetalShaderLibrary&, std::uint32_t max_anisotropy,
+        std::string* error = nullptr);
     ALMetalShadowMaterialStats shadowMaterialStats() const noexcept;
     // Retire only shader-derived material encoders/tables. Existing command
     // leases remain valid; draw-data arenas and their frame generation stay.
@@ -2649,6 +2665,7 @@ public:
     void failNextOpaqueIndirectPublicationForTesting() noexcept;
     ALMetalWorldConstantStats constantStats() const noexcept;
     ALMetalWorldResourceStats worldResourceStats() const noexcept;
+    ALMetalWorldSourceDrawStats worldSourceStats() const noexcept;
     void configureWorldResources(ALMetalWorldResourceLimits) noexcept;
     void clearWorldResourceLookup() noexcept;
     void failNextWorldResourcePreparationForTesting() noexcept;

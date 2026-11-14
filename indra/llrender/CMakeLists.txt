@@ -155,6 +155,7 @@ if(AL_BUILD_TESTS)
       tests/almetal_buffer_storage_test.cpp
       tests/alnative_texture_publication_test.cpp
       tests/alnative_vertex_publication_test.cpp
+      tests/alnativeregionmodel_test.cpp
       tests/alnative_generation_leases_metal_test.cpp
       tests/aldebug_immediate_metal_test.cpp
       tests/albaking_shader_metal_test.cpp

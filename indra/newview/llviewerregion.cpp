@@ -726,6 +726,7 @@ void LLViewerRegion::initStats()
 LLViewerRegion::~LLViewerRegion()
 {
     LL_PROFILE_ZONE_SCOPED;
+    mNativeModel.withdraw();
     mDead = true;
     mImpl->mActiveSet.clear();
     mImpl->mVisibleEntries.clear();
@@ -921,10 +922,10 @@ void LLViewerRegion::setOriginGlobal(const LLVector3d &origin_global)
 
 void LLViewerRegion::updateRenderMatrix()
 {
-    // LLMatrix4a is trivial and starts uninitialised, where the LLMatrix4 this
-    // replaced default-constructed to the identity.
-    mRenderMatrix.setIdentity();
-    mRenderMatrix.setTranslation(getOriginAgent());
+    // All region rebases, including LLWorld::shiftRegions(), reach this
+    // owner boundary. The helper preserves the exact identity/translation
+    // arithmetic and publishes a copied model without dirtying geometry.
+    mNativeModel.update(mRenderMatrix, getOriginAgent());
 }
 
 void LLViewerRegion::setTimeDilation(F32 time_dilation)

@@ -1720,6 +1720,41 @@ bool ALMetalRenderEncoder::drawIndexed(ALMetalPrimitiveType primitive, std::uint
     return true;
 }
 
+bool ALMetalRenderEncoder::drawIndexedWithBaseInstance(ALMetalPrimitiveType primitive,
+    std::uint32_t index_count, ALMetalIndexType index_type,
+    const ALMetalBuffer& index_buffer, std::size_t index_buffer_offset,
+    std::uint32_t base_instance, std::string* error)
+{
+    const std::size_t index_size = index_type == ALMetalIndexType::uint16 ? 2 : 4;
+    if (!mImpl || mImpl->ended || !mImpl->pipeline_set || mImpl->tessellation_enabled ||
+        index_count == 0 || index_buffer_offset > index_buffer.length() ||
+        static_cast<std::size_t>(index_count) > (index_buffer.length() - index_buffer_offset) / index_size)
+    {
+        setError(error, "Metal source-row draw has invalid state or index range");
+        return false;
+    }
+    id<MTLBuffer> native_buffer = (__bridge id<MTLBuffer>)index_buffer.nativeHandle();
+    if (!native_buffer || native_buffer.device != mImpl->device)
+    {
+        setError(error, "Metal source-row index buffer belongs to another device");
+        return false;
+    }
+    // Source ID and bank/root identity are shader inputs. Emit this draw at
+    // its original boundary rather than reuse the ordinary pending join key.
+    mImpl->flushPendingIndexed();
+    [mImpl->encoder drawIndexedPrimitives:primitiveType(primitive)
+                               indexCount:index_count
+                                indexType:index_type == ALMetalIndexType::uint16 ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32
+                              indexBuffer:native_buffer
+                        indexBufferOffset:index_buffer_offset
+                            instanceCount:1
+                               baseVertex:0
+                             baseInstance:base_instance];
+    if (mImpl->count_draws) ++mImpl->encoded_draws;
+    mImpl->recordDirect(1, index_count);
+    return true;
+}
+
 bool ALMetalRenderEncoder::drawIndexedIndirect(ALMetalPrimitiveType primitive,
     ALMetalIndexType index_type, const ALMetalBuffer& index_buffer,
     std::size_t index_buffer_offset, const ALMetalBuffer& arguments,

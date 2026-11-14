@@ -67,6 +67,9 @@ public:
         std::string* error = nullptr, ALMetalWorldResourceFallback* failure = nullptr);
     ~ALMetalWorldResourceSource();
     bool matches(const ALMetalWorldSimpleBatch&) const noexcept;
+    // Borrowed only while this source is alive. A native FrameView copies the
+    // typed leases, never this source's CPU material certificate graph.
+    std::span<const std::shared_ptr<const ALMetalTexture>> generationLeases() const noexcept;
 private:
     struct Impl;
     explicit ALMetalWorldResourceSource(std::unique_ptr<Impl>);
@@ -105,6 +108,14 @@ public:
         const std::shared_ptr<const ALMetalWorldResourceSource>&,
         const std::shared_ptr<const ALMetalWorldResourceTable>&,
         std::string* error = nullptr, ALMetalWorldResourceFallback* failure = nullptr);
+    // Native-only table ownership/declaration, without a fragment slot bind or
+    // Source retention. Caller independently pins the exact C++ generations.
+    bool declareResources(ALMetalRenderEncoder&, ALMetalCommandBuffer&,
+        const std::shared_ptr<const ALMetalWorldResourceTable>&,
+        std::string* error = nullptr, ALMetalWorldResourceFallback* failure = nullptr);
+    // Drop this context's publisher table cache for an evicted source. Real
+    // FrameView/command table leases survive independently. Owner-only/noalloc.
+    void releaseSourceCache(const std::shared_ptr<const ALMetalWorldResourceSource>&) noexcept;
     // Invalidates source fast hits too; does not rebuild shader encoders.
     void clearLookup() noexcept;
     void failNextPreparationForTesting() noexcept;

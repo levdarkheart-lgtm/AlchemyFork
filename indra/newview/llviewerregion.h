@@ -44,6 +44,7 @@
 #include "llframetimer.h"
 #include "llreflectionmap.h"
 #include "llpointer.h"
+#include "alnativeregionmodel.h"
 
 // Surface id's
 #define LAND  1
@@ -120,6 +121,12 @@ public:
     void setOriginGlobal(const LLVector3d &origin);
     //void setAgentOffset(const LLVector3d &offset);
     void updateRenderMatrix();
+    // Owner-only provenance: qualify a draw's mModelMatrix against this
+    // region's mRenderMatrix before copying this pointer-free native value.
+    ALNativeRegionModel::Snapshot nativeModelSnapshot() const noexcept
+    { return mNativeModel.snapshot(); }
+    ALNativePublication::Signal& nativeModelPublication() noexcept
+    { return mNativeModel.publication(); }
 
     void setAllowDamage(bool b) { setRegionFlag(REGION_FLAGS_ALLOW_DAMAGE, b); }
     void setAllowLandmark(bool b) { setRegionFlag(REGION_FLAGS_ALLOW_LANDMARK, b); }
@@ -504,6 +511,9 @@ public:
     F32Bits mBitsReceived;
     F32     mPacketsReceived;
 
+private:
+    ALNativeRegionModel mNativeModel;
+public:
     LLMatrix4a mRenderMatrix;
 
     // These arrays are maintained in parallel. Ideally they'd be combined into a

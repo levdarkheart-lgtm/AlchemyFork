@@ -123,6 +123,8 @@ ALMetalWorldResourceSource::~ALMetalWorldResourceSource()=default;
 ALMetalWorldResourceTable::ALMetalWorldResourceTable(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldResourceTable::~ALMetalWorldResourceTable()=default;
 std::shared_ptr<const ALMetalBuffer> ALMetalWorldResourceTable::argumentLease()const noexcept{return mImpl->buffer;}
+std::span<const std::shared_ptr<const ALMetalTexture>> ALMetalWorldResourceSource::generationLeases()const noexcept
+{return mImpl->leases;}
 bool ALMetalWorldResourceSource::matches(const ALMetalWorldSimpleBatch& batch)const noexcept
 {
     if(batch.native_material_source!=mImpl->material || !mImpl->material->matches(batch) ||batch.texture_count!=mImpl->count)return false;
@@ -299,6 +301,38 @@ try
     ++state->stats.buffer_bind_calls;return true;
 }
 catch(const std::bad_alloc&){rejected(*mImpl->state,ALMetalWorldResourceFallback::host_allocation,failure);if(error)error->clear();return false;}
+bool ALMetalWorldResources::declareResources(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,
+    const std::shared_ptr<const ALMetalWorldResourceTable>& table,std::string* error,ALMetalWorldResourceFallback* failure)
+try
+{
+    reason(failure,ALMetalWorldResourceFallback::none);
+    const auto& state=mImpl->state;
+    if(!table || !sameContext(table->mImpl->context,state) ||
+       encoder.nativeDeviceForIndirect()!=(__bridge void*)state->device ||
+       encoder.nativeCommandBufferForIndirect()!=command.nativeHandle() || command.isCommitted())
+    {rejected(*state,ALMetalWorldResourceFallback::validation,failure);return false;}
+    if(!command.retainUntilCompletion(table,error))
+    {rejected(*state,ALMetalWorldResourceFallback::retention,failure);return false;}
+    id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
+    if(!native){rejected(*state,ALMetalWorldResourceFallback::declaration,failure);return false;}
+    if(table->mImpl->declared_encoder!=native)
+    {
+        const auto* resources=reinterpret_cast<id<MTLResource> __unsafe_unretained const*>(table->mImpl->resources.data());
+        [native useResources:resources count:table->mImpl->resources.size() usage:MTLResourceUsageRead stages:MTLRenderStageFragment];
+        table->mImpl->declared_encoder=native;state->stats.declared_resources+=table->mImpl->resources.size();
+    }
+    // The source-row shader reaches this buffer through another argument
+    // buffer; ordinary bind() directly binds it and does not need this call.
+    [native useResource:(__bridge id<MTLBuffer>)table->mImpl->buffer->nativeHandle()
+        usage:MTLResourceUsageRead stages:MTLRenderStageFragment];
+    return true;
+}
+catch(const std::bad_alloc&){rejected(*mImpl->state,ALMetalWorldResourceFallback::host_allocation,failure);if(error)error->clear();return false;}
+void ALMetalWorldResources::releaseSourceCache(const std::shared_ptr<const ALMetalWorldResourceSource>& source)noexcept
+{
+    if(source)std::erase_if(source->mImpl->tables,[&](const auto& table)
+        {return sameContext(table->mImpl->context,mImpl->state);});
+}
 void ALMetalWorldResources::clearLookup()noexcept{mImpl->state->lookup.clear();++mImpl->state->epoch;}
 void ALMetalWorldResources::failNextPreparationForTesting()noexcept{mImpl->state->force_failure=true;}
 ALMetalWorldResourceStats ALMetalWorldResources::stats()const noexcept

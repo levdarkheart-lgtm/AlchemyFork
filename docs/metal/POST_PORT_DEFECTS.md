@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-173 -->
+<!-- next-defect-id: PPD-177 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4418,3 +4418,79 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Explicit renderOwnedInputs entry implemented; private shape qualification is inaccessible to borrowed Scene callers. Per-draw checks remain; new malformed borrowed-copy and owned per-draw rejection/parity/cancel/lifetime cases authored. Both actual/native packet cost arms use the same typed entry. Build7 pending.
 - 2026-11-14: Clean75c7ae61 required build7 and native actual2471/28+compact1990/8+resource12379/7+oldshader4721/1 pass. New borrowed-copy and typed per-draw rejection/lifetime/parity cases pass. Actual compact cost remains adverse, so no causal net performance success is claimed.
+
+
+## PPD-173 — Native source-row lookup cannot recover capacity after scene churn
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native source-page implementation
+- Discovered: 2026-11-14
+- Original reference: Online Second Life travel and source churn require a bounded working set that can recycle idle GPU source identities while actual readers keep immutable old generations.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), in-progress tree based14d57c. almetalworldsourcepages.mm initially consumes free slots until4096 identities are reached, but erases none except clear(). Native reader COW exists, so permanent exhaustion is unnecessary. No viewer run or runtime regression is attributed.
+- Next action: Recycle least-recently-used slots that are not selected in the current view, advance nonwrapping allocation generation, remove exact old key/identity indexes and preserve old bank/page reader generations. Add churn beyond capacity with an old live FrameView. Replace quadratic completion-lease union scans in the same new consumer with bounded identity lookups before complete-path cost testing.
+- Verification: Source-confirmed implementation defect, registered before repair. Build/native execution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered source review finding; source-row experiment remains defaultOFF, unbuilt/untested. Required native scalar draws remain available on optional admission failure.
+- 2026-11-14: Preallocated LRU/current-view slot protection, exact index removal, nonwrapping generations, idle resource-context table release and hash/control-block lease unions implemented. Capacity2/churn10 with old gated GPU pixels and generation checks authored. Required build9/native execution pending.
+
+
+## PPD-174 — Source model re-registration can retain withdrawn owner proof
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex source-row capture provenance
+- Discovered: 2026-11-14
+- Original reference: Model ownership must be currently available, while already-copied immutable views remain valid.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), new helper registerSourceModel initially ignores an invalid snapshot or matrix mismatch without erasing an earlier valid registration for the same owner pointer during one Capture. Ordinary begin-once clears it, so no runtime symptom is attributed.
+- Next action: Erase that pointer's owner proof on invalid/stale replacement registration; preserve existing copied candidate rows, and test valid-to-withdrawn/invalid/stale registration before later capture.
+- Verification: Source-confirmed provisional API defect registered before repair; build/native execution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Recorded independent capture-helper review; native source-row diagnostic remains defaultOFF.
+- 2026-11-14: Narrow pointer-proof erasure and actual-owner valid-to-retired/stale-to-fresh cases authored; copied old view rows stay immutable. Required build9/native execution pending.
+
+
+## PPD-175 — Source-row consumer can ignore a compact view's UV override
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex source-row renderer integration
+- Discovered: 2026-11-14
+- Original reference: Optional GPU source-row rendering must preserve resolved compact per-view transforms or retain ordinary native rendering.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Consumer initially compares resolved MVP/modelview/normal to copied region rows, but SourcePages encodes source.texture_matrix without comparing the valid compact Draw.textureMatrix override. Production owner rejects UV animation, while a public valid Scene can supply a distinct override and otherwise reach the new path. No viewer execution is attributed.
+- Next action: Reject mismatched per-view/prototype UV matrices from optional source-row selection before freeze, retaining normal native draw output. Add actual renderer UV-override parity/fallback regression.
+- Verification: Source-confirmed provisional consumer defect, registered before repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Independent shader/renderer fixture review reported the missing qualification; new path remains defaultOFF, unbuilt/untested.
+- 2026-11-14: Exact64-byte resolved/prototype texture-matrix qualification added before native freeze; actual compact UV-override parity/fallback fixture authored. Build9/native execution pending.
+
+
+## PPD-176 — Source-row bound counter can include a failed G-buffer render
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex source-row renderer telemetry
+- Discovered: 2026-11-14
+- Original reference: Accepted-render counters must distinguish a fully encoded accepted native view from abandoned partial work; none is a GPU completion count.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Initial scalar source-row branch increments renderer-global bound immediately per draw; a later encoder/coverage/transaction failure can abandon that work while leaving bound inflated. Existing material counters accumulate locally until finishCommandBuffer accepts the render.
+- Next action: Accumulate source-row bound locally and publish at the existing successful render boundary. Document requested/fallback as setup attempts and bound as accepted G-buffer render draws, not GPU-completed work.
+- Verification: Source-confirmed telemetry defect registered before repair; no live counter result is attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Independent integration review reported the premature count; new path remains defaultOFF.
+- 2026-11-14: Bound draws now accumulate locally and publish at successful finishCommandBuffer boundary, with setup-attempt and accepted-render semantics documented. This is not a GPU-completion count. Build9/native execution pending.

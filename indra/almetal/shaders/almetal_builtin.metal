@@ -7361,6 +7361,309 @@ fragment ALMetalWorldGBufferOutput almetal_world_material_resources_fragment(
     return almetal_world_material_shade(input, resources.diffuse_textures, resources.normal_textures, resources.specular_textures, resources.diffuse_sampler, constants);
 }
 
+// Owner-published static source rows. The pointer bank is bounded and its
+// native encoding/alignment comes from MTLArgumentEncoder reflection. Dynamic
+// per-view region placement is inherited separately, never written into a row.
+struct ALMetalWorldSourceRow
+{
+    const device float4* positions [[id(0)]];
+    const device float4* normals [[id(1)]];
+    const device float2* uv0 [[id(2)]];
+    const device uchar4* colors [[id(3)]];
+    const device float4* tangents [[id(4)]];
+    const device float2* uv1 [[id(5)]];
+    const device float2* uv2 [[id(6)]];
+    constant ALMetalWorldMaterialConstants* legacy [[id(7)]];
+    constant ALMetalWorldPBRConstants* pbr_ldr [[id(8)]];
+    constant ALMetalWorldPBRConstants* pbr_hdr [[id(9)]];
+    constant ALMetalWorldLegacyResources* legacy_resources [[id(10)]];
+    constant ALMetalWorldPBRResources* pbr_resources [[id(11)]];
+    float4x4 fixed_texture_matrix [[id(12)]];
+    // Exact former common.material and source-static depth_convention.y.
+    float4 material_policy [[id(13)]];
+    uint4 source_policy [[id(14)]]; // x=texture count, yzw=reserved producer data
+};
+
+struct ALMetalWorldSourceBank
+{
+    array<constant ALMetalWorldSourceRow*, 4096> rows [[id(0)]];
+};
+
+struct ALMetalWorldSourceRegion
+{
+    float4x4 modelview_projection;
+    float4x4 modelview;
+    float4 normal_matrix[3];
+};
+
+struct ALMetalWorldSourceGlobals
+{
+    float4 mirror_clip_plane;
+    uint4 flags; // reverse Z, mirror clip, HDR normal target, reserved
+};
+static_assert(sizeof(ALMetalWorldSourceRegion) == 176, "Source region ABI");
+static_assert(sizeof(ALMetalWorldSourceGlobals) == 32, "Source view globals ABI");
+
+struct ALMetalWorldSourceLegacyVaryings
+{
+    float4 position [[position]];
+    float mirror_clip_distance [[clip_distance]];
+    float3 normal;
+    float4 color;
+    float2 texcoord;
+    float2 texcoord1;
+    float2 texcoord2;
+    float3 tangent;
+    float3 bitangent;
+    uint texture_index [[flat]];
+    uint texture_count [[flat]];
+    float alpha_cutoff [[flat]];
+    uint3 material_flags [[flat]];
+    uint source_id [[flat]];
+};
+
+struct ALMetalWorldSourcePBRVaryings
+{
+    float4 position [[position]];
+    float mirror_clip_distance [[clip_distance]];
+    float3 eye_position;
+    float3 normal;
+    float3 tangent;
+    float3 bitangent;
+    float4 color;
+    float2 base_color_texcoord;
+    float2 normal_texcoord;
+    float2 orm_texcoord;
+    float2 emissive_texcoord;
+    uint material_index [[flat]];
+    uint source_id [[flat]];
+};
+
+static ALMetalWorldSourceLegacyVaryings almetal_world_source_legacy_output(
+    ALMetalWorldSimpleVaryings input, uint source_id)
+{
+    ALMetalWorldSourceLegacyVaryings output;
+    output.position = input.position;
+    output.mirror_clip_distance = input.mirror_clip_distance;
+    output.normal = input.normal;
+    output.color = input.color;
+    output.texcoord = input.texcoord;
+    output.texcoord1 = input.texcoord1;
+    output.texcoord2 = input.texcoord2;
+    output.tangent = input.tangent;
+    output.bitangent = input.bitangent;
+    output.texture_index = input.texture_index;
+    output.texture_count = input.texture_count;
+    output.alpha_cutoff = input.alpha_cutoff;
+    output.material_flags = input.material_flags;
+    output.source_id = source_id;
+    return output;
+}
+
+static ALMetalWorldSimpleVaryings almetal_world_source_legacy_input(
+    ALMetalWorldSourceLegacyVaryings input)
+{
+    ALMetalWorldSimpleVaryings output;
+    output.position = input.position;
+    output.mirror_clip_distance = input.mirror_clip_distance;
+    output.normal = input.normal;
+    output.color = input.color;
+    output.texcoord = input.texcoord;
+    output.texcoord1 = input.texcoord1;
+    output.texcoord2 = input.texcoord2;
+    output.tangent = input.tangent;
+    output.bitangent = input.bitangent;
+    output.texture_index = input.texture_index;
+    output.texture_count = input.texture_count;
+    output.alpha_cutoff = input.alpha_cutoff;
+    output.material_flags = input.material_flags;
+    return output;
+}
+
+static ALMetalWorldSourcePBRVaryings almetal_world_source_pbr_output(
+    ALMetalWorldPBRVaryings input, uint source_id)
+{
+    ALMetalWorldSourcePBRVaryings output;
+    output.position = input.position;
+    output.mirror_clip_distance = input.mirror_clip_distance;
+    output.eye_position = input.eye_position;
+    output.normal = input.normal;
+    output.tangent = input.tangent;
+    output.bitangent = input.bitangent;
+    output.color = input.color;
+    output.base_color_texcoord = input.base_color_texcoord;
+    output.normal_texcoord = input.normal_texcoord;
+    output.orm_texcoord = input.orm_texcoord;
+    output.emissive_texcoord = input.emissive_texcoord;
+    output.material_index = input.material_index;
+    output.source_id = source_id;
+    return output;
+}
+
+static ALMetalWorldPBRVaryings almetal_world_source_pbr_input(
+    ALMetalWorldSourcePBRVaryings input)
+{
+    ALMetalWorldPBRVaryings output;
+    output.position = input.position;
+    output.mirror_clip_distance = input.mirror_clip_distance;
+    output.eye_position = input.eye_position;
+    output.normal = input.normal;
+    output.tangent = input.tangent;
+    output.bitangent = input.bitangent;
+    output.color = input.color;
+    output.base_color_texcoord = input.base_color_texcoord;
+    output.normal_texcoord = input.normal_texcoord;
+    output.orm_texcoord = input.orm_texcoord;
+    output.emissive_texcoord = input.emissive_texcoord;
+    output.material_index = input.material_index;
+    return output;
+}
+
+vertex ALMetalWorldSourceLegacyVaryings almetal_world_material_source_rows_vertex(
+    constant ALMetalWorldSourceBank& bank [[buffer(0)]],
+    const device ALMetalWorldSourceRegion* regions [[buffer(1)]],
+    constant ALMetalWorldSourceGlobals& globals [[buffer(2)]],
+    const device uint* source_regions [[buffer(3)]],
+    uint vertex_id [[vertex_id]], uint source_id [[instance_id]])
+{
+    constant ALMetalWorldSourceRow& source = *bank.rows[source_id];
+    const device ALMetalWorldSourceRegion& region = regions[source_regions[source_id]];
+    ALMetalWorldSimpleVaryings output;
+    const float4 object_position =
+        float4(source.positions[vertex_id].xyz, 1.0);
+    const float4 eye_position = region.modelview * object_position;
+    float4 clip_position = region.modelview_projection * object_position;
+    clip_position.y = -clip_position.y;
+    output.position = globals.flags.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = globals.flags.y != 0u
+        ? dot(eye_position, globals.mirror_clip_plane) : 1.0;
+
+    const float3x3 normal_matrix = float3x3(
+        region.normal_matrix[0].xyz,
+        region.normal_matrix[1].xyz,
+        region.normal_matrix[2].xyz);
+    output.normal = normalize(normal_matrix * source.normals[vertex_id].xyz);
+    output.tangent = normalize(normal_matrix * source.tangents[vertex_id].xyz);
+    output.bitangent = source.tangents[vertex_id].w *
+                       cross(output.normal, output.tangent);
+    const float4 encoded_color = float4(source.colors[vertex_id]) / 255.0;
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = (source.fixed_texture_matrix *
+                       float4(source.uv0[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = (source.fixed_texture_matrix *
+                        float4(source.uv1[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord2 = (source.fixed_texture_matrix *
+                        float4(source.uv2[vertex_id], 0.0, 1.0)).xy;
+    output.texture_index = source.source_policy.x > 1
+        ? uint(max(as_type<int>(source.positions[vertex_id].w), 0)) : 0;
+    output.texture_count = source.source_policy.x;
+    output.alpha_cutoff = source.material_policy.x;
+    output.material_flags = uint3(
+        source.material_policy.y != 0.0,
+        source.material_policy.z != 0.0,
+        source.material_policy.w != 0.0);
+    return almetal_world_source_legacy_output(output, source_id);
+}
+
+// The original PBR helper requires a constant common400-byte object. This
+// bounded counterpart reads its exact source/view fields directly instead of
+// rebuilding such an object per vertex. Its arithmetic follows that helper.
+static ALMetalWorldPBRVaryings almetal_world_pbr_source_rows_varyings(
+    float4 clip_position, float4 eye_position, float3 normal, float4 tangent,
+    float2 texcoord, uchar4 encoded_color, uint material_index,
+    constant ALMetalWorldSourceRow& source,
+    constant ALMetalWorldSourceGlobals& globals,
+    constant ALMetalWorldPBRConstants& pbr)
+{
+    ALMetalWorldPBRVaryings output;
+    clip_position.y = -clip_position.y;
+    output.position = globals.flags.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = globals.flags.y != 0u
+        ? dot(eye_position, globals.mirror_clip_plane) : 1.0;
+    output.eye_position = eye_position.xyz;
+    output.normal = normalize(normal);
+    const uint slot = min(material_index, max(pbr.config.x, 1u) - 1u);
+    constant ALMetalWorldPBRSlotConstants& material =
+        pbr.slots[min(slot, 7u)];
+    const float4 adjusted_tangent = almetal_world_pbr_tangent(
+        float4(normalize(tangent.xyz), tangent.w), output.normal,
+        source.fixed_texture_matrix, material.texture_transform[1]);
+    output.tangent = normalize(adjusted_tangent.xyz);
+    output.bitangent = adjusted_tangent.w *
+                       cross(output.normal, output.tangent);
+    const float4 color = float4(encoded_color) / 255.0;
+    output.color = float4(almetal_srgb_to_linear(color.rgb), color.a);
+    output.base_color_texcoord = almetal_world_pbr_texcoord(
+        texcoord, source.fixed_texture_matrix, material.texture_transform[0]);
+    output.normal_texcoord = almetal_world_pbr_texcoord(
+        texcoord, source.fixed_texture_matrix, material.texture_transform[1]);
+    output.orm_texcoord = almetal_world_pbr_texcoord(
+        texcoord, source.fixed_texture_matrix, material.texture_transform[2]);
+    output.emissive_texcoord = almetal_world_pbr_texcoord(
+        texcoord, source.fixed_texture_matrix, material.texture_transform[3]);
+    output.material_index = slot;
+    return output;
+}
+
+vertex ALMetalWorldSourcePBRVaryings almetal_world_pbr_source_rows_vertex(
+    constant ALMetalWorldSourceBank& bank [[buffer(0)]],
+    const device ALMetalWorldSourceRegion* regions [[buffer(1)]],
+    constant ALMetalWorldSourceGlobals& globals [[buffer(2)]],
+    const device uint* source_regions [[buffer(3)]],
+    uint vertex_id [[vertex_id]], uint source_id [[instance_id]])
+{
+    constant ALMetalWorldSourceRow& source = *bank.rows[source_id];
+    const device ALMetalWorldSourceRegion& region = regions[source_regions[source_id]];
+    constant ALMetalWorldPBRConstants& pbr =
+        *(globals.flags.z != 0u ? source.pbr_hdr : source.pbr_ldr);
+    const float3x3 normal_matrix = float3x3(
+        region.normal_matrix[0].xyz,
+        region.normal_matrix[1].xyz,
+        region.normal_matrix[2].xyz);
+    // position.w remains the packed per-vertex material slot. It is wholly
+    // independent of the stable source ID supplied through baseInstance.
+    const uint material_index = source.source_policy.x > 1
+        ? uint(max(as_type<int>(source.positions[vertex_id].w), 0)) : 0;
+    const auto output = almetal_world_pbr_source_rows_varyings(
+        region.modelview_projection * float4(source.positions[vertex_id].xyz, 1.0),
+        region.modelview * float4(source.positions[vertex_id].xyz, 1.0),
+        normal_matrix * source.normals[vertex_id].xyz,
+        float4(normal_matrix * source.tangents[vertex_id].xyz,
+               source.tangents[vertex_id].w),
+        source.uv0[vertex_id], source.colors[vertex_id], material_index, source, globals, pbr);
+    return almetal_world_source_pbr_output(output, source_id);
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_material_source_rows_fragment(
+    ALMetalWorldSourceLegacyVaryings input [[stage_in]],
+    constant ALMetalWorldSourceBank& bank [[buffer(0)]])
+{
+    constant ALMetalWorldSourceRow& source = *bank.rows[input.source_id];
+    constant ALMetalWorldLegacyResources& resources = *source.legacy_resources;
+    return almetal_world_material_shade(almetal_world_source_legacy_input(input),
+        resources.diffuse_textures, resources.normal_textures,
+        resources.specular_textures, resources.diffuse_sampler, *source.legacy);
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_pbr_source_rows_fragment(
+    ALMetalWorldSourcePBRVaryings input [[stage_in]],
+    constant ALMetalWorldSourceBank& bank [[buffer(0)]],
+    constant ALMetalWorldSourceGlobals& globals [[buffer(2)]],
+    bool front_facing [[front_facing]])
+{
+    constant ALMetalWorldSourceRow& source = *bank.rows[input.source_id];
+    constant ALMetalWorldPBRConstants& pbr =
+        *(globals.flags.z != 0u ? source.pbr_hdr : source.pbr_ldr);
+    constant ALMetalWorldPBRResources& resources = *source.pbr_resources;
+    return almetal_world_pbr_shade(almetal_world_source_pbr_input(input),
+        resources.base_color_textures, resources.normal_textures,
+        resources.orm_textures, resources.emissive_textures,
+        resources.material_sampler, pbr, front_facing);
+}
+
 static float almetal_legacy_blinn_phong_lobe(
     float nh, float glossiness, float specular_exponent)
 {

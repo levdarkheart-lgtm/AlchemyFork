@@ -122,6 +122,7 @@ target_sources(
     almetalworldvisibility.mm
     almetalworldmaterialdata.mm
     almetalworldresources.mm
+    almetalworldsourcepages.mm
     almetalworldprepare.mm
     almetalworlddiagnostics.cpp
   PUBLIC
@@ -155,6 +156,8 @@ target_sources(
       almetalworldvisibility.h
       almetalworldmaterialdata.h
       almetalworldresources.h
+      almetalworldsourcepages.h
+      almetalworldsourceview.h
       almetalworldprepare.h
       almetalworlddraws.h
       almetalworlddiagnostics.h
@@ -274,6 +277,9 @@ if(AL_BUILD_TESTS)
             tests/almetal_probe_workload_test.mm
             tests/almetal_frame_capture_test.mm
             tests/almetal_function_constants_test.mm
+            tests/almetal_source_row_draw_test.mm
+            tests/almetal_world_source_pages_test.mm
+            tests/almetal_world_source_rows_test.mm
     LIBRARIES almetal llcommon
     RESOURCE_LOCK apple_gpu
   )
@@ -374,3 +380,6 @@ set_source_files_properties(tests/almetal_world_source_owner_test.mm PROPERTIES 
 set_source_files_properties(tests/almetal_world_material_source_test.mm almetalworldmaterialdata.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
 set_source_files_properties(tests/almetal_world_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+set_source_files_properties(almetalworldsourcepages.mm
+  tests/almetal_source_row_draw_test.mm tests/almetal_world_source_pages_test.mm
+  tests/almetal_world_source_rows_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

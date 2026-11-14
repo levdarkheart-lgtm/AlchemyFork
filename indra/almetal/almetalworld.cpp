@@ -1578,6 +1578,7 @@ struct ALMetalWorldFrameData::Impl
         std::weak_ptr<ALMetalWorldResources> value;
     };
     std::vector<ResourceContext> resource_contexts;
+    std::vector<std::weak_ptr<ALMetalWorldSourcePages>> source_contexts;
 };
 
 ALMetalWorldFrameData::ALMetalWorldFrameData(std::unique_ptr<Impl> impl)
@@ -1663,6 +1664,21 @@ try
     return value;
 }
 catch (const std::bad_alloc&) { if (failure) *failure = ALMetalWorldResourceFallback::host_allocation; if (error) error->clear(); return {}; }
+
+std::shared_ptr<ALMetalWorldSourcePages> ALMetalWorldFrameData::worldSourcePages(
+    const ALMetalShaderLibrary& library, std::uint32_t max_anisotropy, std::string* error)
+try
+{
+    auto& contexts = mImpl->source_contexts;
+    std::erase_if(contexts, [](const auto& value) { return value.expired(); });
+    for (const auto& weak : contexts)
+        if (auto value = weak.lock(); value && value->belongsTo(*mImpl->device, library, max_anisotropy))
+            return value;
+    auto value = ALMetalWorldSourcePages::create(*mImpl->device, library, max_anisotropy, {}, error);
+    if (value) contexts.push_back(value);
+    return value;
+}
+catch (const std::bad_alloc&) { return {}; }
 
 bool ALMetalWorldFrameData::reloadShadowMaterials(
     const ALMetalShaderLibrary& library, std::string* error)
@@ -2274,6 +2290,9 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
     std::array<MaterialRiggedPipelines, 2> resource_material_pipelines;
     std::array<MaterialRiggedPipelines, 2> resource_pbr_pipelines;
+    std::array<NormalPipelines, 2> source_material_pipelines, source_pbr_pipelines;
+    std::shared_ptr<ALMetalWorldSourcePages> source_pages;
+    ALMetalWorldSourceDrawStats source_draw_stats;
     ALMetalWorldResourceLimits world_resource_limits;
     std::shared_ptr<ALMetalWorldResources> world_resources;
     std::unique_ptr<ALMetalSamplerState> world_resource_sampler;
@@ -2603,6 +2622,23 @@ struct ALMetalWorldGBufferRenderer::Impl
         return result.get();
     }
 
+    ALMetalRenderPipeline* sourcePipeline(bool hdr, bool normal_hdr, bool pbr, std::string* error)
+    {
+        auto& result = (pbr ? source_pbr_pipelines : source_material_pipelines)[hdr][normal_hdr];
+        if (!result)
+        {
+            const auto* original = (pbr ? pbr_pipelines : material_pipelines)[hdr][0][normal_hdr].get();
+            if (!original) return nullptr;
+            auto descriptor = original->descriptor();
+            descriptor.library = library.get();
+            descriptor.vertex_function = pbr ? "almetal_world_pbr_source_rows_vertex" : "almetal_world_material_source_rows_vertex";
+            descriptor.fragment_function = pbr ? "almetal_world_pbr_source_rows_fragment" : "almetal_world_material_source_rows_fragment";
+            descriptor.label = "Alchemy native GPU source-row G-buffer pipeline";
+            result = ALMetalRenderPipeline::create(*device, descriptor, error);
+        }
+        return result.get();
+    }
+
     ALMetalRenderPipeline* probePBRAlphaPipeline(
         bool hdr, bool coverage, bool rigged, std::string* error)
     {
@@ -2873,6 +2909,7 @@ bool ALMetalWorldGBufferRenderer::reloadShaders(const std::string& library_path,
     next.constant_stats = mImpl->constant_stats;
     next.world_resource_limits = mImpl->world_resource_limits;
     next.world_resource_draw_stats = mImpl->world_resource_draw_stats;
+    next.source_draw_stats = mImpl->source_draw_stats;
     next.shadow_coalesced_draws = mImpl->shadow_coalesced_draws;
     next.shadow_covered_input_draws = mImpl->shadow_covered_input_draws;
     next.shadow_covered_coalesced_draws = mImpl->shadow_covered_coalesced_draws;
@@ -2987,6 +3024,12 @@ ALMetalWorldResourceStats ALMetalWorldGBufferRenderer::worldResourceStats() cons
     }
     return result;
 }
+ALMetalWorldSourceDrawStats ALMetalWorldGBufferRenderer::worldSourceStats() const noexcept
+{
+    auto stats = mImpl ? mImpl->source_draw_stats : ALMetalWorldSourceDrawStats{};
+    if (mImpl && mImpl->source_pages) stats.pages = mImpl->source_pages->stats();
+    return stats;
+}
 void ALMetalWorldGBufferRenderer::configureWorldResources(ALMetalWorldResourceLimits limits) noexcept
 {
     if (!mImpl) return;
@@ -3036,6 +3079,7 @@ bool ALMetalWorldGBufferRenderer::setAnisotropy(
     // on its next use. Pending material tables own their previous sampler.
     mImpl->shadow_material_sampler.reset();
     mImpl->world_resource_sampler.reset();
+    mImpl->source_pages.reset();
     return true;
 }
 
@@ -9945,6 +9989,83 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             mImpl->world_resource_draw_stats.last_failure = resource_setup_failure;
         }
     }
+    // Freeze only copied provenance and exact native leases. The optional
+    // source-row path never places CPU source descriptions on the command.
+    // Each request preserves its original logical index and query boundary.
+    constexpr auto no_source_row = std::numeric_limits<std::uint32_t>::max();
+    std::shared_ptr<const ALMetalWorldSourceFrameView> source_frame;
+    std::uint64_t source_bound_draws = 0;
+    std::vector<std::uint32_t> source_request_for_draw;
+    if (scene.source_rows && !scene.source_rows->candidates.empty())
+    {
+        auto& stats = mImpl->source_draw_stats;
+        const auto& metadata = *scene.source_rows;
+        stats.requested += metadata.candidates.size();
+        stats.last_failure = "metadata";
+        try
+        {
+            bool valid = scene.source_owner && !scene.native_visibility &&
+                metadata.candidates.size() <= alMetalWorldSourceMaximumRows &&
+                !metadata.regions.empty() && metadata.regions.size() <= alMetalWorldSourceMaximumRows;
+            std::vector<ALMetalWorldSourceRequest> requests;
+            if (valid)
+            {
+                requests.reserve(metadata.candidates.size());
+                source_request_for_draw.assign(draw_count, no_source_row);
+            }
+            for (const auto& candidate : metadata.candidates)
+            {
+                stats.last_failure = "metadata";
+                if (!valid || candidate.draw_index >= draw_count ||
+                    candidate.region >= metadata.regions.size() ||
+                    !candidate.key.identity || !candidate.key.revision ||
+                    source_request_for_draw[candidate.draw_index] != no_source_row)
+                { valid = false; break; }
+                const auto draw = scene.draw(candidate.draw_index);
+                const auto& batch = draw.source();
+                const auto& region = metadata.regions[candidate.region];
+                if (std::memcmp(region.modelview_projection, draw.modelviewProjection(), sizeof(region.modelview_projection)) ||
+                    std::memcmp(region.modelview, draw.modelview(), sizeof(region.modelview)) ||
+                    std::memcmp(region.normal_matrix, draw.normalMatrix(), sizeof(region.normal_matrix)) ||
+                    std::memcmp(batch.texture_matrix, draw.textureMatrix(), sizeof(batch.texture_matrix)))
+                { valid = false; break; }
+                std::string optional_error;
+                stats.last_failure = "pipeline";
+                if (!mImpl->sourcePipeline(scene.hdr, scene.normal_hdr, isPBRBatch(batch), &optional_error))
+                { valid = false; break; }
+                source_request_for_draw[candidate.draw_index] = static_cast<std::uint32_t>(requests.size());
+                requests.push_back({candidate.key, &batch, scene.cpu_source_owner,
+                    {scene.source_owner, {}, {}}, candidate.region});
+            }
+            if (valid)
+            {
+                std::string optional_error;
+                stats.last_failure = "context";
+                if (!mImpl->source_pages)
+                    mImpl->source_pages = mImpl->frame_data
+                        ? mImpl->frame_data->worldSourcePages(*mImpl->library, mImpl->max_anisotropy, &optional_error)
+                        : ALMetalWorldSourcePages::create(*mImpl->device, *mImpl->library, mImpl->max_anisotropy, {}, &optional_error);
+                ALMetalWorldSourceGlobals globals;
+                std::memcpy(globals.mirror_clip_plane, scene.mirror_clip_plane, sizeof(globals.mirror_clip_plane));
+                globals.flags[0] = scene.reverse_z;
+                globals.flags[1] = scene.mirror_clip;
+                globals.flags[2] = scene.normal_hdr;
+                if (mImpl->source_pages)
+                {
+                    stats.last_failure = "publication";
+                    source_frame = mImpl->source_pages->freeze(requests, metadata.regions, globals, &optional_error);
+                }
+            }
+        }
+        catch (const std::bad_alloc&) { stats.last_failure = "host-allocation"; }
+        if (!source_frame)
+        {
+            ++stats.setup_failures;
+            stats.fallback += metadata.candidates.size();
+            source_request_for_draw.clear();
+        }
+        else stats.last_failure = "none";
+    }
     auto encoder = ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world simple G-buffer encoder", error);
     if (!encoder)
@@ -10326,6 +10447,23 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 encoder->drawPatches(4, 0, 1, 1, 0, error);
             continue;
         }
+        if (source_frame && source_request_for_draw[index] != no_source_row)
+        {
+            // This branch deliberately precedes packing the 400-byte common
+            // record. Matrix rows and source resources are bound as a view,
+            // and instance_id selects the immutable GPU source independently
+            // of the packed per-vertex material index in position.w.
+            auto* pipeline = mImpl->sourcePipeline(scene.hdr, scene.normal_hdr, isPBRBatch(batch), error);
+            encoded = pipeline && source_frame->bind(*encoder, *command, error) &&
+                encoder->setCullMode(isPBRBatch(batch) && batch.double_sided
+                    ? ALMetalCullMode::none : ALMetalCullMode::back, error) &&
+                encoder->setPipeline(*pipeline, error) &&
+                encoder->drawIndexedWithBaseInstance(ALMetalPrimitiveType::triangle,
+                    batch.index_count, batch.index_type, *batch.indices, batch.index_offset,
+                    source_frame->rowId(source_request_for_draw[index]), error);
+            if (encoded) ++source_bound_draws;
+            continue;
+        }
         std::optional<WorldSimpleConstants> owned_constants;
         if (!prepared) owned_constants = draw.view()
             ? buildWorldSimpleConstants(scene, draw) : buildWorldSimpleConstants(scene, batch);
@@ -10677,6 +10815,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     for (std::size_t index = 0; index < resource_stats.fallback_reasons.size(); ++index)
         mImpl->world_resource_draw_stats.fallback_reasons[index] += resource_stats.fallback_reasons[index];
     if (resource_stats.fallback_draws) mImpl->world_resource_draw_stats.last_fallback = resource_stats.last_fallback;
+    mImpl->source_draw_stats.bound += source_bound_draws;
     transaction.succeeded = true;
     return target;
 }

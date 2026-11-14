@@ -8042,6 +8042,13 @@
     <key>Type</key><string>Boolean</string>
     <key>Value</key><integer>0</integer>
   </map>
+  <key>RenderMetalSourceRows</key>
+  <map>
+    <key>Comment</key><string>Diagnostic persistent GPU source rows and copied region transforms for native Legacy/PBR draw comparisons.</string>
+    <key>Persist</key><integer>0</integer>
+    <key>Type</key><string>Boolean</string>
+    <key>Value</key><integer>0</integer>
+  </map>
   <key>RenderMetalGroupSources</key>
   <map>
     <key>Comment</key><string>Diagnostic completed native group membership for static region-space simple geometry.</string>

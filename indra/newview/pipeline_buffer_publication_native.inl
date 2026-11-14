@@ -103,7 +103,7 @@ try
     // for the ordinary G-buffer consumer, including opaque impostor bakes.
     flavor.native_materials = !capture.impostor_alpha_active &&
         !capture.world_post_deferred_active && !capture.pbr_glow;
-    flavor.native_resources = native_resources() && flavor.native_materials;
+    flavor.native_resources = (native_resources() || capture.source_rows_active) && flavor.native_materials;
     flavor.family = static_cast<ALScenePublicationNative::WorldFamily>(family);
     flavor.indexed_textures = family == 0 && indexed;
     flavor.indexed_materials = family != 0 && indexed;
@@ -148,12 +148,14 @@ try
     if (!indexed_source && params.mTextureMatrix &&
         (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
         std::memcpy(view.texture_matrix, params.mTextureMatrix->mMatrix, sizeof(view.texture_matrix));
-    const bool compact = capture.compact_gbuffer_active && !editable &&
+    const bool ordinary_source = !editable &&
         !native_visibility() && !capture.rigged && !capture.impostor_bake &&
         !capture.impostor_alpha_active && !capture.world_post_deferred_active &&
         !capture.pbr_glow && !capture.impostor_fullbright &&
         !capture.impostor_shiny && !capture.impostor_emboss &&
         (family != 1 || capture.material_alpha_mode != 1);
+    capture.captureSourceRow(params, source, flavor, view, ordinary_source);
+    const bool compact = capture.compact_gbuffer_active && ordinary_source;
     if (compact)
     {
         capture.retainCpu(source.owner);

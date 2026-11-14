@@ -16,6 +16,7 @@ void clearDraws() noexcept
     raw_draw_watermark = 0;
     cpu_sources.reset();
     compact_gbuffer_active = false;
+    clearSourceRows();
 }
 void retainCpu(std::shared_ptr<const void> owner)
 {

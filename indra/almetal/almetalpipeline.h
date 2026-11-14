@@ -434,6 +434,14 @@ public:
                      ALMetalIndexType index_type, const ALMetalBuffer& index_buffer,
                      std::size_t index_buffer_offset = 0, std::uint32_t instance_count = 1,
                      std::string* error = nullptr);
+    // One ordered source-row draw. base_instance reaches [[instance_id]];
+    // the source-row owner validates it against its inherited bank. Always
+    // flush pending joins: identical inherited buffers can select different
+    // sources, so ordinary index adjacency is insufficient for merging.
+    bool drawIndexedWithBaseInstance(ALMetalPrimitiveType primitive,
+        std::uint32_t index_count, ALMetalIndexType index_type,
+        const ALMetalBuffer& index_buffer, std::size_t index_buffer_offset,
+        std::uint32_t base_instance, std::string* error = nullptr);
     // Trusted same-command GPU arguments may reduce the validated maximum
     // indexed count to zero. The writer must keep instanceCount=1 and the
     // index/base offsets zero. No CPU readback is performed by this call.

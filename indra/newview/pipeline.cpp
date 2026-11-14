@@ -880,6 +880,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::size_t raw_draw_watermark = 0;
     std::shared_ptr<WorldCpuLease> cpu_sources;
     bool compact_gbuffer_active = false;
+#include "pipeline_source_rows_capture_native.inl"
 #include "pipeline_compact_capture_native.inl"
     std::vector<ALMetalWorldVisibilityQuery> visibility_queries;
     std::vector<ALQueryTicket> visibility_tickets;
@@ -3071,6 +3072,33 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             };
             log_resource_tables("main", capture.renderer.get());
             log_resource_tables("probe", mMetalProbeWorldSimpleCapture ? mMetalProbeWorldSimpleCapture->renderer.get() : nullptr);
+            const auto log_source_rows = [](const char* owner, const ALMetalWorldGBufferRenderer* renderer)
+            {
+                if (!renderer) return;
+                const auto stats = renderer->worldSourceStats();
+                LL_INFOS("MetalScene") << "Native GPU source rows: view=" << owner
+                    << ", requested/bound/fallback/setup_failures=" << stats.requested << '/'
+                    << stats.bound << '/' << stats.fallback << '/' << stats.setup_failures
+                    << ", last_failure=" << stats.last_failure
+                    << ", rows/hits/publications=" << stats.pages.rows << '/' << stats.pages.hits << '/' << stats.pages.row_publications
+                    << ", encoded/copied_page/copied_bank/view_bytes=" << stats.pages.encoded_row_bytes << '/'
+                    << stats.pages.copied_page_bytes << '/' << stats.pages.copied_bank_bytes << '/' << stats.pages.view_bytes
+                    << ", live_metadata_bytes=" << stats.pages.live_metadata_bytes << LL_ENDL;
+            };
+            log_source_rows("main", capture.renderer.get());
+            log_source_rows("probe", mMetalProbeWorldSimpleCapture ? mMetalProbeWorldSimpleCapture->renderer.get() : nullptr);
+            const auto log_source_capture = [](const char* owner, const MetalWorldSimpleCapture* source)
+            {
+                if (!source) return;
+                const auto& stats = source->source_rows_stats;
+                LL_INFOS("MetalScene") << "Native GPU source capture: view=" << owner
+                    << ", enabled_views/registered_models=" << stats.enabled_views << '/' << stats.registered_models
+                    << ", ordinary_requested/emitted=" << stats.requested_ordinary_rows << '/' << stats.emitted_candidates
+                    << ", unsupported/owner_proof_skips/metadata_failures=" << stats.unsupported_skips << '/'
+                    << stats.owner_proof_skips << '/' << stats.optional_metadata_failures << LL_ENDL;
+            };
+            log_source_capture("main", &capture);
+            log_source_capture("probe", mMetalProbeWorldSimpleCapture.get());
             const auto groups = ALSceneGroupPublicationNative::statistics;
             const auto layouts = ALSceneGroupPublicationNative::cpuLayoutStats();
             LL_INFOS("MetalScene") << "Native group membership: hit/build/declined/failures="
@@ -3408,7 +3436,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // Keep the immutable reference consumer available for native scene work,
     // but real unique-source costs have not earned unconditional activation.
     static LLCachedControl<bool> compact_inputs(gSavedSettings, "RenderMetalCompactInputs", false);
-    capture.compact_gbuffer_active = compact_inputs();
+    static LLCachedControl<bool> source_rows(gSavedSettings, "RenderMetalSourceRows", false);
+    capture.beginSourceRows(source_rows() && !capture.impostor_bake);
+    capture.compact_gbuffer_active = compact_inputs() || capture.source_rows_active;
+    if (capture.source_rows_active)
+        for (const auto* region : LLWorld::getInstance()->getRegionList())
+            if (region) capture.registerSourceModel(&region->mRenderMatrix, region->nativeModelSnapshot());
     capture.world_visibility_members.clear();
     capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
     capture.visibility_queries.clear();
@@ -16145,6 +16178,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     ALMetalWorldGBufferScene scene;
     scene.source_owner = capture.world_resources;
     scene.cpu_source_owner = capture.cpu_sources;
+    scene.source_rows = capture.source_rows;
     scene.references = capture.source_references.data();
     scene.reference_count = capture.source_references.size();
     scene.draw_order = capture.draw_order.data();
@@ -16324,6 +16358,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
             // Native commands retain resources and constant pages separately.
             prepared.reset();
             scene.cpu_source_owner.reset();
+            scene.source_rows.reset();
             batches.clear();
             references.clear();
             order.clear();
@@ -16342,7 +16377,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     // Draw count alone did not predict a complete-path worker benefit; keep
     // this diagnostic explicit until its frame/CPU cost gate is established.
     static LLCachedControl<bool> prepare_world_inputs(gSavedSettings, "RenderMetalWorldPreparation", false);
-    const bool prepare_world = inputs && prepare_world_inputs() &&
+    const bool prepare_world = inputs && prepare_world_inputs() && !scene.source_rows &&
         inputs->scene().drawCount() >= MetalWorldSimpleCapture::parallel_world_minimum;
     bool credited_preparation = false;
     if (inputs) scene = inputs->scene();
