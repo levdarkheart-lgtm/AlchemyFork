@@ -92,14 +92,24 @@ public:
     bool dirty() const noexcept { return mDirty; }
     const std::shared_ptr<const void>& publication() const noexcept { return mPublication; }
 
+    // Owner-only dependency edge to a derived publisher (for example source ->
+    // spatial-group packet). The graph must be acyclic. Observers are weak and
+    // deduplicated by shared ownership. A Signal is allocated only for the
+    // first nonnull subscription. The State owner must remain alive throughout
+    // notification.
+    void observe(const std::shared_ptr<Observer>& observer);
+    // Dependents see will_write before the old publisher lease is released.
+    // Actual CPU/GPU readers remain owners of their immutable payloads.
     void invalidate() noexcept;
     void nativePublicationChanged(Phase) noexcept override { invalidate(); }
     // Capture revision before sealing. If a resource publishes while sealing,
     // stale work must not replace the current source. Failed sealing leaves
     // the producer dirty and eligible for the established owner retry/fallback.
     bool publish(Revision expected_revision, std::shared_ptr<const void> value) noexcept;
-    // Working-set eviction drops retained input leases without claiming a
-    // producer mutation or invalidating existing immutable readers.
+    // Working-set eviction also withdraws derived publisher caches, before
+    // releasing this publisher lease. It does not change the source revision
+    // or invalidate existing immutable readers. Dependents see withdrawn for
+    // cache unavailability, not an authoritative backing-resource mutation.
     void evict() noexcept;
 
 private:
@@ -107,6 +117,7 @@ private:
     Revision mRevision = 1;
     bool mDirty = true;
     std::shared_ptr<const void> mPublication;
+    std::unique_ptr<Signal> mDependents;
 };
 }
 

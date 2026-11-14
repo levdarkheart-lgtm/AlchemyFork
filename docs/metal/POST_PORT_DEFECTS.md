@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-157 -->
+<!-- next-defect-id: PPD-159 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4110,3 +4110,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Independent bounded review found no PPD152 semantic/ABI/lifetime counterexample and identified this remaining stable-source CPU copy. Registered before implementation.
 
 - 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
+
+
+## PPD-157 — New pending-GPU fixture would reload shaders behind its closed synthetic gate
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native resource-table test integration
+- Discovered: 2026-11-14
+- Original reference: Native renderer creation/reload has legitimate synchronous initialization uploads; an artificial queue gate must be released before a same-queue wait.
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). Test-author self-review of new resource fixture found reloadShaders before signaling its event gate; production creation commits/waits for uploads. No execution or observed hang.
+- Next action: Release/settle artificial pending GPU before shader reload checks; keep sampler/cache changes while pending and separately verify new shader context/output. Run actual native tests after source freeze.
+- Verification: Test-only ordering flaw found and corrected during uncommitted fixture development before execution; no production deadlock attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Author reported this pre-execution self-review finding while integrating the new test. Fixture ordering corrected; retained here before any claimed check result.
+
+
+## PPD-158 — Native group admission must preserve the optional raw-map depth-prepass consumer
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native group membership integration
+- Discovered: 2026-11-14
+- Original reference: llviewerdisplay.cpp RenderDepthPrePass calls renderObjects(PASS_SIMPLE) after stateSort and before main G-buffer capture. Original1eb44bbd and current retained path enumerate raw render-map draws.
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). Independent consumer audit identifies this unconverted raw PASS_SIMPLE enumeration in the new group-range experiment.
+- Next action: Exclude group conversion while RenderDepthPrePass is requested, retaining raw native enumeration; validate guards and exact merged raw/group order before enabling the experiment.
+- Verification: Compatibility contract in new uncommitted code, not an observed visual regression. Existing generic world-depth draw path appears inert under native ownership, so no new missing-depth symptom is claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Independent audit found the raw-map consumer; new group guard now excludes the setting. Shadows use their own shadow-flagged stateSort and do not reuse converted main ranges. Tests/build pending.

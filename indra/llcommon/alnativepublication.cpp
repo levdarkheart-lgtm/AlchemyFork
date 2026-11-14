@@ -97,11 +97,29 @@ void Signal::prune() noexcept
 
 State::State() noexcept : mIdentity(nextIdentity()) {}
 
+void State::observe(const std::shared_ptr<Observer>& observer)
+{
+    if (!observer) return;
+    if (!mDependents)
+    {
+        // Do not install an empty Signal if its first subscription fails.
+        auto dependents = std::make_unique<Signal>();
+        dependents->observe(observer);
+        mDependents = std::move(dependents);
+    }
+    else mDependents->observe(observer);
+}
+
 void State::invalidate() noexcept
 {
     advance(mRevision);
     mDirty = true;
-    mPublication.reset();
+    auto previous = std::move(mPublication);
+    if (mDependents) mDependents->willWrite();
+    // Derived publisher leases drop first. Keep the original lease alive
+    // throughout notification, and never overwrite any reentrant replacement
+    // installed by an observer or the old payload's destructor.
+    previous.reset();
 }
 
 bool State::publish(Revision expected_revision,
@@ -124,6 +142,8 @@ bool State::publish(Revision expected_revision,
 void State::evict() noexcept
 {
     mDirty = true;
-    mPublication.reset();
+    auto previous = std::move(mPublication);
+    if (mDependents) mDependents->withdraw();
+    previous.reset();
 }
 }
