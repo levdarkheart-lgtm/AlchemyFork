@@ -1,5 +1,12 @@
 # Apple-first architecture experiment: integrated G2–G5 candidate
 
+**Architectural status correction:** this is a partial shadow/resource experiment.
+The full original architecture was not completed. Experimental build/test/staged
+app delivery is complete; original G2–G5 boundaries and performance acceptance
+remain incomplete. [Follow-up source/log audit](apple-first-architecture-audit-2026-11-14.md)
+details the missing producer/job/GPU/global-budget work, native-capable but
+unexercised ICB path, and confirmed16GiB process-headroom pressure behavior.
+
 2026-11-14. Branch `codex/apple-first-architecture-g2-g5`, based on
 `5836d41753fc3e09533d638748ac9756f89ac357`, including owner-confirmed G1 repair
 `fef1e756fd`. This is the native Metal fork. Original Alchemy

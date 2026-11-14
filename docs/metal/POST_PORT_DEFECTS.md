@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-111 -->
+<!-- next-defect-id: PPD-113 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3137,3 +3137,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Completed whole-engine analysis under owner steering. Actual published3456×2168 matches both runs,420saved controls match. Main CPU49.30vs33.97ms/estimatedpresent; sourcecapture7.34vs2.22 while admittedmain sources8482vs6548/frame(+29.54%). Positively observed key/cache/aggregate ownership costs1.40/1.05/1.36ms separately. Logged generic indirect draw/run/prepared deltas0 cover new opaque execution path too, so the accepted ICB mechanism has no recorded successful execution in the periodic window; Dispatch/cache-hit/eligibility counts remain unknown.
 
 - 2026-11-14: Streaming is normal engine work, not dismissal of the adverse result:56,104vs453 decode completions (~124.7×rate),628.601vs10.103decoderCPU-s; maintextureupdate4.39vs0.99ms/present; waiting peaks2508/4.64soldest. Texture creations16.22vs6.97/frame, buffers256.26vs217.99/frame but buffer/s only+2.39%. Currentpressure system-low17/30,bias1–3.029vs1; pool+200.074MiB at same published resolution,0evictions. Cause of churn/extra commands is not isolated. Source graph confirms separately bounded main/shadow/probe/upload producers on common nativequeue; +19.91%estimatedCB/s. Full assessment/report and safe receipts are retained. No codefix/newcapture/restart/push, no closure or causalFPS claim.
+
+
+## PPD-111 — Legacy process-cap headroom feeds texture system-pressure control on Apple UMA
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native resource/streaming budget integration
+- Discovered: 2026-11-14
+- Original reference: Original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 already has post-create immediate-downscale handling; repaired native G1fef1e756fd and current6bae share the inspected memory/texture governor source. MaxHeapSize64 is a configured process limit, not measured physical RAM availability.
+- Evidence: [Architecture, fast-path and log follow-up audit](research/apple-first-architecture-audit-2026-11-14.md), [original profile assessment](research/g2g5-busy-club-profile-2026-11-14.md).
+- Next action: Separate real OS headroom, configured process cap, native working set, CPU/raw cache and retained generation operands; reproduce the16GiB crossing/desired-LOD/publication interaction and design a coherent Apple UMA budget. Preserve configured user limits and memory safety; do not simply remove the guard or allocate all64GiB. No source/settings fix or new runtime capture performed.
+- Verification: Sourcechain initMaxHeapSizeGB→updateMemoryInfo clamps available=min(OSavailable,max(heapcap−processallocation,0)); Darwin getFreeSystemMemory feeds that clamped value into the512MiB low-memory test. DefaultMaxHeapSize64=16.0 has noAlchemy/user override. All5current and5G1 logpairs match max(16384MiB−allocation,0). Current allocation14902.05–16890.92MiB produces0–1481.95MiB headroom and crossescap; G1allocation12722.55–12987.67 leaves3396.33–3661.45MiB. True pre-clamp OS availability was not logged, so system_low is not proof physical64GiB RAM was exhausted. Current14emergency low/overbudget transition actions and ONCE milestones700→4500 prove at least3800finer-than-desired create-list conditions/scaleDown calls during274s; G1bothwarning patterns0. Redundant-load skipping and queued/coalesced/declined scaleDown paths mean these are not3800fresh uploads/GPU copies.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before any repair after independent verification of shipped/alchemy/user numeric settings, exact source chain and10log pairs. Process-cap pressure is confirmed; the whole FPS delta, actual pre-clamp OS pressure, G2retention contribution and exact repeated-asset/copy counts remain unproved. This inherited policy conflict is material to the promised Apple UMA architecture and must be considered with decode/publication/retirement work. No runtime setting was changed.
+
+
+## PPD-112 — Earlier direct bulk selection can consume the opaque ICB candidate budget
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shadow packet selection
+- Discovered: 2026-11-14
+- Original reference: Native static bulk selection retained from G1, extended by the selective opaque ICB experiment in6bae; original OpenGL has no ICB packet budget. Query/cull/caster ordering and direct rendering must remain preserved.
+- Evidence: [Architecture, fast-path and log follow-up audit](research/apple-first-architecture-audit-2026-11-14.md).
+- Next action: Reproduce the selection boundary with valid>16k native scene input, document whether the16k bound is intended globally or per prepared packet, and compare opportunity/cost before choosing a change. Preserve bounded memory and direct caster membership. No implementation/test repair performed and no occurrence in the captured club is established.
+- Verification: almetalworld.cpp7227–7242 applies cumulative16384-record static bulk budget before7244–7256 extracts runs>=2048 for opaqueICB. Valid preceding16runs×1024 can consume thatbudget and exclude a later2048run before opaque eligibility is considered. renderSpotShadow scene validation has no16384total-scene cap; the cap belongs to prepared packets. This is a source-visible selection/lost-opportunity edge, not a visual defect, a measured policy-speedup or proof of why the actual zero-ICB capture occurred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before any repair. Actual runtime support/allocation and enabled caller are confirmed, but eligibility/run histograms and optional opaque fallback reasons are unlogged. Those missing observations must remain unknown; the source-visible budget edge must not be substituted as the captured cause.

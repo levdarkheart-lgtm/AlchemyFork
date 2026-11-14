@@ -1,5 +1,13 @@
 # G2–G5 busy-club profile — 2026-11-14
 
+**Follow-up audit:** [source, activation, log and architecture findings](apple-first-architecture-audit-2026-11-14.md)
+confirms runtime ICB support but missing rejection/fallback census; at least3,800
+post-decode/create-list finer-than-desired conditions,14emergency downsize actions;
+and a default16GiB process cap whose headroom feeds the texture system-pressure
+test on this64GiB host. The full original architecture remains partial, correcting
+the prior “all goals complete” label. Final recorder DWARF warnings total336;
+the preliminary333is retained in original receipts and corrected by addendum.
+
 The current candidate has not demonstrated the intended viewer performance gain.
 It presented17.77 FPS against 20.36 FPS in repaired G1, at the same logged render
 size and saved visual settings. Its serial source preparation has substantial

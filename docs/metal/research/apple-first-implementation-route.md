@@ -1,5 +1,14 @@
 # Concrete route from the native fork to Apple-first render ownership
 
+**Completion correction,2026-11-14:** the original G2–G5 architecture remains
+**partially implemented**. A built/tested/staged experimental app was delivered,
+with important dirty-producer publication, persistent GPU scene work and global
+frame/resource admission missing. [Source/log audit](apple-first-architecture-audit-2026-11-14.md)
+corrects the earlier broad completion label, records the16GiB pressure-policy
+conflict and distinguishes the unexercised opaque path from unsupported hardware.
+The whole-architecture performance and original live acceptance gates have not
+passed; historical delivery statements below do not override this correction.
+
 **Execution update 2026-11-13:** owner authorizes completing G2–G5 continuously,
 then testing one combined app. The earlier per-goal runtime stopping points in
 this historical route are superseded by the [active combined goal](../work/active/apple-first-architecture-g2-g5.md).

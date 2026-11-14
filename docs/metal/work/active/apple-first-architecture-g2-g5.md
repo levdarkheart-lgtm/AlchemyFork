@@ -1,7 +1,10 @@
 # Active goal — complete the Apple-first renderer architecture implementation
 
-Status: complete for combined experiment implementation/evaluation/build/staged delivery;
-owner runtime, in-world performance and full product gates remain open.
+Status: **partial implementation of the original G2–G5 architecture**. The
+experimental candidate's build/test/staged delivery completed. The original
+producer-publication, detached preparation, persistent GPU work and whole-engine
+budget/performance acceptance boundaries did not all complete. Earlier “all
+goals complete” reporting was too broad; this is the authoritative correction.
 Owner authorization: 2026-11-13, continue original architecture
 through all remaining goals, with one combined viewer test afterward. This
 supersedes the previous per-goal owner-runtime stopping points. No agent viewer
@@ -27,10 +30,10 @@ and attachments, PBR/alpha/terrain/trees, queries, UI, media/voice and asset wor
 
 | Goal | State | Concrete acceptance |
 |---|---|---|
-| G2 retained native source inputs and single per-view admission | implemented/tested | Ordered admitted LLDrawInfo list, generation-qualified immutable source/coverage/native leases and bounded scan-resistant cache integrated. Native correctness/cache stress pass; large-family mechanism gate accepted. Live key/admission/unique-source cost remains unmeasured. |
-| G3 bounded detached CPU preparation | implemented/gated | Immutable compact instances/context, at most two synchronous Dispatch tasks and epoch cancellation integrated. Fixed preparation/source gates accept8192-family threshold; small families retain owner fast path. |
-| G4 native visibility/indirect and useful Metal4 | implemented/evaluated | Actual GPU command emission, conservative visibility, ordered multi-tile/query runs and native Metal4 paths pass tested correctness/lifetime but lose net-cost gates and stay off. Only selective CPU-encoded opaque ICB>=2048 native records passes mixed controls and is enabled. Full GPU-owned scene discovery remains future work. |
-| G5 UMA publication and frame/pass scheduling | implemented/tested | Real wrapper generation leases, changed-range safe shared writes/COW, media generation repair, memoryless transient depth and bounded logical shadow groups integrated. Cancellation/commit/query/lifetime/probe tests pass. Streamed views retained after whole-batch wall regression; no process-memory/FPS/zero-copy claim. |
+| G2 retained native source inputs and single per-view admission | partial | Ordered admitted shadow list and immutable/cache/native leases exist. Original dirty producer publication at registerFace/rebuildGeom/material epochs is missing; full keys/cache/aggregate owners are still handled inside each view. Live sourcecapture cost worsens; original acceptance not met. |
+| G3 bounded detached CPU preparation | partial/gated | At most two synchronous Dispatch tasks for one family>=8192, after owner key/cache/material/pose work. No detached whole-frame/view/command job graph or joint decoder/upload admission. Small mechanism gate is not original whole-frame acceptance. |
+| G4 native visibility/indirect and useful Metal4 | experimental/production incomplete | GPU command generation/visibility/Metal4 pilot tests exist but are defaultoff after cost losses. SelectiveCPUopaqueICB>=2048 requested, hardware support confirmed, no successful live preparation/execution recorded. Persistent GPU scene visibility before CPU discovery not delivered. |
+| G5 UMA publication and frame/pass scheduling | partial | Native generation leases/dirty buffer ranges/COW/memorylessD32/shadow-group admission exist. CPU staging/fullCOW remain; whole main/probe/decode/upload dependency/byte budget absent. Legacy16GiB process cap feeds systempressure and current LOD churn (PPD111). Full original acceptance not met. |
 | Integrated delivery | complete | Exact6bae/26.4.0.68995 Release app separately staged; required build/doctor, final contained tests, source/static/ABI/signature and full-copy inventories pass. No launch/push. Owner runtime/full parity/performance gates remain open. |
 
 Success requires source-path integration and measured bounded correctness/cost,
@@ -547,3 +550,45 @@ loss. Evaluatewholeframes/p95/throughput+quality acrosssettled/streaming/travers
 probe-avatarload, notonlyfixed16-source/2k-runsyntheticmechanisms. Current
 implementationdeliverywascomplete, architecturalperformanceobjectiveisunmet.
 Analysisrequestdoesnotitselfstartanothercaptureorimplementationcycle.
+
+
+## Architectural completion correction and deeper source/log audit
+
+Owner asks why fastpathzero, whether this is a nonApple-versusApple loss, whether
+the entire proposedarchitecture ispresent, and whether errors/bugs explain it.
+[Source/log/completeness follow-up](../../research/apple-first-architecture-audit-2026-11-14.md)
+records the answers. BaselineG1 isalreadyARM64/nativeMetal/Appleoptimized; one
+currentcaptureisslower, notallscenes/subsystems orOpenGLbeatingMetal.
+
+CallerexplicitlyenablesopaqueICB; all45main+45probe samples showinitialnative
+slotallocation successful, sohardware/forgottenenable ruledout.2048contiguous
+eligiblenativerecordsperrun islikelymismatched totypicalbulk150main/344probe
+recordsperrunaverage; averagesarenotmaxima. Optionalpreparationfallback can
+clearrunsandreturndirectsuccess, withopaque_fallbackcountersunlogged. Exact
+nocandidatevsfallbackcauseisnotrecoverablefromcurrentOverview. PPD112records
+conditional16kstaticbulkbudgetstarvation beforeopaquesubset, notcapturedcause.
+
+Moreimportantly, originalarchitectureisnotfullyimplemented: sourcefactoryonly
+perviewpipeline12973, fullkey12913/12949, LRU/aggregate12985+; producerdirty
+publication/scene-widepersistentGPUrecords/globalframejobs/unifiedadmission
+missing. DefaultdisabledslowerMetal4pilotisvalidbutnotfullarchitecture.
+Earliergoalcompletionlabelwasoverbroad. Preserveactualbuild/tests/delivery
+evidencewhilemarkingoriginalG2–G5partialandperformanceacceptanceunmet.
+
+Log112WARN/872INFO/0ERROR-FATAL.39repeatthrottleddownscale lines700→4500
+prove>=3800finer-than-desiredcreate-listconditions/scaleDowncalls, not3800new
+uploads/GPUcopies; redundant-load andqueued/coalesced/declinedpaths matter.
+14emergency low/overbudget transitions, bothpatterns0inG1.54exactnessINFO
+areexpectednonmainviews, not54failedmainframes. FinalDWARFcount336corrects
+preliminary333; originalreceiptsretainedwithcapture-audit-addendum.json.
+
+PPD111source+runtimeconfirmed: MaxHeapSize64=16GiB/nooverride; clampavailable
+tomin(OSfree,max(cap−processallocation,0)); texturecontrollerusesclampedvalue
+against512MiB. All5current+5G1pairs match16,384MiBcomplement. Currentprocess
+up16,890.92MiB→0headroom, G1~12.7GBstayedbelowcap. Lowmemorylabeldoesnot
+provephysical64GiBMacexhaustion; actualOSpreclampvalueunlogged. Legacybudget
+coordination ispartoftheunfinishedUMAarchitecture; no blindsettingraise/fix
+performed, norsoleFPSattribution. Next implementationmustamortizeproducer
+recordsandreconcileprocess/raw/native/retainedgeneration budgetsandstreaming
+publicationunderfullframeacceptance. No renderingcode/settings/build/profile
+changes; docs/registrycorrectedlocally, nopush.
