@@ -216,3 +216,18 @@ new results are not yet claimed.
 PPD145–147 preserve the actual overhead/inactive work/fixture reporting findings.
 Original G4 runtime/performance acceptance remains conditional; no claim that
 GPU visibility, ICBs or Metal4 objects inherently make this workload faster.
+
+
+PPD148 correction before final acceptance: second expanded cost pass at69003
+still regressed4096draws (two-job6.91150ms vs direct6.59273ms). Actual68999
+internal captured census span10:19:28–10:24:22 has6,128,700main constant binds
+with3,982,822reuses (64.9864%), and1,287,434probe binds with494,234reuses
+(38.3891%). The new prepared branch counted equal400byte common constants but
+always bound a new slab offset; it now actually reuses the previous range,
+including restoration after terrain overwrites slot4. This preserves the real
+Alchemy region/agent-space draw pattern rather than assuming unique generic
+object transforms. A new native fixture compares distinct region-space triangles,
+mixed families, changed constants, terrain, all MRT/depth/stencil pixels and
+query samples in both Z conventions. Source/tests frozen, retest pending. The
+corrected exact-half visibility matrix still does not establish a reliable
+median-and-tail benefit; its single favorable median is not a gate pass.

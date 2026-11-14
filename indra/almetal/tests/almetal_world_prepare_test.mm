@@ -54,6 +54,93 @@ TEST_CASE("almetal: small mixed prepared views preserve query and special-state 
     }
 }
 
+TEST_CASE("almetal: repeated prepared common ranges restore after terrain and query boundaries", "[almetal][world-prepare]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        // Distinct triangles live in one region/agent-space buffer. Repeated
+        // draws genuinely share matrices; per-object transforms do not hide
+        // the common-constant reuse that the live viewer frequently exhibits.
+        std::array<Fixture::Geometry,9> geometry;
+        for(unsigned tile=0;tile<geometry.size();++tile)
+        {
+            geometry[tile]=f.geometry;
+            const float x=(static_cast<int>(tile%3)-1)*.6f;
+            const float y=(static_cast<int>(tile/3)-1)*.6f;
+            for(unsigned vertex=0;vertex<4;++vertex)
+            {
+                geometry[tile].positions[vertex][0]=f.geometry.positions[vertex][0]*.24f+x;
+                geometry[tile].positions[vertex][1]=f.geometry.positions[vertex][1]*.24f+y;
+                geometry[tile].colors[vertex][0]=static_cast<std::uint8_t>(55+tile*21);
+                geometry[tile].colors[vertex][1]=static_cast<std::uint8_t>(225-tile*17);
+                geometry[tile].colors[vertex][2]=static_cast<std::uint8_t>(75+tile*13);
+            }
+        }
+        const auto* vertices=f.buffer(geometry.data(),sizeof(geometry));
+        const auto tile_batch=[&](unsigned tile,unsigned family,bool vertex_color)
+        {
+            auto batch=f.batch(family);
+            const auto base=tile*sizeof(Fixture::Geometry);
+            batch.vertices=vertices;
+            batch.position_offset+=base;batch.normal_offset+=base;
+            batch.texcoord_offset+=base;batch.color_offset+=base;batch.tangent_offset+=base;
+            batch.use_vertex_color=vertex_color;
+            return batch;
+        };
+        for(bool reverse:{false,true})
+        {
+            CAPTURE(reverse);
+            auto s=f.scene();s.reverse_z=reverse;
+            auto terrain=f.batch(7),pbr_terrain=f.batch(8);
+            for(auto* batch:{&terrain,&pbr_terrain})
+            {
+                batch->modelview_projection[0]=batch->modelview_projection[5]=.12f;
+                batch->modelview_projection[12]=-.98f;
+                batch->modelview_projection[13]=-.98f;
+                batch->modelview_projection[14]=.75f;
+            }
+            pbr_terrain.modelview_projection[12]=.72f;
+            // A,A,terrain,A,A,B,B,terrain,B,A,A. Both special draws overwrite
+            // slot4; common A/B differ in a real vertex-color policy value.
+            // The post-terrain equal draw must rebind its saved range, while
+            // a changed group must never reuse the preceding group's bytes.
+            std::vector<ALMetalWorldSimpleBatch> batches{
+                tile_batch(0,0,true),tile_batch(1,1,true),terrain,
+                tile_batch(2,2,true),tile_batch(3,3,true),
+                tile_batch(4,0,false),tile_batch(5,1,false),pbr_terrain,
+                tile_batch(6,2,false),tile_batch(7,0,true),tile_batch(8,1,true)};
+            std::vector<ALMetalWorldVisibilityQuery> queries(4);
+            const std::array<std::size_t,4> offsets{0,3,9,batches.size()};
+            for(unsigned q=0;q<queries.size();++q)
+            {
+                identity(queries[q].modelview_projection);
+                queries[q].center[0]=queries[q].center[1]=-.6f;
+                queries[q].center[2]=.75f;
+                queries[q].half_extent[0]=queries[q].half_extent[1]=queries[q].half_extent[2]=.03f;
+                queries[q].batch_offset=offsets[q];queries[q].fan=7;queries[q].count_samples=1;
+            }
+            s.batches=batches.data();s.batch_count=batches.size();
+            s.visibility_queries=queries.data();s.visibility_query_count=queries.size();
+            std::shared_ptr<ALMetalVisibilityResultBatch> direct_queries,prepared_queries;
+            auto direct=f.renderer->render(s,&f.error,&direct_queries);INFO(f.error);REQUIRE(direct);REQUIRE(direct_queries);
+            const auto expected=f.read(*direct);
+            std::array<std::uint64_t,4> results{};
+            for(unsigned q=0;q<queries.size();++q)REQUIRE(direct_queries->wait(q,results[q],&f.error));
+            REQUIRE(results.front()>0);
+            auto ready=f.prepare(s,batches,queries,2);
+            auto prepared=f.renderer->renderPrepared(*ready,&f.error,&prepared_queries);INFO(f.error);REQUIRE(prepared);REQUIRE(prepared_queries);
+            CHECK(f.read(*prepared)==expected);
+            for(unsigned q=0;q<queries.size();++q)
+            {
+                std::uint64_t value=0;REQUIRE(prepared_queries->wait(q,value,&f.error));CHECK(value==results[q]);
+            }
+            const auto clear=reverse?0u:0x3f800000u;
+            CHECK(std::count_if(expected.depth.begin(),expected.depth.end(),[&](auto value){return value!=clear;})>30);
+        }
+    }
+}
+
 TEST_CASE("almetal: world preparation owns poses and invalidates complete tickets on cancellation", "[almetal][world-prepare]")
 {
     @autoreleasepool

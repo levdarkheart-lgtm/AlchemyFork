@@ -9661,6 +9661,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     static_assert(sizeof(WorldSimpleConstants) == 400);
     WorldSimpleConstants previous_world_constants{};
     ALMetalWorldDataSlice previous_world_slice;
+    std::size_t previous_prepared_world_offset = 0;
     bool have_previous_world_constants = false;
     ALMetalWorldConstantStats constant_stats;
     const auto bind_world_constants = [&](const void* constants, std::size_t offset)
@@ -9671,12 +9672,18 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         ++constant_stats.bindings;
         if (prepared)
         {
-            if (have_previous_world_constants &&
-                std::memcmp(&previous_world_constants, constants, sizeof(WorldSimpleConstants)) == 0)
-                ++constant_stats.reused_bindings;
-            std::memcpy(&previous_world_constants, constants, sizeof(WorldSimpleConstants));
-            have_previous_world_constants = true;
-            return bind_prepared(offset, sizeof(WorldSimpleConstants), 4);
+            if (!have_previous_world_constants ||
+                std::memcmp(&previous_world_constants, constants, sizeof(WorldSimpleConstants)) != 0)
+            {
+                std::memcpy(&previous_world_constants, constants, sizeof(WorldSimpleConstants));
+                previous_prepared_world_offset = offset;
+                have_previous_world_constants = true;
+            }
+            else ++constant_stats.reused_bindings;
+            // Equal region/agent-space draws share one native range, just as
+            // the direct publisher shares previous_world_slice. Always ask
+            // the encoder to bind it: terrain may have overwritten slot 4.
+            return bind_prepared(previous_prepared_world_offset, sizeof(WorldSimpleConstants), 4);
         }
         if (!have_previous_world_constants ||
             std::memcmp(&previous_world_constants, constants,

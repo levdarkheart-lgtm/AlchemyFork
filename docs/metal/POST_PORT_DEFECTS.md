@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-148 -->
+<!-- next-defect-id: PPD-149 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3868,3 +3868,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered benchmark reporting/fixture discrepancy before exact half-membership correction. No live performance attribution.
+
+
+## PPD-148 — Prepared world constants counted reuse but rebound duplicate slab offsets
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex prepared world integration
+- Discovered: 2026-11-14
+- Original reference: Existing native G-buffer reuses the previous400byte common constant slice when equal, including after another family overwrites its binding slot. Alchemy region/agent-space geometry often shares these per-view values.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Source comparison of bind_world_constants plus retained-constant-reuse-census.json from the actual68999 busy-club retest, and corrected complete-path-costs-2 showing4096draw regression.
+- Next action: Preserve the previous prepared common slice offset on an actual equality hit instead of merely incrementing the reuse counter, retain exact binding restoration after terrain/impostor slots, then retest native parity and complete-path cost.
+- Verification: New prepared branch memcmp-detects equal WorldSimpleConstants and increments reused_bindings but always binds current record.offset. Direct path rebinds previous_world_slice. This defeats native binding cache reuse and repeatedly addresses duplicate bytes; actual prior club log has substantial main/probe reuse. No live new-architecture FPS attribution is claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before preserving existing Second Life per-view constant reuse; retained4096draw measured loss rather than hiding it by assuming unique object transforms in a generic engine benchmark. Existing prior app was68999; counter evidence is its captured run.
