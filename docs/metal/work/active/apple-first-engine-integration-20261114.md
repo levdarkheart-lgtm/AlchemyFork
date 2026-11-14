@@ -273,3 +273,24 @@ alias sealing, COW edits, pending/abandoned GPU work, stale/manual fallback and
 malformed data. Root owns serialized build/run; all source/test assignments are
 frozen. GPU visibility remains OFF; CPU sharing/native resource lifetime remain
 required regardless of its optional gate.
+
+
+## Final source freeze for native material and frame lifecycle checks
+
+PPD153 fixes actual-owner fixture global cache header inclusion after build5
+failed; production includes were already global. PPD154 advances FrameData once
+per timed outer frame, inside each cost interval. Earlier costs are retained as
+provisional same-generation observations, not steady-frame acceptance.
+
+The new hidden material cost fixture uses the actual main/probe renderer owner
+split with one shared FrameData/budget epoch, main128/1024/4096 plus two128draw
+probe views. Eight stable legacy/PBR variants publish once outside samples;
+region-space cameras match across raw direct, owned stable scalar and credited
+adaptive preparation. All three targets survive to one GPU wait. Timings include
+capture construction/reuse, adoption, joined work, encode, CPU reclamation and
+commit; owner plus worker CPU and total-to-GPU-completion are reported separately.
+Second warmup checks exact MRT/depth/stencil outputs. No viewer FPS inference.
+
+Next: clean required build6, focused native material/preparation/owner checks,
+corrected cost matrix with no competing build, then complete86groups/static and
+separate exact candidate staging. No viewer launch or push.

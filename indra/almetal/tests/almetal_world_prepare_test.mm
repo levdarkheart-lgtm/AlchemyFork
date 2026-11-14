@@ -258,7 +258,7 @@ TEST_CASE("almetal: complete prepared world path cost matrix", "[almetal][.world
 {
     @autoreleasepool
     {
-        Fixture f;
+        Fixture f;std::uint64_t frame=1;
         for(unsigned count:{16u,128u,512u,1024u,4096u})
         {
             std::vector<ALMetalWorldSimpleBatch> batches;
@@ -271,6 +271,7 @@ TEST_CASE("almetal: complete prepared world path cost matrix", "[almetal][.world
                 for(unsigned sample=0;sample<samples+2;++sample)
                 {
                     const auto start=std::chrono::steady_clock::now();
+                    f.data->beginFrame(++frame);
                     auto frame_batches=batches;
                     auto frame_scene=s;
                     frame_scene.batches=frame_batches.data();frame_scene.batch_count=frame_batches.size();

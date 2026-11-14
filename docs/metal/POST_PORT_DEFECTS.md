@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-153 -->
+<!-- next-defect-id: PPD-155 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3960,3 +3960,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered remaining stable GPU material-table work before implementation; no shader, texture quality, draw/query order or rendering backend change authorized by this record alone.
+
+
+## PPD-153 — Actual-owner fixture first included native cache inside its frontend namespace
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native material integration validation
+- Discovered: 2026-11-14
+- Original reference: Actual native cache/type definitions must be global and linked to the actual renderer, while only viewer-frontier dependencies live in fixture Inputs namespace.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). frozen-source-build-5 exit1, alpipeline_buffer_publication_metal_test.cpp cannot pass Inputs::ALMetalWorldMaterialDataCache to the global native source publisher.
+- Next action: Include the real native cache header at fixture global scope before including production capture/factory bodies, then rebuild.
+- Verification: Header first inclusion inside namespace Inputs created an unintended distinct type. Production pipeline includes it globally. No viewer runtime defect is attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered actual build failure before fixture include repair.
+
+
+## PPD-154 — Cost fixture samples never advanced native frame-data ownership
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex mechanism cost validation
+- Discovered: 2026-11-14
+- Original reference: Actual outer display frames advance ALMetalWorldFrameData generation; completed pages can retire/reuse and frame-local cache entries reset. Multiple views within a frame share that generation.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Existing cost fixture initializes generation1 once, then runs every timed sample/method/count in that same frame; beginFrame source confirms retirement only on generation change.
+- Next action: Advance frame-data generation once per timed sample/outer-frame fixture, include that policy in timing, retain legitimate within-frame view sharing, and rerun corrected costs before selecting defaults.
+- Verification: Hundreds of samples in one protected frame bias arena growth/reuse and method ordering. Earlier contained costs remain retained as provisional same-generation observations; they do not establish steady per-frame performance.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered missing frame lifecycle before cost-fixture correction and a representative main-plus-probe uniform-publication comparison.

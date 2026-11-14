@@ -5,6 +5,7 @@
  */
 #include "almetal_world_prepare_fixture.h"
 #include "../almetalworldmaterialdata.h"
+#include <time.h>
 
 namespace
 {
@@ -359,6 +360,213 @@ TEST_CASE("almetal: stale material certificates preserve native fallback and mal
                 invalid.native_material_source.reset();
                 CHECK_FALSE(f.renderer->render(scene, &f.error));
                 CHECK_FALSE(tryPrepareMaterial(f, scene, invalid));
+            }
+        }
+    }
+}
+
+// Complete owner-side work, including capture construction, adoption, real
+// credited GCD preparation, native encoding, CPU storage retirement and submit.
+// The final interval additionally waits for all three views on the native GPU.
+// Hidden because these controlled costs are not a viewer FPS measurement.
+TEST_CASE("almetal: three-view stable material complete path cost",
+          "[almetal][.world-material-source-cost]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        auto probes = ALMetalWorldGBufferRenderer::create(*f.device, &f.error);
+        INFO(f.error); REQUIRE(probes);
+        probes->setFrameData(f.data);
+        ALMetalWorldMaterialDataCache cache(*f.device);
+        ALNativeFrameBudget budget;
+        std::uint64_t serial = 1;
+        const auto thread_cpu_ns = []
+        {
+            timespec time{};
+            REQUIRE(clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time) == 0);
+            return static_cast<std::uint64_t>(time.tv_sec) * 1'000'000'000ULL + time.tv_nsec;
+        };
+        for (unsigned family : {1u, 2u})
+        {
+            std::array<ALMetalWorldSimpleBatch, 8> raw, stable;
+            for (unsigned variant = 0; variant < raw.size(); ++variant)
+            {
+                raw[variant] = materialBatch(f, family, false);
+                if (family == 1)
+                {
+                    raw[variant].materialSlots()[0].env_intensity = .05f + variant * .1f;
+                    raw[variant].materialSlots()[0].specular_color[0] = .1f + variant * .1f;
+                }
+                else
+                {
+                    raw[variant].pbrSlots()[0].roughness_factor = .1f + variant * .1f;
+                    raw[variant].pbrSlots()[0].emissive_color[0] = variant * .05f;
+                }
+                stable[variant] = raw[variant];
+            }
+            const auto publication_before = cache.stats();
+            const auto publication_cpu_start = thread_cpu_ns();
+            for (auto& prototype : stable)
+            {
+                auto source = ALMetalWorldMaterialSource::publish(*f.device, prototype, cache, &f.error);
+                INFO(f.error); REQUIRE(source);
+            }
+            const auto publication_cpu_ns = thread_cpu_ns() - publication_cpu_start;
+            const auto publication_after = cache.stats();
+            std::cout << "world_material_source_setup family=" << family
+                << " variants=8 publication_cpu_ms=" << publication_cpu_ns / 1e6
+                << " native_publication_bytes=" << publication_after.published_bytes - publication_before.published_bytes
+                << " native_publications=" << publication_after.publications - publication_before.publications
+                << " renderer_owners=2 shared_frame_data=1 probe_views=2 probe_draws=128"
+                   " encode_clock=host_wall_including_worker_join cpu_clock=owner_thread_plus_worker_kernel\n";
+
+            std::array<Pixels, 3> reference_pixels;
+            for (unsigned main_count : {128u, 1024u, 4096u})
+            for (unsigned mode = 0; mode < 3; ++mode)
+            {
+                constexpr unsigned samples = 12;
+                std::array<double, samples> encode_ms{}, cpu_ms{}, complete_ms{};
+                std::array<std::vector<ALMetalWorldSimpleBatch>, 3> capture_batches;
+                std::array<std::vector<ALMetalWorldVisibilityQuery>, 3> capture_queries;
+                const std::array<unsigned, 3> counts{main_count, 128, 128};
+                for (unsigned view = 0; view < 3; ++view) capture_batches[view].reserve(counts[view]);
+                std::uint64_t measured_publication_bytes = 0;
+                unsigned measured_worker_jobs = 0;
+                for (unsigned sample = 0; sample < samples + 2; ++sample)
+                {
+                    std::array<std::unique_ptr<ALMetalRenderTarget>, 3> targets;
+                    const auto start = std::chrono::steady_clock::now();
+                    const auto owner_cpu_start = thread_cpu_ns();
+                    std::uint64_t worker_cpu_ns = 0;
+                    unsigned worker_jobs = 0;
+                    // One publication/admission epoch for main plus both
+                    // probes, even though they have separate renderer owners.
+                    f.data->beginFrame(++serial);
+                    ALNativeFrameBudget::FrameInputs frame;
+                    frame.frame = serial;
+                    frame.frame_interval_ns = 16'666'667;
+                    budget.beginFrame(frame);
+                    const auto before_bytes = f.data->stats().published_bytes;
+                    for (unsigned view = 0; view < 3; ++view)
+                    {
+                        auto& batches = capture_batches[view];
+                        const auto& prototypes = mode == 0 ? raw : stable;
+                        auto scene = f.scene(); scene.hdr = true;
+                        const float camera_x = .01f * static_cast<float>(sample) + .04f * view;
+                        for (unsigned draw = 0; draw < counts[view]; ++draw)
+                        {
+                            batches.push_back(prototypes[draw % prototypes.size()]);
+                            // Region-space geometry keeps one common camera
+                            // per view. No unique per-object transform cost.
+                            batches.back().modelview_projection[12] = camera_x;
+                        }
+                        scene.batches = batches.data(); scene.batch_count = batches.size();
+                        scene.source_owner = f.resources;
+                        auto& renderer = view == 0 ? *f.renderer : *probes;
+                        REQUIRE(renderer.beginCommandBatch("Three-view material cost", &f.error));
+                        if (mode == 0) targets[view] = renderer.render(scene, &f.error);
+                        else
+                        {
+                            auto inputs = ALMetalWorldViewInputs::adopt(scene, std::move(batches),
+                                std::move(capture_queries[view]), f.resources, serial, &f.error);
+                            INFO(f.error); REQUIRE(inputs);
+                            std::shared_ptr<const ALMetalPreparedWorldView> prepared;
+                            if (mode == 2 && counts[view] >= 1024)
+                            {
+                                auto work = ALMetalWorldPreparation::create(inputs, 2, {}, &f.error);
+                                REQUIRE(work);
+                                auto credit = work->jobCount() > 1
+                                    ? budget.tryAcquire(ALNativeFrameBudget::Work::preparation).credit : nullptr;
+                                if (credit)
+                                {
+                                    struct Range
+                                    {
+                                        ALMetalWorldPreparation* work;
+                                        bool succeeded = false;
+                                        bool clock_valid = false;
+                                        std::uint64_t cpu_ns = 0;
+                                    } range{work.get()};
+                                    auto group = dispatch_group_create();
+                                    dispatch_group_async_f(group, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0),
+                                        &range, [](void* context)
+                                        {
+                                            auto& range = *static_cast<Range*>(context);
+                                            timespec begin{}, end{};
+                                            const bool began = clock_gettime(CLOCK_THREAD_CPUTIME_ID, &begin) == 0;
+                                            range.succeeded = range.work->runJob(1);
+                                            range.clock_valid = clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end) == 0 && began;
+                                            range.cpu_ns = static_cast<std::uint64_t>(end.tv_sec - begin.tv_sec) * 1'000'000'000ULL
+                                                + end.tv_nsec - begin.tv_nsec;
+                                        });
+                                    const bool owner_succeeded = work->runJob(0);
+                                    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+#if !OS_OBJECT_USE_OBJC
+                                    dispatch_release(group);
+#endif
+                                    REQUIRE(owner_succeeded); REQUIRE(range.succeeded); REQUIRE(range.clock_valid);
+                                    worker_cpu_ns += range.cpu_ns; ++worker_jobs;
+                                }
+                                else
+                                    for (std::size_t job = 0; job < work->jobCount(); ++job) REQUIRE(work->runJob(job));
+                                prepared = work->finish(&f.error);
+                                INFO(f.error); REQUIRE(prepared);
+                                work.reset(); credit.reset();
+                                targets[view] = renderer.renderPrepared(*prepared, &f.error);
+                            }
+                            else
+                            {
+                                scene = inputs->scene(); scene.source_owner = inputs->resourceLease();
+                                targets[view] = renderer.render(scene, &f.error);
+                            }
+                            INFO(f.error); REQUIRE(targets[view]);
+                            prepared.reset();
+                            REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs, batches, capture_queries[view]));
+                            CHECK(batches.empty()); CHECK(capture_queries[view].empty());
+                        }
+                        INFO(f.error); REQUIRE(targets[view]);
+                        REQUIRE(renderer.commitCommandBatch(&f.error));
+                        batches.clear();
+                    }
+                    const auto owner_cpu_ns = thread_cpu_ns() - owner_cpu_start;
+                    const auto encoded = std::chrono::steady_clock::now();
+                    REQUIRE(f.device->waitUntilIdle(&f.error));
+                    const auto completed = std::chrono::steady_clock::now();
+                    CHECK(cache.stats().published_bytes == publication_after.published_bytes);
+                    if (sample == 1)
+                    {
+                        // Untimed second warmup verifies all three output
+                        // attachments/coverage owners before reporting costs.
+                        for (unsigned view = 0; view < 3; ++view)
+                        {
+                            const auto actual = f.read(*targets[view]);
+                            if (mode == 0) reference_pixels[view] = actual;
+                            else CHECK(actual == reference_pixels[view]);
+                        }
+                    }
+                    if (sample >= 2)
+                    {
+                        const auto index = sample - 2;
+                        encode_ms[index] = std::chrono::duration<double, std::milli>(encoded - start).count();
+                        cpu_ms[index] = (owner_cpu_ns + worker_cpu_ns) / 1e6;
+                        complete_ms[index] = std::chrono::duration<double, std::milli>(completed - start).count();
+                        measured_publication_bytes += f.data->stats().published_bytes - before_bytes;
+                        measured_worker_jobs += worker_jobs;
+                    }
+                }
+                const auto summary = [](auto values)
+                {
+                    std::sort(values.begin(), values.end());
+                    return std::array<double, 2>{(values[5] + values[6]) * .5, values.back()};
+                };
+                const auto encode = summary(encode_ms), cpu = summary(cpu_ms), complete = summary(complete_ms);
+                std::cout << "world_material_source_three_view family=" << family << " main_count=" << main_count
+                    << " mode=" << (mode == 0 ? "raw_direct" : mode == 1 ? "stable_scalar" : "stable_adaptive")
+                    << " samples=12 warmups=2 encode_median_ms=" << encode[0] << " encode_max_ms=" << encode[1]
+                    << " cpu_median_ms=" << cpu[0] << " cpu_max_ms=" << cpu[1]
+                    << " complete_median_ms=" << complete[0] << " complete_max_ms=" << complete[1]
+                    << " sampled_publication_bytes_total=" << measured_publication_bytes
+                    << " credited_worker_jobs=" << measured_worker_jobs << '\n';
             }
         }
     }

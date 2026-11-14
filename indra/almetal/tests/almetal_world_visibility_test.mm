@@ -197,7 +197,7 @@ TEST_CASE("almetal: complete shared visibility small mixed path cost matrix", "[
 {
     @autoreleasepool
     {
-        Fixture f;auto v=visibility(f);auto handle=v->publishBounds(40,1,triangleBounds());
+        Fixture f;std::uint64_t frame=1;auto v=visibility(f);auto handle=v->publishBounds(40,1,triangleBounds());
         for(unsigned count:{16u,128u,1024u})for(unsigned outside_percent:{0u,50u})
         {
             std::vector<ALMetalWorldSimpleBatch> batches;
@@ -210,6 +210,7 @@ TEST_CASE("almetal: complete shared visibility small mixed path cost matrix", "[
                 for(unsigned sample=0;sample<14;++sample)
                 {
                     const auto start=std::chrono::steady_clock::now();
+                    f.data->beginFrame(++frame);
                     s.native_visibility=gpu?v->makeView(worldMembers(handle,batches),&f.error):nullptr;
                     auto prepared=f.prepare(s,batches,{},1);
                     auto target=f.renderer->renderPrepared(*prepared,&f.error);INFO(f.error);REQUIRE(target);

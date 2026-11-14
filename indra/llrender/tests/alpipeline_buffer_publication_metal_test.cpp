@@ -7,6 +7,7 @@
 #include "llfontmetal_fixture.h"
 #include "../../almetal/almetalpipeline.h"
 #include "../../almetal/almetalworld.h"
+#include "../../almetal/almetalworldmaterialdata.h"
 #include "../../almetal/almetalshadowprepare.h"
 #include "../../almetal/almetalworldvisibility.h"
 #include "alnativesourceworkingset.h"
