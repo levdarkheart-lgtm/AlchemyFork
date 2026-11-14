@@ -884,6 +884,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::size_t raw_draw_watermark = 0;
     std::shared_ptr<WorldCpuLease> cpu_sources;
     bool compact_gbuffer_active = false;
+    U64 same_view_cohort_groups = 0, same_view_cohort_draws = 0;
 #include "pipeline_source_rows_capture_native.inl"
 #include "pipeline_compact_capture_native.inl"
     std::vector<ALMetalWorldVisibilityQuery> visibility_queries;
@@ -3049,6 +3050,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", cpu_packet_reclaimed/retained=" << value->cpu_packets_reclaimed << '/' << value->cpu_packets_retained
                     << ", direct_cohort_appends/draws=" << value->direct_cohort_appends << '/' << value->direct_cohort_draws
                     << ", direct_cohort_accepted(views/groups/draws)=" << cohorts.views << '/' << cohorts.groups << '/' << cohorts.draws
+                    << ", same_view_cohort_replacements(groups/draws)=" << value->same_view_cohort_groups << '/' << value->same_view_cohort_draws
                     << ", last_failure=" << (value->last_scene_source_failure ? value->last_scene_source_failure : "none")
                     << LL_ENDL;
             };
@@ -21353,6 +21355,10 @@ void LLPipeline::postSort(LLCamera &camera)
         !cullingToCutoutSubject() &&
         ((isMainWorldPass() && mRT == &mMainRT) || isMetalProbeFaceCaptureActive());
     const bool native_groups = native_group_view && hasRenderType(LLRenderPass::PASS_SIMPLE);
+    struct PendingMaterialRange { U32 type, raw_begin, count; };
+    // Owner-only indices survive cull-vector growth. A cold publication may
+    // replace only this exact admitted span after deferred mesh publication.
+    std::unordered_map<LLSpatialGroup*, std::vector<PendingMaterialRange>> pending_material_ranges;
 
     // build render map
     for (LLCullResult::sg_iterator i = sCull->beginVisibleGroups(); i != sCull->endVisibleGroups(); ++i)
@@ -21453,6 +21459,11 @@ void LLPipeline::postSort(LLCamera &camera)
                     }
                 }
             }
+            ALScenePublicationNative::WorldFlavor pending_flavor;
+            const bool pending_material = native_group_view && !src_vec.empty() &&
+                src_vec.size() <= std::numeric_limits<U32>::max() && nativeMaterialGroupFlavor(j->first, pending_flavor);
+            const auto raw_begin = pending_material
+                ? static_cast<U32>(sCull->endRenderMap(j->first) - sCull->beginRenderMap(j->first)) : 0;
             for (LLSpatialGroup::drawmap_elem_t::iterator k = src_vec.begin(); k != src_vec.end(); ++k)
             {
                 LLDrawInfo *info = *k;
@@ -21462,6 +21473,11 @@ void LLPipeline::postSort(LLCamera &camera)
                 {
                     addTrianglesDrawn(info->mCount);
                 }
+            }
+            if (pending_material)
+            {
+                try { pending_material_ranges[group].push_back({j->first, raw_begin, static_cast<U32>(src_vec.size())}); }
+                catch (const std::bad_alloc&) { ++ALSceneGroupPublicationNative::statistics.failures; }
             }
         }
 
@@ -21642,8 +21658,8 @@ void LLPipeline::postSort(LLCamera &camera)
     if (native_group_view)
     {
         // Mesh fills can be deferred until this point. Seal only complete
-        // native tuples for a later view, retaining this view's admitted raw
-        // inputs when any publication, eligibility or allocation check fails.
+        // native tuples, then replace equal-count verified raw spans in this
+        // view. Failed publication/proof/allocation leaves raw input intact.
         for (auto* at = sCull->beginVisibleGroups(); at != sCull->endVisibleGroups(); ++at)
         {
             auto* group = *at;
@@ -21675,10 +21691,36 @@ void LLPipeline::postSort(LLCamera &camera)
                 {
                     auto& cohort = group->mMetalMaterialCohorts[type];
                     if (!cohort.state) cohort.state = std::make_shared<ALNativePublication::State>();
+                    const auto pending = pending_material_ranges.find(group);
+                    std::shared_ptr<const ALSceneGroupPublicationNative::Payload> packet;
                     if (cohort.state->dirty())
-                        ALSceneGroupPublicationNative::sealMaterial(cohort.state, cohort.dependencies,
+                        packet = ALSceneGroupPublicationNative::sealMaterial(cohort.state, cohort.dependencies,
                             cohort.layout, *model, region, sources, flavor,
                             sNativeSceneSources, sNativeSceneSerial, gFrameCount);
+                    else if (pending != pending_material_ranges.end())
+                        packet = ALSceneGroupPublicationNative::currentMaterial(cohort.state, region, flavor, sNativeSceneSources, gFrameCount);
+                    if (!packet || !packet->cohort || pending == pending_material_ranges.end()) continue;
+                    const auto span = std::find_if(pending->second.begin(), pending->second.end(),
+                        [type](const auto& value) { return value.type == type; });
+                    if (span == pending->second.end() || sources.size() != span->count ||
+                        packet->cohort->size() != span->count || packet->cohort->family() != static_cast<U32>(flavor.family) ||
+                        packet->cohort->regionIdentity() != region.identity ||
+                        !packet->cohort->matchesOwners(packet, packet->native_tuple)) continue;
+                    std::vector<LLDrawInfo*> expected;expected.reserve(sources.size());
+                    for (const auto& source : sources) expected.push_back(source.get());
+                    if (sCull->replaceNativeMaterialRange(type, packet, span->raw_begin, expected, region))
+                    {
+                        ++ALSceneGroupPublicationNative::statistics.admitted_groups;
+                        ALSceneGroupPublicationNative::statistics.admitted_draws += span->count;
+                        ++ALSceneGroupPublicationNative::statistics.material_admitted_groups;
+                        ALSceneGroupPublicationNative::statistics.material_admitted_draws += span->count;
+                        if (mMetalWorldSimpleCapture)
+                        {
+                            ++mMetalWorldSimpleCapture->same_view_cohort_groups;
+                            mMetalWorldSimpleCapture->same_view_cohort_draws += span->count;
+                        }
+                        // Raw admission already counted these triangles.
+                    }
                 }
                 catch (const std::bad_alloc&) { ++ALSceneGroupPublicationNative::statistics.failures; }
             }

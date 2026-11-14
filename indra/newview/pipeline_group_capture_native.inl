@@ -119,6 +119,9 @@ void LLPipeline::captureMetalWorldPublishedPass(U32 type, U32 family)
             while (capture.complete && raw_offset < range.legacy_offset && at != end) raw();
             if (!capture.complete || raw_offset != range.legacy_offset || !range.publication || !range.model)
             { capture.markIncomplete(__LINE__);break; }
+            if (range.raw_skip && (range.raw_skip != range.draw_count ||
+                range.raw_skip > static_cast<std::size_t>(end - at)))
+            { capture.markIncomplete(__LINE__);break; }
             auto group = std::static_pointer_cast<const ALSceneGroupPublicationNative::Payload>(range.publication);
             ALScenePublicationNative::WorldFlavor flavor;
             flavor.family = static_cast<ALScenePublicationNative::WorldFamily>(family);
@@ -149,6 +152,7 @@ void LLPipeline::captureMetalWorldPublishedPass(U32 type, U32 family)
             // transforms remain in each immutable source, not this shared view.
             if (!capture.appendCohort(group->cohort, group, group->native_tuple, view))
             { capture.markIncomplete(__LINE__);break; }
+            at += range.raw_skip;raw_offset += range.raw_skip;
             ALSceneGroupPublicationNative::statistics.captured_draws += range.draw_count;
             ++ALSceneGroupPublicationNative::statistics.captured_groups;
             ++ALSceneGroupPublicationNative::statistics.material_captured_groups;

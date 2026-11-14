@@ -48,6 +48,7 @@
 #include <array>
 #include <map>
 #include <memory>
+#include <span>
 
 #define SG_STATE_INHERIT_MASK (OCCLUDED)
 #define SG_INITIAL_STATE_MASK (static_cast<U32>(DIRTY) | static_cast<U32>(GEOM_DIRTY))
@@ -607,9 +608,15 @@ public:
         std::shared_ptr<const void> publication;
         U32 legacy_offset = 0, draw_count = 0;
         ALNativeRegionModel::Snapshot model;
+        // Zero for omitted warm rows; equal to draw_count when replacing an
+        // unchanged raw slice already admitted to this cull result.
+        U32 raw_skip = 0;
     };
     bool pushNativeMaterialRange(U32 type, std::shared_ptr<const void>, U32 draw_count,
                                  const ALNativeRegionModel::Snapshot&) noexcept;
+    bool replaceNativeMaterialRange(U32 type, std::shared_ptr<const void>, U32 raw_begin,
+                                    std::span<LLDrawInfo* const> expected_raw,
+                                    const ALNativeRegionModel::Snapshot&) noexcept;
     const std::vector<NativeMaterialRange>& nativeMaterialRanges(U32 type) const noexcept
     {
         static const std::vector<NativeMaterialRange> empty;

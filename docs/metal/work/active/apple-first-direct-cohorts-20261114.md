@@ -186,3 +186,21 @@ Native19 terminal receipt confirms all17 focused processes exit0. PPD196 parity
 fixture and PPD195 promotion/exception/reentrancy cases pass in actual9882/47.
 Residency native-range API/source is frozen; architecture postSort/capture and
 actual-case/cost updates remain in progress. No app or test job is running.
+
+## Same-frame source freeze for build20
+
+Previous goal turn made concrete progress: immutable per-source sharing and
+semantic capability promotion were integrated and native19 completed. This
+continuation adds the actual post-flush consumer boundary, not another status
+checkpoint. All source owners now frozen; implementation is not yet executed.
+
+Raw replacements validate exact nonnull ordered pointers, preserve raw vectors/
+logical counts and reject overlaps or interior warm insertions. Capture skips
+only a verified equal-count replacement. Main/probe counters expose successful
+same-view replacements. The actual-owner fixture uses the shared production
+range methods and includes pending-map/per-group-vector/expected-pointer-vector
+allocation/find work in its timed boundary, rather than borrowing a free span.
+It retains the48-case matrix and requires accepted cohort draws in every view.
+New parity cases cover warm-begin/replacement/warm-end ordering, unchanged raw
+fallback, all attachments/depth and7 logical query positions. Root integrates
+this freeze, then executes required20 and native/cost gates. Activation staysOFF.

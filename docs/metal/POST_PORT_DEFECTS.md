@@ -4845,6 +4845,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Independent reviewer reported before the PPD194 source freeze/build.
 - 2026-11-14: Repair also checks the exact original publication before committing a successful promotion. The deterministic callback can install a newer same-revision publication and return normally; the stale outer promotion must reject it as well as the throwing replacement case. This extends the same promotion ownership regression, not viewer-incident attribution.
+- 2026-11-14: Clean21efebeb18 required19/static69049 and all17 focused native processes pass. Actual9882assertions/47cases includes the promotion allocation/reentrancy cases; unchanged original lease survives failed setup while invalidated/newer publications are rejected. Automated verification retained separately from owner acceptance.
 
 
 ## PPD-196 — Promotion parity fixture renders a source prototype without its view transform
@@ -4863,3 +4864,4 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered before repairing the promotion parity input; failed18 evidence retained.
+- 2026-11-14: Test-only21efebeb18 supplies identical current fixture transforms to both immutable snapshots. Required19/static69049 and exact-tag actual9882/47 pass with API/GPU validation; original key/revision/tuple and output assertions retained. Record remains unclosed without owner confirmation.
