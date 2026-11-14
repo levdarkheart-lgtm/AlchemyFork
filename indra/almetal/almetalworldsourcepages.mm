@@ -100,15 +100,84 @@ std::shared_ptr<Buffer> makeBuffer(const std::shared_ptr<Context>& context,std::
 }
 bool finite(const float* values,std::size_t count)
 {for(std::size_t i=0;i<count;++i)if(!std::isfinite(values[i]))return false;return true;}
+struct SourceInput
+{
+    Signature signature;
+    std::shared_ptr<const ALMetalWorldMaterialSource> material;
+    std::shared_ptr<const ALMetalWorldResourceSource> resources;
+    std::array<std::shared_ptr<const ALMetalBuffer>,3> numeric;
+    const ALMetalBuffer* vertices=nullptr;
+    const ALMetalBuffer* indices=nullptr;
+    std::size_t vertex_count=0,index_count=0,index_offset=0;
+    ALMetalIndexType index_type=ALMetalIndexType::uint16;
+    bool pbr=false;
+};
+bool captureInput(const ALMetalWorldSourceRequest& request,const ALMetalWorldSourceRegion& region,
+                  const ALMetalWorldSourceGlobals& globals,SourceInput& input,std::string* error)
+{
+    if(!request.source||!request.native.owner)return false;
+    const auto& source=*request.source;
+    const bool pbr=source.pbr_slot_count!=0,material=source.material_slot_count!=0;
+    if(pbr==material||source.normal_texture||source.skin_palette||source.skin_joint_count||source.weight_offset||
+       source.avatar_rigid||source.avatar_skinning||source.avatar_cloth||source.terrain||source.impostor||
+       !source.native_material_source||!source.native_material_source->matches(source)||
+       !source.native_resource_source||!source.native_resource_source->matches(source)||
+       (request.native.vertices&&request.native.vertices.get()!=source.vertices)||
+       (request.native.indices&&request.native.indices.get()!=source.indices))
+    {fail(error,"Native source request lacks an exact static material generation");return false;}
+    ALMetalWorldViewMatrices matrices;
+    std::memcpy(matrices.modelview_projection,region.modelview_projection,64);
+    std::memcpy(matrices.modelview,region.modelview,64);std::memcpy(matrices.normal_matrix,region.normal_matrix,48);
+    for(unsigned axis=0;axis<3;++axis)matrices.rigged_normal_matrix[axis][axis]=1;
+    std::memcpy(matrices.texture_matrix,source.texture_matrix,64);
+    ALMetalWorldGBufferScene validation;validation.normal_hdr=globals.flags[2];validation.width=validation.height=1;
+    if(!alMetalValidateWorldBatch(validation,ALMetalWorldDraw(source,&matrices),error))return false;
+    input.material=source.native_material_source;input.resources=source.native_resource_source;input.pbr=pbr;
+    input.numeric={input.material->materialLease(),input.material->pbrLease(false),input.material->pbrLease(true)};
+    input.vertices=source.vertices;input.indices=source.indices;input.vertex_count=source.vertex_count;
+    input.index_count=source.index_count;input.index_offset=source.index_offset;input.index_type=source.index_type;
+    input.signature.offsets={source.position_offset,source.normal_offset,source.texcoord_offset,source.color_offset,
+        pbr||source.materialSlots()[0].normal_texture?source.tangent_offset:source.normal_offset,
+        material&&source.materialSlots()[0].normal_texture?source.texcoord1_offset:source.texcoord_offset,
+        material&&source.materialSlots()[0].specular_texture?source.texcoord2_offset:source.texcoord_offset};
+    for(unsigned binding=0;binding<7;++binding)input.signature.handles[binding]=source.vertices->nativeHandle();
+    for(unsigned binding=0;binding<3;++binding)input.signature.handles[7+binding]=input.numeric[binding]?input.numeric[binding]->nativeHandle():nullptr;
+    for(unsigned value=0;value<16;++value)input.signature.values[value]=std::bit_cast<std::uint32_t>(source.texture_matrix[value]);
+    input.signature.values[16]=std::bit_cast<std::uint32_t>(source.alpha_cutoff);
+    input.signature.values[17]=std::bit_cast<std::uint32_t>(source.use_vertex_color?1.f:0.f);
+    input.signature.values[18]=std::bit_cast<std::uint32_t>(source.alpha_cutoff_bias?1.f:0.f);
+    input.signature.values[19]=std::bit_cast<std::uint32_t>(source.alpha_mask?1.f:0.f);input.signature.values[20]=source.texture_count;
+    return true;
+}
+bool sameInput(const SourceInput& a,const SourceInput& b)
+{
+    return a.signature==b.signature&&a.material==b.material&&a.resources==b.resources&&a.vertices==b.vertices&&a.indices==b.indices&&
+        a.vertex_count==b.vertex_count&&a.index_count==b.index_count&&a.index_offset==b.index_offset&&a.index_type==b.index_type&&a.pbr==b.pbr;
+}
+}
+
+std::uint64_t ALMetalWorldSourcePublicationWork::chargedBytes()const noexcept
+{
+    std::uint64_t total=0;
+    for(auto bytes:{encoded_row_bytes,encoded_table_bytes,encoded_bank_range_bytes,copied_page_bytes,copied_bank_bytes,zeroed_page_bytes,zeroed_bank_bytes})
+    {if(bytes>std::numeric_limits<std::uint64_t>::max()-total)return std::numeric_limits<std::uint64_t>::max();total+=bytes;}
+    return total;
 }
 
 struct ALMetalWorldSourceFrameView::Impl
 {
+    struct CommandSource
+    {
+        ALMetalWorldSourceKey key;
+        const ALMetalBuffer* indices=nullptr;
+        void* native_indices=nullptr;
+    };
     std::shared_ptr<Context> context;
     std::shared_ptr<BankReader> bank;
     std::vector<std::shared_ptr<PageReader>> pages;
     std::shared_ptr<Buffer> regions,globals,mapping;
     std::vector<std::uint32_t> rows,generations;
+    std::vector<CommandSource> commands;
     std::vector<std::shared_ptr<const void>> native_owners;
     std::vector<std::shared_ptr<const ALMetalBuffer>> buffers;
     std::vector<std::shared_ptr<const ALMetalTexture>> textures;
@@ -123,6 +192,14 @@ std::uint32_t ALMetalWorldSourceFrameView::rowId(std::size_t index)const noexcep
 {return index<mImpl->rows.size()?mImpl->rows[index]:std::numeric_limits<std::uint32_t>::max();}
 std::uint32_t ALMetalWorldSourceFrameView::allocationGeneration(std::size_t index)const noexcept
 {return index<mImpl->generations.size()?mImpl->generations[index]:0;}
+bool ALMetalWorldSourceFrameView::matchesSourceCommand(std::size_t index,const ALMetalWorldSourceKey& key,
+                                                     const ALMetalBuffer& indices)const noexcept
+{
+    if(index>=mImpl->commands.size())return false;
+    const auto& source=mImpl->commands[index];
+    return source.key.identity==key.identity&&source.key.flavor==key.flavor&&source.key.revision==key.revision&&
+        source.indices==&indices&&source.native_indices==indices.nativeHandle();
+}
 std::weak_ptr<const ALMetalWorldResourceTable> ALMetalWorldSourceFrameView::tableGenerationForTesting(std::size_t index)const noexcept
 {return index<mImpl->tables.size()?std::weak_ptr<const ALMetalWorldResourceTable>(mImpl->tables[index]):std::weak_ptr<const ALMetalWorldResourceTable>{};}
 bool ALMetalWorldSourceFrameView::bind(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,std::string* error)const
@@ -173,6 +250,8 @@ struct ALMetalWorldSourcePages::Impl
     ALMetalWorldSourcePageStats statistics;
     std::uint64_t serial=0;
     bool supported=false,force_failure=false;
+    std::shared_ptr<ALMetalWorldSourcePages::PublicationAdmission> admission;
+    std::uint64_t epoch=0;
 
     bool preparePage(std::uint32_t page_index,std::string* error)
     {
@@ -279,158 +358,238 @@ bool ALMetalWorldSourcePages::belongsTo(const ALMetalDevice& device,const ALMeta
 std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::freeze(
     std::span<const ALMetalWorldSourceRequest> requests,std::span<const ALMetalWorldSourceRegion> regions,
     const ALMetalWorldSourceGlobals& globals,std::string* error)
+{return freezeInternal(nullptr,requests,regions,globals,error);}
+std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::freezeForCommand(
+    ALMetalCommandBuffer& command,std::span<const ALMetalWorldSourceRequest> requests,
+    std::span<const ALMetalWorldSourceRegion> regions,const ALMetalWorldSourceGlobals& globals,std::string* error)
+{return freezeInternal(&command,requests,regions,globals,error);}
+void ALMetalWorldSourcePages::setPublicationAdmission(PublicationAdmission admission)
+{
+    auto holder=admission?std::make_shared<PublicationAdmission>(std::move(admission)):nullptr;
+    mImpl->admission=std::move(holder);++mImpl->epoch;
+}
+std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::freezeInternal(
+    ALMetalCommandBuffer* command,std::span<const ALMetalWorldSourceRequest> requests,
+    std::span<const ALMetalWorldSourceRegion> regions,const ALMetalWorldSourceGlobals& globals,std::string* error)
 try
 {
     auto& state=*mImpl;
     const auto reject=[&](const char* message)->std::shared_ptr<const ALMetalWorldSourceFrameView>
     {++state.statistics.failures;fail(error,message);return {};};
-    if(!state.supported||requests.empty()||regions.empty()||!finite(globals.mirror_clip_plane,4)||
-       globals.flags[0]>1||globals.flags[1]>1||globals.flags[2]>1||globals.flags[3])return reject("Native source view shape is invalid");
+    const auto commandValid=[&]{return !command||(!command->isCommitted()&&command->nativeDevice()==(__bridge void*)state.context->native);};
+    if(!state.supported||requests.empty()||requests.size()>alMetalWorldSourceMaximumRows||regions.empty()||
+       regions.size()>alMetalWorldSourceMaximumRows||!finite(globals.mirror_clip_plane,4)||
+       globals.flags[0]>1||globals.flags[1]>1||globals.flags[2]>1||globals.flags[3]||!commandValid())
+        return reject("Native source view shape or command is invalid");
     for(const auto& region:regions)
-        if(!finite(region.modelview_projection,16)||!finite(region.modelview,16)||region.modelview[15]!=1 ||
+        if(!finite(region.modelview_projection,16)||!finite(region.modelview,16)||region.modelview[15]!=1||
            !finite(&region.normal_matrix[0][0],12))return reject("Native source regional matrices are invalid");
     if(state.force_failure){state.force_failure=false;return reject("Forced native source publication failure");}
-    auto view=std::make_unique<ALMetalWorldSourceFrameView::Impl>();view->context=state.context;
-    view->rows.reserve(requests.size());view->generations.reserve(requests.size());
+    struct PlannedRow
+    {
+        ALMetalWorldSourceRequest request;
+        SourceInput input;
+        Signature signature;
+        std::uint32_t slot=0,generation=0;
+        std::size_t table=0;
+        bool allocate=false,hit=false;
+    };
+    std::vector<PlannedRow> rows;
+    std::vector<std::size_t> request_rows;
+    std::unordered_map<Key,std::size_t,KeyHash> selected;
     std::vector<std::uint32_t> mapping(state.limits.maximum_rows,std::numeric_limits<std::uint32_t>::max());
-    std::array<bool,alMetalWorldSourceMaximumRows/alMetalWorldSourceRowsPerPage> used_pages{};
-    std::set<std::shared_ptr<const void>,std::owner_less<std::shared_ptr<const void>>> owners;
-    std::unordered_set<const ALMetalBuffer*> buffers;
-    std::unordered_set<const ALMetalTexture*> textures;
-    std::unordered_set<const ALMetalWorldResourceTable*> tables;
-    std::unordered_set<void*> geometry;
-    if(++state.serial==0)++state.serial;
+    auto free=state.free;
+    std::vector<bool> evicted(state.rows.size(),false);
+    auto victim=state.lru.begin();
+    std::vector<std::shared_ptr<const ALMetalWorldResourcePreparation>> table_plans;
+    std::unordered_map<const ALMetalWorldResourceSource*,std::size_t> source_tables;
+    std::unordered_map<std::size_t,std::vector<std::size_t>> table_hashes;
+    std::array<bool,alMetalWorldSourceMaximumRows/alMetalWorldSourceRowsPerPage> dirty_pages{},used_pages{};
+    std::array<std::shared_ptr<PageReader>,alMetalWorldSourceMaximumRows/alMetalWorldSourceRowsPerPage> old_readers{};
+    std::shared_ptr<BankReader> old_bank_reader;
+    ALMetalWorldSourcePublicationWork work;
+    rows.reserve(requests.size());request_rows.reserve(requests.size());selected.reserve(requests.size());
+    const auto epoch=state.epoch;
     std::uint32_t highest_slot=0;
+    // Read-only plan: no row/LRU/cache mutation, GPU allocation or mapped write.
     for(const auto& request:requests)
     {
         ++state.statistics.requests;
-        if(!request.key.identity||!request.key.revision||!request.source||!request.native.owner || request.region>=regions.size())
-            return reject("Native source request is incomplete");
-        const auto& source=*request.source;
-        const bool pbr=source.pbr_slot_count!=0,material=source.material_slot_count!=0;
-        if(pbr==material || source.normal_texture || source.skin_palette || source.skin_joint_count||source.weight_offset ||
-           source.avatar_rigid||source.avatar_skinning||source.avatar_cloth||source.terrain||source.impostor ||
-           !source.native_material_source||!source.native_material_source->matches(source)||
-           !source.native_resource_source||!source.native_resource_source->matches(source) ||
-           (request.native.vertices && request.native.vertices.get()!=source.vertices)||
-           (request.native.indices && request.native.indices.get()!=source.indices))
-            return reject("Native source request lacks an exact static material generation");
-        ALMetalWorldViewMatrices matrices;
-        std::memcpy(matrices.modelview_projection,regions[request.region].modelview_projection,64);
-        std::memcpy(matrices.modelview,regions[request.region].modelview,64);
-        std::memcpy(matrices.normal_matrix,regions[request.region].normal_matrix,48);
-        for(unsigned axis=0;axis<3;++axis)matrices.rigged_normal_matrix[axis][axis]=1;
-        std::memcpy(matrices.texture_matrix,source.texture_matrix,64);
-        ALMetalWorldGBufferScene validation;validation.normal_hdr=globals.flags[2];validation.width=validation.height=1;
-        if(!alMetalValidateWorldBatch(validation,ALMetalWorldDraw(source,&matrices),error))
-        {++state.statistics.failures;return {};}
-        auto table=state.context->resources->prepare(source.native_resource_source,*state.context->sampler,error);
-        if(!table){++state.statistics.failures;return {};}
-        std::array<std::shared_ptr<const ALMetalBuffer>,3> numeric{
-            source.native_material_source->materialLease(),source.native_material_source->pbrLease(false),source.native_material_source->pbrLease(true)};
-        auto arguments=table->argumentLease();
-        Signature signature;
-        signature.offsets={source.position_offset,source.normal_offset,source.texcoord_offset,source.color_offset,
-            pbr||static_cast<const ALMetalWorldSimpleBatch&>(source).materialSlots()[0].normal_texture?source.tangent_offset:source.normal_offset,
-            material&&static_cast<const ALMetalWorldSimpleBatch&>(source).materialSlots()[0].normal_texture?source.texcoord1_offset:source.texcoord_offset,
-            material&&static_cast<const ALMetalWorldSimpleBatch&>(source).materialSlots()[0].specular_texture?source.texcoord2_offset:source.texcoord_offset};
-        for(unsigned binding=0;binding<7;++binding)signature.handles[binding]=source.vertices->nativeHandle();
-        for(unsigned binding=0;binding<3;++binding)signature.handles[7+binding]=numeric[binding]?numeric[binding]->nativeHandle():nullptr;
-        signature.handles[pbr?11:10]=arguments->nativeHandle();
-        for(unsigned value=0;value<16;++value)signature.values[value]=std::bit_cast<std::uint32_t>(source.texture_matrix[value]);
-        signature.values[16]=std::bit_cast<std::uint32_t>(source.alpha_cutoff);
-        signature.values[17]=std::bit_cast<std::uint32_t>(source.use_vertex_color?1.f:0.f);
-        signature.values[18]=std::bit_cast<std::uint32_t>(source.alpha_cutoff_bias?1.f:0.f);
-        signature.values[19]=std::bit_cast<std::uint32_t>(source.alpha_mask?1.f:0.f);signature.values[20]=source.texture_count;
+        if(!request.key.identity||!request.key.revision||request.region>=regions.size())return reject("Native source request is incomplete");
+        SourceInput input;if(!captureInput(request,regions[request.region],globals,input,error)){++state.statistics.failures;return {};}
         const Key key{request.key.identity,request.key.flavor};
-        auto at=state.lookup.find(key);std::uint32_t slot;
-        if(at==state.lookup.end())
+        if(auto existing=selected.find(key);existing!=selected.end())
         {
-            if(state.free.empty())
-            {
-                // Only current-view selected slots are protected here. Old
-                // queued/GPU views keep immutable pages/banks and force COW;
-                // they must not permanently reserve the online source IDs.
-                std::uint32_t victim=std::numeric_limits<std::uint32_t>::max();
-                for(std::size_t checked=0;checked<state.rows.size();++checked)
-                {
-                    const auto candidate=state.lru.front();
-                    // Every selected row is already spliced to the tail, so
-                    // encountering one proves all remaining rows are selected
-                    // or have exhausted their allocation-generation space.
-                    if(mapping[candidate]!=std::numeric_limits<std::uint32_t>::max())break;
-                    if(state.rows[candidate].generation!=std::numeric_limits<std::uint32_t>::max())
-                    {victim=candidate;break;}
-                    state.lru.splice(state.lru.end(),state.lru,state.rows[candidate].lru);
-                }
-                if(victim==std::numeric_limits<std::uint32_t>::max())return reject("Native source row capacity is exhausted");
-                auto& old=state.rows[victim];state.lookup.erase(old.key);
-                const auto old_identity=state.identities.find(old.key.identity);
-                if(old_identity!=state.identities.end())
-                {
-                    std::erase(old_identity->second,victim);
-                    if(old_identity->second.empty())state.identities.erase(old_identity);
-                }
-                old.valid=false;old.allocated=false;old.revision=old.minimum_revision=0;
-                if(auto source=old.resources.lock())state.context->resources->releaseSourceCache(source);
-                old.material.reset();old.resources.reset();old.table.reset();state.free.push_back(victim);
-            }
-            slot=state.free.back();
-            auto& identity=state.identities[key.identity];identity.push_back(slot);
-            try{state.lookup.emplace(key,slot);}catch(...){identity.pop_back();throw;}
-            state.free.pop_back();auto& row=state.rows[slot];row.key=key;row.allocated=true;row.valid=false;
-            ++row.generation;
+            const auto& prior=rows[existing->second];
+            if(prior.request.key.revision!=request.key.revision||prior.request.region!=request.region||!sameInput(prior.input,input))
+                return reject("Native source row has conflicting immutable inputs");
+            request_rows.push_back(existing->second);continue;
         }
-        else slot=at->second;
-        auto& row=state.rows[slot];
-        if(request.key.revision<row.revision||request.key.revision<row.minimum_revision)return reject("Native source row publication is stale");
-        if(mapping[slot]!=std::numeric_limits<std::uint32_t>::max()&&mapping[slot]!=request.region)
-            return reject("Native source row has conflicting view-region selection");
-        if(mapping[slot]!=std::numeric_limits<std::uint32_t>::max()&&
-            (row.revision!=request.key.revision||row.signature!=signature))
-            return reject("Native source row has conflicting immutable inputs");
-        mapping[slot]=request.region;
-        const bool same_table=!row.table.owner_before(table)&&!table.owner_before(row.table);
-        const bool hit=row.valid&&row.revision==request.key.revision&&row.signature==signature &&
-            !row.material.expired()&&!row.resources.expired()&&same_table;
+        std::size_t table_index=0;
+        if(auto prior=source_tables.find(input.resources.get());prior!=source_tables.end())table_index=prior->second;
+        else
+        {
+            auto preparation=state.context->resources->preflight(input.resources,*state.context->sampler,error);
+            if(!preparation){++state.statistics.failures;return {};}
+            auto& candidates=table_hashes[preparation->publicationHash()];
+            const auto same=std::find_if(candidates.begin(),candidates.end(),[&](auto index)
+                {return preparation->samePublication(*table_plans[index]);});
+            if(same!=candidates.end())table_index=*same;
+            else
+            {
+                table_index=table_plans.size();candidates.push_back(table_index);table_plans.push_back(std::move(preparation));
+                work.encoded_table_bytes+=table_plans.back()->publicationBytes();
+                work.allocation_bytes+=table_plans.back()->publicationBytes();
+            }
+            source_tables.emplace(input.resources.get(),table_index);
+        }
+        auto signature=input.signature;
+        auto table=table_plans[table_index]->existingTable();
+        if(table)signature.handles[input.pbr?11:10]=table->argumentLease()->nativeHandle();
+        auto found=state.lookup.find(key);std::uint32_t slot=0;bool allocate=found==state.lookup.end()||evicted[found->second];
+        if(!allocate)slot=found->second;
+        else
+        {
+            if(!free.empty()){slot=free.back();free.pop_back();}
+            else
+            {
+                while(victim!=state.lru.end()&&(mapping[*victim]!=std::numeric_limits<std::uint32_t>::max()||
+                      evicted[*victim]||state.rows[*victim].generation==std::numeric_limits<std::uint32_t>::max()))++victim;
+                if(victim==state.lru.end())return reject("Native source row capacity is exhausted");
+                slot=*victim++;evicted[slot]=true;
+            }
+        }
+        const auto& current=state.rows[slot];
+        if(!allocate&&(request.key.revision<current.revision||request.key.revision<current.minimum_revision))
+            return reject("Native source row publication is stale");
+        if(allocate&&current.generation==std::numeric_limits<std::uint32_t>::max())return reject("Native source allocation generation is exhausted");
+        const bool same_table=table&&!current.table.owner_before(table)&&!table.owner_before(current.table);
+        const bool hit=!allocate&&current.valid&&current.revision==request.key.revision&&current.signature==signature&&
+            !current.material.expired()&&!current.resources.expired()&&same_table;
+        const auto index=rows.size();selected.emplace(key,index);request_rows.push_back(index);
+        rows.push_back({request,std::move(input),signature,slot,current.generation+(allocate?1u:0u),table_index,allocate,hit});
+        mapping[slot]=request.region;highest_slot=std::max(highest_slot,slot);used_pages[slot/alMetalWorldSourceRowsPerPage]=true;
         if(!hit)
         {
-            // No actual reader may see these bytes change. Idle bank/cache
-            // shared_ptrs do not count; only FrameView reader tokens do.
+            dirty_pages[slot/alMetalWorldSourceRowsPerPage]=true;
+            work.encoded_row_bytes+=state.context->row_encoder.encodedLength;
+        }
+    }
+    if(!state.context->resources->validatePreparations(table_plans,error)){++state.statistics.failures;return {};}
+    bool bank_change=false;
+    for(std::size_t page=0;page<dirty_pages.size();++page)if(dirty_pages[page])
+    {
+        const auto& current=state.pages[page];
+        if(current)old_readers[page]=current->reader.lock();
+        const auto length=state.context->stride*alMetalWorldSourceRowsPerPage;
+        if(!current||old_readers[page])
+        {
+            bank_change=true;work.allocation_bytes+=length;
+            if(current)work.copied_page_bytes+=length;else work.zeroed_page_bytes+=length;
+        }
+    }
+    if(bank_change)
+    {
+        work.encoded_bank_range_bytes=state.context->bank_length;
+        if(state.bank)old_bank_reader=state.bank->reader.lock();
+        if(!state.bank||old_bank_reader)
+        {
+            work.allocation_bytes+=state.context->bank_length;
+            if(state.bank)work.copied_bank_bytes=state.context->bank_length;else work.zeroed_bank_bytes=state.context->bank_length;
+        }
+    }
+    mapping.resize(std::size_t(highest_slot)+1);
+    const auto view_bytes=regions.size_bytes()+sizeof(globals)+mapping.size()*sizeof(std::uint32_t);
+    const auto page_allocation=work.allocation_bytes-work.encoded_table_bytes;
+    const auto live=state.context->budget->bytes.load(std::memory_order_relaxed);
+    if(live>state.context->budget->limit||page_allocation>state.context->budget->limit-live||
+       view_bytes>state.context->budget->limit-live-page_allocation)return reject("Native source metadata capacity is exhausted");
+    const auto charged=work.chargedBytes();
+    if(charged==std::numeric_limits<std::uint64_t>::max())return reject("Native source publication work overflows");
+    auto admission=state.admission;
+    std::shared_ptr<const void> credit;
+    if(charged&&admission)
+    {
+        if(!command)return reject("Admitted native source publication requires an actual command");
+        const std::vector<ALMetalWorldSourceRequest> originals(requests.begin(),requests.end());
+        const std::vector<ALMetalWorldSourceRegion> original_regions(regions.begin(),regions.end());
+        const auto original_globals=globals;
+        ++state.statistics.admission_requests;credit=(*admission)(work);
+        if(!credit){++state.statistics.admission_denials;return reject("Native source publication admission was deferred");}
+        if(state.epoch!=epoch||!commandValid())return reject("Native source publication plan was retired during admission");
+        if(std::memcmp(original_regions.data(),regions.data(),regions.size_bytes())||std::memcmp(&original_globals,&globals,sizeof(globals)))
+            return reject("Native source view changed during admission");
+        // The policy is an owner callback. Validate captured source facts after
+        // it returns, without trusting a reentrant/mutated borrowed prototype.
+        for(std::size_t index=0;index<requests.size();++index)
+        {
+            const auto& original=originals[index];const auto& current=requests[index];const auto& row=rows[request_rows[index]];
+            if(current.key.identity!=original.key.identity||current.key.flavor!=original.key.flavor||current.key.revision!=original.key.revision||
+               current.source!=original.source||current.region!=original.region||current.native.vertices!=original.native.vertices||
+               current.native.indices!=original.native.indices||current.native.owner.owner_before(original.native.owner)||
+               original.native.owner.owner_before(current.native.owner))return reject("Native source request changed during admission");
+            SourceInput now;
+            if(!captureInput(current,regions[current.region],globals,now,error)||!sameInput(now,row.input))
+                return reject("Native source input changed during admission");
+        }
+        if(!state.context->resources->validatePreparations(table_plans,error)){++state.statistics.failures;return {};}
+        if(!command->retainUntilCompletion(credit,error)){++state.statistics.failures;return {};}
+        state.statistics.admitted_bytes+=charged;
+    }
+    if(state.epoch!=epoch)return reject("Native source publication plan is stale");
+    // All optional admission and read-only proofs have completed. Credits are
+    // now command-owned, never attached to the idle publisher or FrameView.
+    ++state.epoch;if(++state.serial==0)++state.serial;
+    for(const auto& planned:rows)if(planned.allocate)
+    {
+        auto& row=state.rows[planned.slot];
+        if(!row.allocated)
+        {
+            if(state.free.empty()||state.free.back()!=planned.slot)return reject("Native source free-slot plan is stale");
+            state.free.pop_back();
+        }
+        if(row.allocated)
+        {
+            const auto old=state.lookup.find(row.key);if(old!=state.lookup.end()&&old->second==planned.slot)state.lookup.erase(old);
+            const auto identity=state.identities.find(row.key.identity);
+            if(identity!=state.identities.end())
+            {std::erase(identity->second,planned.slot);if(identity->second.empty())state.identities.erase(identity);}
+            if(auto source=row.resources.lock())state.context->resources->releaseSourceCache(source);
+        }
+        row.key={planned.request.key.identity,planned.request.key.flavor};row.generation=planned.generation;
+        row.valid=false;row.allocated=true;row.revision=row.minimum_revision=0;row.material.reset();row.resources.reset();row.table.reset();
+        state.identities[row.key.identity].push_back(planned.slot);state.lookup.emplace(row.key,planned.slot);
+    }
+    std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> prepared_tables;prepared_tables.reserve(table_plans.size());
+    for(const auto& plan:table_plans)
+    {auto table=state.context->resources->prepare(*plan,error);if(!table){++state.statistics.failures;return {};}prepared_tables.push_back(std::move(table));}
+    for(auto& planned:rows)
+    {
+        auto& row=state.rows[planned.slot];
+        planned.signature.handles[planned.input.pbr?11:10]=prepared_tables[planned.table]->argumentLease()->nativeHandle();
+        if(!planned.hit)
+        {
             row.valid=false;
-            if(!state.preparePage(slot/alMetalWorldSourceRowsPerPage,error)){++state.statistics.failures;return {};}
-            auto& page=state.pages[slot/alMetalWorldSourceRowsPerPage];
+            if(!state.preparePage(planned.slot/alMetalWorldSourceRowsPerPage,error)){++state.statistics.failures;return {};}
+            auto& page=state.pages[planned.slot/alMetalWorldSourceRowsPerPage];const auto& signature=planned.signature;
             [state.context->row_encoder setArgumentBuffer:(__bridge id<MTLBuffer>)page->buffer->value->nativeHandle()
-                offset:(slot%alMetalWorldSourceRowsPerPage)*state.context->stride];
+                offset:(planned.slot%alMetalWorldSourceRowsPerPage)*state.context->stride];
             for(unsigned binding=0;binding<7;++binding)
                 [state.context->row_encoder setBuffer:(__bridge id<MTLBuffer>)signature.handles[binding] offset:signature.offsets[binding] atIndex:binding];
             for(unsigned binding=7;binding<12;++binding)
                 [state.context->row_encoder setBuffer:(__bridge id<MTLBuffer>)signature.handles[binding] offset:0 atIndex:binding];
-            std::memcpy([state.context->row_encoder constantDataAtIndex:12],source.texture_matrix,64);
+            std::memcpy([state.context->row_encoder constantDataAtIndex:12],signature.values.data(),64);
             std::memcpy([state.context->row_encoder constantDataAtIndex:13],signature.values.data()+16,16);
             std::memcpy([state.context->row_encoder constantDataAtIndex:14],signature.values.data()+20,16);
             [state.context->row_encoder setArgumentBuffer:nil offset:0];
-            row.signature=signature;row.revision=request.key.revision;
-            row.material=source.native_material_source;row.resources=source.native_resource_source;row.table=table;row.valid=true;
+            row.signature=signature;row.revision=planned.request.key.revision;row.material=planned.input.material;
+            row.resources=planned.input.resources;row.table=prepared_tables[planned.table];row.valid=true;
             ++state.statistics.row_publications;state.statistics.encoded_row_bytes+=state.context->row_encoder.encodedLength;
         }
         else ++state.statistics.hits;
-        row.last_use=state.serial;highest_slot=std::max(highest_slot,slot);
-        state.lru.splice(state.lru.end(),state.lru,row.lru);
-        view->rows.push_back(slot);view->generations.push_back(row.generation);used_pages[slot/alMetalWorldSourceRowsPerPage]=true;
-        if(owners.insert(request.native.owner).second)view->native_owners.push_back(request.native.owner);
-        for(auto handle:{source.vertices->nativeHandle(),source.indices->nativeHandle()})
-            if(geometry.insert(handle).second)view->geometry.push_back(handle);
-        for(const auto& buffer:{request.native.vertices,request.native.indices})
-            if(buffer&&buffers.insert(buffer.get()).second)view->buffers.push_back(buffer);
-        for(const auto& buffer:numeric)
-            if(buffer&&buffers.insert(buffer.get()).second)view->buffers.push_back(buffer);
-        for(const auto& texture:source.native_resource_source->generationLeases())
-            if(texture&&textures.insert(texture.get()).second)view->textures.push_back(texture);
-        if(tables.insert(table.get()).second)view->tables.push_back(table);
+        row.last_use=state.serial;state.lru.splice(state.lru.end(),state.lru,row.lru);
     }
-    mapping.resize(std::size_t(highest_slot)+1);
-    if(regions.size()>std::numeric_limits<std::size_t>::max()/sizeof(ALMetalWorldSourceRegion))return reject("Native source regions overflow");
+    auto view=std::make_unique<ALMetalWorldSourceFrameView::Impl>();view->context=state.context;view->tables=std::move(prepared_tables);
     view->regions=makeBuffer(state.context,regions.size_bytes(),"Alchemy source regional view matrices",error);
     view->globals=makeBuffer(state.context,sizeof(globals),"Alchemy source view globals",error);
     view->mapping=makeBuffer(state.context,mapping.size()*sizeof(std::uint32_t),"Alchemy source to view region map",error);
@@ -438,6 +597,21 @@ try
     std::memcpy(view->regions->value->mappedBytes(),regions.data(),regions.size_bytes());
     std::memcpy(view->globals->value->mappedBytes(),&globals,sizeof(globals));
     std::memcpy(view->mapping->value->mappedBytes(),mapping.data(),mapping.size()*sizeof(std::uint32_t));
+    std::set<std::shared_ptr<const void>,std::owner_less<std::shared_ptr<const void>>> owners;
+    std::unordered_set<const ALMetalBuffer*> buffers;std::unordered_set<const ALMetalTexture*> textures;std::unordered_set<void*> geometry;
+    view->rows.reserve(requests.size());view->generations.reserve(requests.size());view->commands.reserve(requests.size());
+    for(std::size_t index=0;index<requests.size();++index)
+    {
+        const auto& planned=rows[request_rows[index]];const auto& request=planned.request;
+        view->rows.push_back(planned.slot);view->generations.push_back(planned.generation);
+        view->commands.push_back({request.key,planned.input.indices,planned.input.indices->nativeHandle()});
+        if(owners.insert(request.native.owner).second)view->native_owners.push_back(request.native.owner);
+        for(auto handle:{planned.input.vertices->nativeHandle(),planned.input.indices->nativeHandle()})
+            if(geometry.insert(handle).second)view->geometry.push_back(handle);
+        for(const auto& buffer:{request.native.vertices,request.native.indices})if(buffer&&buffers.insert(buffer.get()).second)view->buffers.push_back(buffer);
+        for(const auto& buffer:planned.input.numeric)if(buffer&&buffers.insert(buffer.get()).second)view->buffers.push_back(buffer);
+        for(const auto& texture:planned.input.resources->generationLeases())if(texture&&textures.insert(texture.get()).second)view->textures.push_back(texture);
+    }
     for(std::size_t page=0;page<used_pages.size();++page)if(used_pages[page])
     {
         auto reader=state.pages[page]->reader.lock();
@@ -446,12 +620,13 @@ try
     }
     view->bank=state.bank->reader.lock();
     if(!view->bank){view->bank=std::make_shared<BankReader>();view->bank->bank=state.bank;state.bank->reader=view->bank;}
-    state.statistics.view_bytes+=regions.size_bytes()+sizeof(globals)+mapping.size()*sizeof(std::uint32_t);
+    state.statistics.view_bytes+=view_bytes;
     return std::shared_ptr<const ALMetalWorldSourceFrameView>(new ALMetalWorldSourceFrameView(std::move(view)));
 }
 catch(const std::bad_alloc&){++mImpl->statistics.failures;if(error)error->clear();return {};}
 void ALMetalWorldSourcePages::invalidate(std::uint64_t identity,std::uint64_t minimum_revision)noexcept
 {
+    ++mImpl->epoch;
     const auto found=mImpl->identities.find(identity);if(found==mImpl->identities.end())return;
     for(auto slot:found->second)
     {
@@ -464,6 +639,7 @@ void ALMetalWorldSourcePages::invalidate(std::uint64_t identity,std::uint64_t mi
 }
 void ALMetalWorldSourcePages::withdraw(std::uint64_t identity)noexcept
 {
+    ++mImpl->epoch;
     const auto found=mImpl->identities.find(identity);if(found==mImpl->identities.end())return;
     for(auto slot:found->second)
     {
@@ -474,6 +650,7 @@ void ALMetalWorldSourcePages::withdraw(std::uint64_t identity)noexcept
 }
 void ALMetalWorldSourcePages::clear()noexcept
 {
+    ++mImpl->epoch;
     mImpl->lookup.clear();mImpl->identities.clear();mImpl->free.clear();
     for(std::size_t slot=mImpl->rows.size();slot>0;--slot)
     {auto& row=mImpl->rows[slot-1];row.valid=false;row.allocated=false;row.revision=0;row.minimum_revision=0;

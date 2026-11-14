@@ -6,6 +6,7 @@
 #pragma once
 #include "almetalworldresources.h"
 #include <span>
+#include <functional>
 
 struct ALMetalWorldSimpleBatch;
 
@@ -61,6 +62,19 @@ struct ALMetalWorldSourcePageStats
     std::uint64_t encoded_row_bytes=0,copied_page_bytes=0,copied_bank_bytes=0;
     std::uint64_t page_allocations=0,bank_allocations=0,view_bytes=0,binds=0;
     std::size_t rows=0,live_metadata_bytes=0;
+    std::uint64_t admission_requests=0,admission_denials=0,admitted_bytes=0;
+};
+
+// Logical encoder ranges and exact CPU copy/zero operations are separate
+// quantities. Their checked sum is the publication-work admission unit, not
+// unique physical RAM or measured driver/GPU memory traffic. Allocation bytes
+// exclude required per-view region/global/map buffers and are not added twice.
+struct ALMetalWorldSourcePublicationWork
+{
+    std::uint64_t encoded_row_bytes=0,encoded_table_bytes=0,encoded_bank_range_bytes=0;
+    std::uint64_t copied_page_bytes=0,copied_bank_bytes=0,zeroed_page_bytes=0,zeroed_bank_bytes=0;
+    std::uint64_t allocation_bytes=0;
+    std::uint64_t chargedBytes() const noexcept;
 };
 
 class ALMetalWorldSourceFrameView final : public std::enable_shared_from_this<ALMetalWorldSourceFrameView>
@@ -70,6 +84,8 @@ public:
     std::size_t size() const noexcept;
     std::uint32_t rowId(std::size_t request_index) const noexcept;
     std::uint32_t allocationGeneration(std::size_t request_index) const noexcept;
+    bool matchesSourceCommand(std::size_t request_index,const ALMetalWorldSourceKey&,
+                              const ALMetalBuffer& indices) const noexcept;
     // Weak diagnostic observation of a unique table lease (not draw order).
     // Does not add a publisher/native generation pin to the source cache.
     std::weak_ptr<const ALMetalWorldResourceTable> tableGenerationForTesting(std::size_t unique_table_index=0) const noexcept;
@@ -89,6 +105,7 @@ private:
 class ALMetalWorldSourcePages final
 {
 public:
+    using PublicationAdmission=std::function<std::shared_ptr<const void>(const ALMetalWorldSourcePublicationWork&)>;
     static std::shared_ptr<ALMetalWorldSourcePages> create(
         const ALMetalDevice&, const ALMetalShaderLibrary&, std::uint32_t max_anisotropy=1,
         ALMetalWorldSourcePageLimits={}, std::string* error=nullptr);
@@ -101,6 +118,14 @@ public:
     std::shared_ptr<const ALMetalWorldSourceFrameView> freeze(
         std::span<const ALMetalWorldSourceRequest>, std::span<const ALMetalWorldSourceRegion>,
         const ALMetalWorldSourceGlobals&, std::string* error=nullptr);
+    std::shared_ptr<const ALMetalWorldSourceFrameView> freezeForCommand(
+        ALMetalCommandBuffer&, std::span<const ALMetalWorldSourceRequest>,
+        std::span<const ALMetalWorldSourceRegion>, const ALMetalWorldSourceGlobals&,
+        std::string* error=nullptr);
+    // Product owner injection only; generic/native fixtures default to no
+    // policy. Dirty standalone freeze refuses an active policy (no command
+    // can own its credit); fully reused standalone views remain legal.
+    void setPublicationAdmission(PublicationAdmission);
     // Called synchronously by the owner before producer backing COW. No GPU
     // writes, allocation, LL callbacks or reader reclamation occurs here.
     void invalidate(std::uint64_t producer_identity, std::uint64_t minimum_revision=0) noexcept;
@@ -110,6 +135,10 @@ public:
     ALMetalWorldSourcePageStats stats() const noexcept;
     void failNextPublicationForTesting() noexcept;
 private:
+    std::shared_ptr<const ALMetalWorldSourceFrameView> freezeInternal(
+        ALMetalCommandBuffer*, std::span<const ALMetalWorldSourceRequest>,
+        std::span<const ALMetalWorldSourceRegion>, const ALMetalWorldSourceGlobals&,
+        std::string*);
     struct Impl;
     explicit ALMetalWorldSourcePages(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> mImpl;

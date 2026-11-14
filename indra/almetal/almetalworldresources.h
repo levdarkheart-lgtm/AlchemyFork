@@ -16,6 +16,7 @@
 struct ALMetalWorldSimpleBatch;
 class ALMetalWorldResourceTable;
 class ALMetalWorldResources;
+class ALMetalWorldResourcePreparation;
 
 enum class ALMetalWorldResourceFallback : std::uint8_t
 {
@@ -89,6 +90,24 @@ private:
     friend class ALMetalWorldResources;
 };
 
+// Owner-local read-only preparation proof. Holds any existing exact table
+// alive; a miss reports its shader-derived encoded range without allocating
+// or writing a GPU buffer. It never escapes into GPU completion ownership.
+class ALMetalWorldResourcePreparation final
+{
+public:
+    ~ALMetalWorldResourcePreparation();
+    std::shared_ptr<const ALMetalWorldResourceTable> existingTable() const noexcept;
+    std::size_t publicationBytes() const noexcept;
+    std::size_t publicationHash() const noexcept;
+    bool samePublication(const ALMetalWorldResourcePreparation&) const noexcept;
+private:
+    struct Impl;
+    explicit ALMetalWorldResourcePreparation(std::unique_ptr<Impl>);
+    std::unique_ptr<Impl> mImpl;
+    friend class ALMetalWorldResources;
+};
+
 // One exact-library context. FrameData keeps weak contexts, renderers own
 // current contexts, and sources keep bounded tables without owning a context.
 class ALMetalWorldResources final
@@ -100,6 +119,15 @@ public:
         ALMetalWorldResourceFallback* failure = nullptr);
     ~ALMetalWorldResources();
     bool supported() const noexcept;
+    std::shared_ptr<const ALMetalWorldResourcePreparation> preflight(
+        const std::shared_ptr<const ALMetalWorldResourceSource>&,
+        const ALMetalSamplerState&, std::string* error=nullptr,
+        ALMetalWorldResourceFallback* failure=nullptr) const;
+    bool validatePreparations(std::span<const std::shared_ptr<const ALMetalWorldResourcePreparation>>,
+        std::string* error=nullptr) const;
+    std::shared_ptr<const ALMetalWorldResourceTable> prepare(
+        const ALMetalWorldResourcePreparation&, std::string* error=nullptr,
+        ALMetalWorldResourceFallback* failure=nullptr);
     std::shared_ptr<const ALMetalWorldResourceTable> prepare(
         const std::shared_ptr<const ALMetalWorldResourceSource>&,
         const ALMetalSamplerState&, std::string* error = nullptr,
@@ -121,6 +149,8 @@ public:
     void failNextPreparationForTesting() noexcept;
     ALMetalWorldResourceStats stats() const noexcept;
 private:
+    std::shared_ptr<const ALMetalWorldResourceTable> cachedSourceTable(
+        const std::shared_ptr<const ALMetalWorldResourceSource>&, const ALMetalSamplerState&) const noexcept;
     struct Impl;
     explicit ALMetalWorldResources(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> mImpl;

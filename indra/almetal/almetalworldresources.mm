@@ -12,6 +12,7 @@
 #include <array>
 #include <atomic>
 #include <new>
+#include <limits>
 #include <unordered_map>
 
 namespace
@@ -118,6 +119,25 @@ struct ALMetalWorldResources::Impl
     std::weak_ptr<const ALMetalCommandCompletion> owner_command;
     std::weak_ptr<CommandOwner> owner;
 };
+struct ALMetalWorldResourcePreparation::Impl
+{
+    std::shared_ptr<State> state;
+    std::uint64_t epoch=0;
+    std::shared_ptr<const ALMetalWorldResourceSource> source;
+    id<MTLSamplerState> sampler=nil;
+    Key key;
+    std::shared_ptr<const ALMetalWorldResourceTable> existing;
+    std::size_t bytes=0;
+};
+ALMetalWorldResourcePreparation::ALMetalWorldResourcePreparation(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
+ALMetalWorldResourcePreparation::~ALMetalWorldResourcePreparation()=default;
+std::shared_ptr<const ALMetalWorldResourceTable> ALMetalWorldResourcePreparation::existingTable()const noexcept{return mImpl->existing;}
+std::size_t ALMetalWorldResourcePreparation::publicationBytes()const noexcept{return mImpl->bytes;}
+std::size_t ALMetalWorldResourcePreparation::publicationHash()const noexcept
+{return KeyHash{}(mImpl->key)^std::hash<const void*>{}(mImpl->state.get())^std::hash<std::uint64_t>{}(mImpl->epoch);}
+bool ALMetalWorldResourcePreparation::samePublication(const ALMetalWorldResourcePreparation& other)const noexcept
+{return mImpl->state==other.mImpl->state&&mImpl->epoch==other.mImpl->epoch&&
+    ((mImpl->existing&&mImpl->existing==other.mImpl->existing)||mImpl->key==other.mImpl->key);}
 ALMetalWorldResourceSource::ALMetalWorldResourceSource(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldResourceSource::~ALMetalWorldResourceSource()=default;
 ALMetalWorldResourceTable::ALMetalWorldResourceTable(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
@@ -208,33 +228,98 @@ try
 }
 catch(const std::bad_alloc&){reason(failure,ALMetalWorldResourceFallback::host_allocation);if(error)error->clear();return {};}
 bool ALMetalWorldResources::supported()const noexcept{return mImpl->state->supported;}
+std::shared_ptr<const ALMetalWorldResourceTable> ALMetalWorldResources::cachedSourceTable(
+    const std::shared_ptr<const ALMetalWorldResourceSource>& source,const ALMetalSamplerState& sampler)const noexcept
+{
+    const auto& state=mImpl->state;id<MTLSamplerState> native=(__bridge id<MTLSamplerState>)sampler.nativeHandle();
+    if(state->supported&&source&&sampler.supportsArgumentBuffers()&&native)
+        for(const auto& table:source->mImpl->tables)
+            if(sameContext(table->mImpl->context,state)&&table->mImpl->epoch==state->epoch&&table->mImpl->key.sampler==(__bridge void*)native)return table;
+    return {};
+}
+std::shared_ptr<const ALMetalWorldResourcePreparation> ALMetalWorldResources::preflight(
+    const std::shared_ptr<const ALMetalWorldResourceSource>& source,const ALMetalSamplerState& sampler,
+    std::string* error,ALMetalWorldResourceFallback* failure)const
+try
+{
+    reason(failure,ALMetalWorldResourceFallback::none);
+    const auto& state=mImpl->state;
+    id<MTLSamplerState> native=(__bridge id<MTLSamplerState>)sampler.nativeHandle();
+    auto cached=cachedSourceTable(source,sampler);
+    if(!cached&&(!state->supported||!source||source->mImpl->device!=(__bridge void*)state->device||
+       !sampler.supportsArgumentBuffers()||!native||native.device!=state->device)
+       )
+    {reason(failure,state->supported?ALMetalWorldResourceFallback::validation:ALMetalWorldResourceFallback::unsupported);fail(error,"Native world resource preparation is unsupported or invalid");return {};}
+    auto plan=std::make_unique<ALMetalWorldResourcePreparation::Impl>();
+    plan->state=state;plan->epoch=state->epoch;plan->source=source;plan->sampler=native;
+    if(cached){plan->existing=cached;plan->key=cached->mImpl->key;}
+    if(!plan->existing)
+    {
+        plan->key=source->mImpl->key;plan->key.sampler=(__bridge void*)native;
+        if(auto found=state->lookup.find(plan->key);found!=state->lookup.end())plan->existing=found->second.lock();
+    }
+    if(!plan->existing)plan->bytes=state->encoders[plan->key.pbr?1:0].encodedLength;
+    return std::shared_ptr<const ALMetalWorldResourcePreparation>(new ALMetalWorldResourcePreparation(std::move(plan)));
+}
+catch(const std::bad_alloc&){reason(failure,ALMetalWorldResourceFallback::host_allocation);if(error)error->clear();return {};}
+bool ALMetalWorldResources::validatePreparations(
+    std::span<const std::shared_ptr<const ALMetalWorldResourcePreparation>> plans,std::string* error)const
+{
+    const auto& state=mImpl->state;std::size_t count=0,bytes=0;
+    for(const auto& plan:plans)
+    {
+        if(!plan||plan->mImpl->state!=state||plan->mImpl->epoch!=state->epoch)
+        {fail(error,"Native resource preparation proof is stale");return false;}
+        if(plan->mImpl->bytes)
+        {
+            if(count==std::numeric_limits<std::size_t>::max()||plan->mImpl->bytes>std::numeric_limits<std::size_t>::max()-bytes)
+            {fail(error,"Native resource preparation size overflows");return false;}
+            ++count;bytes+=plan->mImpl->bytes;
+        }
+    }
+    const auto live=state->budget->tables.load(std::memory_order_relaxed),used=state->budget->bytes.load(std::memory_order_relaxed);
+    if(live>state->limits.maximum_tables||count>state->limits.maximum_tables-live||
+       used>state->limits.maximum_buffer_bytes||bytes>state->limits.maximum_buffer_bytes-used)
+    {fail(error,"Native world resource table capacity is exhausted");return false;}
+    return true;
+}
 std::shared_ptr<const ALMetalWorldResourceTable> ALMetalWorldResources::prepare(
     const std::shared_ptr<const ALMetalWorldResourceSource>& source,const ALMetalSamplerState& sampler,std::string* error,ALMetalWorldResourceFallback* failure)
+{
+    const auto& state=mImpl->state;
+    if(state->force_failure)
+    {state->force_failure=false;++state->stats.requests;rejected(*state,ALMetalWorldResourceFallback::injected,failure);fail(error,"Forced optional native resource preparation failure");return {};}
+    // Preserve the existing allocation-free ordinary bind fast path. Both
+    // direct preparation and read-only planning share its exact proof.
+    if(auto table=cachedSourceTable(source,sampler))
+    {++state->stats.requests;++state->stats.cache_hits;reason(failure,ALMetalWorldResourceFallback::none);return table;}
+    ALMetalWorldResourceFallback why=ALMetalWorldResourceFallback::none;
+    auto plan=preflight(source,sampler,error,&why);
+    if(plan)return prepare(*plan,error,failure);
+    ++mImpl->state->stats.requests;rejected(*mImpl->state,why,failure);return {};
+}
+std::shared_ptr<const ALMetalWorldResourceTable> ALMetalWorldResources::prepare(
+    const ALMetalWorldResourcePreparation& preparation,std::string* error,ALMetalWorldResourceFallback* failure)
 try
 {
     reason(failure,ALMetalWorldResourceFallback::none);
     const auto& state=mImpl->state;++state->stats.requests;
     if(state->force_failure){state->force_failure=false;rejected(*state,ALMetalWorldResourceFallback::injected,failure);fail(error,"Forced optional native resource preparation failure");return {};}
-    id<MTLSamplerState> native=(__bridge id<MTLSamplerState>)sampler.nativeHandle();
-    // These tables were installed only after validating this immutable
-    // source's complete native tuple. A live exact context, current epoch and
-    // retained sampler identity preserve that proof without copying/comparing
-    // 32 views or asking Objective-C for immutable device properties again.
-    if(state->supported && source && sampler.supportsArgumentBuffers() && native)
-        for(const auto& table:source->mImpl->tables)
-            if(sameContext(table->mImpl->context,state) &&
-               table->mImpl->epoch==state->epoch && table->mImpl->key.sampler==(__bridge void*)native)
-            {++state->stats.cache_hits;return table;}
-    if(!state->supported ||!source ||source->mImpl->device!=(__bridge void*)state->device ||!sampler.supportsArgumentBuffers() ||!native ||native.device!=state->device)
-    {rejected(*state,state->supported?ALMetalWorldResourceFallback::validation:ALMetalWorldResourceFallback::unsupported,failure);fail(error,"Native world resource preparation is unsupported or invalid");return {};}
-    Key key=source->mImpl->key;key.sampler=(__bridge void*)native;
+    const auto& plan=*preparation.mImpl;
+    if(plan.state!=state||plan.epoch!=state->epoch)
+    {rejected(*state,ALMetalWorldResourceFallback::validation,failure);fail(error,"Native resource preparation proof is stale");return {};}
+    const auto& source=plan.source;const auto native=plan.sampler;const auto& key=plan.key;
     auto& cached=source->mImpl->tables;
     std::erase_if(cached,[&](const auto& table){return table->mImpl->context.expired()||
         (sameContext(table->mImpl->context,state)&&(table->mImpl->epoch!=state->epoch||table->mImpl->key.sampler!=key.sampler));});
-    if(auto at=state->lookup.find(key);at!=state->lookup.end())
+    auto existing=plan.existing;
+    if(!existing)if(auto at=state->lookup.find(key);at!=state->lookup.end())existing=at->second.lock();
+    if(existing)
     {
-        if(auto table=at->second.lock()){++state->stats.cache_hits;if(cached.size()==4)cached.erase(cached.begin());cached.push_back(table);return table;}
-        state->lookup.erase(at);
+        ++state->stats.cache_hits;
+        if(std::none_of(cached.begin(),cached.end(),[&](const auto& table){return table==existing;}))
+        {if(cached.size()==4)cached.erase(cached.begin());cached.push_back(existing);}
+        return existing;
     }
     auto encoder=state->encoders[key.pbr?1:0];const std::size_t length=encoder.encodedLength;
     const auto live=state->budget->tables.load(std::memory_order_relaxed),bytes=state->budget->bytes.load(std::memory_order_relaxed);
