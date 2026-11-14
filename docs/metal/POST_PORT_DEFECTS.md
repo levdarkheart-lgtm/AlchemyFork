@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-177 -->
+<!-- next-defect-id: PPD-178 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4494,3 +4494,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Independent integration review reported the premature count; new path remains defaultOFF.
 - 2026-11-14: Bound draws now accumulate locally and publish at successful finishCommandBuffer boundary, with setup-attempt and accepted-render semantics documented. This is not a GPU-completion count. Build9/native execution pending.
+
+
+## PPD-177 — Native source FrameView lacks its narrow encoder declaration access
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex source-row integration
+- Discovered: 2026-11-14
+- Original reference: Native source resources must be declared against the exact command/encoder while ordinary binding changes keep wrapper barriers.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), required build9 at244ed38006: doctor/configure0, build1 after13.687s. almetalworldsourcepages.mm129/131 calls existing private nativeCommandBufferForIndirect/nativeHandleForResources; ALMetalWorldSourceFrameView was not added to the narrow friend list. MSL compiled before the C++ failure.
+- Next action: Grant only the source FrameView the existing private native bridge, preserving public encoder encapsulation, then rerun required build/native checks at a new clean source.
+- Verification: Compiler failure reproduced; receipt frozen-source-build-9.json and log retained privately.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered exact compile failure before repair. No native test/runtime success is claimed for this checkpoint.
