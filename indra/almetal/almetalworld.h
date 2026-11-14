@@ -30,6 +30,7 @@
 
 struct ALMetalWorldModernSkyScene;
 class ALMetalShadowSourceRecord;
+class ALMetalWorldViewInputs;
 class ALMetalPreparedWorldView;
 class ALMetalWorldVisibilityView;
 class ALMetalWorldMaterialSource;
@@ -2659,8 +2660,17 @@ public:
         std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results =
             nullptr);
 
-    // Consume a completed CPU preparation ticket. Its immutable input lease
-    // is retained by the native command through actual GPU completion.
+    // Consume private immutable owned storage already shape-validated by adopt.
+    // Geometry, matrices and native resources are still validated per draw.
+    // Commands retain only the packet's native resource owner; CPU source
+    // descriptions and copied arrays are needed only through this call.
+    std::unique_ptr<ALMetalRenderTarget> renderOwnedInputs(
+        const ALMetalWorldViewInputs& inputs,
+        std::string* error = nullptr,
+        std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results = nullptr);
+
+    // Consume a completed CPU preparation ticket. Its native resource lease
+    // is retained through actual completion; CPU inputs last through encoding.
     std::unique_ptr<ALMetalRenderTarget> renderPrepared(
         const ALMetalPreparedWorldView& prepared,
         std::string* error = nullptr,
@@ -3049,6 +3059,7 @@ private:
     std::unique_ptr<ALMetalRenderTarget> renderInternal(
         const ALMetalWorldGBufferScene& scene,
         const ALMetalPreparedWorldView* prepared,
+        bool validated_shape,
         std::string* error,
         std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results);
     std::unique_ptr<ALMetalRenderTarget> renderExposureInternal(

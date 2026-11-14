@@ -1134,7 +1134,7 @@ TEST_CASE("Actual compact source and group descriptions retire before native com
             auto ready=work->finish(&f.error);INFO(f.error);REQUIRE(ready);
             target=renderer->renderPrepared(*ready,&f.error);
         }
-        else target=renderer->render(inputs->scene(),&f.error);
+        else target=renderer->renderOwnedInputs(*inputs,&f.error);
         INFO(f.error);REQUIRE(target);
         auto completion=renderer->commandBatchCompletion();REQUIRE(completion);CHECK_FALSE(completion->isComplete());
         REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,capture.batches,capture.source_references,capture.draw_order,queries));
@@ -1656,6 +1656,7 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
     auto frame_data=ALMetalWorldFrameData::create(*f.device,&f.error);
     INFO(f.error);REQUIRE(main);REQUIRE(probes);REQUIRE(frame_data);
     main->setFrameData(frame_data);probes->setFrameData(frame_data);
+    U64 native_epoch=0;
     struct Group
     {
         std::shared_ptr<ALNativePublication::State> state=std::make_shared<ALNativePublication::State>();
@@ -1697,25 +1698,32 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
             struct Costs
             {
                 std::array<double,repetitions> cpu{},encode{},complete{},gpu{};
-                U64 group_draws=0,source_publications=0,source_reads=0,dependency_walks=0,image_reads=0;
+                U64 group_draws=0,source_publications=0,source_only_publications=0,source_reads=0,dependency_walks=0,image_reads=0;
                 U64 group_seals=0,group_declines=0,published_bytes=0,gpu_ready=0;
             };
             std::array<Costs,2> costs;
             for(U32 sample=0;sample<warmups+repetitions;++sample)
             {
                 std::array<std::array<GroupPublication::Image,3>,2> verified;
+                // Both arms model this same viewer frame. Alternating their
+                // execution order must not age one arm's source cache by an
+                // artificial three frames between consecutive samples.
+                ++Inputs::gFrameCount;
                 // Alternate the pair's order to reduce a fixed warm-cache or
                 // thermal ordering advantage without mixing their producers.
                 for(U32 position=0;position<2;++position)
                 {
                     const U32 mode=(sample+position)%2;auto& arm=arms[mode];
                     const auto before_reads=f.reads();const auto source_serial=Inputs::sNativeSceneSerial;
+                    const auto source_rows_before=Inputs::ALSceneGroupPublicationNative::statistics.cpu_source_builds;
                     const auto bytes_before=frame_data->stats().published_bytes;
                     U64 admitted=0,seals=0,declines=0;
                     std::array<std::unique_ptr<ALMetalRenderTarget>,3> targets;
                     std::array<std::shared_ptr<const ALMetalCommandCompletion>,3> completions;
                     const auto begin=std::chrono::steady_clock::now();const auto begin_cpu=cpu_ns();
-                    ++Inputs::gFrameCount;frame_data->beginFrame(Inputs::gFrameCount);
+                    // Native constants belong to this arm only; main and its
+                    // two probes share an epoch, but paired arms never do.
+                    frame_data->beginFrame(++native_epoch);
                     if(condition==0)
                     {
                         // Cold source/packet caches, with the producer event
@@ -1790,7 +1798,13 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
                             {cost.gpu[slot]+=gpu.elapsed_nanoseconds/1e6;++cost.gpu_ready;}
                         }
                         cost.group_draws+=admitted;cost.group_seals+=seals;cost.group_declines+=declines;
-                        cost.source_publications+=Inputs::sNativeSceneSerial-source_serial;
+                        const U64 serials=Inputs::sNativeSceneSerial-source_serial;
+                        const U64 expected_sources=condition==0?count:condition==1?0:arm.groups.size();
+                        // Each successful native group seal consumes one
+                        // serial in addition to actual source publications.
+                        REQUIRE(serials>=seals);CHECK(serials-seals==expected_sources);
+                        if(mode)CHECK(Inputs::ALSceneGroupPublicationNative::statistics.cpu_source_builds-source_rows_before==expected_sources);
+                        cost.source_publications+=serials;cost.source_only_publications+=serials-seals;
                         cost.source_reads+=after_reads[0]-before_reads[0];cost.dependency_walks+=after_reads[1]-before_reads[1];
                         cost.image_reads+=after_reads[2]-before_reads[2];
                         cost.published_bytes+=frame_data->stats().published_bytes-bytes_before;
@@ -1820,9 +1834,11 @@ TEST_CASE("Actual native group full capture and encode costs include cold warm c
                     <<" gpu_sum_max_ms="<<*std::max_element(cost.gpu.begin(),cost.gpu.end())
                     <<" gpu_ready_commands="<<cost.gpu_ready<<" admitted_native_draws="<<cost.group_draws
                     <<" group_seal_attempts="<<cost.group_seals<<" group_declines="<<cost.group_declines
-                    <<" source_and_group_serials="<<cost.source_publications<<" source_getter_reads="<<cost.source_reads
+                    <<" source_and_group_serials="<<cost.source_publications<<" source_only_publications="<<cost.source_only_publications
+                    <<" source_getter_reads="<<cost.source_reads
                     <<" dependency_walks="<<cost.dependency_walks<<" image_getter_reads="<<cost.image_reads
                     <<" native_frame_bytes="<<cost.published_bytes
+                    <<" paired_logical_frame=1 separate_arm_native_epochs=1"
                     <<" geometry_creation_excluded=1 identity_camera=1 whole_viewer_fps_claim=0\n";
                 for(U32 sample=0;sample<repetitions;++sample)
                     std::cout<<"NATIVE_GROUP_PATH_RAW draws_per_view="<<count<<" views="<<views
@@ -1842,6 +1858,7 @@ TEST_CASE("Actual published compact capture complete path costs",
     auto probes=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);
     auto data=ALMetalWorldFrameData::create(*f.device,&f.error);
     INFO(f.error);REQUIRE(main);REQUIRE(probes);REQUIRE(data);main->setFrameData(data);probes->setFrameData(data);
+    U64 native_epoch=0;
     struct Arm
     {
         Inputs::LLPipeline pipeline;
@@ -1874,6 +1891,7 @@ TEST_CASE("Actual published compact capture complete path costs",
             for(U32 sample=0;sample<samples+warmups;++sample)
             {
                 std::array<std::array<GroupPublication::Image,3>,2> pixels;
+                ++Inputs::gFrameCount; // One logical viewer frame for the paired arms.
                 for(U32 position=0;position<2;++position)
                 {
                     const U32 mode=(sample+position)%2;auto& arm=arms[mode];
@@ -1884,7 +1902,7 @@ TEST_CASE("Actual published compact capture complete path costs",
                     std::array<std::unique_ptr<ALMetalRenderTarget>,3> targets;
                     std::array<std::shared_ptr<const ALMetalCommandCompletion>,3> completions;
                     const auto begin=std::chrono::steady_clock::now();const auto begin_cpu=cpu_ns();
-                    ++Inputs::gFrameCount;data->beginFrame(Inputs::gFrameCount); // Once for main plus both probes.
+                    data->beginFrame(++native_epoch); // Independent arm; shared by main plus both probes.
                     if(condition==0)for(auto* info:arm.sources)info->state->invalidate();
                     if(condition==2)
                     {
@@ -1911,7 +1929,7 @@ TEST_CASE("Actual published compact capture complete path costs",
                         INFO(f.error);REQUIRE(inputs);scene={};
                         auto& renderer=view==0?*main:*probes;
                         REQUIRE(renderer.beginCommandBatch("Actual published compact capture cost",&f.error));
-                        targets[view]=renderer.render(inputs->scene(),&f.error);INFO(f.error);REQUIRE(targets[view]);
+                        targets[view]=renderer.renderOwnedInputs(*inputs,&f.error);INFO(f.error);REQUIRE(targets[view]);
                         completions[view]=renderer.commandBatchCompletion();
                         // CPU retirement belongs to the measured interval and
                         // does not await GPU completion or retain descriptions
@@ -1943,7 +1961,8 @@ TEST_CASE("Actual published compact capture complete path costs",
                         cost.cpu_description_owners+=cpu_owners;cost.native_tuple_owners+=native_owners;
                         cost.source_getters+=after_reads[0]-before_reads[0];cost.dependencies+=after_reads[1]-before_reads[1];
                         cost.image_getters+=after_reads[2]-before_reads[2];
-                        if(condition==0)CHECK(Inputs::sNativeSceneSerial-before_serial==count);
+                        const U64 expected_sources=condition==0?count:condition==1?0:(count+15)/16;
+                        CHECK(Inputs::sNativeSceneSerial-before_serial==expected_sources);
                         if(mode)CHECK(raw_bytes==0);else CHECK(reference_bytes==0);
                     }
                 }
@@ -1967,6 +1986,7 @@ TEST_CASE("Actual published compact capture complete path costs",
                     <<" native_frame_bytes="<<cost.native_bytes<<" source_getters="<<cost.source_getters
                     <<" dependency_walks="<<cost.dependencies<<" image_getters="<<cost.image_getters
                     <<" group_path=0 unique_drawinfo_sources="<<count
+                    <<" paired_logical_frame=1 separate_arm_native_epochs=1"
                     <<" geometry_texture_drawinfo_creation_excluded=1 viewer_dependency_frontier=typed_native_signals whole_viewer_fps_claim=0\n";
                 for(U32 sample=0;sample<samples;++sample)
                     std::cout<<"NATIVE_COMPACT_CAPTURE_RAW draws_per_view="<<count<<" views="<<views

@@ -146,3 +146,23 @@ and queued cancellation lifetime coverage. All source frozen for build6; no
 new cost result/acceptance claimed. Next defect171. Keep all cost5 adverse rows.
 Next GPU source-row/inherited-global audits stay read-only until this actual
 frontier cost is resolved; no one-source-one-ICB-execute default is assumed.
+
+
+Clean99d33 build6 doctor/configure/build0/0/0 (28.001s). Actual-owner native2471
+assertions/28cases passes; unchanged almetal test binary reuses exact Source5
+1588/7,12379/7,4721/1 receipts (not falsely rerun). Actual-source costs6 exit0,
+but warm512 oneview still0.631895->0.688813ms; PPD170 allocation repair alone
+does not establish net benefit.24pairs retained including adverse rows.
+
+PPD171 fixture review explains3264churn publications despite only384updates:
+paired mode order made source-cache gaps3ticks against age2. Normalize logical
+viewer frame once/pair, independent native FrameData epochs per arm; do not
+change production age policy. Add exact publication assertions. Old churn rows
+with collateral eviction are qualified, not erased; warm0publication rows stand.
+PPD172 scalar render discarded private owned-input type and repeated whole-view
+permutation/source validation. Explicit renderOwnedInputs now preserves it while
+retaining per-draw validation; public Scene still validates fully. Prepared and
+Preparation.create already qualified their inputs; no algorithm change there.
+New malformed borrowed-copy, owned per-draw, parity/cancel/lifetime tests frozen.
+Root production and both cost arms use same typed entry. All assignments returned;
+next clean build7/native/full costs. Next defect173; no new acceptance claimed.

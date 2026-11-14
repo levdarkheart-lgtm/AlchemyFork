@@ -9595,19 +9595,30 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     const ALMetalWorldGBufferScene& scene, std::string* error,
     std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
 {
-    return renderInternal(scene, nullptr, error, visibility_results);
+    return renderInternal(scene, nullptr, false, error, visibility_results);
+}
+
+std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderOwnedInputs(
+    const ALMetalWorldViewInputs& inputs, std::string* error,
+    std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
+{
+    // Only adopt can construct this type, and it owns the validated immutable
+    // raw/reference/order/query arrays. Do not discard that shape boundary or
+    // retain the CPU packet on a native command after synchronous encoding.
+    return renderInternal(inputs.scene(), nullptr, true, error, visibility_results);
 }
 
 std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderPrepared(
     const ALMetalPreparedWorldView& prepared, std::string* error,
     std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
 {
-    return renderInternal(prepared.scene(), &prepared, error, visibility_results);
+    return renderInternal(prepared.scene(), &prepared, true, error, visibility_results);
 }
 
 std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal(
     const ALMetalWorldGBufferScene& scene,
     const ALMetalPreparedWorldView* prepared,
+    bool validated_shape,
     std::string* error,
     std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
 {
@@ -9629,7 +9640,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     const std::size_t draw_count = scene.drawCount();
     if (!prepared)
     {
-        if (!alMetalValidateWorldView(scene, error)) return nullptr;
+        if (!validated_shape && !alMetalValidateWorldView(scene, error)) return nullptr;
         for (std::size_t index = 0; index < draw_count; ++index)
             if (!alMetalValidateWorldBatch(scene, scene.draw(index), error)) return nullptr;
     }

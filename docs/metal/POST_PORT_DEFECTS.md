@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-171 -->
+<!-- next-defect-id: PPD-173 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4374,3 +4374,44 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Registered the real-frontier regression before ownership-allocation repair. Preserve all24actual and45component cost pairs; no default compact performance acceptance is claimed from component-only gains.
 - 2026-11-14: CPU-only WorldCpuLease vector+16-slot retention cache implemented; native aggregate unchanged. Actual-owner fixture shares the production helper, adds17source collision/nonadjacent retention and cancellation/abandon coverage; execution/build6 pending.
+
+
+## PPD-171 — Paired capture cost arms advance source-cache age twice per viewer frame
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex actual native cost fixture
+- Discovered: 2026-11-14
+- Original reference: Native source working-set age is measured in viewer frames (default2); alternating benchmark arms must each advance one logical frame per sample while FrameData independently protects all native consumers.
+- Evidence: [Compact source/view work](work/active/apple-first-compact-source-instances-20261114.md). Actual cost6 churn512 updates32sources/sample but reports3264publications across12samples, rather than384; raw samples alternate ~512 versus32 publications. Both actual-compact and native-group cost loops increment Inputs::gFrameCount once per arm, and alternating order creates a3tick gap. The first dirty-source admission trims unchanged entries older than2 before their warm touches.
+- Next action: Advance source/CPU-cache logical viewer frame once per paired sample; keep independent native FrameData generations per measured arm so constants/pages cannot cross-arm deduplicate. Apply the same normalization to both actual-source and native-group costs and retain raw publication counts.
+- Verification: Fixture epoch-domain defect, not a demonstrated viewer cache bug. Warm rows with zero publications and correctness receipts remain valid; churn comparisons with collateral age eviction need qualified replacement evidence. Do not raise production age limits to hide it.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered the exact3264=6*512+6*32 source census before timing-fixture normalization. Prior costs retained; no live viewer/frame regression attributed to this benchmark artifact.
+- 2026-11-14: Both actual and group fixtures now advance one paired logical viewer frame with independent native epochs per arm. Exact cold/warm/churn source-publication assertions authored; production max_age2 unchanged. Build7/retest pending.
+
+
+## PPD-172 — Owned compact packets are fully revalidated through the borrowed-scene entry point
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex immutable native input consumption
+- Discovered: 2026-11-14
+- Original reference: ALMetalWorldViewInputs has private construction/immutable owned arrays; the scalar consumer should preserve that qualified ownership boundary, following the existing prepared path, rather than repeat complete ordered-shape validation as if receiving a mutable borrowed scene.
+- Evidence: [Compact source/view work](work/active/apple-first-compact-source-instances-20261114.md). adopt validates the complete raw/ref permutation, ownership, query order and supported sources. Production then discards the type and calls render(inputs.scene()), which repeats the O(N) permutation/source walk. The if(!prepared) branch repeats this scan for scalar Scene consumption. Prepared consumption already skips it; borrowed direct scenes still require that validation.
+- Next action: Add an explicit owned-input render entry point that preserves the immutable type, avoid the duplicate shape scan for owned scalar consumption, preserve existing prepared behavior/per-draw validation and cancellation/epoch checks, and keep arbitrary borrowed Scene rendering fully validated. Update real capture/cost callers and test output/lifetime equivalence.
+- Verification: Source-confirmed redundant work on compact views, identified while actual warm512 reference capture remains slower after PPD170. Its net timing contribution is unproved until full actual-source costs rerun; no FPS claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before introducing the narrow typed consumer; no untrusted/public Scene validation is waived and no geometry/matrix/shader arithmetic change is intended.
+
+- 2026-11-14: Exact99d33 source review corrects the initial scope assumptions: prepare.mm validates the whole view only in adopt, and renderInternal guards full shape validation with if(!prepared). Create/prepared already use qualified inputs; repair only the scalar type-discarding entry. No create/prepared algorithm change.
+
+- 2026-11-14: Explicit renderOwnedInputs entry implemented; private shape qualification is inaccessible to borrowed Scene callers. Per-draw checks remain; new malformed borrowed-copy and owned per-draw rejection/parity/cancel/lifetime cases authored. Both actual/native packet cost arms use the same typed entry. Build7 pending.

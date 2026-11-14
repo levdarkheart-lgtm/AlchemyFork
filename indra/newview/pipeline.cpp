@@ -16376,7 +16376,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     const U64 native_draws_before = count_native_draws
         ? ALMetalDevice::encodedDrawCallCount() : 0;
     auto target = prepared ? capture.renderer->renderPrepared(*prepared, &error, &visibility_results)
-        : inputs && !prepare_world ? capture.renderer->render(scene, &error, &visibility_results) : nullptr;
+        : inputs && !prepare_world ? capture.renderer->renderOwnedInputs(*inputs, &error, &visibility_results) : nullptr;
     if (target)
     {
         if (prepared)

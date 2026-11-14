@@ -316,6 +316,9 @@ try
     impl->current_epoch = std::move(current_epoch);
     impl->prepared->current_epoch = impl->current_epoch;
     const auto& scene = impl->prepared->inputs->scene();
+    // Private adoption already validated this immutable storage permutation,
+    // ownership and query shape. Keep that typed boundary; layout checks and
+    // runJob's per-record source/matrix/resource validation remain unchanged.
     // A single record cannot be usefully divided. The shared frame owner,
     // rather than this helper, makes all other workload/admission decisions.
     const auto count = scene.drawCount();
