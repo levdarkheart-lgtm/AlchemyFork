@@ -169,3 +169,32 @@ True compact cohort Scene transport is explicitly later; current material-group
 bridge still packs existing per-source refs/candidates, while avoiding LL getter/
 factory/dependency walks and repeated matrices. Do not present bridge as final
 O(groups) rendering or claim CPU-cull/GPU-discovery work already finished.
+
+## Combined command-bank/material-group freeze (next build14)
+
+Root integrated deviceproof2e77c5f3eb as8d6679a512, commandbanks86b2d22797 as
+e9af751f1e, actualbank-cost4bc168cf55 as78668e56b2, and completed material
+group producer/glueab05126682 as9ad1350a53. All are still unbuilt/untested at
+this integration. Root CMake includes the native command helper/fixture.
+
+Command banks inherit exact view/pipeline bindings, preserve source/material IDs
+and query/cull/raw ordering, hold native-only immutable banks/index allocations
+with64MiB combined unique live/retired footprint, and charge cold40logical
+indexed-argument bytes/draw separately from driver allocation. Failed/short banks
+use ordinary native shaders. SourceRows scalar and bank diagnostics remainOFF.
+PPD187 encodes copied validated bank keys after callback; PPD188 validates
+unique buffers through bounded weak native device proof, no producer pin.
+Distinct-GPU negative execution remains unavailable on default-only M1 factory.
+
+Material groups now seal exact12Legacy+PBRopaque/mask pass membership after
+LLVBflush. Warm cohorts bypass LL drawinfo getters/factories/dependency walks
+and compute/pin matrices/CPUowner/nativeTuple once per group. They still emit
+existing per-source refs/candidates; full cohort Scene transport/prevalidation
+is later work. PPD186 guards exact post-publish admission ownership; PPD189
+preserves native direct-probe null failure. Separate PBR glow paths retained.
+
+Next execute required doctor/configure/build14/verify_app at clean source; real
+API/GPU command-bank+device/group cases, earlier owner/row/resource/oldlibrary
+checks; actualbank costs48pairs plus retained negative scalar baseline; then
+combined contained suites/strict audit. No default activation from component-only
+success, no final staging/product/whole-viewer performance claim.
