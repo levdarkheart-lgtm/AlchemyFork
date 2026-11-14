@@ -68,7 +68,7 @@ scene LOD/occlusion/texture priority/RLVa policies cannot be silently removed.
 Owner testing will assess the combined engine across representative scenes,
 frame pacing, image/feature correctness, streaming and memory. Partial helpers,
 nominal Metal4 adoption, CPU microbenchmarks and a shadow-only result cannot
-establish the product objective. Next global defect ID190; root allocates IDs.
+establish the product objective. Next global defect ID191; root allocates IDs.
 
 ## First coherent freeze
 
@@ -159,7 +159,7 @@ notes0c7aa0/05e63bc/7c7214 registerPPD187–189; integrate notes before next
 source freeze so history/IDs stay contiguous. PPD187 now uses copied/pinned
 command keys after callback; PPD188 caches bounded weak native device proof,
 distinct-GPU negative unavailable; PPD189 preserves direct-probe null failure.
-Next190global, root assigns. No defaultactivation/push or finalapp staged.
+Next191global, root assigns. No defaultactivation/push or finalapp staged.
 
 Active ownership: opaque owns pipeline.cpp group glue only in material-group
 tree; architecture owns group publication/capture/cull/pool+actualowner fixture

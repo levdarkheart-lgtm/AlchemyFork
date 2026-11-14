@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-190 -->
+<!-- next-defect-id: PPD-191 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4734,3 +4734,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Producer and glue authors reported before freeze.
+
+
+## PPD-190 — Material retirement fixture creates a fresh raw read before checking in-place reuse
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex material-group native fixture
+- Discovered: 2026-11-14
+- Original reference: Cache-only retirement tests must distinguish real generation leases and the established raw-handle frame-read guard.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Build14/static69041 and new native bank1942/5 pass; actual-publication suite has42/43 cases passing,9223/9225 assertions. Both failures are material churn test1554 expecting wrapper identity unchanged. Its immediately preceding getMetalVertexBuffer() records a fresh last_read_frame; upload_metal_buffer deliberately orphans an incomplete raw read even when no lease remains. leased_orphans stays unchanged, so idle-cache lease retention is not established.
+- Next action: Snapshot the cached weak-layout prototype pointer for identity before write, avoiding a new raw read; retain leased-orphan, restoration, pixel and COW assertions and rerun. Do not weaken the renderer's raw-read protection to satisfy the fixture.
+- Verification: Two executed fixture failures with source-confirmed observation side effect; no viewer defect attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before fixing the native retirement observation.
