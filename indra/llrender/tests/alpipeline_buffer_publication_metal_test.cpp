@@ -2254,3 +2254,292 @@ TEST_CASE("Actual published compact capture complete path costs",
         }
     }
 }
+
+TEST_CASE("Actual Legacy and PBR source rows include capture publication encoding and retirement costs",
+          "[almetal][.native-source-rows-cost]")
+{
+    // Geometry/material construction is an explicit fixture frontier. Every
+    // sample charges the actual factory, model registration, metadata, native
+    // row/page acquisition, command encoding, CPU retirement and submission.
+    // This is a complete contained path comparison, never viewer FPS evidence.
+    constexpr U32 samples=12,warmups=2;
+    const auto cpu_ns=[]
+    {
+        timespec value{};REQUIRE(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&value)==0);
+        return U64(value.tv_sec)*1'000'000'000ULL+value.tv_nsec;
+    };
+    const auto median=[](auto values)
+    {std::sort(values.begin(),values.end());return (values[5]+values[6])*.5;};
+    for(U32 family:{1u,2u})
+    {
+        std::vector<std::unique_ptr<Inputs::LLFetchedGLTFMaterial>> material_owners;
+        GroupPublication f;ALNativeRegionModel region;
+        REQUIRE(region.update(f.model,LLVector3(0.f,0.f,0.f)));
+        Inputs::gSavedSettings.native_resources=false;Inputs::gSavedSettings.native_visibility=false;
+        auto main=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);
+        auto probes=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);
+        auto data=ALMetalWorldFrameData::create(*f.device,&f.error);
+        INFO(f.error);REQUIRE(main);REQUIRE(probes);REQUIRE(data);
+        main->setFrameData(data);probes->setFrameData(data);U64 native_epoch=0;
+        struct Arm
+        {
+            Inputs::LLPipeline pipeline;
+            std::vector<Inputs::LLDrawInfo*> sources;
+            std::vector<ALMetalWorldVisibilityQuery> queries;
+        };
+        struct ContextCosts
+        {
+            U64 requested=0,bound=0,fallback=0,setup_failures=0;
+            U64 page_requests=0,hits=0,publications=0,failures=0,encoded_bytes=0;
+            U64 copied_page_bytes=0,copied_bank_bytes=0,view_bytes=0,page_allocations=0,bank_allocations=0;
+            std::size_t maximum_rows=0,maximum_live_metadata_bytes=0;
+        };
+        for(U32 count:{1u,4u,16u,512u})
+        {
+            std::array<Arm,2> arms;
+            for(auto& arm:arms)for(U32 source=0;source<count;++source)
+            {
+                auto& info=f.draw();
+                if(family==2)
+                {
+                    info.mVertexBuffer=f.buffer(true,LLVertexBuffer::MAP_TANGENT);
+                    std::array<LLVector4a,3> tangents;for(auto& tangent:tangents)tangent.set(1.f,0.f,0.f,1.f);
+                    info.mVertexBuffer->setTangentData(tangents.data());info.mVertexBuffer->unmapBuffer();
+                    auto material=std::make_unique<Inputs::LLFetchedGLTFMaterial>();
+                    info.mGLTFMaterial.value=material.get();material_owners.push_back(std::move(material));
+                }
+                arm.sources.push_back(&info);
+            }
+            for(U32 views:{1u,3u})for(U32 condition=0;condition<3;++condition)
+            {
+                CAPTURE(family,count,views,condition);
+                for(auto& arm:arms)for(auto* info:arm.sources)info->state->invalidate();
+                struct Costs
+                {
+                    std::array<double,samples> cpu{},encode{},complete{},gpu{};
+                    std::array<U64,samples> publication_samples{},requested_samples{},bound_samples{},fallback_samples{};
+                    std::array<std::array<U64,samples>,2> page_publication_samples{};
+                    U64 publications=0,native_frame_bytes=0,raw_bytes=0,reference_bytes=0,order_bytes=0;
+                    U64 candidate_bytes=0,region_bytes=0,cpu_pins=0,native_pins=0,getters=0,dependencies=0,image_getters=0,gpu_ready=0;
+                    U64 enabled_views=0,registered_models=0,ordinary_requests=0,candidates=0,unsupported=0,owner_skips=0,metadata_failures=0;
+                    std::array<ContextCosts,2> contexts;
+                };
+                std::array<Costs,2> costs;
+                for(U32 sample=0;sample<samples+warmups;++sample)
+                {
+                    std::array<std::array<GroupPublication::Image,3>,2> pixels;
+                    std::array<std::array<std::array<std::uint64_t,2>,3>,2> query_counts{};
+                    ++Inputs::gFrameCount; // Paired arms see ONE logical viewer/source-cache frame.
+                    for(U32 position=0;position<2;++position)
+                    {
+                        const U32 mode=(sample+position)%2;auto& arm=arms[mode];
+                        CAPTURE(mode,sample);
+                        auto& capture=*arm.pipeline.mMetalWorldSimpleCapture;
+                        const auto before_reads=f.reads();const auto before_serial=Inputs::sNativeSceneSerial;
+                        const auto before_bytes=data->stats().published_bytes;
+                        const auto before_capture=capture.source_rows_stats;
+                        const std::array<ALMetalWorldSourceDrawStats,2> before_context{main->worldSourceStats(),probes->worldSourceStats()};
+                        U64 raw_bytes=0,reference_bytes=0,order_bytes=0,candidate_bytes=0,region_bytes=0,cpu_pins=0,native_pins=0;
+                        std::array<std::unique_ptr<ALMetalRenderTarget>,3> targets;
+                        std::array<std::shared_ptr<const ALMetalCommandCompletion>,3> completions;
+                        std::array<std::shared_ptr<ALMetalVisibilityResultBatch>,3> results;
+                        const auto begin=std::chrono::steady_clock::now();const auto begin_cpu=cpu_ns();
+                        data->beginFrame(++native_epoch); // Native constants never deduplicate between paired arms.
+                        if(condition==0)for(auto* info:arm.sources)info->state->invalidate();
+                        if(condition==2)
+                        {
+                            const LLColor4U tint=sample%2?LLColor4U(0,255,0,255):LLColor4U(0,0,255,255);
+                            const std::array<LLColor4U,3> changed{tint,tint,tint};
+                            for(U32 source=0;source<count;source+=16)
+                            {auto& vb=*arm.sources[source]->mVertexBuffer;vb.setColorData(changed.data());vb.unmapBuffer();}
+                        }
+                        for(U32 view=0;view<views;++view)
+                        {
+                            capture.clearDraws();capture.complete=true;
+                            capture.beginSourceRows(mode!=0);capture.compact_gbuffer_active=mode!=0;
+                            if(mode)capture.registerSourceModel(&f.model,region.snapshot());
+                            capture.world_resources=std::make_shared<Inputs::WorldResources>();
+                            for(auto* info:arm.sources)arm.pipeline.captureMetalPublishedWorldBatch(*info,family,false);
+                            REQUIRE(capture.complete);REQUIRE(capture.logicalDrawCount()==count);REQUIRE(capture.flushDrawOrder());
+                            raw_bytes+=capture.batches.size()*sizeof(ALMetalWorldSimpleBatch);
+                            reference_bytes+=capture.source_references.size()*sizeof(ALMetalWorldSourceReference);
+                            order_bytes+=capture.draw_order.size()*sizeof(ALMetalWorldDrawIndex);
+                            cpu_pins+=capture.cpu_sources?capture.cpu_sources->owners.size():0;
+                            native_pins+=capture.world_resources->owners.size();
+                            if(mode)
+                            {
+                                REQUIRE(capture.source_rows);REQUIRE(capture.source_rows->candidates.size()==count);
+                                REQUIRE(capture.source_rows->regions.size()==1);
+                                candidate_bytes+=count*sizeof(ALMetalWorldSourceView::Candidate);
+                                region_bytes+=sizeof(ALMetalWorldSourceRegion);
+                            }
+                            else REQUIRE_FALSE(capture.source_rows);
+                            arm.queries.resize(2);
+                            for(U32 query=0;query<2;++query)
+                            {
+                                auto& value=arm.queries[query];value={};
+                                std::memcpy(value.modelview_projection,f.model.getF32ptr(),sizeof(value.modelview_projection));
+                                value.center[0]=.35f;value.center[1]=-.5f;value.center[2]=.75f;
+                                value.half_extent[0]=value.half_extent[1]=value.half_extent[2]=.08f;
+                                value.batch_offset=query?count:count/2;value.fan=7;value.count_samples=1;
+                            }
+                            auto scene=f.scene(capture);scene.visibility_queries=arm.queries.data();scene.visibility_query_count=arm.queries.size();
+                            // Baseline is the currently enabled ordinary native
+                            // authored-batch consumer, not argument tables or
+                            // compact references detached from source capture.
+                            scene.material_argument_buffers=false;
+                            auto inputs=ALMetalWorldViewInputs::adopt(scene,std::move(capture.batches),
+                                std::move(capture.source_references),std::move(capture.draw_order),std::move(arm.queries),
+                                std::move(capture.cpu_sources),capture.world_resources,native_epoch,&f.error);
+                            INFO(f.error);REQUIRE(inputs);scene={};
+                            auto& renderer=view==0?*main:*probes;
+                            REQUIRE(renderer.beginCommandBatch("Actual Legacy/PBR source-row complete cost",&f.error));
+                            targets[view]=renderer.renderOwnedInputs(*inputs,&f.error,&results[view]);INFO(f.error);REQUIRE(targets[view]);REQUIRE(results[view]);
+                            completions[view]=renderer.commandBatchCompletion();
+                            REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,capture.batches,
+                                capture.source_references,capture.draw_order,arm.queries));
+                            capture.clearDraws();capture.world_resources=std::make_shared<Inputs::WorldResources>();
+                            REQUIRE(renderer.commitCommandBatch(&f.error));
+                        }
+                        const auto owner_cpu=cpu_ns()-begin_cpu;const auto encoded=std::chrono::steady_clock::now();
+                        REQUIRE(f.device->waitUntilIdle(&f.error));const auto completed=std::chrono::steady_clock::now();
+                        gGL.frameFences().release();
+                        const auto after_reads=f.reads();const auto after_capture=capture.source_rows_stats;
+                        const std::array<ALMetalWorldSourceDrawStats,2> after_context{main->worldSourceStats(),probes->worldSourceStats()};
+                        const U64 publications=Inputs::sNativeSceneSerial-before_serial;
+                        const U64 expected_sources=condition==0?count:condition==1?0:(count+15)/16;
+                        U64 requested=0,bound=0,fallback=0,setup_failures=0;
+                        for(U32 owner=0;owner<2;++owner)
+                        {
+                            requested+=after_context[owner].requested-before_context[owner].requested;
+                            bound+=after_context[owner].bound-before_context[owner].bound;
+                            fallback+=after_context[owner].fallback-before_context[owner].fallback;
+                            setup_failures+=after_context[owner].setup_failures-before_context[owner].setup_failures;
+                        }
+                        CHECK(requested==(mode?U64(count)*views:0));CHECK(bound==(mode?U64(count)*views:0));
+                        CHECK(fallback==0);CHECK(setup_failures==0);
+                        if(sample==warmups-1)for(U32 view=0;view<views;++view)
+                        {
+                            pixels[mode][view]=f.read(*targets[view]);
+                            for(U32 query=0;query<2;++query)REQUIRE(results[view]->wait(query,query_counts[mode][view][query],&f.error));
+                        }
+                        if(sample<warmups)
+                        {
+                            // Preserve actual first-use/native setup observations
+                            // instead of hiding them inside discarded warmups.
+                            std::cout<<"NATIVE_SOURCE_ROWS_WARMUP family="<<(family==1?"legacy":"pbr")
+                                <<" draws_per_view="<<count<<" views="<<views<<" condition="<<condition<<" mode="<<mode<<" sample="<<sample
+                                <<" owner_cpu_ms="<<owner_cpu/1e6
+                                <<" capture_adopt_encode_retire_ms="<<std::chrono::duration<double,std::milli>(encoded-begin).count()
+                                <<" completion_envelope_ms="<<std::chrono::duration<double,std::milli>(completed-begin).count()
+                                <<" source_publications="<<publications<<" requested="<<requested<<" bound="<<bound
+                                <<" fallback="<<fallback<<" setup_failures="<<setup_failures<<'\n';
+                        }
+                        else
+                        {
+                            CHECK(publications==expected_sources);const auto at=sample-warmups;auto& cost=costs[mode];
+                            cost.publication_samples[at]=publications;cost.requested_samples[at]=requested;
+                            cost.bound_samples[at]=bound;cost.fallback_samples[at]=fallback;
+                            cost.cpu[at]=owner_cpu/1e6;cost.encode[at]=std::chrono::duration<double,std::milli>(encoded-begin).count();
+                            cost.complete[at]=std::chrono::duration<double,std::milli>(completed-begin).count();
+                            for(U32 view=0;view<views;++view)
+                            {
+                                ALMetalCommandGPUTime time;
+                                if(completions[view]&&completions[view]->gpuTime(time)==ALMetalCommandTimingStatus::ready)
+                                {cost.gpu[at]+=time.elapsed_nanoseconds/1e6;++cost.gpu_ready;}
+                            }
+                            cost.publications+=publications;cost.native_frame_bytes+=data->stats().published_bytes-before_bytes;
+                            cost.raw_bytes+=raw_bytes;cost.reference_bytes+=reference_bytes;cost.order_bytes+=order_bytes;
+                            cost.candidate_bytes+=candidate_bytes;cost.region_bytes+=region_bytes;cost.cpu_pins+=cpu_pins;cost.native_pins+=native_pins;
+                            cost.getters+=after_reads[0]-before_reads[0];cost.dependencies+=after_reads[1]-before_reads[1];cost.image_getters+=after_reads[2]-before_reads[2];
+                            cost.enabled_views+=after_capture.enabled_views-before_capture.enabled_views;
+                            cost.registered_models+=after_capture.registered_models-before_capture.registered_models;
+                            cost.ordinary_requests+=after_capture.requested_ordinary_rows-before_capture.requested_ordinary_rows;
+                            cost.candidates+=after_capture.emitted_candidates-before_capture.emitted_candidates;
+                            cost.unsupported+=after_capture.unsupported_skips-before_capture.unsupported_skips;
+                            cost.owner_skips+=after_capture.owner_proof_skips-before_capture.owner_proof_skips;
+                            cost.metadata_failures+=after_capture.optional_metadata_failures-before_capture.optional_metadata_failures;
+                            for(U32 owner=0;owner<2;++owner)
+                            {
+                                const auto& previous=before_context[owner];const auto& current=after_context[owner];auto& context=cost.contexts[owner];
+                                context.requested+=current.requested-previous.requested;context.bound+=current.bound-previous.bound;
+                                context.fallback+=current.fallback-previous.fallback;context.setup_failures+=current.setup_failures-previous.setup_failures;
+                                const auto& a=previous.pages;const auto& b=current.pages;
+                                context.page_requests+=b.requests-a.requests;context.hits+=b.hits-a.hits;context.publications+=b.row_publications-a.row_publications;
+                                cost.page_publication_samples[owner][at]=b.row_publications-a.row_publications;
+                                context.failures+=b.failures-a.failures;context.encoded_bytes+=b.encoded_row_bytes-a.encoded_row_bytes;
+                                context.copied_page_bytes+=b.copied_page_bytes-a.copied_page_bytes;context.copied_bank_bytes+=b.copied_bank_bytes-a.copied_bank_bytes;
+                                context.view_bytes+=b.view_bytes-a.view_bytes;context.page_allocations+=b.page_allocations-a.page_allocations;
+                                context.bank_allocations+=b.bank_allocations-a.bank_allocations;
+                                context.maximum_rows=std::max(context.maximum_rows,b.rows);
+                                context.maximum_live_metadata_bytes=std::max(context.maximum_live_metadata_bytes,b.live_metadata_bytes);
+                            }
+                            if(mode)
+                            {
+                                CHECK(after_capture.enabled_views-before_capture.enabled_views==views);
+                                CHECK(after_capture.registered_models-before_capture.registered_models==views);
+                                CHECK(after_capture.emitted_candidates-before_capture.emitted_candidates==U64(count)*views);
+                                CHECK(raw_bytes==0);
+                            }
+                            else CHECK(reference_bytes==0);
+                        }
+                    }
+                    if(sample==warmups-1)for(U32 view=0;view<views;++view)
+                    {CHECK(pixels[0][view]==pixels[1][view]);CHECK(query_counts[0][view]==query_counts[1][view]);}
+                }
+                for(U32 mode=0;mode<2;++mode)
+                {
+                    const auto& cost=costs[mode];
+                    std::cout<<"NATIVE_SOURCE_ROWS_COST family="<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
+                        <<" condition="<<(condition==0?"cold_source_publication":condition==1?"warm":"churn")
+                        <<" update_stride=16 updated_sources_per_frame="<<(condition==2?(count+15)/16:0)
+                        <<" mode="<<(mode?"native_source_rows":"ordinary_native")<<" samples="<<samples<<" warmups="<<warmups
+                        <<" owner_cpu_median_ms="<<median(cost.cpu)<<" owner_cpu_max_ms="<<*std::max_element(cost.cpu.begin(),cost.cpu.end())
+                        <<" capture_adopt_encode_retire_median_ms="<<median(cost.encode)<<" capture_adopt_encode_retire_max_ms="<<*std::max_element(cost.encode.begin(),cost.encode.end())
+                        <<" completion_envelope_median_ms="<<median(cost.complete)<<" completion_envelope_max_ms="<<*std::max_element(cost.complete.begin(),cost.complete.end())
+                        <<" gpu_sum_median_ms="<<median(cost.gpu)<<" gpu_sum_max_ms="<<*std::max_element(cost.gpu.begin(),cost.gpu.end())
+                        <<" gpu_ready_commands="<<cost.gpu_ready<<" source_publications="<<cost.publications
+                        <<" raw_value_bytes="<<cost.raw_bytes<<" reference_value_bytes="<<cost.reference_bytes<<" order_value_bytes="<<cost.order_bytes
+                        <<" candidate_value_bytes="<<cost.candidate_bytes<<" regional_value_bytes="<<cost.region_bytes
+                        <<" cpu_description_owner_pins="<<cost.cpu_pins<<" native_tuple_owner_pins="<<cost.native_pins
+                        <<" native_frame_bytes="<<cost.native_frame_bytes<<" source_getters="<<cost.getters
+                        <<" dependency_walks="<<cost.dependencies<<" image_getters="<<cost.image_getters
+                        <<" enabled_views="<<cost.enabled_views<<" registered_models="<<cost.registered_models
+                        <<" ordinary_requests="<<cost.ordinary_requests<<" emitted_candidates="<<cost.candidates
+                        <<" unsupported_skips="<<cost.unsupported<<" owner_proof_skips="<<cost.owner_skips<<" metadata_failures="<<cost.metadata_failures
+                        <<" legacy_material_slots="<<(family==1?1:0)<<" pbr_material_slots="<<(family==2?1:0)
+                        <<" legacy_shader_mask="<<(family==1?0:-1)<<" material_values_shared=1 queries_per_view=2"
+                        <<" unique_drawinfo_sources="<<count<<" separate_llvertexbuffer_objects="<<count
+                        <<" paired_logical_frame=1 separate_arm_native_epochs=1 regional_models=1 identity_camera=1"
+                        <<" baseline_argument_tables=0 native_contexts_retained=1"
+                        <<" geometry_texture_drawinfo_creation_excluded=1 viewer_dependency_frontier=typed_native_signals whole_viewer_fps_claim=0\n";
+                    for(U32 owner=0;owner<2;++owner)
+                    {
+                        const auto& context=cost.contexts[owner];
+                        // Page contexts may be shared by main/probe. Report
+                        // each renderer observation and never sum their pages.
+                        std::cout<<"NATIVE_SOURCE_ROWS_CONTEXT_COST family="<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count
+                            <<" views="<<views<<" condition="<<condition<<" mode="<<mode<<" renderer="<<(owner?"probe":"main")
+                            <<" requested="<<context.requested<<" bound="<<context.bound<<" fallback="<<context.fallback<<" setup_failures="<<context.setup_failures
+                            <<" page_requests="<<context.page_requests<<" page_hits="<<context.hits<<" row_publications="<<context.publications
+                            <<" page_failures="<<context.failures<<" encoded_row_bytes="<<context.encoded_bytes
+                            <<" copied_page_bytes="<<context.copied_page_bytes<<" copied_bank_bytes="<<context.copied_bank_bytes
+                            <<" view_bytes="<<context.view_bytes<<" page_allocations="<<context.page_allocations<<" bank_allocations="<<context.bank_allocations
+                            <<" maximum_rows="<<context.maximum_rows<<" maximum_live_metadata_bytes="<<context.maximum_live_metadata_bytes
+                            <<" page_context_may_share=1 page_counters_not_summed=1\n";
+                    }
+                    for(U32 sample=0;sample<samples;++sample)
+                        std::cout<<"NATIVE_SOURCE_ROWS_RAW family="<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count
+                            <<" views="<<views<<" condition="<<condition<<" mode="<<mode<<" sample="<<sample
+                            <<" owner_cpu_ms="<<cost.cpu[sample]<<" capture_adopt_encode_retire_ms="<<cost.encode[sample]
+                            <<" completion_envelope_ms="<<cost.complete[sample]<<" gpu_sum_ms="<<cost.gpu[sample]
+                            <<" source_publications="<<cost.publication_samples[sample]<<" requested="<<cost.requested_samples[sample]
+                            <<" bound="<<cost.bound_samples[sample]<<" fallback="<<cost.fallback_samples[sample]
+                            <<" main_row_publications="<<cost.page_publication_samples[0][sample]
+                            <<" probe_row_publications="<<cost.page_publication_samples[1][sample]
+                            <<" page_context_may_share=1 page_counters_not_summed=1\n";
+                }
+            }
+        }
+    }
+}
