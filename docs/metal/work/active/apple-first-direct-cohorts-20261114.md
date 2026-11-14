@@ -119,3 +119,65 @@ No production renderer changed between16 and17. PPD192/193 retain their
 failed evidence and are not closed by these automated checks.
 The separate exact-tag actual-publication retest also passes9423/44 at17;
 CTest's filename selection covers9367/43 and is not misreported as that suite.
+
+## Reused source records: measured follow-up
+
+Clean e5fd8bd98e required18 passes162.650s; static69048 passes. Source records
+now validate/copy once per completed requested source generation and are shared
+by WorldVariant/cohorts; idle Layout references remain weak. Resource capability
+bit14 no longer splits semantic source variants. FlagOFF baseline still creates
+neither resource descriptors nor cohort records. Immutable promotion uses exact
+already-accounted generations and checks original publication identity/revision.
+PPD195 fault/reentrancy guard is implemented with authored deterministic cases.
+
+Native18 cohort1080/6, renderer764/1+prior286/1 and earlier bank/budget/library/
+region gates pass. Actual producer46/47cases,9787/9788 assertions: new PPD196
+parity test renders a camera-independent prototype without current view matrices.
+It passes the source/key/native-tuple/revision assertions before ordinary batch
+validation correctly rejects that incomplete test input. Source record reuse and
+PPD195 allocation/reentrancy cases pass. Test-only21efebeb18 supplies actual
+fixture view matrices; required19/retests follow. Preserve failed18 receipt.
+
+Actual cost18 passes88718/48 with exact source-record publication counters:
+baseline0 records, candidate only updated rows; no whole-group revalidation is
+hidden. Warm512 CPU61.88–65.27%lower. All16cold cases remain5.24–90.20%higher;
+15/16churn cases remain slower, oneview512churn77.76–84.59%higher. Cold512
+oneview Legacy2.197→4.178ms/PBR3.924→6.149ms. WarmGPU Legacy512/oneview
+has an outlying median0.122→0.180ms (+47.7%); other512 medians span3.31%lower
+to1.82%higher. Retain raw samples; do not claim GPU equivalence or whole FPS.
+
+PPD194 remains open and activationOFF. Next consumes a successfully post-flush
+sealed group in that same dirty view. Existing cull raw rows stay in place;
+equal-count replacement ranges verify exact ordered pointers and skip replaced
+raw entries during capture, preserving later offsets, warm-range ordering and
+logical query counts. Failed seal/verification/allocation keeps raw handling.
+Residency owns llspatialpartition.h/shared native range bodies; architecture
+owns postSort/capture and actual owner fixtures/cost. Root integrates/builds;
+there is no shader/cache or second-cull-pass expansion in this next boundary.
+
+## Exact continuation checkpoint
+
+Original goal remains ACTIVE, with no owner-ready architecture/performance
+candidate. Root experiment tree is clean at21efebeb18cf61ab9d9ca08db86c386a61713702.
+Required19 passes28.588s, static69049 passes; native cohort1080/6 and actual
+producer9882/47 pass. Native19 runner is still finishing the resource/old-library
+tail: `/tmp/run_source_cohort_correctness.py 19 native-direct-cohort-correctness-19`.
+Receipt native-direct-cohort-correctness-19.json is authoritative for completion;
+do not infer final success from the earlier passing commands.
+
+Isolated native-cohort-consumption is based on the same21ef, with active disjoint
+edits: residency owns llspatialpartition.h and llcullresult_native_ranges.inl;
+architecture owns pipeline.cpp, pipeline_group_capture_native.inl and actual
+producer fixture. Root owns documentation, CMake, integration and all execution.
+Raw-span replacement must reject an existing warm range strictly inside its
+span, allow equal-begin warm ranges before replacement and equal-end ranges
+after it, and reject duplicate/overlapping replacements without mutating raw
+storage. Actual fixture includes the shared production range bodies.
+
+Next finish native19, obtain both source freezes, review replacement order/
+failure/query invariants, commit/integrate locally and run fresh required20,
+native correctness and the unchanged48-case complete cost scope with actual
+post-flush same-view promotion included. Preserve18 costs and GPU outlier.
+Do not enable the path or stage it as a completed architecture before evidence.
+Next global defect197. No viewer operation or push; canonical owner tree and
+earlier staged owner/reference applications remain untouched.
