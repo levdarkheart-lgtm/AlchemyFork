@@ -231,3 +231,18 @@ mixed families, changed constants, terrain, all MRT/depth/stencil pixels and
 query samples in both Z conventions. Source/tests frozen, retest pending. The
 corrected exact-half visibility matrix still does not establish a reliable
 median-and-tail benefit; its single favorable median is not a gate pass.
+
+
+PPD149/150 source repairs before final acceptance: prepared slabs now compact
+exact repeated400byte common values in place after joined jobs, remapping all
+common/material/PBR spans in original order with dense16byte structure alignment
+(slab-base alignment is separate). No compaction allocation; original bytes and
+shared records are counted. Native resource leases no longer unnecessarily hold
+CPU batch/query/constants storage through GPU completion. Owner-only retirement
+after encoding can reclaim empty capture vector capacities, guarded against any
+remaining strong CPU reader and requiring quiescence. Commands still retain
+exact native generations/destinations and arena pages; null resource leases are
+legal for empty prepared clears. Native tests poison/reuse retired CPU vectors
+while GPU is held pending and require exact MRT/depth/stencil/query results.
+No new test results claimed until actual final build/run. Source counter logs
+include compact/original bytes and CPU packet reclamation/refusal.

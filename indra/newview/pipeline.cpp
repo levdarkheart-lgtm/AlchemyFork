@@ -848,7 +848,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     static constexpr std::size_t parallel_world_minimum = 1024;
     U64 scene_source_hits = 0, scene_source_builds = 0;
     U64 scalar_world_views = 0, prepared_world_views = 0, credited_world_views = 0;
-    U64 prepared_world_constant_bytes = 0;
+    U64 prepared_world_constant_bytes = 0, prepared_world_uncompacted_bytes = 0;
+    U64 prepared_world_shared_common_records = 0;
+    U64 cpu_packets_reclaimed = 0, cpu_packets_retained = 0;
     U64 scene_source_failures = 0;
     const char* last_scene_source_failure = nullptr;
     std::vector<ALMetalWorldVisibilityMember> world_visibility_members;
@@ -2972,7 +2974,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", world_source_hit/build=" << value->scene_source_hits << '/' << value->scene_source_builds
                     << ", source_failures=" << value->scene_source_failures
                     << ", encoded_views(scalar/prepared/credited)=" << value->scalar_world_views << '/' << value->prepared_world_views << '/' << value->credited_world_views
-                    << ", prepared_constant_bytes=" << value->prepared_world_constant_bytes
+                    << ", prepared_constant_bytes(compact/original)=" << value->prepared_world_constant_bytes << '/' << value->prepared_world_uncompacted_bytes
+                    << ", shared_common_records=" << value->prepared_world_shared_common_records
+                    << ", cpu_packet_reclaimed/retained=" << value->cpu_packets_reclaimed << '/' << value->cpu_packets_retained
                     << ", last_failure=" << (value->last_scene_source_failure ? value->last_scene_source_failure : "none")
                     << LL_ENDL;
             };
@@ -16195,6 +16199,30 @@ void LLPipeline::endMetalWorldGBufferCapture()
     // Required work never disappears when optional worker admission is denied.
     // One owner range and at most one credited GCD range share the same packet.
     std::shared_ptr<const ALMetalPreparedWorldView> prepared;
+    struct CpuCaptureRetirement
+    {
+        std::shared_ptr<const ALMetalWorldViewInputs>& inputs;
+        std::shared_ptr<const ALMetalPreparedWorldView>& prepared;
+        std::vector<ALMetalWorldSimpleBatch>& batches;
+        std::vector<ALMetalWorldVisibilityQuery>& queries;
+        U64& reclaimed;
+        U64& retained;
+        ~CpuCaptureRetirement() noexcept
+        {
+            // All ranges are joined before encoding; this scope ends only
+            // after encoding, query settlement and scene diagnostics finish.
+            // Native commands retain resources and constant pages separately.
+            prepared.reset();
+            batches.clear();
+            queries.clear();
+            if (inputs)
+            {
+                if (ALMetalWorldViewInputs::reclaimCpuStorage(inputs, batches, queries)) ++reclaimed;
+                else ++retained;
+            }
+        }
+    } retire_cpu_capture{inputs, prepared, capture.batches, capture.visibility_queries,
+        capture.cpu_packets_reclaimed, capture.cpu_packets_retained};
     const bool prepare_world = inputs && inputs->scene().batch_count >= MetalWorldSimpleCapture::parallel_world_minimum;
     bool credited_preparation = false;
     if (inputs) scene = inputs->scene();
@@ -16223,9 +16251,9 @@ void LLPipeline::endMetalWorldGBufferCapture()
         }
     }
     // Small views use the same immutable packet, avoiding a second ticket,
-    // layout pass and temporary constant slab. Pin the entire packet on the
-    // consuming native command, including copied poses and exact generations.
-    if (inputs && !prepare_world) scene.source_owner = inputs;
+    // layout pass and temporary constant slab. Encoding consumes its copied
+    // poses synchronously; only native resource generations need GPU lifetime.
+    if (inputs && !prepare_world) scene.source_owner = inputs->resourceLease();
     std::shared_ptr<ALMetalVisibilityResultBatch> visibility_results;
     const bool count_native_draws = ALMetalDevice::commandTimingEnabled();
     const U64 native_draws_before = count_native_draws
@@ -16239,6 +16267,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
             ++capture.prepared_world_views;
             capture.credited_world_views += credited_preparation;
             capture.prepared_world_constant_bytes += prepared->stats().constant_bytes;
+            capture.prepared_world_uncompacted_bytes += prepared->stats().uncompacted_constant_bytes;
+            capture.prepared_world_shared_common_records += prepared->stats().shared_common_records;
         }
         else ++capture.scalar_world_views;
     }

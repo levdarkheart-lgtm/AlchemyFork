@@ -9516,8 +9516,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     {
         return nullptr;
     }
+    const auto prepared_resources = prepared ? prepared->inputLease() : nullptr;
     if (prepared &&
-        (!command->retainUntilCompletion(prepared->inputLease(), error) ||
+        ((prepared_resources && !command->retainUntilCompletion(prepared_resources, error)) ||
          (mImpl->frame_data && !prepared_constants.empty() &&
           !mImpl->frame_data->publish(*command, prepared_constants.data(), prepared_constants.size(),
                                     prepared_gpu_data, error, false))))

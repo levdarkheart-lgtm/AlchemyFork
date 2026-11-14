@@ -309,3 +309,127 @@ TEST_CASE("almetal: failed G-buffer transactions reject a careless outer commit 
         }
     }
 }
+
+TEST_CASE("almetal: quiescent CPU packet storage is reusable while direct and prepared GPU work remains pending",
+          "[almetal][world-source-owner][world-cpu-retirement]")
+{
+    @autoreleasepool
+    {
+        for(bool prepared_path:{false,true})
+        {
+            CAPTURE(prepared_path);
+            Fixture fixture;
+            std::vector<ALMetalWorldSimpleBatch> batches;
+            std::vector<ALMetalWorldVisibilityQuery> queries;
+            batches.reserve(64);queries.reserve(16);
+            batches.push_back(fixture.batch(0));batches.push_back(fixture.batch(1));batches.push_back(fixture.batch(4));
+            for(std::size_t offset:{std::size_t{0},batches.size()})
+            {
+                ALMetalWorldVisibilityQuery query;
+                identity(query.modelview_projection);query.center[2]=.75f;
+                query.half_extent[0]=query.half_extent[1]=query.half_extent[2]=.05f;
+                query.batch_offset=offset;query.fan=7;query.count_samples=1;
+                queries.push_back(query);
+            }
+            auto scene=fixture.scene();scene.batches=batches.data();scene.batch_count=batches.size();
+            scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
+            std::shared_ptr<ALMetalVisibilityResultBatch> reference_queries;
+            auto reference=fixture.renderer->render(scene,&fixture.error,&reference_queries);
+            INFO(fixture.error);REQUIRE(reference);REQUIRE(reference_queries);
+            const auto expected=fixture.read(*reference);
+            std::array<std::uint64_t,2> expected_queries{};
+            for(unsigned q=0;q<expected_queries.size();++q)REQUIRE(reference_queries->wait(q,expected_queries[q],&fixture.error));
+            const auto batch_capacity=batches.capacity(),query_capacity=queries.capacity();
+            auto inputs=ALMetalWorldViewInputs::adopt(scene,std::move(batches),std::move(queries),fixture.resources,91,&fixture.error);
+            INFO(fixture.error);REQUIRE(inputs);
+            scene={}; // No borrowed CPU array addresses escape the joined owner.
+            CHECK(inputs->resourceLease().get()==fixture.resources.get());
+            std::weak_ptr<const ALMetalWorldViewInputs> weak_inputs(inputs);
+            auto reader=inputs; // A real strong CPU reader, never a raced weak lock.
+            const auto* copied_batches=reader->scene().batches;
+            const auto* copied_queries=reader->scene().visibility_queries;
+            REQUIRE(batches.empty());REQUIRE(queries.empty());
+            CHECK_FALSE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,batches,queries));
+            CHECK(inputs.get()==reader.get());CHECK(reader->scene().batches==copied_batches);
+            CHECK(reader->scene().visibility_queries==copied_queries);
+            CHECK(reader->scene().batch_count==3);CHECK(reader->scene().visibility_query_count==2);
+            CHECK(reader->scene().batches[2].skin_palette[4]==1.f);
+            CHECK(batches.empty());CHECK(queries.empty());
+            reader.reset();
+            REQUIRE(inputs.use_count()==1);
+            batches.emplace_back();batches.back().index_count=777;
+            CHECK_FALSE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,batches,queries));
+            CHECK(inputs);CHECK(batches.size()==1);CHECK(batches.front().index_count==777);
+            CHECK(inputs->scene().batches==copied_batches);
+            batches.clear();
+
+            std::shared_ptr<ALMetalWorldPreparation> ticket;
+            std::shared_ptr<const ALMetalPreparedWorldView> prepared;
+            if(prepared_path)
+            {
+                ticket=ALMetalWorldPreparation::create(inputs,2,{},&fixture.error);REQUIRE(ticket);
+                for(std::size_t job=0;job<ticket->jobCount();++job)REQUIRE(ticket->runJob(job));
+                prepared=ticket->finish(&fixture.error);INFO(fixture.error);REQUIRE(prepared);
+            }
+            // The original mutable pose is no longer a CPU or GPU input.
+            fixture.attachment_pose.fill(std::numeric_limits<float>::quiet_NaN());
+            auto credit=std::make_shared<int>(71);
+            std::weak_ptr<int> weak_credit(credit);
+            std::weak_ptr<Resources> weak_resources(fixture.resources);
+            QueueGate gate(fixture);
+            std::shared_ptr<ALMetalVisibilityResultBatch> candidate_queries;
+            std::unique_ptr<ALMetalRenderTarget> candidate;
+            {
+                ALMetalSubmissionScope scope(credit);
+                if(prepared_path)candidate=fixture.renderer->renderPrepared(*prepared,&fixture.error,&candidate_queries);
+                else
+                {
+                    auto owned_scene=inputs->scene();
+                    owned_scene.source_owner=inputs->resourceLease();
+                    candidate=fixture.renderer->render(owned_scene,&fixture.error,&candidate_queries);
+                }
+                INFO(fixture.error);REQUIRE(candidate);REQUIRE(candidate_queries);
+            }
+            // All CPU jobs/readers have joined and encoding has returned.
+            // GPU commands own only exact native generations, not these arrays.
+            prepared.reset();ticket.reset();
+            REQUIRE(inputs.use_count()==1);
+            REQUIRE_FALSE(gate.blocker->completionToken()->isComplete());
+            REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,batches,queries));
+            CHECK_FALSE(inputs);CHECK(weak_inputs.expired());
+            CHECK(batches.empty());CHECK(queries.empty());
+            CHECK(batches.capacity()>=batch_capacity);CHECK(queries.capacity()>=query_capacity);
+            batches.resize(32);queries.resize(8);
+            for(auto& batch:batches)batch.modelview_projection[0]=std::numeric_limits<float>::quiet_NaN();
+            for(auto& query:queries)query.center[0]=std::numeric_limits<float>::quiet_NaN();
+            fixture.resources.reset();credit.reset();fixture.renderer.reset();
+            CHECK_FALSE(weak_resources.expired());CHECK_FALSE(weak_credit.expired());
+            REQUIRE_FALSE(gate.blocker->completionToken()->isComplete());
+            gate.release(fixture);
+            requireRetired(weak_resources,weak_credit);
+            CHECK(fixture.read(*candidate)==expected);
+            for(unsigned q=0;q<expected_queries.size();++q)
+            {
+                std::uint64_t value=0;REQUIRE(candidate_queries->wait(q,value,&fixture.error));CHECK(value==expected_queries[q]);
+            }
+        }
+    }
+}
+
+TEST_CASE("almetal: an empty prepared view renders with an exact null native resource lease",
+          "[almetal][world-source-owner][world-cpu-retirement]")
+{
+    @autoreleasepool
+    {
+        Fixture fixture;
+        auto scene=fixture.scene();
+        auto reference=fixture.renderer->render(scene,&fixture.error);INFO(fixture.error);REQUIRE(reference);
+        const auto expected=fixture.read(*reference);
+        auto inputs=ALMetalWorldViewInputs::adopt(scene,{}, {},{},103,&fixture.error);REQUIRE(inputs);
+        CHECK_FALSE(inputs->resourceLease());
+        auto ticket=ALMetalWorldPreparation::create(inputs,2,{},&fixture.error);REQUIRE(ticket);
+        REQUIRE(ticket->runJob(0));auto prepared=ticket->finish(&fixture.error);REQUIRE(prepared);
+        auto candidate=fixture.renderer->renderPrepared(*prepared,&fixture.error);INFO(fixture.error);REQUIRE(candidate);
+        CHECK(fixture.read(*candidate)==expected);
+    }
+}

@@ -62,12 +62,12 @@ TEST_CASE("almetal: repeated prepared common ranges restore after terrain and qu
         // Distinct triangles live in one region/agent-space buffer. Repeated
         // draws genuinely share matrices; per-object transforms do not hide
         // the common-constant reuse that the live viewer frequently exhibits.
-        std::array<Fixture::Geometry,9> geometry;
+        std::array<Fixture::Geometry,11> geometry;
         for(unsigned tile=0;tile<geometry.size();++tile)
         {
             geometry[tile]=f.geometry;
-            const float x=(static_cast<int>(tile%3)-1)*.6f;
-            const float y=(static_cast<int>(tile/3)-1)*.6f;
+            const float x=(static_cast<float>(tile%4)-1.5f)*.45f;
+            const float y=(static_cast<int>(tile/4)-1)*.6f;
             for(unsigned vertex=0;vertex<4;++vertex)
             {
                 geometry[tile].positions[vertex][0]=f.geometry.positions[vertex][0]*.24f+x;
@@ -101,15 +101,18 @@ TEST_CASE("almetal: repeated prepared common ranges restore after terrain and qu
                 batch->modelview_projection[14]=.75f;
             }
             pbr_terrain.modelview_projection[12]=.72f;
-            // A,A,terrain,A,A,B,B,terrain,B,A,A. Both special draws overwrite
-            // slot4; common A/B differ in a real vertex-color policy value.
-            // The post-terrain equal draw must rebind its saved range, while
-            // a changed group must never reuse the preceding group's bytes.
+            auto impostor=f.batch(9);
+            impostor.impostor_center[0]=impostor.impostor_center[1]=.95f;
+            impostor.impostor_center[2]=.75f;
+            impostor.impostor_left[0]=impostor.impostor_up[1]=.03f;
+            // A,A,terrain,A,impostor,A,A | A,B,B,terrain,B,A,A.
+            // The job split crosses equal A values. Specials retain the last
+            // simple value; changed B and the final A require new ranges.
             std::vector<ALMetalWorldSimpleBatch> batches{
                 tile_batch(0,0,true),tile_batch(1,1,true),terrain,
-                tile_batch(2,2,true),tile_batch(3,3,true),
-                tile_batch(4,0,false),tile_batch(5,1,false),pbr_terrain,
-                tile_batch(6,2,false),tile_batch(7,0,true),tile_batch(8,1,true)};
+                tile_batch(2,2,true),impostor,tile_batch(3,3,true),tile_batch(4,0,true),
+                tile_batch(5,1,true),tile_batch(6,0,false),tile_batch(7,2,false),pbr_terrain,
+                tile_batch(8,1,false),tile_batch(9,0,true),tile_batch(10,2,true)};
             std::vector<ALMetalWorldVisibilityQuery> queries(4);
             const std::array<std::size_t,4> offsets{0,3,9,batches.size()};
             for(unsigned q=0;q<queries.size();++q)
@@ -129,7 +132,17 @@ TEST_CASE("almetal: repeated prepared common ranges restore after terrain and qu
             for(unsigned q=0;q<queries.size();++q)REQUIRE(direct_queries->wait(q,results[q],&f.error));
             REQUIRE(results.front()>0);
             auto ready=f.prepare(s,batches,queries,2);
+            CHECK(ready->stats().jobs==2);
+            CHECK(ready->stats().prepared_count==batches.size());
+            CHECK(ready->stats().shared_common_records==8);
+            CHECK(ready->stats().uncompacted_constant_bytes-ready->stats().constant_bytes==8*400);
+            const auto before=f.data->stats();
             auto prepared=f.renderer->renderPrepared(*ready,&f.error,&prepared_queries);INFO(f.error);REQUIRE(prepared);REQUIRE(prepared_queries);
+            // Queries were already published by the direct render in this
+            // same frame, and no palettes are present. This is the actual
+            // native slab upload, not merely a CPU packing statistic.
+            CHECK(f.data->stats().published_bytes-before.published_bytes==ready->stats().constant_bytes);
+            CHECK(f.data->stats().published_bytes-before.published_bytes<ready->stats().uncompacted_constant_bytes);
             CHECK(f.read(*prepared)==expected);
             for(unsigned q=0;q<queries.size();++q)
             {
@@ -157,6 +170,12 @@ TEST_CASE("almetal: world preparation owns poses and invalidates complete ticket
         REQUIRE(ticket->runJob(0));epoch->store(10);CHECK_FALSE(ticket->runJob(1));CHECK_FALSE(ticket->finish(&f.error));
         epoch->store(9);ticket=ALMetalWorldPreparation::create(inputs,2,epoch,&f.error);REQUIRE(ticket);
         REQUIRE(ticket->runJob(0));REQUIRE(ticket->runJob(1));auto ready=ticket->finish(&f.error);INFO(f.error);REQUIRE(ready);
+        const auto constants=ready->stats().constant_bytes;
+        const auto shares=ready->stats().shared_common_records;
+        CHECK(ticket->finish(&f.error)==ready);
+        CHECK(ready->stats().constant_bytes==constants);CHECK(ready->stats().shared_common_records==shares);
+        epoch->store(10);CHECK_FALSE(ticket->finish(&f.error));
+        CHECK_FALSE(f.renderer->renderPrepared(*ready,&f.error));
         ticket->cancel();CHECK_FALSE(f.renderer->renderPrepared(*ready,&f.error));
         // Fresh preparation still succeeds after the viewer's mutable pose arrays changed.
         ticket=ALMetalWorldPreparation::create(inputs,1,{},&f.error);REQUIRE(ticket);REQUIRE(ticket->runJob(0));

@@ -27,6 +27,18 @@ public:
     ~ALMetalWorldViewInputs();
     const ALMetalWorldGBufferScene& scene() const noexcept;
     std::uint64_t epoch() const noexcept;
+    // Exact immutable aggregate supplied to adopt(): native source generations
+    // and destination wrappers, with no ownership of this CPU input packet.
+    std::shared_ptr<const void> resourceLease() const noexcept;
+    // Owner only, after jobs/encoding have joined and no future CPU reader can
+    // access the packet. Unique strong ownership is only a backstop; it does
+    // not synchronize a racing weak lock. Both output vectors must be empty.
+    // Success returns their capture capacity with values cleared and resets
+    // input (including copied poses). Refusal leaves every argument intact.
+    static bool reclaimCpuStorage(
+        std::shared_ptr<const ALMetalWorldViewInputs>& input,
+        std::vector<ALMetalWorldSimpleBatch>& empty_batches,
+        std::vector<ALMetalWorldVisibilityQuery>& empty_queries) noexcept;
 private:
     struct Impl;
     explicit ALMetalWorldViewInputs(std::unique_ptr<Impl>);
@@ -40,6 +52,8 @@ struct ALMetalWorldPrepareStats
     std::size_t constant_bytes = 0;
     std::size_t jobs = 0;
     bool cancelled = false;
+    std::size_t uncompacted_constant_bytes = 0;
+    std::size_t shared_common_records = 0;
 };
 
 // Internal immutable record ABI between the CPU kernel and native encoder.
@@ -92,7 +106,9 @@ public:
     std::size_t jobCount() const noexcept;
     bool runJob(std::size_t index) noexcept;
     void cancel() noexcept;
-    // Requires all jobs to have joined. Never returns a valid-looking prefix.
+    // Requires all jobs to have joined. Compacts exact consecutive common
+    // values in place on the owner, then seals once; repeated finish is stable.
+    // Never returns a valid-looking prefix.
     std::shared_ptr<const ALMetalPreparedWorldView> finish(std::string* error = nullptr);
 private:
     struct Impl;

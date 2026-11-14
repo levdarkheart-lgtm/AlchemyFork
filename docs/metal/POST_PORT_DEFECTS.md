@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-149 -->
+<!-- next-defect-id: PPD-151 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3886,3 +3886,41 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered before preserving existing Second Life per-view constant reuse; retained4096draw measured loss rather than hiding it by assuming unique object transforms in a generic engine benchmark. Existing prior app was68999; counter evidence is its captured run.
+
+
+## PPD-149 — Prepared slabs still published duplicate common constant bytes
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex prepared world data publication
+- Discovered: 2026-11-14
+- Original reference: Direct native constant reuse avoids both new bindings and repeated GPU arena publication of identical400byte common constants. Preserve this across worker preparation.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). PPD148 sharing repair passes762assertions/6native cases, but complete-path-costs-3 still shows4096median loss6.61208ms vs6.37077ms. Prepared constants allocation/publication retains one duplicate range per original record.
+- Next action: After bounded CPU jobs join, compact the prepared slab in place with exact consecutive common-value reuse (including across noncommon families), remap all authored offsets without reordering records/queries, and publish only the resulting span. Validate actual reduced native publication bytes plus MRT/depth/stencil/query parity and complete-path cost.
+- Verification: Rebinding the previous offset fixes binding identity but does not remove duplicate CPU slab/GPU publication bytes. Existing Alchemy per-view common-value reuse is measured in the retained club run; no new app FPS claim follows from a contained fix.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered remaining physical publication redundancy after PPD148, retaining all measured large-view losses. No fabricated unique-transform benchmark or nominal worker-utilization success claim.
+
+
+## PPD-150 — GPU packet ownership unnecessarily held reusable CPU capture storage
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex CPU/native publication lifecycle integration
+- Discovered: 2026-11-14
+- Original reference: Existing capture clears and reuses batch/query vector capacity after synchronous native encoding. Detached CPU work needs owned immutable arrays until join/encoding, while GPU commands need exact native resource generations and published constant pages afterward.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). WorldViewInputs adopts moved capture vectors and prepared.inputLease retains whole input/constant metadata through GPU completion; next capture must allocate new vector capacity.
+- Next action: Separate GPU resource lease from CPU packet storage, retain all native generations/pages to actual completion, and reclaim consumed batch/query capacity only on the scene owner after all jobs and encoding finish with no remaining CPU readers. Prove delayed-GPU resource/pixel lifetime and CPU storage reuse/refusal with real native tests.
+- Verification: Entire CPU view arrays are not read by the GPU after native constant publication/encoding; holding them in the GPU lease defeats previous capture capacity reuse. Source-confirmed unnecessary lifetime/allocation churn, not an attributed new runtime leak or FPS result.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before splitting CPU-ready and native-completion ownership. Unique strong ownership is a backstop; caller must establish joined/quiescent CPU consumers, not race a weak-reader lock.
+
+- 2026-11-14 repair attempt for PPD150: Split native resource ownership and add owner-only CPU storage reclamation. Empty/sky-only inputs may legitimately have a null native resource lease; renderer retention now checks nonnull before retainUntilCompletion, preserving successful empty clear. Actual delayed-GPU and empty prepared rendering tests are required before acceptance.
