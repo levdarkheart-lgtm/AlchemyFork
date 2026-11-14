@@ -27,6 +27,10 @@
 #pragma once
 
 #include "llreflectionmap.h"
+#if LL_DARWIN
+#include "alnativeframebudget.h"
+#include "alprobeupdateadmission.h"
+#endif
 
 #include <memory>
 
@@ -132,6 +136,14 @@ public:
 
     // maintain reflection probes
     void update();
+#if LL_DARWIN
+    struct NativeUpdateAdmissionStats
+    {
+        U64 admitted_groups = 0, deferred_attempts = 0, required_steps = 0;
+    };
+    const NativeUpdateAdmissionStats& nativeUpdateAdmissionStats() const noexcept { return mNativeUpdateStats; }
+#endif
+
 
     void refreshSettings();
 
@@ -336,6 +348,14 @@ private:
 
     // amount to scale local lights during an irradiance map update (set during updateProbeFace and used by LLPipeline)
     F32 mLightScale = 1.f;
+
+#if LL_DARWIN
+    ALNativeFrameBudget::Lease mNativeUpdateCredit;
+    NativeUpdateAdmissionStats mNativeUpdateStats;
+    ALProbeUpdateAdmission mNativeAdmission;
+    U64 mNativeLastAdmittedFrame = 0;
+    bool mNativeAdmittedFrameValid = false;
+#endif
 
     // if true, reset all probe render state on the next update (for teleports and sky changes)
     bool mReset = false;

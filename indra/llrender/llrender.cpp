@@ -2586,7 +2586,7 @@ LLVertexBuffer* LLRender::genBuffer(U32 attribute_mask, S32 count)
     }
 
     LLVertexBuffer * vb = new LLVertexBuffer(attribute_mask);
-    if (!vb->allocateBuffer(count, 0))
+    if (!vb->allocateNativeSharedBuffer(count))
     {
         LL_WARNS_ONCE("Render")
             << "Skipping immediate buffer after vertex allocation failed: mask=0x"

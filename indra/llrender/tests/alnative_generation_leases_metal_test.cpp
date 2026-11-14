@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <chrono>
+#include <thread>
 #include <iostream>
 #include <vector>
 
@@ -145,6 +147,59 @@ TEST_CASE("Native vertex publication copies only declared completed unleased ran
     const auto actual = f.bytes(*index_identity);
     auto expected = indices; expected[2] = 3; expected[3] = 2;
     CHECK(std::memcmp(actual.data(), expected.data(), sizeof(expected)) == 0);
+}
+
+TEST_CASE("Native producer invalidation releases cache leases before range publication but keeps readers",
+          "[almetal][native-generation-leases][native-publication]")
+{
+    Fixture f;
+    auto vb = f.buffer();
+    auto source = std::make_shared<ALNativePublication::State>();
+    vb->nativePublication().observe(source);
+    REQUIRE(source->publish(source->revision(), vb->getMetalVertexBufferLease()));
+    auto* first = vb->getMetalVertexBuffer();
+    const auto vertex_revision = vb->getMetalVertexPublicationRevision();
+    const auto index_revision = vb->getMetalIndexPublicationRevision();
+    const auto tuple_revision = vb->nativePublication().publishedRevision();
+    gGL.frameFences().release();
+    const auto before = LLVertexBuffer::metalUploadStats();
+
+    vb->setColorData(&green, 1, 1);
+    CHECK(source->dirty());
+    CHECK_FALSE(source->publication());
+    CHECK(vb->nativePublication().publishedRevision() == tuple_revision);
+    vb->unmapBuffer();
+    CHECK(vb->getMetalVertexBuffer() == first);
+    CHECK(vb->getMetalVertexPublicationRevision() == vertex_revision + 1);
+    CHECK(vb->getMetalIndexPublicationRevision() == index_revision);
+    CHECK(vb->nativePublication().publishedRevision() == tuple_revision + 1);
+    const auto after = LLVertexBuffer::metalUploadStats();
+    CHECK(after.partial_uploads == before.partial_uploads + 1);
+    CHECK(after.leased_orphans == before.leased_orphans);
+
+    REQUIRE(source->publish(source->revision(), vb->getMetalVertexBufferLease()));
+    auto queued_reader = source->publication();
+    const auto old_bytes = f.bytes(*first);
+    vb->setColorData(&blue, 1, 1);
+    CHECK_FALSE(source->publication());
+    vb->unmapBuffer();
+    CHECK(vb->getMetalVertexBuffer() != first);
+    CHECK(f.bytes(*std::static_pointer_cast<const ALMetalBuffer>(queued_reader)) == old_bytes);
+    CHECK(LLVertexBuffer::metalUploadStats().leased_orphans == after.leased_orphans + 1);
+
+    queued_reader.reset();
+    REQUIRE(source->publish(source->revision(), vb->getMetalVertexBufferLease()));
+    const auto before_failure = vb->nativePublication().publishedRevision();
+    LLVertexBuffer::setMetalDevice(nullptr);
+    vb->setColorData(&green, 2, 1);
+    vb->unmapBuffer();
+    CHECK_FALSE(source->publication());
+    CHECK_FALSE(vb->hasPublishedMetalVertexBuffer());
+    CHECK(vb->nativePublication().publishedRevision() == before_failure);
+    LLVertexBuffer::setMetalDevice(f.device.get());
+    REQUIRE(vb->prepareMetalBuffers(true));
+    CHECK(vb->nativePublication().publishedRevision() == before_failure + 1);
+    CHECK(vb->getMetalIndexPublicationRevision() == index_revision);
 }
 
 TEST_CASE("Native mapped texture-index lane ranges end at the last position lane",
@@ -431,4 +486,132 @@ TEST_CASE("Native publication counters expose dirty traffic versus full-copy lea
     std::cout << "NATIVE_GENERATION_BYTE_COST updates_per_arm=32 vertices=4096 dirty_bytes="
               << ranged_bytes << " leased_full_bytes=" << leased_bytes
               << " claim=publication_bytes_only_no_viewer_timing\n";
+}
+
+TEST_CASE("Native texture publisher invalidates cache leases before deciding copy on write",
+          "[almetal][native-generation-leases][native-publication]")
+{
+    Fixture f;
+    std::vector<U8> pixels(4 * 4 * 4);
+    for (std::size_t at = 0; at < pixels.size(); at += 4) std::memcpy(pixels.data() + at, &red, 4);
+    LLPointer<LLImageGL> image = new LLImageGL(4, 4, 4, false);
+    image->setNeedsAlphaAndPickMask(false);
+    image->setExplicitFormat(GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    REQUIRE(image->createMetalTexture(0, pixels.data()));
+    struct PublisherCache final : ALNativePublication::Observer
+    {
+        std::shared_ptr<const ALMetalTexture> cached;
+        unsigned writes = 0;
+        void nativePublicationChanged(ALNativePublication::Phase phase) noexcept override
+        {
+            if (phase == ALNativePublication::Phase::will_write) ++writes;
+            cached.reset();
+        }
+    };
+    auto cache = std::make_shared<PublisherCache>();
+    cache->cached = image->getMetalTextureLease();
+    const auto* native = cache->cached.get();
+    image->nativePublication().observe(cache);
+    const auto published = image->nativePublication().publishedRevision();
+    const auto before = LLImageGL::metalPublicationStats();
+    std::memcpy(pixels.data() + 4, &green, 4);
+    REQUIRE(image->uploadMetalSubImage(pixels.data(), 4, 4, 1, 0, 1, 1));
+    CHECK(cache->writes > 0);
+    CHECK_FALSE(cache->cached);
+    CHECK(image->getMetalTexture() == native);
+    CHECK(LLImageGL::metalPublicationStats().cow_attempts == before.cow_attempts);
+    CHECK(image->nativePublication().publishedRevision() > published);
+    CHECK(f.pixels(*image->getMetalTexture()) == pixels);
+}
+
+TEST_CASE("Native pending texture publication advances only at the visible tuple boundary",
+          "[almetal][native-generation-leases][native-publication]")
+{
+    Fixture f;
+    std::vector<U8> pixels(4 * 4 * 4);
+    for (std::size_t at = 0; at < pixels.size(); at += 4) std::memcpy(pixels.data() + at, &red, 4);
+    LLPointer<LLImageGL> image = new LLImageGL(4, 4, 4, false);
+    image->setNeedsAlphaAndPickMask(false);
+    image->setExplicitFormat(GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    REQUIRE(image->createMetalTexture(0, pixels.data()));
+    auto old = image->getMetalTextureLease();
+    const auto published = image->nativePublication().publishedRevision();
+    const auto mutation = image->nativePublication().mutationRevision();
+    image->beginUpload();
+    for (std::size_t at = 0; at < pixels.size(); at += 4) std::memcpy(pixels.data() + at, &blue, 4);
+    REQUIRE(image->createMetalTexture(0, pixels.data()));
+    CHECK(image->nativePublication().publishedRevision() == published);
+    CHECK(image->nativePublication().mutationRevision() == mutation);
+    CHECK(image->getMetalTextureLease() == old);
+    image->publishMetalTextureAuthoritative();
+    CHECK(image->nativePublication().publishedRevision() > published);
+    CHECK(image->getMetalTextureLease() != old);
+    CHECK(f.pixels(*image->getMetalTexture()) == pixels);
+    const auto visible = image->nativePublication().publishedRevision();
+    image->discardMetalTexture();
+    CHECK_FALSE(image->getMetalTexture());
+    CHECK(image->nativePublication().publishedRevision() > visible);
+    CHECK(f.pixels(*old)[0] == red.mV[0]);
+}
+
+TEST_CASE("Native admission credits retire on command abandonment and actual completion",
+          "[almetal][native-generation-leases][native-frame-budget]")
+{
+    Fixture f;
+    ALNativeFrameBudget budget;
+    ALNativeFrameBudget::FrameInputs input;
+    input.frame = 1;
+    budget.beginFrame(input);
+    auto admitted = budget.tryAcquire(ALNativeFrameBudget::Work::upload, 64);
+    REQUIRE(admitted);
+    auto abandoned = f.device->makeCommandBuffer("Abandoned admitted upload", &f.error);
+    REQUIRE(abandoned);
+    REQUIRE(abandoned->retainUntilCompletion(admitted.credit, &f.error));
+    admitted.credit.reset();
+    CHECK(budget.snapshot().uploads_in_flight == 1);
+    abandoned.reset();
+    CHECK(budget.snapshot().uploads_in_flight == 0);
+
+    admitted = budget.tryAcquire(ALNativeFrameBudget::Work::upload, 64);
+    REQUIRE(admitted);
+    auto committed = f.device->makeCommandBuffer("Completed admitted upload", &f.error);
+    REQUIRE(committed);
+    REQUIRE(committed->retainUntilCompletion(admitted.credit, &f.error));
+    auto token = committed->completionToken();
+    REQUIRE(token);
+    admitted.credit.reset();
+    REQUIRE(committed->commitAndWait(&f.error));
+    committed.reset();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (budget.snapshot().uploads_in_flight && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+    // Retaining the completion token must not keep the admission credit alive.
+    CHECK(budget.snapshot().uploads_in_flight == 0);
+    CHECK(budget.snapshot().retired == 2);
+}
+
+TEST_CASE("Native upload scopes attach admitted work to image commands without delaying publication",
+          "[almetal][native-generation-leases][native-frame-budget]")
+{
+    Fixture f;
+    ALNativeFrameBudget budget;
+    auto admitted = budget.tryAcquire(ALNativeFrameBudget::Work::upload, 64);
+    REQUIRE(admitted);
+    std::vector<U8> pixels(4 * 4 * 4);
+    for (std::size_t at = 0; at < pixels.size(); at += 4) std::memcpy(pixels.data() + at, &red, 4);
+    LLPointer<LLImageGL> image = new LLImageGL(4, 4, 4, false);
+    image->setNeedsAlphaAndPickMask(false);
+    image->setExplicitFormat(GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    {
+        LLImageGL::NativeUploadCreditScope scope(admitted.credit);
+        REQUIRE(image->createMetalTexture(0, pixels.data()));
+        REQUIRE(image->getMetalTexture());
+    }
+    admitted.credit.reset();
+    CHECK(f.pixels(*image->getMetalTexture()) == pixels);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (budget.snapshot().uploads_in_flight && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+    CHECK(budget.snapshot().uploads_in_flight == 0);
+    CHECK(budget.snapshot().retired == 1);
 }

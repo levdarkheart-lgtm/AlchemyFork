@@ -115,6 +115,7 @@ LLGLTFMaterial& LLGLTFMaterial::operator=(const LLGLTFMaterial& rhs)
         updateTextureTracking();
     }
 
+    notifyRenderDataChanged();
     return *this;
 }
 
@@ -234,6 +235,7 @@ void LLGLTFMaterial::setFromModel(const tinygltf::Model& model, S32 mat_index)
             mOverrideDoubleSided = double_sided->second.Get<bool>();
         }
     }
+    notifyRenderDataChanged();
 }
 
 // static
@@ -344,6 +346,7 @@ void LLGLTFMaterial::writeToModel(tinygltf::Model& model, S32 mat_index) const
 void LLGLTFMaterial::sanitizeAssetMaterial()
 {
     mTextureTransform = sDefault.mTextureTransform;
+    notifyRenderDataChanged();
 }
 
 bool LLGLTFMaterial::setBaseMaterial()
@@ -358,6 +361,7 @@ bool LLGLTFMaterial::setBaseMaterial()
 void LLGLTFMaterial::setBaseMaterial(const LLGLTFMaterial& old_override_mat)
 {
     mTextureTransform = old_override_mat.mTextureTransform;
+    notifyRenderDataChanged();
 }
 
 bool LLGLTFMaterial::isClearedForBaseMaterial() const
@@ -384,6 +388,7 @@ void LLGLTFMaterial::setTextureId(TextureInfo texture_info, const LLUUID& id, bo
     {
         hackOverrideUUID(mTextureId[texture_info]);
     }
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::setBaseColorId(const LLUUID& id, bool for_override)
@@ -418,6 +423,7 @@ void LLGLTFMaterial::setBaseColorFactor(const LLColor4& baseColor, bool for_over
             mBaseColor.mV[3] -= FLT_EPSILON;
         }
     }
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::setAlphaCutoff(F32 cutoff, bool for_override)
@@ -430,6 +436,7 @@ void LLGLTFMaterial::setAlphaCutoff(F32 cutoff, bool for_override)
             mAlphaCutoff -= FLT_EPSILON;
         }
     }
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::setEmissiveColorFactor(const LLColor3& emissiveColor, bool for_override)
@@ -444,16 +451,19 @@ void LLGLTFMaterial::setEmissiveColorFactor(const LLColor3& emissiveColor, bool 
             mEmissiveColor.mV[0] += FLT_EPSILON;
         }
     }
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::setMetallicFactor(F32 metallic, bool for_override)
 {
     mMetallicFactor = llclamp(metallic, 0.f, for_override ? 1.f - FLT_EPSILON : 1.f);
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::setRoughnessFactor(F32 roughness, bool for_override)
 {
     mRoughnessFactor = llclamp(roughness, 0.f, for_override ? 1.f - FLT_EPSILON : 1.f);
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::setAlphaMode(const std::string& mode, bool for_override)
@@ -485,6 +495,7 @@ void LLGLTFMaterial::setAlphaMode(S32 mode, bool for_override)
 {
     mAlphaMode = (AlphaMode) llclamp(mode, (S32) ALPHA_MODE_OPAQUE, (S32) ALPHA_MODE_MASK);
     mOverrideAlphaMode = for_override && mAlphaMode == getDefaultAlphaMode();
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::setDoubleSided(bool double_sided, bool for_override)
@@ -493,21 +504,25 @@ void LLGLTFMaterial::setDoubleSided(bool double_sided, bool for_override)
     // setter for consistency with the clamping API
     mDoubleSided = double_sided;
     mOverrideDoubleSided = for_override && mDoubleSided == getDefaultDoubleSided();
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::setTextureOffset(TextureInfo texture_info, const LLVector2& offset)
 {
     mTextureTransform[texture_info].mOffset = offset;
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::setTextureScale(TextureInfo texture_info, const LLVector2& scale)
 {
     mTextureTransform[texture_info].mScale = scale;
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::setTextureRotation(TextureInfo texture_info, float rotation)
 {
     mTextureTransform[texture_info].mRotation = rotation;
+    notifyRenderDataChanged();
 }
 
 // Default value accessors (NOTE: these MUST match the GLTF specification)
@@ -655,6 +670,7 @@ void LLGLTFMaterial::applyOverride(const LLGLTFMaterial& override_mat)
         updateLocalTexDataDigest();
         updateTextureTracking();
     }
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::getOverrideLLSD(const LLGLTFMaterial& override_mat, LLSD& data) const
@@ -853,6 +869,7 @@ void LLGLTFMaterial::applyOverrideLLSD(const LLSD& data)
             }
         }
     }
+    notifyRenderDataChanged();
 }
 
 void LLGLTFMaterial::packHashBytes(U8* buf) const

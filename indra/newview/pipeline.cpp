@@ -85,6 +85,10 @@
 #include "../almetal/almetalworld.h"
 #include "../almetal/almetalshadowprepare.h"
 #include "../almetal/almetalshadowcache.h"
+#include "../almetal/almetalworldprepare.h"
+#include "../almetal/almetalworldvisibility.h"
+#include "alnativeframebudget.h"
+#include <dispatch/dispatch.h>
 #include "../almetal/almetalpipeline.h"
 #include "../almetal/almetalavatarresources.h"
 #include "../almetal/almetalretainedbackground.h"
@@ -409,105 +413,26 @@ static constexpr U32 SHADOW_MASKED_PASSES[] = {
 #if LL_DARWIN
 struct ALViewerMetalShadowSourceCache
 {
-    std::vector<U64> key;
-    // Overflow has no cache-owned native lease. Reuse only while an actual
-    // queued/encoded/submitted packet still owns this exact producer record.
-    std::weak_ptr<const ALMetalShadowSourceRecord> transient_record;
+    std::weak_ptr<const void> native_scene_transient;
+    U64 native_scene_revision = 0;
+    std::weak_ptr<ALMetalWorldVisibility> visibility;
+    ALMetalWorldBoundsHandle bounds;
+    U64 bounds_revision = 0;
+    ~ALViewerMetalShadowSourceCache()
+    {
+        // This metadata belongs only to LLDrawInfo on the scene owner. Native
+        // packets retain Payload instead and never retire owner tables.
+        if (auto table = visibility.lock()) table->retire(bounds);
+    }
 };
-
+#include "pipeline_scene_publication_native.inl"
 namespace
 {
-// Main-owner working set. Current-display entries resist one-pass overflow
-// scans; weak overflow handles never increase cache residency or replace the
-// actual packet/command lease. The helper owns unique wrapper-byte accounting.
-ALMetalShadowSourceCache sShadowSourceCache;
-
-void trimShadowSourceWorkingSet()
-{
-    sShadowSourceCache.trim(gFrameCount);
-}
-
-struct ShadowSourceImages
-{
-    std::array<LLImageGL*, 96> images;
-    std::size_t count = 0;
-};
-
-// Equality compares the complete producer key, never just a hash. A key is
-// rebuilt cheaply on the owner; native/material arrays are constructed only
-// when it changes. Matrices/pose are explicit per-view inputs, not cache keys.
-bool shadowSourceKey(const LLDrawInfo& info, U32 type,
-                     ALMetalWorldSpotShadowCoverage coverage, bool texture_matrix,
-                     std::vector<U64>& key, ShadowSourceImages& images)
-{
-    key.clear();
-    images.count = 0;
-    const auto word = [&](U64 value) { key.push_back(value); };
-    const auto pointer = [&](const auto* value)
-    { word(reinterpret_cast<std::uintptr_t>(value)); };
-    const auto scalar = [&](F32 value)
-    { U32 bits; std::memcpy(&bits, &value, sizeof(bits)); word(bits); };
-    auto* buffer = info.mVertexBuffer.get();
-    word(type); word(static_cast<U32>(coverage)); pointer(buffer);
-    if (!buffer) return false;
-    word(buffer->getContentStamp());
-    pointer(buffer->getMetalVertexBuffer()); pointer(buffer->getMetalIndexBuffer());
-    word(buffer->hasPublishedMetalVertexBuffer());
-    word(buffer->hasPublishedMetalIndexBuffer());
-    word(buffer->getNumVerts()); word(buffer->getNumIndices());
-    word(buffer->getIndexStride()); word(info.mCount); word(info.mOffset);
-    pointer(info.mAvatar.get()); pointer(info.mSkinInfo.get());
-    const auto material = [&](const LLFetchedGLTFMaterial* value)
-    {
-        pointer(value);
-        if (!value) return;
-        word(value->mDoubleSided);
-        if (coverage != ALMetalWorldSpotShadowCoverage::opaque)
-        {
-            scalar(value->mAlphaCutoff);
-            LLGLTFMaterial::TextureTransform::Pack packed;
-            value->mTextureTransform[LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(packed);
-            std::array<U32, sizeof(packed) / sizeof(U32)> bits;
-            std::memcpy(bits.data(), packed, sizeof(packed));
-            for (auto part : bits) word(part);
-        }
-    };
-    material(info.mGLTFMaterial.get()); word(info.mGLTFMaterialList.size());
-    for (const auto& value : info.mGLTFMaterialList) material(value.get());
-    if (coverage == ALMetalWorldSpotShadowCoverage::opaque) return true;
-    word(texture_matrix); pointer(info.mTextureMatrix);
-    if (texture_matrix && info.mTextureMatrix)
-    {
-        const F32* values = &info.mTextureMatrix->mMatrix[0][0];
-        for (std::size_t at = 0; at < 16; ++at) scalar(values[at]);
-    }
-    scalar(info.mAlphaMaskCutoff);
-    bool valid = true;
-    const auto image = [&](LLViewerTexture* texture)
-    {
-        pointer(texture);
-        auto* gl = texture ? texture->getGLTexture() : nullptr;
-        pointer(gl);
-        if (!gl) return;
-        word(gl->getContentStamp()); pointer(gl->getMetalTexture());
-        for (std::size_t at = 0; at < images.count; ++at)
-            if (images.images[at] == gl) return;
-        if (images.count == images.images.size()) { valid = false; return; }
-        images.images[images.count++] = gl;
-    };
-    image(info.mTexture.get()); word(info.mTextureList.size());
-    for (const auto& value : info.mTextureList) image(value.get());
-    word(info.mMaterialSlotList.size());
-    for (const auto& value : info.mMaterialSlotList)
-    { image(value.mDiffuse.get()); scalar(value.mAlphaMaskCutoff); }
-    if (info.mGLTFMaterial)
-        image(info.mGLTFMaterial->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR));
-    for (const auto& value : info.mGLTFMaterialList)
-        if (value) image(value->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR));
-    image(LLViewerFetchedTexture::sDefaultImagep.get());
-    image(LLViewerFetchedTexture::sWhiteImagep.get());
-    return valid;
-}
+ALNativeSourceWorkingSet sNativeSceneSources;
+U64 sNativeSceneSerial = 0;
+std::shared_ptr<ALMetalWorldVisibility> sNativeSceneVisibility;
+const ALMetalDevice* sNativeSceneVisibilityDevice = nullptr;
+void trimShadowSourceWorkingSet() { sNativeSceneSources.trim(gFrameCount); }
 }
 
 struct LLPipeline::MetalWorldSimpleCapture
@@ -545,8 +470,20 @@ struct LLPipeline::MetalWorldSimpleCapture
 
     struct ShadowSourceLease
     {
+        std::vector<std::shared_ptr<const void>> publications;
         std::vector<std::shared_ptr<const ALMetalShadowSourceRecord>> sources;
         std::vector<std::shared_ptr<const ALMetalAttachmentPaletteRecord>> palettes;
+        std::unordered_set<const void*> resource_set;
+        void retainResource(std::shared_ptr<const void> resource)
+        {
+            if (!resource) return;
+            const auto [at, inserted] = resource_set.insert(resource.get());
+            if (inserted)
+            {
+                try { publications.push_back(std::move(resource)); }
+                catch (...) { resource_set.erase(at); throw; }
+            }
+        }
         std::unordered_set<const ALMetalShadowSourceRecord*> source_set;
         std::unordered_set<const ALMetalAttachmentPaletteRecord*> palette_set;
         const ALMetalShadowSourceRecord* retain(
@@ -747,6 +684,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     }
     std::vector<ALMetalWorldSpotShadowBatch> spot_shadow_batches;
     ALMetalWorldSpotShadowBatch* spot_shadow_source_build = nullptr;
+    std::vector<std::array<float, 16>> spot_shadow_texture_matrices;
     std::vector<ALMetalShadowPrepareInstance> spot_shadow_inputs;
     std::shared_ptr<ShadowSourceLease> shadow_source_lease;
     std::shared_ptr<const ALMetalCommandCompletion> shadow_source_lease_command;
@@ -767,6 +705,30 @@ struct LLPipeline::MetalWorldSimpleCapture
         shadow_source_lease = std::move(lease);
         shadow_source_lease_command = command;
         return true;
+    }
+    bool retainShadowGeometry(const LLVertexBuffer& buffer)
+    {
+        if (spot_shadow_source_build) return true; // factory seals its prototype
+        if (!shadow_source_lease && !acquireShadowSourceLease()) return false;
+        shadow_source_lease->retainResource(buffer.getMetalVertexBufferLease());
+        shadow_source_lease->retainResource(buffer.getMetalIndexBufferLease());
+        return true;
+    }
+    void retainShadowTexture(const LLImageGL* image, const ALMetalTexture* texture)
+    {
+        if (spot_shadow_source_build || !texture) return;
+        if (!shadow_source_lease && !acquireShadowSourceLease())
+        { spot_shadow_capture_complete = false; return; }
+        if (image && image->getMetalTexture() == texture)
+            shadow_source_lease->retainResource(image->getMetalTextureLease());
+        else
+        {
+            auto* fallback = LLViewerFetchedTexture::sDefaultImagep.get();
+            auto* native = fallback ? fallback->getGLTexture() : nullptr;
+            if (native && native->getMetalTexture() == texture)
+                shadow_source_lease->retainResource(native->getMetalTextureLease());
+            else spot_shadow_capture_complete = false;
+        }
     }
     std::vector<ALMetalWorldSpotShadowBatch> spot_shadow_prepared;
     std::vector<U64> spot_shadow_source_key;
@@ -868,6 +830,42 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalTexture> legacy_glow_noise_texture;
     std::unique_ptr<ALMetalRenderTarget> base_light_target;
     std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
+    struct WorldResourceLease
+    {
+        std::vector<std::shared_ptr<const void>> owners;
+        std::unordered_set<const void*> identities;
+        void retain(std::shared_ptr<const void> owner)
+        {
+            if (!owner) return;
+            const auto [at, inserted] = identities.insert(owner.get());
+            if (inserted)
+            {
+                try { owners.push_back(std::move(owner)); }
+                catch (...) { identities.erase(at); throw; }
+            }
+        }
+    };
+    U64 scene_source_failures = 0;
+    const char* last_scene_source_failure = nullptr;
+    std::vector<ALMetalWorldVisibilityMember> world_visibility_members;
+    std::shared_ptr<WorldResourceLease> world_resources = std::make_shared<WorldResourceLease>();
+    void retainGeometry(const LLVertexBuffer& buffer)
+    {
+        world_resources->retain(buffer.getMetalVertexBufferLease());
+        world_resources->retain(buffer.getMetalIndexBufferLease());
+    }
+    void retainImage(const LLImageGL* image)
+    { if (image) world_resources->retain(image->getMetalTextureLease()); }
+    void retainFetched(const ALMetalTerrainFetchedBindings& fetched)
+    {
+        for (const auto* slots : {&fetched.base, &fetched.normal, &fetched.orm, &fetched.emissive})
+            for (const auto& binding : *slots) retainImage(binding.image.get());
+        retainImage(fetched.blend.image.get());
+        retainImage(fetched.overlay.image.get());
+    }
+
+    std::shared_ptr<std::atomic<std::uint64_t>> world_prepare_epoch =
+        std::make_shared<std::atomic<std::uint64_t>>(0);
     std::vector<ALMetalWorldSimpleBatch> batches;
     std::vector<ALMetalWorldVisibilityQuery> visibility_queries;
     std::vector<ALQueryTicket> visibility_tickets;
@@ -2679,7 +2677,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // Bound cached generations by the actual Apple GPU working-set advice.
     // Count shared native resources once; active command leases are separate.
     if (const auto* device = getViewerMetalDevice())
-        sShadowSourceCache.setByteBudget(std::clamp<std::uint64_t>(
+        sNativeSceneSources.setByteBudget(std::clamp<std::uint64_t>(
             device->info().recommended_working_set_size / 16,
             256ull * 1024 * 1024, 4ull * 1024 * 1024 * 1024));
     // Expire inactive source generations even when shadows are disabled.
@@ -2963,11 +2961,30 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             };
             log_sources("main", &capture);
             log_sources("probe", mMetalProbeWorldSimpleCapture.get());
+            const auto log_publication = [](const char* view, const MetalWorldSimpleCapture* value)
+            {
+                if (!value) return;
+                LL_INFOS("MetalScene") << "Native shared scene publication: view=" << view
+                    << ", failed_sources=" << value->scene_source_failures
+                    << ", last_failure=" << (value->last_scene_source_failure ? value->last_scene_source_failure : "none")
+                    << LL_ENDL;
+            };
+            log_publication("main", &capture);
+            log_publication("probe", mMetalProbeWorldSimpleCapture.get());
+            const auto frame_plan = ALNativeFrameBudget::instance().snapshot();
+            LL_INFOS("MetalFramePlan") << "Shared native admission: frame=" << frame_plan.frame
+                << ", main_busy/pressure/draining=" << frame_plan.main_busy << '/' << frame_plan.memory_pressure << '/' << frame_plan.draining
+                << ", admitted/deferred/progress/retired=" << frame_plan.admitted << '/' << frame_plan.deferred << '/' << frame_plan.progress_admissions << '/' << frame_plan.retired
+                << ", uploads_inflight/count_bytes=" << frame_plan.uploads_in_flight << '/' << frame_plan.upload_bytes_in_flight
+                << ", optional/preparation_inflight=" << frame_plan.optional_views_in_flight << '/' << frame_plan.preparation_in_flight
+                << ", streaming_queued/pending/oldest=" << frame_plan.streaming.queued_requests << '/' << frame_plan.streaming.pending_publications << '/' << frame_plan.streaming.oldest_request_frame
+                << LL_ENDL;
+
             const auto publication = LLImageGL::metalPublicationStats();
             const auto uploads = LLVertexBuffer::metalUploadStats();
             LL_INFOS("MetalMemory")
-                << "Native generation publication census: source_cache_entries=" << sShadowSourceCache.entryCount()
-                << ", source_cache_estimated_bytes=" << sShadowSourceCache.estimatedRetainedBytes()
+                << "Native generation publication census: source_cache_entries=" << sNativeSceneSources.entryCount()
+                << ", source_cache_estimated_bytes=" << sNativeSceneSources.estimatedRetainedBytes()
                 << ", vertex_full/partial/bytes/recycled/leased_orphans=" << uploads.full_uploads
                 << '/' << uploads.partial_uploads << '/' << uploads.uploaded_bytes
                 << '/' << uploads.recycled_generations << '/' << uploads.leased_orphans
@@ -3287,6 +3304,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     capture.batches.clear();
+    capture.world_visibility_members.clear();
+    capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
     capture.visibility_queries.clear();
     capture.visibility_tickets.clear();
     capture.visibility_capture_active = false;
@@ -3751,6 +3770,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
 
     capture.batches.clear();
     capture.avatar_palettes.clear();
+    capture.world_visibility_members.clear();
+    capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
     capture.width = width;
     capture.height = height;
     if (capture.normal_hdr != LLRender::sGBufferNormHDR ||
@@ -7810,6 +7831,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.composed_light_target)
     {
         ALMetalWorldOpaquePostDeferredScene scene;
+        scene.source_owner = capture.world_resources;
         scene.probe_pbr_shadow_specialization = true;
         scene.probe_water_shadow_specialization = true;
         scene.diagnostic_frame_index = gFrameCount;
@@ -10632,6 +10654,7 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
         capture.renderer && capture.impostor_bake_target)
     {
         ALMetalWorldGBufferScene scene;
+    scene.source_owner = capture.world_resources;
         scene.batches = capture.batches.data();
         scene.batch_count = capture.batches.size();
         scene.width = capture.width;
@@ -10763,6 +10786,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     }
 
     ALMetalWorldGBufferScene scene;
+    scene.source_owner = capture.world_resources;
     scene.batches = capture.batches.data();
     scene.batch_count = capture.batches.size();
     scene.width = capture.width;
@@ -11694,6 +11718,7 @@ void LLPipeline::captureMetalWorldBumpBatch(
             params, modelview, modelview_projection);
 
         ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
+        capture.retainGeometry(*buffer);
         batch.vertices = buffer->getMetalVertexBuffer();
         batch.position_offset = buffer->getOffset(
             LLVertexBuffer::TYPE_VERTEX);
@@ -11708,6 +11733,7 @@ void LLPipeline::captureMetalWorldBumpBatch(
         batch.index_type = buffer->getIndexStride() == 4
             ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
         batch.index_count = params.mCount;
+        capture.retainImage(normal_image);
         batch.diffuse_textures[0] = normal_image->getMetalTexture();
         batch.texture_count = 1;
         batch.impostor_emboss = true;
@@ -11760,186 +11786,13 @@ void LLPipeline::captureMetalWorldBumpBatch(
     }
     ALMetalWorldSimpleBatch& batch = capture.batches.back();
     batch.tangent_offset = buffer->getOffset(LLVertexBuffer::TYPE_TANGENT);
+    capture.retainImage(normal_image);
     batch.normal_texture = normal_image->getMetalTexture();
 }
 
-void LLPipeline::captureMetalWorldMaterialBatch(
-    const LLDrawInfo& params, bool indexed_materials)
+void LLPipeline::captureMetalWorldMaterialBatch(const LLDrawInfo& params, bool indexed_materials)
 {
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->frame_active ||
-        !mMetalWorldSimpleCapture->pass_active)
-    {
-        return;
-    }
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    const std::size_t slot_count = indexed_materials
-        ? params.mMaterialSlotList.size() : 1;
-    LLVertexBuffer* buffer = params.mVertexBuffer.get();
-    if (!capture.complete || !buffer || slot_count == 0 ||
-        slot_count > ALMetalWorldSimpleBatch::max_material_slots ||
-        (capture.material_normal_map &&
-         (!buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT) ||
-          !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD1))) ||
-        (capture.material_specular_map &&
-         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD2)) ||
-        (indexed_materials &&
-         (slot_count < 2 ||
-          !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX))))
-    {
-        capture.markIncomplete(__LINE__);
-        capture.batches.clear();
-        return;
-    }
-
-    const std::size_t prior_count = capture.batches.size();
-    captureMetalWorldGBufferBatch(params, false);
-    if (!capture.complete || capture.batches.size() == prior_count)
-    {
-        return;
-    }
-
-    ALMetalWorldSimpleBatch& batch = capture.batches.back();
-    batch.material_slot_count = static_cast<U32>(slot_count);
-    batch.material_alpha_mode = capture.material_alpha_mode;
-    batch.texture_count = static_cast<U32>(slot_count);
-    if (capture.material_normal_map)
-    {
-        batch.tangent_offset = buffer->getOffset(
-            LLVertexBuffer::TYPE_TANGENT);
-        batch.texcoord1_offset = buffer->getOffset(
-            LLVertexBuffer::TYPE_TEXCOORD1);
-    }
-    if (capture.material_specular_map)
-    {
-        batch.texcoord2_offset = buffer->getOffset(
-            LLVertexBuffer::TYPE_TEXCOORD2);
-    }
-    if (indexed_materials)
-    {
-        std::memset(batch.texture_matrix, 0,
-                    sizeof(batch.texture_matrix));
-        for (U32 diagonal = 0; diagonal < 4; ++diagonal)
-        {
-            batch.texture_matrix[diagonal * 4 + diagonal] = 1.f;
-        }
-    }
-
-    const auto resolve_material_image = [](LLViewerTexture* texture)
-        -> LLImageGL*
-    {
-        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-        if (!image || !image->getMetalTexture())
-        {
-            // Native publication readiness, rather than a GL name, selects
-            // the streamed fallback for this Metal-owned pass.
-            LLViewerFetchedTexture* fallback =
-                LLViewerFetchedTexture::sDefaultImagep.get();
-            LLImageGL* fallback_image = fallback
-                ? fallback->getGLTexture() : nullptr;
-            if (fallback_image && fallback_image->getMetalTexture())
-            {
-                image = fallback_image;
-            }
-        }
-        return image;
-    };
-
-    for (std::size_t slot_index = 0;
-         slot_index < slot_count; ++slot_index)
-    {
-        LLViewerTexture* texture = nullptr;
-        LLViewerTexture* normal_texture = nullptr;
-        LLViewerTexture* specular_texture = nullptr;
-        ALMetalWorldMaterialSlot& destination =
-            batch.materialSlots()[slot_index];
-        if (indexed_materials)
-        {
-            const LLDrawInfo::MaterialSlot& source =
-                params.mMaterialSlotList[slot_index];
-            texture = source.mDiffuse.notNull()
-                ? source.mDiffuse.get()
-                : LLViewerFetchedTexture::sWhiteImagep.get();
-            if (capture.material_normal_map)
-            {
-                normal_texture = source.mNormalMap.notNull()
-                    ? source.mNormalMap.get()
-                    : LLViewerFetchedTexture::sFlatNormalImagep.get();
-            }
-            if (capture.material_specular_map)
-            {
-                specular_texture = source.mSpecularMap.notNull()
-                    ? source.mSpecularMap.get()
-                    : LLViewerFetchedTexture::sWhiteImagep.get();
-            }
-            std::memcpy(destination.specular_color,
-                        source.mSpecColor.mV,
-                        sizeof(destination.specular_color));
-            destination.env_intensity = source.mEnvIntensity;
-            destination.alpha_cutoff = source.mAlphaMaskCutoff;
-            destination.fullbright = source.mFullbright;
-        }
-        else
-        {
-            texture = params.mTexture
-                ? params.mTexture.get()
-                : LLViewerFetchedTexture::sWhiteImagep.get();
-            if (capture.material_normal_map)
-            {
-                normal_texture = params.mNormalMap
-                    ? params.mNormalMap.get()
-                    : LLViewerFetchedTexture::sFlatNormalImagep.get();
-            }
-            if (capture.material_specular_map)
-            {
-                specular_texture = params.mSpecularMap
-                    ? params.mSpecularMap.get()
-                    : LLViewerFetchedTexture::sWhiteImagep.get();
-            }
-            std::memcpy(destination.specular_color,
-                        params.mSpecColor.mV,
-                        sizeof(destination.specular_color));
-            destination.env_intensity = params.mEnvIntensity;
-            destination.alpha_cutoff = params.mAlphaMaskCutoff;
-            destination.fullbright = params.mFullbright ? 1.f : 0.f;
-        }
-
-        LLImageGL* image = resolve_material_image(texture);
-        batch.diffuse_textures[slot_index] = image
-            ? image->getMetalTexture() : nullptr;
-        if (!batch.diffuse_textures[slot_index])
-        {
-            capture.markIncomplete(__LINE__);
-            capture.batches.clear();
-            return;
-        }
-        if (capture.material_normal_map)
-        {
-            LLImageGL* normal_image =
-                resolve_material_image(normal_texture);
-            destination.normal_texture = normal_image
-                ? normal_image->getMetalTexture() : nullptr;
-            if (!destination.normal_texture)
-            {
-                capture.markIncomplete(__LINE__);
-                capture.batches.clear();
-                return;
-            }
-        }
-        if (capture.material_specular_map)
-        {
-            LLImageGL* specular_image =
-                resolve_material_image(specular_texture);
-            destination.specular_texture = specular_image
-                ? specular_image->getMetalTexture() : nullptr;
-            if (!destination.specular_texture)
-            {
-                capture.markIncomplete(__LINE__);
-                capture.batches.clear();
-                return;
-            }
-        }
-    }
+    captureMetalPublishedWorldBatch(params, 1, indexed_materials);
 }
 
 void LLPipeline::captureMetalWorldLegacyGlowBatch(
@@ -11983,6 +11836,7 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
         params, modelview, modelview_projection);
 
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
+    capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
@@ -12040,6 +11894,7 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
                 image = fallback_image;
             }
         }
+        capture.retainImage(image);
         batch.diffuse_textures[slot] = image
             ? image->getMetalTexture() : nullptr;
         if (!batch.diffuse_textures[slot])
@@ -12156,175 +12011,10 @@ void LLPipeline::captureMetalWorldPostWaterPBRGlowBatch(
     }
 }
 
-void LLPipeline::captureMetalWorldPBRBatch(
-    const LLDrawInfo& params, bool indexed_materials)
+void LLPipeline::captureMetalWorldPBRBatch(const LLDrawInfo& params, bool indexed_materials)
 {
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->frame_active ||
-        !mMetalWorldSimpleCapture->pass_active ||
-        !mMetalWorldSimpleCapture->pbr)
-    {
-        return;
-    }
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    const std::size_t slot_count = indexed_materials
-        ? params.mGLTFMaterialList.size() : 1;
-    LLVertexBuffer* buffer = params.mVertexBuffer.get();
-    if (!capture.complete || !buffer || slot_count == 0 ||
-        slot_count > ALMetalWorldSimpleBatch::max_material_slots ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT) ||
-        (capture.pbr_glow &&
-         !buffer->hasDataType(LLVertexBuffer::TYPE_EMISSIVE)) ||
-        (indexed_materials &&
-         (slot_count < 2 ||
-          !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX))) ||
-        (!indexed_materials && params.mGLTFMaterial.isNull()))
-    {
-        capture.markIncomplete(__LINE__);
-        capture.batches.clear();
-        return;
-    }
-
-    const std::size_t prior_count = capture.batches.size();
-    captureMetalWorldGBufferBatch(params, false);
-    if (!capture.complete || capture.batches.size() == prior_count)
-    {
-        return;
-    }
-
-    ALMetalWorldSimpleBatch& batch = capture.batches.back();
-    batch.tangent_offset = buffer->getOffset(LLVertexBuffer::TYPE_TANGENT);
-    batch.pbr_glow = capture.pbr_glow;
-    if (capture.pbr_glow)
-    {
-        batch.emissive_offset = buffer->getOffset(
-            LLVertexBuffer::TYPE_EMISSIVE);
-    }
-    batch.pbr_slot_count = static_cast<U32>(slot_count);
-    batch.texture_count = static_cast<U32>(slot_count);
-    batch.double_sided = false;
-    if (indexed_materials)
-    {
-        std::memset(batch.texture_matrix, 0,
-                    sizeof(batch.texture_matrix));
-        for (U32 diagonal = 0; diagonal < 4; ++diagonal)
-        {
-            batch.texture_matrix[diagonal * 4 + diagonal] = 1.f;
-        }
-    }
-
-    for (std::size_t slot_index = 0;
-         slot_index < slot_count; ++slot_index)
-    {
-        LLFetchedGLTFMaterial* material = indexed_materials
-            ? params.mGLTFMaterialList[slot_index].get()
-            : params.mGLTFMaterial.get();
-        ALMetalWorldPBRSlot& destination = batch.pbrSlots()[slot_index];
-
-        LLViewerTexture* media_texture = !indexed_materials
-            ? params.mTexture.get() : nullptr;
-        LLViewerTexture* base_texture = media_texture;
-        LLViewerTexture* normal_texture = nullptr;
-        LLViewerTexture* orm_texture = nullptr;
-        LLViewerTexture* emissive_texture = media_texture;
-
-        if (material)
-        {
-            const bool masked = material->mAlphaMode ==
-                LLGLTFMaterial::ALPHA_MODE_MASK;
-            // The original pbrglowF/pbrglowIndexedF shaders deliberately
-            // accept both opaque and MASK materials from PASS_GLTF_GLOW and
-            // apply each material's own cutoff.  Only the G-buffer sweeps are
-            // partitioned into opaque versus alpha-mask passes.
-            if (!capture.pbr_glow && masked != capture.alpha_mask)
-            {
-                capture.markIncomplete(__LINE__);
-                capture.batches.clear();
-                return;
-            }
-            if (!base_texture)
-            {
-                base_texture = material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR);
-                base_texture = base_texture ? base_texture : LLViewerFetchedTexture::sWhiteImagep.get();
-            }
-            normal_texture = material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_NORMAL);
-            normal_texture = normal_texture && normal_texture->getDiscardLevel() <= 4
-                ? normal_texture : LLViewerFetchedTexture::sFlatNormalImagep.get();
-            orm_texture = material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_METALLIC_ROUGHNESS);
-            orm_texture = orm_texture ? orm_texture : LLViewerFetchedTexture::sWhiteImagep.get();
-            if (!emissive_texture)
-            {
-                emissive_texture = material->getRenderTexture(LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE);
-                emissive_texture = emissive_texture ? emissive_texture : LLViewerFetchedTexture::sWhiteImagep.get();
-            }
-            for (U32 texture = 0;
-                 texture < LLGLTFMaterial::GLTF_TEXTURE_INFO_COUNT;
-                 ++texture)
-            {
-                LLGLTFMaterial::TextureTransform::Pack packed;
-                material->mTextureTransform[texture].getPacked(packed);
-                std::memcpy(destination.texture_transform[texture],
-                            packed, sizeof(packed));
-            }
-            std::memcpy(destination.emissive_color,
-                        material->mEmissiveColor.mV,
-                        sizeof(material->mEmissiveColor.mV));
-            std::memcpy(destination.base_color_factor,
-                        material->mBaseColor.mV,
-                        sizeof(destination.base_color_factor));
-            destination.base_color_factor[3] =
-                material->getStreamedBaseAlpha();
-            destination.roughness_factor = material->mRoughnessFactor;
-            destination.metallic_factor = material->mMetallicFactor;
-            destination.alpha_cutoff = masked
-                ? material->mAlphaCutoff : -1.f;
-            batch.double_sided = batch.double_sided ||
-                                 material->mDoubleSided;
-        }
-        else
-        {
-            base_texture = LLViewerFetchedTexture::sWhiteImagep.get();
-            normal_texture = LLViewerFetchedTexture::sFlatNormalImagep.get();
-            orm_texture = LLViewerFetchedTexture::sWhiteImagep.get();
-            emissive_texture = LLViewerFetchedTexture::sWhiteImagep.get();
-            destination.alpha_cutoff = -1.f;
-        }
-
-        const auto metal_texture = [](LLViewerTexture* texture)
-            -> ALMetalTexture*
-        {
-            LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-            ALMetalTexture* native = image
-                ? image->getMetalTexture() : nullptr;
-            if (!native)
-            {
-                // LLFetchedGLTFMaterial::bind and the original OpenGL
-                // ALTextureSlot path substitute the viewer default whenever a
-                // streamed material map is not GPU-ready.  Preserve that
-                // draw-local contract here instead of making one pending map
-                // discard the complete native world transaction.
-                LLViewerFetchedTexture* fallback =
-                    LLViewerFetchedTexture::sDefaultImagep.get();
-                LLImageGL* fallback_image = fallback
-                    ? fallback->getGLTexture() : nullptr;
-                native = fallback_image
-                    ? fallback_image->getMetalTexture() : nullptr;
-            }
-            return native;
-        };
-        batch.diffuse_textures[slot_index] = metal_texture(base_texture);
-        destination.normal_texture = metal_texture(normal_texture);
-        destination.orm_texture = metal_texture(orm_texture);
-        destination.emissive_texture = metal_texture(emissive_texture);
-        if (!batch.diffuse_textures[slot_index] ||
-            !destination.normal_texture || !destination.orm_texture ||
-            !destination.emissive_texture)
-        {
-            capture.markIncomplete(__LINE__);
-            capture.batches.clear();
-            return;
-        }
-    }
+    if (mMetalWorldSimpleCapture && mMetalWorldSimpleCapture->pbr)
+        captureMetalPublishedWorldBatch(params, 2, indexed_materials);
 }
 
 void LLPipeline::captureMetalImpostorPBRAlphaBatch(
@@ -13000,8 +12690,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
     } source_scope{transaction, source_diagnostics};
     trimShadowSourceWorkingSet();
     transaction.spot_shadow_inputs.clear();
-    if (!transaction.spot_shadow_admitted_sources.empty() &&
-        !transaction.acquireShadowSourceLease())
+    if (!transaction.acquireShadowSourceLease())
     {
         transaction.spot_shadow_capture_complete = false;
         transaction.spot_shadow_first_incomplete_source_line = __LINE__;
@@ -13033,7 +12722,9 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         {
             ++source_diagnostics.detached_eligible;
             owner.spot_shadow_inputs.clear();
+            owner.spot_shadow_texture_matrices.clear();
             owner.spot_shadow_inputs.reserve(count);
+            owner.spot_shadow_texture_matrices.reserve(count);
         }
         const bool texture_matrix = !gCubeSnapshot || mHeroProbeManager.isMirrorPass();
         const auto fail = [&]
@@ -13086,35 +12777,11 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         {
             ++source_diagnostics.visited_inputs;
             const auto& info = *owner.spot_shadow_admitted_sources[index];
-            ShadowSourceImages images;
-            ++source_diagnostics.key_builds;
-            if (!shadowSourceKey(info, type, owner.spot_shadow_coverage,
-                                 texture_matrix, owner.spot_shadow_source_key, images))
-            { fail(); return; }
-            auto& cached = info.mMetalShadowSource;
-            if (!cached) cached = std::make_shared<ALViewerMetalShadowSourceCache>();
-            const auto* retained = sShadowSourceCache.find(cached.get());
-            const bool same_key = cached->key == owner.spot_shadow_source_key;
-            const bool retained_hit = retained && same_key;
-            if (retained_hit) ++source_diagnostics.retained_hits;
-            if (!same_key && !cached->key.empty()) ++source_diagnostics.key_changes;
-            const std::shared_ptr<const ALMetalShadowSourceRecord>* published =
-                retained_hit ? retained : nullptr;
-            std::shared_ptr<const ALMetalShadowSourceRecord> fresh_source;
-            if (!published && same_key)
-            {
-                fresh_source = cached->transient_record.lock();
-                if (fresh_source)
+            auto publication = ALScenePublicationNative::shadow(info, type,
+                owner.spot_shadow_coverage, sNativeSceneSources, sNativeSceneSerial, gFrameCount,
+                [&](ALMetalWorldSpotShadowBatch& prototype)
                 {
-                    published = &fresh_source;
-                    ++source_diagnostics.transient_hits;
-                }
-            }
-            if (!published)
-            {
-                ++source_diagnostics.build_attempts;
-                ALMetalWorldSpotShadowBatch prototype;
-                {
+                    ++source_diagnostics.build_attempts;
                     struct SourceBuild
                     {
                         MetalWorldSimpleCapture& capture;
@@ -13128,59 +12795,18 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                     owner.spot_shadow_source_build = &prototype;
                     owner.spot_shadow_source_merge_active = false;
                     build_source(info);
-                }
-                if (!owner.spot_shadow_capture_complete) return;
-                // Native publication/fallback may have completed while the
-                // producer populated this prototype. Seal its actual tuple.
-                ++source_diagnostics.key_builds;
-                if (!shadowSourceKey(info, type, owner.spot_shadow_coverage,
-                                     texture_matrix, owner.spot_shadow_source_key, images))
-                { fail(); return; }
-                std::vector<std::shared_ptr<const ALMetalTexture>> textures;
-                for (std::size_t slot = 0; slot < prototype.texture_count; ++slot)
-                {
-                    const auto* native =
-                        static_cast<const ALMetalWorldSpotShadowBatch&>(prototype).
-                            coverageData().textures[slot];
-                    std::shared_ptr<const ALMetalTexture> lease;
-                    for (std::size_t at = 0; at < images.count; ++at)
-                    {
-                        auto candidate = images.images[at]->getMetalTextureLease();
-                        if (candidate.get() == native)
-                        { lease = std::move(candidate); break; }
-                    }
-                    if (!lease) { fail(); return; }
-                    // Material slot numbering is shader-visible even when
-                    // several slots share white/default/current pixel data.
-                    textures.push_back(std::move(lease));
-                }
-                std::string error;
-                auto* buffer = info.mVertexBuffer.get();
-                const auto generation = ++owner.spot_shadow_source_generation;
-                fresh_source = ALMetalShadowSourceRecord::create(generation, prototype,
-                    buffer->getMetalVertexBufferLease(),
-                    buffer->getMetalIndexBufferLease(), std::move(textures), &error);
-                if (!fresh_source)
-                {
-                    LL_WARNS_ONCE("Metal") << "Shadow source publication failed: "
-                        << error << LL_ENDL;
-                    fail(); return;
-                }
-                ++source_diagnostics.records_created;
-                cached->key = owner.spot_shadow_source_key;
-                published = &fresh_source;
-            }
-            if (retained_hit)
-                sShadowSourceCache.touch(cached.get(), gFrameCount);
-            else
+                    return owner.spot_shadow_capture_complete;
+                });
+            if (!publication)
             {
-                cached->transient_record = *published;
-                if (sShadowSourceCache.publish(cached, *published, gFrameCount))
-                    ++source_diagnostics.cache_admitted;
-                else
-                    ++source_diagnostics.cache_declined;
+                ++owner.scene_source_failures;
+                owner.last_scene_source_failure = publication.failure;
+                fail(); return;
             }
-            const auto* source = owner.shadow_source_lease->retain(*published);
+            if (publication.reused) ++source_diagnostics.retained_hits;
+            else ++source_diagnostics.records_created;
+            owner.shadow_source_lease->publications.push_back(publication.owner);
+            const auto* source = owner.shadow_source_lease->retain(*publication.record);
             const ALMetalAttachmentPaletteRecord* palette = nullptr;
             if (source->requiresPalette())
             {
@@ -13203,6 +12829,10 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                 if (!getMetalSpotShadowModelviewProjection(info.mModelMatrix, matrix))
                 { fail(); return; }
                 std::memcpy(batch.modelview_projection, matrix.getF32ptr(), sizeof(batch.modelview_projection));
+                if (texture_matrix && info.mTextureMatrix &&
+                    owner.spot_shadow_coverage != ALMetalWorldSpotShadowCoverage::opaque &&
+                    source->prototype().texture_count <= 1)
+                    std::memcpy(batch.texture_matrix, info.mTextureMatrix->mMatrix, sizeof(batch.texture_matrix));
                 if (palette)
                 {
                     batch.skin_palette = palette->data();
@@ -13217,6 +12847,14 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                 input.source = source; input.palette = palette;
                 input.source_generation = source->generation();
                 input.epoch = epoch;
+                if (texture_matrix && info.mTextureMatrix &&
+                    owner.spot_shadow_coverage != ALMetalWorldSpotShadowCoverage::opaque &&
+                    source->prototype().texture_count <= 1)
+                {
+                    input.texture_matrix_slot = owner.spot_shadow_texture_matrices.size();
+                    auto& uv = owner.spot_shadow_texture_matrices.emplace_back();
+                    std::memcpy(uv.data(), info.mTextureMatrix->mMatrix, sizeof(uv));
+                }
                 input.has_model = info.mModelMatrix != nullptr;
                 if (input.has_model)
                     std::memcpy(input.model.data(), info.mModelMatrix->getF32ptr(), sizeof(input.model));
@@ -13229,6 +12867,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         const std::span<const ALMetalShadowPrepareInstance> inputs(
             owner.spot_shadow_inputs.data(), count);
         ALMetalShadowPrepareContext context;
+        context.texture_matrices = owner.spot_shadow_texture_matrices;
         std::memcpy(context.view.data(), owner.spot_shadow_view.getF32ptr(), sizeof(context.view));
         std::memcpy(context.projection.data(), owner.spot_shadow_projection.getF32ptr(), sizeof(context.projection));
         std::string error;
@@ -13654,6 +13293,8 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
     auto* appended = capture.appendSeparateShadowBatch(__LINE__);
     if (!appended) return;
     auto& batch = *appended;
+    if (!capture.retainShadowGeometry(*buffer))
+    { capture.spot_shadow_capture_complete = false; return; }
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.vertex_count = buffer->getNumVerts();
@@ -13748,6 +13389,8 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
     auto* appended = capture.appendSeparateShadowBatch(__LINE__);
     if (!appended) return;
     auto& batch = *appended;
+    if (!capture.retainShadowGeometry(*buffer))
+    { capture.spot_shadow_capture_complete = false; return; }
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(
@@ -13777,7 +13420,7 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
                     sizeof(batch.texture_matrix));
     }
 
-    const auto metal_texture = [](LLViewerTexture* texture)
+    const auto metal_texture = [&capture](LLViewerTexture* texture)
         -> ALMetalTexture*
     {
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
@@ -13794,6 +13437,7 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
             native = fallback_image
                 ? fallback_image->getMetalTexture() : nullptr;
         }
+        capture.retainShadowTexture(image, native);
         return native;
     };
     for (std::size_t slot = 0; slot < texture_count; ++slot)
@@ -13921,6 +13565,8 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
     auto* appended = capture.appendSeparateShadowBatch(__LINE__);
     if (!appended) return;
     auto& batch = *appended;
+    if (!capture.retainShadowGeometry(*buffer))
+    { capture.spot_shadow_capture_complete = false; return; }
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(
@@ -13949,7 +13595,7 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
                     sizeof(batch.texture_matrix));
     }
 
-    const auto metal_texture = [](LLViewerTexture* texture)
+    const auto metal_texture = [&capture](LLViewerTexture* texture)
         -> ALMetalTexture*
     {
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
@@ -13964,6 +13610,7 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
             native = fallback_image
                 ? fallback_image->getMetalTexture() : nullptr;
         }
+        capture.retainShadowTexture(image, native);
         return native;
     };
     for (std::size_t slot = 0; slot < texture_count; ++slot)
@@ -14101,6 +13748,8 @@ void LLPipeline::captureMetalSpotShadowTreeBatch(
     auto* appended = capture.appendSeparateShadowBatch(__LINE__);
     if (!appended) return;
     auto& batch = *appended;
+    if (!capture.retainShadowGeometry(*buffer))
+    { capture.spot_shadow_capture_complete = false; return; }
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(
@@ -14111,6 +13760,7 @@ void LLPipeline::captureMetalSpotShadowTreeBatch(
     batch.index_type = buffer->getIndexStride() == 4
         ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
     batch.index_count = buffer->getNumIndices();
+    capture.retainShadowTexture(image, native_texture);
     batch.coverageData().textures[0] = native_texture;
     batch.texture_count = 1;
     batch.coverageData().alpha_cutoffs[0] = 0.5f;
@@ -14172,11 +13822,14 @@ void LLPipeline::captureMetalSpotShadowTerrainBatch(
     if (!appended) return;
     auto& batch = *appended;
     batch.terrain = true;
+    if (!capture.retainShadowGeometry(*buffer))
+    { capture.spot_shadow_capture_complete = false; return; }
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
         static_cast<std::size_t>(face->getGeomIndex()) *
             sizeof(LLVector4a);
     batch.vertex_count = LLVOSurfacePatch::PATCH_CORNERS;
+    capture.shadow_source_lease->retainResource(surface->getSurfaceMaps().getMetalHeightTextureLease());
     batch.terrain_height_texture = height_texture;
     batch.terrain_grid_scale = surface->getMetersPerGrid();
     batch.terrain_smoothing = smoothing;
@@ -14411,6 +14064,8 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
     auto& batch = *appended;
     batch.avatar = true;
     batch.avatar_cloth = capture.spot_shadow_avatar_cloth;
+    if (!capture.retainShadowGeometry(*buffer))
+    { capture.spot_shadow_capture_complete = false; return; }
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(
@@ -14425,7 +14080,8 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
     batch.avatar_draw_alpha = draw_alpha;
     if (covered)
     {
-        batch.coverageData().textures[0] = native_texture;
+        capture.retainShadowTexture(image, native_texture);
+    batch.coverageData().textures[0] = native_texture;
         batch.texture_count = 1;
         batch.coverageData().alpha_cutoffs[0] = LLDrawPoolAvatar::sMinimumAlpha;
     }
@@ -15188,6 +14844,7 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     }
 
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
+    capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
@@ -15199,6 +14856,7 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     batch.index_type = index_stride == 4
         ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
     batch.index_count = count;
+    capture.retainImage(image);
     batch.diffuse_textures[0] = image->getMetalTexture();
     batch.texture_count = 1;
     batch.alpha_mask = !avatar_alpha;
@@ -15459,6 +15117,7 @@ void LLPipeline::stampMetalImpostorCoverage(const LLUUID& avatar_id, const LLCol
         return;
     }
     ALMetalWorldGBufferScene scene;
+    scene.source_owner = capture.world_resources;
     scene.width = capture.width;
     scene.height = capture.height;
     scene.hdr = capture.hdr;
@@ -15662,6 +15321,7 @@ void LLPipeline::captureMetalWorldTreeBatch(LLFace* face,
         return;
     }
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
+    capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
@@ -15672,6 +15332,7 @@ void LLPipeline::captureMetalWorldTreeBatch(LLFace* face,
     batch.index_type = buffer->getIndexStride() == 4
         ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
     batch.index_count = buffer->getNumIndices();
+    capture.retainImage(image);
     batch.diffuse_textures[0] = image->getMetalTexture();
     batch.texture_count = 1;
     batch.alpha_mask = true;
@@ -15766,6 +15427,7 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     ALTerrainSurfaceMaps& maps = surface->getSurfaceMaps();
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     batch.terrain = true;
+    capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
         static_cast<std::size_t>(face->getGeomIndex()) * sizeof(LLVector4a);
@@ -15775,6 +15437,7 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     {
         LLImageGL* image = detail_textures[texture]
             ? detail_textures[texture]->getGLTexture() : nullptr;
+        capture.retainImage(image);
         batch.diffuse_textures[texture] = fetched
             ? fetched->base[texture].nativeTexture()
             : image ? image->getMetalTexture() : nullptr;
@@ -15784,9 +15447,14 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     LLImageGL* ramp_image = alpha_ramp->getGLTexture();
     LLImageGL* overlay_image = parcel_overlay
         ? parcel_overlay->getGLTexture() : nullptr;
+    capture.world_resources->retain(maps.getMetalHeightTextureLease());
+    capture.world_resources->retain(maps.getMetalCompositionTextureLease());
     batch.terrain_height_texture = maps.getMetalHeightTexture();
     batch.terrain_composition_texture = maps.getMetalCompositionTexture();
-    batch.terrain_texture_owner = fetched;
+    if (fetched) capture.retainFetched(*fetched);
+    batch.terrain_texture_owner = capture.world_resources;
+    capture.retainImage(ramp_image);
+    capture.retainImage(overlay_image);
     batch.terrain_alpha_ramp_texture = fetched
         ? fetched->blend.nativeTexture()
         : ramp_image ? ramp_image->getMetalTexture() : nullptr;
@@ -16005,16 +15673,18 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
         return;
     }
 
-    const auto metal_texture = [](LLViewerTexture* texture)
+    const auto metal_texture = [&capture](LLViewerTexture* texture)
         -> ALMetalTexture*
     {
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        capture.retainImage(image);
         return image ? image->getMetalTexture() : nullptr;
     };
     ALTerrainSurfaceMaps& maps = surface->getSurfaceMaps();
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     batch.terrain = true;
     batch.terrain_pbr = true;
+    capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
         static_cast<std::size_t>(face->getGeomIndex()) * sizeof(LLVector4a);
@@ -16071,9 +15741,12 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
         batch.alpha_mask = batch.alpha_mask || slot.alpha_cutoff >= 0.f;
     }
 
+    capture.world_resources->retain(maps.getMetalHeightTextureLease());
+    capture.world_resources->retain(maps.getMetalCompositionTextureLease());
     batch.terrain_height_texture = maps.getMetalHeightTexture();
     batch.terrain_composition_texture = maps.getMetalCompositionTexture();
-    batch.terrain_texture_owner = fetched;
+    if (fetched) capture.retainFetched(*fetched);
+    batch.terrain_texture_owner = capture.world_resources;
     const ALMetalTexture* blend = fetched
         ? fetched->blend.nativeTexture() : metal_texture(blend_texture);
     batch.terrain_blend_wrap = fetched && fetched->blend.fallback;
@@ -16260,13 +15933,13 @@ void LLPipeline::endMetalWorldGBufferCapture()
         gGL.queries().endVisibilityCapture();
         capture.visibility_capture_active = false;
     }
+    const auto captured_query_count = capture.visibility_queries.size();
     const auto settle_visibility_results =
         [&](std::shared_ptr<ALMetalVisibilityResultBatch> results)
     {
         const bool complete_results = results &&
             results->resultCount() == capture.visibility_tickets.size() &&
-            capture.visibility_queries.size() ==
-                capture.visibility_tickets.size();
+            captured_query_count == capture.visibility_tickets.size();
         for (std::size_t index = 0;
              index < capture.visibility_tickets.size(); ++index)
         {
@@ -16355,6 +16028,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     }
 
     ALMetalWorldGBufferScene scene;
+    scene.source_owner = capture.world_resources;
     scene.batches = capture.batches.data();
     scene.batch_count = capture.batches.size();
     scene.visibility_queries = capture.visibility_queries.data();
@@ -16470,6 +16144,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 retained->colorTexture(0);
         if (exact_layout && !previous_uses_retained && !retained_depth_in_use)
         {
+            capture.world_resources->retain(mRT->deferredScreen.getMetalRenderTargetLease());
             scene.destination = retained;
         }
     }
@@ -16490,12 +16165,54 @@ void LLPipeline::endMetalWorldGBufferCapture()
             error.clear();
         }
     }
+    static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
+    if (native_visibility() && sNativeSceneVisibility && !scene.join_adjacent_static_draws)
+    {
+        capture.world_visibility_members.resize(capture.batches.size());
+        scene.native_visibility = sNativeSceneVisibility->makeView(std::move(capture.world_visibility_members), &error);
+        if (!scene.native_visibility)
+        {
+            LL_WARNS_ONCE("Metal") << "Native scene visibility retained direct draws: " << error << LL_ENDL;
+            error.clear();
+        }
+    }
+    const auto epoch = capture.world_prepare_epoch->fetch_add(1, std::memory_order_acq_rel) + 1;
+    auto inputs = ALMetalWorldViewInputs::adopt(scene, std::move(capture.batches),
+        std::move(capture.visibility_queries), capture.world_resources, epoch, &error);
+    // Required work never disappears when optional worker admission is denied.
+    // One owner range and at most one credited GCD range share the same packet.
+    std::shared_ptr<const ALMetalPreparedWorldView> prepared;
+    if (inputs)
+    {
+        scene = inputs->scene();
+        const auto jobs = scene.batch_count >= 512 ? 2 : 1;
+        auto preparation = ALMetalWorldPreparation::create(inputs, jobs, capture.world_prepare_epoch, &error);
+        if (preparation)
+        {
+            ALNativeFrameBudget::Lease credit;
+            if (preparation->jobCount() > 1)
+                credit = ALNativeFrameBudget::instance().tryAcquire(ALNativeFrameBudget::Work::preparation).credit;
+            if (credit)
+            {
+                struct Range { ALMetalWorldPreparation* work; } range{preparation.get()};
+                auto group = dispatch_group_create();
+                dispatch_group_async_f(group, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0),
+                    &range, [](void* value) { static_cast<Range*>(value)->work->runJob(1); });
+                preparation->runJob(0);
+                dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+                dispatch_release(group);
+            }
+            else
+                for (std::size_t job = 0; job < preparation->jobCount(); ++job) preparation->runJob(job);
+            prepared = preparation->finish(&error);
+        }
+    }
     std::shared_ptr<ALMetalVisibilityResultBatch> visibility_results;
     const bool count_native_draws = ALMetalDevice::commandTimingEnabled();
     const U64 native_draws_before = count_native_draws
         ? ALMetalDevice::encodedDrawCallCount() : 0;
-    auto target = capture.renderer->render(
-        scene, &error, &visibility_results);
+    auto target = prepared ? capture.renderer->renderPrepared(
+        *prepared, &error, &visibility_results) : nullptr;
     if (target && !impostor_bake)
     {
         if (count_native_draws)
@@ -16562,7 +16279,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
         capture.impostor_bake_attempted = true;
         LL_DEBUGS("Metal")
             << "Native opaque avatar-impostor bake encoded "
-            << capture.batches.size() << " batches at "
+            << scene.batch_count << " batches at "
             << capture.width << "x" << capture.height
             << "; native forward phases remain transactionally retained"
             << LL_ENDL;
@@ -16619,7 +16336,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
             {
                 LL_DEBUGS("Metal")
                     << "Native world G-buffer owner encoded "
-                    << capture.batches.size()
+                    << scene.batch_count
                     << " world batches at " << capture.width << "x"
                     << capture.height
                     << (capture.modern_sky_drawn ? "; native ray sky captured" : "; sky hidden in this view")
@@ -16630,6 +16347,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     }
     capture.batches.clear();
     capture.avatar_palettes.clear();
+    capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
 }
 
 void LLPipeline::renderMetalWorldLocalLights(
@@ -17518,7 +17236,9 @@ LLPipeline::~LLPipeline()
 
 void LLPipeline::cleanup()
 {
-    sShadowSourceCache.clear();
+    sNativeSceneSources.clear();
+    sNativeSceneVisibility.reset();
+    sNativeSceneVisibilityDevice = nullptr;
     mSky.cleanup();
     mMetalSkyEnvironment.reset();
     mMetalSkyEnvironmentDevice = nullptr;

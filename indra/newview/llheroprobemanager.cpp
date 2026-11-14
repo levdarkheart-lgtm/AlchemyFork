@@ -44,6 +44,8 @@
 
 #if LL_DARWIN
 #include "../almetal/almetalstagetiming.h"
+#include "alnativeframeplan.h"
+#include <new>
 #include <optional>
 #endif
 
@@ -122,10 +124,14 @@ void LLHeroProbeManager::update()
         float last_distance = 99999.f;
         float camera_center_distance = 99999.f;
         mNearestHero = nullptr;
-        for (auto vo : mHeroVOList)
+        // unregisterViewerObject erases this vector. Keep an index at the
+        // next live entry instead of retaining an invalid range-for iterator.
+        for (std::size_t at = 0; at < mHeroVOList.size();)
         {
+            auto vo = mHeroVOList[at];
             if (vo && !vo->isDead() && vo->mDrawable.notNull() && vo->isReflectionProbe() && vo->getReflectionProbeIsBox())
             {
+                ++at;
                 float distance = (LLViewerCamera::instance().getOrigin() - vo->getPositionAgent()).magVec();
                 float center_distance = cameraDirection * (vo->getPositionAgent() - camera_pos);
 
@@ -211,6 +217,10 @@ void LLHeroProbeManager::renderProbes()
 {
     if (!gPipeline.resourcePlan().heroProbes() || gTeleportDisplay || LLStartUp::getStartupState() < STATE_PRECACHE)
     {
+#if LL_DARWIN
+        mNativeUpdateCredit.reset();
+        mNativeDeferralPending = false;
+#endif
         return;
     }
 
@@ -229,6 +239,70 @@ void LLHeroProbeManager::renderProbes()
         !gTeleportDisplay && !gDisconnected && !LLAppViewer::instance()->logoutRequestSent())
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("hpmu - realtime");
+#if LL_DARWIN
+        if (ALNativeFrameBudget::instance().snapshot().draining)
+        {
+            mNativeUpdateCredit.reset();
+            mNativeDeferralPending = false;
+            mProbes[0]->mViewerObject = mNearestHero;
+            mProbes[0]->autoAdjustOrigin();
+            return;
+        }
+        const auto owner_id = mNearestHero->getID();
+        if (mNativeGroupOwner != owner_id || mNativeGroupEpoch != mMetalRadianceEpoch)
+        {
+            mNativeUpdateCredit.reset();
+            mNativeGroupOwner = owner_id;
+            mNativeGroupEpoch = mMetalRadianceEpoch;
+        }
+        const bool required = mNativePublishedOwner != owner_id ||
+            mNativePublishedEpoch != mMetalRadianceEpoch;
+        std::optional<ALNativeFramePlan::OptionalScope> group_scope;
+        if (!mProbes[0]->mOccluded)
+        {
+            bool admitted = required || bool(mNativeUpdateCredit);
+            if (required) ++mNativeUpdateStats.required_steps;
+            if (!admitted)
+            {
+                auto& budget = ALNativeFrameBudget::instance();
+                const auto frame = budget.snapshot().frame;
+                if (!mNativeDeferralPending)
+                {
+                    mNativeFirstDeferredFrame = frame;
+                    mNativeDeferralPending = true;
+                }
+                if (!mNativeAdmittedFrameValid || mNativeLastAdmittedFrame != frame)
+                {
+                    try
+                    {
+                        auto admission = budget.tryAcquire(ALNativeFrameBudget::Work::hero_probe, 0, mNativeFirstDeferredFrame);
+                        if (admission)
+                        {
+                            mNativeUpdateCredit = std::move(admission.credit);
+                            mNativeLastAdmittedFrame = frame;
+                            mNativeAdmittedFrameValid = true;
+                            mNativeDeferralPending = false;
+                            ++mNativeUpdateStats.admitted_groups;
+                            admitted = true;
+                        }
+                    }
+                    catch (const std::bad_alloc&) {} // Required work never relies on optional allocation.
+                }
+            }
+            if (!admitted)
+            {
+                ++mNativeUpdateStats.deferred_attempts;
+                // Preserve the original CPU owner/origin maintenance while
+                // leaving the previous coherent native radiance published.
+                mProbes[0]->mViewerObject = mNearestHero;
+                mProbes[0]->autoAdjustOrigin();
+                return;
+            }
+            // Bootstrap is required main CPU. An admitted refresh/continuation
+            // alone is excluded from required-main accounting.
+            if (!required && mNativeUpdateCredit) group_scope.emplace(mNativeUpdateCredit);
+        }
+#endif
 
         bool radiance_pass = gPipeline.mReflectionMapManager.isRadiancePass();
 
@@ -283,10 +357,27 @@ void LLHeroProbeManager::renderProbes()
         LLRender::sMirrorPass = false;
 
         gPipeline.mReflectionMapManager.mRadiancePass = radiance_pass;
+#if LL_DARWIN
+        group_scope.reset(); // CPU owner/origin maintenance below remains required main work.
+#endif
 
         mProbes[0]->mViewerObject = mNearestHero;
         mProbes[0]->autoAdjustOrigin();
+#if LL_DARWIN
+        // Keep a real admitted group through an incomplete native continuation,
+        // not a fake required bypass. Native commands retain it independently
+        // once the CPU transaction publishes or becomes irrelevant.
+        if (mMetalRadianceReady || mProbes[0]->mOccluded) mNativeUpdateCredit.reset();
+        if (required || mProbes[0]->mOccluded) mNativeDeferralPending = false;
+#endif
     }
+#if LL_DARWIN
+    else
+    {
+        mNativeUpdateCredit.reset();
+        mNativeDeferralPending = false;
+    }
+#endif
 }
 
 // Do the reflection map update render passes.
@@ -373,6 +464,11 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap*)
         gPipeline.publishMetalHeroProbeRadiance(
             mNearestHero->getID(), mMetalRadianceGeneration,
             mHeroProbeStrength);
+    if (mMetalRadianceReady)
+    {
+        mNativePublishedOwner = mNearestHero->getID();
+        mNativePublishedEpoch = mMetalRadianceEpoch;
+    }
     if (!mMetalRadianceReady)
     {
         LL_WARNS_ONCE("Metal")
@@ -498,6 +594,15 @@ void LLHeroProbeManager::initReflectionMaps()
 
 void LLHeroProbeManager::cleanup()
 {
+#if LL_DARWIN
+    mNativeUpdateCredit.reset();
+    mNativeDeferralPending = false;
+    mNativeAdmittedFrameValid = false;
+    mNativeGroupOwner.setNull();
+    mNativeGroupEpoch = 0;
+#endif
+    mNativePublishedOwner.setNull();
+    mNativePublishedEpoch = 0;
     // cleanup() is the authoritative transition to "no hero probe". The
     // original shader contract uses count zero to stop sampling the retained
     // cube; Metal has direct consumers of the same contract, so retire it
@@ -525,6 +630,30 @@ void LLHeroProbeManager::cleanup()
     mDefaultProbe = nullptr;
     // The mirror is found again by the next update() that builds a probe for it.
     mNearestHero = nullptr;
+}
+
+void LLHeroProbeManager::releaseSceneOwnersAfterQuiescence()
+{
+    // Retire the registry before releasing refs: LLVOVolume destruction may
+    // reenter unregisterViewerObject(). Clearing a live vector in place would
+    // let that callback mutate the vector whose elements are being destroyed.
+    std::vector<LLPointer<LLVOVolume>> scene_owners;
+    scene_owners.swap(mHeroVOList);
+    mNearestHero = nullptr;
+    for (auto& probe : mProbes)
+        if (probe.notNull()) probe->mViewerObject = nullptr;
+    if (mDefaultProbe.notNull()) mDefaultProbe->mViewerObject = nullptr;
+#if LL_DARWIN
+    mNativeUpdateCredit.reset();
+    mNativeDeferralPending = false;
+    mNativeAdmittedFrameValid = false;
+    mNativeGroupOwner.setNull();
+    mNativeGroupEpoch = 0;
+#endif
+    mNativePublishedOwner.setNull();
+    mNativePublishedEpoch = 0;
+    // Native commands keep their own leases. This CPU-only operation neither
+    // waits for the GPU nor releases native hero rendering resources.
 }
 
 void LLHeroProbeManager::doOcclusion()

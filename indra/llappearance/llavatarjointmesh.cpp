@@ -192,6 +192,7 @@ void LLAvatarJointMesh::freeSkinData()
     mNumSkinJoints = 0;
     delete [] mSkinJoints;
     mSkinJoints = NULL;
+    ++mMeshBindingRevision;
 }
 
 //--------------------------------------------------------------------
@@ -286,6 +287,7 @@ LLPolyMesh *LLAvatarJointMesh::getMesh()
 //-----------------------------------------------------------------------------
 void LLAvatarJointMesh::setMesh( LLPolyMesh *mesh )
 {
+    ++mMeshBindingRevision;
     // set the mesh pointer
     mMesh = mesh;
 

@@ -955,6 +955,7 @@ void LLVOAvatar::debugAvatarRezTime(std::string notification_name, std::string c
 //------------------------------------------------------------------------
 LLVOAvatar::~LLVOAvatar()
 {
+    invalidateNativeBodyPose();
 #if LL_DARWIN
     gPipeline.releaseMetalImpostorTextures(mID);
 #endif
@@ -996,6 +997,7 @@ LLVOAvatar::~LLVOAvatar()
 
 void LLVOAvatar::markDead()
 {
+    invalidateNativeBodyPose();
     if (mNameText)
     {
         mNameText->markDead();
@@ -1334,6 +1336,7 @@ void LLVOAvatar::cleanupClass()
 // virtual
 void LLVOAvatar::initInstance()
 {
+    invalidateNativeBodyPose();
     //-------------------------------------------------------------------------
     // register motions
     //-------------------------------------------------------------------------
@@ -1479,6 +1482,7 @@ void LLVOAvatar::updateDrawable(bool force_damped)
 
 void LLVOAvatar::onShift(const LLVector4a& shift_vector)
 {
+    invalidateNativeBodyPose();
     const LLVector3 shift(shift_vector);
     mLastAnimExtents[0] += shift;
     mLastAnimExtents[1] += shift;
@@ -2143,6 +2147,7 @@ void LLVOAvatar::startDefaultMotions()
 // virtual
 void LLVOAvatar::buildCharacter()
 {
+    invalidateNativeBodyPose();
     LLAvatarAppearance::buildCharacter();
 
     // Not done building yet; more to do.
@@ -2268,6 +2273,7 @@ void LLVOAvatar::applyDefaultParams()
 //-----------------------------------------------------------------------------
 void LLVOAvatar::resetSkeleton(bool reset_animations)
 {
+    invalidateNativeBodyPose();
     LL_DEBUGS("Avatar") << avString() << " reset starts" << LL_ENDL;
     if (!isControlAvatar() && !mLastProcessedAppearance)
     {
@@ -2380,6 +2386,7 @@ void LLVOAvatar::releaseMeshData()
         return;
     }
 
+    invalidateNativeBodyPose();
     // cleanup mesh data
     for (avatar_joint_list_t::iterator iter = mMeshLOD.begin();
          iter != mMeshLOD.end();
@@ -2432,6 +2439,7 @@ void LLVOAvatar::restoreMeshData()
         return;
     }
 
+    invalidateNativeBodyPose();
     //LL_INFOS() << "Restoring" << LL_ENDL;
     mMeshValid = true;
     updateJointLODs();
@@ -8214,6 +8222,7 @@ void LLVOAvatar::dirtyMesh()
 }
 void LLVOAvatar::dirtyMesh(S32 priority)
 {
+    invalidateNativeBodyPose();
     mDirtyMesh = llmax(mDirtyMesh, priority);
 }
 
@@ -10860,7 +10869,10 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
     U64 hash = skin->mHash;
     MatrixPaletteCache& entry = mMatrixPaletteCache[hash];
 
-    if (entry.mFrame != gFrameCount)
+    mRoot->touchIfXformParentMoved();
+    const U64 pose_revision = mRoot->getPoseRevision();
+    if (entry.mFrame != gFrameCount || entry.mPoseRevision != pose_revision ||
+        entry.mLifecycleRevision != mNativeBodyPoseLifecycleRevision)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
@@ -10868,7 +10880,6 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
         // records retain their immutable palette through their own lifetime.
         entry.mMetalAttachmentPalette.reset();
         entry.mMetalAttachmentPaletteAttempted = false;
-        entry.mFrame = gFrameCount;
 
         //build matrix palette
         U32 count = LLSkinningUtil::getMeshJointCount(skin);
@@ -10930,6 +10941,12 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
             mp[idx + 10] = m[10];
             mp[idx + 11] = m[14] - origin.mV[VZ];
         }
+        // PPD-129: vector allocation/packing can fail. Commit validity only
+        // after the complete tuple exists, so the owner can retry this same
+        // frame/revision instead of accepting an incomplete cached palette.
+        entry.mFrame = gFrameCount;
+        entry.mPoseRevision = mRoot->getPoseRevision();
+        entry.mLifecycleRevision = mNativeBodyPoseLifecycleRevision;
     }
 
     return entry;

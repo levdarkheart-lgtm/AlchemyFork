@@ -9,6 +9,8 @@
  */
 
 #include "almetalworld.h"
+#include "almetalworldprepare.h"
+#include "almetalworldvisibility.h"
 #include "almetalshadowindirect.h"
 #include "almetalshadowmaterials.h"
 #include "almetalshadowprepare.h"
@@ -19,6 +21,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -942,6 +945,16 @@ namespace
                 return false;
             }
         }
+        return true;
+    }
+
+    bool finiteShadowTextureMatrix(const float* values) noexcept
+    {
+        // Dynamic UV is outside source certification. Reject NaN/Inf even
+        // under fast-math before native coverage can use the copied matrix.
+        for (std::size_t at = 0; at < 16; ++at)
+            if ((std::bit_cast<std::uint32_t>(values[at]) & 0x7f800000u) == 0x7f800000u)
+                return false;
         return true;
     }
 
@@ -2020,6 +2033,31 @@ struct ALMetalWorldGBufferRenderer::Impl
         }
         return encoded;
     }
+
+    // A G-buffer pass is one transaction even when validation fails before it
+    // borrows an enclosing command. Never leave an earlier encoded prefix
+    // committable after the caller observes a failed pass. Owned commands keep
+    // their ordinary unique-owner abandonment; this guard only poisons the
+    // exact outer command present at entry and never throws during unwinding.
+    struct GBufferFailureScope
+    {
+        Impl* renderer;
+        ALMetalCommandBuffer* borrowed;
+        const std::string* error;
+        bool succeeded = false;
+        GBufferFailureScope(Impl* value, const std::string* failure) noexcept
+            : renderer(value), borrowed(value ? value->command_batch.get() : nullptr), error(failure) {}
+        ~GBufferFailureScope() noexcept
+        {
+            if (succeeded || !borrowed || renderer->command_batch.get() != borrowed) return;
+            renderer->command_batch_valid = false;
+            if (renderer->command_batch_failure.empty() && error && !error->empty())
+            {
+                try { renderer->command_batch_failure = *error; }
+                catch (...) {} // Invalidity survives even if preserving text cannot allocate.
+            }
+        }
+    };
 
     bool pruneShadowBatches(std::string* error)
     {
@@ -7002,6 +7040,11 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     constexpr std::size_t minimum_bulk_run = 64;
     constexpr std::size_t minimum_bulk_draws = 128;
     constexpr std::size_t minimum_opaque_indirect_run = 2048;
+    if (scene.native_visibility && (scene.indirect_draws || scene.opaque_indirect_draws || scene.bulk_draws))
+    {
+        setError(error, "Shared shadow visibility requires scalar ordered encoding");
+        return false;
+    }
     const bool use_indirect = scene.indirect_draws &&
         mImpl->shadow_indirect && mImpl->shadow_indirect->supported();
     const bool opaque_indirect = !use_indirect && scene.opaque_indirect_draws &&
@@ -7087,6 +7130,11 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             static_cast<std::uint32_t>(batch.coverage);
         const bool covered = batch.coverage !=
             ALMetalWorldSpotShadowCoverage::opaque;
+        if (covered && !finiteShadowTextureMatrix(batch.texture_matrix))
+        {
+            setError(error, "Metal spot-shadow coverage data is invalid");
+            return false;
+        }
         const bool pbr_coverage =
             batch.coverage == ALMetalWorldSpotShadowCoverage::pbr_mask ||
             batch.coverage == ALMetalWorldSpotShadowCoverage::pbr_blend;
@@ -7206,7 +7254,6 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                 !rangeFits(batch.color_offset, batch.vertex_count,
                            sizeof(std::uint32_t),
                            batch.vertices->length()) ||
-                !finiteValues(batch.texture_matrix, 16) ||
                 !finiteValues(batch.coverageData().alpha_cutoffs.data(),
                               batch.texture_count) ||
                 (pbr_coverage &&
@@ -7518,6 +7565,12 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     {
         mImpl->finishCommandBuffer(owned_command, false, error);
         return false;
+    }
+    std::shared_ptr<ALMetalWorldVisibilityArguments> shared_visibility_arguments;
+    if (command && scene.native_visibility && scene.native_visibility->size() == scene.batch_count && scene.batch_count)
+    {
+        std::string optional_error;
+        shared_visibility_arguments = ALMetalWorldVisibility::encode(*command, *scene.native_visibility, &optional_error);
     }
     if (command && query_results && !query_results->attachCommand(*command, error))
     {
@@ -8235,7 +8288,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         std::size_t merged_batch_count = 1;
         // Full scene validation above remains authoritative for every source
         // record. Coalescing is a direct-only emission choice, after admission.
-        if (scene.bulk_draws && !use_indirect && covered && !rigged && !batch.avatar)
+        if (!shared_visibility_arguments && scene.bulk_draws && !use_indirect && covered && !rigged && !batch.avatar)
         {
             while (merged_batch_count < scene.batch_count - index &&
                    (visibility_index == scene.visibility_query_count ||
@@ -8437,9 +8490,13 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                     4, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error));
         }
-        encoded = encoded && encoder->drawIndexed(
-            ALMetalPrimitiveType::triangle, merged_index_count,
-            batch.index_type, *batch.indices, batch.index_offset, 1, error);
+        const bool shared_visible_draw = shared_visibility_arguments && !rigged && !batch.avatar_cloth &&
+            merged_batch_count == 1 && shared_visibility_arguments->appliesTo(index, batch.index_count, batch.modelview_projection, scene.depth_clamp);
+        encoded = encoded && (shared_visible_draw
+            ? shared_visibility_arguments->drawIndexed(*encoder, *command, index, batch.index_type,
+                *batch.indices, batch.index_offset, batch.index_count, error)
+            : encoder->drawIndexed(ALMetalPrimitiveType::triangle, merged_index_count,
+                batch.index_type, *batch.indices, batch.index_offset, 1, error));
         if (encoded)
         {
             covered_coalesced_draws += merged_batch_count - 1;
@@ -8469,29 +8526,213 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     return true;
 }
 
-std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
-    const ALMetalWorldGBufferScene& scene,
-    std::string* error,
-    std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
+namespace
 {
-    if (visibility_results)
+WorldImpostorConstants buildWorldImpostorConstants(const ALMetalWorldGBufferScene& scene,
+    const ALMetalWorldSimpleBatch& batch)
+{
+    WorldImpostorConstants constants{};
+    std::memcpy(constants.modelview_projection,
+                batch.modelview_projection,
+                sizeof(constants.modelview_projection));
+    std::memcpy(constants.modelview, batch.modelview,
+                sizeof(constants.modelview));
+    std::memcpy(constants.center, batch.impostor_center,
+                sizeof(constants.center));
+    std::memcpy(constants.left, batch.impostor_left,
+                sizeof(constants.left));
+    std::memcpy(constants.up, batch.impostor_up,
+                sizeof(constants.up));
+    std::memcpy(constants.normal_rotation,
+                batch.impostor_normal_rotation,
+                sizeof(constants.normal_rotation));
+    constants.depth_convention[0] = scene.reverse_z ? 1u : 0u;
+    constants.depth_convention[1] = scene.mirror_clip ? 1u : 0u;
+    std::memcpy(constants.mirror_clip_plane,
+                scene.mirror_clip_plane,
+                sizeof(constants.mirror_clip_plane));
+    constants.debug_outline[0] =
+        static_cast<float>(scene.width);
+    constants.debug_outline[1] =
+        static_cast<float>(scene.height);
+    constants.debug_outline[2] =
+        batch.impostor_debug_line_width;
+    return constants;
+}
+
+WorldTerrainConstants buildWorldTerrainConstants(const ALMetalWorldGBufferScene& scene,
+    const ALMetalWorldSimpleBatch& batch)
+{
+    WorldTerrainConstants constants{};
+    std::memcpy(constants.modelview_projection,
+                batch.modelview_projection,
+                sizeof(constants.modelview_projection));
+    std::memcpy(constants.modelview, batch.terrain_modelview,
+                sizeof(constants.modelview));
+    std::memcpy(constants.normal_matrix,
+                batch.normal_matrix,
+                sizeof(constants.normal_matrix));
+    std::memcpy(constants.mirror_clip_plane,
+                scene.mirror_clip_plane,
+                sizeof(constants.mirror_clip_plane));
+    constants.surface[0] = batch.terrain_grid_scale;
+    constants.surface[1] = batch.terrain_region_scale;
+    constants.surface[2] = batch.terrain_detail_scale;
+    constants.surface[3] = batch.terrain_triplanar_blend;
+    constants.detail[0] = batch.terrain_detail_phase[0];
+    constants.detail[1] = batch.terrain_detail_phase[1];
+    constants.detail[2] = batch.terrain_smoothing ? 1.f : 0.f;
+    constants.detail[3] = batch.terrain_triplanar ? 1.f : 0.f;
+    constants.config[0] = scene.reverse_z ? 1u : 0u;
+    constants.config[1] =
+        batch.terrain_parcel_overlay_texture ? 1u : 0u;
+    constants.config[2] = batch.terrain_hex ? 1u : 0u;
+    constants.config[3] = scene.normal_hdr ? 1u : 0u;
+    constants.pbr_config[0] = static_cast<std::uint32_t>(
+        batch.terrain_pbr_detail + 4);
+    constants.pbr_config[1] = batch.terrain_paint_type;
+    constants.pbr_config[2] = batch.alpha_mask ? 1u : 0u;
+    constants.pbr_config[3] =
+        batch.terrain_flat_normals ? 1u : 0u;
+    std::memcpy(constants.hex_fraction,
+                batch.terrain_hex_fraction,
+                sizeof(constants.hex_fraction));
+    std::memcpy(constants.hex_base,
+                batch.terrain_hex_base,
+                sizeof(constants.hex_base));
+    for (std::size_t slot = 0;
+         slot < batch.pbr_slot_count; ++slot)
     {
-        visibility_results->reset();
+        const ALMetalWorldPBRSlot& source = batch.pbrSlots()[slot];
+        WorldTerrainConstants::PBRSlot& destination =
+            constants.pbr_slots[slot];
+        std::memcpy(destination.uv_transform,
+                    batch.terrain_uv_transform[slot],
+                    sizeof(destination.uv_transform));
+        std::memcpy(destination.uv_offset,
+                    batch.terrain_uv_offset[slot],
+                    sizeof(batch.terrain_uv_offset[slot]));
+        std::memcpy(destination.normal_axes,
+                    batch.terrain_normal_axes[slot],
+                    sizeof(destination.normal_axes));
+        std::memcpy(destination.base_color_factor,
+                    source.base_color_factor,
+                    sizeof(destination.base_color_factor));
+        std::memcpy(destination.emissive_color,
+                    source.emissive_color,
+                    sizeof(destination.emissive_color));
+        destination.properties[0] = source.roughness_factor;
+        destination.properties[1] = source.metallic_factor;
+        destination.properties[2] = source.alpha_cutoff;
+        destination.properties[3] = source.base_color_factor[3];
     }
-    if (!mImpl || !mImpl->device ||
-        (scene.batch_count != 0 && !scene.batches) ||
+    return constants;
+}
+
+WorldSimpleConstants buildWorldSimpleConstants(const ALMetalWorldGBufferScene& scene,
+    const ALMetalWorldSimpleBatch& batch)
+{
+    WorldSimpleConstants constants{};
+    std::memcpy(constants.modelview_projection,
+                batch.modelview_projection,
+                sizeof(constants.modelview_projection));
+    std::memcpy(constants.modelview, batch.modelview,
+                sizeof(constants.modelview));
+    std::memcpy(constants.normal_matrix, batch.normal_matrix,
+                sizeof(constants.normal_matrix));
+    std::memcpy(constants.rigged_normal_matrix,
+                batch.rigged_normal_matrix,
+                sizeof(constants.rigged_normal_matrix));
+    std::memcpy(constants.texture_matrix, batch.texture_matrix,
+                sizeof(constants.texture_matrix));
+    std::memcpy(constants.avatar_wind, batch.avatar_wind,
+                sizeof(constants.avatar_wind));
+    std::memcpy(constants.avatar_sin_wave, batch.avatar_sin_wave,
+                sizeof(constants.avatar_sin_wave));
+    std::memcpy(constants.avatar_gravity, batch.avatar_gravity,
+                sizeof(constants.avatar_gravity));
+    std::memcpy(constants.avatar_cloth_depth,
+                batch.avatar_cloth_depth,
+                sizeof(constants.avatar_cloth_depth));
+    std::memcpy(constants.mirror_clip_plane,
+                scene.mirror_clip_plane,
+                sizeof(constants.mirror_clip_plane));
+    constants.material[0] = batch.alpha_cutoff;
+    constants.material[1] = batch.use_vertex_color ? 1.f : 0.f;
+    constants.material[2] = batch.alpha_cutoff_bias ? 1.f : 0.f;
+    constants.material[3] = batch.alpha_mask ? 1.f : 0.f;
+    constants.depth_convention[0] = scene.reverse_z ? 1u : 0u;
+    constants.depth_convention[1] = batch.texture_count;
+    constants.depth_convention[2] = scene.mirror_clip ? 1u : 0u;
+    return constants;
+}
+
+WorldMaterialConstants buildWorldMaterialConstants([[maybe_unused]] const ALMetalWorldGBufferScene& scene,
+    const ALMetalWorldSimpleBatch& batch, bool material_normal_map, bool material_specular_map)
+{
+    WorldMaterialConstants material_constants{};
+    for (std::size_t slot = 0;
+         slot < batch.material_slot_count; ++slot)
+    {
+        const ALMetalWorldMaterialSlot& source =
+            batch.materialSlots()[slot];
+        WorldMaterialSlotConstants& destination =
+            material_constants.slots[slot];
+        std::memcpy(destination.specular_color,
+                    source.specular_color,
+                    sizeof(destination.specular_color));
+        destination.properties[0] = source.env_intensity;
+        destination.properties[1] = source.alpha_cutoff;
+        destination.properties[2] = source.fullbright;
+    }
+    material_constants.config[0] = batch.material_slot_count;
+    material_constants.config[1] = batch.material_alpha_mode;
+    material_constants.config[2] = material_normal_map ? 1u : 0u;
+    material_constants.config[3] = material_specular_map ? 1u : 0u;
+    return material_constants;
+}
+
+WorldPBRConstants buildWorldPBRConstants(const ALMetalWorldGBufferScene& scene,
+    const ALMetalWorldSimpleBatch& batch)
+{
+    WorldPBRConstants pbr_constants{};
+    for (std::size_t slot = 0; slot < batch.pbr_slot_count; ++slot)
+    {
+        const ALMetalWorldPBRSlot& source = batch.pbrSlots()[slot];
+        WorldPBRSlotConstants& destination =
+            pbr_constants.slots[slot];
+        std::memcpy(destination.texture_transform,
+                    source.texture_transform,
+                    sizeof(destination.texture_transform));
+        std::memcpy(destination.emissive_color,
+                    source.emissive_color,
+                    sizeof(destination.emissive_color));
+        destination.properties[0] = source.roughness_factor;
+        destination.properties[1] = source.metallic_factor;
+        destination.properties[2] = source.alpha_cutoff;
+    }
+    pbr_constants.config[0] = batch.pbr_slot_count;
+    pbr_constants.config[1] = batch.alpha_mask ? 1u : 0u;
+    pbr_constants.config[2] = scene.normal_hdr ? 1u : 0u;
+    return pbr_constants;
+}
+}
+
+bool alMetalValidateWorldView(const ALMetalWorldGBufferScene& scene, std::string* error)
+{
+    if ((scene.batch_count != 0 && !scene.batches) ||
         (scene.visibility_query_count != 0 &&
          !scene.visibility_queries) ||
         scene.width == 0 || scene.height == 0 || !validOpaqueCoverage(scene))
     {
         setError(error, "Metal world G-buffer scene is incomplete");
-        return nullptr;
+        return false;
     }
     if (!finiteValues(scene.clear_color, 4) ||
         !finiteValues(scene.mirror_clip_plane, 4))
     {
         setError(error, "Metal world G-buffer clear/clip data is non-finite");
-        return nullptr;
+        return false;
     }
 
     std::size_t previous_query_offset = 0;
@@ -8512,411 +8753,527 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             query.half_extent[2] < 0.f)
         {
             setError(error, "Metal world visibility query is invalid");
-            return nullptr;
+            return false;
         }
         previous_query_offset = query.batch_offset;
     }
 
+    return true;
+}
+
+bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
+    const ALMetalWorldSimpleBatch& batch, std::string* error)
+{
     constexpr std::size_t float4_stride = sizeof(float) * 4;
     constexpr std::uint32_t max_skin_joints = 110;
-    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    if (batch.impostor)
     {
-        const ALMetalWorldSimpleBatch& batch = scene.batches[index];
-        if (batch.impostor)
-        {
-            const ALMetalPixelFormat expected_normal = scene.normal_hdr
-                ? ALMetalPixelFormat::rgba16_unorm
-                : ALMetalPixelFormat::rgb10a2_unorm;
-            const ALMetalPixelFormat expected_emissive = scene.hdr
-                ? ALMetalPixelFormat::rg11b10_float
-                : ALMetalPixelFormat::rgba8_unorm;
-            const bool debug_outline_valid =
-                batch.impostor_debug_outline
-                    ? std::isfinite(batch.impostor_debug_line_width) &&
-                          batch.impostor_debug_line_width >= 1.f &&
-                          batch.impostor_debug_line_width <= 5.f
-                    : batch.impostor_debug_line_width == 0.f;
-            if (batch.vertices || batch.indices || batch.vertex_count != 0 ||
-                batch.index_count != 0 || batch.texture_count != 0 ||
-                batch.normal_texture || batch.material_slot_count != 0 ||
-                batch.pbr_slot_count != 0 || batch.skin_palette ||
-                batch.avatar_rigid || batch.avatar_skinning ||
-                batch.avatar_cloth || batch.impostor_fullbright ||
-                batch.impostor_shiny ||
-                batch.impostor_emboss || !debug_outline_valid ||
-                batch.terrain ||
-                !finiteValues(batch.modelview_projection, 16) ||
-                !finiteValues(batch.impostor_center, 4) ||
-                !finiteValues(batch.impostor_left, 4) ||
-                !finiteValues(batch.impostor_up, 4) ||
-                !finiteValues(&batch.impostor_normal_rotation[0][0], 12) ||
-                !sampleableTexture(batch.impostor_textures[0]) ||
-                !sampleableTexture(batch.impostor_textures[1]) ||
-                !sampleableTexture(batch.impostor_textures[2]) ||
-                !sampleableTexture(batch.impostor_textures[3]) ||
-                batch.impostor_textures[0]->descriptor().format !=
-                    ALMetalPixelFormat::rgba8_unorm_srgb ||
-                batch.impostor_textures[1]->descriptor().format !=
-                    ALMetalPixelFormat::rgba8_unorm ||
-                batch.impostor_textures[2]->descriptor().format !=
-                    expected_normal ||
-                batch.impostor_textures[3]->descriptor().format !=
-                    expected_emissive)
-            {
-                setError(error, "Metal world impostor batch is invalid");
-                return nullptr;
-            }
-            continue;
-        }
-        if (batch.terrain)
-        {
-            const bool pbr_terrain = batch.terrain_pbr;
-            const bool height_paint = batch.terrain_paint_type == 0;
-            const std::size_t hex_value_count = pbr_terrain ? 32 : 8;
-            bool valid_factors = true;
-            for (std::uint16_t factor : batch.terrain_tessellation_factors)
-            {
-                valid_factors = valid_factors &&
-                    (factor & 0x8000u) == 0 &&
-                    (factor & 0x7fffu) != 0 &&
-                    (factor & 0x7c00u) != 0x7c00u;
-            }
-            if (!batch.vertices || batch.indices || batch.vertex_count != 4 ||
-                batch.index_count != 0 || batch.texture_count != 4 ||
-                batch.normal_texture || batch.material_slot_count != 0 ||
-                batch.pbr_slot_count != (pbr_terrain ? 4u : 0u) ||
-                batch.skin_palette ||
-                batch.avatar_rigid || batch.avatar_skinning ||
-                batch.avatar_cloth || batch.impostor_debug_outline ||
-                batch.impostor_debug_line_width != 0.f || !valid_factors ||
-                (!pbr_terrain &&
-                 (batch.terrain_paint_texture || batch.alpha_mask ||
-                  batch.terrain_flat_normals)) ||
-                (pbr_terrain &&
-                 (batch.terrain_paint_type > 1 ||
-                  batch.terrain_pbr_detail < -4 ||
-                  batch.terrain_pbr_detail > 0 ||
-                  !finiteValues(batch.terrain_modelview, 16) ||
-                  !finiteValues(&batch.terrain_uv_transform[0][0], 16) ||
-                  !finiteValues(&batch.terrain_uv_offset[0][0], 8) ||
-                  !finiteValues(&batch.terrain_normal_axes[0][0], 16))) ||
-                batch.position_offset % float4_stride != 0 ||
-                !rangeFits(batch.position_offset, batch.vertex_count,
-                           float4_stride, batch.vertices->length()) ||
-                !sampleableTexture(batch.terrain_height_texture) ||
-                !sampleableTexture(batch.terrain_composition_texture) ||
-                (!pbr_terrain &&
-                 !sampleableTexture(batch.terrain_alpha_ramp_texture)) ||
-                (pbr_terrain &&
-                 (!sampleableTexture(
-                      height_paint ? batch.terrain_alpha_ramp_texture
-                                   : batch.terrain_paint_texture) ||
-                  (height_paint && batch.terrain_paint_texture) ||
-                  (!height_paint && batch.terrain_alpha_ramp_texture))) ||
-                (batch.terrain_parcel_overlay_texture &&
-                 !sampleableTexture(
-                     batch.terrain_parcel_overlay_texture)) ||
-                batch.terrain_height_texture->descriptor().format !=
-                    ALMetalPixelFormat::r32_float ||
-                batch.terrain_composition_texture->descriptor().format !=
-                    ALMetalPixelFormat::rg16_float ||
-                (batch.terrain_parcel_overlay_texture &&
-                 batch.terrain_parcel_overlay_texture->descriptor().format !=
-                     ALMetalPixelFormat::rgba8_unorm_srgb &&
-                 !(batch.terrain_overlay_wrap &&
-                   batch.terrain_parcel_overlay_texture->descriptor().format ==
-                       ALMetalPixelFormat::rgba8_unorm)) ||
-                batch.terrain_height_texture->descriptor().width !=
-                    batch.terrain_composition_texture->descriptor().width ||
-                batch.terrain_height_texture->descriptor().height !=
-                    batch.terrain_composition_texture->descriptor().height ||
-                !std::isfinite(batch.terrain_grid_scale) ||
-                batch.terrain_grid_scale <= 0.f ||
-                batch.impostor_fullbright || batch.impostor_shiny ||
-                batch.impostor_emboss ||
-                !std::isfinite(batch.terrain_region_scale) ||
-                batch.terrain_region_scale <= 0.f ||
-                !std::isfinite(batch.terrain_detail_scale) ||
-                batch.terrain_detail_scale <= 0.f ||
-                !finiteValues(batch.terrain_detail_phase, 2) ||
-                !std::isfinite(batch.terrain_triplanar_blend) ||
-                batch.terrain_triplanar_blend <= 0.f ||
-                (batch.terrain_hex &&
-                 (!finiteValues(&batch.terrain_hex_fraction[0][0],
-                                hex_value_count) ||
-                  std::any_of(
-                      &batch.terrain_hex_fraction[0][0],
-                      &batch.terrain_hex_fraction[0][0] + hex_value_count,
-                      [](float value)
-                      {
-                          return value < 0.f || value >= 1.f;
-                      }))) ||
-                !finiteValues(batch.modelview_projection, 16) ||
-                !finiteValues(&batch.normal_matrix[0][0], 12))
-            {
-                setError(error, "Metal world terrain batch is invalid");
-                return nullptr;
-            }
-            for (std::uint32_t texture_index = 0;
-                 texture_index < batch.texture_count; ++texture_index)
-            {
-                if (!sampleableTexture(
-                        batch.diffuse_textures[texture_index]))
-                {
-                    setError(error,
-                             "Metal world terrain detail texture is invalid");
-                    return nullptr;
-                }
-            }
-            if (pbr_terrain)
-            {
-                bool has_masked_material = false;
-                for (std::uint32_t slot_index = 0;
-                     slot_index < batch.pbr_slot_count; ++slot_index)
-                {
-                    const ALMetalWorldPBRSlot& slot =
-                        batch.pbrSlots()[slot_index];
-                    has_masked_material = has_masked_material ||
-                                          slot.alpha_cutoff >= 0.f;
-                    if (!sampleableTexture(slot.normal_texture) ||
-                        !sampleableTexture(slot.orm_texture) ||
-                        !sampleableTexture(slot.emissive_texture) ||
-                        !finiteValues(slot.base_color_factor, 4) ||
-                        !finiteValues(slot.emissive_color, 4) ||
-                        !std::isfinite(slot.roughness_factor) ||
-                        !std::isfinite(slot.metallic_factor) ||
-                        !std::isfinite(slot.alpha_cutoff) ||
-                        slot.roughness_factor < 0.f ||
-                        slot.roughness_factor > 1.f ||
-                        slot.metallic_factor < 0.f ||
-                        slot.metallic_factor > 1.f ||
-                        slot.alpha_cutoff < -1.f ||
-                        slot.alpha_cutoff > 1.f)
-                    {
-                        setError(error,
-                                 "Metal world PBR terrain slot is invalid");
-                        return nullptr;
-                    }
-                }
-                if (has_masked_material != batch.alpha_mask)
-                {
-                    setError(error,
-                             "Metal world PBR terrain mask state is invalid");
-                    return nullptr;
-                }
-            }
-            continue;
-        }
-        const bool bump = batch.normal_texture != nullptr;
-        const bool material = batch.material_slot_count != 0;
-        const bool pbr = isPBRBatch(batch);
-        const bool avatar = batch.avatar_rigid || batch.avatar_skinning;
-        const bool material_normal_map = materialHasNormalMap(batch);
-        const bool material_specular_map = materialHasSpecularMap(batch);
-        const bool tangent_required = bump || material_normal_map || pbr;
-        const std::size_t index_stride =
-            batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
-        if (!batch.vertices || !batch.indices || batch.texture_count == 0 ||
-            batch.impostor_fullbright || batch.impostor_shiny ||
-            batch.impostor_emboss || batch.impostor_debug_outline ||
-            batch.impostor_debug_line_width != 0.f ||
-            batch.texture_count >
-                ALMetalWorldSimpleBatch::max_diffuse_textures ||
-            (material &&
-             (batch.material_slot_count >
-                  ALMetalWorldSimpleBatch::max_material_slots ||
-              batch.material_slot_count != batch.texture_count ||
-              bump || pbr || batch.alpha_mask ||
-              !validMaterialAlphaMode(batch.material_alpha_mode))) ||
-            (pbr &&
-             (batch.pbr_slot_count >
-                  ALMetalWorldSimpleBatch::max_material_slots ||
-              batch.pbr_slot_count != batch.texture_count ||
-              material || bump)) ||
-            (batch.avatar_cloth && !batch.avatar_skinning) ||
-            (!batch.avatar_skinning && batch.cloth_offset != 0) ||
-            (avatar &&
-             (batch.avatar_rigid == batch.avatar_skinning ||
-              (batch.avatar_rigid && batch.skin_palette != nullptr) ||
-              batch.texture_count != 1 || !batch.alpha_mask ||
-              batch.use_vertex_color || batch.alpha_cutoff_bias ||
-              material || pbr || bump)) ||
-            (!material && batch.material_alpha_mode != 0) ||
-            batch.vertex_count == 0 || batch.index_count == 0 ||
-            batch.index_count % 3 != 0 ||
-            batch.position_offset % float4_stride != 0 ||
-            batch.normal_offset % float4_stride != 0 ||
-            batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
-            (!avatar &&
-             batch.color_offset % (sizeof(std::uint8_t) * 4) != 0) ||
-            (tangent_required &&
-             batch.tangent_offset % float4_stride != 0) ||
-            (material_normal_map &&
-             batch.texcoord1_offset % (sizeof(float) * 2) != 0) ||
-            (material_specular_map &&
-             batch.texcoord2_offset % (sizeof(float) * 2) != 0) ||
-            batch.index_offset % index_stride != 0 ||
-            !std::isfinite(batch.alpha_cutoff) ||
+        const ALMetalPixelFormat expected_normal = scene.normal_hdr
+            ? ALMetalPixelFormat::rgba16_unorm
+            : ALMetalPixelFormat::rgb10a2_unorm;
+        const ALMetalPixelFormat expected_emissive = scene.hdr
+            ? ALMetalPixelFormat::rg11b10_float
+            : ALMetalPixelFormat::rgba8_unorm;
+        const bool debug_outline_valid =
+            batch.impostor_debug_outline
+                ? std::isfinite(batch.impostor_debug_line_width) &&
+                      batch.impostor_debug_line_width >= 1.f &&
+                      batch.impostor_debug_line_width <= 5.f
+                : batch.impostor_debug_line_width == 0.f;
+        if (batch.vertices || batch.indices || batch.vertex_count != 0 ||
+            batch.index_count != 0 || batch.texture_count != 0 ||
+            batch.normal_texture || batch.material_slot_count != 0 ||
+            batch.pbr_slot_count != 0 || batch.skin_palette ||
+            batch.avatar_rigid || batch.avatar_skinning ||
+            batch.avatar_cloth || batch.impostor_fullbright ||
+            batch.impostor_shiny ||
+            batch.impostor_emboss || !debug_outline_valid ||
+            batch.terrain ||
             !finiteValues(batch.modelview_projection, 16) ||
-            (!batch.avatar_skinning &&
-             (!finiteValues(batch.modelview, 16) ||
-              batch.modelview[15] != 1.f)) ||
-            !finiteValues(&batch.normal_matrix[0][0], 12) ||
-            !finiteValues(&batch.rigged_normal_matrix[0][0], 12) ||
-            !finiteValues(batch.texture_matrix, 16) ||
-            (batch.avatar_cloth &&
-             (!finiteValues(batch.avatar_wind, 4) ||
-              !finiteValues(batch.avatar_sin_wave, 4) ||
-              !finiteValues(batch.avatar_gravity, 4) ||
-              !finiteValues(batch.avatar_cloth_depth, 4))))
+            !finiteValues(batch.impostor_center, 4) ||
+            !finiteValues(batch.impostor_left, 4) ||
+            !finiteValues(batch.impostor_up, 4) ||
+            !finiteValues(&batch.impostor_normal_rotation[0][0], 12) ||
+            !sampleableTexture(batch.impostor_textures[0]) ||
+            !sampleableTexture(batch.impostor_textures[1]) ||
+            !sampleableTexture(batch.impostor_textures[2]) ||
+            !sampleableTexture(batch.impostor_textures[3]) ||
+            batch.impostor_textures[0]->descriptor().format !=
+                ALMetalPixelFormat::rgba8_unorm_srgb ||
+            batch.impostor_textures[1]->descriptor().format !=
+                ALMetalPixelFormat::rgba8_unorm ||
+            batch.impostor_textures[2]->descriptor().format !=
+                expected_normal ||
+            batch.impostor_textures[3]->descriptor().format !=
+                expected_emissive)
         {
-            setError(error, "Metal world simple batch is invalid");
-            return nullptr;
+            setError(error, "Metal world impostor batch is invalid");
+            return false;
         }
-        for (std::uint32_t slot = 0;
-             slot < batch.material_slot_count; ++slot)
+        return true;
+    }
+    if (batch.terrain)
+    {
+        const bool pbr_terrain = batch.terrain_pbr;
+        const bool height_paint = batch.terrain_paint_type == 0;
+        const std::size_t hex_value_count = pbr_terrain ? 32 : 8;
+        bool valid_factors = true;
+        for (std::uint16_t factor : batch.terrain_tessellation_factors)
         {
-            const ALMetalWorldMaterialSlot& material_slot =
-                batch.materialSlots()[slot];
-            if (!finiteValues(material_slot.specular_color, 4) ||
-                !std::isfinite(material_slot.env_intensity) ||
-                !std::isfinite(material_slot.alpha_cutoff) ||
-                !std::isfinite(material_slot.fullbright) ||
-                (material_normal_map !=
-                 (material_slot.normal_texture != nullptr)) ||
-                (material_specular_map !=
-                 (material_slot.specular_texture != nullptr)) ||
-                (material_normal_map &&
-                 !sampleableTexture(material_slot.normal_texture)) ||
-                (material_specular_map &&
-                 !sampleableTexture(material_slot.specular_texture)))
-            {
-                setError(error, "Metal world material slot is invalid");
-                return nullptr;
-            }
+            valid_factors = valid_factors &&
+                (factor & 0x8000u) == 0 &&
+                (factor & 0x7fffu) != 0 &&
+                (factor & 0x7c00u) != 0x7c00u;
         }
-        for (std::uint32_t slot = 0; slot < batch.pbr_slot_count; ++slot)
-        {
-            const ALMetalWorldPBRSlot& pbr_slot = batch.pbrSlots()[slot];
-            if (!sampleableTexture(pbr_slot.normal_texture) ||
-                !sampleableTexture(pbr_slot.orm_texture) ||
-                !sampleableTexture(pbr_slot.emissive_texture) ||
-                !finiteValues(&pbr_slot.texture_transform[0][0], 32) ||
-                !finiteValues(pbr_slot.emissive_color, 4) ||
-                !std::isfinite(pbr_slot.roughness_factor) ||
-                !std::isfinite(pbr_slot.metallic_factor) ||
-                !std::isfinite(pbr_slot.alpha_cutoff) ||
-                pbr_slot.roughness_factor < 0.f ||
-                pbr_slot.roughness_factor > 1.f ||
-                pbr_slot.metallic_factor < 0.f ||
-                pbr_slot.metallic_factor > 1.f ||
-                pbr_slot.alpha_cutoff < -1.f ||
-                pbr_slot.alpha_cutoff > 1.f)
-            {
-                setError(error, "Metal world PBR slot is invalid");
-                return nullptr;
-            }
-        }
-        if (!rangeFits(batch.position_offset, batch.vertex_count,
+        if (!batch.vertices || batch.indices || batch.vertex_count != 4 ||
+            batch.index_count != 0 || batch.texture_count != 4 ||
+            batch.normal_texture || batch.material_slot_count != 0 ||
+            batch.pbr_slot_count != (pbr_terrain ? 4u : 0u) ||
+            batch.skin_palette ||
+            batch.avatar_rigid || batch.avatar_skinning ||
+            batch.avatar_cloth || batch.impostor_debug_outline ||
+            batch.impostor_debug_line_width != 0.f || !valid_factors ||
+            (!pbr_terrain &&
+             (batch.terrain_paint_texture || batch.alpha_mask ||
+              batch.terrain_flat_normals)) ||
+            (pbr_terrain &&
+             (batch.terrain_paint_type > 1 ||
+              batch.terrain_pbr_detail < -4 ||
+              batch.terrain_pbr_detail > 0 ||
+              !finiteValues(batch.terrain_modelview, 16) ||
+              !finiteValues(&batch.terrain_uv_transform[0][0], 16) ||
+              !finiteValues(&batch.terrain_uv_offset[0][0], 8) ||
+              !finiteValues(&batch.terrain_normal_axes[0][0], 16))) ||
+            batch.position_offset % float4_stride != 0 ||
+            !rangeFits(batch.position_offset, batch.vertex_count,
                        float4_stride, batch.vertices->length()) ||
-            !rangeFits(batch.normal_offset, batch.vertex_count,
-                       float4_stride, batch.vertices->length()) ||
-            !rangeFits(batch.texcoord_offset, batch.vertex_count,
-                       sizeof(float) * 2, batch.vertices->length()) ||
-            (!avatar &&
-             !rangeFits(batch.color_offset, batch.vertex_count,
-                        sizeof(std::uint8_t) * 4,
-                        batch.vertices->length())) ||
-            (tangent_required &&
-             !rangeFits(batch.tangent_offset, batch.vertex_count,
-                        float4_stride, batch.vertices->length())) ||
-            (material_normal_map &&
-             !rangeFits(batch.texcoord1_offset, batch.vertex_count,
-                        sizeof(float) * 2, batch.vertices->length())) ||
-            (material_specular_map &&
-             !rangeFits(batch.texcoord2_offset, batch.vertex_count,
-                        sizeof(float) * 2, batch.vertices->length())) ||
-            !rangeFits(batch.index_offset, batch.index_count,
-                       index_stride, batch.indices->length()))
+            !sampleableTexture(batch.terrain_height_texture) ||
+            !sampleableTexture(batch.terrain_composition_texture) ||
+            (!pbr_terrain &&
+             !sampleableTexture(batch.terrain_alpha_ramp_texture)) ||
+            (pbr_terrain &&
+             (!sampleableTexture(
+                  height_paint ? batch.terrain_alpha_ramp_texture
+                               : batch.terrain_paint_texture) ||
+              (height_paint && batch.terrain_paint_texture) ||
+              (!height_paint && batch.terrain_alpha_ramp_texture))) ||
+            (batch.terrain_parcel_overlay_texture &&
+             !sampleableTexture(
+                 batch.terrain_parcel_overlay_texture)) ||
+            batch.terrain_height_texture->descriptor().format !=
+                ALMetalPixelFormat::r32_float ||
+            batch.terrain_composition_texture->descriptor().format !=
+                ALMetalPixelFormat::rg16_float ||
+            (batch.terrain_parcel_overlay_texture &&
+             batch.terrain_parcel_overlay_texture->descriptor().format !=
+                 ALMetalPixelFormat::rgba8_unorm_srgb &&
+             !(batch.terrain_overlay_wrap &&
+               batch.terrain_parcel_overlay_texture->descriptor().format ==
+                   ALMetalPixelFormat::rgba8_unorm)) ||
+            batch.terrain_height_texture->descriptor().width !=
+                batch.terrain_composition_texture->descriptor().width ||
+            batch.terrain_height_texture->descriptor().height !=
+                batch.terrain_composition_texture->descriptor().height ||
+            !std::isfinite(batch.terrain_grid_scale) ||
+            batch.terrain_grid_scale <= 0.f ||
+            batch.impostor_fullbright || batch.impostor_shiny ||
+            batch.impostor_emboss ||
+            !std::isfinite(batch.terrain_region_scale) ||
+            batch.terrain_region_scale <= 0.f ||
+            !std::isfinite(batch.terrain_detail_scale) ||
+            batch.terrain_detail_scale <= 0.f ||
+            !finiteValues(batch.terrain_detail_phase, 2) ||
+            !std::isfinite(batch.terrain_triplanar_blend) ||
+            batch.terrain_triplanar_blend <= 0.f ||
+            (batch.terrain_hex &&
+             (!finiteValues(&batch.terrain_hex_fraction[0][0],
+                            hex_value_count) ||
+              std::any_of(
+                  &batch.terrain_hex_fraction[0][0],
+                  &batch.terrain_hex_fraction[0][0] + hex_value_count,
+                  [](float value)
+                  {
+                      return value < 0.f || value >= 1.f;
+                  }))) ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            !finiteValues(&batch.normal_matrix[0][0], 12))
         {
-            setError(error,
-                     "Metal world simple geometry range exceeds its buffers");
-            return nullptr;
-        }
-        if (batch.avatar_skinning)
-        {
-            constexpr std::size_t avatar_palette_floats = 45 * 4;
-            if (!batch.skin_palette || batch.skin_joint_count != 15 ||
-                batch.skin_palette_float_count != avatar_palette_floats ||
-                batch.weight_offset % sizeof(float) != 0 ||
-                !rangeFits(batch.weight_offset, batch.vertex_count,
-                           sizeof(float), batch.vertices->length()) ||
-                !finiteValues(batch.skin_palette,
-                              avatar_palette_floats) ||
-                (batch.avatar_cloth &&
-                 (batch.cloth_offset % float4_stride != 0 ||
-                  !rangeFits(batch.cloth_offset, batch.vertex_count,
-                             float4_stride,
-                             batch.vertices->length()))))
-            {
-                setError(error,
-                         "Metal world avatar skinning data is invalid");
-                return nullptr;
-            }
-        }
-        else if (batch.skin_palette)
-        {
-            const std::size_t expected_palette_floats =
-                4 + static_cast<std::size_t>(batch.skin_joint_count) * 12;
-            if (batch.skin_joint_count == 0 ||
-                batch.skin_joint_count > max_skin_joints ||
-                batch.skin_palette_float_count != expected_palette_floats ||
-                batch.weight_offset % float4_stride != 0 ||
-                !rangeFits(batch.weight_offset, batch.vertex_count,
-                           float4_stride, batch.vertices->length()) ||
-                !finiteValues(batch.skin_palette,
-                              expected_palette_floats))
-            {
-                setError(error,
-                         "Metal world simple skinning data is invalid");
-                return nullptr;
-            }
-        }
-        else if (batch.weight_offset != 0 || batch.cloth_offset != 0 ||
-                 batch.skin_palette_float_count != 0 ||
-                 batch.skin_joint_count != 0)
-        {
-            setError(error,
-                     "Metal world simple skinning data is incomplete");
-            return nullptr;
+            setError(error, "Metal world terrain batch is invalid");
+            return false;
         }
         for (std::uint32_t texture_index = 0;
              texture_index < batch.texture_count; ++texture_index)
         {
-            const ALMetalTexture* texture =
-                batch.diffuse_textures[texture_index];
-            if (!texture || texture->descriptor().type !=
-                    ALMetalTextureType::texture_2d ||
-                !alMetalHasUsage(texture->descriptor().usage,
-                                 ALMetalTextureUsage::shader_read))
+            if (!sampleableTexture(
+                    batch.diffuse_textures[texture_index]))
             {
                 setError(error,
-                         "Metal world diffuse texture is not sampleable 2D");
-                return nullptr;
+                         "Metal world terrain detail texture is invalid");
+                return false;
             }
         }
-        if (bump &&
-            (batch.normal_texture->descriptor().type !=
-                 ALMetalTextureType::texture_2d ||
-             !alMetalHasUsage(batch.normal_texture->descriptor().usage,
-                              ALMetalTextureUsage::shader_read)))
+        if (pbr_terrain)
         {
-            setError(error,
-                     "Metal world normal texture is not sampleable 2D");
-            return nullptr;
+            bool has_masked_material = false;
+            for (std::uint32_t slot_index = 0;
+                 slot_index < batch.pbr_slot_count; ++slot_index)
+            {
+                const ALMetalWorldPBRSlot& slot =
+                    batch.pbrSlots()[slot_index];
+                has_masked_material = has_masked_material ||
+                                      slot.alpha_cutoff >= 0.f;
+                if (!sampleableTexture(slot.normal_texture) ||
+                    !sampleableTexture(slot.orm_texture) ||
+                    !sampleableTexture(slot.emissive_texture) ||
+                    !finiteValues(slot.base_color_factor, 4) ||
+                    !finiteValues(slot.emissive_color, 4) ||
+                    !std::isfinite(slot.roughness_factor) ||
+                    !std::isfinite(slot.metallic_factor) ||
+                    !std::isfinite(slot.alpha_cutoff) ||
+                    slot.roughness_factor < 0.f ||
+                    slot.roughness_factor > 1.f ||
+                    slot.metallic_factor < 0.f ||
+                    slot.metallic_factor > 1.f ||
+                    slot.alpha_cutoff < -1.f ||
+                    slot.alpha_cutoff > 1.f)
+                {
+                    setError(error,
+                             "Metal world PBR terrain slot is invalid");
+                    return false;
+                }
+            }
+            if (has_masked_material != batch.alpha_mask)
+            {
+                setError(error,
+                         "Metal world PBR terrain mask state is invalid");
+                return false;
+            }
+        }
+        return true;
+    }
+    const bool bump = batch.normal_texture != nullptr;
+    const bool material = batch.material_slot_count != 0;
+    const bool pbr = isPBRBatch(batch);
+    const bool avatar = batch.avatar_rigid || batch.avatar_skinning;
+    const bool material_normal_map = materialHasNormalMap(batch);
+    const bool material_specular_map = materialHasSpecularMap(batch);
+    const bool tangent_required = bump || material_normal_map || pbr;
+    const std::size_t index_stride =
+        batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+    if (!batch.vertices || !batch.indices || batch.texture_count == 0 ||
+        batch.impostor_fullbright || batch.impostor_shiny ||
+        batch.impostor_emboss || batch.impostor_debug_outline ||
+        batch.impostor_debug_line_width != 0.f ||
+        batch.texture_count >
+            ALMetalWorldSimpleBatch::max_diffuse_textures ||
+        (material &&
+         (batch.material_slot_count >
+              ALMetalWorldSimpleBatch::max_material_slots ||
+          batch.material_slot_count != batch.texture_count ||
+          bump || pbr || batch.alpha_mask ||
+          !validMaterialAlphaMode(batch.material_alpha_mode))) ||
+        (pbr &&
+         (batch.pbr_slot_count >
+              ALMetalWorldSimpleBatch::max_material_slots ||
+          batch.pbr_slot_count != batch.texture_count ||
+          material || bump)) ||
+        (batch.avatar_cloth && !batch.avatar_skinning) ||
+        (!batch.avatar_skinning && batch.cloth_offset != 0) ||
+        (avatar &&
+         (batch.avatar_rigid == batch.avatar_skinning ||
+          (batch.avatar_rigid && batch.skin_palette != nullptr) ||
+          batch.texture_count != 1 || !batch.alpha_mask ||
+          batch.use_vertex_color || batch.alpha_cutoff_bias ||
+          material || pbr || bump)) ||
+        (!material && batch.material_alpha_mode != 0) ||
+        batch.vertex_count == 0 || batch.index_count == 0 ||
+        batch.index_count % 3 != 0 ||
+        batch.position_offset % float4_stride != 0 ||
+        batch.normal_offset % float4_stride != 0 ||
+        batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
+        (!avatar &&
+         batch.color_offset % (sizeof(std::uint8_t) * 4) != 0) ||
+        (tangent_required &&
+         batch.tangent_offset % float4_stride != 0) ||
+        (material_normal_map &&
+         batch.texcoord1_offset % (sizeof(float) * 2) != 0) ||
+        (material_specular_map &&
+         batch.texcoord2_offset % (sizeof(float) * 2) != 0) ||
+        batch.index_offset % index_stride != 0 ||
+        !std::isfinite(batch.alpha_cutoff) ||
+        !finiteValues(batch.modelview_projection, 16) ||
+        (!batch.avatar_skinning &&
+         (!finiteValues(batch.modelview, 16) ||
+          batch.modelview[15] != 1.f)) ||
+        !finiteValues(&batch.normal_matrix[0][0], 12) ||
+        !finiteValues(&batch.rigged_normal_matrix[0][0], 12) ||
+        !finiteValues(batch.texture_matrix, 16) ||
+        (batch.avatar_cloth &&
+         (!finiteValues(batch.avatar_wind, 4) ||
+          !finiteValues(batch.avatar_sin_wave, 4) ||
+          !finiteValues(batch.avatar_gravity, 4) ||
+          !finiteValues(batch.avatar_cloth_depth, 4))))
+    {
+        setError(error, "Metal world simple batch is invalid");
+        return false;
+    }
+    for (std::uint32_t slot = 0;
+         slot < batch.material_slot_count; ++slot)
+    {
+        const ALMetalWorldMaterialSlot& material_slot =
+            batch.materialSlots()[slot];
+        if (!finiteValues(material_slot.specular_color, 4) ||
+            !std::isfinite(material_slot.env_intensity) ||
+            !std::isfinite(material_slot.alpha_cutoff) ||
+            !std::isfinite(material_slot.fullbright) ||
+            (material_normal_map !=
+             (material_slot.normal_texture != nullptr)) ||
+            (material_specular_map !=
+             (material_slot.specular_texture != nullptr)) ||
+            (material_normal_map &&
+             !sampleableTexture(material_slot.normal_texture)) ||
+            (material_specular_map &&
+             !sampleableTexture(material_slot.specular_texture)))
+        {
+            setError(error, "Metal world material slot is invalid");
+            return false;
         }
     }
+    for (std::uint32_t slot = 0; slot < batch.pbr_slot_count; ++slot)
+    {
+        const ALMetalWorldPBRSlot& pbr_slot = batch.pbrSlots()[slot];
+        if (!sampleableTexture(pbr_slot.normal_texture) ||
+            !sampleableTexture(pbr_slot.orm_texture) ||
+            !sampleableTexture(pbr_slot.emissive_texture) ||
+            !finiteValues(&pbr_slot.texture_transform[0][0], 32) ||
+            !finiteValues(pbr_slot.emissive_color, 4) ||
+            !std::isfinite(pbr_slot.roughness_factor) ||
+            !std::isfinite(pbr_slot.metallic_factor) ||
+            !std::isfinite(pbr_slot.alpha_cutoff) ||
+            pbr_slot.roughness_factor < 0.f ||
+            pbr_slot.roughness_factor > 1.f ||
+            pbr_slot.metallic_factor < 0.f ||
+            pbr_slot.metallic_factor > 1.f ||
+            pbr_slot.alpha_cutoff < -1.f ||
+            pbr_slot.alpha_cutoff > 1.f)
+        {
+            setError(error, "Metal world PBR slot is invalid");
+            return false;
+        }
+    }
+    if (!rangeFits(batch.position_offset, batch.vertex_count,
+                   float4_stride, batch.vertices->length()) ||
+        !rangeFits(batch.normal_offset, batch.vertex_count,
+                   float4_stride, batch.vertices->length()) ||
+        !rangeFits(batch.texcoord_offset, batch.vertex_count,
+                   sizeof(float) * 2, batch.vertices->length()) ||
+        (!avatar &&
+         !rangeFits(batch.color_offset, batch.vertex_count,
+                    sizeof(std::uint8_t) * 4,
+                    batch.vertices->length())) ||
+        (tangent_required &&
+         !rangeFits(batch.tangent_offset, batch.vertex_count,
+                    float4_stride, batch.vertices->length())) ||
+        (material_normal_map &&
+         !rangeFits(batch.texcoord1_offset, batch.vertex_count,
+                    sizeof(float) * 2, batch.vertices->length())) ||
+        (material_specular_map &&
+         !rangeFits(batch.texcoord2_offset, batch.vertex_count,
+                    sizeof(float) * 2, batch.vertices->length())) ||
+        !rangeFits(batch.index_offset, batch.index_count,
+                   index_stride, batch.indices->length()))
+    {
+        setError(error,
+                 "Metal world simple geometry range exceeds its buffers");
+        return false;
+    }
+    if (batch.avatar_skinning)
+    {
+        constexpr std::size_t avatar_palette_floats = 45 * 4;
+        if (!batch.skin_palette || batch.skin_joint_count != 15 ||
+            batch.skin_palette_float_count != avatar_palette_floats ||
+            batch.weight_offset % sizeof(float) != 0 ||
+            !rangeFits(batch.weight_offset, batch.vertex_count,
+                       sizeof(float), batch.vertices->length()) ||
+            !finiteValues(batch.skin_palette,
+                          avatar_palette_floats) ||
+            (batch.avatar_cloth &&
+             (batch.cloth_offset % float4_stride != 0 ||
+              !rangeFits(batch.cloth_offset, batch.vertex_count,
+                         float4_stride,
+                         batch.vertices->length()))))
+        {
+            setError(error,
+                     "Metal world avatar skinning data is invalid");
+            return false;
+        }
+    }
+    else if (batch.skin_palette)
+    {
+        const std::size_t expected_palette_floats =
+            4 + static_cast<std::size_t>(batch.skin_joint_count) * 12;
+        if (batch.skin_joint_count == 0 ||
+            batch.skin_joint_count > max_skin_joints ||
+            batch.skin_palette_float_count != expected_palette_floats ||
+            batch.weight_offset % float4_stride != 0 ||
+            !rangeFits(batch.weight_offset, batch.vertex_count,
+                       float4_stride, batch.vertices->length()) ||
+            !finiteValues(batch.skin_palette,
+                          expected_palette_floats))
+        {
+            setError(error,
+                     "Metal world simple skinning data is invalid");
+            return false;
+        }
+    }
+    else if (batch.weight_offset != 0 || batch.cloth_offset != 0 ||
+             batch.skin_palette_float_count != 0 ||
+             batch.skin_joint_count != 0)
+    {
+        setError(error,
+                 "Metal world simple skinning data is incomplete");
+        return false;
+    }
+    for (std::uint32_t texture_index = 0;
+         texture_index < batch.texture_count; ++texture_index)
+    {
+        const ALMetalTexture* texture =
+            batch.diffuse_textures[texture_index];
+        if (!texture || texture->descriptor().type !=
+                ALMetalTextureType::texture_2d ||
+            !alMetalHasUsage(texture->descriptor().usage,
+                             ALMetalTextureUsage::shader_read))
+        {
+            setError(error,
+                     "Metal world diffuse texture is not sampleable 2D");
+            return false;
+        }
+    }
+    if (bump &&
+        (batch.normal_texture->descriptor().type !=
+             ALMetalTextureType::texture_2d ||
+         !alMetalHasUsage(batch.normal_texture->descriptor().usage,
+                          ALMetalTextureUsage::shader_read)))
+    {
+        setError(error,
+                 "Metal world normal texture is not sampleable 2D");
+        return false;
+    }
 
+    return true;
+}
+
+bool alMetalLayoutWorldRecord(const ALMetalWorldSimpleBatch& batch,
+    std::size_t& next, ALMetalWorldPreparedRecord& record, std::string* error)
+{
+    record = {};
+    if (batch.material_slot_count > ALMetalWorldSimpleBatch::max_material_slots ||
+        batch.pbr_slot_count > ALMetalWorldSimpleBatch::max_material_slots)
+    {
+        setError(error, "World preparation material count is invalid");
+        return false;
+    }
+    const auto append = [&](std::size_t length, std::size_t& offset)
+    {
+        if (next > std::numeric_limits<std::size_t>::max() - length) return false;
+        offset = next;
+        next += length;
+        return true;
+    };
+    record.family = batch.impostor ? ALMetalWorldPreparedRecord::Family::impostor :
+        batch.terrain ? ALMetalWorldPreparedRecord::Family::terrain : ALMetalWorldPreparedRecord::Family::simple;
+    record.length = batch.impostor ? sizeof(WorldImpostorConstants) :
+        batch.terrain ? sizeof(WorldTerrainConstants) : sizeof(WorldSimpleConstants);
+    if (!append(record.length, record.offset))
+    {
+        setError(error, "World preparation constant size overflows");
+        return false;
+    }
+    if (!batch.impostor && !batch.terrain)
+    {
+        record.material_length = batch.material_slot_count ? sizeof(WorldMaterialConstants) : 0;
+        record.pbr_length = batch.pbr_slot_count ? sizeof(WorldPBRConstants) : 0;
+        if (!append(record.material_length, record.material_offset) ||
+            !append(record.pbr_length, record.pbr_offset))
+        {
+            setError(error, "World preparation material size overflows");
+            return false;
+        }
+    }
+    return true;
+}
+
+bool alMetalPrepareWorldRecord(const ALMetalWorldGBufferScene& scene, std::size_t index,
+    ALMetalWorldPreparedRecord& record, std::span<std::byte> bytes, std::string* error)
+{
+    if (index >= scene.batch_count || !alMetalValidateWorldBatch(scene, scene.batches[index], error)) return false;
+    const auto& batch = scene.batches[index];
+    const auto copy = [&](std::size_t offset, const auto& value)
+    {
+        if (offset > bytes.size() || sizeof(value) > bytes.size() - offset) return false;
+        std::memcpy(bytes.data() + offset, &value, sizeof(value));
+        return true;
+    };
+    if (batch.impostor) return copy(record.offset, buildWorldImpostorConstants(scene, batch));
+    if (batch.terrain) return copy(record.offset, buildWorldTerrainConstants(scene, batch));
+    record.avatar = batch.avatar_rigid || batch.avatar_skinning;
+    record.rigged = batch.skin_palette != nullptr && !record.avatar;
+    record.bump = batch.normal_texture != nullptr;
+    record.material = batch.material_slot_count != 0;
+    record.pbr = isPBRBatch(batch);
+    record.material_normal_map = materialHasNormalMap(batch);
+    record.material_specular_map = materialHasSpecularMap(batch);
+    record.avatar_variant = batch.avatar_rigid ? 0 : (batch.avatar_cloth ? 2 : 1);
+    return copy(record.offset, buildWorldSimpleConstants(scene, batch)) &&
+        (!record.material || copy(record.material_offset, buildWorldMaterialConstants(scene, batch,
+            record.material_normal_map, record.material_specular_map))) &&
+        (!record.pbr || copy(record.pbr_offset, buildWorldPBRConstants(scene, batch)));
+}
+
+std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
+    const ALMetalWorldGBufferScene& scene, std::string* error,
+    std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
+{
+    return renderInternal(scene, nullptr, error, visibility_results);
+}
+
+std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderPrepared(
+    const ALMetalPreparedWorldView& prepared, std::string* error,
+    std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
+{
+    return renderInternal(prepared.scene(), &prepared, error, visibility_results);
+}
+
+std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal(
+    const ALMetalWorldGBufferScene& scene,
+    const ALMetalPreparedWorldView* prepared,
+    std::string* error,
+    std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
+{
+    Impl::GBufferFailureScope transaction(mImpl.get(), error);
+    if (visibility_results)
+    {
+        visibility_results->reset();
+    }
+    if (!mImpl || !mImpl->device)
+    {
+        setError(error, "Metal world G-buffer renderer is unavailable");
+        return nullptr;
+    }
+    if (prepared && !prepared->isCurrent())
+    {
+        setError(error, "Prepared world view epoch was cancelled");
+        return nullptr;
+    }
+    if (!prepared)
+    {
+        if (!alMetalValidateWorldView(scene, error)) return nullptr;
+        for (std::size_t index = 0; index < scene.batch_count; ++index)
+            if (!alMetalValidateWorldBatch(scene, scene.batches[index], error)) return nullptr;
+    }
+
+    const auto prepared_records = prepared ? prepared->records() : std::span<const ALMetalWorldPreparedRecord>{};
+    const auto prepared_constants = prepared ? prepared->constants() : std::span<const std::byte>{};
     std::unique_ptr<ALMetalBuffer> terrain_factor_buffer;
     std::vector<std::uint16_t> terrain_factors(scene.batch_count * 6, 0);
     bool has_terrain = false;
@@ -9153,6 +9510,26 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     {
         return nullptr;
     }
+    ALMetalWorldDataSlice prepared_gpu_data;
+    if (scene.source_owner &&
+        !command->retainUntilCompletion(scene.source_owner, error))
+    {
+        return nullptr;
+    }
+    if (prepared &&
+        (!command->retainUntilCompletion(prepared->inputLease(), error) ||
+         (mImpl->frame_data && !prepared_constants.empty() &&
+          !mImpl->frame_data->publish(*command, prepared_constants.data(), prepared_constants.size(),
+                                    prepared_gpu_data, error, false))))
+    {
+        return nullptr;
+    }
+    std::shared_ptr<ALMetalWorldVisibilityArguments> shared_visibility_arguments;
+    if (scene.native_visibility && scene.native_visibility->size() == scene.batch_count && scene.batch_count)
+    {
+        std::string optional_error;
+        shared_visibility_arguments = ALMetalWorldVisibility::encode(*command, *scene.native_visibility, &optional_error);
+    }
     if (query_results && !query_results->attachCommand(*command, error))
     {
         return nullptr;
@@ -9163,6 +9540,29 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     {
         return nullptr;
     }
+
+    // A prepared view publishes its complete constant slab once. Per-draw
+    // bindings reference immutable subranges; they never hash or republish it.
+    const auto bind_prepared = [&](std::size_t offset, std::size_t length,
+                                   std::uint32_t vertex_slot,
+                                   std::optional<std::uint32_t> fragment_slot = std::nullopt)
+    {
+        if (prepared_gpu_data.buffer)
+            return encoder->setVertexBuffer(vertex_slot, *prepared_gpu_data.buffer,
+                       prepared_gpu_data.offset + offset, error) &&
+                (!fragment_slot || encoder->setFragmentBuffer(*fragment_slot,
+                    *prepared_gpu_data.buffer, prepared_gpu_data.offset + offset, error));
+        return encoder->setVertexBytes(vertex_slot, prepared_constants.data() + offset, length, error) &&
+            (!fragment_slot || encoder->setFragmentBytes(*fragment_slot,
+                prepared_constants.data() + offset, length, error));
+    };
+    const auto bind_prepared_fragment = [&](std::size_t offset, std::size_t length,
+                                            std::uint32_t slot)
+    {
+        return prepared_gpu_data.buffer
+            ? encoder->setFragmentBuffer(slot, *prepared_gpu_data.buffer, prepared_gpu_data.offset + offset, error)
+            : encoder->setFragmentBytes(slot, prepared_constants.data() + offset, length, error);
+    };
 
     const ALMetalDepthStencilState* depth = scene.reverse_z
         ? mImpl->reverse_depth.get() : mImpl->forward_depth.get();
@@ -9263,22 +9663,31 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     ALMetalWorldDataSlice previous_world_slice;
     bool have_previous_world_constants = false;
     ALMetalWorldConstantStats constant_stats;
-    const auto bind_world_constants = [&](const WorldSimpleConstants& constants)
+    const auto bind_world_constants = [&](const void* constants, std::size_t offset)
     {
         if (!mImpl->frame_data)
             return mImpl->setVertexData(*encoder, *command,
-                4, &constants, sizeof(constants), error);
+                4, constants, sizeof(WorldSimpleConstants), error);
         ++constant_stats.bindings;
+        if (prepared)
+        {
+            if (have_previous_world_constants &&
+                std::memcmp(&previous_world_constants, constants, sizeof(WorldSimpleConstants)) == 0)
+                ++constant_stats.reused_bindings;
+            std::memcpy(&previous_world_constants, constants, sizeof(WorldSimpleConstants));
+            have_previous_world_constants = true;
+            return bind_prepared(offset, sizeof(WorldSimpleConstants), 4);
+        }
         if (!have_previous_world_constants ||
-            std::memcmp(&previous_world_constants, &constants,
-                        sizeof(constants)) != 0)
+            std::memcmp(&previous_world_constants, constants,
+                        sizeof(WorldSimpleConstants)) != 0)
         {
             ALMetalWorldDataSlice slice;
-            if (!mImpl->frame_data->publish(*command, &constants,
-                    sizeof(constants), slice, error, false))
+            if (!mImpl->frame_data->publish(*command, constants,
+                    sizeof(WorldSimpleConstants), slice, error, false))
                 return false;
-            std::memcpy(&previous_world_constants, &constants,
-                        sizeof(constants));
+            std::memcpy(&previous_world_constants, constants,
+                        sizeof(WorldSimpleConstants));
             previous_world_slice = slice;
             have_previous_world_constants = true;
         }
@@ -9319,32 +9728,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 encoded = false;
                 break;
             }
-            WorldImpostorConstants constants{};
-            std::memcpy(constants.modelview_projection,
-                        batch.modelview_projection,
-                        sizeof(constants.modelview_projection));
-            std::memcpy(constants.modelview, batch.modelview,
-                        sizeof(constants.modelview));
-            std::memcpy(constants.center, batch.impostor_center,
-                        sizeof(constants.center));
-            std::memcpy(constants.left, batch.impostor_left,
-                        sizeof(constants.left));
-            std::memcpy(constants.up, batch.impostor_up,
-                        sizeof(constants.up));
-            std::memcpy(constants.normal_rotation,
-                        batch.impostor_normal_rotation,
-                        sizeof(constants.normal_rotation));
-            constants.depth_convention[0] = scene.reverse_z ? 1u : 0u;
-            constants.depth_convention[1] = scene.mirror_clip ? 1u : 0u;
-            std::memcpy(constants.mirror_clip_plane,
-                        scene.mirror_clip_plane,
-                        sizeof(constants.mirror_clip_plane));
-            constants.debug_outline[0] =
-                static_cast<float>(scene.width);
-            constants.debug_outline[1] =
-                static_cast<float>(scene.height);
-            constants.debug_outline[2] =
-                batch.impostor_debug_line_width;
+            std::optional<WorldImpostorConstants> owned_constants;
+            if (!prepared) owned_constants = buildWorldImpostorConstants(scene, batch);
+            const void* constants_data = prepared
+                ? prepared_constants.data() + prepared_records[index].offset
+                : static_cast<const void*>(&*owned_constants);
             const ALMetalRenderPipeline* pipeline =
                 mImpl->impostor_pipelines[scene.hdr ? 1 : 0]
                                          [scene.normal_hdr ? 1 : 0].get();
@@ -9363,8 +9751,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                     encoder->setTriangleFillMode(
                         ALMetalTriangleFillMode::fill, error) &&
                     encoder->setPipeline(*debug_pipeline, error) &&
-                    mImpl->setVertexData(*encoder, *command,
-                        0, &constants, sizeof(constants), error) &&
+                    (prepared ? bind_prepared(prepared_records[index].offset, sizeof(WorldImpostorConstants), 0)
+                        : mImpl->setVertexData(*encoder, *command,
+                            0, constants_data, sizeof(WorldImpostorConstants), error)) &&
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 24, 1, error);
             }
@@ -9381,8 +9770,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                     : ALMetalTriangleFillMode::fill,
                     error) &&
                 encoder->setPipeline(*pipeline, error) &&
-                mImpl->setVertexAndFragmentData(*encoder, *command,
-                    0, 0, &constants, sizeof(constants), error) &&
+                (prepared ? bind_prepared(prepared_records[index].offset, sizeof(WorldImpostorConstants), 0, 0)
+                    : mImpl->setVertexAndFragmentData(*encoder, *command,
+                        0, 0, constants_data, sizeof(WorldImpostorConstants), error)) &&
                 encoder->setFragmentTextureLinear(
                     0, batch.impostor_textures[0], error) &&
                 encoder->setFragmentTexture(
@@ -9405,69 +9795,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 encoded = false;
                 break;
             }
-            WorldTerrainConstants constants{};
-            std::memcpy(constants.modelview_projection,
-                        batch.modelview_projection,
-                        sizeof(constants.modelview_projection));
-            std::memcpy(constants.modelview, batch.terrain_modelview,
-                        sizeof(constants.modelview));
-            std::memcpy(constants.normal_matrix,
-                        batch.normal_matrix,
-                        sizeof(constants.normal_matrix));
-            std::memcpy(constants.mirror_clip_plane,
-                        scene.mirror_clip_plane,
-                        sizeof(constants.mirror_clip_plane));
-            constants.surface[0] = batch.terrain_grid_scale;
-            constants.surface[1] = batch.terrain_region_scale;
-            constants.surface[2] = batch.terrain_detail_scale;
-            constants.surface[3] = batch.terrain_triplanar_blend;
-            constants.detail[0] = batch.terrain_detail_phase[0];
-            constants.detail[1] = batch.terrain_detail_phase[1];
-            constants.detail[2] = batch.terrain_smoothing ? 1.f : 0.f;
-            constants.detail[3] = batch.terrain_triplanar ? 1.f : 0.f;
-            constants.config[0] = scene.reverse_z ? 1u : 0u;
-            constants.config[1] =
-                batch.terrain_parcel_overlay_texture ? 1u : 0u;
-            constants.config[2] = batch.terrain_hex ? 1u : 0u;
-            constants.config[3] = scene.normal_hdr ? 1u : 0u;
-            constants.pbr_config[0] = static_cast<std::uint32_t>(
-                batch.terrain_pbr_detail + 4);
-            constants.pbr_config[1] = batch.terrain_paint_type;
-            constants.pbr_config[2] = batch.alpha_mask ? 1u : 0u;
-            constants.pbr_config[3] =
-                batch.terrain_flat_normals ? 1u : 0u;
-            std::memcpy(constants.hex_fraction,
-                        batch.terrain_hex_fraction,
-                        sizeof(constants.hex_fraction));
-            std::memcpy(constants.hex_base,
-                        batch.terrain_hex_base,
-                        sizeof(constants.hex_base));
-            for (std::size_t slot = 0;
-                 slot < batch.pbr_slot_count; ++slot)
-            {
-                const ALMetalWorldPBRSlot& source = batch.pbrSlots()[slot];
-                WorldTerrainConstants::PBRSlot& destination =
-                    constants.pbr_slots[slot];
-                std::memcpy(destination.uv_transform,
-                            batch.terrain_uv_transform[slot],
-                            sizeof(destination.uv_transform));
-                std::memcpy(destination.uv_offset,
-                            batch.terrain_uv_offset[slot],
-                            sizeof(batch.terrain_uv_offset[slot]));
-                std::memcpy(destination.normal_axes,
-                            batch.terrain_normal_axes[slot],
-                            sizeof(destination.normal_axes));
-                std::memcpy(destination.base_color_factor,
-                            source.base_color_factor,
-                            sizeof(destination.base_color_factor));
-                std::memcpy(destination.emissive_color,
-                            source.emissive_color,
-                            sizeof(destination.emissive_color));
-                destination.properties[0] = source.roughness_factor;
-                destination.properties[1] = source.metallic_factor;
-                destination.properties[2] = source.alpha_cutoff;
-                destination.properties[3] = source.base_color_factor[3];
-            }
+            std::optional<WorldTerrainConstants> owned_constants;
+            if (!prepared) owned_constants = buildWorldTerrainConstants(scene, batch);
+            const void* constants_data = prepared
+                ? prepared_constants.data() + prepared_records[index].offset
+                : static_cast<const void*>(&*owned_constants);
             const auto& terrain_pipelines = batch.terrain_pbr
                 ? mImpl->pbr_terrain_pipelines
                 : mImpl->terrain_pipelines;
@@ -9481,8 +9813,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 encoder->setPipeline(*pipeline, error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
-                mImpl->setVertexAndFragmentData(*encoder, *command,
-                    4, 0, &constants, sizeof(constants), error) &&
+                (prepared ? bind_prepared(prepared_records[index].offset, sizeof(WorldTerrainConstants), 4, 0)
+                    : mImpl->setVertexAndFragmentData(*encoder, *command,
+                        4, 0, constants_data, sizeof(WorldTerrainConstants), error)) &&
                 encoder->setVertexTexture(
                     0, batch.terrain_height_texture, error) &&
                 encoder->setVertexTexture(
@@ -9567,47 +9900,20 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 encoder->drawPatches(4, 0, 1, 1, 0, error);
             continue;
         }
-        WorldSimpleConstants constants{};
-        std::memcpy(constants.modelview_projection,
-                    batch.modelview_projection,
-                    sizeof(constants.modelview_projection));
-        std::memcpy(constants.modelview, batch.modelview,
-                    sizeof(constants.modelview));
-        std::memcpy(constants.normal_matrix, batch.normal_matrix,
-                    sizeof(constants.normal_matrix));
-        std::memcpy(constants.rigged_normal_matrix,
-                    batch.rigged_normal_matrix,
-                    sizeof(constants.rigged_normal_matrix));
-        std::memcpy(constants.texture_matrix, batch.texture_matrix,
-                    sizeof(constants.texture_matrix));
-        std::memcpy(constants.avatar_wind, batch.avatar_wind,
-                    sizeof(constants.avatar_wind));
-        std::memcpy(constants.avatar_sin_wave, batch.avatar_sin_wave,
-                    sizeof(constants.avatar_sin_wave));
-        std::memcpy(constants.avatar_gravity, batch.avatar_gravity,
-                    sizeof(constants.avatar_gravity));
-        std::memcpy(constants.avatar_cloth_depth,
-                    batch.avatar_cloth_depth,
-                    sizeof(constants.avatar_cloth_depth));
-        std::memcpy(constants.mirror_clip_plane,
-                    scene.mirror_clip_plane,
-                    sizeof(constants.mirror_clip_plane));
-        constants.material[0] = batch.alpha_cutoff;
-        constants.material[1] = batch.use_vertex_color ? 1.f : 0.f;
-        constants.material[2] = batch.alpha_cutoff_bias ? 1.f : 0.f;
-        constants.material[3] = batch.alpha_mask ? 1.f : 0.f;
-        constants.depth_convention[0] = scene.reverse_z ? 1u : 0u;
-        constants.depth_convention[1] = batch.texture_count;
-        constants.depth_convention[2] = scene.mirror_clip ? 1u : 0u;
-        const bool avatar = batch.avatar_rigid || batch.avatar_skinning;
-        const bool rigged = batch.skin_palette != nullptr && !avatar;
-        const bool bump = batch.normal_texture != nullptr;
-        const bool material = batch.material_slot_count != 0;
-        const bool pbr = isPBRBatch(batch);
-        const bool material_normal_map = materialHasNormalMap(batch);
-        const bool material_specular_map = materialHasSpecularMap(batch);
-        const std::size_t avatar_variant = batch.avatar_rigid
-            ? 0 : (batch.avatar_cloth ? 2 : 1);
+        std::optional<WorldSimpleConstants> owned_constants;
+        if (!prepared) owned_constants = buildWorldSimpleConstants(scene, batch);
+        const void* constants_data = prepared
+            ? prepared_constants.data() + prepared_records[index].offset
+            : static_cast<const void*>(&*owned_constants);
+        const bool avatar = prepared ? prepared_records[index].avatar : batch.avatar_rigid || batch.avatar_skinning;
+        const bool rigged = prepared ? prepared_records[index].rigged : batch.skin_palette != nullptr && !avatar;
+        const bool bump = prepared ? prepared_records[index].bump : batch.normal_texture != nullptr;
+        const bool material = prepared ? prepared_records[index].material : batch.material_slot_count != 0;
+        const bool pbr = prepared ? prepared_records[index].pbr : isPBRBatch(batch);
+        const bool material_normal_map = prepared ? prepared_records[index].material_normal_map : materialHasNormalMap(batch);
+        const bool material_specular_map = prepared ? prepared_records[index].material_specular_map : materialHasSpecularMap(batch);
+        const std::size_t avatar_variant = prepared ? prepared_records[index].avatar_variant :
+            batch.avatar_rigid ? 0 : (batch.avatar_cloth ? 2 : 1);
         const ALMetalRenderPipeline* pipeline = avatar
             ? mImpl->avatar_pipelines[scene.hdr ? 1 : 0]
                                      [avatar_variant]
@@ -9638,7 +9944,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                      batch.normal_offset, error) &&
             encoder->setVertexBuffer(2, *batch.vertices,
                                      batch.texcoord_offset, error) &&
-            bind_world_constants(constants) &&
+            bind_world_constants(constants_data, prepared ? prepared_records[index].offset : 0) &&
             encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
         if (encoded && !avatar)
         {
@@ -9695,54 +10001,28 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                     material_specular_map
                         ? batch.texcoord2_offset : batch.texcoord_offset,
                     error);
-            WorldMaterialConstants material_constants{};
-            for (std::size_t slot = 0;
-                 slot < batch.material_slot_count; ++slot)
-            {
-                const ALMetalWorldMaterialSlot& source =
-                    batch.materialSlots()[slot];
-                WorldMaterialSlotConstants& destination =
-                    material_constants.slots[slot];
-                std::memcpy(destination.specular_color,
-                            source.specular_color,
-                            sizeof(destination.specular_color));
-                destination.properties[0] = source.env_intensity;
-                destination.properties[1] = source.alpha_cutoff;
-                destination.properties[2] = source.fullbright;
-            }
-            material_constants.config[0] = batch.material_slot_count;
-            material_constants.config[1] = batch.material_alpha_mode;
-            material_constants.config[2] = material_normal_map ? 1u : 0u;
-            material_constants.config[3] = material_specular_map ? 1u : 0u;
-            encoded = encoded && mImpl->setFragmentData(*encoder, *command,
-                0, &material_constants, sizeof(material_constants), error, true);
+            std::optional<WorldMaterialConstants> owned_material_constants;
+            if (!prepared) owned_material_constants = buildWorldMaterialConstants(scene, batch, material_normal_map, material_specular_map);
+            const void* material_constants_data = prepared
+                ? prepared_constants.data() + prepared_records[index].material_offset
+                : static_cast<const void*>(&*owned_material_constants);
+            encoded = encoded && (prepared ? bind_prepared_fragment(prepared_records[index].material_offset, sizeof(WorldMaterialConstants), 0)
+                : mImpl->setFragmentData(*encoder, *command,
+                    0, material_constants_data, sizeof(WorldMaterialConstants), error, true));
         }
         if (encoded && pbr)
         {
             encoded = encoder->setVertexBuffer(
                 8, *batch.vertices, batch.tangent_offset, error);
-            WorldPBRConstants pbr_constants{};
-            for (std::size_t slot = 0; slot < batch.pbr_slot_count; ++slot)
-            {
-                const ALMetalWorldPBRSlot& source = batch.pbrSlots()[slot];
-                WorldPBRSlotConstants& destination =
-                    pbr_constants.slots[slot];
-                std::memcpy(destination.texture_transform,
-                            source.texture_transform,
-                            sizeof(destination.texture_transform));
-                std::memcpy(destination.emissive_color,
-                            source.emissive_color,
-                            sizeof(destination.emissive_color));
-                destination.properties[0] = source.roughness_factor;
-                destination.properties[1] = source.metallic_factor;
-                destination.properties[2] = source.alpha_cutoff;
-            }
-            pbr_constants.config[0] = batch.pbr_slot_count;
-            pbr_constants.config[1] = batch.alpha_mask ? 1u : 0u;
-            pbr_constants.config[2] = scene.normal_hdr ? 1u : 0u;
+            std::optional<WorldPBRConstants> owned_pbr_constants;
+            if (!prepared) owned_pbr_constants = buildWorldPBRConstants(scene, batch);
+            const void* pbr_constants_data = prepared
+                ? prepared_constants.data() + prepared_records[index].pbr_offset
+                : static_cast<const void*>(&*owned_pbr_constants);
             encoded = encoded &&
-                mImpl->setVertexAndFragmentData(*encoder, *command,
-                    11, 0, &pbr_constants, sizeof(pbr_constants), error, true);
+                (prepared ? bind_prepared(prepared_records[index].pbr_offset, sizeof(WorldPBRConstants), 11, 0)
+                    : mImpl->setVertexAndFragmentData(*encoder, *command,
+                        11, 0, pbr_constants_data, sizeof(WorldPBRConstants), error, true));
         }
         for (std::size_t texture_index = 0;
              encoded && texture_index < batch.texture_count;
@@ -9804,10 +10084,13 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                         pbr_slot.emissive_texture, error);
             }
         }
-        encoded = encoded &&
-            encoder->drawIndexed(ALMetalPrimitiveType::triangle,
-                                 batch.index_count, batch.index_type,
-                                 *batch.indices, batch.index_offset, 1, error);
+        const bool shared_visible_draw = shared_visibility_arguments && !avatar && !rigged &&
+            !batch.avatar_cloth && shared_visibility_arguments->appliesTo(index, batch.index_count, batch.modelview_projection);
+        encoded = encoded && (shared_visible_draw
+            ? shared_visibility_arguments->drawIndexed(*encoder, *command, index, batch.index_type,
+                *batch.indices, batch.index_offset, batch.index_count, error)
+            : encoder->drawIndexed(ALMetalPrimitiveType::triangle,
+                batch.index_count, batch.index_type, *batch.indices, batch.index_offset, 1, error));
     }
 
     encoded = encoded && encoder->setIndexedTriangleJoining(false, error) &&
@@ -9885,6 +10168,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     }
     mImpl->constant_stats.bindings += constant_stats.bindings;
     mImpl->constant_stats.reused_bindings += constant_stats.reused_bindings;
+    transaction.succeeded = true;
     return target;
 }
 
@@ -17827,6 +18111,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         return nullptr;
     };
     if (!command ||
+        (scene.source_owner &&
+         !command->retainUntilCompletion(scene.source_owner, error)) ||
         (!continue_composed_target &&
          (!output->copyColorFrom(
               *command, 0, *scene.composed_lighting->colorTexture(0), {},
@@ -23419,6 +23705,11 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
     auto command = mImpl->device->makeCommandBuffer(
         "Alchemy native avatar-impostor post-deferred", error);
     if (!command)
+    {
+        return false;
+    }
+    if (scene.source_owner &&
+        !command->retainUntilCompletion(scene.source_owner, error))
     {
         return false;
     }

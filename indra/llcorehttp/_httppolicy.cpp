@@ -404,7 +404,7 @@ bool HttpPolicy::stageAfterCompletion(const HttpOpRequest::ptr_t &op)
         // requester reports the ones it cares about; transport failures and
         // 5xx are the policy layer's to shout about.
         const bool client_error = op->mStatus.isHttpStatus()
-            && op->mStatus.getStatus() >= 400 && op->mStatus.getStatus() < 500;
+            && op->mStatus.getType() >= 400 && op->mStatus.getType() < 500;
         if (client_error)
         {
             LL_DEBUGS(LOG_CORE) << "HTTP request " << op->getHandle()

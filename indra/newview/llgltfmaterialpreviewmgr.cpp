@@ -455,6 +455,7 @@ void set_preview_sphere_material(PreviewSphere& preview_sphere, LLPointer<LLFetc
     for (PreviewSpherePart& part : preview_sphere)
     {
         LLDrawInfo* info = part->mDrawInfo.get();
+        info->invalidateMetalSource();
         info->mGLTFMaterial = material;
         LLVertexBuffer* buf = info->mVertexBuffer.get();
         LLStrider<LLColor4U> colors;

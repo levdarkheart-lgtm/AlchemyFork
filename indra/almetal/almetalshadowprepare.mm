@@ -121,11 +121,27 @@ void prepareRange(void* pointer, std::size_t job) noexcept
             work.invalid.store(true, std::memory_order_relaxed);
             return;
         }
+        const float* texture_matrix = nullptr;
+        if constexpr (std::is_same_v<Input, ALMetalShadowPrepareInstance>)
+        {
+            if (input.texture_matrix_slot != ALMetalShadowPrepareInstance::no_texture_matrix)
+            {
+                if (input.texture_matrix_slot >= work.context->texture_matrices.size() ||
+                    !finite(work.context->texture_matrices[input.texture_matrix_slot].data(), 16))
+                {
+                    work.invalid.store(true, std::memory_order_relaxed);
+                    return;
+                }
+                texture_matrix = work.context->texture_matrices[input.texture_matrix_slot].data();
+            }
+        }
         auto& batch = work.output[index];
         const auto& prototype = source->prototype();
         static_cast<ALMetalWorldSpotShadowValues&>(batch) = prototype;
         batch.borrowPreparedInputs(source, palette,
                                    prototype.coverageDataIdentity());
+        if (texture_matrix)
+            std::memcpy(batch.texture_matrix, texture_matrix, sizeof(batch.texture_matrix));
         alignas(16) float modelview[16];
         if (input.has_model)
             multiply(input.model.data(), view, modelview);
@@ -186,7 +202,6 @@ bool ALMetalShadowSourceRecord::matchesStableInputs(
         std::bit_cast<std::uint32_t>(batch.avatar_draw_alpha) ==
             std::bit_cast<std::uint32_t>(value.avatar_draw_alpha) &&
         batch.coverageDataIdentity() == value.coverageDataIdentity() &&
-        std::memcmp(batch.texture_matrix, value.texture_matrix, sizeof(value.texture_matrix)) == 0 &&
         std::memcmp(batch.avatar_wind, value.avatar_wind, sizeof(value.avatar_wind)) == 0 &&
         std::memcmp(batch.avatar_sin_wave, value.avatar_sin_wave, sizeof(value.avatar_sin_wave)) == 0 &&
         std::memcmp(batch.avatar_gravity, value.avatar_gravity, sizeof(value.avatar_gravity)) == 0 &&

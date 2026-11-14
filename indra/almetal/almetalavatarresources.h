@@ -17,6 +17,35 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
+
+// Immutable owner-copied body pose. It contains no joint/skin/mesh pointers
+// and no view matrix: every main/probe/shadow consumer composes its own view.
+class ALMetalAvatarPoseRecord final
+{
+public:
+    static constexpr std::size_t max_joints = 15;
+    static constexpr std::size_t palette_float_count = max_joints * 3 * 4;
+    using Matrix = std::array<float, 16>;
+    using Pivot = std::array<float, 3>;
+    struct Inputs
+    {
+        std::array<Matrix, max_joints> world_matrices{};
+        std::array<Pivot, max_joints> pivots{};
+        std::uint32_t joint_count = 0;
+        std::uint32_t pivot_count = 0;
+        std::uint64_t frame = 0;
+        std::uint64_t pose_revision = 0;
+        std::uint64_t mesh_revision = 0;
+        std::uint64_t lifecycle_revision = 0;
+    };
+    static std::shared_ptr<const ALMetalAvatarPoseRecord> create(
+        Inputs inputs, std::string* error = nullptr);
+    const Inputs& inputs() const noexcept { return mInputs; }
+private:
+    explicit ALMetalAvatarPoseRecord(Inputs inputs) : mInputs(std::move(inputs)) {}
+    const Inputs mInputs;
+};
 
 // Single CPU owner, like the viewer's avatar publication path. Both world
 // capture owners share this cache; changing views never changes avatar identity.

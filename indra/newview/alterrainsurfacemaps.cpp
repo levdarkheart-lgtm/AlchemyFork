@@ -90,6 +90,16 @@ const ALMetalTexture* ALTerrainSurfaceMaps::getMetalCompositionTexture() const
 {
     return mComposition.notNull() ? mComposition->getMetalTexture() : nullptr;
 }
+
+std::shared_ptr<const ALMetalTexture> ALTerrainSurfaceMaps::getMetalHeightTextureLease() const
+{
+    return mHeight.notNull() ? mHeight->getMetalTextureLease() : nullptr;
+}
+
+std::shared_ptr<const ALMetalTexture> ALTerrainSurfaceMaps::getMetalCompositionTextureLease() const
+{
+    return mComposition.notNull() ? mComposition->getMetalTextureLease() : nullptr;
+}
 #endif
 
 bool ALTerrainSurfaceMaps::refresh()

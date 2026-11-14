@@ -434,6 +434,13 @@ public:
                      ALMetalIndexType index_type, const ALMetalBuffer& index_buffer,
                      std::size_t index_buffer_offset = 0, std::uint32_t instance_count = 1,
                      std::string* error = nullptr);
+    // Trusted same-command GPU arguments may reduce the validated maximum
+    // indexed count to zero. The writer must keep instanceCount=1 and the
+    // index/base offsets zero. No CPU readback is performed by this call.
+    bool drawIndexedIndirect(ALMetalPrimitiveType primitive, ALMetalIndexType index_type,
+        const ALMetalBuffer& index_buffer, std::size_t index_buffer_offset,
+        const ALMetalBuffer& arguments, std::size_t argument_offset,
+        std::uint32_t maximum_index_count, std::string* error = nullptr);
     bool drawPatches(std::uint32_t control_point_count, std::uint32_t patch_start,
                      std::uint32_t patch_count, std::uint32_t instance_count = 1,
                      std::uint32_t base_instance = 0, std::string* error = nullptr);

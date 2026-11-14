@@ -5505,13 +5505,14 @@ void LLViewerObject::updateTEMaterialTextures(U8 te)
 
     // A slot naming a bake proxy draws what it resolves to on this object's avatar
     // (LLFetchedGLTFMaterial::mBakedTextures), and fetches nothing; any other fetches its asset
-    auto fetch_texture = [this, mat](LLGLTFMaterial::TextureInfo slot)
+    LLFetchedGLTFMaterial::BakedTextures baked;
+    auto fetch_texture = [this, mat, &baked](LLGLTFMaterial::TextureInfo slot)
     {
         const LLUUID& id = mat->mTextureId[slot];
-        mat->mBakedTextures[slot] = getBakedTextureForMagicId(id);
+        baked[slot] = getBakedTextureForMagicId(id);
 
         LLViewerFetchedTexture* img = nullptr;
-        if (id.notNull() && mat->mBakedTextures[slot].isNull())
+        if (id.notNull() && baked[slot].isNull())
         {
             img = LLViewerTextureManager::getFetchedTexture(id, FTT_DEFAULT, true, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE);
             img->addTextureStats(64.f * 64.f, true);
@@ -5522,10 +5523,12 @@ void LLViewerObject::updateTEMaterialTextures(U8 te)
 
     if (mat != nullptr)
     {
-        mat->mBaseColorTexture = fetch_texture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR);
-        mat->mNormalTexture = fetch_texture(LLGLTFMaterial::GLTF_TEXTURE_INFO_NORMAL);
-        mat->mMetallicRoughnessTexture = fetch_texture(LLGLTFMaterial::GLTF_TEXTURE_INFO_METALLIC_ROUGHNESS);
-        mat->mEmissiveTexture = fetch_texture(LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE);
+        const LLFetchedGLTFMaterial::FetchedTextures fetched{
+            fetch_texture(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR),
+            fetch_texture(LLGLTFMaterial::GLTF_TEXTURE_INFO_NORMAL),
+            fetch_texture(LLGLTFMaterial::GLTF_TEXTURE_INFO_METALLIC_ROUGHNESS),
+            fetch_texture(LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE)};
+        mat->setRenderTextures(fetched, baked);
     }
 }
 

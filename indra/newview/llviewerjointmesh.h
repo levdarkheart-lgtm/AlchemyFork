@@ -34,6 +34,9 @@
 #include "v4color.h"
 
 #include <cstddef>
+#include <memory>
+
+class ALMetalAvatarPoseRecord;
 
 class LLDrawable;
 class LLFace;
@@ -60,6 +63,11 @@ public:
     // upload below remains the transition authority.
     bool buildJointMatrixPalette(F32* destination,
                                  std::size_t float_count) const;
+    std::shared_ptr<const ALMetalAvatarPoseRecord> getMetalWorldPose() const;
+    // Pure copied-view job: no live joint, scene, avatar or global reads.
+    static bool composeMetalWorldPose(const ALMetalAvatarPoseRecord& pose,
+                                     const LLMatrix4a& model_view,
+                                     F32* destination, std::size_t float_count) noexcept;
 
     // Return the exact active LOD geometry used by drawShape(). Preview
     // owners use this only after their authoritative GL avatar draw has
@@ -85,6 +93,8 @@ public:
     void dump() override;
 
     bool isAnimatable() const override { return false; }
+private:
+    mutable std::shared_ptr<const ALMetalAvatarPoseRecord> mMetalWorldPose;
 };
 
 #endif // LL_LLVIEWERJOINTMESH_H

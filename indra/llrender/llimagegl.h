@@ -29,6 +29,8 @@
 #define LL_LLIMAGEGL_H
 
 #include "llimage.h"
+#include "alnativeframebudget.h"
+#include "alnativepublication.h"
 
 #include "llgltypes.h"
 #include "llpointer.h"
@@ -122,6 +124,21 @@ public:
         U64 immediate_upload_failures = 0;
     };
     static MetalPublicationStats metalPublicationStats() noexcept;
+
+    // Brackets one admitted image producer on its executing thread. Commands
+    // encoded in the scope retain this credit through actual GPU completion.
+    class NativeUploadCreditScope final
+    {
+    public:
+        explicit NativeUploadCreditScope(ALNativeFrameBudget::Lease);
+        ~NativeUploadCreditScope();
+        NativeUploadCreditScope(const NativeUploadCreditScope&) = delete;
+        NativeUploadCreditScope& operator=(const NativeUploadCreditScope&) = delete;
+    private:
+        ALNativeFrameBudget::Lease mPrevious;
+    };
+    ALNativePublication::Signal& nativePublication() noexcept { return mNativePublication; }
+    const ALNativePublication::Signal& nativePublication() const noexcept { return mNativePublication; }
 
     // Size calculation
     //
@@ -513,6 +530,7 @@ private:
     std::atomic<bool> mGLTextureCreated;
     // getContentStamp, taken again by touchContents.
     std::atomic<U64> mContentStamp{ 0 };
+    ALNativePublication::Signal mNativePublication;
     void touchContents();
     LLGLuint mTexName;
 #if LL_DARWIN

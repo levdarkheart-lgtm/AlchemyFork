@@ -52,6 +52,10 @@
 #include "m4math.h"
 #include "llmatrix4a.h"
 #include "llperfstats.h"
+#include "almetalavatarresources.h"
+#include "alavatarpose.h"
+#include <cmath>
+#include <cstring>
 
 #include <algorithm>
 #include <array>
@@ -195,94 +199,106 @@ bool LLViewerJointMesh::getPreviewDiffuseTexture(LLGLTexture*& texture) const
     return texture && LLDrawPoolAvatar::shadowDrawsBake(texture);
 }
 
-bool LLViewerJointMesh::buildJointMatrixPalette(
-    F32* destination,
-    std::size_t float_count) const
+std::shared_ptr<const ALMetalAvatarPoseRecord> LLViewerJointMesh::getMetalWorldPose() const
 {
-    constexpr std::size_t PALETTE_FLOAT_COUNT =
-        LL_CHARACTER_MAX_JOINTS_PER_MESH * NUM_AXES * 4;
-    if (!destination || float_count < PALETTE_FLOAT_COUNT || !mMesh)
+    static_assert(LL_CHARACTER_MAX_JOINTS_PER_MESH == ALMetalAvatarPoseRecord::max_joints);
+    if (!mMesh)
     {
-        return false;
+        mMetalWorldPose.reset();
+        return {};
     }
-
     LLPolyMesh* reference_mesh = mMesh->getReferenceMesh();
-    if (!reference_mesh)
+    auto* appearance = mMesh->getAvatar();
+    auto* avatar = dynamic_cast<LLVOAvatar*>(appearance);
+    if (!reference_mesh || (avatar && avatar->isDead()))
     {
-        return false;
+        mMetalWorldPose.reset();
+        return {};
+    }
+    LLJoint* root = appearance ? appearance->getRootJoint()
+        : const_cast<LLViewerJointMesh*>(this)->getRoot();
+    if (!root)
+    {
+        mMetalWorldPose.reset();
+        return {};
+    }
+    root->touchIfXformParentMoved();
+    const U64 pose_revision = root->getPoseRevision();
+    const U64 mesh_revision = getMeshBindingRevision();
+    const U64 lifecycle_revision = avatar ? avatar->nativeBodyPoseLifecycleRevision() : 0;
+    if (mMetalWorldPose)
+    {
+        const auto& current = mMetalWorldPose->inputs();
+        if (current.frame == gFrameCount && current.pose_revision == pose_revision &&
+            current.mesh_revision == mesh_revision &&
+            current.lifecycle_revision == lifecycle_revision)
+            return mMetalWorldPose;
     }
 
-    std::fill_n(destination, PALETTE_FLOAT_COUNT, 0.f);
-    std::array<LLMatrix4, LL_CHARACTER_MAX_JOINTS_PER_MESH> joint_matrices{};
-    std::array<LLMatrix3, LL_CHARACTER_MAX_JOINTS_PER_MESH> joint_rotations{};
-    std::array<LLVector4, LL_CHARACTER_MAX_JOINTS_PER_MESH> joint_pivots{};
-
-    LLMatrix4a model_view;
-    model_view.loadu(&LLDrawPoolAvatar::getModelView().mMatrix[0][0]);
-    const std::size_t num_joints = llmin(
-        reference_mesh->mJointRenderData.size(),
-        static_cast<std::size_t>(LL_CHARACTER_MAX_JOINTS_PER_MESH));
-    for (std::size_t joint_num = 0; joint_num < num_joints; ++joint_num)
+    ALMetalAvatarPoseRecord::Inputs input;
+    input.frame = gFrameCount;
+    input.mesh_revision = mesh_revision;
+    input.lifecycle_revision = lifecycle_revision;
+    input.joint_count = static_cast<U32>(llmin(reference_mesh->mJointRenderData.size(),
+                                              ALMetalAvatarPoseRecord::max_joints));
+    for (U32 joint = 0; joint < input.joint_count; ++joint)
     {
-        LLMatrix4a joint_matrix;
-        joint_matrix.setMulNoAlias(
-            reference_mesh->mJointRenderData[joint_num]->mJoint->getWorldMatrix(),
-            model_view);
-        joint_matrices[joint_num] = joint_matrix.toMatrix4();
-        joint_rotations[joint_num] = joint_matrices[joint_num].getMat3();
-    }
-
-    bool last_pivot_added = false;
-    std::size_t pivot_count = 0;
-    for (std::size_t joint_num = 0;
-         joint_num < reference_mesh->mJointRenderData.size() &&
-         pivot_count < joint_pivots.size();
-         ++joint_num)
-    {
-        LLSkinJoint* skin_joint =
-            reference_mesh->mJointRenderData[joint_num]->mSkinJoint;
-        if (!skin_joint)
+        const LLJointRenderData* data = reference_mesh->mJointRenderData[joint];
+        if (!data || !data->mJoint)
         {
-            last_pivot_added = false;
+            mMetalWorldPose.reset();
+            return {};
+        }
+        const LLMatrix4a& world = data->mJoint->getWorldMatrix();
+        std::memcpy(input.world_matrices[joint].data(), world.getF32ptr(), sizeof(F32) * 16);
+    }
+
+    // Preserve the original ordered parent/child pivot walk, including null
+    // skin gaps and truncation. Unused pivots beyond joint_count never affect
+    // the legacy palette and are not part of the immutable consumer input.
+    ALAvatarPose::Pivots pivots;
+    for (std::size_t at = 0; at < reference_mesh->mJointRenderData.size() &&
+         pivots.count < ALMetalAvatarPoseRecord::max_joints; ++at)
+    {
+        const auto* data = reference_mesh->mJointRenderData[at];
+        if (!data)
+        {
+            mMetalWorldPose.reset();
+            return {};
+        }
+        const LLSkinJoint* skin = data->mSkinJoint;
+        if (!skin)
+        {
+            pivots.gap();
             continue;
         }
-        if (!last_pivot_added)
-        {
-            joint_pivots[pivot_count] =
-                LLVector4(skin_joint->mRootToParentJointSkinOffset);
-            joint_pivots[pivot_count].mV[VW] = 0.f;
-            if (++pivot_count >= joint_pivots.size())
-            {
-                break;
-            }
-        }
-        joint_pivots[pivot_count] =
-            LLVector4(skin_joint->mRootToJointSkinOffset);
-        joint_pivots[pivot_count].mV[VW] = 0.f;
-        ++pivot_count;
-        last_pivot_added = true;
+        const auto& parent = skin->mRootToParentJointSkinOffset;
+        const auto& child = skin->mRootToJointSkinOffset;
+        pivots.appendSkin({parent.mV[0], parent.mV[1], parent.mV[2]},
+                          {child.mV[0], child.mV[1], child.mV[2]});
     }
+    input.pivots = pivots.values;
+    input.pivot_count = static_cast<U32>(llmin(pivots.count, static_cast<std::size_t>(input.joint_count)));
+    input.pose_revision = root->getPoseRevision();
+    mMetalWorldPose = ALMetalAvatarPoseRecord::create(std::move(input));
+    return mMetalWorldPose;
+}
 
-    for (std::size_t index = 0; index < pivot_count && index < num_joints;
-         ++index)
-    {
-        LLVector3 pivot(joint_pivots[index]);
-        pivot = pivot * joint_rotations[index];
-        joint_matrices[index].translate(pivot);
-    }
+bool LLViewerJointMesh::composeMetalWorldPose(
+    const ALMetalAvatarPoseRecord& pose, const LLMatrix4a& model_view,
+    F32* destination, std::size_t float_count) noexcept
+{
+    return ALAvatarPose::compose(pose, model_view, destination, float_count);
+}
 
-    for (std::size_t joint_num = 0; joint_num < num_joints; ++joint_num)
-    {
-        joint_matrices[joint_num].transpose();
-        for (std::size_t axis = 0; axis < NUM_AXES; ++axis)
-        {
-            const F32* vector = joint_matrices[joint_num].mMatrix[axis];
-            const std::size_t offset =
-                (LL_CHARACTER_MAX_JOINTS_PER_MESH * axis + joint_num) * 4;
-            std::memcpy(destination + offset, vector, sizeof(F32) * 4);
-        }
-    }
-    return true;
+bool LLViewerJointMesh::buildJointMatrixPalette(
+    F32* destination, std::size_t float_count) const
+{
+    const auto pose = getMetalWorldPose();
+    if (!pose) return false;
+    LLMatrix4a model_view;
+    model_view.loadu(&LLDrawPoolAvatar::getModelView().mMatrix[0][0]);
+    return composeMetalWorldPose(*pose, model_view, destination, float_count);
 }
 
 //-----------------------------------------------------------------------------

@@ -384,5 +384,6 @@ bool LLTinyGLTFHelper::getMaterialFromModel(
         material->mEmissiveTexture = nullptr;
     }
 
+    material->notifyRenderDataChanged();
     return true;
 }

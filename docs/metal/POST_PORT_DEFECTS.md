@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-118 -->
+<!-- next-defect-id: PPD-145 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3306,3 +3306,511 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered during read-only capture analysis before any repair. Private evidence retest-busy-club-profile-20261114-101904/memory-analysis/memory-summary.json. No renderer/policy/code change or push; raw count excluded from memory occupancy conclusions.
 
 - 2026-11-14: Root independently confirms omitted increment in original1eb44bbd and current LLImageRaw const-pixel constructor, unconditional decrement in destructor; capture count remains negative26/30samples (min−21). Stat consumers only; not a pressure operand or GPU/memory-corruption explanation. Retain for bounded bookkeeping repair with constructor/lifetime coverage; no fix mixed into capture. Evidence: [completed retest analysis](research/apple-first-retest-profile-2026-11-14.md), private retest-busy-club-profile-20261114-101904 receipts.
+
+
+## PPD-118 — A replenished downscale queue can starve fetched texture creation
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex whole-engine streaming admission integration
+- Discovered: 2026-11-14
+- Original reference: Existing updateImagesCreateTextures drains queued pressure downscales first and may return BudgetExhausted before serving creates. Preserve original raw/callback ordering and minimum useful progress across streaming stages; do not change desired LOD or hide pressure work.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
+- Next action: Give pending downscale and create work bounded shared service, preserve queued ownership/age on denial and actual completion credits. Verify replenished pressure/create fairness, callback/ref lifetime, retry and drain before combined delivery.
+- Verification: Read-only streaming audit finds the downscale-first BudgetExhausted return can repeat under a continually replenished pressure queue, leaving creates unserved. This is a conditional source hazard, not a proved cause in the68995/68999 captured intervals. Agent reports fairness change while integration is in progress; no test/runtime acceptance inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered from the streaming ownership audit during implementation before integrated acceptance. Proposed policy shares the slice when both queues wait and still permits a create admission attempt; native in-flight and true pressure safety remain. No source-quality/LOD target reduction or prior-profile causal claim.
+
+
+## PPD-119 — New scene working-set admission can evict a newer source or undercount a duplicate
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared source residency integration
+- Discovered: 2026-11-14
+- Original reference: New ALNativeSourceWorkingSet native publication policy; original GL has no detached producer publication cache. Preserve current source and actual-reader ownership under stale/invalid input, and account each immutable native allocation consistently.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
+- Next action: Reject stale serial or mismatched publication owner before removing the current entry; reject conflicting duplicate allocation sizes before deduplication. Add late-retain and duplicate-capacity regression coverage, then run contained ownership tests before integration.
+- Verification: Peer source review finds retain removes the current entry before validating an older serial; removal can clear the current State payload. The candidate resource loop skips same-control-block duplicates before checking capacity, so100/200byte declarations can be silently counted100. New code is not in the profiled68999 app; no runtime incident is attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before repair from independent pre-integration review. Initial simple CPU cases do not cover these adversarial admission inputs. No app launch/profile/push.
+
+
+## PPD-120 — Reentrant source destruction can make State publication report stale success
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared publication lifecycle integration
+- Discovered: 2026-11-14
+- Original reference: New ALNativePublication::State native immutable-input boundary; original GL has no corresponding shared payload seal. Publication must remain dirty/failed if destruction invalidates the source during replacement.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
+- Next action: Finish old payload destruction before the final revision/owner success check, preserve any reentrant invalidation/new publication, and add actual custom-deleter regression coverage.
+- Verification: State::publish checks revision, replaces mPublication (which can destroy the prior payload), then sets mDirty=false. A prior payload deleter can reenter invalidate, resetting the new payload/incrementing revision; outer publish then reports true with an empty clean state. This is a pre-integration source edge, not a bug observed in68999.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before repair after independent review. Initial common policies compile and basic tests do not establish this reentrant lifecycle contract. No new viewer/capture/push.
+
+
+## PPD-121 — Shared decoder backpressure omits in-flight upload byte debt
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex whole-engine streaming admission
+- Discovered: 2026-11-14
+- Original reference: New ALNativeFrameBudget downstream admission; original accepted decode responders and active jobs must survive pressure changes. Byte debt and request count are separate resource operands.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
+- Next action: Include actual in-flight upload bytes at their configured ceiling in downstream-full admission and test one large outstanding upload with empty raw queue and count below the request limit; retain decoder progress/active jobs and recovery after credit retirement.
+- Verification: Source review finds decodeCeiling considers in-flight upload count, queued logical input bytes and pending publications, but not upload_bytes_in_flight. An individually admitted large upload can occupy the byte lane while request count remains low. Pre-integration policy gap, not an observed68999 incident.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before repair after streaming owner review; common files were frozen for root checks. No source/client runtime acceptance or causal performance claim.
+
+
+## PPD-122 — HTTP 4xx warning demotion checks the internal flag instead of the HTTP code
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex warning audit / LLCore HTTP logging
+- Discovered: 2026-11-14
+- Original reference: Compiled4918fd7 indra/llcorehttp/_httppolicy.cpp406–407 and httpcommon.h263–270/307–311. HTTP encodes (code,success/error flag), so getType carries the code and getStatus the flag.
+- Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
+- Next action: Use the HTTP code for intended4xx severity classification with focused status representation coverage; preserve real request failure and retry semantics. No repair in this audit.
+- Verification: Full session75HTTP warnings:47HTTP403,2HTTP404,26Easy_28. Intended4xx demotion calls getStatus()>=400, so it never matches ordinary HTTP error flags. Actual delivery failures remain real; their causes are unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered in isolated documentation audit before repair. Compiled source4918fd7, private retest-busy-club-profile-20261114-101904 warning audit artifacts. No source fix, build, live capture or push. Pending coordinated local record integration without changing the active implementation checkout.
+
+
+- 2026-11-14: Coordinated import from codex/retest-warning-audit-20261114 branch audit. Retained branch-qualified alias `codex/retest-warning-audit-20261114:PPD-118` maps to this canonical record; original audit history remains on that branch. No conflicting canonical ID was renumbered or removed. Source fixes are owned in the separate warning-fix worktree; root integration/test acceptance remains pending.
+
+
+
+## PPD-123 — Live SMAA readers request an undeclared RenderSMAAUseSample control
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex warning audit / Native graphics setting schema
+- Discovered: 2026-11-14
+- Original reference: Compiled4918fd7 pipeline/resource-plan live RenderSMAAUseSample readers and shipped setting declarations. Missing-control path returnsfalse.
+- Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
+- Next action: Map intended native AA behavior and original setting contract, then declare the setting or remove a proven obsolete reader. Do not guess a new AA default or claim visual change from logs.
+- Verification: Six missing-control warnings for RenderSMAAUseSample during startup; static readers exist and the compiled setting declaration is absent. Resulting AA effect remains unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered in isolated documentation audit before repair. Compiled source4918fd7, private retest-busy-club-profile-20261114-101904 warning audit artifacts. No source fix, build, live capture or push. Pending coordinated local record integration without changing the active implementation checkout.
+
+
+- 2026-11-14: Coordinated import from codex/retest-warning-audit-20261114 branch audit. Retained branch-qualified alias `codex/retest-warning-audit-20261114:PPD-119` maps to this canonical record; original audit history remains on that branch. No conflicting canonical ID was renumbered or removed. Source fixes are owned in the separate warning-fix worktree; root integration/test acceptance remains pending.
+
+
+
+## PPD-124 — Picks context-menu enable callbacks have no Pick.Enable registration
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex warning audit / Picks UI callback integration
+- Discovered: 2026-11-14
+- Original reference: Compiled4918fd7 menu_picks.xml enable bindings and LLUICtrl::initEnableCallback failure path. Literal Pick.Enable registration not found.
+- Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
+- Next action: Restore or correctly scope Picks enable rules after tracing intended conditions; test enabled/disabled behavior separately from click handlers. No source repair here.
+- Verification: Five warnings cover Teleport, Info, Edit, Map and Delete enable rules. The enable callback lookup fails; commit handlers are separate, so five broken actions are not established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered in isolated documentation audit before repair. Compiled source4918fd7, private retest-busy-club-profile-20261114-101904 warning audit artifacts. No source fix, build, live capture or push. Pending coordinated local record integration without changing the active implementation checkout.
+
+
+- 2026-11-14: Coordinated import from codex/retest-warning-audit-20261114 branch audit. Retained branch-qualified alias `codex/retest-warning-audit-20261114:PPD-120` maps to this canonical record; original audit history remains on that branch. No conflicting canonical ID was renumbered or removed. Source fixes are owned in the separate warning-fix worktree; root integration/test acceptance remains pending.
+
+
+
+## PPD-125 — Hero-probe face transactions are rejected during teleport
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex warning audit / Native mirror transition consistency
+- Discovered: 2026-11-14
+- Original reference: Compiled4918fd7 pipeline.cpp12241 PBR MASK/pass guard,15761 terrain compound guard, and hero publication/warm-up branches. Different from unproved PPD088 SH-ticket and PPD103 admission attribution.
+- Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
+- Next action: Trace transition input/material/terrain revisions and mirror publication recovery. Preserve fail-closed guards until the inconsistent state or lifecycle cause is known; do not weaken validation to hide warnings.
+- Verification: Five actual post-capture rejected face transactions at10:25:20–22:one PBR MASK/pass mismatch and four terrain compound rejects. Teleport starts18/arrives20–21; quit51/cleanup53, so these are transition, not shutdown. First successful hero publication20 does not prove final recovery or a broken mirror in the earlier club with unproved owner eligibility.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered in isolated documentation audit before repair. Compiled source4918fd7, private retest-busy-club-profile-20261114-101904 warning audit artifacts. No source fix, build, live capture or push. Pending coordinated local record integration without changing the active implementation checkout.
+
+
+- 2026-11-14: Coordinated import from codex/retest-warning-audit-20261114 branch audit. Retained branch-qualified alias `codex/retest-warning-audit-20261114:PPD-121` maps to this canonical record; original audit history remains on that branch. No conflicting canonical ID was renumbered or removed. Source fixes are owned in the separate warning-fix worktree; root integration/test acceptance remains pending.
+
+
+
+## PPD-126 — Shutdown reports one remaining volume and LOD reference
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex warning audit / Scene volume ownership cleanup
+- Discovered: 2026-11-14
+- Original reference: Compiled4918fd7 LLVolumeLODGroup cleanup and LLAppViewer volume-manager cleanup warnings.
+- Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
+- Next action: Identify the remaining reference owner and expected shutdown ordering before changing lifetimes. Distinguish it from clearDeleteList which actively drains509 queued workers; no live GPU leak is established.
+- Verification: One volume group/LOD3reference remains at10:25:53 cleanup and produces four warning lines. No evidence attributes it to source cache, a live leak or frame-time degradation.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered in isolated documentation audit before repair. Compiled source4918fd7, private retest-busy-club-profile-20261114-101904 warning audit artifacts. No source fix, build, live capture or push. Pending coordinated local record integration without changing the active implementation checkout.
+
+
+- 2026-11-14: Coordinated import from codex/retest-warning-audit-20261114 branch audit. Retained branch-qualified alias `codex/retest-warning-audit-20261114:PPD-122` maps to this canonical record; original audit history remains on that branch. No conflicting canonical ID was renumbered or removed. Source fixes are owned in the separate warning-fix worktree; root integration/test acceptance remains pending.
+
+
+
+## PPD-127 — Startup XUI parameter parsing emits an unresolved warning
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex warning audit / XUI schema and parser integration
+- Discovered: 2026-11-14
+- Original reference: Compiled4918fd7 llinitparam.cpp115 parserWarning callsite; exact parameter effect remains unknown.
+- Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
+- Next action: Identify the exact static parameter and owning XUI declaration privately before choosing a correction; distinguish intentional compatibility warnings from lost behavior.
+- Verification: One generic parser warning occurs outside measurement. It is recorded separately from five known Picks enable failures; resulting UI behavior and root cause remain unverified.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered in isolated documentation audit before repair. Compiled source4918fd7, private retest-busy-club-profile-20261114-101904 warning audit artifacts. No source fix, build, live capture or push. Pending coordinated local record integration without changing the active implementation checkout.
+
+- 2026-11-14: Coordinated import from codex/retest-warning-audit-20261114 branch audit. Retained branch-qualified alias `codex/retest-warning-audit-20261114:PPD-123` maps to this canonical record; original audit history remains on that branch. No conflicting canonical ID was renumbered or removed. Source fixes are owned in the separate warning-fix worktree; root integration/test acceptance remains pending.
+
+
+## PPD-128 — Accelerated media checks COW leases before invalidating publisher ownership
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex cross-engine publication integration
+- Discovered: 2026-11-14
+- Original reference: LLViewerMediaImpl::updateAcceleratedTexture reads the current native destination and tests image leases before native blitToMetal; successful replacement/adopt or in-place/mark follows commit. Preserve original media frame/readers/failure and playing-state semantics; native shared source publication is new.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
+- Next action: Notify willWrite on the media image before selecting destination/testing COW leases, preserving actual reader leases and existing replacement/commit/adopt/mark/failure paths. Verify with publication/reader native cases; no blanket changes to fresh replacement producers.
+- Verification: Source audit locates active llviewermedia.cpp3331–3365 and llcefaccelinterop.cpp158–195. Post-write mark is too late to release cache-only publication ownership before the COW decision, forcing avoidable replacement when no actual reader requires it. No actual prior media/COW profile cause is established; current retest COW counters were zero.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before scoped hook repair. Fresh bump/terrain/preview replacements are distinct safe paths; unused LLRenderTarget external attachment API has no production caller and is not silently redesigned. No viewer launch/profile/push.
+
+
+## PPD-129 — Attachment pose cache can mark an incomplete palette current before allocation finishes
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex immutable pose publication
+- Discovered: 2026-11-14
+- Original reference: Existing LLVOAvatar::updateSkinInfoMatrixPalette writes entry.mFrame before vector resize/packing; preserve the original exact matrix and frame-cache result, but publish cache validity only after the complete tuple exists.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
+- Next action: Commit frame/pose/lifecycle validity stamps after successful complete palette construction, preserving retry on allocation failure. Add focused failure/retry contract coverage without changing matrix packing or caller ownership.
+- Verification: Pose producer review identifies early mFrame assignment before allocation/packing. An exception can leave an entry apparently current with incomplete storage; new pose/lifecycle stamps must not repeat that ordering. Source hazard, not an actual prior runtime exception attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before validity-stamp repair during immutable body/attachment publication integration. Body snapshot creation already seals only complete records; keep attachment cache consistent with that transaction rule. No viewer/profile/push.
+
+
+## PPD-130 — New direct-shared void setters can leave stale native data accepted after both fallbacks fail
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex direct shared-write integration
+- Discovered: 2026-11-14
+- Original reference: New opt-in LLVB direct shared path for fresh immediate/UI storage; ordinary CPU-shadow producers retain existing behavior. A requested write must not silently leave the old store certified current after an unrecoverable allocation failure.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
+- Next action: Fail closed when native replacement and CPU-shadow materialization both fail; preserve actual readers, withdraw current publication and distinguish this from an ordinary retriable upload. Add meaningful dual-failure injection and successful producer retry coverage before integration acceptance.
+- Verification: Independent source review finds prepareNativeSharedWrite returnsfalse on double allocation failure; flush_vbo logs/returns before mVerticesWritten, allowing prepareMetalBuffers/hasPublishedMetalVertexBuffer to accept the old initialized generation despite lost void-setter edit. Existing fallback case exercises native-unavailable plus successful shadow materialization, not this arm. New code is not in68999 and no runtime failure is attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before repair from cross-agent ownership review. Exact layout/normal reader-retirement paths appear sound; double failure needs explicit publication-failure state rather than invented saved edit bytes. No app launch/profile/push.
+
+
+## PPD-131 — Empty direct-shared maps can rotate and copy an unchanged native store
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex direct shared-write integration
+- Discovered: 2026-11-14
+- Original reference: Existing zero-count LLVB mapping is an empty declared edit; no native publication/copy is expected. New opt-in direct-shared producer must preserve that range contract and backing reader ownership.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md).
+- Next action: Bypass direct generation rotation for a valid count0 map; preserve empty-range pointer/offset behavior, no write authorization or native publication traffic. Add borrowed/incomplete-reader direct-shared empty-map coverage.
+- Verification: Independent source review finds mapVertexBuffer calls prepareNativeSharedWrite before count>0, so an empty map can clone/preserve the entire borrowed generation, mark it uninitialized and republish without a declared edit. Existing empty-range tests use the unchanged ordinary CPU-shadow path. No actual68999/runtime incident is attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before repair with PPD130 as a separate direct-policy edge. Normal exact layout/alias/reader paths remain; new direct policy is not accepted from source review alone. No viewer/profile/push.
+
+
+## PPD-132 — Hero removal invalidates its active vector traversal
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex whole-engine probe integration
+- Discovered: 2026-11-14
+- Original reference: Existing LLHeroProbeManager::update maintains scene ownership before optional native reflection work; erasing an element must not invalidate the next traversal step.
+- Evidence: Independent probe-owner source audit during [whole-engine integration](work/active/apple-first-engine-integration-20261114.md).
+- Next action: Replace the erase-during-range-for with an iterator-safe removal traversal, preserving all unregistration side effects and scene-owner retirement semantics; exercise contained checks and retain owner validation pending.
+- Verification: update range-iterates mHeroVOList while unregisterViewerObject erases that same vector. This is a concrete C++ iterator invalidation hazard; no captured crash or remaining-volume attribution is claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before narrow iterator-safe correction by the exclusively assigned probe owner. No viewer launch/profile/push.
+
+
+## PPD-133 — Special shadow resources must join their actual command owner
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native source integration
+- Discovered: 2026-11-14
+- Original reference: Existing synchronous special terrain/tree/body captures are retained. New shared source/job architecture requires exact wrapper generations to follow the shadow packet command owner, independently of the next main G-buffer capture.
+- Evidence: Independent resource-ownership review during [whole-engine integration](work/active/apple-first-engine-integration-20261114.md).
+- Next action: Pin special geometry, actual fallback images and generated terrain height into the shadow source lease consumed by scene.source_owner; preserve scalar special ordering and current pose snapshots.
+- Verification: Main world_resources and shadow_source_lease are separate owners. Main-only resource retention cannot establish special-shadow ownership, and generated terrain height was a raw wrapper field. This is an integration coverage gap, not an attributed prior viewer crash.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before explicit special-shadow packet ownership integration. No viewer launch/profile/push.
+
+
+## PPD-134 — Animated UV native test used reverse-Z depth equal to its clear value
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native preparation validation
+- Discovered: 2026-11-14
+- Original reference: Forward/reverse-Z shadow conversion and animated cutout pixels must remain equivalent between direct and prepared inputs.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Private apple-first-engine-integration-20261114/native-correctness-1-shadow-uv.log; actual exit42. All direct/prepared pixel comparisons pass; four reverse-Z combinations fail animation-change/clear assertions.
+- Next action: Give both direct MVP and compact context projection the same distinguishable reverse-Z depth, preserving parity, clear, animation-change and invalid-input assertions; rerun native validation.
+- Verification: Fixture clip Z0 is unchanged by reverse-Z shadow conversion and equals clear0. Both alpha states produce the same all-zero output despite correct UV parity. Production shader/UV changes are not justified by this fixture failure.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered actual failure before test-only correction. Previous failed evidence retained.
+
+
+## PPD-135 — Fetched terrain binding owners do not pin exact native generations
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex scene publication integration
+- Discovered: 2026-11-14
+- Original reference: Existing fetched fallback selection remains owner-controlled. Prepared native scene packets require exact resource generations independently of mutable LLImageGL facade ownership.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent source review of ALMetalFetchedTextureBinding::nativeTexture during whole-engine integration.
+- Next action: Retain every resolved fetched binding image's exact native lease when capturing terrain, and carry only native owners in detached/command packets; preserve current fallback and source-owner selection.
+- Verification: ALMetalTerrainFetchedBindings retains LLTexture/LLImageGL owners, while nativeTexture dynamically reads current backing. Retaining the requested image alone misses the actual resolved default/null fallback. No runtime regression or leak attribution is claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before exact resolved-native lease capture. Existing synchronous binding behavior remains authoritative.
+
+
+## PPD-136 — New PBR publication copied a fourth float from a three-component emissive color
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex scene publication integration
+- Discovered: 2026-11-14
+- Original reference: Original PBR collector copies sizeof(material->mEmissiveColor.mV), preserving the destination fourth lane default.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent source review of new shared PBR factory; LLGLTFMaterial::mEmissiveColor is LLColor3.
+- Next action: Copy the actual source array size, retain zero fourth lane, add an emissive packing assertion to the real factory fixture, and validate the combined viewer.
+- Verification: New destination emissive_color has four floats; source mV has three. Copying destination size reads beyond the source subobject. No prior viewer rendering failure is attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before restoring the original exact copy size. No viewer launch/profile/push.
+
+
+## PPD-137 — New packet resource deduplication must roll back failed retention
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex scene packet integration
+- Discovered: 2026-11-14
+- Original reference: Existing shadow source/palette retention rolls back an inserted identity if its strong-owner vector insertion fails.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent review of new WorldResourceLease::retain and ShadowSourceLease::retainResource.
+- Next action: Apply the same exception rollback to the two new resource-owner vectors so an allocation failure cannot leave an unowned resource marked retained.
+- Verification: Inserting into identity set before vector push can leave the set entry behind when push throws. Subsequent retention would otherwise skip the missing owner. No runtime allocation failure is attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before matching established retention unwind semantics. No viewer launch/profile/push.
+
+
+## PPD-138 — Shared shadow factory rejected GLTF blended alpha coverage
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex scene publication integration
+- Discovered: 2026-11-14
+- Original reference: PASS_ALPHA uses legacy_blend as the sweep policy; the actual GLTF capture intentionally emits pbr_blend for scalar/indexed GLTF materials.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent source comparison of captureMetalShadowScene and captureMetalSpotShadowPBRBatch.
+- Next action: Select the existing effective GLTF pbr_blend coverage before cache lookup/certification and test real factory acceptance/reuse; keep strict coverage validation for other mismatches.
+- Verification: New factory compared prototype.coverage with the unconverted sweep policy and would discard a shadow view with GLTF blended casters. This new code has not been delivered/launched.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before preserving original GLTF alpha coverage conversion in the shared factory.
+
+
+## PPD-139 — Qualified bounds must cover actual referenced indices
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native visibility integration
+- Discovered: 2026-11-14
+- Original reference: Native direct draws consume actual index bytes; LLVB validateRange checks declared vertex/index capacities but does not inspect each index value.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Source audit of the new bounds qualification against LLVertexBuffer::validateRange.
+- Next action: Derive source bounds from actual published referenced indices and finite positions, failing visible when CPU-readable data or valid exact bounds are unavailable.
+- Verification: Trusting only declared mStart/mEnd would not independently prove the bound encloses the submitted indexed geometry. Native visibility remains off pending cost gates; no displayed omission is attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before strengthening conservative source qualification.
+
+
+## PPD-140 — Realtime probe continuation could admit successive fresh groups on one credit
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared probe scheduling
+- Discovered: 2026-11-14
+- Original reference: Existing scheduled12-face and realtime irradiance/radiance sequences retain their configured work. A new optional group requires a new admission after the prior coherent transaction finishes.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent read-only probe scheduling review during whole-engine integration.
+- Next action: Retire the completed CPU group before starting a fresh scheduled owner when no scheduled continuation and no realtime half remain; commands retain their previous actual-completion credit copies.
+- Verification: Realtime radiance completion can fall through to new oldest-probe selection with the previous retained credit, chaining fresh groups around admission. New integration is not in the profiled viewer.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before narrowing group continuation to its actual transaction boundary.
+
+
+## PPD-141 — Forward and impostor consumers need shared-source completion ownership
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared scene integration
+- Discovered: 2026-11-14
+- Original reference: Prepared G-buffer/shadow consumers retain immutable source input owners through actual command completion; forward and impostor phases consuming the same shared sources require the same boundary.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent source review of renderOpaquePostDeferred/compositeImpostorPostDeferred and their pipeline scene construction.
+- Next action: Add an explicit source_owner to these scene inputs, assign the actual capture resource owner, and retain it on the actual consuming command. Preserve nested probe admission credit independently.
+- Verification: Cached shared sources skip the old raw-getter read-stamp path. State invalidation plus next-capture aggregate reset must not permit native in-place updates while forward commands are pending. Current prepared/shadow commands already pin their packet correctly; forward paths did not.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before extending exact command ownership to every consumer of the new shared source. Initial dirty integration build is diagnostic only and will be followed by a frozen-source build.
+
+
+## PPD-142 — Realtime probe progress could starve pending scheduled refreshes
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared ordinary probe scheduling
+- Discovered: 2026-11-14
+- Original reference: Realtime and scheduled probe work share bounded capacity, while both must retain bounded progress under main/memory pressure.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent control-flow audit after PPD140 credit rollover repair.
+- Next action: Preserve a separately aged pending scheduled group and give it a finite turn before a new realtime group can consume the same progress admission repeatedly; test the actual admission-state helper used by the manager.
+- Verification: Realtime work runs first and can consume/reset the manager's one shared deferral age every eight-frame progress window. After realtime radiance retires its credit, the scheduled request starts at age0 again and can be denied indefinitely. This integration is not in the profiled app.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before finite-turn fairness correction. Do not restore unbounded old-credit rollover to avoid starvation.
+
+
+## PPD-143 — Failed world preparation/encoding can leave a borrowed batch committable
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native world transaction integration
+- Discovered: 2026-11-14
+- Original reference: A failed constituent pass must invalidate its borrowed outer command transaction. Existing actual main/hero callers explicitly cancel failed transactions.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Independent query/cancel audit of frozen snapshot1; qualified API concern rather than an observed viewer publication failure.
+- Next action: Ensure direct/prepared G-buffer error exits poison an active borrowed batch, including stale epoch and post-acquisition publication/encoder failures; add an actual failed-pass then outer-commit regression.
+- Verification: Some renderInternal early returns after acquireCommandBuffer do not call finishCommandBuffer(false). Existing owner cancellation prevents an established live corruption counterexample; newly added preparation/retention failures should not rely on every future caller remembering that cancellation.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered qualified API-level concern, retaining actual caller protections and absence of observed corruption/performance attribution. No viewer launch/profile/push.
+
+
+## PPD-144 — New pose helper omitted the SIMD math include prerequisite
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex body pose integration
+- Discovered: 2026-11-14
+- Original reference: llmatrix4a/llvector4a require the llmath SIMD declarations; a new reusable pose helper must include its actual prerequisites independently of the viewer PCH.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). integration-viewer-build-1 exit1 after649.919s, alavatarpose_test.cpp unknown LLSimdScalar/LLVector4Logical types.
+- Next action: Include llmath before matrix/vector SIMD headers in the helper, then rebuild the actual CPU pose tests and combined viewer.
+- Verification: Viewer translation units compiled through the PCH, but the contained test exposed the missing header prerequisite. The failed build/changed-source manifest is retained and is not a delivery binary.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered actual integration build failure before header correction. No viewer launch/profile/push.

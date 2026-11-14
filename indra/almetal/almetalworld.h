@@ -26,6 +26,8 @@
 
 struct ALMetalWorldModernSkyScene;
 class ALMetalShadowSourceRecord;
+class ALMetalPreparedWorldView;
+class ALMetalWorldVisibilityView;
 
 // Ordinary probe scratch/filter output and manager publication must agree on
 // storage: the publication blit copies bytes and does not convert formats.
@@ -410,6 +412,10 @@ struct ALMetalShadowBounds
 
 struct ALMetalWorldSpotShadowScene
 {
+    // Optional shared native visibility experiment. One membership/argument
+    // slot per original draw; null retains ordinary native encoding. Shadow
+    // callers explicitly select scalar mode (all bulk/ICB switches false).
+    std::shared_ptr<const ALMetalWorldVisibilityView> native_visibility;
     // The immutable admitted packet pins native producer generations through
     // encoded/uncommitted work and actual GPU completion. The renderer retains
     // this owner once per consuming command; source prototypes never own it.
@@ -1089,6 +1095,14 @@ struct alignas(16) ALMetalWorldVisibilityQuery
 
 struct ALMetalWorldGBufferScene
 {
+    // Immutable producer-generation leases for borrowed batch resources.
+    // Each consuming command retains this aggregate until actual completion
+    // or uncommitted abandonment, independently of any submission-scope credit.
+    std::shared_ptr<const void> source_owner;
+    // Optional shared native visibility experiment. One membership/argument
+    // slot per original draw; null retains ordinary native encoding. Shadow
+    // callers explicitly select scalar mode (all bulk/ICB switches false).
+    std::shared_ptr<const ALMetalWorldVisibilityView> native_visibility;
     // Selected star attachment is black before opaque geometry; -1 keeps ordinary clear.
     std::int32_t sky_star_attachment = -1;
     const ALMetalWorldSimpleBatch* batches = nullptr;
@@ -1394,6 +1408,9 @@ struct alignas(16) ALMetalWorldAtmosphericHaze
 // Post-water alpha and presentation remain later owners.
 struct ALMetalWorldOpaquePostDeferredScene
 {
+    // Same producer-generation lease contract as the G-buffer scene; forward
+    // commands must preserve backing bytes after capture storage is recycled.
+    std::shared_ptr<const void> source_owner;
     const ALMetalRenderTarget* gbuffer = nullptr;
     const ALMetalRenderTarget* composed_lighting = nullptr;
     const ALMetalWorldSimpleBatch* batches = nullptr;
@@ -2509,6 +2526,13 @@ public:
         std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results =
             nullptr);
 
+    // Consume a completed CPU preparation ticket. Its immutable input lease
+    // is retained by the native command through actual GPU completion.
+    std::unique_ptr<ALMetalRenderTarget> renderPrepared(
+        const ALMetalPreparedWorldView& prepared,
+        std::string* error = nullptr,
+        std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results = nullptr);
+
     // Render one spotlight-camera slice directly into the caller's persistent
     // R32F array. R32F stores the exact raster depth sampled by the shadow
     // owner; a memoryless D32 attachment supplies the authoritative depth
@@ -2889,6 +2913,11 @@ public:
         std::string* error = nullptr);
 
 private:
+    std::unique_ptr<ALMetalRenderTarget> renderInternal(
+        const ALMetalWorldGBufferScene& scene,
+        const ALMetalPreparedWorldView* prepared,
+        std::string* error,
+        std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results);
     std::unique_ptr<ALMetalRenderTarget> renderExposureInternal(
         const ALMetalWorldExposureScene& scene, bool meter_only,
         std::string* error);

@@ -1720,6 +1720,45 @@ bool ALMetalRenderEncoder::drawIndexed(ALMetalPrimitiveType primitive, std::uint
     return true;
 }
 
+bool ALMetalRenderEncoder::drawIndexedIndirect(ALMetalPrimitiveType primitive,
+    ALMetalIndexType index_type, const ALMetalBuffer& index_buffer,
+    std::size_t index_buffer_offset, const ALMetalBuffer& arguments,
+    std::size_t argument_offset, std::uint32_t maximum_index_count, std::string* error)
+{
+    constexpr std::size_t argument_size = 5 * sizeof(std::uint32_t);
+    const std::size_t index_size = index_type == ALMetalIndexType::uint16 ? 2 : 4;
+    if (!mImpl || mImpl->ended || !mImpl->pipeline_set || mImpl->tessellation_enabled ||
+        !maximum_index_count || index_buffer_offset % index_size || argument_offset % 4 ||
+        (index_type != ALMetalIndexType::uint16 && index_type != ALMetalIndexType::uint32) ||
+        index_buffer_offset > index_buffer.length() ||
+        maximum_index_count > (index_buffer.length() - index_buffer_offset) / index_size ||
+        argument_offset > arguments.length() || argument_size > arguments.length() - argument_offset)
+    {
+        setError(error, "Metal indexed indirect draw has invalid state or admitted range");
+        return false;
+    }
+    id<MTLBuffer> native_indices = (__bridge id<MTLBuffer>)index_buffer.nativeHandle();
+    id<MTLBuffer> native_arguments = (__bridge id<MTLBuffer>)arguments.nativeHandle();
+    if (!native_indices || !native_arguments || native_indices.device != mImpl->device ||
+        native_arguments.device != mImpl->device)
+    {
+        setError(error, "Metal indexed indirect buffers belong to another device");
+        return false;
+    }
+    mImpl->flushPendingIndexed();
+    [mImpl->encoder drawIndexedPrimitives:primitiveType(primitive)
+        indexType:index_type == ALMetalIndexType::uint16 ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32
+        indexBuffer:native_indices indexBufferOffset:index_buffer_offset
+        indirectBuffer:native_arguments indirectBufferOffset:argument_offset];
+    // encoded_draws counts this submitted draw command, while RenderInfo
+    // marks the GPU-selected actual draw/element counts unknown without readback.
+    if (mImpl->count_draws) ++mImpl->encoded_draws;
+    mImpl->render_info.draw_calls_known = false;
+    mImpl->render_info.input_elements_known = false;
+    Impl::addCount(mImpl->render_info.indirect_submissions, 1, mImpl->render_info.draw_calls_known);
+    return true;
+}
+
 bool ALMetalRenderEncoder::drawPatches(std::uint32_t control_point_count,
                                        std::uint32_t patch_start,
                                        std::uint32_t patch_count,

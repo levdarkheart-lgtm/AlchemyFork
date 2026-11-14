@@ -28,6 +28,7 @@
 // Header Files
 //-----------------------------------------------------------------------------
 #include "linden_common.h"
+#include <atomic>
 
 #include "lljoint.h"
 
@@ -101,6 +102,7 @@ void LLJoint::init()
 {
     mName = "unnamed";
     mParent = NULL;
+    mPoseRoot = this;
     mXform.setScaleChildOffset(true);
     mXform.setScale(LLVector3(1.0f, 1.0f, 1.0f));
     mDirtyFlags = MATRIX_DIRTY | ROTATION_DIRTY | POSITION_DIRTY;
@@ -197,6 +199,7 @@ void LLJoint::touch(U32 flags)
 {
     if (flags & MATRIX_DIRTY)
     {
+        advancePoseRevision();
         // updateWorldMatrixChildren does not descend into a joint that reports
         // nothing dirty in or below it, so a dirty matrix has to be announced
         // upwards or the sweep will walk straight past it. The walk stops at
@@ -224,6 +227,19 @@ void LLJoint::touch(U32 flags)
     }
 
     dirtySubtree(flags);
+}
+
+void LLJoint::advancePoseRevision() noexcept
+{
+    static std::atomic<U64> revision{0};
+    mPoseRoot->mPoseRevision = revision.fetch_add(1, std::memory_order_relaxed) + 1;
+}
+
+void LLJoint::setPoseRoot(LLJoint* root) noexcept
+{
+    mPoseRoot = root;
+    for (LLJoint* child : mChildren)
+        if (child) child->setPoseRoot(root);
 }
 
 //-----------------------------------------------------------------------------
@@ -303,6 +319,7 @@ void LLJoint::addChild(LLJoint* joint)
     mChildren.push_back(joint);
     joint->mXform.setParent(&mXform);
     joint->mParent = this;
+    joint->setPoseRoot(mPoseRoot);
     joint->touch();
 }
 
@@ -315,10 +332,12 @@ void LLJoint::removeChild(LLJoint* joint)
     joints_t::iterator iter = std::find(mChildren.begin(), mChildren.end(), joint);
     if (iter != mChildren.end())
     {
+        advancePoseRevision();
         mChildren.erase(iter);
 
         joint->mXform.setParent(NULL);
         joint->mParent = NULL;
+        joint->setPoseRoot(joint);
         joint->touch();
     }
 }
@@ -329,12 +348,14 @@ void LLJoint::removeChild(LLJoint* joint)
 //--------------------------------------------------------------------
 void LLJoint::removeAllChildren()
 {
+    if (!mChildren.empty()) advancePoseRevision();
     for (LLJoint* joint : mChildren)
     {
         if (joint)
         {
             joint->mXform.setParent(NULL);
             joint->mParent = NULL;
+            joint->setPoseRoot(joint);
             joint->touch();
             //delete joint;
         }

@@ -28,6 +28,7 @@
 #define LL_LLVIEWERTEXTURE_H
 
 #include "altextureboost.h"
+#include "alnativeframebudget.h"
 #include "llatomic.h"
 #include "llgltexture.h"
 #include "lltimer.h"
@@ -339,6 +340,8 @@ public:
     bool createTexture(S32 usename, S32 category);
     void postCreateTexture();
     void scheduleCreateTexture();
+    // Called by the shared main-frame create-list admission owner.
+    bool postNativeTextureUpload(ALNativeFrameBudget::Lease credit);
 
     void destroyTexture() ;
 
@@ -440,6 +443,8 @@ public:
     virtual bool scaleDown() { return false; };
 
     bool mCreatePending = false;    // if true, this is in gTextureList.mCreateTextureList
+    U64 mCreateQueuedFrame = 0;
+    U64 mCreateQueuedBytes = 0;
     mutable bool mDownScalePending = false; // if true, this is in gTextureList.mDownScaleQueue
 
     LLUUID      getUploader();

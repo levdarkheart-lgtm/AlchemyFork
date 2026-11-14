@@ -31,6 +31,7 @@
 
 #include <cmath>
 #include <functional>
+#include <memory>
 #include <vector>
 
 class LLImageGL;
@@ -82,6 +83,11 @@ public:
 #if LL_DARWIN
     const ALMetalTexture* getMetalHeightTexture() const;
     const ALMetalTexture* getMetalCompositionTexture() const;
+    // Acquire on the surface publication owner after ensureUploaded(). Retain
+    // these exact generations through detached jobs and command completion;
+    // later dirty uploads then preserve them through LLImageGL's native COW.
+    std::shared_ptr<const ALMetalTexture> getMetalHeightTextureLease() const;
+    std::shared_ptr<const ALMetalTexture> getMetalCompositionTextureLease() const;
 #endif
     S32  getSize() const { return mSize; }
     // Moves whenever the maps are marked dirty. With the surface's hasZData, it says what the next bind holds: the

@@ -29,6 +29,7 @@
 #include "linden_common.h"
 // Class to test
 #include "../llimageworker.h"
+#include "alnativeframebudget.h"
 // For timer class
 #include "../llcommon/lltimer.h"
 // for lltrace class
@@ -510,6 +511,36 @@ namespace
         CHECK(drained.waiting == 0);
         CHECK(drained.completed == 6);
         CHECK(drained.cancelled == 0);
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: shared frame backpressure retains accepted requests and drains every responder",
+        "[LLImageDecodeThread][native-frame-budget]")
+    {
+        decode_clock clock;
+        mThread = new LLImageDecodeThread(true, limits(4, 4), false, clock.now());
+        const auto gate = std::make_shared<decode_gate>();
+        release_decode_gate release{gate};
+        const auto completed = std::make_shared<completion_state>();
+        const auto ids = enqueue_blocked(*mThread, 6, gate, completed);
+        REQUIRE(gate->waitFor(4));
+        ALNativeFrameBudget budget;
+        ALNativeFrameBudget::FrameInputs input;
+        input.frame = 1;
+        input.frame_interval_ns = 50'000'000;
+        input.required_main_cpu_ns = 45'000'000;
+        budget.beginFrame(input);
+        mThread->updateFrameAdmission(budget);
+        CHECK(mThread->getDecodeStats().current == 2);
+        CHECK(mThread->getDecodeStats().active == 4);
+        CHECK(mThread->getPending() == 6);
+        CHECK(completed->copy().empty());
+        gate->release();
+        mThread->shutdown(); // no additional frame/control tick is supplied
+        check_failed_once(completed, ids);
+        CHECK(mThread->getPending() == 0);
+        CHECK(mThread->getDecodeStats().completed == 6);
+        CHECK(mThread->getDecodeStats().cancelled == 0);
     }
 
     TEST_CASE_METHOD(imagedecodethread_test,

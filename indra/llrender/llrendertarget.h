@@ -254,6 +254,10 @@ public:
     const ALMetalTexture* getMetalColorTexture(U32 attachment = 0) const;
     const ALMetalTexture* getMetalDepthTexture() const;
     const ALMetalRenderTarget* getMetalRenderTarget() const { return mMetalTarget.get(); }
+    // A detached prepared view must keep this exact target wrapper alive,
+    // including when its producer resizes/releases the next target meanwhile.
+    std::shared_ptr<const ALMetalRenderTarget> getMetalRenderTargetLease() const
+    { return mMetalTarget; }
     bool hasStencil() const { return mStencil; }
     eDepthFormat getDepthFormat() const { return mDepthFormat; }
 
@@ -331,7 +335,7 @@ protected:
     ALMetalTexture* mExternalColor = nullptr;
     // Shared depth outlives the producer's next build until this owner rebases.
     std::unique_ptr<ALMetalTexture> mSharedDepthTexture;
-    std::unique_ptr<ALMetalRenderTarget> mMetalTarget;
+    std::shared_ptr<ALMetalRenderTarget> mMetalTarget;
     const LLRenderTarget* mSharedDepthOwner = nullptr;
     U64 mAllocatedBytes = 0;
     LLRenderTarget* mPreviousRT = nullptr;

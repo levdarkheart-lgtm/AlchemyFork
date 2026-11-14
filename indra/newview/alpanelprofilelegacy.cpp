@@ -30,6 +30,7 @@
 
 #include "llviewerprecompiledheaders.h"
 #include "alpanelprofilelegacy.h"
+#include "alpickactionpolicy.h"
 
 #include <boost/algorithm/string/predicate.hpp> // for boost::iequals
 
@@ -1055,6 +1056,8 @@ bool ALPanelProfileLegacy::ALPanelProfilePicks::postBuild()
     registar.add("Pick.Teleport", boost::bind(&ALPanelProfilePicks::onClickTeleport, this));
     registar.add("Pick.Map", boost::bind(&ALPanelProfilePicks::onClickShowOnMap, this));
     registar.add("Pick.Delete", boost::bind(&ALPanelProfilePicks::onClickDelete, this));
+    EnableCallbackRegistry::ScopedRegistrar enable_registrar;
+    enable_registrar.add("Pick.Enable", boost::bind(&ALPanelProfilePicks::isPickActionEnabled, this, _2));
 
     auto popup_menu = LLUICtrlFactory::getInstance()->createFromFile<LLContextMenu>("menu_picks.xml", gMenuHolder, child_registry_t::instance());
     if (popup_menu) { mPopupMenuHandle = popup_menu->getHandle(); }
@@ -1352,6 +1355,25 @@ void ALPanelProfileLegacy::ALPanelProfilePicks::openPickInfo()
 // virtual
 void ALPanelProfileLegacy::ALPanelProfilePicks::onRightMouseUpItem(LLUICtrl* item, S32 x, S32 y, MASK mask)
 {
+    if (!item || !mPicksList || !mClassifiedsList) return;
+    // Both lists can retain a selection. The shared context menu and its
+    // existing click handlers must all target the row that opened it.
+    if (auto* pick = ALViewType::as<ALPickItem>(item))
+    {
+        mClassifiedsList->resetSelection(true);
+        mPicksList->resetSelection(true);
+        if (!mPicksList->selectItem(pick)) return;
+    }
+    else if (auto* classified = ALViewType::as<ALClassifiedItem>(item))
+    {
+        mPicksList->resetSelection(true);
+        mClassifiedsList->resetSelection(true);
+        if (!mClassifiedsList->selectItem(classified)) return;
+    }
+    else
+    {
+        return;
+    }
     updateButtons();
 
     auto menu = static_cast<LLContextMenu*>(mPopupMenuHandle.get());
@@ -1647,6 +1669,23 @@ void ALPanelProfileLegacy::ALPanelProfilePicks::createClassifiedEditPanel(ALPane
 bool ALPanelProfileLegacy::ALPanelProfilePicks::isActionEnabled(const LLSD& userdata) const
 {
     return (!(userdata.asString() == LLStringExplicit("new_pick") && LLAgentPicksInfo::getInstance()->isPickLimitReached()));
+}
+
+bool ALPanelProfileLegacy::ALPanelProfilePicks::isPickActionEnabled(const LLSD& userdata)
+{
+    if (!mPicksList || !mClassifiedsList || getAvatarId().isNull()) return false;
+
+    const ALPickItem* pick = getSelectedPickItem();
+    const ALClassifiedItem* classified = getSelectedClassifiedItem();
+    if ((!pick && !classified) || (pick && classified)) return false;
+
+    const LLUUID selected_id = pick ? pick->getPickId() : classified->getClassifiedId();
+    const LLUUID selected_creator = pick ? pick->getCreatorId() : classified->getAvatarId();
+    const bool valid_selection = selected_id.notNull() && selected_creator == getAvatarId();
+    const bool own_selection = selected_creator == gAgentID && getAvatarId() == gAgentID;
+    const LLVector3d position = pick ? pick->getPosGlobal() : classified->getPosGlobal();
+    return alPickActionEnabled(userdata.asString(), valid_selection, own_selection,
+                               position.isFinite() && !position.isExactlyZero());
 }
 
 void ALPanelProfileLegacy::ALPanelProfilePicks::setProfilePanel(ALPanelProfileLegacy* profile_panel)

@@ -8,6 +8,7 @@
 #include "almetalworld.h"
 
 #include <atomic>
+#include <limits>
 #include <span>
 
 // Published by the render owner after resolving mutable viewer state. A lease
@@ -30,9 +31,13 @@ public:
     const ALMetalWorldSpotShadowBatch& prototype() const noexcept { return mPrototype; }
     bool requiresPalette() const noexcept { return mRequiresPalette; }
     // Cheap certification of the exact immutable geometry/material tuple.
-    // View MVP and the current pose are deliberately NOT certified here and
-    // must retain their ordinary per-view validation in the native renderer.
-    // Any public-field mutation or mutable coverage detachment fails proof.
+    // View MVP, current pose and animated texture matrix are deliberately NOT
+    // certified here. Shared producer-independent sources supply identity UV;
+    // legacy fixed-UV sources retain their prototype matrix. A per-instance
+    // override is copied from immutable context storage. Covered rendering
+    // ALWAYS validates the resulting UV before any certified-source bypass.
+    // A change to any certified stable field or mutable coverage detachment
+    // fails proof; none of the per-instance exclusions waive renderer validation.
     bool matchesStableInputs(const ALMetalWorldSpotShadowBatch&) const noexcept;
 
 private:
@@ -75,6 +80,10 @@ struct ALMetalShadowPrepareInstance
     std::uint64_t source_generation = 0;
     std::uint64_t epoch = 0;
     std::array<float, 16> model = alMetalShadowIdentity;
+    // No slot retains the source prototype UV. A selected slot indexes the context's copied
+    // immutable matrix span, never an LLDrawInfo/LLMatrix4 or mutable producer.
+    static constexpr std::uint32_t no_texture_matrix = std::numeric_limits<std::uint32_t>::max();
+    std::uint32_t texture_matrix_slot = no_texture_matrix;
     bool has_model = false;
 };
 
@@ -83,6 +92,10 @@ struct ALMetalShadowPrepareContext
     // Row vectors/row-major, copied and validated once per synchronous call.
     std::array<float, 16> view = alMetalShadowIdentity;
     std::array<float, 16> projection = alMetalShadowIdentity;
+    // The scene owner copies animated UV values before starting jobs and pins
+    // this immutable storage through the synchronous join. Outputs copy the
+    // selected matrix, so the span may be recycled immediately after success.
+    std::span<const std::array<float, 16>> texture_matrices;
 };
 
 struct ALMetalShadowPrepareStats

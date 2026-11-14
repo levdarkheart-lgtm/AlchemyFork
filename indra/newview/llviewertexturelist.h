@@ -225,8 +225,11 @@ public:
     typedef std::queue<LLPointer<LLViewerFetchedTexture> > image_queue_t;
     typedef ALTextureTable<LLTextureKey, LLViewerFetchedTexture> image_table_t;
 
-    // images that have been loaded but are waiting to be uploaded to GL
+    // Decoded images waiting for native frame admission and GPU publication.
     image_queue_t mCreateTextureList;
+    void queueCreateTexture(LLViewerFetchedTexture* image, bool preserve_age = false);
+    void updateNativeStreamingBacklog();
+    U64 mQueuedCreateBytes = 0;
 
     // images that must be downscaled quickly so we don't run out of memory
     image_queue_t mDownScaleQueue;

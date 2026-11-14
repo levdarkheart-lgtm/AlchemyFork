@@ -41,7 +41,9 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <array>
 #include "llmatrix4a.h"
+#include "alnativepublication.h"
 
 //============================================================================
 // NOTES
@@ -186,6 +188,10 @@ public:
 
     // allocate buffer
     bool    allocateBuffer(U32 nverts, U32 nindices);
+    // Fresh, nonindexed immediate/UI producer only. Its normal CPU layout is
+    // written directly into shared native storage; unsupported/unavailable
+    // cases retain allocateBuffer's CPU-shadow publication path.
+    bool allocateNativeSharedBuffer(U32 nverts);
 
     // map for data access (see also getFooStrider below)
     U8*     mapVertexBuffer(AttributeType type, U32 index, S32 count = -1);
@@ -277,9 +283,33 @@ public:
     {
         U64 full_uploads = 0, partial_uploads = 0, uploaded_bytes = 0;
         U64 recycled_generations = 0, leased_orphans = 0;
+        U64 direct_shared_allocations = 0, direct_shared_publications = 0;
+        U64 direct_shared_written_bytes = 0, direct_shared_preserved_bytes = 0;
+        U64 direct_shared_shadow_fallbacks = 0;
+        U64 direct_shared_write_failures = 0;
     };
     // Cumulative render-owner counters, for complete publication benchmarks.
     static MetalUploadStats metalUploadStats() noexcept;
+    ALNativePublication::Signal& nativePublication() noexcept { return mNativePublication; }
+    const ALNativePublication::Signal& nativePublication() const noexcept { return mNativePublication; }
+    U64 getMetalVertexPublicationRevision() const noexcept { return mMetalVertexPublicationRevision; }
+    U64 getMetalIndexPublicationRevision() const noexcept { return mMetalIndexPublicationRevision; }
+    bool usesNativeSharedVertexStorage() const noexcept { return mNativeSharedVertexStorage; }
+    // Lost producer bytes require an actual producer rewrite, unlike a
+    // completed CPU write whose native upload can retry automatically.
+    bool hasNativeVertexWriteFailure() const noexcept
+    { return mNativeWriteFailureCount != 0 || mNativeRewriteMask != 0; }
+    class ScopedNativeSharedWriteAllocationFailure final
+    {
+    public:
+        // Contained owner-thread allocator fault injection; never a setting.
+        ScopedNativeSharedWriteAllocationFailure(bool native_replacement, bool cpu_shadow);
+        ~ScopedNativeSharedWriteAllocationFailure();
+        ScopedNativeSharedWriteAllocationFailure(const ScopedNativeSharedWriteAllocationFailure&) = delete;
+        ScopedNativeSharedWriteAllocationFailure& operator=(const ScopedNativeSharedWriteAllocationFailure&) = delete;
+    private:
+        bool mPreviousNative, mPreviousShadow;
+    };
     ALMetalBuffer* getMetalVertexBuffer() const noexcept;
     ALMetalBuffer* getMetalIndexBuffer() const noexcept;
     // Acquire on the render owner after prepareMetalBuffers. Retain the lease
@@ -291,7 +321,8 @@ public:
     // owners. New draws require the corresponding current CPU store published.
     bool hasPublishedMetalVertexBuffer() const noexcept
     {
-        return mMetalBuffer && mMetalBufferInitialized && !mVerticesWritten;
+        return mMetalBuffer && mMetalBufferInitialized && !mVerticesWritten &&
+            !hasNativeVertexWriteFailure();
     }
     bool hasPublishedMetalIndexBuffer() const noexcept
     {
@@ -340,6 +371,18 @@ protected:
 #if LL_DARWIN
     std::shared_ptr<ALMetalBuffer> mMetalBuffer;
     std::shared_ptr<ALMetalBuffer> mMetalIndices;
+    ALNativePublication::Signal mNativePublication;
+    U64 mMetalVertexPublicationRevision = 0;
+    U64 mMetalIndexPublicationRevision = 0;
+    bool mNativeSharedVertexStorage = false;
+    // Failure bookkeeping must not allocate while recording an OOM. If many
+    // disjoint failures exceed this bound, require complete attribute rewrites.
+    std::array<std::pair<U32, U32>, 4> mNativeWriteFailures{};
+    U32 mNativeWriteFailureCount = 0;
+    U32 mNativeRewriteMask = 0;
+    void rejectNativeVertexWrite(U32 begin, U32 end) noexcept;
+    void completeNativeVertexWrite(U32 begin, U32 end) noexcept;
+    bool prepareNativeSharedWrite();
     // glBufferData gave an existing GL name a fresh backing store: draws
     // already queued kept the old bytes while later draws saw the new ones.
     // Metal shared buffers do not orphan on a CPU write, so retain the old

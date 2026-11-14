@@ -93,6 +93,8 @@ struct TexturePublicationCensus
     U64 dequeued = 0;
     U64 create_attempts = 0;
     U64 create_returned_true = 0;
+    U64 native_worker_posts = 0;
+    U64 worker_raw_input_bytes = 0;
     U64 native_create_retries = 0;
     U64 redundant_skips = 0;
     U64 finalized = 0;
@@ -387,6 +389,8 @@ void LLViewerTextureList::shutdown()
         mCreateTextureList.front()->mCreatePending = false;
         mCreateTextureList.pop();
     }
+    mQueuedCreateBytes = 0;
+    updateNativeStreamingBacklog();
     mFastCacheList.clear();
 
     mImages.clear();
@@ -888,6 +892,8 @@ void LLViewerTextureList::updateImages(F32 max_time)
             << "Native texture publication: dequeued=" << stats.dequeued
             << " create_attempts=" << stats.create_attempts
             << " create_returned_true=" << stats.create_returned_true
+            << " native_worker_posts=" << stats.native_worker_posts
+            << " worker_raw_input_bytes=" << stats.worker_raw_input_bytes
             << " native_create_retries=" << stats.native_create_retries
             << " redundant_skips=" << stats.redundant_skips
             << " finalized=" << stats.finalized
@@ -1193,11 +1199,40 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
     imagep->processTextureStats();
 }
 
+void LLViewerTextureList::updateNativeStreamingBacklog()
+{
+    ALNativeFrameBudget::StreamingBacklog backlog;
+    backlog.queued_requests = mCreateTextureList.size();
+    backlog.queued_input_bytes = mQueuedCreateBytes;
+    backlog.oldest_request_frame = mCreateTextureList.empty() || !mCreateTextureList.front()
+        ? 0 : mCreateTextureList.front()->mCreateQueuedFrame;
+    backlog.pressure_requests = mDownScaleQueue.size();
+    ALNativeFrameBudget::instance().updateStreaming(backlog);
+}
+
+void LLViewerTextureList::queueCreateTexture(LLViewerFetchedTexture* image, bool preserve_age)
+{
+    llassert(on_main_thread());
+    if (!image || image->mCreatePending) return;
+    const auto* raw = image->getRawImage();
+    const U64 bytes = raw ? static_cast<U64>(llmax(raw->getDataSize(), 0)) : 0;
+    // Complete the potentially allocating insertion before publishing ownership.
+    mCreateTextureList.push(image);
+    image->mCreatePending = true;
+    // Outer doFrame owns this clock, including hidden/startup frames. A
+    // native-create retry retains its original age, including startup zero.
+    if (!preserve_age)
+        image->mCreateQueuedFrame = ALNativeFrameBudget::instance().snapshot().frame;
+    image->mCreateQueuedBytes = bytes;
+    mQueuedCreateBytes += bytes;
+}
+
 F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
     LLTimer create_timer;
+    updateNativeStreamingBacklog();
 
 #if LL_DARWIN
     // Already-native pressure work must not depend on a live GL manager. Scan
@@ -1221,12 +1256,14 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
                 image->getGLTexture()->scaleDown(image->getDesiredDiscardLevel());
                 image->mDownScalePending = false;
             },
-            [&create_timer, max_time]
+            [&create_timer, max_time, this]
             {
-                return create_timer.getElapsedTimeF32() > max_time;
+                const F32 pressure_share = mCreateTextureList.empty() ? max_time : max_time * 0.5f;
+                return create_timer.getElapsedTimeF32() > pressure_share;
             });
 
-        if (result == ALTexturePressureQueue::DrainResult::BudgetExhausted)
+        updateNativeStreamingBacklog();
+        if (result == ALTexturePressureQueue::DrainResult::BudgetExhausted && mCreateTextureList.empty())
         {
             return create_timer.getElapsedTimeF32();
         }
@@ -1248,27 +1285,32 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
     while (!mCreateTextureList.empty())
     {
-        // Hold a smart pointer to keep the texture alive throughout processing,
-        // even if side effects (e.g. pipeline rebuilds, GL operations) indirectly
-        // cause other references to be released. (see: #5426)
+        // Keep both the image and the FIFO head intact while admission is
+        // denied. Queued raw data and its original age remain authoritative.
         LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
-        mCreateTextureList.pop();
-
         if (!imagep)
         {
+            mCreateTextureList.pop();
             continue;
         }
-
         llassert(imagep->mCreatePending);
-        ++sTexturePublicationCensus.dequeued;
         const auto* raw_image = imagep->getRawImage();
         const U64 raw_input_bytes = raw_image
             ? static_cast<U64>(llmax(raw_image->getDataSize(), 0)) : 0;
-
-        // desired discard may change while an image is being decoded. If the texture in VRAM is sufficient
-        // for the current desired discard level, skip the texture creation.  This happens more often than it probably
-        // should
-        bool redundant_load = imagep->hasGPUTexture() && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
+        const bool redundant_load = imagep->hasGPUTexture() &&
+            imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
+        ALNativeFrameBudget::Decision admission;
+        if (!redundant_load && LLImageGL::isMetalTextureAuthority())
+        {
+            admission = ALNativeFrameBudget::instance().tryAcquire(
+                ALNativeFrameBudget::Work::upload, raw_input_bytes, imagep->mCreateQueuedFrame);
+            if (!admission) break;
+        }
+        mCreateTextureList.pop();
+        mQueuedCreateBytes -= llmin(mQueuedCreateBytes, imagep->mCreateQueuedBytes);
+        imagep->mCreateQueuedBytes = 0;
+        imagep->mCreatePending = false;
+        ++sTexturePublicationCensus.dequeued;
 
         bool created = redundant_load;
         if (redundant_load)
@@ -1278,6 +1320,17 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         }
         else
         {
+            if (admission && imagep->postNativeTextureUpload(admission.credit))
+            {
+                ++sTexturePublicationCensus.native_worker_posts;
+                sTexturePublicationCensus.worker_raw_input_bytes += raw_input_bytes;
+                imagep->mCreateQueuedFrame = 0;
+                if (create_timer.getElapsedTimeF32() > max_time) break;
+                continue;
+            }
+            // Closed/disabled worker keeps the established synchronous path.
+            // It obeys the same admission and native retirement lifetime.
+            LLImageGL::NativeUploadCreditScope credit(admission.credit);
             ++sTexturePublicationCensus.create_attempts;
             sTexturePublicationCensus.create_raw_input_bytes += raw_input_bytes;
             created = imagep->createTexture();
@@ -1290,13 +1343,14 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         if (!created && LLImageGL::isMetalTextureAuthority())
         {
             ++sTexturePublicationCensus.native_create_retries;
-            mCreateTextureList.push(imagep);
+            queueCreateTexture(imagep, true);
             break;
         }
 #endif
 
         imagep->postCreateTexture();
         imagep->mCreatePending = false;
+        imagep->mCreateQueuedFrame = 0;
         ++sTexturePublicationCensus.finalized;
 
         if (imagep->hasGPUTexture() && imagep->getDiscardLevel() < imagep->getDesiredDiscardLevel() &&
@@ -1319,6 +1373,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         }
     }
 
+    updateNativeStreamingBacklog();
     return create_timer.getElapsedTimeF32();
 }
 

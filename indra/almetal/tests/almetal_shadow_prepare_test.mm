@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <type_traits>
 #include <unordered_set>
+#include <utility>
 
 namespace
 {
@@ -493,7 +494,6 @@ TEST_CASE("almetal: immutable source proof rejects public stable field mutations
         rejects([&](auto& b) { b.terrain_height_texture = fixture.texture.get(); });
         rejects([](auto& b) { b.terrain_grid_scale = 1.f; });
         rejects([](auto& b) { b.avatar_draw_alpha = .5f; });
-        rejects([](auto& b) { b.texture_matrix[0] = 2.f; });
         rejects([](auto& b) { b.avatar_wind[0] = 1.f; });
         rejects([](auto& b) { b.avatar_sin_wave[0] = 1.f; });
         rejects([](auto& b) { b.avatar_gravity[0] = 1.f; });
@@ -502,8 +502,12 @@ TEST_CASE("almetal: immutable source proof rejects public stable field mutations
         rejects([](auto& b) { b.coverageData().textures[0] = nullptr; });
         rejects([](auto& b) { b.coverageData().alpha_cutoffs[0] = .25f; });
         rejects([](auto& b) { b.coverageData().pbr_base_color_transforms[0][0][0] = 2.f; });
-        // View and pose validation is intentionally outside this certificate.
-        auto changed = output[0]; changed.modelview_projection[0] = std::numeric_limits<float>::quiet_NaN();
+        // View, pose and animated UV validation are outside this certificate.
+        auto changed = output[0]; changed.texture_matrix[0] = 2.f;
+        CHECK(source->matchesStableInputs(changed));
+        changed = output[0]; changed.texture_matrix[0] = std::numeric_limits<float>::quiet_NaN();
+        CHECK(source->matchesStableInputs(changed));
+        changed = output[0]; changed.modelview_projection[0] = std::numeric_limits<float>::quiet_NaN();
         CHECK(source->matchesStableInputs(changed));
         changed = output[0]; ++changed.skin_joint_count;
         CHECK(source->matchesStableInputs(changed));
@@ -651,6 +655,134 @@ TEST_CASE("almetal: prepared native shadows preserve direct depth coverage and c
                 REQUIRE(target->readback(*fixture.device, 0, 1, {}, after.data(), 32 * sizeof(float), &fixture.error));
                 CHECK(before != after);
             }
+        }
+    }
+}
+
+TEST_CASE("almetal: compact shadow UV snapshots preserve transforms and reject whole invalid packets",
+          "[almetal][shadow-prepare][shadow-prepare-uv]")
+{
+    static_assert(std::is_trivially_copyable_v<ALMetalShadowPrepareInstance>);
+    @autoreleasepool
+    {
+        Fixture fixture;
+        auto prototype=fixture.prototype(ALMetalWorldSpotShadowCoverage::legacy_mask);
+        prototype.texture_matrix[0]=.25f;prototype.texture_matrix[12]=.375f;
+        auto source=fixture.source(1,prototype);INFO(fixture.error);REQUIRE(source);
+        CHECK(std::memcmp(source->prototype().texture_matrix,prototype.texture_matrix,64)==0);
+        auto fixed_input=inputFor(source);std::array<Batch,1> fixed_output;
+        REQUIRE(alMetalPrepareShadowBatches({&fixed_input,1},fixed_output,7));
+        CHECK(std::memcmp(fixed_output[0].texture_matrix,prototype.texture_matrix,64)==0);
+        std::array<std::array<float,16>,3> matrices{alMetalShadowIdentity,alMetalShadowIdentity,alMetalShadowIdentity};
+        matrices[0][0]=.5f;matrices[0][5]=2.f;matrices[0][12]=.25f;
+        matrices[1][0]=0;matrices[1][1]=1;matrices[1][4]=-1;matrices[1][5]=0;matrices[1][13]=.75f;
+        matrices[2][12]=-.125f;matrices[2][13]=.375f;
+        ALMetalShadowPrepareContext context;context.texture_matrices=matrices;
+        std::vector<ALMetalShadowPrepareInstance> instances(513);
+        for(std::size_t at=0;at<instances.size();++at)
+        {
+            auto& input=instances[at];input.source=source.get();input.source_generation=1;input.epoch=7;
+            if(at%4!=3)input.texture_matrix_slot=static_cast<std::uint32_t>(at%3);
+        }
+        std::vector<Batch> serial(instances.size()),parallel(instances.size());
+        REQUIRE(alMetalPrepareShadowBatches(instances,context,serial,7));
+        ALMetalShadowPrepareStats stats;
+        REQUIRE(alMetalPrepareShadowBatches(instances,context,parallel,7,nullptr,true,&stats));CHECK(stats.jobs==2);
+        for(std::size_t at=0;at<instances.size();++at)
+        {
+            const float* expected=instances[at].texture_matrix_slot==ALMetalShadowPrepareInstance::no_texture_matrix
+                ?prototype.texture_matrix:matrices[instances[at].texture_matrix_slot].data();
+            CHECK(std::memcmp(serial[at].texture_matrix,expected,64)==0);
+            CHECK(std::memcmp(serial[at].texture_matrix,parallel[at].texture_matrix,64)==0);
+            CHECK(source->matchesStableInputs(parallel[at]));
+        }
+        const auto rejects=[&](auto change)
+        {
+            for(bool dispatch:{false,true})
+            {
+                auto changed=instances;auto values=matrices;change(changed,values);
+                ALMetalShadowPrepareContext invalid_context=context;invalid_context.texture_matrices=values;
+                REQUIRE(alMetalPrepareShadowBatches(instances,context,parallel,7));
+                CHECK_FALSE(alMetalPrepareShadowBatches(changed,invalid_context,parallel,7,nullptr,dispatch));
+                for(const auto& batch:parallel){CHECK_FALSE(batch.vertices);CHECK_FALSE(batch.sourceRecord());}
+            }
+        };
+        rejects([](auto& input,auto&){input.back().texture_matrix_slot=3;});
+        rejects([](auto& input,auto&){input.back().texture_matrix_slot=ALMetalShadowPrepareInstance::no_texture_matrix-1;});
+        rejects([](auto& input,auto& values){input.back().texture_matrix_slot=2;values[2][12]=std::numeric_limits<float>::infinity();});
+        rejects([](auto& input,auto& values){input.back().texture_matrix_slot=2;values[2][0]=std::numeric_limits<float>::quiet_NaN();});
+        // Unselected storage does not poison a fixed-source-UV packet.
+        for(auto& input:instances)input.texture_matrix_slot=ALMetalShadowPrepareInstance::no_texture_matrix;
+        for(auto& matrix:matrices)matrix.fill(std::numeric_limits<float>::quiet_NaN());
+        REQUIRE(alMetalPrepareShadowBatches(instances,context,parallel,7,nullptr,true));
+        CHECK(std::memcmp(parallel.back().texture_matrix,prototype.texture_matrix,64)==0);
+        // Outputs own the selected values and do not borrow the UV span.
+        CHECK(serial[0].texture_matrix[0]==.5f);CHECK(serial[0].texture_matrix[12]==.25f);
+    }
+}
+
+TEST_CASE("almetal: animated compact UV shadows match original masked pixels without resealing sources",
+          "[almetal][shadow-prepare][shadow-prepare-uv]")
+{
+    @autoreleasepool
+    {
+        Fixture fixture;
+        ALMetalTextureDescriptor image_descriptor;image_descriptor.width=2;image_descriptor.height=1;
+        image_descriptor.format=ALMetalPixelFormat::rgba8_unorm;image_descriptor.usage=ALMetalTextureUsage::shader_read;
+        auto image=ALMetalTexture::create(*fixture.device,image_descriptor,&fixture.error);REQUIRE(image);
+        const std::array<std::uint8_t,8> alpha_lanes{255,255,255,0,255,255,255,255};
+        auto upload=fixture.device->makeCommandBuffer("Animated UV alpha lanes",&fixture.error);REQUIRE(upload);
+        REQUIRE(image->upload(*upload,0,0,{},alpha_lanes.data(),8,&fixture.error));REQUIRE(upload->commitAndWait(&fixture.error));
+        fixture.texture=std::move(image);
+        auto renderer=ALMetalWorldGBufferRenderer::create(*fixture.device,&fixture.error);INFO(fixture.error);REQUIRE(renderer);
+        ALMetalTextureDescriptor td;td.type=ALMetalTextureType::texture_2d_array;td.width=td.height=32;td.array_length=2;
+        td.format=ALMetalPixelFormat::r32_float;td.usage=ALMetalTextureUsage::render_target|ALMetalTextureUsage::shader_read;
+        auto target=ALMetalTexture::create(*fixture.device,td,&fixture.error);REQUIRE(target);
+        for(const auto coverage:{ALMetalWorldSpotShadowCoverage::legacy_mask,ALMetalWorldSpotShadowCoverage::texture_mask})
+        for(bool rigged:{false,true})
+        for(bool reverse_z:{false,true})
+        {
+            CAPTURE(coverage,rigged,reverse_z);
+            auto prototype=fixture.prototype(coverage,rigged);auto source=fixture.source(1,prototype);REQUIRE(source);
+            auto owner=std::make_shared<std::pair<std::shared_ptr<const Record>,std::shared_ptr<const ALMetalAttachmentPaletteRecord>>>(source,fixture.pose);
+            ALMetalShadowPrepareInstance instance;instance.source=source.get();instance.source_generation=1;instance.epoch=7;
+            instance.palette=rigged?fixture.pose.get():nullptr;instance.texture_matrix_slot=0;
+            ALMetalShadowPrepareContext context;
+            // GL clip Z=0 maps to forward depth0.5 but is the reverse-Z far
+            // clear value. Put both reference and prepared geometry at0.5 in
+            // reverse-Z so accepted alpha produces distinguishable depth.
+            context.projection[14]=reverse_z?.5f:0.f;
+            std::array<std::array<float,16>,1> uv{alMetalShadowIdentity};context.texture_matrices=uv;
+            std::array<Batch,1> prepared;
+            std::array<std::array<float,1024>,2> states;
+            for(unsigned animation=0;animation<2;++animation)
+            {
+                uv[0][12]=animation?.5f:0.f;
+                REQUIRE(alMetalPrepareShadowBatches({&instance,1},context,prepared,7));
+                CHECK(source->matchesStableInputs(prepared[0]));
+                auto direct=prototype;std::memcpy(direct.texture_matrix,uv[0].data(),64);
+                direct.modelview_projection[14]=context.projection[14];
+                ALMetalWorldSpotShadowScene scene;scene.width=scene.height=32;scene.reverse_z=reverse_z;scene.source_owner=owner;
+                scene.batches=&direct;scene.batch_count=1;scene.bulk_draws=false;
+                const bool direct_ok=renderer->renderSpotShadow(*target,0,scene,&fixture.error);INFO(fixture.error);REQUIRE(direct_ok);
+                scene.batches=prepared.data();
+                const bool prepared_ok=renderer->renderSpotShadow(*target,1,scene,&fixture.error);INFO(fixture.error);REQUIRE(prepared_ok);
+                std::array<float,1024> reference{},actual{};
+                REQUIRE(target->readback(*fixture.device,0,0,{},reference.data(),32*sizeof(float),&fixture.error));
+                REQUIRE(target->readback(*fixture.device,0,1,{},actual.data(),32*sizeof(float),&fixture.error));
+                CHECK(actual==reference);states[animation]=actual;
+                for(float invalid:{std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity()})
+                {
+                    auto wrong=prepared[0];wrong.texture_matrix[12]=invalid;
+                    CHECK(source->matchesStableInputs(wrong));scene.batches=&wrong;
+                    CHECK_FALSE(renderer->renderSpotShadow(*target,1,scene,&fixture.error));
+                }
+            }
+            CHECK(states[0]!=states[1]);
+            const float clear=reverse_z?0.f:1.f;
+            CHECK(std::all_of(states[0].begin(),states[0].end(),[&](float value){return value==clear;}));
+            CHECK(std::any_of(states[1].begin(),states[1].end(),[&](float value){return value!=clear;}));
+            CHECK(std::memcmp(source->prototype().texture_matrix,alMetalShadowIdentity.data(),64)==0);
         }
     }
 }

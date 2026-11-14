@@ -28,6 +28,9 @@
 
 #include "llreflectionmap.h"
 #include "lldrawable.h"
+#if LL_DARWIN
+#include "alnativeframebudget.h"
+#endif
 
 class LLSpatialGroup;
 class LLViewerObject;
@@ -60,6 +63,10 @@ public:
 
     // release native hero-probe ownership and logical probe state
     void cleanup();
+    // Scene owner only, after scene jobs have joined and mutation/streaming
+    // have stopped, before the volume manager is destroyed. Releases CPU object refs; native command
+    // leases and native rendering resources retain their existing owners.
+    void releaseSceneOwnersAfterQuiescence();
 
     // Whether initReflectionMaps has built logical/native ownership that
     // cleanup invalidates.
@@ -67,6 +74,14 @@ public:
 
     // maintain reflection probes
     void update();
+#if LL_DARWIN
+    struct NativeUpdateAdmissionStats
+    {
+        U64 admitted_groups = 0, deferred_attempts = 0, required_steps = 0;
+    };
+    const NativeUpdateAdmissionStats& nativeUpdateAdmissionStats() const noexcept { return mNativeUpdateStats; }
+#endif
+
 
     void renderProbes();
 
@@ -129,6 +144,20 @@ private:
 
     F32 mHeroProbeStrength = 1.f;
     bool mIsInTransition = false;
+
+#if LL_DARWIN
+    ALNativeFrameBudget::Lease mNativeUpdateCredit;
+    NativeUpdateAdmissionStats mNativeUpdateStats;
+    U64 mNativeFirstDeferredFrame = 0, mNativeLastAdmittedFrame = 0;
+    bool mNativeDeferralPending = false, mNativeAdmittedFrameValid = false;
+    LLUUID mNativeGroupOwner;
+    U64 mNativeGroupEpoch = 0;
+#endif
+
+    // Only a successful publication marks this owner/epoch bootstrapped;
+    // a failed refresh must not turn every future attempt into required work.
+    LLUUID mNativePublishedOwner;
+    U64 mNativePublishedEpoch = 0;
 
     // if true, reset all probe render state on the next update (for teleports and sky changes)
     bool mReset = false;

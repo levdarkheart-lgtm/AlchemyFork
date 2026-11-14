@@ -523,6 +523,11 @@ LLVertexBuffer::LLVertexBuffer(U32 typemask)
 
 void LLVertexBuffer::touchContents()
 {
+#if LL_DARWIN
+    // Release only obsolete publisher/cache leases before upload_metal_buffer
+    // chooses an in-place dirty-range write or a new immutable generation.
+    mNativePublication.willWrite();
+#endif
     mContentStamp = sContentStamps.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
@@ -532,6 +537,22 @@ static ALMetalDevice* sMetalDevice = nullptr;
 static std::atomic<bool> sMetalMirrorReported{false};
 static std::atomic<bool> sMetalBufferAuthority{false};
 static LLVertexBuffer::MetalUploadStats sMetalUploadStats;
+static thread_local bool sFailNativeSharedReplacement = false;
+static thread_local bool sFailNativeSharedShadow = false;
+
+LLVertexBuffer::ScopedNativeSharedWriteAllocationFailure::ScopedNativeSharedWriteAllocationFailure(
+    bool native_replacement, bool cpu_shadow)
+    : mPreviousNative(sFailNativeSharedReplacement), mPreviousShadow(sFailNativeSharedShadow)
+{
+    sFailNativeSharedReplacement = native_replacement;
+    sFailNativeSharedShadow = cpu_shadow;
+}
+
+LLVertexBuffer::ScopedNativeSharedWriteAllocationFailure::~ScopedNativeSharedWriteAllocationFailure()
+{
+    sFailNativeSharedReplacement = mPreviousNative;
+    sFailNativeSharedShadow = mPreviousShadow;
+}
 
 LLVertexBuffer::MetalUploadStats LLVertexBuffer::metalUploadStats() noexcept
 {
@@ -731,7 +752,7 @@ void LLVertexBuffer::flushBuffers()
         // Destruction disarms mMapped before flushing: never requeue a dying
         // buffer even when its last publication failed.
         if (buffer->mMapped &&
-            (buffer->mVerticesWritten || buffer->mIndicesWritten))
+            ((buffer->mVerticesWritten && !buffer->hasNativeVertexWriteFailure()) || buffer->mIndicesWritten))
         {
             sMappedBuffers[retry_count++] = buffer;
             continue;
@@ -907,6 +928,10 @@ bool LLVertexBuffer::createGLIndices(U32 size)
 void LLVertexBuffer::destroyGLBuffer()
 {
 #if LL_DARWIN
+    const bool native_shared_store = mNativeSharedVertexStorage;
+    mNativeSharedVertexStorage = false;
+    const bool had_native_buffer = static_cast<bool>(mMetalBuffer);
+    if (had_native_buffer) mNativePublication.willWrite();
     collect_retired_metal_buffers();
     for (MetalBufferGeneration& generation : mRetiredMetalBuffers)
     {
@@ -924,11 +949,18 @@ void LLVertexBuffer::destroyGLBuffer()
         mMetalBuffer.reset();
     }
     mMetalBufferInitialized = false;
+    mNativeWriteFailureCount = 0;
+    mNativeRewriteMask = 0;
+    if (had_native_buffer) mNativePublication.withdraw();
 #endif
     if (mMappedData)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        if (sNativeStorage)
+        if (sNativeStorage
+#if LL_DARWIN
+            && !native_shared_store
+#endif
+            )
         {
             sNativeStorage->release(mSize, mMappedData);
         }
@@ -941,6 +973,8 @@ void LLVertexBuffer::destroyGLBuffer()
 void LLVertexBuffer::destroyGLIndices()
 {
 #if LL_DARWIN
+    const bool had_native_indices = static_cast<bool>(mMetalIndices);
+    if (had_native_indices) mNativePublication.willWrite();
     collect_retired_metal_buffers();
     for (MetalBufferGeneration& generation : mRetiredMetalIndices)
     {
@@ -958,6 +992,7 @@ void LLVertexBuffer::destroyGLIndices()
         mMetalIndices.reset();
     }
     mMetalIndicesInitialized = false;
+    if (had_native_indices) mNativePublication.withdraw();
 #endif
     if (mMappedIndexData)
     {
@@ -1024,27 +1059,185 @@ bool LLVertexBuffer::allocateBuffer(U32 nverts, U32 nindices)
     return success;
 }
 
+bool LLVertexBuffer::allocateNativeSharedBuffer(U32 nverts)
+{
+    // Never reinterpret an existing CPU store or invalidate its striders.
+    if (mMappedData || mMappedIndexData || mNumVerts || mNumIndices) return false;
+#if LL_DARWIN
+    constexpr U32 supported = MAP_VERTEX | MAP_TEXCOORD0 | MAP_COLOR | MAP_TEXTURE_INDEX;
+    if (nverts && nverts <= 4096 && (mTypeMask & MAP_VERTEX) && !(mTypeMask & ~supported) &&
+        isMetalBufferAuthority() && sMetalDevice)
+    {
+        U32 offsets[TYPE_MAX]{};
+        const U32 size = calcOffsets(mTypeMask, offsets, nverts);
+        auto native = allocate_metal_buffer(size, bufferLabel(mLabel, " immediate shared vertices").c_str());
+        if (native && native->mappedBytes())
+        {
+            std::copy(std::begin(offsets), std::end(offsets), std::begin(mOffsets));
+            mSize = size;
+            mNumVerts = nverts;
+            mMetalBuffer = std::move(native);
+            mMappedData = static_cast<U8*>(mMetalBuffer->mappedBytes());
+            mNativeSharedVertexStorage = true;
+            ++sMetalUploadStats.direct_shared_allocations;
+            touchContents();
+            return true;
+        }
+    }
+#endif
+    return allocateBuffer(nverts, 0);
+}
+
+#if LL_DARWIN
+void LLVertexBuffer::rejectNativeVertexWrite(U32 begin, U32 end) noexcept
+{
+    ++sMetalUploadStats.direct_shared_write_failures;
+    constexpr U32 supported = MAP_VERTEX | MAP_TEXCOORD0 | MAP_COLOR;
+    if (mNativeRewriteMask || begin >= end || end > mSize)
+    {
+        mNativeRewriteMask = mTypeMask & supported;
+        mNativeWriteFailureCount = 0;
+        return;
+    }
+    std::array<std::pair<U32, U32>, 5> ranges{};
+    std::copy_n(mNativeWriteFailures.begin(), mNativeWriteFailureCount, ranges.begin());
+    ranges[mNativeWriteFailureCount] = {begin, end};
+    std::sort(ranges.begin(), ranges.begin() + mNativeWriteFailureCount + 1);
+    U32 count = 0;
+    for (U32 at = 0; at <= mNativeWriteFailureCount; ++at)
+    {
+        if (count && ranges[at].first <= ranges[count - 1].second)
+            ranges[count - 1].second = llmax(ranges[count - 1].second, ranges[at].second);
+        else ranges[count++] = ranges[at];
+    }
+    if (count > mNativeWriteFailures.size())
+    {
+        mNativeRewriteMask = mTypeMask & supported;
+        mNativeWriteFailureCount = 0;
+    }
+    else
+    {
+        mNativeWriteFailureCount = count;
+        std::copy_n(ranges.begin(), count, mNativeWriteFailures.begin());
+    }
+}
+
+void LLVertexBuffer::completeNativeVertexWrite(U32 begin, U32 end) noexcept
+{
+    if (!hasNativeVertexWriteFailure()) return;
+    if (mNativeRewriteMask)
+    {
+        for (const auto type : {TYPE_VERTEX, TYPE_TEXCOORD0, TYPE_COLOR})
+        {
+            const U32 plane_end = mOffsets[type] + sTypeSize[type] * mNumVerts;
+            if (begin <= mOffsets[type] && end >= plane_end) mNativeRewriteMask &= ~(1u << type);
+        }
+        return;
+    }
+    std::array<std::pair<U32, U32>, 8> remaining{};
+    U32 count = 0;
+    for (U32 at = 0; at < mNativeWriteFailureCount; ++at)
+    {
+        const auto [first, last] = mNativeWriteFailures[at];
+        if (end <= first || begin >= last) remaining[count++] = {first, last};
+        else
+        {
+            if (begin > first) remaining[count++] = {first, begin};
+            if (end < last) remaining[count++] = {end, last};
+        }
+    }
+    if (count > mNativeWriteFailures.size())
+    {
+        mNativeRewriteMask = mTypeMask & (MAP_VERTEX | MAP_TEXCOORD0 | MAP_COLOR);
+        mNativeWriteFailureCount = 0;
+    }
+    else
+    {
+        mNativeWriteFailureCount = count;
+        std::copy_n(remaining.begin(), count, mNativeWriteFailures.begin());
+    }
+}
+
+bool LLVertexBuffer::prepareNativeSharedWrite()
+{
+    if (!mNativeSharedVertexStorage || !mMetalBufferInitialized) return true;
+    if (mMetalBuffer.use_count() == 1 &&
+        gGL.frameFences().isComplete(mMetalBufferLastReadFrame)) return true;
+
+    // A display-list/queued/GPU reader owns the previous bytes. Rotate before
+    // returning a writable pointer, preserving untouched CPU-visible lanes.
+    auto next = sFailNativeSharedReplacement ? std::shared_ptr<ALMetalBuffer>{}
+        : take_completed_metal_buffer(mRetiredMetalBuffers);
+    if (next && next->length() != mSize) next.reset();
+    const bool recycled = static_cast<bool>(next);
+    if (!next && !sFailNativeSharedReplacement)
+        next = allocate_metal_buffer(mSize, bufferLabel(mLabel, " immediate shared vertices").c_str());
+    std::string error;
+    if (next && next->mappedBytes() && next->write(0, mMappedData, mSize, &error))
+    {
+        const bool leased = mMetalBuffer.use_count() > 1;
+        mRetiredMetalBuffers.emplace_back(std::move(mMetalBuffer), mMetalBufferLastReadFrame);
+        mMetalBuffer = std::move(next);
+        mMappedData = static_cast<U8*>(mMetalBuffer->mappedBytes());
+        mMetalBufferLastReadFrame = 0;
+        mMetalBufferInitialized = false;
+        sMetalUploadStats.direct_shared_preserved_bytes += mSize;
+        if (leased) ++sMetalUploadStats.leased_orphans;
+        if (recycled) ++sMetalUploadStats.recycled_generations;
+        return true;
+    }
+
+    // Preserve later CPU edits and normal upload retry when a fresh native
+    // generation is temporarily unavailable. Never write borrowed backing.
+    U8* shadow = nullptr;
+    if (sNativeStorage && !sFailNativeSharedShadow) sNativeStorage->allocate(mSize, shadow);
+    if (!shadow) return false;
+    std::memcpy(shadow, mMappedData, mSize);
+    mMappedData = shadow;
+    mNativeSharedVertexStorage = false;
+    ++sMetalUploadStats.direct_shared_shadow_fallbacks;
+    return true;
+}
+#endif
+
 //----------------------------------------------------------------------------
 
-// Mapping edits the CPU shadow and records which complete native store must
-// be republished. Partial setters below modify that same shadow; no mapped
-// GL range list or driver upload remains.
+// Mapping edits the CPU store and records which native store must publish.
+// The explicit fresh immediate policy aliases shared native memory; its first
+// later borrowed write rotates before returning a pointer. Other producers
+// retain their established CPU shadows and partial publication.
 U8* LLVertexBuffer::mapVertexBuffer(LLVertexBuffer::AttributeType type, U32 index, S32 count)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
     if (static_cast<U32>(type) >= TYPE_MAX || index > mNumVerts || !mMappedData) return nullptr;
     if (count == -1) count = mNumVerts - index;
     if (count < 0 || static_cast<U32>(count) > mNumVerts - index) return nullptr;
+    if (count == 0)
+    {
+        // No writable range is declared: do not invalidate, rotate or publish.
+        // Texture-index's strided lane can lie beyond the physical store at
+        // the logical end; return a valid one-past pointer for that empty span.
+        const U64 offset = static_cast<U64>(mOffsets[type]) + static_cast<U64>(sTypeSize[type]) * index;
+        return mMappedData + llmin<U64>(offset, mSize);
+    }
     _mapBuffer();
     touchContents();
+#if LL_DARWIN
+    const U32 begin = mOffsets[type] + sTypeSize[type] * index;
+    const U32 width = type == TYPE_TEXTURE_INDEX ? sizeof(U32) : sTypeSize[type];
+    const U32 end = begin + sTypeSize[type] * (count - 1) + width;
+    if (!prepareNativeSharedWrite())
+    {
+        rejectNativeVertexWrite(begin, end);
+        return nullptr;
+    }
+    completeNativeVertexWrite(begin, end);
+#endif
     if (count > 0) mVerticesWritten = true;
 #if LL_DARWIN
     // Texture index aliases the four-byte position.w lane. Its stride is
     // sixteen bytes, but the final lane must not extend past the position
     // plane (PPD-094), especially in a position-only allocation.
-    const U32 begin = mOffsets[type] + sTypeSize[type] * index;
-    const U32 width = type == TYPE_TEXTURE_INDEX ? sizeof(U32) : sTypeSize[type];
-    const U32 end = count > 0 ? begin + sTypeSize[type] * (count - 1) + width : begin;
     markMetalDirty(false, begin, end);
 #endif
     return mMappedData + mOffsets[type] + sTypeSize[type] * index;
@@ -1073,6 +1266,18 @@ void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8
     if (end + 1 == start) return;
     touchContents();
     _mapBuffer();
+#if LL_DARWIN
+    if (target != GL_ELEMENT_ARRAY_BUFFER && mNativeSharedVertexStorage)
+    {
+        if (!prepareNativeSharedWrite())
+        {
+            rejectNativeVertexWrite(start, end + 1);
+            LL_WARNS_ONCE("Metal") << "Could not preserve an immutable immediate vertex generation for writing" << LL_ENDL;
+            return;
+        }
+        dst = mMappedData;
+    }
+#endif
     if (target == GL_ELEMENT_ARRAY_BUFFER)
         mIndicesWritten = true;
     else
@@ -1082,6 +1287,9 @@ void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8
 #endif
     LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vb memcpy");
     memcpy(dst + start, data, end - start + 1);
+#if LL_DARWIN
+    if (target != GL_ELEMENT_ARRAY_BUFFER) completeNativeVertexWrite(start, end + 1);
+#endif
 }
 
 void LLVertexBuffer::unmapBuffer()
@@ -1107,10 +1315,24 @@ void LLVertexBuffer::_unmapBuffer()
     // must leave vertex bytes/generation intact, and conversely. Failed
     // publication retains its dirty flag for flushBuffers to retry.
     const bool upload_vertices = mVerticesWritten || !mMetalBufferInitialized;
-    bool vertices_uploaded = true;
-    if (mMappedData && upload_vertices)
+    const bool producer_write_failed = hasNativeVertexWriteFailure();
+    bool vertices_uploaded = !producer_write_failed;
+    if (mMappedData && upload_vertices && !producer_write_failed)
     {
-        if (sMetalDevice)
+        if (mNativeSharedVertexStorage)
+        {
+            // CPU setters already wrote the exact native SoA planes. Seal
+            // publication instead of copying the store into itself again.
+            vertices_uploaded = mMetalBuffer && mMetalBuffer->mappedBytes() == mMappedData;
+            if (vertices_uploaded)
+            {
+                mMetalBufferInitialized = true;
+                ++sMetalUploadStats.direct_shared_publications;
+                for (const auto& range : mMetalVertexDirtyRanges)
+                    sMetalUploadStats.direct_shared_written_bytes += range.second - range.first;
+            }
+        }
+        else if (sMetalDevice)
         {
             std::string error;
             vertices_uploaded = upload_metal_buffer(
@@ -1125,7 +1347,7 @@ void LLVertexBuffer::_unmapBuffer()
             LL_WARNS("Metal") << "Could not upload vertex data without a Metal device" << LL_ENDL;
         }
     }
-    mVerticesWritten = upload_vertices && !vertices_uploaded;
+    if (!producer_write_failed) mVerticesWritten = upload_vertices && !vertices_uploaded;
     if (vertices_uploaded) mMetalVertexDirtyRanges.clear();
 
     const bool upload_indices = mIndicesWritten || !mMetalIndicesInitialized;
@@ -1149,6 +1371,16 @@ void LLVertexBuffer::_unmapBuffer()
     }
     mIndicesWritten = upload_indices && !indices_uploaded;
     if (indices_uploaded) mMetalIndexDirtyRanges.clear();
+
+    const bool published_vertices = mMappedData && upload_vertices && vertices_uploaded;
+    const bool published_indices = mMappedIndexData && upload_indices && indices_uploaded;
+    if (published_vertices) ++mMetalVertexPublicationRevision;
+    if (published_indices) ++mMetalIndexPublicationRevision;
+    // A failed half leaves its dirty state for the established retry. Do not
+    // advertise a complete tuple merely because the other store succeeded.
+    if ((published_vertices || published_indices) &&
+        !mVerticesWritten && !mIndicesWritten && !producer_write_failed)
+        mNativePublication.didPublish();
 #endif
 }
 

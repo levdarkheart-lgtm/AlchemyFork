@@ -80,6 +80,7 @@ if(AL_BUILD_TESTS)
     SOURCES
       tests/llbvhloader_test.cpp
       tests/llcharacter_test.cpp
+      tests/aljoint_pose_revision_test.cpp
       tests/lljoint_test.cpp
       tests/llkeyframemotion_test.cpp
       tests/llmotioncontroller_test.cpp

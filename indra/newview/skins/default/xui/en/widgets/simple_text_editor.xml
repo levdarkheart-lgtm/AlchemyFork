@@ -4,7 +4,6 @@
   mouse_opaque="true"
   font="SansSerifSmall"
   max_length="255" 
-  embedded_items="false" 
   allow_scroll="true"
   border_visible="false"
   word_wrap="false" 

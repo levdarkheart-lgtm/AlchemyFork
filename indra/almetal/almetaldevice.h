@@ -23,6 +23,23 @@
 class ALMetalPipelineCache;
 class ALMetalRenderEncoder;
 
+// Native submission-owner scope, used by an outer main/probe work group.
+// Each command created on this thread retains the current owner until actual
+// completion (or abandonment), independently of CPU scope exit or queue commit.
+// A worker upload supplies its own explicit owner; scopes never propagate to
+// another thread implicitly. Nested views restore the preceding owner.
+class ALMetalSubmissionScope final
+{
+public:
+    explicit ALMetalSubmissionScope(std::shared_ptr<const void> owner) noexcept;
+    ~ALMetalSubmissionScope();
+    ALMetalSubmissionScope(const ALMetalSubmissionScope&) = delete;
+    ALMetalSubmissionScope& operator=(const ALMetalSubmissionScope&) = delete;
+    static const std::shared_ptr<const void>& current() noexcept;
+private:
+    std::shared_ptr<const void> mPrevious;
+};
+
 struct ALMetalDeviceInfo
 {
     std::string name;

@@ -955,6 +955,8 @@ public:
     public:
         // Last frame this entry was updated
         U32 mFrame;
+        U64 mPoseRevision = 0;
+        U64 mLifecycleRevision = 0;
 
         // List of Matrix4a's for this entry
         LLMeshSkinInfo::matrix_list_t mMatrixPalette;
@@ -992,8 +994,11 @@ public:
     // Map of LLMeshSkinInfo::mHash to MatrixPaletteCache
     typedef boost::unordered_map<U64, MatrixPaletteCache> matrix_palette_cache_t;
     matrix_palette_cache_t mMatrixPaletteCache;
+    U64 nativeBodyPoseLifecycleRevision() const noexcept { return mNativeBodyPoseLifecycleRevision; }
+    void invalidateNativeBodyPose() noexcept { ++mNativeBodyPoseLifecycleRevision; }
 
 protected:
+    U64 mNativeBodyPoseLifecycleRevision = 1;
     void            releaseMeshData();
     virtual void restoreMeshData();
 private:

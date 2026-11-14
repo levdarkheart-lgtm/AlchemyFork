@@ -35,6 +35,10 @@
 #include "httpoptions.h"
 #include "_httpservice.h"
 #include "_httprequestqueue.h"
+#include "_httpoprequest.h"
+#include "_httppolicy.h"
+#include "_httpreplyqueue.h"
+#include "llerrorcontrol.h"
 
 #include <curl/curl.h>
 #include "alregex.h"
@@ -246,6 +250,134 @@ public:
     regex_container_t mHeadersRequired;
     regex_container_t mHeadersDisallowed;
 };
+
+class CompletionLogRecorder final : public LLError::Recorder
+{
+public:
+    void recordMessage(LLError::ELevel level, const std::string& message) override
+    {
+        if (message.find(" failed after ") != std::string::npos)
+        {
+            levels.push_back(level);
+        }
+    }
+
+    std::vector<LLError::ELevel> levels;
+};
+
+class ScopedHttpService
+{
+public:
+    ScopedHttpService()
+    {
+        HttpRequest::createService();
+    }
+
+    ~ScopedHttpService()
+    {
+        HttpRequest::destroyService();
+    }
+};
+
+class ScopedCompletionLog
+{
+public:
+    ScopedCompletionLog()
+        : mPriorFatalFunction(LLError::getFatalFunction())
+        , mPriorSettings(LLError::saveAndResetSettings())
+        , recorder(std::make_shared<CompletionLogRecorder>())
+    {
+        LLError::setFatalFunction(mPriorFatalFunction);
+        LLError::setDefaultLevel(LLError::LEVEL_DEBUG);
+        LLError::addRecorder(recorder);
+    }
+
+    ~ScopedCompletionLog()
+    {
+        LLError::removeRecorder(recorder);
+        LLError::restoreSettings(mPriorSettings);
+    }
+
+private:
+    LLError::FatalFunction mPriorFatalFunction;
+    LLError::SettingsStoragePtr mPriorSettings;
+
+public:
+    std::shared_ptr<CompletionLogRecorder> recorder;
+};
+
+TEST_CASE("HttpRequest Tests: completion severity preserves failed replies and status flags",
+          "[HttpRequest_Tests][http-policy-completion]")
+{
+    ScopedCurlInit ready;
+    REQUIRE(HttpService::instanceOf() == nullptr);
+    REQUIRE(HttpService::getState() == HttpService::NOT_INITIALIZED);
+    // Completion records HTTPStats, initialized by the real service lifecycle.
+    // Keep curl alive through service cleanup without starting the worker.
+    ScopedHttpService service;
+    ScopedCompletionLog log;
+    REQUIRE(HttpService::instanceOf() != nullptr);
+    HttpPolicy& policy = HttpService::instanceOf()->getPolicy();
+    // Match LL_DEBUGS' compile-time contract as well as its runtime level.
+    // Release omits debug records; failed replies must still reach the caller.
+#ifdef LL_DISABLE_DEBUG_LOGGING
+    constexpr auto client_error_level = LLError::LEVEL_NONE;
+#else
+    constexpr auto client_error_level = LLError::LEVEL_DEBUG;
+#endif
+    const std::vector<std::pair<HttpStatus, LLError::ELevel>> cases = {
+        {HttpStatus(400), client_error_level},
+        {HttpStatus(403), client_error_level},
+        {HttpStatus(404), client_error_level},
+        {HttpStatus(499), client_error_level},
+        {HttpStatus(500), LLError::LEVEL_WARN},
+        {HttpStatus(503), LLError::LEVEL_WARN},
+        {HttpStatus(HttpStatus::EXT_CURL_EASY, CURLE_OPERATION_TIMEDOUT), LLError::LEVEL_WARN},
+        {HttpStatus(HttpStatus::LLCORE, HE_SHUTTING_DOWN), LLError::LEVEL_WARN},
+        // A 200 can carry a local failure, and an application can accept a 403.
+        // Logging must follow the code without changing the independent flag.
+        {HttpStatus(200, HE_REPLY_ERROR), LLError::LEVEL_WARN},
+        {HttpStatus(200), LLError::LEVEL_NONE},
+        {HttpStatus(403, HE_SUCCESS), LLError::LEVEL_NONE}
+    };
+
+    for (const auto& [status, expected_level] : cases)
+    {
+        CAPTURE(status.toTerseString(), status.getStatus());
+        log.recorder->levels.clear();
+        auto queue = std::make_shared<HttpReplyQueue>();
+        HttpRequestTestData state{0, status};
+        auto handler = std::make_shared<TestHandler2>(&state, "completion");
+        auto op = std::make_shared<HttpOpRequest>();
+        op->mCurlHandle = curl_easy_init();
+        REQUIRE(op->mCurlHandle != nullptr);
+        op->mStatus = status;
+        op->mPolicyRetryLimit = 0;
+        op->setReplyPath(queue, handler);
+
+        CHECK_FALSE(policy.stageAfterCompletion(op));
+        CHECK(op->mStatus == status);
+        CHECK(op->mPolicyRetries == 0);
+        CHECK(state.mHandlerCalls == 0);
+
+        if (expected_level == LLError::LEVEL_NONE)
+        {
+            CHECK(log.recorder->levels.empty());
+        }
+        else
+        {
+            REQUIRE(log.recorder->levels.size() == 1);
+            CHECK(log.recorder->levels.front() == expected_level);
+        }
+
+        auto reply = queue->fetchOp();
+        REQUIRE(reply == op);
+        CHECK_FALSE(queue->fetchOp());
+        reply->visitNotifier(nullptr);
+        CHECK(state.mHandlerCalls == 1);
+        CHECK(op->mStatus == status);
+    }
+}
 
 
 TEST_CASE_METHOD(HttpRequestTestData, "HttpRequest Tests: an HttpRequest is constructed and deleted with the service up", "[HttpRequest_Tests]")

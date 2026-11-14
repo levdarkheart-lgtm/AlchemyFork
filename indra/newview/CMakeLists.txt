@@ -137,6 +137,7 @@ if(AL_BUILD_VIEWER)
     alsky.cpp
     altextureboost.cpp
     alassetblocklist.cpp
+    alnativeframeplan.cpp
     alavataractions.cpp
     alavatargroups.cpp
     alchatautocomplete.cpp
@@ -1015,6 +1016,9 @@ if(AL_BUILD_VIEWER)
     altextureboost.h
     alsculptcopy.h
     alassetblocklist.h
+    alprobeupdateadmission.h
+    alnativeframeplan.h
+    alavatarpose.h
     alavataractions.h
     alavatargroups.h
     alchatautocomplete.h
@@ -1182,6 +1186,7 @@ if(AL_BUILD_VIEWER)
     alpanelsearchweb.h
     alpanelstreaminfo.h
     alpickitem.h
+    alpickactionpolicy.h
     alsceneexplorermodel.h
     alselectionoutline.h
     alstreaminfo.h
@@ -2569,6 +2574,9 @@ if(AL_BUILD_TESTS)
     newview_tests
     PROJECT ${test_project}
     SOURCES
+      tests/alprobeupdateadmission_test.cpp
+      tests/alnativeframeplan_test.cpp
+      tests/alavatarpose_test.cpp
       tests/alagentlocationformat_test.cpp
       tests/alapplinks_test.cpp
       tests/albakeproxies_test.cpp
@@ -2587,6 +2595,7 @@ if(AL_BUILD_TESTS)
       tests/almetalbenchmark_test.cpp
       tests/almetalbenchmark_provenance_test.cpp
       tests/alprobereadiness_test.cpp
+      tests/alpickactionpolicy_test.cpp
       tests/almotionpredictor_test.cpp
       tests/almaturitypreference_test.cpp
       tests/alteleportprogress_test.cpp
@@ -2656,6 +2665,7 @@ if(AL_BUILD_TESTS)
       tests/lutcube_test.cpp
       tests/noise_test.cpp
     UNIT
+      alnativeframeplan.cpp
       alagentlocationformat.cpp
       alapplinks.cpp
       albakeproxies.cpp
@@ -2734,7 +2744,7 @@ if(AL_BUILD_TESTS)
       llviewercontrollistener.cpp
       lutcube.cpp
       noise.cpp
-    LIBRARIES llui alscript ll::slua llxml ${test_libs}
+    LIBRARIES almetal llui alscript ll::slua llxml ${test_libs}
     SUPPORT
       newview_test_fakes
       newview_test_settings

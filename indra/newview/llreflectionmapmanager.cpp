@@ -57,6 +57,8 @@
 #include "../almetal/almetalresource.h"
 #include "../almetal/almetalstagetiming.h"
 #include "../almetal/almetalworld.h"
+#include "alnativeframeplan.h"
+#include <new>
 #include <optional>
 #endif
 
@@ -1252,6 +1254,10 @@ void LLReflectionMapManager::update()
     if (!LLPipeline::sReflectionProbesEnabled || !gPipeline.resourcePlan().reflectionProbes() || gTeleportDisplay ||
         LLStartUp::getStartupState() < STATE_PRECACHE)
     {
+#if LL_DARWIN
+        mNativeUpdateCredit.reset();
+        mNativeAdmission.reset();
+#endif
         return;
     }
 
@@ -1260,6 +1266,10 @@ void LLReflectionMapManager::update()
     llassert(!gCubeSnapshot); // assert a snapshot is not in progress
     if (LLAppViewer::instance()->logoutRequestSent())
     {
+#if LL_DARWIN
+        mNativeUpdateCredit.reset();
+        mNativeAdmission.reset();
+#endif
         return;
     }
 
@@ -1347,6 +1357,57 @@ void LLReflectionMapManager::update()
 
 
     bool did_update = false;
+#if LL_DARWIN
+    bool native_optional_requested = false;
+    bool native_admission_attempted = false;
+    using NativeKind = ALProbeUpdateAdmission::Kind;
+    const auto admit_native_group = [&](bool required, NativeKind kind)
+    {
+        auto& budget = ALNativeFrameBudget::instance();
+        const auto plan = budget.snapshot();
+        if (plan.draining)
+        {
+            mNativeUpdateCredit.reset();
+            ++mNativeUpdateStats.deferred_attempts;
+            return false;
+        }
+        if (required)
+        {
+            // Missing default lighting is bootstrap, not optional refresh.
+            // No null OptionalScope: its CPU work remains required main work.
+            ++mNativeUpdateStats.required_steps;
+            return true;
+        }
+        native_optional_requested = true;
+        if (mNativeUpdateCredit) return true;
+        const auto frame = plan.frame;
+        mNativeAdmission.request(kind, frame);
+        if (kind == NativeKind::scheduled && mUpdatingProbe)
+            mNativeAdmission.cancel(NativeKind::realtime); // settle an existing logical owner first
+        if (!mNativeAdmission.mayStart(kind)) return false;
+        if (native_admission_attempted) return false;
+        native_admission_attempted = true;
+        if (!mNativeAdmittedFrameValid || mNativeLastAdmittedFrame != frame)
+        {
+            try
+            {
+                auto admission = budget.tryAcquire(ALNativeFrameBudget::Work::ordinary_probe, 0, mNativeAdmission.oldest(kind));
+                if (admission)
+                {
+                    mNativeUpdateCredit = std::move(admission.credit);
+                    mNativeLastAdmittedFrame = frame;
+                    mNativeAdmittedFrameValid = true;
+                    mNativeAdmission.started(kind);
+                    ++mNativeUpdateStats.admitted_groups;
+                    return true;
+                }
+            }
+            catch (const std::bad_alloc&) {} // Optional work retries without a phantom reservation.
+        }
+        ++mNativeUpdateStats.deferred_attempts;
+        return false;
+    };
+#endif
 
     bool realtime = mRenderReflectionProbeDetail >= (S32)LLReflectionMapManager::DetailLevel::REALTIME;
 
@@ -1438,8 +1499,20 @@ void LLReflectionMapManager::update()
 
     if (mUpdatingProbe != nullptr)
     {
+        // Reserve this logical transaction even when its next refresh step is
+        // deferred; a different face-zero owner must not replace its scratch.
         did_update = true;
+#if LL_DARWIN
+        const bool required = mUpdatingProbe == mDefaultProbe && !mDefaultProbe->mComplete;
+        if (admit_native_group(required, NativeKind::scheduled))
+        {
+            std::optional<ALNativeFramePlan::OptionalScope> group_scope;
+            if (!required && mNativeUpdateCredit) group_scope.emplace(mNativeUpdateCredit);
+            doProbeUpdate();
+        }
+#else
         doProbeUpdate();
+#endif
     }
 
     // Update distance to camera for all probes.
@@ -1603,12 +1676,45 @@ void LLReflectionMapManager::update()
         }
     }
 
-    if (realtime && closestDynamic != nullptr)
+    static LLCachedControl<F32> sUpdatePeriod(gSavedSettings, "RenderDefaultProbeUpdatePeriod", 2.f);
+    if ((gFrameTimeSeconds - mDefaultProbe->mLastUpdateTime) < sUpdatePeriod)
     {
+        if (mRenderReflectionProbeLevel == 0)
+        { // when probes are disabled don't update the default probe more often than the prescribed update period
+            oldestProbe = nullptr;
+        }
+    }
+    else if (mRenderReflectionProbeLevel > 0)
+    { // when probes are enabled don't update the default probe less often than the prescribed update period
+      oldestProbe = mDefaultProbe;
+    }
+
+#if LL_DARWIN
+    const auto request_frame = ALNativeFrameBudget::instance().snapshot().frame;
+    const bool scheduled_wanted = (mUpdatingProbe &&
+        !(mUpdatingProbe == mDefaultProbe && !mDefaultProbe->mComplete)) ||
+        (!did_update && oldestProbe && !(oldestProbe == mDefaultProbe && !mDefaultProbe->mComplete));
+    if (scheduled_wanted) mNativeAdmission.request(NativeKind::scheduled, request_frame);
+    else mNativeAdmission.cancel(NativeKind::scheduled);
+    if (realtime && closestDynamic && !mNativeUpdateCredit)
+        mNativeAdmission.request(NativeKind::realtime, request_frame);
+    else mNativeAdmission.cancel(NativeKind::realtime);
+#endif
+
+    if (realtime && closestDynamic != nullptr) closestDynamic->autoAdjustOrigin();
+    if (realtime && closestDynamic != nullptr
+#if LL_DARWIN
+        && admit_native_group(false, NativeKind::realtime)
+#endif
+        )
+    {
+#if LL_DARWIN
+        std::optional<ALNativeFramePlan::OptionalScope> group_scope;
+        if (mNativeUpdateCredit) group_scope.emplace(mNativeUpdateCredit);
+#endif
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("rmmu - realtime");
         // update the closest dynamic probe realtime
         // should do a full irradiance pass on "odd" frames and a radiance pass on "even" frames
-        closestDynamic->autoAdjustOrigin();
 
         // store and override the value of "isRadiancePass" -- parts of the render pipe rely on "isRadiancePass" to set
         // lighting values etc
@@ -1649,18 +1755,15 @@ void LLReflectionMapManager::update()
         mRadiancePass = radiance_pass;
     }
 
-    static LLCachedControl<F32> sUpdatePeriod(gSavedSettings, "RenderDefaultProbeUpdatePeriod", 2.f);
-    if ((gFrameTimeSeconds - mDefaultProbe->mLastUpdateTime) < sUpdatePeriod)
-    {
-        if (mRenderReflectionProbeLevel == 0)
-        { // when probes are disabled don't update the default probe more often than the prescribed update period
-            oldestProbe = nullptr;
-        }
-    }
-    else if (mRenderReflectionProbeLevel > 0)
-    { // when probes are enabled don't update the default probe less often than the prescribed update period
-      oldestProbe = mDefaultProbe;
-    }
+#if LL_DARWIN
+    // A completed realtime pair ends its CPU group before selecting a new
+    // scheduled owner. Otherwise that fresh twelve-face update would inherit
+    // the old credit and bypass admission. Submitted commands retain their
+    // copies until actual GPU completion; an ongoing continuation keeps this
+    // owner copy as well.
+    if (!mUpdatingProbe && (!realtime || !closestDynamic || !mRealtimeRadiancePass))
+        mNativeUpdateCredit.reset();
+#endif
 
     // switch to updating the next oldest probe
     if (!did_update && oldestProbe != nullptr)
@@ -1670,9 +1773,21 @@ void LLReflectionMapManager::update()
 
         probe->autoAdjustOrigin();
 
+#if LL_DARWIN
+        const bool required = probe == mDefaultProbe && !mDefaultProbe->mComplete;
+        if (admit_native_group(required, NativeKind::scheduled))
+        {
+            std::optional<ALNativeFramePlan::OptionalScope> group_scope;
+            if (!required && mNativeUpdateCredit) group_scope.emplace(mNativeUpdateCredit);
+            sUpdateCount++;
+            mUpdatingProbe = probe;
+            doProbeUpdate();
+        }
+#else
         sUpdateCount++;
         mUpdatingProbe = probe;
         doProbeUpdate();
+#endif
     }
 
     if (oldestOccluded)
@@ -1681,6 +1796,9 @@ void LLReflectionMapManager::update()
         oldestOccluded->autoAdjustOrigin();
         oldestOccluded->mLastUpdateTime = gFrameTimeSeconds;
     }
+#if LL_DARWIN
+    if (!native_optional_requested) mNativeAdmission.reset();
+#endif
 }
 
 LLReflectionMap* LLReflectionMapManager::addProbe(LLSpatialGroup* group)
@@ -2008,6 +2126,9 @@ void LLReflectionMapManager::abandonProbeUpdate()
     // projection altogether and be marked complete on whatever SH coefficients its slot's
     // previous owner left behind.
     mRadiancePass = false;
+#if LL_DARWIN
+    if (!mRealtimeRadiancePass) mNativeUpdateCredit.reset();
+#endif
 }
 
 
@@ -2698,6 +2819,11 @@ bool LLReflectionMapManager::freeResources()
 
 void LLReflectionMapManager::cleanup()
 {
+#if LL_DARWIN
+    mNativeUpdateCredit.reset();
+    mNativeAdmission.reset();
+    mNativeAdmittedFrameValid = false;
+#endif
 #if LL_DARWIN
     releaseMetalDefaultProbe();
     releaseMetalProbeArray();

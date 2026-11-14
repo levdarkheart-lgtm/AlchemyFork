@@ -27,6 +27,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <set>
+#include <functional>
 
 #include "../llgltfmaterial.h"
 
@@ -50,6 +51,92 @@
 #define TINYGLTF_NO_EXTERNAL_IMAGE 1
 
 #include <tiny_gltf.h>
+
+TEST_CASE("GLTF native source publication invalidates shader-visible producer changes",
+          "[gltf][native-publication]")
+{
+    LLGLTFMaterial material;
+    auto source = std::make_shared<ALNativePublication::State>();
+    material.nativePublication().observe(source);
+    const std::array<std::function<void()>, 13> changes{{
+        [&] { material.setTextureId(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR, LLUUID::generateNewID()); },
+        [&] { material.setBaseColorFactor(LLColor4(.1f, .2f, .3f, .4f)); },
+        [&] { material.setEmissiveColorFactor(LLColor3(.4f, .3f, .2f)); },
+        [&] { material.setAlphaCutoff(.35f); },
+        [&] { material.setMetallicFactor(.2f); },
+        [&] { material.setRoughnessFactor(.4f); },
+        [&] { material.setAlphaMode(LLGLTFMaterial::ALPHA_MODE_MASK); },
+        [&] { material.setDoubleSided(true); },
+        [&] { material.setTextureOffset(LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR, LLVector2(.2f, .3f)); },
+        [&] { material.setTextureScale(LLGLTFMaterial::GLTF_TEXTURE_INFO_NORMAL, LLVector2(2.f, 3.f)); },
+        [&] { material.setTextureRotation(LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE, .5f); },
+        [&] { material.sanitizeAssetMaterial(); },
+        [&] { material.notifyRenderDataChanged(); },
+    }};
+    for (const auto& change : changes)
+    {
+        REQUIRE(source->publish(source->revision(), std::make_shared<int>(1)));
+        const auto before = material.nativePublication().publishedRevision();
+        change();
+        CHECK(source->dirty());
+        CHECK_FALSE(source->publication());
+        CHECK(material.nativePublication().publishedRevision() > before);
+    }
+}
+
+TEST_CASE("GLTF native producer identity is not copied or serialized into material content",
+          "[gltf][native-publication]")
+{
+    LLGLTFMaterial original;
+    original.setBaseColorFactor(LLColor4(.2f, .4f, .6f, .8f));
+    auto source = std::make_shared<ALNativePublication::State>();
+    original.nativePublication().observe(source);
+    REQUIRE(source->publish(source->revision(), std::make_shared<int>(1)));
+    const auto identity = original.nativePublication().identity();
+    const auto hash = original.getHash();
+    LLGLTFMaterial copy(original);
+    CHECK(copy.nativePublication().identity() != identity);
+    CHECK(copy == original);
+    CHECK(copy.getHash() == hash);
+    copy.setAlphaCutoff(.125f);
+    CHECK_FALSE(source->dirty());
+    original = copy;
+    CHECK(original.nativePublication().identity() == identity);
+    CHECK(source->dirty());
+    CHECK(original == copy);
+    const auto assigned_hash = original.getHash();
+    original.notifyRenderDataChanged();
+    CHECK(original.getHash() == assigned_hash);
+}
+
+TEST_CASE("GLTF bulk decode and overrides publish changed native material inputs",
+          "[gltf][native-publication]")
+{
+    LLGLTFMaterial material;
+    auto source = std::make_shared<ALNativePublication::State>();
+    material.nativePublication().observe(source);
+    tinygltf::Model model;
+    model.materials.emplace_back();
+    model.materials[0].doubleSided = true;
+    model.materials[0].alphaMode = "MASK";
+    model.materials[0].alphaCutoff = .25;
+    REQUIRE(source->publish(source->revision(), std::make_shared<int>(1)));
+    material.setFromModel(model, 0);
+    CHECK(source->dirty());
+    CHECK(material.mDoubleSided);
+    CHECK(material.mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK);
+    LLGLTFMaterial override_material;
+    override_material.setAlphaCutoff(.75f, true);
+    REQUIRE(source->publish(source->revision(), std::make_shared<int>(2)));
+    material.applyOverride(override_material);
+    CHECK(source->dirty());
+    CHECK(material.mAlphaCutoff == .75f);
+    LLSD override_data;
+    override_data["ac"] = .375;
+    REQUIRE(source->publish(source->revision(), std::make_shared<int>(3)));
+    material.applyOverrideLLSD(override_data);
+    CHECK(source->dirty());
+}
 
 namespace
 {

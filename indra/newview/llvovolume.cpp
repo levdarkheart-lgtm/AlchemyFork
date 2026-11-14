@@ -5625,6 +5625,7 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
     LLSpatialGroup::drawmap_elem_t& draw_vec = group->mDrawMap[passType];
 
     S32 idx = static_cast<S32>(draw_vec.size()) - 1;
+    if (idx >= 0) draw_vec[idx]->invalidateMetalSource();
 
     bool fullbright = (type == LLRenderPass::PASS_FULLBRIGHT) ||
         (type == LLRenderPass::PASS_INVISIBLE) ||

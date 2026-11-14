@@ -92,7 +92,7 @@ if(AL_BUILD_TESTS)
   al_add_test_binary(
     llpolymesh_test
     PROJECT llappearance
-    SOURCES tests/llpolymesh_test.cpp
+    SOURCES tests/alavatar_mesh_revision_test.cpp tests/llpolymesh_test.cpp
     LIBRARIES llappearance
     SUPPORT llappearance_test_fakes
   )

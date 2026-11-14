@@ -28,6 +28,7 @@
 
 namespace
 {
+    thread_local std::shared_ptr<const void> submission_owner;
     std::atomic<std::uint64_t> committed_command_buffers{0};
     std::atomic<std::uint64_t> encoded_draw_calls{0};
     std::atomic<bool> command_timing_enabled{false};
@@ -588,6 +589,22 @@ ALMetalCommandTiming ALMetalDevice::commandTiming() noexcept
     return result;
 }
 
+ALMetalSubmissionScope::ALMetalSubmissionScope(std::shared_ptr<const void> owner) noexcept
+    : mPrevious(std::move(submission_owner))
+{
+    submission_owner = std::move(owner);
+}
+
+ALMetalSubmissionScope::~ALMetalSubmissionScope()
+{
+    submission_owner = std::move(mPrevious);
+}
+
+const std::shared_ptr<const void>& ALMetalSubmissionScope::current() noexcept
+{
+    return submission_owner;
+}
+
 std::unique_ptr<ALMetalCommandBuffer> ALMetalDevice::makeCommandBuffer(
     const std::string& label,
     std::string* error) const
@@ -613,7 +630,10 @@ std::unique_ptr<ALMetalCommandBuffer> ALMetalDevice::makeCommandBuffer(
         auto impl = std::make_unique<ALMetalCommandBuffer::Impl>();
         impl->device = mImpl->device;
         impl->command_buffer = command;
-        return std::unique_ptr<ALMetalCommandBuffer>(new ALMetalCommandBuffer(std::move(impl)));
+        auto result = std::unique_ptr<ALMetalCommandBuffer>(new ALMetalCommandBuffer(std::move(impl)));
+        const auto& owner = ALMetalSubmissionScope::current();
+        if (owner && !result->retainUntilCompletion(owner, error)) return nullptr;
+        return result;
     }
 }
 

@@ -33,6 +33,7 @@
 #include "v2math.h"
 #include "lluuid.h"
 #include "hbxxh.h"
+#include "alnativepublication.h"
 
 #include <array>
 #include <cstring>
@@ -93,6 +94,17 @@ public:
     LLGLTFMaterial& operator=(const LLGLTFMaterial& rhs);
     bool operator==(const LLGLTFMaterial& rhs) const;
     bool operator!=(const LLGLTFMaterial& rhs) const { return !(*this == rhs); }
+
+    ALNativePublication::Signal& nativePublication() noexcept { return mNativePublication; }
+    const ALNativePublication::Signal& nativePublication() const noexcept { return mNativePublication; }
+    // Owner-side bulk/editor binding updates use this after the complete
+    // material tuple changes. Shader-visible values, not an asset UUID/hash,
+    // determine whether a retained native source is still current.
+    void notifyRenderDataChanged() noexcept
+    {
+        mNativePublication.willWrite();
+        mNativePublication.didPublish();
+    }
 
     enum TextureInfo : U32
     {
@@ -311,6 +323,7 @@ public:
     bool mOverrideAlphaMode = false;
 
 private:
+    ALNativePublication::Signal mNativePublication;
     // Canonical hashable payload (padding-free, deterministic across compilers).
     //   mLocalTexDataDigest                                                       8
     //   mTextureId[N]                            N * 16

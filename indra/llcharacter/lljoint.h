@@ -137,6 +137,11 @@ protected:
 public:
     U32             mDirtyFlags;
 
+    // Durable owner mutation identity, independent of lazy matrix reads.
+    // The cached root is updated only on subtree relinks, so animation writes
+    // do not walk ancestors merely to advance this revision.
+    U64 getPoseRevision() const noexcept { return mPoseRoot->mPoseRevision; }
+
     // describes the skin binding pose
     LLVector3       mSkinOffset;
 
@@ -191,6 +196,10 @@ public:
 private:
     void init();
     void dirtySubtree(U32 flags);
+    void setPoseRoot(LLJoint* root) noexcept;
+    void advancePoseRevision() noexcept;
+    LLJoint* mPoseRoot = nullptr;
+    U64 mPoseRevision = 0;
 
 public:
     // set name and parent

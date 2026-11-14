@@ -32,6 +32,8 @@
 #include "threadpool_fwd.h"
 #include "alimagedecodescheduler.h"
 
+class ALNativeFrameBudget;
+
 class LLImageDecodeThread
 {
 public:
@@ -60,6 +62,7 @@ public:
     // Main-thread control tick, also used with an injected clock by the worker
     // regression tests. Normal update() samples Darwin pressure at most 2 Hz.
     void updateConcurrency(const ALImageDecodeScheduler::Pressure& pressure);
+    void updateFrameAdmission(const ALNativeFrameBudget& budget);
     S32 getTotalDecodeCount() { return mDecodeCount; }
     void shutdown();
 

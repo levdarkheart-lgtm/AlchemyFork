@@ -32,6 +32,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -41,6 +42,75 @@
 namespace
 {
     using namespace std::chrono_literals;
+
+    TEST_CASE("llimage: raw-image count follows object lifetime for every constructor",
+              "[llimage][raw-image-count]")
+    {
+        const S32 before = LLImageRaw::sRawImageCount.load();
+        const U8 const_pixels[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+        U8 mutable_pixels[8] = {8, 7, 6, 5, 4, 3, 2, 1};
+        {
+            LLPointer<LLImageRaw> empty = new LLImageRaw();
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 1);
+            LLPointer<LLImageRaw> sized = new LLImageRaw(2, 1, 4);
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 2);
+            LLPointer<LLImageRaw> const_copy = new LLImageRaw(const_pixels, 2, 1, 4);
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 3);
+            REQUIRE(const_copy->getData() != nullptr);
+            CHECK(const_copy->getData() != const_pixels);
+            CHECK(std::memcmp(const_copy->getData(), const_pixels, sizeof(const_pixels)) == 0);
+            LLPointer<LLImageRaw> mutable_copy = new LLImageRaw(mutable_pixels, 2, 1, 4, false);
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 4);
+            REQUIRE(mutable_copy->getData() != nullptr);
+            CHECK(mutable_copy->getData() != mutable_pixels);
+            CHECK(std::memcmp(mutable_copy->getData(), mutable_pixels, sizeof(mutable_pixels)) == 0);
+
+            // Aliasing an image is another reference, not another image.
+            LLPointer<LLImageRaw> alias = const_copy;
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 4);
+            LLPointer<LLImageRaw> duplicate = const_copy->duplicate();
+            CHECK(duplicate != const_copy);
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 5);
+            REQUIRE(duplicate->getData() != nullptr);
+            CHECK(std::memcmp(duplicate->getData(), const_pixels, sizeof(const_pixels)) == 0);
+            duplicate = nullptr;
+            alias = nullptr;
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 4);
+
+            // Transfer a valid image allocation through the no-copy constructor.
+            // Releasing storage does not end the donor object's lifetime.
+            U8* transferred_pixels = sized->getData();
+            REQUIRE(transferred_pixels != nullptr);
+            sized->releaseData();
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 4);
+            LLPointer<LLImageRaw> adopted = new LLImageRaw(transferred_pixels, 2, 1, 4, true);
+            CHECK(adopted->getData() == transferred_pixels);
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 5);
+            sized = nullptr;
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 4);
+        }
+        CHECK(LLImageRaw::sRawImageCount.load() == before);
+    }
+
+    TEST_CASE("llimage: rejected raw-image data still has one balanced object lifetime",
+              "[llimage][raw-image-count]")
+    {
+        const S32 before = LLImageRaw::sRawImageCount.load();
+        const U8 const_pixel[4] = {1, 2, 3, 4};
+        U8 mutable_pixel[4] = {4, 3, 2, 1};
+        {
+            LLPointer<LLImageRaw> invalid_const = new LLImageRaw(const_pixel, 0, 1, 4);
+            CHECK(invalid_const->isBufferInvalid());
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 1);
+            LLPointer<LLImageRaw> invalid_sized = new LLImageRaw(0, 1, 4);
+            CHECK(invalid_sized->isBufferInvalid());
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 2);
+            LLPointer<LLImageRaw> invalid_mutable = new LLImageRaw(mutable_pixel, 0, 1, 4, false);
+            CHECK(invalid_mutable->isBufferInvalid());
+            CHECK(LLImageRaw::sRawImageCount.load() == before + 3);
+        }
+        CHECK(LLImageRaw::sRawImageCount.load() == before);
+    }
 
     // A copied guard would unlock its images once per copy.
     static_assert(!std::is_copy_constructible_v<LLImageDataCopyLock> && !std::is_copy_assignable_v<LLImageDataCopyLock>);

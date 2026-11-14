@@ -119,6 +119,8 @@ target_sources(
     almetaltextureops.cpp
     almetaluirenderer.cpp
     almetalworld.cpp
+    almetalworldvisibility.mm
+    almetalworldprepare.mm
     almetalworlddiagnostics.cpp
   PUBLIC
     FILE_SET HEADERS
@@ -148,6 +150,8 @@ target_sources(
       almetaltextureops.h
       almetaluirenderer.h
       almetalworld.h
+      almetalworldvisibility.h
+      almetalworldprepare.h
       almetalworlddiagnostics.h
       almetalshadowprepare.h
       almetalshadowvisibility.h
@@ -194,6 +198,7 @@ set_source_files_properties(
   almetalstagetiming.mm
   almetalsurface.mm
   almetaltexturebenchmark.mm
+  almetalworldprepare.mm
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
 
@@ -227,6 +232,10 @@ if(AL_BUILD_TESTS)
             tests/almetal_avatar_resources_test.mm tests/almetal_gpu_test.mm tests/almetal_encoder_cache_test.mm
             tests/almetal_indexed_join_test.mm
             tests/almetal_completion_test.mm tests/almetal_world_data_test.mm
+            tests/almetal_submission_owner_test.mm
+            tests/almetal_world_visibility_test.mm
+            tests/almetal_world_source_owner_test.mm
+            tests/almetal_world_prepare_test.mm
             tests/almetal_borrowed_target_test.mm
             tests/almetal_base_lighting_fastpath_test.mm
             tests/almetal_debug_buffer_test.mm
@@ -256,7 +265,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_probe_workload_test.mm
             tests/almetal_frame_capture_test.mm
             tests/almetal_function_constants_test.mm
-    LIBRARIES almetal
+    LIBRARIES almetal llcommon
     RESOURCE_LOCK apple_gpu
   )
   set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
@@ -291,6 +300,8 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_indexed_join_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_completion_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_world_data_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_submission_owner_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_world_prepare_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_cache_test.mm
                               tests/almetal_shadow_prepare_test.mm
                               tests/almetal_shadow_extended_test.mm
@@ -344,3 +355,9 @@ if(AL_BUILD_TESTS)
     )
   endif()
 endif()
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/almetal_world_visibility.metal" AL_METAL_WORLD_VISIBILITY_SOURCE)
+configure_file(almetalworldvisibilitysource.h.in "${CMAKE_CURRENT_BINARY_DIR}/almetalworldvisibilitysource.h" @ONLY)
+set_source_files_properties(tests/almetal_world_visibility_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+
+set_source_files_properties(tests/almetal_world_source_owner_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

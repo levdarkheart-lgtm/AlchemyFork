@@ -87,6 +87,13 @@ public:
     // return mSkinHash->mHash, or 0 if mSkinHash is null
     U64 getSkinHash();
 
+    // Owner-thread producer metadata. Main, shadow and probe consumers share
+    // one immutable source payload; detached work receives that payload only.
+    const std::shared_ptr<ALNativePublication::State>& metalSourcePublication() const;
+    void observeMetalSourceDependencies() const;
+    void invalidateMetalSource() const noexcept;
+    U64 metalSourceLayoutRevision() const noexcept { return mMetalSourceLayoutRevision; }
+
     LLPointer<LLVertexBuffer> mVertexBuffer;
     // Render-owner cache only. Detached jobs receive its immutable native
     // record, never this scene object or its non-atomic LLRefCount.
@@ -220,6 +227,14 @@ public:
                         && (lhs.isNull() || (rhs.notNull() && lhs->mBump > rhs->mBump));
         }
     };
+
+private:
+    mutable std::shared_ptr<ALNativePublication::State> mMetalSourcePublication;
+    // A fresh relay replaces the complete dependency set transactionally.
+    // Old producers keep only expired weak observers, never raw scene links.
+    mutable std::shared_ptr<ALNativePublication::Observer> mMetalSourceDependencies;
+    mutable U64 mMetalSourceDependencyRevision = 0;
+    mutable U64 mMetalSourceLayoutRevision = 1;
 };
 
 class alignas(16) LLSpatialGroup : public LLOcclusionCullingGroup

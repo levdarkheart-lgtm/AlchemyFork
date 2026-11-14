@@ -17,6 +17,9 @@ endif()
 target_sources(
   llcommon
   PRIVATE
+    alnativeframebudget.cpp
+    alnativepublication.cpp
+    alnativesourceworkingset.cpp
     alfilewrite.cpp
     almainloop.cpp
     alserialworker.cpp
@@ -121,6 +124,9 @@ target_sources(
   PUBLIC
     FILE_SET HEADERS
       FILES
+        alnativeframebudget.h
+        alnativepublication.h
+        alnativesourceworkingset.h
         alenumtable.h
         alfilewrite.h
         allinebreaks.h
@@ -311,6 +317,9 @@ if(AL_BUILD_TESTS)
       tests/alenumtable_test.cpp
       tests/alfilewrite_test.cpp
       tests/almemorybudget_test.cpp
+      tests/alnativeframebudget_test.cpp
+      tests/alnativepublication_test.cpp
+      tests/alnativesourceworkingset_test.cpp
       tests/alrecoverystore_test.cpp
       tests/alregex_test.cpp
       tests/alsavehistory_test.cpp

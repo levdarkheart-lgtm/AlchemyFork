@@ -33,6 +33,7 @@
 #include "linden_common.h"
 
 #include "llimagegl.h"
+#include <utility>
 #include "llgltexture.h"
 
 #include "llerror.h"
@@ -112,6 +113,7 @@ struct WorkerMetalUploadBatch
 
 thread_local bool sOnImageGLThread = false;
 thread_local WorkerMetalUploadBatch sWorkerMetalUploadBatch;
+thread_local ALNativeFrameBudget::Lease sNativeUploadCredit;
 
 void flush_worker_metal_upload_batch()
 {
@@ -308,6 +310,20 @@ LLImageGL::MetalPublicationStats LLImageGL::metalPublicationStats() noexcept
     result.immediate_upload_failures = load(sMetalPublicationCounters.immediate_upload_failures);
 #endif
     return result;
+}
+
+LLImageGL::NativeUploadCreditScope::NativeUploadCreditScope(ALNativeFrameBudget::Lease credit)
+{
+#if LL_DARWIN
+    mPrevious = std::exchange(sNativeUploadCredit, std::move(credit));
+#endif
+}
+
+LLImageGL::NativeUploadCreditScope::~NativeUploadCreditScope()
+{
+#if LL_DARWIN
+    sNativeUploadCredit = std::move(mPrevious);
+#endif
 }
 
 //statics
@@ -1119,6 +1135,7 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
         mLastBindTime = sLastFrameTime;
         mGLTextureCreated = false;
         llassert(mTexName == 0);
+        mNativePublication.didPublish();
     }
     return true;
 }
@@ -1244,6 +1261,7 @@ bool LLImageGL::createMetalTexture(
     mLastBindTime = sLastFrameTime;
     mGLTextureCreated = false;
     llassert(mTexName == 0);
+    mNativePublication.didPublish();
     return true;
 }
 
@@ -1297,6 +1315,7 @@ bool LLImageGL::uploadMetalSubImage(const U8* data, S32 data_width,
 
     touchContents();
     mLastBindTime = sLastFrameTime;
+    if (!mUploadInFlight) mNativePublication.didPublish();
     return true;
 }
 
@@ -1342,6 +1361,7 @@ bool LLImageGL::uploadMetalImage(const LLImageRaw* image)
     if (on_main_thread())
     {
         mLastBindTime = sLastFrameTime;
+        if (!mUploadInFlight) mNativePublication.didPublish();
     }
     return true;
 }
@@ -1485,11 +1505,13 @@ bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
         return false;
     }
 
+    mNativePublication.willWrite();
     mPendingMetalTexture.reset();
     mMetalTexture = std::move(texture);
     mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
     updateMetalTextureAccounting();
     touchContents();
+    mNativePublication.didPublish();
     return true;
 }
 
@@ -1514,6 +1536,7 @@ bool LLImageGL::adoptMetalRenderTextureAuthoritative(
     setCategory(category);
     clearAlphaAnalysis();
     llassert(!getHasGLTexture());
+    mNativePublication.didPublish();
     return true;
 }
 
@@ -1582,7 +1605,9 @@ void LLImageGL::markMetalRenderTextureUpdated() noexcept
 {
     if (mMetalTexture)
     {
+        mNativePublication.willWrite();
         touchContents();
+        mNativePublication.didPublish();
     }
 }
 
@@ -1590,11 +1615,13 @@ void LLImageGL::discardMetalTexture() noexcept
 {
     if (!mUploadInFlight)
     {
+        mNativePublication.willWrite();
         clearMetalTextureAccounting();
         mMetalTexture.reset();
         mPendingMetalTexture.reset();
         mTextureMemory = S64Bytes(0);
         touchContents();
+        mNativePublication.withdraw();
     }
 }
 
@@ -1644,6 +1671,9 @@ void LLImageGL::rollbackMetalTextureWrite() noexcept
 bool LLImageGL::prepareMetalTextureWrite(ALMetalCommandBuffer& command,
                                         std::string& error)
 {
+    // Cached source leases must be invalidated before the ownership test.
+    // Pending worker generations have no owner-visible publication yet.
+    if (on_main_thread() && !mUploadInFlight) mNativePublication.willWrite();
     auto& destination = mUploadInFlight ? mPendingMetalTexture : mMetalTexture;
     if (!destination || destination.use_count() == 1) return true;
 
@@ -1719,6 +1749,7 @@ bool LLImageGL::prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& comma
     {
         return true;
     }
+    if (on_main_thread() && !mUploadInFlight) mNativePublication.willWrite();
 
     const MetalUploadFormat upload_format =
         metal_upload_format(getStorageInternalFormat(), mFormatPrimary, mFormatType);
@@ -1836,6 +1867,12 @@ bool LLImageGL::uploadMetalTextureRegion(ALMetalCommandBuffer& command_buffer,
     }
 
     std::string error;
+    if (sNativeUploadCredit &&
+        !command_buffer.retainUntilCompletion(sNativeUploadCredit, &error))
+    {
+        LL_WARNS("Metal") << "Could not retain native upload admission credit: " << error << LL_ENDL;
+        return false;
+    }
     if (!prepareMetalTextureWrite(command_buffer, error))
     {
         rollbackMetalTextureWrite();
@@ -2123,6 +2160,7 @@ void LLImageGL::queuePublish(UploadCompletion metal_completion)
     ++mPublishesPending;
     sPendingPublishes.push_back(
         { LLPointer<LLImageGL>(this), std::move(metal_completion) });
+    ALNativeFrameBudget::instance().setPendingPublications(sPendingPublishes.size());
 }
 
 void LLImageGL::finishPublish(bool metal_upload_succeeded)
@@ -2223,6 +2261,7 @@ U32 LLImageGL::publishUploads()
         ready.push_back(std::move(pending));
     }
     sPendingPublishes.erase(sPendingPublishes.begin(), sPendingPublishes.begin() + ready.size());
+    ALNativeFrameBudget::instance().setPendingPublications(sPendingPublishes.size());
 
     for (PendingPublish& pending : ready)
     {
@@ -2359,6 +2398,7 @@ void LLImageGL::syncTexName(LLGLuint texname)
 #endif
     if (publish)
     {
+        mNativePublication.willWrite();
         mTexName = 0;
 
         // Marked bound as it publishes, so it is not thrown out before anything draws it.
@@ -2381,6 +2421,7 @@ void LLImageGL::syncTexName(LLGLuint texname)
 
     // Members and mTexName describe the same texture again.
     endUpload();
+    if (publish) mNativePublication.didPublish();
 }
 
 bool LLImageGL::stagesAlpha() const
@@ -2418,19 +2459,27 @@ void LLImageGL::setAlphaAnalysis(const AlphaAnalysis& analysis)
         return;
     }
 
+    const bool changed = mIsMask != analysis.mIsMask ||
+        mMaxAlpha != analysis.mMaxAlpha || mMinAlpha != analysis.mMinAlpha;
+    if (changed) mNativePublication.willWrite();
     setIsMask(analysis.mIsMask);
     mMaxAlpha = analysis.mMaxAlpha;
     mMinAlpha = analysis.mMinAlpha;
+    if (changed) mNativePublication.didPublish();
 }
 
 void LLImageGL::clearAlphaAnalysis()
 {
     // Provisional, while an analysis is out: no answer, so the owner is not told, and the next answer is weighed
     // against the last one, and against this if anything read it meanwhile.
+    const bool visible_change = on_main_thread() && !mUploadInFlight &&
+        (mIsMask || mMaxAlpha != 255 || mMinAlpha != 0);
+    if (visible_change) mNativePublication.willWrite();
     mIsMask = false;
     mProvisionalRead.store(false, std::memory_order_relaxed);
     mMaxAlpha = 255;
     mMinAlpha = 0;
+    if (visible_change) mNativePublication.didPublish();
 }
 
 void LLImageGL::setIsMask(bool is_mask)
@@ -2671,6 +2720,10 @@ void LLImageGL::destroyGLTexture()
 
 #if LL_DARWIN
     const bool had_native_texture = mMetalTexture || mPendingMetalTexture;
+    if (on_main_thread() && !mUploadInFlight && had_native_texture)
+    {
+        mNativePublication.willWrite();
+    }
     clearMetalTextureAccounting();
     mMetalTexture.reset();
     mPendingMetalTexture.reset();
@@ -2698,6 +2751,8 @@ void LLImageGL::destroyGLTexture()
 
     // Invalidate pending jobs
     ++mAlphaAnalysisSerial;
+    if (on_main_thread() && !mUploadInFlight && had_native_texture)
+        mNativePublication.withdraw();
 }
 
 //force to invalidate the gl texture, most likely a sculpty texture
@@ -3244,9 +3299,7 @@ void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
             // Only apply if no newer analysis has been requested
             if (mAlphaAnalysisSerial == request_serial)
             {
-                setIsMask(analysis.mIsMask);
-                mMaxAlpha = analysis.mMaxAlpha;
-                mMinAlpha = analysis.mMinAlpha;
+                setAlphaAnalysis(analysis);
             }
             unref();
         }
@@ -3491,6 +3544,7 @@ bool LLImageGL::scaleDown(S32 desired_discard)
     const S32 source_mip = desired_discard - mCurrentDiscardLevel;
     const S32 desired_width = getWidth(desired_discard);
     const S32 desired_height = getHeight(desired_discard);
+    mNativePublication.willWrite();
     if (!preserveMetalScaleDown(static_cast<U32>(source_mip),
                                 static_cast<U32>(desired_width),
                                 static_cast<U32>(desired_height)))
@@ -3507,6 +3561,7 @@ bool LLImageGL::scaleDown(S32 desired_discard)
     mLastBindTime = sLastFrameTime;
     llassert(!getHasGLTexture());
     sMetalPublicationCounters.scale_down_successes.fetch_add(1, std::memory_order_relaxed);
+    mNativePublication.didPublish();
     return true;
 #endif
 }

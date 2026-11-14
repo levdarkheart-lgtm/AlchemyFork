@@ -59,6 +59,7 @@ LLFetchedGLTFMaterial& LLFetchedGLTFMaterial::operator=(const LLFetchedGLTFMater
     mEmissiveTexture = rhs.mEmissiveTexture;
     std::copy(std::begin(rhs.mBakedTextures), std::end(rhs.mBakedTextures), std::begin(mBakedTextures));
 
+    notifyRenderDataChanged();
     return *this;
 }
 
@@ -245,6 +246,8 @@ bool LLFetchedGLTFMaterial::replaceLocalTexture(const LLUUID& tracking_id, const
     }
     updateLocalTexDataDigest();
 
+    if (res) notifyRenderDataChanged();
+
     return res;
 }
 
@@ -268,11 +271,22 @@ void LLFetchedGLTFMaterial::updateTextureTracking()
 
 void LLFetchedGLTFMaterial::clearFetchedTextures()
 {
-    mBaseColorTexture = nullptr;
-    mNormalTexture = nullptr;
-    mMetallicRoughnessTexture = nullptr;
-    mEmissiveTexture = nullptr;
-    std::fill(std::begin(mBakedTextures), std::end(mBakedTextures), nullptr);
+    setRenderTextures({}, {});
+}
+
+void LLFetchedGLTFMaterial::setRenderTextures(
+    const FetchedTextures& fetched, const BakedTextures& baked)
+{
+    const FetchedTextures previous{
+        mBaseColorTexture, mNormalTexture, mMetallicRoughnessTexture, mEmissiveTexture};
+    const bool same_bakes = std::equal(baked.begin(), baked.end(), std::begin(mBakedTextures));
+    if (previous == fetched && same_bakes) return;
+    mBaseColorTexture = fetched[GLTF_TEXTURE_INFO_BASE_COLOR];
+    mNormalTexture = fetched[GLTF_TEXTURE_INFO_NORMAL];
+    mMetallicRoughnessTexture = fetched[GLTF_TEXTURE_INFO_METALLIC_ROUGHNESS];
+    mEmissiveTexture = fetched[GLTF_TEXTURE_INFO_EMISSIVE];
+    std::copy(baked.begin(), baked.end(), std::begin(mBakedTextures));
+    notifyRenderDataChanged();
 }
 
 void LLFetchedGLTFMaterial::materialBegin()

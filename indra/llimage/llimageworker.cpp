@@ -27,6 +27,7 @@
 #include "linden_common.h"
 
 #include "llimageworker.h"
+#include "alnativeframebudget.h"
 #include "llimagedxt.h"
 #include "threadpool.h"
 #if LL_DARWIN
@@ -112,6 +113,7 @@ LLImageDecodeThread::~LLImageDecodeThread()
 size_t LLImageDecodeThread::update(F32 max_time_ms)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    updateFrameAdmission(ALNativeFrameBudget::instance());
     const auto now = mNow();
     if (!mHaveControlUpdate || now - mLastControlUpdate >= std::chrono::milliseconds(500))
     {
@@ -142,6 +144,13 @@ ALImageDecodeScheduler::Snapshot LLImageDecodeThread::getDecodeStats() const
     return mScheduler->snapshot();
 }
 
+void LLImageDecodeThread::updateFrameAdmission(const ALNativeFrameBudget& budget)
+{
+    const auto admission = mScheduler->snapshot();
+    mScheduler->setDownstreamCeiling(budget.decodeCeiling(
+        admission.minimum, admission.current, admission.maximum));
+}
+
 void LLImageDecodeThread::updateConcurrency(const ALImageDecodeScheduler::Pressure& pressure)
 {
     const auto now = mNow();
@@ -156,6 +165,7 @@ void LLImageDecodeThread::updateConcurrency(const ALImageDecodeScheduler::Pressu
         LL_INFOS("ImageDecode") << "Decode admission: adaptive=" << stats.adaptive
             << " limit=" << stats.current << " minimum=" << stats.minimum
             << " normal=" << stats.baseline << " maximum=" << stats.maximum
+            << " downstream_ceiling=" << stats.downstream_ceiling
             << " waiting=" << stats.waiting << " active=" << stats.active
             << " oldest_wait_ms=" << stats.oldest_wait_s * 1000.
             << " submitted=" << stats.submitted << " started=" << stats.started

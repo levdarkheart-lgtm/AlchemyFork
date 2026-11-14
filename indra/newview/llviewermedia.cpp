@@ -3328,6 +3328,9 @@ bool LLViewerMediaImpl::updateAcceleratedTexture()
     // render-target-capable media mirror and publish playing state only after
     // that write succeeds; there is deliberately no parallel GL import/copy.
     std::string metal_error;
+    // Retire publisher cache leases before choosing writable storage. Actual
+    // queued/in-flight readers retain their leases and still force replacement.
+    media_image->nativePublication().willWrite();
     ALMetalTexture* metal_destination = media_image->getMetalTexture();
     std::unique_ptr<ALMetalTexture> replacement;
     if (!metal_destination || media_image->hasMetalTextureLeases() ||

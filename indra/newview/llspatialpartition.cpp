@@ -56,6 +56,7 @@
 #include "llviewershadermgr.h"
 #include "llcontrolavatar.h"
 #include "lltoolmgr.h"
+#include "llimagegl.h"
 
 extern bool gShiftFrame;
 
@@ -142,6 +143,11 @@ LLSpatialGroup::~LLSpatialGroup()
 
 void LLSpatialGroup::clearDrawMap()
 {
+    // A rebuild must release obsolete publisher leases before filling shared
+    // vertex stores. Queued views retain their own immutable native inputs.
+    for (const auto& [type, draws] : mDrawMap)
+        for (const auto& draw : draws)
+            if (draw) draw->invalidateMetalSource();
     mDrawMap.clear();
 }
 
@@ -3697,6 +3703,81 @@ LLDrawInfo::~LLDrawInfo()
     {
         gPipeline.checkReferences(this);
     }
+    if (mMetalSourcePublication) mMetalSourcePublication->invalidate();
+}
+
+namespace
+{
+class NativeDrawSourceDependencies final : public ALNativePublication::Observer
+{
+public:
+    explicit NativeDrawSourceDependencies(
+        const std::shared_ptr<ALNativePublication::State>& state) : mState(state) {}
+    void nativePublicationChanged(ALNativePublication::Phase phase) noexcept override
+    {
+        if (auto state = mState.lock()) state->nativePublicationChanged(phase);
+    }
+private:
+    std::weak_ptr<ALNativePublication::State> mState;
+};
+}
+
+const std::shared_ptr<ALNativePublication::State>& LLDrawInfo::metalSourcePublication() const
+{
+    if (!mMetalSourcePublication)
+        mMetalSourcePublication = std::make_shared<ALNativePublication::State>();
+    return mMetalSourcePublication;
+}
+
+void LLDrawInfo::invalidateMetalSource() const noexcept
+{
+    ++mMetalSourceLayoutRevision;
+    mMetalSourceDependencyRevision = 0;
+    if (mMetalSourcePublication) mMetalSourcePublication->invalidate();
+}
+
+void LLDrawInfo::observeMetalSourceDependencies() const
+{
+    const auto& state = metalSourcePublication();
+    if (mMetalSourceDependencies && mMetalSourceDependencyRevision == state->revision()) return;
+    auto relay = std::make_shared<NativeDrawSourceDependencies>(state);
+#if LL_DARWIN
+    if (mVertexBuffer) mVertexBuffer->nativePublication().observe(relay);
+    const auto image = [&](LLViewerTexture* texture)
+    {
+        LLImageGL* native = texture ? texture->getGLTexture() : nullptr;
+        if (native) native->nativePublication().observe(relay);
+    };
+    const auto material = [&](LLFetchedGLTFMaterial* value)
+    {
+        if (!value) return;
+        value->nativePublication().observe(relay);
+        for (U32 slot = 0; slot < LLGLTFMaterial::GLTF_TEXTURE_INFO_COUNT; ++slot)
+            image(value->getRenderTexture(static_cast<LLGLTFMaterial::TextureInfo>(slot)));
+    };
+    image(mTexture.get());
+    image(mSpecularMap.get());
+    image(mNormalMap.get());
+    for (const auto& value : mTextureList) image(value.get());
+    for (const auto& value : mMaterialSlotList)
+    {
+        image(value.mDiffuse.get());
+        image(value.mNormalMap.get());
+        image(value.mSpecularMap.get());
+    }
+    material(mGLTFMaterial.get());
+    for (const auto& value : mGLTFMaterialList) material(value.get());
+    // A source can initially publish a streaming placeholder, including the
+    // normal-map fallback selected by the published discard level.
+    image(LLViewerFetchedTexture::sDefaultImagep.get());
+    image(LLViewerFetchedTexture::sWhiteImagep.get());
+    image(LLViewerFetchedTexture::sFlatNormalImagep.get());
+#endif
+    // Do not discard the old relay until every new subscription succeeded.
+    // An allocation exception leaves the existing dependency set intact and
+    // lets the owner retain its established incomplete-source retry policy.
+    mMetalSourceDependencies = std::move(relay);
+    mMetalSourceDependencyRevision = state->revision();
 }
 
 LLColor4U LLDrawInfo::getDebugColor() const

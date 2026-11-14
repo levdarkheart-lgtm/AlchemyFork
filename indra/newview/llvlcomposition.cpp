@@ -384,6 +384,7 @@ bool LLTerrainMaterials::materialTexturesReady(LLPointer<LLFetchedGLTFMaterial>&
         mat->mNormalTexture            = fetch_terrain_texture(mat->mTextureId[LLGLTFMaterial::GLTF_TEXTURE_INFO_NORMAL]);
         mat->mMetallicRoughnessTexture = fetch_terrain_texture(mat->mTextureId[LLGLTFMaterial::GLTF_TEXTURE_INFO_METALLIC_ROUGHNESS]);
         mat->mEmissiveTexture          = fetch_terrain_texture(mat->mTextureId[LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE]);
+        mat->notifyRenderDataChanged();
     }
 
     // *NOTE: Calls to makeTextureReady may boost textures. Do not early-return.

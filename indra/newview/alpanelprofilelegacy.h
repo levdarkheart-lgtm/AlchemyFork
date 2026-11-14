@@ -177,6 +177,7 @@ public:
         void createClassifiedEditPanel(ALPanelClassifiedEdit** panel);
 
         bool isActionEnabled(const LLSD& userdata) const;
+        bool isPickActionEnabled(const LLSD& userdata);
         bool callbackDeletePick(const LLSD& notification, const LLSD& response);
         bool callbackDeleteClassified(const LLSD& notification, const LLSD& response);
         bool callbackTeleport(const LLSD& notification, const LLSD& response);

@@ -29,6 +29,7 @@
 #include <filesystem>
 
 #include "llappviewer.h"
+#include "alnativeframeplan.h"
 
 #include "alcrashreporter.h"
 
@@ -1421,6 +1422,10 @@ bool LLAppViewer::frame()
 
 bool LLAppViewer::doFrame()
 {
+    static LLCachedControl<U32> minimum_headroom_mib(
+        gSavedSettings, "RenderMinFreeMainMemoryThreshold", 512);
+    ALNativeFramePlan::MainScope native_frame_plan(gFrameIntervalSeconds.value(),
+        static_cast<U64>(minimum_headroom_mib) * 1024 * 1024);
     LL_PROFILE_ZONE_SCOPED;
     LL_PROFILE_GPU_ZONE("doFrame");
 
@@ -1576,6 +1581,10 @@ bool LLAppViewer::doFrame()
                 display();
                 // The frame display() showed, if paced, ends here: the main loop's work in its slack, then the wait.
                 display_end_frame();
+                // Ordinary probes consume the current required-main cost;
+                // destructor records the full outer frame, excluding CPU
+                // spent inside explicitly admitted optional update groups.
+                native_frame_plan.recordRequiredWork();
 
                 {
                     LLPerfStats::RecordSceneTime T(LLPerfStats::StatType_t::RENDER_IDLE);
@@ -1799,6 +1808,8 @@ void LLAppViewer::flushLFSIO()
 
 bool LLAppViewer::cleanup()
 {
+    // No later display tick is required to drain active streaming/preparation.
+    ALNativeFrameBudget::instance().beginDrain();
 #if LL_VELOPACK
     // Apply any pending Velopack update before shutdown
     if (velopack_is_update_pending())
@@ -2016,6 +2027,12 @@ bool LLAppViewer::cleanup()
     LLViewerObject::cleanupVOClasses();
 
     SUBSYSTEM_CLEANUP(LLAvatarAppearance);
+
+    // Required-view preparation joins before returning from display; worker
+    // pools/publication replies drained at cleanup entry and the world is now
+    // disconnected. Native commands retain native resource leases, not these
+    // LLRefCount scene owners. Release hero-selection owners before volumes.
+    gPipeline.mHeroProbeManager.releaseSceneOwnersAfterQuiescence();
 
     LLTracker::cleanupInstance();
 

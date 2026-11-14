@@ -11,6 +11,35 @@
 
 #include <new>
 #include <utility>
+#include <cmath>
+
+std::shared_ptr<const ALMetalAvatarPoseRecord> ALMetalAvatarPoseRecord::create(
+    Inputs inputs, std::string* error)
+{
+    const auto fail = [&](const char* message)
+    {
+        if (error) *error = message;
+        return std::shared_ptr<const ALMetalAvatarPoseRecord>{};
+    };
+    if (inputs.joint_count > max_joints || inputs.pivot_count > max_joints ||
+        inputs.pivot_count > inputs.joint_count)
+        return fail("Native body pose counts exceed the legacy palette");
+    for (std::size_t joint = 0; joint < inputs.joint_count; ++joint)
+        for (float value : inputs.world_matrices[joint])
+            if (!std::isfinite(value)) return fail("Native body pose matrix is non-finite");
+    for (std::size_t pivot = 0; pivot < inputs.pivot_count; ++pivot)
+        for (float value : inputs.pivots[pivot])
+            if (!std::isfinite(value)) return fail("Native body pose pivot is non-finite");
+    try
+    {
+        return std::shared_ptr<const ALMetalAvatarPoseRecord>(
+            new ALMetalAvatarPoseRecord(std::move(inputs)));
+    }
+    catch (const std::bad_alloc&)
+    {
+        return fail("Native body pose allocation failed");
+    }
+}
 
 namespace
 {

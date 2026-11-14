@@ -110,6 +110,7 @@ public:
         unsigned baseline = 2;
         unsigned maximum = 2;
         unsigned current = 2;
+        unsigned downstream_ceiling = std::numeric_limits<unsigned>::max();
         bool adaptive = true;
         bool draining = false;
         std::size_t waiting = 0; // Registered tickets: WorkQueue plus gate waiters.
@@ -163,6 +164,7 @@ private:
             limits.maximum = std::clamp(limits.maximum, limits.minimum, 16u);
             limits.baseline = std::clamp(limits.baseline, limits.minimum, limits.maximum);
             current = adaptive ? limits.baseline : limits.maximum;
+            downstream_ceiling = limits.maximum;
             origin = accounted = last_evaluation = last_transition = quiet_since = now();
             recovery_not_before = last_quiet_reduction = last_cpu_reduction = origin;
             reason = adaptive ? "baseline" : "fixed";
@@ -264,6 +266,7 @@ private:
         std::mutex mutex;
         std::condition_variable changed;
         unsigned current = 2;
+        unsigned downstream_ceiling = std::numeric_limits<unsigned>::max();
         bool draining = false;
         Ticket next_ticket = 1;
         std::map<Ticket, TimePoint> pending;
@@ -380,6 +383,27 @@ public:
         return erased;
     }
 
+    // Shared native frame feedback constrains new starts independently of
+    // thermal adaptation. Existing permits and their responders still finish.
+    void setDownstreamCeiling(unsigned supplied)
+    {
+        auto state = mState;
+        const auto supplied_time = state->now();
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            const auto time = state->advance(supplied_time);
+            state->downstream_ceiling = std::clamp(supplied, state->limits.minimum, state->limits.maximum);
+            if (!state->draining)
+            {
+                const unsigned desired = state->adaptive
+                    ? std::min(state->current, state->downstream_ceiling)
+                    : state->downstream_ceiling;
+                state->change(desired, "native-frame-downstream", time);
+            }
+        }
+        state->changed.notify_all();
+    }
+
     Permit acquire(Ticket ticket)
     {
         auto state = mState;
@@ -421,8 +445,9 @@ public:
             return;
 
         const bool hard_cap = pressure.low_power || pressure.thermal_level >= 2;
-        const unsigned ceiling = hard_cap ? state->limits.minimum
-            : pressure.thermal_level == 1 ? state->limits.baseline : state->limits.maximum;
+        const unsigned ceiling = std::min(state->downstream_ceiling,
+            hard_cap ? state->limits.minimum
+            : pressure.thermal_level == 1 ? state->limits.baseline : state->limits.maximum);
         const double interval = seconds(time - state->last_evaluation);
         // Thermal/power caps are immediate, including the first update.
         if (hard_cap)
@@ -432,7 +457,8 @@ public:
         }
         else if (state->current > ceiling)
         {
-            state->change(ceiling, "thermal-fair", time);
+            state->change(ceiling, ceiling == state->downstream_ceiling
+                ? "native-frame-downstream" : "thermal-fair", time);
             state->recovery_not_before = time + std::chrono::seconds(2);
         }
         if (interval < 0.5)
@@ -462,7 +488,7 @@ public:
                 state->last_cpu_reduction = time;
             }
         }
-        else if (!hard_cap && state->current < state->limits.baseline)
+        else if (!hard_cap && state->current < std::min(state->limits.baseline, ceiling))
         {
             if (time >= state->recovery_not_before)
             {
@@ -519,6 +545,7 @@ public:
         result.baseline = state->limits.baseline;
         result.maximum = state->limits.maximum;
         result.current = state->current;
+        result.downstream_ceiling = state->downstream_ceiling;
         result.adaptive = state->adaptive;
         result.draining = state->draining;
         result.waiting = state->pending.size();

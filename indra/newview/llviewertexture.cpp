@@ -1753,114 +1753,119 @@ void LLViewerFetchedTexture::postCreateTexture()
 void LLViewerFetchedTexture::scheduleCreateTexture()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-
     if (!mNeedsCreateTexture)
     {
         mNeedsCreateTexture = true;
         if (preCreateTexture())
         {
-#if LL_IMAGEGL_THREAD_CHECK
-            //grab a copy of the raw image data to make sure it isn't modified pending texture creation
-            U8* data = mRawImage->getData();
-            U8* data_copy = nullptr;
-            S32 size = mRawImage->getDataSize();
-            if (data != nullptr && size > 0)
-            {
-                data_copy = new U8[size];
-                memcpy(data_copy, data, size);
-            }
-#endif
             mNeedsCreateTexture = true;
-            auto mainq = LLImageGLThread::sEnabledTextures
-                ? mMainQueue.lock() : nullptr;
-            bool posted = false;
-            if (mainq)
-            {
-                // Until the worker's texture publishes, the image goes on reporting the one
-                // it has. The snapshot that makes it so is taken here, on the main thread,
-                // before the post -- see LLImageGL::beginUpload -- and released in the
-                // callback below, whether or not a texture came of it.
-                LLPointer<LLImageGL> gl_image = mGLTexturep;
-                gl_image->beginUpload(mRawImage->getComponents());
-                posted = mainq->postTo(
-                    mImageQueue,
-                    // work to be done on LLImageGL worker thread
-#if LL_IMAGEGL_THREAD_CHECK
-                    [this, data, data_copy, size, category = mBoostLevel]()
-                    {
-                        mGLTexturep->mActiveThread = LLThread::currentID();
-                        //verify data is unmodified
-                        llassert(data == mRawImage->getData());
-                        llassert(mRawImage->getDataSize() == size);
-                        llassert(memcmp(data, data_copy, size) == 0);
-#else
-                    [this, category = mBoostLevel]()
-                    {
-#endif
-                        //actually create the texture on a background thread
-                        createTexture(0, category);
-
-#if LL_IMAGEGL_THREAD_CHECK
-                        //verify data is unmodified
-                        llassert(data == mRawImage->getData());
-                        llassert(mRawImage->getDataSize() == size);
-                        llassert(memcmp(data, data_copy, size) == 0);
-#endif
-                    },
-                    // callback to be run on main thread
-#if LL_IMAGEGL_THREAD_CHECK
-                        [this, gl_image, data, data_copy, size]()
-                    {
-                        mGLTexturep->mActiveThread = LLThread::currentID();
-                        llassert(data == mRawImage->getData());
-                        llassert(mRawImage->getDataSize() == size);
-                        llassert(memcmp(data, data_copy, size) == 0);
-                        delete[] data_copy;
-#else
-                        [this, gl_image]()
-                        {
-#endif
-                        // The worker is done, but its texture publishes only after the
-                        // shared Metal command batch commits. Finish then: ending the
-                        // snapshot, or clearing mNeedsCreateTexture and letting the next
-                        // upload start, must not run ahead of publication.
-                        gl_image->afterPublish([this, gl_image]()
-                        {
-                            // A no-op when syncTexName published the new texture.
-                            gl_image->endUpload();
-                            //finalize on main thread
-                            postCreateTexture();
-                            unref();
-                        });
-                    });
-                if (posted)
-                {
-                    // Taken once the post has succeeded, as LLImageGL::analyzeAlpha takes its
-                    // own: the callback that lets it go runs on this thread's queue, so not
-                    // before this returns, and no reference is taken and dropped again when
-                    // the post fails.
-                    ref();
-                }
-                else
-                {
-                    // The LLImageGL thread has closed, as the viewer quits: nothing will run
-                    // the upload or end it.
-                    gl_image->endUpload();
-                }
-            }
-            if (!posted)
-            {
-#if LL_IMAGEGL_THREAD_CHECK
-                delete[] data_copy;
-#endif
-                if (!mCreatePending)
-                {
-                    mCreatePending = true;
-                    gTextureList.mCreateTextureList.push(this);
-                }
-            }
+            // Every fetched native upload enters the same outer-frame owner.
+            // Raw data remains owned until the unchanged publication callback.
+            gTextureList.queueCreateTexture(this);
         }
     }
+}
+
+bool LLViewerFetchedTexture::postNativeTextureUpload(ALNativeFrameBudget::Lease credit)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+#if LL_IMAGEGL_THREAD_CHECK
+    //grab a copy of the raw image data to make sure it isn't modified pending texture creation
+    U8* data = mRawImage->getData();
+    U8* data_copy = nullptr;
+    S32 size = mRawImage->getDataSize();
+    if (data != nullptr && size > 0)
+    {
+        data_copy = new U8[size];
+        memcpy(data_copy, data, size);
+    }
+#endif
+    mNeedsCreateTexture = true;
+    auto mainq = LLImageGLThread::sEnabledTextures
+        ? mMainQueue.lock() : nullptr;
+    bool posted = false;
+    if (mainq)
+    {
+        // Until the worker's texture publishes, the image goes on reporting the one
+        // it has. The snapshot that makes it so is taken here, on the main thread,
+        // before the post -- see LLImageGL::beginUpload -- and released in the
+        // callback below, whether or not a texture came of it.
+        LLPointer<LLImageGL> gl_image = mGLTexturep;
+        gl_image->beginUpload(mRawImage->getComponents());
+        posted = mainq->postTo(
+            mImageQueue,
+            // work to be done on LLImageGL worker thread
+#if LL_IMAGEGL_THREAD_CHECK
+            [this, data, data_copy, size, category = mBoostLevel, credit]()
+            {
+                mGLTexturep->mActiveThread = LLThread::currentID();
+                //verify data is unmodified
+                llassert(data == mRawImage->getData());
+                llassert(mRawImage->getDataSize() == size);
+                llassert(memcmp(data, data_copy, size) == 0);
+#else
+            [this, category = mBoostLevel, credit]()
+            {
+#endif
+                // Admission is retained by the native command through GPU completion.
+                LLImageGL::NativeUploadCreditScope admission(credit);
+                createTexture(0, category);
+
+#if LL_IMAGEGL_THREAD_CHECK
+                //verify data is unmodified
+                llassert(data == mRawImage->getData());
+                llassert(mRawImage->getDataSize() == size);
+                llassert(memcmp(data, data_copy, size) == 0);
+#endif
+            },
+            // callback to be run on main thread
+#if LL_IMAGEGL_THREAD_CHECK
+                [this, gl_image, data, data_copy, size]()
+            {
+                mGLTexturep->mActiveThread = LLThread::currentID();
+                llassert(data == mRawImage->getData());
+                llassert(mRawImage->getDataSize() == size);
+                llassert(memcmp(data, data_copy, size) == 0);
+                delete[] data_copy;
+#else
+                [this, gl_image]()
+                {
+#endif
+                // The worker is done, but its texture publishes only after the
+                // shared Metal command batch commits. Finish then: ending the
+                // snapshot, or clearing mNeedsCreateTexture and letting the next
+                // upload start, must not run ahead of publication.
+                gl_image->afterPublish([this, gl_image]()
+                {
+                    // A no-op when syncTexName published the new texture.
+                    gl_image->endUpload();
+                    //finalize on main thread
+                    postCreateTexture();
+                    unref();
+                });
+            });
+        if (posted)
+        {
+            // Taken once the post has succeeded, as LLImageGL::analyzeAlpha takes its
+            // own: the callback that lets it go runs on this thread's queue, so not
+            // before this returns, and no reference is taken and dropped again when
+            // the post fails.
+            ref();
+        }
+        else
+        {
+            // The LLImageGL thread has closed, as the viewer quits: nothing will run
+            // the upload or end it.
+            gl_image->endUpload();
+        }
+    }
+    if (!posted)
+    {
+#if LL_IMAGEGL_THREAD_CHECK
+        delete[] data_copy;
+#endif
+    }
+    return posted;
 }
 
 // Call with 0,0 to turn this feature off.

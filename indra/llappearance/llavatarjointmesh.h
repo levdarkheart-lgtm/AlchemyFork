@@ -105,6 +105,7 @@ public:
 
     // Sets the poly mesh
     void setMesh( LLPolyMesh *mesh );
+    U64 getMeshBindingRevision() const noexcept { return mMeshBindingRevision; }
 
     // Sets up joint matrix data for rendering
     void setupJoint(LLAvatarJoint* current_joint);
@@ -118,6 +119,7 @@ public:
     void setIsTransparent(bool is_transparent) { mIsTransparent = is_transparent; }
 
 private:
+    U64 mMeshBindingRevision = 0;
     // Allocate skin data
     bool allocateSkinData( U32 numSkinJoints );
 

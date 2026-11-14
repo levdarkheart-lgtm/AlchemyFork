@@ -900,6 +900,7 @@ void handleLocalTerrainChanged(const LLSD& newValue)
         {
             mat_override->mTextureTransform[info] = transform;
         }
+        mat_override->notifyRenderDataChanged();
         if (*mat_override == LLGLTFMaterial::sDefault)
         {
             gLocalTerrainMaterials.setMaterialOverride(i, nullptr);
@@ -970,6 +971,7 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "OctreeAlphaDistanceFactor", handleRepartition);
     setting_setup_signal_listener(gSavedSettings, "OctreeAttachmentSizeFactor", handleRepartition);
     setting_setup_signal_listener(gSavedSettings, "RenderFSAAType", handleRenderInputChanged);
+    setting_setup_signal_listener(gSavedSettings, "RenderSMAAUseSample", handleRenderInputChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderSMAAUseStencil", handleRenderInputChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderSMAAPredication", handleRenderInputChanged);
     setting_setup_signal_listener(gSavedSettings, "AlchemyRenderSunBloom", handleRenderInputChanged);

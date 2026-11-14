@@ -534,3 +534,46 @@ TEST_CASE("Real decoder contenders obey admission downshifts and drain accepted 
     CHECK(snapshot.decode_wall.count == tickets.size());
     CHECK(snapshot.service_wall.count == tickets.size());
 }
+
+TEST_CASE("Shared downstream admission retains active decodes and cannot be undone by backlog recovery",
+          "[image][decode][scheduler][native-frame-budget]")
+{
+    ManualClock clock;
+    Scheduler gate(Scheduler::Limits::fromTopology(10, {8, 2}), true, clock.now());
+    const auto tickets = submit(gate, 6);
+    std::vector<Scheduler::Permit> active;
+    for (unsigned index = 0; index < 4; ++index) active.push_back(gate.acquire(tickets[index]));
+    gate.setDownstreamCeiling(2);
+    CHECK(gate.snapshot().current == 2);
+    CHECK(gate.snapshot().active == 4);
+    CHECK(gate.snapshot().waiting == 2);
+    clock.at(1); gate.tick(clock.value, cool());
+    CHECK(gate.snapshot().current == 2);
+    active[0].reset(); active[1].reset(); active[2].reset();
+    auto next = gate.acquire(tickets[4]);
+    CHECK(gate.snapshot().active == 2);
+    gate.setDownstreamCeiling(6);
+    clock.at(3); gate.tick(clock.value, cool());
+    CHECK(gate.snapshot().current == 3);
+    gate.setDownstreamCeiling(0); // malformed ceiling still preserves established minimum
+    CHECK(gate.snapshot().current == 2);
+    gate.beginDrain();
+    CHECK(gate.snapshot().current == 6);
+    auto last = gate.acquire(tickets[5]);
+    active.clear(); next.reset(); last.reset();
+    CHECK(gate.snapshot().completed == 6);
+    CHECK(gate.snapshot().cancelled == 0);
+    CHECK(gate.snapshot().waiting == 0);
+}
+
+TEST_CASE("Fixed decoder width still respects and recovers from shared downstream admission",
+          "[image][decode][scheduler][native-frame-budget]")
+{
+    ManualClock clock;
+    Scheduler gate(Scheduler::Limits::fromTopology(10, {8, 2}), false, clock.now());
+    CHECK(gate.snapshot().current == 6);
+    gate.setDownstreamCeiling(2);
+    CHECK(gate.snapshot().current == 2);
+    gate.setDownstreamCeiling(6);
+    CHECK(gate.snapshot().current == 6);
+}

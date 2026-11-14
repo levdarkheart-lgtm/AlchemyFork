@@ -96,6 +96,11 @@ public:
     }
 
     void clearFetchedTextures();
+    using FetchedTextures = std::array<LLPointer<LLViewerFetchedTexture>, GLTF_TEXTURE_INFO_COUNT>;
+    using BakedTextures = std::array<LLPointer<LLViewerTexture>, GLTF_TEXTURE_INFO_COUNT>;
+    // Resolve all four slots on the owner, then publish their complete tuple.
+    // Reassigning identical fetched/baked pointers is not a producer change.
+    void setRenderTextures(const FetchedTextures& fetched, const BakedTextures& baked);
 
     std::set<LLTextureEntry*> mTextureEntires;
 
