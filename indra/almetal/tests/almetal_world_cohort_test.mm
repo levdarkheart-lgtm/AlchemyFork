@@ -155,6 +155,70 @@ TEST_CASE("almetal: ordinary cohort rejects unsupported static rows before issui
     }
 }
 
+TEST_CASE("almetal: partially changed cohorts reuse immutable source generations without prototype copies",
+          "[almetal][world-cohort]")
+{
+    @autoreleasepool
+    {
+        CohortFixture f(1,3);
+        std::vector<std::shared_ptr<const ALMetalWorldCohortSource>> records;
+        for(const auto& keyed:f.cpu->keys)
+        {
+            auto record=ALMetalWorldCohortSource::seal(keyed,&f.error);INFO(f.error);REQUIRE(record);
+            CHECK(record->ownedBytes()>sizeof(ALMetalWorldSimpleBatch));records.push_back(std::move(record));
+        }
+        auto original=ALMetalWorldSourceCohort::seal(records,f.cpu,f.resources,7,&f.error);REQUIRE(original);
+        auto group=f.view(original);auto scene=f.scene();scene.cohorts=&group;scene.cohort_count=1;
+        auto old_input=ALMetalWorldViewInputs::adopt(scene,{}, {},{},std::vector{group},{},{},{},1,&f.error);REQUIRE(old_input);
+        auto before=f.renderer->renderOwnedInputs(*old_input,&f.error);INFO(f.error);REQUIRE(before);
+        const auto expected=f.read(*before);
+        auto changed=records[0]->source();auto edited_geometry=f.geometry;
+        for(auto& position:edited_geometry.positions)position[2]=.05f;
+        auto native=std::make_shared<Resources>(*f.resources);
+        ALMetalBufferDescriptor descriptor;descriptor.length=sizeof(edited_geometry);descriptor.storage=ALMetalStorageMode::shared;
+        std::shared_ptr<ALMetalBuffer> vertices=ALMetalBuffer::create(*f.device,descriptor,&f.error);REQUIRE(vertices);
+        REQUIRE(vertices->write(0,&edited_geometry,sizeof(edited_geometry),&f.error));
+        native->buffers.push_back(vertices);changed.vertices=vertices.get();changed.texture_matrix[12]=.75f;
+        changed.materialSlots()[0].env_intensity=.9f;
+        REQUIRE(ALMetalWorldMaterialSource::publish(*f.device,changed,f.cache,&f.error));
+        REQUIRE(ALMetalWorldResourceSource::publish(*f.device,changed,native->textures,&f.error));
+        native->buffers.push_back(changed.native_material_source->materialLease());
+        auto key=records[0]->key();++key.revision;
+        auto replacement=ALMetalWorldCohortSource::seal({key,&changed},&f.error);REQUIRE(replacement);
+        auto next_records=records;next_records[0]=replacement;
+        auto cpu=std::make_shared<CohortCpu>();
+        auto next=ALMetalWorldSourceCohort::seal(next_records,cpu,native,7,&f.error);REQUIRE(next);
+        CHECK(&original->source(0)!=&next->source(0));CHECK(next->key(0).revision==2);
+        for(unsigned unchanged=1;unchanged<3;++unchanged)
+        {
+            CHECK(&original->source(unchanged)==&next->source(unchanged));
+            CHECK(&next->source(unchanged)==&records[unchanged]->source());
+        }
+        CHECK(next->source(0).vertices==vertices.get());CHECK(original->source(0).vertices==f.vertices);
+        // Held caller aliases cannot mutate either sealed generation. The
+        // generic API still validates the now malformed caller-owned input.
+        f.cpu->sources[0].index_count=1;f.cpu->keys[0].key.identity=999;
+        changed.index_count=1;changed.texture_matrix[12]=std::numeric_limits<float>::quiet_NaN();
+        CHECK_FALSE(ALMetalWorldSourceCohort::seal(f.cpu->keys,f.cpu,f.resources,7,&f.error));
+        auto reused=ALMetalWorldSourceCohort::seal(next_records,cpu,native,7,&f.error);REQUIRE(reused);
+        CHECK(&reused->source(0)==&replacement->source());CHECK(reused->source(0).index_count==3);
+        CHECK(reused->source(0).texture_matrix[12]==.75f);
+        auto next_group=group;next_group.cohort=next;next_group.cpu_owner=cpu;next_group.native_owner=native;
+        scene.cohorts=&next_group;
+        auto new_input=ALMetalWorldViewInputs::adopt(scene,{}, {},{},std::vector{next_group},{},{},{},2,&f.error);REQUIRE(new_input);
+        auto after=f.renderer->renderOwnedInputs(*new_input,&f.error);INFO(f.error);REQUIRE(after);
+        CHECK_FALSE(f.read(*after)==expected);
+        auto old_again=f.renderer->renderOwnedInputs(*old_input,&f.error);REQUIRE(old_again);CHECK(f.read(*old_again)==expected);
+        auto missing=next_records;missing[1].reset();
+        CHECK_FALSE(ALMetalWorldSourceCohort::seal(missing,cpu,native,7,&f.error));
+        auto pbr=f.batch(2);REQUIRE(ALMetalWorldMaterialSource::publish(*f.device,pbr,f.cache,&f.error));
+        REQUIRE(ALMetalWorldResourceSource::publish(*f.device,pbr,native->textures,&f.error));
+        auto pbr_record=ALMetalWorldCohortSource::seal({{50,2,1},&pbr},&f.error);REQUIRE(pbr_record);
+        missing=next_records;missing[1]=pbr_record;
+        CHECK_FALSE(ALMetalWorldSourceCohort::seal(missing,cpu,native,7,&f.error));
+    }
+}
+
 TEST_CASE("almetal: mixed raw reference cohort queries prepare and reclaim complete owned storage",
           "[almetal][world-cohort]")
 {
@@ -268,7 +332,16 @@ TEST_CASE("almetal: cohort CPU descriptions expire while native-only command gen
     {
         for(bool prepared:{false,true})for(bool abandon:{false,true})
         {
-            CAPTURE(prepared,abandon);CohortFixture f;auto certificate=f.seal();auto group=f.view(certificate);
+            CAPTURE(prepared,abandon);CohortFixture f;auto certificate=f.seal();
+            std::weak_ptr<const ALMetalWorldCohortSource> weak_record;
+            if(prepared)
+            {
+                std::vector<std::shared_ptr<const ALMetalWorldCohortSource>> records;
+                for(const auto& source:f.cpu->keys)
+                {auto record=ALMetalWorldCohortSource::seal(source,&f.error);REQUIRE(record);records.push_back(std::move(record));}
+                weak_record=records.front();certificate=ALMetalWorldSourceCohort::seal(records,f.cpu,f.resources,7,&f.error);REQUIRE(certificate);
+            }
+            auto group=f.view(certificate);
             auto scene=f.scene();scene.cohorts=&group;scene.cohort_count=1;
             auto inputs=ALMetalWorldViewInputs::adopt(scene,{}, {},{},std::vector{group},{},{},{},7,&f.error);REQUIRE(inputs);scene={};
             auto warm=f.renderer->renderOwnedInputs(*inputs,&f.error);INFO(f.error);REQUIRE(warm);
@@ -300,6 +373,7 @@ TEST_CASE("almetal: cohort CPU descriptions expire while native-only command gen
             group={};certificate.reset();f.cpu.reset();f.resources.reset();
             REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,raw,refs,order,cohorts,queries));
             CHECK(weak_cpu.expired());CHECK(weak_certificate.expired());CHECK(weak_material.expired());CHECK(weak_resource.expired());
+            if(prepared)CHECK(weak_record.expired());
             CHECK_FALSE(weak_native.expired());
             if(abandon)f.renderer->cancelCommandBatch();
             else{gate.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));CHECK(f.read(*target)==expected);}

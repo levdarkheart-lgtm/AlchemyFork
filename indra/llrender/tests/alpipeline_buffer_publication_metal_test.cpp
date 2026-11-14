@@ -1721,6 +1721,125 @@ TEST_CASE("Actual direct material cohorts retain mixed raw reference order throu
     }
 }
 
+TEST_CASE("Actual material capabilities promote one semantic source without rebuilding viewer inputs",
+          "[almetal][pipeline-buffer-publication][native-material-group][PPD-194]")
+{
+    using namespace Inputs::ALScenePublicationNative;
+    for(U32 family:{1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);auto& info=f.materialDraw();
+        auto ordinary=f.flavor;ordinary.native_resources=false;
+        const auto records_before=cohort_source_publications;
+        auto raw=world(info,ordinary,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(raw);
+        CHECK_FALSE(raw.prototype->native_resource_source);CHECK(cohort_source_publications==records_before);
+        const auto* original_variant=findWorldVariant(*raw.owner,ordinary.key());REQUIRE(original_variant);CHECK_FALSE(original_variant->cohort_source);
+        const auto images=f.image.image_reads;const auto source_revision=info.state->revision();
+        auto required=f.flavor;required.cohort_source=true;CHECK(required.key()==ordinary.key());
+        auto promoted=world(info,required,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(promoted);
+        REQUIRE(promoted.prototype->native_resource_source);REQUIRE(promoted.owner->worlds.size()==1);
+        const auto* variant=findWorldVariant(*promoted.owner,required.key());REQUIRE(variant);REQUIRE(variant->cohort_source);
+        CHECK(promoted.owner!=raw.owner);CHECK(raw.owner->worlds.size()==1);CHECK_FALSE(raw.prototype->native_resource_source);
+        CHECK(promoted.owner->vertices==raw.owner->vertices);CHECK(promoted.owner->indices==raw.owner->indices);
+        CHECK(promoted.owner->native_tuple==raw.owner->native_tuple);CHECK(info.state->revision()==source_revision);
+        CHECK(f.image.image_reads==images);CHECK(cohort_source_publications==records_before+1);
+        CHECK(variant->cohort_source->key().identity==info.state->identity());
+        CHECK(variant->cohort_source->key().flavor==ordinary.key());CHECK(variant->cohort_source->key().revision==source_revision);
+        const auto serial=Inputs::sNativeSceneSerial;
+        auto reused=world(info,ordinary,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(reused);
+        CHECK(reused.owner==promoted.owner);CHECK(Inputs::sNativeSceneSerial==serial);CHECK(cohort_source_publications==records_before+1);
+        auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
+        ALMetalWorldGBufferScene before;before.width=before.height=f.side;before.batches=raw.prototype;before.batch_count=1;before.source_owner=raw.owner->native_tuple;
+        auto after=before;after.batches=promoted.prototype;after.source_owner=promoted.owner->native_tuple;
+        auto a=renderer->render(before,&f.error);INFO(f.error);REQUIRE(a);
+        auto b=renderer->render(after,&f.error);INFO(f.error);REQUIRE(b);CHECK(f.read(*a)==f.read(*b));
+    }
+}
+
+TEST_CASE("Actual partially dirty cohorts share immutable source proofs and refresh only changed generations",
+          "[almetal][pipeline-buffer-publication][native-material-group][PPD-194]")
+{
+    using namespace Inputs::ALScenePublicationNative;
+    for(U32 family:{1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);for(U32 row=0;row<4;++row)f.materialDraw(row%2);
+        auto packet=f.sealMaterial();REQUIRE(packet);
+        std::array<std::weak_ptr<const ALMetalWorldCohortSource>,4> records;
+        for(U32 row=0;row<4;++row)
+        {
+            const auto* variant=findWorldVariant(*packet->sources[row].world_owner,packet->sources[row].owner->flavor_key);
+            REQUIRE(variant);REQUIRE(variant->cohort_source);records[row]=variant->cohort_source;
+        }
+        packet.reset();const auto before=cohort_source_publications;
+        const std::array<LLColor4U,3> green{LLColor4U(0,255,0,255),LLColor4U(0,255,0,255),LLColor4U(0,255,0,255)};
+        auto& changed=*f.infos[1];changed.mVertexBuffer->setColorData(green.data());changed.mVertexBuffer->unmapBuffer();
+        CHECK_FALSE(f.group->publication());CHECK(records[1].expired());
+        auto refreshed=f.sealMaterial();REQUIRE(refreshed);CHECK(cohort_source_publications==before+1);
+        for(U32 row=0;row<4;++row)
+        {
+            const auto* variant=findWorldVariant(*refreshed->sources[row].world_owner,refreshed->sources[row].owner->flavor_key);REQUIRE(variant);
+            REQUIRE(variant->cohort_source);
+            if(row==1)CHECK(variant->cohort_source->key().revision==changed.state->revision());
+            else CHECK(variant->cohort_source==records[row].lock());
+            CHECK(&refreshed->cohort->source(row)==&variant->cohort_source->source());
+        }
+    }
+}
+
+TEST_CASE("Actual optional material capability allocation failure preserves only the exact original publication",
+          "[almetal][pipeline-buffer-publication][native-material-group][PPD-195]")
+{
+    using namespace Inputs::ALScenePublicationNative;
+    struct RestoreHook {~RestoreHook(){capabilityPromotionAllocationForTesting=nullptr;}} restore;
+    MaterialGroupPublication f;auto& info=f.materialDraw();auto ordinary=f.flavor;ordinary.native_resources=false;
+    auto raw=world(info,ordinary,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(raw);
+    auto required=f.flavor;required.cohort_source=true;const auto revision=info.state->revision();
+    SECTION("an allocation failure before mutation retains the ordinary source")
+    {
+        capabilityPromotionAllocationForTesting=[](ALNativePublication::State&){throw std::bad_alloc();};
+        auto result=world(info,required,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(result);
+        CHECK(result.owner==raw.owner);CHECK(result.prototype==raw.prototype);CHECK_FALSE(result.prototype->native_resource_source);
+        CHECK(info.state->publication().get()==raw.owner.get());CHECK(info.state->revision()==revision);
+    }
+    SECTION("producer mutation forbids the old source fallback")
+    {
+        capabilityPromotionAllocationForTesting=[](ALNativePublication::State& state){state.invalidate();throw std::bad_alloc();};
+        CHECK_FALSE(world(info,required,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount));
+        CHECK(info.state->revision()==revision+1);CHECK_FALSE(info.state->publication());
+    }
+    SECTION("unavailable capabilities also reject an invalidated producer")
+    {
+        required.native_resources=false;
+        capabilityPromotionAllocationForTesting=[](ALNativePublication::State& state){state.invalidate();};
+        CHECK_FALSE(world(info,required,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount));
+        CHECK(info.state->revision()==revision+1);CHECK_FALSE(info.state->publication());
+    }
+    SECTION("a newer same-revision publication is never replaced by fallback")
+    {
+        capabilityPromotionAllocationForTesting=[](ALNativePublication::State& state)
+        {
+            auto old=std::static_pointer_cast<const Payload>(state.publication());
+            auto replacement=std::make_shared<Payload>(*old);replacement->serial=old->serial+100;
+            (void)state.publish(state.revision(),replacement);throw std::bad_alloc();
+        };
+        CHECK_FALSE(world(info,required,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount));
+        REQUIRE(info.state->publication());CHECK(info.state->publication().get()!=raw.owner.get());
+        CHECK(info.state->revision()==revision);
+    }
+    SECTION("a newer same-revision publication is never replaced by successful promotion")
+    {
+        capabilityPromotionAllocationForTesting=[](ALNativePublication::State& state)
+        {
+            auto old=std::static_pointer_cast<const Payload>(state.publication());
+            auto replacement=std::make_shared<Payload>(*old);replacement->serial=old->serial+100;
+            (void)state.publish(state.revision(),replacement);
+        };
+        CHECK_FALSE(world(info,required,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount));
+        REQUIRE(info.state->publication());CHECK(info.state->publication().get()!=raw.owner.get());
+        CHECK_FALSE(std::static_pointer_cast<const Payload>(info.state->publication())->worlds[0].cohort_source);
+        CHECK(info.state->revision()==revision);
+    }
+}
+
 TEST_CASE("Actual source-row capture preserves regional order across typed main and probe views",
           "[almetal][pipeline-buffer-publication][native-source-rows]")
 {
@@ -2965,7 +3084,7 @@ TEST_CASE("Actual direct material cohorts include dirty publication raw admissio
         U64 publications=0,group_builds=0,source_builds=0,restores=0,getters=0,dependencies=0,images=0;
         U64 raw_bytes=0,ref_bytes=0,order_bytes=0,cohort_bytes=0,cert_bytes=0,native_bytes=0;
         U64 cohort_draws=0,cpu_pins=0,native_pins=0,gpu_ready=0;
-        U64 accepted_views=0,accepted_groups=0,accepted_draws=0;
+        U64 accepted_views=0,accepted_groups=0,accepted_draws=0,static_source_records=0;
     };
     for(U32 family:{1u,2u})
     {
@@ -2998,6 +3117,7 @@ TEST_CASE("Actual direct material cohorts include dirty publication raw admissio
                         auto& capture=*arm.pipeline.mMetalWorldSimpleCapture;
                         const auto before_reads=f.reads();const auto before_serial=Inputs::sNativeSceneSerial;
                         const auto before_stats=Inputs::ALSceneGroupPublicationNative::statistics;
+                        const auto before_records=Inputs::ALScenePublicationNative::cohort_source_publications;
                         const auto before_native=data->stats().published_bytes;
                         const std::array<ALMetalWorldCohortStats,2> before_render{main->worldCohortStats(),probes->worldCohortStats()};
                         std::array<std::unique_ptr<ALMetalRenderTarget>,3> targets;
@@ -3080,6 +3200,7 @@ TEST_CASE("Actual direct material cohorts include dirty publication raw admissio
                         value.source_builds=after_stats.cpu_source_builds-before_stats.cpu_source_builds;value.restores=after_stats.material_restores-before_stats.material_restores;
                         value.getters=after_reads[0]-before_reads[0];value.dependencies=after_reads[1]-before_reads[1];value.images=after_reads[2]-before_reads[2];
                         value.native_bytes=data->stats().published_bytes-before_native;
+                        value.static_source_records=Inputs::ALScenePublicationNative::cohort_source_publications-before_records;
                         const std::array<ALMetalWorldCohortStats,2> after_render{main->worldCohortStats(),probes->worldCohortStats()};
                         for(U32 owner=0;owner<2;++owner)
                         {value.accepted_views+=after_render[owner].views-before_render[owner].views;
@@ -3090,7 +3211,8 @@ TEST_CASE("Actual direct material cohorts include dirty publication raw admissio
                             const U64 updated=condition==0?count:condition==1?0:(count+15)/16;
                             CHECK(value.group_builds==(mode&&condition!=1?1:0));
                             CHECK(value.source_builds==(mode?updated:0));
-                            CHECK(value.publications==(mode?2*updated+value.group_builds:updated));
+                            CHECK(value.publications==updated+value.group_builds);
+                            CHECK(value.static_source_records==(mode?updated:0));
                             CHECK(value.cohort_draws==(mode?U64(count)*(condition==1?views:views-1):0));
                             CHECK(value.accepted_draws==value.cohort_draws);
                             CHECK(value.accepted_groups==(mode?(condition==1?views:views-1):0));
@@ -3104,6 +3226,7 @@ TEST_CASE("Actual direct material cohorts include dirty publication raw admissio
                             <<" owner_cpu_ms="<<value.cpu<<" capture_adopt_encode_reclaim_ms="<<value.encode<<" completion_and_query_settle_ms="<<value.complete
                             <<" gpu_sum_ms="<<value.gpu<<" gpu_ready_commands="<<value.gpu_ready<<" source_and_group_publications="<<value.publications
                             <<" group_builds="<<value.group_builds<<" source_factory_builds="<<value.source_builds<<" source_restores="<<value.restores
+                            <<" new_static_source_records="<<value.static_source_records
                             <<" source_getters="<<value.getters<<" dependency_walks="<<value.dependencies<<" image_getters="<<value.images
                             <<" direct_cohort_draws="<<value.cohort_draws<<" raw_value_bytes="<<value.raw_bytes<<" reference_value_bytes="<<value.ref_bytes
                             <<" accepted_cohort_views="<<value.accepted_views<<" accepted_cohort_groups="<<value.accepted_groups<<" accepted_cohort_draws="<<value.accepted_draws

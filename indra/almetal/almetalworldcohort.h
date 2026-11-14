@@ -16,8 +16,31 @@ struct ALMetalWorldKeyedSource
     const ALMetalWorldSimpleBatch* prototype=nullptr;
 };
 
+// One immutable generation, issued after ordinary static validation. Active
+// WorldVariants may share it with cohorts; idle producer layouts keep only a
+// weak reference. It owns no parent publication or native-tuple aggregate.
+class ALMetalWorldCohortSource final
+{
+public:
+    static std::shared_ptr<const ALMetalWorldCohortSource> seal(
+        const ALMetalWorldKeyedSource&,std::string* error=nullptr);
+    ~ALMetalWorldCohortSource();
+    ALMetalWorldCohortSource(const ALMetalWorldCohortSource&)=delete;
+    ALMetalWorldCohortSource& operator=(const ALMetalWorldCohortSource&)=delete;
+    const ALMetalWorldSourceKey& key() const noexcept;
+    const ALMetalWorldSimpleBatch& source() const noexcept;
+    std::uint32_t family() const noexcept;
+    bool doubleSided() const noexcept;
+    std::size_t ownedBytes() const noexcept;
+private:
+    struct Impl;
+    struct Storage;
+    explicit ALMetalWorldCohortSource(const Impl*) noexcept;
+    const Impl* mImpl;
+};
+
 // Seal only completed immutable producer publications. Static prototypes and
-// keys are copied once into private storage; the native tuple owns their
+// keys live in private per-generation records; the native tuple owns their
 // exact native generations. Both owner identities are weak to avoid retaining
 // a parent producer publication or adding idle COW readers. The view locks
 // those owners explicitly before any description is accessed.
@@ -29,11 +52,20 @@ public:
         std::shared_ptr<const void> cpu_backing,
         std::shared_ptr<const void> native_tuple,
         std::uint64_t region_identity,std::string* error=nullptr);
+    // Completed producer generations are already immutable/validated. A
+    // partially dirty group copies only these shared record references.
+    static std::shared_ptr<const ALMetalWorldSourceCohort> seal(
+        std::span<const std::shared_ptr<const ALMetalWorldCohortSource>>,
+        std::shared_ptr<const void> cpu_backing,
+        std::shared_ptr<const void> native_tuple,
+        std::uint64_t region_identity,std::string* error=nullptr);
     ~ALMetalWorldSourceCohort();
     std::size_t size() const noexcept;
     std::uint32_t family() const noexcept; // 1: Legacy, 2: PBR.
     bool doubleSided() const noexcept; // First source; use only if uniformDoubleSided().
     bool uniformDoubleSided() const noexcept;
+    // Conservative retained descriptor closure, including each record; shared
+    // records are not new physical allocations when another cohort reuses them.
     std::size_t metadataBytes() const noexcept;
     std::size_t ownedBytes() const noexcept;
     std::uint64_t regionIdentity() const noexcept;

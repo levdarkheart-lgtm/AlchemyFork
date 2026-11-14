@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-194 -->
+<!-- next-defect-id: PPD-196 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4788,6 +4788,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered before correcting the fixture; no viewer crash or rendering regression attributed.
+- 2026-11-14: Test-only2180adfac9 required17/static69047 passes; repaired exact-owner/isolation suite971assertions/5cases passes with API/GPU validation. Wrong address and wrong control block are independently rejected; pending native-generation lifetime cases remain intact. Automated repair evidence does not close the record.
 
 
 ## PPD-193 — Material cohort lifetime fixture still requires the displaced argument-table path
@@ -4806,3 +4807,41 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered before updating the fixture to prove the actual selected direct-cohort mechanism.
+- 2026-11-14: Test-only2180adfac9 exact-tag actual-publication retest passes9423assertions/44cases with API/GPU validation; native old-generation COW/CPU expiration/completion/pixel assertions retained. Combined17 also passes88CTest plus specialization/archive/corpus gates. No owner or publishing acceptance inferred.
+
+
+## PPD-194 — Direct cohorts repeat excessive producer work during cold loading and churn
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex retained native producer architecture
+- Discovered: 2026-11-14
+- Original reference: Retained scene publication must improve total preparation cost while preserving responsive loading and mutation, not only steady unchanged inputs.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md), clean c57b223531 actual-direct-cohort-costs-16 passes87566 assertions/48 comparisons. Warm512 CPU falls62–67% with GPU sums close to ordinary draws, but all16 cold cases regress7.6–153.7% CPU and all16 churn cases regress5.6–117.5%. Material groups require a resource-enabled source flavor while ordinary flagOFF capture republishes a second flavor; group certificate sealing also recopies/revalidates every unchanged row on partial mutation. Raw timings/publication counts are retained; no viewer FPS claim.
+- Next action: Keep activation OFF. Reuse immutable per-source static proof at the existing source-publication boundary and remove duplicate material source flavor work without forcing argument-buffer rendering. Recheck complete cold/warm/churn cost and exact native lifetime/accounting before activation.
+- Verification: Reproduced complete contained cost regression; steady direct-consumer improvement does not satisfy the full gate.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before addressing repeated static work and source flavor duplication. Scalar rows/command banks remain independently rejected under PPD183/191.
+
+
+## PPD-195 — Optional source-capability promotion loses an existing ordinary lease on allocation failure
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex immutable source capability promotion
+- Discovered: 2026-11-14
+- Original reference: Optional native preparation must retain required ordinary draws when setup fails; a real producer-revision change still invalidates the old input.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Read-only review of the unbuilt PPD194 follow-up: world() has a valid current WorldVariant, then make_shared<Payload>(*value) for optional capabilities can throw into its outer bad_alloc handler, returning an empty WorldLease instead of the still-valid ordinary source. No executed viewer incident attributed.
+- Next action: Contain optional promotion allocation failure and return the original immutable lease only if the exact producer identity/revision/publication remains current. Preserve failure for real revision changes or stale publications; add a focused failure/reentrancy regression where practical.
+- Verification: Source-confirmed exception path, registered before repair. Existing required build17 pertains to the earlier source, not this follow-up.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Independent reviewer reported before the PPD194 source freeze/build.
+- 2026-11-14: Repair also checks the exact original publication before committing a successful promotion. The deterministic callback can install a newer same-revision publication and return normally; the stale outer promotion must reject it as well as the throwing replacement case. This extends the same promotion ownership regression, not viewer-incident attribution.

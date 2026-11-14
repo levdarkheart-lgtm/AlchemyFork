@@ -75,3 +75,47 @@ palettes, plus ordinary prior-library behavior. Actual-owner hidden cost tag is
 `[.native-direct-cohort-cost]`,48 comparisons with12 samples plus2 retained
 warmups. Root next integrates this exact freeze into the original experiment
 tree and runs required build16 before executing any native/cost gate.
+
+## Executed first direct-cohort gate
+
+Clean `c57b22353111b548be00a850b7cb27972c74321e` required16 doctor/configure/
+build exit0,167.650s. Static26.4.0.69046 passes346ARM64/signatures/imports/
+source/media/voice and all seven cost-gated controlsOFF. Strict source scans
+3585 files with905 informational rows,0 blockers and0 errors.
+
+Native cohort suite4/5 cases,969/970 assertions: PPD192 negative owner alias is
+the first member's identical address. Actual publisher43/44cases,9419/9421:
+PPD193 still expects optional argument-table binding for the selected ordinary
+cohort path. Both corrections are test-only at2180adfac9; required17/retests
+follow. Renderer764/1 and prior ordinary shader286/1 pass. Banks1942/5+old84/1, budget194/14, admission311/4, sharedlibrary331/3+
+old82/1, region64/5, rows7354/9, compact1990/8, resources12379/7,
+oldresource4721/1, oldrows283/1 and missinglayout13/1 all pass under native
+API/GPU validation. Receipts retain the two failed suites, not an all-pass claim.
+
+Actual-direct-cohort-costs-16 passes87566assertions/48comparisons. Warm512 CPU
+falls61.96–66.91%; GPU median sums are between2.79%lower and1.28%higher. But
+all16cold comparisons regress7.58–153.66%CPU and all16churn regress5.57–117.52%.
+Legacy512/oneview CPU warm0.761→0.289ms, cold2.200→5.580ms,
+churn0.899→1.956ms. PBR512/threeviews warm2.244→0.743ms,
+cold5.618→10.039ms, churn2.448→2.670ms. These are contained costs, not FPS.
+Raw samples, setup rows and summary JSON remain in the private evidence root.
+
+PPD194 blocks default activation. Next producer change reuses private static
+per-source records at the existing immutable WorldVariant boundary, avoiding
+whole-group prototype recopy/revalidation on partial mutation, and removes
+duplicate raw/group source flavor publication. Native owner lifetimes remain
+independent; idle layout metadata must not become a new GPU reader. Residency
+owns cohort API/fixtures, architecture owns producer/capture/actual fixtures,
+opaque provides read-only lifecycle review, root owns integration/execution.
+No plain-SIMPLE expansion, shader rewrite or extra GPU cache in this repair.
+
+Required17 at2180adfac9 passes28.527s; static69047 passes. Repaired owner
+fixture971assertions/5cases passes with API/GPU validation. Combined17 passes
+88/88 selected CTest entries (138.458s),10 additional native specialization
+processes,3 archive-policy processes and the private decoder corpus. This
+includes the actual-publication lifetime assertion repair; other native16
+receipts remain evidence for unchanged production source, not new executions.
+No production renderer changed between16 and17. PPD192/193 retain their
+failed evidence and are not closed by these automated checks.
+The separate exact-tag actual-publication retest also passes9423/44 at17;
+CTest's filename selection covers9367/43 and is not misreported as that suite.

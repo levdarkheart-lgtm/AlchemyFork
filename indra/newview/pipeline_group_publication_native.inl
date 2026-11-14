@@ -33,6 +33,7 @@ struct Source
     std::weak_ptr<const ALMetalBuffer> vertices, indices;
     std::weak_ptr<const ALMetalWorldMaterialSource> material_source;
     std::weak_ptr<const ALMetalWorldResourceSource> resource_source;
+    std::weak_ptr<const ALMetalWorldCohortSource> cohort_source;
     std::vector<std::weak_ptr<const ALMetalTexture>> textures;
 };
 struct SourceLease
@@ -58,12 +59,12 @@ struct Payload
 {
     using KeyedSource = ALMetalWorldKeyedSource;
     std::vector<SourceLease> sources;
-    // Producer-only ordered span, built once dirty. The private certificate
-    // copies its source values once before allowing warm validation bypass.
+    // Producer-only ordered span, built once dirty. The private cohort shares
+    // source-generation proofs instead of copying/validating every row again.
     std::vector<KeyedSource> keyed_sources;
     std::vector<ALNativeSourceWorkingSet::Resource> resources;
     std::shared_ptr<const ALScenePublicationNative::NativeTuple> native_tuple;
-    // The certificate owns const source snapshots and weak backing/native
+    // The certificate shares const source records and weak backing/native
     // identities. It cannot keep this payload alive through a parent cycle.
     std::shared_ptr<const ALMetalWorldSourceCohort> cohort;
     std::array<float, 16> model{};
@@ -233,6 +234,8 @@ public:
                 if (world->native_tuple)
                     bytes += sizeof(ALScenePublicationNative::NativeTuple) +
                         U64(world->native_tuple->resources.capacity()) * sizeof(ALNativeSourceWorkingSet::Resource);
+                for (const auto& variant : world->worlds)
+                    if (variant.cohort_source) bytes += variant.cohort_source->ownedBytes();
             }
         if (!mLimits.maximum_layouts || layout->sources.size() > mLimits.maximum_rows || bytes > mLimits.maximum_bytes)
         { ++mStats.rejections; return false; }
@@ -527,6 +530,17 @@ inline std::shared_ptr<const Payload> currentMaterial(
 
 // Recover only immutable CPU descriptions and exact typed native generations.
 // No LLDrawInfo/texture facade/material dependency walk occurs on this path.
+inline bool sourceProofMatches(const std::shared_ptr<const ALMetalWorldCohortSource>& proof,
+                               U64 identity, U64 flavor, U64 revision,
+                               const ALMetalWorldSimpleBatch& prototype) noexcept
+{
+    if (!proof) return false;
+    const auto& key = proof->key();const auto& certified = proof->source();
+    return key.identity == identity && key.flavor == flavor && key.revision == revision &&
+        certified.vertices == prototype.vertices && certified.indices == prototype.indices &&
+        certified.native_material_source == prototype.native_material_source &&
+        certified.native_resource_source == prototype.native_resource_source;
+}
 inline ALScenePublicationNative::WorldLease restoreMaterial(
     const Source& source, const std::shared_ptr<ALNativePublication::State>& producer,
     ALNativeSourceWorkingSet& working_set, U64& serial, U32 frame)
@@ -536,7 +550,9 @@ inline ALScenePublicationNative::WorldLease restoreMaterial(
     {
         if (!value || value->producer_revision != source.revision || !value->native_tuple) return {};
         const auto* prototype = ALScenePublicationNative::findWorld(*value, source.flavor_key);
-        if (!prototype || !ordinaryMaterial(*prototype)) return {};
+        const auto* variant = ALScenePublicationNative::findWorldVariant(*value, source.flavor_key);
+        if (!prototype || !ordinaryMaterial(*prototype) || !variant ||
+            !sourceProofMatches(variant->cohort_source, source.identity, source.flavor_key, source.revision, *prototype)) return {};
         working_set.touch(producer->identity(), value->serial, frame);
         return {std::move(value), prototype, nullptr, true};
     };
@@ -577,6 +593,12 @@ inline ALScenePublicationNative::WorldLease restoreMaterial(
     if (!prototype.native_resource_source || !prototype.native_resource_source->matches(prototype))
         if (!ALMetalWorldResourceSource::publish(*device, prototype, textures)) return {};
     if (!ordinaryMaterial(prototype)) return {};
+    variant.cohort_source = source.cohort_source.lock();
+    if (!sourceProofMatches(variant.cohort_source, source.identity, source.flavor_key, source.revision, prototype))
+        variant.cohort_source.reset();
+    if (!variant.cohort_source)
+        ALScenePublicationNative::sealCohortSource(variant, producer->identity(), source.revision);
+    if (!variant.cohort_source) return {};
     const auto buffer = [&](const std::shared_ptr<const ALMetalBuffer>& allocation)
     { if (allocation) ALScenePublicationNative::account(*value, allocation, allocation->length()); };
     buffer(value->vertices);buffer(value->indices);
@@ -604,6 +626,7 @@ std::shared_ptr<const Payload> sealMaterial(
 try
 {
     using Family = ALScenePublicationNative::WorldFamily;
+    flavor.cohort_source = true;
     if (!state || !region || draws.empty() ||
         (flavor.family != Family::legacy && flavor.family != Family::pbr) ||
         flavor.rigged || flavor.pbr_glow || flavor.visibility_bounds || flavor.material_alpha_mode == 1 ||
@@ -620,6 +643,8 @@ try
     const bool new_dependencies = !have_layout || !dependency_owner;
     auto dependencies = new_dependencies ? std::shared_ptr<ALNativePublication::Observer>(std::make_shared<Dependencies>(state)) : dependency_owner;
     value->sources.reserve(draws.size());value->keyed_sources.reserve(draws.size());
+    std::vector<std::shared_ptr<const ALMetalWorldCohortSource>> cohort_sources;
+    cohort_sources.reserve(draws.size());
     for (std::size_t row = 0;row < draws.size();++row)
     {
         auto record = layout->sources[row];auto producer = record ? record->producer.lock() : nullptr;
@@ -643,6 +668,9 @@ try
             next->flavor_key = row_flavor.key();next->world_owner = source.owner;
             next->vertices = source.owner->vertices;next->indices = source.owner->indices;
             next->material_source = source.prototype->native_material_source;next->resource_source = source.prototype->native_resource_source;
+            const auto* variant = ALScenePublicationNative::findWorldVariant(*source.owner, next->flavor_key);
+            if (!variant || !variant->cohort_source) { ++statistics.failures;return {}; }
+            next->cohort_source = variant->cohort_source;
             for (const auto& texture : source.prototype->native_resource_source->generationLeases()) next->textures.push_back(texture);
             for (const auto& resource : source.owner->resources) next->resources.push_back({resource.allocation, resource.bytes});
             if (layout == layout_owner) layout = std::make_shared<Layout>(*layout);
@@ -652,6 +680,10 @@ try
         value->index_count += source.prototype->index_count;
         value->sources.push_back({record, source.prototype, record_reused, source.owner});
         value->keyed_sources.push_back({{record->identity, record->flavor_key, record->revision}, source.prototype});
+        const auto* variant = ALScenePublicationNative::findWorldVariant(*source.owner, record->flavor_key);
+        if (!variant || !sourceProofMatches(variant->cohort_source, record->identity, record->flavor_key, record->revision, *source.prototype))
+        { ++statistics.failures;return {}; }
+        cohort_sources.push_back(variant->cohort_source);
     }
     std::map<std::weak_ptr<const void>, WeakResource, std::owner_less<std::weak_ptr<const void>>> resources;
     for (const auto& source : value->sources) for (const auto& resource : source.world_owner->resources)
@@ -695,7 +727,7 @@ try
             if (!texture || !contains(texture, ALScenePublicationNative::textureBytes(*texture)))
             { ++statistics.failures;return {}; }
     }
-    value->cohort = ALMetalWorldSourceCohort::seal(value->keyed_sources, value, value->native_tuple, region.identity);
+    value->cohort = ALMetalWorldSourceCohort::seal(cohort_sources, value, value->native_tuple, region.identity);
     if (!value->cohort) { ++statistics.failures;return {}; }
     if (!state->publish(revision, value)) { ++statistics.failures;return {}; }
     const auto still_current = [&] { return state->revision() == revision && !state->dirty() && state->publication().get() == value.get(); };

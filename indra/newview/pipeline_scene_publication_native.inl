@@ -17,6 +17,7 @@
 #include <new>
 #include <utility>
 #include <vector>
+#include "../almetal/almetalworldcohort.h"
 
 namespace ALScenePublicationNative
 {
@@ -24,6 +25,11 @@ enum class WorldFamily : U8 { simple, legacy, pbr };
 inline std::unique_ptr<ALMetalWorldMaterialDataCache> material_data_cache;
 inline U64 material_source_publications = 0, material_source_fallbacks = 0;
 inline U64 resource_source_publications = 0, resource_source_fallbacks = 0;
+inline U64 cohort_source_publications = 0;
+// Owner-only deterministic allocation seam; never used by product settings
+// or detached/GPU work. The current immutable source must survive optional
+// promotion allocation failure without overwriting a newer publication.
+inline void (*capabilityPromotionAllocationForTesting)(ALNativePublication::State&) = nullptr;
 inline std::array<U64, static_cast<std::size_t>(ALMetalWorldResourceFallback::count)> resource_source_failure_reasons{};
 inline ALMetalWorldResourceFallback resource_source_last_failure = ALMetalWorldResourceFallback::none;
 inline void resourceSourceFailed(ALMetalWorldResourceFallback reason) noexcept
@@ -45,6 +51,8 @@ struct WorldFlavor
     bool visibility_bounds = false;
     bool native_materials = true;
     bool native_resources = false;
+    // Optional immutable consumer capabilities, not shader/material semantics.
+    bool cohort_source = false;
     bool normal_map = false, specular_map = false;
     bool alpha_mask = false, rigged = false, pbr_glow = false;
     bool impostor_fullbright = false, impostor_shiny = false, impostor_emboss = false;
@@ -64,7 +72,6 @@ struct WorldFlavor
             (U64(impostor_fullbright) << 9) | (U64(impostor_shiny) << 10) |
             (U64(impostor_emboss) << 11) | (U64(visibility_bounds) << 12) |
             (U64(native_materials && family != WorldFamily::simple) << 13) |
-            (U64(native_resources && native_materials && family != WorldFamily::simple) << 14) |
             (U64(material_alpha_mode) << 32);
     }
 };
@@ -73,6 +80,7 @@ struct WorldVariant
 {
     U64 key = 0;
     ALMetalWorldSimpleBatch prototype;
+    std::shared_ptr<const ALMetalWorldCohortSource> cohort_source;
 };
 struct ShadowVariant
 {
@@ -206,6 +214,11 @@ inline const ALMetalWorldSimpleBatch* findWorld(const Payload& value, U64 key) n
 {
     for (const auto& variant : value.worlds)
         if (variant.key == key) return &variant.prototype;
+    return nullptr;
+}
+inline const WorldVariant* findWorldVariant(const Payload& value, U64 key) noexcept
+{
+    for (const auto& variant : value.worlds) if (variant.key == key) return &variant;
     return nullptr;
 }
 inline const std::shared_ptr<const ALMetalShadowSourceRecord>* findShadow(
@@ -437,6 +450,60 @@ inline bool buildWorld(const LLDrawInfo& info, const WorldFlavor& flavor,
     return true;
 }
 
+inline void publishResourceSource(Payload& value, ALMetalWorldSimpleBatch& prototype)
+{
+    // Seal exact generation leases at the same dirty-source boundary.
+    // A native texture retain alone would not participate in LLImageGL
+    // reader/COW protection. Resolve only the already-accounted tuple;
+    // no later view or worker rereads a mutable viewer texture facade.
+    try
+    {
+        std::vector<std::shared_ptr<const ALMetalTexture>> images;
+        const auto& batch = static_cast<const ALMetalWorldSimpleBatch&>(prototype);
+        images.reserve(batch.texture_count * 4);
+        const auto image = [&](const ALMetalTexture* texture)
+        {
+            if (!texture) return;
+            for (const auto& existing : images)
+                if (existing.get() == texture) return;
+            for (const auto& resource : value.resources)
+                if (resource.allocation.get() == texture)
+                {
+                    images.emplace_back(resource.allocation, texture);
+                    return;
+                }
+        };
+        for (U32 slot = 0; slot < batch.texture_count; ++slot)
+            image(batch.diffuse_textures[slot]);
+        for (U32 slot = 0; slot < batch.material_slot_count; ++slot)
+        {
+            image(batch.materialSlots()[slot].normal_texture);
+            image(batch.materialSlots()[slot].specular_texture);
+        }
+        for (U32 slot = 0; slot < batch.pbr_slot_count; ++slot)
+        {
+            image(batch.pbrSlots()[slot].normal_texture);
+            image(batch.pbrSlots()[slot].orm_texture);
+            image(batch.pbrSlots()[slot].emissive_texture);
+        }
+        auto* device = LLImageGL::getMetalDevice();
+        auto failure = ALMetalWorldResourceFallback::unsupported;
+        if (device && ALMetalWorldResourceSource::publish(
+                *device, prototype, images, nullptr, &failure))
+            ++resource_source_publications;
+        else resourceSourceFailed(failure);
+    }
+    catch (const std::bad_alloc&) { resourceSourceFailed(ALMetalWorldResourceFallback::host_allocation); }
+}
+inline void sealCohortSource(WorldVariant& variant, U64 identity, U64 revision)
+{
+    if (variant.cohort_source) return;
+    const auto& batch = variant.prototype;
+    if (!batch.native_resource_source || !batch.native_resource_source->matches(batch)) return;
+    variant.cohort_source = ALMetalWorldCohortSource::seal({{identity, variant.key, revision}, &batch});
+    if (variant.cohort_source) ++cohort_source_publications;
+}
+
 inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                         ALNativeSourceWorkingSet& working_set, U64& serial, U32 frame)
 {
@@ -448,10 +515,59 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         flavor.native_resources = flavor.native_resources && flavor.hasResourceConsumer();
         const U64 key = flavor.key();
         if (auto value = current(info))
-            if (const auto* prototype = findWorld(*value, key))
+            if (const auto* found = findWorldVariant(*value, key))
             {
-                working_set.touch(info.metalSourcePublication()->identity(), value->serial, frame);
-                return {std::move(value), prototype, nullptr, true};
+                const auto ready = [&](const WorldVariant& variant)
+                {
+                    return (!flavor.native_resources || (variant.prototype.native_resource_source &&
+                        variant.prototype.native_resource_source->matches(variant.prototype))) &&
+                        (!flavor.cohort_source || variant.cohort_source);
+                };
+                if (ready(*found))
+                {
+                    working_set.touch(info.metalSourcePublication()->identity(), value->serial, frame);
+                    return {std::move(value), &found->prototype, nullptr, true};
+                }
+                // Resource/cohort capabilities do not change shader semantics.
+                // Promote a completed immutable variant from its exact native
+                // tuple, without rebuilding LL geometry/material/texture data.
+                const auto state = info.metalSourcePublication();
+                const auto identity = state->identity();
+                const auto revision = value->producer_revision;
+                const auto original_current = [&]
+                { return state->identity() == identity && state->revision() == revision && state->publication().get() == value.get(); };
+                try
+                {
+                    if (capabilityPromotionAllocationForTesting) capabilityPromotionAllocationForTesting(*state);
+                    const auto index = static_cast<std::size_t>(found - value->worlds.data());
+                    auto promoted = std::make_shared<Payload>(*value);
+                    auto& variant = promoted->worlds[index];
+                    if (flavor.native_resources && (!variant.prototype.native_resource_source ||
+                        !variant.prototype.native_resource_source->matches(variant.prototype)))
+                        publishResourceSource(*promoted, variant.prototype);
+                    if (flavor.cohort_source)
+                        sealCohortSource(variant, info.metalSourcePublication()->identity(), promoted->producer_revision);
+                    if (!ready(variant))
+                    {
+                        if (!original_current())
+                            return {{}, nullptr, "Native scene changed while optional capabilities were unavailable"};
+                        working_set.touch(info.metalSourcePublication()->identity(), value->serial, frame);
+                        return {std::move(value), &found->prototype, nullptr, true};
+                    }
+                    if (!original_current())
+                        return {{}, nullptr, "Native scene publication changed while promoting capabilities"};
+                    promoted->serial = ++serial;
+                    if (!publish(info, promoted, working_set, frame))
+                        return {{}, nullptr, "Native scene producer changed while promoting capabilities"};
+                    const auto* prototype = &promoted->worlds[index].prototype;
+                    return {std::move(promoted), prototype, nullptr, true};
+                }
+                catch (const std::bad_alloc&)
+                {
+                    if (original_current())
+                        return {std::move(value), &found->prototype, nullptr, true};
+                    return {{}, nullptr, "Native scene changed while optional promotion allocation failed"};
+                }
             }
         if (!geometry(info)) return {{}, nullptr, "Native scene geometry is unpublished or invalid"};
         info.observeMetalSourceDependencies();
@@ -492,52 +608,9 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
             }
             catch (const std::bad_alloc&) { ++material_source_fallbacks; }
         }
-        if (flavor.native_resources && flavor.native_materials &&
-            flavor.family != WorldFamily::simple)
-        {
-            // Seal exact generation leases at the same dirty-source boundary.
-            // A native texture retain alone would not participate in LLImageGL
-            // reader/COW protection. Resolve only the already-accounted tuple;
-            // no later view or worker rereads a mutable viewer texture facade.
-            try
-            {
-                std::vector<std::shared_ptr<const ALMetalTexture>> images;
-                const auto& batch = static_cast<const ALMetalWorldSimpleBatch&>(variant.prototype);
-                images.reserve(batch.texture_count * 4);
-                const auto image = [&](const ALMetalTexture* texture)
-                {
-                    if (!texture) return;
-                    for (const auto& existing : images)
-                        if (existing.get() == texture) return;
-                    for (const auto& resource : value->resources)
-                        if (resource.allocation.get() == texture)
-                        {
-                            images.emplace_back(resource.allocation, texture);
-                            return;
-                        }
-                };
-                for (U32 slot = 0; slot < batch.texture_count; ++slot)
-                    image(batch.diffuse_textures[slot]);
-                for (U32 slot = 0; slot < batch.material_slot_count; ++slot)
-                {
-                    image(batch.materialSlots()[slot].normal_texture);
-                    image(batch.materialSlots()[slot].specular_texture);
-                }
-                for (U32 slot = 0; slot < batch.pbr_slot_count; ++slot)
-                {
-                    image(batch.pbrSlots()[slot].normal_texture);
-                    image(batch.pbrSlots()[slot].orm_texture);
-                    image(batch.pbrSlots()[slot].emissive_texture);
-                }
-                auto* device = LLImageGL::getMetalDevice();
-                auto failure = ALMetalWorldResourceFallback::unsupported;
-                if (device && ALMetalWorldResourceSource::publish(
-                        *device, variant.prototype, images, nullptr, &failure))
-                    ++resource_source_publications;
-                else resourceSourceFailed(failure);
-            }
-            catch (const std::bad_alloc&) { resourceSourceFailed(ALMetalWorldResourceFallback::host_allocation); }
-        }
+        if (flavor.native_resources) publishResourceSource(*value, variant.prototype);
+        if (flavor.cohort_source)
+            sealCohortSource(variant, info.metalSourcePublication()->identity(), value->producer_revision);
         if (!publish(info, value, working_set, frame))
             return {{}, nullptr, "Native scene producer changed while sealing"};
         const auto* prototype = &value->worlds.back().prototype;
