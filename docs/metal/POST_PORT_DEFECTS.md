@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-191 -->
+<!-- next-defect-id: PPD-192 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4752,3 +4752,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered before fixing the native retirement observation.
+
+
+## PPD-191 — Cached indirect banks do not improve the actual per-source path on M1
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex end-to-end native scene/submission architecture
+- Discovered: 2026-11-14
+- Original reference: A faster architecture must improve complete preparation/submission cost and preserve GPU cost; fewer CPU execute calls alone are insufficient.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), clean ec44584c06 build15/static69044/native gates pass. Actual command-bank benchmark passes79512 assertions and48pairs with proven ICB execution, MRT/depth/query parity and exact publication counts. AllCPU comparisons are40.1–121.8%slower. Warm512 CPU is60.2–70.6%higher; GPU sums26.8–85.1%higher. Warm512 one-view CPU Legacy0.741->1.199ms/PBR0.725->1.236ms; three-view Legacy2.279->3.651/PBR2.195->3.585ms. Raw samples retained; no live viewer FPS attribution.
+- Next action: Keep banks defaultOFF and reassess the GPU indirection choice. Prioritize a complete producer-sealed cohort transport/ordinary native consumer, removing per-source packet expansion and redundant preparation while preserving direct shader GPU behavior; measure before activation. Grouped CPU data alone does not prove bank usefulness.
+- Verification: Reproduced contained M1 complete-path regression, separate from earlier scalar-row PPD183.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered after real bank-path correctness/cost proof. No indirect-bank performance/default acceptance.

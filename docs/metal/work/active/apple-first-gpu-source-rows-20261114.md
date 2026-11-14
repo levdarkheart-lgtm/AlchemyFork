@@ -68,7 +68,7 @@ scene LOD/occlusion/texture priority/RLVa policies cannot be silently removed.
 Owner testing will assess the combined engine across representative scenes,
 frame pacing, image/feature correctness, streaming and memory. Partial helpers,
 nominal Metal4 adoption, CPU microbenchmarks and a shadow-only result cannot
-establish the product objective. Next global defect ID191; root allocates IDs.
+establish the product objective. Next global defect ID192; root allocates IDs.
 
 ## First coherent freeze
 
@@ -216,3 +216,23 @@ geometry resource union now uses one Metal useResources call, preserving
 stages/ownership. Command helper already avoids duplicate index declarations.
 Required15/native gates and actual48pair bank cost run follow at a clean source.
 No bank/default/performance acceptance until complete-path data; PPD183 staysopen.
+
+## Passing combined15, rejected bank performance
+
+Cleanec44584c06269fe0e0261ae838235dc7d080ae49 required15 doctor/configure/
+build0,31.110s; static69044 passessevenOFFdiagnostics/minrun2. Allfocused
+native gates pass: banks1942/5+old84/1, budget194/14, admission311/4, shared
+library331/3+old82/1, region64/5, actualpublisher9225/43, rows/device7354/9,
+compact1990/8, resources12379/7, oldresource4721/1, oldrows283/1, no-layout13/1.
+
+actual-source-command-costs-15:79512assertions/1case,48complete per-source
+pairs and actual bank counts/pixel/depth/query checks pass; ALLCPU cases are
+40.1–121.8%slower. Warm512CPU60.2–70.6%higher, GPU sums26.8–85.1%higher.
+Retainactual-source-command-costs-15-summary.json plus fullraw1,152samples;
+no FPS/p95 claim. PPD191/bankdefaultOFF. Baseline uses same exact shared
+library and native frame data. Current transport/preparation stillper-source.
+
+Next implement one end-to-end private sealedcohort input/ordinary native
+consumer, preserving existing shader GPU work rather than forcing slower ICBs.
+Zero per-source304B refs/candidates and once-dirty static validation are the
+first required boundary; a later GPU cohort cache cannot be claimed complete.
