@@ -117,3 +117,13 @@ query/scene descriptions; GPU commands retain only native resources. Default
 ordinary main/probe capture selects refs; raw native special paths remain.
 Next: commit coherent source4, fast-forward original experiment branch, required
 build4 and actual correctness/cost/static checks. No source4 result claimed yet.
+
+
+Integrated2eb22a0a9f fast-forwarded into original G2G5 experiment branch. Required
+build4 doctor/configure0, build1/62.804s: Catch rejects unparenthesized logical
+OR in new owner-control-block assertions (PPD169). No Source4 app success or
+native result claimed. Root fixes the two assertion expressions without changing
+meaning, then freezes a new source and required build5. Build4 receipt/log remain.
+All agents' assignments are returned; root alone edits original G2G5 tree now.
+Compact worktree remains the unchanged2eb22a0a9f implementation pin until synced.
+Next global defect170. Source/native tuple architecture and goal remain active.

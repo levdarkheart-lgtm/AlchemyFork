@@ -771,7 +771,7 @@ TEST_CASE("Actual source native tuples reuse unchanged generations across CPU va
     auto first=Inputs::ALScenePublicationNative::world(info,flavor,Inputs::sNativeSceneSources,
         Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(first);REQUIRE(first.owner->native_tuple);
     auto tuple=first.owner->native_tuple;
-    CHECK(first.owner.owner_before(tuple) || tuple.owner_before(first.owner));
+    CHECK((first.owner.owner_before(tuple) || tuple.owner_before(first.owner)));
     REQUIRE(tuple->resources.size()==first.owner->resources.size());
     for(std::size_t i=0;i<tuple->resources.size();++i)
     {
@@ -1113,7 +1113,7 @@ TEST_CASE("Actual compact source and group descriptions retire before native com
         }
         REQUIRE(capture.complete);REQUIRE(tuple);REQUIRE(capture.source_references.size()==1);
         CHECK(capture.batches.empty());REQUIRE(capture.flushDrawOrder());
-        CHECK(cpu_description.owner_before(tuple) || tuple.owner_before(cpu_description));
+        CHECK((cpu_description.owner_before(tuple) || tuple.owner_before(cpu_description)));
         std::weak_ptr<const void> weak_description=cpu_description;
         std::weak_ptr<const Inputs::ALScenePublicationNative::NativeTuple> weak_tuple=tuple;
         const auto* original=capture.source_references[0].source->vertices;

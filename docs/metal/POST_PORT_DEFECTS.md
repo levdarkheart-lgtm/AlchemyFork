@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-169 -->
+<!-- next-defect-id: PPD-170 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4336,3 +4336,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Registered before narrow post-admission producer-revision guard. Native working-set admission itself is separately repaired asPPD167; factory acknowledgement still needs this distinct boundary check.
 - 2026-11-14: Narrow producer-revision recheck is implemented in compact worktree; native tuple/source-owner tests and actual cache-withdraw versus authoritative-mutation callback cases are authored/frozen. Required build4/native retest pending; old frozen3/afa8b13 is unchanged.
+
+
+## PPD-169 — New native tuple fixture uses unsupported Catch logical decomposition
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex compact capture validation
+- Discovered: 2026-11-14
+- Original reference: Catch assertions containing operator|| need the complete expression parenthesized so the decomposer does not bind to its left operand.
+- Evidence: [Compact source/view work](work/active/apple-first-compact-source-instances-20261114.md). Clean2eb22a0a9f required build4 exits1/62.804s; compiler points to alpipeline_buffer_publication_metal_test.cpp774, CHECK(first.owner.owner_before(tuple) || tuple.owner_before(first.owner)).
+- Next action: Parenthesize the complete owner-identity expressions in the new fixture, preserve assertion meaning, then run a new clean required build and all compact/ownership cases.
+- Verification: Actual test compilation failure; doctor/configure pass, full viewer build and source4 native results are not claimed. No production renderer bug or viewer crash attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered the failed frozen-source build before fixture assertion syntax repair; retain build4 log/receipt rather than overwriting it.
+- 2026-11-14: Both owner-before OR expressions are fully parenthesized; assertion meaning is retained. New clean required build5 and native execution are pending.
