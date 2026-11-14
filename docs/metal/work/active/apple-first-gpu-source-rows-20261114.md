@@ -68,7 +68,7 @@ scene LOD/occlusion/texture priority/RLVa policies cannot be silently removed.
 Owner testing will assess the combined engine across representative scenes,
 frame pacing, image/feature correctness, streaming and memory. Partial helpers,
 nominal Metal4 adoption, CPU microbenchmarks and a shadow-only result cannot
-establish the product objective. Next global defect ID183; root allocates IDs.
+establish the product objective. Next global defect ID184; root allocates IDs.
 
 ## First coherent freeze
 
@@ -103,3 +103,27 @@ execution/performance acceptance is inferred.
 Build11 d17e9a0a8c doctor/configure0, build1 at60.117s: PPD182 new Catch
 OR assertion requires outer parentheses. Source-row direct-layout MSL compiled.
 Only assertion grouping changes; required build12/native execution follows.
+
+## Passing source-row mechanism and rejected scalar performance
+
+Clean fac8f0b2f1 required build12 passes133.634s, static69024 passes.
+Native API/GPU-validation gates all exit0: region64/5; actualpublish7042/35;
+new GPUrows/pages7165/8; compact1990/8; resources12379/7; old compiled
+resource4721/1 and source-row fallback283/1; source-row library with missing
+layout13/1 rejects safely. Exact receipts native-source-row-correctness-12.json
+and built-app-static-12.json. These are contained GPU tests, not a viewer launch.
+
+actual-source-row-costs-12.json:67910assertions/1case,48complete actual-owner
+pairs and all pixel/depth/query/publication/path assertions pass. All48CPU
+cases are slower22.0–66.3%. Warm512Legacy/PBR one/threeviews regress22.0–29.5%;
+cold32.7–44.8%, churn25.5–29.4%. GPU sums rise~5–10% at512. Twelve samples
+with two separately retained warmups are mechanism costs, not FPS/p95. Raw
+log and parsed actual-source-row-costs-12-summary.json retain all negative rows.
+PPD183 staysopen; scalar source-row default remainsOFF. Next concrete step is
+retained command banks/group publication to eliminate per-draw work. No partial
+source-row win, default activation or completed architecture is claimed.
+
+Shared world-library/atomicreload PPD181 implementation a4726cdf6d is frozen in
+its isolated tree, unbuilt/untested, including app-only opaque budget injection.
+Independent source publication policy/backend are in the budget tree; root must
+integrate both and new CMake fixtures before the next required build/native gate.

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-183 -->
+<!-- next-defect-id: PPD-184 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4608,3 +4608,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered before repairing the new assertion site.
+
+
+## PPD-183 — Scalar GPU source-row submission regresses complete actual-source cost
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native whole-engine source/submission architecture
+- Discovered: 2026-11-14
+- Original reference: Persistent GPU source inputs must reduce complete viewer-source and submission cost; data-layout changes alone are not a performance improvement.
+- Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). fac8f0b2f1 build12/static69024 and all new native gates pass. Actual per-source Legacy/PBR capture/adopt/publication/encode/retire benchmark passes67910 assertions,48paired comparisons, exact path/publication counts and parity. Every CPU comparison regresses22.0–66.3%;512source warm CPU rises22.0–29.5%, cold32.7–44.8%, churn25.5–29.4%; GPU sums also rise~5–10% at512. Raw samples and negative results retained, not whole-viewer FPS evidence.
+- Next action: Keep scalar RenderMetalSourceRows defaultOFF. Consume retained GPU rows through bounded persistent command banks and producer-sealed groups to remove repeated per-draw preparation/submission, preserving exact order/query/feature behavior. Measure the complete actual-source path before activation; do not accept shared-prototype/component wins as owner-frontier improvement.
+- Verification: Reproduced contained M1 cost regression at an otherwise passing correctness checkpoint. Original architecture remains active/partial.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before command-bank/group work. Source-row layer is retained as a qualified native mechanism, while scalar default activation is rejected.
