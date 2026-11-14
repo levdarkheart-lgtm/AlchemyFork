@@ -181,3 +181,38 @@ Production/header/test assignments are frozen. Next command rebuilds all changed
 native/common/producer/pose/frame/fairness test targets and viewer, followed by
 focused tests, complete-path costs and final required build/static/staging.
 No source change is yet a measured FPS gain or owner-verified defect closure.
+
+
+## Measured policy selection after a69d6df872
+
+Frozen required doctor/configure/build pass0 (build284.389s), exact69002 static
+identity/346ARM64/import/signature/features/decoder/exception checks pass0.
+85selected CTest groups plus10specialization and3archive cases pass (functional
+summaries640025assertions/571cases); direct offline HTTP completion140/1 also
+passes. Strict native source audit3565files/0blockers passes. Corrected UV,
+source-owner/transaction, pose, actual producer and frame/fairness tests are in
+this passing run. No viewer launch or live FPS claim.
+
+Complete-path costs include equal per-frame batch construction, owned adoption,
+job admission/Dispatch/join, constant publication/encode/commit/GPU completion.
+At16/128draws, two-job overhead loses; serial128 ticket median0.563750ms vs
+native direct0.541479ms. At1024draws two-job2.03013ms vs direct2.07631ms and
+max2.36046ms vs2.53175ms. Small views therefore retain the SAME immutable input
+packet but encode scalar native commands, pinning that packet on completion.
+Large views use prepared jobs at1024+, and denied CPU credits execute required
+jobs locally. This is execution policy inside the architecture, not an alternate
+renderer/backend or reverting to mutable scene discovery.
+
+GPU conservative visibility loses all six initial contained rows and remains
+OFF; the first periodic-mask percentage labels are qualified by PPD147 and the
+corrected exact-half fixture will be rerun. Native source bounds qualification
+is now requested only by the opt-in visibility flavor (PPD146), so disabled work
+does not consume default dirty-source CPU time. Source reuse/build/fail events,
+encoded scalar/prepared/credited views, prepared bytes and both probe managers'
+admitted/deferred/required group counts are logged for the next whole-engine
+run. Added512/4096prep cost points resolve the unmeasured crossover/size range;
+new results are not yet claimed.
+
+PPD145–147 preserve the actual overhead/inactive work/fixture reporting findings.
+Original G4 runtime/performance acceptance remains conditional; no claim that
+GPU visibility, ICBs or Metal4 objects inherently make this workload faster.

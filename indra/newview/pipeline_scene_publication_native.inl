@@ -24,6 +24,7 @@ struct WorldFlavor
 {
     WorldFamily family = WorldFamily::simple;
     bool indexed_textures = false, indexed_materials = false;
+    bool visibility_bounds = false;
     bool normal_map = false, specular_map = false;
     bool alpha_mask = false, rigged = false, pbr_glow = false;
     bool impostor_fullbright = false, impostor_shiny = false, impostor_emboss = false;
@@ -35,7 +36,7 @@ struct WorldFlavor
             (U64(specular_map) << 5) | (U64(alpha_mask) << 6) |
             (U64(rigged) << 7) | (U64(pbr_glow) << 8) |
             (U64(impostor_fullbright) << 9) | (U64(impostor_shiny) << 10) |
-            (U64(impostor_emboss) << 11) | (U64(material_alpha_mode) << 32);
+            (U64(impostor_emboss) << 11) | (U64(visibility_bounds) << 12) | (U64(material_alpha_mode) << 32);
     }
 };
 
@@ -178,44 +179,50 @@ inline std::shared_ptr<Payload> extend(const LLDrawInfo& info, U64& serial)
         if (!value->vertices || !value->indices) return {};
         account(*value, value->vertices, value->vertices->length());
         account(*value, value->indices, value->indices->length());
-        // Exact published rigid position plane, in the same local coordinates
-        // consumed by the vertex shader. Unproved/animated extents fail visible.
-        auto* buffer = info.mVertexBuffer.get();
-        const U8* bytes = buffer->getMappedData();
-        if (!bytes) bytes = static_cast<const U8*>(value->vertices->mappedBytes());
-        const U8* indices = buffer->getMappedIndices();
-        if (!indices) indices = static_cast<const U8*>(value->indices->mappedBytes());
-        const auto offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
-        if (bytes && indices && !info.mAvatar &&
-            offset + std::size_t(buffer->getNumVerts()) * 16 <= value->vertices->length())
-        {
-            bool finite = true;
-            for (U32 axis = 0; axis < 3; ++axis)
-            {
-                value->bounds.minimum[axis] = std::numeric_limits<float>::infinity();
-                value->bounds.maximum[axis] = -std::numeric_limits<float>::infinity();
-            }
-            for (U32 at = 0; at < info.mCount; ++at)
-            {
-                U32 vertex = 0;
-                const auto* index = indices + std::size_t(info.mOffset + at) * buffer->getIndexStride();
-                if (buffer->getIndexStride() == 2)
-                { U16 small; std::memcpy(&small, index, sizeof(small)); vertex = small; }
-                else std::memcpy(&vertex, index, sizeof(vertex));
-                if (vertex >= buffer->getNumVerts()) { finite = false; break; }
-                float point[4]; std::memcpy(point, bytes + offset + std::size_t(vertex) * 16, sizeof(point));
-                for (U32 axis = 0; axis < 3; ++axis)
-                {
-                    finite = finite && std::isfinite(point[axis]);
-                    value->bounds.minimum[axis] = std::min(value->bounds.minimum[axis], point[axis]);
-                    value->bounds.maximum[axis] = std::max(value->bounds.maximum[axis], point[axis]);
-                }
-            }
-            value->bounds.qualified = finite;
-        }
     }
     return value;
 }
+inline void qualifyBounds(const LLDrawInfo& info, Payload& payload)
+{
+    if (payload.bounds.qualified) return;
+    auto* value = &payload;
+    // Exact published rigid position plane, in the same local coordinates
+    // consumed by the vertex shader. Unproved/animated extents fail visible.
+    auto* buffer = info.mVertexBuffer.get();
+    const U8* bytes = buffer->getMappedData();
+    if (!bytes) bytes = static_cast<const U8*>(value->vertices->mappedBytes());
+    const U8* indices = buffer->getMappedIndices();
+    if (!indices) indices = static_cast<const U8*>(value->indices->mappedBytes());
+    const auto offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    if (bytes && indices && !info.mAvatar &&
+        offset + std::size_t(buffer->getNumVerts()) * 16 <= value->vertices->length())
+    {
+        bool finite = true;
+        for (U32 axis = 0; axis < 3; ++axis)
+        {
+            value->bounds.minimum[axis] = std::numeric_limits<float>::infinity();
+            value->bounds.maximum[axis] = -std::numeric_limits<float>::infinity();
+        }
+        for (U32 at = 0; at < info.mCount; ++at)
+        {
+            U32 vertex = 0;
+            const auto* index = indices + std::size_t(info.mOffset + at) * buffer->getIndexStride();
+            if (buffer->getIndexStride() == 2)
+            { U16 small; std::memcpy(&small, index, sizeof(small)); vertex = small; }
+            else std::memcpy(&vertex, index, sizeof(vertex));
+            if (vertex >= buffer->getNumVerts()) { finite = false; break; }
+            float point[4]; std::memcpy(point, bytes + offset + std::size_t(vertex) * 16, sizeof(point));
+            for (U32 axis = 0; axis < 3; ++axis)
+            {
+                finite = finite && std::isfinite(point[axis]);
+                value->bounds.minimum[axis] = std::min(value->bounds.minimum[axis], point[axis]);
+                value->bounds.maximum[axis] = std::max(value->bounds.maximum[axis], point[axis]);
+            }
+        }
+        value->bounds.qualified = finite;
+    }
+}
+
 inline bool publish(const LLDrawInfo& info, const std::shared_ptr<Payload>& value,
                     ALNativeSourceWorkingSet& working_set, U32 frame)
 {
@@ -386,6 +393,7 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         info.observeMetalSourceDependencies();
         auto value = extend(info, serial);
         if (!value) return {{}, nullptr, "Native scene geometry lease is missing"};
+        if (flavor.visibility_bounds) qualifyBounds(info, *value);
         auto& variant = value->worlds.emplace_back();
         variant.key = key;
         if (!buildWorld(info, flavor, *value, variant.prototype))

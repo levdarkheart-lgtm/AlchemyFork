@@ -94,7 +94,9 @@ void LLPipeline::captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 f
         !mMetalWorldSimpleCapture->pass_active) return;
     auto& capture = *mMetalWorldSimpleCapture;
     if (!capture.complete || !params.mCount) return;
+    static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     ALScenePublicationNative::WorldFlavor flavor;
+    flavor.visibility_bounds = native_visibility();
     flavor.family = static_cast<ALScenePublicationNative::WorldFamily>(family);
     flavor.indexed_textures = family == 0 && indexed;
     flavor.indexed_materials = family != 0 && indexed;
@@ -115,6 +117,7 @@ void LLPipeline::captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 f
         capture.last_scene_source_failure = source.failure;
         capture.markIncomplete(__LINE__); capture.batches.clear(); return;
     }
+    if (source.reused) ++capture.scene_source_hits; else ++capture.scene_source_builds;
     LLMatrix4a modelview, inverse_modelview, modelview_projection;
     if (!buildMetalWorldDrawMatrices(params, modelview, inverse_modelview, modelview_projection))
     { capture.markIncomplete(__LINE__); capture.batches.clear(); return; }
@@ -137,7 +140,6 @@ void LLPipeline::captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 f
     if (!indexed_source && params.mTextureMatrix &&
         (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
         std::memcpy(batch.texture_matrix, params.mTextureMatrix->mMatrix, sizeof(batch.texture_matrix));
-    static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     if (native_visibility() && !capture.rigged)
     {
         if (sNativeSceneVisibilityDevice != capture.device)

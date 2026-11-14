@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-145 -->
+<!-- next-defect-id: PPD-148 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3814,3 +3814,57 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered actual integration build failure before header correction. No viewer launch/profile/push.
+
+
+## PPD-145 — Small prepared-world tickets add avoidable mechanism overhead
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex measured world preparation integration
+- Discovered: 2026-11-14
+- Original reference: Same native direct/prepared shaders and ordered input data; preparation/jobs must earn their scheduling/allocation cost while shared immutable source ownership remains intact.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). complete-path-costs-1:16/128/1024 mixed draws, direct/prepared native completion included, no competing compiler or validation layers.
+- Next action: Keep small owned input packets on native scalar encoding, use two-job preparation at the measured1024draw point, retain packet completion ownership, and log actual scalar/prepared/credited view counts.
+- Verification: At128 draws serial ticket median0.563750ms versus direct0.541479ms; two-job16draw tail1.10346ms versus direct0.276292ms. At1024, two-job median2.03013ms versus direct2.07631ms and tail2.36046ms versus2.53175ms. Isolated mechanism data, not live viewer FPS.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered measured small-work overhead before selecting execution policy inside the same owned-source architecture. GPU visibility also loses all six contained cost rows and remains OFF.
+
+
+## PPD-146 — Disabled GPU visibility should not scan every newly published source index range
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex persistent source visibility integration
+- Discovered: 2026-11-14
+- Original reference: Native visibility is a cost-gated optional consumer; ordinary shared source publication must not pay its unused index/position scan.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). New Payload extension qualifies conservative bounds unconditionally, while RenderMetalNativeVisibility defaultsfalse and fails contained cost gates.
+- Next action: Qualify bounds only for an explicitly requested world visibility variant, retaining exact index-generation proof and old-reader ownership when enabled; test disabled publication and explicit qualification.
+- Verification: Default-off visibility currently leaves a per-dirty-source indexed position scan in the main/probe/shadow factory. This is source-confirmed avoidable work; no live FPS attribution is claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before removing inactive-consumer work while retaining its tested opt-in architecture.
+
+
+## PPD-147 — Visibility cost fixture labeled a periodic mask as an exact offscreen percentage
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native mechanism measurement
+- Discovered: 2026-11-14
+- Original reference: A stated50percent offscreen fixture should contain exactly half the even draw count; correctness/cost claims must describe the generated workload.
+- Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). complete-path-costs-1 and almetal_world_visibility_test.mm's index%100 mask.
+- Next action: Use exact count-based offscreen membership, retain prior measurements with actual mask qualification, and rerun the changed cost fixture. GPU visibility stays off regardless of this correction.
+- Verification: The first16draw50label row actually makes16draws offscreen;128makes78;1024makes524. The observed optional path still loses every row, but these are not exact50percent workloads.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered benchmark reporting/fixture discrepancy before exact half-membership correction. No live performance attribution.

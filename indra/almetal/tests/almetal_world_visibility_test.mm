@@ -202,7 +202,7 @@ TEST_CASE("almetal: complete shared visibility small mixed path cost matrix", "[
         {
             std::vector<ALMetalWorldSimpleBatch> batches;
             for(unsigned index=0;index<count;++index)
-            {auto b=f.batch(index%4);if(index%100<outside_percent)b.modelview_projection[12]=4;batches.push_back(std::move(b));}
+            {auto b=f.batch(index%4);if(index<count*outside_percent/100)b.modelview_projection[12]=4;batches.push_back(std::move(b));}
             auto s=f.scene();s.batches=batches.data();s.batch_count=batches.size();
             const auto run=[&](bool gpu)
             {

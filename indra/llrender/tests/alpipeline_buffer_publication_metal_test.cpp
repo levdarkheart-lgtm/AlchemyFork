@@ -150,6 +150,7 @@ struct Capture
     bool alpha_mask=false,rigged=false;
     bool material_normal_map=false,material_specular_map=false,pbr_glow=false;
     U32 material_alpha_mode=0;
+    U64 scene_source_hits=0,scene_source_builds=0;
     U64 scene_source_failures=0;
     const char* last_scene_source_failure=nullptr;
     ALMetalDevice* device=LLImageGL::getMetalDevice();
@@ -352,9 +353,10 @@ TEST_CASE("Actual scene factory shares main probe shadow sources and separates a
     CHECK(capture.world_visibility_members[0].identity==info.state->identity());
     const auto initial_bounds_revision=capture.world_visibility_members[0].revision;
     Inputs::ALScenePublicationNative::WorldFlavor flavor;
+    flavor.visibility_bounds=true;
     auto main=Inputs::ALScenePublicationNative::world(info,flavor,
         Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
-    REQUIRE(main); CHECK(main.reused);
+    REQUIRE(main); CHECK(main.reused);CHECK(main.owner->bounds.qualified);
     auto probe=Inputs::ALScenePublicationNative::world(info,flavor,
         Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
     REQUIRE(probe); CHECK(probe.owner==main.owner); CHECK(probe.prototype==main.prototype);
@@ -535,9 +537,29 @@ TEST_CASE("Actual scene bounds use published indices and fail visible for invali
         auto& vb=*info.mVertexBuffer;
         REQUIRE(vb.validateRange(info.mStart,info.mEnd,info.mCount,info.mOffset));
         Inputs::ALScenePublicationNative::WorldFlavor flavor;
+        auto unqualified=Inputs::ALScenePublicationNative::world(info,flavor,
+            Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
+        REQUIRE(unqualified);CHECK_FALSE(unqualified.owner->bounds.qualified);
+        for(U32 axis=0;axis<4;++axis)
+        {
+            CHECK(unqualified.owner->bounds.minimum[axis]==0.f);
+            CHECK(unqualified.owner->bounds.maximum[axis]==0.f);
+        }
+        auto default_reuse=Inputs::ALScenePublicationNative::world(info,flavor,
+            Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
+        REQUIRE(default_reuse);CHECK(default_reuse.reused);CHECK(default_reuse.owner==unqualified.owner);
+        flavor.visibility_bounds=true;
         auto valid=Inputs::ALScenePublicationNative::world(info,flavor,
             Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
-        REQUIRE(valid);CHECK(valid.owner->bounds.qualified);
+        REQUIRE(valid);CHECK_FALSE(valid.reused);CHECK(valid.owner->bounds.qualified);
+        CHECK(valid.owner!=unqualified.owner);
+        CHECK(valid.owner->producer_revision==unqualified.owner->producer_revision);
+        CHECK(valid.owner->vertices==unqualified.owner->vertices);
+        CHECK(valid.owner->indices==unqualified.owner->indices);
+        // Adding the requested bounds variant preserves the earlier immutable
+        // reader and its native generation; the default path left extents empty.
+        CHECK_FALSE(unqualified.owner->bounds.qualified);
+        CHECK(unqualified.owner->bounds.maximum[1]==0.f);
         // Vertex 2 lies outside [mStart,mEnd] and supplies the upper Y extent.
         CHECK(valid.owner->bounds.minimum[0]==-1.f);CHECK(valid.owner->bounds.maximum[0]==-.1f);
         CHECK(valid.owner->bounds.minimum[1]==-1.f);CHECK(valid.owner->bounds.maximum[1]==1.f);

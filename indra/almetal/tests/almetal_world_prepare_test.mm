@@ -139,7 +139,7 @@ TEST_CASE("almetal: complete prepared world path cost matrix", "[almetal][.world
     @autoreleasepool
     {
         Fixture f;
-        for(unsigned count:{16u,128u,1024u})
+        for(unsigned count:{16u,128u,512u,1024u,4096u})
         {
             std::vector<ALMetalWorldSimpleBatch> batches;
             for(unsigned i=0;i<count;++i)batches.push_back(f.batch(i%7));

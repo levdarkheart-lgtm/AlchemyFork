@@ -845,6 +845,10 @@ struct LLPipeline::MetalWorldSimpleCapture
             }
         }
     };
+    static constexpr std::size_t parallel_world_minimum = 1024;
+    U64 scene_source_hits = 0, scene_source_builds = 0;
+    U64 scalar_world_views = 0, prepared_world_views = 0, credited_world_views = 0;
+    U64 prepared_world_constant_bytes = 0;
     U64 scene_source_failures = 0;
     const char* last_scene_source_failure = nullptr;
     std::vector<ALMetalWorldVisibilityMember> world_visibility_members;
@@ -2965,7 +2969,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             {
                 if (!value) return;
                 LL_INFOS("MetalScene") << "Native shared scene publication: view=" << view
-                    << ", failed_sources=" << value->scene_source_failures
+                    << ", world_source_hit/build=" << value->scene_source_hits << '/' << value->scene_source_builds
+                    << ", source_failures=" << value->scene_source_failures
+                    << ", encoded_views(scalar/prepared/credited)=" << value->scalar_world_views << '/' << value->prepared_world_views << '/' << value->credited_world_views
+                    << ", prepared_constant_bytes=" << value->prepared_world_constant_bytes
                     << ", last_failure=" << (value->last_scene_source_failure ? value->last_scene_source_failure : "none")
                     << LL_ENDL;
             };
@@ -2980,6 +2987,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", streaming_queued/pending/oldest=" << frame_plan.streaming.queued_requests << '/' << frame_plan.streaming.pending_publications << '/' << frame_plan.streaming.oldest_request_frame
                 << LL_ENDL;
 
+            const auto& ordinary = mReflectionMapManager.nativeUpdateAdmissionStats();
+            const auto& hero = mHeroProbeManager.nativeUpdateAdmissionStats();
+            LL_INFOS("MetalFramePlan") << "Native probe group census: ordinary(admitted/deferred/required)="
+                << ordinary.admitted_groups << '/' << ordinary.deferred_attempts << '/' << ordinary.required_steps
+                << ", hero(admitted/deferred/required)=" << hero.admitted_groups << '/' << hero.deferred_attempts << '/' << hero.required_steps
+                << LL_ENDL;
             const auto publication = LLImageGL::metalPublicationStats();
             const auto uploads = LLVertexBuffer::metalUploadStats();
             LL_INFOS("MetalMemory")
@@ -16182,11 +16195,12 @@ void LLPipeline::endMetalWorldGBufferCapture()
     // Required work never disappears when optional worker admission is denied.
     // One owner range and at most one credited GCD range share the same packet.
     std::shared_ptr<const ALMetalPreparedWorldView> prepared;
-    if (inputs)
+    const bool prepare_world = inputs && inputs->scene().batch_count >= MetalWorldSimpleCapture::parallel_world_minimum;
+    bool credited_preparation = false;
+    if (inputs) scene = inputs->scene();
+    if (prepare_world)
     {
-        scene = inputs->scene();
-        const auto jobs = scene.batch_count >= 512 ? 2 : 1;
-        auto preparation = ALMetalWorldPreparation::create(inputs, jobs, capture.world_prepare_epoch, &error);
+        auto preparation = ALMetalWorldPreparation::create(inputs, 2, capture.world_prepare_epoch, &error);
         if (preparation)
         {
             ALNativeFrameBudget::Lease credit;
@@ -16194,6 +16208,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 credit = ALNativeFrameBudget::instance().tryAcquire(ALNativeFrameBudget::Work::preparation).credit;
             if (credit)
             {
+                credited_preparation = true;
                 struct Range { ALMetalWorldPreparation* work; } range{preparation.get()};
                 auto group = dispatch_group_create();
                 dispatch_group_async_f(group, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0),
@@ -16207,12 +16222,26 @@ void LLPipeline::endMetalWorldGBufferCapture()
             prepared = preparation->finish(&error);
         }
     }
+    // Small views use the same immutable packet, avoiding a second ticket,
+    // layout pass and temporary constant slab. Pin the entire packet on the
+    // consuming native command, including copied poses and exact generations.
+    if (inputs && !prepare_world) scene.source_owner = inputs;
     std::shared_ptr<ALMetalVisibilityResultBatch> visibility_results;
     const bool count_native_draws = ALMetalDevice::commandTimingEnabled();
     const U64 native_draws_before = count_native_draws
         ? ALMetalDevice::encodedDrawCallCount() : 0;
-    auto target = prepared ? capture.renderer->renderPrepared(
-        *prepared, &error, &visibility_results) : nullptr;
+    auto target = prepared ? capture.renderer->renderPrepared(*prepared, &error, &visibility_results)
+        : inputs && !prepare_world ? capture.renderer->render(scene, &error, &visibility_results) : nullptr;
+    if (target)
+    {
+        if (prepared)
+        {
+            ++capture.prepared_world_views;
+            capture.credited_world_views += credited_preparation;
+            capture.prepared_world_constant_bytes += prepared->stats().constant_bytes;
+        }
+        else ++capture.scalar_world_views;
+    }
     if (target && !impostor_bake)
     {
         if (count_native_draws)
