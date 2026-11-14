@@ -874,6 +874,12 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::shared_ptr<std::atomic<std::uint64_t>> world_prepare_epoch =
         std::make_shared<std::atomic<std::uint64_t>>(0);
     std::vector<ALMetalWorldSimpleBatch> batches;
+    std::vector<ALMetalWorldSourceReference> source_references;
+    std::vector<ALMetalWorldDrawIndex> draw_order;
+    std::size_t raw_draw_watermark = 0;
+    std::shared_ptr<WorldResourceLease> cpu_sources;
+    bool compact_gbuffer_active = false;
+#include "pipeline_compact_capture_native.inl"
     std::vector<ALMetalWorldVisibilityQuery> visibility_queries;
     std::vector<ALQueryTicket> visibility_tickets;
     bool visibility_capture_active = false;
@@ -1441,8 +1447,9 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
 // registerFace already combines many compatible faces; measure the remaining
 // upper bound before introducing another renderer batching path. No native
 // draw, state, resource or query is changed by this opt-in CPU census.
-static void describe_metal_draw_join_upper_bound(
-    const ALMetalWorldSimpleBatch* batches, std::size_t count,
+template<class BatchAt>
+static void describe_metal_draw_join_upper_bound_at(
+    BatchAt batch_at, std::size_t count,
     bool forward, U32 view_kind, U32 face, std::size_t queries)
 {
     static const bool enabled = []
@@ -1482,13 +1489,13 @@ static void describe_metal_draw_join_upper_bound(
     U64 adjacent_pairs_upper_bound = 0;
     for (std::size_t index = 0; index < count; ++index)
     {
-        const auto& batch = batches[index];
+        const auto& batch = batch_at(index);
         if (!in_scope(batch)) continue;
         ++static_batches;
         // A query event uses the ORIGINAL logical batch offset. Leave the
         // entire query-bearing scene out of the proposed first merge scope.
-        if (queries != 0 || index == 0 || !in_scope(batches[index - 1])) continue;
-        const auto& prior = batches[index - 1];
+        if (queries != 0 || index == 0 || !in_scope(batch_at(index - 1))) continue;
+        const auto& prior = batch_at(index - 1);
         const std::size_t stride = prior.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         const std::size_t bytes = static_cast<std::size_t>(prior.index_count) * stride;
         if (batch.vertices == prior.vertices && batch.indices == prior.indices &&
@@ -1511,6 +1518,22 @@ static void describe_metal_draw_join_upper_bound(
         << LL_ENDL;
 }
 
+static void describe_metal_draw_join_upper_bound(
+    const ALMetalWorldSimpleBatch* batches, std::size_t count,
+    bool forward, U32 view_kind, U32 face, std::size_t queries)
+{
+    describe_metal_draw_join_upper_bound_at(
+        [batches](std::size_t index) -> const ALMetalWorldSimpleBatch& { return batches[index]; },
+        count, forward, view_kind, face, queries);
+}
+static void describe_metal_draw_join_upper_bound(
+    const ALMetalWorldGBufferScene& scene, U32 view_kind, U32 face)
+{
+    describe_metal_draw_join_upper_bound_at(
+        [&scene](std::size_t index) -> const ALMetalWorldSimpleBatch& { return scene.draw(index).source(); },
+        scene.drawCount(), false, view_kind, face, scene.visibility_query_count);
+}
+
 // Count actual CPU-encoded commands for each view, not fragment work or GPU
 // completion. Sampling both trial modes identically keeps the measurement
 // bounded; query/coverage/outline draws remain explicit auxiliary work.
@@ -1528,16 +1551,19 @@ static void describe_metal_gbuffer_draw_encoding(
     U32& previous = previous_frames[slot];
     if (previous != 0 && gFrameCount - previous < 120) return;
     previous = gFrameCount;
-    const auto outlines = scene.batch_count == 0 ? std::ptrdiff_t{0} :
-        std::count_if(scene.batches, scene.batches + scene.batch_count,
-            [](const ALMetalWorldSimpleBatch& batch)
-            {
-                return batch.impostor && batch.impostor_debug_outline;
-            });
+    std::size_t outlines = 0;
+    for (std::size_t index = 0; index < scene.drawCount(); ++index)
+    {
+        const auto& batch = scene.draw(index).source();
+        outlines += batch.impostor && batch.impostor_debug_outline;
+    }
     LL_INFOS("MetalPost") << "Native G-buffer draw encoding: frame=" << gFrameCount
         << ", view=" << view_kind << '/' << face
         << ", joining_requested=" << scene.join_adjacent_static_draws
-        << ", source_batches=" << scene.batch_count
+        << ", source_batches=" << scene.drawCount()
+        << ", raw_batches/references=" << scene.batch_count << '/' << scene.reference_count
+        << ", cpu_draw_array_bytes=" << scene.batch_count * sizeof(ALMetalWorldSimpleBatch) +
+            scene.reference_count * sizeof(ALMetalWorldSourceReference) + scene.draw_order_count * sizeof(ALMetalWorldDrawIndex)
         << ", encoded_draws=" << encoded_draws
         << ", queries=" << scene.visibility_query_count
         << ", outline_batches=" << outlines
@@ -1936,7 +1962,7 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
     capture.base_light_target.reset();
-    capture.batches.clear();
+    capture.clearDraws();
     capture.avatar_palettes.clear();
     capture.frame_active = false;
     capture.pass_active = false;
@@ -2163,7 +2189,7 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
     capture.base_light_target.reset();
-    capture.batches.clear();
+    capture.clearDraws();
     capture.avatar_palettes.clear();
     capture.frame_active = false;
     capture.pass_active = false;
@@ -2294,7 +2320,7 @@ bool LLPipeline::captureMetalVisibilityQuery(
     retained.center[3] = 1.f;
     retained.half_extent[3] = 0.f;
     retained.batch_offset = shadow ? capture.spot_shadow_batches.size()
-                                   : capture.batches.size();
+                                   : capture.logicalDrawCount();
     if (!full_box)
     {
         LLVector4a camera_origin;
@@ -3377,7 +3403,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         }
     }
 
-    capture.batches.clear();
+    capture.clearDraws();
+    capture.compact_gbuffer_active = true;
     capture.world_visibility_members.clear();
     capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
     capture.visibility_queries.clear();
@@ -3418,7 +3445,7 @@ void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     capture.rigged = rigged;
@@ -3449,13 +3476,13 @@ void LLPipeline::beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     if (alpha_mode != 0 && alpha_mode != 2 && alpha_mode != 3)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     capture.rigged = rigged;
@@ -3484,7 +3511,7 @@ void LLPipeline::beginMetalWorldPBRPass(bool rigged, bool alpha_mask)
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     capture.rigged = rigged;
@@ -3516,7 +3543,7 @@ void LLPipeline::beginMetalWorldAvatarPass(
         (cloth && (!wind || !sin_wave || !gravity || !cloth_depth)))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.avatar_palettes.clear();
         return;
     }
@@ -3525,7 +3552,7 @@ void LLPipeline::beginMetalWorldAvatarPass(
     if (direct_alpha && !avatar_alpha)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.avatar_palettes.clear();
         return;
     }
@@ -3537,7 +3564,7 @@ void LLPipeline::beginMetalWorldAvatarPass(
              !fillMetalWorldAlphaLighting(capture.world_alpha_lighting)))
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             capture.avatar_palettes.clear();
             return;
         }
@@ -3550,7 +3577,7 @@ void LLPipeline::beginMetalWorldAvatarPass(
         if (uses_shadows && !fillMetalImpostorDirectionalShadows())
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             capture.avatar_palettes.clear();
             return;
         }
@@ -3617,7 +3644,7 @@ void LLPipeline::setMetalWorldAvatarAlphaState(
         capture.world_post_deferred_phase)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.avatar_palettes.clear();
         return;
     }
@@ -3640,7 +3667,7 @@ void LLPipeline::beginMetalWorldTerrainPass()
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     capture.rigged = false;
@@ -3669,7 +3696,7 @@ void LLPipeline::beginMetalWorldImpostorPass()
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     capture.rigged = false;
@@ -3842,7 +3869,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         return;
     }
 
-    capture.batches.clear();
+    capture.clearDraws();
     capture.avatar_palettes.clear();
     capture.world_visibility_members.clear();
     capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
@@ -3883,7 +3910,7 @@ void LLPipeline::beginMetalImpostorAlphaCapture(
         return;
     }
 
-    capture.batches.clear();
+    capture.clearDraws();
     capture.avatar_palettes.clear();
     capture.resetCompleteness();
     capture.frame_active = true;
@@ -3914,7 +3941,7 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
         return;
     }
 
-    capture.batches.clear();
+    capture.clearDraws();
     capture.highlight_batches.clear();
     capture.debug_blips.clear();
     capture.wind_vector_points.clear();
@@ -7385,7 +7412,7 @@ void LLPipeline::beginMetalWorldPreWaterAlphaPhase()
         !fillMetalWorldAlphaEnvironment(capture.alpha_environment))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.alpha_environment = {};
         capture.alpha_environment_valid = false;
         capture.world_alpha_lighting = {};
@@ -7438,7 +7465,7 @@ void LLPipeline::beginMetalWorldPostWaterAlphaPhase()
         !capture.alpha_environment_valid)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.world_post_water_alpha_active = false;
         return;
     }
@@ -7476,7 +7503,7 @@ void LLPipeline::beginMetalWorldWaterExclusionPass()
             *LLViewerCamera::getInstance()))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.water_exclusion_surface_valid = false;
         return;
     }
@@ -7511,7 +7538,7 @@ void LLPipeline::beginMetalWorldLegacyGlowPass(bool rigged)
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     capture.rigged = rigged;
@@ -7544,7 +7571,7 @@ void LLPipeline::beginMetalWorldPBRGlowPass(bool rigged)
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     capture.rigged = rigged;
@@ -7580,7 +7607,7 @@ void LLPipeline::captureMetalWorldWaterHaze()
             !sUnderWaterRender))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.water_haze = {};
         capture.water_haze_valid = false;
         return;
@@ -7617,7 +7644,7 @@ void LLPipeline::captureMetalWorldWaterSurface(
          !capture.water_haze_valid))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.water_surface = {};
         capture.water_surface_valid = false;
         if (direct_probe)
@@ -7639,7 +7666,7 @@ void LLPipeline::captureMetalWorldWaterSurface(
                     capture.alpha_environment))
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 return;
             }
             capture.alpha_environment_valid = true;
@@ -7650,7 +7677,7 @@ void LLPipeline::captureMetalWorldWaterSurface(
             if (!fillMetalWorldAlphaLighting(lighting))
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 return;
             }
             capture.world_alpha_lighting = lighting;
@@ -7660,7 +7687,7 @@ void LLPipeline::captureMetalWorldWaterSurface(
             !fillMetalImpostorDirectionalShadows())
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             return;
         }
         // Match bindShadowMaps(): a view with every cascade marked unbuilt is
@@ -7705,7 +7732,7 @@ void LLPipeline::captureMetalWorldAtmospherics()
          !fillMetalWorldAlphaEnvironment(capture.alpha_environment)))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.atmospheric_haze = {};
         capture.atmospheric_haze_valid = false;
         return;
@@ -9935,7 +9962,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
     }
-    capture.batches.clear();
+    capture.clearDraws();
     capture.highlight_batches.clear();
     capture.debug_blips.clear();
     capture.wind_vector_points.clear();
@@ -10594,7 +10621,7 @@ void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     capture.rigged = rigged;
@@ -10626,7 +10653,7 @@ void LLPipeline::beginMetalImpostorShinyPass(bool rigged)
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     // fullbrightShinyF supplies zero glossiness to legacyProbeFinish, so its
@@ -10661,7 +10688,7 @@ void LLPipeline::beginMetalImpostorEmbossPass(bool rigged)
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     capture.rigged = rigged;
@@ -10769,7 +10796,7 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
     }
     capture.impostor_bake_native_valid =
         capture.impostor_bake_native_valid && capture.complete;
-    capture.batches.clear();
+    capture.clearDraws();
     capture.avatar_palettes.clear();
     capture.resetCompleteness();
     capture.impostor_fullbright = false;
@@ -10854,7 +10881,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
             capture.impostor_bake_native_valid = false;
         }
         capture.impostor_bake_native_complete = true;
-        capture.batches.clear();
+        capture.clearDraws();
         capture.avatar_palettes.clear();
         return;
     }
@@ -10903,7 +10930,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
             << LL_ENDL;
     }
     capture.impostor_bake_native_complete = true;
-    capture.batches.clear();
+    capture.clearDraws();
     capture.avatar_palettes.clear();
 }
 
@@ -10961,7 +10988,7 @@ void LLPipeline::invalidateMetalReflectionProbeScene()
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     capture.markIncomplete(__LINE__);
-    capture.batches.clear();
+    capture.clearDraws();
     capture.avatar_palettes.clear();
     capture.direct_avatar_alpha = false;
     capture.direct_avatar_alpha_state_active = false;
@@ -11013,7 +11040,7 @@ void LLPipeline::captureMetalReflectionProbeScene()
             if (!info)
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 break;
             }
             if (pass.skip_indexed_materials &&
@@ -11060,7 +11087,7 @@ void LLPipeline::captureMetalReflectionProbeScene()
                 if (!info)
                 {
                     capture.markIncomplete(__LINE__);
-                    capture.batches.clear();
+                    capture.clearDraws();
                     break;
                 }
                 captureMetalWorldMaterialBatch(
@@ -11109,7 +11136,7 @@ void LLPipeline::captureMetalReflectionProbeScene()
             if (!info)
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 break;
             }
             if (LLDrawPoolBump::bumpCanDiscard(*info))
@@ -11145,7 +11172,7 @@ void LLPipeline::captureMetalReflectionProbeScene()
             if (!info)
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 break;
             }
             if (info->mBump != last_bump ||
@@ -11192,7 +11219,7 @@ void LLPipeline::captureMetalReflectionProbeScene()
             if (!info)
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 break;
             }
             captureMetalWorldPBRBatch(
@@ -11234,7 +11261,7 @@ void LLPipeline::captureMetalReflectionProbeScene()
                 if (!face)
                 {
                     capture.markIncomplete(__LINE__);
-                    capture.batches.clear();
+                    capture.clearDraws();
                     break;
                 }
                 if (!face->getVertexBuffer())
@@ -11360,7 +11387,7 @@ void LLPipeline::captureMetalReflectionProbePostDeferred()
     const auto fail_null_draw = [&]()
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
     };
     const auto for_each_draw = [&](U32 type, const auto& visitor)
     {
@@ -11791,7 +11818,7 @@ void LLPipeline::captureMetalWorldBumpBatch(
               !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))))
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             return;
         }
 
@@ -11841,7 +11868,7 @@ void LLPipeline::captureMetalWorldBumpBatch(
                     4 + static_cast<std::size_t>(joint_count) * 12)
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 return;
             }
             batch.weight_offset = buffer->getOffset(
@@ -11857,12 +11884,12 @@ void LLPipeline::captureMetalWorldBumpBatch(
         !normal_image || !normal_image->getMetalTexture())
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
 
     const std::size_t prior_count = capture.batches.size();
-    captureMetalWorldGBufferBatch(params, false);
+    captureMetalWorldGBufferBatch(params, false, true);
     if (!capture.complete || capture.batches.size() == prior_count)
     {
         return;
@@ -11909,7 +11936,7 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
         !buffer->prepareMetalBuffers(true))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
 
@@ -11983,7 +12010,7 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
         if (!batch.diffuse_textures[slot])
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             return;
         }
     }
@@ -11994,7 +12021,7 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
             !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             return;
         }
         const LLVOAvatar::MatrixPaletteCache& palette =
@@ -12005,7 +12032,7 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
                 4 + static_cast<std::size_t>(joint_count) * 12)
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             return;
         }
         batch.weight_offset = buffer->getOffset(
@@ -12030,7 +12057,7 @@ void LLPipeline::captureMetalWorldPostWaterLegacyGlowBatch(
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     const std::size_t first_batch = capture.batches.size();
@@ -12064,7 +12091,7 @@ void LLPipeline::captureMetalWorldPostWaterPBRGlowBatch(
     if (capture.pass_active)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     const std::size_t first_batch = capture.batches.size();
@@ -12121,7 +12148,7 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
     if (depth_only && !world_post_water)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     if (params.mGLTFMaterial.isNull() ||
@@ -12133,7 +12160,7 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
           params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
 
@@ -12144,7 +12171,7 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
         if (uses_shadows && !fillMetalImpostorDirectionalShadows())
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             return;
         }
         uses_shadows = uses_shadows &&
@@ -12157,7 +12184,7 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
             if (!fillMetalWorldAlphaLighting(lighting))
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 return;
             }
             capture.world_alpha_lighting = lighting;
@@ -12195,7 +12222,7 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
                 depth_only, false))
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             return;
         }
     }
@@ -12223,7 +12250,7 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     if (depth_only && !world_post_water)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
 
@@ -12240,7 +12267,7 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
         if (world_alpha)
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
         }
         return;
     }
@@ -12254,7 +12281,7 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
             if (!fillMetalWorldAlphaLighting(lighting))
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 return;
             }
             capture.world_alpha_lighting = lighting;
@@ -12267,7 +12294,7 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
             if (!fillMetalImpostorDirectionalShadows())
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 return;
             }
             world_simple_shadows =
@@ -12312,7 +12339,7 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
                 depth_only, true))
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             return;
         }
     }
@@ -14767,7 +14794,7 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     if (depth_only && !world_post_water)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     const U32 shader_mask = params.mShaderMask;
@@ -14780,7 +14807,7 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
           params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
 
@@ -14788,7 +14815,7 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     if (uses_shadows && !fillMetalImpostorDirectionalShadows())
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     if (world_alpha)
@@ -14816,7 +14843,7 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
         if (!fillMetalWorldAlphaLighting(lighting))
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             return;
         }
         captured_lighting = lighting;
@@ -14854,7 +14881,7 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
                     depth_only, false))
             {
                 capture.markIncomplete(__LINE__);
-                capture.batches.clear();
+                capture.clearDraws();
                 return;
             }
         }
@@ -14882,7 +14909,7 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     const auto fail = [&capture]()
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.avatar_palettes.clear();
     };
     const bool direct_avatar_alpha = avatar_alpha &&
@@ -15124,7 +15151,7 @@ void LLPipeline::captureMetalWorldImpostorBatch(
     if (!capture.complete || !debug_state_valid)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.avatar_palettes.clear();
         return;
     }
@@ -15136,7 +15163,7 @@ void LLPipeline::captureMetalWorldImpostorBatch(
     if (!has_textures)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.avatar_palettes.clear();
         // Ask the normal avatar scheduler for one fresh bake. The draw-pool
         // capture publishes one coherent four-attachment native generation;
@@ -15183,7 +15210,7 @@ void LLPipeline::captureMetalWorldImpostorBatch(
     catch (const std::bad_alloc&)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.avatar_palettes.clear();
     }
 }
@@ -15388,7 +15415,7 @@ void LLPipeline::captureMetalWorldTreeBatch(LLFace* face,
         buffer->getNumVerts() == 0 || buffer->getNumIndices() == 0)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
 
@@ -15400,7 +15427,7 @@ void LLPipeline::captureMetalWorldTreeBatch(LLFace* face,
             modelview_projection))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
@@ -15503,7 +15530,7 @@ void LLPipeline::captureMetalWorldTerrainBatch(
         !std::isfinite(triplanar_blend) || triplanar_blend <= 0.f)
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
 
@@ -15573,7 +15600,7 @@ void LLPipeline::captureMetalWorldTerrainBatch(
                 break;
             }
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
 
@@ -15585,7 +15612,7 @@ void LLPipeline::captureMetalWorldTerrainBatch(
             modelview_projection))
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
         return;
     }
     std::memcpy(batch.modelview_projection,
@@ -15725,7 +15752,7 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
     const auto fail = [&capture]()
     {
         capture.markIncomplete(__LINE__);
-        capture.batches.clear();
+        capture.clearDraws();
     };
     LLDrawable* drawable = face ? face->getDrawable() : nullptr;
     LLVOSurfacePatch* object = drawable
@@ -16042,6 +16069,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     {
         capture.markIncomplete(__LINE__);
     }
+    if (!capture.flushDrawOrder()) capture.markIncomplete(__LINE__);
     const bool impostor_bake = capture.impostor_bake;
     capture.impostor_bake = false;
     capture.frame_active = false;
@@ -16053,9 +16081,9 @@ void LLPipeline::endMetalWorldGBufferCapture()
     if (!capture.complete)
     {
         const std::size_t incomplete_batch_count =
-            capture.batches.size();
+            capture.logicalDrawCount();
         settle_visibility_results(nullptr);
-        capture.batches.clear();
+        capture.clearDraws();
         capture.avatar_palettes.clear();
         if (impostor_bake)
         {
@@ -16112,6 +16140,11 @@ void LLPipeline::endMetalWorldGBufferCapture()
 
     ALMetalWorldGBufferScene scene;
     scene.source_owner = capture.world_resources;
+    scene.cpu_source_owner = capture.cpu_sources;
+    scene.references = capture.source_references.data();
+    scene.reference_count = capture.source_references.size();
+    scene.draw_order = capture.draw_order.data();
+    scene.draw_order_count = capture.draw_order.size();
     scene.batches = capture.batches.data();
     scene.batch_count = capture.batches.size();
     scene.visibility_queries = capture.visibility_queries.data();
@@ -16263,7 +16296,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
     }
     const auto epoch = capture.world_prepare_epoch->fetch_add(1, std::memory_order_acq_rel) + 1;
     auto inputs = ALMetalWorldViewInputs::adopt(scene, std::move(capture.batches),
-        std::move(capture.visibility_queries), capture.world_resources, epoch, &error);
+        std::move(capture.source_references), std::move(capture.draw_order),
+        std::move(capture.visibility_queries), capture.cpu_sources, capture.world_resources, epoch, &error);
     // Required work never disappears when optional worker admission is denied.
     // One owner range and at most one credited GCD range share the same packet.
     std::shared_ptr<const ALMetalPreparedWorldView> prepared;
@@ -16271,7 +16305,11 @@ void LLPipeline::endMetalWorldGBufferCapture()
     {
         std::shared_ptr<const ALMetalWorldViewInputs>& inputs;
         std::shared_ptr<const ALMetalPreparedWorldView>& prepared;
+        ALMetalWorldGBufferScene& scene;
         std::vector<ALMetalWorldSimpleBatch>& batches;
+        std::vector<ALMetalWorldSourceReference>& references;
+        std::vector<ALMetalWorldDrawIndex>& order;
+        std::shared_ptr<MetalWorldSimpleCapture::WorldResourceLease>& cpu_sources;
         std::vector<ALMetalWorldVisibilityQuery>& queries;
         U64& reclaimed;
         U64& retained;
@@ -16281,22 +16319,27 @@ void LLPipeline::endMetalWorldGBufferCapture()
             // after encoding, query settlement and scene diagnostics finish.
             // Native commands retain resources and constant pages separately.
             prepared.reset();
+            scene.cpu_source_owner.reset();
             batches.clear();
+            references.clear();
+            order.clear();
+            cpu_sources.reset();
             queries.clear();
             if (inputs)
             {
-                if (ALMetalWorldViewInputs::reclaimCpuStorage(inputs, batches, queries)) ++reclaimed;
+                if (ALMetalWorldViewInputs::reclaimCpuStorage(inputs, batches, references, order, queries)) ++reclaimed;
                 else ++retained;
             }
         }
-    } retire_cpu_capture{inputs, prepared, capture.batches, capture.visibility_queries,
+    } retire_cpu_capture{inputs, prepared, scene, capture.batches, capture.source_references, capture.draw_order,
+        capture.cpu_sources, capture.visibility_queries,
         capture.cpu_packets_reclaimed, capture.cpu_packets_retained};
     // Stable source tables make the scalar native path substantially cheaper.
     // Draw count alone did not predict a complete-path worker benefit; keep
     // this diagnostic explicit until its frame/CPU cost gate is established.
     static LLCachedControl<bool> prepare_world_inputs(gSavedSettings, "RenderMetalWorldPreparation", false);
     const bool prepare_world = inputs && prepare_world_inputs() &&
-        inputs->scene().batch_count >= MetalWorldSimpleCapture::parallel_world_minimum;
+        inputs->scene().drawCount() >= MetalWorldSimpleCapture::parallel_world_minimum;
     bool credited_preparation = false;
     if (inputs) scene = inputs->scene();
     if (prepare_world)
@@ -16361,12 +16404,11 @@ void LLPipeline::endMetalWorldGBufferCapture()
             }
         }
         describe_metal_draw_join_upper_bound(
-            scene.batches, scene.batch_count, false,
+            scene,
             capture.hero_probe_face_capture ? 2 :
                 capture.reflection_probe_face_capture ? 3 : isMainWorldPass() ? 1 : 0,
             capture.hero_probe_face_capture ? capture.hero_probe_face :
-                capture.reflection_probe_face_capture ? capture.reflection_probe_face : 0,
-            scene.visibility_query_count);
+                capture.reflection_probe_face_capture ? capture.reflection_probe_face : 0);
     }
     if (!target)
     {
@@ -16381,7 +16423,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
             LL_WARNS("Metal")
                 << "Could not encode native opaque avatar-impostor bake: "
                 << error << LL_ENDL;
-            capture.batches.clear();
+            capture.clearDraws();
             capture.avatar_palettes.clear();
             return;
         }
@@ -16477,7 +16519,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
             }
         }
     }
-    capture.batches.clear();
+    capture.clearDraws();
     capture.avatar_palettes.clear();
     capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
 }

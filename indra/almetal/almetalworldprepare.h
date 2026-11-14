@@ -6,6 +6,7 @@
 #pragma once
 
 #include "almetalworld.h"
+#include "almetalworlddraws.h"
 
 #include <atomic>
 #include <span>
@@ -24,6 +25,18 @@ public:
         std::shared_ptr<const void> resource_owner,
         std::uint64_t epoch,
         std::string* error = nullptr);
+    // Compact references borrow immutable descriptions from cpu_description_owner.
+    // Only native_resource_owner is retained by consuming GPU commands.
+    static std::shared_ptr<const ALMetalWorldViewInputs> adopt(
+        ALMetalWorldGBufferScene scene,
+        std::vector<ALMetalWorldSimpleBatch> batches,
+        std::vector<ALMetalWorldSourceReference> references,
+        std::vector<ALMetalWorldDrawIndex> draw_order,
+        std::vector<ALMetalWorldVisibilityQuery> queries,
+        std::shared_ptr<const void> cpu_description_owner,
+        std::shared_ptr<const void> native_resource_owner,
+        std::uint64_t epoch,
+        std::string* error = nullptr);
     ~ALMetalWorldViewInputs();
     const ALMetalWorldGBufferScene& scene() const noexcept;
     std::uint64_t epoch() const noexcept;
@@ -32,12 +45,20 @@ public:
     std::shared_ptr<const void> resourceLease() const noexcept;
     // Owner only, after jobs/encoding have joined and no future CPU reader can
     // access the packet. Unique strong ownership is only a backstop; it does
-    // not synchronize a racing weak lock. Both output vectors must be empty.
+    // not synchronize a racing weak lock. Every output vector must be empty.
     // Success returns their capture capacity with values cleared and resets
     // input (including copied poses). Refusal leaves every argument intact.
     static bool reclaimCpuStorage(
         std::shared_ptr<const ALMetalWorldViewInputs>& input,
         std::vector<ALMetalWorldSimpleBatch>& empty_batches,
+        std::vector<ALMetalWorldVisibilityQuery>& empty_queries) noexcept;
+    // Returns raw, reference, order and query capacities together. The raw-only
+    // overload refuses packets containing compact records or ordered storage.
+    static bool reclaimCpuStorage(
+        std::shared_ptr<const ALMetalWorldViewInputs>& input,
+        std::vector<ALMetalWorldSimpleBatch>& empty_batches,
+        std::vector<ALMetalWorldSourceReference>& empty_references,
+        std::vector<ALMetalWorldDrawIndex>& empty_draw_order,
         std::vector<ALMetalWorldVisibilityQuery>& empty_queries) noexcept;
 private:
     struct Impl;
@@ -124,6 +145,8 @@ private:
 bool alMetalValidateWorldView(const ALMetalWorldGBufferScene&, std::string* error);
 bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene&,
                               const ALMetalWorldSimpleBatch&, std::string* error);
+bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene&,
+                              const ALMetalWorldDraw&, std::string* error);
 bool alMetalLayoutWorldRecord(const ALMetalWorldSimpleBatch&,
                              std::size_t& next, ALMetalWorldPreparedRecord&,
                              std::string* error);

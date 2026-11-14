@@ -38,6 +38,32 @@
 #include <utility>
 #include <vector>
 
+const float* ALMetalWorldDraw::modelviewProjection() const noexcept
+{ return mView ? mView->modelview_projection : mSource->modelview_projection; }
+const float* ALMetalWorldDraw::modelview() const noexcept
+{ return mView ? mView->modelview : mSource->modelview; }
+const float* ALMetalWorldDraw::normalMatrix() const noexcept
+{ return mView ? &mView->normal_matrix[0][0] : &mSource->normal_matrix[0][0]; }
+const float* ALMetalWorldDraw::riggedNormalMatrix() const noexcept
+{ return mView ? &mView->rigged_normal_matrix[0][0] : &mSource->rigged_normal_matrix[0][0]; }
+const float* ALMetalWorldDraw::textureMatrix() const noexcept
+{ return mView ? mView->texture_matrix : mSource->texture_matrix; }
+
+std::size_t ALMetalWorldGBufferScene::drawCount() const noexcept
+{ return draw_order_count ? draw_order_count : batch_count; }
+
+ALMetalWorldDraw ALMetalWorldGBufferScene::draw(std::size_t index) const noexcept
+{
+    // Storage, complete ordered membership and this index are validated before
+    // resolving. Tokens never point into a raw vector while it is growing.
+    if (!draw_order_count) return ALMetalWorldDraw(batches[index]);
+    const auto token = draw_order[index];
+    const auto storage_index = alMetalWorldDrawStorageIndex(token);
+    if (!alMetalWorldDrawIsReference(token)) return ALMetalWorldDraw(batches[storage_index]);
+    const auto& reference = references[storage_index];
+    return ALMetalWorldDraw(*reference.source, &reference.view);
+}
+
 namespace
 {
     using CommandSettlementObserver = std::function<void(bool)>;
@@ -8725,20 +8751,21 @@ WorldTerrainConstants buildWorldTerrainConstants(const ALMetalWorldGBufferScene&
 }
 
 WorldSimpleConstants buildWorldSimpleConstants(const ALMetalWorldGBufferScene& scene,
-    const ALMetalWorldSimpleBatch& batch)
+    const ALMetalWorldDraw& draw)
 {
+    const auto& batch = draw.source();
     WorldSimpleConstants constants{};
     std::memcpy(constants.modelview_projection,
-                batch.modelview_projection,
+                draw.modelviewProjection(),
                 sizeof(constants.modelview_projection));
-    std::memcpy(constants.modelview, batch.modelview,
+    std::memcpy(constants.modelview, draw.modelview(),
                 sizeof(constants.modelview));
-    std::memcpy(constants.normal_matrix, batch.normal_matrix,
+    std::memcpy(constants.normal_matrix, draw.normalMatrix(),
                 sizeof(constants.normal_matrix));
     std::memcpy(constants.rigged_normal_matrix,
-                batch.rigged_normal_matrix,
+                draw.riggedNormalMatrix(),
                 sizeof(constants.rigged_normal_matrix));
-    std::memcpy(constants.texture_matrix, batch.texture_matrix,
+    std::memcpy(constants.texture_matrix, draw.textureMatrix(),
                 sizeof(constants.texture_matrix));
     std::memcpy(constants.avatar_wind, batch.avatar_wind,
                 sizeof(constants.avatar_wind));
@@ -8760,6 +8787,12 @@ WorldSimpleConstants buildWorldSimpleConstants(const ALMetalWorldGBufferScene& s
     constants.depth_convention[1] = batch.texture_count;
     constants.depth_convention[2] = scene.mirror_clip ? 1u : 0u;
     return constants;
+}
+
+WorldSimpleConstants buildWorldSimpleConstants(const ALMetalWorldGBufferScene& scene,
+    const ALMetalWorldSimpleBatch& batch)
+{
+    return buildWorldSimpleConstants(scene, ALMetalWorldDraw(batch));
 }
 
 WorldMaterialConstants buildWorldMaterialConstants([[maybe_unused]] const ALMetalWorldGBufferScene& scene,
@@ -8968,15 +9001,108 @@ catch (const std::bad_alloc&)
     return {};
 }
 
+namespace
+{
+bool compactWorldSourceSupported(const ALMetalWorldSimpleBatch& batch) noexcept
+{
+    return !batch.normal_texture && !batch.skin_palette &&
+        batch.skin_palette_float_count == 0 && batch.skin_joint_count == 0 &&
+        batch.weight_offset == 0 && batch.cloth_offset == 0 &&
+        !batch.avatar_rigid && !batch.avatar_skinning && !batch.avatar_cloth &&
+        !batch.avatar_alpha && !batch.terrain && !batch.impostor &&
+        !batch.impostor_debug_outline && !batch.impostor_fullbright &&
+        !batch.impostor_shiny && !batch.impostor_emboss &&
+        !batch.water_exclusion && !batch.water_haze && !batch.water_surface &&
+        !batch.atmospheric_haze && !batch.pre_water_alpha &&
+        !batch.post_water_alpha && !batch.post_water_depth_only &&
+        !batch.post_water_glow && !batch.pre_water_fullbright &&
+        !batch.pre_water_simple && !batch.pre_water_material &&
+        !batch.pre_water_pbr && !batch.pre_water_shadows &&
+        !batch.pre_water_particle && !batch.pre_water_alpha_writes_coverage &&
+        !batch.legacy_glow && !batch.pbr_glow;
+}
+
+// Detached record preparation is also a public helper. Its owner validates the
+// complete permutation once, but a direct caller must never dereference an
+// invalid local mapping before ordinary draw validation can reject it.
+bool worldDrawStorageIndexAvailable(const ALMetalWorldGBufferScene& scene,
+                                   std::size_t index) noexcept
+{
+    if (index >= scene.drawCount()) return false;
+    if (!scene.draw_order_count) return scene.batches != nullptr && scene.reference_count == 0;
+    if (!scene.draw_order) return false;
+    const auto token = scene.draw_order[index];
+    const auto storage_index = alMetalWorldDrawStorageIndex(token);
+    if (!alMetalWorldDrawIsReference(token))
+        return scene.batches && storage_index < scene.batch_count;
+    return scene.references && storage_index < scene.reference_count &&
+        scene.references[storage_index].source && scene.cpu_source_owner && scene.source_owner;
+}
+}
+
 bool alMetalValidateWorldView(const ALMetalWorldGBufferScene& scene, std::string* error)
 {
     if ((scene.batch_count != 0 && !scene.batches) ||
+        (scene.reference_count != 0 && (!scene.references || !scene.draw_order_count ||
+                                      !scene.cpu_source_owner || !scene.source_owner)) ||
+        (scene.draw_order_count != 0 && !scene.draw_order) ||
         (scene.visibility_query_count != 0 &&
          !scene.visibility_queries) ||
         scene.width == 0 || scene.height == 0 || !validOpaqueCoverage(scene))
     {
         setError(error, "Metal world G-buffer scene is incomplete");
         return false;
+    }
+    if (scene.draw_order_count)
+    {
+        if (scene.reference_count > std::numeric_limits<std::size_t>::max() - scene.batch_count ||
+            scene.draw_order_count != scene.batch_count + scene.reference_count ||
+            (scene.batch_count && !alMetalWorldDrawIndexFits(scene.batch_count - 1)) ||
+            (scene.reference_count && !alMetalWorldDrawIndexFits(scene.reference_count - 1)))
+        {
+            setError(error, "Metal world draw storage cardinality is invalid");
+            return false;
+        }
+        try
+        {
+            std::vector<std::uint64_t> seen(scene.draw_order_count / 64 +
+                (scene.draw_order_count % 64 != 0), 0);
+            for (std::size_t index = 0; index < scene.draw_order_count; ++index)
+            {
+                if (!worldDrawStorageIndexAvailable(scene, index))
+                {
+                    setError(error, "Metal world draw storage index is invalid");
+                    return false;
+                }
+                const auto token = scene.draw_order[index];
+                const auto storage_index = alMetalWorldDrawStorageIndex(token);
+                const std::size_t identity = alMetalWorldDrawIsReference(token)
+                    ? scene.batch_count + storage_index : storage_index;
+                const auto bit = std::uint64_t{1} << (identity % 64);
+                if (seen[identity / 64] & bit)
+                {
+                    setError(error, "Metal world draw storage index is duplicated");
+                    return false;
+                }
+                seen[identity / 64] |= bit;
+            }
+            // Equal cardinality and unique in-range identities prove every
+            // raw/reference storage element occurs exactly once.
+        }
+        catch (const std::bad_alloc&)
+        {
+            if (error) error->clear();
+            return false;
+        }
+    }
+    for (std::size_t index = 0; index < scene.reference_count; ++index)
+    {
+        const auto* source = scene.references[index].source;
+        if (!source || !compactWorldSourceSupported(*source))
+        {
+            setError(error, "Metal world source reference family is unsupported");
+            return false;
+        }
     }
     if (!finiteValues(scene.clear_color, 4) ||
         !finiteValues(scene.mirror_clip_plane, 4))
@@ -8994,7 +9120,7 @@ bool alMetalValidateWorldView(const ALMetalWorldGBufferScene& scene, std::string
         if (!finiteValues(query.modelview_projection, 16) ||
             !finiteValues(query.center, 4) ||
             !finiteValues(query.half_extent, 4) ||
-            query.batch_offset > scene.batch_count ||
+            query.batch_offset > scene.drawCount() ||
             (index != 0 && query.batch_offset < previous_query_offset) ||
             query.fan > 7 || query.fan_count == 0 ||
             query.fan_count > 2 || query.count_samples > 1 ||
@@ -9012,8 +9138,14 @@ bool alMetalValidateWorldView(const ALMetalWorldGBufferScene& scene, std::string
 }
 
 bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
-    const ALMetalWorldSimpleBatch& batch, std::string* error)
+    const ALMetalWorldDraw& draw, std::string* error)
 {
+    const auto& batch = draw.source();
+    if (draw.view() && !compactWorldSourceSupported(batch))
+    {
+        setError(error, "Metal world source reference family is unsupported");
+        return false;
+    }
     constexpr std::size_t float4_stride = sizeof(float) * 4;
     constexpr std::uint32_t max_skin_joints = 110;
     if (batch.impostor)
@@ -9039,7 +9171,7 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
             batch.impostor_shiny ||
             batch.impostor_emboss || !debug_outline_valid ||
             batch.terrain ||
-            !finiteValues(batch.modelview_projection, 16) ||
+            !finiteValues(draw.modelviewProjection(), 16) ||
             !finiteValues(batch.impostor_center, 4) ||
             !finiteValues(batch.impostor_left, 4) ||
             !finiteValues(batch.impostor_up, 4) ||
@@ -9145,8 +9277,8 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
                   {
                       return value < 0.f || value >= 1.f;
                   }))) ||
-            !finiteValues(batch.modelview_projection, 16) ||
-            !finiteValues(&batch.normal_matrix[0][0], 12))
+            !finiteValues(draw.modelviewProjection(), 16) ||
+            !finiteValues(draw.normalMatrix(), 12))
         {
             setError(error, "Metal world terrain batch is invalid");
             return false;
@@ -9251,13 +9383,13 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
          batch.texcoord2_offset % (sizeof(float) * 2) != 0) ||
         batch.index_offset % index_stride != 0 ||
         !std::isfinite(batch.alpha_cutoff) ||
-        !finiteValues(batch.modelview_projection, 16) ||
+        !finiteValues(draw.modelviewProjection(), 16) ||
         (!batch.avatar_skinning &&
-         (!finiteValues(batch.modelview, 16) ||
-          batch.modelview[15] != 1.f)) ||
-        !finiteValues(&batch.normal_matrix[0][0], 12) ||
-        !finiteValues(&batch.rigged_normal_matrix[0][0], 12) ||
-        !finiteValues(batch.texture_matrix, 16) ||
+         (!finiteValues(draw.modelview(), 16) ||
+          draw.modelview()[15] != 1.f)) ||
+        !finiteValues(draw.normalMatrix(), 12) ||
+        !finiteValues(draw.riggedNormalMatrix(), 12) ||
+        !finiteValues(draw.textureMatrix(), 16) ||
         (batch.avatar_cloth &&
          (!finiteValues(batch.avatar_wind, 4) ||
           !finiteValues(batch.avatar_sin_wave, 4) ||
@@ -9372,6 +9504,12 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
     return true;
 }
 
+bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
+    const ALMetalWorldSimpleBatch& batch, std::string* error)
+{
+    return alMetalValidateWorldBatch(scene, ALMetalWorldDraw(batch), error);
+}
+
 bool alMetalLayoutWorldRecord(const ALMetalWorldSimpleBatch& batch,
     std::size_t& next, ALMetalWorldPreparedRecord& record, std::string* error)
 {
@@ -9416,8 +9554,14 @@ bool alMetalLayoutWorldRecord(const ALMetalWorldSimpleBatch& batch,
 bool alMetalPrepareWorldRecord(const ALMetalWorldGBufferScene& scene, std::size_t index,
     ALMetalWorldPreparedRecord& record, std::span<std::byte> bytes, std::string* error)
 {
-    if (index >= scene.batch_count || !alMetalValidateWorldBatch(scene, scene.batches[index], error)) return false;
-    const auto& batch = scene.batches[index];
+    if (!worldDrawStorageIndexAvailable(scene, index))
+    {
+        setError(error, "Prepared world draw storage index is invalid");
+        return false;
+    }
+    const auto draw = scene.draw(index);
+    if (!alMetalValidateWorldBatch(scene, draw, error)) return false;
+    const auto& batch = draw.source();
     const auto copy = [&](std::size_t offset, const auto& value)
     {
         if (offset > bytes.size() || sizeof(value) > bytes.size() - offset) return false;
@@ -9441,7 +9585,7 @@ bool alMetalPrepareWorldRecord(const ALMetalWorldGBufferScene& scene, std::size_
         setError(error, "Prepared material certificate changed after layout");
         return false;
     }
-    return copy(record.offset, buildWorldSimpleConstants(scene, batch)) &&
+    return copy(record.offset, buildWorldSimpleConstants(scene, draw)) &&
         (!record.material || stable_tables || copy(record.material_offset, buildWorldMaterialConstants(scene, batch,
             record.material_normal_map, record.material_specular_map))) &&
         (!record.pbr || stable_tables || copy(record.pbr_offset, buildWorldPBRConstants(scene, batch)));
@@ -9482,21 +9626,22 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         setError(error, "Prepared world view epoch was cancelled");
         return nullptr;
     }
+    const std::size_t draw_count = scene.drawCount();
     if (!prepared)
     {
         if (!alMetalValidateWorldView(scene, error)) return nullptr;
-        for (std::size_t index = 0; index < scene.batch_count; ++index)
-            if (!alMetalValidateWorldBatch(scene, scene.batches[index], error)) return nullptr;
+        for (std::size_t index = 0; index < draw_count; ++index)
+            if (!alMetalValidateWorldBatch(scene, scene.draw(index), error)) return nullptr;
     }
 
     const auto prepared_records = prepared ? prepared->records() : std::span<const ALMetalWorldPreparedRecord>{};
     const auto prepared_constants = prepared ? prepared->constants() : std::span<const std::byte>{};
     std::unique_ptr<ALMetalBuffer> terrain_factor_buffer;
-    std::vector<std::uint16_t> terrain_factors(scene.batch_count * 6, 0);
+    std::vector<std::uint16_t> terrain_factors(draw_count * 6, 0);
     bool has_terrain = false;
-    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    for (std::size_t index = 0; index < draw_count; ++index)
     {
-        const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        const ALMetalWorldSimpleBatch& batch = scene.draw(index).source();
         if (!batch.terrain)
         {
             continue;
@@ -9526,12 +9671,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
 
     std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
     std::vector<const ALMetalBuffer*> palette_buffers(
-        scene.batch_count, nullptr);
-    std::vector<bool> inline_palettes(scene.batch_count, false);
+        draw_count, nullptr);
+    std::vector<bool> inline_palettes(draw_count, false);
     for (std::size_t batch_index = 0;
-         batch_index < scene.batch_count; ++batch_index)
+         batch_index < draw_count; ++batch_index)
     {
-        const ALMetalWorldSimpleBatch& batch = scene.batches[batch_index];
+        const ALMetalWorldSimpleBatch& batch = scene.draw(batch_index).source();
         if (batch.terrain || !batch.skin_palette)
         {
             continue;
@@ -9548,7 +9693,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         }
         for (std::size_t previous = 0; previous < batch_index; ++previous)
         {
-            const ALMetalWorldSimpleBatch& candidate = scene.batches[previous];
+            const ALMetalWorldSimpleBatch& candidate = scene.draw(previous).source();
             if (palette_buffers[previous] &&
                 candidate.skin_palette == batch.skin_palette &&
                 candidate.skin_palette_float_count ==
@@ -9743,7 +9888,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         return nullptr;
     }
     std::shared_ptr<ALMetalWorldVisibilityArguments> shared_visibility_arguments;
-    if (scene.native_visibility && scene.native_visibility->size() == scene.batch_count && scene.batch_count)
+    if (scene.native_visibility && scene.native_visibility->size() == draw_count && draw_count)
     {
         std::string optional_error;
         shared_visibility_arguments = ALMetalWorldVisibility::encode(*command, *scene.native_visibility, &optional_error);
@@ -9965,14 +10110,15 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                                          previous_world_slice.offset, error);
     };
 
-    for (std::size_t index = 0; encoded && index < scene.batch_count; ++index)
+    for (std::size_t index = 0; encoded && index < draw_count; ++index)
     {
         encoded = encode_visibility_at(index);
         if (!encoded)
         {
             break;
         }
-        const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        const auto draw = scene.draw(index);
+        const ALMetalWorldSimpleBatch& batch = draw.source();
         const bool join_static = scene.join_adjacent_static_draws &&
             scene.visibility_query_count == 0 && !scene.wireframe &&
             !scene.stamp_opaque_coverage && !batch.terrain && !batch.impostor &&
@@ -10170,7 +10316,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             continue;
         }
         std::optional<WorldSimpleConstants> owned_constants;
-        if (!prepared) owned_constants = buildWorldSimpleConstants(scene, batch);
+        if (!prepared) owned_constants = draw.view()
+            ? buildWorldSimpleConstants(scene, draw) : buildWorldSimpleConstants(scene, batch);
         const void* constants_data = prepared
             ? prepared_constants.data() + prepared_records[index].offset
             : static_cast<const void*>(&*owned_constants);
@@ -10413,7 +10560,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             }
         }
         const bool shared_visible_draw = shared_visibility_arguments && !avatar && !rigged &&
-            !batch.avatar_cloth && shared_visibility_arguments->appliesTo(index, batch.index_count, batch.modelview_projection);
+            !batch.avatar_cloth && shared_visibility_arguments->appliesTo(index, batch.index_count, draw.modelviewProjection());
         encoded = encoded && (shared_visible_draw
             ? shared_visibility_arguments->drawIndexed(*encoder, *command, index, batch.index_type,
                 *batch.indices, batch.index_offset, batch.index_count, error)
@@ -10437,7 +10584,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     }
 
     encoded = encoded && encoder->setIndexedTriangleJoining(false, error) &&
-        encode_visibility_at(scene.batch_count) &&
+        encode_visibility_at(draw_count) &&
         visibility_index == scene.visibility_query_count;
 
     if (!encoded || !encoder->end(error))

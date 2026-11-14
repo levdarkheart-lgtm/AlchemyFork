@@ -28,7 +28,7 @@
  */
 
 void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
-                                               bool batch_textures)
+                                               bool batch_textures, bool editable)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active ||
@@ -55,7 +55,7 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
             !buffer->prepareMetalBuffers(true))
         {
             capture.markIncomplete(__LINE__);
-            capture.batches.clear();
+            capture.clearDraws();
             return;
         }
         LLMatrix4a modelview;
@@ -85,10 +85,11 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                     sizeof(batch.modelview));
         return;
     }
-    captureMetalPublishedWorldBatch(params, 0, batch_textures);
+    captureMetalPublishedWorldBatch(params, 0, batch_textures, editable);
 }
 
-void LLPipeline::captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 family, bool indexed)
+void LLPipeline::captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 family, bool indexed, bool editable)
+try
 {
     if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->frame_active ||
         !mMetalWorldSimpleCapture->pass_active) return;
@@ -121,31 +122,51 @@ void LLPipeline::captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 f
     {
         ++capture.scene_source_failures;
         capture.last_scene_source_failure = source.failure;
-        capture.markIncomplete(__LINE__); capture.batches.clear(); return;
+        capture.markIncomplete(__LINE__); capture.clearDraws(); return;
     }
     if (source.reused) ++capture.scene_source_hits; else ++capture.scene_source_builds;
     LLMatrix4a modelview, inverse_modelview, modelview_projection;
     if (!buildMetalWorldDrawMatrices(params, modelview, inverse_modelview, modelview_projection))
-    { capture.markIncomplete(__LINE__); capture.batches.clear(); return; }
-    capture.world_resources->retain(source.owner);
-    auto& batch = capture.batches.emplace_back(*source.prototype);
-    std::memcpy(batch.modelview_projection, modelview_projection.getF32ptr(), sizeof(batch.modelview_projection));
-    std::memcpy(batch.modelview, modelview.getF32ptr(), sizeof(batch.modelview));
+    { capture.markIncomplete(__LINE__); capture.clearDraws(); return; }
+    if (!source.owner->native_tuple)
+    { capture.markIncomplete(__LINE__); capture.clearDraws(); return; }
+    capture.world_resources->retain(source.owner->native_tuple);
+    ALMetalWorldViewMatrices view;
+    std::memcpy(view.modelview_projection, modelview_projection.getF32ptr(), sizeof(view.modelview_projection));
+    std::memcpy(view.modelview, modelview.getF32ptr(), sizeof(view.modelview));
+    std::memcpy(view.texture_matrix, source.prototype->texture_matrix, sizeof(view.texture_matrix));
     const F32* inverse = inverse_modelview.getF32ptr();
     const F32* values = modelview.getF32ptr();
     for (U32 column = 0; column < 3; ++column)
-    {
         for (U32 row = 0; row < 3; ++row)
         {
-            batch.normal_matrix[column][row] = inverse[row * 4 + column];
-            batch.rigged_normal_matrix[column][row] = values[column * 4 + row];
+            view.normal_matrix[column][row] = inverse[row * 4 + column];
+            view.rigged_normal_matrix[column][row] = values[column * 4 + row];
         }
-    }
     const bool indexed_source = family == 0
         ? indexed && params.mTextureList.size() > 1 : indexed;
     if (!indexed_source && params.mTextureMatrix &&
         (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
-        std::memcpy(batch.texture_matrix, params.mTextureMatrix->mMatrix, sizeof(batch.texture_matrix));
+        std::memcpy(view.texture_matrix, params.mTextureMatrix->mMatrix, sizeof(view.texture_matrix));
+    const bool compact = capture.compact_gbuffer_active && !editable &&
+        !native_visibility() && !capture.rigged && !capture.impostor_bake &&
+        !capture.impostor_alpha_active && !capture.world_post_deferred_active &&
+        !capture.pbr_glow && !capture.impostor_fullbright &&
+        !capture.impostor_shiny && !capture.impostor_emboss &&
+        (family != 1 || capture.material_alpha_mode != 1);
+    if (compact)
+    {
+        capture.retainCpu(source.owner);
+        if (!capture.appendReference(*source.prototype, view))
+            capture.markIncomplete(__LINE__);
+        return;
+    }
+    auto& batch = capture.batches.emplace_back(*source.prototype);
+    std::memcpy(batch.modelview_projection, view.modelview_projection, sizeof(batch.modelview_projection));
+    std::memcpy(batch.modelview, view.modelview, sizeof(batch.modelview));
+    std::memcpy(batch.normal_matrix, view.normal_matrix, sizeof(batch.normal_matrix));
+    std::memcpy(batch.rigged_normal_matrix, view.rigged_normal_matrix, sizeof(batch.rigged_normal_matrix));
+    std::memcpy(batch.texture_matrix, view.texture_matrix, sizeof(batch.texture_matrix));
     if (native_visibility() && !capture.rigged)
     {
         if (sNativeSceneVisibilityDevice != capture.device)
@@ -176,10 +197,18 @@ void LLPipeline::captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 f
     {
         auto palette = params.mAvatar->updateSkinInfoMatrixPalette(params.mSkinInfo).getMetalAttachmentPalette();
         if (!palette)
-        { capture.markIncomplete(__LINE__); capture.batches.clear(); return; }
-        capture.world_resources->retain(palette);
+        { capture.markIncomplete(__LINE__); capture.clearDraws(); return; }
+        capture.retainCpu(palette);
         batch.skin_palette = palette->data();
         batch.skin_palette_float_count = palette->size();
         batch.skin_joint_count = palette->jointCount();
+    }
+}
+catch (const std::bad_alloc&)
+{
+    if (mMetalWorldSimpleCapture)
+    {
+        mMetalWorldSimpleCapture->markIncomplete(__LINE__);
+        mMetalWorldSimpleCapture->clearDraws();
     }
 }

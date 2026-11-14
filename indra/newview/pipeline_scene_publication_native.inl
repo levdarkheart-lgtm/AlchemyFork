@@ -80,6 +80,33 @@ struct ShadowVariant
     ALMetalWorldSpotShadowCoverage coverage = ALMetalWorldSpotShadowCoverage::opaque;
     std::shared_ptr<const ALMetalShadowSourceRecord> record;
 };
+// The command-completion owner is a separate allocation. It owns only exact
+// C++ native resource generations/uniforms, never source prototypes, viewer
+// objects or a shared_ptr alias whose control block keeps a Payload alive.
+struct NativeTuple
+{
+    std::vector<ALNativeSourceWorkingSet::Resource> resources;
+};
+inline std::shared_ptr<const NativeTuple> nativeTuple(
+    const std::vector<ALNativeSourceWorkingSet::Resource>& resources,
+    const std::shared_ptr<const NativeTuple>& previous = {})
+{
+    if (previous && previous->resources.size() == resources.size())
+    {
+        bool same = true;
+        for (std::size_t i = 0; i < resources.size(); ++i)
+        {
+            const auto& a = previous->resources[i]; const auto& b = resources[i];
+            if (a.bytes != b.bytes || a.allocation.get() != b.allocation.get() ||
+                a.allocation.owner_before(b.allocation) || b.allocation.owner_before(a.allocation))
+            { same = false; break; }
+        }
+        if (same) return previous;
+    }
+    auto value = std::make_shared<NativeTuple>();
+    value->resources = resources;
+    return value;
+}
 struct Payload
 {
     U64 serial = 0, producer_revision = 0;
@@ -88,6 +115,7 @@ struct Payload
     std::vector<WorldVariant> worlds;
     std::vector<ShadowVariant> shadows;
     std::vector<ALNativeSourceWorkingSet::Resource> resources;
+    std::shared_ptr<const NativeTuple> native_tuple;
     // Deliberately no destructor callback: a last packet owner may disappear
     // on Metal completion, away from the scene/working-set publication owner.
 };
@@ -258,6 +286,9 @@ inline bool publish(const LLDrawInfo& info, const std::shared_ptr<Payload>& valu
     const auto& state = info.metalSourcePublication();
     if (!info.mMetalShadowSource)
         info.mMetalShadowSource = std::make_shared<ALViewerMetalShadowSourceCache>();
+    // Dirty publication pays this exact-union metadata copy once; adding a
+    // CPU-only variant can reuse the identical already-sealed native tuple.
+    value->native_tuple = nativeTuple(value->resources, value->native_tuple);
     if (!state->publish(value->producer_revision, value)) return false;
     auto& metadata = *info.mMetalShadowSource;
     metadata.native_scene_revision = value->producer_revision;
@@ -266,7 +297,10 @@ inline bool publish(const LLDrawInfo& info, const std::shared_ptr<Payload>& valu
     // The caller already owns value. Rejection/eviction drops only State's
     // publisher lease; actual packets may still reuse the weak transient.
     working_set.retain(state, value->serial, expected, value->resources, frame);
-    return true;
+    // Cache withdrawal alone still permits the caller's transient reader.
+    // An actual producer change during residency callbacks rejects this work
+    // without clearing a newer reentrant publication or its metadata.
+    return state->revision() == value->producer_revision;
 }
 
 inline bool buildWorld(const LLDrawInfo& info, const WorldFlavor& flavor,

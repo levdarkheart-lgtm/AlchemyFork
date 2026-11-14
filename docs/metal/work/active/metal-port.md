@@ -1,5 +1,5 @@
-# Active Metal work — whole-engine native scene/command ownership
-Current: [persistent scene/command continuation](apple-first-persistent-native-scene-20261114.md).7422 build2/native correctness pass; measured group churnPPD164 and single-slot resourcePPD163 repairs underway on isolated G2G5 branch. Original architecture goal ACTIVE/partial; no launch/profile/push. Preserve prior69008/68999 candidates.
+# Active Metal work — compact native source/view instances
+Current: [compact continuation](apple-first-compact-source-instances-20261114.md). Frozenafa8b13/69013 build3/native/broad/static pass; new separate compact worktree implementation andPPD168 ongoing. Root owns integration and checks. Original whole-engine goal ACTIVE/partial, no launch/profile/push; preserve prior candidates.
 **Owner:** Codex integrator. **Outcome:** docs/metal/PRODUCT.md, not a demo. **Integrated checkpoint:** Commit `b81a4645e0`; prior owner-tested Sky26.4.0.68980 colour/probe repair PPD083/086 verified; exactaf72868396 Alpha6 local package passes static gates, no new runtime claim.
 **Recovery:** [CURRENT](../../state/CURRENT.md), [NEXT_SESSION](../../state/NEXT_SESSION.md), [deferred campaign](ultra-20fps.md), [archive](../../state/archive/INDEX.md). [Alpha6 publication](release-alpha6-20261113.md): complete exactaf72868396/tag26.4.0.68984-alpha6 published444559882 with ZIP/SHA/provenance after localbuild/346ARM64/signatures/116tools/source/ZIP and remote-download gates pass; hosted43473591856 deliberately canceled. PPD-014 retained.
 

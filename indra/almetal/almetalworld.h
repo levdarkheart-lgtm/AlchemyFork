@@ -13,6 +13,7 @@
 #include "almetalworlddiagnostics.h"
 #include "almetalprobeworkload.h"
 #include "almetalworldresources.h"
+#include "almetalworlddraws.h"
 
 #include "almetalpipeline.h"
 
@@ -1208,6 +1209,10 @@ struct ALMetalWorldGBufferScene
     // Each consuming command retains this aggregate until actual completion
     // or uncommitted abandonment, independently of any submission-scope credit.
     std::shared_ptr<const void> source_owner;
+    // Immutable CPU source descriptions are needed only through validation,
+    // preparation and encoding. Commands retain source_owner (native tuples)
+    // separately; they must not retain this CPU description graph.
+    std::shared_ptr<const void> cpu_source_owner;
     // Optional shared native visibility experiment. One membership/argument
     // slot per original draw; null retains ordinary native encoding. Shadow
     // callers explicitly select scalar mode (all bulk/ICB switches false).
@@ -1216,6 +1221,15 @@ struct ALMetalWorldGBufferScene
     std::int32_t sky_star_attachment = -1;
     const ALMetalWorldSimpleBatch* batches = nullptr;
     std::size_t batch_count = 0;
+    // Raw storage remains contiguous. A compact view optionally supplies one
+    // exact ordered permutation of raw batches and immutable source refs.
+    const ALMetalWorldSourceReference* references = nullptr;
+    std::size_t reference_count = 0;
+    const ALMetalWorldDrawIndex* draw_order = nullptr;
+    std::size_t draw_order_count = 0;
+    std::size_t drawCount() const noexcept;
+    // Requires validated storage/order and an index smaller than drawCount().
+    ALMetalWorldDraw draw(std::size_t index) const noexcept;
     const ALMetalWorldVisibilityQuery* visibility_queries = nullptr;
     std::size_t visibility_query_count = 0;
     std::uint32_t width = 0;

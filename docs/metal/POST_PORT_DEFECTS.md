@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-168 -->
+<!-- next-defect-id: PPD-169 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4317,3 +4317,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Registered root source finding before the shared native-ledger repair. Existing passing tests did not include eviction-observer reentrant admission; no previous evidence is relabeled as coverage.
 - 2026-11-14: Shared native ledger freezes caller tuple/revision, rechecks after each callback, protects lookup/accounting and detaches clear ledger before notification; four actual Observer regressions authored, execution pending. No viewer/owner acceptance or push.
+
+
+## PPD-168 — Source sealing can acknowledge an authoritative mutation during residency admission
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex compact source/native tuple integration
+- Discovered: 2026-11-14
+- Original reference: A cache-only withdrawal leaves a caller's transient immutable reader valid; a changed producer revision must reject stale sealing (PPD120/167).
+- Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). Source publish checks State.publish, installs weak transient metadata, then ignores native working-set admission outcome and returns true even if its eviction callback invalidates the producer revision.
+- Next action: Recheck the authoritative revision after residency callbacks while preserving legal cache-only transient readers and any newer publication/metadata; add typed source-owner regression.
+- Verification: Source-confirmed in inherited source factory, found during native-tuple ownership split. No viewer incident or frozen build3 result attributed. Repair is on the separate compact worktree, not silently applied to the build3 source pin.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before narrow post-admission producer-revision guard. Native working-set admission itself is separately repaired asPPD167; factory acknowledgement still needs this distinct boundary check.
+- 2026-11-14: Narrow producer-revision recheck is implemented in compact worktree; native tuple/source-owner tests and actual cache-withdraw versus authoritative-mutation callback cases are authored/frozen. Required build4/native retest pending; old frozen3/afa8b13 is unchanged.

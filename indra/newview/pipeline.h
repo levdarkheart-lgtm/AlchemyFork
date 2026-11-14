@@ -1073,10 +1073,10 @@ public:
         ALMetalWorldAlphaEnvironment& environment);
     bool fillMetalWorldAlphaLighting(
         ALMetalWorldLegacyAlphaLighting& lighting);
-    void captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 family, bool indexed);
+    void captureMetalPublishedWorldBatch(const LLDrawInfo& params, U32 family, bool indexed, bool editable = false);
     void captureMetalWorldSimplePass();
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
-                                       bool batch_textures);
+                                       bool batch_textures, bool editable = false);
     void captureMetalReflectionProbeScene();
     void captureMetalReflectionProbePostDeferred();
     void captureMetalReflectionProbeAvatarAlpha(U32 pool_type);

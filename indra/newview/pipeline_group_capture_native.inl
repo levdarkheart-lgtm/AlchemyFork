@@ -35,22 +35,39 @@ void LLPipeline::captureMetalWorldSimplePass()
             LLMatrix4a model(group->model.data()), modelview, inverse, projection;
             if (!buildMetalWorldDrawMatrices(&model, modelview, inverse, projection))
             { capture.markIncomplete(__LINE__); break; }
-            capture.world_resources->retain(group);
+            if (!group->native_tuple)
+            { capture.markIncomplete(__LINE__); break; }
+            capture.world_resources->retain(group->native_tuple);
+            if (capture.compact_gbuffer_active) capture.retainCpu(group);
             const F32* inverse_values = inverse.getF32ptr();
             const F32* model_values = modelview.getF32ptr();
             for (const auto& source : group->sources)
             {
                 if (!source)
                 { capture.markIncomplete(__LINE__); break; }
-                auto& batch = capture.batches.emplace_back(*source.prototype);
-                std::memcpy(batch.modelview_projection, projection.getF32ptr(), sizeof(batch.modelview_projection));
-                std::memcpy(batch.modelview, model_values, sizeof(batch.modelview));
+                ALMetalWorldViewMatrices view;
+                std::memcpy(view.modelview_projection, projection.getF32ptr(), sizeof(view.modelview_projection));
+                std::memcpy(view.modelview, model_values, sizeof(view.modelview));
+                std::memcpy(view.texture_matrix, source.prototype->texture_matrix, sizeof(view.texture_matrix));
                 for (U32 column = 0; column < 3; ++column)
                     for (U32 row = 0; row < 3; ++row)
                     {
-                        batch.normal_matrix[column][row] = inverse_values[row * 4 + column];
-                        batch.rigged_normal_matrix[column][row] = model_values[column * 4 + row];
+                        view.normal_matrix[column][row] = inverse_values[row * 4 + column];
+                        view.rigged_normal_matrix[column][row] = model_values[column * 4 + row];
                     }
+                if (capture.compact_gbuffer_active)
+                {
+                    if (!capture.appendReference(*source.prototype, view))
+                    { capture.markIncomplete(__LINE__); break; }
+                }
+                else
+                {
+                    auto& batch = capture.batches.emplace_back(*source.prototype);
+                    std::memcpy(batch.modelview_projection, view.modelview_projection, sizeof(batch.modelview_projection));
+                    std::memcpy(batch.modelview, view.modelview, sizeof(batch.modelview));
+                    std::memcpy(batch.normal_matrix, view.normal_matrix, sizeof(batch.normal_matrix));
+                    std::memcpy(batch.rigged_normal_matrix, view.rigged_normal_matrix, sizeof(batch.rigged_normal_matrix));
+                }
                 ++ALSceneGroupPublicationNative::statistics.captured_draws;
             }
             if (!capture.complete) break;
@@ -68,6 +85,6 @@ void LLPipeline::captureMetalWorldSimplePass()
         }
     }
     catch (const std::bad_alloc&) { capture.markIncomplete(__LINE__); }
-    if (!capture.complete) capture.batches.clear();
+    if (!capture.complete) capture.clearDraws();
 }
 

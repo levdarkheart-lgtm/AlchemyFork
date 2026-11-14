@@ -45,6 +45,7 @@ struct Payload
 {
     std::vector<SourceLease> sources;
     std::vector<ALNativeSourceWorkingSet::Resource> resources;
+    std::shared_ptr<const ALScenePublicationNative::NativeTuple> native_tuple;
     std::array<float, 16> model{};
     U64 serial = 0;
     U64 index_count = 0;
@@ -180,6 +181,12 @@ public:
             U64(payload.resources.capacity()) * sizeof(ALNativeSourceWorkingSet::Resource);
         if (layout->resources)
             bytes += sizeof(std::vector<WeakResource>) + U64(layout->resources->capacity()) * sizeof(WeakResource);
+        // NativeTuple is intentionally independent of the CPU payload. The
+        // compatibility .resources vector duplicates its metadata at dirty
+        // sealing, so charge both publisher containers explicitly.
+        if (payload.native_tuple)
+            bytes += sizeof(ALScenePublicationNative::NativeTuple) +
+                U64(payload.native_tuple->resources.capacity()) * sizeof(ALNativeSourceWorkingSet::Resource);
         for (const auto& source : layout->sources)
             bytes += sizeof(Source) + U64(source->resources.capacity()) * sizeof(WeakResource);
         if (!mLimits.maximum_layouts || layout->sources.size() > mLimits.maximum_rows || bytes > mLimits.maximum_bytes)
@@ -374,6 +381,7 @@ try
         if (!allocation) { ++statistics.failures; return {}; }
         value->resources.push_back({std::move(allocation), resource.bytes});
     }
+    value->native_tuple = ALScenePublicationNative::nativeTuple(value->resources);
     value->serial = ++source_serial;
     // No valid-looking prefix may replace the group's complete publication.
     if (!state->publish(revision, value))
