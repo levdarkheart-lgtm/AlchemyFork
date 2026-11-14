@@ -16,6 +16,10 @@ struct ALNativeFrameBudget::State
         limits.uploads_in_flight = std::max(limits.uploads_in_flight, 1u);
         limits.upload_bytes_per_frame = std::max<std::uint64_t>(limits.upload_bytes_per_frame, 1);
         limits.upload_bytes_in_flight = std::max<std::uint64_t>(limits.upload_bytes_in_flight, 1);
+        limits.scene_publications_per_frame = std::max(limits.scene_publications_per_frame, 1u);
+        limits.scene_publications_in_flight = std::max(limits.scene_publications_in_flight, 1u);
+        limits.scene_bytes_per_frame = std::max<std::uint64_t>(limits.scene_bytes_per_frame, 1);
+        limits.scene_bytes_in_flight = std::max<std::uint64_t>(limits.scene_bytes_in_flight, 1);
         limits.optional_views_per_frame = std::max(limits.optional_views_per_frame, 1u);
         limits.preparation_jobs = std::max(limits.preparation_jobs, 1u);
         limits.maximum_deferral_frames = std::max<Frame>(limits.maximum_deferral_frames, 1);
@@ -26,6 +30,7 @@ struct ALNativeFrameBudget::State
     Snapshot stats;
     unsigned ordinary_this_frame = 0;
     unsigned hero_this_frame = 0;
+    bool oversized_scene_in_flight = false;
 };
 
 ALNativeFrameBudget::ALNativeFrameBudget() : ALNativeFrameBudget(Limits{}) {}
@@ -47,6 +52,8 @@ void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)
     state.stats.frame = inputs.frame;
     state.stats.uploads_this_frame = 0;
     state.stats.upload_bytes_this_frame = 0;
+    state.stats.scene_publications_this_frame = 0;
+    state.stats.scene_bytes_this_frame = 0;
     state.stats.optional_views_this_frame = 0;
     state.ordinary_this_frame = state.hero_this_frame = 0;
     // Compare by division to avoid overflow in a caller-supplied interval.
@@ -97,6 +104,11 @@ ALNativeFrameBudget::Credit::~Credit()
         stats.upload_bytes_in_flight -= mBytes;
         break;
     case Work::preparation: --stats.preparation_in_flight; break;
+    case Work::scene_publication:
+        --stats.scene_publications_in_flight;
+        stats.scene_bytes_in_flight -= mBytes;
+        if (mBytes > mState->limits.scene_bytes_per_frame) mState->oversized_scene_in_flight = false;
+        break;
     default: --stats.optional_views_in_flight; break;
     }
     ++stats.retired;
@@ -118,7 +130,45 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
         return {{}, why};
     };
     if (stats.draining && work != Work::upload) return deny(Reason::draining);
-    if (stats.initialized && !stats.draining)
+    if (work == Work::scene_publication)
+    {
+        // Native scene metadata is always bounded, including startup before
+        // the first outer frame plan. Its hard in-flight cap is never waived.
+        if (state.oversized_scene_in_flight ||
+            stats.scene_publications_in_flight >= limits.scene_publications_in_flight ||
+            bytes > limits.scene_bytes_in_flight ||
+            stats.scene_bytes_in_flight > limits.scene_bytes_in_flight - bytes)
+            return deny(Reason::in_flight);
+        if (stats.scene_publications_this_frame >= limits.scene_publications_per_frame)
+            return deny(Reason::frame_work);
+        // A batch larger than the normal per-frame allowance may progress
+        // alone, after all previous scene credits retire, while remaining
+        // within the hard in-flight/actual allocator bounds. It consumes the
+        // entire scene lane for this frame and stays exclusive until final
+        // retirement; it borrows no upload/probe credit.
+        const bool sole_oversized = bytes > limits.scene_bytes_per_frame &&
+            stats.scene_publications_this_frame == 0 && stats.scene_publications_in_flight == 0;
+        if ((bytes > limits.scene_bytes_per_frame ||
+             stats.scene_bytes_this_frame > limits.scene_bytes_per_frame - bytes) && !sole_oversized)
+            return deny(Reason::frame_work);
+        // An aged first batch is a finite progress lane under actual frame or
+        // memory pressure, still subject to both scene caps above. A fresh
+        // dirty batch does not add publication work to an already busy frame.
+        if (stats.main_busy || stats.memory_pressure)
+        {
+            if (!aged || stats.scene_publications_this_frame != 0)
+                return deny(stats.memory_pressure ? Reason::memory_pressure : Reason::frame_work);
+            reason = Reason::progress;
+        }
+        else if (sole_oversized) reason = Reason::progress;
+        // Addition is checked before allocating/changing any counters. Unlike
+        // a display estimate, live debt may never saturate or wrap silently.
+        if (bytes > unknown_bytes - stats.scene_bytes_in_flight)
+            return deny(Reason::in_flight);
+        if (bytes > unknown_bytes - stats.scene_bytes_this_frame)
+            return deny(Reason::frame_work);
+    }
+    else if (stats.initialized && !stats.draining)
     {
         if (work == Work::upload)
         {
@@ -182,6 +232,14 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
             ? unknown_bytes : stats.upload_bytes_this_frame + bytes;
     }
     else if (work == Work::preparation) ++stats.preparation_in_flight;
+    else if (work == Work::scene_publication)
+    {
+        ++stats.scene_publications_in_flight;
+        stats.scene_bytes_in_flight += bytes;
+        ++stats.scene_publications_this_frame;
+        stats.scene_bytes_this_frame += bytes;
+        if (bytes > limits.scene_bytes_per_frame) state.oversized_scene_in_flight = true;
+    }
     else
     {
         ++stats.optional_views_in_flight;
@@ -203,15 +261,28 @@ unsigned ALNativeFrameBudget::decodeCeiling(unsigned minimum, unsigned current, 
     const auto& stats = state.stats;
     minimum = std::max(minimum, 1u);
     maximum = std::max(maximum, minimum);
-    if (!stats.initialized || stats.draining) return maximum;
+    if (stats.draining) return maximum;
+    if (!stats.initialized)
+    {
+        // Preserve existing startup upload/preparation behavior, while an
+        // actual scene receipt already owns bounded downstream work even
+        // before the first outer frame plan has been published.
+        if (stats.scene_publications_in_flight >= state.limits.scene_publications_in_flight ||
+            stats.scene_bytes_in_flight >= state.limits.scene_bytes_in_flight)
+            return minimum;
+        return maximum - std::min(maximum - minimum, stats.scene_publications_in_flight);
+    }
     const bool downstream_full = stats.streaming.queued_requests >= state.limits.uploads_in_flight ||
         stats.streaming.queued_input_bytes >= state.limits.upload_bytes_in_flight ||
         stats.streaming.pending_publications >= state.limits.uploads_in_flight ||
         stats.uploads_in_flight >= state.limits.uploads_in_flight ||
         stats.upload_bytes_in_flight >= state.limits.upload_bytes_in_flight ||
+        stats.scene_publications_in_flight >= state.limits.scene_publications_in_flight ||
+        stats.scene_bytes_in_flight >= state.limits.scene_bytes_in_flight ||
         stats.streaming.pressure_requests != 0;
     if (stats.main_busy || stats.memory_pressure || downstream_full) return minimum;
-    return maximum - std::min(maximum - minimum, stats.preparation_in_flight);
+    const auto active_native_debt = std::uint64_t(stats.preparation_in_flight) + stats.scene_publications_in_flight;
+    return maximum - static_cast<unsigned>(std::min<std::uint64_t>(maximum - minimum, active_native_debt));
 }
 
 ALNativeFrameBudget::Snapshot ALNativeFrameBudget::snapshot() const

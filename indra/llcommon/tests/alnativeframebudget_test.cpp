@@ -30,6 +30,15 @@ Budget::Limits small()
     limits.maximum_deferral_frames = 3;
     return limits;
 }
+Budget::Limits smallScene()
+{
+    auto limits = small();
+    limits.scene_publications_per_frame = 2;
+    limits.scene_publications_in_flight = 2;
+    limits.scene_bytes_per_frame = 16;
+    limits.scene_bytes_in_flight = 32;
+    return limits;
+}
 }
 
 TEST_CASE("Native frame budget keeps upload credits until their final completion owner retires",
@@ -187,4 +196,189 @@ TEST_CASE("An optional update group shares one credit across every selected face
     hero.credit.reset();
     CHECK(budget.snapshot().optional_views_in_flight == 0);
     CHECK(budget.snapshot().retired == 2);
+}
+
+TEST_CASE("Native source publication credits retain independent scene debt through final retirement",
+          "[native-frame-budget][scene-publication]")
+{
+    Budget budget(smallScene());budget.beginFrame(frame(1));
+    auto first = budget.tryAcquire(Budget::Work::scene_publication, 8, 1);
+    auto upload = budget.tryAcquire(Budget::Work::upload, 4);
+    auto probe = budget.tryAcquire(Budget::Work::ordinary_probe);
+    auto preparation = budget.tryAcquire(Budget::Work::preparation);
+    REQUIRE(first);REQUIRE(upload);REQUIRE(probe);REQUIRE(preparation);
+    CHECK(first.credit->work() == Budget::Work::scene_publication);
+    CHECK(first.credit->logicalBytes() == 8);
+    auto completion_owner = first.credit;first.credit.reset();
+    auto second = budget.tryAcquire(Budget::Work::scene_publication, 8, 1);REQUIRE(second);
+    auto state = budget.snapshot();
+    CHECK(state.scene_publications_in_flight == 2);CHECK(state.scene_bytes_in_flight == 16);
+    CHECK(state.scene_publications_this_frame == 2);CHECK(state.scene_bytes_this_frame == 16);
+    CHECK(state.uploads_in_flight == 1);CHECK(state.upload_bytes_in_flight == 4);
+    CHECK(state.uploads_this_frame == 1);CHECK(state.upload_bytes_this_frame == 4);
+    CHECK(state.optional_views_in_flight == 1);CHECK(state.optional_views_this_frame == 1);
+    CHECK(state.preparation_in_flight == 1);CHECK(state.streaming.pending_publications == 0);
+    second.credit.reset();
+    CHECK(budget.snapshot().scene_publications_in_flight == 1);
+    CHECK(budget.snapshot().scene_bytes_in_flight == 8);
+    CHECK(budget.tryAcquire(Budget::Work::scene_publication, 1, 1).reason == Budget::Reason::frame_work);
+    budget.beginFrame(frame(2));state = budget.snapshot();
+    CHECK(state.scene_publications_this_frame == 0);CHECK(state.scene_bytes_this_frame == 0);
+    CHECK(state.scene_publications_in_flight == 1);CHECK(state.scene_bytes_in_flight == 8);
+    auto replacement = budget.tryAcquire(Budget::Work::scene_publication, 16, 2);REQUIRE(replacement);
+    CHECK(budget.snapshot().scene_bytes_in_flight == 24);
+    completion_owner.reset();
+    CHECK(budget.snapshot().scene_bytes_in_flight == 16);
+    CHECK(budget.snapshot().uploads_in_flight == 1);CHECK(budget.snapshot().optional_views_in_flight == 1);
+    replacement.credit.reset();state = budget.snapshot();
+    CHECK(state.scene_publications_in_flight == 0);CHECK(state.scene_bytes_in_flight == 0);
+    CHECK(state.scene_publications_this_frame == 1);CHECK(state.scene_bytes_this_frame == 16);
+}
+
+TEST_CASE("Native source publication enforces separate frame and active byte ceilings",
+          "[native-frame-budget][scene-publication]")
+{
+    auto limits = smallScene();limits.scene_publications_per_frame = limits.scene_publications_in_flight = 8;
+    limits.scene_bytes_in_flight = 24;Budget budget(limits);budget.beginFrame(frame(1));
+    auto first = budget.tryAcquire(Budget::Work::scene_publication, 10);REQUIRE(first);
+    CHECK(budget.tryAcquire(Budget::Work::scene_publication, 7).reason == Budget::Reason::frame_work);
+    auto second = budget.tryAcquire(Budget::Work::scene_publication, 6);REQUIRE(second);
+    CHECK(budget.snapshot().scene_bytes_this_frame == 16);
+    budget.beginFrame(frame(2));
+    CHECK(budget.tryAcquire(Budget::Work::scene_publication, 9).reason == Budget::Reason::in_flight);
+    auto third = budget.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(third);
+    CHECK(budget.snapshot().scene_bytes_in_flight == 24);
+    CHECK(budget.snapshot().uploads_in_flight == 0);CHECK(budget.snapshot().upload_bytes_in_flight == 0);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 2); // actual scene bytes, no fabricated image upload.
+    auto upload = budget.tryAcquire(Budget::Work::upload, 8);REQUIRE(upload);
+    first.credit.reset();second.credit.reset();
+    CHECK(budget.snapshot().scene_bytes_in_flight == 8);
+    auto fourth = budget.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(fourth);
+    CHECK(budget.snapshot().scene_bytes_this_frame == 16);
+    CHECK(budget.snapshot().scene_bytes_in_flight == 16);
+    CHECK(budget.snapshot().upload_bytes_in_flight == 8);
+}
+
+TEST_CASE("Aged dirty source work progresses during busy or pressured frames without borrowing other lanes",
+          "[native-frame-budget][scene-publication]")
+{
+    Budget budget(smallScene());auto busy = frame(10);busy.required_main_cpu_ns = 45'000'000;
+    budget.beginFrame(busy);
+    CHECK(budget.tryAcquire(Budget::Work::scene_publication, 8, 10).reason == Budget::Reason::frame_work);
+    auto source = budget.tryAcquire(Budget::Work::scene_publication, 8, 7);REQUIRE(source);
+    CHECK(source.reason == Budget::Reason::progress);
+    CHECK(budget.tryAcquire(Budget::Work::scene_publication, 8, 7).reason == Budget::Reason::frame_work);
+    auto upload = budget.tryAcquire(Budget::Work::upload, 4, 10);
+    auto ordinary = budget.tryAcquire(Budget::Work::ordinary_probe, 0, 7);
+    auto hero = budget.tryAcquire(Budget::Work::hero_probe, 0, 7);
+    REQUIRE(upload);REQUIRE(ordinary);REQUIRE(hero);
+    CHECK(budget.snapshot().uploads_this_frame == 1);CHECK(budget.snapshot().optional_views_this_frame == 2);
+    source.credit.reset();
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 1, 7)); // one progress batch per frame, even after abandon.
+    auto pressured = frame(11);pressured.os_available_bytes = 0;budget.beginFrame(pressured);
+    CHECK(budget.tryAcquire(Budget::Work::scene_publication, 8, 11).reason == Budget::Reason::memory_pressure);
+    auto aged = budget.tryAcquire(Budget::Work::scene_publication, 8, 8);REQUIRE(aged);
+    CHECK(aged.reason == Budget::Reason::progress);CHECK(budget.snapshot().scene_publications_this_frame == 1);
+    budget.beginFrame(frame(12));
+    auto fresh = budget.tryAcquire(Budget::Work::scene_publication, 8, 12);REQUIRE(fresh);
+    CHECK(fresh.reason == Budget::Reason::admitted);
+    CHECK(budget.tryAcquire(Budget::Work::scene_publication, 1, 0).reason == Budget::Reason::in_flight);
+    CHECK(budget.snapshot().scene_bytes_in_flight == 16);
+}
+
+TEST_CASE("An oversized source batch progresses alone but can never exceed the hard scene metadata ceiling",
+          "[native-frame-budget][scene-publication]")
+{
+    auto limits = smallScene();limits.scene_bytes_per_frame = 8;Budget budget(limits);budget.beginFrame(frame(1));
+    auto small = budget.tryAcquire(Budget::Work::scene_publication, 4);REQUIRE(small);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 24));
+    small.credit.reset();CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 24));
+    budget.beginFrame(frame(2));
+    auto oversized = budget.tryAcquire(Budget::Work::scene_publication, 24);REQUIRE(oversized);
+    CHECK(oversized.reason == Budget::Reason::progress);
+    CHECK(budget.snapshot().scene_bytes_this_frame == 24);CHECK(budget.snapshot().scene_bytes_in_flight == 24);
+    CHECK(budget.tryAcquire(Budget::Work::scene_publication, 1).reason == Budget::Reason::in_flight);
+    budget.beginFrame(frame(3));
+    CHECK(budget.tryAcquire(Budget::Work::scene_publication, 1).reason == Budget::Reason::in_flight);
+    auto queued_owner = oversized.credit;oversized.credit.reset();
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 1));
+    auto upload = budget.tryAcquire(Budget::Work::upload, 4);REQUIRE(upload);
+    auto probe = budget.tryAcquire(Budget::Work::ordinary_probe);REQUIRE(probe);
+    queued_owner.reset();
+    CHECK(budget.snapshot().scene_bytes_in_flight == 0);
+    CHECK(budget.tryAcquire(Budget::Work::scene_publication, 33).reason == Budget::Reason::in_flight);
+    auto recovered = budget.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(recovered);
+    CHECK(budget.snapshot().upload_bytes_in_flight == 4);CHECK(budget.snapshot().optional_views_in_flight == 1);
+}
+
+TEST_CASE("Source publication startup bounds checked sums and stale frame plans cannot wrap or refill debt",
+          "[native-frame-budget][scene-publication]")
+{
+    Budget startup(smallScene());
+    auto first = startup.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(first);
+    auto second = startup.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(second);
+    CHECK(startup.decodeCeiling(2, 4, 6) == 2);
+    CHECK_FALSE(startup.tryAcquire(Budget::Work::scene_publication, 1));
+    first.credit.reset();second.credit.reset();
+    CHECK(startup.decodeCeiling(2, 4, 6) == 6);
+    CHECK(startup.tryAcquire(Budget::Work::scene_publication, 1).reason == Budget::Reason::frame_work);
+    startup.beginFrame(frame(3));
+    {auto source = startup.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(source);}
+    {auto source = startup.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(source);}
+    startup.beginFrame(frame(3));startup.beginFrame(frame(2));
+    CHECK(startup.snapshot().frame == 3);CHECK(startup.snapshot().scene_bytes_this_frame == 16);
+    CHECK_FALSE(startup.tryAcquire(Budget::Work::scene_publication, 1));
+    CHECK(startup.decodeCeiling(2, 4, 6) == 6); // retired work is no longer decoder debt.
+
+    auto limits = smallScene();limits.scene_bytes_per_frame = limits.scene_bytes_in_flight = Budget::unknown_bytes;
+    Budget checked(limits);auto maximum = checked.tryAcquire(Budget::Work::scene_publication, Budget::unknown_bytes);REQUIRE(maximum);
+    CHECK(checked.snapshot().scene_bytes_in_flight == Budget::unknown_bytes);
+    CHECK(checked.decodeCeiling(2, 4, 6) == 2);
+    CHECK_FALSE(checked.tryAcquire(Budget::Work::scene_publication, 1));
+    maximum.credit.reset();CHECK(checked.snapshot().scene_bytes_in_flight == 0);
+    CHECK(checked.decodeCeiling(2, 4, 6) == 6);
+    CHECK(checked.snapshot().scene_bytes_this_frame == Budget::unknown_bytes);
+    CHECK(checked.tryAcquire(Budget::Work::scene_publication, 1).reason == Budget::Reason::frame_work);
+    checked.beginFrame(frame(1));CHECK(checked.tryAcquire(Budget::Work::scene_publication, 1));
+}
+
+TEST_CASE("Actual source credit debt reduces decoder starts without crossing the finite floor",
+          "[native-frame-budget][scene-publication]")
+{
+    Budget budget;budget.beginFrame(frame(1));std::vector<Budget::Lease> sources;
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6);
+    sources.push_back(budget.tryAcquire(Budget::Work::scene_publication, 1).credit);REQUIRE(sources.back());
+    CHECK(budget.decodeCeiling(2, 4, 6) == 5);
+    auto preparation = budget.tryAcquire(Budget::Work::preparation);REQUIRE(preparation);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 4);
+    for(unsigned i = 0; i < 3; ++i)
+    {sources.push_back(budget.tryAcquire(Budget::Work::scene_publication, 1).credit);REQUIRE(sources.back());}
+    CHECK(budget.decodeCeiling(2, 4, 6) == 2);CHECK(budget.decodeCeiling(0, 4, 3) == 1);
+    CHECK(budget.decodeCeiling(7, 4, 3) == 7);
+    auto state = budget.snapshot();CHECK(state.uploads_in_flight == 0);CHECK(state.upload_bytes_in_flight == 0);
+    CHECK(state.streaming.pending_publications == 0);CHECK(state.optional_views_in_flight == 0);
+    sources.clear();CHECK(budget.decodeCeiling(2, 4, 6) == 5);
+    preparation.credit.reset();CHECK(budget.decodeCeiling(2, 4, 6) == 6);
+    budget.beginFrame(frame(2));
+    auto large = budget.tryAcquire(Budget::Work::scene_publication, Budget::Limits{}.scene_bytes_in_flight);REQUIRE(large);
+    CHECK(budget.snapshot().scene_publications_in_flight == 1);CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    large.credit.reset();CHECK(budget.decodeCeiling(2, 4, 6) == 6);
+}
+
+TEST_CASE("Scene credits survive policy destruction and draining admits no new source publication",
+          "[native-frame-budget][scene-publication]")
+{
+    Budget::Lease command_owner;
+    {
+        Budget budget(smallScene());budget.beginFrame(frame(1));
+        auto source = budget.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(source);
+        command_owner = source.credit;source.credit.reset();budget.beginDrain();
+        CHECK(budget.tryAcquire(Budget::Work::scene_publication, 1).reason == Budget::Reason::draining);
+        budget.beginFrame(frame(2));CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 1));
+        CHECK(budget.snapshot().scene_bytes_in_flight == 8);
+        CHECK(budget.tryAcquire(Budget::Work::upload, 1)); // existing shutdown upload behavior is retained.
+        CHECK(budget.decodeCeiling(2, 4, 6) == 6);
+    }
+    command_owner.reset();
+    SUCCEED("Actual command credit retires without borrowing the destroyed policy owner");
 }

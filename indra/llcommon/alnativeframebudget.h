@@ -19,7 +19,7 @@ class ALNativeFrameBudget final
 public:
     using Frame = std::uint64_t;
     static constexpr std::uint64_t unknown_bytes = std::numeric_limits<std::uint64_t>::max();
-    enum class Work { upload, ordinary_probe, hero_probe, preparation };
+    enum class Work { upload, ordinary_probe, hero_probe, preparation, scene_publication };
     enum class Reason { admitted, progress, frame_work, in_flight, memory_pressure, draining };
     struct Limits
     {
@@ -27,6 +27,10 @@ public:
         unsigned uploads_in_flight = 32;
         std::uint64_t upload_bytes_per_frame = 32ULL * 1024 * 1024;
         std::uint64_t upload_bytes_in_flight = 64ULL * 1024 * 1024;
+        unsigned scene_publications_per_frame = 16;
+        unsigned scene_publications_in_flight = 32;
+        std::uint64_t scene_bytes_per_frame = 8ULL * 1024 * 1024;
+        std::uint64_t scene_bytes_in_flight = 32ULL * 1024 * 1024;
         unsigned optional_views_per_frame = 2;
         unsigned preparation_jobs = 2;
         Frame maximum_deferral_frames = 8;
@@ -60,11 +64,15 @@ public:
         StreamingBacklog streaming;
         std::uint64_t upload_bytes_in_flight = 0;
         unsigned uploads_in_flight = 0;
+        std::uint64_t scene_bytes_in_flight = 0;
+        unsigned scene_publications_in_flight = 0;
         unsigned preparation_in_flight = 0;
         unsigned optional_views_in_flight = 0;
         unsigned uploads_this_frame = 0;
+        unsigned scene_publications_this_frame = 0;
         unsigned optional_views_this_frame = 0;
         std::uint64_t upload_bytes_this_frame = 0;
+        std::uint64_t scene_bytes_this_frame = 0;
         std::uint64_t admitted = 0;
         std::uint64_t deferred = 0;
         std::uint64_t progress_admissions = 0;
@@ -105,6 +113,11 @@ public:
     void recordRequiredMainWork(std::uint64_t cpu_nanoseconds);
     void updateStreaming(const StreamingBacklog&);
     void setPendingPublications(std::uint64_t);
+    // Scene publication accounts one coalesced dirty source batch, separately
+    // from image uploads and optional views. logical_bytes charges encoded and
+    // copied/zeroed source metadata work; the native allocator independently
+    // bounds actual resident metadata. Pass its actual oldest dirty frame.
+    // Warm views with no dirty sources need no scene publication credit.
     Decision tryAcquire(Work, std::uint64_t logical_bytes = 0, Frame oldest_frame = 0);
     // Downstream debt constrains additional starts; active jobs and responders
     // are never cancelled. At least the established decoder minimum survives.
