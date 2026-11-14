@@ -2546,7 +2546,6 @@ void LLPipeline::prepareMetalWorldRenderer(
             {
                 build->renderer = ALMetalWorldGBufferRenderer::create(
                     *build->device, build->max_anisotropy, build->library, &build->error);
-                if (build->renderer) build->renderer->setFrameData(build->frame_data);
             }
             catch (const std::exception& error)
             {
@@ -2588,6 +2587,10 @@ void LLPipeline::prepareMetalWorldRenderer(
                 }
                 if (completed->renderer)
                 {
+                    // FrameData/library membership is owner-only. Workers
+                    // build solely from their acquired immutable library;
+                    // attach only after the owner accepts the exact epoch.
+                    completed->renderer->setFrameData(owner.frame_data);
                     owner.renderer = std::move(completed->renderer);
                     owner.attempted = false;
                     // A newly built native renderer starts its own
