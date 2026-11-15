@@ -127,6 +127,7 @@ try
         !params.mTextureMatrix && flavor.hasAnimatedConsumer();
     flavor.animated_source = capture.animated_sources_active && ordinary_animated;
     flavor.animated_gpu_source = capture.animated_gpu_records_active && ordinary_animated;
+    flavor.stabilize_animated_direct = capture.animated_direct_stability && ordinary_animated;
     auto source = ALScenePublicationNative::world(params, flavor,
         sNativeSceneSources, sNativeSceneSerial, gFrameCount,capture.animated_compilation_budget);
     if (!source)

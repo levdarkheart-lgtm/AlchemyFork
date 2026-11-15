@@ -3,7 +3,7 @@
 Updated 2026-11-15. The original whole-engine goal is **active and incomplete**.
 Exact source, commands, failures and receipts are in the [execution ledger](apple-first-direct-cohorts-20261114.md).
 
-Latest verified build: **142390cc67 / 26.4.0.69120**. Required build,
+Latest verified build: **7d58e89d88 / 26.4.0.69121**. Required build,
 ARM64/signature/import verification, strict source audit and relevant native GPU
 checks pass. No new viewer launch, login, live profile or push has occurred.
 Owner apps and staged69102 remain unchanged. **Whole-viewer FPS improvement is
@@ -14,7 +14,7 @@ not established.**
 | Shared scene/resources | Producer generations, immutable material/resource tuples, dirty subscriptions, retained static groups, compact restoration, native leases and exact cache-reason counters. | Validate the new retained regular-rigged direct consumer; owner runtime evaluation. |
 | CPU preparation | Immutable owned inputs, bounded shared credits, useful joined shadow preparation and scalar recipes. Budget recovery/fairness5867 assertions/46 cases passes. | World workers remain disabled after measured completion regressions. |
 | Animated ownership | Shared attachment records and immutable view-specific system-body palettes, preserving required camera composition. Raw/record world and shadow parity passes. | Owner whole-viewer acceptance. |
-| Visibility/submission | Persistent animated sources, late pose/view inputs, conservative GPU visibility and ordered native commands; mode switches, cancellation and pending native ownership pass. Encoder-scoped declarations remove repeated query-range walks. | GPU commands remain disabled after worse complete costs. Source71 feeds retained references through the original direct shaders to preserve CPU savings without the indirect GPU cost; unbuilt/unmeasured. |
+| Visibility/submission | Persistent animated sources, late pose/view inputs, conservative GPU visibility and ordered native commands; mode switches, cancellation and pending native ownership pass. Encoder-scoped declarations remove repeated query-range walks. | GPU commands remain disabled after worse complete costs. Source71 direct references pass all34 renderer scopes and remove the GPU tax, but costs remain near parity. Source72 removes remaining proof/pose lookups and defers optional compilation until stable; unbuilt/unmeasured. |
 | Unified memory/admission | Changed-range/COW storage, frame-wide CPU/native/decode/upload coordination, explicit completion retirement; maintenance and pressure checks pass. Numeric animated cap/retirement tests pass. | Owner loading/teleport/stability and physical working-set evaluation. Cache ledger scopes overlap and are not total RAM. |
 | Terrain/probe lighting | Terrain sharing selected at measured16-patch threshold; eligible probe/base lighting fusion and empty lighting-work avoidance pass contained checks. | Owner whole-engine evaluation. |
 | Combined candidate | All accepted foundations build together. New direct consumer is integrated and peer-reviewed. | Build/test source71, measure direct/full-count/visibility routes, choose supported paths, then separately stage one verified combined app. |

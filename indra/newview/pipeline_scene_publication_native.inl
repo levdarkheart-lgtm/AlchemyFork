@@ -61,6 +61,7 @@ inline U64 animated_direct_source_publications = 0, animated_gpu_source_publicat
 struct AnimatedCompilationStats
 {
     U64 requests=0,admitted=0,deferred=0,duplicate_views=0,published=0,failed=0;
+    U64 stability_deferred=0;
     U64 requested_bytes=0,admitted_bytes=0,saturated=0;
 };
 inline AnimatedCompilationStats animated_compilation_stats;
@@ -94,6 +95,7 @@ struct WorldFlavor
     bool cohort_bounds = false; // Optional CPU proof, never a shading-key bit.
     bool animated_source = false; // Pose-free CPU certificate, not a semantic key.
     bool animated_gpu_source = false; // Optional descriptor/bounds superset, also nonsemantic.
+    bool stabilize_animated_direct = false; // Optional owner-stamp heuristic, never part of key().
     bool normal_map = false, specular_map = false;
     bool alpha_mask = false, rigged = false, pbr_glow = false;
     bool post_water_pbr_glow = false;
@@ -619,13 +621,14 @@ inline bool animatedSourceReady(const Payload& value,const WorldVariant& variant
     const auto& prototype = source.prototype();
     return key.flavor == variant.key && key.revision == value.producer_revision &&
         prototype.vertices == variant.prototype.vertices && prototype.indices == variant.prototype.indices &&
+        prototype.vertices == value.vertices.get() && prototype.indices == value.indices.get() &&
         prototype.weight_offset == variant.prototype.weight_offset &&
         prototype.native_material_source == variant.prototype.native_material_source &&
         // Argument descriptors do not affect the ordinary direct consumer.
         // A descriptor-only promotion need not discard its existing CPU proof.
         (!gpu_requested || (source.gpuReady() &&
             prototype.native_resource_source == variant.prototype.native_resource_source)) &&
-        source.matchesNativeScope({value.native_tuple,value.vertices,value.indices});
+        source.matchesNativeOwner(value.native_tuple);
 }
 inline const std::shared_ptr<const ALMetalWorldAnimatedSource>* animatedSourceFor(
     const WorldLease& lease,const WorldFlavor& flavor) noexcept
@@ -668,12 +671,21 @@ struct AnimatedCompilationTicket
     }
 };
 inline bool admitAnimatedCompilation(const LLDrawInfo& info,const ALMetalWorldSimpleBatch& source,
-                                     ALNativeFrameBudget& budget,AnimatedCompilationTicket& ticket,bool gpu_requested=true) noexcept
+                                     ALNativeFrameBudget& budget,AnimatedCompilationTicket& ticket,bool gpu_requested=true,
+                                     bool stabilize_direct=false) noexcept
 try
 {
     auto& stats=animated_compilation_stats;
-    const auto bytes=animatedCompilationWorkBytes(source,gpu_requested);
-    if(bytes==ALNativeFrameBudget::unknown_bytes){++stats.saturated;++stats.deferred;return false;}
+    const bool require_stability=stabilize_direct && !gpu_requested;
+    U64 bytes=0;
+    if(!require_stability)
+    {
+        // Preserve the existing immediate/GPU path's checked-work ordering.
+        bytes=animatedCompilationWorkBytes(source,gpu_requested);
+        if(bytes==ALNativeFrameBudget::unknown_bytes){++stats.saturated;++stats.deferred;return false;}
+    }
+    // Only the existing scalar admission state is needed to remember the
+    // first observation; no optional source/descriptor is allocated here.
     if(!info.mMetalShadowSource)info.mMetalShadowSource=std::make_shared<ALViewerMetalShadowSourceCache>();
     ticket.owner=info.mMetalShadowSource;
     if(!ticket.owner->animated_compilation)
@@ -681,7 +693,24 @@ try
     auto& owner=*ticket.owner->animated_compilation;
     const auto frame=budget.snapshot().frame;
     if(owner.lastConsideredFrame() && frame<=*owner.lastConsideredFrame())
-    {++stats.duplicate_views;++stats.deferred;return false;}
+    {
+        ++stats.duplicate_views;
+        if(!require_stability)++stats.deferred;
+        return false;
+    }
+    if(require_stability)
+    {
+        const auto& state=info.metalSourcePublication();
+        // This observes only the existing producer stamp, not every child.
+        // Required raw publication remains current; the eventual admitted
+        // seal still proves its actual native generations. Main/probe views
+        // in one outer frame cannot supply the second observation.
+        if(owner.deferUnstableRevision(frame,ALNativeCohortCompilationAdmission::ProducerStamp{
+            state->identity(),state->revision()}))
+        {++stats.stability_deferred;return false;}
+        bytes=animatedCompilationWorkBytes(source,false);
+        if(bytes==ALNativeFrameBudget::unknown_bytes){++stats.saturated;++stats.deferred;return false;}
+    }
     ++stats.requests;stats.requested_bytes+=bytes;
     auto decision=owner.tryAcquire(budget,bytes);
     if(!decision){++stats.deferred;return false;}
@@ -723,6 +752,7 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
             flavor.indexed_textures = flavor.indexed_textures && info.mTextureList.size() > 1;
         flavor.animated_source = (flavor.animated_source || flavor.animated_gpu_source) && flavor.hasAnimatedConsumer();
         flavor.animated_gpu_source = flavor.animated_gpu_source && flavor.animated_source;
+        flavor.stabilize_animated_direct = flavor.stabilize_animated_direct && flavor.animated_source && !flavor.animated_gpu_source;
         flavor.native_resources = (flavor.native_resources || flavor.animated_gpu_source) && flavor.hasResourceConsumer();
         const U64 key = flavor.key();
         if (auto value = current(info))
@@ -802,7 +832,8 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                     {
                         animated_ticket.emplace();
                         if(!admitAnimatedCompilation(info,found->prototype,
-                            compilation_budget?*compilation_budget:ALNativeFrameBudget::instance(),*animated_ticket,flavor.animated_gpu_source))
+                            compilation_budget?*compilation_budget:ALNativeFrameBudget::instance(),*animated_ticket,
+                            flavor.animated_gpu_source,flavor.stabilize_animated_direct))
                             return {std::move(value), &found->prototype, nullptr, true};
                     }
                     const auto index = static_cast<std::size_t>(found - value->worlds.data());
@@ -889,7 +920,8 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         bool animated_admitted=true;
         if(flavor.animated_source)
         {animated_ticket.emplace();animated_admitted=admitAnimatedCompilation(info,variant.prototype,
-            compilation_budget?*compilation_budget:ALNativeFrameBudget::instance(),*animated_ticket,flavor.animated_gpu_source);}
+            compilation_budget?*compilation_budget:ALNativeFrameBudget::instance(),*animated_ticket,
+            flavor.animated_gpu_source,flavor.stabilize_animated_direct);}
         if (flavor.native_resources && animated_admitted) publishResourceSource(*value, variant.prototype);
         if (flavor.cohort_source)
             sealCohortSource(*value, variant, info.metalSourcePublication()->identity(), value->producer_revision);

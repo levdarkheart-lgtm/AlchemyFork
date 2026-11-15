@@ -11208,6 +11208,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     const ALMetalWorldSourceCohortView* scalar_common_cohort=nullptr;
     const ALMetalWorldSourceReference* scalar_common_animated=nullptr;
     std::size_t scalar_common_row=0,scalar_common_animated_index=0;
+    const ALMetalAttachmentPaletteRecord* private_pose_record=nullptr;
+    std::size_t private_pose_index=0;
+    ALMetalWorldDataSlice private_pose_slice,private_joint_slice;
     std::uint64_t scalar_common_builds=0,scalar_recipe_reads=0,scalar_common_reuses=0;
     ALMetalWorldCpuVisibilityStats cpu_visibility_stats;
     const ALMetalWorldSourceCohortView* cpu_visibility_cohort=nullptr;
@@ -11245,7 +11248,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                             range.bank_first+index-range.first,count,&optional_error));
                 if(accepted)
                 {
-                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr;
+                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr;private_pose_record=nullptr;
                     have_previous_world_constants=false;animated_prefix_emitted=true;
                     animated_stats.gpu_draws+=count;++animated_stats.execute_calls;
                     if(scene.animated_gpu_visibility)for(std::size_t at=index;at<end;++at)
@@ -11311,7 +11314,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     // this skip, and the next offset bounds the skipped run.
                     const auto count=end-index;
                     cpu_visibility_stats.culled_draws+=count;
-                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr;
+                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr;private_pose_record=nullptr;
                     draw_cursor.advance(count-1);index+=count-1;continue;
                 }
                 ++cpu_visibility_stats.visible_draws;
@@ -11344,7 +11347,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     mImpl->source_commands->executeRange(*encoder,*command,*bank.bank,local,count,&optional_error);
                 if (executed)
                 {
-                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr; // Never bridge a native-bank gap.
+                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr;private_pose_record=nullptr; // Never bridge a native-bank gap.
                     cohort_bank_prefix_emitted=true;source_bound_draws+=count;cohort_draws+=count;
                     source_bank_stats.bank_draws+=count;++source_bank_stats.execute_calls;
                     draw_cursor.advance(count-1);index+=count-1;continue;
@@ -11360,7 +11363,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         }
         const auto draw=draw_cursor.draw();
         const auto* animated_reference=draw.animatedReference();
-        if(!animated_reference || prepared)scalar_common_animated=nullptr;
+        if(!animated_reference || prepared)
+        {scalar_common_animated=nullptr;private_pose_record=nullptr;}
         const ALMetalWorldSimpleBatch& batch = draw.source();
         const bool join_static = scene.join_adjacent_static_draws &&
             scene.visibility_query_count == 0 && !scene.wireframe &&
@@ -11664,7 +11668,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         const bool pbr = prepared ? prepared_records[index].pbr : recipe_draw ? scalar_recipe.family==2 : isPBRBatch(batch);
         const bool material_normal_map = prepared ? prepared_records[index].material_normal_map : recipe_draw ? scalar_recipe.normal_map : materialHasNormalMap(batch);
         const bool material_specular_map = prepared ? prepared_records[index].material_specular_map : recipe_draw ? scalar_recipe.specular_map : materialHasSpecularMap(batch);
-        const bool stable_tables = current_cohort ||
+        const bool stable_tables = current_cohort || animated_reference ||
             (batch.native_material_source && batch.native_material_source->matches(batch));
         const ALMetalRenderPipeline* resource_pipeline = nullptr;
         bool resource_bound = false;
@@ -11752,17 +11756,41 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         if (encoded && draw.skinPalette())
         {
             const auto skin_joint_count=draw.skinJointCount();
-            encoded =
-                ((mImpl->frame_data || draw.skinPaletteFloatCount()*sizeof(float)<=4096)
-                     ? mImpl->setWorldPalette(*encoder, *command,
-                           5, draw, error)
-                     : encoder->setVertexBuffer(
-                           5, *palette_buffers.at(index), 0, error)) &&
-                encoder->setVertexBuffer(
-                    6, *batch.vertices, batch.weight_offset, error) &&
-                mImpl->setVertexData(*encoder, *command,
-                    7, &skin_joint_count,
-                    sizeof(skin_joint_count), error);
+            if(animated_reference && !prepared && mImpl->frame_data)
+            {
+                const auto* record=draw.skinPaletteRecord();
+                const bool hit=private_pose_record==record && index==private_pose_index+1;
+                if(!hit)
+                {
+                    ALMetalWorldDataSlice palette,joints;
+                    encoded=mImpl->frame_data->publishPaletteRecord(*command,record,palette,error,true) &&
+                        mImpl->frame_data->publish(*command,&skin_joint_count,sizeof(skin_joint_count),joints,error,false);
+                    if(encoded)
+                    {
+                        // Both publications registered this actual command's
+                        // native page leases. Input ownership keeps the exact
+                        // immutable record alive throughout this render call.
+                        private_pose_slice=palette;private_joint_slice=joints;private_pose_record=record;
+                        ++animated_stats.direct_pose_publications;
+                    }
+                }
+                else ++animated_stats.direct_pose_cache_hits;
+                private_pose_index=index;
+                encoded=encoded &&
+                    encoder->setVertexBuffer(5,*private_pose_slice.buffer,private_pose_slice.offset,error) &&
+                    encoder->setVertexBuffer(6,*batch.vertices,batch.weight_offset,error) &&
+                    encoder->setVertexBuffer(7,*private_joint_slice.buffer,private_joint_slice.offset,error);
+            }
+            else
+            {
+                private_pose_record=nullptr;
+                encoded=
+                    ((mImpl->frame_data || draw.skinPaletteFloatCount()*sizeof(float)<=4096)
+                         ? mImpl->setWorldPalette(*encoder,*command,5,draw,error)
+                         : encoder->setVertexBuffer(5,*palette_buffers.at(index),0,error)) &&
+                    encoder->setVertexBuffer(6,*batch.vertices,batch.weight_offset,error) &&
+                    mImpl->setVertexData(*encoder,*command,7,&skin_joint_count,sizeof(skin_joint_count),error);
+            }
         }
         if (encoded && batch.avatar_cloth)
         {
@@ -12016,6 +12044,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     mImpl->animated_stats.direct_recipe_reads+=animated_stats.direct_recipe_reads;
     mImpl->animated_stats.direct_common_builds+=animated_stats.direct_common_builds;
     mImpl->animated_stats.direct_common_reuses+=animated_stats.direct_common_reuses;
+    mImpl->animated_stats.direct_pose_cache_hits+=animated_stats.direct_pose_cache_hits;
+    mImpl->animated_stats.direct_pose_publications+=animated_stats.direct_pose_publications;
     mImpl->cohort_stats.scalar_recipe_reads+=scalar_recipe_reads;
     mImpl->cohort_stats.scalar_common_reuses+=scalar_common_reuses;
     if(scene.cpu_cohort_visibility)

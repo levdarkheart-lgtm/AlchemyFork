@@ -52,11 +52,11 @@ struct Host : AttachmentPalettePublication
         else {flavor.alpha_mask=true;for(auto& material:materials)material->mAlphaMode=Inputs::LLGLTFMaterial::ALPHA_MODE_MASK;}
         for(auto& info:infos)mesh(*info);
     }
-    void captureArm(Inputs::LLPipeline& pipeline,U32 mode,U32 source_offset=std::numeric_limits<U32>::max(),ALNativeFrameBudget* budget=nullptr,bool gpu_requested=true)
+    void captureArm(Inputs::LLPipeline& pipeline,U32 mode,U32 source_offset=std::numeric_limits<U32>::max(),ALNativeFrameBudget* budget=nullptr,bool gpu_requested=true,bool stabilize_direct=false)
     {
         auto& capture=*pipeline.mMetalWorldSimpleCapture;capture.clearDraws();capture.complete=true;
         configure(capture,false,false);capture.rigged=true;capture.world_post_deferred_active=false;capture.pbr_glow=false;
-        capture.beginAnimatedSources(mode!=0,mode!=0 && gpu_requested,budget);capture.world_resources=std::make_shared<Inputs::WorldResources>();
+        capture.beginAnimatedSources(mode!=0,mode!=0 && gpu_requested,budget,stabilize_direct);capture.world_resources=std::make_shared<Inputs::WorldResources>();
         const U32 first=source_offset==std::numeric_limits<U32>::max()?mode*count:source_offset;
         for(U32 at=first;at<first+count;++at)
             pipeline.captureMetalPublishedWorldBatch(*infos[at],U32(flavor.family),false);
@@ -194,6 +194,84 @@ TEST_CASE("Actual retained animated capture changes pose without rebuilding geom
          CHECK(std::any_of(depth.begin(),depth.end(),[](F32 value){return value<1.f;}));}
         CHECK(main->worldAnimatedStats().requested_draws==before_shadow.requested_draws);
     }
+    // The production direct gate observes producer identity/revision in two
+    // DISTINCT outer frames. Replaying main/probe views in one frame cannot
+    // qualify it, while a pose change does not change the static producer key.
+    for(U32 family:{1u,2u})
+    {
+        CAPTURE(family);Host f(family,1);ALNativeFrameBudget budget;Inputs::LLPipeline pipeline;
+        auto data=ALMetalWorldFrameData::create(*f.device,&f.error);REQUIRE(data);U64 epoch=0;
+        auto library=data->builtinLibrary(&f.error);REQUIRE(library);
+        auto main=ALMetalWorldGBufferRenderer::create(*f.device,1,library,&f.error),probe=ALMetalWorldGBufferRenderer::create(*f.device,1,library,&f.error);
+        REQUIRE(main);REQUIRE(probe);main->setFrameData(data);probe->setFrameData(data);
+        auto& info=*f.infos[1];const auto revision=info.state->revision();
+        const auto new_frame=[&]{++Inputs::gFrameCount;beginBudgetFrame(budget,Inputs::gFrameCount);data->beginFrame(++epoch);};
+        const auto draw=[&](ALMetalWorldGBufferRenderer& renderer,U32 mode)
+        {
+            auto input=f.adoptArm(pipeline,epoch,mode,false,false);REQUIRE(input);
+            std::shared_ptr<ALMetalVisibilityResultBatch> queries;
+            auto target=renderer.renderOwnedInputs(*input,&f.error,&queries);INFO(f.error);REQUIRE(target);REQUIRE(queries);
+            for(U32 at=0;at<3;++at){U64 samples=0;REQUIRE(queries->wait(at,samples,&f.error));CHECK(samples>0);}
+            auto pixels=f.read(*target);f.reclaim(input,pipeline);return pixels;
+        };
+        const auto raw=[&]
+        {f.captureArm(pipeline,0,1,&budget,false,false);return draw(*main,0);};
+        new_frame();const auto first_pixels=raw();
+        auto before=Inputs::ALScenePublicationNative::animated_compilation_stats;
+        const auto first_serial=Inputs::sNativeSceneSerial;
+        for(U32 view=0;view<3;++view)
+        {
+            f.captureArm(pipeline,1,1,&budget,false,true);const auto& capture=*pipeline.mMetalWorldSimpleCapture;
+            REQUIRE(capture.source_references.empty());REQUIRE(capture.batches.size()==1);
+            CHECK(draw(view?*probe:*main,1)==first_pixels);
+            const auto after=Inputs::ALScenePublicationNative::animated_compilation_stats;
+            CHECK(after.requests==before.requests);CHECK(after.requested_bytes==before.requested_bytes);CHECK(after.admitted==before.admitted);
+            CHECK(after.deferred==before.deferred);CHECK(after.stability_deferred==before.stability_deferred+1);
+            CHECK(after.duplicate_views==before.duplicate_views+view);
+        }
+        CHECK(Inputs::sNativeSceneSerial==first_serial);CHECK(info.state->revision()==revision);
+        new_frame();f.pose(.375f,false);const auto moved_pixels=raw();
+        before=Inputs::ALScenePublicationNative::animated_compilation_stats;
+        f.captureArm(pipeline,1,1,&budget,false,true);const auto& ready=*pipeline.mMetalWorldSimpleCapture;
+        REQUIRE(ready.batches.empty());REQUIRE(ready.source_references.size()==1);
+        const auto source=ready.source_references.front().animated_source->owner();REQUIRE(source);CHECK_FALSE(source->gpuReady());
+        CHECK(draw(*main,1)==moved_pixels);auto after=Inputs::ALScenePublicationNative::animated_compilation_stats;
+        CHECK(after.requests==before.requests+1);CHECK(after.admitted==before.admitted+1);CHECK(after.published==before.published+1);
+        CHECK(after.requested_bytes>before.requested_bytes);CHECK(info.state->revision()==revision);
+        // Ready main/probe repeats, then a new pose in a later outer frame,
+        // incur no compilation ticket and keep the exact private source.
+        const auto ready_serial=Inputs::sNativeSceneSerial;
+        for(U32 frame=0;frame<2;++frame)
+        {
+            if(frame){new_frame();f.pose(0,false);}
+            const auto expected=raw();before=Inputs::ALScenePublicationNative::animated_compilation_stats;
+            for(U32 view=0;view<3;++view)
+            {
+                f.captureArm(pipeline,1,1,&budget,false,true);const auto& capture=*pipeline.mMetalWorldSimpleCapture;
+                REQUIRE(capture.source_references.size()==1);CHECK(capture.source_references.front().animated_source==source.get());
+                CHECK(draw(view?*probe:*main,1)==expected);
+            }
+            after=Inputs::ALScenePublicationNative::animated_compilation_stats;
+            CHECK(after.requests==before.requests);CHECK(after.admitted==before.admitted);CHECK(after.requested_bytes==before.requested_bytes);
+            CHECK(after.stability_deferred==before.stability_deferred);CHECK(after.duplicate_views==before.duplicate_views);
+            CHECK(Inputs::sNativeSceneSerial==ready_serial);CHECK(info.state->revision()==revision);
+        }
+        for(U32 dirty=0;dirty<3;++dirty)
+        {
+            new_frame();info.state->invalidate();const auto expected=raw();
+            before=Inputs::ALScenePublicationNative::animated_compilation_stats;
+            for(U32 view=0;view<3;++view)
+            {
+                f.captureArm(pipeline,1,1,&budget,false,true);const auto& capture=*pipeline.mMetalWorldSimpleCapture;
+                REQUIRE(capture.source_references.empty());REQUIRE(capture.batches.size()==1);
+                CHECK(draw(view?*probe:*main,1)==expected);
+            }
+            after=Inputs::ALScenePublicationNative::animated_compilation_stats;
+            CHECK(after.requests==before.requests);CHECK(after.requested_bytes==before.requested_bytes);CHECK(after.admitted==before.admitted);
+            CHECK(after.deferred==before.deferred);CHECK(after.stability_deferred==before.stability_deferred+1);
+            CHECK(after.duplicate_views==before.duplicate_views+2);
+        }
+    }
 }
 
 TEST_CASE("Actual optional animated promotion preserves an exact cache-withdrawn required reader",
@@ -262,11 +340,15 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
     const char* commands_env=std::getenv("ALCHEMY_ANIMATED_GPU_COMMANDS");
     if(commands_env)REQUIRE((std::strcmp(commands_env,"0")==0 || std::strcmp(commands_env,"1")==0));
     const bool gpu_commands=commands_env && std::strcmp(commands_env,"1")==0;
+    const char* stability_env=std::getenv("ALCHEMY_ANIMATED_SOURCE_STABILITY");
+    if(stability_env)REQUIRE((std::strcmp(stability_env,"0")==0 || std::strcmp(stability_env,"1")==0));
+    const bool source_stability=!gpu_commands && (!stability_env || std::strcmp(stability_env,"1")==0);
     struct Sample
     {
         double cpu=0,encode=0,settle=0,gpu=0;U64 gpu_ready=0,seals=0,source_builds=0,animated_builds=0;
         U64 requested=0,gpu_draws=0,fallback=0,executes=0,poses=0,source_gpu=0,bounds=0,unknown=0,bytes=0,cpu_admitted=0,cpu_deferred=0,metadata_deferred=0,captured=0,visibility_dispatches=0,declaration_calls=0;
         U64 direct_draws=0,direct_common_builds=0,direct_common_reuses=0,direct_recipe_reads=0,direct_source_builds=0,gpu_source_builds=0;
+        U64 cpu_stability_deferred=0,direct_pose_publications=0,direct_pose_cache_hits=0;
     };
     struct Arm
     {ALNativeFrameBudget budget;Inputs::LLPipeline pipeline;std::shared_ptr<ALMetalWorldFrameData> data;std::unique_ptr<ALMetalWorldGBufferRenderer> main,probe;U64 epoch=0;};
@@ -311,7 +393,7 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
                     if(condition==3)f.changeResources(mode,sample);
                     for(U32 view=0;view<views;++view)
                     {
-                        f.model=LLMatrix4a::translation(.01f*view,-.005f*view,0);f.captureArm(arm.pipeline,mode,std::numeric_limits<U32>::max(),&arm.budget,gpu_commands);
+                        f.model=LLMatrix4a::translation(.01f*view,-.005f*view,0);f.captureArm(arm.pipeline,mode,std::numeric_limits<U32>::max(),&arm.budget,gpu_commands,source_stability);
                         value.captured+=arm.pipeline.mMetalWorldSimpleCapture->source_references.size();
                         auto input=f.adoptArm(arm.pipeline,arm.epoch,mode,gpu_visibility,gpu_commands);INFO(f.error);REQUIRE(input);
                         auto& renderer=view?*arm.probe:*arm.main;REQUIRE(renderer.beginCommandBatch("Actual animated GPU complete path",&f.error));
@@ -337,6 +419,8 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
                         value.direct_common_builds+=now[renderer].direct_common_builds-old[renderer].direct_common_builds;
                         value.direct_common_reuses+=now[renderer].direct_common_reuses-old[renderer].direct_common_reuses;
                         value.direct_recipe_reads+=now[renderer].direct_recipe_reads-old[renderer].direct_recipe_reads;
+                        value.direct_pose_publications+=now[renderer].direct_pose_publications-old[renderer].direct_pose_publications;
+                        value.direct_pose_cache_hits+=now[renderer].direct_pose_cache_hits-old[renderer].direct_pose_cache_hits;
                     }
                     value.seals=f.seals()-sealed;value.source_builds=Inputs::sNativeSceneSerial-serial;
                     value.animated_builds=Inputs::ALScenePublicationNative::animated_source_publications-compiled;value.bytes=arm.data->stats().published_bytes-before.published_bytes;
@@ -344,10 +428,12 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
                     value.gpu_source_builds=Inputs::ALScenePublicationNative::animated_gpu_source_publications-gpu_compiled;
                     value.cpu_admitted=Inputs::ALScenePublicationNative::animated_compilation_stats.admitted-before_compile.admitted;
                     value.cpu_deferred=Inputs::ALScenePublicationNative::animated_compilation_stats.deferred-before_compile.deferred;
+                    value.cpu_stability_deferred=Inputs::ALScenePublicationNative::animated_compilation_stats.stability_deferred-before_compile.stability_deferred;
                     value.metadata_deferred=arm.budget.snapshot().deferred-before_budget.deferred;
                     CHECK(value.seals==1);CHECK(value.requested==(gpu_commands?value.captured:0));CHECK(value.gpu_draws+value.fallback==value.requested);
                     CHECK(value.direct_draws==(gpu_commands?value.fallback:value.captured));
                     CHECK(value.direct_recipe_reads==value.direct_draws);CHECK(value.direct_common_builds+value.direct_common_reuses==value.direct_draws);
+                    CHECK(value.direct_pose_publications+value.direct_pose_cache_hits==value.direct_draws);
                     CHECK(value.animated_builds==value.direct_source_builds+value.gpu_source_builds);
                     if(!gpu_commands || !gpu_visibility){CHECK(value.visibility_dispatches==0);CHECK(value.bounds==0);CHECK(value.unknown==0);}
                     if(sample>=warmups && condition==1){CHECK(value.source_builds==0);CHECK(value.animated_builds==0);}
@@ -376,9 +462,10 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
                         CHECK(commands.unique_retained_index_bytes<=command_limits.maximum_live_native_bytes-commands.live_icb_allocated_bytes);
                     if(sample==warmups-1||sample==samples+warmups-1)for(U32 view=0;view<views;++view)images[mode][view]=f.read(*targets[view]);
                     std::cout<<"NATIVE_ANIMATED_GPU_RAW family="<<family<<" sources="<<count<<" indices_per_source=96 views="<<views<<" condition="<<condition<<" mode="<<mode<<" sample="<<sample<<" warmup="<<(sample<warmups)
-                        <<" gpu_commands="<<unsigned(gpu_commands)<<" gpu_visibility="<<unsigned(gpu_visibility)<<" visibility_dispatches="<<value.visibility_dispatches<<" declaration_calls="<<value.declaration_calls
+                        <<" gpu_commands="<<unsigned(gpu_commands)<<" source_stability="<<unsigned(source_stability)<<" gpu_visibility="<<unsigned(gpu_visibility)<<" visibility_dispatches="<<value.visibility_dispatches<<" declaration_calls="<<value.declaration_calls
                         <<" direct_draws="<<value.direct_draws<<" direct_common_builds="<<value.direct_common_builds<<" direct_common_reuses="<<value.direct_common_reuses<<" direct_recipe_reads="<<value.direct_recipe_reads
                         <<" direct_source_builds="<<value.direct_source_builds<<" gpu_source_builds="<<value.gpu_source_builds
+                        <<" direct_pose_publications="<<value.direct_pose_publications<<" direct_pose_cache_hits="<<value.direct_pose_cache_hits<<" cpu_stability_deferred="<<value.cpu_stability_deferred
                         <<" owner_cpu_ms="<<value.cpu<<" capture_adopt_encode_reclaim_ms="<<value.encode<<" commit_query_settle_ms="<<value.settle<<" gpu_sum_ms="<<value.gpu<<" gpu_ready="<<value.gpu_ready
                         <<" pose_seals="<<value.seals<<" source_builds="<<value.source_builds<<" animated_builds="<<value.animated_builds<<" requested="<<value.requested<<" gpu_draws="<<value.gpu_draws<<" fallback="<<value.fallback
                         <<" execute_calls="<<value.executes<<" pose_publications="<<value.poses<<" source_gpu_publications="<<value.source_gpu<<" bounds_tests="<<value.bounds<<" bounds_unknown="<<value.unknown<<" arena_logical_bytes="<<value.bytes
@@ -398,11 +485,12 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
             }
             for(U32 mode=0;mode<2;++mode)
             {
-                std::array<double,samples> cpu_values,encode,settle,gpu;U64 fallback=0,draws=0,visibility_dispatches=0,declaration_calls=0,direct_draws=0,direct_common_builds=0,direct_common_reuses=0,direct_recipe_reads=0;
-                for(U32 sample=0;sample<samples;++sample){const auto& value=measured[mode][sample];cpu_values[sample]=value.cpu;encode[sample]=value.encode;settle[sample]=value.settle;gpu[sample]=value.gpu;fallback+=value.fallback;draws+=value.gpu_draws;visibility_dispatches+=value.visibility_dispatches;declaration_calls+=value.declaration_calls;direct_draws+=value.direct_draws;direct_common_builds+=value.direct_common_builds;direct_common_reuses+=value.direct_common_reuses;direct_recipe_reads+=value.direct_recipe_reads;}
+                std::array<double,samples> cpu_values,encode,settle,gpu;U64 fallback=0,draws=0,visibility_dispatches=0,declaration_calls=0,direct_draws=0,direct_common_builds=0,direct_common_reuses=0,direct_recipe_reads=0,direct_pose_publications=0,direct_pose_cache_hits=0,cpu_stability_deferred=0;
+                for(U32 sample=0;sample<samples;++sample){const auto& value=measured[mode][sample];cpu_values[sample]=value.cpu;encode[sample]=value.encode;settle[sample]=value.settle;gpu[sample]=value.gpu;fallback+=value.fallback;draws+=value.gpu_draws;visibility_dispatches+=value.visibility_dispatches;declaration_calls+=value.declaration_calls;direct_draws+=value.direct_draws;direct_common_builds+=value.direct_common_builds;direct_common_reuses+=value.direct_common_reuses;direct_recipe_reads+=value.direct_recipe_reads;direct_pose_publications+=value.direct_pose_publications;direct_pose_cache_hits+=value.direct_pose_cache_hits;cpu_stability_deferred+=value.cpu_stability_deferred;}
                 std::cout<<"NATIVE_ANIMATED_GPU_COST family="<<family<<" sources="<<count<<" indices_per_source=96 views="<<views<<" condition="<<condition<<" mode="<<mode<<" samples="<<samples<<" warmups="<<warmups
-                    <<" gpu_commands="<<unsigned(gpu_commands)<<" gpu_visibility="<<unsigned(gpu_visibility)<<" visibility_dispatches="<<visibility_dispatches<<" declaration_calls="<<declaration_calls
+                    <<" gpu_commands="<<unsigned(gpu_commands)<<" source_stability="<<unsigned(source_stability)<<" gpu_visibility="<<unsigned(gpu_visibility)<<" visibility_dispatches="<<visibility_dispatches<<" declaration_calls="<<declaration_calls
                     <<" direct_draws="<<direct_draws<<" direct_common_builds="<<direct_common_builds<<" direct_common_reuses="<<direct_common_reuses<<" direct_recipe_reads="<<direct_recipe_reads
+                    <<" direct_pose_publications="<<direct_pose_publications<<" direct_pose_cache_hits="<<direct_pose_cache_hits<<" cpu_stability_deferred="<<cpu_stability_deferred
                     <<" owner_cpu_median_ms="<<median(cpu_values)<<" owner_cpu_max_ms="<<*std::max_element(cpu_values.begin(),cpu_values.end())<<" encode_reclaim_median_ms="<<median(encode)<<" encode_reclaim_max_ms="<<*std::max_element(encode.begin(),encode.end())
                     <<" settle_median_ms="<<median(settle)<<" settle_max_ms="<<*std::max_element(settle.begin(),settle.end())<<" gpu_sum_median_ms="<<median(gpu)<<" gpu_sum_max_ms="<<*std::max_element(gpu.begin(),gpu.end())<<" gpu_draws="<<draws<<" fallback_draws="<<fallback
                     <<" cold_and_adverse_cells_retained=1 geometry_texture_creation=excluded mutable_skeleton=typed_attachment_palette_input target_wrapper_retirement=outside_timer whole_viewer_fps_claim=0\n";

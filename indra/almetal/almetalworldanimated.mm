@@ -35,8 +35,10 @@ const ALMetalWorldSimpleBatch& ALMetalWorldAnimatedSource::prototype() const noe
 const ALMetalWorldSourceKey& ALMetalWorldAnimatedSource::key() const noexcept{return mImpl->key;}
 std::shared_ptr<const ALMetalWorldAnimatedSource> ALMetalWorldAnimatedSource::owner() const noexcept{return mImpl->owner.lock();}
 std::shared_ptr<const void> ALMetalWorldAnimatedSource::nativeLease() const noexcept{return mImpl->native.lock();}
+bool ALMetalWorldAnimatedSource::matchesNativeOwner(const std::shared_ptr<const void>& owner)const noexcept
+{return exactOwner(mImpl->native,mImpl->native_pointer,owner);}
 bool ALMetalWorldAnimatedSource::matchesNativeScope(const ALMetalWorldSourceNativeScope& scope) const noexcept
-{return exactOwner(mImpl->native,mImpl->native_pointer,scope.owner) &&
+{return matchesNativeOwner(scope.owner) &&
     (!scope.vertices || scope.vertices.get()==mImpl->prototype.vertices) &&
     (!scope.indices || scope.indices.get()==mImpl->prototype.indices);}
 std::span<const ALMetalWorldAnimatedBoneBounds> ALMetalWorldAnimatedSource::boneBounds() const noexcept{return mImpl->bounds;}

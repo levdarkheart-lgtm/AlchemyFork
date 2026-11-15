@@ -6814,6 +6814,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 pre-freeze direct-consumer review finds private animated references already excluded from material-argument-buffer requests/binds but still counted by a trailing resource fallback branch when that diagnostic flag is ON. Register before matching the final fallback guard to the same animated-reference exclusion. Preserve ordinary direct bindings and dedicated direct census; source-only accounting issue, no runtime performance attribution.
 
+- 2026-11-15 source71/7d58e89d88 builds69121 (165.315s), static/strict and all34renderer scopes252278 assertion-executions/346case-executions pass. Direct/fullcount/visibility48costs100120/1,102464/1,97424/1 andall1680-row parsers pass. Direct route removes GPU tax (same shaders), but warm resultsnearparity: smallCPU0.65–2.44% lower,64CPU3.33%/5.37%higher, coldCPU7–11%higher. Noactivation. Next bounded source-proof work: trust already-sealed material proof in direct renderer, avoid repeated private-pose publication lookups within encoding, avoid temporary shared-owner copies in warm certificate identity checks, and use existing two-outer-frame stability admission before optional direct compilation. Preserve all public/borrowed/native and289guards, required raw rendering andper-source/framecredits; no capraise or changed shaders.
+
 ## PPD-288 — New animated-source fixtures use invalid API and coverage assumptions
 
 - Status: ready_for_owner

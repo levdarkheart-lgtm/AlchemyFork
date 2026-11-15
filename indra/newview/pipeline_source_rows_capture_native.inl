@@ -7,6 +7,7 @@
 bool source_rows_active = false;
 std::shared_ptr<ALMetalWorldSourceView> source_rows;
 bool animated_sources_active = false, animated_gpu_records_active = false;
+bool animated_direct_stability = false;
 // Borrowed owner policy, never copied to a flavor, publication or GPU view.
 ALNativeFrameBudget* animated_compilation_budget = nullptr;
 struct AnimatedSourceCaptureStats
@@ -18,11 +19,13 @@ struct AnimatedSourceCaptureStats
     std::uint64_t capacity_fallbacks=0,allocation_fallbacks=0;
 } animated_source_stats;
 void clearAnimatedGpuRecords() noexcept
-{animated_sources_active=animated_gpu_records_active=false;animated_compilation_budget=nullptr;}
-void beginAnimatedSources(bool enabled,bool gpu_requested,ALNativeFrameBudget* budget=nullptr) noexcept
+{animated_sources_active=animated_gpu_records_active=animated_direct_stability=false;animated_compilation_budget=nullptr;}
+void beginAnimatedSources(bool enabled,bool gpu_requested,ALNativeFrameBudget* budget=nullptr,
+                          bool stabilize_direct=false) noexcept
 {
     animated_sources_active=enabled;
     animated_gpu_records_active=enabled&&gpu_requested;
+    animated_direct_stability=enabled&&!gpu_requested&&stabilize_direct;
     animated_compilation_budget=enabled?budget:nullptr;
     if(enabled)++animated_source_stats.enabled_views;
     if(animated_gpu_records_active)++animated_source_stats.gpu_requested_views;

@@ -199,6 +199,8 @@ TEST_CASE("almetal: retained rigged material sources preserve late poses masks a
                 CHECK(direct_after.direct_recipe_reads==direct_before.direct_recipe_reads+raw.size());
                 CHECK(direct_after.direct_common_builds==direct_before.direct_common_builds+raw.size());
                 CHECK(direct_after.direct_common_reuses==direct_before.direct_common_reuses);
+                CHECK(direct_after.direct_pose_publications==direct_before.direct_pose_publications+raw.size());
+                CHECK(direct_after.direct_pose_cache_hits==direct_before.direct_pose_cache_hits);
                 CHECK(direct_after.requested_draws==direct_before.requested_draws);
                 CHECK(f.renderer->worldSourceCommandStats().cache.declaration_calls==declarations_before);
                 CHECK(render(f,scene,{},direct_refs,direct_owners,{},true)==expected);
@@ -207,6 +209,8 @@ TEST_CASE("almetal: retained rigged material sources preserve late poses masks a
                 CHECK(prepared_after.direct_recipe_reads==direct_after.direct_recipe_reads);
                 CHECK(prepared_after.direct_common_builds==direct_after.direct_common_builds);
                 CHECK(prepared_after.direct_common_reuses==direct_after.direct_common_reuses);
+                CHECK(prepared_after.direct_pose_publications==direct_after.direct_pose_publications);
+                CHECK(prepared_after.direct_pose_cache_hits==direct_after.direct_pose_cache_hits);
                 scene.animated_gpu_records=true;
                 for(bool gpu_visibility:{false,true})
                 {
@@ -243,6 +247,8 @@ TEST_CASE("almetal: retained rigged material sources preserve late poses masks a
                 CHECK(after.direct_draws==before.direct_draws+4);CHECK(after.direct_recipe_reads==before.direct_recipe_reads+4);
                 CHECK(after.direct_common_builds==before.direct_common_builds+(changed?3:1));
                 CHECK(after.direct_common_reuses==before.direct_common_reuses+(changed?1:3));
+                CHECK(after.direct_pose_publications==before.direct_pose_publications+1);
+                CHECK(after.direct_pose_cache_hits==before.direct_pose_cache_hits+3);
             }
             if(masked)
             {
@@ -424,6 +430,34 @@ TEST_CASE("almetal: animated records preserve dynamic UV unknown bounds cloth an
         CHECK(render(f,f.scene(),{simple,terrain,cloth},direct_mixed,direct_owners,mixed_order,true)==expected_mixed);
         after=f.renderer->worldAnimatedStats();CHECK(after.direct_draws==before.direct_draws+4);
 
+        // Palette and joint-count slots must be restored after queries and
+        // after an ordinary/terrain gap. A new immutable one-joint record
+        // clamps the same encoded joint1 weights differently from this
+        // nonuniform two-joint record, so stale count/palette binds are visible.
+        auto two=palette(0,f.error,true);std::array<float,16> one_values{};
+        std::memcpy(one_values.data(),two->data(),sizeof(one_values));
+        auto one=ALMetalAttachmentPaletteRecord::create(one_values.data(),one_values.size(),1,&f.error);REQUIRE(one);
+        auto two_batch=prototype,one_batch=prototype;
+        two_batch.skin_palette_record=two.get();two_batch.skin_palette=two->data();
+        one_batch.skin_palette_record=one.get();one_batch.skin_palette=one->data();
+        one_batch.skin_palette_float_count=one->size();one_batch.skin_joint_count=one->jointCount();
+        auto pose_owners=std::make_shared<CpuOwners>();pose_owners->sources={direct_proof};pose_owners->palettes={two,one};
+        const std::vector<ALMetalWorldSourceReference> pose_refs{
+            reference(direct_proof,two,matrices(two_batch)),reference(direct_proof,two,matrices(two_batch)),
+            reference(direct_proof,one,matrices(one_batch)),reference(direct_proof,one,matrices(one_batch)),reference(direct_proof,two,matrices(two_batch))};
+        const std::vector<ALMetalWorldDrawIndex> pose_order{alMetalWorldDrawReferenceBit,alMetalWorldDrawReferenceBit|1u,0,
+            alMetalWorldDrawReferenceBit|2u,alMetalWorldDrawReferenceBit|3u,1,alMetalWorldDrawReferenceBit|4u};
+        const auto expected_poses=render(f,f.scene(),{two_batch,two_batch,simple,one_batch,one_batch,terrain,two_batch});
+        CHECK_FALSE(render(f,f.scene(),{two_batch}).pixels==render(f,f.scene(),{one_batch}).pixels);
+        before=f.renderer->worldAnimatedStats();
+        CHECK(render(f,f.scene(),{simple,terrain},pose_refs,pose_owners,pose_order)==expected_poses);
+        after=f.renderer->worldAnimatedStats();CHECK(after.direct_draws==before.direct_draws+5);
+        CHECK(after.direct_pose_publications==before.direct_pose_publications+3);
+        CHECK(after.direct_pose_cache_hits==before.direct_pose_cache_hits+2);
+        CHECK(render(f,f.scene(),{simple,terrain},pose_refs,pose_owners,pose_order,true)==expected_poses);
+        CHECK(f.renderer->worldAnimatedStats().direct_pose_publications==after.direct_pose_publications);
+        CHECK(f.renderer->worldAnimatedStats().direct_pose_cache_hits==after.direct_pose_cache_hits);
+
         // Fresh certificate/context: reject a real cold publication, then
         // grant the retry. A declined optional path keeps the whole draw.
         auto fresh_data=ALMetalWorldFrameData::create(*f.device,&f.error);REQUIRE(fresh_data);fresh_data->beginFrame(1);
@@ -513,12 +547,16 @@ TEST_CASE("almetal: queued animated commands retain native generations without r
         auto old_target=f.renderer->renderOwnedInputs(*old_input,&f.error,&old_queries);INFO(f.error);REQUIRE(old_target);
         CHECK(f.renderer->worldAnimatedStats().visibility_dispatches==before_old.visibility_dispatches+unsigned(gpu_commands && gpu_visibility));
         CHECK(f.renderer->worldAnimatedStats().direct_draws==before_old.direct_draws+unsigned(!gpu_commands));
+        CHECK(f.renderer->worldAnimatedStats().direct_pose_publications==before_old.direct_pose_publications+unsigned(!gpu_commands));
+        CHECK(f.renderer->worldAnimatedStats().direct_pose_cache_hits==before_old.direct_pose_cache_hits);
         auto old_completion=f.renderer->commandBatchCompletion();REQUIRE(old_completion);REQUIRE(f.renderer->commitCommandBatch(&f.error));
         REQUIRE(f.renderer->beginCommandBatch("New animated native generation",&f.error));
         const auto before_new=f.renderer->worldAnimatedStats();
         auto new_target=f.renderer->renderOwnedInputs(*new_input,&f.error,&new_queries);INFO(f.error);REQUIRE(new_target);
         CHECK(f.renderer->worldAnimatedStats().visibility_dispatches==before_new.visibility_dispatches+unsigned(gpu_commands && !gpu_visibility));
         CHECK(f.renderer->worldAnimatedStats().direct_draws==before_new.direct_draws+unsigned(!gpu_commands));
+        CHECK(f.renderer->worldAnimatedStats().direct_pose_publications==before_new.direct_pose_publications+unsigned(!gpu_commands));
+        CHECK(f.renderer->worldAnimatedStats().direct_pose_cache_hits==before_new.direct_pose_cache_hits);
         auto new_completion=f.renderer->commandBatchCompletion();REQUIRE(new_completion);REQUIRE(f.renderer->commitCommandBatch(&f.error));
         old_input.reset();new_input.reset();old_owners.reset();new_owners.reset();old_source.reset();new_source.reset();old_pose.reset();new_pose.reset();
         old_batch={};new_batch={};f.data->beginFrame(2);f.resources.reset();CHECK(weak_source.expired());CHECK(weak_pose.expired());

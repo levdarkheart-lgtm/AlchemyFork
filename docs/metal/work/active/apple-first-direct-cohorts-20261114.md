@@ -2345,3 +2345,42 @@ Savedclub data establishes onlyshadowrunlengths(max249), notmeshindexcounts;
 Nextrequired71 builder +static71/strict, full34scopes justifiedbycoreDrawfacade
 changes, thenallthree48costruns. No71runtime orperformanceclaimyet. No viewer
 launch/login/liveprofile/push; ownerapps andstaged69102unchanged; goalactive.
+
+
+## Source71 full regression pass; source72 proof/cadence changes integrated
+
+Exact7d58e89d88/26.4.0.69121 doctor/configure/build0/0/0 (165.315s), static71
+andstrict pass. All34native scopes pass:252278 assertion-executions/346case-
+executions, includingnative7653/5 andactual24464/80. Handles96567/78876 terminal0.
+Three48costs direct100120/1, full102464/1, visibility97424/1 andall1680-row
+parsers pass. GPUtax isgone indirect-source route(originalshaders); warm small
+CPU wins0.65–2.44%,64CPU loses3.33%/5.37%(one/threeviews), coldCPU7–11%
+higher. Nearparity isnot a consistentperformancewin; allnewcontrols remainOFF.
+Directcensus confirms1commonbuild+63reuses/view at64 andnativeGPUcommands0;
+noextra SourcePages/ICB resources. This isnot a whole-viewer FPS measurement.
+
+Source72 isintegrated/frozen/cross-peerPASS: backendworldfe59ac80, animated.h
+ec96aba6/.mm4efb6d33; frontend35d9d2f3/4934aabd/7bcf6939; native3665c8d6,
+actualb329905a, parser369993e4. PrivateSource alreadyseals matchedmaterial
+proof; ordinarydirect consumer nowtrustsit. Per-render consecutive private
+pose cache retainsnativepalette/jointcount slices after successfulpublication,
+rebinds5/6/7 afterqueries, resetsraw/body/prepared/ICB/skipgaps; noCPUrecordGPU
+retention orcrossviewcache. Exact nativeOwner control+pointer checks avoid
+temporary three-owner Scope copies; explicit rawgeometryidentity remains.
+
+OptionalDIRECTsource compilation canwait forTWO distinctouterframes ofsame
+producerrevision usingexistingdeferUnstableRevision. No optionalticket/workbytes/
+clone/seal duringinstability; main→probes sameframe onlyduplicates. RequiredRaw
+andcurrentpose remain immediate; GPU/immediateAPIs defaultfalsecompatibility
+unchanged. Rootprimary begin(...nullptr,true) selectsstability andlogsseparate
+stability_deferred. Newpose pair acquisition/cache-hit counters areperaccepted
+view, notphysicaluploads. Native/actual tests positively coverqueryrebinding,
+newjointcounts, gapresets, pendingCPUexpiry, sameframeprobe deferral, nextframe
+qualification, dirtyraw fallback andwarm/pose0tickets.
+
+Next source72 required/static/strict, affectedninecorrectnessscopes andfour
+explicit48costs: stableDIRECT, no-stabilityDIRECT ablation, GPUfullcount and
+GPUvisibility. CostenvALCHEMY_ANIMATED_SOURCE_STABILITY=1defaultDIRECT/0GPU;
+alloriginalcold/churn/loading refusals retained. Parser backwardparse71 passes
+48pairs/1680rows to/tmp/animated-parser72-compatibility71. No72runtimeclaimyet.
+No launch/profile/push, existingownerapps/staged69102 immutable; goalactive.

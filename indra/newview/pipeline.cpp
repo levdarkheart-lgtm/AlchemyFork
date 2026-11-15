@@ -3295,6 +3295,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", requested/accepted_gpu/fallback/execute_calls=" << gpu.requested_draws << '/' << gpu.gpu_draws << '/' << gpu.fallback_draws << '/' << gpu.execute_calls
                     << ", direct_record_draws/cpu_recipe_reads/common_builds/common_reuses=" << gpu.direct_draws << '/' << gpu.direct_recipe_reads
                     << '/' << gpu.direct_common_builds << '/' << gpu.direct_common_reuses
+                    << ", direct_pose_pair_publications/cache_hits=" << gpu.direct_pose_publications << '/' << gpu.direct_pose_cache_hits
                     << ", current_pose/source_publications=" << gpu.current_pose_publications << '/' << gpu.source_publications
                     << ", encoded_visibility_dispatches=" << gpu.visibility_dispatches
                     << ", visibility_requested=" << gSavedSettings.getBOOL("RenderMetalAnimatedGpuVisibility")
@@ -3307,6 +3308,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             LL_INFOS("MetalFramePlan") << "CPU animated compilation: requests/admitted/deferred/duplicate_views/published/failed="
                 << animated_compilation.requests << '/' << animated_compilation.admitted << '/' << animated_compilation.deferred << '/'
                 << animated_compilation.duplicate_views << '/' << animated_compilation.published << '/' << animated_compilation.failed
+                << ", stability_deferred=" << animated_compilation.stability_deferred
                 << ", requested/admitted_work_bytes/saturated=" << animated_compilation.requested_bytes << '/' << animated_compilation.admitted_bytes << '/' << animated_compilation.saturated
                 << ", sealed_sources/fallbacks=" << ALScenePublicationNative::animated_source_publications << '/' << ALScenePublicationNative::animated_source_fallbacks
                 << ", direct_only/gpu_ready_source_publications=" << ALScenePublicationNative::animated_direct_source_publications << '/' << ALScenePublicationNative::animated_gpu_source_publications << LL_ENDL;
@@ -3750,7 +3752,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     static LLCachedControl<bool> animated_gpu_records(gSavedSettings, "RenderMetalAnimatedGpuRecords", false);
     static LLCachedControl<bool> animated_sources(gSavedSettings, "RenderMetalAnimatedSources", false);
     capture.beginAnimatedSources((animated_sources() || animated_gpu_records()) && !capture.impostor_bake,
-        animated_gpu_records() && !capture.impostor_bake);
+        animated_gpu_records() && !capture.impostor_bake, nullptr, true);
     capture.compact_gbuffer_active = compact_inputs() || capture.source_rows_active;
     if (capture.source_rows_active)
         for (const auto* region : LLWorld::getInstance()->getRegionList())

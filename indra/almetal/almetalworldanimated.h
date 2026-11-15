@@ -34,6 +34,9 @@ public:
     const ALMetalWorldSourceKey& key() const noexcept;
     std::shared_ptr<const ALMetalWorldAnimatedSource> owner() const noexcept;
     bool matchesNativeScope(const ALMetalWorldSourceNativeScope&) const noexcept;
+    // Exact owner proof without constructing temporary typed generation leases.
+    // Callers separately compare their vertex/index wrapper identities.
+    bool matchesNativeOwner(const std::shared_ptr<const void>&) const noexcept;
     std::shared_ptr<const void> nativeLease() const noexcept;
     std::span<const ALMetalWorldAnimatedBoneBounds> boneBounds() const noexcept;
     bool boundsQualified() const noexcept;
@@ -62,4 +65,8 @@ struct ALMetalWorldAnimatedStats
     // and GPU-fallback draws. Recipe/build/reuse work is unprepared scalar only.
     std::uint64_t direct_draws=0,direct_recipe_reads=0;
     std::uint64_t direct_common_builds=0,direct_common_reuses=0;
+    // Per-render unprepared private-record cache. Publications count successful
+    // palette+joint-count slice acquisition pairs; palette bytes may intern.
+    // Hits still ask the encoder to restore slots5/7, including after queries.
+    std::uint64_t direct_pose_cache_hits=0,direct_pose_publications=0;
 };
