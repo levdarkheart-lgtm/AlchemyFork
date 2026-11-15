@@ -400,6 +400,10 @@ public:
     // if desired discard is less than or equal to current discard, no scaling will occur
     // only works for GL_TEXTURE_2D target
     bool scaleDown(S32 desired_discard);
+    enum class ScaleDownResult { not_needed, deferred, submitted, failed };
+    // Production pressure-owner entry. Only a missing admission receipt is
+    // deferred; original unsupported/no-op/failure results remain consumed.
+    ScaleDownResult scaleDownWithBudget(S32 desired_discard, ALNativeFrameBudget&);
 
 public:
     // Various GL/Rendering options
@@ -407,6 +411,7 @@ public:
     mutable F64  mLastBindTime; // last time this was bound, by discard level
 
 private:
+    ScaleDownResult scaleDownImpl(S32 desired_discard, ALNativeFrameBudget*);
     void freePickMask();
     bool isCompressed() const;
 
@@ -675,7 +680,8 @@ private:
     bool generateMetalMipmaps(ALMetalCommandBuffer& command_buffer);
     bool commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command_owner,
                            ALMetalCommandBuffer*& command_buffer);
-    bool preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 height);
+    bool preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 height,
+                               const ALNativeFrameBudget::Lease& credit = {});
     ALMetalTexture* metalTextureForUpload() noexcept;
     bool prepareMetalTextureWrite(ALMetalCommandBuffer& command, std::string& error);
     void rollbackMetalTextureWrite() noexcept;

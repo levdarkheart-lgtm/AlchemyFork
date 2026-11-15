@@ -1947,7 +1947,8 @@ bool LLImageGL::commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command
     return true;
 }
 
-bool LLImageGL::preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 height)
+bool LLImageGL::preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 height,
+                                     const ALNativeFrameBudget::Lease& credit)
 {
     if (!sImageMetalDevice || !mMetalTexture)
     {
@@ -1996,6 +1997,10 @@ bool LLImageGL::preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 heig
                            << error << LL_ENDL;
         return false;
     }
+
+    // Admission precedes allocation in scaleDownImpl; the exact native command
+    // owns it before encoding any copy, mip generation or resampling work.
+    if(credit && !command->retainUntilCompletion(credit,&error))return false;
 
     bool encoded = false;
     if (can_blit)
@@ -3504,6 +3509,16 @@ S32 LLImageGL::getStorageInternalFormat() const
 
 bool LLImageGL::scaleDown(S32 desired_discard)
 {
+    return scaleDownImpl(desired_discard,nullptr)==ScaleDownResult::submitted;
+}
+
+LLImageGL::ScaleDownResult LLImageGL::scaleDownWithBudget(S32 desired_discard,ALNativeFrameBudget& budget)
+{
+    return scaleDownImpl(desired_discard,&budget);
+}
+
+LLImageGL::ScaleDownResult LLImageGL::scaleDownImpl(S32 desired_discard,ALNativeFrameBudget* budget)
+{
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 #if LL_DARWIN
     sMetalPublicationCounters.scale_down_requests.fetch_add(1, std::memory_order_relaxed);
@@ -3514,42 +3529,72 @@ bool LLImageGL::scaleDown(S32 desired_discard)
         || isCompressed()
         || isIntegerFormat(mFormatInternal))
     {
-        return false;
+        return ScaleDownResult::not_needed;
     }
 
     // The image worker may be replacing the resource and discard metadata.
     // Retry on a later frame instead of publishing over that transaction.
     if (mUploadInFlight)
     {
-        return false;
+        return ScaleDownResult::not_needed;
     }
 
     desired_discard = llmin(desired_discard, mMaxDiscardLevel);
     if (desired_discard <= mCurrentDiscardLevel)
     {
-        return false;
+        return ScaleDownResult::not_needed;
     }
 
 #if !LL_DARWIN
-    return false;
+    return ScaleDownResult::not_needed;
 #else
     // This fork has no GL texture-copy fallback. A scale-down is valid only
     // for the authoritative native texture and is published transactionally
     // after the Metal copy/resample command has committed.
     if (!mMetalTexture || mTexName != 0)
     {
-        return false;
+        return ScaleDownResult::not_needed;
     }
 
     const S32 source_mip = desired_discard - mCurrentDiscardLevel;
     const S32 desired_width = getWidth(desired_discard);
     const S32 desired_height = getHeight(desired_discard);
+    ALNativeFrameBudget::Lease credit;
+    if(budget)
+    {
+        const auto& descriptor=mMetalTexture->descriptor();
+        const bool can_blit=static_cast<U32>(source_mip)<descriptor.mipmap_level_count &&
+            mMetalTexture->width(source_mip)==static_cast<U32>(desired_width) &&
+            mMetalTexture->height(source_mip)==static_cast<U32>(desired_height);
+        if(!can_blit && (mHasMipMaps || !ALMetalTextureResampler::supports(descriptor.format)))return ScaleDownResult::not_needed;
+        // Exact logical destination extent using this native format's block
+        // size, samples, slices and ALL reduced mips. This is not allocatedSize
+        // or the already resident source's bytes, and never invents an upload.
+        constexpr U64 unknown=ALNativeFrameBudget::unknown_bytes;
+        U64 slices=descriptor.type==ALMetalTextureType::texture_cube?6:
+            descriptor.type==ALMetalTextureType::texture_cube_array?U64(descriptor.array_length)*6:
+            descriptor.type==ALMetalTextureType::texture_2d_array?descriptor.array_length:1;
+        U64 bytes=0,width=static_cast<U32>(desired_width),height=static_cast<U32>(desired_height);
+        const U64 block_width=llmax<U64>(mMetalTexture->blockWidth(),1),block_height=llmax<U64>(mMetalTexture->blockHeight(),1);
+        const U32 levels=mHasMipMaps?static_cast<U32>(std::bit_width(std::max(width,height))):1;
+        const U64 factor=mMetalTexture->bytesPerBlock()*llmax<U64>(descriptor.sample_count,1);
+        for(U32 mip=0;mip<levels;++mip)
+        {
+            const U64 x=(width+block_width-1)/block_width,y=(height+block_height-1)/block_height;
+            if(!factor || y>unknown/factor || x>unknown/(y*factor) || x*y*factor>unknown-bytes){bytes=unknown;break;}
+            bytes+=x*y*factor;width=llmax<U64>(width>>1,1);height=llmax<U64>(height>>1,1);
+        }
+        if(slices && bytes>unknown/slices)bytes=unknown;else bytes*=slices;
+        try{credit=budget->tryAcquire(ALNativeFrameBudget::Work::native_maintenance,bytes).credit;}
+        catch(const std::bad_alloc&){} // No receipt/work/mutation: leave this request pending.
+        if(!credit)return ScaleDownResult::deferred;
+    }
     mNativePublication.willWrite();
     if (!preserveMetalScaleDown(static_cast<U32>(source_mip),
                                 static_cast<U32>(desired_width),
-                                static_cast<U32>(desired_height)))
+                                static_cast<U32>(desired_height),credit))
     {
-        return false;
+        return ScaleDownResult::failed;
     }
 
     mPendingMetalTexture.reset();
@@ -3562,7 +3607,7 @@ bool LLImageGL::scaleDown(S32 desired_discard)
     llassert(!getHasGLTexture());
     sMetalPublicationCounters.scale_down_successes.fetch_add(1, std::memory_order_relaxed);
     mNativePublication.didPublish();
-    return true;
+    return ScaleDownResult::submitted;
 #endif
 }
 

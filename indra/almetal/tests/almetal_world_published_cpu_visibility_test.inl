@@ -94,6 +94,10 @@ TEST_CASE("almetal: published CPU visibility preserves interleaved raw reference
             for(unsigned format=0;format<8;++format)
             {
                 CAPTURE(format);auto scene=f.scene();scene.hdr=format&1;scene.normal_hdr=format&2;scene.reverse_z=format&4;
+                // PPD281: reverse-Z queries already consume native [0,w]
+                // clip depth. Reflect the negative world-Z box in its MVP so
+                // it stays inside that range and in front of the clear depth.
+                for(auto& query:q)query.modelview_projection[10]=scene.reverse_z?-1.f:1.f;
                 scene.batches=flat.data();scene.batch_count=flat.size();scene.source_owner=f.native;
                 scene.visibility_queries=q.data();scene.visibility_query_count=q.size();
                 const auto expected=render(f,scene);REQUIRE(expected.queries.front()>0);

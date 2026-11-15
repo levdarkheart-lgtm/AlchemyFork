@@ -21,6 +21,10 @@ struct ALNativeFrameBudget::State
         limits.scene_publications_in_flight = std::max(limits.scene_publications_in_flight, 1u);
         limits.scene_bytes_per_frame = std::max<std::uint64_t>(limits.scene_bytes_per_frame, 1);
         limits.scene_bytes_in_flight = std::max<std::uint64_t>(limits.scene_bytes_in_flight, 1);
+        limits.maintenance_per_frame = std::max(limits.maintenance_per_frame, 1u);
+        limits.maintenance_in_flight = std::max(limits.maintenance_in_flight, 1u);
+        limits.maintenance_bytes_per_frame = std::max<std::uint64_t>(limits.maintenance_bytes_per_frame, 1);
+        limits.maintenance_bytes_in_flight = std::max<std::uint64_t>(limits.maintenance_bytes_in_flight, 1);
         limits.optional_views_per_frame = std::max(limits.optional_views_per_frame, 1u);
         limits.preparation_jobs = std::max(limits.preparation_jobs, 1u);
         limits.maximum_deferral_frames = std::max<Frame>(limits.maximum_deferral_frames, 1);
@@ -32,6 +36,7 @@ struct ALNativeFrameBudget::State
     unsigned ordinary_this_frame = 0;
     unsigned hero_this_frame = 0;
     bool oversized_scene_in_flight = false;
+    bool oversized_maintenance_in_flight = false;
     struct ScenePending
     {
         Frame oldest = 0;
@@ -187,6 +192,8 @@ void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)
     state.stats.upload_bytes_this_frame = 0;
     state.stats.scene_publications_this_frame = 0;
     state.stats.scene_bytes_this_frame = 0;
+    state.stats.maintenance_this_frame = 0;
+    state.stats.maintenance_bytes_this_frame = 0;
     state.stats.optional_views_this_frame = 0;
     state.ordinary_this_frame = state.hero_this_frame = 0;
     // Compare by division to avoid overflow in a caller-supplied interval.
@@ -237,6 +244,12 @@ ALNativeFrameBudget::Credit::~Credit()
         stats.upload_bytes_in_flight -= mBytes;
         break;
     case Work::preparation: --stats.preparation_in_flight; break;
+    case Work::native_maintenance:
+        --stats.maintenance_in_flight;
+        stats.maintenance_bytes_in_flight -= mBytes;
+        if(mBytes>mState->limits.maintenance_bytes_per_frame || mBytes>mState->limits.maintenance_bytes_in_flight)
+            mState->oversized_maintenance_in_flight=false;
+        break;
     case Work::scene_publication:
         --stats.scene_publications_in_flight;
         stats.scene_bytes_in_flight -= mBytes;
@@ -266,7 +279,35 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
         return {{}, why};
     };
     if (stats.draining && work != Work::upload) return deny(Reason::draining);
-    if (work == Work::scene_publication)
+    if(work==Work::native_maintenance)
+    {
+        if(bytes==unknown_bytes)return deny(Reason::frame_work);
+        if(state.oversized_maintenance_in_flight || stats.maintenance_in_flight>=limits.maintenance_in_flight)
+            return deny(Reason::in_flight);
+        const bool oversized=bytes>limits.maintenance_bytes_per_frame || bytes>limits.maintenance_bytes_in_flight;
+        // Reducing an already resident large texture must not wedge forever
+        // behind a smaller byte allowance. Exactly ONE oversize destination
+        // may progress alone; its exact debt remains exclusive until retired.
+        if(oversized && (stats.maintenance_in_flight || stats.maintenance_this_frame))
+            return deny(stats.maintenance_in_flight?Reason::in_flight:Reason::frame_work);
+        if(!oversized && stats.maintenance_bytes_in_flight>limits.maintenance_bytes_in_flight-bytes)
+            return deny(Reason::in_flight);
+        if(stats.maintenance_this_frame>=limits.maintenance_per_frame ||
+           (!oversized && stats.maintenance_bytes_this_frame>limits.maintenance_bytes_per_frame-bytes))
+            return deny(Reason::frame_work);
+        // Unlike optional refresh, pressure reduction is useful UNDER memory
+        // pressure. Keep immediate one-item progress without borrowing image
+        // upload/probe credit or bypassing live maintenance capacity.
+        if(stats.main_busy || stats.memory_pressure)
+        {
+            if(stats.maintenance_this_frame)return deny(stats.memory_pressure?Reason::memory_pressure:Reason::frame_work);
+            reason=Reason::progress;
+        }
+        else if(oversized)reason=Reason::progress;
+        if(bytes>unknown_bytes-stats.maintenance_bytes_in_flight || bytes>unknown_bytes-stats.maintenance_bytes_this_frame)
+            return deny(Reason::in_flight);
+    }
+    else if (work == Work::scene_publication)
     {
         if (kind >= state.scene_history.size()) return deny(Reason::frame_work);
         // Native scene metadata is always bounded, including startup before
@@ -360,7 +401,14 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
     // Allocate before changing any counters: allocation failure cannot leave a
     // phantom reservation that blocks future work or shutdown.
     std::shared_ptr<Credit> credit(new Credit(mState, work, bytes));
-    if (work == Work::upload)
+    if(work==Work::native_maintenance)
+    {
+        ++stats.maintenance_in_flight;++stats.maintenance_this_frame;
+        stats.maintenance_bytes_in_flight+=bytes;stats.maintenance_bytes_this_frame+=bytes;
+        if(bytes>limits.maintenance_bytes_per_frame || bytes>limits.maintenance_bytes_in_flight)
+            state.oversized_maintenance_in_flight=true;
+    }
+    else if (work == Work::upload)
     {
         ++stats.uploads_in_flight;
         stats.upload_bytes_in_flight += bytes;

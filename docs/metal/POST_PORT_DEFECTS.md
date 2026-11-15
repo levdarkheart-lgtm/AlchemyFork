@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-278 -->
+<!-- next-defect-id: PPD-282 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6462,7 +6462,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-272 — New source-cache lifetime fixture fails Catch INFO expression parsing
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6476,6 +6476,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 failure registered before fixture correction. Preserve source58 receipts and exact error; no viewer runtime defect inferred.
+
+- 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.
 
 ## PPD-273 — New CPU visibility fixtures misread partial-union contract and omit third-mode parity
 
@@ -6497,7 +6499,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-274 — Native source cache telemetry cannot attribute capacity withdrawal
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / residency diagnostics author
 - Discovered: 2026-11-15
@@ -6513,9 +6515,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 registered before diagnostics-only implementation; no cap increase or new dependency/resource walk.
 
 
+- 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.
+
 ## PPD-275 — New cache-lifetime fixture asserts retirement before releasing frame upload owners
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6531,9 +6535,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 failure registered before narrow fixture repair. Preserve failed59receipt/log; no successful cache-lifetime claim yet. Source review also confirms LLVB destruction queues retired wrappers until the next ordinary flush; fixture now calls flushBuffers after native-reader reset, preserving collection policy.
 
 
+- 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.
+
 ## PPD-276 — Warm cohorts never acquire newly requested bounds capability
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / published visibility author
 - Discovered: 2026-11-15
@@ -6548,6 +6554,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 registered before capability promotion repair; avoid qualified-count heuristics that would rebuild legitimate unknown rows forever.
 
+
+- 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.
 
 ## PPD-277 — Pressure texture reductions bypass frame-wide native admission
 
@@ -6565,3 +6573,77 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before implementation; root owns integration and all execution. No viewer launch/profile or quality reduction authorized by this finding.
+
+
+## PPD-278 — New maintenance budget fixtures precede their helper declaration
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex frame admission fixture author
+- Discovered: 2026-11-15
+- Original reference: New C++ fixture cases call the existing small() policy helper before its declaration.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md); author pre-execution review in native-maintenance-admission worktree.
+- Next action: Move only the three new fixture cases below the helper definition, preserving policy and assertions.
+- Verification: WIP source issue found before integration/build; no executed failure or production defect claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before narrow fixture-order correction.
+
+
+## PPD-279 — New static verifier searches mangled symbols with a demangled method name
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Existing verifier reads nm -m output without demangling. New stats marker incorrectly contains C++ :: syntax.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), validation-60-static-0.log and retained static-native-60.json.
+- Next action: Use the exact emitted SourceWorkingSet5stats mangled-name substring and rerun static verification with new receipt/log paths before native checks.
+- Verification: Source60 doctor/configure/build pass69108; verifier stops at missing marker although nm confirms __ZNK24ALNativeSourceWorkingSet5statsEv. No binary repair or source rebuild needed. Native/cost60 not started yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 false-negative harness failure registered before correction; preserve original failed receipts and tested binary unchanged.
+
+
+- 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.
+
+## PPD-280 — New maintenance fixture undercounts successful publication mutation events
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native maintenance fixture author
+- Discovered: 2026-11-15
+- Original reference: Signal::willWrite and didPublish each advance mutationRevision; successful scaleDown advances mutation twice and publishedRevision once.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md); new native fixture pre-execution source review.
+- Next action: Correct only success mutation delta to2, retaining published delta1 and exact denial/no-mutation assertions.
+- Verification: New fixture currently expects mutation delta1; no build/execution or production defect claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before fixture-only assertion correction.
+
+
+## PPD-281 — New mixed CPU visibility fixture requires a positive query under reverse-Z
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator / CPU visibility fixture author
+- Discovered: 2026-11-15
+- Original reference: Required-positive visibility volumes must use the native query depth convention for each depth mode; exact raw/optimized result parity remains mandatory.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), native-correctness-60-published-cpu-visibility.log.
+- Next action: Trace actual query vertex/depth convention and author a visible query for both forward/reverse-Z without dropping nonzero coverage, MRT/depth parity or original query offsets.
+- Verification: Source60 required/static-retry/strict pass; prior28native scopes pass including actual21713/77. New CPU visibility4cases:3pass, mixed case fails only raw-reference required-positive query at family0/format4,786/787 assertions pass. CPU optimized arm not yet reached for that format. Production fault not established; new CPU cost not run.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 failed reference fixture registered before investigation/repair; preserve exact60receipt/log.

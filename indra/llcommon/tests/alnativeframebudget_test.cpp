@@ -22,6 +22,7 @@ Budget::FrameInputs frame(Budget::Frame id)
     input.required_main_cpu_ns = 20'000'000;
     return input;
 }
+
 Budget::Limits small()
 {
     Budget::Limits limits;
@@ -823,4 +824,69 @@ TEST_CASE("Publication hints recheck active byte capacity and never waive idle l
     CHECK_FALSE(invalid.tryAcquire(Budget::Work::scene_publication,Budget::unknown_bytes,0));
     CHECK_FALSE(invalid.tryAcquire(Budget::Work::scene_publication,33,0));
     input.frame=21;invalid.beginFrame(input);{auto unaffected=valid_cpu.tryAcquire(invalid,8);REQUIRE(unaffected);}
+}
+
+TEST_CASE("Native maintenance has independent bounded frame and completion debt",
+          "[native-frame-budget][native-maintenance][PPD-277]")
+{
+    auto limits=small();limits.maintenance_per_frame=2;limits.maintenance_in_flight=2;
+    limits.maintenance_bytes_per_frame=8;limits.maintenance_bytes_in_flight=12;
+    Budget budget(limits); // Startup is bounded too, without changing legacy uploads.
+    auto first=budget.tryAcquire(Budget::Work::native_maintenance,4);REQUIRE(first);
+    auto second=budget.tryAcquire(Budget::Work::native_maintenance,4);REQUIRE(second);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,1));
+    auto state=budget.snapshot();CHECK(state.maintenance_in_flight==2);CHECK(state.maintenance_bytes_in_flight==8);
+    CHECK(state.uploads_in_flight==0);CHECK(state.scene_publications_in_flight==0);CHECK(state.optional_views_in_flight==0);
+    budget.beginFrame(frame(1));CHECK(budget.snapshot().maintenance_this_frame==0);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,4)); // Live count remains occupied.
+    first.credit.reset();auto third=budget.tryAcquire(Budget::Work::native_maintenance,8);REQUIRE(third);
+    CHECK(budget.snapshot().maintenance_bytes_in_flight==12);
+    second.credit.reset();third.credit.reset();CHECK(budget.snapshot().maintenance_in_flight==0);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,1)); //8 frame bytes already spent.
+    budget.beginFrame(frame(1));budget.beginFrame(frame(0));CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,1));
+    budget.beginFrame(frame(2));auto next=budget.tryAcquire(Budget::Work::native_maintenance,4);REQUIRE(next);
+    CHECK(budget.snapshot().maintenance_this_frame==1);CHECK(budget.snapshot().maintenance_bytes_this_frame==4);
+}
+
+TEST_CASE("Native maintenance progresses immediately under pressure without borrowing upload credit",
+          "[native-frame-budget][native-maintenance][PPD-277]")
+{
+    Budget budget(small());
+    for(unsigned at=1;at<=5;++at)
+    {
+        auto input=frame(at);input.required_main_cpu_ns=input.frame_interval_ns;input.os_available_bytes=0;
+        budget.beginFrame(input);REQUIRE(budget.snapshot().main_busy);REQUIRE(budget.snapshot().memory_pressure);
+        auto reduction=budget.tryAcquire(Budget::Work::native_maintenance,4);REQUIRE(reduction);CHECK(reduction.reason==Budget::Reason::progress);
+        auto upload=budget.tryAcquire(Budget::Work::upload,4);REQUIRE(upload);CHECK(upload.reason==Budget::Reason::progress);
+        CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,1));
+        CHECK(budget.snapshot().maintenance_this_frame==1);CHECK(budget.snapshot().uploads_this_frame==1);
+        CHECK(budget.snapshot().scene_publications_this_frame==0);
+    }
+    CHECK(budget.snapshot().maintenance_in_flight==0);CHECK(budget.snapshot().uploads_in_flight==0);
+    auto input=frame(6);input.os_available_bytes=0;budget.beginFrame(input);
+    auto a=budget.tryAcquire(Budget::Work::native_maintenance,4);REQUIRE(a);
+    input.frame=7;budget.beginFrame(input);auto b=budget.tryAcquire(Budget::Work::native_maintenance,4);REQUIRE(b);
+    input.frame=8;budget.beginFrame(input);CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,4));
+    a.credit.reset();CHECK(budget.tryAcquire(Budget::Work::native_maintenance,4)); // Actual retirement restores capacity.
+}
+
+TEST_CASE("Oversize maintenance is exclusive and checked debt retires without a frame tick",
+          "[native-frame-budget][native-maintenance][PPD-277]")
+{
+    auto limits=small();limits.maintenance_bytes_per_frame=8;limits.maintenance_bytes_in_flight=16;
+    Budget budget(limits);budget.beginFrame(frame(1));
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,Budget::unknown_bytes));
+    auto large=budget.tryAcquire(Budget::Work::native_maintenance,64);REQUIRE(large);CHECK(large.reason==Budget::Reason::progress);
+    CHECK(budget.snapshot().maintenance_bytes_in_flight==64);CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,1));
+    budget.beginFrame(frame(2));CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,1));
+    large.credit.reset();CHECK(budget.snapshot().maintenance_bytes_in_flight==0);
+    auto maximum=budget.tryAcquire(Budget::Work::native_maintenance,Budget::unknown_bytes-1);REQUIRE(maximum);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,2));maximum.credit.reset();
+    budget.beginFrame(frame(3));CHECK(budget.tryAcquire(Budget::Work::native_maintenance,4));
+    Budget::Lease detached;
+    {Budget owner;detached=owner.tryAcquire(Budget::Work::native_maintenance,4).credit;REQUIRE(detached);owner.beginDrain();}
+    detached.reset(); // The policy owner need not outlive actual native work.
+    auto active=budget.tryAcquire(Budget::Work::native_maintenance,4);REQUIRE(active);budget.beginDrain();
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,1));active.credit.reset();
+    CHECK(budget.snapshot().maintenance_in_flight==0);CHECK(budget.snapshot().maintenance_bytes_in_flight==0);
 }

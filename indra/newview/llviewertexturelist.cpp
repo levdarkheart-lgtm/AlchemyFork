@@ -1253,8 +1253,12 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             [](const LLPointer<LLViewerFetchedTexture>& image)
             {
                 llassert(image->mDownScalePending);
-                image->getGLTexture()->scaleDown(image->getDesiredDiscardLevel());
+                const auto result=image->getGLTexture()->scaleDownWithBudget(
+                    image->getDesiredDiscardLevel(),ALNativeFrameBudget::instance());
+                if(result==LLImageGL::ScaleDownResult::deferred)
+                    return ALTexturePressureQueue::NativeResult::deferred;
                 image->mDownScalePending = false;
+                return ALTexturePressureQueue::NativeResult::consumed;
             },
             [&create_timer, max_time, this]
             {

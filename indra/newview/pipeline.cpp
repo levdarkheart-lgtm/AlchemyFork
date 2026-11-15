@@ -3144,6 +3144,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", main_busy/pressure/draining=" << frame_plan.main_busy << '/' << frame_plan.memory_pressure << '/' << frame_plan.draining
                 << ", admitted/deferred/progress/retired=" << frame_plan.admitted << '/' << frame_plan.deferred << '/' << frame_plan.progress_admissions << '/' << frame_plan.retired
                 << ", uploads_inflight/count_bytes=" << frame_plan.uploads_in_flight << '/' << frame_plan.upload_bytes_in_flight
+                << ", maintenance_this_frame/count_bytes=" << frame_plan.maintenance_this_frame << '/' << frame_plan.maintenance_bytes_this_frame
+                << ", maintenance_inflight/count_bytes=" << frame_plan.maintenance_in_flight << '/' << frame_plan.maintenance_bytes_in_flight
                 << ", optional/preparation_inflight=" << frame_plan.optional_views_in_flight << '/' << frame_plan.preparation_in_flight
                 << ", streaming_queued/pending/oldest=" << frame_plan.streaming.queued_requests << '/' << frame_plan.streaming.pending_publications << '/' << frame_plan.streaming.oldest_request_frame
                 << LL_ENDL;

@@ -1962,3 +1962,28 @@ completed retiredwrappers; no productioncollectorchange. Next60required/native
 andCPUvisibility completecost, no repeatunrelated11costswithoutnewconcern.
 PPD277pressuretexturemaintenance missingadmission registered; independentauthor
 active, no production277integrationyet. Originalgoal remainsactive andincomplete.
+
+
+Required60/3e9a0653ff/69108 doctor/configure/build0(build166.089s). Staticfirst
+failedPPD279(newmarkerusedC++::syntaxinnm-mrawsymbols); binarycontainsactual
+__ZNK24ALNativeSourceWorkingSet5statsEv. Retrymarker/census/defaultscheckPASS,
+strictPASS. Originalfailedstaticreceipt/log retained, binaryunchanged.
+28existingnative scopes237130assertion/279case executionsPASS incl actual
+21713/77 (newcachelifetime/finalLLVBflush275+boundspromotion276). Duplicate
+recipe broadtag nowexcluded; no unique-case total claim.
+NewCPUvisibility786/787assertions,3/4casesPASS; mixedreferencefrontquery0at
+family0format4beforeoptimizedarm. PPD281actualshaderreverseZusesrawnative
+clipZ[0,1], while authorednegativeworldZbox+identityqueryMVPwasclipped.
+Fixture-onlyqueryMVP[10]reflection forreverseZ nowpreservesrequiredpositive
+coverage andALLMRT/depth/query-order assertions. No renderingproductionfix.
+CPUcost60NOTRUNafterfailednative. Allfailedreceipts retained.
+
+PPD2779filesintegratedafterindependentcore/native peers: newtypedmaintenance
+2/frame+2inflight,16/32MiBlogicaldestinationmipbytes initialboundedpolicy;
+pressure/busyoneprogress+solitaryoversize, actualcommandcompletionreceipt,
+deniedqueuepending/order unchanged. No decoder/upload cap orqualitychange.
+Rootregisteredstandalone.mm inCMake withexistingObjC++ARC/skipPCH policy and
+logsmaintenanceframe/inflightcount+bytes. Threepurebudget/twoqueue/threeactual
+nativecases authored; no277executionyet. WIPfixtureissues278helperordering
+and280mutationcount corrected afterregistration, no executedfailures.
+Next61required/scopednative+actualCPUcost; allpriorgoalboundariesretained.

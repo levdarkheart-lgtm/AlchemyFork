@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <utility>
+#include <type_traits>
 
 namespace ALTexturePressureQueue
 {
@@ -26,6 +27,7 @@ namespace ALTexturePressureQueue
         Complete,
         BudgetExhausted
     };
+    enum class NativeResult { consumed, deferred };
 
     // Inspect only the entries present at entry. Native entries are consumed;
     // retained and unexamined entries keep their original relative order even
@@ -51,7 +53,11 @@ namespace ALTexturePressureQueue
 
             if (is_native(entry))
             {
-                drain_native(entry);
+                // Existing void consumers retain their original semantics.
+                // A typed admission denial keeps the same request pending,
+                // in original order, without retrying it in this traversal.
+                if constexpr(std::is_void_v<decltype(drain_native(entry))>)drain_native(entry);
+                else if(drain_native(entry)==NativeResult::deferred)retained.push(std::move(entry));
             }
             else
             {

@@ -157,6 +157,7 @@ if(AL_BUILD_TESTS)
       tests/alnative_vertex_publication_test.cpp
       tests/alnativeregionmodel_test.cpp
       tests/alnative_generation_leases_metal_test.cpp
+      tests/alnative_maintenance_admission_metal_test.mm
       tests/aldebug_immediate_metal_test.cpp
       tests/albaking_shader_metal_test.cpp
       tests/alshader_native_lifecycle_test.cpp
@@ -229,6 +230,7 @@ if(AL_BUILD_TESTS)
   if(DARWIN)
     target_link_libraries(llrender_tests PRIVATE almetal)
     set_source_files_properties(tests/alvertex_label_metal_test.mm
+                                tests/alnative_maintenance_admission_metal_test.mm
                                 tests/altexture_mip_parity_native_test.mm
                                 tests/almetal_tessellation_invariants_test.mm
                                 tests/alframefences_metal_test.mm
