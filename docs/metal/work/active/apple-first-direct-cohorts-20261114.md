@@ -791,3 +791,47 @@ unchanged16ticket shared budget. Root adds measured-only64group no-rebuild/
 no-denial/full-bank acceptance to the existing many-small gate;256cases retain
 real pressure. Root and independent source/lifetime review find no blocker.
 No native execution claimed at freeze; required32 and native/cost gates follow.
+
+
+## Source32 executed: precise freshness repaired, bank activation still rejected
+
+Exact `3fa382096919c7c50f648b3e5a5a785e184a670f`, version
+`26.4.0.69067`: required32 doctor/configure/build exit0 (build34.304s).
+`static-native-32.json` passes346ARM64 images/signatures/source/imports/features;
+`strict-source-32.json` scans3587files/905informational/0blockers/0errors.
+`native-correctness-32.json` passes all20processes with native API/GPU validation,
+including pages3644/17, source admission1874/6, banks3348/9, actualproducer
+12397/53, renderer2331/4, frame budget1690/24 and shadow98414/14. Old-library,
+query/lifetime, compact inputs and resources gates also pass. Broader CPU/tool
+source30 evidence is retained as prior-source; unchanged generic tools were not
+retested redundantly. Native cost process observations record no running viewer;
+no viewer was launched or profiled.
+
+`actual-gpu-cohort-costs-32.json` passes140840/1 in3.975s with all144summary
+rows/2016samples. `actual-many-cohort-costs-32.json` passes1872424/1 in8.943s,
+24summary rows/2016samples. Both summaries are retained beside their raw logs.
+Strict64group measured assertions now prove full requested bank use, all cache
+hits and zero page/bank rebuilds, evictions, admission denials or fallback.
+In64groups/2sources/1view, bank CPU falls0.766479→0.187416ms, complete/query
+settlement1.32296→0.932375ms, while accepted bankdraws rise492→1536of1536.
+All measured rebuild/failure counters go to zero. This is contained mechanism
+evidence, not an in-world FPS improvement.
+
+The fitting64group GPU cost is still worse than direct cohorts:2sources/group
+CPU+16–17%;4sources/group CPU−20–24%, but completion/query settlement loses
+24–105% and GPU time roughly doubles. Across all8many-small scenarios GPU
+settlement loses23.6–105.9% versus direct and GPU time rises24.5–136.1%.
+True256group pressure still produces192bank builds/12frames and only25–26%
+bankdraw fraction. PPD217 therefore remains open. Larger warm512source CPU
+wins remain, while3arm cold/churn and tiny groups still lose. No source32 bank
+activation or replacement of the owner69065 direct-preview artifact follows.
+
+The next priority is retained per-pass visibility/command data without per-group
+publication duplication and stable dirty-generation admission. This is a source
+cost/ownership boundary, not permission to increase caps or hide small groups.
+Independent retained-visibility work remains unbuilt in its separate worktree.
+Architecture owns productionsource/actual-owner tests; opaque now exclusively
+owns existing `indra/almetal/tests/almetal_world_visibility_test.mm` there.
+Root owns integration/builds/tests/CMake/docs. A new native test binary, source
+freeze and exact evidence are required before enabling that path. Original
+whole-engine architecture/owner runtime acceptance remain partial and ACTIVE.

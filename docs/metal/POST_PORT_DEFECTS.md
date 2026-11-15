@@ -5287,6 +5287,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered after first passing many-small cost31 run and before a cache/admission repair. Raw loading/warmup/measured samples and the unchanged cache limits are retained.
 
 
+
+- 2026-11-15: PPD218 exact-row repair removes false invalidation for fitting64group cases. Source32 full-bank steady reuse is proven, but GPU mode still loses completion/query settlement23.6–105.9% versus direct cohorts across all8many-small scenarios and increases GPU time24.5–136.1%.256group cases retain real bank pressure (192builds over12measured frames, about25–26%bankdraw fraction); no claim that repairing invalidation alone makes banks worthwhile. Keep bank mode off; next investigation is useful retained per-pass publication/command granularity and stable generation admission, not larger cache limits.
+
 ## PPD-218 — Page-wide freshness invalidates unrelated retained cohorts
 
 - Status: investigating
@@ -5296,7 +5299,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Original reference: Immutable publication must invalidate dependencies that actually changed. Current physical page copy-on-write must still preserve every submitted reader and exact source revision/allocation generation.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). SourcePages::changed(page) advances page_content on every row allocation/write; current(CohortBinding) compares whole-page stamps. In64groups/2sources,128rows share one page: publishing one unrelated row invalidates all other bindings on that page. pruneCohorts drops their native table/membership owners, which can make existing row.table weak proofs expire and cause further row writes; SourceCommands then removes expired memberships. Measured source31 cache uses only8–40banks (limit64), zero capacity failures;473pagefailures are admission denials. Actual fallback1044draws comprises946source_setup and98bank_admission. The repeating page-wide invalidation loop is source-confirmed, distinct from a claim that cache capacity is exhausted or that it is the sole cost cause.
 - Next action: Replace whole-page cohort freshness with precise bounded row-dependency invalidation, retaining constant-time warm qualification, native-only idle ownership and exact per-command page/bank reader leases. Register dependencies before cache commit, handle allocation rollback, invalidate before own-row mutation, and unregister on cache eviction. Add unrelated-row growth/update, own-row rewrite/reuse, pending-reader and fault/rollback coverage; rerun complete costs.
-- Verification: Source and counter-confirmed mechanism; repair not yet authored or executed. No viewer performance or owner closure claim.
+- Verification: Source3fa3820969/69067 required/static/strict and all20 native processes pass; SourcePages3644assertions/17cases includes new sibling/pending and bounded convergence cases. Many-small1872424/1 passes strict64group full-bank/zero-rebuild assertions. No viewer performance or owner closure claim.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5305,3 +5308,5 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered before row-selective repair. Three independent source/counter reviews agree caps are not binding in the64group case; source31 evidence and owner preview remain untouched.
 
 - 2026-11-15: PPD218 source freeze replaces page stamps with exact row reverse dependencies owned by stable cache entries. Node arrays are staged before fallible cache insertion/asset accounting and charged in existing metadata cap; warm qualification is constant time. Two focused native cases and stricter64group measured cost assertions authored. Root/independent lifetime reviews pass; required32/native/cost execution pending.
+
+- 2026-11-15: Required32 doctor/configure/build exit0, build34.304s; static69067 and strict3587files/0blockers/0errors pass. Native20processes pass, including pages3644/17, banks3348/9, actualproducer12397/53 and source-admission1874/6. Corrected3arm cost140840/1 and many-small1872424/1 pass. All four64group measured scenarios have fullbank use and zero page/bank rebuilds/denials/fallback.64x2x1 cost CPU0.766479ms before to0.187416ms after, nativebankdraws492/1536 to1536/1536. Owner preview69065 remains untouched. PPD217 stays open for remaining GPU-time/true pressure costs; no unconditional activation or owner verification inferred.
