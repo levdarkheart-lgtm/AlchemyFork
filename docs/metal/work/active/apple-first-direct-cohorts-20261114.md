@@ -1845,3 +1845,32 @@ Neitherwarmedbank norvisibilityautomaticactivation justified byCPUbusyalone.
 
 Next55combinedbuild/fullnative+newscalarrecipe/oldhiddenbaseline/smallterrain
 costs beforedefaultcallerthreshold268. Originalwhole-enginegoalactive, next270.
+
+
+Source55 **639698d6ff/69100** doctor/configure/build0(162.691s),static/strictPASS.
+28native scopes allPASS(241508assertion executions/266case executions); recipe3cases
+7835assertions ran broadcohort andexplicitrecipe scope, not distinct case counts.
+All11cost suitesPASS: newscalar265608/1,many1844512/1,oldtags142080/2 plusprior8.
+Expandedterrain24pairs:16/64/256all12CPU+completionwins;1/2/4all12CPUworse.
+Callerthreshold16 selectedfromactualcosts, no shader/geometry/cadence change.
+
+Scalaractualmanywarm CPU8/8median−28.05%,complete7/8median−14.60% versusraw;
+manychurnCPU6/8median−13.54%,complete6/8median−7.75%; manycoldall8CPUworse+8.97%,
+complete+5.88%. SinglewarmCPU14/16median−6.10%,complete12/16median−1.81%; cold/churn
+mostlyCPUworse. Actualrecipe reads153504/97536 andcommonreuse76608/45312(single/many),
+manycompiledenials9600preservedraw. These wholepaths versusraw do not isolate267.
+
+Exact54binaryoldtagbaseline matchedshaderhash3fe9685d...,94720/1material+47360/1
+SIMPLEPASS. Old/new rawCPUdrift−20..+28%, so noabsolute causal before/afterclaim.
+Cohort/raw normalizedCPUratio warm16/24improve median−1.36%, large512warm6/6median
+−7.03%; small1/4mixed. Fullcomparison andnormalizedJSON retained. Worker55fair
+availablecompletion0/9wins,keepOFF; banks/visibility likewiseunaccepted.
+
+Probeaudit: no cadenceincrease G1=5836d41753→55. Ordinaryscheduledoneface and
+existingrealtime6loop, hero6/rate+frameModulo unchanged; completiononlyretire,
+notreplay. Managerfiles equalG1→627d1a698d preadmissiona69d6df872. No cadencefix.
+
+PPD270 partialunusedhelperda11a16ead/56build superseded: guardassumed3contexts
+actual4 andshellcontinuedafterPythonfailure. Rootallfourcallsitefix57 uses
+fail-fastcell andvalidatesfullcountbeforewriting. No policyverified at56.
+Next57required/selectednative/caller checks; originalgoalactive, next271.

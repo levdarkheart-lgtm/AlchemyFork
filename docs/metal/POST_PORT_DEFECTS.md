@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-270 -->
+<!-- next-defect-id: PPD-271 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6404,3 +6404,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before fixture-only depth placement correction. Existing source54 evidence is unchanged; do not alter renderer query behavior or remove the positive primitive-coverage assertion.
+
+
+## PPD-270 — Terrain caller-selection integration assumed three call sites instead of four
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Both classic/PBR main and probe paths have four terrain pass contexts. A caller policy is effective only when each existing context passes the selected pointer.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Wire all four contexts to the measured selection helper and rebuild. Validate edits before writing files and stop dependent shell steps on any failed command.
+- Verification: Integrator edit guard expected3contexts, actual4; Python aborted after writing only the standalone helper. Subsequent shell commands incorrectly continued, producing da11a16ead with unused helper and starting56build. No caller selection or runtime success was established; source55cost evidence remains valid.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 partial intermediate commit retained before correction. Root fixes all four actual call sites, uses fail-fast execution, and records56 as superseded rather than a completed selection candidate.
