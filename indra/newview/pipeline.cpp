@@ -3115,6 +3115,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", cpu_packet_reclaimed/retained=" << value->cpu_packets_reclaimed << '/' << value->cpu_packets_retained
                     << ", direct_cohort_appends/draws=" << value->direct_cohort_appends << '/' << value->direct_cohort_draws
                     << ", direct_cohort_accepted(views/groups/draws)=" << cohorts.views << '/' << cohorts.groups << '/' << cohorts.draws
+                    << ", scalar_common(builds/recipe_reads/reuses)=" << cohorts.scalar_common_builds
+                    << '/' << cohorts.scalar_recipe_reads << '/' << cohorts.scalar_common_reuses
                     << ", same_view_cohort_replacements(groups/draws)=" << value->same_view_cohort_groups << '/' << value->same_view_cohort_draws
                     << ", last_failure=" << (value->last_scene_source_failure ? value->last_scene_source_failure : "none")
                     << LL_ENDL;

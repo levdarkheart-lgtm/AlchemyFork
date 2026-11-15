@@ -6,6 +6,7 @@
 #include "almetalworldcohort.h"
 #include "almetalworldprepare.h"
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <new>
 
@@ -13,6 +14,18 @@ namespace
 {
 bool finite(const float* values,std::size_t count) noexcept
 {for(std::size_t i=0;i<count;++i)if(!std::isfinite(values[i]))return false;return true;}
+// Compare only source-owned words copied into WorldSimpleConstants. Every
+// row of one cohort uses the same exact view matrices and scene clip/flags.
+// This runs at cold publication, never while encoding a warm view.
+bool sameScalarCommon(const ALMetalWorldSimpleBatch& a,const ALMetalWorldSimpleBatch& b) noexcept
+{
+    const auto equal=[](const auto& x,const auto& y){return std::memcmp(&x,&y,sizeof(x))==0;};
+    return equal(a.texture_matrix,b.texture_matrix) && equal(a.avatar_wind,b.avatar_wind) &&
+        equal(a.avatar_sin_wave,b.avatar_sin_wave) && equal(a.avatar_gravity,b.avatar_gravity) &&
+        equal(a.avatar_cloth_depth,b.avatar_cloth_depth) && equal(a.alpha_cutoff,b.alpha_cutoff) &&
+        a.use_vertex_color==b.use_vertex_color && a.alpha_cutoff_bias==b.alpha_cutoff_bias &&
+        a.alpha_mask==b.alpha_mask && a.texture_count==b.texture_count;
+}
 bool exactOwner(const std::weak_ptr<const void>& expected,const void* pointer,
                 const std::shared_ptr<const void>& value) noexcept
 {return value && value.get()==pointer && !expected.owner_before(value) && !value.owner_before(expected);}
@@ -22,7 +35,7 @@ struct ALMetalWorldCohortSource::Impl
     ALMetalWorldSourceKey key;
     ALMetalWorldSimpleBatch prototype;
     std::uint32_t family=0;
-    bool double_sided=false;
+    bool double_sided=false,normal_map=false,specular_map=false;
     bool bounds_published=false;
     ALMetalWorldConservativeBounds bounds;
 };
@@ -35,7 +48,14 @@ struct ALMetalWorldCohortSource::Storage
     Storage(const ALMetalWorldKeyedSource& source,std::uint32_t family,
         const ALMetalWorldConservativeBounds* bounds)
         :value{source.key,*source.prototype,family,source.prototype->double_sided},certificate(&value)
-    {if(bounds){value.bounds=*bounds;value.bounds_published=true;}}
+    {
+        if(family==1)
+        {
+            const auto& slot=source.prototype->materialSlots()[0];
+            value.normal_map=slot.normal_texture!=nullptr;value.specular_map=slot.specular_texture!=nullptr;
+        }
+        if(bounds){value.bounds=*bounds;value.bounds_published=true;}
+    }
 };
 ALMetalWorldCohortSource::ALMetalWorldCohortSource(const Impl* impl) noexcept:mImpl(impl){}
 ALMetalWorldCohortSource::~ALMetalWorldCohortSource()=default;
@@ -43,6 +63,8 @@ const ALMetalWorldSourceKey& ALMetalWorldCohortSource::key() const noexcept{retu
 const ALMetalWorldSimpleBatch& ALMetalWorldCohortSource::source() const noexcept{return mImpl->prototype;}
 std::uint32_t ALMetalWorldCohortSource::family() const noexcept{return mImpl->family;}
 bool ALMetalWorldCohortSource::doubleSided() const noexcept{return mImpl->double_sided;}
+ALMetalWorldScalarRecipe ALMetalWorldCohortSource::scalarRecipe() const noexcept
+{return {static_cast<std::uint8_t>(mImpl->family),mImpl->normal_map,mImpl->specular_map};}
 bool ALMetalWorldCohortSource::hasBoundsPublication() const noexcept{return mImpl->bounds_published;}
 const ALMetalWorldConservativeBounds& ALMetalWorldCohortSource::bounds() const noexcept{return mImpl->bounds;}
 std::size_t ALMetalWorldCohortSource::ownedBytes() const noexcept{return sizeof(Storage);}
@@ -95,6 +117,7 @@ catch(const std::bad_alloc&){if(error)error->clear();return {};}
 struct ALMetalWorldSourceCohort::Impl
 {
     std::vector<std::shared_ptr<const ALMetalWorldCohortSource>> sources;
+    std::vector<std::uint8_t> scalar_common_previous;
     std::weak_ptr<const void> cpu,native;
     const void* cpu_pointer=nullptr;
     const void* native_pointer=nullptr;
@@ -112,7 +135,8 @@ bool ALMetalWorldSourceCohort::doubleSided() const noexcept{return mImpl->double
 bool ALMetalWorldSourceCohort::uniformDoubleSided() const noexcept{return mImpl->uniform_double_sided;}
 std::size_t ALMetalWorldSourceCohort::metadataBytes() const noexcept
 {
-    std::size_t total=sizeof(*this)+sizeof(Impl)+mImpl->sources.capacity()*sizeof(mImpl->sources[0]);
+    std::size_t total=sizeof(*this)+sizeof(Impl)+mImpl->sources.capacity()*sizeof(mImpl->sources[0])+
+        mImpl->scalar_common_previous.capacity()*sizeof(mImpl->scalar_common_previous[0]);
     for(const auto& source:mImpl->sources)
     {
         if(source->ownedBytes()>std::numeric_limits<std::size_t>::max()-total)return std::numeric_limits<std::size_t>::max();
@@ -126,6 +150,12 @@ const ALMetalWorldSimpleBatch& ALMetalWorldSourceCohort::source(std::size_t inde
 {return mImpl->sources[index]->source();}
 const ALMetalWorldSourceKey& ALMetalWorldSourceCohort::key(std::size_t index) const noexcept
 {return mImpl->sources[index]->key();}
+ALMetalWorldScalarRecipe ALMetalWorldSourceCohort::scalarRecipe(std::size_t index) const noexcept
+{return mImpl->sources[index]->scalarRecipe();}
+bool ALMetalWorldSourceCohort::sameScalarCommonAsPrevious(std::size_t index) const noexcept
+{return index<mImpl->scalar_common_previous.size() && mImpl->scalar_common_previous[index]!=0;}
+std::size_t ALMetalWorldSourceCohort::scalarCommonMetadataBytes() const noexcept
+{return mImpl->scalar_common_previous.capacity()*sizeof(mImpl->scalar_common_previous[0]);}
 const ALMetalWorldConservativeBounds& ALMetalWorldSourceCohort::bounds(std::size_t index) const noexcept
 {return mImpl->sources[index]->bounds();}
 std::size_t ALMetalWorldSourceCohort::qualifiedBoundsCount() const noexcept{return mImpl->qualified_bounds;}
@@ -174,6 +204,7 @@ try
         return reject("Ordinary material cohort requires completed immutable producer ownership");
     auto impl=std::make_unique<Impl>();
     impl->sources.reserve(sources.size());
+    impl->scalar_common_previous.reserve(sources.size());
     for(const auto& source:sources)
     {
         if(!source || (impl->family_initialized && impl->family!=source->family()))
@@ -181,6 +212,8 @@ try
         if(!impl->family_initialized)
         {impl->family=source->family();impl->double_sided=source->doubleSided();impl->family_initialized=true;}
         else impl->uniform_double_sided=impl->uniform_double_sided && impl->double_sided==source->doubleSided();
+        impl->scalar_common_previous.push_back(!impl->sources.empty() &&
+            sameScalarCommon(impl->sources.back()->source(),source->source()));
         impl->sources.push_back(source);
         const auto& bounds=source->bounds();
         if(bounds.qualified && finite(bounds.minimum,4) && finite(bounds.maximum,4) &&

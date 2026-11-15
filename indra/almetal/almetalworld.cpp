@@ -10944,7 +10944,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     // cached identity, so collisions can only cause an additional retain.
     std::shared_ptr<std::vector<std::shared_ptr<const ALMetalWorldMaterialSource>>> material_owners;
     std::array<const ALMetalWorldMaterialSource*,16> retained_material_sources{};
-    const auto bind_world_constants = [&](const void* constants, std::size_t offset)
+    const auto bind_world_constants = [&](const void* constants, std::size_t offset,bool known_equal=false)
     {
         if (!mImpl->frame_data)
             return mImpl->setVertexData(*encoder, *command,
@@ -10966,8 +10966,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             return bind_prepared(previous_prepared_world_offset, sizeof(WorldSimpleConstants), 4);
         }
         if (!have_previous_world_constants ||
-            std::memcmp(&previous_world_constants, constants,
-                        sizeof(WorldSimpleConstants)) != 0)
+            (!known_equal && std::memcmp(&previous_world_constants, constants,
+                        sizeof(WorldSimpleConstants)) != 0))
         {
             ALMetalWorldDataSlice slice;
             if (!mImpl->frame_data->publish(*command, constants,
@@ -10983,6 +10983,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                                          previous_world_slice.offset, error);
     };
 
+    // Separate from the native range cache: this exact value may survive a
+    // query, but only adjacent private cohort rows can omit CPU assembly.
+    WorldSimpleConstants cohort_common_constants{};
+    const ALMetalWorldSourceCohortView* scalar_common_cohort=nullptr;
+    std::size_t scalar_common_row=0;
+    std::uint64_t scalar_common_builds=0,scalar_recipe_reads=0,scalar_common_reuses=0;
     ALMetalWorldDrawCursor draw_cursor(scene);
     std::size_t terrain_factor_index=0;
     std::shared_ptr<const void> previous_terrain_texture_owner;
@@ -10996,6 +11002,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             break;
         }
         const auto* current_cohort=draw_cursor.cohort();
+        if(prepared || !current_cohort)scalar_common_cohort=nullptr;
         while (cohort_bank_cursor<cohort_bank_ranges.size() && cohort_bank_ranges[cohort_bank_cursor].logical_end<=index)
             ++cohort_bank_cursor;
         if (current_cohort && cohort_bank_cursor<cohort_bank_ranges.size() &&
@@ -11021,6 +11028,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     mImpl->source_commands->executeRange(*encoder,*command,*bank.bank,local,count,&optional_error);
                 if (executed)
                 {
+                    scalar_common_cohort=nullptr; // Never bridge a native-bank gap.
                     cohort_bank_prefix_emitted=true;source_bound_draws+=count;cohort_draws+=count;
                     source_bank_stats.bank_draws+=count;++source_bank_stats.execute_calls;
                     draw_cursor.advance(count-1);index+=count-1;continue;
@@ -11293,18 +11301,35 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             continue;
         }
         std::optional<WorldSimpleConstants> owned_constants;
-        if (!prepared) owned_constants = draw.view()
-            ? buildWorldSimpleConstants(scene, draw) : buildWorldSimpleConstants(scene, batch);
-        const void* constants_data = prepared
-            ? prepared_constants.data() + prepared_records[index].offset
-            : static_cast<const void*>(&*owned_constants);
-        const bool avatar = prepared ? prepared_records[index].avatar : batch.avatar_rigid || batch.avatar_skinning;
-        const bool rigged = prepared ? prepared_records[index].rigged : batch.skin_palette != nullptr && !avatar;
-        const bool bump = prepared ? prepared_records[index].bump : batch.normal_texture != nullptr;
-        const bool material = prepared ? prepared_records[index].material : batch.material_slot_count != 0;
-        const bool pbr = prepared ? prepared_records[index].pbr : isPBRBatch(batch);
-        const bool material_normal_map = prepared ? prepared_records[index].material_normal_map : materialHasNormalMap(batch);
-        const bool material_specular_map = prepared ? prepared_records[index].material_specular_map : materialHasSpecularMap(batch);
+        ALMetalWorldScalarRecipe scalar_recipe;
+        const bool recipe_draw=!prepared && current_cohort;
+        bool known_common_equal=false;
+        const void* constants_data=nullptr;
+        if(prepared)constants_data=prepared_constants.data()+prepared_records[index].offset;
+        else if(recipe_draw)
+        {
+            const auto row=index-current_cohort->logical_begin;
+            scalar_recipe=current_cohort->cohort->scalarRecipe(row);++scalar_recipe_reads;
+            known_common_equal=scalar_common_cohort==current_cohort && row==scalar_common_row+1 &&
+                current_cohort->cohort->sameScalarCommonAsPrevious(row);
+            if(known_common_equal)++scalar_common_reuses;
+            else {cohort_common_constants=buildWorldSimpleConstants(scene,draw);++scalar_common_builds;}
+            scalar_common_cohort=current_cohort;scalar_common_row=row;
+            constants_data=&cohort_common_constants;
+        }
+        else
+        {
+            scalar_common_cohort=nullptr;
+            owned_constants=draw.view()?buildWorldSimpleConstants(scene,draw):buildWorldSimpleConstants(scene,batch);
+            ++scalar_common_builds;constants_data=&*owned_constants;
+        }
+        const bool avatar = prepared ? prepared_records[index].avatar : !recipe_draw && (batch.avatar_rigid || batch.avatar_skinning);
+        const bool rigged = prepared ? prepared_records[index].rigged : !recipe_draw && batch.skin_palette != nullptr && !avatar;
+        const bool bump = prepared ? prepared_records[index].bump : !recipe_draw && batch.normal_texture != nullptr;
+        const bool material = prepared ? prepared_records[index].material : recipe_draw ? scalar_recipe.family==1 : batch.material_slot_count != 0;
+        const bool pbr = prepared ? prepared_records[index].pbr : recipe_draw ? scalar_recipe.family==2 : isPBRBatch(batch);
+        const bool material_normal_map = prepared ? prepared_records[index].material_normal_map : recipe_draw ? scalar_recipe.normal_map : materialHasNormalMap(batch);
+        const bool material_specular_map = prepared ? prepared_records[index].material_specular_map : recipe_draw ? scalar_recipe.specular_map : materialHasSpecularMap(batch);
         const bool stable_tables = current_cohort ||
             (batch.native_material_source && batch.native_material_source->matches(batch));
         const ALMetalRenderPipeline* resource_pipeline = nullptr;
@@ -11383,7 +11408,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                                      batch.normal_offset, error) &&
             encoder->setVertexBuffer(2, *batch.vertices,
                                      batch.texcoord_offset, error) &&
-            bind_world_constants(constants_data, prepared ? prepared_records[index].offset : 0) &&
+            bind_world_constants(constants_data, prepared ? prepared_records[index].offset : 0,known_common_equal) &&
             (resource_bound || encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error));
         if (encoded && !avatar)
         {
@@ -11640,6 +11665,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         mImpl->frame_data->mImpl->statistics.terrain_source_draws+=terrain_source_draws;
         mImpl->frame_data->mImpl->statistics.terrain_source_fallback_draws+=terrain_source_fallback_draws;
     }
+    mImpl->cohort_stats.scalar_common_builds+=scalar_common_builds;
+    mImpl->cohort_stats.scalar_recipe_reads+=scalar_recipe_reads;
+    mImpl->cohort_stats.scalar_common_reuses+=scalar_common_reuses;
     mImpl->constant_stats.bindings += constant_stats.bindings;
     mImpl->constant_stats.reused_bindings += constant_stats.reused_bindings;
     mImpl->constant_stats.material_source_draws += constant_stats.material_source_draws;

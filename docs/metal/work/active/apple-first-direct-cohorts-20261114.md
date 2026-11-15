@@ -1825,3 +1825,23 @@ Rootaddsperiodicsharedterrain andstaticrestorationcounters to existingcensus;
 no perdrawlogging orruntimevieweraction. Source55newsmallterraincostnext;54full
 productioncorrectness remains source-pinnedevidence. Originalarchitectureactive,
 usefulvisibility/commands andwholeengineacceptancepartial; next269.
+
+
+PPD267sixfrozenfiles integratedafterproductionpeerarchitecturePASS/nativepeer
+opaquePASS/costpeerresidency+opaquePASS, finalnativealpha3boundedextension reviewed.
+Private mapflagsreusepadding, onebyte/row exactcommonadjacency metadatacharged;
+scalarconsumer skips400BassemblyANDcomparison onprivateexactview/adjacentproof,
+restoresbuffer4everydraw, resetsraw/prepared/bankgaps. No shader/worker/bankpolicy
+change. Native136format/familytuples3cases plusactualsingle/manycold/warm/churn
+costs integrated; counters nowperiodicallylogged alongterrain/restoration.
+
+Independentcacheaudit found no camera/read invalidation orvariantpromotionloss:
+probefacesdonotagegFrameCount, worldpromotionpreservesotherworlds, geometryrebuild
+skippedincubeSnapshots. Nativeworking-set withdrawal+CPUmetadataexpiry remains
+unprovedruntimecause; current logging distinguishesfirst/revision/expiry/variant.
+No blindcapraise. GPUheadroomaudit finds CPUbusy/creditdebt butno default-on
+wholequeueGPU frame signal; benchmarkcommandsumsareoverlapping andunidentified.
+Neitherwarmedbank norvisibilityautomaticactivation justified byCPUbusyalone.
+
+Next55combinedbuild/fullnative+newscalarrecipe/oldhiddenbaseline/smallterrain
+costs beforedefaultcallerthreshold268. Originalwhole-enginegoalactive, next270.

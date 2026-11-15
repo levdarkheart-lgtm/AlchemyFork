@@ -4368,3 +4368,5 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_static_restoration_native.inl"
 
 #include "alpipeline_terrain_pass_context_native.inl"
+
+#include "alpipeline_scalar_recipe_cost_native.inl"

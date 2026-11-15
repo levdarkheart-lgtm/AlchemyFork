@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-269 -->
+<!-- next-defect-id: PPD-270 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6386,3 +6386,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 measured before caller selection repair. Larger contained gains do not accept the one-patch regression. The new grid fixture permits partial valid grids for2patches; this changes no production geometry validation.
+
+
+## PPD-269 — New scalar-recipe cost geometry can occlude its required-positive query
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / scalar recipe cost author
+- Discovered: 2026-11-15
+- Original reference: Query results are valid zero when authored geometry occludes them. A fixture asserting a positive result must place its query in a proven visible depth range.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Move only the new cost fixture's required-positive query volume in front of its authored triangles while retaining all query offsets, geometry coverage and exact parity assertions.
+- Verification: Author pre-execution review finds new right-side triangles can cover inherited center(.35,-.5,.75); later queries can correctly returnzero despite CHECK(samples>0). No affected test or production execution occurred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before fixture-only depth placement correction. Existing source54 evidence is unchanged; do not alter renderer query behavior or remove the positive primitive-coverage assertion.

@@ -445,3 +445,5 @@ TEST_CASE("almetal: cohort CPU descriptions expire while native-only command gen
         }
     }
 }
+
+#include "almetal_world_scalar_recipe_test.inl"

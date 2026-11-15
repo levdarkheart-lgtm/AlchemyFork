@@ -1335,6 +1335,10 @@ struct ALMetalWorldCohortStats
 {
     // Successfully encoded/accepted direct G-buffer work, not GPU completion.
     std::uint64_t views=0,groups=0,draws=0;
+    // All ordinary scalar common builds, including raw controls; recipe reads
+    // and omitted builds count only private cohort rows. Accepted encoding
+    // only, independently of native GPU-range reuse and final completion.
+    std::uint64_t scalar_common_builds=0,scalar_recipe_reads=0,scalar_common_reuses=0;
 };
 
 struct alignas(16) ALMetalWorldLocalLight

@@ -17,6 +17,12 @@ struct ALMetalWorldKeyedSource
     const ALMetalWorldSimpleBatch* prototype=nullptr;
 };
 
+struct ALMetalWorldScalarRecipe
+{
+    std::uint8_t family=0; // SIMPLE0, Legacy1, PBR2; no view/library state.
+    bool normal_map=false,specular_map=false;
+};
+
 // One immutable generation, issued after ordinary static validation. Plain
 // SIMPLE records contain no owning native fields and may be CPU-cached after
 // their native generations expire; reuse must independently lock exact native
@@ -38,6 +44,7 @@ public:
     const ALMetalWorldSimpleBatch& source() const noexcept;
     std::uint32_t family() const noexcept;
     bool doubleSided() const noexcept;
+    ALMetalWorldScalarRecipe scalarRecipe() const noexcept;
     bool hasBoundsPublication() const noexcept;
     const ALMetalWorldConservativeBounds& bounds() const noexcept;
     std::size_t ownedBytes() const noexcept;
@@ -82,6 +89,12 @@ public:
     std::uint64_t regionIdentity() const noexcept;
     const ALMetalWorldSimpleBatch& source(std::size_t) const noexcept;
     const ALMetalWorldSourceKey& key(std::size_t) const noexcept;
+    ALMetalWorldScalarRecipe scalarRecipe(std::size_t) const noexcept;
+    // Cold exact comparison of immutable fields proves adjacent rows have
+    // identical 400B common values under ONE actual cohort view. Camera,
+    // clip/reverse state remain consumption-owned; no copied payload here.
+    bool sameScalarCommonAsPrevious(std::size_t) const noexcept;
+    std::size_t scalarCommonMetadataBytes() const noexcept;
     const ALMetalWorldConservativeBounds& bounds(std::size_t) const noexcept;
     std::size_t qualifiedBoundsCount() const noexcept;
     bool matchesOwners(const std::shared_ptr<const void>& cpu,
