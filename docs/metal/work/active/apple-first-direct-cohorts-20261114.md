@@ -960,3 +960,10 @@ onlyafter visibility gates, with parity and actualsame workload GPU costs.
 Source facts show ordinaryshaders also manuallyfetchgeometry; a fixed-function
 vertex-fetch explanation of current regressions is unsupported. Additional
 source-row pointer chains are observed, but their measured cost share isunknown.
+
+
+Required34 at60a28bf449 passes doctor/configure but fails59.265s compiling
+MaterialCacheScope's savedconst device pointer back into mutable pipeline state.
+PPD227 registers before root changes only that saved-field type. No production
+API/assertion change, no native run or successful34claim. Required35 follows;
+failed34receipt/log preserved. Next228.

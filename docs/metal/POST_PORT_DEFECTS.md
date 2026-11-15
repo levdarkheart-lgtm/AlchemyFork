@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-227 -->
+<!-- next-defect-id: PPD-228 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5464,3 +5464,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Root identifies this after complete feature freeze and before committing/integrating the slice. No production behavior or native test relaxation is involved; next227.
 
 - 2026-11-15: Root adds direct world.h include after source-owner notification; no other source change follows full visibility freeze. Required34 compile/native/cost gates next.
+
+
+## PPD-227 — Visibility cost fixture restores a const device pointer to mutable owner state
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex retained visibility cost fixture integration
+- Discovered: 2026-11-15
+- Original reference: The fixture must preserve the actual pipeline device pointer type while swapping independent arm contexts; no production API constness change is needed.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Required34 at60a28bf449 passes doctor/configure but build fails59.265s in new cost fixture line62. MaterialCacheScope stores previous_device as constALMetalDevice* then assigns it back to mutable Inputs::sNativeSceneVisibilityDevice in its destructor. This discards qualifiers and Clang rejects it. Failed34receipt/log retained; no native execution occurred for this source.
+- Next action: Match the saved device field to the actual mutable owner pointer type only. Keep arm swapping, all workload/parity/admission assertions and production APIs unchanged; rebuild as35 and execute required gates.
+- Verification: Executed fixture compile failure; correction/retest pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before the one-declaration fixture correction; next228. No successful build34 or performance result claimed.

@@ -51,7 +51,7 @@ TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-g
     {
         Arm& arm;std::unique_ptr<ALMetalWorldMaterialDataCache> previous;
         std::shared_ptr<ALMetalWorldVisibility> previous_visibility;
-        const ALMetalDevice* previous_device=nullptr;
+        ALMetalDevice* previous_device=nullptr;
         explicit MaterialCacheScope(Arm& value):arm(value)
         {previous.swap(Inputs::ALScenePublicationNative::material_data_cache);arm.material_cache.swap(Inputs::ALScenePublicationNative::material_data_cache);
          previous_visibility.swap(Inputs::sNativeSceneVisibility);arm.visibility.swap(Inputs::sNativeSceneVisibility);
