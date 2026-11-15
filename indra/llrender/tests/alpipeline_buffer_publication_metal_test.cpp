@@ -3774,3 +3774,4 @@ TEST_CASE("Actual plain SIMPLE cohorts include publication same-view replacement
 
 #include "alpipeline_compile_cost_attribution_native.inl"
 #include "alpipeline_gpu_cohort_cost_native.inl"
+#include "alpipeline_many_cohort_cost_native.inl"

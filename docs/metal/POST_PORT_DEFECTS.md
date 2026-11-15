@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-216 -->
+<!-- next-defect-id: PPD-217 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5212,7 +5212,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Original reference: Bounded frame-wide publication must guarantee progress across CPU compilation and native GPU metadata, not only within one traversal phase.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). CPU postSort compilation runs before G-buffer native page/bank publication and shares Work::scene_publication. Busy/pressure progress requires scene_publications_this_frame==0; releasing a CPU-local credit does not reset that count. Two aged permanently ineligible compilation candidates can alternate admitted attempts, retain old pending age after seal failure, and consume that first slot every frame. An older valid GPU metadata request, called later, is then denied indefinitely. No executed viewer performance attribution is claimed.
 - Next action: Provide bounded cross-phase progress fairness in the existing shared budget, including failed CPU attempts, older GPU requests and vanished pending owners; preserve idle quotas/bytes/completion retirement and direct fallback. Add a deterministic repeated-busy-frame integration model using actual CPU admission and GPU metadata policy.
-- Verification: Source-confirmed call-order counterexample before repair; new regression not yet executed.
+- Verification: Source30 native frame-budget gate passes1690assertions/24cases, including five new repeated-frame fairness models. Owner runtime acceptance remains pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5223,6 +5223,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source30 authored fixed two-category age/service arbitration plus5focused models; default metadata API and CPU kind routing, idle caps/leases retained. Read-only peer/root reviews find no blocker, execution pending.
 
+- 2026-11-15: Source8691dc3430 required30/static69064/native/broad gates pass. Cross-phase progress cases execute in native-correctness-30.json; no live FPS attribution or owner closure.
+
 ## PPD-215 — GPU cost fixture applies steady-state assertions to its first warm-up
 
 - Status: investigating
@@ -5232,7 +5234,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Original reference: A warm-condition fixture must first publish its just-invalidated state during the initial warm-up; measured steady-state samples begin only after the declared warm-ups.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source29 three-arm run completes all144summary rows/2016samples but fails128 of140088assertions. Exactly32 each of getter/dependency/image/compile zero assertions fail at warm condition sample0 (warmup1), covering2families/4counts/2viewcounts/2cohortmodes. That first warm-up correctly performs the initial publication. All pixel/query and other assertions pass. Timings remain provisional because the gate failed.
 - Next action: Apply only those four steady-state zero-work assertions to measured warm samples after warm-ups; retain setup costs/raw warm-up output and every other parity/admission check. Rerun after the coherent next build.
-- Verification: Executed cost-fixture expectation failure; no rendering mismatch or validated performance acceptance claimed.
+- Verification: Source30 corrected three-arm gate passes140840assertions/1case,144summary rows and2016samples. Initial warm-up costs remain recorded. No viewer performance acceptance claimed.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5241,3 +5243,25 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered before correcting the measured-sample guard; failed cost29 receipt/log retained without alteration.
 
 - 2026-11-15: Root adds sample>=warmups guard only to four steady-state expectations. Warm-up raw rows and all parity/admission checks retained; source30 rerun pending.
+
+
+- 2026-11-15: Corrected source30 cost gate passes; actual-gpu-cohort-costs-30.json/log retain all phases and parity checks. Warm CPU gains do not erase measured cold/churn/GPU regressions. Failed29 evidence retained.
+
+## PPD-216 — Many-group cost fixture omits production pending/candidate container work
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex many-small-group acceptance fixture
+- Discovered: 2026-11-15
+- Original reference: Complete cost coverage must include the actual pending-range map and full cold-candidate storage used by postSort, especially for many small groups.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Peer review of new, unbuilt alpipeline_many_cohort_cost_native.inl identifies vector<Pending{Group*,raw_begin}> and vector<Pending*> where production uses unordered_map<Group*,vector<PendingGroupRange{type,raw_begin,count}>> and full ColdCohort records with shared publisher, admission pointer and flavor. Omitted per-group allocations/control copies materially narrow the intended loading-cost boundary. No executed benchmark result exists for this fixture.
+- Next action: Mirror the production containers inside the existing timed region before including/building the new fixture; retain arm isolation, warm-up/loading observations and query/parity checks.
+- Verification: Source-confirmed fixture fidelity gap registered before repair, no performance claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered from bounded peer review while source30 broader checks run.
+
+- 2026-11-15: Author freezes corrected timed pending map, per-group vectors, full candidate records/control copies, repeated warm checks and expected-span allocation (new fixture SHA256 f3e9655c896565dfaa53db70d58a00a73ee83bac33b345c5c00de5c437276ba4). Root comparison with postSort confirms repaired boundary. Hidden fixture is included for test-only source31; execution pending.

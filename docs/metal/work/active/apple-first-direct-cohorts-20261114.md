@@ -626,3 +626,78 @@ renderer callsite and adds throttled arena counters/actual-cost assertions.
 No shader/backend/default activation. Coherent source freeze is reviewed but
 unbuilt; required30 (shared budget header may rebuild many targets) next, then
 native/broad/static and corrected3arm costs. Next defect216.
+
+
+## Source30 verified checkpoint and owner candidate boundary
+
+Source `8691dc3430b65637219a6838fd6171826d3c9263`, version
+`26.4.0.69064`: required30 doctor/configure/build all exit 0; build took
+839.090 seconds. Static bundle validation passes all 346 ARM64 images,
+signatures, source identity, imports, retained media/voice and feature markers.
+Strict source30 passes. Evidence is under
+`artifacts/metal/apple-first-persistent-native-scene-20261114/`, receipts
+`frozen-source-build-30.json`, `static-native-30.json` and
+`strict-source-30.json`.
+
+All 20 contained native processes in `native-correctness-30.json` pass with
+Metal API/GPU validation. In particular, shared frame admission passes 1690
+assertions in 24 cases (PPD214), and SourcePages passes 1926 in 15 cases,
+including the three new completion-safe arena cases. Actual producer passes
+12397/53, renderer 2331/4, command banks 3348/9, and shadow 98414/14.
+`combined-correctness-30.json` passes 88 CTest cases, ten native
+specialization processes, three archive processes and the private decoder corpus.
+
+The corrected three-arm cost gate passes 140840 assertions in one case:
+144 summary rows and 2016 retained raw samples. PPD215's initial warm-up is
+still recorded but excluded from measured steady-state assertions. The receipt
+is `actual-gpu-cohort-costs-30.json`; derived comparisons are in
+`actual-gpu-cohort-costs-30-summary.json`. These are controlled native-workload
+observations, not viewer FPS results or a causal comparison with source25.
+
+For one warm 512-source Legacy/PBR group, ordinary submission CPU is about
+1.0 ms versus GPU cohort 0.055 ms; completion/query settlement is about
+1.51–1.59 ms versus 0.61–0.64 ms. GPU time rises from 0.124–0.135 ms to
+0.193–0.206 ms. Cold and churn cases remain slower. At four sources and one
+view, warm CPU is nearly unchanged, settlement worsens 7–13%, and GPU time
+rises roughly 82–89%. Across non-scalar cases GPU CPU wins 11/12 warm
+comparisons against ordinary submission, but none of 12 cold comparisons.
+All requested GPU cohort draws in those cited cases were actually accepted;
+the differences are not silently measured fallback. This evidence rejects
+unconditional activation, despite the large retained-group CPU win.
+
+A new many-small-group fixture is authored but not yet built. PPD216 registers
+a peer-found cost-boundary omission: its pending/candidate containers were
+cheaper than production postSort. The author is correcting the timed map,
+per-group vectors and full candidate copies before root includes it in the
+existing actual-producer test translation unit. Source31 is intended to be
+test-only; no further renderer policy or default activation is implied.
+
+Product advancement: shared admission now has executed cross-phase progress
+coverage; native cohort view constants use completion-qualified shared arena
+storage; actual retained GPU consumption has measured large-group CPU gains.
+Critical remaining work: small/many/changing group selection, visibility and
+animated-source coverage, full pass dependency boundaries, and a separately
+staged enabled combined candidate. All seven experimental controls remain off.
+The original whole-engine goal and owner runtime acceptance remain partial.
+No viewer launch, login, live profile, push or owner-app replacement occurred.
+
+Source31 freeze adds only the hidden many-small fixture and its EOF include,
+plus evidence documentation. PPD216 timed containers now match the production
+allocation/control-copy boundary; root inspected both actual postSort and
+fixture. Required31 and the hard-capped native cost execution follow. Source30
+production gates remain prior-source evidence, not a claim of rerunning them
+at31. Harness33files and whitespace checks pass before commit.
+
+A bounded candidate-readiness audit corrects an overly broad interpretation of
+all seven optional controls being off. Always-on production foundations already
+include producer publication, owned CPU packets/native completion retirement,
+shadow preparation on bounded shared credits, probe-group admission,
+decoder/upload downstream limits, CPU frame planning/progress fairness and
+shared-memory dirty-range/COW writes. Those do not depend on the optional
+WorldPreparation flag. A candidate can therefore exercise real integrated work
+without all optional paths, although it does not implement the full architecture.
+A direct-cohort experiment requires GroupSources on and NativeVisibility and
+DepthPrePass off. The optional GPU-bank experiment additionally enables banks;
+its raw fallback can also activate the older per-source row path, so it must not
+be described as exclusively the fast retained-cohort path. Prior regressions
+remain relevant to candidate selection, and acceptance is still partial.
