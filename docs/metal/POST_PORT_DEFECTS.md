@@ -6717,7 +6717,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ## PPD-285 — New body-palette fixtures misstate scene inputs and comparison policy
 
 - Status: investigating
-- Confirmation: source_confirmed
+- Confirmation: reproduced
 - Owner: Codex body-palette fixture author
 - Discovered: 2026-11-15
 - Original reference: Adopted scene must advertise both authored batches; negative mixed-proof fixture must retain a real shared attachment record using its actual API.
@@ -6733,6 +6733,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 pre-execution peer also finds shadow raw/record parity used different depth_clamp values. Registered under the same new-fixture authoring record before correction: select identical clamp policy within each pair and cover both policies across the existing format tuples. Retain positive, output/depth/query and ownership assertions; coverage is four HDR/normalHDR tuples with correlated reverse-Z, not eight independent tuples.
 
+
+- 2026-11-15 build63/5258c8bf85 doctor/configure0, build1 after55.336s: new native appendix unqualified shadow(body) conflicts with the macOS MacTypes shadow enum. Registered under this same new-fixture record before qualifying the helper call. No native63/static63/cost63 execution; failedreceipt/log retained.
 
 ## PPD-286 — CPU interval stress fixture omits its inside controls from result counts
 

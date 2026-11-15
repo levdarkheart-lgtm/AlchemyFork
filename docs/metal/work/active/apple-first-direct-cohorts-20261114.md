@@ -2059,3 +2059,10 @@ current-frameCPUcacheownsrecords onlyuntilbeginFrame. Staticsourceeligibility
 explicitlyrejectsbodyproof. Bodylayout instrumentedforactualsizeofBatch/Shadow/
 privateStorage; no capdiscount/increase. Four nativecases +oneactualnormalcase
 and24conditioncompletecost pending63, nobodybuild/testsuccessclaimyet.
+
+
+Required63/5258c8bf85 doctor/configure0;build1after55.336s:newnativefixture
+unqualifiedshadow(body) conflictsmacOSMacTypesenum. PPD285history registered
+beforequalifyingBodyPaletteNative::shadow only. No63native/static/costexecution.
+75084/20701terminalfailed; preserve63receipts/binariesnotclaimedsource63passed.
+Next64required/fullnative/CPU48+body24cost atsameproductionbodyimplementation.

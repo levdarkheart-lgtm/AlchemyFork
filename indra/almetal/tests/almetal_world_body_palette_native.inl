@@ -117,7 +117,7 @@ TEST_CASE("almetal: raw and body records preserve mixed queries formats cloth an
                 auto prepared=f.prepare(scene,{prefix,body});auto third=probe->renderPrepared(*prepared,&f.error);REQUIRE(third);
                 CHECK(f.read(*third)==images[mode]);CHECK(f.data->stats().body_record_reuses>=2);
             }
-            auto caster=shadow(body);ALMetalWorldSpotShadowScene shadows;shadows.batches=&caster;shadows.batch_count=1;
+            auto caster=BodyPaletteNative::shadow(body);ALMetalWorldSpotShadowScene shadows;shadows.batches=&caster;shadows.batch_count=1;
             shadows.width=shadows.height=side;shadows.reverse_z=scene.reverse_z;shadows.depth_clamp=(format&2)!=0;
             REQUIRE(f.renderer->renderSpotShadow(*depth,mode,shadows,&f.error));
         }
