@@ -1980,6 +1980,61 @@ TEST_CASE("Actual optional visibility metadata failure preserves required raw re
     }
 }
 
+TEST_CASE("Actual group-bank denial leaves mixed raw fallback on ordinary native shaders",
+          "[almetal][pipeline-buffer-publication][native-material-group][PPD-228]")
+{
+    for(U32 family:{1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);Inputs::gSavedSettings.native_resources=false;
+        Inputs::gSavedSettings.native_groups=true;
+        auto& raw=f.materialDraw();auto& a=f.materialDraw();auto& b=f.materialDraw(true);
+        auto& cold_a=f.materialDraw();auto& cold_b=f.materialDraw();
+        auto warm=Inputs::ALSceneGroupPublicationNative::sealMaterial(f.group,f.group_dependencies,f.group_layout,
+            f.model,f.region.snapshot(),std::vector<Inputs::LLDrawInfo*>{&a,&b},f.flavor,
+            Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(warm);
+        auto cold=std::make_shared<ALNativePublication::State>();ALNativeCohortCompilationAdmission compilation;
+        std::shared_ptr<ALNativePublication::Observer> dependencies;std::shared_ptr<Inputs::ALSceneGroupPublicationNative::Layout> layout;
+        ALNativeFrameBudget::Limits limits;limits.scene_publications_per_frame=0;ALNativeFrameBudget budget(limits);
+        ALNativeFrameBudget::FrameInputs frame;frame.frame=Inputs::gFrameCount;budget.beginFrame(frame);
+        bool producer_called=false;
+        auto denied=Inputs::ALSceneGroupCompilationNative::compile(compilation,cold,budget,2,family,[&]
+        {producer_called=true;return Inputs::ALSceneGroupPublicationNative::sealMaterial(cold,dependencies,layout,
+            f.model,f.region.snapshot(),std::vector<Inputs::LLDrawInfo*>{&cold_a,&cold_b},f.flavor,
+            Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);});
+        CHECK_FALSE(denied);CHECK_FALSE(producer_called);CHECK_FALSE(cold->publication());CHECK_FALSE(layout);
+        Inputs::LLCullResult cull;cull.pushDrawInfo(f.type,&raw);
+        REQUIRE(cull.pushNativeMaterialRange(f.type,warm,2,f.region.snapshot()));
+        cull.pushDrawInfo(f.type,&cold_a);cull.pushDrawInfo(f.type,&cold_b);
+        Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;
+        // Product policy228: GroupSources+bank ON does not implicitly request
+        // SourceRows. Explicit diagnostic callers retain configure(...,true).
+        f.configure(capture,false,false);const auto descriptors=Inputs::ALScenePublicationNative::resource_source_publications;
+        {CullScope scope(cull);f.capture(pipeline);}REQUIRE(capture.complete);CHECK(capture.logicalDrawCount()==5);
+        CHECK(capture.batches.size()==3);CHECK(capture.source_cohorts.size()==1);CHECK(capture.source_references.empty());
+        CHECK_FALSE(capture.source_rows);CHECK(Inputs::ALScenePublicationNative::resource_source_publications==descriptors);
+        std::array<ALMetalWorldVisibilityQuery,2> queries{};
+        for(U32 i=0;i<queries.size();++i)
+        {auto& q=queries[i];std::memcpy(q.modelview_projection,f.model.getF32ptr(),sizeof(q.modelview_projection));
+         q.center[0]=.35f;q.center[1]=-.5f;q.center[2]=.75f;q.half_extent[0]=q.half_extent[1]=q.half_extent[2]=.08f;
+         q.batch_offset=i?5:2;q.fan=7;q.count_samples=1;}
+        auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);REQUIRE(renderer);
+        auto data=ALMetalWorldFrameData::create(*f.device,&f.error);REQUIRE(data);data->beginFrame(frame.frame);
+        data->setSourcePublicationAdmission([&budget](const ALMetalWorldSourcePublicationWork& work)->std::shared_ptr<const void>
+        {return budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,work.chargedBytes(),budget.snapshot().frame).credit;});
+        renderer->setFrameData(data);auto scene=f.scene(capture);scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
+        std::shared_ptr<ALMetalVisibilityResultBatch> expected_queries,actual_queries;
+        auto direct=renderer->render(scene,&f.error,&expected_queries);INFO(f.error);REQUIRE(direct);REQUIRE(expected_queries);
+        const auto expected=f.read(*direct);scene.source_command_banks=true;
+        auto target=renderer->render(scene,&f.error,&actual_queries);INFO(f.error);REQUIRE(target);REQUIRE(actual_queries);
+        CHECK(f.read(*target)==expected);
+        for(U32 i=0;i<queries.size();++i)
+        {U64 before=0,after=0;REQUIRE(expected_queries->wait(i,before,&f.error));REQUIRE(actual_queries->wait(i,after,&f.error));CHECK(before==after);}
+        const auto commands=renderer->worldSourceCommandStats();CHECK(commands.requested_draws==2);CHECK(commands.bank_draws==0);CHECK(commands.fallback_draws==2);
+        const auto sources=renderer->worldSourceStats();CHECK(sources.bound==0);CHECK(sources.pages.admission_denials==1);
+        CHECK(budget.snapshot().scene_publications_in_flight==0);CHECK(budget.snapshot().scene_bytes_in_flight==0);
+    }
+}
+
 TEST_CASE("Actual partially dirty cohorts share immutable source proofs and refresh only changed generations",
           "[almetal][pipeline-buffer-publication][native-material-group][PPD-194]")
 {

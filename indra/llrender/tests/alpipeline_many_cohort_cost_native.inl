@@ -137,7 +137,8 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                     // Preserve the typed fixture's identity-camera frontier,
                     // with distinct actual copied matrix payloads per view.
                     REQUIRE(f.region.update(f.model,LLVector3(.01f*view,0.f,0.f)));
-                    capture.clearDraws();capture.complete=true;select_family(1);f.configure(capture,false,mode==2);
+                    // PPD-228: no implicit scalar SourceRows on denied raw groups.
+                    capture.clearDraws();capture.complete=true;select_family(1);f.configure(capture,false,false);
                     capture.world_resources=std::make_shared<Inputs::WorldResources>();Inputs::LLCullResult cull;
                     struct PendingGroupRange{U32 type,raw_begin,count;};
                     std::unordered_map<Group*,std::vector<PendingGroupRange>> pending_group_ranges;
@@ -244,9 +245,10 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                     if(capture.source_rows)
                     {candidate_bytes+=capture.source_rows->candidates.size()*sizeof(ALMetalWorldSourceView::Candidate);
                      regional_bytes+=capture.source_rows->regions.size()*sizeof(ALMetalWorldSourceRegion);}
-                    // A denied group may legitimately expand the old raw
-                    // source-row path. Retain and report that cost/fallback.
+                    // A denied group retains ordinary raw native rendering.
+                    // Scalar SourceRows requires its own explicit request.
                     CHECK(capture.source_references.empty());
+                    CHECK_FALSE(capture.source_rows); // Group-bank policy never implies scalar SourceRows.
                     if(capture.source_cohort_draw_count==visible_draws)CHECK((!capture.source_rows||capture.source_rows->candidates.empty()));
                     arm.queries.resize(visible_groups);
                     for(U32 query=0;query<visible_groups;++query)
@@ -309,8 +311,10 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                 {
                     CHECK(value.requested==U64(visible_draws)*views);
                     CHECK(value.bound==value.requested);CHECK(value.fallback==0);
-                    CHECK(value.hits==U64(group_count)*views);CHECK(value.builds==0);CHECK(value.evictions==0);
-                    CHECK(value.page_hits==U64(group_count)*views);CHECK(value.page_builds==0);CHECK(value.page_failures==0);
+                    // Hits count the two homogeneous pass compositions,
+                    // rather than their64 underlying group references.
+                    CHECK(value.hits==U64(2)*views);CHECK(value.builds==0);CHECK(value.evictions==0);
+                    CHECK(value.page_hits==U64(2)*views);CHECK(value.page_builds==0);CHECK(value.page_failures==0);
                     CHECK(cache.admission_denials==before_cache.admission_denials);
                     CHECK(pages.admission_denials==before_pages.admission_denials);
                 }
@@ -349,6 +353,7 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                     <<" native_frame_published_bytes="<<arm.data->stats().published_bytes-before_native
                     <<" live_icb_allocated_bytes="<<cache.live_icb_allocated_bytes<<" unique_retained_index_bytes="<<cache.unique_retained_index_bytes
                     <<" cached_banks="<<cache.cached_banks<<" live_banks="<<cache.live_banks<<" cached_cohorts="<<pages.cached_cohorts
+                    <<" cached_compositions="<<pages.cached_compositions
                     <<" cached_cohort_rows="<<pages.cached_cohort_rows<<" cached_cohort_metadata_bytes="<<pages.cached_cohort_metadata_bytes
                     <<" cached_cohort_native_asset_bytes="<<pages.cached_cohort_native_asset_bytes<<" cached_cohort_native_asset_limit="<<pages.cached_cohort_native_asset_limit
                     <<" live_page_metadata_bytes="<<pages.live_metadata_bytes<<" all_scene_admitted="<<budget.scene_publications_this_frame-before_budget.scene_publications_this_frame
@@ -394,6 +399,7 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                 <<" measured_bank_evictions="<<totals.evictions<<" measured_page_hits="<<totals.page_hits<<" measured_page_builds="<<totals.page_builds
                 <<" measured_page_failures="<<totals.page_failures<<" measured_compile_admitted="<<totals.compile_admitted<<" measured_compile_denied="<<totals.compile_denied
                 <<" progressive_loading_eighths=1 loading_warmup_denials_retained=1 query_at_each_group_boundary=1 pass_order_legacy_then_pbr=1"
+                <<" page_bank_hit_unit=ordered_composition cached_cohorts_unit=weak_group_references implicit_scalar_source_rows=0"
                 <<" cache_limits_unchanged=1 all_banks_warm_assumption=0 independent_group_source_admission=1 independent_framedata_renderers_material_cache=1"
                 <<" paired_logical_frame=1 native_epoch_once_per_arm_frame=1 shared_exact_library=1 distinct_view_matrix_payloads=1 typed_identity_camera_frontier=1"
                 <<" dirty_raw_admission_before_seal=1 same_view_verified_replacement=1 cpu_and_gpu_scene_admission=1 synthetic_idle_budget_inputs=1"

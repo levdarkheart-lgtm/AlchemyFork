@@ -91,3 +91,53 @@ kernel void almetal_world_visibility_cohort_arguments(
     }
     arguments[view.config.y+index]=IndexedArguments{visible?row.config.x:0u,1u,0u,0,0u};
 }
+
+// Tier-2 direct GPU-address layout. The CPU publishes G immutable descriptors,
+// not one member per source. Packed prefixes avoid empty work for unequal
+// groups while preserving the original logical/query destinations and holes.
+struct CohortDispatch
+{
+    device const CohortRecord* rows;
+    ulong reserved;
+    float4x4 matrix;
+    uint4 config; // count, logical destination, packed prefix
+};
+static_assert(sizeof(CohortDispatch)==96);
+static_assert(__builtin_offsetof(CohortDispatch,matrix)==16);
+static_assert(__builtin_offsetof(CohortDispatch,config)==80);
+kernel void almetal_world_visibility_cohorts_arguments(
+    device const CohortDispatch* groups [[buffer(0)]],
+    device IndexedArguments* arguments [[buffer(1)]],
+    constant uint4& counts [[buffer(2)]],
+    uint index [[thread_position_in_grid]])
+{
+    if(index>=counts.x)return;
+    uint first=0,last=counts.y;
+    while(first+1<last)
+    {
+        const uint middle=first+(last-first)/2;
+        if(groups[middle].config.z<=index)first=middle;else last=middle;
+    }
+    const CohortDispatch group=groups[first];
+    const uint local=index-group.config.z;
+    if(local>=group.config.x)return;
+    const CohortRecord row=group.rows[local];bool visible=true;
+    if(row.config.y && visibility_finite(row.minimum) && visibility_finite(row.maximum) &&
+       all(row.minimum.xyz<=row.maximum.xyz))
+    {
+        uint outside=63u;
+        for(uint corner=0;corner<8;++corner)
+        {
+            const float3 point=select(row.minimum.xyz,row.maximum.xyz,bool3(corner&1u,corner&2u,corner&4u));
+            const float4 clip=group.matrix*float4(point,1.f);
+            if(!visibility_finite(clip)||clip.w<=0.f){outside=0;break;}
+            const float edge=clip.w+max(1.f,abs(clip.w))*1e-5f;
+            const uint bits=uint(clip.x < -edge)|(uint(clip.x > edge)<<1)|
+                (uint(clip.y < -edge)<<2)|(uint(clip.y > edge)<<3)|
+                (uint(clip.z < -edge)<<4)|(uint(clip.z > edge)<<5);
+            outside &= bits;
+        }
+        visible=outside==0;
+    }
+    arguments[group.config.y+local]=IndexedArguments{visible?row.config.x:0u,1u,0u,0,0u};
+}

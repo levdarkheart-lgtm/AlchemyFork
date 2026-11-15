@@ -56,6 +56,8 @@ static void actualRetainedCohortVisibilityCosts(bool heavier_mesh)
         U64 compile_admitted=0,compile_denied=0,page_hits=0,page_builds=0,page_failures=0;
         U64 visibility_views=0,visibility_groups=0,visibility_candidates=0,visibility_builds=0,visibility_hits=0,visibility_upload_bytes=0,expanded_visibility_bytes=0,captured_visibility_bytes=0,visibility_allocated_bytes=0;
         U64 visibility_admission_requests=0,visibility_admission_denials=0,visibility_admitted_bytes=0,visibility_fallbacks=0;
+        U64 visibility_dispatches=0,batched_visibility_dispatches=0,descriptor_upload_bytes=0,descriptor_allocated_bytes=0;
+        U64 live_descriptor_bytes=0,descriptor_limit_bytes=0;
     };
     struct Group
     {
@@ -415,6 +417,14 @@ static void actualRetainedCohortVisibilityCosts(bool heavier_mesh)
                 value.visibility_admission_denials=visibility.admission_denials-before_visibility.admission_denials;
                 value.visibility_admitted_bytes=visibility.admitted_logical_bytes-before_visibility.admitted_logical_bytes;
                 value.visibility_fallbacks=visibility.fallbacks-before_visibility.fallbacks;
+                value.visibility_dispatches=visibility.cohort_dispatches-before_visibility.cohort_dispatches;
+                value.batched_visibility_dispatches=visibility.batched_cohort_dispatches-before_visibility.batched_cohort_dispatches;
+                value.descriptor_upload_bytes=visibility.cohort_descriptor_upload_bytes-before_visibility.cohort_descriptor_upload_bytes;
+                value.descriptor_allocated_bytes=visibility.cohort_descriptor_allocated_bytes-before_visibility.cohort_descriptor_allocated_bytes;
+                value.live_descriptor_bytes=visibility.live_cohort_descriptor_bytes;value.descriptor_limit_bytes=visibility.cohort_descriptor_limit_bytes;
+                CHECK(value.batched_visibility_dispatches<=value.visibility_dispatches);
+                CHECK(value.visibility_dispatches<=value.visibility_views);
+                CHECK(value.live_descriptor_bytes<=value.descriptor_limit_bytes);
                 CHECK(value.captured_visibility_bytes<=value.raw_draws*sizeof(ALMetalWorldVisibilityMember)*(mode==2));
                 CHECK(value.expanded_visibility_bytes<=value.captured_visibility_bytes);
                 CHECK(visibility.live_cohort_row_bytes<=8*1024*1024);
@@ -477,6 +487,9 @@ static void actualRetainedCohortVisibilityCosts(bool heavier_mesh)
                     <<" live_icb_allocated_bytes="<<cache.live_icb_allocated_bytes<<" unique_retained_index_bytes="<<cache.unique_retained_index_bytes
                     <<" cached_banks="<<cache.cached_banks<<" live_banks="<<cache.live_banks<<" cached_cohorts="<<pages.cached_cohorts
                     <<" visibility_views="<<value.visibility_views<<" visibility_groups="<<value.visibility_groups<<" visibility_candidates="<<value.visibility_candidates
+                    <<" visibility_cohort_dispatches="<<value.visibility_dispatches<<" visibility_batched_dispatches="<<value.batched_visibility_dispatches
+                    <<" visibility_descriptor_upload_bytes="<<value.descriptor_upload_bytes<<" visibility_descriptor_allocated_bytes="<<value.descriptor_allocated_bytes
+                    <<" live_visibility_descriptor_bytes="<<value.live_descriptor_bytes<<" visibility_descriptor_limit_bytes="<<value.descriptor_limit_bytes
                     <<" visibility_row_builds="<<value.visibility_builds<<" visibility_row_hits="<<value.visibility_hits
                     <<" visibility_row_upload_bytes="<<value.visibility_upload_bytes<<" expanded_visibility_member_bytes="<<value.expanded_visibility_bytes
                     <<" captured_visibility_member_bytes="<<value.captured_visibility_bytes<<" visibility_native_allocated_bytes="<<value.visibility_allocated_bytes
@@ -519,6 +532,10 @@ static void actualRetainedCohortVisibilityCosts(bool heavier_mesh)
                 totals.captured_visibility_bytes+=value.captured_visibility_bytes;totals.visibility_allocated_bytes+=value.visibility_allocated_bytes;
                 totals.visibility_admission_requests+=value.visibility_admission_requests;totals.visibility_admission_denials+=value.visibility_admission_denials;
                 totals.visibility_admitted_bytes+=value.visibility_admitted_bytes;totals.visibility_fallbacks+=value.visibility_fallbacks;
+                totals.visibility_dispatches+=value.visibility_dispatches;totals.batched_visibility_dispatches+=value.batched_visibility_dispatches;
+                totals.descriptor_upload_bytes+=value.descriptor_upload_bytes;totals.descriptor_allocated_bytes+=value.descriptor_allocated_bytes;
+                totals.live_descriptor_bytes=std::max(totals.live_descriptor_bytes,value.live_descriptor_bytes);
+                totals.descriptor_limit_bytes=std::max(totals.descriptor_limit_bytes,value.descriptor_limit_bytes);
                 totals.page_hits+=value.page_hits;totals.page_builds+=value.page_builds;totals.page_failures+=value.page_failures;
             }
             const auto& geometry=arms[mode].geometry_prefix.back();
@@ -542,6 +559,9 @@ static void actualRetainedCohortVisibilityCosts(bool heavier_mesh)
                 <<" measured_bank_evictions="<<totals.evictions<<" measured_page_hits="<<totals.page_hits<<" measured_page_builds="<<totals.page_builds
                 <<" measured_page_failures="<<totals.page_failures<<" measured_compile_admitted="<<totals.compile_admitted<<" measured_compile_denied="<<totals.compile_denied
                 <<" measured_visibility_groups="<<totals.visibility_groups<<" measured_visibility_candidates="<<totals.visibility_candidates
+                <<" measured_visibility_cohort_dispatches="<<totals.visibility_dispatches<<" measured_visibility_batched_dispatches="<<totals.batched_visibility_dispatches
+                <<" measured_visibility_descriptor_upload_bytes="<<totals.descriptor_upload_bytes<<" measured_visibility_descriptor_allocated_bytes="<<totals.descriptor_allocated_bytes
+                <<" peak_visibility_descriptor_bytes="<<totals.live_descriptor_bytes<<" visibility_descriptor_limit_bytes="<<totals.descriptor_limit_bytes
                 <<" measured_visibility_builds="<<totals.visibility_builds<<" measured_visibility_hits="<<totals.visibility_hits
                 <<" measured_visibility_upload_bytes="<<totals.visibility_upload_bytes<<" measured_expanded_member_bytes="<<totals.expanded_visibility_bytes
                 <<" measured_captured_member_bytes="<<totals.captured_visibility_bytes<<" measured_visibility_allocated_bytes="<<totals.visibility_allocated_bytes

@@ -110,6 +110,20 @@ void checkVisibilityCounts(const ALMetalWorldVisibilityArguments& arguments,std:
         CHECK(argument.base_vertex==0);CHECK(argument.base_instance==0);
     }
 }
+std::vector<ALMetalWorldSourceCohortView> unequalVisibilityGroups(RetainedVisibilityFixture& f,unsigned count)
+{
+    std::vector<ALMetalWorldSourceCohortView> groups;groups.reserve(count);
+    std::size_t logical=1;
+    for(unsigned index=0;index<count;++index)
+    {
+        auto group=f.view();const auto rows=1+index%3;
+        group.cohort=ALMetalWorldSourceCohort::seal(std::span(f.records).first(rows),f.cpu,f.native,7+index,&f.error);
+        INFO(f.error);REQUIRE(group.cohort);
+        group.logical_begin=logical;group.base_before=index+1;logical+=rows+1;
+        groups.push_back(std::move(group));
+    }
+    return groups;
+}
 }
 
 TEST_CASE("almetal: shared GPU visibility fails visible for unknown stale and unclippable bounds", "[almetal][world-visibility]")
@@ -641,5 +655,210 @@ TEST_CASE("almetal: sparse visibility leaves raw holes direct without placeholde
         CHECK_FALSE(v->makeView({}, {},std::span(&unqualified,1),3,&f.error));CHECK(f.error.empty());
         // A raw token may not overlap even a cohort filtered out as unproved.
         CHECK_FALSE(v->makeView({member(handle,matrix)},{0},std::span(&unqualified,1),3,&f.error));
+    }
+}
+
+TEST_CASE("almetal: packed retained visibility preserves unequal groups sparse holes and ordered queries",
+          "[almetal][world-visibility][world-cohort]")
+{
+    @autoreleasepool
+    {
+        for(unsigned group_count:{64u,256u})
+        {
+            CAPTURE(group_count);RetainedVisibilityFixture f(group_count==64?1:2);auto v=visibility(f);
+            auto groups=unequalVisibilityGroups(f,group_count);
+            const auto logical=groups.back().logical_begin+groups.back().cohort->size()+1;
+            float matrix[16];identity(matrix);auto known=v->publishBounds(800,1,triangleBounds());
+            auto view=v->makeView({member(known,matrix),member(known,matrix)},
+                {0,static_cast<std::uint32_t>(logical-1)},groups,logical,&f.error);INFO(f.error);REQUIRE(view);
+            auto command=f.device->makeCommandBuffer("One packed retained visibility dispatch",&f.error);REQUIRE(command);
+            const auto before=v->stats();auto arguments=ALMetalWorldVisibility::encode(*command,*view,&f.error);
+            if([(__bridge id<MTLDevice>)f.device->nativeHandle() argumentBuffersSupport]!=MTLArgumentBuffersTier2)
+            {CHECK_FALSE(arguments);CHECK(v->stats().last_fallback==ALMetalWorldVisibilityFailure::cohort_batch_unsupported);continue;}
+            INFO(f.error);REQUIRE(arguments);REQUIRE(command->commitAndWait(&f.error));
+            ALMetalWorldIndexedArguments result;
+            REQUIRE(arguments->readCompletedArgumentForTesting(0,result));CHECK(result.index_count==3);
+            REQUIRE(arguments->readCompletedArgumentForTesting(logical-1,result));CHECK(result.index_count==3);
+            for(const auto& group:groups)
+            {
+                for(std::size_t row=0;row<group.cohort->size();++row)
+                {
+                    CAPTURE(group.logical_begin,row);REQUIRE(arguments->readCompletedArgumentForTesting(group.logical_begin+row,result));
+                    CHECK(result.index_count==(row==1?0:3));CHECK(result.instance_count==1);CHECK(result.index_start==0);
+                    CHECK(result.base_vertex==0);CHECK(result.base_instance==0);
+                }
+                const auto hole=group.logical_begin+group.cohort->size();
+                if(hole!=logical-1)CHECK_FALSE(arguments->readCompletedArgumentForTesting(hole,result));
+            }
+            const auto cold=v->stats();CHECK(cold.cohort_dispatches-before.cohort_dispatches==1);
+            CHECK(cold.batched_cohort_dispatches-before.batched_cohort_dispatches==1);
+            CHECK(cold.cohort_descriptor_upload_bytes-before.cohort_descriptor_upload_bytes==96*group_count);
+            CHECK(cold.cohort_descriptor_allocated_bytes>=96*group_count);
+            CHECK(cold.live_cohort_descriptor_bytes<=cold.cohort_descriptor_limit_bytes);
+            CHECK(cold.live_cohort_row_bytes<=8*1024*1024);
+            // Every unrepresented raw slot keeps its direct draw. Query offsets
+            // span actual logical source order rather than packed compute order.
+            std::vector<ALMetalWorldSimpleBatch> raw(group_count+1,f.cpu->sources[0]);
+            std::array<ALMetalWorldVisibilityQuery,3> queries;
+            for(unsigned index=0;index<queries.size();++index)
+            {
+                auto& q=queries[index];identity(q.modelview_projection);q.center[0]=.7f;q.center[1]=-.7f;q.center[2]=.75f;
+                q.half_extent[0]=q.half_extent[1]=q.half_extent[2]=.05f;q.fan=7;q.count_samples=1;
+                q.batch_offset=index==0?0:(index==1?groups[group_count/2].logical_begin:logical);
+            }
+            auto scene=f.scene();scene.batches=raw.data();scene.batch_count=raw.size();scene.cohorts=groups.data();scene.cohort_count=groups.size();
+            scene.source_owner=f.native;scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
+            std::shared_ptr<ALMetalVisibilityResultBatch> direct_queries,actual_queries;
+            auto direct=f.renderer->render(scene,&f.error,&direct_queries);INFO(f.error);REQUIRE(direct);REQUIRE(direct_queries);
+            const auto expected=f.read(*direct);scene.native_visibility=view;
+            auto actual=f.renderer->render(scene,&f.error,&actual_queries);INFO(f.error);REQUIRE(actual);REQUIRE(actual_queries);
+            CHECK(f.read(*actual)==expected);
+            for(unsigned index=0;index<queries.size();++index)
+            {
+                std::uint64_t expected_count=0,actual_count=0;
+                REQUIRE(direct_queries->wait(index,expected_count,&f.error));REQUIRE(actual_queries->wait(index,actual_count,&f.error));
+                CHECK(actual_count==expected_count);if(index==0)CHECK(expected_count>0);
+            }
+            const auto warm=v->stats();CHECK(warm.cohort_row_builds==cold.cohort_row_builds);
+            CHECK(warm.cohort_row_upload_bytes==cold.cohort_row_upload_bytes);
+            CHECK(warm.batched_cohort_dispatches-cold.batched_cohort_dispatches==1);
+            CHECK(warm.cohort_row_hits-cold.cohort_row_hits==group_count);
+        }
+    }
+}
+
+TEST_CASE("almetal: packed cohort descriptors preserve pending cameras and reclaim abandoned slot debt",
+          "[almetal][world-visibility][world-cohort]")
+{
+    @autoreleasepool
+    {
+        RetainedVisibilityFixture f(1);auto v=visibility(f);auto groups=unequalVisibilityGroups(f,2);
+        const auto logical=groups.back().logical_begin+groups.back().cohort->size()+1;
+        auto first=v->makeView({}, {},groups,logical,&f.error);REQUIRE(first);
+        auto old=f.device->makeCommandBuffer("Old packed cohort camera",&f.error);REQUIRE(old);
+        auto old_args=ALMetalWorldVisibility::encode(*old,*first,&f.error);INFO(f.error);REQUIRE(old_args);
+        const auto allocated=v->stats().cohort_descriptor_allocated_bytes;
+        auto old_completion=old->completionToken();old.reset();CHECK(old_completion->isComplete());old_args.reset();
+        // Abandon is synchronous: the same quiescent descriptor allocation can
+        // be reused while no command or borrowed arguments can still read it.
+        old=f.device->makeCommandBuffer("Reused packed cohort slot",&f.error);REQUIRE(old);
+        old_args=ALMetalWorldVisibility::encode(*old,*first,&f.error);REQUIRE(old_args);
+        CHECK(v->stats().cohort_descriptor_allocated_bytes==allocated);
+        auto moved=groups;moved[0].view.modelview_projection[12]=4;
+        // The second group also gets a genuinely new geometry/bounds row,
+        // rather than only changing the per-view descriptor's camera.
+        auto changed_cpu=std::make_shared<VisibilityCohortCpu>(*f.cpu);auto mesh=f.geometry;
+        for(auto& position:mesh.positions){position[2]=-.5f;position[3]=std::bit_cast<float>(1u);}
+        changed_cpu->sources[1].vertices=f.buffer(&mesh,sizeof(mesh));
+        auto changed_native=std::make_shared<Resources>(*f.resources);auto changed_records=f.records;
+        auto changed_bounds=triangleBounds();changed_bounds.minimum[2]=changed_bounds.maximum[2]=-.5f;
+        changed_records[1]=ALMetalWorldCohortSource::seal({{101,1,2},&changed_cpu->sources[1]},&f.error,&changed_bounds);REQUIRE(changed_records[1]);
+        moved[1].cohort=ALMetalWorldSourceCohort::seal(std::span(changed_records).first(2),changed_cpu,changed_native,8,&f.error);REQUIRE(moved[1].cohort);
+        moved[1].cpu_owner=changed_cpu;moved[1].native_owner=changed_native;
+        auto current=v->makeView({}, {},moved,logical,&f.error);REQUIRE(current);
+        auto next=f.device->makeCommandBuffer("New packed cohort camera",&f.error);REQUIRE(next);
+        auto next_args=ALMetalWorldVisibility::encode(*next,*current,&f.error);INFO(f.error);REQUIRE(next_args);
+        CHECK(v->stats().cohort_descriptor_allocated_bytes>allocated);
+        id<MTLSharedEvent> gate=[(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];REQUIRE(gate);
+        struct OpenGate{id<MTLSharedEvent> gate;~OpenGate(){gate.signaledValue=1;}} open{gate};
+        auto blocker=f.device->makeCommandBuffer("Hold both packed descriptor generations",&f.error);REQUIRE(blocker);
+        [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];REQUIRE(blocker->commit(&f.error));
+        REQUIRE(old->commit(&f.error));REQUIRE(next->commit(&f.error));
+        CHECK_FALSE(old->completionToken()->isComplete());CHECK_FALSE(next->completionToken()->isComplete());
+        const auto live=v->stats().live_cohort_descriptor_bytes;
+        v.reset();groups.clear();moved.clear();first.reset();current.reset();f.cohort.reset();f.records.clear();
+        gate.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));
+        ALMetalWorldIndexedArguments argument;
+        for(unsigned index:{1u,3u,4u})
+        {
+            REQUIRE(old_args->readCompletedArgumentForTesting(index,argument));CHECK(argument.index_count==(index==4?0:3));
+            REQUIRE(next_args->readCompletedArgumentForTesting(index,argument));CHECK(argument.index_count==(index==1?0:3));
+        }
+        CHECK(live>=2*4096);
+    }
+}
+
+TEST_CASE("almetal: packed cohort publication denial precedes row and descriptor allocation",
+          "[almetal][world-visibility][world-cohort][world-source-admission]")
+{
+    @autoreleasepool
+    {
+        RetainedVisibilityFixture f(2);auto v=visibility(f);auto groups=unequalVisibilityGroups(f,64);
+        const auto logical=groups.back().logical_begin+groups.back().cohort->size()+1;
+        auto view=v->makeView({}, {},groups,logical,&f.error);REQUIRE(view);
+        ALNativeFrameBudget budget;ALNativeFrameBudget::FrameInputs frame;frame.frame=1;budget.beginFrame(frame);
+        bool allow=false;unsigned calls=0;std::size_t requested=0;
+        f.data->setSourcePublicationAdmission([&](const ALMetalWorldSourcePublicationWork& work)->std::shared_ptr<const void>
+        {
+            ++calls;requested=work.chargedBytes();
+            return allow?budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,requested,1).credit:nullptr;
+        });
+        auto denied=f.device->makeCommandBuffer("Denied packed cohort publication",&f.error);REQUIRE(denied);
+        const auto allocations=alMetalResourceAllocationStats();
+        CHECK_FALSE(ALMetalWorldVisibility::encode(*denied,*view,&f.error,f.data.get()));CHECK(calls==1);
+        CHECK(v->stats().last_fallback==ALMetalWorldVisibilityFailure::admission);
+        CHECK(v->stats().cohort_row_builds==0);CHECK(v->stats().cohort_descriptor_upload_bytes==0);
+        CHECK(v->stats().live_cohort_descriptor_bytes==0);CHECK(alMetalResourceAllocationStats().buffers_created==allocations.buffers_created);
+        allow=true;auto admitted=f.device->makeCommandBuffer("Admitted packed cohort publication",&f.error);REQUIRE(admitted);
+        auto args=ALMetalWorldVisibility::encode(*admitted,*view,&f.error,f.data.get());INFO(f.error);REQUIRE(args);
+        std::size_t rows=0;for(const auto& group:groups)rows+=group.cohort->size();CHECK(requested==rows*48);
+        CHECK(budget.snapshot().scene_publications_in_flight==1);CHECK(budget.snapshot().scene_bytes_in_flight==rows*48);
+        auto completion=admitted->completionToken();admitted.reset();CHECK(completion->isComplete());
+        CHECK(budget.snapshot().scene_publications_in_flight==0);args.reset();
+        const auto allocated=v->stats().cohort_descriptor_allocated_bytes;const auto before=v->stats();
+        auto warm=f.device->makeCommandBuffer("Warm packed visibility has no cold ticket",&f.error);REQUIRE(warm);
+        auto warm_args=ALMetalWorldVisibility::encode(*warm,*view,&f.error,f.data.get());REQUIRE(warm_args);
+        CHECK(calls==2);CHECK(v->stats().cohort_row_upload_bytes==before.cohort_row_upload_bytes);
+        CHECK(v->stats().cohort_descriptor_allocated_bytes==allocated);CHECK(budget.snapshot().scene_publications_in_flight==0);
+        REQUIRE(warm->commitAndWait(&f.error));
+    }
+}
+
+TEST_CASE("almetal: packed descriptor physical debt preserves pending and borrowed readers before recovery",
+          "[almetal][world-visibility][world-cohort]")
+{
+    @autoreleasepool
+    {
+        RetainedVisibilityFixture f(1);auto v=visibility(f);auto group=f.view();
+        group.cohort=ALMetalWorldSourceCohort::seal(std::span(f.records).first(1),f.cpu,f.native,7,&f.error);REQUIRE(group.cohort);
+        // Many placements share ONE retained native row allocation. Descriptor
+        // debt, not the 8MiB source-row cap or 32-slot count, is the constraint.
+        constexpr unsigned placements=16384;std::vector<ALMetalWorldSourceCohortView> groups(placements,group);
+        for(unsigned index=0;index<placements;++index){groups[index].logical_begin=index;groups[index].base_before=0;}
+        auto view=v->makeView({},groups,placements,&f.error);INFO(f.error);REQUIRE(view);
+        std::vector<std::unique_ptr<ALMetalCommandBuffer>> commands;
+        std::vector<std::shared_ptr<ALMetalWorldVisibilityArguments>> arguments;
+        for(unsigned attempt=0;attempt<5;++attempt)
+        {
+            auto command=f.device->makeCommandBuffer("Bound physical packed descriptor debt",&f.error);REQUIRE(command);
+            auto result=ALMetalWorldVisibility::encode(*command,*view,&f.error);
+            if(!result){CHECK(v->stats().last_fallback==ALMetalWorldVisibilityFailure::cohort_descriptors);break;}
+            commands.push_back(std::move(command));arguments.push_back(std::move(result));
+        }
+        REQUIRE_FALSE(commands.empty());REQUIRE(commands.size()<=4);
+        const auto full=v->stats();CHECK(full.cohort_row_builds==1);CHECK(full.live_cohort_row_bytes<=8*1024*1024);
+        CHECK(full.live_cohort_descriptor_bytes<=full.cohort_descriptor_limit_bytes);
+        REQUIRE(full.fallback_reasons[static_cast<std::size_t>(ALMetalWorldVisibilityFailure::cohort_descriptors)]>0);
+        id<MTLSharedEvent> gate=[(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];REQUIRE(gate);
+        struct OpenGate{id<MTLSharedEvent> gate;~OpenGate(){gate.signaledValue=1;}} open{gate};
+        auto blocker=f.device->makeCommandBuffer("Hold packed descriptor readers pending",&f.error);REQUIRE(blocker);
+        [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];REQUIRE(blocker->commit(&f.error));
+        for(std::size_t index=1;index<commands.size();++index)
+        {REQUIRE(commands[index]->commit(&f.error));CHECK_FALSE(commands[index]->completionToken()->isComplete());}
+        auto abandoned=commands[0]->completionToken();commands[0].reset();CHECK(abandoned->isComplete());
+        auto retry=f.device->makeCommandBuffer("Borrowed completed descriptors remain protected",&f.error);REQUIRE(retry);
+        CHECK_FALSE(ALMetalWorldVisibility::encode(*retry,*view,&f.error));
+        CHECK(v->stats().last_fallback==ALMetalWorldVisibilityFailure::cohort_descriptors);
+        CHECK(v->stats().live_cohort_descriptor_bytes==full.live_cohort_descriptor_bytes);
+        // Only after BOTH native completion/abandon and CPU reader release is
+        // this allocation safe to overwrite. Other readers remain GPU-pending.
+        arguments[0].reset();auto recovered=ALMetalWorldVisibility::encode(*retry,*view,&f.error);INFO(f.error);REQUIRE(recovered);
+        CHECK(v->stats().cohort_descriptor_allocated_bytes==full.cohort_descriptor_allocated_bytes);
+        CHECK(v->stats().live_cohort_descriptor_bytes==full.live_cohort_descriptor_bytes);
+        REQUIRE(retry->commit(&f.error));gate.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));
+        ALMetalWorldIndexedArguments result;
+        REQUIRE(recovered->readCompletedArgumentForTesting(placements-1,result));CHECK(result.index_count==3);
+        for(std::size_t index=1;index<arguments.size();++index)
+        {REQUIRE(arguments[index]->readCompletedArgumentForTesting(placements-1,result));CHECK(result.index_count==3);}
     }
 }

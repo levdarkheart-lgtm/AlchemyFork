@@ -10429,15 +10429,19 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     }
     struct CohortBank
     {
-        const ALMetalWorldSourceCohortView* view=nullptr;
         std::shared_ptr<const ALMetalWorldSourceFrameView> frame;
         std::shared_ptr<const ALMetalWorldSourceCommands::Batch> bank;
         const ALMetalRenderPipeline* pipeline=nullptr;
-        std::size_t run=0;
-        bool emitted=false;
+        std::size_t count=0,run=0;
+    };
+    struct CohortBankRange
+    {
+        std::size_t logical_begin=0,logical_end=0,first=0,bank=0;
     };
     std::vector<CohortBank> cohort_banks;
+    std::vector<CohortBankRange> cohort_bank_ranges;
     std::size_t cohort_bank_cursor=0;
+    bool cohort_bank_prefix_emitted=false;
     if (scene.source_command_banks && scene.cohort_count)
     {
         const auto fallback=[&](ALMetalWorldSourceCommandFailure reason,std::size_t count)
@@ -10448,52 +10452,72 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         };
         for (std::size_t i=0;i<scene.cohort_count;++i)
             source_bank_stats.requested_draws+=scene.cohorts[i].cohort->size();
-        std::size_t at=0;
+        const auto same_region=[](const ALMetalWorldViewMatrices& a,const ALMetalWorldViewMatrices& b)
+        {
+            return !std::memcmp(a.modelview_projection,b.modelview_projection,64) &&
+                !std::memcmp(a.modelview,b.modelview,64) && !std::memcmp(a.normal_matrix,b.normal_matrix,48);
+        };
+        std::size_t at=0,requested_count=0;
         bool rows_requested=false;
         try
         {
-            cohort_banks.reserve(scene.cohort_count);
-            for (;at<scene.cohort_count;++at)
+            cohort_banks.reserve(scene.cohort_count);cohort_bank_ranges.reserve(scene.cohort_count);
+            ALMetalWorldSourceGlobals globals;
+            std::memcpy(globals.mirror_clip_plane,scene.mirror_clip_plane,sizeof(globals.mirror_clip_plane));
+            globals.flags[0]=scene.reverse_z;globals.flags[1]=scene.mirror_clip;globals.flags[2]=scene.normal_hdr;
+            while (at<scene.cohort_count)
             {
-                rows_requested=false;
-                const auto& view=scene.cohorts[at];
-                const auto count=view.cohort->size();
-                if (view.cohort->family()==0 || scene.native_visibility)
-                {fallback(ALMetalWorldSourceCommandFailure::unsupported,count);continue;}
+                rows_requested=false;requested_count=0;
+                const auto family=scene.cohorts[at].cohort->family();
+                if (family==0 || scene.native_visibility)
+                {fallback(ALMetalWorldSourceCommandFailure::unsupported,scene.cohorts[at++].cohort->size());continue;}
+                if (scene.cohorts[at].cohort->size()>alMetalWorldSourceMaximumRows)
+                {fallback(ALMetalWorldSourceCommandFailure::capacity,scene.cohorts[at++].cohort->size());continue;}
+                // A pass may span ordinary raw/ref gaps. Only actual shader,
+                // row-capacity or regional-transform incompatibility splits it.
+                std::unordered_map<std::uint64_t,const ALMetalWorldSourceCohortView*> regions;
+                std::size_t end=at,count=0;
+                for (;end<scene.cohort_count;++end)
+                {
+                    const auto& view=scene.cohorts[end];const auto n=view.cohort->size();
+                    if (view.cohort->family()!=family || n>alMetalWorldSourceMaximumRows-count)break;
+                    const auto identity=view.cohort->regionIdentity();const auto found=regions.find(identity);
+                    if (found!=regions.end() && !same_region(found->second->view,view.view))break;
+                    regions.try_emplace(identity,&view);count+=n;
+                }
                 if (count<std::max<std::uint32_t>(2,scene.source_command_minimum_run))
-                {fallback(ALMetalWorldSourceCommandFailure::short_run,count);continue;}
+                {fallback(ALMetalWorldSourceCommandFailure::short_run,count);at=end;continue;}
                 std::string optional_error;
-                const auto* pipeline=mImpl->sourcePipeline(scene.hdr,scene.normal_hdr,
-                    view.cohort->family()==2,&optional_error,true);
-                if (!pipeline) {fallback(ALMetalWorldSourceCommandFailure::pipeline,count);continue;}
-                mImpl->source_draw_stats.requested+=count;
-                rows_requested=true;
+                const auto* pipeline=mImpl->sourcePipeline(scene.hdr,scene.normal_hdr,family==2,&optional_error,true);
+                if (!pipeline) {fallback(ALMetalWorldSourceCommandFailure::pipeline,count);at=end;continue;}
+                mImpl->source_draw_stats.requested+=count;rows_requested=true;requested_count=count;
                 if (!mImpl->source_pages)
                     mImpl->source_pages=mImpl->frame_data
                         ? mImpl->frame_data->worldSourcePages(*mImpl->library,mImpl->max_anisotropy,&optional_error)
                         : ALMetalWorldSourcePages::create(*mImpl->device,*mImpl->library,mImpl->max_anisotropy,{},&optional_error);
-                ALMetalWorldSourceGlobals globals;
-                std::memcpy(globals.mirror_clip_plane,scene.mirror_clip_plane,sizeof(globals.mirror_clip_plane));
-                globals.flags[0]=scene.reverse_z;globals.flags[1]=scene.mirror_clip;globals.flags[2]=scene.normal_hdr;
+                const auto selection=std::span(scene.cohorts+at,end-at);
                 auto frame=mImpl->source_pages
-                    ? mImpl->source_pages->freezeCohortForCommand(*command,view,globals,&optional_error,mImpl->frame_data.get()) : nullptr;
+                    ? mImpl->source_pages->freezeCohortsForCommand(*command,selection,globals,&optional_error,mImpl->frame_data.get()) : nullptr;
                 if (!frame)
                 {
                     ++mImpl->source_draw_stats.setup_failures;mImpl->source_draw_stats.fallback+=count;
                     mImpl->source_draw_stats.last_failure="cohort-publication";
-                    fallback(ALMetalWorldSourceCommandFailure::source_setup,count);continue;
+                    fallback(ALMetalWorldSourceCommandFailure::source_setup,count);at=end;continue;
                 }
-                const auto membership=frame->commandMembership();
+                const auto membership=frame->commandMembership();const auto ranges=frame->cohortRanges();
+                bool valid=membership && frame->size()==count && membership->calls().size()==count && ranges.size()==selection.size();
                 std::size_t next=0;
-                bool valid=membership && frame->size()==count && membership->calls().size()==count;
-                if (valid)for (const auto& run:membership->runs())
+                // The private membership already certified every static call
+                // and raster run cold. Warm work checks only G dynamic ranges.
+                if (valid)for (std::size_t i=0;i<ranges.size();++i)
                 {
-                    if (run.first!=next || !run.count || run.count>count-next) {valid=false;break;}
-                    next+=run.count;
+                    const auto& range=ranges[i];
+                    if (range.logical_begin!=selection[i].logical_begin || range.first!=next ||
+                        range.count!=selection[i].cohort->size() || range.count>count-next) {valid=false;break;}
+                    next+=range.count;
                 }
-                if (!valid || next!=count)
-                {fallback(ALMetalWorldSourceCommandFailure::validation,count);continue;}
-                mImpl->source_draw_stats.last_failure="none";
+                if (!valid || next!=count || membership->runs().empty())
+                {fallback(ALMetalWorldSourceCommandFailure::validation,count);at=end;continue;}
                 if (!mImpl->source_commands)
                     mImpl->source_commands=mImpl->frame_data
                         ? mImpl->frame_data->worldSourceCommands(&optional_error)
@@ -10501,29 +10525,31 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 auto reason=ALMetalWorldSourceCommandFailure::unsupported;
                 auto bank=mImpl->source_commands
                     ? mImpl->source_commands->prepareCohortForCommand(*command,frame,&optional_error,&reason) : nullptr;
-                if (!bank) {fallback(reason,count);continue;}
-                if (bank->size()!=count) {fallback(ALMetalWorldSourceCommandFailure::validation,count);continue;}
-                // A complete immutable bank is qualified before any source in
-                // this cohort is emitted. Query/cull splits only select ranges.
-                cohort_banks.push_back({&view,std::move(frame),std::move(bank),pipeline,0});
-                mImpl->source_draw_stats.last_failure="none";
+                if (!bank) {fallback(reason,count);at=end;continue;}
+                if (bank->size()!=count) {fallback(ALMetalWorldSourceCommandFailure::validation,count);at=end;continue;}
+                const auto owner=cohort_banks.size();
+                cohort_banks.push_back({std::move(frame),std::move(bank),pipeline,count,0});
+                for (const auto& range:ranges)
+                {
+                    if (!cohort_bank_ranges.empty() && cohort_bank_ranges.back().bank==owner &&
+                        cohort_bank_ranges.back().logical_end==range.logical_begin)
+                        cohort_bank_ranges.back().logical_end+=range.count;
+                    else cohort_bank_ranges.push_back({range.logical_begin,range.logical_begin+range.count,range.first,owner});
+                }
+                mImpl->source_draw_stats.last_failure="none";at=end;
             }
         }
         catch (const std::bad_alloc&)
         {
             if (rows_requested)
             {
-                ++mImpl->source_draw_stats.setup_failures;
-                mImpl->source_draw_stats.fallback+=scene.cohorts[at].cohort->size();
+                ++mImpl->source_draw_stats.setup_failures;mImpl->source_draw_stats.fallback+=requested_count;
                 mImpl->source_draw_stats.last_failure="host-allocation";
             }
-            // The current whole cohort and untouched suffix stay on their
-            // existing direct shaders; completed earlier cohorts remain valid.
+            // No native range has emitted yet. Prepared earlier compositions
+            // remain valid; this whole suffix retains the required direct path.
             for (;at<scene.cohort_count;++at)
-            {
-                const auto count=scene.cohorts[at].cohort->size();
-                fallback(ALMetalWorldSourceCommandFailure::host_allocation,count);
-            }
+                fallback(ALMetalWorldSourceCommandFailure::host_allocation,scene.cohorts[at].cohort->size());
         }
     }
     auto encoder = ALMetalRenderEncoder::begin(
@@ -10713,42 +10739,43 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             break;
         }
         const auto* current_cohort=draw_cursor.cohort();
-        while (cohort_bank_cursor<cohort_banks.size() &&
-            cohort_banks[cohort_bank_cursor].view->logical_begin+
-                cohort_banks[cohort_bank_cursor].view->cohort->size()<=index)++cohort_bank_cursor;
-        if (current_cohort && cohort_bank_cursor<cohort_banks.size() &&
-            cohort_banks[cohort_bank_cursor].view==current_cohort && cohort_banks[cohort_bank_cursor].bank)
+        while (cohort_bank_cursor<cohort_bank_ranges.size() && cohort_bank_ranges[cohort_bank_cursor].logical_end<=index)
+            ++cohort_bank_cursor;
+        if (current_cohort && cohort_bank_cursor<cohort_bank_ranges.size() &&
+            cohort_bank_ranges[cohort_bank_cursor].logical_begin<=index)
         {
-            auto& bank=cohort_banks[cohort_bank_cursor];
-            const auto local=index-current_cohort->logical_begin;
-            const auto runs=bank.frame->commandMembership()->runs();
-            while (bank.run<runs.size() && runs[bank.run].first+runs[bank.run].count<=local)++bank.run;
-            if (bank.run==runs.size()) {encoded=false;break;}
-            const auto& run=runs[bank.run];
-            auto end=current_cohort->logical_begin+run.first+run.count;
-            if (visibility_index<scene.visibility_query_count)
-                end=std::min(end,scene.visibility_queries[visibility_index].batch_offset);
-            const auto count=end-index;
-            if (!count || local<run.first || !encoder->setIndexedTriangleJoining(false,error))
-            {encoded=false;break;}
-            std::string optional_error;
-            const bool executed=encoder->setCullMode(run.double_sided?ALMetalCullMode::none:ALMetalCullMode::back,&optional_error) &&
-                encoder->setPipeline(*bank.pipeline,&optional_error) &&
-                mImpl->source_commands->executeRange(*encoder,*command,*bank.bank,local,count,&optional_error);
-            if (executed)
+            const auto& range=cohort_bank_ranges[cohort_bank_cursor];auto& bank=cohort_banks[range.bank];
+            if (bank.bank)
             {
-                bank.emitted=true;source_bound_draws+=count;cohort_draws+=count;
-                source_bank_stats.bank_draws+=count;++source_bank_stats.execute_calls;
-                draw_cursor.advance(count-1);index+=count-1;continue;
+                const auto local=range.first+index-range.logical_begin;
+                const auto runs=bank.frame->commandMembership()->runs();
+                while (bank.run<runs.size() && runs[bank.run].first+runs[bank.run].count<=local)++bank.run;
+                if (bank.run==runs.size()) {encoded=false;break;}
+                const auto& run=runs[bank.run];
+                if (local<run.first) {encoded=false;break;}
+                auto end=index+std::min(range.logical_end-index,run.first+run.count-local);
+                if (visibility_index<scene.visibility_query_count)
+                    end=std::min(end,scene.visibility_queries[visibility_index].batch_offset);
+                const auto count=end-index;
+                if (!count || !encoder->setIndexedTriangleJoining(false,error)) {encoded=false;break;}
+                std::string optional_error;
+                const bool executed=encoder->setCullMode(run.double_sided?ALMetalCullMode::none:ALMetalCullMode::back,&optional_error) &&
+                    encoder->setPipeline(*bank.pipeline,&optional_error) &&
+                    mImpl->source_commands->executeRange(*encoder,*command,*bank.bank,local,count,&optional_error);
+                if (executed)
+                {
+                    cohort_bank_prefix_emitted=true;source_bound_draws+=count;cohort_draws+=count;
+                    source_bank_stats.bank_draws+=count;++source_bank_stats.execute_calls;
+                    draw_cursor.advance(count-1);index+=count-1;continue;
+                }
+                // No fallback/replay is legal after any native pass prefix.
+                // Before the first emission, this entire composition can use
+                // its original shaders, including later cohorts and raw gaps.
+                if (cohort_bank_prefix_emitted) {setError(error,"Metal cohort command range failed after emission");encoded=false;break;}
+                source_bank_stats.fallback_draws+=bank.count;
+                source_bank_stats.fallback_reasons[static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::execution)]+=bank.count;
+                source_bank_stats.last_fallback=ALMetalWorldSourceCommandFailure::execution;bank.bank.reset();
             }
-            // No part of this cohort may be replayed after an ICB range was
-            // emitted. An ensuing failure aborts this render transaction.
-            if (bank.emitted) {setError(error,"Metal cohort command range failed after emission");encoded=false;break;}
-            const auto remaining=current_cohort->cohort->size()-local;
-            source_bank_stats.fallback_draws+=remaining;
-            source_bank_stats.fallback_reasons[static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::execution)]+=remaining;
-            source_bank_stats.last_fallback=ALMetalWorldSourceCommandFailure::execution;
-            bank.bank.reset();
         }
         const auto draw = draw_cursor.draw();
         const ALMetalWorldSimpleBatch& batch = draw.source();

@@ -134,7 +134,9 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                             // Distinct copied per-view matrices; camera state
                             // is the fixture's explicit identity frontier.
                             REQUIRE(f.region.update(f.model,LLVector3(.01f*view,0.f,0.f)));
-                            capture.clearDraws();capture.complete=true;f.configure(capture,false,mode==2);
+                            // PPD-228: GroupSources banks retain ordinary raw
+                            // fallback; SourceRows is an independent request.
+                            capture.clearDraws();capture.complete=true;f.configure(capture,false,false);
                             capture.world_resources=std::make_shared<Inputs::WorldResources>();
                             Inputs::LLCullResult cull;
                             struct Pending{U32 type,raw_begin,count;};
@@ -196,6 +198,7 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                             if(capture.source_rows)
                             {value.candidate_bytes+=capture.source_rows->candidates.size()*sizeof(ALMetalWorldSourceView::Candidate);
                              value.regional_bytes+=capture.source_rows->regions.size()*sizeof(ALMetalWorldSourceRegion);}
+                            CHECK_FALSE(capture.source_rows); // PPD-228: explicit diagnostic only.
                             if(!capture.source_cohorts.empty())
                             {CHECK(capture.source_references.empty());CHECK((!capture.source_rows||capture.source_rows->candidates.empty()));}
                             arm.queries.resize(2);
@@ -307,6 +310,7 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                             <<" page_arena_views="<<value.page_arena_views<<" page_arena_cpu_copy_bytes="<<value.page_arena_bytes
                             <<" live_icb_allocated_bytes="<<value.icb_live_bytes<<" unique_retained_index_bytes="<<value.index_retained_bytes
                             <<" cached_banks="<<value.cached_banks<<" live_banks="<<value.live_banks<<" live_page_metadata_bytes="<<value.page_live_bytes
+                            <<" cached_compositions="<<pages.cached_compositions
                             <<" cached_cohort_rows="<<value.cached_cohort_rows<<" cached_cohort_cpu_metadata_bytes="<<value.cached_cohort_bytes
                             <<" cached_cohort_native_asset_bytes="<<value.cached_cohort_native_asset_bytes
                             <<" cached_cohort_native_asset_limit="<<value.cached_cohort_native_asset_limit
@@ -330,6 +334,7 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                         <<" capture_adopt_encode_reclaim_median_ms="<<median(encode)<<" capture_adopt_encode_reclaim_max_ms="<<*std::max_element(encode.begin(),encode.end())
                         <<" completion_and_query_settle_median_ms="<<median(complete)<<" completion_and_query_settle_max_ms="<<*std::max_element(complete.begin(),complete.end())
                         <<" gpu_sum_median_ms="<<median(gpu)<<" gpu_sum_max_ms="<<*std::max_element(gpu.begin(),gpu.end())
+                        <<" page_bank_hit_unit=ordered_composition implicit_scalar_source_rows=0"
                         <<" update_stride=16 independent_group_source_admission=1 independent_framedata_renderers_material_cache=1 paired_logical_frame=1"
                         <<" native_epoch_once_per_arm_frame=1 shared_exact_library=1 distinct_view_matrix_payloads=1 typed_identity_camera_frontier=1"
                         <<" dirty_raw_admission_before_seal=1 same_view_verified_replacement=1 cpu_and_gpu_scene_admission=1 synthetic_idle_budget_inputs=1"

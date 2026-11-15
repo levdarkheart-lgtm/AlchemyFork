@@ -5520,6 +5520,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Architecture renderer owner reports callsite outside its ownership; root allocates228 and exclusively patches pipeline.cpp in consumption worktree. Next229.
 
 
+- 2026-11-15: Root integrates capture policy, ordered renderer and actual mixed raw/cohort CPU/GPU-denial fixture for source38. Existing explicit SourceRows/nonGroupSources semantics retained; native execution pending.
+
 ## PPD-229 — Retained frustum visibility remains a net cost in cheap draw workloads
 
 - Status: investigating
@@ -5540,6 +5542,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Batched retained-cohort dispatch assigned as a bounded repair attempt; test-only heavier indexed mesh coverage assigned separately. No default activation or measured repair success yet.
 
 
+- 2026-11-15: Heavier baseline37 passes5532576/1 with144summary rows/6144raw samples, but many warm50% still loses GPU27.48–44.98% and CPU12.29–15.73%. Integrate one packed multi-cohort dispatch with separately bounded/reported native descriptor debt; native parity/cap/lifetime/admission and allcheap/heavy cost retests pending.
+
 ## PPD-230 — New heavy-mesh fixture can miss all target samples
 
 - Status: investigating
@@ -5556,3 +5560,5 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Fixture owner reports sampling trap before freeze; root assigns230 and retains attribution separately from production PPD229. Next231.
+
+- 2026-11-15: Source37 heavier gate5532576/1 passes non-clear depth coverage plus full output/query parity; phase correction and original cheap workload retained. Owner verification remains pending.

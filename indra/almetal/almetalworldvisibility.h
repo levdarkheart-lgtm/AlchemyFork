@@ -44,7 +44,8 @@ enum class ALMetalWorldVisibilityFailure : std::uint8_t
 {
     none, invalid_input, completion_tracking, bounds_allocation,
     arguments_busy, arguments_allocation, publication, retention, encoder,
-    host_allocation, admission, stale_plan, count
+    host_allocation, admission, stale_plan, cohort_batch_unsupported,
+    cohort_descriptors, count
 };
 struct ALMetalWorldVisibilityStats
 {
@@ -56,6 +57,11 @@ struct ALMetalWorldVisibilityStats
     std::uint64_t cohort_row_builds = 0, cohort_row_hits = 0, cohort_row_upload_bytes = 0;
     std::uint64_t cohort_row_allocated_bytes = 0;
     std::uint64_t live_cohort_row_bytes = 0, cached_cohort_rows = 0;
+    std::uint64_t cohort_dispatches = 0, batched_cohort_dispatches = 0;
+    std::uint64_t cohort_descriptor_upload_bytes = 0, cohort_descriptor_allocated_bytes = 0;
+    // Physical native allocations in all live argument slots, including
+    // borrowed/completed slots. Separate from the retained source-row cap.
+    std::uint64_t live_cohort_descriptor_bytes = 0, cohort_descriptor_limit_bytes = 0;
     std::uint64_t expanded_member_bytes = 0;
     std::uint64_t admission_requests = 0, admission_denials = 0, admitted_logical_bytes = 0;
     std::array<std::uint64_t, static_cast<std::size_t>(ALMetalWorldVisibilityFailure::count)> fallback_reasons{};

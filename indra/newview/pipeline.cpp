@@ -3133,13 +3133,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << stats.bound << '/' << stats.fallback << '/' << stats.setup_failures
                     << ", last_failure=" << stats.last_failure
                     << ", rows/hits/publications=" << stats.pages.rows << '/' << stats.pages.hits << '/' << stats.pages.row_publications
-                    << ", encoded/copied_page/copied_bank/view_bytes=" << stats.pages.encoded_row_bytes << '/'
-                    << stats.pages.copied_page_bytes << '/' << stats.pages.copied_bank_bytes << '/' << stats.pages.view_bytes
+                    << ", encoded_row/mapping/copied_page/copied_bank/view_bytes=" << stats.pages.encoded_row_bytes << '/'
+                    << stats.pages.encoded_mapping_bytes << '/' << stats.pages.copied_page_bytes << '/' << stats.pages.copied_bank_bytes << '/' << stats.pages.view_bytes
                     << ", publication_admission_requests/denials=" << stats.pages.admission_requests << '/' << stats.pages.admission_denials
                     << ", admitted_charged_logical_work_bytes=" << stats.pages.admitted_bytes
                     << ", cohort_cache_requests/hits/builds/failures=" << stats.pages.cohort_requests << '/' << stats.pages.cohort_hits
                     << '/' << stats.pages.cohort_builds << '/' << stats.pages.cohort_failures
-                    << ", cached_cohorts/rows/metadata_bytes=" << stats.pages.cached_cohorts << '/' << stats.pages.cached_cohort_rows
+                    << ", cached_compositions/cohorts/rows/metadata_bytes=" << stats.pages.cached_compositions << '/'
+                    << stats.pages.cached_cohorts << '/' << stats.pages.cached_cohort_rows
                     << '/' << stats.pages.cached_cohort_metadata_bytes
                     << ", cached_cohort_native_asset_bytes/cap=" << stats.pages.cached_cohort_native_asset_bytes
                     << '/' << stats.pages.cached_cohort_native_asset_limit
@@ -3213,6 +3214,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 LL_INFOS("MetalScene") << "Native retained visibility: compute_views/cohort_compute_views=" << visibility.views << '/' << visibility.cohort_views
                     << ", cohort_groups/candidates=" << visibility.cohort_groups << '/' << visibility.cohort_candidates
                     << ", cohort_row_builds/hits=" << visibility.cohort_row_builds << '/' << visibility.cohort_row_hits
+                    << ", cohort_dispatches/batched=" << visibility.cohort_dispatches << '/' << visibility.batched_cohort_dispatches
+                    << ", cohort_descriptor_upload/native_allocated_bytes=" << visibility.cohort_descriptor_upload_bytes << '/' << visibility.cohort_descriptor_allocated_bytes
+                    << ", live_cohort_descriptor_bytes/cap=" << visibility.live_cohort_descriptor_bytes << '/' << visibility.cohort_descriptor_limit_bytes
                     << ", cohort_row_upload_bytes=" << visibility.cohort_row_upload_bytes
                     << ", cohort_row_native_allocation_bytes=" << visibility.cohort_row_allocated_bytes
                     << ", expanded_base_member_bytes=" << visibility.expanded_member_bytes
@@ -3550,7 +3554,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     static LLCachedControl<bool> compact_inputs(gSavedSettings, "RenderMetalCompactInputs", false);
     static LLCachedControl<bool> source_rows(gSavedSettings, "RenderMetalSourceRows", false);
     static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
-    capture.beginSourceRows((source_rows() || source_banks()) && !capture.impostor_bake);
+    static LLCachedControl<bool> group_sources(gSavedSettings, "RenderMetalGroupSources", false);
+    // PPD-228: cohort banks must retain ordinary raw fallback. The older
+    // scalar route is explicit, or belongs to standalone non-cohort banks.
+    capture.beginSourceRows((source_rows() || (source_banks() && !group_sources())) && !capture.impostor_bake);
     capture.compact_gbuffer_active = compact_inputs() || capture.source_rows_active;
     if (capture.source_rows_active)
         for (const auto* region : LLWorld::getInstance()->getRegionList())

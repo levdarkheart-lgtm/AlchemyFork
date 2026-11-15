@@ -1054,3 +1054,50 @@ PPD230 mesh phase/non-empty depth assertion prevents empty-output parity.
 No production strategy or culling selection changes in this coverage commit.
 Native mesh execution is pending. Root and independent review retain exact
 frozenfile SHA3125403a560101b75c6afe90238be9123cb3c0ea11e2adf68c4851264442d50f.
+
+
+## Source37 heavier baseline passes; source38 integrated freeze
+
+Exact5c04df69e7,26.4.0.69078, required37 doctor/configure/build0(29.819s),
+static346ARM64/signatures/source/imports/features/defaultsPASS. The almetal_tests
+executable and builtin metallib are byte-identical to35; llcommon_tests also
+matches35. native-binary-equivalence-35-37.json records hashes and scoped reuse
+of35native evidence; changed llrender re-executes actualproducer14269/58 and
+region64/5, bothPASS with API/GPU validation.
+
+Original cheap504row/14064sample gate passes6068160/1(68.750s), including new
+geometry-count checks. New heavier144row/6144sample gate passes5532576/1
+(48.156s), including non-clear depth and full MRT/depth/stencil/query parity.
+Heavy meshes do not rescue current many-group dispatch: warmactual50% loses
+CPU12.29–15.73%, settlement6.20–19.19%, GPU27.48–44.98% versus direct cohorts.
+64x2x1/3072indices GPU0.455875→0.629187ms;256x4x1/768 GPU1.66517→2.41412ms.
+Warm row uploads/expanded members/new row allocations/tickets/fallback arezero;
+this isolates remaining work, not viewer FPS. PPD229 stays open, defaultsOFF.
+
+Source38 integrates two independently frozen mechanisms, not shader speculation:
+ordered world renderer compositions and batched retained visibility. Existing
+banks/visibility exclusivity remains explicit. Renderer chunks split only on
+family,4096call capacity or actual same-region176B matrix disagreement. One
+FrameView/membership/bank per eligible ordered chunk, O(G) warm range proof,
+aggregate minimum-run, raw gaps/query/cull offsets and native-only retirement
+are tested. No fallback/replay after a bank prefix; first-emission failure keeps
+whole-composition ordinary native rendering. PPD228 removes implicit scalar
+SourceRows under GroupSources, with mixed raw/cohort CPU/GPU-denial output tests.
+
+Visibility G1/raw kernels remain unchanged. Multi-cohort uses one packed1D
+compute dispatch over G96B descriptors/prefixes, exact old8corner predicate,
+logical destinations and runtime Tier2/nonzero native GPU addresses. The same
+command-owned slot retains indirect row resources and descriptor allocation;
+useResourcesRead declares residency. Descriptor physical debt is separately
+bounded8MiB across pending/borrowed/idle slots; existing32slots/65536records/
+8MiBsource-row limits and shared cold publication admission remain intact.
+Four new native cases cover64/256unequal groups/raw holes/queries, pending old/
+new geometry/bounds/cameras, denial/abandon/warm0tickets, and true descriptor-cap
+rejection/borrowed-reader protection/recovery with shared one-row certificates.
+No source CPU expansion, readback, conditional GPU ICB or occlusion is claimed.
+
+Root integration adds composition/mapping census and per-cost dispatch/descriptor
+upload/allocation/live/cap counters, retaining original cheap and heavy matrices.
+Independent renderer review found no concrete blocker; final batched peer review
+and required38/native/allfourcost gates follow. All unexecuted gates arepending.
+Owner69065 app/launcher remains untouched; no viewer/profile/push/full-goal claim.

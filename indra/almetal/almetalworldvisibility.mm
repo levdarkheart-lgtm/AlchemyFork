@@ -11,17 +11,37 @@
 #include <unordered_map>
 #include <map>
 #include <atomic>
+#include <cstddef>
 
 namespace
 {
 constexpr std::size_t maximum_records=65536, maximum_argument_slots=32;
 constexpr std::size_t maximum_cached_cohorts=2048, maximum_cohort_row_bytes=8*1024*1024;
+constexpr std::size_t maximum_cohort_descriptor_bytes=8*1024*1024;
 struct alignas(16) CohortRecord
 {
     float minimum[4]{},maximum[4]{};
     std::uint32_t config[4]{}; // index count, qualification; never viewer pointers.
 };
 static_assert(sizeof(CohortRecord)==48);
+// Tier-2 GPU addresses, not CPU pointers. Keep these offsets identical to
+// CohortDispatch in the visibility shader; each prefix covers nonempty rows.
+struct alignas(16) CohortDispatch
+{
+    std::uint64_t rows_address=0,reserved=0;
+    float matrix[16]{};
+    std::uint32_t config[4]{}; // count, logical destination, packed prefix
+};
+static_assert(sizeof(CohortDispatch)==96);
+static_assert(offsetof(CohortDispatch,matrix)==16);
+static_assert(offsetof(CohortDispatch,config)==80);
+struct CohortDescriptors
+{
+    std::unique_ptr<ALMetalBuffer> buffer;
+    std::shared_ptr<std::atomic<std::size_t>> live;
+    std::size_t bytes=0;
+    ~CohortDescriptors(){if(live)live->fetch_sub(bytes,std::memory_order_relaxed);}
+};
 struct CohortRows
 {
     std::unique_ptr<ALMetalBuffer> buffer;
@@ -57,6 +77,7 @@ struct ALMetalWorldVisibilityArguments::Impl
     std::vector<std::array<std::uint32_t,2>> admitted; // original index count, enabled
     std::unique_ptr<ALMetalBuffer> destinations;
     std::vector<std::shared_ptr<CohortRows>> cohort_rows;
+    std::unique_ptr<CohortDescriptors> cohort_descriptors;
     std::uint64_t generation=0;
 };
 struct ALMetalWorldVisibility::Impl
@@ -66,6 +87,7 @@ struct ALMetalWorldVisibility::Impl
     std::unique_ptr<ALMetalShaderLibrary> library;
     id<MTLComputePipelineState> pipeline=nil;
     id<MTLComputePipelineState> cohort_pipeline=nil;
+    id<MTLComputePipelineState> cohort_batch_pipeline=nil;
     std::vector<BoundsRecord> records;
     std::vector<bool> dirty;
     std::vector<std::uint32_t> free_slots;
@@ -80,6 +102,7 @@ struct ALMetalWorldVisibility::Impl
     std::map<std::weak_ptr<const ALMetalWorldSourceCohort>,CohortEntry,
         std::owner_less<std::weak_ptr<const ALMetalWorldSourceCohort>>> cohort_cache;
     std::shared_ptr<std::atomic<std::size_t>> live_cohort_bytes=std::make_shared<std::atomic<std::size_t>>(0);
+    std::shared_ptr<std::atomic<std::size_t>> live_descriptor_bytes=std::make_shared<std::atomic<std::size_t>>(0);
 };
 struct ALMetalWorldVisibilityView::Impl
 {
@@ -187,6 +210,14 @@ try
     auto cohort_function=[library newFunctionWithName:@"almetal_world_visibility_cohort_arguments"];
     impl->cohort_pipeline=[impl->native_device newComputePipelineStateWithFunction:cohort_function error:nil];
     if(!impl->cohort_pipeline){fail(error,"Could not compile retained cohort visibility");return {};}
+    // The old direct-buffer kernels remain available without this optional
+    // pointer-descriptor capability. Multi-cohort requests fail to direct
+    // rendering when the exact native support cannot be proved.
+    if(impl->native_device.argumentBuffersSupport==MTLArgumentBuffersTier2)
+    {
+        auto batch_function=[library newFunctionWithName:@"almetal_world_visibility_cohorts_arguments"];
+        if(batch_function)impl->cohort_batch_pipeline=[impl->native_device newComputePipelineStateWithFunction:batch_function error:nil];
+    }
     impl->free_slots.reserve(maximum_records);
     return std::shared_ptr<ALMetalWorldVisibility>(new ALMetalWorldVisibility(std::move(impl)));
 }
@@ -332,6 +363,9 @@ try
     {fallback(owner.statistics,reason);fail(error,text);return {};};
     if(command.isCommitted() || command.nativeDevice()!=(__bridge void*)owner.native_device || !logical_count)
         return reject("Shared visibility requires an uncommitted matching command and members");
+    const bool batched=cohorts.size()>1;
+    if(batched && !owner.cohort_batch_pipeline)
+        return reject("Packed cohort visibility requires native Tier-2 GPU addresses",ALMetalWorldVisibilityFailure::cohort_batch_unsupported);
     auto completion=command.completionToken();if(!completion)return reject("Shared visibility requires completion tracking",ALMetalWorldVisibilityFailure::completion_tracking);
     std::shared_ptr<ALMetalWorldVisibilityArguments::Impl> slot;
     for(const auto& candidate:owner.slots)
@@ -502,6 +536,60 @@ try
         }
         cohort_candidates+=rows->qualified;slot->cohort_rows.push_back(std::move(rows));
     }
+    std::vector<void*> indirect_rows;
+    std::size_t packed_count=0;
+    if(batched)
+    {
+        std::vector<CohortDispatch> descriptors(cohorts.size());indirect_rows.reserve(cohorts.size());
+        for(std::size_t index=0;index<cohorts.size();++index)
+        {
+            const auto& rows=*slot->cohort_rows[index];
+            id<MTLBuffer> native=(__bridge id<MTLBuffer>)rows.buffer->nativeHandle();
+            const auto address=native.gpuAddress;
+            if(!address || native.device!=owner.native_device)
+                return reject("Retained visibility row GPU address is unavailable",ALMetalWorldVisibilityFailure::cohort_batch_unsupported);
+            auto& descriptor=descriptors[index];descriptor.rows_address=address;
+            std::memcpy(descriptor.matrix,cohorts[index].view.modelview_projection,sizeof(descriptor.matrix));
+            descriptor.config[0]=static_cast<std::uint32_t>(rows.count);
+            descriptor.config[1]=static_cast<std::uint32_t>(cohorts[index].logical_begin);
+            descriptor.config[2]=static_cast<std::uint32_t>(packed_count);packed_count+=rows.count;
+            indirect_rows.push_back((__bridge void*)native);
+        }
+        const auto bytes=descriptors.size()*sizeof(CohortDispatch);
+        if(!slot->cohort_descriptors || slot->cohort_descriptors->buffer->length()<bytes)
+        {
+            std::size_t capacity=4096;while(capacity<bytes)capacity*=2;
+            if(capacity>maximum_cohort_descriptor_bytes)
+                return reject("Packed visibility descriptor capacity is exhausted",ALMetalWorldVisibilityFailure::cohort_descriptors);
+            // Only completed, unborrowed slots may release their arena debt.
+            // The selected slot is also quiescent; its extra local owner is
+            // not a reader. Pending/borrowed descriptor generations survive.
+            slot->cohort_descriptors.reset();
+            auto retained=owner.live_descriptor_bytes->load(std::memory_order_relaxed);
+            if(retained>maximum_cohort_descriptor_bytes-capacity)
+                for(const auto& candidate:owner.slots)
+                    if(candidate!=slot && candidate.use_count()==1 &&
+                       (!candidate->consumer || candidate->consumer->isComplete()))
+                        candidate->cohort_descriptors.reset();
+            retained=owner.live_descriptor_bytes->load(std::memory_order_relaxed);
+            if(retained>maximum_cohort_descriptor_bytes-capacity)
+                return reject("Packed visibility physical descriptor capacity is exhausted",ALMetalWorldVisibilityFailure::cohort_descriptors);
+            auto allocation=std::make_unique<CohortDescriptors>();
+            ALMetalBufferDescriptor descriptor;descriptor.length=capacity;descriptor.storage=ALMetalStorageMode::shared;
+            descriptor.label="Alchemy packed cohort visibility descriptors";
+            allocation->buffer=ALMetalBuffer::create(*owner.device,descriptor,error);
+            if(!allocation->buffer)return reject("Could not allocate packed visibility descriptors",ALMetalWorldVisibilityFailure::cohort_descriptors);
+            const auto allocated=[(__bridge id<MTLBuffer>)allocation->buffer->nativeHandle() allocatedSize];
+            if(!allocated || allocated<capacity || allocated>maximum_cohort_descriptor_bytes-retained)
+                return reject("Packed visibility physical descriptor capacity is exhausted",ALMetalWorldVisibilityFailure::cohort_descriptors);
+            allocation->live=owner.live_descriptor_bytes;allocation->bytes=allocated;
+            allocation->live->fetch_add(allocated,std::memory_order_relaxed);
+            owner.statistics.cohort_descriptor_allocated_bytes+=allocated;slot->cohort_descriptors=std::move(allocation);
+        }
+        if(!slot->cohort_descriptors->buffer->write(0,descriptors.data(),bytes,error))
+            return reject("Could not publish packed visibility descriptors",ALMetalWorldVisibilityFailure::publication);
+        owner.statistics.cohort_descriptor_upload_bytes+=bytes;
+    }
     slot->bounds=raw_bounds?owner.current:nullptr;slot->consumer=completion;slot->generation=slot->bounds?slot->bounds->serial:0;
     slot->native_command=(__bridge id<MTLCommandBuffer>)command.nativeHandle();
     auto result=std::shared_ptr<ALMetalWorldVisibilityArguments>(new ALMetalWorldVisibilityArguments(slot,view.mImpl));
@@ -523,9 +611,24 @@ try
         [encoder setBuffer:(__bridge id<MTLBuffer>)destinations->nativeHandle() offset:0 atIndex:4];
         [encoder dispatchThreads:MTLSizeMake(members.size(),1,1) threadsPerThreadgroup:MTLSizeMake(32,1,1)];
     }
-    struct alignas(16) CohortViewData{float matrix[16];std::uint32_t config[4];};
-    for(std::size_t index=0;index<cohorts.size();++index)
+    if(batched)
     {
+        [encoder setComputePipelineState:owner.cohort_batch_pipeline];
+        [encoder setBuffer:(__bridge id<MTLBuffer>)slot->cohort_descriptors->buffer->nativeHandle() offset:0 atIndex:0];
+        [encoder setBuffer:(__bridge id<MTLBuffer>)slot->arguments->nativeHandle() offset:0 atIndex:1];
+        const std::array<std::uint32_t,4> counts{static_cast<std::uint32_t>(packed_count),static_cast<std::uint32_t>(cohorts.size()),0,0};
+        [encoder setBytes:counts.data() length:sizeof(counts) atIndex:2];
+        // A GPU address neither retains its allocation nor declares residency.
+        // The command-owned slot supplies lifetime; declare the complete union.
+        const auto* resources=reinterpret_cast<id<MTLResource> __unsafe_unretained const*>(indirect_rows.data());
+        [encoder useResources:resources count:indirect_rows.size() usage:MTLResourceUsageRead];
+        [encoder dispatchThreads:MTLSizeMake(packed_count,1,1) threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+        ++owner.statistics.cohort_dispatches;++owner.statistics.batched_cohort_dispatches;
+    }
+    else if(!cohorts.empty())
+    {
+        constexpr std::size_t index=0;
+        struct alignas(16) CohortViewData{float matrix[16];std::uint32_t config[4];};
         CohortViewData data{};std::memcpy(data.matrix,cohorts[index].view.modelview_projection,sizeof(data.matrix));
         data.config[0]=static_cast<std::uint32_t>(slot->cohort_rows[index]->count);
         data.config[1]=static_cast<std::uint32_t>(cohorts[index].logical_begin);
@@ -534,6 +637,7 @@ try
         [encoder setBytes:&data length:sizeof(data) atIndex:1];
         [encoder setBuffer:(__bridge id<MTLBuffer>)slot->arguments->nativeHandle() offset:0 atIndex:2];
         [encoder dispatchThreads:MTLSizeMake(slot->cohort_rows[index]->count,1,1) threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+        ++owner.statistics.cohort_dispatches;
     }
     [encoder endEncoding];++owner.statistics.views;owner.statistics.argument_candidates+=candidates+cohort_candidates;
     owner.statistics.expanded_member_bytes+=members.size()*sizeof(ALMetalWorldVisibilityMember);
@@ -549,6 +653,8 @@ catch(const std::bad_alloc&)
 ALMetalWorldVisibilityStats ALMetalWorldVisibility::stats() const noexcept
 {
     auto value=mImpl->statistics;value.live_cohort_row_bytes=mImpl->live_cohort_bytes->load(std::memory_order_relaxed);
+    value.live_cohort_descriptor_bytes=mImpl->live_descriptor_bytes->load(std::memory_order_relaxed);
+    value.cohort_descriptor_limit_bytes=maximum_cohort_descriptor_bytes;
     for(const auto& [owner,entry]:mImpl->cohort_cache)value.cached_cohort_rows+=entry.rows->count;
     return value;
 }
