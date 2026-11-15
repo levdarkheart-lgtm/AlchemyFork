@@ -80,7 +80,7 @@ TEST_CASE("Actual same-frame main and probe source factories distinguish entry o
                 const bool expected_hit = view != 0 && (admitted || retain_cpu_reader);
                 if (view && !admitted) CHECK(metadata[row].expired() == !retain_cpu_reader);
                 auto lease = world(info, flavor, residency, Inputs::sNativeSceneSerial, frame);
-                INFO(lease.failure ? lease.failure : ""); REQUIRE(lease);
+                INFO((lease.failure ? lease.failure : "")); REQUIRE(lease);
                 CHECK(lease.reused == expected_hit);
                 if (lease.reused) ++hits; else ++builds;
                 REQUIRE(lease.owner->worlds.size() == 1);

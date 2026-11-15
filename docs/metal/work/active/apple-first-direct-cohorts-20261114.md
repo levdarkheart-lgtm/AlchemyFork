@@ -1923,3 +1923,17 @@ Opaque exclusiveworld/cohort/visibility .h/.mm/.cpp; architecture onlyNEWnative
 andactualcostappendices, rootpipeline/settings/EOF/docs/build. Source-qualified
 bounds only, conservativeunknown/rounding failvisible, queryoffsetbeforeCPUskip,
 no GPUbankbypass. DefaultOFFuntilcompletecosts, capsunchanged. Next272.
+
+
+Source58/4870b28117 doctor/configure0, build1 after19.792s: PPD272 newfixture
+CatchINFO conditional requires parentheses. Registered before narrowfixturefix;
+allproduction unchanged, no native58 execution. Preserve failedreceipt/log.
+PPD273 newCPUvisibilityWIPtestunioncontract +thirdarmparityfooter registered
+beforeauthorcorrection. No production issue/runtimefault or run claimed.
+
+Saved69085 numeric census source6af308d165: deviceworkingSet62,277,025,792B;
+nativebyteslimit/16=3,892,314,112B(3712MiB), reached in35measuredsamples;
+NativeWSentriesmax2904below8192. CPUlayouts2048all35samples, rows3155–3171
+below8192, estimatedbytes29.63–29.76MBbelow32MiB;110evictions,0rejections.
+WrapperestimatesarenotphysicalGPUallocations. Whichmissesfollowbytevsagevs
+producerchanges remainsunknown; addbranchreasoncensus beforeanycapdecision.

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-272 -->
+<!-- next-defect-id: PPD-274 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6458,3 +6458,38 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before the alternative native CPU visibility implementation. No shader change, geometry reduction, cap increase or default activation is authorized by source inspection alone. CPU/GPU numerical disagreement must fail visible.
+
+
+## PPD-272 — New source-cache lifetime fixture fails Catch INFO expression parsing
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Catch INFO streams its argument; an unparenthesized conditional expression binds after stream insertion.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md); `artifacts/metal/apple-first-persistent-native-scene-20261114/frozen-source-build-58.json` and build log.
+- Next action: Parenthesize only the fixture diagnostic conditional, rebuild, then execute the unchanged cache lifetime assertions.
+- Verification: Source4870b28117 doctor/configure exit0; build exit1 after19.792s at new fixture line83. No source58 native execution or successful combined build claimed. Production renderer unchanged.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 failure registered before fixture correction. Preserve source58 receipts and exact error; no viewer runtime defect inferred.
+
+## PPD-273 — New CPU visibility fixtures misread partial-union contract and omit third-mode parity
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / CPU visibility fixture author
+- Discovered: 2026-11-15
+- Original reference: Qualified union covers known rows only; renderer checks all-qualified before coarse rejection. Three-arm cost comparisons must include both retained and CPU visibility outputs against raw.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md); author pre-execution source review in published-cpu-visibility worktree, no execution yet.
+- Next action: Assert known union and two-of-three qualification while proving unknown row remains visible; compare raw against BOTH other arms in the cost parity footer.
+- Verification: WIP fixture-only errors identified before integration/build. No production fault, run failure or performance result claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before narrow corrections; preserve MRT/depth/query parity and numerical conservatism coverage.
