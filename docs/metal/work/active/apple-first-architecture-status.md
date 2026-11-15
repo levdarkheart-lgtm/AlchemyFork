@@ -1,7 +1,7 @@
 # Apple-first architecture implementation status
 
-Updated 2026-11-15. The original whole-engine goal remains **active for owner
-acceptance**. The named Goals1–5 mechanisms are implemented and integrated; a
+Updated 2026-11-15. The original whole-engine goal is **blocked on owner runtime
+acceptance** after three consecutive dependency audits. The named Goals1–5 mechanisms are implemented and integrated; a
 bounded [source audit](../../research/apple-first-engineering-delivery-20261115.md)
 found no additional required implementation callsite. This does not establish
 a whole-viewer performance gain or complete the product release gates.
@@ -67,3 +67,10 @@ not executed. Evidence root is the canonical checkout’s ignored
 
 [Owner run card](apple-first-owner-evaluation-69122.md) pins69122 and the previous
 native69085 trial, settings/workload context and outstanding whole-engine evidence.
+
+Post-delivery audits02/03 revalidated the clean3d06bdb708 worktree, verified
+source72 candidate and missing runtime acceptance. No independent mandatory
+implementation/staging work was identified. Completion is unproved; the full
+objective is retained. Next action is owner combined-viewer feedback or
+subsequent explicit runtime authorization under the existing goal restriction.
+Do not rerun passing checks or invent additional phases to fill this dependency.
