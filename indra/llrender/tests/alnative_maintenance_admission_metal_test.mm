@@ -39,7 +39,8 @@ struct Fixture : ll_test::NativeFontUI
                 std::memcpy(pixels[mip].data()+at,&colors[mip],4);
             levels[mip]={pixels[mip].data(),width,width};
         }
-        REQUIRE(value->createMetalTexture(0,std::span(levels).first(mips?4:1)));
+        if(mips)REQUIRE(value->createMetalTexture(0,std::span(levels)));
+        else REQUIRE(value->createMetalTexture(0,pixels[0].data()));
         REQUIRE(value->getMetalTexture());return value;
     }
     std::vector<U8> pixels(const ALMetalTexture& value)

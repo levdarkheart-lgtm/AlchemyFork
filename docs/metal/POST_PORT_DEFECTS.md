@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-282 -->
+<!-- next-defect-id: PPD-286 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6164,6 +6164,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 source audit registered before implementation. Existing lazy/shared slot work is retained; probe churn/performance attribution remains unproved until runtime reasons and complete costs support it.
 
 
+- 2026-11-15 follow-up source audit: when private cohort proof expires but weak MaterialSource survives, expand creates authored slots before publish clones sealed slots again because snapshot identities differ. Candidate reuse of already-live sealed CPU snapshots requires existing exact producer/generation checks; no implementation or new retained GPU owner authorized yet, significance unproved.
+
 ## PPD-257 — Probe sky fixture omits the actual HDRI G-buffer marker
 
 - Status: ready_for_owner
@@ -6633,7 +6635,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-281 — New mixed CPU visibility fixture requires a positive query under reverse-Z
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator / CPU visibility fixture author
 - Discovered: 2026-11-15
@@ -6647,3 +6649,78 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 failed reference fixture registered before investigation/repair; preserve exact60receipt/log.
+
+
+- 2026-11-15 observed verification: repaired CPU visibility suite1780assertions/4cases passes61 underAPI/GPU validation with positive reverse-Z query and all parity assertions retained. Actual cost3674320/1 also passes. Owner runtime acceptance pending.
+
+## PPD-282 — System-avatar view palettes lose immutable identity after composition
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / native body palette author
+- Discovered: 2026-11-15
+- Original reference: Existing LLViewerJointMesh world-pose publication preserves original ordered joint/pivot calculation. Camera-specific buildJointMatrixPalette remains required, but main/probe/forward and shadow consumers expose its180floats only as raw pointers.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), exact9182fbeb7e body capture/adoption/validation/publication audit.
+- Next action: Publish a privately sealed view-specific body palette, pin its CPU owner through capture/adoption, and use exact typed identity for validation/native frame publication. Preserve original180float shader layout and all per-view composition.
+- Verification: Main capture15316/shadow14477 allocate raw180float arrays; ViewInputs snapshots them, validation rescans them and frame publication hashes them. Attachment proof excludes avatar_skinning, so prior243 does not cover body. No cross-view matrix reuse or measured FPS attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before body ownership bridge implementation. Gate complete composition/capture/adoption/encode/retirement cost and resource-byte amplification; no shader/animation/quality/scheduler change.
+
+
+## PPD-283 — New maintenance fixture uses authored-mip overload for a non-mip image
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: LLImageGL::createMetalTexture(span<MetalMipLevel>) requires mUseMipMaps and a complete authored chain. Non-mip images use the existing raw-pixel overload.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), native-correctness-61-native-maintenance-and-generations.log.
+- Next action: Use the raw-pixel overload only for the new fixture's non-mip branch, preserve authored-chain branch and all native maintenance assertions, then retest.
+- Verification: Source61 required/static/strict pass69109; common5585/44, pressure174/23 pass. Combined old/new texture scopes646/649assertions,15/18cases pass. Allthree new cases stop at non-mip fixture setup before exercising maintenance. Production defect not established; no CPU visibility/cost61 execution yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 failure registered before fixture-only overload correction. Preserve failed61receipt/log, no maintenance pass claim.
+
+
+## PPD-284 — Published CPU visibility repeats eight corner transforms for wholly visible bounds
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator / conservative visibility author
+- Discovered: 2026-11-15
+- Original reference: Current classifier transforms eight AABB corners and repeats component/plane checks. Qualified box support intervals can establish the same conservative frustum result with fewer operations.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), actual-published-cpu-visibility-summary-61.json.
+- Next action: Replace repeated corner work with conservative affine/support intervals and preserve finite/subnormal/overflow/eye and rounding safeguards; gate exact native parity and the same complete actual cost frontier.
+- Verification: Source61 CPU parity1780/4 and full48condition cost3674320/1 pass. Against retained direct, warm50%outside improvesCPU8/8median12.55%,completion8/8median9.21%; all-visible CPU loses8/8median4.41%, churn all-visible loses8/8median5.97%. No default activation or FPS claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 measured before classifier optimization. Preserve all61receipts; do not hide all-visible/cold debt or compare only against raw.
+
+## PPD-285 — New body-palette fixtures misstate scene inputs and comparison policy
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex body-palette fixture author
+- Discovered: 2026-11-15
+- Original reference: Adopted scene must advertise both authored batches; negative mixed-proof fixture must retain a real shared attachment record using its actual API.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), body-palette worktree pre-execution source review.
+- Next action: Set batch_count2 for the mixed scene and retain a live shared attachment record, preserving all negative proof assertions.
+- Verification: WIP fixture only; no integration/build/runtime failure claimed. Author found a count1 scene and nonexistent owner() call on a temporary attachment record.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before narrow fixture corrections.
+
+- 2026-11-15 pre-execution peer also finds shadow raw/record parity used different depth_clamp values. Registered under the same new-fixture authoring record before correction: select identical clamp policy within each pair and cover both policies across the existing format tuples. Retain positive, output/depth/query and ownership assertions; coverage is four HDR/normalHDR tuples with correlated reverse-Z, not eight independent tuples.

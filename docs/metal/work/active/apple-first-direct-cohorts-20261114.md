@@ -2008,3 +2008,26 @@ costsupportsconcreteselection; no bank/workeractivation. ThenupdateCURRENT/
 checklist/register andcontinue remainingcache/admission+wholeengine boundaries.
 Existingstaged69102immutable. No viewerlaunch/login/profile/push. Allauthors
 frozen/terminal; no unresolvedsourceownership. Nextdefect282.
+
+
+Required61/ba0a5063b3/69109 doctor/configure/build0 (full1442jobs804.100s),
+static/strictPASS. Initialscopedcommon5585/44,queue174/23PASS; old/newtexture
+646/649assertions15/18casesPASS, all3newmaintenancecases stopatnon-mipsetup:
+PPD283spanmipoverloadrequiresmUseMipMaps; fixture nowusesrawpixeloverloadfor
+non-mip andkeepsauthoredchain. No productionfix/maintenancePASSclaim yet.
+2575/29447terminal. Independent61remaining74057terminal0: actual21713/77,
+CPUvisibility1780/4allPASS underAPI/GPUvalidation. New48conditioncost3674320/1
+PASS16.230s,144summaryrows; originalfailed61scope receipt/log retained.
+
+Actual61CPUvsretaineddirect warm50%outside CPU8/8median−12.55%,complete8/8
+−9.21%,GPU8/8−7.15%; churn50% CPU8/8−7.39%,complete8/8−7.17%.
+AllvisibleCPUwarm8/8worsemedian+4.41%,churn8/8+5.97%; coldCPUall16worse
+median+5.37%allvisible/+3.46%halfoutside. Versusraw containsotherretainedbenefits,
+notisolatedvisibilitycausality. CPUvisibilitystaysOFF; noFPSclaim.
+
+PPD284affinesupportintervalclassifier+3CPUoraclecases integratedafterpeerPASS;
+API/shaders/caps unchanged; same48conditioncost next62. PPD281reversefixture
+repairnow1780/4PASS. PPD282bodyproduction7files+2appendicespeerfrozen separately;
+rootactualsharedhelperand2pipelinecallers/ownervectorsareWIPUNSTAGED, notpart
+of62checkpoint. PPD285fixturecounts/attachmentowner/clamp-policy corrections
+registeredbeforefix, noexecutedbodyfailure. Originalgoalunchanged, next286.
