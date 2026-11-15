@@ -863,3 +863,23 @@ completed engineering step, not a replacement definition of the architecture.
 Pre-freeze retained-visibility review finds PPD219: bounds-only optional promotion can reject a valid current-reader transient after child-cache withdrawal. Registered before extending only the exact transient fallback guard; revision/newer replacement and195/205 protections remain required. Implementation/native execution pending; next220.
 
 PPD220 pre-freeze retained consumer review: generic range/MVP qualification cannot distinguish a different exact cohort/native generation. Registered before a cohort-specific weak-identity qualification API and swapped-generation controls; required direct fail-visible rendering and native-only retirement remain required. Next221.
+
+PPD221 pre-freeze native row-cap review: new bounds buffers charged logical48B/row despite larger actualMetal allocation footprints. Registered before immutable allocatedSize debt/retirement accounting and small-buffer physical-cap checks. Existing per-view65536row limit still bounds one attempted allocation. Next222.
+
+PPD222 pre-freeze G5 integration audit confirms new cold visibility rows/dirty raw bounds bypass shared FrameData publication admission. Registered before passing optional FrameData through encode and coalescing new metadata work on the existing callback; direct fail-visible denial, zero warm tickets and exact command credit retirement are required. Raw fallback under GroupSources must avoid optional per-source bounds discovery. Next223.
+
+Root backend review registers PPD223 before repair: new persistent multi-region composition mappings are omitted from charged publication writes. Existing-table and valid-row reuse can leave charged0 despite a new retained map allocation/copy. Add explicit persistent mapping write charge and mapping-only denial/warm/credit coverage; required transient per-view buffers remain separate. Pass backend unfreezes only for this narrow repair. Next224.
+
+
+Ordered-pass backend source33 is frozen/reviewed for a separate first build,
+not yet actual renderer consumption. Only SourcePages.h/.mm and existing source
+page tests change: single API delegates, exact ordered composition cache,
+O(G)warm qualification, one regional/global payload and aggregate command
+membership with logical→bank ranges. Existing row/native/metadata/asset caps
+remain; cache entries are compositions with underlying group-reference census.
+Five new native cases exercise unchanged Commands.prepare/executeRange output,
+regions/query boundaries,64/256group metadata, ambiguous mappings, cache OOM,
+pending old/new tuples and PPD223 mapping-only shared admission/retirement.
+Root/independent reviews pass; required33/native execution next. Renderer and
+complete cost integration remain required after retained visibility freezes.
+No Source33 performance improvement or combined candidate is claimed.

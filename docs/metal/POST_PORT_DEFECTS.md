@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-221 -->
+<!-- next-defect-id: PPD-224 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5346,3 +5346,59 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Architecture source owner reports before repair; root allocates220, next221. Existing raw trusted metadata contract is unchanged; no renderer/backend default activation authorized.
+
+
+## PPD-221 — Retained visibility native row cap charges logical instead of allocated bytes
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex retained visibility native row storage
+- Discovered: 2026-11-15
+- Original reference: Apple unified-memory admission must account for actual retained native allocation debt; small logical records can occupy larger physical Metal buffer allocations.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). The unbuilt new cohort visibility storage charges48logical bytes per row against its8MiB live native cap. Independent MTLBuffer allocations may have larger allocatedSize, so many small buffers can exceed the cap physically while appearing within it. One attempted allocation is limited by the existing65536row per-view bound; no arbitrary-size allocation or observed viewer OOM is claimed.
+- Next action: Charge immutable MTLBuffer.allocatedSize after creation and reject unknown/over-cap debt before retention/encoding. Keep logical upload bytes separate, subtract the exact admitted charge at native buffer retirement, and add small-row actual-debt/cap rejection coverage.
+- Verification: Source-confirmed new-path accounting gap registered before repair; native execution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Architecture source owner reports before repair; root allocates221, next222. No geometry/asset residency ownership or default activation is added by this correction.
+
+
+## PPD-222 — New retained visibility cold publication bypasses shared frame admission
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex retained visibility and FrameData admission
+- Discovered: 2026-11-15
+- Original reference: Optional native metadata publication must coordinate with the existing frame-wide main/probe/CPU compilation/streaming policy and retain credits only through actual command completion. A private memory cap is not frame admission.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). The unbuilt new Visibility::encode cold cohort row cache and dirty raw bounds generation allocate/write optional native metadata without invoking FrameData's stored source-publication callback. Existing8MiB live storage bounds retention, but does not schedule this work with main/probe publication. Source owner confirms the missing callsite before repair. No observed viewer stall is attributed.
+- Next action: Accept optional FrameData at encode, coalesce only new cohort/dirty or COW raw bounds work, request existing shared metadata admission before native allocations/writes, and retain granted credit on the exact command. Denial returns no optional visibility arguments so required direct rendering continues. Unchanged warm argument/compute output requires no extra publication ticket. GroupSources raw fallback must avoid optional per-source bounds scans after group admission denial. Preserve standalone API compatibility and add real denial/warm/retirement/cost counters; no new scheduler.
+- Verification: Source-confirmed new integration gap registered before repair; native execution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Root requests G5 scope audit; source owner confirms missing callback and proposes existing-policy wrapper. Registered222 before repair, next223. Memory debt221 and exact generation220 remain separate invariants.
+
+
+## PPD-223 — Cold persistent cohort region mapping bypasses publication work charge
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex ordered-pass source publication
+- Discovered: 2026-11-15
+- Original reference: A persistent native mapping created for an optional retained composition is publication work. Required transient per-view camera/global buffers remain distinct.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). In the frozen unbuilt ordered-pass backend, freezeInternal computes mapping_bytes/view_bytes for a persistent region map but does not include its writes in SourcePublicationWork::chargedBytes(). Resource preparations return0publicationBytes when an existing table is reused. A new composition reusing valid rows/tables can therefore allocate/copy its persistent multi-region map with charged==0, bypassing the existing admission callback. The earlier exclusion for required per-view maps does not cover this new retained cache allocation. Root confirms exact charge and existing-table code paths; no runtime incident is attributed.
+- Next action: Charge persistent certified-cohort mapping writes explicitly before allocation/publication, preserve ordinary transient per-view buffer behavior and zero warm tickets, and add a mapping-only cold composition denial case over already reused rows/tables. Verify no allocation/cache eviction on denial and exact command-only credit retirement.
+- Verification: Source-confirmed pre-integration admission omission registered before repair; native execution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Root finds this after independent backend review, before first backend build; allocates223, next224. Source32/owner69065 unchanged. Physical storage and logical work accounting remain separate.
+
+- 2026-11-15: PPD223 repair frozen/reviewed in ordered-pass backend: encoded_mapping_bytes participates checked chargedBytes, allocation diagnostic includes retained map while local capacity counts it once; warm and ordinary transient view maps unchanged. Added mapping-only8B denial/old-warm/grant-abandon/gated-completion case. Independent/source reviews pass; no native execution yet.
