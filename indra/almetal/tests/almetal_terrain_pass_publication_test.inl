@@ -20,9 +20,9 @@ struct TerrainFixture
     const ALMetalTexture* detail=nullptr;
     const ALMetalTexture* paint=nullptr;
     const ALMetalTexture* overlay=nullptr;
-    explicit TerrainFixture(unsigned count):patches(count),grid(count==1?1:count==4?2:count==64?8:16)
+    explicit TerrainFixture(unsigned count):patches(count),grid(count<=1?1:count<=4?2:count<=16?4:count<=64?8:16)
     {
-        REQUIRE(grid*grid==patches);
+        REQUIRE(patches>0);REQUIRE(grid*grid>=patches);
         // Patches occupy distinct region-space rectangles. A single common
         // camera maps the complete region into the same viewport in both arms.
         std::vector<std::array<float,16>> points(patches);
@@ -403,7 +403,7 @@ TEST_CASE("almetal: complete raw and shared terrain pass path costs",
      return std::uint64_t(now.tv_sec)*1'000'000'000ULL+std::uint64_t(now.tv_nsec);};
     const auto median=[](std::array<double,samples> values)
     {std::sort(values.begin(),values.end());return (values[samples/2-1]+values[samples/2])*.5;};
-    for(bool pbr:{false,true})for(unsigned patches:{1u,64u,256u})for(unsigned views:{1u,3u})
+    for(bool pbr:{false,true})for(unsigned patches:{1u,2u,4u,16u,64u,256u})for(unsigned views:{1u,3u})
     @autoreleasepool
     {
         TerrainFixture t(patches);

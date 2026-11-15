@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-267 -->
+<!-- next-defect-id: PPD-269 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6350,3 +6350,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 failed build receipt/log retained before correction. Integrator used the wrong existing fixture member; no runtime viewer fault or successful combined build claim.
+
+
+## PPD-267 — Scalar cohorts repeat producer-invariant flag and common-constant preparation
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / immutable scalar recipe author
+- Discovered: 2026-11-15
+- Original reference: Completed static cohort records already certify immutable fields. Scalar rendering rebuilds the400B common value and scans fixed material flags per draw even when adjacent source policies and the cohort view are identical.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Cache exact fixed flag/policy relationships at immutable publication; build common constants once per proven equal run and retain required slot rebinding after queries or special draws. Keep raw/pose-dependent paths and shader ABI unchanged; gate complete cold/warm/churn cost including metadata work.
+- Verification: Source54 audit finds MaterialSource publication computes normal/specular flags once but scalar loop derives them again. bind_world_constants already reuses native GPU ranges on400B equality, so this defect concerns repeated CPU assembly/comparison, not repeated GPU uploads. No performance gain is established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before scoped producer-derived preparation implementation. Charge actual metadata within existing caps and preserve bit-exact view/UV/flags. No worker or bank activation follows from this source observation alone.
+
+
+## PPD-268 — Terrain sharing setup regresses single-patch passes
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Single-patch passes have no repeated terrain common work to remove. Raw native behavior remains valid; pass sharing must earn its creation/matching cost.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Extend the paired cost frontier to2/4/16patches, identify a supported selection boundary, and avoid sharing setup in passes below it. Preserve raw and shared output/lifetime paths.
+- Verification: Source54 all27native scopes and all8cost suites pass. Single-patch CPU regresses4/4configurations2.55–4.09%; completion regresses3/4. All64/256patch CPU/GPU/completion8/8configurations improve. No whole-viewer FPS claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 measured before caller selection repair. Larger contained gains do not accept the one-patch regression. The new grid fixture permits partial valid grids for2patches; this changes no production geometry validation.

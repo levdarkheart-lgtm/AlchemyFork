@@ -1800,3 +1800,28 @@ Required53 00a90f4177doctor/configure0,build1after58.152s. PPD266newrootactual
 helperfixtureconfusedf.image(viewerfacade)withf.white(realLLImageGL),fourcompile
 errors; source54usesrealowner. No53native/static/costexecuted. Required54next,
 sameproduction/correctnessassertions. Failedreceiptretained; next267.
+
+
+Source54 **98acd3a1c2/69098** required0/0/0(build135.616s),static/strictPASS.
+ALL27normalnative scopes rerunPASS:225831assertions/260cases, actual18661/75,
+terrain5150/6. Eightcost suitesPASS includingterrain9504/1,ownedprep31595/1,
+probe2448/1,empty2948/1,palette225024/1,expired43532/1,ordinary219988/1,many2645160/1.
+No scopesreusedinthiscombinedrun; no viewerlaunch/profile/push.
+
+Terrain12pairedconditions:64/256patchesall8CPU/GPU/completewins;64CPUmedian−11.74%,
+complete−7.12%,GPU−10.18%;256CPU−19.82%,complete−21.14%,GPU−23.62%. Singlepatch
+CPUall4worsemedian+3.42%,completion3/4worse(PPD268). Source55extends2/4/16cost
+beforecallerthresholdselection. Actualrecorddraws30816,fallback0,published896B
+perpass/288measuredpublications,30528reuses. Typednativefrontier,noLLpoolclaim.
+
+Ownedprepfair18conditions54armrows/756rawsamples allassertPASS. Availabletwojobs
+CPUownerwins1/9, combinedowner+worker0/9,completion1/9(theone−0.079%);median
+combinedCPU+8.92%,complete+3.57%. Serial/allcreditdeniedalsooverhead. Workers
+stayOFF; PPD267 nowimplements usefulproducer-derived scalar recipes instead of
+activating unprofitableper-viewjobs. Exact54llrender_tests+almetal_tests.app saved
+locally atsource54-native-cost-baseline withSHA/provenance for narrowold/newcosts.
+
+Rootaddsperiodicsharedterrain andstaticrestorationcounters to existingcensus;
+no perdrawlogging orruntimevieweraction. Source55newsmallterraincostnext;54full
+productioncorrectness remains source-pinnedevidence. Originalarchitectureactive,
+usefulvisibility/commands andwholeengineacceptancepartial; next269.

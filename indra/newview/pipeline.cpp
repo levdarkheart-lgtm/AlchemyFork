@@ -3121,6 +3121,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             };
             log_publication("main", &capture);
             log_publication("probe", mMetalProbeWorldSimpleCapture.get());
+            const auto terrain_data = capture.frame_data ? capture.frame_data->stats() : ALMetalWorldFrameDataStats{};
+            LL_INFOS("MetalScene") << "Native shared terrain inputs: source/fallback_draws="
+                << terrain_data.terrain_source_draws << '/' << terrain_data.terrain_source_fallback_draws
+                << ", publications/reuses/logical_bytes=" << terrain_data.terrain_publications << '/'
+                << terrain_data.terrain_reuses << '/' << terrain_data.terrain_published_bytes
+                << ", scope=shared_main_probe_frame_data_cumulative" << LL_ENDL;
             const auto frame_plan = ALNativeFrameBudget::instance().snapshot();
             LL_INFOS("MetalFramePlan") << "Shared native admission: frame=" << frame_plan.frame
                 << ", main_busy/pressure/draining=" << frame_plan.main_busy << '/' << frame_plan.memory_pressure << '/' << frame_plan.draining
@@ -3285,6 +3291,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", cpu_source_builds/reuses=" << groups.cpu_source_builds << '/' << groups.cpu_source_reuses
                 << ", resource_union_builds=" << groups.resource_union_builds
                 << ", material_builds/restores=" << groups.material_builds << '/' << groups.material_restores
+                << ", static_restore(tuple_builds/expansions/live_proof_reuses/created_value_bytes)="
+                << groups.restore_tuple_builds << '/' << groups.restore_tuple_expansions << '/'
+                << groups.restore_live_proof_reuses << '/' << groups.restore_tuple_value_bytes
                 << ", material_admitted_groups/draws=" << groups.material_admitted_groups << '/' << groups.material_admitted_draws
                 << ", material_captured_groups/draws=" << groups.material_captured_groups << '/' << groups.material_captured_draws
                 << ", cpu_layout_cache(entries/rows/estimated_bytes)=" << layouts.layouts << '/' << layouts.rows << '/' << layouts.estimated_bytes
