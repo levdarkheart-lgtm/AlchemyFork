@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-231 -->
+<!-- next-defect-id: PPD-233 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5292,6 +5292,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source36 six-qualifier constant-region hypothesis passes required/static/strict/all21native and unchanged3arm/many costs, but35-versus36 GPU effects vary widely without consistent advantage. Root reverts only six shader qualifiers for source37; failed performance hypothesis and exact control remain retained. No causal GPU-cache or viewer FPS claim;217 stays open.
 
+- 2026-11-15: Source38 ordered renderer costs pass; all8many scenarios have100%banked draws/no warm rebuild/fallback and CPU10.60–51.39%lower, but GPU87.41–166.90%higher and settlement8.94–142.52%higher. Keep bank modeOFF; investigate direct static bindings with fixed-address native view slots as a bounded new hypothesis, not a measured repair.
+
 ## PPD-218 — Page-wide freshness invalidates unrelated retained cohorts
 
 - Status: investigating
@@ -5544,6 +5546,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Heavier baseline37 passes5532576/1 with144summary rows/6144raw samples, but many warm50% still loses GPU27.48–44.98% and CPU12.29–15.73%. Integrate one packed multi-cohort dispatch with separately bounded/reported native descriptor debt; native parity/cap/lifetime/admission and allcheap/heavy cost retests pending.
 
+- 2026-11-15: Source38 packed dispatch passes6110352/1 cheap and5551008/1 heavy cost gates. One dispatch/view is proven; warm96B/group descriptor uploads are reported (not zero total uploads). Heavy many50% GPU−21.11..+11.73%, settlement−11.41..+0.79%, CPU+7.91..+14.55%; conditional selection/remainingCPUwork remain open. Native7521/13 passes true cap/borrowed/pending lifetime cases.
+
 ## PPD-230 — New heavy-mesh fixture can miss all target samples
 
 - Status: investigating
@@ -5562,3 +5566,43 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Fixture owner reports sampling trap before freeze; root assigns230 and retains attribution separately from production PPD229. Next231.
 
 - 2026-11-15: Source37 heavier gate5532576/1 passes non-clear depth coverage plus full output/query parity; phase correction and original cheap workload retained. Owner verification remains pending.
+
+
+## PPD-231 — Private bundle verifier requires the displaced single-cohort consumer symbol
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex architecture bundle evidence
+- Discovered: 2026-11-15
+- Original reference: Compiled feature checks must verify the implementation actually used by the native renderer; dead-stripped unused wrappers are not product requirements.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source38 required build7246b19e96 succeeds, but static-native-38 fails gpu_cohort_native_view because private verify-g2g5-bundle-30.py requires defined freezeCohortForCommand. Ordered renderer now calls freezeCohortsForCommand; the unused single-cohort wrapper is dead-stripped from the viewer. SourcePages single API compatibility is still covered in contained native tests. No production link/render failure is attributed.
+- Next action: Preserve old verifier/failing receipt; create private verifier38 requiring the actual plural compiled symbol plus composition and batched visibility census/kernel evidence. Retest the same unmodified source38 bundle under a new receipt.
+- Verification: Executed static marker failure after successful build; native rendering suites are still running. No original verifier or app modification is needed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before updating the private evidence verifier. Source38 build/source/binary remain frozen; next232.
+
+
+- 2026-11-15: Corrected private verifier38 passes exact unchanged69079 bundle, requiring plural compiled consumer plus composition/descriptor census and packed kernel markers. Original failed static38 receipt and old verifier remain retained.
+
+## PPD-232 — New mixed fallback fixture assumes zero disables scene admission
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex ordered renderer denial fixture
+- Discovered: 2026-11-15
+- Original reference: ALNativeFrameBudget normalizes scene_publications_per_frame to at least one; denial tests must exhaust an actual frame quota without changing production admission semantics.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source38 actual producer test has59cases/14531assertions,58cases/14523assertions pass and eight checks fail in the newly added PPD228 case. The fixture sets limit0 then expects its first CPU compile to be denied; budget.cpp:20 clamps0 to1, so producer/publication/layout are correctly created. All later raw/MRT/query/native-bank-denial assertions pass. No production admission regression is attributed.
+- Next action: Set explicit limit1, acquire and release the one scene credit before the CPU compile, then require per-frame count1 and in-flight0. Keep every existing no-producer/no-publication/ordinary raw/query/GPU-denial assertion. Rerun the complete actual-owner scope.
+- Verification: Executed fixture assumption failure; native renderer5046/8 and visibility7521/13 pass in the same source. Failed38 receipt/log retained; repair/retest pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before fixture-only correction. Production budget limits and renderer code remain unchanged; next233.
+
+- 2026-11-15: Explicit limit1/acquire/release fixture repair independently reviewed against budget retirement and per-frame checks; all original assertions retained. Required39/complete actual-owner retest pending.

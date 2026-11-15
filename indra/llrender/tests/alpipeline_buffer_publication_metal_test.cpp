@@ -1994,8 +1994,13 @@ TEST_CASE("Actual group-bank denial leaves mixed raw fallback on ordinary native
             Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(warm);
         auto cold=std::make_shared<ALNativePublication::State>();ALNativeCohortCompilationAdmission compilation;
         std::shared_ptr<ALNativePublication::Observer> dependencies;std::shared_ptr<Inputs::ALSceneGroupPublicationNative::Layout> layout;
-        ALNativeFrameBudget::Limits limits;limits.scene_publications_per_frame=0;ALNativeFrameBudget budget(limits);
+        ALNativeFrameBudget::Limits limits;limits.scene_publications_per_frame=1;ALNativeFrameBudget budget(limits);
         ALNativeFrameBudget::FrameInputs frame;frame.frame=Inputs::gFrameCount;budget.beginFrame(frame);
+        // PPD-232: zero is normalized to one. Exhaust the actual per-frame
+        // lane while releasing in-flight debt before both denial checks.
+        auto used=budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,1,frame.frame);REQUIRE(used);
+        used.credit.reset();CHECK(budget.snapshot().scene_publications_this_frame==1);
+        CHECK(budget.snapshot().scene_publications_in_flight==0);
         bool producer_called=false;
         auto denied=Inputs::ALSceneGroupCompilationNative::compile(compilation,cold,budget,2,family,[&]
         {producer_called=true;return Inputs::ALSceneGroupPublicationNative::sealMaterial(cold,dependencies,layout,

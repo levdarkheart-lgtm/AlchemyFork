@@ -1101,3 +1101,51 @@ upload/allocation/live/cap counters, retaining original cheap and heavy matrices
 Independent renderer review found no concrete blocker; final batched peer review
 and required38/native/allfourcost gates follow. All unexecuted gates arepending.
 Owner69065 app/launcher remains untouched; no viewer/profile/push/full-goal claim.
+
+PPD231 retains source38 static failure: old private verifier requires unused
+single-cohort symbol dead-stripped after plural renderer consumption. Correct
+only the private feature marker and add explicit composition/batched evidence,
+then retest exact unchanged bundle under a fresh receipt. No production patch.
+
+
+Required38 at7246b19e9659a1ded3811efe8ac8ca24a1ab09a2 builds165.919s;
+static38 initially fails stale single-cohort marker(PPD231), corrected private
+verifier38 additive plural/census/kernel checks pass exact unchanged69079bundle.
+Strict3587files/905informational/0blockers/0errorsPASS. Native renderer5046/8,
+visibility7521/13 (including packed GPU pointers and physical-cap recovery),
+sourcepages5364/22, sourceadmission2392/9 and earlier scopesPASS. Actual-owner
+scope fails ONLY new232fixture assumption: zero quota is normalized toone,
+so first compile is admitted;14523/14531assertions and58/59cases pass.
+Retain failed38 receipt/log. Source39 changes only that fixture's quota setup,
+explicitly exhausting/releasing one credit and retaining every denial assertion.
+Native tail did not execute after failure, so no all21PASS claim for38.
+
+Source38 production remains frozen for allfour complete cost matrices while the
+fixture-only repair is authored in the root integration tree. Do not build or
+change the cost checkout until terminal results. Source39 fullnative retest will
+follow; source38 cost evidence must remain labeled38, with production source
+identity inspected before any reuse. No viewer launch/profile/push occurred.
+
+
+All four source38 cost processes are terminalPASS:3arm144872/1(3.866s),
+many1876456/1(8.553s), cheap visibility6110352/1(68.212s), heavier visibility
+5551008/1(47.727s). Raw logs and all four derived summaries are retained.
+Every many-small bank scenario now uses100%requestedGPUdraws with zero warm
+rebuild/fallback. CPU improves10.60–51.39% versus direct cohorts acrossall8;
+GPU still rises87.41–166.90% and settlement8.94–142.52%, so217 remains open.
+
+Batched visibility counters prove one dispatch/view rather than64/256. Warm
+metadata now honestly includes96B/group/view descriptor writes (64groups6144B,
+256groups24576B), with zero new warm native descriptor allocations. No claim of
+zero total warm uploads follows the old zero-row-upload result. Originalcheap
+many warm50% still loses CPU8.22–16.73%,GPU18.31–34.88%,settlement2.60–11.20%.
+Heavy many warm50% GPU ranges−21.11..+11.73%,settlement−11.41..+0.79%, whileCPU
+remains+7.91..+14.55%. Geometry coverage and counters show useful improvement
+from removed dispatches, but not universal activation acceptance. Retain exact
+source37control for comparison; old-only per-group results are not overwritten.
+
+Root's explicit one-credit232fixture correction is independently reviewed:
+credit retirement clears in-flight debt but never refunds current-frame quota.
+39changes only fixture/docs, so production source38 remains the cost pin.
+Required39/fullnative and broader combined functional gates follow; no default
+activation, replacement of owner preview, viewer/profile/push or goal closure.
