@@ -2556,3 +2556,33 @@ engine performance acceptance remain open; this cache repair does not close them
 No new launch/login/profile/push; original69122 app is immutable. Root owns
 shared integration/docs/builds; independent native common code may be authored
 in its own worktree with exclusive files and tested before integration.
+
+
+### PPD295 selected reservation integrated, full build73 next
+
+Nativecommon source867fb2fb8bd238ab75b643e04622a7be36ee359adda97e4052a953fffd1194ed
+andtestccd300e5f16a98c1a0339512a96576882d1dc1abff033aa9fdc337037badd070
+copiedexact. Production delta is one reserve on the first validated unique
+resource append. Two semantic cases add16/17/64/256 duplicates/conflicts, byte
+recovery, caller-span mutation during eviction and independent reader expiry;
+selected standalone601assertions/16cases PASS. Actualbaseline common sources
+match69122. Inline16 correctbutcold1+13–16% rejected; selectedreserve48cells
+plus2/3-resource16cells PASSfullStats/outcomes with9alternatingpairedblocks.
+All receipts, compiler/argv/hashes, separateCPU/allocationbinaries and adverse
+controls under E2/runtime-retention-295-20261115T220845Z.
+
+Retain-only CPU2/3cold−15.28/−26.26%, denial−16.05/−28.04%;4/16/17denial
+−26.31/−25.16/−31.08%. Heapgrowth reducedto1allocation; zeroallocationnot
+achieved. One-resource denial+~3% control retained; warmtouchnearparity.
+Duplicate-heavyspan reservation can retainlarger weakvectorcapacity; actual
+sceneaccount andtypedgroup unionmaps deduplicate beforethisAPI. These are
+notfullfactory/framecosts orFPS; thismitigatesbookkeeping, nottotalturnover.
+
+Next cleanrootcommit→executiontreefastforward→/tmp/persistent_native_build_73.py,
+staticverifier72withnewexactsource/version andstrictsource73, full34native
+scopes via /tmp/run_source_cohort_correctness_71.py73native-correctness-73.
+NoG3workerthreshold/settingschange. Within-view ordinary sources average423–867
+bycensusendpoints; no segmentmaxhistogram oraggregated8192runtimeproofexists.
+ScalarMVPandcompactalreadyuseequivalentNEONmath; snapshot/array/merge costs
+mustbeincluded beforeclaimingaggregationuseful. Owner69122appimmutable,
+no launch/login/profile/push; fullarchitecture/performanceacceptancepartial.

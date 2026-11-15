@@ -10,6 +10,7 @@
 #include <array>
 #include <exception>
 #include <functional>
+#include <vector>
 
 namespace
 {
@@ -441,4 +442,100 @@ TEST_CASE("Native source diagnostics separate age shrink and touch mismatch even
     CHECK(census.retain_calls == 4); CHECK(census.retain_successes == 4); CHECK(census.new_retains == 4);
     CHECK((census.capacity_events == std::array<std::uint64_t, 4>{}));
     CHECK(reader_a->geometry.get() == ga.get()); CHECK(reader_b->geometry.get() == gb.get());
+}
+
+TEST_CASE("Native source large unions preserve duplicate accounting pressure recovery and packet lifetime",
+          "[native-source-working-set][residency-budget][publication-lifetime]")
+{
+    using Resource = ALNativeSourceWorkingSet::Resource;
+    for (const std::size_t count : {16u, 17u, 64u, 256u})
+    {
+        CAPTURE(count);
+        ALNativeSourceWorkingSet cache(3, count * 4, 100);
+        auto victim = std::make_shared<State>(), incoming = std::make_shared<State>();
+        auto shared = std::make_shared<State>(), invalid = std::make_shared<State>();
+        auto victim_geometry = std::make_shared<int>(-1);
+        const std::array<Resource, 1> victim_resources{{{victim_geometry, 1}}};
+        auto victim_packet = publish(victim, victim_geometry);
+        REQUIRE(cache.retain(victim, 1, victim->publication(), victim_resources, 10));
+        std::vector<Resource> resources;
+        for (std::size_t at = 0; at < count; ++at)
+            resources.push_back({std::make_shared<int>(static_cast<int>(at)), 4});
+        // Duplicates contribute neither bytes nor another reference within
+        // one source, including large unions and reversed input order.
+        for (std::size_t at = 0; at < count; ++at) resources.push_back(resources[count - at - 1]);
+        auto packet = std::make_shared<const std::vector<Resource>>(resources);
+        REQUIRE(incoming->publish(incoming->revision(), packet));
+        REQUIRE_FALSE(cache.retain(incoming, 2, incoming->publication(), resources, 10));
+        CHECK_FALSE(incoming->publication());
+        CHECK(cache.entryCount() == 1); CHECK(cache.estimatedRetainedBytes() == 1);
+        CHECK(cache.stats().capacity_rejections[2] == 1);
+        CHECK(cache.stats().capacity_evictions == 0);
+        CHECK(packet->front().allocation.get() == resources.front().allocation.get());
+        REQUIRE(incoming->publish(incoming->revision(), packet));
+        REQUIRE(cache.retain(incoming, 3, incoming->publication(), resources, 11));
+        CHECK_FALSE(victim->publication()); CHECK(cache.stats().capacity_evictions == 1);
+        CHECK(cache.estimatedRetainedBytes() == count * 4);
+        CHECK(cache.stats().unique_resources == count);
+        auto shared_packet = std::make_shared<const std::vector<Resource>>(resources);
+        REQUIRE(shared->publish(shared->revision(), shared_packet));
+        REQUIRE(cache.retain(shared, 4, shared->publication(), resources, 11));
+        CHECK(cache.entryCount() == 2); CHECK(cache.estimatedRetainedBytes() == count * 4);
+        CHECK(cache.stats().unique_resources == count);
+        auto conflicting = resources;
+        conflicting.push_back({resources.front().allocation, 5});
+        auto invalid_packet = std::make_shared<const std::vector<Resource>>(conflicting);
+        REQUIRE(invalid->publish(invalid->revision(), invalid_packet));
+        CHECK_FALSE(cache.retain(invalid, 5, invalid->publication(), conflicting, 11));
+        CHECK_FALSE(invalid->publication()); CHECK(cache.stats().resource_size_conflicts == 1);
+        CHECK(cache.entryCount() == 2); CHECK(cache.estimatedRetainedBytes() == count * 4);
+        std::weak_ptr<const void> allocation = resources.front().allocation;
+        cache.clear();
+        CHECK_FALSE(incoming->publication()); CHECK_FALSE(shared->publication());
+        CHECK(cache.entryCount() == 0); CHECK(cache.estimatedRetainedBytes() == 0);
+        CHECK_FALSE(allocation.expired()); // Independent packets still read it.
+        resources.clear(); conflicting.clear();
+        packet.reset(); shared_packet.reset(); invalid_packet.reset();
+        CHECK(allocation.expired()); // No staging or ledger owner survives.
+    }
+}
+
+TEST_CASE("Native source admission freezes large input unions before eviction callbacks",
+          "[native-source-working-set][publication-reentrancy]")
+{
+    using Resource = ALNativeSourceWorkingSet::Resource;
+    for (const std::size_t count : {16u, 17u, 64u, 256u})
+    {
+        CAPTURE(count);
+        ALNativeSourceWorkingSet cache(1, count * 4 + 1, 100);
+        auto victim = std::make_shared<State>(), incoming = std::make_shared<State>();
+        auto geometry = std::make_shared<int>(-1);
+        const std::array<Resource, 1> victim_resources{{{geometry, 1}}};
+        auto victim_packet = publish(victim, geometry);
+        REQUIRE(cache.retain(victim, 1, victim->publication(), victim_resources, 1));
+        std::vector<Resource> resources;
+        for (std::size_t at = 0; at < count; ++at)
+            resources.push_back({std::make_shared<int>(static_cast<int>(at)), 4});
+        const auto packet = std::make_shared<const std::vector<Resource>>(resources);
+        REQUIRE(incoming->publish(incoming->revision(), packet));
+        auto observer = std::make_shared<OnWithdrawal>();
+        observer->action = [&]
+        {
+            // Retain must use its frozen identities after this caller-owned
+            // span ceases to exist. The packet separately owns the originals.
+            std::vector<Resource>().swap(resources);
+            cache.setByteBudget(count * 4);
+        };
+        victim->observe(observer);
+        REQUIRE(cache.retain(incoming, 2, incoming->publication(), resources, 2));
+        REQUIRE(observer->called); REQUIRE_FALSE(observer->error);
+        CHECK(resources.empty()); CHECK(incoming->publication().get() == packet.get());
+        CHECK(cache.entryCount() == 1); CHECK(cache.stats().unique_resources == count);
+        CHECK(cache.estimatedRetainedBytes() == count * 4);
+        REQUIRE(cache.touch(incoming->identity(), 2, 2));
+        CHECK(cache.stats().capacity_evictions == 1);
+        cache.clear(); CHECK_FALSE(incoming->publication());
+        CHECK(packet->size() == count);
+        CHECK(*static_cast<const int*>(packet->back().allocation.get()) == static_cast<int>(count - 1));
+    }
 }

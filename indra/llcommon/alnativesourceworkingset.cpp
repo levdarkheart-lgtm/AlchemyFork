@@ -183,6 +183,7 @@ bool ALNativeSourceWorkingSet::retain(
             if (existing != mImpl->resources.end() && existing->second.bytes != resource.bytes)
             { ++mImpl->statistics.resource_size_conflicts; return result(reject()); }
             source_bytes += resource.bytes;
+            if (candidate.resources.empty()) candidate.resources.reserve(resources.size());
             candidate.resources.push_back({weak, resource.bytes});
         }
         if (!mImpl->max_entries)
