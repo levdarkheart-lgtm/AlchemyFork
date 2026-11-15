@@ -28,7 +28,7 @@ struct CohortFixture : Fixture
 {
     ALMetalWorldMaterialDataCache cache;
     std::shared_ptr<CohortCpu> cpu=std::make_shared<CohortCpu>();
-    explicit CohortFixture(unsigned family=1,unsigned count=2):cache(*device)
+    explicit CohortFixture(unsigned family=1,unsigned count=2,bool resource_descriptor=true):cache(*device)
     {
         cpu->sources.reserve(count);cpu->keys.reserve(count);
         for(unsigned i=0;i<count;++i)
@@ -36,14 +36,17 @@ struct CohortFixture : Fixture
             auto source=batch(family);source.texcoord1_offset=source.texcoord2_offset=offsetof(Geometry,uv);
             source.texture_matrix[12]=.125f*i;
             if(family==2)source.double_sided=i%2!=0;
-            REQUIRE(ALMetalWorldMaterialSource::publish(*device,source,cache,&error));
-            REQUIRE(ALMetalWorldResourceSource::publish(*device,source,resources->textures,&error));
-            // The actual producer's complete native tuple includes uniforms,
-            // not only the geometry/textures in the old component fixture.
-            for(const auto& value:{source.native_material_source->materialLease(),
-                source.native_material_source->pbrLease(false),source.native_material_source->pbrLease(true)})
-                if(value && std::none_of(resources->buffers.begin(),resources->buffers.end(),
-                    [&](const auto& prior){return prior==value;}))resources->buffers.push_back(value);
+            if(family)
+            {
+                REQUIRE(ALMetalWorldMaterialSource::publish(*device,source,cache,&error));
+                if(resource_descriptor)REQUIRE(ALMetalWorldResourceSource::publish(*device,source,resources->textures,&error));
+                // The actual producer's complete native tuple includes uniforms,
+                // not only the geometry/textures in the old component fixture.
+                for(const auto& value:{source.native_material_source->materialLease(),
+                    source.native_material_source->pbrLease(false),source.native_material_source->pbrLease(true)})
+                    if(value && std::none_of(resources->buffers.begin(),resources->buffers.end(),
+                        [&](const auto& prior){return prior==value;}))resources->buffers.push_back(value);
+            }
             cpu->sources.push_back(std::move(source));
         }
         for(unsigned i=0;i<count;++i)cpu->keys.push_back({{i+1,family,1},&cpu->sources[i]});
@@ -136,7 +139,7 @@ TEST_CASE("almetal: ordinary cohort rejects unsupported static rows before issui
             if(failure==2)source.skin_palette=f.attachment_pose.data();
             if(failure==3)source.normal_texture=f.flat;
             if(failure==4)source.native_material_source.reset();
-            if(failure==5)source.native_resource_source.reset();
+            if(failure==5)source.diffuse_textures[0]=f.orm; // A present stale resource descriptor still rejects.
             if(failure==6)source.vertices=nullptr;
             CHECK_FALSE(ALMetalWorldSourceCohort::seal(f.cpu->keys,f.cpu,f.resources,7,&f.error));
         }
@@ -152,6 +155,55 @@ TEST_CASE("almetal: ordinary cohort rejects unsupported static rows before issui
             std::fill_n(source.modelview,16,std::numeric_limits<float>::quiet_NaN());
         }
         REQUIRE(f.seal());
+    }
+}
+
+TEST_CASE("almetal: cached SIMPLE records contain no owning native generations and reject mixed families",
+          "[almetal][world-cohort]")
+{
+    @autoreleasepool
+    {
+        CohortFixture simple(0),material(1),pbr(2);
+        auto plain=ALMetalWorldCohortSource::seal(simple.cpu->keys[0],&simple.error);REQUIRE(plain);
+        auto legacy=ALMetalWorldCohortSource::seal(material.cpu->keys[0],&material.error);REQUIRE(legacy);
+        auto modern=ALMetalWorldCohortSource::seal(pbr.cpu->keys[0],&pbr.error);REQUIRE(modern);
+        CHECK(plain->family()==0);CHECK_FALSE(plain->source().native_material_source);CHECK_FALSE(plain->source().native_resource_source);
+        CHECK_FALSE(plain->source().impostor_texture_owner);CHECK_FALSE(plain->source().terrain_texture_owner);
+        auto cohort=simple.seal();CHECK(cohort->family()==0);
+        for(const auto& other:{legacy,modern})for(bool plain_first:{false,true})
+        {
+            const std::array records=plain_first?std::array{plain,other}:std::array{other,plain};
+            CHECK_FALSE(ALMetalWorldSourceCohort::seal(records,simple.cpu,simple.resources,7,&simple.error));
+        }
+        for(unsigned bad=0;bad<11;++bad)
+        {
+            auto source=plain->source();CAPTURE(bad);
+            if(bad==0)source.native_material_source=legacy->source().native_material_source;
+            if(bad==1)source.native_resource_source=legacy->source().native_resource_source;
+            if(bad==2)source.impostor_texture_owner=std::make_shared<int>(1);
+            if(bad==3)source.terrain_texture_owner=std::make_shared<int>(1);
+            if(bad==4)source.alpha_mask=true;
+            if(bad==5)source.normal_texture=simple.flat;
+            if(bad==6)source.water_haze=true;
+            if(bad==7)source.avatar_alpha=true;
+            if(bad==8)source.material_slot_count=1;
+            if(bad==9)source.pbr_slot_count=1;
+            if(bad==10)source.texture_matrix[0]=std::numeric_limits<float>::quiet_NaN();
+            CHECK_FALSE(ALMetalWorldCohortSource::seal({plain->key(),&source},&simple.error));
+        }
+        // A strong idle CPU record is allowed only because all geometry and
+        // diffuse bindings are non-owning. Keep the private record alive while
+        // its exact native tuple and original CPU publication disappear.
+        std::weak_ptr<const ALMetalBuffer> weak_vertices;
+        std::weak_ptr<const ALMetalTexture> weak_diffuse;
+        for(const auto& buffer:simple.resources->buffers)if(buffer.get()==simple.vertices)weak_vertices=buffer;
+        for(const auto& texture:simple.resources->textures)if(texture.get()==simple.color)weak_diffuse=texture;
+        REQUIRE_FALSE(weak_vertices.expired());REQUIRE_FALSE(weak_diffuse.expired());
+        cohort.reset();simple.cpu.reset();simple.resources.reset();REQUIRE(simple.device->waitUntilIdle(&simple.error));
+        const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        while((!weak_vertices.expired() || !weak_diffuse.expired()) && std::chrono::steady_clock::now()<end)std::this_thread::yield();
+        CHECK(weak_vertices.expired());CHECK(weak_diffuse.expired());
+        CHECK(plain->family()==0);CHECK(plain->key().identity==1); // No native pointer dereference after expiry.
     }
 }
 
@@ -224,9 +276,14 @@ TEST_CASE("almetal: mixed raw reference cohort queries prepare and reclaim compl
 {
     @autoreleasepool
     {
-        for(unsigned family:{1u,2u})for(bool normal_hdr:{false,true})
+        for(unsigned family:{0u,1u,2u})for(bool normal_hdr:{false,true})
         {
-            CAPTURE(family,normal_hdr);CohortFixture f(family);auto certificate=f.seal();
+            CAPTURE(family,normal_hdr);CohortFixture f(family,2,false);auto certificate=f.seal();
+            for(const auto& source:f.cpu->sources)
+            {
+                CHECK_FALSE(source.native_resource_source);
+                if(family)REQUIRE(source.native_material_source->matches(source));
+            }
             std::vector<ALMetalWorldSimpleBatch> raw{f.batch(0),f.batch(4)};
             auto refs_owner=std::make_shared<CohortCpu>();refs_owner->sources.push_back(f.batch(0));
             ALMetalWorldSourceReference reference;reference.source=&refs_owner->sources[0];
@@ -330,9 +387,14 @@ TEST_CASE("almetal: cohort CPU descriptions expire while native-only command gen
 {
     @autoreleasepool
     {
-        for(bool prepared:{false,true})for(bool abandon:{false,true})
+        for(unsigned family:{1u,2u})for(bool prepared:{false,true})for(bool abandon:{false,true})
         {
-            CAPTURE(prepared,abandon);CohortFixture f;auto certificate=f.seal();
+            CAPTURE(family,prepared,abandon);
+            // Keep the legacy scalar descriptor-retirement gate while also
+            // exercising descriptor-free Legacy/PBR pending native tuples.
+            const bool resource_descriptor=family==1 && !prepared;
+            CohortFixture f(family,2,resource_descriptor);auto certificate=f.seal();
+            CHECK(bool(certificate->source(0).native_resource_source)==resource_descriptor);
             std::weak_ptr<const ALMetalWorldCohortSource> weak_record;
             if(prepared)
             {

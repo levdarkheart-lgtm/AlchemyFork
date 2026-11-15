@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-197 -->
+<!-- next-defect-id: PPD-199 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4865,3 +4865,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Registered before repairing the promotion parity input; failed18 evidence retained.
 - 2026-11-14: Test-only21efebeb18 supplies identical current fixture transforms to both immutable snapshots. Required19/static69049 and exact-tag actual9882/47 pass with API/GPU validation; original key/revision/tuple and output assertions retained. Record remains unclosed without owner confirmation.
+
+
+## PPD-197 — Ordinary direct cohorts require an unused argument-resource descriptor
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex direct source compilation and typed native ownership
+- Discovered: 2026-11-14
+- Original reference: Ordinary native material shaders bind their existing resources directly. The argument-table descriptor is a newer optional native mechanism, with no required upstream equivalent or role in direct-cohort shader selection.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source20 native10198/48 and complete cost91726/48 pass, but cold work remains slower. Material group flavor forces native_resources=true, ordinaryMaterial/source-record sealing requires ALMetalWorldResourceSource, and restoration republishes it. Its publish routine snapshots8 padded texture slots (24 Legacy or32 PBR native views and repeated device/type/sample checks). The direct cohort renderer explicitly bypasses resource-table preparation/binding, while exact geometry/numeric/texture leases already exist in the producer's native tuple. This is confirmed unused preparation; its share of the observed regression is unmeasured.
+- Next action: Decouple ordinary immutable proof from optional argument-table descriptors. Validate optional descriptors when present, and prove every required typed texture generation from the completed producer tuple before cohort publication. Preserve resource-table/SourceRows requests, exact ownership, restoration and direct output; measure complete costs before claiming improvement.
+- Verification: Source-confirmed coupling; contained sampling20 has only41 main-thread samples dominated by waits and is insufficient to attribute cold CPU cost. A separate no-render compilation-stage fixture is authored for follow-up measurement.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before removing the unused descriptor prerequisite. NativeResourceSource remains required for the optional argument-table/SourceRows paths.
+
+
+## PPD-198 — New source-proof comparison treats a std::array as an iterator
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex direct source proof comparison
+- Discovered: 2026-11-14
+- Original reference: Static texture-role comparisons must iterate the real declared std::array storage and preserve exact used-slot bounds.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Independent review of the unbuilt PPD197 follow-up found std::equal(prior.diffuse_textures, prior.diffuse_textures + prior.texture_count, batch.diffuse_textures) in new source proof helpers. diffuse_textures is std::array<const ALMetalTexture*,32>, so the expression cannot compile. No executed build or viewer failure attributed.
+- Next action: Use .begin() or .data() with the already-validated count in both helpers; retain exact role/key/material/geometry proof checks and compile the coherent follow-up.
+- Verification: Source-confirmed type error reported before source freeze/build or correction.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-14: Registered before the author corrects the in-progress proof helper expressions.

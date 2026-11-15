@@ -11,6 +11,7 @@
 #include "almetalworldvisibility.h"
 #include "almetalworldmaterialdata.h"
 #include "almetalworldresources.h"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -450,56 +451,84 @@ inline bool buildWorld(const LLDrawInfo& info, const WorldFlavor& flavor,
     return true;
 }
 
+// Recover typed aliases only from the exact completed producer union. Raw
+// texture addresses never manufacture ownership and buffers are never cast.
+inline bool collectWorldImages(const Payload& value, const ALMetalWorldSimpleBatch& batch,
+                               std::vector<std::shared_ptr<const ALMetalTexture>>& images)
+{
+    if (!batch.texture_count || batch.texture_count > batch.diffuse_textures.size() ||
+        batch.material_slot_count > batch.max_material_slots || batch.pbr_slot_count > batch.max_material_slots) return false;
+    images.reserve(batch.texture_count * 4);
+    const auto image = [&](const ALMetalTexture* texture)
+    {
+        if (!texture) return true;
+        for (const auto& existing : images) if (existing.get() == texture) return true;
+        for (const auto& resource : value.resources)
+            if (resource.allocation.get() == texture)
+            {
+                auto typed = std::shared_ptr<const ALMetalTexture>(resource.allocation, texture);
+                if (resource.bytes != textureBytes(*typed)) return false;
+                images.push_back(std::move(typed));return true;
+            }
+        return false;
+    };
+    for (U32 slot = 0; slot < batch.texture_count; ++slot)
+        if (!batch.diffuse_textures[slot] || !image(batch.diffuse_textures[slot])) return false;
+    for (U32 slot = 0; slot < batch.material_slot_count; ++slot)
+        if (!image(batch.materialSlots()[slot].normal_texture) || !image(batch.materialSlots()[slot].specular_texture)) return false;
+    for (U32 slot = 0; slot < batch.pbr_slot_count; ++slot)
+        if (!image(batch.pbrSlots()[slot].normal_texture) || !image(batch.pbrSlots()[slot].orm_texture) ||
+            !image(batch.pbrSlots()[slot].emissive_texture)) return false;
+    return true;
+}
+inline bool completeWorldResources(const Payload& value, const ALMetalWorldSimpleBatch& batch)
+{
+    const auto buffer = [&](const std::shared_ptr<const ALMetalBuffer>& allocation)
+    {
+        if (!allocation) return true;
+        for (const auto& resource : value.resources)
+            if (resource.allocation.get() == allocation.get() && resource.bytes == allocation->length() &&
+                !resource.allocation.owner_before(allocation) && !allocation.owner_before(resource.allocation)) return true;
+        return false;
+    };
+    if (value.vertices.get() != batch.vertices || value.indices.get() != batch.indices ||
+        !buffer(value.vertices) || !buffer(value.indices)) return false;
+    if (batch.native_material_source &&
+        (!buffer(batch.native_material_source->materialLease()) || !buffer(batch.native_material_source->pbrLease(false)) ||
+         !buffer(batch.native_material_source->pbrLease(true)))) return false;
+    std::vector<std::shared_ptr<const ALMetalTexture>> images;
+    return collectWorldImages(value, batch, images);
+}
 inline void publishResourceSource(Payload& value, ALMetalWorldSimpleBatch& prototype)
 {
-    // Seal exact generation leases at the same dirty-source boundary.
-    // A native texture retain alone would not participate in LLImageGL
-    // reader/COW protection. Resolve only the already-accounted tuple;
-    // no later view or worker rereads a mutable viewer texture facade.
     try
     {
         std::vector<std::shared_ptr<const ALMetalTexture>> images;
-        const auto& batch = static_cast<const ALMetalWorldSimpleBatch&>(prototype);
-        images.reserve(batch.texture_count * 4);
-        const auto image = [&](const ALMetalTexture* texture)
-        {
-            if (!texture) return;
-            for (const auto& existing : images)
-                if (existing.get() == texture) return;
-            for (const auto& resource : value.resources)
-                if (resource.allocation.get() == texture)
-                {
-                    images.emplace_back(resource.allocation, texture);
-                    return;
-                }
-        };
-        for (U32 slot = 0; slot < batch.texture_count; ++slot)
-            image(batch.diffuse_textures[slot]);
-        for (U32 slot = 0; slot < batch.material_slot_count; ++slot)
-        {
-            image(batch.materialSlots()[slot].normal_texture);
-            image(batch.materialSlots()[slot].specular_texture);
-        }
-        for (U32 slot = 0; slot < batch.pbr_slot_count; ++slot)
-        {
-            image(batch.pbrSlots()[slot].normal_texture);
-            image(batch.pbrSlots()[slot].orm_texture);
-            image(batch.pbrSlots()[slot].emissive_texture);
-        }
+        if (!collectWorldImages(value, prototype, images))
+        { resourceSourceFailed(ALMetalWorldResourceFallback::missing_source);return; }
         auto* device = LLImageGL::getMetalDevice();
         auto failure = ALMetalWorldResourceFallback::unsupported;
-        if (device && ALMetalWorldResourceSource::publish(
-                *device, prototype, images, nullptr, &failure))
+        if (device && ALMetalWorldResourceSource::publish(*device, prototype, images, nullptr, &failure))
             ++resource_source_publications;
         else resourceSourceFailed(failure);
     }
     catch (const std::bad_alloc&) { resourceSourceFailed(ALMetalWorldResourceFallback::host_allocation); }
 }
-inline void sealCohortSource(WorldVariant& variant, U64 identity, U64 revision)
+inline void sealCohortSource(const Payload& value, WorldVariant& variant, U64 identity, U64 revision)
 {
-    if (variant.cohort_source) return;
     const auto& batch = variant.prototype;
-    if (!batch.native_resource_source || !batch.native_resource_source->matches(batch)) return;
+    if (variant.cohort_source)
+    {
+        const auto& prior = variant.cohort_source->source();
+        const auto& key = variant.cohort_source->key();
+        if (key.identity == identity && key.flavor == variant.key && key.revision == revision &&
+            prior.vertices == batch.vertices && prior.indices == batch.indices &&
+            prior.native_material_source == batch.native_material_source && prior.texture_count == batch.texture_count &&
+            prior.texture_count <= prior.diffuse_textures.size() &&
+            std::equal(prior.diffuse_textures.begin(), prior.diffuse_textures.begin() + prior.texture_count, batch.diffuse_textures.begin())) return;
+        variant.cohort_source.reset();
+    }
+    if (!completeWorldResources(value, batch)) return;
     variant.cohort_source = ALMetalWorldCohortSource::seal({{identity, variant.key, revision}, &batch});
     if (variant.cohort_source) ++cohort_source_publications;
 }
@@ -542,11 +571,12 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                     const auto index = static_cast<std::size_t>(found - value->worlds.data());
                     auto promoted = std::make_shared<Payload>(*value);
                     auto& variant = promoted->worlds[index];
+                    const bool had_cohort_source = static_cast<bool>(variant.cohort_source);
                     if (flavor.native_resources && (!variant.prototype.native_resource_source ||
                         !variant.prototype.native_resource_source->matches(variant.prototype)))
                         publishResourceSource(*promoted, variant.prototype);
-                    if (flavor.cohort_source)
-                        sealCohortSource(variant, info.metalSourcePublication()->identity(), promoted->producer_revision);
+                    if (flavor.cohort_source || had_cohort_source)
+                        sealCohortSource(*promoted, variant, info.metalSourcePublication()->identity(), promoted->producer_revision);
                     if (!ready(variant))
                     {
                         if (!original_current())
@@ -610,7 +640,7 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         }
         if (flavor.native_resources) publishResourceSource(*value, variant.prototype);
         if (flavor.cohort_source)
-            sealCohortSource(variant, info.metalSourcePublication()->identity(), value->producer_revision);
+            sealCohortSource(*value, variant, info.metalSourcePublication()->identity(), value->producer_revision);
         if (!publish(info, value, working_set, frame))
             return {{}, nullptr, "Native scene producer changed while sealing"};
         const auto* prototype = &value->worlds.back().prototype;

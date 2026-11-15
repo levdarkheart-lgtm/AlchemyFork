@@ -598,9 +598,17 @@ public:
         std::shared_ptr<const void> publication;
         U32 legacy_offset = 0;
         U32 draw_count = 0;
+        ALNativeRegionModel::Snapshot model;
+        // Zero for omitted warm rows; equal to draw_count when replacing an
+        // unchanged raw slice already admitted to this cull result.
+        U32 raw_skip = 0;
     };
     // Optional owner publication; failure leaves the legacy native map intact.
-    bool pushNativeSimpleRange(std::shared_ptr<const void>, U32 draw_count) noexcept;
+    bool pushNativeSimpleRange(std::shared_ptr<const void>, U32 draw_count,
+                               const ALNativeRegionModel::Snapshot&) noexcept;
+    bool replaceNativeSimpleRange(std::shared_ptr<const void>, U32 raw_begin,
+                                  std::span<LLDrawInfo* const> expected_raw,
+                                  const ALNativeRegionModel::Snapshot&) noexcept;
     const std::vector<NativeSimpleRange>& nativeSimpleRanges() const noexcept
     { return mNativeSimpleRanges; }
     struct NativeMaterialRange

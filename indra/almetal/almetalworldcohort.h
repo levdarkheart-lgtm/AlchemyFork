@@ -16,7 +16,12 @@ struct ALMetalWorldKeyedSource
     const ALMetalWorldSimpleBatch* prototype=nullptr;
 };
 
-// One immutable generation, issued after ordinary static validation. Active
+// One immutable generation, issued after ordinary static validation. Plain
+// SIMPLE records contain no owning native fields and may be CPU-cached after
+// their native generations expire; reuse must independently lock exact native
+// generations. Active
+// Material records require immutable numeric uniforms. A resource-table
+// descriptor is optional for direct rendering, and must match when present.
 // WorldVariants may share it with cohorts; idle producer layouts keep only a
 // weak reference. It owns no parent publication or native-tuple aggregate.
 class ALMetalWorldCohortSource final
@@ -61,7 +66,7 @@ public:
         std::uint64_t region_identity,std::string* error=nullptr);
     ~ALMetalWorldSourceCohort();
     std::size_t size() const noexcept;
-    std::uint32_t family() const noexcept; // 1: Legacy, 2: PBR.
+    std::uint32_t family() const noexcept; // 0: SIMPLE, 1: Legacy, 2: PBR.
     bool doubleSided() const noexcept; // First source; use only if uniformDoubleSided().
     bool uniformDoubleSided() const noexcept;
     // Conservative retained descriptor closure, including each record; shared

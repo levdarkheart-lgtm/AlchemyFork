@@ -50,13 +50,23 @@ try
         return reject("Ordinary material source identity is incomplete");
     const auto& batch=*keyed.prototype;
     const std::uint32_t family=batch.material_slot_count?1u:(batch.pbr_slot_count?2u:0u);
-    if(!family || (keyed.key.flavor&3u)!=family || batch.normal_texture || batch.skin_palette ||
+    if((keyed.key.flavor&3u)!=family || batch.normal_texture || batch.skin_palette ||
        batch.skin_palette_float_count || batch.skin_joint_count || batch.weight_offset || batch.cloth_offset ||
        batch.avatar_rigid || batch.avatar_skinning || batch.avatar_cloth || batch.terrain || batch.impostor ||
-       batch.impostor_fullbright || batch.impostor_shiny || batch.impostor_emboss ||
-       !batch.native_material_source || !batch.native_material_source->matches(batch) ||
-       !batch.native_resource_source || !batch.native_resource_source->matches(batch))
+       batch.impostor_fullbright || batch.impostor_shiny || batch.impostor_emboss)
         return reject("Ordinary material source is unsupported or unsealed");
+    if(family)
+    {
+        if(!batch.native_material_source || !batch.native_material_source->matches(batch) ||
+           (batch.native_resource_source && !batch.native_resource_source->matches(batch)))
+            return reject("Ordinary material source is unsupported or unsealed");
+    }
+    else if(batch.native_material_source || batch.native_resource_source ||
+            batch.impostor_texture_owner || batch.terrain_texture_owner || batch.avatar_alpha || batch.alpha_mask ||
+            batch.water_exclusion || batch.water_haze || batch.water_surface || batch.atmospheric_haze ||
+            batch.pre_water_alpha || batch.post_water_alpha || batch.post_water_depth_only ||
+            batch.post_water_glow || batch.legacy_glow || batch.pbr_glow)
+        return reject("Ordinary SIMPLE source contains owning or special-pass state");
     ALMetalWorldViewMatrices canonical;
     for(unsigned axis=0;axis<4;++axis)
         canonical.modelview_projection[axis*5]=canonical.modelview[axis*5]=1.f;
@@ -84,7 +94,7 @@ struct ALMetalWorldSourceCohort::Impl
     const void* native_pointer=nullptr;
     std::uint64_t region=0;
     std::uint32_t family=0;
-    bool double_sided=false,uniform_double_sided=true;
+    bool family_initialized=false,double_sided=false,uniform_double_sided=true;
 };
 ALMetalWorldSourceCohort::ALMetalWorldSourceCohort(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldSourceCohort::~ALMetalWorldSourceCohort()=default;
@@ -147,9 +157,10 @@ try
     impl->sources.reserve(sources.size());
     for(const auto& source:sources)
     {
-        if(!source || (impl->family && impl->family!=source->family()))
+        if(!source || (impl->family_initialized && impl->family!=source->family()))
             return reject("Ordinary material cohort contains missing or mixed-family records");
-        if(!impl->family){impl->family=source->family();impl->double_sided=source->doubleSided();}
+        if(!impl->family_initialized)
+        {impl->family=source->family();impl->double_sided=source->doubleSided();impl->family_initialized=true;}
         else impl->uniform_double_sided=impl->uniform_double_sided && impl->double_sided==source->doubleSided();
         impl->sources.push_back(source);
     }

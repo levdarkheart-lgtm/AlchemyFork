@@ -204,3 +204,64 @@ It retains the48-case matrix and requires accepted cohort draws in every view.
 New parity cases cover warm-begin/replacement/warm-end ordering, unchanged raw
 fallback, all attachments/depth and7 logical query positions. Root integrates
 this freeze, then executes required20 and native/cost gates. Activation staysOFF.
+
+## Same-frame result and remaining direct-work coverage
+
+Clean4f52dcfec2ed77334c654cfe7f49a1ced27c7cac required20 passes138.107s;
+static69052 passes346ARM64/signatures/imports/source/features/sevenOFFcontrols.
+Actual native producer10198assertions/48cases passes with API/GPU validation.
+almetal_tests is byte-identical to19 (binary-equivalence-19-20.json), so its
+earlier native evidence is explicitly reused rather than rerun/relabelled.
+
+Actual-direct-cohort-costs-20 passes91726/48. Warm512CPU59.24–63.72%lower;
+threeview512churn26.15–28.68%lower. All16cold cases still5.65–65.32%higher;
+14/16churn comparisons remain slower (oneview51231.12–34.32%higher). Large
+GPU sums range2.50%lower to3.82%higher; raw18 outlier remains retained. No
+whole-viewer FPS or default activation acceptance. Pending map/vector and exact
+replacement bookkeeping are inside the timed boundary.
+
+Contained CPU sample20 executed only llrender_tests, not the viewer; native
+fixture and sampler exit0. It captured only41 main-thread samples dominated
+by GPU waits/readback and is insufficient to attribute cold compilation. The
+new hidden no-render compilation-stage fixture separates ordinary source,
+resource-only promotion, record-only promotion and group-from-completed-record
+CPU work. Its separate promotion copies mean those stage totals must not be
+summed as a full-path result. Fixture is authored, not executed yet.
+
+SIMPLE transport still used old per-source expansion in20. Work in this
+isolated tree now extends private owner-free family0 records, region snapshots
+independent of geometry, whole-cohort capture and same-view replacement to
+plain opaque passes, with24 actual cold/warm/churn comparisons alongside the
+unchanged48 material comparisons. Residency owns cohort API/tests, opaque owns
+SIMPLE cull snapshot/ranges, architecture owns producer/capture/actual fixture.
+Root owns the new compile attribution inl, documentation and all execution.
+
+PPD197 separately removes the unused argument-resource descriptor prerequisite
+from ordinary direct material compilation. Explicit table/SourceRows requests
+retain their implementation. Completed producer tuples must still prove all
+typed geometry/index/numeric buffers and every active texture role/control
+block; optional present descriptors must match. Device qualification remains
+in actual encoder bindings; private certificates are not claimed to prove it.
+Source-record/native-reader lifetime remains required. No new shader/cache or
+generation-owning idle SIMPLE cache is authorized by these changes.
+
+## Plain/descriptor-free coherent freeze for build21
+
+All three owners have frozen their disjoint source/tests. Plain family0 now
+uses private owner-free records, one current-region view per group and the same
+post-flush replacement transport; fresh model snapshots do not replace geometry.
+Its idle strong CPU proof contains no native lease owner. Legacy/PBR direct
+records allow absent resource descriptors while retaining matched material
+uniforms, typed geometry/index/numeric/texture role proof and native-only GPU
+completion ownership. Present optional descriptors must match; requesting one
+later preserves a valid existing direct record. PPD198 std::array iteration
+syntax is corrected by source inspection, not yet claimed compiled.
+
+The new no-render CPU attribution inl is included in the actual-owner test TU.
+Material48 and plain24 cost comparisons are separate hidden cases using the
+same complete capture/publication/cull/encode/reclaim/completion boundary and
+all pending-span bookkeeping. Both direct arms require zero unused resource
+descriptors; explicit resource/table/SourceRows tests retain their own setup.
+Root next commits/integrates and executes required21, focused native correctness,
+separate cost cases and compilation attribution. No performance acceptance or
+default activation follows from this authored freeze. Next global defect199.
