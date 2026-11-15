@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-296 -->
+<!-- next-defect-id: PPD-298 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7026,3 +7026,41 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 selected source867fb2fb8bd2… plus testccd300e5f16a… frozen and copied exactly; root source/semantic review PASS. Reserve can retain input-span capacity for duplicate-heavy callers; current actual source and typed-group unions deduplicate before admission, while API stress costs retain this allocation-byte tradeoff. Existing caps, eviction order, revisions, callbacks, resource estimates and completion lifetime unchanged. One rejection allocation remains, so this is not a full allocation-free or cache-turnover repair; record stays investigating. First temporary compile lacked explicit SDK and failed; corrected SDK build and selected correctness601/16 exit0 retained in runtime-retention-295-20261115T220845Z. Full integrated build/checks next; no new viewer runtime or acceptance claim.
 
 - 2026-11-15 integrated3841527bbd /26.4.0.69129 doctor/configure/build0/0/0 (34.712s), static native and strict source PASS. Full34 current-source renderer scopes PASS254316 assertion-executions/348case-executions (160.976s), includingcommon6063/48 andactual publisher26034/80; no older-scope reuse. Separate architecture-combined-69129 provenanceVERIFIED,8273 identical inventory nodes, staged static verification and SHA256SUMS PASS. ExecutableSHAe958bb09075957bd84d921459af7802d734d69f75a353d5a764b5805370c99b9. This validates the selected bookkeeping mitigation only; per-denial allocation and total cache turnover remain, owner acceptance pending. Tested69122 preserved; no new launch/login/profile/push.
+
+
+## PPD-296 — Draw-source content revisions rebuild unchanged native dependency subscriptions
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Architecture Session / native dependency author
+- Discovered: 2026-11-15
+- Original reference: Native dependency relays have no original API equivalent. Original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 llspatialpartition.h/LLDrawInfo owns geometry/material references in the retained draw map. Preserve true resource/material/layout invalidation and current reader lifetimes.
+- Evidence: [69122 two-scene report](research/integrated-build-69122-quiet-club-20261115.md), privatebusy cpu-analysis.json observeMetalSourceDependencies9.521CPU-s inclusive/Signal::observe7.888CPU-s; llspatialpartition.cpp3763 revision guard and complete relay recreation.
+- Next action: Preserve exact ordered signal identities across content-only revisions; reuse only the same State relay and identical current topology. Topology changes retain fresh subscribe-then-swap transaction. Share the production walker with dedicated tests and benchmark stable/content/topology changes at varying observer fanout.
+- Verification: A texture/native-content publication advances State revision while dependency signal identities can stay unchanged; current code reallocates relay and resubscribes all signals. This cost is not automatically byte-cap churn: cache withdrawal does not advance producer revision. Current80-case publisher fixture explicitly stubs this walker and cannot prove the proposed change. No repair/runtime gain yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before scoped production-helper extraction/relay-reuse implementation. Include geometry, all image/material slots and all fallback dependencies; no layout-only keys, skipped notification, removed fallback, stale raw-pointer proof or cache-cap change. Test content changes, exact topology replacement/removal/duplicate identity, exception transaction, old observer expiry and independent readers.
+
+
+## PPD-297 — Native RGB byte expansion uses per-pixel dynamic copy work
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Architecture Session / native upload author
+- Discovered: 2026-11-15
+- Original reference: Original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 LLImageGL upload uses declared format/type and unpack row layout. Native Metal RGB storage expands to supported RGBA/BGRA storage; preserve component byte order, opaque storage alpha, subregion offsets, row padding and swap semantics.
+- Evidence: [69122 runtime evidence](research/integrated-build-69122-quiet-club-20261115.md), llimagegl_upload_native.inl prepare_metal_upload_pixels expansion loop; private69122 busy raw CPU export/derived shadow_copy_hotspot_busy.json identifies upload preparation among copy callers. Source-format mix is not recorded.
+- Next action: Inspect optimized baseline code, implement a format-specialized U8 RGB/RGBA/BGRA expansion kernel with safe unaligned rows/tails, preserve wider/packed/float paths, and compare exact actual-helper output/costs with allocations included and retained.
+- Verification: Current RGB expansion calls runtime-sized memcpy per pixel and writes alpha separately. Busy copy-like leaf samples include upload preparation, buffer writes and other scopes;15.355CPU-s memmove is not all shadow or all RGB8. The candidate's real contribution and byte-format frequency are unproved. No fix/FPS claim yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before native upload specialization. Existing actual upload-layout tests cover RGB/RGBA/BGRA, opaque alpha, row padding/subregion offsets and swap/packed/float paths. Extend vector/tail/unaligned/page-edge coverage and benchmark realistic sizes; no quality, shader, decoder, upload-admission or cache-policy change.
+
+- 2026-11-15 initial register harness rejected297 without a Markdown evidence citation; added the existing runtime-report link before implementation. No code/test failure.
