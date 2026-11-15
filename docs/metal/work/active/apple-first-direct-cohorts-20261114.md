@@ -1628,3 +1628,43 @@ failsclosed; rootadds/publishesactualstream, no guard change. Native tail/newbac
 palette checks and allcosts notexecuted. Next46rebuild with explicit source/binary
 unchanged-production reuse for successful45scopes where proved, rerun actual/tail.
 No all-pass45 or speedup claim. Next249.
+
+
+## Source46 observed, next integrated tile/pass/identity repair
+
+Clean aa5645944d5a9be1ee3ba6587492788798b6691e /26.4.0.69089 required46
+exits0/0/0 (30.828s), static/strict pass. Production unchanged from45; explicit
+native-binary-equivalence-45-46.json proves samealmetal/common binaries and only
+fixture change, reusing13successful45scopes. Nine scopes rerun/new46pass:
+region64/5,actual17772/67,gpurows6538/3,compact1990/8,resources12379/7,
+oldresource4721/1,oldrows283/1,nolayout13/1,palette+worldprepare2340/14.
+All22planned scope coverage is accounted for; not an all22rerun46 claim.
+
+Attachment complete-cost46 PASS225024/1(11.937s),192summaries/2688raw,
+96pairedconditions. CPUwins85/96, all48large110jointcases; typicalsharedidentity
+30/32wins. LargestCPUgain289.917microseconds/42.24%; largestloss4.2295us/4.72%
+in tiny1jointdistinctequalbytecase. Total/querysettlement69/96wins with mixedGPU
+results, noFPSclaim. PPD251 deliberatelyadverse equal-byte identities reveal up to
+55.02times publishedlogicalbytes despiteCPUgain. This is not physical residency.
+Rerun after world-only cold-record content interning, preserving O1identityhits
+and establishedshadowdefault. Exact matched page, not lastpage, is cached.
+
+Ordinary/control4arm costs46 alsoPASS219988/1(5.816s),many2645160/1(11.653s).
+These are full-current-path smoke/cost controls, not isolated causal measurement
+of the new8Bfield versus allotherchanges. No owner launch/profile/push/staging.
+
+Nextsource integrates source-reviewed native probe tile lighting: original lightmap
+fragment writes memorylessRG8 color1, basegeometry/sky fetches it in the same render
+pass with ROG0/hardwarequantization. Rootpending owner packet defers only supported
+unblurredprobe scenes, consumes synchronously and resets at every previouslightmap
+lifecycleboundary; mainSSAO/oldlibrary routes retained. Encodedtile/separate counters
+are not acceptedface counts. New31x31 odd-size parity case adds non-power2coverage.
+Allproduction/fixture/rootwiring peers pass; nativeShader/runtime acceptance pending.
+
+Also integrated250validatedempty-local/projector no-op owners;251world-firstidentity
+content interning;240childsource miss stages (first/revision/transient vsfactory
+payload/variant/promotion). Newcounters countAPIcalls, not uniqueobjects/capacity
+causes. Newactual/source-miss and nativeearly-page alias/no-op/pass-fusion fixtures
+are unexecuted. PPD249pool-scope,252idlebarrier,253combinedfixture-names corrected
+before execution, retainedinregister. Next254. Rootnext freezes47, requiredbuild,
+allrelevantnative checks andcompletecosts. Fullarchitecture/ownerFPSacceptance open.

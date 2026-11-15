@@ -2535,6 +2535,8 @@ struct alignas(16) ALMetalWorldBaseLightingConstants
     std::uint32_t environment_config[4]{};
 };
 
+enum class ALMetalProbeLightingPath : std::uint8_t { none, separate_passes, memoryless_tile };
+
 struct ALMetalWorldBaseLightingScene
 {
     const ALMetalRenderTarget* gbuffer = nullptr;
@@ -2619,9 +2621,12 @@ public:
     // Borrowed packet views avoid a shared_ptr operation on every cache hit.
     // A miss acquires the factory-created record's shared owner once; the
     // caller must retain its aggregate input owner for the duration of this call.
+    // World consumers may intern a NEW identity by exact content once. Existing
+    // identities remain O(1); the default shadow publication policy is unchanged.
     bool publishPaletteRecord(ALMetalCommandBuffer& command,
         const ALMetalAttachmentPaletteRecord* palette,
-        ALMetalWorldDataSlice& slice, std::string* error = nullptr);
+        ALMetalWorldDataSlice& slice, std::string* error = nullptr,
+        bool deduplicate_new = false);
     ALMetalWorldFrameDataStats stats() const noexcept;
     ALMetalShadowMaterials* shadowMaterials(
         const ALMetalShaderLibrary& library, std::string* error = nullptr);
@@ -3147,6 +3152,17 @@ public:
         const ALMetalWorldBaseLightingScene& scene,
         std::string* error = nullptr);
 
+    // Probe-only unblurred lighting owner. An eligible Apple GPU keeps the
+    // exact RG8 light map in tile memory between its original producer and
+    // base-light draws. External maps, SSAO, unsupported devices/libraries
+    // retain separate native passes. path is set only on successful output.
+    std::unique_ptr<ALMetalRenderTarget> renderProbeLighting(
+        const ALMetalWorldLightMapScene& light_map,
+        const ALMetalWorldBaseLightingScene& base,
+        std::string* error = nullptr,
+        ALMetalProbeLightingPath* path = nullptr);
+    bool supportsProbeLightingFusion() const noexcept;
+
     // Composite supported post-deferred impostor owners into an existing
     // native G-buffer target. Attachment zero and depth are loaded in place;
     // the remaining attachments are preserved byte-for-byte. Callers may
@@ -3163,6 +3179,10 @@ private:
         bool validated_shape,
         std::string* error,
         std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results);
+    std::unique_ptr<ALMetalRenderTarget> renderBaseLightingInternal(
+        const ALMetalWorldBaseLightingScene& scene,
+        const ALMetalWorldLightMapScene* tile_light_map,
+        std::string* error);
     std::unique_ptr<ALMetalRenderTarget> renderExposureInternal(
         const ALMetalWorldExposureScene& scene, bool meter_only,
         std::string* error);

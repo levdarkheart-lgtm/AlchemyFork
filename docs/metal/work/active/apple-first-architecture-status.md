@@ -6,8 +6,10 @@ This is the short current checklist; detailed source and retained evidence are i
 
 The owner-tested preview is **69085 / 6af308d165**. Its five-minute recording
 covers301.686seconds and reports13.998FPS; it is not a controlled before/after
-speedup result. That staged app remains unchanged. The next combined source is
-**5c74f34b93**, currently building after a new test's tangent-type compile repair.
+speedup result. That staged app remains unchanged. The next-source baseline is
+**aa5645944d / 69089**, built with native correctness coverage. Its palette cost
+run found an equal-byte upload regression; that repair and the tile-pass changes
+are integrated for the next build.
 
 | Required boundary | Implemented and observed | Remaining work |
 |---|---|---|
@@ -21,14 +23,14 @@ speedup result. That staged app remains unchanged. The next combined source is
 
 ## Current implementation queue
 
-1. **Doing:** build the combined attachment-sharing and typed-diagnostics source.
-   Source44 failed only on an unsupported tangent strider in the new fixture;
-   source45 repairs that type. Failed evidence remains under PPD247.
-2. **Next:** run native rendering/lifetime checks and complete attachment costs,
-   including distinct records with equal bytes, small palettes, multiple views,
-   shadows, and ordinary-path batch-stride overhead. Reject demonstrated losses.
-3. **Doing in parallel:** implement the native probe-lighting pass experiment in
-   an isolated worktree; then integrate only after parity and cost evidence.
+1. **Done at source46:** build and native correctness for attachment sharing and
+   typed diagnostics. Fixture repairs PPD247/248 retain the failed evidence.
+2. **Doing:** correct measured equal-byte upload amplification and rerun the
+   complete costs. Source46 CPU improved85/96 cases, but that alone does not
+   accept the publication regression or establish an FPS gain.
+3. **Doing:** native probe tile-lighting and validated empty-light no-op owners
+   are implemented/integrated. Execute pixel/depth parity, physical pass counts,
+   old-library behavior and complete costs before accepting activation.
 4. **Next:** use typed publication/capture reasons and the saved whole-engine
    profile to resolve probe/source churn, then finish the useful CPU/GPU
    preparation boundaries above. Continue through remaining source gaps.

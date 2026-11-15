@@ -236,3 +236,6 @@ TEST_CASE("almetal: base fullbright preserves linear output and exact material g
         }
     }
 }
+
+#include "almetal_probe_lighting_fusion_test.inl"
+#include "almetal_empty_light_pass_native.inl"

@@ -513,3 +513,109 @@ TEST_CASE("almetal: queued world draws keep native palette bytes without retaini
         changed.reset();f.data->beginFrame(3);CHECK(changed_weak.expired());
     }
 }
+
+TEST_CASE("almetal: world record interning pins the earlier deduplicated arena page",
+          "[almetal][attachment-palette][PPD-251]")
+{
+    @autoreleasepool
+    {
+        Fixture f;auto arena=f.data;arena->beginFrame(10);
+        auto values=attachmentValues(110,.125f);
+        const auto original_values=values;
+        auto a=ALMetalAttachmentPaletteRecord::create(values.data(),values.size(),110,&f.error);
+        auto b=ALMetalAttachmentPaletteRecord::create(values.data(),values.size(),110,&f.error);
+        REQUIRE(a);REQUIRE(b);REQUIRE(a!=b);
+        const auto bytes=values.size()*sizeof(float);
+        ALMetalBufferDescriptor descriptor;descriptor.length=bytes*2;
+        auto output=ALMetalBuffer::create(*f.device,descriptor,&f.error);REQUIRE(output);
+        std::vector<std::uint8_t> pressure(1024*1024,0xa5);
+        // Complete all synchronous fixture/resource initialization before the
+        // gate. Only queued publications/copies occur until release below.
+        PaletteQueueGate gate(f);
+        auto first=f.device->makeCommandBuffer("World palette first page and pressure",&f.error);REQUIRE(first);
+        ALMetalWorldDataSlice original,second_page,alias,identity_hit;
+        REQUIRE(arena->publishPaletteRecord(*first,a.get(),original,&f.error,true));
+        REQUIRE(arena->publish(*first,pressure.data(),pressure.size(),second_page,&f.error,false));
+        REQUIRE(second_page.buffer!=original.buffer);CHECK(arena->stats().pages_created==2);
+        auto abandoned=f.device->makeCommandBuffer("World palette equal second identity",&f.error);REQUIRE(abandoned);
+        const auto published=arena->stats().published_bytes;
+        REQUIRE(arena->publishPaletteRecord(*abandoned,b.get(),alias,&f.error,true));
+        CHECK(alias.buffer==original.buffer);CHECK(alias.offset==original.offset);CHECK(alias.length==bytes);
+        CHECK(arena->stats().published_bytes==published);
+        CHECK(arena->stats().record_publications==2);
+        auto old_reader=f.device->makeCommandBuffer("World palette cached earlier-page reader",&f.error);REQUIRE(old_reader);
+        // Default false on an EXISTING identity still takes the O(1) record
+        // hit. It must not replace the first-page range with active.back().
+        REQUIRE(arena->publishPaletteRecord(*old_reader,b.get(),identity_hit,&f.error));
+        CHECK(identity_hit.buffer==original.buffer);CHECK(identity_hit.offset==original.offset);
+        CHECK(arena->stats().record_reuses==1);CHECK(arena->stats().published_bytes==published);
+        REQUIRE(output->copyFrom(*old_reader,*identity_hit.buffer,identity_hit.offset,0,bytes,&f.error));
+        auto old_completion=old_reader->completionToken();REQUIRE(old_completion);
+        REQUIRE(old_reader->commit(&f.error));CHECK_FALSE(old_completion->isComplete());
+        // Both earlier commands are abandoned. Only the cached identity hit
+        // now protects page one, while page two becomes reusable next frame.
+        first.reset();abandoned.reset();
+        std::weak_ptr<const ALMetalAttachmentPaletteRecord> weak_a=a,weak_b=b;
+        a.reset();b.reset();arena->beginFrame(11);
+        CHECK(weak_a.expired());CHECK(weak_b.expired());CHECK(arena->stats().retired_pages==1);
+        values[0]=-.25f;
+        auto changed=ALMetalAttachmentPaletteRecord::create(values.data(),values.size(),110,&f.error);REQUIRE(changed);
+        auto next=f.device->makeCommandBuffer("World palette new frame changed pose",&f.error);REQUIRE(next);
+        ALMetalWorldDataSlice current;
+        REQUIRE(arena->publishPaletteRecord(*next,changed.get(),current,&f.error,true));
+        CHECK(current.buffer==second_page.buffer);CHECK(current.buffer!=original.buffer);
+        CHECK(arena->stats().pages_created==2);
+        REQUIRE(output->copyFrom(*next,*current.buffer,current.offset,bytes,bytes,&f.error));
+        auto next_completion=next->completionToken();REQUIRE(next_completion);REQUIRE(next->commit(&f.error));
+        auto cancel=f.device->makeCommandBuffer("World palette abandoned new-frame identity hit",&f.error);REQUIRE(cancel);
+        ALMetalWorldDataSlice canceled;
+        REQUIRE(arena->publishPaletteRecord(*cancel,changed.get(),canceled,&f.error,true));
+        auto canceled_completion=cancel->completionToken();REQUIRE(canceled_completion);cancel.reset();CHECK(canceled_completion->isComplete());
+        std::weak_ptr<const ALMetalAttachmentPaletteRecord> weak_changed=changed;
+        changed.reset();arena->beginFrame(12);
+        CHECK(weak_changed.expired());CHECK(arena->stats().retired_pages==2);
+        CHECK_FALSE(old_completion->isComplete());CHECK_FALSE(next_completion->isComplete());
+        gate.release(f);
+        CHECK(old_completion->isComplete());CHECK(next_completion->isComplete());
+        std::vector<float> actual(values.size()*2);
+        REQUIRE(output->read(0,actual.data(),bytes*2,&f.error));
+        CHECK(std::equal(original_values.begin(),original_values.end(),actual.begin()));
+        CHECK(std::equal(values.begin(),values.end(),actual.begin()+values.size()));
+        arena->beginFrame(13);CHECK(arena->stats().retired_pages==0);
+        auto recycled=f.device->makeCommandBuffer("World palette pages recover after completion",&f.error);REQUIRE(recycled);
+        auto following=ALMetalAttachmentPaletteRecord::create(values.data(),values.size(),110,&f.error);REQUIRE(following);
+        REQUIRE(arena->publishPaletteRecord(*recycled,following.get(),current,&f.error,true));
+        CHECK(arena->stats().pages_created==2);CHECK(arena->stats().pages_reused==2);
+    }
+}
+
+TEST_CASE("almetal: world draws intern distinct equal palettes without changing native output",
+          "[almetal][attachment-palette][PPD-251]")
+{
+    @autoreleasepool
+    {
+        Fixture f;auto values=attachmentValues(110,.125f);
+        auto a=ALMetalAttachmentPaletteRecord::create(values.data(),values.size(),110,&f.error);
+        auto b=ALMetalAttachmentPaletteRecord::create(values.data(),values.size(),110,&f.error);REQUIRE(a);REQUIRE(b);
+        std::array<Pixels,2> pixels;std::array<std::uint64_t,2> published{};
+        for(unsigned distinct=0;distinct<2;++distinct)
+        {
+            f.data->beginFrame(distinct+2);const auto before=f.data->stats();
+            std::array<ALMetalWorldSimpleBatch,2> batches{f.batch(4),f.batch(4)};
+            for(unsigned draw=0;draw<2;++draw)
+            {
+                const auto& record=distinct&&draw?b:a;
+                batches[draw].skin_palette_record=record.get();batches[draw].skin_palette=record->data();
+                batches[draw].skin_palette_float_count=record->size();batches[draw].skin_joint_count=record->jointCount();
+            }
+            auto scene=f.scene();scene.batches=batches.data();scene.batch_count=batches.size();
+            auto target=f.renderer->render(scene,&f.error);INFO(f.error);REQUIRE(target);
+            pixels[distinct]=f.read(*target);published[distinct]=f.data->stats().published_bytes-before.published_bytes;
+            CHECK(f.data->stats().record_publications-before.record_publications==(distinct?2u:1u));
+        }
+        CHECK(pixels[0]==pixels[1]);CHECK(published[0]==published[1]);
+        CHECK(std::any_of(pixels[1].depth.begin(),pixels[1].depth.end(),[](auto value){return value!=0x3f800000u;}));
+        // The existing default shadow policy remains covered by the earlier
+        // test requiring equal-byte new identities to occupy distinct ranges.
+    }
+}

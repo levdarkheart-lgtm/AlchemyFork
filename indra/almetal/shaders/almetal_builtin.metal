@@ -13219,16 +13219,16 @@ static float almetal_world_ambient_occlusion(
     return clamp(1.0 - angle_hidden, 0.0, 1.0);
 }
 
-fragment float2 almetal_world_light_map_fragment(
-    ALMetalWorldLocalLightVaryings input [[stage_in]],
-    constant ALMetalWorldLightMapConstants& constants [[buffer(0)]],
-    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(1)]],
-    texture2d<float> normal_texture [[texture(0)]],
-    texture2d<float> depth_texture [[texture(1)]],
-    texture2d_array<float> shadow_maps [[texture(2)]],
-    texture2d<float> noise_texture [[texture(3)]],
-    sampler point_sampler [[sampler(0)]],
-    sampler repeat_sampler [[sampler(1)]])
+static float2 almetal_world_light_map_value(
+    ALMetalWorldLocalLightVaryings input,
+    constant ALMetalWorldLightMapConstants& constants,
+    constant ALMetalWorldDirectionalShadowConstants& shadows,
+    texture2d<float> normal_texture,
+    texture2d<float> depth_texture,
+    texture2d_array<float> shadow_maps,
+    texture2d<float> noise_texture,
+    sampler point_sampler,
+    sampler repeat_sampler)
 {
     const float depth = depth_texture.sample(
         point_sampler, input.texcoord).r;
@@ -13294,6 +13294,41 @@ fragment float2 almetal_world_light_map_fragment(
     return clamp(
         float2(directional_visibility, ambient_occlusion),
         float2(0.0), float2(1.0));
+}
+
+fragment float2 almetal_world_light_map_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldLightMapConstants& constants [[buffer(0)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(1)]],
+    texture2d<float> normal_texture [[texture(0)]],
+    texture2d<float> depth_texture [[texture(1)]],
+    texture2d_array<float> shadow_maps [[texture(2)]],
+    texture2d<float> noise_texture [[texture(3)]],
+    sampler point_sampler [[sampler(0)]],
+    sampler repeat_sampler [[sampler(1)]])
+{
+    return almetal_world_light_map_value(input, constants, shadows, normal_texture, depth_texture, shadow_maps, noise_texture, point_sampler, repeat_sampler);
+}
+
+struct ALMetalWorldProbeTileLightMapOutput
+{
+    float2 visibility [[color(1), raster_order_group(0)]];
+};
+
+fragment ALMetalWorldProbeTileLightMapOutput almetal_world_probe_tile_light_map_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldLightMapConstants& constants [[buffer(0)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(1)]],
+    texture2d<float> normal_texture [[texture(0)]],
+    texture2d<float> depth_texture [[texture(1)]],
+    texture2d_array<float> shadow_maps [[texture(2)]],
+    texture2d<float> noise_texture [[texture(3)]],
+    sampler point_sampler [[sampler(0)]],
+    sampler repeat_sampler [[sampler(1)]])
+{
+    ALMetalWorldProbeTileLightMapOutput result;
+    result.visibility = almetal_world_light_map_value(input, constants, shadows, normal_texture, depth_texture, shadow_maps, noise_texture, point_sampler, repeat_sampler);
+    return result;
 }
 
 static int almetal_world_light_map_mirror(int value, int size)
@@ -13539,28 +13574,28 @@ fragment float4 almetal_world_base_light_sky_fragment(
     return float4(almetal_bounded_radiance(sky_color, 65504.0), 0.0);
 }
 
-fragment float4 almetal_world_base_light_geometry_fragment(
-    ALMetalWorldLocalLightVaryings input [[stage_in]],
-    constant ALMetalWorldBaseLightingConstants& constants [[buffer(0)]],
-    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
-    constant ALMetalWorldHeroProbeConstants& hero [[buffer(2)]],
-    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(3)]],
-    texture2d<float> albedo_texture [[texture(0)]],
-    texture2d<float> specular_texture [[texture(1)]],
-    texture2d<float> normal_texture [[texture(2)]],
-    texture2d<float> emissive_texture [[texture(3)]],
-    texture2d<float> depth_texture [[texture(4)]],
-    texture2d<float> light_map [[texture(5)]],
-    texturecube_array<float> probe_radiance [[texture(6)]],
-    texture2d<uint> probe_irradiance [[texture(7)]],
-    texture2d<float> brdf_lut [[texture(8)]],
-    texturecube<float> hero_radiance [[texture(9)]],
-    texture2d<float> ssr_scene_color [[texture(10)]],
-    texture2d<float> ssr_scene_depth [[texture(11)]],
-    texturecube<float> legacy_environment_map [[texture(12)]],
-    sampler point_sampler [[sampler(0)]],
-    sampler probe_sampler [[sampler(1)]],
-    sampler brdf_sampler [[sampler(2)]])
+static float4 almetal_world_base_light_geometry(
+    ALMetalWorldLocalLightVaryings input,
+    constant ALMetalWorldBaseLightingConstants& constants,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    constant ALMetalWorldHeroProbeConstants& hero,
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr,
+    texture2d<float> albedo_texture,
+    texture2d<float> specular_texture,
+    texture2d<float> normal_texture,
+    texture2d<float> emissive_texture,
+    texture2d<float> depth_texture,
+    float2 shadow_occlusion,
+    texturecube_array<float> probe_radiance,
+    texture2d<uint> probe_irradiance,
+    texture2d<float> brdf_lut,
+    texturecube<float> hero_radiance,
+    texture2d<float> ssr_scene_color,
+    texture2d<float> ssr_scene_depth,
+    texturecube<float> legacy_environment_map,
+    sampler point_sampler,
+    sampler probe_sampler,
+    sampler brdf_sampler)
 {
     const float depth = depth_texture.sample(
         point_sampler, input.texcoord).r;
@@ -13585,8 +13620,6 @@ fragment float4 almetal_world_base_light_geometry_fragment(
         : float3(0.0);
     const bool pbr = abs(normal_sample.a - 0.67) < 0.1;
     const bool classic_mode = constants.config.y != 0u;
-    const float2 shadow_occlusion = light_map.sample(
-        point_sampler, input.texcoord).rg;
     const float sun_visibility = constants.config.z != 0u
         ? max(shadow_occlusion.r, base_color.a) : 1.0;
     const float ambient_occlusion = constants.config.w != 0u
@@ -13848,6 +13881,66 @@ fragment float4 almetal_world_base_light_geometry_fragment(
     return float4(max(
         almetal_bounded_radiance(color * output_scale, 32752.0),
         float3(0.0)), 0.0);
+}
+
+fragment float4 almetal_world_base_light_geometry_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldBaseLightingConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(2)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(3)]],
+    texture2d<float> albedo_texture [[texture(0)]],
+    texture2d<float> specular_texture [[texture(1)]],
+    texture2d<float> normal_texture [[texture(2)]],
+    texture2d<float> emissive_texture [[texture(3)]],
+    texture2d<float> depth_texture [[texture(4)]],
+    texture2d<float> light_map [[texture(5)]],
+    texturecube_array<float> probe_radiance [[texture(6)]],
+    texture2d<uint> probe_irradiance [[texture(7)]],
+    texture2d<float> brdf_lut [[texture(8)]],
+    texturecube<float> hero_radiance [[texture(9)]],
+    texture2d<float> ssr_scene_color [[texture(10)]],
+    texture2d<float> ssr_scene_depth [[texture(11)]],
+    texturecube<float> legacy_environment_map [[texture(12)]],
+    sampler point_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler brdf_sampler [[sampler(2)]])
+{
+    return almetal_world_base_light_geometry(input, constants, probes, hero, ssr,
+        albedo_texture, specular_texture, normal_texture, emissive_texture,
+        depth_texture, light_map.sample(point_sampler, input.texcoord).rg, probe_radiance, probe_irradiance,
+        brdf_lut, hero_radiance, ssr_scene_color, ssr_scene_depth,
+        legacy_environment_map, point_sampler, probe_sampler, brdf_sampler);
+}
+
+fragment float4 almetal_world_probe_tile_base_light_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldBaseLightingConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(2)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(3)]],
+    texture2d<float> albedo_texture [[texture(0)]],
+    texture2d<float> specular_texture [[texture(1)]],
+    texture2d<float> normal_texture [[texture(2)]],
+    texture2d<float> emissive_texture [[texture(3)]],
+    texture2d<float> depth_texture [[texture(4)]],
+    float2 shadow_occlusion [[color(1), raster_order_group(0)]],
+    texturecube_array<float> probe_radiance [[texture(6)]],
+    texture2d<uint> probe_irradiance [[texture(7)]],
+    texture2d<float> brdf_lut [[texture(8)]],
+    texturecube<float> hero_radiance [[texture(9)]],
+    texture2d<float> ssr_scene_color [[texture(10)]],
+    texture2d<float> ssr_scene_depth [[texture(11)]],
+    texturecube<float> legacy_environment_map [[texture(12)]],
+    sampler point_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler brdf_sampler [[sampler(2)]])
+{
+    return almetal_world_base_light_geometry(input, constants, probes, hero, ssr,
+        albedo_texture, specular_texture, normal_texture, emissive_texture,
+        depth_texture, shadow_occlusion, probe_radiance, probe_irradiance,
+        brdf_lut, hero_radiance, ssr_scene_color, ssr_scene_depth,
+        legacy_environment_map, point_sampler, probe_sampler, brdf_sampler);
 }
 
 static float3 almetal_pbr_neutral_tonemap(float3 color)

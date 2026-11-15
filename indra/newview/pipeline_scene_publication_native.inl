@@ -22,6 +22,32 @@
 
 namespace ALScenePublicationNative
 {
+// Miss events count getter/factory calls, not unique objects, builds or
+// failures. The cold factory calls current() again inside extend(), so getter
+// and factory arrays are deliberately separate denominators. Hits add no work.
+// A transient expiry identifies an unavailable same-revision reader; it does
+// not assert which budget, withdrawal or lifetime decision caused that expiry.
+enum class CurrentMissReason : U8
+{
+    first_encounter,
+    producer_revision_changed,
+    same_revision_transient_expired,
+    count
+};
+enum class FactoryMissStage : U8
+{
+    current_payload_missing,
+    variant_missing, // World flavor key, or the exact shadow type+coverage pair.
+    optional_capability_promotion,
+    count
+};
+struct SourceMissStats
+{
+    std::array<U64, static_cast<std::size_t>(CurrentMissReason::count)> current_misses{};
+    std::array<U64, static_cast<std::size_t>(FactoryMissStage::count)> world_misses{}, shadow_misses{};
+};
+inline SourceMissStats source_miss_statistics;
+
 enum class WorldFamily : U8 { simple, legacy, pbr };
 inline std::unique_ptr<ALMetalWorldMaterialDataCache> material_data_cache;
 inline U64 material_source_publications = 0, material_source_fallbacks = 0;
@@ -215,7 +241,15 @@ inline std::shared_ptr<const Payload> current(const LLDrawInfo& info)
         return std::static_pointer_cast<const Payload>(state->publication());
     const auto& metadata = info.mMetalShadowSource;
     if (metadata && metadata->native_scene_revision == state->revision())
-        return std::static_pointer_cast<const Payload>(metadata->native_scene_transient.lock());
+    {
+        auto value = std::static_pointer_cast<const Payload>(metadata->native_scene_transient.lock());
+        if (!value) ++source_miss_statistics.current_misses[
+            static_cast<std::size_t>(CurrentMissReason::same_revision_transient_expired)];
+        return value;
+    }
+    ++source_miss_statistics.current_misses[static_cast<std::size_t>(
+        metadata && metadata->native_scene_revision
+            ? CurrentMissReason::producer_revision_changed : CurrentMissReason::first_encounter)];
     return {};
 }
 inline const ALMetalWorldSimpleBatch* findWorld(const Payload& value, U64 key) noexcept
@@ -570,6 +604,7 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         flavor.native_resources = flavor.native_resources && flavor.hasResourceConsumer();
         const U64 key = flavor.key();
         if (auto value = current(info))
+        {
             if (const auto* found = findWorldVariant(*value, key))
             {
                 const auto needs_cpu_freeze = [&](const WorldVariant& variant)
@@ -590,6 +625,8 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                     working_set.touch(info.metalSourcePublication()->identity(), value->serial, frame);
                     return {std::move(value), &found->prototype, nullptr, true};
                 }
+                ++source_miss_statistics.world_misses[
+                    static_cast<std::size_t>(FactoryMissStage::optional_capability_promotion)];
                 // Resource/cohort capabilities do not change shader semantics.
                 // Promote a completed immutable variant from its exact native
                 // tuple, without rebuilding LL geometry/material/texture data.
@@ -651,6 +688,11 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                     return {{}, nullptr, "Native scene changed while optional promotion allocation failed"};
                 }
             }
+            ++source_miss_statistics.world_misses[
+                static_cast<std::size_t>(FactoryMissStage::variant_missing)];
+        }
+        else ++source_miss_statistics.world_misses[
+            static_cast<std::size_t>(FactoryMissStage::current_payload_missing)];
         if (!geometry(info)) return {{}, nullptr, "Native scene geometry is unpublished or invalid"};
         info.observeMetalSourceDependencies();
         auto value = extend(info, serial);
@@ -748,11 +790,17 @@ ShadowLease shadow(const LLDrawInfo& info, U32 type,
             coverage = ALMetalWorldSpotShadowCoverage::pbr_blend;
         info.observeMetalSourceDependencies();
         if (auto value = current(info))
+        {
             if (const auto* record = findShadow(*value, type, coverage))
             {
                 working_set.touch(info.metalSourcePublication()->identity(), value->serial, frame);
                 return {std::move(value), record, nullptr, true};
             }
+            ++source_miss_statistics.shadow_misses[
+                static_cast<std::size_t>(FactoryMissStage::variant_missing)];
+        }
+        else ++source_miss_statistics.shadow_misses[
+            static_cast<std::size_t>(FactoryMissStage::current_payload_missing)];
         if (!geometry(info)) return {{}, nullptr, "Native shadow geometry is unpublished or invalid"};
         ALMetalWorldSpotShadowBatch prototype;
         if (!build_prototype(prototype)) return {{}, nullptr, "Native shadow prototype is incomplete"};

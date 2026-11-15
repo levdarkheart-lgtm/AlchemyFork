@@ -857,6 +857,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     F32 spot_shadow_avatar_gravity[4]{};
     F32 spot_shadow_avatar_cloth_depth[4]{};
     std::unique_ptr<ALMetalRenderTarget> base_light_map_target;
+    // Owner-local dependency packet: consumed synchronously by base lighting.
+    // Probe light maps have no external reader; an eligible native pass keeps
+    // their RG8 intermediate in tile memory instead of publishing a texture.
+    std::optional<ALMetalWorldLightMapScene> pending_probe_light_map;
+    U64 probe_tile_lighting_encoded = 0, probe_separate_lighting_encoded = 0;
     std::unique_ptr<ALMetalTexture> base_noise_texture;
     std::unique_ptr<ALMetalTexture> legacy_glow_noise_texture;
     std::unique_ptr<ALMetalRenderTarget> base_light_target;
@@ -2023,6 +2028,7 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
+    capture.pending_probe_light_map.reset();
     capture.base_light_target.reset();
     capture.clearDraws();
     capture.avatar_palettes.clear();
@@ -2140,6 +2146,7 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     capture.target.reset();
     capture.composed_light_target.reset();
     capture.base_light_map_target.reset();
+    capture.pending_probe_light_map.reset();
     capture.base_light_target.reset();
     capture.frame_active = false;
     capture.pass_active = false;
@@ -2251,6 +2258,7 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
+    capture.pending_probe_light_map.reset();
     capture.base_light_target.reset();
     capture.clearDraws();
     capture.avatar_palettes.clear();
@@ -2319,6 +2327,7 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.target.reset();
     capture.composed_light_target.reset();
     capture.base_light_map_target.reset();
+    capture.pending_probe_light_map.reset();
     capture.base_light_target.reset();
     capture.frame_active = false;
     capture.pass_active = false;
@@ -2495,6 +2504,7 @@ void LLPipeline::initializeMetalWorldCaptureDevice(
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         capture.invalidateShadowMaps();
         capture.base_light_map_target.reset();
+        capture.pending_probe_light_map.reset();
         capture.base_noise_texture.reset();
         capture.legacy_glow_noise_texture.reset();
         capture.base_light_target.reset();
@@ -3093,6 +3103,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 LL_INFOS("MetalScene") << "Native shared scene publication: view=" << view
                     << ", world_source_hit/build=" << value->scene_source_hits << '/' << value->scene_source_builds
                     << ", source_failures=" << value->scene_source_failures
+                    << ", probe_lighting_encoded(tile/separate)=" << value->probe_tile_lighting_encoded
+                    << '/' << value->probe_separate_lighting_encoded
                     << ", optional_visibility_metadata_failures=" << value->visibility_metadata_failures
                     << ", preparation_requested=" << preparation_requested()
                     << ", encoded_views(scalar/prepared/credited)=" << value->scalar_world_views << '/' << value->prepared_world_views << '/' << value->credited_world_views
@@ -3247,6 +3259,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             log_terrain_preflight("probe",mMetalProbeWorldSimpleCapture.get());
             const auto groups = ALSceneGroupPublicationNative::statistics;
             const auto layouts = ALSceneGroupPublicationNative::cpuLayoutStats();
+            const auto& source_misses = ALScenePublicationNative::source_miss_statistics;
+            LL_INFOS("MetalScene") << "Native source lookup misses: getter(first/revision/transient_expired)="
+                << source_misses.current_misses[0] << '/' << source_misses.current_misses[1] << '/' << source_misses.current_misses[2]
+                << ", world_factory(payload/variant/promotion)=" << source_misses.world_misses[0]
+                << '/' << source_misses.world_misses[1] << '/' << source_misses.world_misses[2]
+                << ", shadow_factory(payload/variant/promotion)=" << source_misses.shadow_misses[0]
+                << '/' << source_misses.shadow_misses[1] << '/' << source_misses.shadow_misses[2]
+                << ", scope=getter_and_factory_calls_not_unique_objects" << LL_ENDL;
             const auto compilation = ALSceneGroupCompilationNative::statistics;
             LL_INFOS("MetalFramePlan") << "CPU cohort compilation: candidates/duplicate_views=" << compilation.candidates << '/' << compilation.duplicate_views
                 << ", admitted/denied/published/failed=" << compilation.admitted << '/' << compilation.denied << '/' << compilation.published << '/' << compilation.failed
@@ -3523,6 +3543,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.base_light_map_target.reset();
+        capture.pending_probe_light_map.reset();
         capture.base_light_target.reset();
         capture.attempted = false;
         capture.local_lighting_attempted = false;
@@ -4044,6 +4065,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         capture.invalidateShadowMaps();
         capture.base_light_map_target.reset();
+        capture.pending_probe_light_map.reset();
         capture.base_noise_texture.reset();
         capture.legacy_glow_noise_texture.reset();
         capture.base_light_target.reset();
@@ -17266,7 +17288,7 @@ bool LLPipeline::renderMetalWorldLightMap(
     {
         return false;
     }
-    if (capture.base_light_map_target)
+    if (capture.base_light_map_target || capture.pending_probe_light_map)
     {
         return true;
     }
@@ -17398,6 +17420,13 @@ bool LLPipeline::renderMetalWorldLightMap(
     constants.config[2] = has_ssao ? 1u : 0u;
     constants.config[3] = capture.normal_hdr ? 1u : 0u;
 
+    if (isMetalProbeFaceCaptureActive() && !has_ssao &&
+        capture.renderer->supportsProbeLightingFusion())
+    {
+        capture.pending_probe_light_map = scene;
+        return true;
+    }
+
     std::string error;
     auto target = capture.renderer->renderLightMap(scene, &error);
     if (!target)
@@ -17437,7 +17466,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.device || !capture.renderer || !capture.target ||
-        !capture.base_light_map_target ||
+        (!capture.base_light_map_target && !capture.pending_probe_light_map) ||
         capture.base_lighting_attempted)
     {
         return;
@@ -17507,7 +17536,8 @@ void LLPipeline::renderMetalWorldBaseLighting(
                 camera.getProjection().getF32ptr(),
                 sizeof(scene.diagnostic_view.projection));
     scene.gbuffer = capture.target.get();
-    scene.light_map = capture.base_light_map_target->colorTexture(0);
+    scene.light_map = capture.base_light_map_target
+        ? capture.base_light_map_target->colorTexture(0) : nullptr;
     scene.reflection_probes = use_reflection_probes
         ? &probes : nullptr;
     scene.legacy_environment = legacy_environment;
@@ -17588,7 +17618,12 @@ void LLPipeline::renderMetalWorldBaseLighting(
         scene.diagnostic_view.view_kind == 1 && !gSnapshot && !gCubeSnapshot &&
         !capture.renderer->commandBatchActive() && begin_metal_base_capture()};
     std::string error;
-    auto target = capture.renderer->renderBaseLighting(scene, &error);
+    ALMetalProbeLightingPath probe_path = ALMetalProbeLightingPath::none;
+    auto target = capture.pending_probe_light_map
+        ? capture.renderer->renderProbeLighting(*capture.pending_probe_light_map,
+              scene, &error, &probe_path)
+        : capture.renderer->renderBaseLighting(scene, &error);
+    capture.pending_probe_light_map.reset();
     // End before publishing the result or emitting any other rendering work.
     if (capture_end.started)
     {
@@ -17604,6 +17639,14 @@ void LLPipeline::renderMetalWorldBaseLighting(
                "migration attempt failed: "
             << error << LL_ENDL;
         return;
+    }
+
+    if (isMetalProbeFaceCaptureActive())
+    {
+        if (probe_path == ALMetalProbeLightingPath::memoryless_tile)
+            ++capture.probe_tile_lighting_encoded;
+        else
+            ++capture.probe_separate_lighting_encoded;
     }
 
     if (capture.modern_sky_valid && capture.modern_sky_drawn)
@@ -25741,6 +25784,7 @@ void LLPipeline::renderDeferredLighting()
                     &lighting_batch_error))
             {
                 capture.base_light_map_target.reset();
+                capture.pending_probe_light_map.reset();
                 capture.base_light_target.reset();
                 capture.composed_light_target.reset();
                 const U32 failed_frames =

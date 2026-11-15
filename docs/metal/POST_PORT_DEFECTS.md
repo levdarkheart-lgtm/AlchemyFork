@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-249 -->
+<!-- next-defect-id: PPD-254 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5980,3 +5980,105 @@ No viewer crash or production rendering repair is attributed to this test failur
 ### History
 
 - 2026-11-15 native-correctness-45 actual publisher exits42; receipt/log retained. Register before correcting the fixture. Neither native tail nor costs ran after failure; no all-pass source45 claim.
+
+
+## PPD-249 — Probe pass fixture counts borrowed wrappers as pooled acquisitions
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: ALMetalRenderTargetPool::acquire increments acquisitions only for reusable owned targets; borrowed-attachment descriptors are not reusable. Native pass timing windows count actual render passes separately.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Correct the new probe fixture's pool expectation to one owned acquisition for tile and two for separate passes; keep physical pass1versus2 assertion independent. Re-review before execution.
+- Verification: New fusion test expects pool2versus3 including the borrowed framebuffer wrapper; source pool increments are inside reusableRenderTargetDescriptor, which excludes borrowed colors. No affected test/build execution or viewer behavior claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+The new assertion conflates CPU framebuffer wrappers, reusable target allocations
+and physical render passes. Correcting that count must not weaken the independent
+proof that eligible tile lighting replaces two render passes with one.
+
+### History
+
+- 2026-11-15 author reports the attribution error; root inspects actual pool acquisition code and records before repair. This WIP assertion is not in staged69085 or the source46 viewer under validation.
+
+
+## PPD-250 — Empty local/projector lists still submit accumulation render passes
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` deferred local/projector traversal skips empty light lists; current accumulateLocalLights and accumulateProjectorLights retain an empty color load/store owner.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Preserve full scene/GBuffer/target validation, then return successful no-work for zero accepted lights before allocations or command acquisition. Verify target bytes, invalid-input rejection, enclosing batch continuation and physical zero-pass behavior.
+- Verification: Exact5c74 source audit identifies empty-list passes at both native accumulation owners. Existing conservative volume scissors are present; no fullscreen-overdraw or GPU-dominance claim follows from the CPU profile. No repair/test execution yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+A zero-light call has no color contribution but still creates a render encoder
+and load/store pass. The optimization must retain error behavior for invalid
+inputs and must not alter any nonempty light, projector cookie, shadow or filter.
+
+### History
+
+- 2026-11-15 registered before implementation after original/current source audit. This is avoided work, not proof of a measured FPS regression or dominant GPU shader cost.
+
+## PPD-251 — World attachment identities duplicate equal palette uploads
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: The preceding raw world path uses FrameData content interning; existing shadow identity publication intentionally skips that first-publication hash. PPD243 reused the shadow publisher for world inputs.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Retain O1 identity hits but content-intern a new world record once per producer, using the existing collision-safe byte interner and the exact returned native page. Preserve established shadow-only publication and pending-reader lifetime; rerun adverse equal-byte and ordinary complete costs.
+- Verification: Source46 aa564/69089 all requested correctness passes.96paired attachment costs pass225024assertions. CPU improves85/96 configurations and48/48large-palette cases, but distinct equal records can inflate native published bytes55.02times. Example110joints/64draws/1view/no shadow/stable:74112raw versus4077888record bytes over12samples. CPU0.219083→0.174917ms and settle0.542855→0.516479ms still improve; native byte amplification is independently real.
+- Owner verification: pending
+- Push approval: not_granted
+
+This is a measured publication inefficiency in the new world identity path,
+not an owner-world FPS result or physical-memory allocation/leak claim. Distinct
+producer identities with equal bytes should share a native slice while later
+views/draws still use O1 identity lookup. Never assume that slice resides in the
+last active page after content interning; retain the exact matched page.
+
+### History
+
+- 2026-11-15 adverse case was deliberately included before measurement. Source46 reveals the expected tradeoff; registered before repair. Preserve successful parity/lifetime evidence and raw costs, rather than declaring unconditional performance success.
+
+
+## PPD-252 — Empty-light cost assertion omits the idle-barrier command
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: ALMetalDevice::waitUntilIdle creates and commits a real barrier command; new benchmark counters include it after settlement.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Count and label the one barrier in the cost frontier. Keep independent pre-wait zero-pass/no-work assertions and nonempty correctness checks.
+- Verification: Source-only review finds expected views*2 read after waitUntilIdle; actual command debt is views*2+1. No affected test/build execution or production failure claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before fixture-only correction. The accounting change must preserve exact settlement inside the cost scope.
+
+## PPD-253 — Combined lighting fixture includes expose ambiguous helper names
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: C++ unqualified lookup after a using-directive; two new test appendices share the existing base-lighting translation unit. No upstream viewer equivalent.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Qualify EmptyLightPass::Fixture/Pixels in its three cases and remove broad using-directives before combining includes. Preserve all native assertions.
+- Verification: Fusion includes the existing world-prepare fixture's anonymous Fixture/Pixels; empty-light tests import same-named nested types unqualified. Independent peer and author source review agree this is ambiguous only in combined translation unit. No affected compile/test executed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before the narrow combined-fixture correction. Production pass logic and staged69085/69089 are not implicated.

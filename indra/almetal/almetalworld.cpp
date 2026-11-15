@@ -1864,7 +1864,7 @@ bool ALMetalWorldFrameData::publishPalette(
 
 bool ALMetalWorldFrameData::publishPaletteRecord(
     ALMetalCommandBuffer& command, const ALMetalAttachmentPaletteRecord* palette,
-    ALMetalWorldDataSlice& slice, std::string* error)
+    ALMetalWorldDataSlice& slice, std::string* error, bool deduplicate_new)
 {
     slice = {};
     if (!palette || command.isCommitted() ||
@@ -1884,10 +1884,25 @@ bool ALMetalWorldFrameData::publishPaletteRecord(
             return false;
         }
         if (!publish(command, palette->data(), palette->size() * sizeof(float),
-                     slice, error, false)) return false;
-        // A non-deduplicated publication always appends to the current page.
+                     slice, error, deduplicate_new)) return false;
+        // A new identity may alias immutable content on an EARLIER active
+        // page. Cache that actual range, so later identity hits register their
+        // command on the backing page rather than the latest allocation.
+        auto* page = mImpl->active.back().get();
+        if (page->buffer.get() != slice.buffer)
+        {
+            const auto found_page = std::find_if(mImpl->active.begin(), mImpl->active.end(),
+                [&](const auto& candidate) { return candidate->buffer.get() == slice.buffer; });
+            if (found_page == mImpl->active.end())
+            {
+                slice = {};
+                setError(error, "Metal attachment palette backing page is missing");
+                return false;
+            }
+            page = found_page->get();
+        }
         mImpl->palettes.emplace(palette, Impl::PaletteEntry{
-            std::move(owner), {mImpl->active.back().get(), slice.offset, slice.length}});
+            std::move(owner), {page, slice.offset, slice.length}});
         ++mImpl->statistics.record_publications;
         return true;
     }
@@ -1991,7 +2006,7 @@ struct ALMetalWorldGBufferRenderer::Impl
                 batch.skin_palette_float_count * sizeof(float), error, true);
         ALMetalWorldDataSlice slice;
         return frame_data->publishPaletteRecord(command, batch.skin_palette_record,
-                                                slice, error) &&
+                                                slice, error, true) &&
             encoder.setVertexBuffer(index, *slice.buffer, slice.offset, error);
     }
 
@@ -2584,6 +2599,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         base_light_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         base_light_sky_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        probe_tile_light_map_pipelines, probe_tile_base_pipelines, probe_tile_sky_pipelines;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
     std::unique_ptr<ALMetalComputePipeline> hero_probe_filter_pipeline;
     std::unique_ptr<ALMetalComputePipeline> probe_gaussian_pipeline;
@@ -5138,6 +5155,41 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         if (!impl->base_light_sky_pipelines[hdr])
         {
             return nullptr;
+        }
+
+        // Optional native tile variant. Old explicit libraries retain the
+        // established two-pass owner without requesting absent entry points.
+        if (device.info().highest_apple_family >= 7 &&
+            impl->library->hasFunction("almetal_world_probe_tile_light_map_fragment") &&
+            impl->library->hasFunction("almetal_world_probe_tile_base_light_fragment"))
+        {
+            ALMetalRenderPipelineDescriptor tile;
+            tile.library = impl->library.get();
+            tile.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+            tile.color_attachment_count = 2;
+            tile.colors[0].format = ALMetalPixelFormat::rgba16_float;
+            tile.colors[0].write_mask = ALMetalColorWriteMask::none;
+            tile.colors[1].format = ALMetalPixelFormat::rg8_unorm;
+            tile.vertex_function = "almetal_world_local_light_vertex";
+            tile.fragment_function = "almetal_world_probe_tile_light_map_fragment";
+            tile.label = "Alchemy probe memoryless RG8 light-map pipeline";
+            std::string optional_error;
+            auto light = ALMetalRenderPipeline::create(device, tile, &optional_error);
+            tile.colors[0].write_mask = ALMetalColorWriteMask::all;
+            tile.colors[1].write_mask = ALMetalColorWriteMask::none;
+            tile.vertex_function = "almetal_world_base_light_vertex";
+            tile.fragment_function = "almetal_world_probe_tile_base_light_fragment";
+            tile.label = "Alchemy probe tile base-light pipeline";
+            auto base = light ? ALMetalRenderPipeline::create(device, tile, &optional_error) : nullptr;
+            tile.fragment_function = "almetal_world_base_light_sky_fragment";
+            tile.label = "Alchemy probe tile sky pipeline";
+            auto sky = base ? ALMetalRenderPipeline::create(device, tile, &optional_error) : nullptr;
+            if (light && base && sky)
+            {
+                impl->probe_tile_light_map_pipelines[hdr] = std::move(light);
+                impl->probe_tile_base_pipelines[hdr] = std::move(base);
+                impl->probe_tile_sky_pipelines[hdr] = std::move(sky);
+            }
         }
 
         ALMetalRenderPipelineDescriptor sky_behind_descriptor;
@@ -11509,6 +11561,23 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
         }
     }
 
+    ALMetalRenderTarget* output = &target;
+    const auto& output_descriptor = target.descriptor();
+    if (output_descriptor.width != input.width ||
+        output_descriptor.height != input.height ||
+        output_descriptor.sample_count != 1 ||
+        output_descriptor.color_attachment_count != 1 ||
+        output_descriptor.colors[0].format != ALMetalPixelFormat::rgba16_float ||
+        !target.colorTexture(0))
+    {
+        setError(error, "Metal world local-light accumulation target is incompatible");
+        return false;
+    }
+
+    // PPD250: an empty accepted list leaves the already-authored accumulation
+    // untouched. Validate its inputs above, but acquire no resource or pass.
+    if (scene.light_count == 0) return true;
+
     std::unique_ptr<ALMetalBuffer> light_buffer;
     if (scene.light_count != 0)
     {
@@ -11524,19 +11593,6 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
         {
             return false;
         }
-    }
-
-    ALMetalRenderTarget* output = &target;
-    const auto& output_descriptor = target.descriptor();
-    if (output_descriptor.width != input.width ||
-        output_descriptor.height != input.height ||
-        output_descriptor.sample_count != 1 ||
-        output_descriptor.color_attachment_count != 1 ||
-        output_descriptor.colors[0].format != ALMetalPixelFormat::rgba16_float ||
-        !target.colorTexture(0))
-    {
-        setError(error, "Metal world local-light accumulation target is incompatible");
-        return false;
     }
 
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
@@ -11836,6 +11892,9 @@ bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
         setError(error, "Metal world projector-light accumulation target is incompatible");
         return false;
     }
+
+    // Match the original empty-list skip after all existing input checks.
+    if (scene.light_count == 0) return true;
 
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
     ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
@@ -22786,18 +22845,16 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     return output;
 }
 
-std::unique_ptr<ALMetalRenderTarget>
-ALMetalWorldGBufferRenderer::renderLightMap(
-    const ALMetalWorldLightMapScene& scene,
-    std::string* error)
+namespace
+{
+bool validateWorldLightMap(const ALMetalWorldLightMapScene& scene, std::string* error)
 {
     const ALMetalWorldLightMapConstants& constants = scene.constants;
-    const bool directional_shadows = constants.config[1] != 0;
     const bool ssao = constants.config[2] != 0;
     const char* directional_shadow_error = scene.directional_shadows
         ? invalidDirectionalShadowsReason(scene.directional_shadows)
         : nullptr;
-    if (!mImpl || !mImpl->device || !scene.gbuffer ||
+    if (!scene.gbuffer ||
         !finiteValues(constants.inverse_projection, 16) ||
         !finiteValues(constants.light_direction, 4) ||
         !finiteValues(constants.ssao, 4) ||
@@ -22817,7 +22874,7 @@ ALMetalWorldGBufferRenderer::renderLightMap(
             ? std::string("Metal world light-map directional shadows are ") +
                   "incomplete: " + directional_shadow_error
             : "Metal world light-map scene is incomplete");
-        return nullptr;
+        return false;
     }
 
     const ALMetalRenderTargetDescriptor& input =
@@ -22844,8 +22901,25 @@ ALMetalWorldGBufferRenderer::renderLightMap(
         !sampleableTexture(depth))
     {
         setError(error, "Metal world light-map G-buffer is incompatible");
-        return nullptr;
+        return false;
     }
+
+    return true;
+}
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderLightMap(
+    const ALMetalWorldLightMapScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !validateWorldLightMap(scene, error)) return nullptr;
+    const auto& constants = scene.constants;
+    const bool directional_shadows = constants.config[1] != 0;
+    const bool ssao = constants.config[2] != 0;
+    const auto& input = scene.gbuffer->descriptor();
+    const auto* normal = scene.gbuffer->colorTexture(2);
+    const auto* depth = scene.gbuffer->depthStencilTexture();
 
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = input.width;
@@ -24293,17 +24367,63 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightClouds(
         owned_command, encoded && ended, error);
 }
 
+bool ALMetalWorldGBufferRenderer::supportsProbeLightingFusion() const noexcept
+{
+    if (!mImpl || !mImpl->device || mImpl->device->info().highest_apple_family < 7) return false;
+    for (std::size_t index=0; index<2; ++index)
+        if (!mImpl->probe_tile_light_map_pipelines[index] || !mImpl->probe_tile_base_pipelines[index] ||
+            !mImpl->probe_tile_sky_pipelines[index]) return false;
+    return true;
+}
+
+std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderProbeLighting(
+    const ALMetalWorldLightMapScene& light_map, const ALMetalWorldBaseLightingScene& base,
+    std::string* error, ALMetalProbeLightingPath* path)
+{
+    if (path) *path = ALMetalProbeLightingPath::none;
+    if (base.light_map)
+    {
+        auto result = renderBaseLighting(base, error);
+        if (result && path) *path = ALMetalProbeLightingPath::separate_passes;
+        return result;
+    }
+    const bool probe = base.diagnostic_view.view_kind == 2 || base.diagnostic_view.view_kind == 3;
+    if (probe && supportsProbeLightingFusion() && base.gbuffer == light_map.gbuffer &&
+        light_map.constants.config[2] == 0 && base.constants.config[3] == 0 &&
+        light_map.constants.config[0] == base.constants.config[0] &&
+        light_map.constants.config[1] == base.constants.config[2])
+    {
+        auto result = renderBaseLightingInternal(base, &light_map, error);
+        if (result && path) *path = ALMetalProbeLightingPath::memoryless_tile;
+        return result;
+    }
+    auto map = renderLightMap(light_map, error);
+    if (!map) return nullptr;
+    auto separate = base;separate.light_map = map->colorTexture(0);
+    auto result = renderBaseLighting(separate, error);
+    if (result && path) *path = ALMetalProbeLightingPath::separate_passes;
+    return result;
+}
+
+std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderBaseLighting(
+    const ALMetalWorldBaseLightingScene& scene, std::string* error)
+{
+    return renderBaseLightingInternal(scene, nullptr, error);
+}
+
 std::unique_ptr<ALMetalRenderTarget>
-ALMetalWorldGBufferRenderer::renderBaseLighting(
+ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
     const ALMetalWorldBaseLightingScene& scene,
+    const ALMetalWorldLightMapScene* tile_light_map,
     std::string* error)
 {
+    if (tile_light_map && !validateWorldLightMap(*tile_light_map, error)) return nullptr;
     const bool probe_environment =
         validPBRReflectionProbes(scene.reflection_probes);
     const bool legacy_environment =
         validLegacyEnvironment(scene.legacy_environment);
     if (!mImpl || !mImpl->device || !scene.gbuffer ||
-        !sampleableTexture(scene.light_map) ||
+        (!tile_light_map && !sampleableTexture(scene.light_map)) ||
         probe_environment == legacy_environment ||
         probe_environment != (scene.reflection_probes != nullptr) ||
         legacy_environment != (scene.legacy_environment != nullptr) ||
@@ -24370,8 +24490,7 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
     const ALMetalPixelFormat expected_emissive = scene.hdr
         ? ALMetalPixelFormat::rg11b10_float
         : ALMetalPixelFormat::rgba8_unorm;
-    const ALMetalTextureDescriptor& light_map =
-        scene.light_map->descriptor();
+    const ALMetalTextureDescriptor* light_map = scene.light_map ? &scene.light_map->descriptor() : nullptr;
     if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
         input.color_attachment_count != 4 ||
         input.colors[0].format != ALMetalPixelFormat::rgba8_unorm_srgb ||
@@ -24380,8 +24499,8 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         input.depth_stencil_format !=
             ALMetalPixelFormat::depth32_float_stencil8 ||
         !input.depth_stencil_shader_read ||
-        light_map.format != ALMetalPixelFormat::rg8_unorm ||
-        light_map.width != input.width || light_map.height != input.height ||
+        (!tile_light_map && (!light_map || light_map->format != ALMetalPixelFormat::rg8_unorm ||
+         light_map->width != input.width || light_map->height != input.height)) ||
         !sampleableTexture(albedo) || !sampleableTexture(specular) ||
         !sampleableTexture(normal) || !sampleableTexture(emissive) ||
         !sampleableTexture(depth))
@@ -24423,12 +24542,33 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
     // the output color and G-buffer depth to a short-lived target. The
     // geometry draw can then reject clear sky in fixed-function depth before
     // the expensive base shader, while a second cheap draw transfers sky.
+    // The temporary wrapper outlives its borrowed pass descriptor, and the
+    // exact command separately pins it through completion or abandonment.
+    std::shared_ptr<ALMetalTexture> tile_visibility;
+    if (tile_light_map)
+    {
+        ALMetalTextureDescriptor tile;
+        tile.format = ALMetalPixelFormat::rg8_unorm;
+        tile.width = input.width; tile.height = input.height;
+        tile.storage = ALMetalStorageMode::memoryless;
+        tile.usage = ALMetalTextureUsage::render_target;
+        tile.label = "Alchemy probe tile-only RG8 shadow visibility";
+        tile_visibility = ALMetalTexture::create(*mImpl->device, tile, error);
+        if (!tile_visibility) return nullptr;
+    }
     ALMetalRenderTargetDescriptor pass_target_descriptor;
     pass_target_descriptor.width = input.width;
     pass_target_descriptor.height = input.height;
     pass_target_descriptor.colors[0].format =
         output_descriptor.colors[0].format;
     pass_target_descriptor.colors[0].texture = output->colorTexture(0);
+    if (tile_visibility)
+    {
+        pass_target_descriptor.color_attachment_count = 2;
+        pass_target_descriptor.colors[1].format = ALMetalPixelFormat::rg8_unorm;
+        pass_target_descriptor.colors[1].shader_read = false;
+        pass_target_descriptor.colors[1].texture = tile_visibility.get();
+    }
     pass_target_descriptor.depth_stencil_format =
         ALMetalPixelFormat::depth32_float_stencil8;
     pass_target_descriptor.depth_stencil_shader_read = true;
@@ -24472,6 +24612,13 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         return nullptr;
     }
 
+    if (tile_visibility && !command->retainUntilCompletion(tile_visibility))
+    {
+        setError(error, "Metal probe tile visibility requires native completion ownership");
+        mImpl->finishCommandBuffer(owned_command, false, error);
+        return nullptr;
+    }
+
     constexpr std::uint32_t brdf_lut_size = 512;
     const bool generate_brdf_lut = !mImpl->brdf_lut_ready &&
         !mImpl->command_batch_generates_brdf_lut;
@@ -24494,6 +24641,12 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+    if (tile_visibility)
+    {
+        pass_config.colors[1].load = ALMetalLoadAction::clear;
+        pass_config.colors[1].store = ALMetalStoreAction::dont_care;
+        pass_config.colors[1].clear = {1.0, 1.0, 0.0, 0.0};
+    }
     pass_config.depth_load = ALMetalLoadAction::load;
     pass_config.depth_store = ALMetalStoreAction::store;
     pass_config.stencil_load = ALMetalLoadAction::load;
@@ -24548,7 +24701,27 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
     const ALMetalDepthStencilState* sky_depth = reverse_z
         ? mImpl->reverse_readonly_depth.get()
         : mImpl->forward_readonly_depth.get();
-    bool encoded =
+    bool encoded = true;
+    if (tile_light_map)
+    {
+        const bool shadows = tile_light_map->constants.config[1] != 0;
+        const auto* directional = shadows && tile_light_map->directional_shadows
+            ? tile_light_map->directional_shadows : nullptr;
+        const auto& shadow_constants = directional ? directional->constants : mImpl->unshadowed_constants;
+        const auto* shadow_texture = directional ? directional->depth_texture : mImpl->unshadowed_depth.get();
+        encoded = encoder->setViewport(viewport, error) && encoder->setScissor(scissor, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) && encoder->setDepthStencilState(nullptr, error) &&
+            encoder->setPipeline(*mImpl->probe_tile_light_map_pipelines[pipeline_index], error) &&
+            encoder->setFragmentBytes(0, &tile_light_map->constants, sizeof(tile_light_map->constants), error) &&
+            encoder->setFragmentBytes(1, &shadow_constants, sizeof(shadow_constants), error) &&
+            encoder->setFragmentTexture(0, normal, error) && encoder->setFragmentTexture(1, depth, error) &&
+            encoder->setFragmentTexture(2, shadow_texture, error) &&
+            encoder->setFragmentTexture(3, mImpl->inactive_ssr_color.get(), error) &&
+            encoder->setFragmentSampler(0, mImpl->point_clamp_sampler.get(), error) &&
+            encoder->setFragmentSampler(1, mImpl->point_repeat_sampler.get(), error) &&
+            encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    }
+    encoded = encoded &&
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
@@ -24556,7 +24729,7 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         encoder->setVertexBytes(
             0, &scene.constants, sizeof(scene.constants), error) &&
         encoder->setPipeline(
-            *mImpl->base_light_pipelines[pipeline_index], error) &&
+            *(tile_light_map ? mImpl->probe_tile_base_pipelines[pipeline_index] : mImpl->base_light_pipelines[pipeline_index]), error) &&
         encoder->setFragmentBytes(
             0, &scene.constants, sizeof(scene.constants), error) &&
         encoder->setFragmentBuffer(
@@ -24591,7 +24764,7 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         encoded =
             encoder->setDepthStencilState(sky_depth, error) &&
             encoder->setPipeline(
-                *mImpl->base_light_sky_pipelines[pipeline_index], error) &&
+                *(tile_light_map ? mImpl->probe_tile_sky_pipelines[pipeline_index] : mImpl->base_light_sky_pipelines[pipeline_index]), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     }
