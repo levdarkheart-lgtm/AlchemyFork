@@ -835,3 +835,27 @@ owns existing `indra/almetal/tests/almetal_world_visibility_test.mm` there.
 Root owns integration/builds/tests/CMake/docs. A new native test binary, source
 freeze and exact evidence are required before enabling that path. Original
 whole-engine architecture/owner runtime acceptance remain partial and ACTIVE.
+
+
+Independent ordered-pass publication backend is now assigned in
+`/private/tmp/alchemy-apple-first-native-pass-publication`, branch
+`codex/apple-first-native-pass-publication`, baseddd872c0654 (tested PPD218).
+Residency exclusively owns SourcePages.h/.mm and its existing native fixtures;
+no renderer/Commands/CMake/docs/build changes there. The intended API accepts
+ordered homogeneous cohort spans, caches one native composition under existing
+row/metadata/native-asset caps, publishes one matrix/global block and produces
+one aggregate immutable membership. Warm work may scale with group count, not
+per-source expansion. Native tuple closure, precise row invalidation, region
+mapping ambiguity, failed staging and pending reader lifetimes remain explicit
+acceptance requirements. Single-cohort behavior must remain covered. It is
+unbuilt and not integrated; root must wire actual renderer/costs after the
+independent retained-visibility slice freezes and passes.
+
+Source review also observes linear owner scans inside retainUntilCompletion;
+G separate FrameViews/Batches can multiply comparisons, plus repeated source
+slot binding per group. The share of measured CPU cost is unproved. Aggregating
+existing owners/metadata may remove those calls; no generic retainer rewrite or
+GPU speedup is inferred. Query boundaries can still require Gexecute ranges,
+and existing source-row shader indirection/GPU cost remains a separate limit.
+The original goal stays active; the source32 cache repair is one concrete
+completed engineering step, not a replacement definition of the architecture.
