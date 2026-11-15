@@ -1,50 +1,66 @@
 # Apple-first architecture implementation status
 
-Updated 2026-11-15. The original whole-engine goal is **active and incomplete**.
-Exact source, commands, failures and receipts are in the [execution ledger](apple-first-direct-cohorts-20261114.md).
+Updated 2026-11-15. The original whole-engine goal remains **active for owner
+acceptance**. The named Goals1–5 mechanisms are implemented and integrated; a
+bounded [source audit](../../research/apple-first-engineering-delivery-20261115.md)
+found no additional required implementation callsite. This does not establish
+a whole-viewer performance gain or complete the product release gates.
 
-Latest verified build: **7d58e89d88 / 26.4.0.69121**. Required build,
-ARM64/signature/import verification, strict source audit and relevant native GPU
-checks pass. No new viewer launch, login, live profile or push has occurred.
-Owner apps and staged69102 remain unchanged. **Whole-viewer FPS improvement is
-not established.**
+Exact source: **beb6837b71f0429f116fef8e2ad7cc5d166bc010**, build
+**26.4.0.69122**, experiment branch `codex/apple-first-native-cohort-consumption`.
+Doctor/configure/build, ARM64/signature/import verification and strict source
+audit pass. All34 renderer scopes pass on these exact binaries:254120 assertion-
+executions/346 case-executions. All four48-condition animated cost comparisons
+pass their execution/parity/accounting checks; that does not mean they are faster.
 
-| Boundary | Implemented and checked | Remaining |
+| Boundary | Integrated behavior | Selected configuration / remaining acceptance |
 |---|---|---|
-| Shared scene/resources | Producer generations, immutable material/resource tuples, dirty subscriptions, retained static groups, compact restoration, native leases and exact cache-reason counters. | Validate the new retained regular-rigged direct consumer; owner runtime evaluation. |
-| CPU preparation | Immutable owned inputs, bounded shared credits, useful joined shadow preparation and scalar recipes. Budget recovery/fairness5867 assertions/46 cases passes. | World workers remain disabled after measured completion regressions. |
-| Animated ownership | Shared attachment records and immutable view-specific system-body palettes, preserving required camera composition. Raw/record world and shadow parity passes. | Owner whole-viewer acceptance. |
-| Visibility/submission | Persistent animated sources, late pose/view inputs, conservative GPU visibility and ordered native commands; mode switches, cancellation and pending native ownership pass. Encoder-scoped declarations remove repeated query-range walks. | GPU commands remain disabled after worse complete costs. Source71 direct references pass all34 renderer scopes and remove the GPU tax, but costs remain near parity. Source72 removes remaining proof/pose lookups and defers optional compilation until stable; unbuilt/unmeasured. |
-| Unified memory/admission | Changed-range/COW storage, frame-wide CPU/native/decode/upload coordination, explicit completion retirement; maintenance and pressure checks pass. Numeric animated cap/retirement tests pass. | Owner loading/teleport/stability and physical working-set evaluation. Cache ledger scopes overlap and are not total RAM. |
-| Terrain/probe lighting | Terrain sharing selected at measured16-patch threshold; eligible probe/base lighting fusion and empty lighting-work avoidance pass contained checks. | Owner whole-engine evaluation. |
-| Combined candidate | All accepted foundations build together. New direct consumer is integrated and peer-reviewed. | Build/test source71, measure direct/full-count/visibility routes, choose supported paths, then separately stage one verified combined app. |
+| Shared scene/resources | Producer generations, immutable material/resource tuples, dirty subscriptions, retained static groups, exact native leases, shared main/shadow/probe capture. | GroupSources and two-frame stability ON; owner loading/teleport/rebase parity pending. |
+| CPU preparation | Immutable owned inputs, bounded shared credits, joined large-shadow preparation, scalar recipes, fairness and recovery. | World workers OFF after measured completion regressions. Owner frame-tail benefit pending. |
+| Animated ownership | Shared attachment records and view-specific system-body palettes; retained regular-rigged direct and GPU consumers preserve current poses, masks and queries. | Optional animated direct and GPU modes OFF: direct near parity; GPU commands/visibility cost more. Owner animation/stability acceptance pending. |
+| Visibility/submission | Persistent static/animated tables, ordered native commands and conservative visibility; exact query/raster splits and completion ownership. | Optional banks and CPU/native visibility OFF after unfavorable or incomplete complete-path gates. Existing native shadow specialization retained. |
+| Unified memory/admission | Changed-range/COW storage; shared CPU/native/decode/upload/probe/maintenance admission; completion retirement and bounded caches. | Owner physical working-set, loading and long-session evaluation pending. Cache ledger scopes overlap and are not total RAM. |
+| Terrain/probe lighting | Terrain sharing selected at measured16-patch threshold; eligible probe/base lighting fusion and empty lighting-work avoidance. | Integrated; owner whole-engine evaluation pending. |
+| Combined candidate | One source72 app includes these foundations and all experimental consumers. Separate architecture-combined-69122 staging is VERIFIED:8273 inventory nodes match the built app; signatures/ARM64/imports/features and evidence hashes pass. | Ready for owner evaluation through the exact launcher linked below; original apps and69102 checkpoint preserved. |
 
-## Latest measured decisions
+## Measured selection
 
-- Source70 full-count animated commands improve owner CPU at64 draws by4.52%
-  (one view) and1.53% (three views), but completion is about12% worse. GPU
-  visibility is worse again. Both controls remain OFF.
-- Source71 retains the same producer/capture ownership, but uses ordinary direct
-  rigged shaders and bindings. It removes scratch Batch copies and reuses400B
-  common constants only when the actual view and immutable fields prove equal.
-  Direct sealing skips GPU descriptors and bone scans. This is an implemented
-  hypothesis, not a successful performance result.
-- The cost frontier retains1/2/4/64 draws, one/three views, cold/warm/pose/resource
-  churn, denials and loading samples.96 indices/source is a known limitation;
-  saved club data does not establish a per-draw geometry-size distribution.
-- CPU static visibility wins with many outside bounds but adds all-visible/cold
-  overhead; it remains OFF. Body ownership timings are near parity. Small
-  terrain sharing and world workers remain disabled after measured losses.
+- Accepted retained scalar/cohort path: source55 warm-many CPU8/8 cases faster,
+  median28.05%; settled completion7/8 faster, median14.60%. Cold debt remains
+  recorded. This is a contained path comparison, not an FPS improvement.
+- Source72 animated direct: warm64 owner CPU+0.20%/+0.27% for one/three views;
+  arena publication bytes0.772x/0.755x. Cold CPU−0.50%..+2.16%; resource churn
+  +0.12%..+3.27%. This is near parity with reduced publication bytes, not a
+  consistent net speed gain or a physical RAM measurement; keep OFF.
+- Source72 full-count animated GPU commands: warm64 settled completion
+  +11.56%/+8.96%; visibility adds further overhead. Keep both OFF.
+- CPU static visibility helps outside-bound workloads but adds all-visible/cold
+  overhead; world workers and small terrain sharing also lost their cost gates.
+  Those decisions are retained rather than forcing more hardware activity.
 
-## Next concrete steps
+All four animated comparisons retain1/2/4/64 sources, one/three views,
+cold/warm/pose/resource churn, denials and loading samples.96 indices/source is
+an explicit fixture limitation; saved club data does not establish per-draw
+geometry sizes. Exact receipts and failed attempts remain in the
+[execution ledger](apple-first-direct-cohorts-20261114.md) and PPD287–293.
 
-1. Required source71 build/static/strict verification and full native regression
-   scopes for the changed Draw facade, including all retained ownership guards.
-2. Three separate48-condition cost runs: direct records, full-count commands,
-   and GPU visibility. Keep the same raw baseline and explicit route census.
-3. Repair actual failures and select paths supported by complete costs.
-4. Separately stage the exact combined app and launcher for owner whole-viewer
-   feature, stability, latency, memory and performance evaluation.
+## What remains
 
-No shadow-only investigation is a prerequisite. Product release gates remain
-open; contained tests do not establish full viewer performance or feature parity.
+Evaluate the combined viewer with the owner across busy, quiet, loading,
+turning and teleport scenes:
+frame times/tails, input latency, physical memory, stability and retained SL
+features. No new speculative architecture or shadow-only work is a prerequisite.
+Any reproducible failure creates a concrete repair item. Whole-viewer performance,
+feature parity and `VALIDATION.md` release gates remain open. No viewer launch,
+login, live profile, push or release was performed in this continuation.
+
+## Exact delivered candidate
+
+[Launch Apple First Combined.command](</Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/apple-first-persistent-native-scene-20261114/architecture-combined-69122/Launch Apple First Combined.command>)
+selects the measured policy on the separately staged26.4.0.69122 app.
+`architecture-combined-69122/provenance.json` is verified;8273 file/mode/symlink
+nodes match the built source app, executableSHA256
+`101a327c68852a44e2ba435cd0744a9beaf4582e511fe16b239f171069c57428`.
+Staged static verification and SHA256SUMS recheck pass. The app and launcher were
+not executed. Evidence root is the canonical checkout’s ignored
+`artifacts/metal/apple-first-persistent-native-scene-20261114/` directory.

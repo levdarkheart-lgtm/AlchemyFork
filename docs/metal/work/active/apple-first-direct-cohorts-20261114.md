@@ -2384,3 +2384,67 @@ GPUvisibility. CostenvALCHEMY_ANIMATED_SOURCE_STABILITY=1defaultDIRECT/0GPU;
 alloriginalcold/churn/loading refusals retained. Parser backwardparse71 passes
 48pairs/1680rows to/tmp/animated-parser72-compatibility71. No72runtimeclaimyet.
 No launch/profile/push, existingownerapps/staged69102 immutable; goalactive.
+
+
+## Source72 complete costs and selected combined configuration
+
+Exact beb6837b71f0429f116fef8e2ad7cc5d166bc010 /26.4.0.69122 required doctor,
+configure and build all exit0 (165.459s build); builder72538 and validation98353
+terminal0. Static72 (including required verify_app) and strict source72 PASS.
+Nine affected native scopes PASS:74802 assertion-executions/203case-executions,
+including animated7925/5, actual publisher26034/80, common5867/46.
+
+Four explicit48-condition cost receipts and parser outputs PASS:
+`actual-animated-gpu-record-costs-72-{direct,direct-no-stability,full-count,visibility}`.
+Each retains96summaryarms/1680rawarms,576measured+264loading framepairs.
+Stable direct CPU warm1/2 improves1.58%/1.88%;4one/threeviews is+0.10%/+0.24%;
+64one/threeviews is+0.20%/+0.27%. Stable direct cold CPU ranges−0.50%..+2.16%;
+resourcechurn+0.12%..+3.27%. The no-stability ablation retains cold+4.87%..+12.32%
+andresourcechurn+2.74%..+5.45%; stability defers optional work rather than omitting
+required draws or samples. Arena publication bytes at64warm are0.772x/0.755x;
+these are not total native retention, physical RAM or memory bandwidth.
+
+GPUfullcount64warm CPU−3.29%/−1.00% but settled completion+11.56%/+8.96%
+andGPU+19.90%/+26.17%. GPUvisibility warmCPU+18.72%..+27.91%. Direct is now
+near parity; none establishes a consistent net speed win. All three animated
+controls remain OFF in the recommended combined candidate. All original masks,
+query order, pose/lifetime, denials and current raw rendering contracts remain.
+96indices/source remains an explicit workload limitation, not measured club geometry.
+
+Selected `combined-policy-72.json` enables GroupSources and GroupSourceStability
+(the existing accepted scalar recipe/cohort policy); explicit OFF for optional
+workers, native/CPU visibility, depthprepass, compact rows/tables/joining/banks
+and animated paths. Other integrated foundations are always active, including
+shared publication main/shadow/probe, bounded joined shadow preparation, owned
+attachment/body inputs, changed-range/COW native storage, coordinated frame
+admission/retirement, terrain threshold16 and eligible probe lighting fusion.
+Source55 warm-many CPU8/8 median−28.05%, completion7/8 median−14.60%;
+cold debt remains in evidence. No whole-viewer FPS claim.
+
+Full34source72 regression started with the unchanged exact binaries to avoid
+reusing older-scope evidence for final staging. Then stage separate combined
+app with exact inventory/signature/ARM64/native imports, selected policy and
+source/evidence provenance. Existing owner apps/staged69102 remain immutable;
+no viewer launch/login/live profile/push. PPD287 remains partial for owner gates.
+
+
+### Source72 final integrated engineering delivery
+
+Full34scopes rerun onexactsource72 PASS:254120 assertion-executions/346case-
+executions in161.571s; native-correctness-72-full.json, handle13569 exit0.
+No earlier-scope reuse required. Stage helper (peer-reviewedSHA31e3a76f39ee…)
+executed withrun72,combined-policy-72.json,combined-evidence-note-72.json and
+verify-g2g5-bundle-72.py; handle56225 exit0. Destination
+`architecture-combined-69122`, provenanceVERIFIED,8273 identical app inventory
+nodes, executableSHA101a327c68852a44e2ba435cd0744a9beaf4582e511fe16b239f171069c57428.
+Staged static signatures/ARM64/imports/features PASS; SHA256SUMS recheck PASS.
+`Launch Apple First Combined.command` applies the selected explicitpolicy and
+was not invoked. Required commands/exits/source/binary/evidence hashes retained.
+
+[Requirement audit](../../research/apple-first-engineering-delivery-20261115.md)
+finds no further required original-route callsite; implementation/selection/
+delivery finitework done. Owner whole-engine performance/feature/stability
+acceptance and product release gates remain open; originalgoal active for those
+outcomes. No more speculative cold tuning or shadow-only phase is prerequisite.
+No launch/login/liveprofile/push; old owner apps/canonical tracked files and
+staged69102 unchanged. PPD287 remains open for original acceptance.
