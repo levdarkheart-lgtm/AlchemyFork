@@ -967,3 +967,54 @@ MaterialCacheScope's savedconst device pointer back into mutable pipeline state.
 PPD227 registers before root changes only that saved-field type. No production
 API/assertion change, no native run or successful34claim. Required35 follows;
 failed34receipt/log preserved. Next228.
+
+PPD228 registers legacy scalar SourceRows autoactivation from bank flag underGroupSources before capture-policy repair. Root exclusively owns pipeline.cpp in newordered-pass-consumption tree; architecture ownsworld.cpp/actualfixtures, opaque owns onlycohort_renderer_test.mm there. Rawfallback mustretainordinarynativegeometry without implicit scalar metadata, whileexplicit SourceRows andoldnoncohortbank control semantics remain. Next229.
+
+
+First visibility35 complete cost passes5672016/1,504summary rows/14064raw
+samples in68.816s. Data shows no warm uploads/expanded per-source members or
+publication/fallback work, but cheap3-index geometry generally loses. PPD229
+registers performance rejection before further selection/dispatch work: only
+5/168CPU and4/168GPU comparisons beat direct; many warmactual50% loses34–72%
+settlement/123–184%GPU. This does not measure heavier indexed meshes or viewer
+FPS. Control remainsOFF; preserve data and investigate useful compute granularity
+and geometry workload rather than unconditional activation.
+
+
+## Source35 executed checkpoint and isolated shader hypothesis
+
+Previous owner-status turn was no implementation progress; this continuation
+resumes concrete source/testing work. Exactafe694394ba006676666d80488b531e1c39543e0,
+26.4.0.69076, required35 doctor/configure/build exit0 (136.531s). Static passes
+346ARM64/signatures/imports/source/features/defaults; strict scans3587files,
+905informational/0blockers/0errors. All21 native correctness processes pass
+with API/GPU validation, including visibility2506/9, pages5364/22,
+admission2248/8, actualproducer14269/58, renderer2331/4 and shadow98414/14.
+Required34 fixture failure remains retained under PPD227.
+
+Cost35 passes unchanged3arm140840/1, many1872424/1 and new visibility5672016/1;
+visibility504summary rows/14064raw samples span168configuredscenarios, with
+requested versus actual offscreen counts explicit. Warm retained visibility has
+zero row uploads, expanded members, new native allocations, publication tickets
+or fallback, yet cheap3-index geometry generally loses; PPD229 remains open.
+Heavier-mesh coverage and one batched multi-cohort dispatch are now independently
+assigned; no speedup or viewer FPS claim follows correctness success.
+
+Before any shader change, source35 test/build/viewer metallibs are verified
+byte-identical and copied to private source35-shader-control with SHA receipt.
+Next isolates only six constant-address-space qualifiers in the two source-row
+vertex entries. Original1eb44bbd deferred/materialV.glsl consumes immutable
+matrix uniforms for identical position/normal transforms; native ordinary
+material vertex uses constant numeric state with device geometry. The retained
+region/map mechanism is new, with no original GL equivalent. Changing only
+read-only region/map address spaces must preserve layout, source IDs, geometry,
+math and shader/library compatibility. This is a PPD217 performance hypothesis,
+not a proved explanation; execute native parity and the same3arm/many costs
+before retaining it. Renderer grouping remains separate and unintegrated.
+
+Root owns docs/CMake/pipeline integration and all execution. Architecture owns
+world.cpp and actual producer/cost fixtures in ordered-pass-consumption; opaque's
+renderer fixtures there are frozen. Opaque now owns test-only heavier visibility
+mesh coverage. Residency implements only batched retained-cohort dispatch in a
+new isolated tree; no coarse classification or renderer edits in that slice.
+Owner69065 app/launcher, canonical branch and all prior evidence remain untouched.

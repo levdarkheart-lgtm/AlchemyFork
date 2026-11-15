@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-228 -->
+<!-- next-defect-id: PPD-230 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5330,6 +5330,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Architecture source owner reports this concrete pre-freeze defect before repair in codex/apple-first-retained-cohort-visibility. Root allocates219; next220. Owner69065 app and tested source32 remain unchanged.
 
 
+- 2026-11-15: Exact transient bounds-promotion and actual owner revision/newer-generation protections pass source35 native gates; owner verification remains pending.
+
 ## PPD-220 — Retained visibility arguments lack exact cohort generation qualification
 
 - Status: investigating
@@ -5347,6 +5349,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Architecture source owner reports before repair; root allocates220, next221. Existing raw trusted metadata contract is unchanged; no renderer/backend default activation authorized.
 
+
+- 2026-11-15: Exact current cohort/native/MVP qualification and both raw/cohort mismatch directions pass source35 visibility2506/9; owner verification pending.
 
 ## PPD-221 — Retained visibility native row cap charges logical instead of allocated bytes
 
@@ -5366,6 +5370,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Architecture source owner reports before repair; root allocates221, next222. No geometry/asset residency ownership or default activation is added by this correction.
 
 
+- 2026-11-15: Source35 native tests verify physical allocatedSize accounting for small retained row buffers; large cap exhaustion/recovery is not yet tested or claimed.
+
 ## PPD-222 — New retained visibility cold publication bypasses shared frame admission
 
 - Status: investigating
@@ -5383,6 +5389,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Root requests G5 scope audit; source owner confirms missing callback and proposes existing-policy wrapper. Registered222 before repair, next223. Memory debt221 and exact generation220 remain separate invariants.
 
+
+- 2026-11-15: Source35 admission2248/8 and visibility2506/9 verify shared publication denial/direct fallback, warm zero-ticket, age, abandonment/completion and reentrant generation guards.
 
 ## PPD-223 — Cold persistent cohort region mapping bypasses publication work charge
 
@@ -5425,6 +5433,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Architecture source owner reports before patching sparse capture; root allocates224, next225. Existing owner-passed apps and source33 backend build are unaffected.
 
 
+- 2026-11-15: Source35 actualproducer14269/58 includes optional visibility metadata fault injection preserving required geometry/query inputs; owner verification pending.
+
 ## PPD-225 — Visibility cost labels requested offscreen fraction as actual for one source
 
 - Status: investigating
@@ -5446,6 +5456,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Fixture-only correction emits requested_outside_percent, actual_outside_sources and effective_outside_percent inraw+summary rows; adverse1source requested50 reportsactual0. Correctedfile SHA474be95c5baf7a435a58b0cca566af07af6bd59eca47130d03f0d54a4e86bdf8; diffcheckpasses, executionpending.
 
+- 2026-11-15: Source35 cost gate passes with explicit requested/actual/effective offscreen output; one-source requested50 correctly reports actual0. No fractional geometry or independent unique-scenario claim.
+
 ## PPD-226 — Retained visibility implementation uses incomplete world types
 
 - Status: investigating
@@ -5466,6 +5478,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Root adds direct world.h include after source-owner notification; no other source change follows full visibility freeze. Required34 compile/native/cost gates next.
 
 
+- 2026-11-15: Direct include compiles successfully in required35 and native visibility passes; no owner runtime result claimed.
+
 ## PPD-227 — Visibility cost fixture restores a const device pointer to mutable owner state
 
 - Status: investigating
@@ -5482,3 +5496,43 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Registered before the one-declaration fixture correction; next228. No successful build34 or performance result claimed.
+
+
+- 2026-11-15: Narrow saved-pointer type correction afe694394b passes required35 build and all21 native processes; failed34 receipt/log retained.
+
+## PPD-228 — Cohort bank mode implicitly enables the slower scalar source-row capture
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex ordered-pass capture integration
+- Discovered: 2026-11-15
+- Original reference: Unsupported/denied retained group preparation must keep required ordinary native rendering. Enabling cohort command preparation must not silently select a different experimentally regressive per-source route.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). pipeline.cpp beginMetalWorldGBufferCapture calls beginSourceRows((source_rows()||source_banks())&&!impostor_bake), so bank mode enables scalar SourceRows even when GroupSources is on and SourceRows/CompactInputs controls are off. Raw fallback therefore captures per-source candidates/references and their known costs. Earlier audits recorded this behavior; ordered-pass consumer integration now reaches the concrete correction boundary. No new viewer FPS incident is attributed.
+- Next action: Preserve explicit SourceRows and prior non-GroupSources bank semantics, but activate the implicit scalar path only for bank mode with GroupSources off. Update actual capture/cost fixture policy and add unsupported/denied mixed raw/cohort fallback assertions without scalar expansion. No default activation or required feature removal.
+- Verification: Source-confirmed capture callsite before repair; integration/native/cost tests pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Architecture renderer owner reports callsite outside its ownership; root allocates228 and exclusively patches pipeline.cpp in consumption worktree. Next229.
+
+
+## PPD-229 — Retained frustum visibility remains a net cost in cheap draw workloads
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex retained visibility dispatch/selection
+- Discovered: 2026-11-15
+- Original reference: Useful native visibility must remove enough work to repay capture, dispatch and indirect draw costs. Preserving ownership/correctness alone does not justify default activation.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source35 corrected new cost gate passes5672016assertions/1case,504summary rows/14064raw samples. Against direct cohorts, visibility wins CPU only5of168configuredscenarios and GPU only4of168; warm actual50%offscreen has0of22CPU/GPUwins. Many warm50% loses settlement34–72% and GPU123–184%, despite zero warm row uploads, expanded source members, admission tickets or fallback. Geometry is explicitly3indices/source; these are cheap-draw contained results, not proof about heavier mesh workloads or viewer FPS. Current encode issues one dispatch per cohort and CPU consumption qualifies per draw; their separate cost shares are not yet measured.
+- Next action: Keep control off; investigate batched dispatch, cheap coarse acceptance/rejection over immutable bounds and useful geometry-cost selection. Extend workload geometry coverage before claiming general benefit, preserve full capture/query/parity/admission boundaries, and never hide fallbacks or offscreen rounding. Remaining CPU direct bindings and frustum-only scope stay explicit.
+- Verification: Executed performance rejection with passing geometry/MRT/depth/query correctness. Whole-engine owner performance acceptance remains pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered after first passing visibility35 gate before any dispatch/selection repair; raw logs/summary and current defaultsOFF retained. Next230.
+
+- 2026-11-15: Batched retained-cohort dispatch assigned as a bounded repair attempt; test-only heavier indexed mesh coverage assigned separately. No default activation or measured repair success yet.
