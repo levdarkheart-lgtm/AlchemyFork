@@ -415,3 +415,111 @@ TEST_CASE("almetal: queued animated commands retain native generations without r
         CHECK(weak_vertices.expired());CHECK(weak_native.expired());
     }
 }
+
+TEST_CASE("almetal: animated metadata and command byte caps preserve required draws and retire pending leases",
+          "[almetal][world-animated-gpu-records][PPD-293]")
+{
+    using namespace AnimatedGpuRecordTest;
+    @autoreleasepool
+    {
+        RiggedFixture f;auto pose=palette(0,f.error);auto batch=f.source(1,false,pose);
+        auto source=f.seal(batch,1,31);auto ref=reference(source,pose,matrices(batch));
+        const std::array<const ALMetalWorldSourceReference*,1> refs{&ref};
+        const auto expected=render(f,f.scene(),{batch});
+        auto library=f.data->builtinLibrary(&f.error);REQUIRE(library);
+        ALNativeFrameBudget budget;ALNativeFrameBudget::FrameInputs frame;frame.frame=1;budget.beginFrame(frame);
+        const auto admission=[&](const ALMetalWorldSourcePublicationWork& work)->std::shared_ptr<const void>
+        {
+            REQUIRE(work.chargedBytes()>0);
+            auto result=budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,work.chargedBytes(),1);
+            REQUIRE(result);return result.credit;
+        };
+        ALMetalWorldSourcePageLimits metadata_limit;metadata_limit.maximum_metadata_bytes=4096;
+        auto tiny_metadata=ALMetalWorldSourcePages::create(*f.device,*library,1,metadata_limit,&f.error);REQUIRE(tiny_metadata);
+        tiny_metadata->setPublicationAdmission(admission);
+        ALMetalWorldSourcePageLimits asset_limit;asset_limit.maximum_cached_cohort_native_asset_bytes=1;
+        auto tiny_assets=ALMetalWorldSourcePages::create(*f.device,*library,1,asset_limit,&f.error);REQUIRE(tiny_assets);
+        tiny_assets->setPublicationAdmission(admission);
+        ALMetalWorldSourcePageLimits page_limits;page_limits.maximum_metadata_bytes=64*1024;
+        page_limits.maximum_cached_cohort_native_asset_bytes=1024*1024;
+        auto pages=ALMetalWorldSourcePages::create(*f.device,*library,1,page_limits,&f.error);REQUIRE(pages);
+        pages->setPublicationAdmission(admission);
+        ALMetalWorldSourceCommandLimits rejected_limits;rejected_limits.maximum_live_native_bytes=1;
+        auto tiny_commands=ALMetalWorldSourceCommands::create(*f.device,rejected_limits,&f.error);REQUIRE(tiny_commands);
+        tiny_commands->setPublicationAdmission(admission);
+        ALMetalWorldSourceCommandLimits command_limits;command_limits.maximum_cached_banks=1;
+        command_limits.maximum_live_banks=1;command_limits.maximum_live_native_bytes=256*1024;
+        auto commands=ALMetalWorldSourceCommands::create(*f.device,command_limits,&f.error);REQUIRE(commands);
+        commands->setPublicationAdmission(admission);
+        ALMetalWorldSourceGlobals globals;std::vector<ALMetalWorldAnimatedGpuView> gpu;
+
+        // 4096 total metadata bytes leave a 3072-byte source partition: the
+        // first physical policy/bounds allocation cannot fit. A table may be
+        // staged, but no source is published and the whole required draw stays.
+        auto rejected=f.device->makeCommandBuffer("Animated source metadata byte cap",&f.error);REQUIRE(rejected);
+        CHECK_FALSE(tiny_metadata->prepareAnimatedSourcesForCommand(*rejected,refs,gpu,&f.error));
+        CHECK(gpu.empty());CHECK(tiny_metadata->stats().animated_source_publications==0);
+        CHECK(tiny_metadata->stats().live_metadata_bytes<=metadata_limit.maximum_metadata_bytes);
+        CHECK(budget.snapshot().scene_publications_in_flight==1);
+        rejected.reset();CHECK(budget.snapshot().scene_publications_in_flight==0);
+        rejected=f.device->makeCommandBuffer("Animated source native asset cap",&f.error);REQUIRE(rejected);
+        const auto before_assets=budget.snapshot().admitted;
+        CHECK_FALSE(tiny_assets->prepareAnimatedSourcesForCommand(*rejected,refs,gpu,&f.error));
+        CHECK(tiny_assets->stats().cached_cohort_native_asset_bytes==0);
+        CHECK(tiny_assets->stats().live_metadata_bytes==0);CHECK(budget.snapshot().admitted==before_assets);
+        rejected.reset();CHECK(render(f,f.scene(),{batch})==expected);
+
+        // Initialize the same command helper's shader/encoders above the GPU
+        // gate, then abandon its successful cold publication and drop caches.
+        auto warmup=f.device->makeCommandBuffer("Warm animated cap fixture shader owners",&f.error);REQUIRE(warmup);
+        REQUIRE(pages->prepareAnimatedSourcesForCommand(*warmup,refs,gpu,&f.error));
+        auto warm_bank=commands->prepareAnimatedForCommand(*warmup,*f.device,*library,gpu,globals,*f.data,&f.error);
+        INFO(f.error);REQUIRE(warm_bank);
+        auto abandoned=warmup->completionToken();REQUIRE(abandoned);CHECK_FALSE(abandoned->isComplete());
+        warm_bank.reset();gpu.clear();warmup.reset();CHECK(abandoned->isComplete());
+        commands->clear();pages->clear();CHECK(budget.snapshot().scene_publications_in_flight==0);
+        CHECK(commands->stats().live_banks==0);CHECK(commands->stats().unique_retained_binding_bytes==0);
+
+        rejected=f.device->makeCommandBuffer("Animated ICB and index byte cap",&f.error);REQUIRE(rejected);
+        REQUIRE(pages->prepareAnimatedSourcesForCommand(*rejected,refs,gpu,&f.error));
+        const auto before_rejection=budget.snapshot().scene_publications_in_flight;
+        CHECK_FALSE(tiny_commands->prepareAnimatedForCommand(*rejected,*f.device,*library,gpu,globals,*f.data,&f.error));
+        CHECK(tiny_commands->stats().last_failure==ALMetalWorldSourceCommandFailure::capacity);
+        CHECK(tiny_commands->stats().live_icb_allocated_bytes==0);
+        CHECK(tiny_commands->stats().unique_retained_index_bytes==0);
+        CHECK(tiny_commands->stats().unique_retained_binding_bytes==0);CHECK(tiny_commands->stats().live_banks==0);
+        // Its failed bank credit is CPU-local; only the successful source
+        // publication remains attached to this uncommitted actual command.
+        CHECK(budget.snapshot().scene_publications_in_flight==before_rejection);
+        gpu.clear();rejected.reset();CHECK(budget.snapshot().scene_publications_in_flight==0);
+        CHECK(render(f,f.scene(),{batch})==expected);
+
+        PaletteQueueGate gate(f);
+        auto pending=f.device->makeCommandBuffer("Pending animated retained-byte proof",&f.error);REQUIRE(pending);
+        REQUIRE(pages->prepareAnimatedSourcesForCommand(*pending,refs,gpu,&f.error));
+        auto bank=commands->prepareAnimatedForCommand(*pending,*f.device,*library,gpu,globals,*f.data,&f.error);
+        INFO(f.error);REQUIRE(bank);REQUIRE(pending->commit(&f.error));
+        auto completion=pending->completionToken();REQUIRE(completion);CHECK_FALSE(completion->isComplete());
+        CHECK(pages->stats().cached_cohort_native_asset_bytes>0);
+        CHECK(pages->stats().cached_cohort_native_asset_bytes<=page_limits.maximum_cached_cohort_native_asset_bytes);
+        gpu.clear();bank.reset();commands->clear();pages->clear();
+        const auto live=commands->stats();
+        CHECK(live.cached_banks==0);CHECK(live.live_banks==1);
+        CHECK(live.live_icb_allocated_bytes>0);CHECK(live.unique_retained_index_bytes>0);
+        CHECK(live.live_icb_allocated_bytes+live.unique_retained_index_bytes<=command_limits.maximum_live_native_bytes);
+        CHECK(live.unique_retained_binding_bytes>0);CHECK(live.unique_retained_binding_bytes<=live.retained_binding_limit_bytes);
+        CHECK(pages->stats().live_metadata_bytes>0);CHECK(pages->stats().live_metadata_bytes<=page_limits.maximum_metadata_bytes);
+        CHECK(pages->stats().cached_cohort_native_asset_bytes==0);
+        CHECK(budget.snapshot().scene_publications_in_flight==1);
+        // Drop every CPU proof and table publisher before actual completion.
+        source.reset();batch={};pose.reset();f.data->beginFrame(2);
+        gate.release(f);CHECK(completion->isComplete());pending.reset();
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        while((commands->stats().live_banks || pages->stats().live_metadata_bytes ||
+               budget.snapshot().scene_publications_in_flight) && std::chrono::steady_clock::now()<deadline)
+            std::this_thread::yield();
+        CHECK(commands->stats().live_banks==0);CHECK(commands->stats().live_icb_allocated_bytes==0);
+        CHECK(commands->stats().unique_retained_index_bytes==0);CHECK(commands->stats().unique_retained_binding_bytes==0);
+        CHECK(pages->stats().live_metadata_bytes==0);CHECK(budget.snapshot().scene_publications_in_flight==0);
+    }
+}

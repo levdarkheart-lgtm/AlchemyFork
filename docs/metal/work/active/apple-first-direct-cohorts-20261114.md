@@ -2164,3 +2164,45 @@ further explicit implementation gap identified beyond validating/selecting G4
 and delivering the combined candidate. New retained animated shadow submission
 is not claimed; current native shadow producer sharing and rigged/mask indirect
 paths remain. Owner performance/feature/stability acceptance remains partial.
+
+
+## Source67 correctness pass and animated performance rejection
+
+Exact17ce73c68c/26.4.0.69116 doctor/configure/build0/0/0 (805.967s full rebuild
+from shared header), static66 verifier/strict audit pass. Affected checks all
+pass: common5867/46, new animated native3434/4, actual publisher23280/80,
+shadow98414/14, source admission2460/10, maintenance843/18, pressure174/23.
+Handles30422/71546 terminal0. Prior66 independent31 renderer scopes remain
+applicable with exact production diff (common budget header/implementation only;
+new animated reference-query test fixture). No new viewer launch/profile/push.
+
+The48-condition actual animated complete-path cost passes77438assertions/1case
+in4.881s. Summarizer validates48pairs/96summaryarms/1680rawarms, including
+264loading and576measured frame pairs; no denials/loading samples removed.
+Warm group-mean CPU is17.75–29.66% worse, settlement7.92–24.82% worse;
+cold/resource churn is substantially worse. Arena-byte ratios0.36–0.53 in
+warm cases exclude retained metadata/ICB resources. New animated control stays
+OFF. This is a rejected measured mechanism, not architecture acceptance.
+Root will investigate the actual warm path rather than enable a regression.
+
+PPD293 registers missing working-set evidence before source-only validation
+additions:13 separate per-arm cache/cap counters outside CPU/settle timers and
+one focused tiny-cap/pending-retirement native case. Counters overlap; do not
+sum them or infer physical RAM from a zero unused raw-cache counter. Reviewed
+source68 changes only two test appendices plus documentation; next required
+build/static/strict, native5cases and actual48cost/working-set data. No repeated
+unchanged fullrenderer run is needed for these test-only additions.
+
+
+PPD293 exact source freeze: native appendix44b060510050 adds one focused
+public-client metadata/assets/ICB cap and pending-credit retirement case; prior
+four unchanged. Metadata rejection uses allocator's explicit4KiB rounding, not
+an invented hardware assumption. Actual appendix7d386ea71458 adds13 separate
+shared-cache byte/count/cap fields strictly after CPU/settle timestamps, sampled
+throughmain once per sharedFD. Both bounded peers pass; no execution yet.
+
+Follow-on287 work is bounded to measured warm overhead: inspect native compute
+encoder cost and root-to-PoseView vertex indirection, plus actual frontend's
+repeated warm work. New queues/frameworks and shadow-only scope are unnecessary.
+The67 measured regression remains authoritative; all controls stayOFF until a
+converted path wins complete costs with preserved output/lifetime.

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-293 -->
+<!-- next-defect-id: PPD-294 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6798,9 +6798,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 backend peer review finds prepareAnimatedSourcesForCommand invokes the shared admission callback without first pinning its owner locally. Reentrant callback replacement can destroy the executing closure before its later captured-state access. Register before copying the shared callback locally for invocation, matching the existing paths and retaining epoch/denial checks. Source-only finding, no runtime incident claimed.
 
+- 2026-11-15 observed verification: Source67/17ce73c68c builds69116 (805.967s), static/strict and all affected correctness pass: common5867/46, animated native3434/4, actual publisher23280/80, shadow98414/14, source admission2460/10, maintenance843/18, pressure174/23. Actual48-condition animated cost77438/1 passes output/query assertions but regresses warm owner CPU about18–30% and settlement8–25% at group means; cold/churn is worse. Exact1680raw/96summary rows retained. Arena bytes are lower, not a total-memory or speedup proof. Keep animated controlOFF and investigate concrete warm overhead; do not declare G4 performance accepted.
+
+
 ## PPD-288 — New animated-source fixtures use invalid API and coverage assumptions
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex animated-source fixture author
 - Discovered: 2026-11-15
@@ -6830,6 +6833,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 integrated66 native animated suite1340/1341 assertions,3/4 cases passes under API/GPU validation. Mixed-format case fails only raw reference required-positive query at family1/opaque/format4 (reverse-Z): expected.queries.front()==0, before optimized comparison. Register before tracing query convention and fixture repair; production animated rendering failure not established. Preserve positive coverage/parity and prior failed receipt.
 
+- 2026-11-15 observed verification: Repaired reverse-Z raw-query fixture passes allfour animated native cases67 (3434assertions); eight formats and positive query requirements retained. Earlier66 raw reference failure remains in evidence. Owner runtime acceptance pending.
+
+
 ## PPD-289 — Optional animated promotion can reject a required reader after cache withdrawal
 
 - Status: investigating
@@ -6850,7 +6856,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-290 — Fixed-order animated CPU admission can repeatedly serve a failed source first
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native admission author
 - Discovered: 2026-11-15
@@ -6871,6 +6877,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 source diagnosis of66 failures: the290 repair passes service-adjusted age as both fairness rank and maximum-deferral eligibility, restarting genuine waiting age after each grant. Repair must keep original pending age for eligibility and separate service-adjusted age only for ordering hints. Register this narrow API/header split before implementation; retain original recovery/capacity and new fixed-order fairness assertions, no quota/cap changes.
 
 - 2026-11-15 independent66 actual publisher23045/23046 assertions,79/80 cases passes; both new animated actual-producer cases pass. Existing cold-cohort recovery at frame10 fails compile(owners[0]) (line2612), consistent with290 genuine-deferral-age reset. Add to repair retest scope; no new GPU output fault inferred.
+
+- 2026-11-15 observed verification: Source67 common5867assertions/46cases and actual publisher23280/80 pass, restoring all failed old recovery/capacity/cohort cases while retaining new fixed-order fairness and split-age assertions. Admission/shadow/maintenance/pressure suites also pass. Source66 failed repair receipts retained; owner acceptance pending.
+
 
 ## PPD-291 — Subnormal packed weights can invalidate cold animated bone bounds
 
@@ -6910,3 +6919,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 registered before weak-proof idle-prune repair. Preserve actual native completion lifetime independently of CPU cache freshness.
 
 - 2026-11-15 proof review also requires mutable AnimatedGpuView native lease to match the private captured weak owner/control block (and finite view) before warm binding. Register before adding matchesNativeLease alongside idle proof; no strong CPU parent or change to already prepared lease validity.
+
+
+## PPD-293 — Animated cost evidence omits retained cache footprints and numeric cap coverage
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / animated validation authors
+- Discovered: 2026-11-15
+- Original reference: Original Goal4 requires working-set and lifetime checks against direct native execution; bounded retained bytes remain part of the unified-memory goal.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), animated cost console and bounded SourcePages/Commands counter audit at17ce73c68c.
+- Next action: Log existing per-arm retained metadata/assets/binding/index/ICB scopes outside the timed frontier, sampled once per shared FrameData cache. Add a focused native animated cap check using small injectable limits; retain required native rendering on denial.
+- Verification: Current cost output reports FrameData arena_logical_bytes only. Existing four native cases test pending CPU/native ownership, cancellation and admission retirement, but do not assert numeric animated retained-byte caps. Source-enforced bounds exist. Metadata/assets/bindings/index scopes overlap and cannot be summed as physical RAM or compared to a zero raw-cache counter as total memory amplification. No measured memory leak or cap violation claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 missing working-set evidence registered before validation-only logging/coverage additions. Keep the first67 timing attempt and all prior receipts; do not add runtime policy or increase caps for this harness gap.

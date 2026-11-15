@@ -263,6 +263,23 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
                     CHECK(value.seals==1);CHECK(value.requested==value.captured);CHECK(value.gpu_draws+value.fallback==value.requested);
                     if(sample>=warmups && condition==1){CHECK(value.source_builds==0);CHECK(value.animated_builds==0);}
                     if(sample>=warmups)measured[mode][sample-warmups]=value;
+                    // PPD-293: sample the shared FrameData cache ONCE through
+                    // main, after BOTH owner-CPU/settlement timers stopped.
+                    // Metadata mixes physical backing and logical table debt;
+                    // native binding/asset scopes overlap and are not net RAM.
+                    const auto pages=arm.main->worldSourceStats().pages;
+                    const auto commands=arm.main->worldSourceCommandStats().cache;
+                    const ALMetalWorldSourcePageLimits page_limits{};
+                    const ALMetalWorldSourceCommandLimits command_limits{};
+                    CHECK(pages.live_metadata_bytes<=page_limits.maximum_metadata_bytes);
+                    if(pages.cached_cohort_native_asset_limit)
+                        CHECK(pages.cached_cohort_native_asset_bytes<=pages.cached_cohort_native_asset_limit);
+                    if(commands.retained_binding_limit_bytes)
+                        CHECK(commands.unique_retained_binding_bytes<=commands.retained_binding_limit_bytes);
+                    CHECK(commands.cached_banks<=command_limits.maximum_cached_banks);CHECK(commands.live_banks<=command_limits.maximum_live_banks);
+                    CHECK(commands.live_icb_allocated_bytes<=command_limits.maximum_live_native_bytes);
+                    if(commands.live_icb_allocated_bytes<=command_limits.maximum_live_native_bytes)
+                        CHECK(commands.unique_retained_index_bytes<=command_limits.maximum_live_native_bytes-commands.live_icb_allocated_bytes);
                     if(sample==warmups-1||sample==samples+warmups-1)for(U32 view=0;view<views;++view)images[mode][view]=f.read(*targets[view]);
                     std::cout<<"NATIVE_ANIMATED_GPU_RAW family="<<family<<" sources="<<count<<" indices_per_source=96 views="<<views<<" condition="<<condition<<" mode="<<mode<<" sample="<<sample<<" warmup="<<(sample<warmups)
                         <<" owner_cpu_ms="<<value.cpu<<" capture_adopt_encode_reclaim_ms="<<value.encode<<" commit_query_settle_ms="<<value.settle<<" gpu_sum_ms="<<value.gpu<<" gpu_ready="<<value.gpu_ready
@@ -270,6 +287,13 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
                         <<" execute_calls="<<value.executes<<" pose_publications="<<value.poses<<" source_gpu_publications="<<value.source_gpu<<" bounds_tests="<<value.bounds<<" bounds_unknown="<<value.unknown<<" arena_logical_bytes="<<value.bytes
                         <<" captured_animated_references="<<value.captured<<" required_raw_draws="<<(U64(count)*views-value.captured)
                         <<" cpu_compile_admitted="<<value.cpu_admitted<<" cpu_compile_deferred="<<value.cpu_deferred<<" shared_scene_deferred="<<value.metadata_deferred
+                        <<" page_live_metadata_bytes="<<pages.live_metadata_bytes<<" page_metadata_limit_bytes="<<page_limits.maximum_metadata_bytes
+                        <<" page_cached_native_asset_bytes="<<pages.cached_cohort_native_asset_bytes<<" page_cached_native_asset_limit_bytes="<<pages.cached_cohort_native_asset_limit
+                        <<" command_unique_retained_binding_bytes="<<commands.unique_retained_binding_bytes<<" command_retained_binding_limit_bytes="<<commands.retained_binding_limit_bytes
+                        <<" command_live_icb_allocated_bytes="<<commands.live_icb_allocated_bytes<<" command_unique_retained_index_bytes="<<commands.unique_retained_index_bytes
+                        <<" command_cached_banks="<<commands.cached_banks<<" command_live_banks="<<commands.live_banks
+                        <<" command_cache_limit_banks="<<command_limits.maximum_cached_banks<<" command_live_limit_banks="<<command_limits.maximum_live_banks
+                        <<" command_icb_index_limit_bytes="<<command_limits.maximum_live_native_bytes<<" cache_census_shared_fd_once=1 cache_census_outside_timer=1"
                         <<" target_wrapper_retirement=outside_timer source_geometry=independent_real_mesh frame_data=independent_arm source_metadata=independent_arm current_pose=resealed_per_arm_frame shared_scene_budget=production_limits idle_budget_inputs=1 all_raw_samples=1 whole_viewer_fps_claim=0\n";
                 }
                 for(U32 view=0;view<views;++view)
