@@ -1987,3 +1987,24 @@ logsmaintenanceframe/inflightcount+bytes. Threepurebudget/twoqueue/threeactual
 nativecases authored; no277executionyet. WIPfixtureissues278helperordering
 and280mutationcount corrected afterregistration, no executedfailures.
 Next61required/scopednative+actualCPUcost; allpriorgoalboundariesretained.
+
+
+Active execution handoff (original goal remains ACTIVE): rootintegrationHEAD
+ba0a5063b39b807bc523da92c0adeba0572dace3 has271/274/276/277and281fixturefix.
+Executiontree/private/tmp/alchemy-apple-first-architecture-g2-g5 exactsameSHA.
+Required61 running via execsession2575 (`python3 /tmp/persistent_native_build_61.py`),
+doctor/configure0, build pending; **poll existinghandle, do not restart**.
+Sequential `/tmp/finish_architecture_validation_61.py` already running session29447,
+waiting61receipt then static/strict,5scopedchecks and48conditionCPUcost; poll
+existinghandle, no parallelGPU/build/cost work. Scripts guardcleanSHA/binaryhash,
+processinterference andwritefresh61receipts. Reuseproof60→61 explicitlyasserts
+allproductionalmetalrenderer/shadersunchanged; actualpublisher/budget/queue/
+texturegeneration/nativeCPUparityrerun. No61PASS/FPSclaimbeforecompletion.
+
+After61terminal: inspect EVERY exit/log; registerfailurebeforefix, retainreceipt.
+Ifnative/costPASS run `/tmp/summarize_published_cpu_visibility_costs.py 61`, review
+rawvsretainedvsCPU (especiallyallvisible/cold). KeepCPUcontrolOFFunlesscomplete
+costsupportsconcreteselection; no bank/workeractivation. ThenupdateCURRENT/
+checklist/register andcontinue remainingcache/admission+wholeengine boundaries.
+Existingstaged69102immutable. No viewerlaunch/login/profile/push. Allauthors
+frozen/terminal; no unresolvedsourceownership. Nextdefect282.
