@@ -1674,3 +1674,12 @@ Required47 dfcfb911b0 doctor/configure0, build1 in60.165s(PPD254newoldlibrary
 fixture unique_ptr lvalue vs shared const API). No native47/cost execution. Root
 uses explicitsharedconst ownership, no production/fallback changes, next48build.
 All47failedreceipt evidence retained; next255.
+
+
+Required48 9063dba5cb/69091 exits0/0/0 (150.069s), static/strictpass.
+First22native scopesPASS includingactual17897/70,newpalette2492/16; probe tile
+APIvalidation aborts nilDepthStencilState beforefirstdraw(PPD255), no subsequent
+native/cost run. Rootbindsexistingalways-pass/no-write overlaydepthstate, retaining
+depth/stencil andGPUvalidation. No viewercrash/newlaunch or all48pass claim.
+Next49build/scopedretest; priorsuccessreuse requires explicitproductiondiffproof.
+Next256. Failedreceipt/logretained.

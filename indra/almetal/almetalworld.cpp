@@ -24710,7 +24710,10 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         const auto& shadow_constants = directional ? directional->constants : mImpl->unshadowed_constants;
         const auto* shadow_texture = directional ? directional->depth_texture : mImpl->unshadowed_depth.get();
         encoded = encoder->setViewport(viewport, error) && encoder->setScissor(scissor, error) &&
-            encoder->setCullMode(ALMetalCullMode::none, error) && encoder->setDepthStencilState(nullptr, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            // Same immutable always-pass/no-write state used for overlays;
+            // the tile light map must not test or modify carried depth/stencil.
+            encoder->setDepthStencilState(mImpl->overlay_composite_depth.get(), error) &&
             encoder->setPipeline(*mImpl->probe_tile_light_map_pipelines[pipeline_index], error) &&
             encoder->setFragmentBytes(0, &tile_light_map->constants, sizeof(tile_light_map->constants), error) &&
             encoder->setFragmentBytes(1, &shadow_constants, sizeof(shadow_constants), error) &&

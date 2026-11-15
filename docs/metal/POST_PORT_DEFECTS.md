@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-255 -->
+<!-- next-defect-id: PPD-256 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6100,3 +6100,25 @@ last active page after content interning; retain the exact matched page.
 ### History
 
 - 2026-11-15 compile failure retained in frozen-source-build-47 receipt/log. Registered before the ownership-type repair. Shader compilation and earlier compilation tasks are not whole-build success; source69085/69089 staged/evidence remain intact.
+
+
+## PPD-255 — Probe tile light-map draw binds a nil depth/stencil state
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Original separate light-map pass has no depth attachment. The new same-pass draw shares the base-light depth attachment and must bind an explicit always-pass/read-only state, preserving all pixels and stored depth/stencil.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Bind the existing immutable always-pass/read-only depth state instead of nil, then rerun Metal API/GPU validation and exact tile parity before cost testing. Keep validation enabled.
+- Verification: Required48 build/static/strict pass; first22native scopes pass including actual17897/70 and palette/preparation2492/16. New probe scope aborts with Metal API assertion depthStencilState must not be nil before first tile draw. No viewer launch/crash; later probe/empty/lighting checks and costs did not run.
+- Owner verification: pending
+- Push approval: not_granted
+
+The shared render pass makes the first draw's depth behavior explicit. Disabling
+validation or removing depth preservation would hide the error; the correct state
+is always-compare, no depth writes and no stencil writes.
+
+### History
+
+- 2026-11-15 native-correctness-48 probe scope exitsSIGABRT(-6) under API/GPU validation; exact private log retained. Registered before repair. Earlier successful scopes remain valid evidence, not an all48pass claim.
