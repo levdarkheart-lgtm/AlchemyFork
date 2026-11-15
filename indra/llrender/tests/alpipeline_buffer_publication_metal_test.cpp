@@ -4077,6 +4077,44 @@ TEST_CASE("Actual plain SIMPLE cohorts include publication same-view replacement
           "[almetal][.native-direct-simple-cohort-cost]")
 {actualDirectCohortCosts({0});}
 
+// Shared real-geometry fixture: asset creation/upload is outside cost timers.
+static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
+{
+    const U32 columns=count==768?16:32,rows=count==3072?32:16;
+    REQUIRE(count==columns*rows*3);
+    const U32 mask=info.mVertexBuffer->getTypeMask();LLPointer<LLVertexBuffer> mesh=new LLVertexBuffer(mask);
+    REQUIRE(mesh->allocateBuffer(count,count));std::memset(mesh->getMappedData(),0,mesh->getSize());
+    std::vector<LLVector4a> positions(count),normals(count),tangents(count);
+    std::vector<LLVector2> uv(count);std::vector<LLColor4U> colors(count,LLColor4U(255,0,0,255));std::vector<U16> indices(count);
+    const auto slot=std::bit_cast<float>((info.mMaterialSlotList.size()>1||info.mGLTFMaterialList.size()>1)?1u:0u);
+    for(U32 row=0;row<rows;++row)for(U32 column=0;column<columns;++column)
+    {
+        // Each cell owns three different positions and three fresh indices.
+        // Gaps between adjacent cells prevent even boundary positions being
+        // shared; the whole mesh retains the original local AABB.
+        // Offset interior grid lines from the16px fixture's sample centers;
+        // an exact32x32 grid with gaps would place every pixel in a gap.
+        const F32 phase_x=columns==16?.25f:-.25f,phase_y=rows==16?.25f:-.25f;
+        const F32 x0=column?F32(column+phase_x)/columns:0.f,x1=column+1==columns?1.f:F32(column+phase_x+.9f)/columns;
+        const F32 y0=row?F32(row+phase_y)/rows:0.f,y1=row+1==rows?1.f:F32(row+phase_y+.9f)/rows;
+        const std::array<LLVector2,3> corners{LLVector2(x0,y0),LLVector2(x1,y0),LLVector2(x0,y1)};
+        for(U32 corner=0;corner<3;++corner)
+        {
+            const U32 index=(row*columns+column)*3+corner;
+            const F32 x=corners[corner].mV[0]==1.f?(outside?3.9f:-.1f):(outside?3.f:-1.f)+.9f*corners[corner].mV[0];
+            positions[index].set(x,-1.f+2.f*corners[corner].mV[1],0.f,slot);
+            normals[index].set(0,0,1,0);tangents[index].set(1,0,0,1);uv[index]=corners[corner];indices[index]=U16(index);
+        }
+    }
+    mesh->setPositionData(positions.data());mesh->setNormalData(normals.data());mesh->setTexCoord0Data(uv.data());
+    mesh->setColorData(colors.data());if(mask&LLVertexBuffer::MAP_TANGENT)mesh->setTangentData(tangents.data());
+    if(mask&LLVertexBuffer::MAP_TEXCOORD1)mesh->setTexCoord1Data(uv.data());
+    mesh->setIndexData(indices.data());mesh->unmapBuffer();
+    REQUIRE(mesh->hasPublishedMetalVertexBuffer());REQUIRE(mesh->hasPublishedMetalIndexBuffer());
+    REQUIRE(mesh->getNumVerts()==count);REQUIRE(mesh->getNumIndices()==count);
+    info.mVertexBuffer=mesh;info.mStart=0;info.mEnd=U16(count-1);info.mOffset=0;info.mCount=count;
+}
+
 #include "alpipeline_compile_cost_attribution_native.inl"
 #include "alpipeline_gpu_cohort_cost_native.inl"
 #include "alpipeline_many_cohort_cost_native.inl"

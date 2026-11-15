@@ -5,41 +5,6 @@
  * Included after alpipeline_buffer_publication_metal_test.cpp's fixtures.
  */
 
-static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
-{
-    const U32 cells=count==768?16:32;REQUIRE(count==cells*cells*3);
-    const U32 mask=info.mVertexBuffer->getTypeMask();LLPointer<LLVertexBuffer> mesh=new LLVertexBuffer(mask);
-    REQUIRE(mesh->allocateBuffer(count,count));std::memset(mesh->getMappedData(),0,mesh->getSize());
-    std::vector<LLVector4a> positions(count),normals(count),tangents(count);
-    std::vector<LLVector2> uv(count);std::vector<LLColor4U> colors(count,LLColor4U(255,0,0,255));std::vector<U16> indices(count);
-    const auto slot=std::bit_cast<float>((info.mMaterialSlotList.size()>1||info.mGLTFMaterialList.size()>1)?1u:0u);
-    for(U32 row=0;row<cells;++row)for(U32 column=0;column<cells;++column)
-    {
-        // Each cell owns three different positions and three fresh indices.
-        // Gaps between adjacent cells prevent even boundary positions being
-        // shared; the whole mesh retains the original local AABB.
-        // Offset interior grid lines from the16px fixture's sample centers;
-        // an exact32x32 grid with gaps would place every pixel in a gap.
-        const F32 phase=cells==16?.25f:-.25f;
-        const F32 x0=column?F32(column+phase)/cells:0.f,x1=column+1==cells?1.f:F32(column+phase+.9f)/cells;
-        const F32 y0=row?F32(row+phase)/cells:0.f,y1=row+1==cells?1.f:F32(row+phase+.9f)/cells;
-        const std::array<LLVector2,3> corners{LLVector2(x0,y0),LLVector2(x1,y0),LLVector2(x0,y1)};
-        for(U32 corner=0;corner<3;++corner)
-        {
-            const U32 index=(row*cells+column)*3+corner;
-            const F32 x=corners[corner].mV[0]==1.f?(outside?3.9f:-.1f):(outside?3.f:-1.f)+.9f*corners[corner].mV[0];
-            positions[index].set(x,-1.f+2.f*corners[corner].mV[1],0.f,slot);
-            normals[index].set(0,0,1,0);tangents[index].set(1,0,0,1);uv[index]=corners[corner];indices[index]=U16(index);
-        }
-    }
-    mesh->setPositionData(positions.data());mesh->setNormalData(normals.data());mesh->setTexCoord0Data(uv.data());
-    mesh->setColorData(colors.data());if(mask&LLVertexBuffer::MAP_TANGENT)mesh->setTangentData(tangents.data());
-    if(mask&LLVertexBuffer::MAP_TEXCOORD1)mesh->setTexCoord1Data(uv.data());
-    mesh->setIndexData(indices.data());mesh->unmapBuffer();
-    REQUIRE(mesh->hasPublishedMetalVertexBuffer());REQUIRE(mesh->hasPublishedMetalIndexBuffer());
-    info.mVertexBuffer=mesh;info.mStart=0;info.mEnd=U16(count-1);info.mOffset=0;info.mCount=count;
-}
-
 static void actualRetainedCohortVisibilityCosts(bool heavier_mesh)
 {
     constexpr U32 loading_frames=8,measured_frames=12;

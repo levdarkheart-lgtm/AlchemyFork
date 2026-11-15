@@ -5,9 +5,10 @@
  * Included after alpipeline_buffer_publication_metal_test.cpp's fixtures.
  */
 
-template<bool include_direct_bound>
+template<bool include_direct_bound,bool heavier_mesh=false>
 static void actualManyCohortBankCosts()
 {
+    static_assert(!heavier_mesh||include_direct_bound);
     constexpr U32 loading_frames=8,warmup_frames=64,measured_frames=12,modes=include_direct_bound?4:3;
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::minutes(10);
     const auto cpu_ns=[]
@@ -28,6 +29,7 @@ static void actualManyCohortBankCosts()
         U32 family=0,type=0;
         Inputs::ALScenePublicationNative::WorldFlavor flavor;
         std::vector<Inputs::LLDrawInfo*> sources;
+        std::array<U64,4> geometry{}; // vertices, indices, native wrapper extents; not unique physical bytes.
         std::shared_ptr<ALNativePublication::State> state=std::make_shared<ALNativePublication::State>();
         std::shared_ptr<ALNativePublication::Observer> dependencies;
         std::shared_ptr<Inputs::ALSceneGroupPublicationNative::Layout> layout;
@@ -37,6 +39,7 @@ static void actualManyCohortBankCosts()
     {
         Inputs::LLPipeline pipeline;
         std::vector<std::unique_ptr<Group>> groups;
+        std::vector<std::array<U64,4>> geometry_prefix{{0,0,0,0}};
         std::vector<ALMetalWorldVisibilityQuery> queries;
         ALNativeFrameBudget budget;
         std::unique_ptr<ALMetalWorldMaterialDataCache> material_cache;
@@ -56,7 +59,8 @@ static void actualManyCohortBankCosts()
     };
     for(U32 group_count:{64u,256u})for(U32 sources_per_group:{2u,4u})for(U32 views:{1u,3u})
     {
-        CAPTURE(group_count,sources_per_group,views);
+        const U32 indices_per_source=heavier_mesh?(group_count==64?(sources_per_group==2?3072:1536):(sources_per_group==2?1536:768)):3;
+        CAPTURE(group_count,sources_per_group,views,indices_per_source);
         MaterialGroupPublication f(1);
         Inputs::gSavedSettings.native_resources=false;Inputs::gSavedSettings.native_visibility=false;
         std::array<Inputs::ALScenePublicationNative::WorldFlavor,2> flavors;
@@ -78,7 +82,19 @@ static void actualManyCohortBankCosts()
             {
                 auto group=std::make_unique<Group>();group->family=1+index%2;select_family(group->family);
                 group->type=f.type;group->flavor=f.flavor;
-                for(U32 source=0;source<sources_per_group;++source)group->sources.push_back(&f.materialDraw(source%2));
+                for(U32 source=0;source<sources_per_group;++source)
+                {
+                    auto& info=f.materialDraw(source%2);
+                    if constexpr(heavier_mesh)visibilityCostMesh(info,indices_per_source,false);
+                    const auto vertex=info.mVertexBuffer->getMetalVertexBufferLease(),indices=info.mVertexBuffer->getMetalIndexBufferLease();
+                    REQUIRE(vertex);REQUIRE(indices);REQUIRE(info.mVertexBuffer->getNumVerts()==indices_per_source);
+                    REQUIRE(info.mVertexBuffer->getNumIndices()==indices_per_source);REQUIRE(info.mCount==indices_per_source);
+                    group->geometry[0]+=info.mVertexBuffer->getNumVerts();group->geometry[1]+=info.mCount;
+                    group->geometry[2]+=vertex->length();group->geometry[3]+=indices->length();
+                    group->sources.push_back(&info);
+                }
+                auto prefix=arm.geometry_prefix.back();for(U32 field=0;field<prefix.size();++field)prefix[field]+=group->geometry[field];
+                arm.geometry_prefix.push_back(prefix);
                 arm.groups.push_back(std::move(group));
             }
             arm.material_cache=std::make_unique<ALMetalWorldMaterialDataCache>(*f.device);
@@ -346,9 +362,18 @@ static void actualManyCohortBankCosts()
                 // The256group distribution can exceed the unchanged caps;
                 // retain every actual rebuild, denial and direct fallback.
                 if(!loading&&!warmup)measured[mode][frame-loading_frames-warmup_frames]=value;
-                if(compare_pixels)for(U32 view=0;view<views;++view)pixels[mode][view]=f.read(*targets[view]);
-                std::cout<<(include_direct_bound?"NATIVE_MANY_DIRECT_BOUND_COHORT_RAW groups=":"NATIVE_MANY_COHORT_RAW groups=")<<group_count<<" visible_groups="<<visible_groups<<" sources_per_group="<<sources_per_group
+                if(compare_pixels)for(U32 view=0;view<views;++view)
+                {
+                    pixels[mode][view]=f.read(*targets[view]);
+                    if constexpr(heavier_mesh)CHECK(std::any_of(pixels[mode][view].depth.begin(),pixels[mode][view].depth.end(),[](F32 depth){return depth<1.f;}));
+                }
+                const auto& geometry=arm.geometry_prefix[visible_groups];
+                std::cout<<(heavier_mesh?"NATIVE_MANY_DIRECT_BOUND_COHORT_MESH_RAW groups=":include_direct_bound?"NATIVE_MANY_DIRECT_BOUND_COHORT_RAW groups=":"NATIVE_MANY_COHORT_RAW groups=")<<group_count<<" visible_groups="<<visible_groups<<" sources_per_group="<<sources_per_group
                     <<" legacy_groups="<<visible_groups/2<<" pbr_groups="<<visible_groups/2<<" views="<<views<<" queries_per_view="<<visible_groups
+                    <<" vertices_per_source="<<indices_per_source<<" indices_per_source="<<indices_per_source
+                    <<" candidate_vertices="<<geometry[0]<<" candidate_indices="<<geometry[1]
+                    <<" vertex_buffer_wrapper_extent_bytes="<<geometry[2]<<" index_buffer_wrapper_extent_bytes="<<geometry[3]
+                    <<" position_payload_bytes="<<geometry[0]*16<<" index_payload_bytes="<<geometry[1]*sizeof(U16)
                     <<" phase="<<(loading?"loading":warmup?"warmup":"measured")<<" frame="<<frame<<" mode="<<mode
                     <<" owner_cpu_ms="<<value.cpu<<" capture_adopt_encode_reclaim_ms="<<value.encode<<" completion_and_query_settle_ms="<<value.complete
                     <<" gpu_sum_ms="<<value.gpu<<" gpu_ready_commands="<<gpu_ready<<" pixel_parity_checked="<<compare_pixels
@@ -423,8 +448,12 @@ static void actualManyCohortBankCosts()
                 totals.direct_binding_bytes=std::max(totals.direct_binding_bytes,value.direct_binding_bytes);
                 totals.live_direct_slot_bytes=std::max(totals.live_direct_slot_bytes,value.live_direct_slot_bytes);
             }
-            std::cout<<(include_direct_bound?"NATIVE_MANY_DIRECT_BOUND_COHORT_COST groups=":"NATIVE_MANY_COHORT_COST groups=")<<group_count<<" sources_per_group="<<sources_per_group<<" draws_per_view="<<group_count*sources_per_group
+            std::cout<<(heavier_mesh?"NATIVE_MANY_DIRECT_BOUND_COHORT_MESH_COST groups=":include_direct_bound?"NATIVE_MANY_DIRECT_BOUND_COHORT_COST groups=":"NATIVE_MANY_COHORT_COST groups=")<<group_count<<" sources_per_group="<<sources_per_group<<" draws_per_view="<<group_count*sources_per_group
                 <<" legacy_groups="<<group_count/2<<" pbr_groups="<<group_count/2<<" views="<<views<<" queries_per_view="<<group_count
+                <<" vertices_per_source="<<indices_per_source<<" indices_per_source="<<indices_per_source
+                <<" vertices_per_view="<<arms[mode].geometry_prefix.back()[0]<<" indices_per_view="<<arms[mode].geometry_prefix.back()[1]
+                <<" vertex_buffer_wrapper_extent_bytes="<<arms[mode].geometry_prefix.back()[2]<<" index_buffer_wrapper_extent_bytes="<<arms[mode].geometry_prefix.back()[3]
+                <<" position_payload_bytes="<<arms[mode].geometry_prefix.back()[0]*16<<" index_payload_bytes="<<arms[mode].geometry_prefix.back()[1]*sizeof(U16)
                 <<" mode="<<(mode==0?"ordinary_native":mode==1?"direct_cohort":mode==2?"gpu_cohort":"direct_bound_cohort")<<" loading_frames="<<loading_frames
                 <<" warmup_frames="<<warmup_frames<<" measured_frames="<<measured_frames
                 <<" owner_cpu_median_ms="<<median(cpu)<<" owner_cpu_max_ms="<<*std::max_element(cpu.begin(),cpu.end())
@@ -447,6 +476,8 @@ static void actualManyCohortBankCosts()
                 <<" paired_logical_frame=1 native_epoch_once_per_arm_frame=1 shared_exact_library=1 distinct_view_matrix_payloads=1 typed_identity_camera_frontier=1"
                 <<" dirty_raw_admission_before_seal=1 same_view_verified_replacement=1 cpu_and_gpu_scene_admission=1 synthetic_idle_budget_inputs=1"
                 <<" shared_context_counters_observed_once=1 retained_native_index_footprint_not_new_allocation=1 binding_slot_footprints_overlap_do_not_sum=1"
+                <<" fixture_indices_per_source="<<indices_per_source<<" unique_vertex_indices_per_source="<<indices_per_source
+                <<" same_local_mesh_aabb=1 repeated_three_vertex_indices=0 wrapper_extents_are_not_physical_unique_bytes=1"
                 <<" geometry_texture_drawinfo_creation_excluded=1 loading_means_first_native_publication_not_asset_download=1 whole_viewer_fps_claim=0\n";
         }
     }
@@ -459,3 +490,7 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
 TEST_CASE("Actual many small mixed cohorts compare ordinary direct pointer-bank and direct-bound costs",
           "[almetal][.native-many-direct-bound-cohort-cost]")
 {actualManyCohortBankCosts<true>();}
+
+TEST_CASE("Actual many small mixed heavy mesh cohorts compare ordinary direct pointer-bank and direct-bound costs",
+          "[almetal][.native-many-direct-bound-cohort-mesh-cost]")
+{actualManyCohortBankCosts<true,true>();}

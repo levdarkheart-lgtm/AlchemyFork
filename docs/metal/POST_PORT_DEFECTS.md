@@ -5294,6 +5294,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source38 ordered renderer costs pass; all8many scenarios have100%banked draws/no warm rebuild/fallback and CPU10.60–51.39%lower, but GPU87.41–166.90%higher and settlement8.94–142.52%higher. Keep bank modeOFF; investigate direct static bindings with fixed-address native view slots as a bounded new hypothesis, not a measured repair.
 
+- 2026-11-15: Source41 direct-bank native gates and both4arm cost matrices pass. Manydirect versus oldbank improves all8CPU/GPU/settlement, but versus direct GPU remains37.22–102.17%higher andcomplete wins2/8. Warm512complete wins6.51–42.06%; cold/churn remain adverse. Keep controlOFF, extend realuniqueindexedmesh coverage42 before generalizing3-index fixtures.
+
 ## PPD-218 — Page-wide freshness invalidates unrelated retained cohorts
 
 - Status: investigating
@@ -5632,6 +5634,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source author moved guard to exact renderInternal boundary in frozen world.cpp; no feature build/native execution yet. Source39 remains unaffected.
 
+- 2026-11-15: Source40and41 compile successfully with guard at renderInternal;41 renderer9394/9 includinginvalidconfiguration/oldlibrary directfallback pass. No owner runtime attribution or closure.
+
 ## PPD-234 — Direct-bank WIP applies the index/ICB ceiling to all retained scene assets
 
 - Status: investigating
@@ -5651,6 +5655,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Backend author separates extra binding-asset retention from unchanged64MiB ICB/index scope, reusing exact resolved SourcePages asset limit via FrameView; pending/idle scope and independent eviction predicates authored. Native separation/denial/retirement tests pending; no raised existing cap or duplicate policy.
 
+
+- 2026-11-15: Source41 commands4055/12 verifies independent native asset cap versus unchangedICB/index cap and denial/retirement; role-overlap safeguards236 included. Broader/cost gates pass, owner pending.
 
 ## PPD-235 — New direct-bank many-group cost gate omits strict warm-reuse acceptance
 
@@ -5672,6 +5678,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Narrow fitting64 measured direct-mode assertions now require exact2compositions/view cache/page/direct/slot hits, zero bank/page builds/evictions/failures/denials and zero direct encoded calls/policy/slot allocation/binding charge. Loading and256pressure unchanged; source40 execution pending.
 
+- 2026-11-15: Source41 newmany4arm cost2568360/1 passes strict64 measured reuse with fullacceptedwork/zeroNreencodes,policy/slot allocation,bindingcharge/denial/eviction. All32summaryrows/2688rawsamples retained;256adverse cases unfiltered.
+
 ## PPD-236 — Failed direct-bank staging permanently changes a shared buffer accounting role
 
 - Status: investigating
@@ -5691,6 +5699,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-15: Immutable allocation+role registry repair and actual legal combined-buffer Ageometry/Bindex denial/retirement/recovery fixture are frozen. Independent gross scopes may overlap and are not summed as physical RAM; native execution pending.
+
+- 2026-11-15: Source41 command4055/12 includeslegalcombinedbuffer Ageometry/Bindex deniedpreparation, unchangedolddebt/cache, actualGPUreader retirement andproperrecovery output. Allnative/broad gates pass; owner pending.
 
 ## PPD-237 — Generic inherited-bank API accepts a direct-binding view
 
@@ -5712,6 +5722,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Generic inherited entry guard now rejects direct frames before staging/admission. Test supplies matching nonempty certified descriptors, checks callback0/unchanged cache/native/copy debt then proper cohort Legacy/PBR output/query recovery. Source40 execution pending.
 
 
+- 2026-11-15: Source41 commands4055/12 proves matchingnonemptydirectframe descriptors rejected atwronggenericAPI withcallback0/noallocateddebtchange, thenproperdirectAPI renders Legacy/PBR output/query recovery. Oldgeneric/oldlibrary controls pass.
+
 ## PPD-238 — New slot-pressure fixture exceeds the Metal command-queue capacity
 
 - Status: investigating
@@ -5730,3 +5742,5 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered during source40 build after root queue-cap review. Unfreeze only existing source-pages native test; no production change. Next239.
 
 - 2026-11-15: Fixture-only repair uses3commands for128view slots plusdenial/blocker(total5), preserving all128cap/borrowedCPUreader/actualGPUcompletion/exactstorage-reuse/no-allocation assertions. Production queue64 and slot128 unchanged. No native test or hang occurred for40; full41execution follows.
+
+- 2026-11-15: Source41 pages5914/25 finishes normally and proves128distinctslots on bounded nativecommands, borrowedCPUreader protection, actualGPUcompletion andsameallocation recovery. No unmodified238fixture was executed/hung; productionqueue64 unchanged.

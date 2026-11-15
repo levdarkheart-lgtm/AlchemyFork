@@ -1299,3 +1299,53 @@ Source41 changes only that pressure fixture and docs:128view occurrences use
 with a CPU reader still fails; actualGPU pending reader and exactslot recovery
 remain asserted. Required41/native/static/strict/new4arm+oldcontrols follow.
 No source40performance measurement exists yet. Original goal remainsACTIVE.
+
+
+## Source41 native/cost gates pass; heavier-bank source42 freeze
+
+Exactb02f81fe36,26.4.0.69083: required41 doctor/configure/build0(28.133s),
+static346ARM64/signatures/source/imports/features/eightOFFcontrolsPASS,
+strict3587files/905informational/0blockers/0errorsPASS. All21native processes
+PASS withAPI/GPUvalidation, including pages5914/25,visibility7521/13,
+renderer9394/9,commands4055/12,admission2460/10,actualowner14809/59,
+shadow98414/14 andold-library/no-layout controls. New128slot fixture finishes
+normally; no queue hang was executed. Broader41 alsoPASS88/88CTestgroups
+(156.475s),10additional native specializations and3archive policy processes.
+
+Old3arm controlsPASS144872/1(5.967s),many1876456/1(8.560s). New4arm actual
+costPASS195980/1(5.753s),192summaryrows/2688rawsamples; many2568360/1
+(11.508s),32summaryrows/2688rawsamples. Matching source41 CPU/GPU parity and
+query coverage pass across allfour independent arms. Strict64 direct mode proves
+100%requested bank work, exactcompositionhits and zero warm policy/slot
+allocations, Ncommand encodes, admission/fallback or eviction. Warm view copies
+are208B per one-region composition (176+32), not N400B input reconstruction.
+
+Direct-bound versus oldbank improves all8many scenarios CPU8.57–14.16%,
+GPU7.19–19.85%,complete/querysettlement5.18–51.56%. This supports continuing the
+binding experiment, not a universal speedup. Against direct cohorts CPU is
+28.77–56.58%lower, butGPU37.22–102.17%higher; complete cost wins2of8 and ranges
+25.12%lower to19.62%higher. Warm512one-group cases complete6.51–42.06%lower
+than direct despiteGPU80.08–189.10%higher. Cold/churn remain adverse. Source41
+geometry is explicitly3indices/source, so these remain mechanism diagnostics,
+not real-world FPS, frame-tail, or release performance acceptance. ControlsOFF.
+
+Source42 is TEST-ONLY heavier-bank coverage. Shared visibilityCostMesh helper
+moves before existingcost includes; old768/3072 square math/phase/AABB remain,
+1536 adds a32x16 grid. Single512Legacy/PBR/1or3views/cold-warm-churn uses768
+unique indices/source; all8manyconfigurations preserve8loading+64warm+12measured
+frames with3072/1536/1536/768 indices perSource. FullNcolor churn, publication,
+capture/adoption/reclamation, CPU/GPU admission, native/query settlement are
+inside timed boundaries; asset creation is explicitly excluded. Geometry counts,
+payload bytes and gross wrapper extents are logged, with non-clear depth plus
+MRT/query parity. Old3/4armtags and visibility504/144arm cases remain unchanged.
+Independent source review passes; no42execution yet. No production code changes.
+
+Separate /private/tmp/alchemy-apple-first-stable-cohort-admission(baseb02) now
+implements only opt-in CPU compilation stability under PPD194. Architecture owns
+FrameBudget/CPUAdmission/header+tests, cohort compile inl and isolated actual
+admission cases; root owns pipeline/settings/cost integration. Stamp is publisher
+identity+revision, eligible only across distinct budget frames; same-frame probes
+cannot mature it. Requiredraw/native source publication stays current. Cold
+child subscriptions do not exist before seal, so stamp is a cheap heuristic,
+not proof every child was unchanged; no Nper-view walk is allowed. No policy
+activation, execution or performance claim yet. Full original goal remainsACTIVE.

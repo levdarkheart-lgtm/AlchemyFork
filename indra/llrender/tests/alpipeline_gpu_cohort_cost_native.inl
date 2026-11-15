@@ -5,10 +5,12 @@
  * Included after the actual production capture/producer fixtures.
  */
 
-template<bool include_direct_bound>
+template<bool include_direct_bound,bool heavier_mesh=false>
 static void actualNativeCohortBankCosts()
 {
-    constexpr U32 samples=12,warmups=2,modes=include_direct_bound?4:3;
+    static_assert(!heavier_mesh||include_direct_bound);
+    constexpr U32 samples=12,warmups=2,modes=include_direct_bound?4:3,indices_per_source=heavier_mesh?768:3;
+    const auto deadline=std::chrono::steady_clock::now()+std::chrono::minutes(10);
     const auto cpu_ns=[]
     {timespec value{};REQUIRE(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&value)==0);return U64(value.tv_sec)*1'000'000'000ULL+value.tv_nsec;};
     const auto median=[](auto values)
@@ -35,6 +37,7 @@ static void actualNativeCohortBankCosts()
     {
         Inputs::LLPipeline pipeline;
         std::vector<Inputs::LLDrawInfo*> sources;
+        std::array<U64,4> geometry{}; // vertices, indices, summed native wrapper extents; not unique physical bytes.
         std::vector<ALMetalWorldVisibilityQuery> queries;
         std::shared_ptr<ALNativePublication::State> group=std::make_shared<ALNativePublication::State>();
         std::shared_ptr<ALNativePublication::Observer> dependencies;
@@ -61,12 +64,23 @@ static void actualNativeCohortBankCosts()
         MaterialGroupPublication f(family);Inputs::gSavedSettings.native_resources=false;Inputs::gSavedSettings.native_visibility=false;
         auto library_data=ALMetalWorldFrameData::create(*f.device,&f.error);INFO(f.error);REQUIRE(library_data);
         auto library=library_data->builtinLibrary(&f.error);INFO(f.error);REQUIRE(library);
-        for(U32 count:{1u,4u,16u,512u})
+        const auto counts=heavier_mesh?std::vector<U32>{512}:std::vector<U32>{1,4,16,512};
+        for(U32 count:counts)
         {
             std::array<Arm,modes> arms;
             for(auto& arm:arms)
             {
-                for(U32 source=0;source<count;++source)arm.sources.push_back(&f.materialDraw());
+                for(U32 source=0;source<count;++source)
+                {
+                    auto& info=f.materialDraw();
+                    if constexpr(heavier_mesh)visibilityCostMesh(info,indices_per_source,false);
+                    const auto vertex=info.mVertexBuffer->getMetalVertexBufferLease(),indices=info.mVertexBuffer->getMetalIndexBufferLease();
+                    REQUIRE(vertex);REQUIRE(indices);REQUIRE(info.mVertexBuffer->getNumVerts()==indices_per_source);
+                    REQUIRE(info.mVertexBuffer->getNumIndices()==indices_per_source);REQUIRE(info.mCount==indices_per_source);
+                    arm.geometry[0]+=info.mVertexBuffer->getNumVerts();arm.geometry[1]+=info.mCount;
+                    arm.geometry[2]+=vertex->length();arm.geometry[3]+=indices->length();
+                    arm.sources.push_back(&info);
+                }
                 arm.material_cache=std::make_unique<ALMetalWorldMaterialDataCache>(*f.device);
                 arm.data=ALMetalWorldFrameData::create(*f.device,&f.error);INFO(f.error);REQUIRE(arm.data);
                 auto* budget=&arm.budget;
@@ -98,6 +112,8 @@ static void actualNativeCohortBankCosts()
                     std::array<std::array<std::array<std::uint64_t,2>,3>,modes> query_counts{};
                     for(U32 position=0;position<modes;++position)
                     {
+                        INFO("Bounded cohort mesh fixture exceeded its ten-minute workload cap");
+                        REQUIRE(std::chrono::steady_clock::now()<deadline);
                         const U32 mode=(sample+position)%modes;auto& arm=arms[mode];CAPTURE(mode,sample);
                         MaterialCacheScope material_scope(arm);
                         auto& capture=*arm.pipeline.mMetalWorldSimpleCapture;
@@ -127,9 +143,11 @@ static void actualNativeCohortBankCosts()
                         if(condition==2)
                         {
                             const auto tint=sample%2?LLColor4U(0,255,0,255):LLColor4U(0,0,255,255);
-                            const std::array<LLColor4U,3> colors{tint,tint,tint};
+                            const std::array<LLColor4U,3> colors{tint,tint,tint};std::vector<LLColor4U> mesh_colors;
+                            if constexpr(heavier_mesh)mesh_colors.assign(indices_per_source,tint);
                             for(U32 source=0;source<count;source+=16)
-                            {auto& buffer=*arm.sources[source]->mVertexBuffer;buffer.setColorData(colors.data());buffer.unmapBuffer();}
+                            {auto& buffer=*arm.sources[source]->mVertexBuffer;
+                             buffer.setColorData(heavier_mesh?mesh_colors.data():colors.data());buffer.unmapBuffer();}
                         }
                         for(U32 view=0;view<views;++view)
                         {
@@ -300,9 +318,17 @@ static void actualNativeCohortBankCosts()
                         if(sample>=warmups&&mode&&condition==1&&value.cohort_draws==U64(count)*views)
                         {CHECK(value.getters==0);CHECK(value.dependencies==0);CHECK(value.images==0);CHECK(value.compile_admitted==0);}
                         if(sample>=warmups)costs[mode][sample-warmups]=value;
-                        if(sample==warmups-1)for(U32 view=0;view<views;++view)pixels[mode][view]=f.read(*targets[view]);
-                        std::cout<<(include_direct_bound?"NATIVE_DIRECT_BOUND_COHORT_RAW family=":"NATIVE_GPU_COHORT_RAW family=")<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
+                        if(sample==warmups-1||heavier_mesh)for(U32 view=0;view<views;++view)
+                        {
+                            pixels[mode][view]=f.read(*targets[view]);
+                            if constexpr(heavier_mesh)CHECK(std::any_of(pixels[mode][view].depth.begin(),pixels[mode][view].depth.end(),[](F32 depth){return depth<1.f;}));
+                        }
+                        std::cout<<(heavier_mesh?"NATIVE_DIRECT_BOUND_COHORT_MESH_RAW family=":include_direct_bound?"NATIVE_DIRECT_BOUND_COHORT_RAW family=":"NATIVE_GPU_COHORT_RAW family=")<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
                             <<" condition="<<condition<<" mode="<<mode<<" sample="<<sample<<" warmup="<<(sample<warmups)
+                            <<" vertices_per_source="<<indices_per_source<<" indices_per_source="<<indices_per_source
+                            <<" candidate_vertices="<<arm.geometry[0]<<" candidate_indices="<<arm.geometry[1]
+                            <<" vertex_buffer_wrapper_extent_bytes="<<arm.geometry[2]<<" index_buffer_wrapper_extent_bytes="<<arm.geometry[3]
+                            <<" position_payload_bytes="<<arm.geometry[0]*16<<" index_payload_bytes="<<arm.geometry[1]*sizeof(U16)
                             <<" owner_cpu_ms="<<value.cpu<<" capture_adopt_encode_reclaim_ms="<<value.encode<<" completion_and_query_settle_ms="<<value.complete
                             <<" gpu_sum_ms="<<value.gpu<<" gpu_ready_commands="<<value.gpu_ready
                             <<" source_and_group_publications="<<value.source_publications<<" group_builds="<<value.group_builds<<" source_builds="<<value.source_builds
@@ -339,7 +365,7 @@ static void actualNativeCohortBankCosts()
                     for(U32 view=0;view<views;++view)
                         for(U32 mode=1;mode<modes;++mode)
                         {CHECK(query_counts[0][view]==query_counts[mode][view]);
-                         if(sample==warmups-1)CHECK(pixels[0][view]==pixels[mode][view]);}
+                         if(sample==warmups-1||heavier_mesh)CHECK(pixels[0][view]==pixels[mode][view]);}
                 }
                 for(U32 mode=0;mode<modes;++mode)
                 {
@@ -354,7 +380,11 @@ static void actualNativeCohortBankCosts()
                         direct_totals.direct_binding_bytes=std::max(direct_totals.direct_binding_bytes,value.direct_binding_bytes);
                         direct_totals.live_direct_slot_bytes=std::max(direct_totals.live_direct_slot_bytes,value.live_direct_slot_bytes);
                     }
-                    std::cout<<(include_direct_bound?"NATIVE_DIRECT_BOUND_COHORT_COST family=":"NATIVE_GPU_COHORT_COST family=")<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
+                    std::cout<<(heavier_mesh?"NATIVE_DIRECT_BOUND_COHORT_MESH_COST family=":include_direct_bound?"NATIVE_DIRECT_BOUND_COHORT_COST family=":"NATIVE_GPU_COHORT_COST family=")<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
+                        <<" vertices_per_source="<<indices_per_source<<" indices_per_source="<<indices_per_source
+                        <<" vertices_per_view="<<arms[mode].geometry[0]<<" indices_per_view="<<arms[mode].geometry[1]
+                        <<" vertex_buffer_wrapper_extent_bytes="<<arms[mode].geometry[2]<<" index_buffer_wrapper_extent_bytes="<<arms[mode].geometry[3]
+                        <<" position_payload_bytes="<<arms[mode].geometry[0]*16<<" index_payload_bytes="<<arms[mode].geometry[1]*sizeof(U16)
                         <<" condition="<<(condition==0?"cold":condition==1?"warm":"churn")<<" mode="<<(mode==0?"ordinary_native":mode==1?"direct_cohort":mode==2?"gpu_cohort":"direct_bound_cohort")
                         <<" samples="<<samples<<" warmups="<<warmups<<" owner_cpu_median_ms="<<median(cpu)<<" owner_cpu_max_ms="<<*std::max_element(cpu.begin(),cpu.end())
                         <<" capture_adopt_encode_reclaim_median_ms="<<median(encode)<<" capture_adopt_encode_reclaim_max_ms="<<*std::max_element(encode.begin(),encode.end())
@@ -372,6 +402,9 @@ static void actualNativeCohortBankCosts()
                         <<" dirty_raw_admission_before_seal=1 same_view_verified_replacement=1 cpu_and_gpu_scene_admission=1 synthetic_idle_budget_inputs=1"
                         <<" count1_short_run_fallback_retained=1 denied_frames_retained=1 shared_context_counters_observed_once=1"
                         <<" retained_native_index_footprint_not_new_allocation=1 binding_slot_footprints_overlap_do_not_sum=1"
+                        <<" fixture_indices_per_source="<<indices_per_source<<" unique_vertex_indices_per_source="<<indices_per_source
+                        <<" same_local_mesh_aabb=1 repeated_three_vertex_indices=0"
+                        <<" full_vertex_color_mutation="<<heavier_mesh<<" wrapper_extents_are_not_physical_unique_bytes=1"
                         <<" geometry_texture_drawinfo_creation_excluded=1 whole_viewer_fps_claim=0\n";
                 }
             }
@@ -386,3 +419,7 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
 TEST_CASE("Actual retained cohorts compare ordinary direct pointer-bank and direct-bound bank complete costs",
           "[almetal][.native-direct-bound-cohort-cost]")
 {actualNativeCohortBankCosts<true>();}
+
+TEST_CASE("Actual heavy mesh retained cohorts compare ordinary direct pointer-bank and direct-bound complete costs",
+          "[almetal][.native-direct-bound-cohort-mesh-cost]")
+{actualNativeCohortBankCosts<true,true>();}
