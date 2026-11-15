@@ -2586,3 +2586,39 @@ bycensusendpoints; no segmentmaxhistogram oraggregated8192runtimeproofexists.
 ScalarMVPandcompactalreadyuseequivalentNEONmath; snapshot/array/merge costs
 mustbeincluded beforeclaimingaggregationuseful. Owner69122appimmutable,
 no launch/login/profile/push; fullarchitecture/performanceacceptancepartial.
+
+
+### Source73 validated and separately staged69129
+
+Exact3841527bbd944f9a6283b12ad45acdaa878d073a required0/0/0,34.712s build;
+handle60951 terminal0. Static native73 (requiredverify_app inside) and strict73
+PASS. Full34 renderer scopes254316 assertion-executions/348case-executions
+PASS,160.976s; common6063/48, actual26034/80, nativeanimated7925/5 unchanged.
+Handle17867 terminal0; no tests/cost broadening afterpass.
+
+retain-cost-gate-73.json proves the measured selected common source SHA matches
+the integrated source; it limits results to standalone retain boundary, not
+wholefactory/frame. Fullcurrentnative checks pass. Old source72rendererroute
+profitability remains explicit prior evidence; settingspolicy unchanged.
+Stagehelperrun73 withcombined-policy/evidence-note-73 andverifier72 accepts
+exactcurrent source/version; handle56807 terminal0.
+Destinationarchitecture-combined-69129, provenanceVERIFIED,8273 identical app
+inventory nodes, stagedsignatures/ARM64/imports/features andSHA256SUMS PASS.
+ExecutableSHAe958bb09075957bd84d921459af7802d734d69f75a353d5a764b5805370c99b9.
+No viewer/runtimeaction; owner69122 app remainsimmutable.
+
+Additional69122 evidenceaudit: probe tile/separate3960/0 quiet,3692/0club
+equals allsampledsuccessfulprobeGBuffer views. Main0/0is probe-onlycounter
+semantics, notmainfusiondecline. ExistingRG8visibility memoryless/dontcare and
+compositionownershiptransfer alreadyremove intendedintermediates; persisted
+colour/depth have real laterreaders. No additional safe probe pass/store/load
+elimination proved. Do notinventunusedprobe switch ordropSSAO/post features.
+
+RemainingactualG3contribution andwholeengineperformanceacceptancepartial.
+Nextconcretework: readbusy/quiet cpu-analysis.json summary.by_disjoint_main_scope
+shadowcapture/sourcepublication leaf costs toselect substantial existing owned
+CPUwork; iftestingfamilyaggregation, add rawcurrent-scalar vscompactserial vs
+Dispatch completecost atactual423–867meanviewscale, including snapshots/output/
+admission/release. Do notactivate8192aggregatewithno measuredsegmenthistogram.
+Keepcacheturnover240/274open; PPD295partialmitigationdoesnotclosethem.
+No additional launch/login/profile/push authorized.

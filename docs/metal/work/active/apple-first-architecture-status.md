@@ -10,7 +10,7 @@ bounded [source audit](../../research/apple-first-engineering-delivery-20261115.
 found no additional required implementation callsite. This does not establish
 a whole-viewer performance gain or complete the product release gates.
 
-Exact source: **beb6837b71f0429f116fef8e2ad7cc5d166bc010**, build
+Owner-profiled source: **beb6837b71f0429f116fef8e2ad7cc5d166bc010**, build
 **26.4.0.69122**, experiment branch `codex/apple-first-native-cohort-consumption`.
 Doctor/configure/build, ARM64/signature/import verification and strict source
 audit pass. All34 renderer scopes pass on these exact binaries:254120 assertion-
@@ -98,3 +98,23 @@ Independent G3 source work examines coalescing already-owned small family inputs
 within a view, preserving order and bounding all copy/job/join costs. No blind
 threshold reduction or forced worker activation. Tested69122 stays immutable;
 no further launch/login/profile/push authorized by the testing handoff.
+
+## Latest implementation candidate —69129
+
+Source3841527bbd944f9a6283b12ad45acdaa878d073a adds one native-resource vector
+reservation at the first validated unique append. Selected after actual-source
+retention-cost comparisons; inline staging rejected for its cold1regression.
+The selected change reduces vector growth, keeps one scratch allocation on
+denial, and can retain extra weak-vector capacity for duplicate-heavy callers.
+It is a partial bookkeeping mitigation under PPD295, not a cache-policy repair
+or whole-viewer FPS result. All caps and renderer settings are unchanged.
+
+Doctor/configure/build, static native/strict and full34renderer scopes PASS:
+254316 assertion-executions/348case-executions. New separate
+`architecture-combined-69129` provenanceVERIFIED,8273 identicalappinventorynodes,
+staged static verification andSHA256SUMS PASS. [Exact launcher](</Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/apple-first-persistent-native-scene-20261114/architecture-combined-69129/Launch Apple First Combined.command>)
+is unexecuted; profiled69122 app is preserved. Wholeengine/G3/performance
+acceptance remains partial and active. Next priority is actual owned-work
+granularity and retained-source churn, guided by the captured CPU scopes.
+Probe tile fusion already covers all successful sampledprobeviews; no further
+safe probe-pass removal was established. No new live capture is authorized.
