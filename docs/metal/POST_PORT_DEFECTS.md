@@ -6246,7 +6246,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-261 — Terrain patch capture republishes pass-common material constants
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / terrain publication author
 - Discovered: 2026-11-15
@@ -6261,6 +6261,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 registered before implementation. This targets repeated pass-common allocation/publication, not removal of per-patch view-dependent work or a shader-quality change. Source49/50 probe repair and source51 compact restoration remain separately evidenced.
 
+
+- 2026-11-15 observed verification: Source54/55full native and terrain5157/6 pass. Expanded55costs support sharing>=16; allfourcallers compiled/source-checked57. Actual helper44/2 plusnative5157/6 pass57. CompleteLLpool/runtime acceptance remains pending. Owner verification pending; no push approval.
 
 ## PPD-262 — Compact-restoration cost matrix omits expired-proof expansion
 
@@ -6282,7 +6284,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-263 — World-preparation cost baseline omits owned-view adoption
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / owned-preparation cost author
 - Discovered: 2026-11-15
@@ -6298,9 +6300,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 registered before new fair cost fixture. This is a measurement-frontier limitation, not a demonstrated worker speedup or a viewer rendering defect. No automatic world-worker activation is authorized by source inspection alone.
 
 
+- 2026-11-15 observed verification: Fair owned31595/1 cost suite passes54/55 with realcredit denial and allGPU samplesready. No usefulworker crossover found; productionworker control staysOFF. Owner verification pending; no push approval.
+
 ## PPD-264 — New matched terrain path relies on a replaceable batch resource owner
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / terrain publication author
 - Discovered: 2026-11-15
@@ -6316,9 +6320,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 registered before narrow new-feature ownership repair. Preserve independent native completion retirement; do not retain the CPU pass record or viewer region to hide this gap.
 
 
+- 2026-11-15 observed verification: Source55/57 terrain pending/cancel/CPUexpiry cases pass underMetal API/GPU validation, independent private selected-texture leases retained afterpublic ownerreset. Owner verification pending; no push approval.
+
 ## PPD-265 — Static source qualification omits the new terrain-pass owner field
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / terrain publication author
 - Discovered: 2026-11-15
@@ -6334,9 +6340,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 registered before narrow qualification repair. Primary terrain batches are already excluded by their terrain flag; the uncovered public-field combination remains a source-contract defect, not a measured memory or FPS attribution.
 
 
+- 2026-11-15 observed verification: Source55fullcohort/pages/source/actual tests pass; native terrain otherwise-qualified owner-only rejection passes. Unused unrelatedowners stripped fromprivateprototype. No capchange. Owner verification pending; no push approval.
+
 ## PPD-266 — Actual terrain helper fixture confuses viewer facade with LLImageGL
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6352,9 +6360,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 failed build receipt/log retained before correction. Integrator used the wrong existing fixture member; no runtime viewer fault or successful combined build claim.
 
 
+- 2026-11-15 observed verification: Corrected actual LLImageGL fixture compiles54/55/57; actual context44/2 passes57. Prior53failedbuild retained. Owner verification pending; no push approval.
+
 ## PPD-267 — Scalar cohorts repeat producer-invariant flag and common-constant preparation
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / immutable scalar recipe author
 - Discovered: 2026-11-15
@@ -6370,9 +6380,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 registered before scoped producer-derived preparation implementation. Charge actual metadata within existing caps and preserve bit-exact view/UV/flags. No worker or bank activation follows from this source observation alone.
 
 
+- 2026-11-15 observed verification: Source55scalar recipe7835/3 passes underMetalAPI/GPU validation,136format/familytuples. Actualsingle265608/1,many1844512/1 and oldtags142080/2 pass; actualreusescounted. Warmbenefit supported, colddebt and cross-run/small-runlimits retained. Owner verification pending; no push approval.
+
 ## PPD-268 — Terrain sharing setup regresses single-patch passes
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6388,9 +6400,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 measured before caller selection repair. Larger contained gains do not accept the one-patch regression. The new grid fixture permits partial valid grids for2patches; this changes no production geometry validation.
 
 
+- 2026-11-15 observed verification: Expanded55matrix1/2/4/16/64/256 shows CPUlossbelow16 and CPU+completionall12winsat/above16. Source57fourcaller selection at16 builds/static/strict/focusedterrain pass; owner/runtime confirmation remains pending. Owner verification pending; no push approval.
+
 ## PPD-269 — New scalar-recipe cost geometry can occlude its required-positive query
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / scalar recipe cost author
 - Discovered: 2026-11-15
@@ -6406,9 +6420,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 registered before fixture-only depth placement correction. Existing source54 evidence is unchanged; do not alter renderer query behavior or remove the positive primitive-coverage assertion.
 
 
+- 2026-11-15 observed verification: Corrected frontquery costfixture passes55single265608/1,many1844512/1 with allgeometry/nonzero/query/MRT/depthparity assertions retained. Owner verification pending; no push approval.
+
 ## PPD-270 — Terrain caller-selection integration assumed three call sites instead of four
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6422,3 +6438,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 partial intermediate commit retained before correction. Root fixes all four actual call sites, uses fail-fast execution, and records56 as superseded rather than a completed selection candidate.
+
+- 2026-11-15 observed verification: Allfouractualpool call sites now use selectedpointer atsourceac2dfaeb6b/69102. Required57doctor/configure/build/static/strict andactual44/2/native5157/6 pass. Intermediate56successfulbuild remains unused-helper-only/superseded. Owner verification pending; no push approval.

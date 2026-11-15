@@ -1,62 +1,68 @@
 # Apple-first architecture implementation status
 
 Updated 2026-11-15. The original whole-engine goal is **active and incomplete**.
-Detailed source and retained evidence are in the [execution ledger](apple-first-direct-cohorts-20261114.md).
+Detailed source and evidence remain in the [execution ledger](apple-first-direct-cohorts-20261114.md).
 
-The current built experiment is **96363dc6d2 / 26.4.0.69094**. Required build,
-static bundle and strict source checks pass. Its actual publication suite passes
-73 cases, including compact restoration, failure fallback and expired-generation
-rejection. Unchanged native renderer checks from the preceding source are reused
-with an explicit source-diff proof; they were not all rerun.
+Current built checkpoint: **ac2dfaeb6b / 26.4.0.69102**. Required doctor,
+configure, build, static ARM64/signature/import/feature checks and strict source
+audit pass. Focused actual terrain-owner and native terrain checks pass. Exact
+diff evidence reuses source55's unchanged renderer checks: all28native scopes
+and11cost suites passed. The explicit recipe tag repeats three cases also in
+the cohort scope; execution totals are not unique-case totals.
 
-The owner-tested **69085 / 6af308d165** preview remains unchanged. Its five-minute
-profile reports 13.998 FPS, which is not a controlled before/after result.
-There is no demonstrated overall viewer FPS improvement yet.
+A separate combined checkpoint is being staged locally, with the same primary
+launcher choices as owner69085. The existing69085/69065 apps remain unchanged.
+No new viewer launch/login/live profile or push has occurred. There is **no
+established whole-viewer FPS improvement**. The older69085 five-minute14FPS
+recording is not a controlled before/after result.
 
-| Area | Implemented and checked | Still required |
+| Boundary | Implemented and checked | Still required |
 |---|---|---|
-| Shared scene and resources | Producer generations, material/resource tuples, dirty notifications, immutable native leases, retained static Legacy/PBR groups. | Finish specialized terrain/tree/animated sharing; resolve cross-view publication churn without freezing camera-dependent work. |
-| Animated data | Attachment identity survives main/probe adoption and GBuffer/alpha/glow binding; parity and queued-reader lifetime checks pass. Equal-byte upload amplification is repaired. | Preserve view-dependent system-body composition; animated GPU bounds remain conservative. Whole-engine benefit needs evaluation. |
-| CPU preparation | Immutable view packets, shared frame credits, joined shadow preparation and an experimental world preparation path. | The world worker path remains disabled after measured regressions. Finish a useful preparation boundary; unused workers do not establish success. |
-| Visibility and commands | Retained bounds, GPU frustum preparation, ordered compositions and two native command-bank experiments. | Banks remain disabled because complete/GPU costs are mixed or worse, especially for small groups. Establish a useful selection/path. |
-| Unified-memory lifetime and admission | Bounded decode/upload/frame admission, native generation COW, CPU packet reclaim and command-completion native leases. | Resolve residency/admission interactions using typed miss/failure counters. Cache caps have not been raised. |
-| Probe lighting | Eligible unblurred probe light maps stay in tile memory for the base-light pass. Exact pixels, depth, sky, shadows, HDR, reverse-Z, physical pass counts and older libraries pass. Empty local/projector owners avoid empty passes. | Whole-engine assessment; contained timing gains are not frame-FPS gains. |
-| Static restoration | Owner-free compact tuples replace unused full batch metadata; SIMPLE reuses its immutable proof. Actual lifetime/fallback/parity checks pass. | New construction/warm/churn costs pass, but their census exposes zero expired-proof expansions. Complete that cost frontier (PPD262) before accepting this path. |
-| Combined viewer | Current experiment builds with retained features and native/static checks. Owner runtime/profile evidence exists for the earlier preview. | Integrate remaining work, resolve demonstrated regressions, stage one verified combined candidate, then assess feature correctness, stability and whole-engine performance. |
+| Shared scene and resources | Producer generations, immutable material/resource tuples, dirty subscriptions, retained static groups, compact restoration and native leases. | Resolve observed cross-view cache churn from typed miss evidence; finish specialized sharing gaps while keeping per-view transforms/order/culling current. |
+| Animated data | Attachment identity shared through main/probe GBuffer and forward passes; pose ownership/parity/queued-reader lifetime checked. Equal-byte upload amplification removed. | Keep view-dependent system-body composition; qualify any additional animated visibility conservatively. Whole-engine benefit remains unproved. |
+| Useful CPU preparation | Owned immutable packets, bounded shared credits and joined shadow work. New producer-derived scalar recipes avoid repeated400B assembly/comparison and fixed flag lookup. | World-worker tickets remain disabled: fair owned-input comparisons still regress complete time. Continue useful producer work rather than enabling idle worker infrastructure. |
+| Visibility and native submission | Direct retained-group submission and scalar recipes work for small groups. Native bounds, GPU frustum and command-bank experiments are implemented. | GPU visibility/banks remain disabled after mixed/worse complete-path results. Existing CPU busy/credit signals do not establish whole-queue GPU headroom. A useful policy/path is still unproved. |
+| Unified memory and admission | Decode/upload/frame admission, native COW generations, CPU reclaim and native-only command-completion leases. | Investigate cache-capacity/lifetime interactions with actual current-frame work; no blind cap increases. |
+| Terrain | Shared pass-common material/surface inputs, one native constant publication per view, prepared aliases and independent texture leases. Exact output/depth/query/lifetime checks pass. | Caller now selects sharing at>=16patches in allfourmain/probe paths; owner runtime confirmation and complete LL pool performance remain open. |
+| Probe lighting | Eligible unblurred light map and base lighting share one tile-memory pass; sky/HDR/shadow/reverse-Z/depth/older-library behavior checked. Empty local/projector owners avoid empty work. | Whole-engine evaluation. No cadence or face-multiplicity regression was found againstG1. |
+| Combined product | New checked build includes all accepted work above with exact source/evidence. | Finish remaining architecture boundaries and staged verification, then owner feature/stability/whole-frame performance evaluation. Full release gates remain partial. |
 
-## Current implementation queue
+## Latest measured decisions
 
-1. **Checked:** shared attachment publication and typed failure/source-miss logging.
-   Source50 cost comparison improves CPU preparation in 84/96 conditions,
-   including all 48 large-palette conditions. Logical upload bytes never exceed
-   raw input after PPD251 repair. Completion/GPU results are mixed.
-2. **Checked:** source50 probe fusion. Eight warm paired configurations show
-   lower encoding wall duration and GPU envelope in all eight, median reductions
-   of 8.31% and 28.39%. Completion improves seven of eight, median 4.87%; one
-   condition regresses 3.18%. Cold single-sample timings are mixed.
-3. **Doing:** measure real expired-proof restoration (PPD262). Source51's small
-   construction/warm/churn cost matrix does not exercise that fallback. Warm CPU
-   improves 17/18 versus raw; cold and churn CPU regress all 18. These results
-   compare the current retained-group path with raw, not old/new tuple versions.
-4. **Doing:** terrain pass sharing (PPD261), in a separate worktree. Seal common
-   surface/material inputs once and preserve each patch's geometry, camera-based
-   tessellation and query order. Production implementation and native parity,
-   resource-lifetime and complete-path cost fixtures are integrated and independently reviewed; execution is next.
-5. **Remaining:** useful CPU/GPU preparation and visibility, specialized source
-   gaps, admission/churn integration, then the combined owner evaluation above.
-   No supported percentage-complete or delivery ETA is available.
+- **Terrain:**1/2/4patch sharing loses CPU in all12conditions.16/64/256patches
+  improve CPU and completion in all12. The caller uses16as a measured boundary;
+  shaders, patch geometry/tessellation and update cadence are preserved.
+- **Retained scalar path:**many-group warm CPU improves8/8conditions versusraw,
+  median28.05%; completion improves7/8, median14.60%. Cold compilation remains
+  slower. These results include retained publication, not just the new recipe.
+- **Narrow recipe comparison:**exact source54/source55 binaries use identical
+  existing tests and shader bytes. Raw timing drift is substantial. Normalizing
+  cohort/raw CPU ratios, allsix512-draw warm cases improve, median7.03%; small
+  groups are mixed. This is limited cross-run evidence, not a frame-FPS claim.
+- **World workers:**the fair owned-input benchmark includes adoption, credits,
+  real worker join, reclaim and completion. Available-worker completion loses
+  allnineconditions at source55. Workers remain disabled.
+- **Restoration:**the revised cost frontier proves actual expired/live-proof
+  restoration and native-buffer reuse. Forced tiny-group rebuilding costs more
+  CPU than raw; warm reuse and cold debt must both govern compilation policy.
 
-## Whole-engine evidence
+## Immediate next work
 
-The saved 301.686-second profile contains 85.117 sampled main-thread CPU seconds,
-28.810 in ordinary probes. Geometry capture, shadows, resource lists, state binds
-and draw encoding also contribute; inclusive categories overlap. The export has
-no GPU pass/shader timing table, so it cannot rank GPU shaders or establish ALU
-occupancy. Large admission-denial counters are not CPU timings. Only 217 new
-stability deferrals occur between the interior census endpoints.
+1. Finish and record the separate69102checkpoint inventory/static verification.
+2. Use a contained main→probe→probe cache-lifetime reproduction to distinguish
+   same-revision metadata expiry from real producer changes and flavor extension;
+   preserve caps until a measured remedy is supported.
+3. Continue the useful visibility/submission and specialized sharing boundaries.
+   Do not activate banks from owner CPU busy alone: existing completed-command
+   sums overlap and lack whole-frame queue coverage.
+4. Evaluate the combined viewer as a whole when the required implementation
+   boundaries are ready. Keep performance and full feature acceptance partial
+   until owner runtime outcomes exist.
 
-## Execution constraints
+## Source audits retained
 
-Keep staged 69085 and 69065 intact. No new viewer launch, login, live profile or
-push has been performed. The separate owner-requested capture is complete. Raw
-logs/traces stay local. All defects retain their IDs and owner-verification state.
+Probe cameras are applied after source lookup; reads do not signal producer
+changes, promotion preserves existing variants, and cube faces do not increment
+outer frame age. Cache withdrawal remains plausible but unproved for the saved
+profile. G1/source55 probe face schedules, hero rate selection and shadow calls
+match; completion callbacks only retire credit/resources.
