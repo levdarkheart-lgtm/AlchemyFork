@@ -444,6 +444,7 @@ void trimShadowSourceWorkingSet() { sNativeSceneSources.trim(gFrameCount); }
 }
 
 #include "pipeline_terrain_pass_capture_native.inl"
+#include "pipeline_body_palette_capture_native.inl"
 
 struct LLPipeline::MetalWorldSimpleCapture
 {
@@ -772,7 +773,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::vector<LLPointer<LLDrawInfo>> spot_shadow_admitted_sources;
     std::array<std::pair<std::size_t, std::size_t>,
                LLRenderPass::NUM_RENDER_TYPES> spot_shadow_source_ranges{};
-    std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
+    std::vector<std::shared_ptr<const ALMetalBodyPaletteRecord>>
         spot_shadow_avatar_palettes;
     std::vector<ALMetalWorldVisibilityQuery> shadow_visibility_queries;
     std::vector<ALQueryTicket> shadow_visibility_tickets;
@@ -1014,7 +1015,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     ALMetalWorldReflectionProbeConstants reflection_probe_volume_constants;
     F32 reflection_probe_volume_inverse_projection[16]{};
     bool reflection_probe_volume_valid = false;
-    std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
+    std::vector<std::shared_ptr<const ALMetalBodyPaletteRecord>>
         avatar_palettes;
     U32 width = 0;
     U32 height = 0;
@@ -3111,6 +3112,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", fine_tests=" << cpu_visibility.fine_tests
                     << ", visible/culled/unknown/raw_draws=" << cpu_visibility.visible_draws << '/' << cpu_visibility.culled_draws
                     << '/' << cpu_visibility.unknown_draws << '/' << cpu_visibility.raw_visible_draws << LL_ENDL;
+                const auto body_data=value->frame_data ? value->frame_data->stats() : ALMetalWorldFrameDataStats{};
+                LL_INFOS("MetalScene") << "Native body palette publication: view=" << view
+                    << ", record_publications/reuses=" << body_data.body_record_publications << '/' << body_data.body_record_reuses
+                    << ", scope=view_frame_data_cumulative" << LL_ENDL;
                 const auto cohorts = value->renderer ? value->renderer->worldCohortStats() : ALMetalWorldCohortStats{};
                 LL_INFOS("MetalScene") << "Native shared scene publication: view=" << view
                     << ", world_source_hit/build=" << value->scene_source_hits << '/' << value->scene_source_builds
@@ -14476,19 +14481,18 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
 
     if (skinned)
     {
-        auto palette =
-            std::make_unique<std::array<F32, 45 * 4>>();
-        if (!mesh.buildJointMatrixPalette(
-                palette->data(), palette->size()))
+        auto palette = ALMetalBodyPaletteCaptureNative::capture(mesh);
+        if (!palette)
         {
             fail(__LINE__);
             return;
         }
         batch.weight_offset = buffer->getOffset(
             LLVertexBuffer::TYPE_WEIGHT);
+        batch.body_palette_record = palette.get();
         batch.skin_palette = palette->data();
         batch.skin_palette_float_count = palette->size();
-        batch.skin_joint_count = 15;
+        batch.skin_joint_count = palette->jointCount();
         capture.spot_shadow_avatar_palettes.push_back(
             std::move(palette));
         const LLMatrix4a& projection =
@@ -15315,19 +15319,18 @@ void LLPipeline::captureMetalWorldAvatarBatch(
 
     if (capture.avatar_skinned)
     {
-        auto palette =
-            std::make_unique<std::array<F32, 45 * 4>>();
-        if (!mesh.buildJointMatrixPalette(
-                palette->data(), palette->size()))
+        auto palette = ALMetalBodyPaletteCaptureNative::capture(mesh);
+        if (!palette)
         {
             fail();
             return;
         }
         batch.weight_offset = buffer->getOffset(
             LLVertexBuffer::TYPE_WEIGHT);
+        batch.body_palette_record = palette.get();
         batch.skin_palette = palette->data();
         batch.skin_palette_float_count = palette->size();
-        batch.skin_joint_count = 15;
+        batch.skin_joint_count = palette->jointCount();
         capture.avatar_palettes.push_back(std::move(palette));
         std::memcpy(batch.modelview_projection,
                     LLViewerCamera::getCurrent().getProjection().getF32ptr(),

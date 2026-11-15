@@ -79,7 +79,7 @@ try
         return reject("Ordinary material source identity is incomplete");
     const auto& batch=*keyed.prototype;
     const std::uint32_t family=batch.material_slot_count?1u:(batch.pbr_slot_count?2u:0u);
-    if((keyed.key.flavor&3u)!=family || batch.normal_texture || batch.skin_palette_record || batch.skin_palette ||
+    if((keyed.key.flavor&3u)!=family || batch.normal_texture || batch.skin_palette_record || batch.body_palette_record || batch.skin_palette ||
        batch.skin_palette_float_count || batch.skin_joint_count || batch.weight_offset || batch.cloth_offset ||
        batch.avatar_rigid || batch.avatar_skinning || batch.avatar_cloth || batch.terrain || batch.terrain_pass || batch.impostor ||
        batch.impostor_fullbright || batch.impostor_shiny || batch.impostor_emboss)

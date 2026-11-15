@@ -3,15 +3,14 @@
 Updated 2026-11-15 (active integration). The original whole-engine goal is **active and incomplete**.
 Detailed source and evidence remain in the [execution ledger](apple-first-direct-cohorts-20261114.md).
 
-Latest built source: **ba0a5063b3 / 26.4.0.69109**. Required doctor,
+Latest built source: **21676f507d / 26.4.0.69111**. Required doctor,
 configure/build(804.100s), static and strict source checks pass. All28existing
 source60renderer scopes remain passed;61actual publisher21713/77 and repaired
 CPUvisibility1780/4 pass. New48condition CPUvisibility cost3674320/1 passes.
 
-Native texture-maintenance core/queue tests pass, but allthree new GPU cases
-stop at the non-mip fixture's wrong creation overload (PPD283). That fixture is
-corrected; actual maintenance verification is still pending. Prior15texture cases
-pass. No production texture repair is inferred from this setup failure.
+Native texture-maintenance and allold texture-generation/mip checks now pass62:
+843assertions/18cases, includingallthree actual GPU admission/completion cases.
+The earlier61fixture-overload failure(PPD283) remains recorded.
 
 Next62contains affine support intervals to reduce measured all-visible CPU cost
 (PPD284), with independent CPU corner/rounded-arithmetic oracle. The body-palette
@@ -107,3 +106,15 @@ CPU/completion/GPU conditions (medians12.55%/9.21%/7.15% lower). All-visible CPU
 loses all8(median4.41%); churn all-visible loses all8(5.97%). Cold publication
 still costs more. Keep control OFF while reducing classifier overhead; do not
 conflate retained-vs-raw gain with this mechanism's narrower contribution.
+
+
+Current integration milestone: body palette publication282 is integrated with
+required per-view composition, one privately sealed CPU record instead of the
+old raw capture array plus adoption snapshot, exact metadata validation and
+native-only completion lifetime. All source peers pass;63build/normalnative and
+24conditioncompletecost are next. Bodyruntime/performance is not accepted yet.
+
+62intervalclassifier improves warmhalfoutside vsretained CPUall8median18.96%,
+completionall8median11.86%; allvisiblewarm CPU overhead falls to1.15%median,
+churnallvisible4.14%, cold remainsdebt. Its175616grid andGPUparity implications
+pass; one missingstresscontrolresultcounter286 is fixed for63retest.

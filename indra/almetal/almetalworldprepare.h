@@ -14,6 +14,7 @@
 // Created on the scene owner after native generations have been published.
 // The aggregate owner must lease every referenced buffer/texture generation,
 // including destination wrappers when supplied. Raw palettes are copied here;
+// sealed attachment/body records are pinned CPU-only without a second copy.
 // no detached job reads viewer-owned pose storage or any LL* object.
 class ALMetalWorldViewInputs final
 {

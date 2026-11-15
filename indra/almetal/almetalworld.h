@@ -252,6 +252,32 @@ private:
     const std::uint32_t mJointCount;
 };
 
+// One completed BODY pose for one actual view. The 45 float4 layout is NOT
+// the attachment header/3x4 layout. Compose into a local array, then seal once:
+// this single allocation/copy replaces capture's unique array plus adoption's
+// later snapshot. Mutable aliases of the authored array cannot change it.
+// Contains CPU values only, never a viewer, camera or native-resource owner.
+class ALMetalBodyPaletteRecord final
+{
+public:
+    static std::shared_ptr<const ALMetalBodyPaletteRecord> create(
+        const std::array<float,180>& values,std::string* error=nullptr);
+    ALMetalBodyPaletteRecord(const ALMetalBodyPaletteRecord&)=delete;
+    ALMetalBodyPaletteRecord& operator=(const ALMetalBodyPaletteRecord&)=delete;
+    const float* data() const noexcept {return mValues.data();}
+    static constexpr std::size_t size() noexcept {return 180;}
+    static constexpr std::uint32_t jointCount() noexcept {return 15;}
+    std::shared_ptr<const ALMetalBodyPaletteRecord> owner() const noexcept {return mOwner.lock();}
+    // Descriptor + inline values. Shared-control-block/allocator bookkeeping
+    // is implementation-defined and excluded, as in the other CPU records.
+    std::size_t ownedBytes() const noexcept;
+private:
+    struct Storage;
+    explicit ALMetalBodyPaletteRecord(const std::array<float,180>&);
+    const std::array<float,180> mValues;
+    std::weak_ptr<const ALMetalBodyPaletteRecord> mOwner;
+};
+
 // One exact draw seen by a spotlight's own shadow camera. Object casters are
 // indexed triangles. Opaque ones need only position; cutout/stippled ones
 // retain diffuse UV, streamed alpha, texture ladders and exact live-shader
@@ -362,6 +388,9 @@ struct ALMetalWorldSpotShadowBatch : ALMetalWorldSpotShadowValues
     {
         return skin_palette_record ? skin_palette_record.get() : mBorrowedPaletteRecord;
     }
+    // Borrowed only through synchronous encoding; capture/packet owns the
+    // private CPU record. Native commands retain its copied frame-page data.
+    const ALMetalBodyPaletteRecord* body_palette_record = nullptr;
     const ALMetalShadowSourceRecord* sourceRecord() const noexcept
     {
         return source_record ? source_record.get() : mBorrowedSourceRecord;
@@ -381,6 +410,7 @@ struct ALMetalWorldSpotShadowBatch : ALMetalWorldSpotShadowValues
     void clearBorrowedInputs() noexcept
     {
         mBorrowedSourceRecord = nullptr; mBorrowedPaletteRecord = nullptr;
+        body_palette_record = nullptr;
         mBorrowedCoverageData = nullptr;
     }
     // Only for outputs scoped to an immutable input packet. These assignments
@@ -619,6 +649,8 @@ public:
     // Only an exact attachment tuple may use its immutable publication identity.
     const ALMetalAttachmentPaletteRecord* skin_palette_record = nullptr;
     bool matchesSkinPaletteRecord() const noexcept;
+    const ALMetalBodyPaletteRecord* body_palette_record = nullptr;
+    bool matchesBodyPaletteRecord() const noexcept;
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;
@@ -2631,6 +2663,7 @@ struct ALMetalWorldFrameDataStats
     std::uint64_t pages_reused = 0;
     std::uint64_t record_publications = 0;
     std::uint64_t record_reuses = 0;
+    std::uint64_t body_record_publications = 0, body_record_reuses = 0;
     std::uint64_t terrain_publications = 0, terrain_reuses = 0;
     std::uint64_t terrain_published_bytes = 0;
     std::uint64_t terrain_source_draws = 0, terrain_source_fallback_draws = 0;
@@ -2671,6 +2704,11 @@ public:
         const ALMetalAttachmentPaletteRecord* palette,
         ALMetalWorldDataSlice& slice, std::string* error = nullptr,
         bool deduplicate_new = false);
+    // BODY layout only. First distinct identities intern exact content once;
+    // identity hits register the consuming native page without hashing again.
+    bool publishBodyPaletteRecord(ALMetalCommandBuffer& command,
+        const ALMetalBodyPaletteRecord* palette, ALMetalWorldDataSlice& slice,
+        std::string* error = nullptr);
     bool publishTerrainPass(ALMetalCommandBuffer& command,
         const std::shared_ptr<const ALMetalWorldTerrainPass>& pass,
         const ALMetalWorldGBufferScene& scene, ALMetalWorldDataSlice& slice,

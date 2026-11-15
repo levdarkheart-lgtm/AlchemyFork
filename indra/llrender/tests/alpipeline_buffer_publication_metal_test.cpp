@@ -4376,3 +4376,5 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_published_cpu_visibility_cost_native.inl"
 
 #include "alpipeline_group_bounds_promotion_native.inl"
+
+#include "alpipeline_body_palette_native.inl"

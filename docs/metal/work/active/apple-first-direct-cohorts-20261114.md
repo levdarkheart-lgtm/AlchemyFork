@@ -2031,3 +2031,31 @@ repairnow1780/4PASS. PPD282bodyproduction7files+2appendicespeerfrozen separately
 rootactualsharedhelperand2pipelinecallers/ownervectorsareWIPUNSTAGED, notpart
 of62checkpoint. PPD285fixturecounts/attachmentowner/clamp-policy corrections
 registeredbeforefix, noexecutedbodyfailure. Originalgoalunchanged, next286.
+
+
+Required62/21676f507d/69111 doctor/configure/build0(build31.669s),static/strictPASS.
+Original62orchestrator bootstrap failedNameError(outbeforeinitialization) before
+anyvalidationcommand; failedscript preserved /tmp/finish_architecture_validation_62_failed_bootstrap.py.
+Explicitcorrectedlauncher45380thenstatic/strictPASS, maintenance+oldgeneration/
+mip843/18PASS inclall3real277GPUcases. CPUvisibility+oracle1916/1917assertions,
+6/7casesPASS: only aggregateinsidecount0becauseunderflow/insidecontrolsnotcounted.
+PPD286registeredbeforeone++counterfixturefix. All175616grid/floatimplications/
+invalidchecks +4GPUvisibilitycasesPASS; nofalsecull. 5566/45380terminal.
+
+Independentunchanged62cost27701terminal0,3674320/1PASS16.031s;48conditions/144rows.
+Againstretaineddirect: warm50%outsideCPU8/8median−18.96%,complete8/8−11.86%,
+GPU8/8−5.04%; churn50%CPU8/8−14.03%,complete8/8−9.36%,GPU8/8−5.60%.
+AllvisiblewarmCPUmedian+1.15%(7/8worse)vs61+4.41%; churnallvisible+4.14%
+(all8worse); coldallvisible+5.99%,coldhalfoutside+2.32%(7/8worse).
+Same-runrelativeevidence, rawtimingdrift/cold/allvisiblecostlimits retained.
+CPUcontrol remainsOFFpendingfinalselection/wholeengineevaluation; noFPSclaim.
+
+PPD282FULLintegration afterbackend/native/actual/rootwiring peers:7production
+files+rootactualhelper/2callers/2CPUownervectors and2appendices. Privatebodyrecord
+preserves180float15jointlayout,requiredcompositioneveryactualdraw/view,
+CPUadoptionpin withoutsecondcopy; nativepagescontentinternfirstdistinctidentity
+andCPUidentityreuseafterwards. CPUrecordsnotretainedbyGPUcommands; FrameData
+current-frameCPUcacheownsrecords onlyuntilbeginFrame. Staticsourceeligibility
+explicitlyrejectsbodyproof. Bodylayout instrumentedforactualsizeofBatch/Shadow/
+privateStorage; no capdiscount/increase. Four nativecases +oneactualnormalcase
+and24conditioncompletecost pending63, nobodybuild/testsuccessclaimyet.

@@ -1522,11 +1522,40 @@ ALMetalAttachmentPaletteRecord::create(
 
 bool ALMetalWorldSimpleBatch::matchesSkinPaletteRecord() const noexcept
 {
-    return skin_palette_record && !avatar_rigid && !avatar_skinning &&
+    return skin_palette_record && !body_palette_record && !avatar_rigid && !avatar_skinning &&
         !avatar_cloth && !avatar_alpha && !terrain && !impostor &&
         skin_palette == skin_palette_record->data() &&
         skin_palette_float_count == skin_palette_record->size() &&
         skin_joint_count == skin_palette_record->jointCount();
+}
+
+struct ALMetalBodyPaletteRecord::Storage
+{
+    ALMetalBodyPaletteRecord record;
+    explicit Storage(const std::array<float,180>& values):record(values){}
+};
+ALMetalBodyPaletteRecord::ALMetalBodyPaletteRecord(const std::array<float,180>& values):mValues(values){}
+std::size_t ALMetalBodyPaletteRecord::ownedBytes() const noexcept{return sizeof(Storage);}
+std::shared_ptr<const ALMetalBodyPaletteRecord> ALMetalBodyPaletteRecord::create(
+    const std::array<float,180>& values,std::string* error)
+{
+    for(float value:values)
+        if((std::bit_cast<std::uint32_t>(value)&0x7f800000u)==0x7f800000u)
+        {setError(error,"Metal body palette contains non-finite values");return {};}
+    try
+    {
+        auto storage=std::make_shared<Storage>(values);
+        std::shared_ptr<const ALMetalBodyPaletteRecord> record(storage,&storage->record);
+        storage->record.mOwner=record;return record;
+    }
+    catch(const std::bad_alloc&)
+    {setError(error,"Metal body palette allocation failed");return {};}
+}
+bool ALMetalWorldSimpleBatch::matchesBodyPaletteRecord() const noexcept
+{
+    return body_palette_record && !skin_palette_record && avatar_skinning && !avatar_rigid &&
+        !terrain && !impostor && skin_palette==body_palette_record->data() &&
+        skin_palette_float_count==body_palette_record->size() && skin_joint_count==body_palette_record->jointCount();
 }
 
 struct ALMetalWorldFrameData::Impl
@@ -1543,7 +1572,7 @@ struct ALMetalWorldFrameData::Impl
     {
         // Retain the identity so an allocator cannot recycle its address while
         // it is still a lookup key. GPU readers use the page's copied bytes.
-        std::shared_ptr<const ALMetalAttachmentPaletteRecord> owner;
+        std::shared_ptr<const void> owner;
         Entry range;
     };
     const ALMetalDevice* device = nullptr;
@@ -1553,7 +1582,7 @@ struct ALMetalWorldFrameData::Impl
     std::vector<std::unique_ptr<Page>> retired;
     std::vector<std::unique_ptr<Page>> available;
     std::unordered_multimap<std::uint64_t, Entry> entries;
-    std::unordered_map<const ALMetalAttachmentPaletteRecord*, PaletteEntry> palettes;
+    std::unordered_map<const void*, PaletteEntry> palettes;
     struct TerrainEntry
     {
         std::weak_ptr<const ALMetalWorldTerrainPass> owner;
@@ -1934,6 +1963,41 @@ bool ALMetalWorldFrameData::publishPaletteRecord(
     return true;
 }
 
+bool ALMetalWorldFrameData::publishBodyPaletteRecord(ALMetalCommandBuffer& command,
+    const ALMetalBodyPaletteRecord* palette,ALMetalWorldDataSlice& slice,std::string* error)
+{
+    slice={};
+    if(!palette || command.isCommitted() || command.nativeDevice()!=mImpl->device->nativeHandle())
+    {setError(error,"Metal body palette publication is invalid");return false;}
+    const auto found=mImpl->palettes.find(palette);
+    if(found==mImpl->palettes.end())
+    {
+        auto owner=palette->owner();
+        if(!owner){setError(error,"Metal body palette has no immutable owner");return false;}
+        // Distinct records of an equal view pose must not amplify uploads.
+        // Content hashing/comparison occurs ONCE per first identity only.
+        if(!publish(command,palette->data(),palette->size()*sizeof(float),slice,error,true))return false;
+        auto* page=mImpl->active.back().get();
+        if(page->buffer.get()!=slice.buffer)
+        {
+            const auto backing=std::find_if(mImpl->active.begin(),mImpl->active.end(),
+                [&](const auto& candidate){return candidate->buffer.get()==slice.buffer;});
+            if(backing==mImpl->active.end())
+            {slice={};setError(error,"Metal body palette backing page is missing");return false;}
+            page=backing->get();
+        }
+        mImpl->palettes.emplace(palette,Impl::PaletteEntry{std::move(owner),{page,slice.offset,slice.length}});
+        ++mImpl->statistics.body_record_publications;return true;
+    }
+    auto completion=command.completionToken();
+    if(!completion){setError(error,"Metal body palette requires a completion token");return false;}
+    const auto& range=found->second.range;auto& readers=range.page->commands;
+    if(readers.empty() || readers.back()!=completion)
+        if(std::find(readers.begin(),readers.end(),completion)==readers.end())readers.push_back(std::move(completion));
+    mImpl->statistics.reused_bytes+=range.length;++mImpl->statistics.body_record_reuses;
+    slice={range.page->buffer.get(),range.offset,range.length};return true;
+}
+
 bool ALMetalWorldFrameData::publishTerrainPass(ALMetalCommandBuffer& command,
     const std::shared_ptr<const ALMetalWorldTerrainPass>& pass,
     const ALMetalWorldGBufferScene& scene, ALMetalWorldDataSlice& slice, std::string* error)
@@ -2046,6 +2110,12 @@ struct ALMetalWorldGBufferRenderer::Impl
                          const ALMetalWorldSimpleBatch& batch,
                          std::string* error)
     {
+        if(frame_data && batch.body_palette_record)
+        {
+            ALMetalWorldDataSlice slice;
+            return frame_data->publishBodyPaletteRecord(command,batch.body_palette_record,slice,error) &&
+                encoder.setVertexBuffer(index,*slice.buffer,slice.offset,error);
+        }
         if (!frame_data || !batch.skin_palette_record)
             return setVertexData(encoder, command, index, batch.skin_palette,
                 batch.skin_palette_float_count * sizeof(float), error, true);
@@ -2060,6 +2130,12 @@ struct ALMetalWorldGBufferRenderer::Impl
                           const ALMetalWorldSpotShadowBatch& batch,
                           std::string* error)
     {
+        if(frame_data && batch.body_palette_record)
+        {
+            ALMetalWorldDataSlice slice;
+            return frame_data->publishBodyPaletteRecord(command,batch.body_palette_record,slice,error) &&
+                encoder.setVertexBuffer(index,*slice.buffer,slice.offset,error);
+        }
         if (!frame_data || !batch.skinPaletteRecord())
             return setVertexData(encoder, command, index, batch.skin_palette,
                 batch.skin_palette_float_count * sizeof(float), error, true);
@@ -7633,6 +7709,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         }
         const auto* source_record = batch.sourceRecord();
         const auto* palette_record = batch.skinPaletteRecord();
+        const auto* body_record = batch.body_palette_record;
         const bool certified_source = source_record && source_record->matchesStableInputs(batch);
         if (certified_source) ++mImpl->shadow_certified_source_validations;
         if (palette_record &&
@@ -7644,6 +7721,10 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             setError(error, "Metal spot-shadow attachment palette record metadata is invalid");
             return false;
         }
+        if(body_record && (!batch.avatar || batch.terrain || palette_record ||
+            batch.skin_palette!=body_record->data() || batch.skin_palette_float_count!=body_record->size() ||
+            batch.skin_joint_count!=body_record->jointCount()))
+        {setError(error,"Metal spot-shadow body palette record metadata is invalid");return false;}
         const bool valid_index_type =
             batch.index_type == ALMetalIndexType::uint16 ||
             batch.index_type == ALMetalIndexType::uint32;
@@ -7830,7 +7911,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
             const bool weight_range_valid = rangeFits(
                 batch.weight_offset, batch.vertex_count, weight_stride,
                 batch.vertices->length());
-            const bool palette_finite = palette_record || finiteValues(
+            const bool palette_finite = palette_record || body_record || finiteValues(
                 batch.skin_palette, batch.skin_palette_float_count);
             std::size_t first_nonfinite =
                 batch.skin_palette_float_count;
@@ -9528,7 +9609,7 @@ namespace
 {
 bool compactWorldSourceSupported(const ALMetalWorldSimpleBatch& batch) noexcept
 {
-    return !batch.normal_texture && !batch.skin_palette_record && !batch.skin_palette &&
+    return !batch.normal_texture && !batch.skin_palette_record && !batch.body_palette_record && !batch.skin_palette &&
         batch.skin_palette_float_count == 0 && batch.skin_joint_count == 0 &&
         batch.weight_offset == 0 && batch.cloth_offset == 0 &&
         !batch.avatar_rigid && !batch.avatar_skinning && !batch.avatar_cloth &&
@@ -9696,6 +9777,8 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
         setError(error, "Metal world attachment record does not match its pose");
         return false;
     }
+    if(batch.body_palette_record && !batch.matchesBodyPaletteRecord())
+    {setError(error,"Metal world body record does not match its pose");return false;}
     if (draw.view() && !compactWorldSourceSupported(batch))
     {
         setError(error, "Metal world source reference family is unsupported");
@@ -9991,8 +10074,8 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
             batch.weight_offset % sizeof(float) != 0 ||
             !rangeFits(batch.weight_offset, batch.vertex_count,
                        sizeof(float), batch.vertices->length()) ||
-            !finiteValues(batch.skin_palette,
-                          avatar_palette_floats) ||
+            (!batch.body_palette_record && !finiteValues(batch.skin_palette,
+                          avatar_palette_floats)) ||
             (batch.avatar_cloth &&
              (batch.cloth_offset % float4_stride != 0 ||
               !rangeFits(batch.cloth_offset, batch.vertex_count,
@@ -18185,8 +18268,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 batch.weight_offset % sizeof(float) == 0 &&
                 rangeFits(batch.weight_offset, batch.vertex_count,
                           sizeof(float), batch.vertices->length()) &&
-                finiteValues(batch.skin_palette,
-                             batch.skin_palette_float_count) &&
+                (batch.body_palette_record || finiteValues(batch.skin_palette,
+                             batch.skin_palette_float_count)) &&
                 (!batch.avatar_cloth ||
                  (batch.cloth_offset % float4_stride == 0 &&
                   rangeFits(batch.cloth_offset, batch.vertex_count,
@@ -18219,6 +18302,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             setError(error, "Metal world attachment record does not match its pose");
             return nullptr;
         }
+        if(batch.body_palette_record && !batch.matchesBodyPaletteRecord())
+        {setError(error,"Metal world body record does not match its pose");return nullptr;}
         const bool alpha = batch.pre_water_alpha ||
             batch.post_water_alpha;
         const bool avatar_alpha = batch.avatar_alpha;
@@ -25203,6 +25288,8 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
             setError(error, "Metal world attachment record does not match its pose");
             return false;
         }
+        if(batch.body_palette_record && !batch.matchesBodyPaletteRecord())
+        {setError(error,"Metal world body record does not match its pose");return false;}
         const bool pbr = isPBRBatch(batch);
         const bool fullbright = batch.impostor_fullbright;
         const bool shiny = batch.impostor_shiny;

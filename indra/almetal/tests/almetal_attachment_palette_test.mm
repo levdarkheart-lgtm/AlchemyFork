@@ -619,3 +619,5 @@ TEST_CASE("almetal: world draws intern distinct equal palettes without changing 
         // test requiring equal-byte new identities to occupy distinct ranges.
     }
 }
+
+#include "almetal_world_body_palette_native.inl"

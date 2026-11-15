@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-286 -->
+<!-- next-defect-id: PPD-287 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6561,7 +6561,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-277 — Pressure texture reductions bypass frame-wide native admission
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / frame admission author
 - Discovered: 2026-11-15
@@ -6577,9 +6577,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 registered before implementation; root owns integration and all execution. No viewer launch/profile or quality reduction authorized by this finding.
 
 
+- 2026-11-15 observed verification: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending.
+
 ## PPD-278 — New maintenance budget fixtures precede their helper declaration
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex frame admission fixture author
 - Discovered: 2026-11-15
@@ -6594,6 +6596,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 registered before narrow fixture-order correction.
 
+
+- 2026-11-15 observed verification: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending.
 
 ## PPD-279 — New static verifier searches mangled symbols with a demangled method name
 
@@ -6617,7 +6621,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-280 — New maintenance fixture undercounts successful publication mutation events
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native maintenance fixture author
 - Discovered: 2026-11-15
@@ -6632,6 +6636,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 registered before fixture-only assertion correction.
 
+
+- 2026-11-15 observed verification: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending.
 
 ## PPD-281 — New mixed CPU visibility fixture requires a positive query under reverse-Z
 
@@ -6673,7 +6679,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-283 — New maintenance fixture uses authored-mip overload for a non-mip image
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6688,6 +6694,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 failure registered before fixture-only overload correction. Preserve failed61receipt/log, no maintenance pass claim.
 
+
+- 2026-11-15 observed verification: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending.
 
 ## PPD-284 — Published CPU visibility repeats eight corner transforms for wholly visible bounds
 
@@ -6724,3 +6732,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 registered before narrow fixture corrections.
 
 - 2026-11-15 pre-execution peer also finds shadow raw/record parity used different depth_clamp values. Registered under the same new-fixture authoring record before correction: select identical clamp policy within each pair and cover both policies across the existing format tuples. Retain positive, output/depth/query and ownership assertions; coverage is four HDR/normalHDR tuples with correlated reverse-Z, not eight independent tuples.
+
+
+## PPD-286 — CPU interval stress fixture omits its inside controls from result counts
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: The stress fixture classifies explicit underflow/ordinary-inside controls after its boundary corpus, but does not add those results to the non-vacuity counters.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), native-correctness-62-published-cpu-visibility-and-intervals.log.
+- Next action: Count the existing additional control classifications without removing any finite-grid, float/FMA/FTZ or nonzero coverage assertion; retest.
+- Verification: Source62 required/static/strict pass69111. Native maintenance/generation/mip843/18 pass. CPU visibility+interval1916/1917assertions,6/7cases pass; only counts[inside]>0 fails. Independent175616grid and invalid-case oracle plus four GPU parity cases pass. No false cull or production defect established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before one-counter fixture repair; preserve failed62receipt/log, no fulloracle pass claimed yet.

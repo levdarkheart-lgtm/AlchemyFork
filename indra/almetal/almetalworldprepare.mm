@@ -36,6 +36,7 @@ struct ALMetalWorldViewInputs::Impl
     std::shared_ptr<const void> resources;
     std::vector<std::vector<float>> poses;
     std::vector<std::shared_ptr<const ALMetalAttachmentPaletteRecord>> palette_records;
+    std::vector<std::shared_ptr<const ALMetalBodyPaletteRecord>> body_palette_records;
     std::array<float, 4> coverage_fill{};
     std::uint64_t epoch = 0;
 };
@@ -202,8 +203,21 @@ try
     struct Pose { std::size_t slot, count; std::uint32_t joints; };
     std::unordered_map<const float*, Pose> snapshots;
     std::set<const ALMetalAttachmentPaletteRecord*> palette_records;
+    std::set<const ALMetalBodyPaletteRecord*> body_palette_records;
     for (auto& batch : impl->batches)
     {
+        if(batch.body_palette_record)
+        {
+            if(!batch.matchesBodyPaletteRecord())
+            {fail(error,"Prepared world body record does not match its pose");return {};}
+            if(body_palette_records.insert(batch.body_palette_record).second)
+            {
+                auto owner=batch.body_palette_record->owner();
+                if(!owner){fail(error,"Prepared world body record has no immutable owner");return {};}
+                impl->body_palette_records.push_back(std::move(owner));
+            }
+            continue;
+        }
         if (batch.skin_palette_record)
         {
             if (!batch.matchesSkinPaletteRecord())

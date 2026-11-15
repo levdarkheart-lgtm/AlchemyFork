@@ -178,7 +178,7 @@ bool ALMetalShadowSourceRecord::matchesStableInputs(
     const ALMetalWorldSpotShadowBatch& batch) const noexcept
 {
     const auto& value = mPrototype;
-    return batch.sourceRecord() == this &&
+    return !batch.body_palette_record && batch.sourceRecord() == this &&
         bool(batch.skin_palette) == mRequiresPalette &&
         (!mRequiresPalette || batch.skinPaletteRecord()) &&
         batch.vertices == value.vertices && batch.indices == value.indices &&
@@ -225,7 +225,7 @@ std::shared_ptr<const ALMetalShadowSourceRecord> ALMetalShadowSourceRecord::crea
     const bool rigged = prototype.skin_palette || palette ||
                         prototype.skin_palette_float_count || prototype.skin_joint_count;
     if (!generation || !vertices || !indices || prototype.vertices != vertices.get() ||
-        prototype.indices != indices.get() || prototype.terrain || prototype.avatar ||
+        prototype.indices != indices.get() || prototype.body_palette_record || prototype.terrain || prototype.avatar ||
         prototype.avatar_cloth || prototype.terrain_height_texture ||
         prototype.vertex_count == 0 || prototype.index_count == 0 ||
         (prototype.index_type != ALMetalIndexType::uint16 &&

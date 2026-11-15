@@ -186,6 +186,7 @@ TEST_CASE("almetal: affine bound margins enclose rounded float FMA and FTZ verte
         auto bounds=box();bounds.minimum[0]=-FLT_MIN;bounds.maximum[0]=FLT_MIN;
         auto matrix=unit();matrix[0]=scale;
         const auto result=alMetalClassifyWorldBoundsCPU(bounds,matrix.data());
+        ++counts[unsigned(result)];
         checkOracle(bounds,matrix,result);checkFloatArithmetic(bounds,matrix,result);
     }
     CHECK(counts[unsigned(Result::outside)]>0);CHECK(counts[unsigned(Result::inside)]>0);
