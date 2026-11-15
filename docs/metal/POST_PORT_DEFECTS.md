@@ -6804,6 +6804,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 observed verification: Source68/83c8b70ad7 required/static/strict pass69117 (37.145s); five animated native cases3604assertions pass, including numeric caps and pending retirement. Complete48-condition cost87446/1 passes with new working-set census; warm group CPU14.60–26.07% and settlement9.34–22.92% worse. Native source metadata/ICB caches are stable and bounded, not repeatedly recompiling geometry on warm hits. Next bounded experiment separates retained full-count commands from optional GPU visibility (separate cache mode prevents reuse of GPU-culled args) and removes redundant owned-view vector copying. Existing direct per-draw PoseView vertex binding already exists; do not invent a root-lookup shader repair.
 
 
+- 2026-11-15 pre-freeze287 callback review finds public animated preparation snapshots views but continues reading caller-borrowed32B SourceGlobals after admission. A callback may mutate aliased flags/mirror data after bank-layout selection. Register before copying globals by value at owned entry before callbacks. Renderer-local globals are private and no viewer incident/performance cause is attributed.
+
 ## PPD-288 — New animated-source fixtures use invalid API and coverage assumptions
 
 - Status: ready_for_owner

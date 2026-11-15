@@ -3291,6 +3291,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 LL_INFOS("MetalScene") << "Native animated submission: view=" << owner
                     << ", requested/accepted_gpu/fallback/execute_calls=" << gpu.requested_draws << '/' << gpu.gpu_draws << '/' << gpu.fallback_draws << '/' << gpu.execute_calls
                     << ", current_pose/source_publications=" << gpu.current_pose_publications << '/' << gpu.source_publications
+                    << ", encoded_visibility_dispatches=" << gpu.visibility_dispatches
+                    << ", visibility_requested=" << gSavedSettings.getBOOL("RenderMetalAnimatedGpuVisibility")
                     << ", unknown_bounds/compute_bounds_tests=" << gpu.bounds_unknown << '/' << gpu.bounds_tests
                     << ", accepted_gpu_includes_zero_index_culled_commands=1" << LL_ENDL;
             };
@@ -16486,6 +16488,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.cpu_source_owner = capture.cpu_sources;
     scene.source_rows = capture.source_rows;
     scene.animated_gpu_records = capture.animated_gpu_records_active && !impostor_bake;
+    static LLCachedControl<bool> animated_gpu_visibility(gSavedSettings, "RenderMetalAnimatedGpuVisibility", false);
+    scene.animated_gpu_visibility = animated_gpu_visibility();
     static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
     static LLCachedControl<bool> direct_source_banks(gSavedSettings, "RenderMetalSourceDirectCommandBanks", false);
     static LLCachedControl<S32> source_bank_minimum(gSavedSettings, "RenderMetalSourceCommandMinimumRun", 2);

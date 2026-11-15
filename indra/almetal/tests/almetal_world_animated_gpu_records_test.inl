@@ -176,11 +176,19 @@ TEST_CASE("almetal: retained rigged material sources preserve late poses masks a
                     CHECK(covered>0);CHECK(covered<solid_covered);
                 }
                 CHECK(render(f,scene,{},refs,owners)==expected); // Ordinary direct fallback uses the SAME late pose.
-                scene.animated_gpu_records=true;const auto before=f.renderer->worldAnimatedStats();
-                CHECK(render(f,scene,{},refs,owners)==expected);const auto after=f.renderer->worldAnimatedStats();
-                CHECK(after.requested_draws==before.requested_draws+raw.size());
-                CHECK(after.gpu_draws==before.gpu_draws+raw.size());CHECK(after.fallback_draws==before.fallback_draws);
-                CHECK(after.execute_calls>before.execute_calls);
+                scene.animated_gpu_records=true;
+                for(bool gpu_visibility:{false,true})
+                {
+                    CAPTURE(gpu_visibility);scene.animated_gpu_visibility=gpu_visibility;
+                    const auto before=f.renderer->worldAnimatedStats();CHECK(render(f,scene,{},refs,owners)==expected);
+                    const auto after=f.renderer->worldAnimatedStats();
+                    CHECK(after.requested_draws==before.requested_draws+raw.size());
+                    CHECK(after.gpu_draws==before.gpu_draws+raw.size());CHECK(after.fallback_draws==before.fallback_draws);
+                    CHECK(after.execute_calls>before.execute_calls);
+                    CHECK(after.visibility_dispatches==before.visibility_dispatches+unsigned(gpu_visibility));
+                    CHECK(after.bounds_tests==before.bounds_tests+(gpu_visibility?raw.size():0));
+                    CHECK(after.bounds_unknown==before.bounds_unknown);
+                }
             }
             if(masked)
             {
@@ -215,9 +223,14 @@ TEST_CASE("almetal: retained rigged material sources preserve late poses masks a
                 const auto expected=render(f,f.scene(),{indexed});auto zero_slot=indexed;
                 for(auto& position:indexed_mesh.positions)position[3]=0;
                 zero_slot.vertices=f.buffer(&indexed_mesh,sizeof(indexed_mesh));CHECK_FALSE(render(f,f.scene(),{zero_slot}).pixels==expected.pixels);
-                auto scene=f.scene();scene.animated_gpu_records=true;const auto before=f.renderer->worldAnimatedStats();
-                CHECK(render(f,scene,{}, {reference(indexed_source,first,matrices(indexed))},indexed_owners)==expected);
-                CHECK(f.renderer->worldAnimatedStats().gpu_draws==before.gpu_draws+1);
+                auto scene=f.scene();scene.animated_gpu_records=true;
+                for(bool gpu_visibility:{false,true,false})
+                {
+                    scene.animated_gpu_visibility=gpu_visibility;const auto before=f.renderer->worldAnimatedStats();
+                    CHECK(render(f,scene,{}, {reference(indexed_source,first,matrices(indexed))},indexed_owners)==expected);
+                    const auto after=f.renderer->worldAnimatedStats();CHECK(after.gpu_draws==before.gpu_draws+1);
+                    CHECK(after.visibility_dispatches==before.visibility_dispatches+unsigned(gpu_visibility));
+                }
             }
         }
     }
@@ -244,18 +257,28 @@ TEST_CASE("almetal: current attachment poses drive retained visibility without r
                  batch.modelview_projection[3]=.5f;batch.modelview_projection[15]=.25f;} // Eye-crossing, nondegenerate visible part.
                 if(step==5)batch.modelview_projection[14]=-1.25f; // Exact GL near plane.
                 const auto expected=render(f,f.scene(),{batch});auto scene=f.scene();scene.animated_gpu_records=true;
-                if(step>=4)
+                if(step==2 || step>=4)
                 {
                     auto opaque=batch;if(family==1)opaque.material_alpha_mode=0;else opaque.alpha_mask=false;
                     const auto control=render(f,f.scene(),{opaque}),clear=render(f,f.scene(),{});
                     CHECK_FALSE(control.pixels.depth==clear.pixels.depth);
+                    if(step==2)CHECK_FALSE(expected.pixels.depth==clear.pixels.depth);
                 }
-                const auto before=f.renderer->worldAnimatedStats();const auto actual=render(f,scene,{},
-                    {reference(proof,pose,matrices(batch))},owners);const auto after=f.renderer->worldAnimatedStats();
-                CHECK(actual==expected);CHECK(after.gpu_draws==before.gpu_draws+1);CHECK(after.bounds_tests>before.bounds_tests);
-                CHECK(proof->prototype().vertices==native_vertices);CHECK(proof->prototype().native_material_source==numeric);
-                CHECK(proof->prototype().native_resource_source==resource);
-                if(step==0)original=actual;if(step==1)CHECK_FALSE(actual.pixels==original.pixels);if(step==3)CHECK(actual==original);
+                // End the outside step with a culler bank containing count0;
+                // the next visible pose first uses the separate fullcount bank.
+                const bool first_visibility=step!=1 && step!=2;
+                for(bool gpu_visibility:{first_visibility,!first_visibility})
+                {
+                    CAPTURE(gpu_visibility);scene.animated_gpu_visibility=gpu_visibility;
+                    const auto before=f.renderer->worldAnimatedStats();const auto actual=render(f,scene,{},
+                        {reference(proof,pose,matrices(batch))},owners);const auto after=f.renderer->worldAnimatedStats();
+                    CHECK(actual==expected);CHECK(after.gpu_draws==before.gpu_draws+1);
+                    CHECK(after.visibility_dispatches==before.visibility_dispatches+unsigned(gpu_visibility));
+                    CHECK(after.bounds_tests==before.bounds_tests+unsigned(gpu_visibility));CHECK(after.bounds_unknown==before.bounds_unknown);
+                    CHECK(proof->prototype().vertices==native_vertices);CHECK(proof->prototype().native_material_source==numeric);
+                    CHECK(proof->prototype().native_resource_source==resource);
+                    if(step==0)original=actual;if(step==1)CHECK_FALSE(actual.pixels==original.pixels);if(step==3)CHECK(actual==original);
+                }
             }
         }
     }
@@ -283,9 +306,15 @@ TEST_CASE("almetal: animated records preserve dynamic UV unknown bounds cloth an
         f.resources->buffers.push_back(opaque_geometry);auto unknown=prototype;unknown.vertices=opaque_geometry.get();
         auto unknown_proof=f.seal(unknown,2,2);CHECK_FALSE(unknown_proof->boundsQualified());
         auto unknown_owners=std::make_shared<CpuOwners>();unknown_owners->sources={unknown_proof};unknown_owners->palettes={pose};
-        const auto expected_unknown=render(f,f.scene(),{unknown});before=f.renderer->worldAnimatedStats();
-        CHECK(render(f,scene,{}, {reference(unknown_proof,pose,matrices(unknown))},unknown_owners)==expected_unknown);
-        after=f.renderer->worldAnimatedStats();CHECK(after.gpu_draws==before.gpu_draws+1);CHECK(after.bounds_unknown==before.bounds_unknown+1);
+        const auto expected_unknown=render(f,f.scene(),{unknown});
+        for(bool gpu_visibility:{false,true})
+        {
+            scene.animated_gpu_visibility=gpu_visibility;before=f.renderer->worldAnimatedStats();
+            CHECK(render(f,scene,{}, {reference(unknown_proof,pose,matrices(unknown))},unknown_owners)==expected_unknown);
+            after=f.renderer->worldAnimatedStats();CHECK(after.gpu_draws==before.gpu_draws+1);
+            CHECK(after.bounds_unknown==before.bounds_unknown+unsigned(gpu_visibility));CHECK(after.bounds_tests==before.bounds_tests);
+            CHECK(after.visibility_dispatches==before.visibility_dispatches+unsigned(gpu_visibility));
+        }
 
         // PPD-291: GPU input FTZ can erase the only fractional lane and
         // select the FIRST encoded joint7 fallback. A CPU nonzero-fraction
@@ -305,9 +334,14 @@ TEST_CASE("almetal: animated records preserve dynamic UV unknown bounds cloth an
         ftz.skin_palette=ftz_pose->data();ftz.skin_palette_float_count=ftz_pose->size();ftz.skin_joint_count=ftz_pose->jointCount();
         auto ftz_source=f.seal(ftz,2,3);CHECK_FALSE(ftz_source->boundsQualified());
         auto ftz_owners=std::make_shared<CpuOwners>();ftz_owners->sources={ftz_source};ftz_owners->palettes={ftz_pose};
-        const auto expected_ftz=render(f,f.scene(),{ftz});before=f.renderer->worldAnimatedStats();
-        CHECK(render(f,scene,{}, {reference(ftz_source,ftz_pose,matrices(ftz))},ftz_owners)==expected_ftz);
-        after=f.renderer->worldAnimatedStats();CHECK(after.bounds_unknown==before.bounds_unknown+1);
+        const auto expected_ftz=render(f,f.scene(),{ftz});
+        for(bool gpu_visibility:{false,true})
+        {
+            scene.animated_gpu_visibility=gpu_visibility;before=f.renderer->worldAnimatedStats();
+            CHECK(render(f,scene,{}, {reference(ftz_source,ftz_pose,matrices(ftz))},ftz_owners)==expected_ftz);
+            after=f.renderer->worldAnimatedStats();CHECK(after.bounds_unknown==before.bounds_unknown+unsigned(gpu_visibility));
+            CHECK(after.bounds_tests==before.bounds_tests);CHECK(after.visibility_dispatches==before.visibility_dispatches+unsigned(gpu_visibility));
+        }
         for(auto& weight:ftz_geometry.weights)weight[1]=0;
         auto opaque_ftz=ftz;opaque_ftz.vertices=f.buffer(&ftz_geometry,sizeof(ftz_geometry));opaque_ftz.alpha_mask=false;
         CHECK_FALSE(render(f,f.scene(),{opaque_ftz}).pixels.depth==render(f,f.scene(),{}).pixels.depth);
@@ -349,6 +383,9 @@ TEST_CASE("almetal: queued animated commands retain native generations without r
     using namespace AnimatedGpuRecordTest;
     @autoreleasepool
     {
+      for(bool gpu_visibility:{false,true})
+      {
+        CAPTURE(gpu_visibility);
         RiggedFixture f;auto old_pose=palette(0,f.error),new_pose=palette(.375f,f.error);
         auto old_batch=f.source(1,true,old_pose),new_batch=old_batch;new_batch.skin_palette_record=new_pose.get();new_batch.skin_palette=new_pose->data();
         auto new_mesh=f.geometry;for(unsigned vertex=0;vertex<4;++vertex)
@@ -366,25 +403,31 @@ TEST_CASE("almetal: queued animated commands retain native generations without r
         {
             auto pose=palette(0,f.error);auto batch=f.source(1,false,pose);auto source=f.seal(batch,1,12);
             auto owners=std::make_shared<CpuOwners>();owners->sources={source};owners->palettes={pose};
-            auto canceled_scene=f.scene();canceled_scene.animated_gpu_records=true;
-            std::vector<ALMetalWorldSourceReference> refs{reference(source,pose,matrices(batch))};
-            auto input=ALMetalWorldViewInputs::adopt(canceled_scene,{},std::move(refs),
-                {alMetalWorldDrawReferenceBit},queries(1),owners,f.resources,1,&f.error);REQUIRE(input);
-            REQUIRE(f.renderer->beginCommandBatch("Abandon animated publication",&f.error));
-            auto unused=f.renderer->renderOwnedInputs(*input,&f.error);INFO(f.error);REQUIRE(unused);
-            const auto abandoned=f.renderer->commandBatchCompletion();REQUIRE(abandoned);CHECK_FALSE(abandoned->isComplete());
-            f.renderer->cancelCommandBatch();CHECK(abandoned->isComplete());
+            for(bool canceled_visibility:{gpu_visibility,!gpu_visibility})
+            {
+                // Also initialize the later mode's shader/encoders before
+                // any command is held behind the queue gate below.
+                auto canceled_scene=f.scene();canceled_scene.animated_gpu_records=true;canceled_scene.animated_gpu_visibility=canceled_visibility;
+                std::vector<ALMetalWorldSourceReference> refs{reference(source,pose,matrices(batch))};
+                auto input=ALMetalWorldViewInputs::adopt(canceled_scene,{},std::move(refs),
+                    {alMetalWorldDrawReferenceBit},queries(1),owners,f.resources,1,&f.error);REQUIRE(input);
+                REQUIRE(f.renderer->beginCommandBatch("Abandon animated publication",&f.error));
+                auto unused=f.renderer->renderOwnedInputs(*input,&f.error);INFO(f.error);REQUIRE(unused);
+                const auto abandoned=f.renderer->commandBatchCompletion();REQUIRE(abandoned);CHECK_FALSE(abandoned->isComplete());
+                f.renderer->cancelCommandBatch();CHECK(abandoned->isComplete());
+            }
         }
         auto old_owners=std::make_shared<CpuOwners>();old_owners->sources={old_source};old_owners->palettes={old_pose};
         auto new_owners=std::make_shared<CpuOwners>();new_owners->sources={new_source};new_owners->palettes={new_pose};
-        auto scene=f.scene();scene.animated_gpu_records=true;
+        auto scene=f.scene();scene.animated_gpu_records=true;scene.animated_gpu_visibility=gpu_visibility;
         const auto packet=[&](const auto& source,const auto& pose,const auto& batch,const auto& owners)
         {
             std::vector<ALMetalWorldSourceReference> refs{reference(source,pose,matrices(batch))};std::vector<ALMetalWorldDrawIndex> order{alMetalWorldDrawReferenceBit};
             auto input=ALMetalWorldViewInputs::adopt(scene,{},std::move(refs),std::move(order),queries(1),owners,f.resources,1,&f.error);
             INFO(f.error);REQUIRE(input);return input;
         };
-        auto old_input=packet(old_source,old_pose,old_batch,old_owners),new_input=packet(new_source,new_pose,new_batch,new_owners);
+        auto old_input=packet(old_source,old_pose,old_batch,old_owners);
+        scene.animated_gpu_visibility=!gpu_visibility;auto new_input=packet(new_source,new_pose,new_batch,new_owners);
         std::weak_ptr<const ALMetalWorldAnimatedSource> weak_source=old_source;std::weak_ptr<const ALMetalAttachmentPaletteRecord> weak_pose=old_pose;
         std::weak_ptr<const ALMetalBuffer> weak_vertices;
         {const auto native_scope=f.scope(old_batch);weak_vertices=native_scope.vertices;}
@@ -397,10 +440,14 @@ TEST_CASE("almetal: queued animated commands retain native generations without r
         [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];REQUIRE(blocker->commit(&f.error));
         REQUIRE(f.renderer->beginCommandBatch("Old animated native generation",&f.error));
         std::shared_ptr<ALMetalVisibilityResultBatch> old_queries,new_queries;
+        const auto before_old=f.renderer->worldAnimatedStats();
         auto old_target=f.renderer->renderOwnedInputs(*old_input,&f.error,&old_queries);INFO(f.error);REQUIRE(old_target);
+        CHECK(f.renderer->worldAnimatedStats().visibility_dispatches==before_old.visibility_dispatches+unsigned(gpu_visibility));
         auto old_completion=f.renderer->commandBatchCompletion();REQUIRE(old_completion);REQUIRE(f.renderer->commitCommandBatch(&f.error));
         REQUIRE(f.renderer->beginCommandBatch("New animated native generation",&f.error));
+        const auto before_new=f.renderer->worldAnimatedStats();
         auto new_target=f.renderer->renderOwnedInputs(*new_input,&f.error,&new_queries);INFO(f.error);REQUIRE(new_target);
+        CHECK(f.renderer->worldAnimatedStats().visibility_dispatches==before_new.visibility_dispatches+unsigned(!gpu_visibility));
         auto new_completion=f.renderer->commandBatchCompletion();REQUIRE(new_completion);REQUIRE(f.renderer->commitCommandBatch(&f.error));
         old_input.reset();new_input.reset();old_owners.reset();new_owners.reset();old_source.reset();new_source.reset();old_pose.reset();new_pose.reset();
         old_batch={};new_batch={};f.data->beginFrame(2);f.resources.reset();CHECK(weak_source.expired());CHECK(weak_pose.expired());
@@ -413,6 +460,7 @@ TEST_CASE("almetal: queued animated commands retain native generations without r
         const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
         while((!weak_vertices.expired() || !weak_native.expired()) && std::chrono::steady_clock::now()<deadline)std::this_thread::yield();
         CHECK(weak_vertices.expired());CHECK(weak_native.expired());
+      }
     }
 }
 
@@ -473,7 +521,7 @@ TEST_CASE("almetal: animated metadata and command byte caps preserve required dr
         // gate, then abandon its successful cold publication and drop caches.
         auto warmup=f.device->makeCommandBuffer("Warm animated cap fixture shader owners",&f.error);REQUIRE(warmup);
         REQUIRE(pages->prepareAnimatedSourcesForCommand(*warmup,refs,gpu,&f.error));
-        auto warm_bank=commands->prepareAnimatedForCommand(*warmup,*f.device,*library,gpu,globals,*f.data,&f.error);
+        auto warm_bank=commands->prepareAnimatedForCommand(*warmup,*f.device,*library,std::move(gpu),globals,*f.data,&f.error);
         INFO(f.error);REQUIRE(warm_bank);
         auto abandoned=warmup->completionToken();REQUIRE(abandoned);CHECK_FALSE(abandoned->isComplete());
         warm_bank.reset();gpu.clear();warmup.reset();CHECK(abandoned->isComplete());

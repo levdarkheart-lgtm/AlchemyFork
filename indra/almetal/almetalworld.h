@@ -1274,6 +1274,9 @@ struct ALMetalWorldGBufferScene
     // Retained regular-rigged GPU source/pose commands. Default-off experiment;
     // body/cloth/special state keeps the ordinary native contract.
     bool animated_gpu_records = false;
+    // Independent mechanism control within the default-off animated path.
+    // Full-count banks keep the same late poses, without a visibility dispatch.
+    bool animated_gpu_visibility = true;
     // Experimental CPU rejection before ordinary bindings. Only privately
     // qualified cohort bounds participate; raw/unknown inputs stay visible.
     // This takes precedence over optional GPU visibility/source-row/bank work.

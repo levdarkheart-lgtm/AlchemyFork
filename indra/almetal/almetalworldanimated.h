@@ -49,4 +49,7 @@ struct ALMetalWorldAnimatedStats
     std::uint64_t requested_draws=0,gpu_draws=0,fallback_draws=0,execute_calls=0;
     std::uint64_t current_pose_publications=0,source_publications=0;
     std::uint64_t bounds_unknown=0,bounds_tests=0;
+    // Actual compute dispatches in successfully encoded view transactions;
+    // full-count mode performs no bounds work or visibility dispatch.
+    std::uint64_t visibility_dispatches=0;
 };

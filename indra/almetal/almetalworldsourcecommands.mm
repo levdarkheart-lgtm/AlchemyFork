@@ -64,7 +64,7 @@ struct AnimatedSlot
     std::weak_ptr<const void> reader;
     std::size_t stride=0;
     void* library=nullptr;
-    bool normal_hdr=false;
+    bool normal_hdr=false,gpu_visibility=true;
 };
 struct Bank
 {
@@ -594,13 +594,35 @@ bool ALMetalWorldSourceCommands::executeRange(ALMetalRenderEncoder& encoder,ALMe
 std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceCommands::prepareAnimatedForCommand(
     ALMetalCommandBuffer& command,const ALMetalDevice& device,const ALMetalShaderLibrary& library,
     std::span<const ALMetalWorldAnimatedGpuView> views,const ALMetalWorldSourceGlobals& globals,
-    ALMetalWorldFrameData& frame_data,std::string* error)
+    ALMetalWorldFrameData& frame_data,std::string* error,bool gpu_visibility)
 try
 {
+    if(views.empty()||views.size()>alMetalWorldSourceMaximumRows)
+    {
+        ++mImpl->statistics.requests;
+        mImpl->fail(ALMetalWorldSourceCommandFailure::validation,nullptr,error,"Animated native command input is invalid");return {};
+    }
+    // A borrowed caller can still mutate its vector during admission. Capture
+    // the complete value before entering the owned preparation boundary.
+    return prepareAnimatedForCommand(command,device,library,
+        std::vector<ALMetalWorldAnimatedGpuView>(views.begin(),views.end()),globals,frame_data,error,gpu_visibility);
+}
+catch(const std::bad_alloc&){if(error)error->clear();return {};}
+
+std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceCommands::prepareAnimatedForCommand(
+    ALMetalCommandBuffer& command,const ALMetalDevice& device,const ALMetalShaderLibrary& library,
+    std::vector<ALMetalWorldAnimatedGpuView>&& views,const ALMetalWorldSourceGlobals& borrowed_globals,
+    ALMetalWorldFrameData& frame_data,std::string* error,bool gpu_visibility)
+try
+{
+    // Consume ownership immediately. The renderer has already produced this
+    // vector privately; no second matrix/lease copy or allocation is needed.
+    auto inputs=std::move(views);
+    const auto globals=borrowed_globals; // Admission cannot replace bank/pose flags or mirror data.
     auto& state=*mImpl;++state.statistics.requests;
     const auto reject=[&](auto reason,const char* message)->std::shared_ptr<const Batch>
         {state.fail(reason,nullptr,error,message);return {};};
-    if(state.preparing||!state.supported||views.empty()||views.size()>alMetalWorldSourceMaximumRows||
+    if(state.preparing||!state.supported||inputs.empty()||inputs.size()>alMetalWorldSourceMaximumRows||
        device.nativeHandle()!=(__bridge void*)state.device||command.nativeDevice()!=device.nativeHandle()||command.isCommitted())
         return reject(ALMetalWorldSourceCommandFailure::validation,"Animated native command input is invalid");
     struct Guard{bool& active;~Guard(){active=false;}}guard{state.preparing};state.preparing=true;
@@ -608,20 +630,30 @@ try
     if(state.animated_library!=native_library)
     {
         id<MTLFunction> vertex=[native_library newFunctionWithName:@"almetal_world_material_animated_vertex"];
+        if(!vertex||vertex.functionType!=MTLFunctionTypeVertex)
+            return reject(ALMetalWorldSourceCommandFailure::unsupported,"Animated native vertex entry is unavailable");
+        auto pose=[vertex newArgumentEncoderWithBufferIndex:4];
+        if(!pose||!pose.encodedLength||!pose.alignment)
+            return reject(ALMetalWorldSourceCommandFailure::unsupported,"Animated native pose layout is unavailable");
+        state.pose_encoder=pose;state.root_encoder=nil;state.animated_pipeline.reset();state.animated_library=native_library;
+    }
+    // Full-count banks use the vertex PoseView layout directly. They require
+    // no compute function, root argument encoder or compute pipeline owner.
+    if(gpu_visibility&&!state.animated_pipeline)
+    {
         id<MTLFunction> kernel=[native_library newFunctionWithName:@"almetal_world_animated_visibility"];
-        if(!vertex||!kernel||vertex.functionType!=MTLFunctionTypeVertex||kernel.functionType!=MTLFunctionTypeKernel)
-            return reject(ALMetalWorldSourceCommandFailure::unsupported,"Animated native shader entries are unavailable");
-        auto pose=[vertex newArgumentEncoderWithBufferIndex:4];auto root=[kernel newArgumentEncoderWithBufferIndex:0];
+        if(!kernel||kernel.functionType!=MTLFunctionTypeKernel)
+            return reject(ALMetalWorldSourceCommandFailure::unsupported,"Animated native visibility entry is unavailable");
+        auto root=[kernel newArgumentEncoderWithBufferIndex:0];
         ALMetalComputePipelineDescriptor descriptor;descriptor.library=&library;
         descriptor.function="almetal_world_animated_visibility";descriptor.label="Alchemy current-pose animated visibility";
         auto pipeline=ALMetalComputePipeline::create(device,descriptor,error);
-        if(!pose||!root||!pose.encodedLength||!root.encodedLength||!pose.alignment||!pipeline)
-            return reject(ALMetalWorldSourceCommandFailure::unsupported,"Animated native shader layout is unavailable");
-        state.pose_encoder=pose;state.root_encoder=root;state.animated_pipeline=std::move(pipeline);state.animated_library=native_library;
+        if(!root||!root.encodedLength||!pipeline)
+            return reject(ALMetalWorldSourceCommandFailure::unsupported,"Animated native visibility layout is unavailable");
+        state.root_encoder=root;state.animated_pipeline=std::move(pipeline);
     }
-    // Snapshot all late CPU inputs before admission may invoke application
-    // callbacks. This temporary owns CPU records only until synchronous encode.
-    std::vector<ALMetalWorldAnimatedGpuView> inputs(views.begin(),views.end());
+    // Late CPU inputs are privately owned before admission can invoke
+    // application callbacks; CPU records retire after synchronous encoding.
     for(const auto& view:inputs)
     {
         bool finite=true;
@@ -638,7 +670,7 @@ try
     {
         const auto& bank=*it;const auto& slot=bank->animated;
         if(!slot||!slot->reader.expired()||slot->library!=(__bridge void*)native_library||
-           slot->normal_hdr!=(globals.flags[2]!=0)||slot->sources.size()!=inputs.size())continue;
+           slot->normal_hdr!=(globals.flags[2]!=0)||slot->gpu_visibility!=gpu_visibility||slot->sources.size()!=inputs.size())continue;
         bool same=true;for(std::size_t i=0;i<inputs.size();++i)if(slot->sources[i]!=inputs[i].source){same=false;break;}
         if(same){selected=bank;state.cache.splice(state.cache.begin(),state.cache,it);++state.statistics.hits;break;}
     }
@@ -647,6 +679,9 @@ try
         if(std::exchange(state.force_failure,false))return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Forced animated command publication failure");
         auto bank=std::make_shared<Bank>();bank->count=inputs.size();bank->animated=std::make_shared<AnimatedSlot>();
         auto& slot=*bank->animated;slot.library=(__bridge void*)native_library;slot.normal_hdr=globals.flags[2]!=0;
+        // A GPU-mutated bank can contain zero counts. Full-count mode must
+        // never reuse that bank, even after all its readers have completed.
+        slot.gpu_visibility=gpu_visibility;
         const auto alignment=state.pose_encoder.alignment;
         if(state.pose_encoder.encodedLength>std::numeric_limits<std::size_t>::max()-(alignment-1))return {};
         slot.stride=(state.pose_encoder.encodedLength+alignment-1)/alignment*alignment;
@@ -657,7 +692,7 @@ try
         // command encoding. Warm pose/view publication is required work.
         const auto epoch=state.epoch;ALMetalWorldSourcePublicationWork work;
         work.encoded_bank_range_bytes=inputs.size()*248;
-        work.encoded_row_bytes=slot.stride*inputs.size()+state.root_encoder.encodedLength;
+        work.encoded_row_bytes=slot.stride*inputs.size()+(gpu_visibility?state.root_encoder.encodedLength:0);
         if(state.admission)
         {
             ++state.statistics.admission_requests;auto policy=state.admission;credit=(*policy)(work);
@@ -665,9 +700,12 @@ try
             if(epoch!=state.epoch||command.isCommitted())return reject(ALMetalWorldSourceCommandFailure::admission,"Animated command context changed during admission");
         }
         slot.views=make(slot.stride*inputs.size(),"Alchemy animated pose/view slots");
-        slot.root=make(state.root_encoder.encodedLength,"Alchemy animated compute pointer table");
-        slot.visible=make(inputs.size()*sizeof(std::uint32_t),"Alchemy animated GPU visibility results");
-        if(!slot.views||!slot.root||!slot.visible)return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Animated slot allocation failed");
+        if(gpu_visibility)
+        {
+            slot.root=make(state.root_encoder.encodedLength,"Alchemy animated compute pointer table");
+            slot.visible=make(inputs.size()*sizeof(std::uint32_t),"Alchemy animated GPU visibility results");
+        }
+        if(!slot.views||(gpu_visibility&&(!slot.root||!slot.visible)))return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Animated slot allocation failed");
         auto descriptor=[MTLIndirectCommandBufferDescriptor new];descriptor.commandTypes=MTLIndirectCommandTypeDrawIndexed;
         descriptor.inheritPipelineState=YES;descriptor.inheritBuffers=NO;
         descriptor.maxVertexBufferBindCount=13;descriptor.maxFragmentBufferBindCount=2;
@@ -690,7 +728,8 @@ try
             }
             unique.emplace(key,lease);bank->indices.push_back(std::move(lease));return true;
         };
-        if(!retain(slot.views->nativeHandle())||!retain(slot.root->nativeHandle())||!retain(slot.visible->nativeHandle()))return {};
+        if(!retain(slot.views->nativeHandle()))return {};
+        if(gpu_visibility&&(!retain(slot.root->nativeHandle())||!retain(slot.visible->nativeHandle())))return {};
         for(std::size_t index=0;index<inputs.size();++index)
         {
             auto source=inputs[index].source;const auto& b=source->binding();
@@ -713,14 +752,17 @@ try
                 indexType:b.index_type==ALMetalIndexType::uint16?MTLIndexTypeUInt16:MTLIndexTypeUInt32
                 indexBuffer:(__bridge id<MTLBuffer>)b.indices indexBufferOffset:b.index_offset instanceCount:1 baseVertex:0 baseInstance:0];
         }
-        // Pointer table contains the same reflected PoseView ABI used by VS.
-        [state.root_encoder setArgumentBuffer:(__bridge id<MTLBuffer>)slot.root->nativeHandle() offset:0];
-        struct Detach{id<MTLArgumentEncoder> encoder;~Detach(){[encoder setArgumentBuffer:nil offset:0];}}detach{state.root_encoder};
-        for(std::size_t index=0;index<inputs.size();++index)
-            [state.root_encoder setBuffer:(__bridge id<MTLBuffer>)slot.views->nativeHandle() offset:index*slot.stride atIndex:index];
-        [state.root_encoder setIndirectCommandBuffer:bank->native atIndex:4096];
-        const std::uint32_t config[]{static_cast<std::uint32_t>(inputs.size()),0,0,0};
-        std::memcpy([state.root_encoder constantDataAtIndex:4097],config,sizeof(config));
+        if(gpu_visibility)
+        {
+            // Pointer table contains the same reflected PoseView ABI used by VS.
+            [state.root_encoder setArgumentBuffer:(__bridge id<MTLBuffer>)slot.root->nativeHandle() offset:0];
+            struct Detach{id<MTLArgumentEncoder> encoder;~Detach(){[encoder setArgumentBuffer:nil offset:0];}}detach{state.root_encoder};
+            for(std::size_t index=0;index<inputs.size();++index)
+                [state.root_encoder setBuffer:(__bridge id<MTLBuffer>)slot.views->nativeHandle() offset:index*slot.stride atIndex:index];
+            [state.root_encoder setIndirectCommandBuffer:bank->native atIndex:4096];
+            const std::uint32_t config[]{static_cast<std::uint32_t>(inputs.size()),0,0,0};
+            std::memcpy([state.root_encoder constantDataAtIndex:4097],config,sizeof(config));
+        }
         selected=std::move(bank);publication.emplace();
         if(!state.planPublication(selected,*publication))return reject(ALMetalWorldSourceCommandFailure::capacity,"Animated live command/asset budget is full");
     }
@@ -753,14 +795,17 @@ try
         const std::uint32_t call[]{b.index_count,b.index_type==ALMetalIndexType::uint32,b.qualified,0};
         std::memcpy([state.pose_encoder constantDataAtIndex:8],flags,16);std::memcpy([state.pose_encoder constantDataAtIndex:9],call,16);
     }
-    auto compute=ALMetalComputeEncoder::begin(command,"Alchemy retained animated current-pose visibility",error);
-    if(!compute||!compute->setPipeline(*state.animated_pipeline,error)||!compute->setBuffer(0,*slot.root,0,error)||
-       !compute->setBuffer(1,*slot.visible,0,error))return {};
-    auto native=(__bridge id<MTLComputeCommandEncoder>)compute->nativeHandleForResources();if(!native)return {};
-    for(const auto& lease:selected->indices)[native useResource:lease->native usage:MTLResourceUsageRead];
-    for(const auto& palette:result->mImpl->animated_palettes)[native useResource:(__bridge id<MTLBuffer>)palette.buffer->nativeHandle() usage:MTLResourceUsageRead];
-    [native useResource:selected->native usage:MTLResourceUsageWrite];
-    if(!compute->dispatch(static_cast<std::uint32_t>(inputs.size()),1,1,32,1,1,error)||!compute->end(error))return {};
+    if(gpu_visibility)
+    {
+        auto compute=ALMetalComputeEncoder::begin(command,"Alchemy retained animated current-pose visibility",error);
+        if(!compute||!compute->setPipeline(*state.animated_pipeline,error)||!compute->setBuffer(0,*slot.root,0,error)||
+           !compute->setBuffer(1,*slot.visible,0,error))return {};
+        auto native=(__bridge id<MTLComputeCommandEncoder>)compute->nativeHandleForResources();if(!native)return {};
+        for(const auto& lease:selected->indices)[native useResource:lease->native usage:MTLResourceUsageRead];
+        for(const auto& palette:result->mImpl->animated_palettes)[native useResource:(__bridge id<MTLBuffer>)palette.buffer->nativeHandle() usage:MTLResourceUsageRead];
+        [native useResource:selected->native usage:MTLResourceUsageWrite];
+        if(!compute->dispatch(static_cast<std::uint32_t>(inputs.size()),1,1,32,1,1,error)||!compute->end(error))return {};
+    }
     if(publication){state.commitPublication(*publication);state.binding_limit=selected->binding_limit;
         state.statistics.charged_logical_binding_bytes+=inputs.size()*248;}
     state.statistics.last_failure=ALMetalWorldSourceCommandFailure::none;return result;

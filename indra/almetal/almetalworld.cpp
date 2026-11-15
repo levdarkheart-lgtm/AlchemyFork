@@ -2878,8 +2878,9 @@ struct ALMetalWorldGBufferRenderer::Impl
         return result.get();
     }
 
-    ALMetalRenderPipeline* animatedPipeline(bool hdr,bool normal_hdr,bool pbr,std::string* error)
+    ALMetalRenderPipeline* animatedPipeline(bool hdr,bool normal_hdr,bool pbr,bool gpu_visibility,std::string* error)
     {
+        if(gpu_visibility&&!library->hasFunction("almetal_world_animated_visibility"))return nullptr;
         auto& result=(pbr?animated_pbr_pipelines:animated_material_pipelines)[hdr][normal_hdr];
         if(!result)
         {
@@ -2887,8 +2888,7 @@ struct ALMetalWorldGBufferRenderer::Impl
             descriptor.library=library.get();
             descriptor.vertex_function=pbr?"almetal_world_pbr_animated_vertex":"almetal_world_material_animated_vertex";
             descriptor.fragment_function=pbr?"almetal_world_pbr_resources_fragment":"almetal_world_material_resources_fragment";
-            if(!library->hasFunction(descriptor.vertex_function)||!library->hasFunction(descriptor.fragment_function)||
-               !library->hasFunction("almetal_world_animated_visibility"))return nullptr;
+            if(!library->hasFunction(descriptor.vertex_function)||!library->hasFunction(descriptor.fragment_function))return nullptr;
             descriptor.support_indirect_commands=true;descriptor.label="Alchemy retained animated G-buffer pipeline";
             result=ALMetalRenderPipeline::create(*device,descriptor,error);
         }
@@ -10990,7 +10990,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 for(std::size_t at=first;at<first+count;++at)
                 {
                     auto* pipeline=mImpl->animatedPipeline(scene.hdr,scene.normal_hdr,
-                        isPBRBatch(*candidates[at]->source),&optional_error);
+                        isPBRBatch(*candidates[at]->source),scene.animated_gpu_visibility,&optional_error);
                     if(!pipeline){ready=false;break;}pipelines.push_back(pipeline);
                 }
                 if(!ready || !mImpl->frame_data)continue;
@@ -11002,10 +11002,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 if(!mImpl->source_pages->prepareAnimatedSourcesForCommand(*command,
                     std::span(candidates).subspan(first,count),gpu_views,&optional_error))continue;
                 auto bank=mImpl->source_commands->prepareAnimatedForCommand(*command,*mImpl->device,*mImpl->library,
-                    gpu_views,globals,*mImpl->frame_data,&optional_error);
+                    std::move(gpu_views),globals,*mImpl->frame_data,&optional_error,scene.animated_gpu_visibility);
                 if(!bank)continue;
                 animated_stats.source_publications+=mImpl->source_pages->stats().animated_source_publications-before;
                 animated_stats.current_pose_publications+=count;
+                if(scene.animated_gpu_visibility)++animated_stats.visibility_dispatches;
                 for(std::size_t at=0;at<count;++at)
                 {
                     const bool cull=isPBRBatch(*candidates[first+at]->source)&&candidates[first+at]->source->double_sided;
@@ -11237,7 +11238,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 {
                     scalar_common_cohort=nullptr;have_previous_world_constants=false;animated_prefix_emitted=true;
                     animated_stats.gpu_draws+=count;++animated_stats.execute_calls;
-                    for(std::size_t at=index;at<end;++at)
+                    if(scene.animated_gpu_visibility)for(std::size_t at=index;at<end;++at)
                     {
                         const auto* reference=scene.draw(at).animatedReference();
                         if(reference->animated_source->boundsQualified())++animated_stats.bounds_tests;
@@ -11984,6 +11985,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     mImpl->animated_stats.source_publications+=animated_stats.source_publications;
     mImpl->animated_stats.bounds_tests+=animated_stats.bounds_tests;
     mImpl->animated_stats.bounds_unknown+=animated_stats.bounds_unknown;
+    mImpl->animated_stats.visibility_dispatches+=animated_stats.visibility_dispatches;
     mImpl->cohort_stats.scalar_recipe_reads+=scalar_recipe_reads;
     mImpl->cohort_stats.scalar_common_reuses+=scalar_common_reuses;
     if(scene.cpu_cohort_visibility)

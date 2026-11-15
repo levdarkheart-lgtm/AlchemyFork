@@ -88,7 +88,14 @@ public:
     std::shared_ptr<const Batch> prepareAnimatedForCommand(ALMetalCommandBuffer&,
         const ALMetalDevice&,const ALMetalShaderLibrary&,
         std::span<const ALMetalWorldAnimatedGpuView>,const ALMetalWorldSourceGlobals&,
-        ALMetalWorldFrameData&,std::string* error=nullptr);
+        ALMetalWorldFrameData&,std::string* error=nullptr,bool gpu_visibility=true);
+    // Transfers the completed late-view vector before callbacks. Callers must
+    // surrender all mutable aliases, as with immutable input adoption. Public
+    // borrowed spans retain their defensive snapshot semantics above.
+    std::shared_ptr<const Batch> prepareAnimatedForCommand(ALMetalCommandBuffer&,
+        const ALMetalDevice&,const ALMetalShaderLibrary&,
+        std::vector<ALMetalWorldAnimatedGpuView>&&,const ALMetalWorldSourceGlobals&,
+        ALMetalWorldFrameData&,std::string* error=nullptr,bool gpu_visibility=true);
     bool execute(ALMetalRenderEncoder&,ALMetalCommandBuffer&,const Batch&,std::string* error=nullptr);
     // Execute an ordered nonempty subset of the same immutable Bank. Callers
     // split at original query/raster boundaries and restore inherited state;

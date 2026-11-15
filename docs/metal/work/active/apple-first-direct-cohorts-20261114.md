@@ -2240,3 +2240,30 @@ reviewed backend/test files, source69 required/static/strict, mode-switch/pendin
 parity and actual48costs for computeOFF thenON, preserving direct baseline and
 source68 memory fields. Controls remainOFF; combined staging still pending.
 No viewer launch/login/live profile or push; owner69085/69065/staged69102 intact.
+
+
+## Source69 bounded compute/copy experiment frozen and peer-reviewed
+
+Backend five files frozen (commands38f8a1c3/worldf6287210); native0c826ac47550
+and actual32424f414524 appendices copied byte-exact. Both peers pass. Full-count
+mode owns separate bank keys and omits Root/visible buffers, encoding and compute
+PSO/dispatch; per-source PoseView reflection remains, so shader bytes unchanged.
+Owned GPU-view vector is moved into Commands; span callers still get a private
+snapshot.32Bglobals copied before admission callbacks (287 public-helper gap
+registered before fix). Existing native leases/finite checks/pending readers stay.
+
+Root wires OFF/Persist0 RenderMetalAnimatedGpuVisibility and periodic encoded
+visibility_dispatches; primary RenderMetalAnimatedGpuRecords remainsOFF. Scene
+API defaulttrue preserves previous callers; actual production capture sets the
+explicit new diagnostic setting. Both native modes/mode switches, pending opposite
+modes, cancellations and293caps remain in five cases. Actual normal cases cover
+both; hidden48two-arm cells run once per explicit environment mode (0default
+fullcount,1visibility). Control and actual dispatches printed perrow/summary.
+
+Updated parser py_compile and complete68 backward-compatible parse (48pairs/
+1680rows) pass to /tmp/animated-parser69-compatibility68 outputs; preserved68
+artifacts unchanged. No69 build/runtime/performance claim yet. Next required
+source69 build/static69 verifier/strict, native/actual+relevant command/resource/
+oldlibrary regressions, then separate complete48cost runs with env0 and1.
+Use /tmp/finish_architecture_validation_69.py after frozen69 builder; it records
+controls and excludes viewer/profiler interference. No viewer launch/profile/push.
