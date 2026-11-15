@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-213 -->
+<!-- next-defect-id: PPD-214 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5169,3 +5169,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Registered before correcting the low-level native fixture; retain native-remainder-27 failure evidence.
+
+
+## PPD-213 — Query-fixture repair calls a private attachment method
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integration fixture
+- Discovered: 2026-11-15
+- Original reference: VisibilityResultBatch command attachment is private to its production render owners. Low-level encoder fixtures can instead use an explicitly owned native query buffer and read it only after actual command completion, as almetal_indexed_join_test.mm does.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Required28 at5855c64132 passes doctor/configure but fails19.320s compiling the PPD212 attempted attachCommand call because that API is private. Root inspected the implementation without checking the declaration before the attempted repair. No production code changed.
+- Next action: Replace only the low-level fixture query store with a shared native buffer, bind it on the native pass descriptor, and assert real counting results after commitAndWait. Keep higher-level renderer query/lifetime coverage and production private API unchanged.
+- Verification: Executed fixture compile failure; preserve required28 receipt.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before correcting the root-authored private API call; no private API exposure or production validation relaxation authorized.

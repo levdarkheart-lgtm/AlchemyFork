@@ -578,3 +578,12 @@ production validation/rendering unchanged. Required28 +corrected renderer/bank
 retest +full broader28 follow, then actual3arm cost. Source27 unaffected native
 evidence is retained as27, not claimed as a rerun. Architecture remains partial
 and controlsOFF; no viewer launch/profile/push. Next213.
+
+
+Required28 fails19.320s at the root PPD212 repair: attachCommand is private
+(PPD213). Root checked its implementation but missed the header restriction.
+Replace only the low-level fixture store with an explicitly owned shared query
+buffer/native pass attachment, following existing indexed-join native fixtures;
+read real counters only after the exact producer command's commitAndWait.
+Higher-level renderer tests still exercise production VisibilityResultBatch
+lifecycle. No production API/validation change. Required29 follows.

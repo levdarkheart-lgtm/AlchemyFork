@@ -204,7 +204,7 @@ struct BankFixture : Fixture
     std::unique_ptr<ALMetalRenderTarget> encodeBank(ALMetalWorldSourceCommands& helper,
         const ALMetalWorldSourceCommands::Batch& bank,ALMetalCommandBuffer& command,
         std::span<const std::array<std::size_t,2>> ranges={},
-        std::shared_ptr<ALMetalVisibilityResultBatch>* queries=nullptr,bool check_rejections=false)
+        std::shared_ptr<const ALMetalBuffer>* queries=nullptr,bool check_rejections=false)
     {
         auto library=data->builtinLibrary(&error);REQUIRE(library);
         ALMetalRenderPipelineDescriptor pd;pd.library=library.get();pd.support_indirect_commands=true;
@@ -219,13 +219,18 @@ struct BankFixture : Fixture
         td.depth_stencil_format=pd.depth_stencil_format;
         auto target=ALMetalRenderTarget::create(*device,td,&error);REQUIRE(target);
         ALMetalRenderPassConfig config;config.depth_store=config.stencil_store=ALMetalStoreAction::store;
-        std::shared_ptr<ALMetalVisibilityResultBatch> results;
+        std::shared_ptr<const ALMetalBuffer> results;
         if(queries)
         {
-            REQUIRE_FALSE(ranges.empty());results=ALMetalVisibilityResultBatch::create(*device,ranges.size(),&error);
-            INFO(error);REQUIRE(results);REQUIRE(results->attachCommand(command,&error));config.visibility_results=results.get();
+            REQUIRE_FALSE(ranges.empty());ALMetalBufferDescriptor query;
+            query.length=ranges.size()*sizeof(std::uint64_t);query.storage=ALMetalStorageMode::shared;
+            query.label="Cohort range counting query results";
+            results=ALMetalBuffer::create(*device,query,&error);INFO(error);REQUIRE(results);
+            REQUIRE(results->mappedBytes());std::memset(results->mappedBytes(),0,query.length);
         }
         auto pass=target->makeRenderPass(config,&error);REQUIRE(pass);
+        if(results)((__bridge MTLRenderPassDescriptor*)pass->nativeHandle()).visibilityResultBuffer=
+            (__bridge id<MTLBuffer>)results->nativeHandle();
         auto encoder=ALMetalRenderEncoder::begin(command,*pass,"Snapshot source command bank",&error);REQUIRE(encoder);
         ALMetalDepthStencilDescriptor dd;
         auto depth=ALMetalDepthStencilState::create(*device,dd,&error);REQUIRE(depth);
@@ -562,12 +567,15 @@ TEST_CASE("almetal: retained cohort banks reuse immutable membership and execute
             auto ranged=helper->prepareCohortForCommand(*ranged_command,ranged_frame,&f.error);INFO(f.error);REQUIRE(ranged);
             CHECK(helper->stats().builds==before.builds);CHECK(helper->stats().hits==before.hits+1);
             const std::array<std::array<std::size_t,2>,3> ranges{{{0,1},{1,3},{4,4}}};
-            std::shared_ptr<ALMetalVisibilityResultBatch> queries;
+            std::shared_ptr<const ALMetalBuffer> queries;
             auto split=f.encodeBank(*helper,*ranged,*ranged_command,ranges,&queries,true);
             REQUIRE(ranged_command->commitAndWait(&f.error));CHECK(f.read(*split)==expected);
             REQUIRE(queries);
-            for(std::size_t index=0;index<ranges.size();++index)
-            {std::uint64_t samples=0;REQUIRE(queries->wait(index,samples,&f.error));CHECK(samples>0);}
+            // The exact producing command completed above; unlike the world
+            // renderer this low-level fixture owns its native query buffer.
+            const auto* samples=static_cast<const std::uint64_t*>(queries->mappedBytes());REQUIRE(samples);
+            REQUIRE(queries->length()==ranges.size()*sizeof(std::uint64_t));
+            for(std::size_t index=0;index<ranges.size();++index)CHECK(samples[index]>0);
             CHECK(helper->stats().executions==before.executions+3);
             CHECK(helper->stats().logical_draws==before.logical_draws+BankFixture::source_count);
         }
