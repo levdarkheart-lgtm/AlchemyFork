@@ -1018,3 +1018,39 @@ renderer fixtures there are frozen. Opaque now owns test-only heavier visibility
 mesh coverage. Residency implements only batched retained-cohort dispatch in a
 new isolated tree; no coarse classification or renderer edits in that slice.
 Owner69065 app/launcher, canonical branch and all prior evidence remain untouched.
+
+PPD230 records the newly authored heavier-grid sample alignment trap before
+accepting execution; phase correction and non-empty depth coverage are required.
+Original cheap geometry tag/data are preserved, not replaced by favorable cases.
+
+
+## Source36 shader hypothesis rejected; heavier visibility coverage freeze
+
+Source4e1daf873f,26.4.0.69077: required36 doctor/configure/build exit0
+(32.505s), static346ARM64/signatures/imports/source/features/defaultsPASS,
+strict3587files/905informational/0blockers/0errors. All21 native correctness
+processes pass with the same assertions/cases as35. Actual3arm140840/1
+(6.010s) andmany1872424/1(8.805s) pass all parity/accepted-work assertions.
+
+Saved35-versus36 comparison shows no consistent shader benefit: across48GPU
+cohort configurations medianGPU change+0.41%, range−55.33..+108.39%; warm512
+one-view Legacy/PBR GPU rise108.39%/57.65% while other views differ. Many-small
+medianGPU−1.18% spans−26.06..+2.78%. CPU also changes despite shader-only code,
+so these sequential-run differences do not isolate shader causality. Retain
+raw samples and do not claim the qualifier caused every observed difference.
+Without a consistent demonstrated advantage, revert only the six qualifiers to
+the exact35 shader control before subsequent renderer/visibility integration.
+PPD217 stays open; compatibility passing alone is not performance acceptance.
+
+Source37 adds only heavier visibility test coverage on the unchanged35 shader/
+visibility production control. Existing504cheap3index cases remain. New hidden
+mesh tag runs144arm summaries/48comparisons:1x512Legacy/PBR768uniqueindices,
+64x2mixed3072,256x4mixed768;1/3views,cold/warm/churn,0/actual50%outside.
+Real LLVertexBuffer ownership/publication, complete dirty bounds/capture work,
+shared admission and retirement, fallback and MRT/depth/query parity remain.
+Logs include actual candidate vertices/indices, payload bytes and summed native
+wrapper extents explicitly distinguished from physical unique allocation.
+PPD230 mesh phase/non-empty depth assertion prevents empty-output parity.
+No production strategy or culling selection changes in this coverage commit.
+Native mesh execution is pending. Root and independent review retain exact
+frozenfile SHA3125403a560101b75c6afe90238be9123cb3c0ea11e2adf68c4851264442d50f.

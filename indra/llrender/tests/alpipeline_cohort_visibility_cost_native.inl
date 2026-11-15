@@ -5,8 +5,42 @@
  * Included after alpipeline_buffer_publication_metal_test.cpp's fixtures.
  */
 
-TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-group costs",
-          "[almetal][.native-cohort-visibility-cost]")
+static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
+{
+    const U32 cells=count==768?16:32;REQUIRE(count==cells*cells*3);
+    const U32 mask=info.mVertexBuffer->getTypeMask();LLPointer<LLVertexBuffer> mesh=new LLVertexBuffer(mask);
+    REQUIRE(mesh->allocateBuffer(count,count));std::memset(mesh->getMappedData(),0,mesh->getSize());
+    std::vector<LLVector4a> positions(count),normals(count),tangents(count);
+    std::vector<LLVector2> uv(count);std::vector<LLColor4U> colors(count,LLColor4U(255,0,0,255));std::vector<U16> indices(count);
+    const auto slot=std::bit_cast<float>((info.mMaterialSlotList.size()>1||info.mGLTFMaterialList.size()>1)?1u:0u);
+    for(U32 row=0;row<cells;++row)for(U32 column=0;column<cells;++column)
+    {
+        // Each cell owns three different positions and three fresh indices.
+        // Gaps between adjacent cells prevent even boundary positions being
+        // shared; the whole mesh retains the original local AABB.
+        // Offset interior grid lines from the16px fixture's sample centers;
+        // an exact32x32 grid with gaps would place every pixel in a gap.
+        const F32 phase=cells==16?.25f:-.25f;
+        const F32 x0=column?F32(column+phase)/cells:0.f,x1=column+1==cells?1.f:F32(column+phase+.9f)/cells;
+        const F32 y0=row?F32(row+phase)/cells:0.f,y1=row+1==cells?1.f:F32(row+phase+.9f)/cells;
+        const std::array<LLVector2,3> corners{LLVector2(x0,y0),LLVector2(x1,y0),LLVector2(x0,y1)};
+        for(U32 corner=0;corner<3;++corner)
+        {
+            const U32 index=(row*cells+column)*3+corner;
+            const F32 x=corners[corner].mV[0]==1.f?(outside?3.9f:-.1f):(outside?3.f:-1.f)+.9f*corners[corner].mV[0];
+            positions[index].set(x,-1.f+2.f*corners[corner].mV[1],0.f,slot);
+            normals[index].set(0,0,1,0);tangents[index].set(1,0,0,1);uv[index]=corners[corner];indices[index]=U16(index);
+        }
+    }
+    mesh->setPositionData(positions.data());mesh->setNormalData(normals.data());mesh->setTexCoord0Data(uv.data());
+    mesh->setColorData(colors.data());if(mask&LLVertexBuffer::MAP_TANGENT)mesh->setTangentData(tangents.data());
+    if(mask&LLVertexBuffer::MAP_TEXCOORD1)mesh->setTexCoord1Data(uv.data());
+    mesh->setIndexData(indices.data());mesh->unmapBuffer();
+    REQUIRE(mesh->hasPublishedMetalVertexBuffer());REQUIRE(mesh->hasPublishedMetalIndexBuffer());
+    info.mVertexBuffer=mesh;info.mStart=0;info.mEnd=U16(count-1);info.mOffset=0;info.mCount=count;
+}
+
+static void actualRetainedCohortVisibilityCosts(bool heavier_mesh)
 {
     constexpr U32 loading_frames=8,measured_frames=12;
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::minutes(10);
@@ -28,6 +62,7 @@ TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-g
         U32 family=0,type=0;
         Inputs::ALScenePublicationNative::WorldFlavor flavor;
         std::vector<Inputs::LLDrawInfo*> sources;
+        std::array<U64,4> geometry{}; // vertices, indices, summed native wrapper extents (not new allocation).
         std::shared_ptr<ALNativePublication::State> state=std::make_shared<ALNativePublication::State>();
         std::shared_ptr<ALNativePublication::Observer> dependencies;
         std::shared_ptr<Inputs::ALSceneGroupPublicationNative::Layout> layout;
@@ -37,6 +72,7 @@ TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-g
     {
         Inputs::LLPipeline pipeline;
         std::vector<std::unique_ptr<Group>> groups;
+        std::vector<std::array<U64,4>> geometry_prefix{{0,0,0,0}};
         std::vector<ALMetalWorldVisibilityQuery> queries;
         ALNativeFrameBudget budget;
         std::shared_ptr<ALMetalWorldVisibility> visibility;
@@ -61,11 +97,16 @@ TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-g
          arm.visibility.swap(Inputs::sNativeSceneVisibility);previous_visibility.swap(Inputs::sNativeSceneVisibility);
          Inputs::sNativeSceneVisibilityDevice=previous_device;}
     };
-    for(const auto shape:{std::pair{1u,1u},std::pair{1u,4u},std::pair{1u,16u},std::pair{1u,512u},std::pair{64u,2u},std::pair{256u,4u}})
+    const std::vector<std::pair<U32,U32>> shapes=heavier_mesh
+        ?std::vector<std::pair<U32,U32>>{{1,512},{64,2},{256,4}}
+        :std::vector<std::pair<U32,U32>>{{1,1},{1,4},{1,16},{1,512},{64,2},{256,4}};
+    for(const auto shape:shapes)
     for(U32 first_family:{0u,1u,2u})for(U32 views:{1u,3u})for(U32 condition:{0u,1u,2u})for(U32 outside_percent:{0u,50u})
     {
         const auto group_count=shape.first,sources_per_group=shape.second;
+        if(heavier_mesh && first_family==0)continue;
         if(group_count>1 && first_family!=1)continue;
+        const U32 indices_per_source=heavier_mesh?(group_count==64?3072:768):3;
         const U32 warmup_frames=condition==0||group_count==1?2u:64u;
         // PPD-225: integer source counts cannot represent half of one draw.
         // Preserve the requested case and report its actual geometry fraction.
@@ -98,15 +139,22 @@ TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-g
                     auto& info=f.materialDraw(source%2);
                     // Partial-group source rejection is beyond the coarse CPU
                     // group frustum. Asset construction/upload stays excluded.
-                    if(outside_percent && source%2)
+                    if(heavier_mesh)visibilityCostMesh(info,indices_per_source,outside_percent&&source%2);
+                    else if(outside_percent && source%2)
                     {
                         std::array<LLVector4a,3> positions;
                         const auto slot=std::bit_cast<float>(source%2);
                         positions[0].set(3.f,-1.f,0.f,slot);positions[1].set(3.9f,-1.f,0.f,slot);positions[2].set(3.f,1.f,0.f,slot);
                         info.mVertexBuffer->setPositionData(positions.data());info.mVertexBuffer->unmapBuffer();
                     }
+                    const auto vertex=info.mVertexBuffer->getMetalVertexBufferLease(),indices=info.mVertexBuffer->getMetalIndexBufferLease();
+                    REQUIRE(vertex);REQUIRE(indices);REQUIRE(info.mVertexBuffer->getNumVerts()==indices_per_source);REQUIRE(info.mCount==indices_per_source);
+                    group->geometry[0]+=info.mVertexBuffer->getNumVerts();group->geometry[1]+=info.mCount;
+                    group->geometry[2]+=vertex->length();group->geometry[3]+=indices->length();
                     group->sources.push_back(&info);
                 }
+                auto prefix=arm.geometry_prefix.back();for(U32 field=0;field<prefix.size();++field)prefix[field]+=group->geometry[field];
+                arm.geometry_prefix.push_back(prefix);
                 arm.groups.push_back(std::move(group));
             }
             arm.material_cache=std::make_unique<ALMetalWorldMaterialDataCache>(*f.device);
@@ -173,9 +221,10 @@ TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-g
                 if(condition==2 && frame>=loading_frames)
                 {
                     const auto tint=frame%2?LLColor4U(0,255,0,255):LLColor4U(0,0,255,255);
-                    const std::array<LLColor4U,3> colors{tint,tint,tint};U32 source_index=0;
+                    const std::array<LLColor4U,3> colors{tint,tint,tint};std::vector<LLColor4U> mesh_colors;
+                    if(heavier_mesh)mesh_colors.assign(indices_per_source,tint);U32 source_index=0;
                     for(U32 index=0;index<visible_groups;++index)for(auto* source:arm.groups[index]->sources)
-                    {if((source_index++%16)==0){source->mVertexBuffer->setColorData(colors.data());source->mVertexBuffer->unmapBuffer();}}
+                    {if((source_index++%16)==0){source->mVertexBuffer->setColorData(heavier_mesh?mesh_colors.data():colors.data());source->mVertexBuffer->unmapBuffer();}}
                 }
                 for(U32 view=0;view<views;++view)
                 {
@@ -383,12 +432,21 @@ TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-g
                 // Retain denied compilation/raw fallback samples rather than
                 // assuming every dirty group became a retained cohort.
                 if(!loading&&!warmup)measured[mode][frame-loading_frames-warmup_frames]=value;
-                if(compare_pixels)for(U32 view=0;view<views;++view)pixels[mode][view]=f.read(*targets[view]);
-                std::cout<<"NATIVE_COHORT_VISIBILITY_RAW groups="<<group_count<<" visible_groups="<<visible_groups<<" sources_per_group="<<sources_per_group
+                if(compare_pixels)for(U32 view=0;view<views;++view)
+                {
+                    pixels[mode][view]=f.read(*targets[view]);
+                    if(heavier_mesh)CHECK(std::any_of(pixels[mode][view].depth.begin(),pixels[mode][view].depth.end(),[](F32 depth){return depth<1.f;}));
+                }
+                const auto& geometry=arm.geometry_prefix[visible_groups];
+                std::cout<<(heavier_mesh?"NATIVE_COHORT_VISIBILITY_MESH_RAW groups=":"NATIVE_COHORT_VISIBILITY_RAW groups=")<<group_count<<" visible_groups="<<visible_groups<<" sources_per_group="<<sources_per_group
                     <<" simple_groups="<<(group_count==1&&first_family==0?visible_groups:0)<<" legacy_groups="<<(group_count==1?(first_family==1?visible_groups:0):(visible_groups+1)/2)<<" pbr_groups="<<(group_count==1?(first_family==2?visible_groups:0):visible_groups/2)<<" views="<<views<<" queries_per_view="<<visible_groups
                     <<" first_family="<<first_family<<" condition="<<(condition==0?"cold":condition==1?"warm":"churn_1_of_16")
                     <<" requested_outside_percent="<<outside_percent<<" actual_outside_sources="<<visible_groups*actual_outside_per_group
                     <<" effective_outside_percent="<<effective_outside_percent
+                    <<" vertices_per_source="<<indices_per_source<<" indices_per_source="<<indices_per_source
+                    <<" candidate_vertices="<<geometry[0]<<" candidate_indices="<<geometry[1]
+                    <<" vertex_buffer_wrapper_extent_bytes="<<geometry[2]<<" index_buffer_wrapper_extent_bytes="<<geometry[3]
+                    <<" position_payload_bytes="<<geometry[0]*16<<" index_payload_bytes="<<geometry[1]*sizeof(U16)
                     <<" phase="<<(loading?"loading":warmup?"warmup":"measured")<<" frame="<<frame<<" mode="<<mode
                     <<" owner_cpu_ms="<<value.cpu<<" capture_adopt_encode_reclaim_ms="<<value.encode<<" completion_and_query_settle_ms="<<value.complete
                     <<" gpu_sum_ms="<<value.gpu<<" gpu_ready_commands="<<gpu_ready<<" pixel_parity_checked="<<compare_pixels
@@ -463,11 +521,16 @@ TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-g
                 totals.visibility_admitted_bytes+=value.visibility_admitted_bytes;totals.visibility_fallbacks+=value.visibility_fallbacks;
                 totals.page_hits+=value.page_hits;totals.page_builds+=value.page_builds;totals.page_failures+=value.page_failures;
             }
-            std::cout<<"NATIVE_COHORT_VISIBILITY_COST groups="<<group_count<<" sources_per_group="<<sources_per_group<<" draws_per_view="<<group_count*sources_per_group
+            const auto& geometry=arms[mode].geometry_prefix.back();
+            std::cout<<(heavier_mesh?"NATIVE_COHORT_VISIBILITY_MESH_COST groups=":"NATIVE_COHORT_VISIBILITY_COST groups=")<<group_count<<" sources_per_group="<<sources_per_group<<" draws_per_view="<<group_count*sources_per_group
                 <<" simple_groups="<<(group_count==1&&first_family==0?group_count:0)<<" legacy_groups="<<(group_count==1?(first_family==1?group_count:0):group_count/2)<<" pbr_groups="<<(group_count==1?(first_family==2?group_count:0):group_count/2)<<" views="<<views<<" queries_per_view="<<group_count
                 <<" first_family="<<first_family<<" condition="<<(condition==0?"cold":condition==1?"warm":"churn_1_of_16")
                 <<" requested_outside_percent="<<outside_percent<<" actual_outside_sources="<<group_count*actual_outside_per_group
                 <<" effective_outside_percent="<<effective_outside_percent
+                <<" vertices_per_source="<<indices_per_source<<" indices_per_source="<<indices_per_source
+                <<" vertices_per_view="<<geometry[0]<<" indices_per_view="<<geometry[1]
+                <<" vertex_buffer_wrapper_extent_bytes="<<geometry[2]<<" index_buffer_wrapper_extent_bytes="<<geometry[3]
+                <<" position_payload_bytes="<<geometry[0]*16<<" index_payload_bytes="<<geometry[1]*sizeof(U16)
                 <<" mode="<<(mode==0?"ordinary_native":mode==1?"direct_cohort":"cohort_visibility")<<" loading_frames="<<loading_frames
                 <<" warmup_frames="<<warmup_frames<<" measured_frames="<<measured_frames
                 <<" owner_cpu_median_ms="<<median(cpu)<<" owner_cpu_max_ms="<<*std::max_element(cpu.begin(),cpu.end())
@@ -490,7 +553,18 @@ TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-g
                 <<" paired_logical_frame=1 native_epoch_once_per_arm_frame=1 shared_exact_library=1 distinct_view_matrix_payloads=1 typed_identity_camera_frontier=1"
                 <<" dirty_raw_admission_before_seal=1 same_view_verified_replacement=1 cpu_and_gpu_scene_admission=1 native_visibility_metadata_count_bytes_bounded=1 synthetic_idle_budget_inputs=1"
                 <<" shared_context_counters_observed_once=1 retained_native_index_footprint_not_new_allocation=1"
-                <<" fixture_indices_per_source=3 geometry_texture_drawinfo_creation_excluded=1 loading_means_first_native_publication_not_asset_download=1 whole_viewer_fps_claim=0\n";
+                <<" fixture_indices_per_source="<<indices_per_source<<" unique_vertex_indices_per_source="<<indices_per_source
+                <<" same_local_mesh_aabb=1 repeated_three_vertex_indices=0 wrapper_extents_are_not_physical_unique_bytes=1"
+                <<" geometry_texture_drawinfo_creation_excluded=1 generation_bounds_scan_inside_capture_timer=1"
+                <<" loading_means_first_native_publication_not_asset_download=1 whole_viewer_fps_claim=0\n";
         }
     }
 }
+
+TEST_CASE("Actual retained cohort visibility includes cold warm churn and many-group costs",
+          "[almetal][.native-cohort-visibility-cost]")
+{actualRetainedCohortVisibilityCosts(false);}
+
+TEST_CASE("Actual retained cohort visibility compares unique heavier meshes through complete publication",
+          "[almetal][.native-cohort-visibility-mesh-cost]")
+{actualRetainedCohortVisibilityCosts(true);}

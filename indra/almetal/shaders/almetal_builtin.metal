@@ -7555,13 +7555,13 @@ static ALMetalWorldPBRVaryings almetal_world_source_pbr_input(
 
 vertex ALMetalWorldSourceLegacyVaryings almetal_world_material_source_rows_vertex(
     constant ALMetalWorldSourceBank& bank [[buffer(0)]],
-    constant ALMetalWorldSourceRegion* regions [[buffer(1)]],
+    const device ALMetalWorldSourceRegion* regions [[buffer(1)]],
     constant ALMetalWorldSourceGlobals& globals [[buffer(2)]],
-    constant uint* source_regions [[buffer(3)]],
+    const device uint* source_regions [[buffer(3)]],
     uint vertex_id [[vertex_id]], uint source_id [[instance_id]])
 {
     constant ALMetalWorldSourceRow& source = *bank.rows[source_id];
-    constant ALMetalWorldSourceRegion& region = regions[source_regions[source_id]];
+    const device ALMetalWorldSourceRegion& region = regions[source_regions[source_id]];
     ALMetalWorldSimpleVaryings output;
     const float4 object_position =
         float4(source.positions[vertex_id].xyz, 1.0);
@@ -7644,13 +7644,13 @@ static ALMetalWorldPBRVaryings almetal_world_pbr_source_rows_varyings(
 
 vertex ALMetalWorldSourcePBRVaryings almetal_world_pbr_source_rows_vertex(
     constant ALMetalWorldSourceBank& bank [[buffer(0)]],
-    constant ALMetalWorldSourceRegion* regions [[buffer(1)]],
+    const device ALMetalWorldSourceRegion* regions [[buffer(1)]],
     constant ALMetalWorldSourceGlobals& globals [[buffer(2)]],
-    constant uint* source_regions [[buffer(3)]],
+    const device uint* source_regions [[buffer(3)]],
     uint vertex_id [[vertex_id]], uint source_id [[instance_id]])
 {
     constant ALMetalWorldSourceRow& source = *bank.rows[source_id];
-    constant ALMetalWorldSourceRegion& region = regions[source_regions[source_id]];
+    const device ALMetalWorldSourceRegion& region = regions[source_regions[source_id]];
     constant ALMetalWorldPBRConstants& pbr =
         *(globals.flags.z != 0u ? source.pbr_hdr : source.pbr_ldr);
     const float3x3 normal_matrix = float3x3(

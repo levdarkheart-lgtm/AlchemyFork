@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-230 -->
+<!-- next-defect-id: PPD-231 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5290,6 +5290,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: PPD218 exact-row repair removes false invalidation for fitting64group cases. Source32 full-bank steady reuse is proven, but GPU mode still loses completion/query settlement23.6–105.9% versus direct cohorts across all8many-small scenarios and increases GPU time24.5–136.1%.256group cases retain real bank pressure (192builds over12measured frames, about25–26%bankdraw fraction); no claim that repairing invalidation alone makes banks worthwhile. Keep bank mode off; next investigation is useful retained per-pass publication/command granularity and stable generation admission, not larger cache limits.
 
+- 2026-11-15: Source36 six-qualifier constant-region hypothesis passes required/static/strict/all21native and unchanged3arm/many costs, but35-versus36 GPU effects vary widely without consistent advantage. Root reverts only six shader qualifiers for source37; failed performance hypothesis and exact control remain retained. No causal GPU-cache or viewer FPS claim;217 stays open.
+
 ## PPD-218 — Page-wide freshness invalidates unrelated retained cohorts
 
 - Status: investigating
@@ -5536,3 +5538,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered after first passing visibility35 gate before any dispatch/selection repair; raw logs/summary and current defaultsOFF retained. Next230.
 
 - 2026-11-15: Batched retained-cohort dispatch assigned as a bounded repair attempt; test-only heavier indexed mesh coverage assigned separately. No default activation or measured repair success yet.
+
+
+## PPD-230 — New heavy-mesh fixture can miss all target samples
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex retained visibility mesh-cost fixture
+- Discovered: 2026-11-15
+- Original reference: Geometry-cost parity must include real visible coverage; matching empty outputs cannot prove useful raster/depth correctness.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). During authoring, source review finds the new32x32 triangle grid gaps align with16px target pixel centers. The heavier helper could therefore compare empty images. No native failing run or production defect is attributed; original3-index workload remains unchanged.
+- Next action: Shift internal grid phase without changing bounds/endpoints and require non-clear depth coverage for heavier cases before accepting their parity/cost evidence. Execute the full new geometry tag after integration.
+- Verification: Source review during fixture authoring; corrected mesh and non-empty coverage assertion are authored but unexecuted.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Fixture owner reports sampling trap before freeze; root assigns230 and retains attribution separately from production PPD229. Next231.
