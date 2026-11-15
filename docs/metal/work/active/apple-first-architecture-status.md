@@ -10,8 +10,9 @@ diff evidence reuses source55's unchanged renderer checks: all28native scopes
 and11cost suites passed. The explicit recipe tag repeats three cases also in
 the cohort scope; execution totals are not unique-case totals.
 
-A separate combined checkpoint is being staged locally, with the same primary
-launcher choices as owner69085. The existing69085/69065 apps remain unchanged.
+A separate combined checkpoint is staged and statically verified locally at
+`artifacts/metal/apple-first-persistent-native-scene-20261114/architecture-checkpoint-69102`
+in the canonical workspace. Its launcher uses the same primary choices as owner69085. The existing69085/69065 apps remain unchanged.
 No new viewer launch/login/live profile or push has occurred. There is **no
 established whole-viewer FPS improvement**. The older69085 five-minute14FPS
 recording is not a controlled before/after result.
@@ -48,7 +49,8 @@ recording is not a controlled before/after result.
 
 ## Immediate next work
 
-1. Finish and record the separate69102checkpoint inventory/static verification.
+1. **Done:** separate69102checkpoint inventory/static verification,8272matching
+   nodes,346ARM64Mach-O files and exact source/signature/import/feature checks.
 2. Use a contained main→probe→probe cache-lifetime reproduction to distinguish
    same-revision metadata expiry from real producer changes and flavor extension;
    preserve caps until a measured remedy is supported.
