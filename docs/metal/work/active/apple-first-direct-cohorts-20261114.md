@@ -2206,3 +2206,37 @@ encoder cost and root-to-PoseView vertex indirection, plus actual frontend's
 repeated warm work. New queues/frameworks and shadow-only scope are unnecessary.
 The67 measured regression remains authoritative; all controls stayOFF until a
 converted path wins complete costs with preserved output/lifetime.
+
+
+## Source68 working-set gate passed; source69 implementation active
+
+83c8b70ad7 builds26.4.0.69117: required doctor/configure/build0/0/0 (37.145s),
+static66 verifier/strict audit pass; native animated3604assertions/5cases pass;
+complete cost87446/1 in2.759s plus48pair/1680row parser pass. All68 handles
+90324/63488 terminal0; no build/GPU/cost process remains. Exact reuse proof
+native-scope-reuse-66-67-68.json retains66 failed records and31 successful
+independent scopes,67 affected seven-scope passes and68 test-only changes.
+
+At64sources warm, measured native metadata256.3KiB, grossbindings801.9KiB
+oneview/930.4KiB threeviews, ICB64/192KiB, index12KiB. Stable1/3cached/live
+banks; no warm recompile or unbounded retention observed. Scopes overlap; these
+are cache ledgers, not process physical-memory totals. Cap and retirement tests
+pass, so293 is ready_for_owner; original runtime acceptance remains pending.
+
+Both67/68 reject activation: warm CPU14.6–30% higher, settlement8–25%higher
+atgroup means. New287 work in author tree is explicitly bounded: separate
+full-count retained commands from GPU visibility (mode-qualified banks prevent
+reuse of GPU-culled args), omit unused compute setup when modeOFF, and move
+owned GPU-view vectors instead of copying again while preserving public-span
+snapshot/callback safety. No shader/root lookup rewrite: existing VS already
+binds PoseView directly. Architecture agent peers; residency owns only two test
+appendices/mode-aware cost parser. Root owns pipeline.cpp/settings integration.
+
+Root currently has unbuilt69 wiring for Scene.animated_gpu_visibility and
+ALMetalWorldAnimatedStats.visibility_dispatches plusOFF/Persist0
+RenderMetalAnimatedGpuVisibility. Backend header fields have not been copied
+yet, so do not build root until all author freezes arrive. Next: integrate
+reviewed backend/test files, source69 required/static/strict, mode-switch/pending
+parity and actual48costs for computeOFF thenON, preserving direct baseline and
+source68 memory fields. Controls remainOFF; combined staging still pending.
+No viewer launch/login/live profile or push; owner69085/69065/staged69102 intact.

@@ -6801,6 +6801,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 observed verification: Source67/17ce73c68c builds69116 (805.967s), static/strict and all affected correctness pass: common5867/46, animated native3434/4, actual publisher23280/80, shadow98414/14, source admission2460/10, maintenance843/18, pressure174/23. Actual48-condition animated cost77438/1 passes output/query assertions but regresses warm owner CPU about18–30% and settlement8–25% at group means; cold/churn is worse. Exact1680raw/96summary rows retained. Arena bytes are lower, not a total-memory or speedup proof. Keep animated controlOFF and investigate concrete warm overhead; do not declare G4 performance accepted.
 
 
+- 2026-11-15 observed verification: Source68/83c8b70ad7 required/static/strict pass69117 (37.145s); five animated native cases3604assertions pass, including numeric caps and pending retirement. Complete48-condition cost87446/1 passes with new working-set census; warm group CPU14.60–26.07% and settlement9.34–22.92% worse. Native source metadata/ICB caches are stable and bounded, not repeatedly recompiling geometry on warm hits. Next bounded experiment separates retained full-count commands from optional GPU visibility (separate cache mode prevents reuse of GPU-culled args) and removes redundant owned-view vector copying. Existing direct per-draw PoseView vertex binding already exists; do not invent a root-lookup shader repair.
+
+
 ## PPD-288 — New animated-source fixtures use invalid API and coverage assumptions
 
 - Status: ready_for_owner
@@ -6923,7 +6926,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-293 — Animated cost evidence omits retained cache footprints and numeric cap coverage
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / animated validation authors
 - Discovered: 2026-11-15
@@ -6937,3 +6940,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 missing working-set evidence registered before validation-only logging/coverage additions. Keep the first67 timing attempt and all prior receipts; do not add runtime policy or increase caps for this harness gap.
+
+- 2026-11-15 observed verification: Source68/83c8b70ad7 required/static/strict and new native five-case suite3604/5 passes; tiny metadata/asset/ICB caps, required raw fallback control and actual pending byte/credit retirement all execute positively. Actual48-condition cost87446/1 and parser48pairs/1680raw rows passes. At64sources warm: page metadata256.3KiB; gross binding801.9KiB(one view)/930.4KiB(three); ICB64/192KiB; index12KiB. These scopes overlap and are not total physical RAM. All explicit cap assertions pass; actual physical process-memory behavior/owner acceptance remains pending.
