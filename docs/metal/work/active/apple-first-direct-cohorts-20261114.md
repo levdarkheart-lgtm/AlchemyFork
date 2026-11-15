@@ -2448,3 +2448,26 @@ acceptance and product release gates remain open; originalgoal active for those
 outcomes. No more speculative cold tuning or shadow-only phase is prerequisite.
 No launch/login/liveprofile/push; old owner apps/canonical tracked files and
 staged69102 unchanged. PPD287 remains open for original acceptance.
+
+
+### Post-delivery acceptance dependency audit
+
+Previous goal turn made concrete progress: source72 full regression/cost selection
+and verified immutable69122 delivery. Current continuation re-read original
+PERFORMANCE/VALIDATION/route requirements and exact candidate receipts. No further
+mandatory safe implementation/staging artifact was identified without runtime
+evaluation. Optional [owner run card](apple-first-owner-evaluation-69122.md) now
+pins69122 and previous native69085 executable/source hashes and distinguishes
+architecture comparison from the original-Alchemy product reference. New ignored
+evaluation-preflight-69122.json hashes full34/cost/static inputs; both current
+executables match receipts. No viewer/xctrace process observed; no launch/profile.
+PPD287 current next-action/verification now reflects implemented-but-unaccepted
+capability; history retained. No proposed fix or code change was made.
+
+Remaining dependency: owner combined runtime evidence or subsequent explicit
+launch/profile authorization. Product/whole-engine performance/feature/stability
+gates remain open. This is the first post-delivery dependency audit, not three
+consecutive blocked turns; goal remains active. Do not rerun successful builds/
+tests or add speculative implementations solely to fill this wait.
+
+Documentation check initially rejected one added recovery line in CURRENT/metal-port (160/180-line limits). Removed the added lines and folded the run-card pointer into the current summaries before revalidation; no code/app change.

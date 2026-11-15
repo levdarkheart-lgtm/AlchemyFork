@@ -64,3 +64,6 @@ nodes match the built source app, executableSHA256
 Staged static verification and SHA256SUMS recheck pass. The app and launcher were
 not executed. Evidence root is the canonical checkout’s ignored
 `artifacts/metal/apple-first-persistent-native-scene-20261114/` directory.
+
+[Owner run card](apple-first-owner-evaluation-69122.md) pins69122 and the previous
+native69085 trial, settings/workload context and outstanding whole-engine evidence.

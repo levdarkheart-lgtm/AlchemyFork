@@ -6776,8 +6776,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Original Goal4 explicitly extends persistent geometry/material tables and GPU visibility/compaction to rigged and masked surfaces. Current static source eligibility rejects skin/weight inputs; shadow rigged ICB preparation still rebuilds per-view draw/constants and visibility arrays.
 - Evidence: [Original route](research/apple-first-implementation-route.md), [execution ledger](work/active/apple-first-direct-cohorts-20261114.md), completion inventory at5258c8bf85.
-- Next action: Implement retained animated native source descriptors with late pose/view inputs and conservative current-pose visibility, preserve query/order/coverage semantics and native completion ownership, then gate actual small-run complete costs.
-- Verification: Static Legacy/PBR cohorts/pages/banks and masked paths exist; producer geometry/material/pose ownership and frame admission exist. Rigged world cohort/page qualifiers still reject weight_offset/skin records; source bounds decline animated vertices. This is an unfinished original architecture capability, not a new rendering regression or FPS attribution.
+- Next action: Owner evaluation of the separately verified69122 combined candidate; preserve optional animated modes OFF after nearparity/regressing complete costs. Follow the [run card](work/active/apple-first-owner-evaluation-69122.md). Runtime performance, feature and stability acceptance remain pending.
+- Verification: Discovery described a missing regular-rigged native consumer. It is now implemented via separate animated sources with late pose/view data and conservative visibility; source72 full34 renderer scopes and four cost frontiers pass correctness/accounting checks. GPU completion costs regress and direct costs remain nearparity, so optional modes are disabled. Combined69122 staging is verified; original whole-viewer acceptance is unproved. Historical discovery and failed attempts remain below.
 - Owner verification: pending
 - Push approval: not_granted
 
