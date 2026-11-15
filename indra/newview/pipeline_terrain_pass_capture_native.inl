@@ -13,6 +13,11 @@
 // the native record; exact producer/view snapshots only qualify owner reuse.
 struct ALMetalWorldTerrainPassCapture
 {
+    // M1 Max complete-path comparison: 1/2/4 patches added CPU setup,
+    // while 16/64/256 improved CPU and settlement in both terrain families.
+    // Small passes keep their existing raw native construction.
+    static constexpr bool shouldShare(std::size_t patch_count) noexcept
+    { return patch_count >= 16; }
     std::shared_ptr<const ALMetalWorldTerrainPass> publication;
     ALNativeRegionModel::Snapshot region;
     std::array<float,16> view{},projection{};
