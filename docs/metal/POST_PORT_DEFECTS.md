@@ -5827,6 +5827,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15 zero-job source audit confirms production8192-per-family threshold, distinct from backend256; actual666/1158 maxima explain zero eligibility rather than shared-budget denial. World workers are separatelyOFF and excludecohort/animated inputs. Both detached mechanisms were unexercised; no broken callsite proved. Investigate bounded within-view small-family coalescing with complete copy/job/join costs, retaining old small-family losses.
 
+- 2026-11-15 Before an aggregate-preparation prototype: register a contained current-scalar vs aggregate-serial vs aggregate-Dispatch comparison with mixed small families at the observed423–867 mean-view scale. It must include source/pose acquisition, snapshots, output allocation, ordered family barriers/admission, scratch and owner retirement; preserve opaque/query/masked/pool boundaries. This is not a threshold change or a claim of actual segment-size distribution. Existing per-family2048/256 losses remain.
+
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
 - Status: investigating
