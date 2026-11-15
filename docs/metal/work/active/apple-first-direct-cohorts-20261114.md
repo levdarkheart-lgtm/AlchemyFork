@@ -859,3 +859,5 @@ GPU speedup is inferred. Query boundaries can still require Gexecute ranges,
 and existing source-row shader indirection/GPU cost remains a separate limit.
 The original goal stays active; the source32 cache repair is one concrete
 completed engineering step, not a replacement definition of the architecture.
+
+Pre-freeze retained-visibility review finds PPD219: bounds-only optional promotion can reject a valid current-reader transient after child-cache withdrawal. Registered before extending only the exact transient fallback guard; revision/newer replacement and195/205 protections remain required. Implementation/native execution pending; next220.

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-219 -->
+<!-- next-defect-id: PPD-220 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5310,3 +5310,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: PPD218 source freeze replaces page stamps with exact row reverse dependencies owned by stable cache entries. Node arrays are staged before fallible cache insertion/asset accounting and charged in existing metadata cap; warm qualification is constant time. Two focused native cases and stricter64group measured cost assertions authored. Root/independent lifetime reviews pass; required32/native/cost execution pending.
 
 - 2026-11-15: Required32 doctor/configure/build exit0, build34.304s; static69067 and strict3587files/0blockers/0errors pass. Native20processes pass, including pages3644/17, banks3348/9, actualproducer12397/53 and source-admission1874/6. Corrected3arm cost140840/1 and many-small1872424/1 pass. All four64group measured scenarios have fullbank use and zero page/bank rebuilds/denials/fallback.64x2x1 cost CPU0.766479ms before to0.187416ms after, nativebankdraws492/1536 to1536/1536. Owner preview69065 remains untouched. PPD217 stays open for remaining GPU-time/true pressure costs; no unconditional activation or owner verification inferred.
+
+
+## PPD-219 — Optional bounds promotion rejects a valid withdrawn transient source
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex retained visibility publication
+- Discovered: 2026-11-15
+- Original reference: Optional GPU preparation must preserve required ordinary native rendering over an exact immutable reader-held generation after cache-only withdrawal. PPD195/205 source-identity, revision and replacement guards remain required.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). In the unbuilt retained-visibility worktree, raw NativeVisibility requests a non-key bounds capability. world() can find an ordinary variant retained by the current reader, while its optional-promotion original_current still requires the child's State.publication()==that payload. Cache-only withdrawal removes that publisher but not the exact reader lease, causing an empty required source instead of fail-visible ordinary rendering. The earlier transient guard excludes this newly introduced bounds-only native-material request. This is source-confirmed in new code; no observed viewer regression or executed test result is claimed.
+- Next action: Extend the exact authored-transient fallback guard only for optional bounds. Preserve no resources/cohort-source promotion, no child-cache resurrection, exact identity/revision/transient owner, and newer-payload rejection. Add actual-owner withdrawn-reader bounds fallback plus revision/newer replacement controls before build.
+- Verification: Registered before repair; source review only. Existing PPD195/205 tests/guards must remain and execute with the new capability.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Architecture source owner reports this concrete pre-freeze defect before repair in codex/apple-first-retained-cohort-visibility. Root allocates219; next220. Owner69065 app and tested source32 remain unchanged.
