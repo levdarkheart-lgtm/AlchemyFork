@@ -40,12 +40,13 @@ struct ALNativeFrameBudget::State
     struct ScenePending
     {
         Frame oldest = 0;
+        Frame order = 0;
         std::uint64_t bytes = 0;
     };
     struct SceneHistory
     {
         std::optional<ScenePending> previous_denial, current_denial;
-        std::optional<Frame> last_service, serviced_oldest;
+        std::optional<Frame> last_service, serviced_order;
     };
     std::array<SceneHistory, 2> scene_history;
 
@@ -60,16 +61,18 @@ struct ALNativeFrameBudget::State
             stats.scene_bytes_in_flight <= limits.scene_bytes_in_flight - bytes &&
             (bytes <= limits.scene_bytes_per_frame || stats.scene_publications_in_flight == 0);
     }
-    void sceneDenied(std::size_t kind, std::uint64_t bytes, Frame oldest) noexcept
+    void sceneDenied(std::size_t kind, std::uint64_t bytes, Frame oldest, Frame order) noexcept
     {
-        if (oldest > stats.frame || !sceneCanWait(bytes)) return;
+        if (oldest > stats.frame || order > stats.frame || !sceneCanWait(bytes)) return;
         // A duplicate after this age bucket already received today's credit
         // must not create a phantom older reservation for the following frame.
         const auto& history = scene_history[kind];
-        if (history.last_service == stats.frame && history.serviced_oldest == oldest) return;
+        if (history.last_service == stats.frame && history.serviced_order == order) return;
         auto& pending = scene_history[kind].current_denial;
-        if (!pending || oldest < pending->oldest || (oldest == pending->oldest && bytes < pending->bytes))
-            pending = ScenePending{oldest, bytes};
+        if (!pending || order < pending->order ||
+            (order == pending->order && (oldest < pending->oldest ||
+                (oldest == pending->oldest && bytes < pending->bytes))))
+            pending = ScenePending{oldest, order, bytes};
     }
     std::optional<ScenePending> sceneWaiting(std::size_t kind) const noexcept
     {
@@ -78,22 +81,24 @@ struct ALNativeFrameBudget::State
         {
             if (!pending || pending->oldest > stats.frame ||
                 stats.frame - pending->oldest < limits.maximum_deferral_frames || !sceneCanWait(pending->bytes)) continue;
-            if (!oldest || pending->oldest < oldest->oldest ||
-                (pending->oldest == oldest->oldest && pending->bytes < oldest->bytes)) oldest = pending;
+            if (!oldest || pending->order < oldest->order ||
+                (pending->order == oldest->order && (pending->oldest < oldest->oldest ||
+                    (pending->oldest == oldest->oldest && pending->bytes < oldest->bytes)))) oldest = pending;
         }
         return oldest;
     }
-    bool sceneTurn(std::size_t kind, Frame oldest) const noexcept
+    bool sceneTurn(std::size_t kind, Frame order) const noexcept
     {
         // Within a phase, a newer earlier callback cannot overtake an older
         // recently denied Pages/Commands request. An absent old request can
         // cost at most one frame because only fresh denials renew the hint.
-        if (const auto same = sceneWaiting(kind); same && same->oldest < oldest) return false;
+        if (order > stats.frame) return false;
+        if (const auto same = sceneWaiting(kind); same && same->order < order) return false;
         const auto other_kind = 1 - kind;
         const auto other = sceneWaiting(other_kind);
         if (!other) return true;
-        const auto mine = std::max(oldest, scene_history[kind].last_service.value_or(0));
-        const auto theirs = std::max(other->oldest, scene_history[other_kind].last_service.value_or(0));
+        const auto mine = std::max(order, scene_history[kind].last_service.value_or(0));
+        const auto theirs = std::max(other->order, scene_history[other_kind].last_service.value_or(0));
         // Stable ties prefer metadata. After a grant its service frame makes
         // the other pending phase older, even if thousands of new CPU owners
         // all carry the same original dirty age.
@@ -165,8 +170,12 @@ ALNativeFrameBudget::Decision ALNativeCohortCompilationAdmission::tryAcquire(
         // main/probe traversal must not spend every busy progress turn on the
         // same already-served owner. Sorted cohorts and unsorted per-source
         // publications use the same existing service-adjusted priority.
-        logical_bytes, priority(0).unserved_since,
-        ALNativeFrameBudget::ScenePublicationKind::cohort_compilation);
+        // Original dirty age remains eligible after service. Reusing the
+        // ordering rank as that age would add another full deferral interval
+        // after each failed publication, even with no other useful waiter.
+        logical_bytes, *mPendingSince,
+        ALNativeFrameBudget::ScenePublicationKind::cohort_compilation,
+        priority(0).unserved_since);
     if (decision) mLastAdmitted = frame;
     return decision;
 }
@@ -266,7 +275,8 @@ ALNativeFrameBudget::Credit::~Credit()
 }
 
 ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
-    Work work, std::uint64_t bytes, Frame oldest_frame, ScenePublicationKind scene_kind)
+    Work work, std::uint64_t bytes, Frame oldest_frame, ScenePublicationKind scene_kind,
+    std::optional<Frame> service_order)
 {
     std::lock_guard lock(mState->mutex);
     auto& state = *mState;
@@ -274,12 +284,13 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
     const auto& limits = state.limits;
     const bool aged = stats.frame >= oldest_frame &&
         stats.frame - oldest_frame >= limits.maximum_deferral_frames;
+    const auto order_frame = service_order.value_or(oldest_frame);
     Reason reason = Reason::admitted;
     const auto kind = static_cast<std::size_t>(scene_kind);
     const auto deny = [&](Reason why) -> Decision
     {
         if (work == Work::scene_publication && !stats.draining && kind < state.scene_history.size())
-            state.sceneDenied(kind, bytes, oldest_frame);
+            state.sceneDenied(kind, bytes, oldest_frame, order_frame);
         ++stats.deferred;
         return {{}, why};
     };
@@ -339,7 +350,7 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
         // dirty batch does not add publication work to an already busy frame.
         if (stats.main_busy || stats.memory_pressure)
         {
-            if (!aged || stats.scene_publications_this_frame != 0 || !state.sceneTurn(kind, oldest_frame))
+            if (!aged || stats.scene_publications_this_frame != 0 || !state.sceneTurn(kind, order_frame))
                 return deny(stats.memory_pressure ? Reason::memory_pressure : Reason::frame_work);
             reason = Reason::progress;
         }
@@ -430,8 +441,8 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
         stats.scene_bytes_this_frame += bytes;
         if (bytes > limits.scene_bytes_per_frame) state.oversized_scene_in_flight = true;
         auto& history = state.scene_history[kind];
-        history.last_service = stats.frame;history.serviced_oldest = oldest_frame;
-        if (history.current_denial && history.current_denial->oldest == oldest_frame)
+        history.last_service = stats.frame;history.serviced_order = order_frame;
+        if (history.current_denial && history.current_denial->order == order_frame)
             history.current_denial.reset();
     }
     else

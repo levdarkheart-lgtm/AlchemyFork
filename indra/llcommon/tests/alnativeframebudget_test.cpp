@@ -912,6 +912,42 @@ TEST_CASE("Unsorted failed CPU publications cannot monopolize busy progress ahea
     }
 }
 
+TEST_CASE("Recent publication service orders aged work without restarting its deferral wait",
+          "[native-frame-budget][cohort-compilation][PPD-290]")
+{
+    for(bool pressure:{false,true})
+    {
+        CAPTURE(pressure);Budget budget(smallScene());ALNativeCohortCompilationAdmission owner;
+        owner.notePending(0);
+        // No other eligible phase or owner waits. A failed publication keeps
+        // its genuine dirty age and can make one bounded attempt each frame.
+        for(Budget::Frame id=10;id<=12;++id)
+        {
+            auto input=frame(id);if(pressure)input.os_available_bytes=0;else input.required_main_cpu_ns=45'000'000;
+            budget.beginFrame(input);
+            {auto attempt=owner.tryAcquire(budget,8);REQUIRE(attempt);CHECK(attempt.reason==Budget::Reason::progress);}
+            CHECK(owner.pendingSince()==0);CHECK(owner.lastAdmittedFrame()==id);
+            CHECK(budget.snapshot().scene_publications_this_frame==1);
+            CHECK(budget.snapshot().scene_publications_in_flight==0);
+            CHECK_FALSE(owner.tryAcquire(budget,8));
+        }
+
+        Budget split(smallScene());auto input=frame(20);
+        if(pressure)input.os_available_bytes=0;else input.required_main_cpu_ns=45'000'000;
+        split.beginFrame(input);
+        // An old ordering rank cannot age fresh work. Conversely, a recent
+        // rank cannot make genuinely old work young (the failed66 repair).
+        CHECK_FALSE(split.tryAcquire(Budget::Work::scene_publication,8,20,
+            Budget::ScenePublicationKind::cohort_compilation,0));
+        {auto aged=split.tryAcquire(Budget::Work::scene_publication,8,0,
+            Budget::ScenePublicationKind::cohort_compilation,20);REQUIRE(aged);}
+        CHECK(split.snapshot().scene_publications_this_frame==1);
+        CHECK(split.snapshot().scene_bytes_this_frame==8);
+        CHECK(split.snapshot().scene_publications_in_flight==0);
+        CHECK(split.snapshot().scene_bytes_in_flight==0);
+    }
+}
+
 TEST_CASE("Oversize maintenance is exclusive and checked debt retires without a frame tick",
           "[native-frame-budget][native-maintenance][PPD-277]")
 {

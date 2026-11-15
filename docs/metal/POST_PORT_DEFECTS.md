@@ -6828,6 +6828,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 pre-execution native fixture review finds replacing FrameData on an already-used renderer does not reset its cached source context, making the intended cold-denial callback vacuous. Register before creating a fresh library/renderer with the fresh FrameData before first source use. Preserve denial assertions; no production setter change or runtime incident inferred.
 
+- 2026-11-15 integrated66 native animated suite1340/1341 assertions,3/4 cases passes under API/GPU validation. Mixed-format case fails only raw reference required-positive query at family1/opaque/format4 (reverse-Z): expected.queries.front()==0, before optimized comparison. Register before tracing query convention and fixture repair; production animated rendering failure not established. Preserve positive coverage/parity and prior failed receipt.
+
 ## PPD-289 — Optional animated promotion can reject a required reader after cache withdrawal
 
 - Status: investigating
@@ -6863,6 +6865,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 registered before common policy repair; reuse existing state/fairness, no new queue, cap or requester/resource retention.
 
+
+- 2026-11-15 integrated66/a2fc865fe8 doctor/configure/build0/0/0 (177.166s), static native and strict source pass69115. Frame budget suite5751/5753 assertions,43/45 cases passes; existing vanished-phase recovery and active-byte-capacity hint cases fail recovered/fits assertions. The new unsorted fairness case passes. Register this failed repair attempt before tracing service-adjusted pending-age interaction with phase hints. Preserve both existing recovery assertions/caps; no GPU66 or cost66 result yet.
+
+- 2026-11-15 source diagnosis of66 failures: the290 repair passes service-adjusted age as both fairness rank and maximum-deferral eligibility, restarting genuine waiting age after each grant. Repair must keep original pending age for eligibility and separate service-adjusted age only for ordering hints. Register this narrow API/header split before implementation; retain original recovery/capacity and new fixed-order fairness assertions, no quota/cap changes.
+
+- 2026-11-15 independent66 actual publisher23045/23046 assertions,79/80 cases passes; both new animated actual-producer cases pass. Existing cold-cohort recovery at frame10 fails compile(owners[0]) (line2612), consistent with290 genuine-deferral-age reset. Add to repair retest scope; no new GPU output fault inferred.
 
 ## PPD-291 — Subnormal packed weights can invalidate cold animated bone bounds
 

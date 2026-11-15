@@ -136,8 +136,11 @@ public:
     // frame opportunity; no requester, resource, job or credit is retained.
     // Existing callbacks default to native metadata. Idle quotas are shared
     // exactly as before, independently of this pressure-only service order.
+    // Optional service_order changes only ordering between already-aged
+    // requests. It never replaces the genuine dirty age used for progress.
     Decision tryAcquire(Work, std::uint64_t logical_bytes = 0, Frame oldest_frame = 0,
-                        ScenePublicationKind = ScenePublicationKind::native_metadata);
+                        ScenePublicationKind = ScenePublicationKind::native_metadata,
+                        std::optional<Frame> service_order = std::nullopt);
     // Downstream debt constrains additional starts; active jobs and responders
     // are never cancelled. At least the established decoder minimum survives.
     unsigned decodeCeiling(unsigned minimum, unsigned current, unsigned maximum) const;

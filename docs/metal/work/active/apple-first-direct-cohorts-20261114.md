@@ -2129,3 +2129,38 @@ peer confirms native-only command ownership and idle-only weak proof retirement;
 shader ABI/vertex math and exact final fixture deltas reviewed. This is source
 review only: first integrated build66 and execution still required. No runtime
 correctness or speedup claim for G4. No viewer/profile/push.
+
+
+## First integrated G4 build66 and bounded recovery repairs
+
+Exact a2fc865fe8 builds26.4.0.69115: doctor/configure/build0/0/0 (177.166s),
+static66 native bundle verification and strict source audit pass. Initial
+frame-budget suite43/45 cases passes; two existing recovery/capacity assertions
+fail after290 reused service rank as genuine deferral age. Independent actual
+publisher79/80 cases (23045/23046 assertions) passes, including both new animated
+producer cases; its sole failure is the same aged cold-cohort recovery.
+
+New animated native suite3/4 cases,1340/1341 assertions passes. Mixed-format raw
+reference query at reverse-Z format4 returns0 before optimized comparison.
+PPD288 fixture repair only reflects negative-world query Z into native[0,w],
+keeping attachment transforms, all eight formats and positive query assertions.
+
+All31 remaining native scopes pass66, including old shader libraries, source
+pages/commands, geometry/material/resource ownership, shadow preparation, body
+shadow parity, lighting/probe/terrain, CPU visibility/oracle, maintenance and
+pressure. Exact counts/commands/hashes: native-correctness-66-rest.json.
+Handles90970/41982/78497/21207/88429 are terminal; failure receipts retained.
+No performance66 run occurred, because correctness did not pass.
+
+Repair67 separates genuine pending age (progress eligibility) from recent
+service rank (ordering only), retaining quotas and all failed old assertions.
+Only common budget header/implementation/tests and new animated query fixture
+change production/test source. Next run67 required/static/strict, common policy,
+actual publisher, new animated native suite and admission/shadow/maintenance/
+pressure checks; unchanged renderer parity reuses66 with an exact diff proof.
+Then run48-condition animated actual-caller costs with validation disabled.
+Original Goals1–5 were independently checked against actual callsites: no
+further explicit implementation gap identified beyond validating/selecting G4
+and delivering the combined candidate. New retained animated shadow submission
+is not claimed; current native shadow producer sharing and rigged/mask indirect
+paths remain. Owner performance/feature/stability acceptance remains partial.

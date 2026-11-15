@@ -27,12 +27,16 @@ std::shared_ptr<const ALMetalAttachmentPaletteRecord> palette(float translation,
     auto record=ALMetalAttachmentPaletteRecord::create(values.data(),values.size(),2,&error);
     INFO(error);REQUIRE(record);return record;
 }
-std::vector<ALMetalWorldVisibilityQuery> queries(unsigned count)
+std::vector<ALMetalWorldVisibilityQuery> queries(unsigned count,bool reverse_z=false)
 {
     std::vector<ALMetalWorldVisibilityQuery> result(3);
     for(unsigned at=0;at<result.size();++at)
     {
         auto& query=result[at];identity(query.modelview_projection);query.center[0]=.5f;query.center[1]=-.5f;query.center[2]=-.75f;
+        // PPD-288/281: reverse-Z query geometry consumes native [0,w]
+        // depth. Reflect this negative-world-Z box into that valid range;
+        // the rendered attachment matrices and all eight formats stay intact.
+        query.modelview_projection[10]=reverse_z?-1.f:1.f;
         query.half_extent[0]=query.half_extent[1]=.08f;query.half_extent[2]=.0625f;
         query.batch_offset=at==0?0:at==1?count/2:count;query.fan=7;query.count_samples=1;
     }
@@ -127,7 +131,7 @@ Output render(RiggedFixture& f,ALMetalWorldGBufferScene scene,std::vector<ALMeta
     std::vector<ALMetalWorldSourceReference> references={},std::shared_ptr<const CpuOwners> owners={},
     std::vector<ALMetalWorldDrawIndex> order={})
 {
-    const auto count=batches.size()+references.size();auto q=queries(count);
+    const auto count=batches.size()+references.size();auto q=queries(count,scene.reverse_z);
     if(!references.empty() && order.empty())for(unsigned at=0;at<references.size();++at)order.push_back(alMetalWorldDrawReferenceBit|at);
     auto input=ALMetalWorldViewInputs::adopt(scene,std::move(batches),std::move(references),std::move(order),
         std::move(q),std::move(owners),f.resources,1,&f.error);INFO(f.error);REQUIRE(input);
