@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-238 -->
+<!-- next-defect-id: PPD-239 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5710,3 +5710,23 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Root registers before narrowly unfreezing Commands implementation/native fixture. Next238.
 
 - 2026-11-15: Generic inherited entry guard now rejects direct frames before staging/admission. Test supplies matching nonempty certified descriptors, checks callback0/unchanged cache/native/copy debt then proper cohort Legacy/PBR output/query recovery. Source40 execution pending.
+
+
+## PPD-238 — New slot-pressure fixture exceeds the Metal command-queue capacity
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex direct-slot native fixture
+- Discovered: 2026-11-15
+- Original reference: almetaldevice.mm creates its queue with max64 non-completed command buffers; the installed MTLDevice.h documents that upper bound. Slot pressure can involve many view occurrences on one command and must not require more queue buffers than the device permits.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Before first source40 native run, root review finds the new128slot test creates128uncommitted native command buffers plus denial/blocker commands. Queue construction explicitly caps64; the fixture can block before testing slots. No hung process or runtime viewer incident occurred.
+- Next action: Keep128slot pressure but use only a few native commands: separate abandon/GPU-gated commands for the first two views, and one shared uncommitted command retaining the remaining126distinct view-slot readers. Preserve full-cap denial, CPU-borrowed protection, actual GPU completion and slot-reuse assertions. Do not raise production queue or slot limits.
+- Verification: Source/installed SDK confirmation before any native execution; fixture repair pending. Source40 build may finish but this fixture must not run until corrected.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered during source40 build after root queue-cap review. Unfreeze only existing source-pages native test; no production change. Next239.
+
+- 2026-11-15: Fixture-only repair uses3commands for128view slots plusdenial/blocker(total5), preserving all128cap/borrowedCPUreader/actualGPUcompletion/exactstorage-reuse/no-allocation assertions. Production queue64 and slot128 unchanged. No native test or hang occurred for40; full41execution follows.

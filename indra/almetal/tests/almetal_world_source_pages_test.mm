@@ -1263,13 +1263,18 @@ TEST_CASE("almetal: direct cohort fixed-slot pressure protects uncommitted and G
     @autoreleasepool
     {
         CohortPageFixture f;auto pages=f.pages();auto cohort=f.cohortView();
-        std::vector<std::unique_ptr<ALMetalCommandBuffer>> commands;
+        // The actual queue admits at most 64 noncompleted commands. Exercise
+        // 128 distinct view occurrences with only 3 commands, not 128 queued
+        // buffers that would block before the fixed-slot cap is reached.
+        std::array<std::unique_ptr<ALMetalCommandBuffer>,3> commands;
+        for(auto& command:commands)
+        {command=f.device->makeCommandBuffer("Retain independent fixed-address view occurrences",&f.error);REQUIRE(command);}
         std::vector<std::shared_ptr<const ALMetalWorldSourceFrameView>> frames;
         for(unsigned index=0;index<128;++index)
         {
-            auto command=f.device->makeCommandBuffer("Live fixed-address direct slot",&f.error);REQUIRE(command);
+            auto& command=commands[index<2?index:2];
             auto frame=pages->freezeCohortsForCommand(*command,std::span(&cohort,1),f.globals,&f.error,nullptr,true);INFO(f.error);REQUIRE(frame);
-            REQUIRE(command->retainUntilCompletion(frame,&f.error));commands.push_back(std::move(command));frames.push_back(std::move(frame));
+            REQUIRE(command->retainUntilCompletion(frame,&f.error));frames.push_back(std::move(frame));
         }
         const auto full=pages->stats();CHECK(full.live_direct_slots==128);CHECK(full.direct_policy_bytes==2*96);
         auto denied=f.device->makeCommandBuffer("Direct slot pressure has required fallback",&f.error);REQUIRE(denied);

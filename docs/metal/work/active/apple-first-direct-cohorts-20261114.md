@@ -1282,3 +1282,20 @@ parser are authored, not executed. Next required40/build/static/strict/all21
 native scopes, oldcontrols and bothnew4arm cost matrices; preserve failures.
 Source39app69080/owner69065preview remain untouched until required integration;
 no viewer launch/login/profile/push and no full-goal acceptance occurred.
+
+PPD238 prevents an unexecuted fixture hang: new128slot pressure used128native
+uncommitted commands, exceeding actualqueue64. Source40build mayfinish; do not
+run that native scope. Rework onlyfixture to128view occurrences on3commands
+plusdenial/blocker, preserving all slot/abandon/GPU protections andqueue limits.
+
+
+Required40 at0a6daddaac passes doctor/configure/build170.429s. Independent
+final backend review passes role accounting/caps/slot lifetime/Gwarm/bindings
+and explicit admission; no source blocker found. Before native execution,
+PPD238queue-cap fixture flaw is confirmed against actualqueue64 and installed
+SDK. No40native scope is run; no timeout/hung process or native success claimed.
+Source41 changes only that pressure fixture and docs:128view occurrences use
+3command origins plusdenial/blocker, not128uncommitted buffers. Reusing storage
+with a CPU reader still fails; actualGPU pending reader and exactslot recovery
+remain asserted. Required41/native/static/strict/new4arm+oldcontrols follow.
+No source40performance measurement exists yet. Original goal remainsACTIVE.
