@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 #include "almetalworldsourcepages.h"
+#include "almetalworldanimated.h"
 #include "almetalworldprepare.h"
 #include "almetalworldcohort.h"
 #import <Foundation/Foundation.h>
@@ -253,6 +254,30 @@ struct CohortBinding
 };
 }
 
+struct ALMetalWorldAnimatedGpuSource::Impl
+{
+    std::weak_ptr<const ALMetalWorldAnimatedSource> source;
+    std::weak_ptr<const void> native;
+    const void* native_pointer=nullptr;
+    std::shared_ptr<ALMetalWorldResources> resources;
+    ALMetalWorldAnimatedNativeBinding binding;
+    std::shared_ptr<Buffer> policy,bones;
+    std::shared_ptr<const ALMetalWorldResourceTable> table;
+    std::vector<ALMetalWorldSourceNativeFootprint> assets;
+};
+ALMetalWorldAnimatedGpuSource::ALMetalWorldAnimatedGpuSource(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
+ALMetalWorldAnimatedGpuSource::~ALMetalWorldAnimatedGpuSource()=default;
+bool ALMetalWorldAnimatedGpuSource::currentGeneration()const noexcept
+{return !mImpl->source.expired()&&!mImpl->native.expired();}
+bool ALMetalWorldAnimatedGpuSource::matchesNativeLease(const std::shared_ptr<const void>& native)const noexcept
+{return native && native.get()==mImpl->native_pointer && !mImpl->native.owner_before(native) && !native.owner_before(mImpl->native);}
+bool ALMetalWorldAnimatedGpuSource::declareResources(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,std::string* error)const
+{return mImpl->resources->declareResources(encoder,command,mImpl->table,error);}
+
+const ALMetalWorldAnimatedNativeBinding& ALMetalWorldAnimatedGpuSource::binding()const noexcept{return mImpl->binding;}
+std::shared_ptr<const ALMetalWorldResourceTable> ALMetalWorldAnimatedGpuSource::table()const noexcept{return mImpl->table;}
+std::span<const ALMetalWorldSourceNativeFootprint> ALMetalWorldAnimatedGpuSource::assets()const noexcept{return mImpl->assets;}
+
 struct ALMetalWorldSourceFrameView::Impl
 {
     struct CommandSource
@@ -472,11 +497,36 @@ struct ALMetalWorldSourcePages::Impl
     struct AssetRef {std::uint64_t bytes;std::size_t references=0;bool staged=false;};
     std::unordered_map<void*,AssetRef> cohort_assets;
     std::uint64_t cohort_asset_bytes=0;
+    bool animated_preparing=false;
+    struct AnimatedEntry
+    {
+        std::weak_ptr<const ALMetalWorldAnimatedSource> source;
+        std::weak_ptr<const void> native;
+        std::shared_ptr<const ALMetalWorldAnimatedGpuSource> gpu;
+    };
+    std::unordered_map<const ALMetalWorldAnimatedSource*,AnimatedEntry> animated;
     ALMetalWorldSourcePageStats statistics;
     std::uint64_t serial=0;
     bool supported=false,force_failure=false,force_cache_failure=false;
     std::shared_ptr<ALMetalWorldSourcePages::PublicationAdmission> admission;
     std::uint64_t epoch=0;
+
+    void eraseAnimated(std::unordered_map<const ALMetalWorldAnimatedSource*,AnimatedEntry>::iterator entry)noexcept
+    {
+        for(const auto& asset:entry->second.gpu->assets())
+        {
+            const auto found=cohort_assets.find(asset.allocation);
+            if(found!=cohort_assets.end() && --found->second.references==0)
+            {cohort_asset_bytes-=found->second.bytes;if(!found->second.staged)cohort_assets.erase(found);}
+        }
+        animated.erase(entry);
+    }
+    void pruneAnimated()noexcept
+    {
+        for(auto it=animated.begin();it!=animated.end();)
+            if(it->second.source.expired()||it->second.native.expired())
+            {auto old=it++;eraseAnimated(old);}else ++it;
+    }
 
     void changed(std::size_t slot)noexcept
     {
@@ -1289,9 +1339,159 @@ try
     return std::shared_ptr<const ALMetalWorldSourceFrameView>(new ALMetalWorldSourceFrameView(std::move(view)));
 }
 catch(const std::bad_alloc&){++mImpl->statistics.failures;if(error)error->clear();return {};}
+bool ALMetalWorldSourcePages::prepareAnimatedSourcesForCommand(ALMetalCommandBuffer& command,
+    std::span<const ALMetalWorldSourceReference* const> references,
+    std::vector<ALMetalWorldAnimatedGpuView>& output,std::string* error)
+try
+{
+    output.clear();auto& state=*mImpl;
+    if(state.animated_preparing)return false;
+    struct Guard{bool& active;~Guard(){active=false;}}guard{state.animated_preparing};state.animated_preparing=true;
+    if(!state.supported || references.empty() || references.size()>state.limits.maximum_rows ||
+       command.isCommitted() || command.nativeDevice()!=state.context->device->nativeHandle())return false;
+    state.pruneAnimated();const auto epoch=state.epoch;
+    struct Task
+    {
+        std::shared_ptr<const ALMetalWorldAnimatedSource> source;
+        std::shared_ptr<const ALMetalAttachmentPaletteRecord> pose;
+        std::shared_ptr<const void> native;
+        ALMetalWorldViewMatrices view;
+        std::shared_ptr<const ALMetalWorldAnimatedGpuSource> gpu;
+        std::shared_ptr<const ALMetalWorldResourcePreparation> table;
+        std::vector<ALMetalWorldSourceNativeFootprint> assets;
+    };
+    std::vector<Task> tasks;tasks.reserve(references.size());
+    ALMetalWorldSourcePublicationWork work;
+    std::unordered_set<const ALMetalWorldAnimatedSource*> cold;
+    std::vector<std::shared_ptr<const ALMetalWorldResourcePreparation>> table_plans;
+    std::unordered_map<void*,std::uint64_t> new_assets;
+    for(const auto* reference:references)
+    {
+        if(!reference || !reference->animated_source || !reference->animated_palette ||
+           reference->source!=&reference->animated_source->prototype() ||
+           !ALMetalWorldSourceCohort::validView(reference->view) ||
+           std::memcmp(reference->view.texture_matrix,reference->source->texture_matrix,64))return false;
+        Task task;task.source=reference->animated_source->owner();task.native=reference->animated_source->nativeLease();
+        task.pose=reference->animated_palette->shared_from_this();task.view=reference->view;
+        if(!task.source || !task.native || !task.pose)return false;
+        if(auto found=state.animated.find(task.source.get());found!=state.animated.end())
+        {
+            const auto& entry=found->second;
+            if(!entry.source.owner_before(task.source) && !task.source.owner_before(entry.source) &&
+               !entry.native.owner_before(task.native) && !task.native.owner_before(entry.native))task.gpu=entry.gpu;
+        }
+        if(!task.gpu && cold.insert(task.source.get()).second)
+        {
+            const auto& batch=task.source->prototype();
+            const auto& material=*batch.native_material_source;
+            const std::array<const ALMetalBuffer*,5> buffers{batch.vertices,batch.indices,
+                material.materialLease().get(),material.pbrLease(false).get(),material.pbrLease(true).get()};
+            for(const auto* buffer:buffers)if(buffer && !state.proveDevice(*buffer,error))return false;
+            task.table=state.context->resources->preflight(batch.native_resource_source,*state.context->sampler,error);
+            if(!task.table)return false;
+            if(std::none_of(table_plans.begin(),table_plans.end(),[&](const auto& prior){return prior->samePublication(*task.table);}))
+            {work.encoded_table_bytes+=task.table->publicationBytes();table_plans.push_back(task.table);}
+            const auto bytes=96+std::max<std::size_t>(1,task.source->boneBounds().size())*48;
+            work.encoded_row_bytes+=bytes;work.allocation_bytes+=(bytes+4095)&~std::uint64_t(4095);
+            std::unordered_set<void*> seen;
+            for(const auto& texture:batch.native_resource_source->generationLeases())
+            {
+                id<MTLTexture> root=(__bridge id<MTLTexture>)texture->nativeHandle();unsigned depth=0;
+                while(root.parentTexture && depth++<32)root=root.parentTexture;
+                if(!root || root.parentTexture || root.buffer || !root.allocatedSize)return false;
+                void* native=(__bridge void*)root;
+                if(seen.insert(native).second)task.assets.push_back({native,root.allocatedSize});
+                if(!state.cohort_assets.contains(native))new_assets.emplace(native,root.allocatedSize);
+            }
+        }
+        tasks.push_back(std::move(task));
+    }
+    if(state.lookup.size()+state.animated.size()+cold.size()>state.limits.maximum_rows)return false;
+    std::uint64_t asset_bytes=state.cohort_asset_bytes;
+    for(const auto& [native,bytes]:new_assets)
+    {if(bytes>state.limits.maximum_cached_cohort_native_asset_bytes-std::min(asset_bytes,state.limits.maximum_cached_cohort_native_asset_bytes))return false;asset_bytes+=bytes;}
+    std::shared_ptr<const void> credit;
+    if(work.chargedBytes() && state.admission)
+    {
+        ++state.statistics.admission_requests;auto admission=state.admission;credit=(*admission)(work);
+        if(!credit){++state.statistics.admission_denials;return false;}
+        if(epoch!=state.epoch)return false;
+        if(!command.retainUntilCompletion(credit,error))return false;
+        state.statistics.admitted_bytes+=work.chargedBytes();
+    }
+    if(epoch!=state.epoch || !state.context->resources->validatePreparations(table_plans,error))return false;
+    if(state.force_failure){state.force_failure=false;return false;}
+    state.animated.reserve(state.animated.size()+cold.size());state.cohort_assets.reserve(state.cohort_assets.size()+new_assets.size());
+    output.reserve(tasks.size());
+    for(auto& task:tasks)
+    {
+        if(!task.gpu)
+        {
+            if(auto found=state.animated.find(task.source.get());found!=state.animated.end())task.gpu=found->second.gpu;
+            else
+            {
+                const auto& batch=task.source->prototype();auto table=state.context->resources->prepare(*task.table,error);if(!table)return false;
+                const auto bones=task.source->boneBounds();const auto bytes=96+std::max<std::size_t>(1,bones.size())*48;
+                auto buffer=makePhysicalBuffer(state.context,bytes,"Alchemy immutable animated source metadata",error);if(!buffer)return false;
+                auto* mapped=static_cast<std::byte*>(buffer->value->mappedBytes());if(!mapped)return false;
+                std::memcpy(mapped,batch.texture_matrix,64);
+                const float material[]{batch.alpha_cutoff,batch.use_vertex_color?1.f:0.f,batch.alpha_cutoff_bias?1.f:0.f,batch.alpha_mask?1.f:0.f};
+                const std::uint32_t policy[]{batch.texture_count,0,0,0};std::memcpy(mapped+64,material,16);std::memcpy(mapped+80,policy,16);
+                if(bones.empty())std::memset(mapped+96,0,48);else std::memcpy(mapped+96,bones.data(),bones.size_bytes());
+                auto gpu=std::make_unique<ALMetalWorldAnimatedGpuSource::Impl>();gpu->source=task.source;gpu->native=task.native;gpu->native_pointer=task.native.get();gpu->resources=state.context->resources;gpu->policy=buffer;gpu->bones=buffer;gpu->table=std::move(table);gpu->assets=task.assets;
+                auto& binding=gpu->binding;binding.key=task.source->key();binding.pbr=batch.pbr_slot_count!=0;binding.double_sided=batch.double_sided;
+                for(auto& handle:binding.geometry)handle=batch.vertices->nativeHandle();
+                const bool normal=!binding.pbr && batch.materialSlots()[0].normal_texture;
+                const bool specular=!binding.pbr && batch.materialSlots()[0].specular_texture;
+                binding.offsets={batch.position_offset,batch.normal_offset,batch.texcoord_offset,batch.color_offset,
+                    binding.pbr||normal?batch.tangent_offset:batch.normal_offset,
+                    normal?batch.texcoord1_offset:batch.texcoord_offset,specular?batch.texcoord2_offset:batch.texcoord_offset,batch.weight_offset};
+                const auto& source=*batch.native_material_source;
+                const std::array<std::shared_ptr<const ALMetalBuffer>,3> numeric{source.materialLease(),source.pbrLease(false),source.pbrLease(true)};
+                for(unsigned at=0;at<3;++at)binding.numeric[at]=numeric[at]?numeric[at]->nativeHandle():nullptr;
+                binding.indices=batch.indices->nativeHandle();binding.index_offset=batch.index_offset;binding.index_count=batch.index_count;binding.index_type=batch.index_type;
+                binding.policy=buffer->value.get();binding.bones=buffer->value.get();binding.bone_offset=96;binding.bone_count=bones.size();binding.qualified=task.source->boundsQualified();
+                task.gpu=std::shared_ptr<const ALMetalWorldAnimatedGpuSource>(new ALMetalWorldAnimatedGpuSource(std::move(gpu)));
+                // All allocating nodes are staged before the cache entry or
+                // asset reference ledger changes. Failed optional publication
+                // cannot leave uncharged native roots in an idle entry.
+                decltype(state.animated) staged;
+                staged.emplace(task.source.get(),Impl::AnimatedEntry{task.source,task.native,task.gpu});
+                std::vector<void*> inserted_assets;inserted_assets.reserve(task.gpu->assets().size());
+                try
+                {
+                    for(const auto& asset:task.gpu->assets())
+                    {
+                        auto [it,inserted]=state.cohort_assets.try_emplace(asset.allocation);
+                        if(inserted)inserted_assets.push_back(asset.allocation);
+                    }
+                    auto node=staged.extract(staged.begin());
+                    if(!state.animated.insert(std::move(node)).inserted)
+                    {for(auto native:inserted_assets)state.cohort_assets.erase(native);return false;}
+                }
+                catch(...){for(auto native:inserted_assets)state.cohort_assets.erase(native);throw;}
+                for(const auto& asset:task.gpu->assets())
+                {
+                    auto& accounting=state.cohort_assets.find(asset.allocation)->second;
+                    if(!accounting.references){accounting.bytes=asset.bytes;state.cohort_asset_bytes+=asset.bytes;}
+                    ++accounting.references;
+                }
+                ++state.statistics.animated_source_publications;state.statistics.encoded_row_bytes+=bytes;
+            }
+        }
+        else ++state.statistics.animated_source_hits;
+        output.push_back({task.gpu,std::move(task.pose),std::move(task.native),task.view});
+    }
+    return true;
+}
+catch(const std::bad_alloc&){output.clear();if(error)error->clear();return false;}
+catch(...){output.clear();if(error)error->clear();return false;}
+
 void ALMetalWorldSourcePages::invalidate(std::uint64_t identity,std::uint64_t minimum_revision)noexcept
 {
     ++mImpl->epoch;
+    for(auto it=mImpl->animated.begin();it!=mImpl->animated.end();)
+        if(it->second.gpu->binding().key.identity==identity){auto old=it++;mImpl->eraseAnimated(old);}else ++it;
     const auto found=mImpl->identities.find(identity);if(found==mImpl->identities.end())return;
     for(auto slot:found->second)
     {
@@ -1306,6 +1506,8 @@ void ALMetalWorldSourcePages::invalidate(std::uint64_t identity,std::uint64_t mi
 void ALMetalWorldSourcePages::withdraw(std::uint64_t identity)noexcept
 {
     ++mImpl->epoch;
+    for(auto it=mImpl->animated.begin();it!=mImpl->animated.end();)
+        if(it->second.gpu->binding().key.identity==identity){auto old=it++;mImpl->eraseAnimated(old);}else ++it;
     const auto found=mImpl->identities.find(identity);if(found==mImpl->identities.end())return;
     for(auto slot:found->second)
     {
@@ -1318,6 +1520,7 @@ void ALMetalWorldSourcePages::withdraw(std::uint64_t identity)noexcept
 void ALMetalWorldSourcePages::clear()noexcept
 {
     ++mImpl->epoch;
+    mImpl->animated.clear();
     mImpl->cohorts.clear();mImpl->cohort_rows=mImpl->cohort_metadata=mImpl->cohort_references=0;mImpl->cohort_assets.clear();mImpl->cohort_asset_bytes=0;
     mImpl->lookup.clear();mImpl->identities.clear();mImpl->free.clear();
     for(std::size_t slot=mImpl->rows.size();slot>0;--slot)
@@ -1326,7 +1529,7 @@ void ALMetalWorldSourcePages::clear()noexcept
         row.material.reset();row.resources.reset();row.table.reset();
         if(row.generation!=std::numeric_limits<std::uint32_t>::max())mImpl->free.push_back(static_cast<std::uint32_t>(slot-1));}
 }
-void ALMetalWorldSourcePages::trimUnusedCohorts()noexcept{mImpl->pruneCohorts();}
+void ALMetalWorldSourcePages::trimUnusedCohorts()noexcept{mImpl->pruneCohorts();mImpl->pruneAnimated();}
 ALMetalWorldSourcePageStats ALMetalWorldSourcePages::stats()const noexcept
 {
     auto result=mImpl->statistics;result.rows=mImpl->lookup.size();result.binds=mImpl->context->binds.load(std::memory_order_relaxed);

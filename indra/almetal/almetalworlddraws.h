@@ -12,6 +12,8 @@
 struct ALMetalWorldSimpleBatch;
 struct ALMetalWorldGBufferScene;
 struct ALMetalWorldSourceCohortView;
+class ALMetalWorldAnimatedSource;
+class ALMetalAttachmentPaletteRecord;
 
 // These are the only per-view overrides for the first compact slice. Source
 // geometry, material, coverage and native generation facts remain immutable.
@@ -36,8 +38,10 @@ struct alignas(16) ALMetalWorldSourceReference
 {
     const ALMetalWorldSimpleBatch* source = nullptr;
     ALMetalWorldViewMatrices view;
+    const ALMetalWorldAnimatedSource* animated_source = nullptr;
+    const ALMetalAttachmentPaletteRecord* animated_palette = nullptr;
 };
-static_assert(sizeof(ALMetalWorldSourceReference) == 304);
+static_assert(sizeof(ALMetalWorldSourceReference) == 320);
 static_assert(std::is_trivially_copyable_v<ALMetalWorldSourceReference>);
 
 using ALMetalWorldDrawIndex = std::uint32_t;
@@ -58,10 +62,13 @@ class ALMetalWorldDraw final
 public:
     explicit ALMetalWorldDraw(const ALMetalWorldSimpleBatch& source,
         const ALMetalWorldViewMatrices* view = nullptr,
-        const float* fixed_texture_matrix = nullptr) noexcept
-        : mSource(&source), mView(view), mFixedTextureMatrix(fixed_texture_matrix) {}
+        const float* fixed_texture_matrix = nullptr,
+        const ALMetalWorldSourceReference* reference = nullptr) noexcept
+        : mSource(&source), mView(view), mFixedTextureMatrix(fixed_texture_matrix),mReference(reference) {}
     const ALMetalWorldSimpleBatch& source() const noexcept { return *mSource; }
     const ALMetalWorldViewMatrices* view() const noexcept { return mView; }
+    const ALMetalWorldSourceReference* animatedReference() const noexcept
+    {return mReference && mReference->animated_source?mReference:nullptr;}
     const float* modelviewProjection() const noexcept;
     const float* modelview() const noexcept;
     const float* normalMatrix() const noexcept;
@@ -72,8 +79,9 @@ private:
     const ALMetalWorldSimpleBatch* mSource;
     const ALMetalWorldViewMatrices* mView;
     const float* mFixedTextureMatrix;
+    const ALMetalWorldSourceReference* mReference;
 };
-static_assert(sizeof(ALMetalWorldDraw) == sizeof(void*) * 3);
+static_assert(sizeof(ALMetalWorldDraw) == sizeof(void*) * 4);
 
 // Local storage checks, also used before resolving an untrusted direct helper
 // request. Whole scene ordering/owner proofs are validated on adoption/render.

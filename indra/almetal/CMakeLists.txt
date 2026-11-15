@@ -120,6 +120,7 @@ target_sources(
     almetaluirenderer.cpp
     almetalworld.cpp
     almetalworlddraws.cpp
+    almetalworldanimated.mm
     almetalworldcohort.mm
     almetalworldvisibility.mm
     almetalworldmaterialdata.mm
@@ -164,6 +165,7 @@ target_sources(
       almetalworldsourceview.h
       almetalworldprepare.h
       almetalworlddraws.h
+      almetalworldanimated.h
       almetalworldcohort.h
       almetalworlddiagnostics.h
       almetalshadowprepare.h
@@ -399,3 +401,5 @@ set_source_files_properties(tests/almetal_world_cohort_test.mm
   tests/almetal_world_cohort_renderer_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 set_source_files_properties(almetalworldsourcecommands.mm
   tests/almetal_world_source_commands_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+
+set_source_files_properties(almetalworldanimated.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

@@ -512,4 +512,7 @@ private:
     struct Impl;
     explicit ALMetalComputeEncoder(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> mImpl;
+    // Resource declarations only; bindings and dispatch remain wrapper-owned.
+    void* nativeHandleForResources() const noexcept;
+    friend class ALMetalWorldSourceCommands;
 };

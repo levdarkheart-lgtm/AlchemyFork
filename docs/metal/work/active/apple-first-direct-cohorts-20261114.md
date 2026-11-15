@@ -2110,3 +2110,22 @@ OFF/Persist0 setting, census and CMake. Source review is not executed validation
 Remaining deliverable is integrated G4 plus relevant native and actual-caller
 cost checks, then one separately staged verified combined app. Full product
 feature/stability/performance acceptance remains partial. No launch/profile/push.
+
+
+## Source65 body-shadow fixture pass and first complete G4 source integration
+
+Exact9c2b48c23d/26.4.0.69114 doctor/configure/build0/0/0 (29.166s build),
+static verifier/strict audit0, repaired palette/preparation3150assertions/18cases
+API/GPU validation0. Handles56730/68794 terminal0. Source65 changes only the
+body-shadow reference fixture and documentation, so64 production and independent
+cost evidence remains applicable without rerunning unchanged costs.
+
+Root copied21 frozen/peer-reviewed G4 source files byte-exact and integrated
+main/probe begin/capture, scene flag, owned renderer selection/preparation bypass,
+clear lifecycle, lazy compilation admission, native/actual test includes, CMake,
+OFF/Persist0 RenderMetalAnimatedGpuRecords and periodic capture/CPU/GPU census.
+Freeze manifest /tmp/animated-gpu-source-freeze-root-integration.json. Backend
+peer confirms native-only command ownership and idle-only weak proof retirement;
+shader ABI/vertex math and exact final fixture deltas reviewed. This is source
+review only: first integrated build66 and execution still required. No runtime
+correctness or speedup claim for G4. No viewer/profile/push.

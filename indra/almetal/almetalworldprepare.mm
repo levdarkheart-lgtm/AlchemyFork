@@ -37,6 +37,7 @@ struct ALMetalWorldViewInputs::Impl
     std::vector<std::vector<float>> poses;
     std::vector<std::shared_ptr<const ALMetalAttachmentPaletteRecord>> palette_records;
     std::vector<std::shared_ptr<const ALMetalBodyPaletteRecord>> body_palette_records;
+    std::vector<std::shared_ptr<const ALMetalWorldAnimatedSource>> animated_sources;
     std::array<float, 4> coverage_fill{};
     std::uint64_t epoch = 0;
 };
@@ -162,13 +163,22 @@ try
     impl->cohorts = std::move(cohorts);
     impl->queries = std::move(queries);
     impl->resources = std::move(native_resource_owner);
-    if(!impl->cohorts.empty())
+    for(const auto& reference:impl->references)if(reference.animated_source)
+    {
+        auto owner=reference.animated_source->owner();auto native=reference.animated_source->nativeLease();
+        if(!owner||!native||!reference.animated_palette){fail(error,"Animated input ownership is invalid");return {};}
+        impl->animated_sources.push_back(std::move(owner));
+        impl->palette_records.push_back(reference.animated_palette->shared_from_this());
+    }
+    if(!impl->cohorts.empty() || !impl->animated_sources.empty())
     {
         auto native=std::make_shared<NativeOwners>();native->owners.reserve(impl->cohorts.size()+1);
         std::set<std::shared_ptr<const void>,std::owner_less<std::shared_ptr<const void>>> unique;
         if(impl->resources){unique.insert(impl->resources);native->owners.push_back(impl->resources);}
         for(const auto& view:impl->cohorts)
             if(view.native_owner && unique.insert(view.native_owner).second)native->owners.push_back(view.native_owner);
+        for(const auto& source:impl->animated_sources)
+        {auto lease=source->nativeLease();if(lease&&unique.insert(lease).second)native->owners.push_back(std::move(lease));}
         impl->resources=std::move(native);
     }
     impl->epoch = epoch;
@@ -436,6 +446,7 @@ try
             }
         }
         if (!alMetalLayoutWorldRecord(batch, bytes, record, error)) return {};
+        if(cursor.draw().animatedReference())record.rigged=true;
     }
     impl->prepared->constants.resize(bytes);
     impl->prepared->statistics = {count, 0, bytes, impl->jobs, false};

@@ -5,12 +5,17 @@
  */
 #pragma once
 #include "almetalworldresources.h"
+#include "almetalworlddraws.h"
 #include <span>
 #include <functional>
 
 struct ALMetalWorldSimpleBatch;
 struct ALMetalWorldSourceCohortView;
 class ALMetalWorldFrameData;
+class ALMetalWorldAnimatedSource;
+class ALMetalAttachmentPaletteRecord;
+
+class ALMetalWorldAnimatedGpuSource;
 
 inline constexpr std::size_t alMetalWorldSourceMaximumRows = 4096;
 inline constexpr std::size_t alMetalWorldSourceRowsPerPage = 128;
@@ -67,6 +72,50 @@ struct ALMetalWorldSourceNativeFootprint
 {
     void* allocation=nullptr;
     std::uint64_t bytes=0;
+};
+struct ALMetalWorldAnimatedNativeBinding
+{
+    ALMetalWorldSourceKey key;
+    std::array<void*,8> geometry{}; // position/normal/uv/color/tangent/uv1/uv2/weight4
+    std::array<std::size_t,8> offsets{};
+    std::array<void*,3> numeric{}; // legacy, PBR LDR, PBR normal-HDR
+    void* indices=nullptr;
+    std::size_t index_offset=0;
+    std::uint32_t index_count=0,bone_count=0;
+    ALMetalIndexType index_type=ALMetalIndexType::uint16;
+    const ALMetalBuffer* policy=nullptr;
+    const ALMetalBuffer* bones=nullptr;
+    std::size_t bone_offset=0;
+    bool pbr=false,double_sided=false,qualified=false;
+};
+// Native-only immutable GPU publication. It owns its metadata allocations and
+// table, never the producer/source/pose or real C++ geometry generation.
+class ALMetalWorldAnimatedGpuSource final
+{
+public:
+    ~ALMetalWorldAnimatedGpuSource();
+    const ALMetalWorldAnimatedNativeBinding& binding() const noexcept;
+    std::shared_ptr<const ALMetalWorldResourceTable> table() const noexcept;
+    std::span<const ALMetalWorldSourceNativeFootprint> assets() const noexcept;
+    // Idle metadata proof only. Already prepared commands own independent
+    // native generations and remain valid after CPU publication retirement.
+    bool currentGeneration() const noexcept;
+    bool matchesNativeLease(const std::shared_ptr<const void>&) const noexcept;
+    bool declareResources(ALMetalRenderEncoder&,ALMetalCommandBuffer&,std::string* error=nullptr) const;
+private:
+    struct Impl;
+    explicit ALMetalWorldAnimatedGpuSource(std::unique_ptr<Impl>);
+    std::unique_ptr<Impl> mImpl;
+    friend class ALMetalWorldSourcePages;
+};
+// CPU preparation only. Native command owners extract only source and native;
+// the late pose and matrix copy are discarded after synchronous encoding.
+struct ALMetalWorldAnimatedGpuView
+{
+    std::shared_ptr<const ALMetalWorldAnimatedGpuSource> source;
+    std::shared_ptr<const ALMetalAttachmentPaletteRecord> pose;
+    std::shared_ptr<const void> native;
+    ALMetalWorldViewMatrices view;
 };
 // Fixed-address native storage. Cached commands may retain this storage;
 // only an actual FrameView holds its separate overwrite-prevention token.
@@ -153,6 +202,7 @@ struct ALMetalWorldSourcePageStats
     // other active owners and must not be added to a physical memory total.
     std::uint64_t cached_cohort_native_asset_bytes=0,cached_cohort_native_asset_limit=0;
     std::uint64_t direct_policy_bytes=0,direct_slot_allocations=0,direct_slot_hits=0,direct_view_bytes=0;
+    std::uint64_t animated_source_publications=0,animated_source_hits=0;
     std::size_t live_direct_slots=0,live_direct_slot_bytes=0;
 };
 
@@ -214,6 +264,11 @@ public:
         ALMetalWorldSourcePageLimits={}, std::string* error=nullptr);
     ~ALMetalWorldSourcePages();
     bool supported() const noexcept;
+    // Coalesced cold GPU source publication; late poses stay CPU-local here.
+    // Native-only cache entries reuse the existing metadata/asset bounds.
+    bool prepareAnimatedSourcesForCommand(ALMetalCommandBuffer&,
+        std::span<const ALMetalWorldSourceReference* const>,
+        std::vector<ALMetalWorldAnimatedGpuView>& output,std::string* error=nullptr);
     bool belongsTo(const ALMetalDevice&, const ALMetalShaderLibrary&, std::uint32_t max_anisotropy) const noexcept;
     // Requests contain only selected eligible Legacy/PBR rows. Any failed row
     // rejects this whole optional view; the required scalar path stays intact.

@@ -161,7 +161,12 @@ ALNativeFrameBudget::Decision ALNativeCohortCompilationAdmission::tryAcquire(
     if (logical_bytes == ALNativeFrameBudget::unknown_bytes)
         return {{}, ALNativeFrameBudget::Reason::frame_work};
     auto decision = budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,
-        logical_bytes, *mPendingSince, ALNativeFrameBudget::ScenePublicationKind::cohort_compilation);
+        // A failed compile retains its original pending age, but a fixed
+        // main/probe traversal must not spend every busy progress turn on the
+        // same already-served owner. Sorted cohorts and unsorted per-source
+        // publications use the same existing service-adjusted priority.
+        logical_bytes, priority(0).unserved_since,
+        ALNativeFrameBudget::ScenePublicationKind::cohort_compilation);
     if (decision) mLastAdmitted = frame;
     return decision;
 }

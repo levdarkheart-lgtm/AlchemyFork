@@ -6661,7 +6661,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-282 — System-avatar view palettes lose immutable identity after composition
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / native body palette author
 - Discovered: 2026-11-15
@@ -6675,6 +6675,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before body ownership bridge implementation. Gate complete composition/capture/adoption/encode/retirement cost and resource-byte amplification; no shader/animation/quality/scheduler change.
+
+
+- 2026-11-15 observed verification: Source65/9c2b48c23d required doctor/configure/build passes (29.166s), static/strict passes; repaired palette/preparation3150 assertions/18 cases passes under API/GPU validation, including raw/record body shadow parity. Independent64 body cases and24-condition actual cost remain valid: only fixture/docs changed65. Timings mixed/near parity, native-byte ratio1.0; owner acceptance pending.
 
 
 ## PPD-283 — New maintenance fixture uses authored-mip overload for a non-mip image
@@ -6699,7 +6702,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-284 — Published CPU visibility repeats eight corner transforms for wholly visible bounds
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator / conservative visibility author
 - Discovered: 2026-11-15
@@ -6714,9 +6717,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 measured before classifier optimization. Preserve all61receipts; do not hide all-visible/cold debt or compare only against raw.
 
+- 2026-11-15 observed verification: Source64 independent CPU GPU parity1780/4 and interval oracle137/3 pass, plus48-condition actual cost3674320/1. Warm half-outside CPU/completion medians19.987%/11.133% lower versus retained direct; all-visible warm CPU1.739% higher and cold debt remains. Control staysOFF; owner acceptance pending.
+
+
 ## PPD-285 — New body-palette fixtures misstate scene inputs and comparison policy
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex body-palette fixture author
 - Discovered: 2026-11-15
@@ -6738,9 +6744,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 required64/7308c43db9 builds69113(140.989s), static/strict pass. New mixed body fixture fails raw shadow reference: avatar=true with texture_mask coverage is invalid; existing validator requires avatar_mask/avatar_blend. Registered before changing only fixture coverage to avatar_mask and evaluating error after the render call. Previous17cases in palette/preparation scope pass; no production body-shadow regression inferred.
 
+- 2026-11-15 observed verification: Source65/9c2b48c23d required/static/strict and repaired palette/preparation3150/18 pass, with avatar_mask and post-call diagnostics. Source63 compile and64 reference setup failures retained. No production shadow rendering fault established; owner acceptance pending.
+
+
 ## PPD-286 — CPU interval stress fixture omits its inside controls from result counts
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6754,6 +6763,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before one-counter fixture repair; preserve failed62receipt/log, no fulloracle pass claimed yet.
+
+
+- 2026-11-15 observed verification: Source64 interval oracle137 assertions/3 cases passes after counting the existing controls; CPU GPU parity1780/4 also passes. Earlier62 missing-counter failure retained; no false-cull defect established. Owner acceptance pending.
 
 
 ## PPD-287 — Persistent native scene rows exclude rigged animated surfaces

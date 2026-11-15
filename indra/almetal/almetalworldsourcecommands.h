@@ -82,6 +82,13 @@ public:
     std::shared_ptr<const Batch> prepareCohortForCommand(ALMetalCommandBuffer&,
         std::shared_ptr<const ALMetalWorldSourceFrameView>,std::string* error=nullptr,
         ALMetalWorldSourceCommandFailure* failure=nullptr);
+    // Current pose/view updates only; immutable native bindings and indexed
+    // calls are encoded once per reusable completion-qualified slot. The
+    // returned Batch and command own native generations, never CPU records.
+    std::shared_ptr<const Batch> prepareAnimatedForCommand(ALMetalCommandBuffer&,
+        const ALMetalDevice&,const ALMetalShaderLibrary&,
+        std::span<const ALMetalWorldAnimatedGpuView>,const ALMetalWorldSourceGlobals&,
+        ALMetalWorldFrameData&,std::string* error=nullptr);
     bool execute(ALMetalRenderEncoder&,ALMetalCommandBuffer&,const Batch&,std::string* error=nullptr);
     // Execute an ordered nonempty subset of the same immutable Bank. Callers
     // split at original query/raster boundaries and restore inherited state;

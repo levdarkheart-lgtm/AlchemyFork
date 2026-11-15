@@ -2505,6 +2505,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<NormalPipelines, 2> source_material_pipelines, source_pbr_pipelines;
     std::array<NormalPipelines, 2> source_bank_material_pipelines, source_bank_pbr_pipelines;
     std::array<NormalPipelines, 2> direct_bank_material_pipelines, direct_bank_pbr_pipelines;
+    std::array<NormalPipelines, 2> animated_material_pipelines,animated_pbr_pipelines;
+    ALMetalWorldAnimatedStats animated_stats;
     std::shared_ptr<ALMetalWorldSourcePages> source_pages;
     std::shared_ptr<ALMetalWorldSourceCommands> source_commands;
     ALMetalWorldSourceDrawStats source_draw_stats;
@@ -2876,6 +2878,23 @@ struct ALMetalWorldGBufferRenderer::Impl
         return result.get();
     }
 
+    ALMetalRenderPipeline* animatedPipeline(bool hdr,bool normal_hdr,bool pbr,std::string* error)
+    {
+        auto& result=(pbr?animated_pbr_pipelines:animated_material_pipelines)[hdr][normal_hdr];
+        if(!result)
+        {
+            auto descriptor=(pbr?pbr_pipelines:material_pipelines)[hdr][1][normal_hdr]->descriptor();
+            descriptor.library=library.get();
+            descriptor.vertex_function=pbr?"almetal_world_pbr_animated_vertex":"almetal_world_material_animated_vertex";
+            descriptor.fragment_function=pbr?"almetal_world_pbr_resources_fragment":"almetal_world_material_resources_fragment";
+            if(!library->hasFunction(descriptor.vertex_function)||!library->hasFunction(descriptor.fragment_function)||
+               !library->hasFunction("almetal_world_animated_visibility"))return nullptr;
+            descriptor.support_indirect_commands=true;descriptor.label="Alchemy retained animated G-buffer pipeline";
+            result=ALMetalRenderPipeline::create(*device,descriptor,error);
+        }
+        return result.get();
+    }
+
     ALMetalRenderPipeline* probePBRAlphaPipeline(
         bool hdr, bool coverage, bool rigged, std::string* error)
     {
@@ -3184,6 +3203,8 @@ ALMetalWorldGBufferRenderer::stageShaderReload(
         !rebuild_diagnostic(mImpl->source_pbr_pipelines, next.source_pbr_pipelines) ||
         !rebuild_diagnostic(mImpl->source_bank_material_pipelines, next.source_bank_material_pipelines) ||
         !rebuild_diagnostic(mImpl->source_bank_pbr_pipelines, next.source_bank_pbr_pipelines) ||
+        !rebuild_diagnostic(mImpl->animated_material_pipelines,next.animated_material_pipelines) ||
+        !rebuild_diagnostic(mImpl->animated_pbr_pipelines,next.animated_pbr_pipelines) ||
         !rebuild_diagnostic(mImpl->direct_bank_material_pipelines, next.direct_bank_material_pipelines) ||
         !rebuild_diagnostic(mImpl->direct_bank_pbr_pipelines, next.direct_bank_pbr_pipelines)) return {};
     for (const auto& entry : mImpl->custom_pre_water_alpha_pipelines)
@@ -3221,6 +3242,7 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.world_resource_limits = mImpl->world_resource_limits;
     next.world_resource_draw_stats = mImpl->world_resource_draw_stats;
     next.source_draw_stats = mImpl->source_draw_stats;
+    next.animated_stats=mImpl->animated_stats;
     next.source_command_stats = mImpl->source_command_stats;
     next.cohort_stats = mImpl->cohort_stats;
     next.cpu_visibility_stats = mImpl->cpu_visibility_stats;
@@ -3396,6 +3418,9 @@ ALMetalWorldResourceStats ALMetalWorldGBufferRenderer::worldResourceStats() cons
     }
     return result;
 }
+ALMetalWorldAnimatedStats ALMetalWorldGBufferRenderer::worldAnimatedStats() const noexcept
+{return mImpl?mImpl->animated_stats:ALMetalWorldAnimatedStats{};}
+
 ALMetalWorldSourceDrawStats ALMetalWorldGBufferRenderer::worldSourceStats() const noexcept
 {
     auto stats = mImpl ? mImpl->source_draw_stats : ALMetalWorldSourceDrawStats{};
@@ -9607,6 +9632,30 @@ catch (const std::bad_alloc&)
 
 namespace
 {
+bool validAnimatedReference(const ALMetalWorldSourceReference& reference) noexcept
+{
+    return reference.animated_source && reference.animated_palette &&
+        reference.source==&reference.animated_source->prototype() &&
+        reference.animated_source->nativeLease() &&
+        ALMetalWorldSourceCohort::validView(reference.view) &&
+        finiteValues(&reference.view.rigged_normal_matrix[0][0],12) &&
+        finiteValues(reference.view.texture_matrix,16);
+}
+ALMetalWorldSimpleBatch animatedFallback(const ALMetalWorldSourceReference& reference)
+{
+    auto batch=reference.animated_source->prototype();
+    batch.skin_palette_record=reference.animated_palette;
+    batch.skin_palette=reference.animated_palette->data();
+    batch.skin_palette_float_count=reference.animated_palette->size();
+    batch.skin_joint_count=reference.animated_palette->jointCount();
+    std::memcpy(batch.modelview_projection,reference.view.modelview_projection,64);
+    std::memcpy(batch.modelview,reference.view.modelview,64);
+    std::memcpy(batch.normal_matrix,reference.view.normal_matrix,48);
+    std::memcpy(batch.rigged_normal_matrix,reference.view.rigged_normal_matrix,48);
+    std::memcpy(batch.texture_matrix,reference.view.texture_matrix,64);
+    return batch;
+}
+
 bool compactWorldSourceSupported(const ALMetalWorldSimpleBatch& batch) noexcept
 {
     return !batch.normal_texture && !batch.skin_palette_record && !batch.body_palette_record && !batch.skin_palette &&
@@ -9703,7 +9752,9 @@ bool alMetalValidateWorldView(const ALMetalWorldGBufferScene& scene, std::string
     for (std::size_t index = 0; index < scene.reference_count; ++index)
     {
         const auto* source = scene.references[index].source;
-        if (!source || !compactWorldSourceSupported(*source))
+        const auto& reference=scene.references[index];
+        if (!source || (reference.animated_source ? !validAnimatedReference(reference) :
+            (reference.animated_palette || !compactWorldSourceSupported(*source))))
         {
             setError(error, "Metal world source reference family is unsupported");
             return false;
@@ -9772,6 +9823,11 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
     const ALMetalWorldDraw& draw, std::string* error)
 {
     const auto& batch = draw.source();
+    if(const auto* reference=draw.animatedReference())
+    {
+        if(validAnimatedReference(*reference))return true;
+        setError(error,"Animated world reference is invalid");return false;
+    }
     if (batch.skin_palette_record && !batch.matchesSkinPaletteRecord())
     {
         setError(error, "Metal world attachment record does not match its pose");
@@ -10197,7 +10253,10 @@ bool alMetalPrepareWorldRecord(const ALMetalWorldGBufferScene& scene, std::size_
         setError(error, "Prepared world draw storage index is invalid");
         return false;
     }
-    const auto draw = scene.draw(index);
+    const auto resolved = scene.draw(index);
+    std::optional<ALMetalWorldSimpleBatch> animated;
+    if(const auto* reference=resolved.animatedReference())animated=animatedFallback(*reference);
+    const auto draw=animated?ALMetalWorldDraw(*animated):resolved;
     const auto* cohort = alMetalWorldCohortAt(scene,index);
     if (cohort)
     {
@@ -10894,6 +10953,73 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 fallback(ALMetalWorldSourceCommandFailure::host_allocation,scene.cohorts[at].cohort->size());
         }
     }
+    struct AnimatedRange
+    {
+        std::size_t first,count,bank_first;
+        std::shared_ptr<const ALMetalWorldSourceCommands::Batch> bank;
+        const ALMetalRenderPipeline* pipeline;
+        bool double_sided;
+    };
+    std::vector<AnimatedRange> animated_ranges;
+    ALMetalWorldAnimatedStats animated_stats;
+    if(scene.animated_gpu_records)
+    {
+        // CPU shape/pose ownership was qualified at adoption. Only references
+        // enter this late overlay; ordinary/body/cloth remain required native.
+        ALMetalWorldDrawCursor cursor(scene);
+        std::vector<const ALMetalWorldSourceReference*> candidates;
+        std::vector<std::size_t> logical;
+        try
+        {
+            for(std::size_t index=0;index<draw_count;++index,cursor.advance())
+                if(const auto* reference=cursor.draw().animatedReference())
+                {
+                    ++animated_stats.requested_draws;
+                    if(!prepared && !scene.wireframe && !scene.stamp_opaque_coverage &&
+                       std::memcmp(reference->view.texture_matrix,reference->source->texture_matrix,64)==0)
+                    {candidates.push_back(reference);logical.push_back(index);}
+                }
+            ALMetalWorldSourceGlobals globals;
+            std::memcpy(globals.mirror_clip_plane,scene.mirror_clip_plane,16);
+            globals.flags[0]=scene.reverse_z;globals.flags[1]=scene.mirror_clip;globals.flags[2]=scene.normal_hdr;
+            for(std::size_t first=0;first<candidates.size();first+=alMetalWorldSourceMaximumRows)
+            {
+                const auto count=std::min(alMetalWorldSourceMaximumRows,candidates.size()-first);
+                std::vector<const ALMetalRenderPipeline*> pipelines;pipelines.reserve(count);
+                std::string optional_error;bool ready=true;
+                for(std::size_t at=first;at<first+count;++at)
+                {
+                    auto* pipeline=mImpl->animatedPipeline(scene.hdr,scene.normal_hdr,
+                        isPBRBatch(*candidates[at]->source),&optional_error);
+                    if(!pipeline){ready=false;break;}pipelines.push_back(pipeline);
+                }
+                if(!ready || !mImpl->frame_data)continue;
+                if(!mImpl->source_pages)mImpl->source_pages=mImpl->frame_data->worldSourcePages(*mImpl->library,mImpl->max_anisotropy,&optional_error);
+                if(!mImpl->source_commands)mImpl->source_commands=mImpl->frame_data->worldSourceCommands(&optional_error);
+                if(!mImpl->source_pages||!mImpl->source_commands)continue;
+                std::vector<ALMetalWorldAnimatedGpuView> gpu_views;
+                const auto before=mImpl->source_pages->stats().animated_source_publications;
+                if(!mImpl->source_pages->prepareAnimatedSourcesForCommand(*command,
+                    std::span(candidates).subspan(first,count),gpu_views,&optional_error))continue;
+                auto bank=mImpl->source_commands->prepareAnimatedForCommand(*command,*mImpl->device,*mImpl->library,
+                    gpu_views,globals,*mImpl->frame_data,&optional_error);
+                if(!bank)continue;
+                animated_stats.source_publications+=mImpl->source_pages->stats().animated_source_publications-before;
+                animated_stats.current_pose_publications+=count;
+                for(std::size_t at=0;at<count;++at)
+                {
+                    const bool cull=isPBRBatch(*candidates[first+at]->source)&&candidates[first+at]->source->double_sided;
+                    if(!animated_ranges.empty() && animated_ranges.back().bank==bank &&
+                       animated_ranges.back().first+animated_ranges.back().count==logical[first+at] &&
+                       animated_ranges.back().pipeline==pipelines[at] && animated_ranges.back().double_sided==cull)
+                        ++animated_ranges.back().count;
+                    else animated_ranges.push_back({logical[first+at],1,at,bank,pipelines[at],cull});
+                }
+            }
+        }
+        catch(const std::bad_alloc&){animated_ranges.clear();}
+    }
+    std::size_t animated_range_cursor=0;bool animated_prefix_emitted=false;
     auto encoder = ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world simple G-buffer encoder", error);
     if (!encoder)
@@ -11091,6 +11217,38 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         {
             break;
         }
+        while(animated_range_cursor<animated_ranges.size() &&
+            animated_ranges[animated_range_cursor].first+animated_ranges[animated_range_cursor].count<=index)++animated_range_cursor;
+        if(animated_range_cursor<animated_ranges.size())
+        {
+            auto& range=animated_ranges[animated_range_cursor];
+            if(range.bank && index>=range.first)
+            {
+                auto end=range.first+range.count;
+                if(visibility_index<scene.visibility_query_count)end=std::min(end,scene.visibility_queries[visibility_index].batch_offset);
+                const auto count=end-index;std::string optional_error;
+                const bool accepted=count && encoder->setIndexedTriangleJoining(false,&optional_error) &&
+                    encoder->setDepthBias(0.f,0.f,0.f,&optional_error) &&
+                    encoder->setCullMode(range.double_sided?ALMetalCullMode::none:ALMetalCullMode::back,&optional_error) &&
+                    encoder->setPipeline(*range.pipeline,&optional_error) &&
+                    mImpl->source_commands->executeRange(*encoder,*command,*range.bank,
+                        range.bank_first+index-range.first,count,&optional_error);
+                if(accepted)
+                {
+                    scalar_common_cohort=nullptr;have_previous_world_constants=false;animated_prefix_emitted=true;
+                    animated_stats.gpu_draws+=count;++animated_stats.execute_calls;
+                    for(std::size_t at=index;at<end;++at)
+                    {
+                        const auto* reference=scene.draw(at).animatedReference();
+                        if(reference->animated_source->boundsQualified())++animated_stats.bounds_tests;
+                        else ++animated_stats.bounds_unknown;
+                    }
+                    draw_cursor.advance(count-1);index+=count-1;continue;
+                }
+                if(animated_prefix_emitted){setError(error,"Animated command failed after an emitted prefix");encoded=false;break;}
+                for(auto& remaining:animated_ranges)remaining.bank.reset();
+            }
+        }
         const auto* current_cohort=draw_cursor.cohort();
         if(scene.cpu_cohort_visibility)
         {
@@ -11189,7 +11347,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 source_bank_stats.last_fallback=ALMetalWorldSourceCommandFailure::execution;bank.bank.reset();
             }
         }
-        const auto draw = draw_cursor.draw();
+        const auto resolved_draw=draw_cursor.draw();
+        const auto* animated_reference=resolved_draw.animatedReference();
+        std::optional<ALMetalWorldSimpleBatch> animated_fallback;
+        if(animated_reference)animated_fallback=animatedFallback(*animated_reference);
+        const auto draw=animated_fallback?ALMetalWorldDraw(*animated_fallback):resolved_draw;
         const ALMetalWorldSimpleBatch& batch = draw.source();
         const bool join_static = scene.join_adjacent_static_draws &&
             scene.visibility_query_count == 0 && !scene.wireframe &&
@@ -11482,7 +11644,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         const ALMetalRenderPipeline* resource_pipeline = nullptr;
         bool resource_bound = false;
         auto resource_failure = resource_setup_failure;
-        if (!current_cohort && scene.material_argument_buffers && (material || pbr))
+        if (!current_cohort && !animated_reference && scene.material_argument_buffers && (material || pbr))
         {
             ++resource_stats.requested_draws;
             if (!batch.native_resource_source) resource_failure = ALMetalWorldResourceFallback::missing_source;
@@ -11501,7 +11663,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 catch (const std::bad_alloc&) { resource_failure = ALMetalWorldResourceFallback::host_allocation; }
             }
         }
-        if (!current_cohort && stable_tables && !resource_bound)
+        if (!current_cohort && !animated_reference && stable_tables && !resource_bound)
         {
             if (!material_owners)
             {
@@ -11813,6 +11975,15 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         mImpl->frame_data->mImpl->statistics.terrain_source_fallback_draws+=terrain_source_fallback_draws;
     }
     mImpl->cohort_stats.scalar_common_builds+=scalar_common_builds;
+    animated_stats.fallback_draws=animated_stats.requested_draws-animated_stats.gpu_draws;
+    mImpl->animated_stats.requested_draws+=animated_stats.requested_draws;
+    mImpl->animated_stats.gpu_draws+=animated_stats.gpu_draws;
+    mImpl->animated_stats.fallback_draws+=animated_stats.fallback_draws;
+    mImpl->animated_stats.execute_calls+=animated_stats.execute_calls;
+    mImpl->animated_stats.current_pose_publications+=animated_stats.current_pose_publications;
+    mImpl->animated_stats.source_publications+=animated_stats.source_publications;
+    mImpl->animated_stats.bounds_tests+=animated_stats.bounds_tests;
+    mImpl->animated_stats.bounds_unknown+=animated_stats.bounds_unknown;
     mImpl->cohort_stats.scalar_recipe_reads+=scalar_recipe_reads;
     mImpl->cohort_stats.scalar_common_reuses+=scalar_common_reuses;
     if(scene.cpu_cohort_visibility)

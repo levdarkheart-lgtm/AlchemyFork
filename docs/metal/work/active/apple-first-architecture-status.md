@@ -3,7 +3,7 @@
 Updated 2026-11-15. The original whole-engine goal is **active and incomplete**.
 Source and exact commands/receipts are retained in the [execution ledger](apple-first-direct-cohorts-20261114.md).
 
-Latest built source: **7308c43db9 / 26.4.0.69113**. Doctor, configure/build,
+Latest built source: **9c2b48c23d / 26.4.0.69114**. Doctor, configure/build,
 ARM64/signature/native-import verification and strict source audit pass. No new
 viewer launch, login, live profile or push has occurred. Existing owner apps and
 separately staged69102 remain unchanged. There is **no established whole-viewer
@@ -13,8 +13,8 @@ FPS improvement**.
 |---|---|---|
 | Shared scene/resources | Producer generations, immutable geometry/material tuples, dirty subscriptions, retained static groups, compact restoration, exact native leases and cache-reason counters. Same-frame lifetime reproduction passes. | Integrate retained animated GPU records; owner runtime evaluation. |
 | CPU preparation | Owned immutable inputs, shared admission credits, useful joined shadow work and producer-derived scalar recipes. | World workers remain disabled after measured completion regressions. Integrate the service-adjusted admission fairness repair needed by unsorted animated callers. |
-| Animated ownership | Attachment palettes shared across views; system-body view composition now publishes immutable records instead of raw capture plus adoption copies. Actual publisher22267 assertions/78 cases passes. | One new body-shadow reference fixture used invalid coverage; test-only repair pending65. Do not reuse view-dependent body matrices across cameras. |
-| Persistent visibility/submission | Retained direct groups/scalar recipes, static bounds and native GPU experiments exist. CPU support intervals pass GPU parity and independent boundary/rounding controls. | Required G4 rigged/masked GPU records are authored and undergoing final source review, not yet integrated or built. Late pose/view inputs and conservative current-pose visibility must pass correctness and complete costs. |
+| Animated ownership | Attachment palettes shared across views; system-body view composition now publishes immutable records instead of raw capture plus adoption copies. Actual publisher22267 assertions/78 cases passes. | Body-shadow fixture repair now passes3150 assertions/18 palette/preparation cases65. Do not reuse view-dependent body matrices across cameras. |
+| Persistent visibility/submission | Retained direct groups/scalar recipes, static bounds and native GPU experiments exist. CPU support intervals pass GPU parity and independent boundary/rounding controls. | Required G4 rigged/masked GPU records are source-reviewed and integrated in root; first integrated build66 is next. Late pose/view inputs and conservative current-pose visibility must pass correctness and complete costs. |
 | Unified memory/admission | Frame-wide CPU/native admission, decode/upload coordination, native COW generations, CPU reclaim and command-completion retirement; maintenance843 assertions/18 cases passes. Native and CPU cache caps remain distinct. | Animated bank expiry, exact view leases and CPU/GPU compilation admission must pass integrated tests. No blind cap increase. |
 | Terrain/probe lighting | Terrain pass-common publication selected at measured16-patch threshold; eligible probe/base lighting fusion and empty local/projector avoidance pass contained checks. | Owner whole-viewer feature/stability/performance evaluation. |
 | Combined viewer | Earlier69102 checkpoint separately staged and statically verified; later69113 builds. | Integrate G4, run targeted GPU/actual-caller costs and relevant regressions, then stage one exact combined candidate for owner evaluation. |
@@ -36,8 +36,8 @@ FPS improvement**.
 
 ## Concrete remaining sequence
 
-1. Rerun the body-shadow fixture after its test-only avatar-coverage correction.
-2. Integrate the reviewed animated source/backend/shader/frontend change (PPD287),
+1. Done: body-shadow fixture retest65 passes; prior failures retained.
+2. Done in root: integrate reviewed animated source/backend/shader/frontend (PPD287),
    its fallback/fairness/lifetime fixes (289–292), root settings and build wiring.
 3. Build; run native GPU parity/lifetime/admission tests and actual LL draw-caller
    cold/warm/pose/resource-churn costs, including small draws and multiple views.

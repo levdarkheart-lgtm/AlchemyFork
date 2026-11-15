@@ -621,3 +621,5 @@ TEST_CASE("almetal: world draws intern distinct equal palettes without changing 
 }
 
 #include "almetal_world_body_palette_native.inl"
+
+#include "almetal_world_animated_gpu_records_test.inl"

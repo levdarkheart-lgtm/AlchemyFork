@@ -17,6 +17,7 @@
 #include "almetalworldsourceview.h"
 #include "almetalworldsourcecommands.h"
 #include "almetalworldcohort.h"
+#include "almetalworldanimated.h"
 
 #include "almetalpipeline.h"
 
@@ -1270,6 +1271,9 @@ struct ALMetalWorldGBufferScene
     // Separate, default-off ordered native command-bank experiment. Failed or
     // short runs use the ordinary native shader, not the scalar row pilot.
     bool source_command_banks = false;
+    // Retained regular-rigged GPU source/pose commands. Default-off experiment;
+    // body/cloth/special state keeps the ordinary native contract.
+    bool animated_gpu_records = false;
     // Experimental CPU rejection before ordinary bindings. Only privately
     // qualified cohort bounds participate; raw/unknown inputs stay visible.
     // This takes precedence over optional GPU visibility/source-row/bank work.
@@ -2839,6 +2843,7 @@ public:
     ALMetalWorldSourceDrawStats worldSourceStats() const noexcept;
     ALMetalWorldSourceCommandDrawStats worldSourceCommandStats() const noexcept;
     ALMetalWorldCohortStats worldCohortStats() const noexcept;
+    ALMetalWorldAnimatedStats worldAnimatedStats() const noexcept;
     ALMetalWorldCpuVisibilityStats worldCpuVisibilityStats() const noexcept;
     void clearWorldSourceCommands() noexcept;
     void failNextWorldSourceCommandPublicationForTesting() noexcept;

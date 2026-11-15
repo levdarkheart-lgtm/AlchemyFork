@@ -121,8 +121,13 @@ try
     flavor.impostor_fullbright = capture.impostor_fullbright;
     flavor.impostor_shiny = capture.impostor_shiny;
     flavor.impostor_emboss = capture.impostor_emboss;
+    const bool ordinary_animated = !editable && capture.rigged &&
+        !capture.impostor_bake && !capture.impostor_alpha_active && !capture.world_post_deferred_active &&
+        !capture.pbr_glow && !capture.impostor_fullbright && !capture.impostor_shiny && !capture.impostor_emboss &&
+        !params.mTextureMatrix && flavor.hasAnimatedConsumer();
+    flavor.animated_source = capture.animated_gpu_records_active && ordinary_animated;
     auto source = ALScenePublicationNative::world(params, flavor,
-        sNativeSceneSources, sNativeSceneSerial, gFrameCount);
+        sNativeSceneSources, sNativeSceneSerial, gFrameCount,capture.animated_compilation_budget);
     if (!source)
     {
         ++capture.scene_source_failures;
@@ -153,6 +158,14 @@ try
     if (!indexed_source && params.mTextureMatrix &&
         (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
         std::memcpy(view.texture_matrix, params.mTextureMatrix->mMatrix, sizeof(view.texture_matrix));
+    std::shared_ptr<const ALMetalAttachmentPaletteRecord> palette;
+    if(capture.rigged)
+    {
+        palette=params.mAvatar->updateSkinInfoMatrixPalette(params.mSkinInfo).getMetalAttachmentPalette();
+        if(!palette)
+        {capture.markIncomplete(__LINE__);capture.clearDraws();return;}
+    }
+    if(capture.tryCaptureAnimatedSource(params,source,flavor,view,palette,ordinary_animated))return;
     const bool ordinary_source = !editable &&
         !native_visibility() && !capture.rigged && !capture.impostor_bake &&
         !capture.impostor_alpha_active && !capture.world_post_deferred_active &&
@@ -222,9 +235,6 @@ try
     }
     if (capture.rigged)
     {
-        auto palette = params.mAvatar->updateSkinInfoMatrixPalette(params.mSkinInfo).getMetalAttachmentPalette();
-        if (!palette)
-        { capture.markIncomplete(__LINE__); capture.clearDraws(); return; }
         capture.retainCpu(palette);
         batch.skin_palette_record = palette.get();
         batch.skin_palette = palette->data();

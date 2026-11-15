@@ -2098,3 +2098,6 @@ bool ALMetalComputeEncoder::end(std::string* error)
     mImpl->ended = true;
     return true;
 }
+
+void* ALMetalComputeEncoder::nativeHandleForResources() const noexcept
+{return mImpl && !mImpl->ended ? (__bridge void*)mImpl->encoder : nullptr;}

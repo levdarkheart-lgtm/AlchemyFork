@@ -26,7 +26,7 @@ ALMetalWorldDraw baseDraw(const ALMetalWorldGBufferScene& scene,std::size_t inde
     if(!scene.draw_order_count)return ALMetalWorldDraw(scene.batches[index]);
     const auto token=scene.draw_order[index];const auto storage=alMetalWorldDrawStorageIndex(token);
     if(!alMetalWorldDrawIsReference(token))return ALMetalWorldDraw(scene.batches[storage]);
-    const auto& reference=scene.references[storage];return ALMetalWorldDraw(*reference.source,&reference.view);
+    const auto& reference=scene.references[storage];return ALMetalWorldDraw(*reference.source,&reference.view,nullptr,&reference);
 }
 }
 std::size_t ALMetalWorldGBufferScene::drawCount() const noexcept

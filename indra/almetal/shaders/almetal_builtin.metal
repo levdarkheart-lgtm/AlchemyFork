@@ -2,6 +2,7 @@
 // embedded algorithms are preserved in indra/almetal/THIRD_PARTY_NOTICES.txt
 // in the source tree and beside this module in installed Resources directories.
 #include <metal_stdlib>
+#include <metal_command_buffer>
 using namespace metal;
 
 // Upstream #595: sanitize before scaling, preserving finite HDR channel ratios.
@@ -21130,4 +21131,203 @@ kernel void almetal_world_modern_sky_layout_probe(
     result[16] = as_type<uint>(c.body.y);
     result[17] = as_type<uint>(c.transfer.w);
     result[18] = c.config.w;
+}
+
+// Regular attachment geometry/materials are producer-sealed independently of
+// this actual view/pose. Reflection supplies argument offsets and alignment;
+// no CPU code invents a GPU pointer layout. System body/cloth keep their
+// distinct view-composed180-float specialization.
+struct ALMetalWorldAnimatedBoneBounds
+{
+    float4 minimum;
+    float4 maximum;
+    uint4 config; // source joint; the current pose clamps it to jointCount-1
+};
+static_assert(sizeof(ALMetalWorldAnimatedBoneBounds)==48,"Animated bone bounds ABI");
+struct ALMetalWorldAnimatedPoseView
+{
+    const device float4* palette [[id(0)]];
+    const device ALMetalWorldAnimatedBoneBounds* bounds [[id(1)]];
+    const device ushort* index16 [[id(2)]];
+    const device uint* index32 [[id(3)]];
+    float4x4 modelview_projection [[id(4)]];
+    float4x4 modelview [[id(5)]];
+    // Three float4 columns, one numeric argument ID and48 copied bytes.
+    float3x4 rigged_normal [[id(6)]];
+    float4 mirror_clip_plane [[id(7)]];
+    uint4 flags [[id(8)]]; // reverseZ, mirrorClip, currentJointCount, boneCount
+    uint4 call [[id(9)]]; // indexCount, index32, qualifiedBounds, reserved
+};
+
+vertex ALMetalWorldSimpleVaryings almetal_world_material_animated_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* uv0 [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldAnimatedPoseView& pose [[buffer(4)]],
+    constant ALMetalWorldDirectPolicy& source [[buffer(6)]],
+    const device float4* tangents [[buffer(8)]],
+    const device float2* uv1 [[buffer(9)]],
+    const device float2* uv2 [[buffer(10)]],
+    const device float4* weights [[buffer(12)]],
+    uint vertex_id [[vertex_id]])
+{
+    // Match the CURRENT native material_skinned control exactly, including
+    // rebased-position addition before its modelview/MVP multiplication.
+    const ALMetalObjectSkinnedVertex skinned=almetal_object_skin_vertex(
+        positions[vertex_id],normals[vertex_id],weights[vertex_id],pose.palette,pose.flags.z);
+    const float4 rebased_position=skinned.position+float4(pose.palette[0].xyz,1.0);
+    const float4 eye_position=pose.modelview*rebased_position;
+    float4 clip_position=pose.modelview_projection*rebased_position;clip_position.y=-clip_position.y;
+    ALMetalWorldSimpleVaryings output;
+    output.position=pose.flags.x!=0u?clip_position:almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance=pose.flags.y!=0u?dot(eye_position,pose.mirror_clip_plane):1.0;
+    const float3x3 normal_matrix=float3x3(pose.rigged_normal[0].xyz,pose.rigged_normal[1].xyz,pose.rigged_normal[2].xyz);
+    output.normal=normalize(normal_matrix*skinned.normal.xyz);
+    const float3 tangent=almetal_object_skin_direction(tangents[vertex_id].xyz,weights[vertex_id],pose.palette,pose.flags.z);
+    output.tangent=normalize(normal_matrix*tangent);
+    output.bitangent=tangents[vertex_id].w*cross(output.normal,output.tangent);
+    const float4 encoded_color=float4(colors[vertex_id])/255.0;
+    output.color=float4(almetal_srgb_to_linear(encoded_color.rgb),encoded_color.a);
+    output.texcoord=(source.fixed_texture_matrix*float4(uv0[vertex_id],0.0,1.0)).xy;
+    output.texcoord1=(source.fixed_texture_matrix*float4(uv1[vertex_id],0.0,1.0)).xy;
+    output.texcoord2=(source.fixed_texture_matrix*float4(uv2[vertex_id],0.0,1.0)).xy;
+    output.texture_index=source.source_policy.x>1u?uint(max(as_type<int>(positions[vertex_id].w),0)):0u;
+    output.texture_count=source.source_policy.x;output.alpha_cutoff=source.material_policy.x;
+    output.material_flags=uint3(source.material_policy.y!=0.0,source.material_policy.z!=0.0,source.material_policy.w!=0.0);
+    return output;
+}
+
+vertex ALMetalWorldPBRVaryings almetal_world_pbr_animated_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* uv0 [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldAnimatedPoseView& pose [[buffer(4)]],
+    constant ALMetalWorldDirectPolicy& source [[buffer(6)]],
+    const device float4* tangents [[buffer(8)]],
+    constant ALMetalWorldPBRConstants& pbr [[buffer(11)]],
+    const device float4* weights [[buffer(12)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned=almetal_object_skin_vertex(
+        positions[vertex_id],normals[vertex_id],weights[vertex_id],pose.palette,pose.flags.z);
+    const float3x3 normal_matrix=float3x3(pose.rigged_normal[0].xyz,pose.rigged_normal[1].xyz,pose.rigged_normal[2].xyz);
+    const float3 tangent=almetal_object_skin_direction(tangents[vertex_id].xyz,weights[vertex_id],pose.palette,pose.flags.z);
+    const uint material_index=source.source_policy.x>1u?uint(max(as_type<int>(positions[vertex_id].w),0)):0u;
+    const float4 rebased_position=skinned.position+float4(pose.palette[0].xyz,1.0);
+    const float4 eye_position=pose.modelview*rebased_position;
+    float4 clip_position=pose.modelview_projection*rebased_position;clip_position.y=-clip_position.y;
+    ALMetalWorldPBRVaryings output;
+    output.position=pose.flags.x!=0u?clip_position:almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance=pose.flags.y!=0u?dot(eye_position,pose.mirror_clip_plane):1.0;
+    output.eye_position=eye_position.xyz;output.normal=normalize(normal_matrix*skinned.normal.xyz);
+    const uint slot=min(material_index,max(pbr.config.x,1u)-1u);
+    constant ALMetalWorldPBRSlotConstants& material=pbr.slots[min(slot,7u)];
+    const float4 adjusted_tangent=almetal_world_pbr_tangent(
+        float4(normalize(normal_matrix*tangent),tangents[vertex_id].w),output.normal,
+        source.fixed_texture_matrix,material.texture_transform[1]);
+    output.tangent=normalize(adjusted_tangent.xyz);output.bitangent=adjusted_tangent.w*cross(output.normal,output.tangent);
+    const float4 color=float4(colors[vertex_id])/255.0;
+    output.color=float4(almetal_srgb_to_linear(color.rgb),color.a);
+    output.base_color_texcoord=almetal_world_pbr_texcoord(uv0[vertex_id],source.fixed_texture_matrix,material.texture_transform[0]);
+    output.normal_texcoord=almetal_world_pbr_texcoord(uv0[vertex_id],source.fixed_texture_matrix,material.texture_transform[1]);
+    output.orm_texcoord=almetal_world_pbr_texcoord(uv0[vertex_id],source.fixed_texture_matrix,material.texture_transform[2]);
+    output.emissive_texcoord=almetal_world_pbr_texcoord(uv0[vertex_id],source.fixed_texture_matrix,material.texture_transform[3]);
+    output.material_index=slot;return output;
+}
+
+struct ALMetalWorldAnimatedRoot
+{
+    array<constant ALMetalWorldAnimatedPoseView*,4096> views [[id(0)]];
+    command_buffer commands [[id(4096)]];
+    uint4 config [[id(4097)]];
+};
+static bool almetal_animated_finite(float4 value)
+{return all((as_type<uint4>(value)&0x7fffffffu)<0x7f800000u);}
+
+static bool almetal_animated_visible(constant ALMetalWorldAnimatedPoseView& pose)
+{
+    // Unknown sources keep their original complete indexed draw. The source
+    // producer already marks subnormal/ambiguous encoded-weight bounds unknown.
+    if(pose.call.z==0u || pose.flags.z==0u || pose.flags.z>110u || pose.flags.w==0u || pose.flags.w>110u)
+        return true;
+    for(uint column=0;column<4;++column)
+        if(!almetal_animated_finite(pose.modelview_projection[column]))return true;
+    const float4 origin=pose.palette[0];if(!almetal_animated_finite(origin))return true;
+    float3 minimum=float3(INFINITY),maximum=float3(-INFINITY),magnitude=0.0;
+    float3 underflow_amplification=1.0;
+    for(uint bone=0;bone<pose.flags.w;++bone)
+    {
+        const ALMetalWorldAnimatedBoneBounds box=pose.bounds[bone];
+        if(!almetal_animated_finite(box.minimum) || !almetal_animated_finite(box.maximum) || any(box.minimum.xyz>box.maximum.xyz))return true;
+        const uint joint=min(box.config.x,pose.flags.z-1u),base=1u+3u*joint;
+        const float4 a=pose.palette[base],b=pose.palette[base+1u],c=pose.palette[base+2u];
+        if(!almetal_animated_finite(a) || !almetal_animated_finite(b) || !almetal_animated_finite(c))return true;
+        const float3 extent=max(abs(box.minimum.xyz),abs(box.maximum.xyz));
+        const float3 size=abs(a.xyz)*extent.x+abs(b.xyz)*extent.y+abs(c.xyz)*extent.z+
+            abs(float3(a.w,b.w,c.w))+abs(origin.xyz);
+        if(!almetal_animated_finite(float4(size,0.0)))return true;
+        magnitude=max(magnitude,size);
+        const float3 amplification=float3(1.0+extent.x+extent.y+extent.z)+abs(a.xyz)+abs(b.xyz)+abs(c.xyz);
+        if(!almetal_animated_finite(float4(amplification,0.0)))return true;
+        underflow_amplification=max(underflow_amplification,amplification);
+        for(uint corner=0;corner<8u;++corner)
+        {
+            const float3 point=select(box.minimum.xyz,box.maximum.xyz,bool3((corner&1u)!=0u,(corner&2u)!=0u,(corner&4u)!=0u));
+            const float3 world=a.xyz*point.x+b.xyz*point.y+c.xyz*point.z+float3(a.w,b.w,c.w)+origin.xyz;
+            if(!almetal_animated_finite(float4(world,0.0)))return true;
+            minimum=min(minimum,world);maximum=max(maximum,world);
+        }
+    }
+    // The vertex shader blends columns before transforming, while this bound
+    // transforms each bone support then encloses their convex hull. Include
+    // normalized-weight/blend/FMA/rebase rounding, even under cancellation.
+    // 2048 binary32 unit roundoffs are deliberately generous; the normal
+    // minimum floor is operand-scaled: a lost blend coefficient can later
+    // multiply a huge position, and a flushed position can multiply a huge
+    // coefficient. A bare FLT_MIN world margin would not cover those cases.
+    constexpr float envelope=2048.0*5.9604644775390625e-8;
+    constexpr float underflow=32.0*1.1754943508222875e-38;
+    const float3 error=envelope*magnitude+underflow*underflow_amplification;
+    minimum-=error;maximum+=error;
+    if(!almetal_animated_finite(float4(minimum,0.0)) || !almetal_animated_finite(float4(maximum,0.0)))return true;
+    bool outside[6]={true,true,true,true,true,true};
+    for(uint corner=0;corner<8u;++corner)
+    {
+        const float3 point=select(minimum,maximum,bool3((corner&1u)!=0u,(corner&2u)!=0u,(corner&4u)!=0u));
+        const float4 clip=pose.modelview_projection*float4(point,1.0);
+        const float4 size=abs(pose.modelview_projection[0])*abs(point.x)+
+            abs(pose.modelview_projection[1])*abs(point.y)+abs(pose.modelview_projection[2])*abs(point.z)+abs(pose.modelview_projection[3]);
+        const float4 amplification=float4(1.0+abs(point.x)+abs(point.y)+abs(point.z))+
+            abs(pose.modelview_projection[0])+abs(pose.modelview_projection[1])+
+            abs(pose.modelview_projection[2])+abs(pose.modelview_projection[3]);
+        const float4 uncertainty=envelope*size+underflow*amplification;
+        if(!almetal_animated_finite(clip) || !almetal_animated_finite(uncertainty) ||
+           clip.w<=uncertainty.w || any(uncertainty>max(abs(clip),float4(1.0))/1024.0))return true;
+        outside[0]=outside[0] && clip.x+uncertainty.x < -clip.w-uncertainty.w;
+        outside[1]=outside[1] && clip.x-uncertainty.x >  clip.w+uncertainty.w;
+        outside[2]=outside[2] && clip.y+uncertainty.y < -clip.w-uncertainty.w;
+        outside[3]=outside[3] && clip.y-uncertainty.y >  clip.w+uncertainty.w;
+        outside[4]=outside[4] && (pose.flags.x!=0u
+            ? clip.z+uncertainty.z < 0.0 : clip.z+uncertainty.z < -clip.w-uncertainty.w);
+        outside[5]=outside[5] && clip.z-uncertainty.z > clip.w+uncertainty.w;
+    }
+    return !(outside[0]||outside[1]||outside[2]||outside[3]||outside[4]||outside[5]);
+}
+
+kernel void almetal_world_animated_visibility(
+    constant ALMetalWorldAnimatedRoot& root [[buffer(0)]],device uint* visible [[buffer(1)]],
+    uint id [[thread_position_in_grid]])
+{
+    if(id>=root.config.x || id>=4096u)return;
+    constant ALMetalWorldAnimatedPoseView& pose=*root.views[id];
+    const bool retained=almetal_animated_visible(pose);visible[id]=retained?1u:0u;
+    // CPU cold bindings survive. Update only this original ordered draw's
+    // arguments: no reset, compaction, reordering or same-frame CPU readback.
+    render_command output(root.commands,id);
+    if(pose.call.y!=0u)
+        output.draw_indexed_primitives(primitive_type::triangle,retained?pose.call.x:0u,pose.index32,1);
+    else
+        output.draw_indexed_primitives(primitive_type::triangle,retained?pose.call.x:0u,pose.index16,1);
 }

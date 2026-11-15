@@ -7,6 +7,7 @@
  * no live scene access on workers and no payload-destructor owner mutations.
  */
 #include "alnativesourceworkingset.h"
+#include "alnativeframebudget.h"
 #include "almetalshadowprepare.h"
 #include "almetalworldvisibility.h"
 #include "almetalworldmaterialdata.h"
@@ -16,9 +17,11 @@
 #include <cstring>
 #include <limits>
 #include <new>
+#include <optional>
 #include <utility>
 #include <vector>
 #include "../almetal/almetalworldcohort.h"
+#include "../almetal/almetalworldanimated.h"
 
 namespace ALScenePublicationNative
 {
@@ -53,6 +56,13 @@ inline std::unique_ptr<ALMetalWorldMaterialDataCache> material_data_cache;
 inline U64 material_source_publications = 0, material_source_fallbacks = 0;
 inline U64 resource_source_publications = 0, resource_source_fallbacks = 0;
 inline U64 cohort_source_publications = 0;
+inline U64 animated_source_publications = 0, animated_source_fallbacks = 0;
+struct AnimatedCompilationStats
+{
+    U64 requests=0,admitted=0,deferred=0,duplicate_views=0,published=0,failed=0;
+    U64 requested_bytes=0,admitted_bytes=0,saturated=0;
+};
+inline AnimatedCompilationStats animated_compilation_stats;
 // Owner-only deterministic allocation seam; never used by product settings
 // or detached/GPU work. The current immutable source must survive optional
 // promotion allocation failure without overwriting a newer publication.
@@ -81,6 +91,7 @@ struct WorldFlavor
     // Optional immutable consumer capabilities, not shader/material semantics.
     bool cohort_source = false;
     bool cohort_bounds = false; // Optional CPU proof, never a shading-key bit.
+    bool animated_source = false; // Pose-free GPU certificate, not a semantic key.
     bool normal_map = false, specular_map = false;
     bool alpha_mask = false, rigged = false, pbr_glow = false;
     bool post_water_pbr_glow = false;
@@ -91,6 +102,10 @@ struct WorldFlavor
         return native_materials && family != WorldFamily::simple &&
             !(family == WorldFamily::legacy && material_alpha_mode == 1) &&
             !pbr_glow && !impostor_fullbright && !impostor_shiny && !impostor_emboss;
+    }
+    bool hasAnimatedConsumer() const noexcept
+    {
+        return rigged && (family==WorldFamily::legacy || family==WorldFamily::pbr) && hasResourceConsumer();
     }
     U64 key() const noexcept
     {
@@ -113,6 +128,7 @@ struct WorldVariant
     U64 key = 0;
     ALMetalWorldSimpleBatch prototype;
     std::shared_ptr<const ALMetalWorldCohortSource> cohort_source;
+    std::shared_ptr<const ALMetalWorldAnimatedSource> animated_source;
     bool cpu_slots_frozen = false;
 };
 struct ShadowVariant
@@ -593,15 +609,108 @@ inline void sealCohortSource(const Payload& value, WorldVariant& variant, U64 id
     if (variant.cohort_source) ++cohort_source_publications;
 }
 
+inline bool animatedSourceReady(const Payload& value,const WorldVariant& variant) noexcept
+{
+    if (!variant.animated_source || !value.native_tuple) return false;
+    const auto& source = *variant.animated_source;
+    const auto& key = source.key();
+    const auto& prototype = source.prototype();
+    return key.flavor == variant.key && key.revision == value.producer_revision &&
+        prototype.vertices == variant.prototype.vertices && prototype.indices == variant.prototype.indices &&
+        prototype.weight_offset == variant.prototype.weight_offset &&
+        prototype.native_material_source == variant.prototype.native_material_source &&
+        prototype.native_resource_source == variant.prototype.native_resource_source &&
+        source.matchesNativeScope({value.native_tuple,value.vertices,value.indices});
+}
+inline const std::shared_ptr<const ALMetalWorldAnimatedSource>* animatedSourceFor(
+    const WorldLease& lease,const WorldFlavor& flavor) noexcept
+{
+    if (!lease) return nullptr;
+    const auto* variant = findWorldVariant(*lease.owner,flavor.key());
+    return variant && &variant->prototype == lease.prototype && animatedSourceReady(*lease.owner,*variant)
+        ? &variant->animated_source : nullptr;
+}
+inline U64 animatedCompilationWorkBytes(const ALMetalWorldSimpleBatch& source) noexcept
+{
+    // Checked logical compile/copy/proof work, not resident geometry/texture
+    // bytes, physical heap charge, or a guarantee of CPU execution time.
+    const U64 descriptors=sizeof(ALMetalWorldSimpleBatch)+sizeof(ALMetalWorldAnimatedSource)+
+        sizeof(ALMetalWorldSourceNativeScope)+110*sizeof(ALMetalWorldAnimatedBoneBounds);
+    const U64 scan=saturatedProduct(source.index_count,2*sizeof(float)*4+
+        (source.index_type==ALMetalIndexType::uint32?4:2));
+    return scan>=ALNativeFrameBudget::unknown_bytes-descriptors
+        ? ALNativeFrameBudget::unknown_bytes : descriptors+scan;
+}
+struct AnimatedCompilationTicket
+{
+    // CPU-local only. This owner is never stored in a Payload, FrameView or
+    // native completion callback; it survives owner reentrancy until return.
+    std::shared_ptr<ALViewerMetalShadowSourceCache> owner;
+    ALNativeFrameBudget::Lease credit;
+    bool completed=false;
+    AnimatedCompilationTicket()=default;
+    AnimatedCompilationTicket(const AnimatedCompilationTicket&)=delete;
+    AnimatedCompilationTicket& operator=(const AnimatedCompilationTicket&)=delete;
+    ~AnimatedCompilationTicket()
+    {if(credit && !completed)++animated_compilation_stats.failed;}
+    void publicationCompleted() noexcept
+    {
+        if(credit && owner && owner->animated_compilation && !completed)
+        {owner->animated_compilation->publicationCompleted();completed=true;++animated_compilation_stats.published;}
+    }
+};
+inline bool admitAnimatedCompilation(const LLDrawInfo& info,const ALMetalWorldSimpleBatch& source,
+                                     ALNativeFrameBudget& budget,AnimatedCompilationTicket& ticket) noexcept
+try
+{
+    auto& stats=animated_compilation_stats;
+    const auto bytes=animatedCompilationWorkBytes(source);
+    if(bytes==ALNativeFrameBudget::unknown_bytes){++stats.saturated;++stats.deferred;return false;}
+    if(!info.mMetalShadowSource)info.mMetalShadowSource=std::make_shared<ALViewerMetalShadowSourceCache>();
+    ticket.owner=info.mMetalShadowSource;
+    if(!ticket.owner->animated_compilation)
+        ticket.owner->animated_compilation=std::make_unique<ALNativeCohortCompilationAdmission>();
+    auto& owner=*ticket.owner->animated_compilation;
+    const auto frame=budget.snapshot().frame;
+    if(owner.lastConsideredFrame() && frame<=*owner.lastConsideredFrame())
+    {++stats.duplicate_views;++stats.deferred;return false;}
+    ++stats.requests;stats.requested_bytes+=bytes;
+    auto decision=owner.tryAcquire(budget,bytes);
+    if(!decision){++stats.deferred;return false;}
+    ticket.credit=std::move(decision.credit);++stats.admitted;stats.admitted_bytes+=bytes;
+    return true;
+}
+catch(const std::bad_alloc&){++animated_compilation_stats.deferred;return false;}
+inline void sealAnimatedSource(Payload& value,WorldVariant& variant,U64 identity,U64 revision) noexcept
+try
+{
+    // The certificate owns no pose, view, avatar or parent publication. Its
+    // geometry/weight plane and material facts belong to this exact completed
+    // producer generation; later camera/pose changes cannot alter its key.
+    value.native_tuple = nativeTuple(value.resources,value.native_tuple);
+    if (animatedSourceReady(value,variant)) return;
+    if (!completeWorldResources(value,variant.prototype))
+    { ++animated_source_fallbacks;return; }
+    auto source = ALMetalWorldAnimatedSource::seal({identity,variant.key,revision},variant.prototype,
+        {value.native_tuple,value.vertices,value.indices});
+    if (!source) { ++animated_source_fallbacks;return; }
+    variant.animated_source = std::move(source);
+    ++animated_source_publications;
+}
+catch (const std::bad_alloc&) { ++animated_source_fallbacks; }
+
 inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
-                        ALNativeSourceWorkingSet& working_set, U64& serial, U32 frame)
+                        ALNativeSourceWorkingSet& working_set, U64& serial, U32 frame,
+                        ALNativeFrameBudget* compilation_budget=nullptr)
 {
     try
     {
+        std::optional<AnimatedCompilationTicket> animated_ticket;
         info.observeMetalSourceDependencies();
         if (flavor.family == WorldFamily::simple)
             flavor.indexed_textures = flavor.indexed_textures && info.mTextureList.size() > 1;
-        flavor.native_resources = flavor.native_resources && flavor.hasResourceConsumer();
+        flavor.animated_source = flavor.animated_source && flavor.hasAnimatedConsumer();
+        flavor.native_resources = (flavor.native_resources || flavor.animated_source) && flavor.hasResourceConsumer();
         const U64 key = flavor.key();
         if (auto value = current(info))
         {
@@ -618,7 +727,8 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                         variant.prototype.native_resource_source->matches(variant.prototype))) &&
                         (!flavor.cohort_bounds || publication.bounds_attempted) &&
                         (!flavor.cohort_source || (variant.cohort_source &&
-                            (!flavor.cohort_bounds || variant.cohort_source->hasBoundsPublication()))) && !needs_cpu_freeze(variant);
+                            (!flavor.cohort_bounds || variant.cohort_source->hasBoundsPublication()))) &&
+                        (!flavor.animated_source || animatedSourceReady(publication,variant)) && !needs_cpu_freeze(variant);
                 };
                 if (ready(*found, *value))
                 {
@@ -646,15 +756,42 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                     return reader && reader.get() == value.get() &&
                         !reader.owner_before(value) && !value.owner_before(reader);
                 };
+                const auto animated_transient_current = [&]
+                {
+                    // PPD-289: an optional animated certificate cannot turn
+                    // cache-only withdrawal of this real reader into missing
+                    // required geometry. Do not promote, charge or republish
+                    // a child here; the caller keeps the ordinary raw route.
+                    if (!flavor.animated_source || state->publication() ||
+                        state->identity()!=identity || state->revision()!=revision) return false;
+                    const auto& actual=info.metalSourcePublication();
+                    if(actual.get()!=state.get() || actual.owner_before(state) || state.owner_before(actual)) return false;
+                    const auto& metadata=info.mMetalShadowSource;
+                    if(!metadata || metadata->native_scene_revision!=revision) return false;
+                    auto reader=metadata->native_scene_transient.lock();
+                    return reader && reader.get()==value.get() &&
+                        !reader.owner_before(value) && !value.owner_before(reader);
+                };
                 try
                 {
                     if (capabilityPromotionAllocationForTesting) capabilityPromotionAllocationForTesting(*state);
+                    if (animated_transient_current())
+                        return {std::move(value), &found->prototype, nullptr, true};
+                    if (flavor.animated_source && !original_current())
+                        return {{}, nullptr, "Native scene changed before optional animated publication"};
                     // Cache withdrawal may leave only this real reader. CPU
                     // freezing/bounds are optional: retain its exact source
                     // (unqualified bounds fail visible), without resurrecting
                     // an unbudgeted child publisher. PPD-205 / PPD-219.
                     if (authored_transient_current())
                         return {std::move(value), &found->prototype, nullptr, true};
+                    if(flavor.animated_source && !animatedSourceReady(*value,*found))
+                    {
+                        animated_ticket.emplace();
+                        if(!admitAnimatedCompilation(info,found->prototype,
+                            compilation_budget?*compilation_budget:ALNativeFrameBudget::instance(),*animated_ticket))
+                            return {std::move(value), &found->prototype, nullptr, true};
+                    }
                     const auto index = static_cast<std::size_t>(found - value->worlds.data());
                     auto promoted = std::make_shared<Payload>(*value);
                     auto& variant = promoted->worlds[index];
@@ -666,6 +803,8 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                         publishResourceSource(*promoted, variant.prototype);
                     if (flavor.cohort_source || had_cohort_source)
                         sealCohortSource(*promoted, variant, info.metalSourcePublication()->identity(), promoted->producer_revision);
+                    if (flavor.animated_source)
+                        sealAnimatedSource(*promoted,variant,identity,promoted->producer_revision);
                     if (!ready(variant, *promoted))
                     {
                         if (!original_current())
@@ -678,12 +817,13 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                     promoted->serial = ++serial;
                     if (!publish(info, promoted, working_set, frame))
                         return {{}, nullptr, "Native scene producer changed while promoting capabilities"};
+                    if(animated_ticket && animatedSourceReady(*promoted,variant))animated_ticket->publicationCompleted();
                     const auto* prototype = &promoted->worlds[index].prototype;
                     return {std::move(promoted), prototype, nullptr, true};
                 }
                 catch (const std::bad_alloc&)
                 {
-                    if (original_current() || authored_transient_current())
+                    if (original_current() || authored_transient_current() || animated_transient_current())
                         return {std::move(value), &found->prototype, nullptr, true};
                     return {{}, nullptr, "Native scene changed while optional promotion allocation failed"};
                 }
@@ -733,11 +873,18 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
             }
             catch (const std::bad_alloc&) { ++material_source_fallbacks; }
         }
-        if (flavor.native_resources) publishResourceSource(*value, variant.prototype);
+        bool animated_admitted=true;
+        if(flavor.animated_source)
+        {animated_ticket.emplace();animated_admitted=admitAnimatedCompilation(info,variant.prototype,
+            compilation_budget?*compilation_budget:ALNativeFrameBudget::instance(),*animated_ticket);}
+        if (flavor.native_resources && animated_admitted) publishResourceSource(*value, variant.prototype);
         if (flavor.cohort_source)
             sealCohortSource(*value, variant, info.metalSourcePublication()->identity(), value->producer_revision);
+        if (flavor.animated_source && animated_admitted)
+            sealAnimatedSource(*value,variant,info.metalSourcePublication()->identity(),value->producer_revision);
         if (!publish(info, value, working_set, frame))
             return {{}, nullptr, "Native scene producer changed while sealing"};
+        if(animated_ticket && animatedSourceReady(*value,variant))animated_ticket->publicationCompleted();
         const auto* prototype = &value->worlds.back().prototype;
         return {std::move(value), prototype};
     }

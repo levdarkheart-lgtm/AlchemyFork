@@ -30,6 +30,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "pipeline.h"
+#include "../almetal/almetalworldanimated.h"
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -415,6 +416,7 @@ static constexpr U32 SHADOW_MASKED_PASSES[] = {
 #if LL_DARWIN
 struct ALViewerMetalShadowSourceCache
 {
+    std::unique_ptr<ALNativeCohortCompilationAdmission> animated_compilation;
     std::weak_ptr<const void> native_scene_transient;
     U64 native_scene_revision = 0;
     std::weak_ptr<ALMetalWorldVisibility> visibility;
@@ -3275,6 +3277,31 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             };
             log_source_capture("main", &capture);
             log_source_capture("probe", mMetalProbeWorldSimpleCapture.get());
+            const auto log_animated_capture=[](const char* owner,const MetalWorldSimpleCapture* source)
+            {
+                if(!source)return;
+                const auto& stats=source->animated_source_stats;
+                LL_INFOS("MetalScene") << "Native animated capture: view=" << owner
+                    << ", enabled=" << gSavedSettings.getBOOL("RenderMetalAnimatedGpuRecords")
+                    << ", enabled_views/requested/captured=" << stats.enabled_views << '/' << stats.requested_draws << '/' << stats.captured_draws
+                    << ", unsupported/source/owner/pose/capacity/allocation_fallbacks=" << stats.unsupported_skips << '/' << stats.source_unavailable
+                    << '/' << stats.owner_proof_skips << '/' << stats.pose_unavailable << '/' << stats.capacity_fallbacks << '/' << stats.allocation_fallbacks << LL_ENDL;
+                if(!source->renderer)return;
+                const auto gpu=source->renderer->worldAnimatedStats();
+                LL_INFOS("MetalScene") << "Native animated submission: view=" << owner
+                    << ", requested/accepted_gpu/fallback/execute_calls=" << gpu.requested_draws << '/' << gpu.gpu_draws << '/' << gpu.fallback_draws << '/' << gpu.execute_calls
+                    << ", current_pose/source_publications=" << gpu.current_pose_publications << '/' << gpu.source_publications
+                    << ", unknown_bounds/compute_bounds_tests=" << gpu.bounds_unknown << '/' << gpu.bounds_tests
+                    << ", accepted_gpu_includes_zero_index_culled_commands=1" << LL_ENDL;
+            };
+            log_animated_capture("main",&capture);
+            log_animated_capture("probe",mMetalProbeWorldSimpleCapture.get());
+            const auto& animated_compilation=ALScenePublicationNative::animated_compilation_stats;
+            LL_INFOS("MetalFramePlan") << "CPU animated compilation: requests/admitted/deferred/duplicate_views/published/failed="
+                << animated_compilation.requests << '/' << animated_compilation.admitted << '/' << animated_compilation.deferred << '/'
+                << animated_compilation.duplicate_views << '/' << animated_compilation.published << '/' << animated_compilation.failed
+                << ", requested/admitted_work_bytes/saturated=" << animated_compilation.requested_bytes << '/' << animated_compilation.admitted_bytes << '/' << animated_compilation.saturated
+                << ", sealed_sources/fallbacks=" << ALScenePublicationNative::animated_source_publications << '/' << ALScenePublicationNative::animated_source_fallbacks << LL_ENDL;
             const auto log_terrain_preflight=[](const char* owner,const MetalWorldSimpleCapture* source)
             {
                 if(!source || !source->terrain_preflight_failures)return;
@@ -3712,6 +3739,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // PPD-228: cohort banks must retain ordinary raw fallback. The older
     // scalar route is explicit, or belongs to standalone non-cohort banks.
     capture.beginSourceRows((source_rows() || (source_banks() && !group_sources())) && !capture.impostor_bake);
+    static LLCachedControl<bool> animated_gpu_records(gSavedSettings, "RenderMetalAnimatedGpuRecords", false);
+    capture.beginAnimatedGpuRecords(animated_gpu_records() && !capture.impostor_bake);
     capture.compact_gbuffer_active = compact_inputs() || capture.source_rows_active;
     if (capture.source_rows_active)
         for (const auto* region : LLWorld::getInstance()->getRegionList())
@@ -16456,6 +16485,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.source_owner = capture.world_resources;
     scene.cpu_source_owner = capture.cpu_sources;
     scene.source_rows = capture.source_rows;
+    scene.animated_gpu_records = capture.animated_gpu_records_active && !impostor_bake;
     static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
     static LLCachedControl<bool> direct_source_banks(gSavedSettings, "RenderMetalSourceDirectCommandBanks", false);
     static LLCachedControl<S32> source_bank_minimum(gSavedSettings, "RenderMetalSourceCommandMinimumRun", 2);
@@ -16681,7 +16711,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     // Draw count alone did not predict a complete-path worker benefit; keep
     // this diagnostic explicit until its frame/CPU cost gate is established.
     static LLCachedControl<bool> prepare_world_inputs(gSavedSettings, "RenderMetalWorldPreparation", false);
-    const bool prepare_world = inputs && prepare_world_inputs() && !scene.source_rows && !scene.cohort_count &&
+    const bool prepare_world = inputs && prepare_world_inputs() && !scene.animated_gpu_records && !scene.source_rows && !scene.cohort_count &&
         inputs->scene().drawCount() >= MetalWorldSimpleCapture::parallel_world_minimum;
     bool credited_preparation = false;
     if (inputs) scene = inputs->scene();

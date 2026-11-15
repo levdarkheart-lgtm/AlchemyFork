@@ -870,6 +870,48 @@ TEST_CASE("Native maintenance progresses immediately under pressure without borr
     a.credit.reset();CHECK(budget.tryAcquire(Budget::Work::native_maintenance,4)); // Actual retirement restores capacity.
 }
 
+TEST_CASE("Unsorted failed CPU publications cannot monopolize busy progress ahead of an older waiter",
+          "[native-frame-budget][cohort-compilation][PPD-290]")
+{
+    for(bool pressure:{false,true})
+    {
+        CAPTURE(pressure);auto limits=smallScene();limits.maximum_deferral_frames=2;
+        Budget budget(limits);ALNativeCohortCompilationAdmission first,later;
+        first.notePending(0);later.notePending(1);
+        unsigned failed_services=0,later_services=0;
+        std::optional<Budget::Frame> later_completed;
+        for(Budget::Frame id=2;id<=12;++id)
+        {
+            auto input=frame(id);if(pressure)input.os_available_bytes=0;else input.required_main_cpu_ns=45'000'000;
+            budget.beginFrame(input);
+            // The animated source factory follows actual draw order. Do not
+            // sort these callers: the earlier one deliberately fails forever.
+            {
+                auto credit=first.tryAcquire(budget,8);
+                if(credit){++failed_services;CHECK(credit.reason==Budget::Reason::progress);}
+            }
+            if(!later_completed)
+            {
+                auto credit=later.tryAcquire(budget,8);
+                if(credit)
+                {++later_services;later_completed=id;later.publicationCompleted();}
+            }
+            const auto used=budget.snapshot();
+            CHECK(used.scene_publications_this_frame<=1);
+            CHECK(used.scene_publications_in_flight==0);CHECK(used.scene_bytes_in_flight==0);
+            CHECK(used.uploads_this_frame==0);CHECK(used.optional_views_this_frame==0);
+            CHECK(first.pendingSince()==0);
+            // Same outer frame/probe cannot refill the progress slot, even
+            // after failed or successful local-credit retirement.
+            budget.beginFrame(input);CHECK_FALSE(first.tryAcquire(budget,8));
+            CHECK(budget.snapshot().scene_publications_this_frame==used.scene_publications_this_frame);
+            CHECK(budget.snapshot().admitted==used.admitted);
+        }
+        REQUIRE(later_completed);CHECK(*later_completed<=2+limits.maximum_deferral_frames+1);
+        CHECK(later_services==1);CHECK(failed_services>=2);CHECK_FALSE(later.pending());
+    }
+}
+
 TEST_CASE("Oversize maintenance is exclusive and checked debt retires without a frame tick",
           "[native-frame-budget][native-maintenance][PPD-277]")
 {

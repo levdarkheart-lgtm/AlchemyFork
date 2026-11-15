@@ -7,6 +7,7 @@
 #include "llfontmetal_fixture.h"
 #include "../../almetal/almetalpipeline.h"
 #include "../../almetal/almetalworld.h"
+#include "../../almetal/almetalworldanimated.h"
 #include "../../almetal/almetalworldcohort.h"
 #include "../../almetal/almetalworldprepare.h"
 #include "../../almetal/almetalworldmaterialdata.h"
@@ -122,6 +123,7 @@ struct LLVOAvatar
 };
 struct ALViewerMetalShadowSourceCache
 {
+    std::unique_ptr<ALNativeCohortCompilationAdmission> animated_compilation;
     std::weak_ptr<const void> native_scene_transient;
     U64 native_scene_revision=0;
     std::weak_ptr<ALMetalWorldVisibility> visibility;
@@ -4378,3 +4380,5 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_group_bounds_promotion_native.inl"
 
 #include "alpipeline_body_palette_native.inl"
+
+#include "alpipeline_animated_gpu_records_native.inl"
