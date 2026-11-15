@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-247 -->
+<!-- next-defect-id: PPD-248 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5937,3 +5937,24 @@ This is a source-confirmed benchmark construction error, not a viewer defect.
 - 2026-11-15 root source review identifies the two simultaneous fixture owners before execution. Register before repair; keep baseline/candidate producer and arena costs symmetric when restructuring the harness. No successful benchmark or runtime failure is claimed.
 
 - 2026-11-15 Cost fixture now uses one NativeFont host per configuration and separate per-arm FrameData/renderers. Both timed arms explicitly invalidate/reseal every producer record; stable bytes and churn packing scope remain symmetric. Equal-byte adverse cases, rotating arms, warm source-publication0 and producer-count checks preserved. Appendix SHA c473ec346c8fa6c477af7893327e80fabfd6020b141314860806f390e56b70a1 independently peer-reviewed; no cost execution yet.
+
+
+## PPD-247 — Attachment fixture requests an unsupported tangent strider type
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Current LLVertexBuffer::getTangentStrider has LLVector3 and LLVector4a overloads; the original tangent layout is preserved. This is a new fixture API error, not a viewer rendering regression.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Use the existing LLVector4a tangent strider and rebuild; retain failed44receipt before native/cost validation.
+- Verification: Source44 38732f4b25 doctor/configure pass, build fails after61.548s at new attachment appendix line30: LLStrider<LLVector4> cannot bind either tangent overload. No native tests or affected viewer execution.
+- Owner verification: pending
+- Push approval: not_granted
+
+The new PBR fixture chose the color/weight vector type for a tangent accessor.
+The renderer implementation is not implicated by this compile failure.
+
+### History
+
+- 2026-11-15 required44build fails exit1; exact commands/logs remain private in frozen-source-build-44.json and its build log. Registered before changing the fixture. Source69085 staged app remains intact.

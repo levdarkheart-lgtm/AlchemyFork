@@ -27,7 +27,7 @@ struct AttachmentPalettePublication : MaterialGroupPublication
             LLStrider<LLVector4> weights;REQUIRE(info.mVertexBuffer->getWeight4Strider(weights));
             for(U32 vertex=0;vertex<3;++vertex)weights[vertex].set(F32(joints-1)+.5f,0.f,0.f,0.f);
             if(family==2)
-            {LLStrider<LLVector4> tangents;REQUIRE(info.mVertexBuffer->getTangentStrider(tangents));
+            {LLStrider<LLVector4a> tangents;REQUIRE(info.mVertexBuffer->getTangentStrider(tangents));
              for(U32 vertex=0;vertex<3;++vertex)tangents[vertex].set(1.f,0.f,0.f,1.f);}
             info.mVertexBuffer->unmapBuffer();
             info.mAvatar=avatars[unique?at:0].get();info.mSkinInfo=info.mAvatar;

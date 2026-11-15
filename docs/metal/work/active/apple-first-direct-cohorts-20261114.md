@@ -1611,3 +1611,11 @@ HDR/reverseZ semantics and old native path retained for SSAO/blur/external input
 Opaque owns a separate fusion worktree/backend/shader/tests; rootpipeline/CMake
 integration remains serialized. This is a bounded parity/cost experiment, not a
 GPU-bottleneck attribution, quality reduction or predicted FPS improvement.
+
+
+Required44 at38732f4b25: doctor/configure0, build1 in61.548s(PPD247newtest
+LLVector4 tangent strider vs actualLLVector4a/LLVector3 overloads). No native44
+execution and no successful44build claim. Root repairs only fixture tangent type;
+source45 is the next clean required build. All44failure receipts remain retained.
+Owner requests clearer occasional overall progress after23h; maintain a concise
+implementation/remaining checklist, not just per-test updates. Next248.
