@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-199 -->
+<!-- next-defect-id: PPD-200 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4901,3 +4901,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-14: Registered before the author corrects the in-progress proof helper expressions.
+
+
+## PPD-199 — Shared plain/material fixture leaves conditional expressions ungrouped in Catch assertions
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex actual cohort fixture
+- Discovered: 2026-11-15
+- Original reference: Repository Catch assertions require conditional expressions to be grouped so the decomposer receives the resulting boolean.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Clean3af1013468 required21 doctor/configure exit0; build exits1 after63.043s. Three new REQUIRE(family ? material_call : simple_call) expressions in actual-owner fixture1620/3347/3366 fail because Catch decomposes the condition into ExprLhs<unsigned int>. No production-code diagnostic or native runtime outcome is inferred. Earlier logical-operator fixture cases are retained in PPD169/182.
+- Next action: Parenthesize all three complete conditional expressions without changing the selected calls or required assertions, then rebuild and execute native/cost checks.
+- Verification: Executed compiler errors and failed frozen-source-build-21 receipt retained.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before correcting the three new conditional assertion sites.

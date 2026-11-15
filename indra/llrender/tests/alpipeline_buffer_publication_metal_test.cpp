@@ -1617,7 +1617,7 @@ TEST_CASE("Actual direct material cohort native resources outlive CPU descriptor
         auto packet=f.sealMaterial();REQUIRE(packet);std::weak_ptr<const NativeGroup> weak_group=packet;
         std::weak_ptr<const Inputs::ALScenePublicationNative::Payload> weak_source=std::static_pointer_cast<const Inputs::ALScenePublicationNative::Payload>(info.state->publication());
         std::weak_ptr<ALNativePublication::State> weak_state=info.state;
-        Inputs::LLCullResult cull;REQUIRE(family?cull.pushNativeMaterialRange(f.type,packet,1,f.region.snapshot()):cull.pushNativeSimpleRange(packet,1,f.region.snapshot()));
+        Inputs::LLCullResult cull;REQUIRE((family?cull.pushNativeMaterialRange(f.type,packet,1,f.region.snapshot()):cull.pushNativeSimpleRange(packet,1,f.region.snapshot())));
         Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture,true,false);
         {CullScope scope(cull);f.capture(pipeline);}REQUIRE(capture.complete);
         REQUIRE(capture.source_cohorts.size()==1);
@@ -3344,8 +3344,8 @@ static void actualDirectCohortCosts(std::initializer_list<U32> families)
                             struct Pending {U32 type,raw_begin,count;};
                             std::unordered_map<const void*,std::vector<Pending>> pending;
                             auto packet=mode?f.currentMaterial():std::shared_ptr<const NativeGroup>{};
-                            if(packet)REQUIRE(family?cull.pushNativeMaterialRange(f.type,packet,count,f.region.snapshot()):
-                                cull.pushNativeSimpleRange(packet,count,f.region.snapshot()));
+                            if(packet)REQUIRE((family?cull.pushNativeMaterialRange(f.type,packet,count,f.region.snapshot()):
+                                cull.pushNativeSimpleRange(packet,count,f.region.snapshot())));
                             else for(auto* source:arm.sources)cull.pushDrawInfo(f.type,source);
                             if(mode&&!packet)pending[f.group.get()].push_back({f.type,0,count});
                             // Actual postSort admits raw first, seals after
@@ -3363,8 +3363,8 @@ static void actualDirectCohortCosts(std::initializer_list<U32> families)
                                 const auto span=std::find_if(admitted->second.begin(),admitted->second.end(),[&](const auto& value){return value.type==f.type;});
                                 REQUIRE(span!=admitted->second.end());REQUIRE(span->count==arm.sources.size());
                                 std::vector<Inputs::LLDrawInfo*> expected(arm.sources.begin(),arm.sources.end());
-                                REQUIRE(family?cull.replaceNativeMaterialRange(f.type,sealed,span->raw_begin,expected,f.region.snapshot()):
-                                    cull.replaceNativeSimpleRange(sealed,span->raw_begin,expected,f.region.snapshot()));
+                                REQUIRE((family?cull.replaceNativeMaterialRange(f.type,sealed,span->raw_begin,expected,f.region.snapshot()):
+                                    cull.replaceNativeSimpleRange(sealed,span->raw_begin,expected,f.region.snapshot())));
                                 ++value.same_view_replacements;
                             }
                             {CullScope scope(cull);f.capture(arm.pipeline);}REQUIRE(capture.complete);REQUIRE(capture.logicalDrawCount()==count);
