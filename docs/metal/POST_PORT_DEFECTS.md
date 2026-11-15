@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-261 -->
+<!-- next-defect-id: PPD-263 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6186,7 +6186,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-258 — Compact-restoration fixture indexes a retired layout
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / compact-restoration author
 - Discovered: 2026-11-15
@@ -6201,6 +6201,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 registered before narrow fixture repair. PPD256 implementation and complete-path costs remain pending; no performance or test pass claim.
 
+
+- 2026-11-15 observed verification: Source51 actual publisher18617assertions/73cases passes under API/GPU validation. Fixture correction retains failure/retry, weak-generation rejection and production lifetime. Owner verification pending; no push approval.
 
 ## PPD-259 — Private probe cost driver selects the CPU publisher test binary
 
@@ -6224,7 +6226,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-260 — Compact-restoration fixture assumes completion handlers retired synchronously
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator / compact-restoration author
 - Discovered: 2026-11-15
@@ -6238,3 +6240,41 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before fixture retirement gate. Keep completion ownership strong until the real callback retires; do not shorten production lifetimes to satisfy this test.
+
+
+- 2026-11-15 observed verification: Source51 actual publisher18617assertions/73cases passes under API/GPU validation. Fixture correction retains failure/retry, weak-generation rejection and production lifetime. Owner verification pending; no push approval.
+
+## PPD-261 — Terrain patch capture republishes pass-common material constants
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / terrain publication author
+- Discovered: 2026-11-15
+- Original reference: Native terrain pass capture resolves common texture/material inputs before its face loop. Original per-patch geometry, transforms, tessellation, paint/hex/overlay and query behavior remain authoritative.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Seal exact terrain surface inputs once per pass and share them across patch batches; publish common exact-view constants once while retaining independent patch geometry/factors and all validation. Gate with actual capture, native parity/generation lifetime and complete-path costs.
+- Verification: Source50 audit identifies captureMetalWorldPBRTerrainBatch repeating four PBR slot values per patch; buildWorldTerrainConstants repacks896bytes of matrices/common/hex/PBR data and setVertexAndFragmentData uses default deduplicate=false. Patch offsets and six tessellation factors are separate. No measured viewer bottleneck or speedup attribution is established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before implementation. This targets repeated pass-common allocation/publication, not removal of per-patch view-dependent work or a shader-quality change. Source49/50 probe repair and source51 compact restoration remain separately evidenced.
+
+
+## PPD-262 — Compact-restoration cost matrix omits expired-proof expansion
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator / compact-restoration author
+- Discovered: 2026-11-15
+- Original reference: Cold new layout construction and retained warm/churn capture differ from restoring a retained tuple after child/private proof retirement. Correctness exercises expansion; the cost frontier must do so as well.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Add a focused complete-path cost condition using actual child/group eviction and real retirement, then capture/adopt/encode/reclaim/settle through actual admission against equivalent raw input. Report expansion/reuse counts explicitly and preserve all earlier cost data.
+- Verification: Source51 required/static/strict/actual73cases and small-cost73578assertions pass. All1512small-cost raw samples total604tuplebuilds but zero tuple expansions and zero live-proof restoration. These results characterize construction/warm/churn only; they do not accept expired-proof repacking cost.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered after observed census and before cost-frontier correction. Native correctness demonstrates expired-proof numeric-buffer reuse; that does not supply a timing result. No viewer defect or speedup attribution is claimed.

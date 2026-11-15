@@ -1724,3 +1724,32 @@ chargedandoldadmissionfloorretained; capsunchanged. Newactual3cases/smallcomplet
 costunexecuted. PPD258retained-row and260boundedcompletion-retirement fixturefixes
 included; no productionlifetime shortening. Next51requiredbuild/actualpublication/
 small-restorationcosts. Originalwhole-enginegoalactive; next261.
+
+
+Source51 **96363dc6d2 /26.4.0.69094** doctor/configure/build0 (30.483s),
+static/strictPASS. Actualpublisher18617assertions/73casesPASS in43.974s under
+API/GPUvalidation, including256/258/260. Smallrestoration73578/1,ordinary4arm
+219988/1,many4arm2645160/1 costsPASS. Explicit50→51sourceproof reruns actualpublisher
+and reuses21successful48native scopes plus4targeted50renderer scopes; no binary
+identity or all26rerun claim. Allrootexecution handles terminal, no viewer action.
+
+Measuredsmallrestore108summary/1512rawrows,54pairedconditions: CPUwarm17/18wins
+median−2.39%;cold0/18median+7.08%;churn0/18median+7.03% versusraw. Completionwarm
+11/18median−1.00%,cold1/18median+1.78%,churn7/18median+1.42%. Not anold/newtuple
+causalcomparison orFPSresult. ActualBatch1696B,Source248B,Tuple248B beforeactive
+values. Census604tuplebuilds/229520logicalcopiedbytes butZEROexpansions/proofreuses:
+PPD262 registers omittedexpired-proofcostfrontier before repair. 256notaccepted
+by countersalone; caps andgrossshared-certificateaccountingunchanged.
+
+PPD261terrain pass-publication registered beforeimplementation. Opaque owns
+almetalworld.cpp/h,worlddraws ifneeded,worldprepare.mm,lldrawpoolterrain.cpp and
+newprivatehooks; rootsolepipeline.cpp/.h/CMake/docs/build/test. Residency owns
+NEWalmetal_terrain_pass_publication_test.inl only. ExactAPI androotproducerhooks
+pending; no shaderABI/quality/cap changes authorized. Architecturegap owns
+262costfixture correction inactualpublisherCPP+staticrestorationappendix only.
+Rootregistercurrentlynext263. No shared concurrent edits or source261execution.
+
+Next concrete actions: integrate/review262costfrontier, build/test freshsource;
+continue261surface/per-viewcommon packet with exact nativeleases and rawroute,
+then useful remainingprep/visibility and combinedcandidate. Goalremainsactive;
+owner69085/69065unchanged, nolaunch/profile/push, broaderreleasegatespartial.
