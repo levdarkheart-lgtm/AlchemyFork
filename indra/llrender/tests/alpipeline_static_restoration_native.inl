@@ -178,3 +178,7 @@ TEST_CASE("Actual compact restoration allocation failures preserve whole raw fal
 TEST_CASE("Actual compact static restoration complete small group costs",
           "[almetal][.native-static-restoration-cost]")
 {actualDirectCohortCosts({0,1,2},{1,2,4},true);}
+
+TEST_CASE("Actual expired and live private proof restoration complete costs",
+          "[almetal][.native-expired-static-restoration-cost]")
+{actualDirectCohortCosts({1,2},{1,2,4},true,{3,4});}

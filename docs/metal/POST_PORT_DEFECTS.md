@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-263 -->
+<!-- next-defect-id: PPD-264 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6278,3 +6278,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered after observed census and before cost-frontier correction. Native correctness demonstrates expired-proof numeric-buffer reuse; that does not supply a timing result. No viewer defect or speedup attribution is claimed.
+
+
+## PPD-263 — World-preparation cost baseline omits owned-view adoption
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / owned-preparation cost author
+- Discovered: 2026-11-15
+- Original reference: Current scalar production consumes ALMetalWorldViewInputs through renderOwnedInputs, while optional preparation consumes the same adopted packet. The earlier hidden cost matrix compares raw render(scene) with adoption plus preparation.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Add a paired complete owned-input cost comparison for scalar, serial preparation and credited two-range preparation. Include adoption, actual shared-frame admission, join, encoding, CPU reclaim and native completion in every arm, with explicit typed-source frontier and worker CPU accounting. Preserve old literal measurements and keep production selection disabled pending evidence.
+- Verification: Source51 pipeline16549 adopts before either renderOwnedInputs or renderPrepared; existing hidden world-prepare-cost direct arm calls render(frame_scene) without adoption, while f.prepare adds it. Old results accurately describe those literal paths but cannot alone determine a current owned-path crossover.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before new fair cost fixture. This is a measurement-frontier limitation, not a demonstrated worker speedup or a viewer rendering defect. No automatic world-worker activation is authorized by source inspection alone.

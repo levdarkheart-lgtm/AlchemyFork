@@ -1753,3 +1753,13 @@ Next concrete actions: integrate/review262costfrontier, build/test freshsource;
 continue261surface/per-viewcommon packet with exact nativeleases and rawroute,
 then useful remainingprep/visibility and combinedcandidate. Goalremainsactive;
 owner69085/69065unchanged, nolaunch/profile/push, broaderreleasegatespartial.
+
+
+Integrated262fixture-only forcedexpired/live proofconditions (3/4), preserves
+original0/1/2matrix andproduction. Rootsource-reviewed exactexternalreader/withdrawal/
+admission/capture/settlement counters; build52/actual/defaultsmall/newexpiry costs
+next. PPD263records oldworld-cost unownedscalar vs adoptedprepared baseline;
+currentproduction bothadopts, so fair ownedcostfixture next beforeworkerpolicy.
+Bankrange-splitting suspicion was disproved bysource10638existingadjacentmerge;
+no productionfix/defect claimed. Terrain261 author ownsrenderer/prepared files;
+rootreservespipeline/.h/CMake integration. Next264, no viewerlaunch/profile/push.
