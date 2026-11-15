@@ -240,7 +240,7 @@ TEST_CASE("almetal: native cohort banks preserve mixed simple material PBR raw a
         std::array<ALMetalWorldSourceCohortView,3> groups{
             f.additionalGroup(0,0,0,21),legacy,f.additionalGroup(2,6,2,11)};
         std::array<ALMetalWorldSimpleBatch,2> raw{f.batch(0),f.batch(0)};
-        auto referenced=f.batch(0);ALMetalWorldSourceReference reference;reference.source=&referenced;
+        auto referenced=std::make_shared<ALMetalWorldSimpleBatch>(f.batch(0));ALMetalWorldSourceReference reference;reference.source=referenced.get();
         identity(reference.view.modelview_projection);identity(reference.view.modelview);
         reference.view.modelview_projection[12]=.2f;
         for(unsigned axis=0;axis<3;++axis)reference.view.normal_matrix[axis][axis]=reference.view.rigged_normal_matrix[axis][axis]=1.f;
@@ -248,6 +248,7 @@ TEST_CASE("almetal: native cohort banks preserve mixed simple material PBR raw a
         auto grouped=f.scene();grouped.batches=raw.data();grouped.batch_count=raw.size();
         grouped.references=&reference;grouped.reference_count=1;grouped.draw_order=order.data();grouped.draw_order_count=order.size();
         grouped.cohorts=groups.data();grouped.cohort_count=groups.size();grouped.source_owner=f.resources;
+        grouped.cpu_source_owner=referenced;
         std::vector<ALMetalWorldSimpleBatch> flat;flat.reserve(9);
         for(std::size_t row=0;row<grouped.drawCount();++row)
         {

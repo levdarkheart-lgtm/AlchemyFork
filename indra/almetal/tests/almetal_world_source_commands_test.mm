@@ -223,7 +223,7 @@ struct BankFixture : Fixture
         if(queries)
         {
             REQUIRE_FALSE(ranges.empty());results=ALMetalVisibilityResultBatch::create(*device,ranges.size(),&error);
-            INFO(error);REQUIRE(results);config.visibility_results=results.get();
+            INFO(error);REQUIRE(results);REQUIRE(results->attachCommand(command,&error));config.visibility_results=results.get();
         }
         auto pass=target->makeRenderPass(config,&error);REQUIRE(pass);
         auto encoder=ALMetalRenderEncoder::begin(command,*pass,"Snapshot source command bank",&error);REQUIRE(encoder);

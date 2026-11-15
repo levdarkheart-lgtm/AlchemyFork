@@ -555,3 +555,26 @@ at new cost CHECK logicalOR decomposition (PPD210). Strict26 passes3587files/
 905info/0blockers/errors. Root parenthesizes the one complete expression; no
 production source change. Required27 follows from the corrected pin, then
 static/native/cost gates. Prior failure retained; no source26 success claim.
+
+
+## Passing required27 and bounded native corrections
+
+187f1026768d172868b334e831032b8f8a26bfeb required27 doctor/configure/build
+pass (build135.221s), static69061 passes native features/346ARM64/signatures/
+source/imports/defaults. Native page1547/12,material2513/6,shadow98414/14,
+cohort1763/7 pass. Renderer3/4 (2216/2217) fails only mixed reference fixture
+missing CPU owner (PPD211). Banks8/9 (3195/3196) fails only query fixture
+missing attachCommand (PPD212); PPD207 denial/capacity/lifetime cases pass.
+
+Root collected remaining native27 gates before one rebuild: old renderer400/1,
+oldbank84/1,budget333/19,admission404/5,library331/3+old82/1,region64/5,
+actual producer12397/53,rows6538/3,compact1990/8,resources12379/7,oldresources
+4721/1,oldrows283/1,nolayout13/1 all pass. Actual producer GPU cohort parity,
+queued COW/CPU-owner retirement and query boundaries pass. Native API/GPU
+validation enabled. Keep both failed suite receipts, no all-pass27 claim.
+
+Root repairs only fixture ownership and query-command association, with
+production validation/rendering unchanged. Required28 +corrected renderer/bank
+retest +full broader28 follow, then actual3arm cost. Source27 unaffected native
+evidence is retained as27, not claimed as a rerun. Architecture remains partial
+and controlsOFF; no viewer launch/profile/push. Next213.

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-211 -->
+<!-- next-defect-id: PPD-213 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5133,3 +5133,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Registered before the single assertion repair; preserve failed required26 receipt/log.
+
+
+## PPD-211 — Mixed renderer fixture omits its required CPU reference owner
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex mixed cohort renderer fixture
+- Discovered: 2026-11-15
+- Original reference: alMetalValidateWorldView requires both cpu_source_owner and source_owner for reference storage; retained cohort views carry their separate owners.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Required27/static69061 pass. Native page1547/12, material2513/6, shadow98414/14 and directcohort1763/7 pass. Expanded renderer suite3/4cases,2216/2217assertions passes its other new rendering/failure cases; mixed SIMPLE/material/PBR/raw/reference case fails incomplete scene at275 because it supplies reference_count=1 without cpu_source_owner. Validation correctly rejects it.
+- Next action: Give the referenced prototype actual shared CPU ownership and provide that owner on the mixed scene. Preserve production validation and all pixel/query/order checks, then rebuild/retest.
+- Verification: Executed fixture failure with source-confirmed missing input, no production render defect attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before fixing the mixed fixture; native-correctness-27 failure receipt retained.
+
+
+## PPD-212 — Native range fixture waits on an unattached visibility result batch
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native command range fixture
+- Discovered: 2026-11-15
+- Original reference: VisibilityResultBatch::attachCommand must associate its actual command before wait; production world rendering already does so.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Native27 source-command suite passes8/9cases,3195/3196assertions. Its new low-level range helper creates a query batch and binds its buffer but omits attachCommand; wait at570 correctly returns unavailable despite the submitted render. PPD207 denial/capacity/lifetime cases pass. Old-library renderer400/1 also passes.
+- Next action: Attach the helper query batch to its exact command before encoding. Preserve real query sample checks, whole/ranged pixel parity, and production wait/device validation; rebuild/retest.
+- Verification: Executed fixture lifecycle failure, no production query defect attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before correcting the low-level native fixture; retain native-remainder-27 failure evidence.
