@@ -4382,3 +4382,5 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_body_palette_native.inl"
 
 #include "alpipeline_animated_gpu_records_native.inl"
+
+#include "alpipeline_dependency_topology_native.inl"

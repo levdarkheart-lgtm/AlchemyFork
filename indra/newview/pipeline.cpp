@@ -3324,6 +3324,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             const auto groups = ALSceneGroupPublicationNative::statistics;
             const auto layouts = ALSceneGroupPublicationNative::cpuLayoutStats();
             const auto& source_misses = ALScenePublicationNative::source_miss_statistics;
+            LLDrawInfo::logMetalSourceDependencyDiagnostics();
             LL_INFOS("MetalScene") << "Native source lookup misses: getter(first/revision/transient_expired)="
                 << source_misses.current_misses[0] << '/' << source_misses.current_misses[1] << '/' << source_misses.current_misses[2]
                 << ", world_factory(payload/variant/promotion)=" << source_misses.world_misses[0]
@@ -3435,6 +3436,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << '/' << publication.worker_batch_commits << '/' << publication.worker_batch_failures
                 << ", immediate_upload_commits/failures=" << publication.immediate_upload_commits
                 << '/' << publication.immediate_upload_failures
+                << ", rgb8_cpu_stage_calls(three/four)/pixels="
+                << publication.rgb8_stage_three_component_calls << '/'
+                << publication.rgb8_stage_four_component_calls << '/' << publication.rgb8_stage_pixels
                 << LL_ENDL;
             if (ALMetalDevice::commandTimingEnabled())
             {

@@ -18,6 +18,7 @@
 #include "llimage.h"
 #include <catch2/catch_test_macros.hpp>
 #include <algorithm>
+#include <arm_neon.h>
 #include <array>
 #include <atomic>
 #include <bit>
@@ -30,6 +31,8 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <sys/mman.h>
+#include <unistd.h>
 
 namespace
 {
@@ -2190,5 +2193,135 @@ TEST_CASE("Native upload keeps alpha and existing scalar conversions", "[image-u
             1, 1, source.data(), 3, upload, row_bytes, converted));
         CHECK(converted == std::vector<U8>{19, 87, 211, 255});
         CHECK(row_bytes == 4);
+    }
+}
+
+TEST_CASE("Native RGB8 upload preserves vector boundaries unaligned rows and reusable output", "[image-upload-layout]")
+{
+    for (const U32 primary : {GL_RGB, GL_RGBA, GL_BGRA})
+    for (const U32 width : {1u, 7u, 15u, 16u, 17u, 31u, 32u, 33u, 63u, 64u, 65u})
+    for (const std::size_t padding : {std::size_t(0), std::size_t(5)})
+    for (const std::size_t offset : {std::size_t(1), std::size_t(3)})
+    for (const bool swap_bytes : {false, true})
+    {
+        CAPTURE(primary, width, padding, offset, swap_bytes);
+        constexpr U32 height = 3;
+        const std::size_t components = primary == GL_RGB ? 3 : 4;
+        const std::size_t row_bytes = width * components + padding;
+        std::vector<U8> source(offset + row_bytes * height + 7, 0xe7);
+        std::vector<U8> expected;
+        expected.reserve(width * height * 4);
+        for (U32 row = 0; row < height; ++row)
+        for (U32 column = 0; column < width; ++column)
+        {
+            U8* pixel = source.data() + offset + row * row_bytes + column * components;
+            for (std::size_t component = 0; component < components; ++component)
+                pixel[component] = static_cast<U8>(row * 43 + column * 5 + component * 17);
+            expected.insert(expected.end(), {pixel[0], pixel[1], pixel[2], 255});
+        }
+        const auto original = source;
+        const auto format = metal_upload_format(GL_RGB8, primary, GL_UNSIGNED_BYTE);
+        std::vector<U8> converted(width * height * 4 + 257, 0x6d);
+        const auto* previous_storage = converted.data();
+        const U8* upload = nullptr;
+        std::size_t upload_row_bytes = 0;
+        REQUIRE(prepare_metal_upload_pixels(format, primary, GL_UNSIGNED_BYTE, swap_bytes,
+            width, height, source.data() + offset, row_bytes, upload, upload_row_bytes, converted));
+        CHECK(upload_row_bytes == width * 4);
+        CHECK(upload == converted.data());
+        CHECK(converted.data() == previous_storage);
+        CHECK(converted == expected);
+        CHECK(source == original);
+    }
+}
+
+TEST_CASE("Native RGB8 upload never reads past a tight final row", "[image-upload-layout]")
+{
+    const long page_size = sysconf(_SC_PAGESIZE);
+    REQUIRE(page_size > 0);
+    for (const U32 primary : {GL_RGB, GL_RGBA, GL_BGRA})
+    for (const U32 width : {1u, 15u, 16u, 17u, 31u, 32u, 33u, 63u, 64u, 65u})
+    for (const std::size_t padding : {std::size_t(0), std::size_t(7)})
+    for (const bool swap_bytes : {false, true})
+    {
+        CAPTURE(primary, width, padding, swap_bytes);
+        constexpr U32 height = 3;
+        const std::size_t components = primary == GL_RGB ? 3 : 4;
+        const std::size_t row_bytes = width * components + padding;
+        const std::size_t source_bytes = row_bytes * (height - 1) + width * components;
+        REQUIRE(source_bytes <= static_cast<std::size_t>(page_size));
+        void* mapping = mmap(nullptr, page_size * 2, PROT_READ | PROT_WRITE,
+                             MAP_PRIVATE | MAP_ANON, -1, 0);
+        REQUIRE(mapping != MAP_FAILED);
+        struct Mapping
+        {
+            void* address;
+            std::size_t bytes;
+            ~Mapping() { munmap(address, bytes); }
+        } guard{mapping, static_cast<std::size_t>(page_size) * 2};
+        REQUIRE(mprotect(static_cast<U8*>(mapping) + page_size, page_size, PROT_NONE) == 0);
+        U8* pixels = static_cast<U8*>(mapping) + page_size - source_bytes;
+        std::fill_n(pixels, source_bytes, U8(0xe7));
+        std::vector<U8> expected;
+        for (U32 row = 0; row < height; ++row)
+        for (U32 column = 0; column < width; ++column)
+        {
+            U8* pixel = pixels + row * row_bytes + column * components;
+            for (std::size_t component = 0; component < components; ++component)
+                pixel[component] = static_cast<U8>(row * 29 + column * 7 + component * 11);
+            expected.insert(expected.end(), {pixel[0], pixel[1], pixel[2], 255});
+        }
+        const std::vector<U8> original(pixels, pixels + source_bytes);
+        const auto format = metal_upload_format(GL_RGB8, primary, GL_UNSIGNED_BYTE);
+        const U8* upload = nullptr;
+        std::size_t upload_row_bytes = 0;
+        std::vector<U8> converted;
+        REQUIRE(prepare_metal_upload_pixels(format, primary, GL_UNSIGNED_BYTE, swap_bytes,
+            width, height, pixels, row_bytes, upload, upload_row_bytes, converted));
+        CHECK(upload_row_bytes == width * 4);
+        CHECK(upload == converted.data());
+        CHECK(converted == expected);
+        CHECK(std::equal(original.begin(), original.end(), pixels));
+    }
+}
+
+
+TEST_CASE_METHOD(llimage_native_data,
+                 "LLImageGL: vector RGB8 staging reaches exact native texels and cumulative counters",
+                 "[LLImageGL][almetal][native-image-coverage][native-rgb8-expansion]")
+{
+    constexpr U16 width = 17, height = 2; // One vector and a scalar tail per row.
+    for (U32 primary : {GL_RGB, GL_RGBA, GL_BGRA})
+    for (bool swapped : {false, true})
+    {
+        CAPTURE(primary, swapped);
+        const U32 components = primary == GL_RGB ? 3 : 4;
+        std::vector<U8> source(width * height * components), expected(width * height * 4);
+        for (U32 at = 0; at < U32(width) * height; ++at)
+        {
+            source[at * components] = U8(at * 3 + 1);
+            source[at * components + 1] = U8(at * 3 + 2);
+            source[at * components + 2] = U8(at * 3 + 3);
+            if (components == 4) source[at * components + 3] = U8(at + 7);
+            std::copy_n(source.data() + at * components, 3, expected.data() + at * 4);
+            expected[at * 4 + 3] = 255;
+        }
+        LLPointer<LLImageGL> image = new LLImageGL(width, height, S8(components), false);
+        image->setExplicitFormat(GL_RGB8, primary, GL_UNSIGNED_BYTE, swapped);
+        const auto before = LLImageGL::metalPublicationStats();
+        REQUIRE(image->createMetalTexture(0, source.data()));
+        const auto after = LLImageGL::metalPublicationStats();
+        CHECK(after.rgb8_stage_three_component_calls - before.rgb8_stage_three_component_calls == (components == 3 ? 1 : 0));
+        CHECK(after.rgb8_stage_four_component_calls - before.rgb8_stage_four_component_calls == (components == 4 ? 1 : 0));
+        CHECK(after.rgb8_stage_pixels - before.rgb8_stage_pixels == U64(width) * height);
+        REQUIRE(image->getMetalTexture());
+        CHECK(image->getMetalTexture()->descriptor().format == (primary == GL_BGRA
+            ? ALMetalPixelFormat::bgra8_unorm : ALMetalPixelFormat::rgba8_unorm));
+        std::vector<U8> actual(expected.size(), 0);
+        std::string error;
+        REQUIRE(image->getMetalTexture()->readback(*fixture_device, 0, 0, {},
+            actual.data(), width * 4, &error));
+        INFO(error);
+        CHECK(actual == expected);
     }
 }

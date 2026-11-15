@@ -1163,6 +1163,10 @@ struct SegmentPlan
         const auto coverage = id < 3 ? ALMetalWorldSpotShadowCoverage::opaque :
             id < 5 ? ALMetalWorldSpotShadowCoverage::legacy_mask : ALMetalWorldSpotShadowCoverage::pbr_mask;
         auto batch = fixture.prototype(coverage, id == 2 || id == 4 || id == 6);
+        // Production unrigged opaque capture leaves these unused fields at
+        // their defaults; appendOpaque reconstructs exactly that same tuple.
+        if (coverage == ALMetalWorldSpotShadowCoverage::opaque && !batch.skin_palette)
+        { batch.texcoord_offset = 0; batch.color_offset = 0; }
         batch.index_offset = id == 1 ? 6 : 0;
         auto source = fixture.source(std::uint64_t(revision) * (models.size() + 1) + at + 1, batch);
         if (!source) throw std::runtime_error(fixture.error);
@@ -1361,6 +1365,14 @@ TEST_CASE("almetal: mixed small shadow families preserve scalar order query spli
                     for (unsigned route = 0; route < 3; ++route)
                         REQUIRE(segmentPrepare(plan, route, mode, 2, budget, result[route], view));
                     sameSegmentValues(result[0], result[1]); sameSegmentValues(result[0], result[2]);
+                    if (count == 3 && families == 3)
+                        for (unsigned route : {1u, 2u}) for (std::size_t at : {0u, 1u})
+                        {
+                            const auto& batch = result[route].batches[at];
+                            CHECK(batch.coverage == ALMetalWorldSpotShadowCoverage::opaque); CHECK_FALSE(batch.skin_palette);
+                            REQUIRE(batch.sourceRecord()); // The family barrier kept these opaque records unmerged.
+                            CHECK(batch.sourceRecord()->matchesStableInputs(batch));
+                        }
                     CHECK(result[0].jobs == 0); CHECK(result[1].dispatches == 0);
                     CHECK(result[2].dispatches == (count >= 512 ? query_split ? 2u : 1u : 0u));
                     CHECK(budget.snapshot().preparation_in_flight == 0);

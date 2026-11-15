@@ -61,6 +61,7 @@ class LLSpatialGroup;
 class LLViewerRegion;
 struct ALViewerMetalShadowSourceCache;
 namespace ALSceneGroupPublicationNative { struct Layout; }
+namespace ALNativeDrawSourceDependencies { class Relay; }
 class LLReflectionMap;
 
 void pushVerts(LLFace* face);
@@ -97,6 +98,7 @@ public:
     // one immutable source payload; detached work receives that payload only.
     const std::shared_ptr<ALNativePublication::State>& metalSourcePublication() const;
     void observeMetalSourceDependencies() const;
+    static void logMetalSourceDependencyDiagnostics();
     void invalidateMetalSource() const noexcept;
     U64 metalSourceLayoutRevision() const noexcept { return mMetalSourceLayoutRevision; }
 
@@ -236,9 +238,9 @@ public:
 
 private:
     mutable std::shared_ptr<ALNativePublication::State> mMetalSourcePublication;
-    // A fresh relay replaces the complete dependency set transactionally.
-    // Old producers keep only expired weak observers, never raw scene links.
-    mutable std::shared_ptr<ALNativePublication::Observer> mMetalSourceDependencies;
+    // Content changes can reuse an identical signal topology. A changed set
+    // replaces the relay transactionally; producers retain only weak edges.
+    mutable std::shared_ptr<ALNativeDrawSourceDependencies::Relay> mMetalSourceDependencies;
     mutable U64 mMetalSourceDependencyRevision = 0;
     mutable U64 mMetalSourceLayoutRevision = 1;
 };

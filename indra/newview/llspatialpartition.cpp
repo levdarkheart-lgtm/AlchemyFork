@@ -3730,21 +3730,7 @@ LLDrawInfo::~LLDrawInfo()
     if (mMetalSourcePublication) mMetalSourcePublication->invalidate();
 }
 
-namespace
-{
-class NativeDrawSourceDependencies final : public ALNativePublication::Observer
-{
-public:
-    explicit NativeDrawSourceDependencies(
-        const std::shared_ptr<ALNativePublication::State>& state) : mState(state) {}
-    void nativePublicationChanged(ALNativePublication::Phase phase) noexcept override
-    {
-        if (auto state = mState.lock()) state->nativePublicationChanged(phase);
-    }
-private:
-    std::weak_ptr<ALNativePublication::State> mState;
-};
-}
+#include "llspatialpartition_native_dependencies.inl"
 
 const std::shared_ptr<ALNativePublication::State>& LLDrawInfo::metalSourcePublication() const
 {
@@ -3764,44 +3750,24 @@ void LLDrawInfo::observeMetalSourceDependencies() const
 {
     const auto& state = metalSourcePublication();
     if (mMetalSourceDependencies && mMetalSourceDependencyRevision == state->revision()) return;
-    auto relay = std::make_shared<NativeDrawSourceDependencies>(state);
-#if LL_DARWIN
-    if (mVertexBuffer) mVertexBuffer->nativePublication().observe(relay);
-    const auto image = [&](LLViewerTexture* texture)
-    {
-        LLImageGL* native = texture ? texture->getGLTexture() : nullptr;
-        if (native) native->nativePublication().observe(relay);
-    };
-    const auto material = [&](LLFetchedGLTFMaterial* value)
-    {
-        if (!value) return;
-        value->nativePublication().observe(relay);
-        for (U32 slot = 0; slot < LLGLTFMaterial::GLTF_TEXTURE_INFO_COUNT; ++slot)
-            image(value->getRenderTexture(static_cast<LLGLTFMaterial::TextureInfo>(slot)));
-    };
-    image(mTexture.get());
-    image(mSpecularMap.get());
-    image(mNormalMap.get());
-    for (const auto& value : mTextureList) image(value.get());
-    for (const auto& value : mMaterialSlotList)
-    {
-        image(value.mDiffuse.get());
-        image(value.mNormalMap.get());
-        image(value.mSpecularMap.get());
-    }
-    material(mGLTFMaterial.get());
-    for (const auto& value : mGLTFMaterialList) material(value.get());
-    // A source can initially publish a streaming placeholder, including the
-    // normal-map fallback selected by the published discard level.
-    image(LLViewerFetchedTexture::sDefaultImagep.get());
-    image(LLViewerFetchedTexture::sWhiteImagep.get());
-    image(LLViewerFetchedTexture::sFlatNormalImagep.get());
-#endif
+    const auto observed_revision = state->revision();
+    auto relay = ALNativeDrawSourceDependencies::refresh(*this, state, mMetalSourceDependencies);
     // Do not discard the old relay until every new subscription succeeded.
     // An allocation exception leaves the existing dependency set intact and
     // lets the owner retain its established incomplete-source retry policy.
     mMetalSourceDependencies = std::move(relay);
-    mMetalSourceDependencyRevision = state->revision();
+    // An owner-side test seam may invalidate while subscribing. Never label
+    // that newer producer epoch as already observed by this dependency walk.
+    mMetalSourceDependencyRevision = observed_revision;
+}
+
+void LLDrawInfo::logMetalSourceDependencyDiagnostics()
+{
+    const auto& stats = ALNativeDrawSourceDependencies::statistics;
+    LL_INFOS("MetalScene") << "Native draw dependency topology: refresh/reuse/relay_complete/failure="
+        << stats.refresh_calls << '/' << stats.topology_reuses << '/'
+        << stats.relay_completions << '/' << stats.failures
+        << ", actual_subscription_calls=" << stats.actual_subscription_calls << LL_ENDL;
 }
 
 LLColor4U LLDrawInfo::getDebugColor() const

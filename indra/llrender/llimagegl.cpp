@@ -43,6 +43,7 @@
 #include "almetaldevice.h"
 #include "almetalresource.h"
 #include "almetaltextureops.h"
+#include <arm_neon.h>
 #endif
 
 #include "llmath.h"
@@ -93,6 +94,9 @@ struct MetalPublicationCounters
     std::atomic<U64> worker_uploads{0};
     std::atomic<U64> immediate_upload_commits{0};
     std::atomic<U64> immediate_upload_failures{0};
+    std::atomic<U64> rgb8_stage_three_component_calls{0};
+    std::atomic<U64> rgb8_stage_four_component_calls{0};
+    std::atomic<U64> rgb8_stage_pixels{0};
 };
 static MetalPublicationCounters sMetalPublicationCounters;
 
@@ -308,6 +312,9 @@ LLImageGL::MetalPublicationStats LLImageGL::metalPublicationStats() noexcept
     result.worker_uploads = load(sMetalPublicationCounters.worker_uploads);
     result.immediate_upload_commits = load(sMetalPublicationCounters.immediate_upload_commits);
     result.immediate_upload_failures = load(sMetalPublicationCounters.immediate_upload_failures);
+    result.rgb8_stage_three_component_calls = load(sMetalPublicationCounters.rgb8_stage_three_component_calls);
+    result.rgb8_stage_four_component_calls = load(sMetalPublicationCounters.rgb8_stage_four_component_calls);
+    result.rgb8_stage_pixels = load(sMetalPublicationCounters.rgb8_stage_pixels);
 #endif
     return result;
 }
@@ -1864,6 +1871,19 @@ bool LLImageGL::uploadMetalTextureRegion(ALMetalCommandBuffer& command_buffer,
         rollbackMetalTextureWrite();
         LL_WARNS("Metal") << "Byte-swapped RGB expansion is not supported for Metal upload" << LL_ENDL;
         return false;
+    }
+
+    // Completed CPU staging calls include mip/subregion uploads and retries;
+    // they are not unique images or evidence of a later GPU commit. The helper
+    // itself stays pure and its byte-conversion cost remains separately tested.
+    if (upload_format.expansion == MetalRgbExpansion::rgb8 && mFormatType == GL_UNSIGNED_BYTE)
+    {
+        auto& calls = (mFormatPrimary == GL_RGBA || mFormatPrimary == GL_BGRA)
+            ? sMetalPublicationCounters.rgb8_stage_four_component_calls
+            : sMetalPublicationCounters.rgb8_stage_three_component_calls;
+        calls.fetch_add(1, std::memory_order_relaxed);
+        sMetalPublicationCounters.rgb8_stage_pixels.fetch_add(
+            U64(width) * height, std::memory_order_relaxed);
     }
 
     std::string error;

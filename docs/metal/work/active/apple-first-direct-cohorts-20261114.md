@@ -2647,3 +2647,38 @@ Do not addacustomschedulerorcopyAurorathresholds fromthisdatum.
 Parallelindependentproductionwork296/297 hasexclusiveworktrees/files. CPU
 performancewindowsserializedbyroot; nofullviewerlaunch/login/profile/push.
 Rootnexttestbuild74 andnewnormalcase beforeanytiming.
+
+
+## Source75 integration: topology296, RGB297 and corrected preparation fixture
+
+296 exact frozenhelper/CPP/H/testappendix/maininclude copiedbyte-identical.
+Relay topology qualified by numericSignalIDs and exactweakStateowner; content
+updatesreuseweaksubscriptions, topologychangesreplaceafterfullsuccess.
+Inline8IDs are a boundedstoragechoice, notruntimehistogram. Addedperiodic
+LLDrawInfo diagnostic at existingMetalSceneinterval. Selected48-cell content
+refreshwins65.55–99.83% and0alloc; cold/topologydebt7–8ns for5roles and~12–17%
+forlargerlow-fanout cases retained. No source revision/content notification
+suppression ornativepayloadmemo. Native7-case sharedhelper coverage pending.
+
+297 measuredhelperb453c0ba7895… copiedexact; nativeRGB8/U8 ARM64LD3/LD4→ST4
++scalar tails. Optimized+ASan/UBSan3376/4 andone120-cell serializedcomparison
+PASS, allpairedmedianswin; fresh4096²median58.115→2.665ms. ThisisCPUstaging,
+notFPS/formatmix. Rootwrappercensus usesexistingthread-safeLLImageGLstats
+(three/fourcomponentcalls,pixels), counts completedCPUstage beforeGPUcommit,
+notuniqueimages. Puremeasuredhelperunchanged. NewactualLLImageGLGPUreadback
+andcountertestpending. Wider/packed/float paths andupload/decodepolicyunchanged.
+
+74actualnewsegmentnormal875812/1 and108triplecost6388/1 PASS;8748rows/324
+summaryarmsvalidated. Bothaggregatevariants0/108medianwinsvsrawscalarin
+preparation scope;867Dispatch+41.83%,1158+38.05%,8192+35.16%. Encoding/GPU
+excluded and compactcertificates can skip later validation, so do NOTremove
+existing8192productionpath fromthisalone. Fixturev2 normalizesunriggedopaque
+unusedUV/coloroffsets andpositivelyrequiresmatchingopaque certs, SHA
+bc60626be166b4a26c5bbd3b75e151429c8cbabd2b68126539ca91b216a3101d.
+Copiedv2forbuild75 andonejustifiedcorrectedcostrerun;74 evidence retained.
+No productionG3threshold/queue/qualitychange.
+
+Allthreeauthorsdisjointworktrees/files; rootintegrationonlysharedpipeline.
+Nextfreeze75→required/static/strict→newhelper/image/segmenttests, fullnative
+regressionandcorrected108cost once. No liveviewer/profile/push; staged69122
+and69129 unchanged. Wholearchitecture/realusefulG3/performanceacceptancepartial.

@@ -122,6 +122,11 @@ public:
         U64 worker_uploads = 0;
         U64 immediate_upload_commits = 0;
         U64 immediate_upload_failures = 0;
+        // Completed CPU RGB8/U8 staging, before native upload/commit. Calls
+        // include mips, subregions and retries; independent relaxed counters.
+        U64 rgb8_stage_three_component_calls = 0;
+        U64 rgb8_stage_four_component_calls = 0;
+        U64 rgb8_stage_pixels = 0;
     };
     static MetalPublicationStats metalPublicationStats() noexcept;
 

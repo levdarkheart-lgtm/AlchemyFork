@@ -226,6 +226,46 @@
         return static_cast<U16>(sign | half);
     }
 
+    template <std::size_t SourceComponents>
+    void expand_metal_rgb8_row(const U8* source, U8* target, U32 width)
+    {
+        static_assert(SourceComponents == 3 || SourceComponents == 4);
+        const uint8x16_t opaque = vdupq_n_u8(0xff);
+        U32 column = 0;
+        // LD3/LD4 read exactly sixteen complete source pixels. Never borrow
+        // padding or the next row to complete a vector at the right edge.
+        for (; width - column >= 16; column += 16)
+        {
+            uint8x16x4_t expanded;
+            if constexpr (SourceComponents == 3)
+            {
+                const uint8x16x3_t colors = vld3q_u8(source);
+                expanded.val[0] = colors.val[0];
+                expanded.val[1] = colors.val[1];
+                expanded.val[2] = colors.val[2];
+            }
+            else
+            {
+                expanded = vld4q_u8(source);
+            }
+            // Preserve source RGB or BGR channel order; RGB8 storage discards
+            // any supplied fourth component and always publishes opaque alpha.
+            expanded.val[3] = opaque;
+            vst4q_u8(target, expanded);
+            source += 16 * SourceComponents;
+            target += 16 * 4;
+        }
+        for (; column < width; ++column)
+        {
+            target[0] = source[0];
+            target[1] = source[1];
+            target[2] = source[2];
+            target[3] = 0xff;
+            source += SourceComponents;
+            target += 4;
+        }
+    }
+
     bool prepare_metal_upload_pixels(const MetalUploadFormat& upload_format,
                                      U32 primary_format, U32 type, bool swap_bytes,
                                      U32 width, U32 height, const U8* pixels,
@@ -290,6 +330,23 @@
                     source += source_pixel_bytes;
                     target += destination_components * sizeof(U16);
                 }
+            }
+            upload_pixels = converted.data();
+        }
+        else if (upload_format.expansion == MetalRgbExpansion::rgb8 &&
+                 type == GL_UNSIGNED_BYTE)
+        {
+            // U8 byte swapping is a no-op. Other packed/scalar formats retain
+            // the existing conversion and swapping paths below.
+            const bool four_components = primary_format == GL_RGBA || primary_format == GL_BGRA;
+            upload_bytes_per_row = static_cast<std::size_t>(width) * 4;
+            converted.resize(upload_bytes_per_row * height);
+            for (U32 row = 0; row < height; ++row)
+            {
+                const U8* source = pixels + static_cast<std::size_t>(row) * source_bytes_per_row;
+                U8* target = converted.data() + static_cast<std::size_t>(row) * upload_bytes_per_row;
+                if (four_components) expand_metal_rgb8_row<4>(source, target, width);
+                else expand_metal_rgb8_row<3>(source, target, width);
             }
             upload_pixels = converted.data();
         }
