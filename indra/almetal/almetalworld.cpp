@@ -1520,6 +1520,15 @@ ALMetalAttachmentPaletteRecord::create(
     }
 }
 
+bool ALMetalWorldSimpleBatch::matchesSkinPaletteRecord() const noexcept
+{
+    return skin_palette_record && !avatar_rigid && !avatar_skinning &&
+        !avatar_cloth && !avatar_alpha && !terrain && !impostor &&
+        skin_palette == skin_palette_record->data() &&
+        skin_palette_float_count == skin_palette_record->size() &&
+        skin_joint_count == skin_palette_record->jointCount();
+}
+
 struct ALMetalWorldFrameData::Impl
 {
     struct Page
@@ -1969,6 +1978,20 @@ struct ALMetalWorldGBufferRenderer::Impl
         if (!frame_data) return encoder.setVertexBytes(index, bytes, length, error);
         ALMetalWorldDataSlice slice;
         return frame_data->publish(command, bytes, length, slice, error, deduplicate) &&
+            encoder.setVertexBuffer(index, *slice.buffer, slice.offset, error);
+    }
+
+    bool setWorldPalette(ALMetalRenderEncoder& encoder,
+                         ALMetalCommandBuffer& command, std::uint32_t index,
+                         const ALMetalWorldSimpleBatch& batch,
+                         std::string* error)
+    {
+        if (!frame_data || !batch.skin_palette_record)
+            return setVertexData(encoder, command, index, batch.skin_palette,
+                batch.skin_palette_float_count * sizeof(float), error, true);
+        ALMetalWorldDataSlice slice;
+        return frame_data->publishPaletteRecord(command, batch.skin_palette_record,
+                                                slice, error) &&
             encoder.setVertexBuffer(index, *slice.buffer, slice.offset, error);
     }
 
@@ -9309,7 +9332,7 @@ namespace
 {
 bool compactWorldSourceSupported(const ALMetalWorldSimpleBatch& batch) noexcept
 {
-    return !batch.normal_texture && !batch.skin_palette &&
+    return !batch.normal_texture && !batch.skin_palette_record && !batch.skin_palette &&
         batch.skin_palette_float_count == 0 && batch.skin_joint_count == 0 &&
         batch.weight_offset == 0 && batch.cloth_offset == 0 &&
         !batch.avatar_rigid && !batch.avatar_skinning && !batch.avatar_cloth &&
@@ -9472,6 +9495,11 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
     const ALMetalWorldDraw& draw, std::string* error)
 {
     const auto& batch = draw.source();
+    if (batch.skin_palette_record && !batch.matchesSkinPaletteRecord())
+    {
+        setError(error, "Metal world attachment record does not match its pose");
+        return false;
+    }
     if (draw.view() && !compactWorldSourceSupported(batch))
     {
         setError(error, "Metal world source reference family is unsupported");
@@ -9790,8 +9818,8 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
             batch.weight_offset % float4_stride != 0 ||
             !rangeFits(batch.weight_offset, batch.vertex_count,
                        float4_stride, batch.vertices->length()) ||
-            !finiteValues(batch.skin_palette,
-                          expected_palette_floats))
+            (!batch.skin_palette_record && !finiteValues(batch.skin_palette,
+                          expected_palette_floats)))
         {
             setError(error,
                      "Metal world simple skinning data is invalid");
@@ -11144,10 +11172,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         {
             encoded =
                 ((mImpl->frame_data || batch.skin_palette_float_count*sizeof(float)<=4096)
-                     ? mImpl->setVertexData(*encoder, *command,
-                           5, batch.skin_palette,
-                           batch.skin_palette_float_count * sizeof(float),
-                           error, true)
+                     ? mImpl->setWorldPalette(*encoder, *command,
+                           5, batch, error)
                      : encoder->setVertexBuffer(
                            5, *palette_buffers.at(index), 0, error)) &&
                 encoder->setVertexBuffer(
@@ -17837,14 +17863,20 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                   batch.weight_offset % float4_stride == 0 &&
                   rangeFits(batch.weight_offset, batch.vertex_count,
                             float4_stride, batch.vertices->length()) &&
-                  finiteValues(batch.skin_palette,
-                               batch.skin_palette_float_count)
+                  (batch.skin_palette_record ||
+                   finiteValues(batch.skin_palette,
+                                batch.skin_palette_float_count))
             : batch.skin_palette_float_count == 0 &&
                   batch.skin_joint_count == 0;
     };
     for (std::size_t index = 0; index < scene.batch_count; ++index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        if (batch.skin_palette_record && !batch.matchesSkinPaletteRecord())
+        {
+            setError(error, "Metal world attachment record does not match its pose");
+            return nullptr;
+        }
         const bool alpha = batch.pre_water_alpha ||
             batch.post_water_alpha;
         const bool avatar_alpha = batch.avatar_alpha;
@@ -20879,9 +20911,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             {
                 encoded =
                     (mImpl->frame_data
-                         ? mImpl->setVertexData(*encoder, *command, 5,
-                               batch.skin_palette, batch.skin_palette_float_count *
-                                   sizeof(float), error, true)
+                         ? mImpl->setWorldPalette(*encoder, *command, 5,
+                               batch, error)
                          : encoder->setVertexBuffer(
                                5, *palette_buffers[index], 0, error)) &&
                     encoder->setVertexBuffer(
@@ -21058,9 +21089,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             {
                 encoded =
                     (mImpl->frame_data
-                         ? mImpl->setVertexData(*encoder, *command, 5,
-                               batch.skin_palette, batch.skin_palette_float_count *
-                                   sizeof(float), error, true)
+                         ? mImpl->setWorldPalette(*encoder, *command, 5,
+                               batch, error)
                          : encoder->setVertexBuffer(
                                5, *palette_buffers[index], 0, error)) &&
                     encoder->setVertexBuffer(
@@ -21235,9 +21265,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         {
             encoded =
                 (mImpl->frame_data
-                         ? mImpl->setVertexData(*encoder, *command, 5,
-                               batch.skin_palette, batch.skin_palette_float_count *
-                                   sizeof(float), error, true)
+                         ? mImpl->setWorldPalette(*encoder, *command, 5,
+                               batch, error)
                          : encoder->setVertexBuffer(
                                5, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
@@ -24710,6 +24739,11 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
     for (std::size_t index = 0; index < scene.batch_count; ++index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        if (batch.skin_palette_record && !batch.matchesSkinPaletteRecord())
+        {
+            setError(error, "Metal world attachment record does not match its pose");
+            return false;
+        }
         const bool pbr = isPBRBatch(batch);
         const bool fullbright = batch.impostor_fullbright;
         const bool shiny = batch.impostor_shiny;
@@ -24813,8 +24847,8 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                 batch.weight_offset % float4_stride != 0 ||
                 !rangeFits(batch.weight_offset, batch.vertex_count,
                            float4_stride, batch.vertices->length()) ||
-                !finiteValues(batch.skin_palette,
-                              expected_palette_floats))
+                (!batch.skin_palette_record && !finiteValues(batch.skin_palette,
+                              expected_palette_floats)))
             {
                 setError(error,
                          "Metal world impostor post-deferred skinning data is invalid");
@@ -24877,7 +24911,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
          batch_index < scene.batch_count; ++batch_index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[batch_index];
-        if (!batch.skin_palette)
+        if (!batch.skin_palette || (mImpl->frame_data && batch.skin_palette_record))
         {
             continue;
         }
@@ -25159,8 +25193,10 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         if (encoded && rigged)
         {
             encoded =
-                encoder->setVertexBuffer(
-                    5, *palette_buffers[index], 0, error) &&
+                ((mImpl->frame_data && batch.skin_palette_record)
+                     ? mImpl->setWorldPalette(*encoder, *command, 5, batch, error)
+                     : encoder->setVertexBuffer(
+                           5, *palette_buffers[index], 0, error)) &&
                 encoder->setVertexBuffer(
                     6, *batch.vertices, batch.weight_offset, error) &&
                 encoder->setVertexBytes(

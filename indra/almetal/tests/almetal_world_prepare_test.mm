@@ -202,6 +202,86 @@ TEST_CASE("almetal: world preparation owns poses and invalidates complete ticket
     }
 }
 
+TEST_CASE("almetal: world preparation pins exact attachment records without copying their values",
+          "[almetal][world-prepare][attachment-palette]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        auto record=ALMetalAttachmentPaletteRecord::create(f.attachment_pose.data(),f.attachment_pose.size(),1,&f.error);
+        INFO(f.error);REQUIRE(record);
+        auto batch=f.batch(4);
+        batch.skin_palette_record=record.get();batch.skin_palette=record->data();
+        const auto* values=record->data();
+        auto scene=f.scene();
+        auto inputs=ALMetalWorldViewInputs::adopt(scene,{batch,batch},{},f.resources,7,&f.error);
+        INFO(f.error);REQUIRE(inputs);
+        CHECK(inputs->scene().batches[0].skin_palette==values);
+        CHECK(inputs->scene().batches[1].skin_palette==values);
+        CHECK(inputs->scene().batches[0].skin_palette_record==record.get());
+        auto native_owner=inputs->resourceLease();
+        CHECK(native_owner==f.resources);
+        std::weak_ptr<const ALMetalAttachmentPaletteRecord> weak=record;
+        record.reset();CHECK_FALSE(weak.expired());
+        f.attachment_pose.fill(std::numeric_limits<float>::quiet_NaN());
+        auto epoch=std::make_shared<std::atomic<std::uint64_t>>(7);
+        auto ticket=ALMetalWorldPreparation::create(inputs,2,epoch,&f.error);REQUIRE(ticket);
+        REQUIRE(ticket->runJob(0));REQUIRE(ticket->runJob(1));
+        auto ready=ticket->finish(&f.error);INFO(f.error);REQUIRE(ready);
+        epoch->store(8);CHECK_FALSE(f.renderer->renderPrepared(*ready,&f.error));
+        ticket->cancel();ready.reset();ticket.reset();inputs.reset();
+        // The native-only resource aggregate is intentionally insufficient to
+        // keep a CPU palette record alive after the joined packet is discarded.
+        CHECK(weak.expired());
+        CHECK(native_owner==f.resources);
+    }
+}
+
+TEST_CASE("almetal: world attachment record proof rejects unrelated valid objects and layouts",
+          "[almetal][world-prepare][attachment-palette]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        auto record=ALMetalAttachmentPaletteRecord::create(f.attachment_pose.data(),f.attachment_pose.size(),1,&f.error);
+        auto other=ALMetalAttachmentPaletteRecord::create(f.attachment_pose.data(),f.attachment_pose.size(),1,&f.error);
+        REQUIRE(record);REQUIRE(other);
+        auto good=f.batch(4);good.skin_palette_record=record.get();good.skin_palette=record->data();
+        auto scene=f.scene();
+        const auto reject=[&](auto change)
+        {
+            auto wrong=good;change(wrong);
+            scene.batches=&wrong;scene.batch_count=1;
+            CHECK_FALSE(f.renderer->render(scene,&f.error));
+            CHECK_FALSE(ALMetalWorldViewInputs::adopt(scene,{wrong},{},f.resources,7,&f.error));
+        };
+        reject([&](auto& b){b.skin_palette_record=other.get();});
+        reject([](auto& b){b.skin_palette=nullptr;});
+        reject([&](auto& b){b.skin_palette=f.attachment_pose.data();});
+        reject([](auto& b){--b.skin_palette_float_count;});
+        reject([](auto& b){++b.skin_joint_count;});
+        reject([](auto& b){b.avatar_skinning=true;});
+        reject([](auto& b){b.avatar_rigid=true;});
+        reject([](auto& b){b.avatar_cloth=true;});
+        reject([](auto& b){b.avatar_alpha=true;});
+        reject([](auto& b){b.terrain=true;});
+        reject([](auto& b){b.impostor=true;});
+        // An unrelated attachment certificate never vouches for the separate
+        // 180-float system-body ABI, even when both objects are valid.
+        auto body=f.batch(6);body.skin_palette_record=record.get();
+        scene.batches=&body;scene.batch_count=1;
+        CHECK_FALSE(f.renderer->render(scene,&f.error));
+        CHECK_FALSE(ALMetalWorldViewInputs::adopt(scene,{body},{},f.resources,7,&f.error));
+        // Static geometry validation remains active after exact record proof.
+        auto invalid=good;invalid.weight_offset=f.resources->buffers.front()->length();
+        scene.batches=&invalid;
+        CHECK_FALSE(f.renderer->render(scene,&f.error));
+        auto inputs=ALMetalWorldViewInputs::adopt(scene,{invalid},{},f.resources,7,&f.error);REQUIRE(inputs);
+        auto ticket=ALMetalWorldPreparation::create(inputs,1,{},&f.error);REQUIRE(ticket);
+        CHECK_FALSE(ticket->runJob(0));CHECK_FALSE(ticket->finish(&f.error));
+    }
+}
+
 TEST_CASE("almetal: denied shared preparation credit preserves local complete output", "[almetal][world-prepare]")
 {
     @autoreleasepool

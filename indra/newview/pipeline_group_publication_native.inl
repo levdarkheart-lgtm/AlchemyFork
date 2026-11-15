@@ -107,6 +107,26 @@ public:
 private:
     std::weak_ptr<ALNativePublication::State> mState;
 };
+// These identify the existing exit stage, not a guessed GPU/allocator cause.
+// Either ledger's false result can include its own conservative stale
+// rejection; only a successful retain reaching a later check uses superseded.
+enum class FailureStage : U8
+{
+    cpu_preflight, source_record, resource_union, typed_native_proof,
+    cohort_certificate, state_publish, native_retention, cpu_retention,
+    superseded_after_native, superseded_after_cpu, host_allocation, count
+};
+enum class CurrentMiss : U8
+{
+    invalid_input, no_publication, region_identity, material_flavor,
+    native_touch, cpu_touch, count
+};
+enum Unsupported : U32
+{
+    null_info=1u<<0, model_pointer=1u<<1, texture_matrix=1u<<2,
+    avatar=1u<<3, skin=1u<<4, empty_range=1u<<5,
+    simple_has_pbr=1u<<6, simple_has_legacy=1u<<7
+};
 struct Statistics
 {
     U64 hits = 0, builds = 0, declined = 0, failures = 0;
@@ -115,8 +135,32 @@ struct Statistics
     U64 material_builds = 0, material_restores = 0;
     U64 material_admitted_groups = 0, material_admitted_draws = 0;
     U64 material_captured_groups = 0, material_captured_draws = 0;
+    std::array<U64, static_cast<std::size_t>(FailureStage::count)> failure_stages{};
+    // Getter misses count calls, not unique groups/invalidations. No new
+    // producer/dependency/row validation is performed on a warm getter hit.
+    std::array<U64, static_cast<std::size_t>(CurrentMiss::count)> current_misses{};
+    // Exactly one mask per existing declined return, so its sum is declined.
+    std::array<U64, 256> unsupported_masks{};
+    U64 invalid_preconditions=0;
 };
 inline Statistics statistics;
+inline void recordFailure(FailureStage stage) noexcept
+{++statistics.failures;++statistics.failure_stages[static_cast<std::size_t>(stage)];}
+inline void recordMiss(CurrentMiss reason) noexcept
+{++statistics.current_misses[static_cast<std::size_t>(reason)];}
+inline void recordDecline(const LLDrawInfo* info,const LLMatrix4a& model,bool simple) noexcept
+{
+    U32 mask=null_info;
+    if(info)
+    {
+        mask=(info->mModelMatrix!=&model?model_pointer:0u)|(info->mTextureMatrix?texture_matrix:0u)|
+            (info->mAvatar?avatar:0u)|(info->mSkinInfo?skin:0u)|(!info->mCount?empty_range:0u);
+        if(simple)
+            mask|=(info->mGLTFMaterial||!info->mGLTFMaterialList.empty()?simple_has_pbr:0u)|
+                (info->mMaterial||!info->mMaterialSlotList.empty()?simple_has_legacy:0u);
+    }
+    ++statistics.declined;++statistics.unsupported_masks[mask];
+}
 
 struct CpuLayoutLimits
 {
@@ -312,7 +356,7 @@ inline bool cpuOnlySimple(const ALMetalWorldSimpleBatch& batch) noexcept
     return !batch.native_material_source && !batch.native_resource_source &&
         !batch.impostor_texture_owner && !batch.terrain_texture_owner &&
         !batch.material_slot_count && !batch.pbr_slot_count && !batch.normal_texture &&
-        !batch.skin_palette && !batch.skin_palette_float_count && !batch.skin_joint_count &&
+        !batch.skin_palette_record && !batch.skin_palette && !batch.skin_palette_float_count && !batch.skin_joint_count &&
         !batch.avatar_rigid && !batch.avatar_skinning && !batch.avatar_cloth && !batch.avatar_alpha &&
         !batch.impostor && !batch.terrain && !batch.alpha_mask &&
         !batch.impostor_fullbright && !batch.impostor_shiny && !batch.impostor_emboss &&
@@ -326,20 +370,21 @@ inline std::shared_ptr<const Payload> current(
     const std::shared_ptr<ALNativePublication::State>& state,
     const ALNativeRegionModel::Snapshot& region, ALNativeSourceWorkingSet& working_set, U32 frame)
 {
-    if (!state || !region) return {};
+    if (!state || !region) { recordMiss(CurrentMiss::invalid_input);return {}; }
     if (auto value = state->publication())
     {
         auto group = std::static_pointer_cast<const Payload>(value);
         // The fresh view owns the region epoch/matrix. A rebase does not
         // invalidate these immutable geometry/source-generation proofs.
         if (group->region_identity != region.identity)
-            state->invalidate();
-        else if (working_set.touch(state->identity(), group->serial, frame) &&
-                 cpu_layouts.touch(state->identity(), group->serial, frame))
-            return group;
-        else
-            state->evict();
+        { recordMiss(CurrentMiss::region_identity);state->invalidate(); }
+        else if (!working_set.touch(state->identity(), group->serial, frame))
+        { recordMiss(CurrentMiss::native_touch);state->evict(); }
+        else if (!cpu_layouts.touch(state->identity(), group->serial, frame))
+        { recordMiss(CurrentMiss::cpu_touch);state->evict(); }
+        else return group;
     }
+    else recordMiss(CurrentMiss::no_publication);
     return {};
 }
 
@@ -352,14 +397,15 @@ std::shared_ptr<const Payload> seal(
     ALNativeSourceWorkingSet& working_set, U64& source_serial, U32 frame, bool request_bounds=false)
 try
 {
-    if (!state || !region || std::memcmp(region.model.data(), model.getF32ptr(), sizeof(region.model))) return {};
+    if (!state || !region || std::memcmp(region.model.data(), model.getF32ptr(), sizeof(region.model)))
+    { ++statistics.invalid_preconditions;return {}; }
     if (auto group = current(state, region, working_set, frame))
     {
         ++statistics.hits;
         return group;
     }
-    if (draws.empty()) return {};
-    if (!cpu_layouts.acceptsRows(draws.size())) { ++statistics.failures; return {}; }
+    if (draws.empty()) { ++statistics.invalid_preconditions;return {}; }
+    if (!cpu_layouts.acceptsRows(draws.size())) { recordFailure(FailureStage::cpu_preflight); return {}; }
     const auto revision = state->revision();
     auto value = std::make_shared<Payload>();
     value->region_identity = region.identity;
@@ -408,14 +454,14 @@ try
         else
         {
             const LLDrawInfo* info = draws[row];
-            if (!info) { ++statistics.failures; return {}; }
+            if (!info) { recordFailure(FailureStage::source_record); return {}; }
             producer = info->metalSourcePublication();
             producer->observe(dependencies);
             if (info->mModelMatrix != &model || info->mTextureMatrix ||
                 info->mAvatar || info->mSkinInfo || !info->mCount ||
                 info->mGLTFMaterial || !info->mGLTFMaterialList.empty() ||
                 info->mMaterial || !info->mMaterialSlotList.empty())
-            { ++statistics.declined; return {}; }
+            { recordDecline(info,model,true); return {}; }
             ALScenePublicationNative::WorldFlavor flavor;
             flavor.indexed_textures = true;flavor.cohort_source = true;flavor.cohort_bounds = request_bounds;
             ALScenePublicationNative::WorldLease source;
@@ -435,7 +481,7 @@ try
             }
             if (!source) source = ALScenePublicationNative::world(*info, flavor, working_set, source_serial, frame);
             if (!source || !cpuOnlySimple(*source.prototype))
-            { ++statistics.failures; return {}; }
+            { recordFailure(FailureStage::source_record); return {}; }
             auto next = std::make_shared<Source>();
             next->prototype = *source.prototype;
             next->producer = producer; next->identity = producer->identity();
@@ -451,7 +497,7 @@ try
                 if (next->simple_proof) ++ALScenePublicationNative::cohort_source_publications;
             }
             if (!next->simple_proof || next->simple_proof->family() != 0 || !cpuOnlySimple(next->simple_proof->source()))
-            { ++statistics.failures;return {}; }
+            { recordFailure(FailureStage::source_record);return {}; }
             next->resources.reserve(source.owner->resources.size());
             for (const auto& resource : source.owner->resources)
                 next->resources.push_back({resource.allocation, resource.bytes});
@@ -474,7 +520,7 @@ try
             for (const auto& resource : record->resources)
             {
                 const auto [at, inserted] = resources.emplace(resource.allocation, resource);
-                if (!inserted && at->second.bytes != resource.bytes) { ++statistics.failures; return {}; }
+                if (!inserted && at->second.bytes != resource.bytes) { recordFailure(FailureStage::resource_union); return {}; }
             }
         auto weak_union = std::make_shared<std::vector<WeakResource>>();
         weak_union->reserve(resources.size());
@@ -487,7 +533,7 @@ try
     for (const auto& resource : *layout->resources)
     {
         auto allocation = resource.allocation.lock();
-        if (!allocation) { ++statistics.failures; return {}; }
+        if (!allocation) { recordFailure(FailureStage::resource_union); return {}; }
         value->resources.push_back({std::move(allocation), resource.bytes});
     }
     value->native_tuple = ALScenePublicationNative::nativeTuple(value->resources);
@@ -503,18 +549,18 @@ try
         const auto present = [&](const void* pointer) { return native.find(pointer) != native.end(); };
         if (!present(batch.vertices) || !present(batch.indices) ||
             native.at(batch.vertices) != batch.vertices->length() || native.at(batch.indices) != batch.indices->length())
-        { ++statistics.failures;return {}; }
+        { recordFailure(FailureStage::typed_native_proof);return {}; }
         for (U32 slot = 0; slot < batch.texture_count; ++slot)
             if (!present(batch.diffuse_textures[slot]) ||
                 native.at(batch.diffuse_textures[slot]) != ALScenePublicationNative::textureBytes(*batch.diffuse_textures[slot]))
-            { ++statistics.failures;return {}; }
+            { recordFailure(FailureStage::typed_native_proof);return {}; }
     }
     value->cohort = ALMetalWorldSourceCohort::seal(proofs, value, value->native_tuple, region.identity,nullptr,&resolveCohortTexture);
-    if (!value->cohort) { ++statistics.failures;return {}; }
+    if (!value->cohort) { recordFailure(FailureStage::cohort_certificate);return {}; }
     // No valid-looking prefix may replace the group's complete publication.
     if (!state->publish(revision, value))
     {
-        ++statistics.failures;
+        recordFailure(FailureStage::state_publish);
         return {};
     }
     const std::shared_ptr<const void> expected = value;
@@ -523,14 +569,14 @@ try
         // A reader may retain transient children, but it must not manufacture
         // an unbudgeted strong group publisher from those reader leases.
         if (state->publication().get() == value.get()) state->evict();
-        ++statistics.failures;
+        recordFailure(FailureStage::native_retention);
         return {};
     }
     // Both residency ledgers can invoke State observers while evicting an
     // older publisher. A reentrant replacement always wins over this work.
     const auto still_current = [&]
     { return state->revision() == revision && !state->dirty() && state->publication().get() == value.get(); };
-    if (!still_current()) { ++statistics.failures; return {}; }
+    if (!still_current()) { recordFailure(FailureStage::superseded_after_native); return {}; }
     bool cpu_cached = false;
     const auto drop_untracked_layout = [&]
     {
@@ -546,17 +592,17 @@ try
     {
         if (state->publication().get() == value.get()) state->evict();
         drop_untracked_layout();
-        ++statistics.failures;
+        recordFailure(FailureStage::host_allocation);
         return {};
     }
     if (!cpu_cached)
     {
         if (state->publication().get() == value.get()) state->evict();
         drop_untracked_layout();
-        ++statistics.failures;
+        recordFailure(FailureStage::cpu_retention);
         return {};
     }
-    if (!still_current()) { ++statistics.failures; return {}; }
+    if (!still_current()) { recordFailure(FailureStage::superseded_after_cpu); return {}; }
     dependency_owner = std::move(dependencies);
     layout_owner = std::move(layout);
     ++statistics.builds;
@@ -564,7 +610,7 @@ try
 }
 catch (const std::bad_alloc&)
 {
-    ++statistics.failures;
+    recordFailure(FailureStage::host_allocation);
     return {};
 }
 
@@ -577,7 +623,7 @@ inline bool ordinaryMaterial(const ALMetalWorldSimpleBatch& batch) noexcept
 {
     return batch.vertices && batch.indices && batch.index_count &&
         ((batch.material_slot_count != 0) != (batch.pbr_slot_count != 0)) &&
-        !batch.normal_texture && !batch.skin_palette && !batch.skin_joint_count && !batch.skin_palette_float_count &&
+        !batch.normal_texture && !batch.skin_palette_record && !batch.skin_palette && !batch.skin_joint_count && !batch.skin_palette_float_count &&
         !batch.avatar_rigid && !batch.avatar_skinning && !batch.avatar_cloth && !batch.avatar_alpha &&
         !batch.terrain && !batch.impostor && !batch.impostor_texture_owner && !batch.terrain_texture_owner &&
         !batch.impostor_fullbright && !batch.impostor_shiny && !batch.impostor_emboss &&
@@ -593,18 +639,23 @@ inline std::shared_ptr<const Payload> currentMaterial(
     const ALNativeRegionModel::Snapshot& model, ALScenePublicationNative::WorldFlavor flavor,
     ALNativeSourceWorkingSet& working_set, U32 frame)
 {
-    if (!state || !model) return {};
+    if (!state || !model) { recordMiss(CurrentMiss::invalid_input);return {}; }
     if (auto publication = state->publication())
     {
         auto value = std::static_pointer_cast<const Payload>(publication);
         // The current view owns its copied region epoch. Geometry/material
         // publication does not change merely because the region rebased.
-        if (value->region_identity != model.identity || value->material_flavor != materialFlavorKey(flavor))
-            state->invalidate();
-        else if (working_set.touch(state->identity(), value->serial, frame) &&
-                 cpu_layouts.touch(state->identity(), value->serial, frame)) return value;
-        else state->evict();
+        if (value->region_identity != model.identity)
+        { recordMiss(CurrentMiss::region_identity);state->invalidate(); }
+        else if (value->material_flavor != materialFlavorKey(flavor))
+        { recordMiss(CurrentMiss::material_flavor);state->invalidate(); }
+        else if (!working_set.touch(state->identity(), value->serial, frame))
+        { recordMiss(CurrentMiss::native_touch);state->evict(); }
+        else if (!cpu_layouts.touch(state->identity(), value->serial, frame))
+        { recordMiss(CurrentMiss::cpu_touch);state->evict(); }
+        else return value;
     }
+    else recordMiss(CurrentMiss::no_publication);
     return {};
 }
 
@@ -716,9 +767,10 @@ try
         (flavor.family != Family::legacy && flavor.family != Family::pbr) ||
         flavor.rigged || flavor.pbr_glow || flavor.visibility_bounds || flavor.material_alpha_mode == 1 ||
         !flavor.native_materials ||
-        std::memcmp(region.model.data(), model.getF32ptr(), sizeof(region.model))) return {};
+        std::memcmp(region.model.data(), model.getF32ptr(), sizeof(region.model)))
+    { ++statistics.invalid_preconditions;return {}; }
     if (auto value = currentMaterial(state, region, flavor, working_set, frame)) return value;
-    if (!cpu_layouts.acceptsRows(draws.size())) { ++statistics.failures;return {}; }
+    if (!cpu_layouts.acceptsRows(draws.size())) { recordFailure(FailureStage::cpu_preflight);return {}; }
     const auto revision = state->revision();
     auto value = std::make_shared<Payload>();value->region_identity = region.identity;
     value->material_flavor = materialFlavorKey(flavor);std::memcpy(value->model.data(), region.model.data(), sizeof(value->model));
@@ -742,12 +794,12 @@ try
         {
             const LLDrawInfo* info = draws[row];
             if (!info || info->mModelMatrix != &model || info->mTextureMatrix || info->mAvatar || info->mSkinInfo || !info->mCount)
-            { ++statistics.declined;return {}; }
+            { recordDecline(info,model,false);return {}; }
             producer = info->metalSourcePublication();producer->observe(dependencies);
             auto row_flavor = flavor;
             row_flavor.indexed_materials = flavor.family == Family::legacy ? info->mMaterialSlotList.size() > 1 : info->mGLTFMaterialList.size() > 1;
             source = ALScenePublicationNative::world(*info, row_flavor, working_set, source_serial, frame);
-            if (!source || !ordinaryMaterial(*source.prototype)) { ++statistics.failures;return {}; }
+            if (!source || !ordinaryMaterial(*source.prototype)) { recordFailure(FailureStage::source_record);return {}; }
             auto next = std::make_shared<Source>();next->prototype = *source.prototype;
             next->prototype.native_material_source.reset();next->prototype.native_resource_source.reset();
             next->producer = producer;next->identity = producer->identity();next->revision = source.owner->producer_revision;
@@ -756,11 +808,11 @@ try
             next->vertices = source.owner->vertices;next->indices = source.owner->indices;
             next->material_source = source.prototype->native_material_source;next->resource_source = source.prototype->native_resource_source;
             const auto* variant = ALScenePublicationNative::findWorldVariant(*source.owner, next->flavor_key);
-            if (!variant || !variant->cohort_source) { ++statistics.failures;return {}; }
+            if (!variant || !variant->cohort_source) { recordFailure(FailureStage::source_record);return {}; }
             next->cohort_source = variant->cohort_source;
             std::vector<std::shared_ptr<const ALMetalTexture>> textures;
             if (!ALScenePublicationNative::collectWorldImages(*source.owner, *source.prototype, textures))
-            { ++statistics.failures;return {}; }
+            { recordFailure(FailureStage::typed_native_proof);return {}; }
             for (const auto& texture : textures) next->textures.push_back(texture);
             for (const auto& resource : source.owner->resources) next->resources.push_back({resource.allocation, resource.bytes});
             if (layout == layout_owner) layout = std::make_shared<Layout>(*layout);
@@ -772,20 +824,20 @@ try
         value->keyed_sources.push_back({{record->identity, record->flavor_key, record->revision}, source.prototype});
         const auto* variant = ALScenePublicationNative::findWorldVariant(*source.owner, record->flavor_key);
         if (!variant || !sourceProofMatches(variant->cohort_source, record->identity, record->flavor_key, record->revision, *source.prototype))
-        { ++statistics.failures;return {}; }
+        { recordFailure(FailureStage::source_record);return {}; }
         cohort_sources.push_back(variant->cohort_source);
     }
     std::map<std::weak_ptr<const void>, WeakResource, std::owner_less<std::weak_ptr<const void>>> resources;
     for (const auto& source : value->sources) for (const auto& resource : source.world_owner->resources)
     {
         const auto [at, inserted] = resources.emplace(resource.allocation, WeakResource{resource.allocation, resource.bytes});
-        if (!inserted && at->second.bytes != resource.bytes) { ++statistics.failures;return {}; }
+        if (!inserted && at->second.bytes != resource.bytes) { recordFailure(FailureStage::resource_union);return {}; }
     }
     auto weak_union = std::make_shared<std::vector<WeakResource>>();weak_union->reserve(resources.size());
     value->resources.reserve(resources.size());
     for (const auto& [identity, resource] : resources)
     {
-        auto allocation = resource.allocation.lock();if (!allocation) { ++statistics.failures;return {}; }
+        auto allocation = resource.allocation.lock();if (!allocation) { recordFailure(FailureStage::resource_union);return {}; }
         weak_union->push_back(resource);value->resources.push_back({std::move(allocation), resource.bytes});
     }
     if (layout == layout_owner) layout = std::make_shared<Layout>(*layout);
@@ -812,30 +864,37 @@ try
             !buffer_present(world->vertices) || !buffer_present(world->indices) ||
             !buffer_present(material->materialLease()) || !buffer_present(material->pbrLease(false)) ||
             !buffer_present(material->pbrLease(true)))
-        { ++statistics.failures;return {}; }
+        { recordFailure(FailureStage::typed_native_proof);return {}; }
         std::vector<std::shared_ptr<const ALMetalTexture>> textures;
-        if (!ALScenePublicationNative::collectWorldImages(*world, prototype, textures)) { ++statistics.failures;return {}; }
+        if (!ALScenePublicationNative::collectWorldImages(*world, prototype, textures)) { recordFailure(FailureStage::typed_native_proof);return {}; }
         for (const auto& texture : textures)
             if (!texture || !contains(texture, ALScenePublicationNative::textureBytes(*texture)))
-            { ++statistics.failures;return {}; }
+            { recordFailure(FailureStage::typed_native_proof);return {}; }
     }
     value->cohort = ALMetalWorldSourceCohort::seal(cohort_sources, value, value->native_tuple, region.identity,nullptr,&resolveCohortTexture);
-    if (!value->cohort) { ++statistics.failures;return {}; }
-    if (!state->publish(revision, value)) { ++statistics.failures;return {}; }
+    if (!value->cohort) { recordFailure(FailureStage::cohort_certificate);return {}; }
+    if (!state->publish(revision, value)) { recordFailure(FailureStage::state_publish);return {}; }
     const auto still_current = [&] { return state->revision() == revision && !state->dirty() && state->publication().get() == value.get(); };
     const auto drop_candidate = [&]
     { if (state->revision() == revision && state->publication().get() == value.get()) state->evict(); };
     const std::shared_ptr<const void> expected = value;
     try
     {
-        if (!working_set.retain(state, value->serial, expected, value->resources, frame) || !still_current() ||
-            !cpu_layouts.retain(layout, state, *value, frame) || !still_current())
-        { drop_candidate();++statistics.failures;return {}; }
+        // Preserve the original short-circuit/callback order. Only the first
+        // failed stage is recorded; no later ledger/touch is probed for data.
+        if (!working_set.retain(state, value->serial, expected, value->resources, frame))
+        { drop_candidate();recordFailure(FailureStage::native_retention);return {}; }
+        if (!still_current())
+        { drop_candidate();recordFailure(FailureStage::superseded_after_native);return {}; }
+        if (!cpu_layouts.retain(layout, state, *value, frame))
+        { drop_candidate();recordFailure(FailureStage::cpu_retention);return {}; }
+        if (!still_current())
+        { drop_candidate();recordFailure(FailureStage::superseded_after_cpu);return {}; }
     }
     catch (const std::bad_alloc&)
-    { drop_candidate();++statistics.failures;return {}; }
+    { drop_candidate();recordFailure(FailureStage::host_allocation);return {}; }
     dependency_owner = std::move(dependencies);layout_owner = std::move(layout);
     ++statistics.builds;++statistics.material_builds;return value;
 }
-catch (const std::bad_alloc&) { ++statistics.failures;return {}; }
+catch (const std::bad_alloc&) { recordFailure(FailureStage::host_allocation);return {}; }
 }

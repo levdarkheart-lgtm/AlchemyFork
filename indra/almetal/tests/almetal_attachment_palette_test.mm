@@ -8,6 +8,7 @@
  * $/LicenseInfo$
  */
 #include "../almetalworld.h"
+#include "almetal_world_prepare_fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -318,5 +319,197 @@ TEST_CASE("almetal: immutable attachment records preserve native shadow output a
             values.back() = std::numeric_limits<float>::quiet_NaN();
             CHECK_FALSE(renderer->renderSpotShadow(*target, 1, scene, &error));
         }
+    }
+}
+
+namespace
+{
+struct PaletteQueueGate
+{
+    id<MTLSharedEvent> event;
+    std::unique_ptr<ALMetalCommandBuffer> blocker;
+    explicit PaletteQueueGate(Fixture& f)
+    {
+        event=[(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];REQUIRE(event);
+        blocker=f.device->makeCommandBuffer("Attachment pending GPU gate",&f.error);REQUIRE(blocker);
+        [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:event value:1];
+        REQUIRE(blocker->commit(&f.error));
+    }
+    ~PaletteQueueGate(){event.signaledValue=1;}
+    void release(Fixture& f){event.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));}
+};
+std::unique_ptr<ALMetalRenderTarget> paletteLighting(Fixture& f)
+{
+    ALMetalRenderTargetDescriptor descriptor;
+    descriptor.width=descriptor.height=side;
+    descriptor.colors[0].format=ALMetalPixelFormat::rgba16_float;
+    descriptor.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
+    auto target=ALMetalRenderTarget::create(*f.device,descriptor,&f.error);REQUIRE(target);
+    ALMetalRenderPassConfig clear;clear.colors[0].clear={.03125,.0625,.125,.5};
+    clear.depth_store=clear.stencil_store=ALMetalStoreAction::store;
+    auto pass=target->makeRenderPass(clear,&f.error);REQUIRE(pass);
+    auto command=f.device->makeCommandBuffer("Attachment forward source clear",&f.error);REQUIRE(command);
+    auto encoder=ALMetalRenderEncoder::begin(*command,*pass,"Attachment forward source",&f.error);REQUIRE(encoder);
+    REQUIRE(encoder->end(&f.error));REQUIRE(command->commitAndWait(&f.error));
+    return target;
+}
+std::vector<std::uint8_t> paletteColor(Fixture& f,const ALMetalRenderTarget& target)
+{
+    const auto* texture=target.colorTexture(0);REQUIRE(texture);
+    const auto bpp=texture->descriptor().format==ALMetalPixelFormat::rgba16_float?8u:4u;
+    std::vector<std::uint8_t> pixels(side*side*bpp);
+    REQUIRE(texture->readback(*f.device,0,0,{},pixels.data(),side*bpp,&f.error));
+    return pixels;
+}
+}
+
+TEST_CASE("almetal: attachment identity is shared by main probe prepared and shadow consumers",
+          "[almetal][attachment-palette][world-prepare]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        auto library=f.data->builtinLibrary(&f.error);REQUIRE(library);
+        auto probe=ALMetalWorldGBufferRenderer::create(*f.device,1,library,&f.error);INFO(f.error);REQUIRE(probe);
+        probe->setFrameData(f.data);
+        std::uint64_t serial=2;
+        for(auto joints:{1u,110u}) for(bool reverse:{false,true})
+        {
+            CAPTURE(joints,reverse);
+            auto values=attachmentValues(joints,.125f);
+            auto record=ALMetalAttachmentPaletteRecord::create(values.data(),values.size(),joints,&f.error);REQUIRE(record);
+            auto batch=f.batch(4);batch.skin_palette=values.data();batch.skin_palette_float_count=values.size();batch.skin_joint_count=joints;
+            auto scene=f.scene();scene.reverse_z=reverse;scene.batches=&batch;scene.batch_count=1;
+            auto raw=f.renderer->render(scene,&f.error);INFO(f.error);REQUIRE(raw);
+            const auto expected=f.read(*raw);
+            CHECK(std::any_of(expected.depth.begin(),expected.depth.end(),[&](auto x){return x!=(reverse?0u:0x3f800000u);}));
+            f.data->beginFrame(serial++);
+            const auto before=f.data->stats();
+            batch.skin_palette_record=record.get();batch.skin_palette=record->data();
+            auto main=f.renderer->render(scene,&f.error);INFO(f.error);REQUIRE(main);CHECK(f.read(*main)==expected);
+            auto ordinary_probe=probe->render(scene,&f.error);INFO(f.error);REQUIRE(ordinary_probe);CHECK(f.read(*ordinary_probe)==expected);
+            auto ready=f.prepare(scene,{batch});
+            auto prepared=f.renderer->renderPrepared(*ready,&f.error);INFO(f.error);REQUIRE(prepared);CHECK(f.read(*prepared)==expected);
+            ALMetalTextureDescriptor descriptor;descriptor.type=ALMetalTextureType::texture_2d_array;
+            descriptor.format=ALMetalPixelFormat::r32_float;descriptor.width=descriptor.height=side;descriptor.array_length=2;
+            descriptor.usage=ALMetalTextureUsage::render_target|ALMetalTextureUsage::shader_read;
+            auto depth=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(depth);
+            ALMetalWorldSpotShadowBatch shadow;shadow.vertices=batch.vertices;shadow.indices=batch.indices;
+            shadow.vertex_count=batch.vertex_count;shadow.index_count=batch.index_count;shadow.weight_offset=batch.weight_offset;
+            shadow.skin_palette_record=record;shadow.skin_palette=record->data();shadow.skin_palette_float_count=record->size();shadow.skin_joint_count=joints;
+            identity(shadow.modelview_projection);
+            ALMetalWorldSpotShadowScene shadow_scene;shadow_scene.width=shadow_scene.height=side;
+            shadow_scene.reverse_z=reverse;shadow_scene.batches=&shadow;shadow_scene.batch_count=1;
+            REQUIRE(f.renderer->renderSpotShadow(*depth,0,shadow_scene,&f.error));
+            CHECK(f.data->stats().record_publications-before.record_publications==1);
+            CHECK(f.data->stats().record_reuses-before.record_reuses>=3);
+        }
+    }
+}
+
+TEST_CASE("almetal: attachment records preserve forward alpha glow and impostor output",
+          "[almetal][attachment-palette]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        auto record=ALMetalAttachmentPaletteRecord::create(f.attachment_pose.data(),f.attachment_pose.size(),1,&f.error);REQUIRE(record);
+        ALMetalWorldAlphaEnvironment environment;
+        environment.water_plane[2]=1;environment.water_plane[3]=-1;
+        for(unsigned i=0;i<3;++i)environment.eye_to_sky[i][i]=1;
+        environment.light_direction[2]=1;environment.atmospheric[1]=environment.atmospheric[2]=environment.atmospheric[3]=1;
+        environment.glow_max_y[0]=1;environment.glow_max_y[2]=-1;environment.glow_max_y[3]=1;
+        environment.water_fog[0]=1;environment.water_fog[2]=-1;
+        for(unsigned mode=0;mode<4;++mode)
+        {
+            CAPTURE(mode);
+            auto batch=f.batch(mode==2?2:4);
+            batch.weight_offset=offsetof(Fixture::Geometry,weights);
+            batch.skin_palette=f.attachment_pose.data();batch.skin_palette_float_count=f.attachment_pose.size();batch.skin_joint_count=1;
+            batch.emissive_offset=offsetof(Fixture::Geometry,colors);
+            if(mode==0)batch.impostor_fullbright=true;
+            if(mode==1)batch.legacy_glow=true;
+            if(mode==2){batch.pbr_glow=true;batch.pbrSlots()[0].emissive_color[1]=.5f;}
+            if(mode==3){batch.pre_water_alpha=true;batch.pre_water_fullbright=true;}
+            auto base_batch=f.batch(4);auto base_scene=f.scene();base_scene.batches=&base_batch;base_scene.batch_count=1;
+            auto gbuffer=f.renderer->render(base_scene,&f.error);INFO(f.error);REQUIRE(gbuffer);
+            auto composed=paletteLighting(f);
+            ALMetalWorldOpaquePostDeferredScene scene;scene.width=scene.height=side;
+            scene.gbuffer=gbuffer.get();scene.composed_lighting=composed.get();scene.batches=&batch;scene.batch_count=1;
+            scene.alpha_environment=&environment;
+            auto raw=f.renderer->renderOpaquePostDeferred(scene,&f.error);INFO(f.error);REQUIRE(raw);
+            const auto expected=paletteColor(f,*raw);
+            CHECK(expected!=paletteColor(f,*composed));
+            batch.skin_palette_record=record.get();batch.skin_palette=record->data();
+            const auto before=f.data->stats();
+            auto certified=f.renderer->renderOpaquePostDeferred(scene,&f.error);INFO(f.error);REQUIRE(certified);
+            CHECK(paletteColor(f,*certified)==expected);
+            CHECK(f.data->stats().record_publications+f.data->stats().record_reuses==before.record_publications+before.record_reuses+1);
+            auto wrong=batch;wrong.skin_palette=f.attachment_pose.data();scene.batches=&wrong;
+            CHECK_FALSE(f.renderer->renderOpaquePostDeferred(scene,&f.error));
+            // Water/haze marker early-outs cannot accept an unrelated record.
+            wrong=ALMetalWorldSimpleBatch{};wrong.water_haze=true;wrong.skin_palette_record=record.get();
+            CHECK_FALSE(f.renderer->renderOpaquePostDeferred(scene,&f.error));
+        }
+        auto batch=f.batch(4);batch.impostor_fullbright=true;
+        auto scene=f.scene();scene.batches=&batch;scene.batch_count=1;
+        auto raw=f.renderer->render(f.scene(),&f.error);auto certified=f.renderer->render(f.scene(),&f.error);REQUIRE(raw);REQUIRE(certified);
+        const auto clear=paletteColor(f,*raw);
+        REQUIRE(f.renderer->compositeImpostorPostDeferred(*raw,scene,&f.error));
+        const auto expected=paletteColor(f,*raw);CHECK(expected!=clear);
+        batch.skin_palette_record=record.get();batch.skin_palette=record->data();
+        const auto before=f.data->stats();
+        REQUIRE(f.renderer->compositeImpostorPostDeferred(*certified,scene,&f.error));
+        CHECK(paletteColor(f,*certified)==expected);
+        CHECK(f.data->stats().record_reuses==before.record_reuses+1);
+        batch.skin_joint_count=2;
+        CHECK_FALSE(f.renderer->compositeImpostorPostDeferred(*certified,scene,&f.error));
+    }
+}
+
+TEST_CASE("almetal: queued world draws keep native palette bytes without retaining CPU records",
+          "[almetal][attachment-palette][world-prepare]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        auto batch=f.batch(4);auto scene=f.scene();scene.batches=&batch;scene.batch_count=1;
+        auto raw=f.renderer->render(scene,&f.error);REQUIRE(raw);const auto expected=f.read(*raw);
+        auto record=ALMetalAttachmentPaletteRecord::create(f.attachment_pose.data(),f.attachment_pose.size(),1,&f.error);REQUIRE(record);
+        std::weak_ptr<const ALMetalAttachmentPaletteRecord> weak=record;
+        batch.skin_palette_record=record.get();batch.skin_palette=record->data();
+        auto inputs=ALMetalWorldViewInputs::adopt(scene,{batch},{},f.resources,1,&f.error);REQUIRE(inputs);
+        auto ticket=ALMetalWorldPreparation::create(inputs,1,{},&f.error);REQUIRE(ticket);REQUIRE(ticket->runJob(0));
+        auto ready=ticket->finish(&f.error);REQUIRE(ready);
+        // Renderer construction synchronously uploads fallback textures on
+        // this queue; complete it before installing the actual GPU wait.
+        auto library=f.data->builtinLibrary(&f.error);REQUIRE(library);
+        auto probe=ALMetalWorldGBufferRenderer::create(*f.device,1,library,&f.error);REQUIRE(probe);probe->setFrameData(f.data);
+        PaletteQueueGate gate(f);
+        REQUIRE(f.renderer->beginCommandBatch("Attachment native-only pending reader",&f.error));
+        auto old=f.renderer->renderPrepared(*ready,&f.error);INFO(f.error);REQUIRE(old);
+        auto completion=f.renderer->commandBatchCompletion();REQUIRE(completion);CHECK_FALSE(completion->isComplete());
+        REQUIRE(f.renderer->commitCommandBatch(&f.error));
+        CHECK_FALSE(completion->isComplete());
+        // Clear all CPU packet/cache owners while this real submitted command
+        // is GPU-gated. Only its encoded native arena bytes are needed.
+        ready.reset();ticket.reset();inputs.reset();record.reset();f.data->beginFrame(2);
+        CHECK(weak.expired());
+        f.attachment_pose[0]=.5f;
+        auto changed=ALMetalAttachmentPaletteRecord::create(f.attachment_pose.data(),f.attachment_pose.size(),1,&f.error);REQUIRE(changed);
+        batch.skin_palette_record=changed.get();batch.skin_palette=changed->data();
+        auto current=probe->render(scene,&f.error);INFO(f.error);REQUIRE(current);
+        CHECK_FALSE(completion->isComplete());
+        gate.release(f);
+        CHECK_FALSE(f.read(*current)==expected);
+        CHECK(completion->isComplete());CHECK(f.read(*old)==expected);
+        // A canceled encoder likewise leaves no live CPU palette or pending
+        // arena credit once the frame owner drops its identity cache.
+        REQUIRE(f.renderer->beginCommandBatch("Attachment canceled palette reader",&f.error));
+        auto canceled=f.renderer->render(scene,&f.error);REQUIRE(canceled);
+        completion=f.renderer->commandBatchCompletion();REQUIRE(completion);
+        f.renderer->cancelCommandBatch();CHECK(completion->isComplete());
+        std::weak_ptr<const ALMetalAttachmentPaletteRecord> changed_weak=changed;
+        changed.reset();f.data->beginFrame(3);CHECK(changed_weak.expired());
     }
 }

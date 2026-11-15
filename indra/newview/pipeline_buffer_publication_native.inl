@@ -226,6 +226,7 @@ try
         if (!palette)
         { capture.markIncomplete(__LINE__); capture.clearDraws(); return; }
         capture.retainCpu(palette);
+        batch.skin_palette_record = palette.get();
         batch.skin_palette = palette->data();
         batch.skin_palette_float_count = palette->size();
         batch.skin_joint_count = palette->jointCount();

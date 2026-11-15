@@ -610,6 +610,10 @@ public:
     std::uint32_t material_slot_count = 0;
     std::uint32_t material_alpha_mode = 0;
     std::uint32_t pbr_slot_count = 0;
+    // Borrowed valid C++ record; the caller pins it through adoption/encoding.
+    // Only an exact attachment tuple may use its immutable publication identity.
+    const ALMetalAttachmentPaletteRecord* skin_palette_record = nullptr;
+    bool matchesSkinPaletteRecord() const noexcept;
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;

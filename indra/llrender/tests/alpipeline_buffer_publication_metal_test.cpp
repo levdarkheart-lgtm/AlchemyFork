@@ -89,14 +89,36 @@ struct LLFetchedGLTFMaterial : LLGLTFMaterial
     LLViewerTexture* getRenderTexture(TextureInfo slot) const{return textures[slot];}
     F32 getStreamedBaseAlpha() const{return streamedAlpha;}
 };
+extern U32 gFrameCount;
 struct LLVOAvatar
 {
     struct MatrixPaletteCache
     {
         std::vector<int> mMatrixPalette;std::vector<F32> mGLMp;
-        std::shared_ptr<const ALMetalAttachmentPaletteRecord> getMetalAttachmentPalette() const{return {};}
+        mutable std::shared_ptr<const ALMetalAttachmentPaletteRecord> record;
+        mutable bool attempted=false;
+        mutable U64 requests=0,seals=0;
+        const std::shared_ptr<const ALMetalAttachmentPaletteRecord>& getMetalAttachmentPalette() const
+        {
+            ++requests;
+            if(!attempted)
+            {
+                attempted=true;++seals;
+                record=ALMetalAttachmentPaletteRecord::create(mGLMp.data(),mGLMp.size(),U32(mMatrixPalette.size()));
+            }
+            return record;
+        }
+        void invalidate(){record.reset();attempted=false;}
     };
-    const MatrixPaletteCache& updateSkinInfoMatrixPalette(void*) { static MatrixPaletteCache unused;return unused; }
+    MatrixPaletteCache palette;
+    U64 palette_requests=0;
+    U32 palette_frame=std::numeric_limits<U32>::max();
+    const MatrixPaletteCache& updateSkinInfoMatrixPalette(void*)
+    {
+        ++palette_requests;
+        if(palette_frame!=gFrameCount){palette.invalidate();palette_frame=gFrameCount;}
+        return palette;
+    }
 };
 struct ALViewerMetalShadowSourceCache
 {
@@ -1019,6 +1041,7 @@ TEST_CASE("Actual native group publication reuses complete sources without warm 
     const auto* prototype=packet->sources[0].prototype;
     const auto owner=packet->sources[0].owner;
     const auto reads=f.reads();
+    const auto warm_statistics=Inputs::ALSceneGroupPublicationNative::statistics;
     Inputs::LLPipeline pipeline;Inputs::LLCullResult cull;CullScope scope(cull);
     for(U32 view=0;view<3;++view)
     {
@@ -1037,7 +1060,11 @@ TEST_CASE("Actual native group publication reuses complete sources without warm 
         pipeline.mMetalWorldSimpleCapture->world_resources=std::make_shared<Inputs::WorldResources>();
     }
     auto warm_seal=f.seal();CHECK(warm_seal==packet);CHECK(f.reads()==reads);
-    CHECK(Inputs::ALSceneGroupPublicationNative::statistics.captured_draws==6);
+    const auto& after_warm=Inputs::ALSceneGroupPublicationNative::statistics;
+    CHECK(after_warm.failures==warm_statistics.failures);CHECK(after_warm.failure_stages==warm_statistics.failure_stages);
+    CHECK(after_warm.declined==warm_statistics.declined);CHECK(after_warm.current_misses==warm_statistics.current_misses);
+    CHECK(after_warm.invalid_preconditions==warm_statistics.invalid_preconditions);
+    CHECK(after_warm.captured_draws==6);
     REQUIRE(cull.pushNativeSimpleRange(packet,2,f.region.snapshot()));
     for(U32 inactive=0;inactive<3;++inactive)
     {
@@ -1159,6 +1186,9 @@ TEST_CASE("Actual native group model copies rebase and conservative source gates
     CHECK(std::memcmp(a.modelview_projection,b.modelviewProjection(),sizeof(a.modelview_projection))==0);
     CHECK(std::memcmp(a.normal_matrix,b.normalMatrix(),sizeof(a.normal_matrix))==0);
     LLMatrix4 uv;LLMatrix4a other=f.model;Inputs::LLVOAvatar avatar;Inputs::LLFetchedGLTFMaterial material;int skin=0;
+    using namespace Inputs::ALSceneGroupPublicationNative;
+    const std::array<U32,8> unsupported_reasons{Unsupported::model_pointer,Unsupported::texture_matrix,Unsupported::avatar,
+        Unsupported::skin,Unsupported::empty_range,Unsupported::simple_has_pbr,Unsupported::simple_has_legacy,Unsupported::simple_has_legacy};
     for(U32 gate=0;gate<8;++gate)
     {
         CAPTURE(gate);info.state->invalidate();
@@ -1166,7 +1196,11 @@ TEST_CASE("Actual native group model copies rebase and conservative source gates
         info.mAvatar=gate==2?&avatar:nullptr;info.mSkinInfo=gate==3?&skin:nullptr;
         info.mCount=gate==4?0:3;info.mGLTFMaterial.value=gate==5?&material:nullptr;
         info.mMaterial.value=gate==6?&skin:nullptr;info.mMaterialSlotList.resize(gate==7?1:0);
+        const auto before=statistics;
         CHECK_FALSE(f.seal());CHECK_FALSE(f.group->publication());CHECK(f.group->dirty());
+        CHECK(statistics.declined==before.declined+1);
+        CHECK(statistics.unsupported_masks[unsupported_reasons[gate]]==before.unsupported_masks[unsupported_reasons[gate]]+1);
+        CHECK(statistics.failures==before.failures);CHECK(statistics.failure_stages==before.failure_stages);
     }
 }
 
@@ -1465,6 +1499,7 @@ TEST_CASE("Actual material cohorts bypass draw-info discovery and share each vie
         f.materialDraw();f.materialDraw(true);f.materialDraw();auto packet=f.sealMaterial();REQUIRE(packet);
         REQUIRE(packet->sources.size()==3);REQUIRE(packet->keyed_sources.size()==3);
         const auto reads=f.reads();const auto serial=Inputs::sNativeSceneSerial;
+        const auto warm_statistics=Inputs::ALSceneGroupPublicationNative::statistics;
         for(U32 view=0;view<3;++view)
         {
             CAPTURE(view);REQUIRE(f.currentMaterial()==packet);Inputs::LLCullResult cull;
@@ -1501,6 +1536,11 @@ TEST_CASE("Actual material cohorts bypass draw-info discovery and share each vie
         CHECK(capture.source_cohorts[0].view.modelview[12]==.25f);
         CHECK(capture.source_cohorts[0].view.modelview[13]==-.5f);
         CHECK(f.reads()==reads);CHECK(Inputs::sNativeSceneSerial==serial);
+        REQUIRE(f.sealMaterial()==geometry_packet);
+        const auto& after_warm=Inputs::ALSceneGroupPublicationNative::statistics;
+        CHECK(after_warm.failures==warm_statistics.failures);CHECK(after_warm.failure_stages==warm_statistics.failure_stages);
+        CHECK(after_warm.declined==warm_statistics.declined);CHECK(after_warm.current_misses==warm_statistics.current_misses);
+        CHECK(after_warm.invalid_preconditions==warm_statistics.invalid_preconditions);
     }
 }
 
@@ -1626,11 +1666,28 @@ TEST_CASE("Actual material cohort admission rejects mutable scope and keeps whol
         Inputs::LLVOAvatar avatar;int skin=0;
         if(gate==0)info.mTextureMatrix=&uv;if(gate==1)info.mModelMatrix=&other;
         if(gate==2)info.mAvatar=&avatar;if(gate==3)info.mSkinInfo=&skin;if(gate==4)f.flavor.visibility_bounds=true;
+        using namespace Inputs::ALSceneGroupPublicationNative;
+        const auto before=statistics;
         CHECK_FALSE(f.sealMaterial());CHECK_FALSE(f.group->publication());
+        if(gate<4)
+        {
+            const std::array<U32,4> reasons{Unsupported::texture_matrix,Unsupported::model_pointer,Unsupported::avatar,Unsupported::skin};
+            CHECK(statistics.declined==before.declined+1);
+            CHECK(statistics.unsupported_masks[reasons[gate]]==before.unsupported_masks[reasons[gate]]+1);
+            CHECK(statistics.invalid_preconditions==before.invalid_preconditions);
+        }
+        else{CHECK(statistics.invalid_preconditions==before.invalid_preconditions+1);CHECK(statistics.declined==before.declined);}
+        CHECK(statistics.failures==before.failures);CHECK(statistics.failure_stages==before.failure_stages);
     }
     MaterialGroupPublication f;f.materialDraw();ALNativeSourceWorkingSet tiny(1,1,100);
+    using namespace Inputs::ALSceneGroupPublicationNative;
+    const auto before=statistics;
     CHECK_FALSE(f.sealMaterial(tiny,1));CHECK_FALSE(f.group->publication());
     CHECK_FALSE(f.group_dependencies);CHECK_FALSE(f.group_layout);
+    CHECK(statistics.failures==before.failures+1);
+    CHECK(statistics.failure_stages[static_cast<std::size_t>(FailureStage::native_retention)]==before.failure_stages[static_cast<std::size_t>(FailureStage::native_retention)]+1);
+    CHECK(statistics.failure_stages[static_cast<std::size_t>(FailureStage::cpu_retention)]==before.failure_stages[static_cast<std::size_t>(FailureStage::cpu_retention)]);
+    CHECK(statistics.declined==before.declined);
 }
 
 TEST_CASE("Actual retained cohort native resources outlive CPU descriptors and preserve an encoded old generation",
@@ -1688,8 +1745,13 @@ TEST_CASE("Actual material cohort CPU admission rejection and reentrant replacem
         MaterialGroupPublication f;f.materialDraw();auto limits=cpu_layouts.limits();
         limits.maximum_bytes=sizeof(Layout)+sizeof(NativeGroup)+sizeof(Source)+sizeof(std::shared_ptr<const Source>)+sizeof(SourceLease);
         cpu_layouts.configure(limits);REQUIRE(cpu_layouts.acceptsRows(1));
+        const auto before=statistics;
         CHECK_FALSE(f.sealMaterial());CHECK_FALSE(f.group->publication());CHECK(f.group->dirty());
         CHECK_FALSE(f.group_layout);CHECK_FALSE(f.group_dependencies);
+        CHECK(statistics.failures==before.failures+1);
+        CHECK(statistics.failure_stages[static_cast<std::size_t>(FailureStage::cpu_retention)]==before.failure_stages[static_cast<std::size_t>(FailureStage::cpu_retention)]+1);
+        CHECK(statistics.failure_stages[static_cast<std::size_t>(FailureStage::native_retention)]==before.failure_stages[static_cast<std::size_t>(FailureStage::native_retention)]);
+        CHECK(statistics.failure_stages[static_cast<std::size_t>(FailureStage::cpu_preflight)]==before.failure_stages[static_cast<std::size_t>(FailureStage::cpu_preflight)]);
     }
     SECTION("a newer callback publication wins over the stale outer candidate")
     {
@@ -1709,10 +1771,17 @@ TEST_CASE("Actual material cohort CPU admission rejection and reentrant replacem
             queued=std::static_pointer_cast<const NativeGroup>(f.group->publication());
             f.group->invalidate();newer=f.sealMaterial(Inputs::sNativeSceneSources,2);
         };
-        victim->observe(observer);auto outer=f.sealMaterial(Inputs::sNativeSceneSources,2);
+        victim->observe(observer);const auto before=statistics;
+        auto outer=f.sealMaterial(Inputs::sNativeSceneSources,2);
         CHECK(observer->fired);CHECK_FALSE(observer->failed);CHECK_FALSE(outer);REQUIRE(newer);REQUIRE(queued);
         CHECK(f.group->publication().get()==newer.get());CHECK(f.group_layout);CHECK(f.group_dependencies);
         CHECK(f.currentMaterial(Inputs::sNativeSceneSources,2)==newer);CHECK(queued->sources[0].prototype->vertices);
+        CHECK(statistics.failures==before.failures+1);
+        // The callback makes the CPU ledger itself reject the stale outer
+        // candidate. It did not return success and fail a later epoch check.
+        CHECK(statistics.failure_stages[static_cast<std::size_t>(FailureStage::cpu_retention)]==before.failure_stages[static_cast<std::size_t>(FailureStage::cpu_retention)]+1);
+        CHECK(statistics.failure_stages[static_cast<std::size_t>(FailureStage::superseded_after_cpu)]==before.failure_stages[static_cast<std::size_t>(FailureStage::superseded_after_cpu)]);
+        CHECK(statistics.failure_stages[static_cast<std::size_t>(FailureStage::native_retention)]==before.failure_stages[static_cast<std::size_t>(FailureStage::native_retention)]);
     }
 }
 
@@ -4204,3 +4273,5 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_gpu_cohort_cost_native.inl"
 #include "alpipeline_many_cohort_cost_native.inl"
 #include "alpipeline_cohort_visibility_cost_native.inl"
+#include "alpipeline_terrain_preflight_native.inl"
+#include "alpipeline_attachment_palette_native.inl"

@@ -39,6 +39,7 @@
 #include <limits>
 #include <list>
 #include <new>
+#include <optional>
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
@@ -432,10 +433,14 @@ struct ALViewerMetalShadowSourceCache
 namespace
 {
 ALNativeSourceWorkingSet sNativeSceneSources;
+std::optional<U64> sNativeSceneSourceConfiguredBudget;
 U64 sNativeSceneSerial = 0;
 std::shared_ptr<ALMetalWorldVisibility> sNativeSceneVisibility;
 const ALMetalDevice* sNativeSceneVisibilityDevice = nullptr;
 void trimShadowSourceWorkingSet() { sNativeSceneSources.trim(gFrameCount); }
+
+#include "pipeline_terrain_preflight_types_native.inl"
+
 }
 
 struct LLPipeline::MetalWorldSimpleCapture
@@ -454,6 +459,13 @@ struct LLPipeline::MetalWorldSimpleCapture
         U64 detached_dispatched = 0, detached_serial = 0;
         U64 source_pins = 0, palette_pins = 0, failed_views = 0;
         U64 capture_wall_ns = 0, max_view_wall_ns = 0;
+        // PPD241: CPU capture exit stages only, before reconciliation/GPU.
+        enum class FailureStage : U8
+        { admission, source_lease, publication, palette, matrices, output_admission, detached_prepare, pool_hook, count };
+        std::array<U64, static_cast<std::size_t>(FailureStage::count)> failed_stages{};
+        U32 recent_failure_stage = 0, recent_failure_line = 0;
+        U32 recent_failure_pass = std::numeric_limits<U32>::max(), recent_failure_map = 0;
+        bool recent_failure_directional = false;
 
         void accumulate(const ShadowSourceDiagnostics& value) noexcept
         {
@@ -470,8 +482,19 @@ struct LLPipeline::MetalWorldSimpleCapture
             source_pins += value.source_pins; palette_pins += value.palette_pins;
             failed_views += value.failed_views; capture_wall_ns += value.capture_wall_ns;
             max_view_wall_ns = std::max(max_view_wall_ns, value.max_view_wall_ns);
+            for (std::size_t stage = 0; stage < failed_stages.size(); ++stage)
+                failed_stages[stage] += value.failed_stages[stage];
+            if (value.failed_views)
+            {
+                recent_failure_stage = value.recent_failure_stage;
+                recent_failure_line = value.recent_failure_line;
+                recent_failure_pass = value.recent_failure_pass;
+                recent_failure_map = value.recent_failure_map;
+                recent_failure_directional = value.recent_failure_directional;
+            }
         }
     } shadow_source_diagnostics;
+    U64 shadow_end_incomplete = 0;
 
     struct ShadowSourceLease
     {
@@ -992,6 +1015,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool pass_active = false;
     bool complete = false;
     U32 first_incomplete_source_line = 0;
+    TerrainPreflightSnapshot first_terrain_preflight_failure;
+    TerrainPreflightSnapshot recent_terrain_preflight_failure;
+    U64 terrain_preflight_failures=0;
 
     ALMetalWorldSpotShadowBatch* appendSeparateShadowBatch(U32 source_line)
     {
@@ -1033,6 +1059,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     {
         complete = true;
         first_incomplete_source_line = 0;
+        first_terrain_preflight_failure = {};
     }
 
     bool ensureFrameData(const MetalWorldSimpleCapture* other)
@@ -1979,6 +2006,9 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     // A hero manager can update several faces in one viewer frame. Each face
     // is its own complete native transaction; only the source/radiance cubes
     // and renderer cache persist across those transactions.
+    // PPD242: even a face ending before G-buffer capture has no terrain
+    // predicate yet. Recent/cumulative diagnostics remain capture-owned.
+    capture.first_terrain_preflight_failure = {};
     capture.target.reset();
     capture.composed_light_target.reset();
     capture.opaque_post_deferred_target.reset();
@@ -2070,6 +2100,7 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
             << static_cast<bool>(capture.composed_light_target)
             << ", post_attempted="
             << capture.opaque_post_deferred_attempted
+            << ", terrain_preflight={" << capture.first_terrain_preflight_failure << '}'
             << LL_ENDL;
     }
     if (capture.renderer && capture.renderer->commandBatchActive())
@@ -2758,9 +2789,13 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // Bound cached generations by the actual Apple GPU working-set advice.
     // Count shared native resources once; active command leases are separate.
     if (const auto* device = getViewerMetalDevice())
-        sNativeSceneSources.setByteBudget(std::clamp<std::uint64_t>(
+    {
+        const auto bytes = std::clamp<std::uint64_t>(
             device->info().recommended_working_set_size / 16,
-            256ull * 1024 * 1024, 4ull * 1024 * 1024 * 1024));
+            256ull * 1024 * 1024, 4ull * 1024 * 1024 * 1024);
+        sNativeSceneSources.setByteBudget(bytes);
+        sNativeSceneSourceConfiguredBudget = bytes;
+    }
     // Expire inactive source generations even when shadows are disabled.
     trimShadowSourceWorkingSet();
     const bool snapshot_request =
@@ -3037,6 +3072,13 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", compact_completed(dispatch/serial)=" << d.detached_dispatched << '/' << d.detached_serial
                     << ", unique_source/palette_pins=" << d.source_pins << '/' << d.palette_pins
                     << ", failed_views=" << d.failed_views
+                    << ", cpu_failed_stages(admission/lease/publication/palette/matrices/output/detached/pool)="
+                    << d.failed_stages[0] << '/' << d.failed_stages[1] << '/' << d.failed_stages[2] << '/' << d.failed_stages[3]
+                    << '/' << d.failed_stages[4] << '/' << d.failed_stages[5] << '/' << d.failed_stages[6] << '/' << d.failed_stages[7]
+                    << ", recent_cpu_failure(stage/line/pass_or_pool/map/directional)="
+                    << d.recent_failure_stage << '/' << d.recent_failure_line << '/' << d.recent_failure_pass
+                    << '/' << d.recent_failure_map << '/' << d.recent_failure_directional
+                    << ", end_incomplete_total=" << source->shadow_end_incomplete
                     << ", capture_wall_ms=" << static_cast<F64>(d.capture_wall_ns) / 1000000.0
                     << ", max_view_wall_ms=" << static_cast<F64>(d.max_view_wall_ns) / 1000000.0
                     << LL_ENDL;
@@ -3194,6 +3236,15 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             };
             log_source_capture("main", &capture);
             log_source_capture("probe", mMetalProbeWorldSimpleCapture.get());
+            const auto log_terrain_preflight=[](const char* owner,const MetalWorldSimpleCapture* source)
+            {
+                if(!source || !source->terrain_preflight_failures)return;
+                LL_INFOS("MetalScene") << "Native terrain preflight: capture_owner=" << owner
+                    << ", failures=" << source->terrain_preflight_failures
+                    << ", recent={" << source->recent_terrain_preflight_failure << '}' << LL_ENDL;
+            };
+            log_terrain_preflight("main",&capture);
+            log_terrain_preflight("probe",mMetalProbeWorldSimpleCapture.get());
             const auto groups = ALSceneGroupPublicationNative::statistics;
             const auto layouts = ALSceneGroupPublicationNative::cpuLayoutStats();
             const auto compilation = ALSceneGroupCompilationNative::statistics;
@@ -3216,6 +3267,34 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", material_captured_groups/draws=" << groups.material_captured_groups << '/' << groups.material_captured_draws
                 << ", cpu_layout_cache(entries/rows/estimated_bytes)=" << layouts.layouts << '/' << layouts.rows << '/' << layouts.estimated_bytes
                 << ", cpu_layout_evictions/rejections=" << layouts.evictions << '/' << layouts.rejections << LL_ENDL;
+            // Count only existing exit stages. These are not allocator-cause
+            // guesses, and warm successful lookup performs no new row walk.
+            const auto& failed = groups.failure_stages;
+            const auto& missed = groups.current_misses;
+            U64 typed_failures = 0, declined_masks = 0;
+            std::array<U64, 8> unsupported_causes{};
+            for (const auto count : failed) typed_failures += count;
+            for (std::size_t mask = 0; mask < groups.unsupported_masks.size(); ++mask)
+            {
+                const auto count = groups.unsupported_masks[mask];
+                declined_masks += count;
+                if (!count) continue;
+                for (std::size_t bit = 0; bit < unsupported_causes.size(); ++bit)
+                    if (mask & (1u << bit)) unsupported_causes[bit] += count;
+            }
+            LL_INFOS("MetalScene") << "Native group failure stages: cpu_preflight/source_record/resource_union/native_proof/certificate/state_publish/native_retain/cpu_retain/stale_after_native/stale_after_cpu/host_allocation="
+                << failed[0] << '/' << failed[1] << '/' << failed[2] << '/' << failed[3] << '/' << failed[4]
+                << '/' << failed[5] << '/' << failed[6] << '/' << failed[7] << '/' << failed[8] << '/' << failed[9] << '/' << failed[10]
+                << ", typed/aggregate_failures=" << typed_failures << '/' << groups.failures
+                << ", invalid_preconditions=" << groups.invalid_preconditions
+                << ", current_miss(invalid/unpublished/region/flavor/native_touch/cpu_touch)="
+                << missed[0] << '/' << missed[1] << '/' << missed[2] << '/' << missed[3] << '/' << missed[4] << '/' << missed[5]
+                << LL_ENDL;
+            LL_INFOS("MetalScene") << "Native group unsupported occurrences: null/model/uv/avatar/skin/empty/simple_pbr/simple_legacy="
+                << unsupported_causes[0] << '/' << unsupported_causes[1] << '/' << unsupported_causes[2] << '/' << unsupported_causes[3]
+                << '/' << unsupported_causes[4] << '/' << unsupported_causes[5] << '/' << unsupported_causes[6] << '/' << unsupported_causes[7]
+                << ", declined_mask_total/aggregate=" << declined_masks << '/' << groups.declined
+                << ", cause_bits_overlap=1" << LL_ENDL;
             if (sNativeSceneVisibility)
             {
                 const auto visibility=sNativeSceneVisibility->stats();
@@ -3238,6 +3317,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             LL_INFOS("MetalMemory")
                 << "Native generation publication census: source_cache_entries=" << sNativeSceneSources.entryCount()
                 << ", source_cache_estimated_bytes=" << sNativeSceneSources.estimatedRetainedBytes()
+                << ", source_cache_budget_configured/bytes=" << sNativeSceneSourceConfiguredBudget.has_value()
+                << '/' << sNativeSceneSourceConfiguredBudget.value_or(0)
                 << ", vertex_full/partial/bytes/recycled/leased_orphans=" << uploads.full_uploads
                 << '/' << uploads.partial_uploads << '/' << uploads.uploaded_bytes
                 << '/' << uploads.recycled_generations << '/' << uploads.leased_orphans
@@ -12000,9 +12081,16 @@ void LLPipeline::captureMetalWorldBumpBatch(
             }
             batch.weight_offset = buffer->getOffset(
                 LLVertexBuffer::TYPE_WEIGHT4);
-            batch.skin_palette = palette.mGLMp.data();
-            batch.skin_palette_float_count = palette.mGLMp.size();
-            batch.skin_joint_count = joint_count;
+            auto record = palette.getMetalAttachmentPalette();
+            if (!record)
+            { capture.markIncomplete(__LINE__); capture.clearDraws(); return; }
+            try { capture.retainCpu(record); }
+            catch (const std::bad_alloc&)
+            { capture.markIncomplete(__LINE__); capture.clearDraws(); return; }
+            batch.skin_palette_record = record.get();
+            batch.skin_palette = record->data();
+            batch.skin_palette_float_count = record->size();
+            batch.skin_joint_count = record->jointCount();
         }
         return;
     }
@@ -12164,9 +12252,16 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
         }
         batch.weight_offset = buffer->getOffset(
             LLVertexBuffer::TYPE_WEIGHT4);
-        batch.skin_palette = palette.mGLMp.data();
-        batch.skin_palette_float_count = palette.mGLMp.size();
-        batch.skin_joint_count = joint_count;
+        auto record = palette.getMetalAttachmentPalette();
+        if (!record)
+        { capture.markIncomplete(__LINE__); capture.clearDraws(); return; }
+        try { capture.retainCpu(record); }
+        catch (const std::bad_alloc&)
+        { capture.markIncomplete(__LINE__); capture.clearDraws(); return; }
+        batch.skin_palette_record = record.get();
+        batch.skin_palette = record->data();
+        batch.skin_palette_float_count = record->size();
+        batch.skin_joint_count = record->jointCount();
     }
 }
 
@@ -12866,6 +12961,27 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
         const MetalWorldSimpleCapture::ShadowSourceLease* lease = nullptr;
         std::size_t initial_sources = 0, initial_palettes = 0;
+        using Stage = SourceDiagnostics::FailureStage;
+        Stage active_stage = Stage::admission;
+        U32 active_pass = std::numeric_limits<U32>::max();
+        bool first_failure_recorded = false;
+        void rememberFailure() noexcept
+        {
+            if (first_failure_recorded || capture.spot_shadow_capture_complete) return;
+            first_failure_recorded = true;
+            ++local.failed_stages[static_cast<std::size_t>(active_stage)];
+            local.recent_failure_stage = static_cast<U32>(active_stage);
+            local.recent_failure_line = capture.spot_shadow_first_incomplete_source_line;
+            local.recent_failure_pass = active_pass;
+            local.recent_failure_map = capture.spot_shadow_map;
+            local.recent_failure_directional = capture.spot_shadow_capture_directional;
+        }
+        void entering(Stage stage, U32 pass = std::numeric_limits<U32>::max()) noexcept
+        {
+            rememberFailure();
+            if (first_failure_recorded) return;
+            active_stage = stage; active_pass = pass;
+        }
         ~SourceDiagnosticScope()
         {
             if (lease && capture.shadow_source_lease.get() == lease)
@@ -12876,6 +12992,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                     local.palette_pins = lease->palettes.size() - initial_palettes;
             }
             local.failed_views = !capture.spot_shadow_capture_complete;
+            rememberFailure();
             const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - start).count();
             local.capture_wall_ns = elapsed > 0 ? static_cast<U64>(elapsed) : 0;
@@ -12885,12 +13002,14 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
     } source_scope{transaction, source_diagnostics};
     trimShadowSourceWorkingSet();
     transaction.spot_shadow_inputs.clear();
+    source_scope.entering(SourceDiagnostics::FailureStage::source_lease);
     if (!transaction.acquireShadowSourceLease())
     {
         transaction.spot_shadow_capture_complete = false;
         transaction.spot_shadow_first_incomplete_source_line = __LINE__;
         return;
     }
+    source_scope.entering(SourceDiagnostics::FailureStage::admission);
     source_scope.lease = transaction.shadow_source_lease.get();
     if (source_scope.lease)
     {
@@ -12902,7 +13021,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
     const bool saved_shadow_render = sShadowRender;
     sShadowRender = true;
     transaction.spot_shadow_source_merge_active = true;
-    const auto for_each_batch = [this, epoch, &source_diagnostics](U32 type, const auto& build_source)
+    const auto for_each_batch = [this, epoch, &source_diagnostics, &source_scope](U32 type, const auto& build_source)
     {
         auto& owner = *mMetalWorldSimpleCapture;
         owner.spot_shadow_admission.barrier();
@@ -12924,12 +13043,15 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         const bool texture_matrix = !gCubeSnapshot || mHeroProbeManager.isMirrorPass();
         const auto fail = [&]
         {
-            owner.spot_shadow_first_incomplete_source_line = __LINE__;
+            if (!owner.spot_shadow_first_incomplete_source_line)
+                owner.spot_shadow_first_incomplete_source_line = __LINE__;
             owner.spot_shadow_capture_complete = false;
+            source_scope.rememberFailure();
             owner.spot_shadow_batches.clear();
         };
         const auto append_prepared = [&](ALMetalWorldSpotShadowBatch& batch)
         {
+            source_scope.entering(SourceDiagnostics::FailureStage::output_admission, type);
             if (batch.coverage == ALMetalWorldSpotShadowCoverage::opaque &&
                 !batch.skin_palette)
             {
@@ -12972,6 +13094,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         {
             ++source_diagnostics.visited_inputs;
             const auto& info = *owner.spot_shadow_admitted_sources[index];
+            source_scope.entering(SourceDiagnostics::FailureStage::publication, type);
             auto publication = ALScenePublicationNative::shadow(info, type,
                 owner.spot_shadow_coverage, sNativeSceneSources, sNativeSceneSerial, gFrameCount,
                 [&](ALMetalWorldSpotShadowBatch& prototype)
@@ -13003,6 +13126,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
             owner.shadow_source_lease->publications.push_back(publication.owner);
             const auto* source = owner.shadow_source_lease->retain(*publication.record);
             const ALMetalAttachmentPaletteRecord* palette = nullptr;
+            source_scope.entering(SourceDiagnostics::FailureStage::palette, type);
             if (source->requiresPalette())
             {
                 if (!info.mAvatar || !info.mSkinInfo) { fail(); return; }
@@ -13021,6 +13145,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                 static_cast<ALMetalWorldSpotShadowValues&>(batch) = prototype;
                 batch.borrowPreparedInputs(nullptr, palette, prototype.coverageDataIdentity());
                 LLMatrix4a matrix;
+                source_scope.entering(SourceDiagnostics::FailureStage::matrices, type);
                 if (!getMetalSpotShadowModelviewProjection(info.mModelMatrix, matrix))
                 { fail(); return; }
                 std::memcpy(batch.modelview_projection, matrix.getF32ptr(), sizeof(batch.modelview_projection));
@@ -13071,6 +13196,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         // dispatch. Denial keeps the same required kernel on this owner.
         ALMetalShadowPrepareStats preparation;
         ++source_diagnostics.detached_calls;
+        source_scope.entering(SourceDiagnostics::FailureStage::detached_prepare, type);
         if (!alMetalPrepareShadowBatches(inputs, context, owner.spot_shadow_prepared,
                 ALNativeFrameBudget::instance(), epoch, &owner.spot_shadow_prepare_epoch, true, &preparation, &error))
         {
@@ -13206,6 +13332,8 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         {
             continue;
         }
+        source_scope.entering(SourceDiagnostics::FailureStage::pool_hook,
+            static_cast<U32>(LLRenderPass::NUM_RENDER_TYPES) + static_cast<U32>(pool->getType()));
         switch (pool->getType())
         {
             case LLDrawPool::POOL_TREE:
@@ -14424,6 +14552,7 @@ void LLPipeline::endMetalSpotShadowCapture()
     capture.spot_shadow_capture_complete = false;
     if (!complete)
     {
+        ++capture.shadow_end_incomplete;
         capture.spot_shadow_batches.clear();
         capture.spot_shadow_avatar_palettes.clear();
         return;
@@ -15604,24 +15733,8 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     LLSurface* surface = patch ? patch->getSurface() : nullptr;
     LLViewerRegion* region = surface ? surface->getRegion() : nullptr;
     LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
-    if (!face || !detail_textures || !alpha_ramp || !detail_phase ||
-        !patch || !surface || !region || !buffer ||
-        !buffer->prepareMetalBuffers(false) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        face->getGeomCount() != LLVOSurfacePatch::PATCH_CORNERS ||
-        face->getGeomIndex() + LLVOSurfacePatch::PATCH_CORNERS >
-            buffer->getNumVerts() ||
-        !std::isfinite(detail_scale) || detail_scale <= 0.f ||
-        !std::isfinite(detail_phase[0]) ||
-        !std::isfinite(detail_phase[1]) ||
-        !std::isfinite(tess_density) ||
-        (!tessellation_pinned && tess_density <= 0.f) ||
-        !std::isfinite(triplanar_blend) || triplanar_blend <= 0.f)
-    {
-        capture.markIncomplete(__LINE__);
-        capture.clearDraws();
-        return;
-    }
+    const U32 terrain_preflight_source_line = __LINE__;
+#include "pipeline_classic_terrain_preflight_native.inl"
 
     ALTerrainSurfaceMaps& maps = surface->getSurfaceMaps();
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
@@ -21496,7 +21609,7 @@ void LLPipeline::postSort(LLCamera &camera)
                                 continue; // Only a whole accepted range replaces raw rows.
                             }
                         }
-                        catch (const std::bad_alloc&) { ++ALSceneGroupPublicationNative::statistics.failures; }
+                        catch (const std::bad_alloc&) { ALSceneGroupPublicationNative::recordFailure(ALSceneGroupPublicationNative::FailureStage::host_allocation); }
                     }
                 }
             }
@@ -21519,7 +21632,7 @@ void LLPipeline::postSort(LLCamera &camera)
             if (pending_group)
             {
                 try { pending_group_ranges[group].push_back({j->first, raw_begin, static_cast<U32>(src_vec.size())}); }
-                catch (const std::bad_alloc&) { ++ALSceneGroupPublicationNative::statistics.failures; }
+                catch (const std::bad_alloc&) { ALSceneGroupPublicationNative::recordFailure(ALSceneGroupPublicationNative::FailureStage::host_allocation); }
             }
         }
 
@@ -21786,7 +21899,7 @@ void LLPipeline::postSort(LLCamera &camera)
                     consider(type,sources,owner.state,owner.compilation,flavor);
                 }
             }
-            catch(const std::bad_alloc&){++ALSceneGroupPublicationNative::statistics.failures;}
+            catch(const std::bad_alloc&){ALSceneGroupPublicationNative::recordFailure(ALSceneGroupPublicationNative::FailureStage::host_allocation);}
         }
         std::sort(cold.begin(),cold.end(),[](const auto& a,const auto& b)
         {return a.admission->priority(a.publisher->identity())<b.admission->priority(b.publisher->identity());});
@@ -21820,7 +21933,7 @@ void LLPipeline::postSort(LLCamera &camera)
                 },group_stability());
                 consume(group,candidate.type,sources->second,packet,region,static_cast<U32>(candidate.flavor.family));
             }
-            catch(const std::bad_alloc&){++ALSceneGroupPublicationNative::statistics.failures;}
+            catch(const std::bad_alloc&){ALSceneGroupPublicationNative::recordFailure(ALSceneGroupPublicationNative::FailureStage::host_allocation);}
         }
     }
     // LLSpatialGroup::sNoDelete = false;

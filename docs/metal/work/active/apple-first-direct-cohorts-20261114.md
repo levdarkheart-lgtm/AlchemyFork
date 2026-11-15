@@ -1514,3 +1514,100 @@ Run harness, cleancommit/FFbuildtree, requiredbuild44+static/strict and changed
 actual native scopes; do not rerun unrelated cost suites without changed costs.
 Keep69085immutable for owner trial. Existing owner125/240/241 causal questions,
 complete architecture, whole-engine FPS and owner acceptance remain open.
+
+
+## Next architecture boundary — shared animated attachment palette identity
+
+PPD243 records two agreeing source audits at6af: real main/probe rigged capture
+already obtains and CPU-pins ALMetalAttachmentPaletteRecord but discards its
+identity. ViewInputs::adopt then copies per-view and validation/publication scans/
+hashes per-draw; shadows already publish that record byidentity into sharedFD.
+Implement the direct identity bridge before inventing additional caches/workers.
+Maintain exactpointer/count/joints qualification, actual native owner retention,
+raw fallback, and view-dependent body composition. No shader or new flags.
+
+Isolated world-palette-publication base95ed: residency owns almetalworld.h/.cpp,
+worldprepare.mm and existing backendtests; architecture owns actual pipeline
+buffer-publication inl, new attachment actual/cost appendix and finalinclude only.
+Root owns integration, ordinary batch-stride regression costs, builds/docs/register.
+Opaque separately extracts actual terrain diagnostic slices/tests for125/242;
+no shared edits. Freeze/review then combined nextsource; next244.
+
+
+PPD244 stops the new243lifetime fixture before execution: renderer creation after
+its own GPUgate would wait on synchronous initialization uploads. Root+peer agree
+from actualsingle-devicequeue/create source. Move setup beforegate, retaining
+pending old/newpose andnative-onlyretirement checks. No hang executed. Next245.
+
+
+## Combined source44 freeze: attachment ownership and failure attribution
+
+This is progress toward the original engine goal, not a completed architecture.
+243bridges the existing immutable attachment palette through actual capture,
+owned view inputs, validation and all SimpleBatch GBuffer/forwardalpha/glow/
+impostor consumers. Same sharedFrameData publisher already used by shadows;
+raw/system-body composition is unchanged. Root includes manualBump/LegacyGlow
+capture and rejects the new field in static-only cohort/page/group families.
+No shader, graphics setting, resolution or update cadence changes. Five backend
+and three actual-owner cases plus96paired complete-cost comparisons are authored.
+Equal-byte distinct record identities explicitly expose identity-vs-content
+publication tradeoffs. Added batch pointer cost must be checked on ordinary paths.
+
+125/240/241 diagnostics preserve failure/cancel/admission behavior and add bounded
+first terrain predicate, group exit/miss/unsupported histograms, exact configured
+source byte cap and first CPU shadow failure stage/pass/map/line. Source reviewers
+pass. 242hero-face diagnostic reset,244queue-gate test ordering,245owner-line
+propagation and246singleton cost-host repair are retained. No affected hang ran.
+New terrain tests include actual ordered body with real LLVB/MissingPublisher,
+protected phase-V memory, actual failed clearDraws and copied snapshot lifetime;
+full terrain packing and hero transaction are explicitly not covered by this unit.
+
+Root reviews/integrates all disjoint frozen files; no test/build evidence44 yet.
+Next cleancommit/FF, doctor/configure/build44, static/strict and relevant native
+API/GPU checks (including attachment/preparation, actual captured scene, static
+families and existing resource/command suites), then palette/ordinary cost scopes
+with no viewer/recorder process. Owner69085/69065 staged copies stay immutable.
+No new viewer launch/profile/push. Next247.
+
+## Owner69085 full-window profile reconciled
+
+Owner-authorized Trialrun session provides completed/exported measurement at
+canonical ignored artifacts/metal/architecture-trial-69085-profile-20261115T095706Z/.
+Root inspects profile-handoff.txt, profile-summary.json, cpu-analysis.json,
+gpu-summary.txt/gpu-analysis.json and measurement-log-telemetry.json; source6af
+and executable0d22a4345fe703d0039d6f40da33d3888ecb5a2709d32e941f8a05ccf33d425b
+match immutable69085. PID40700 attached, actual301.686248s with full-window
+CPU coverage; recorder/exports0. Architecture session held heavywork during the
+requested window. Owner loggedout; release message plus process inspection
+confirms no viewer or xctrace before next checks. No additional live measurement.
+
+Presentation13.998462FPS across99.7064%coverage/300.800508s; reported display
+interval71.4263ms and20.4801command-buffer associations/frame. Associated GPU
+active121.9663ms/begin-end134.0052ms overlap frames in flight and cannot be
+summed as serial costs or interpreted as ALU occupancy. Only Overview tables
+exist: no per-pass/program GPU ranking or individual-frame p50/p95/p99. Thermal
+Nominal; sampled peak physical footprint11.53–11.55GiB is not GPU residency.
+338DWARF warnings limit line/inlined symbol fidelity; raw evidence retainedprivate.
+
+Main sampledCPU85.117s includes disjoint ordinaryprobe28.810s and remainder
+56.305s; stricthero0.002s. Inclusive overlapping scopes: shadowcapture17.761,
+nativeshadow15.642, bindings12.155, draws9.897, worldcapture8.848, postSort4.052.
+This points to shared publication/encoding/probe work; counted deferrals alone
+are not bottleneck evidence. Interior census endpoints add1,864,334candidates,
+1,799,264budgetdenials,64,853admitted,63,362published and1,491unsuccessful
+(630unsupported/861unattributedfactoryfailures), only217newstabilitydeferrals.
+These are not exact measurement-boundary deltas or CPU durations. No causal
+before-after FPS comparison with older dynamic-world sessions is claimed.
+
+Measured log20HTTP-policy warnings, zeroERROR/FATAL and no hero/mirror warnings;
+startup20hero warnings are earlier and have renderer0/GBuffer0/line0, unlike125's
+older terrain preflight. Recovery/cause still unproved. Probe source build ratios
+are higher with different populations/cohort coverage; view matrices apply after
+source lookup and do not alone explain rebuilds. New reason diagnostics target it.
+
+Next independent native experiment: eligible full-resolution unblurred probe
+lightmap→base lighting pass fusion, with exactRG8quantization/filter/shadow/normal/
+HDR/reverseZ semantics and old native path retained for SSAO/blur/external inputs.
+Opaque owns a separate fusion worktree/backend/shader/tests; rootpipeline/CMake
+integration remains serialized. This is a bounded parity/cost experiment, not a
+GPU-bottleneck attribution, quality reduction or predicted FPS improvement.

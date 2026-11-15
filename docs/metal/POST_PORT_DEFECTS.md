@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-243 -->
+<!-- next-defect-id: PPD-247 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3488,6 +3488,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15 source audit of exact69065 anded235 confirms classic terrain compound preflight precedes all texture/map/material checks. GroupSources eligibility is PARTITION_VOLUME and cannot convert terrain face pools; shared timing/allocation interaction remains unproved. Successfulsixface publication preceded later aborts; no permanent mirror-failure claim. First predicate is unobserved; bounded first-reason diagnostics are next, preserving prepare-once evaluation and incomplete/clear/cancel/retry. No guard relaxation or stale resource recovery authorized by this evidence.
 
+- 2026-11-15 69085 owner profile imported: exact6af/40700 measurement09:57:14.760–10:02:16.447UTC has no hero/mirror warnings; earlier startup snapshot has20warnings with renderer0/GBuffer0/line0, distinct from69065terrain guard. Absence of later warnings does not prove mirror recovery. New typed classic preflight diagnostics and actual ordered-guard tests integrated for next source; original root cause remains unknown.
+
 ## PPD-126 — Shutdown reports one remaining volume and LOD reference
 
 - Status: investigating
@@ -5789,6 +5791,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15 exacttrial/current source audit:1260 combines source/proof/certificate/state publication, native/CPU retention, supersession and allocation failures; it does not specifically mean State::publish failed. Historical CPU-layout rejections0 excludes ordinary rejection returns, not CPU allocation failure. Source-cache resource estimates plateau near3.89GB with2169entries, making native byte admission a candidate only: effective cap/reason unknown. No per-camera main/probe flavor-key churn found. Add typed existing-exit buckets without new producer walks/callbacks; no cap increase, negative cache or causal FPS claim. Separate scalar region-origin invalidation candidate needs its own producer regression before repair.
 
+- 2026-11-15 69085 interior measured census endpoints add861unattributed group factory failures, alongside630unsupported returns; counters are not CPU times. New11stage/6miss/unsupported-mask and exact configured cap census integrated with existing fault injections; no cap/policy change. Probe source-build imbalance remains unattributed, not a camera invalidation proof.
+
 ## PPD-241 — Trial shadow capture failures lack a source-level attribution
 
 - Status: investigating
@@ -5808,6 +5812,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15 exacttrial/current audit: failed_views samples !spot_shadow_capture_complete at captureMetalShadowScene scope exit before final reconciliation/encoding/commit. Possible admission/source/palette/matrix/logical/pool-hook exits are not distinguished.7main/1probe therefore means CPU capture incompleteness, not GPU errors; final transaction failures are outside this counter. Detached threshold8192 was not reached. Add first-reason buckets before clearing; preserve first failure and count later reconciliation separately. No threshold change or attribution to125/240.
 
+- 2026-11-15 69085 initial log reports4main/0probe CPU failed views; measured profile still needs typed attribution. Root adds first CPU stage/pass/map/line buckets and separate end-incomplete total, preserving first failure before later phases/clearing. Independent source peer review passes; begin failures before capture-active remain outside this counter as before. No native GPU failure attribution or threshold change.
 
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
@@ -5831,3 +5836,104 @@ freshness defect, not evidence of stale rendered terrain or the owner incident.
 
 - 2026-11-15 peer review identifies this new WIP diagnostic lifetime mismatch before integration. Rendering failure/cancel/retry remains unchanged. Register before repair; source43 and owner69065 unaffected.
 - 2026-11-15 author resets only the first diagnostic at actual beginMetalHeroProbeFaceCapture, retaining recent/cumulative counters. WIP pipeline.cpp SHA d1ad9070d150eb813005d7049f2912b7cd8bde42d240484fc7fbff3ce0bff167; focused peer re-review PASS on exact hash, no affected execution/integration yet.
+
+- 2026-11-15 Actual hero-face begin first-only reset and ordered terrain actual-body tests integrated. Source peers pass; actual hero begin transaction is explicitly outside contained runtime coverage. No owner confirmation/closure.
+
+## PPD-243 — Main/probe attachment preparation discards immutable palette identity
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `LLVOAvatar::updateSkinInfoMatrixPalette`: attachment layout is SKIN_ORIGIN float4 plus12floats/joint,1–110joints; view matrices and skinning/material behavior remain unchanged. Body-avatar composed palettes are view-dependent and separate.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Preserve the existing immutable attachment record through actual world capture/adoption/validation/binding; use existing shared FrameData identity publication with exact layout/data qualification. Keep raw/body behavior. Run actual native parity/lifetime and complete preparation costs, including any batch-stride cost.
+- Verification: Independent exact6af source audits agree: capture obtains/CPU-pins record but stores raw floats only; ViewInputs::adopt copies per view, world validation finite-scans per draw, GBuffer setVertexData hashes/compares per draw. Shadows already preserve record and use FrameData::publishPaletteRecord. No new implementation build/cost evidence or FPS attribution yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+This is confirmed repeated CPU preparation, not proof of an owner FPS regression.
+Main, reflection-probe and shadow consumers can use the same immutable producer
+palette and shared native frame arena. Losing its identity before adoption defeats
+that existing sharing and must be repaired at the capture/resource owner boundary.
+Unqualified raw palettes and view-dependent body composition keep their original
+copy/finite-validation path; no shader, quality, pose or culling change is intended.
+
+### History
+
+- 2026-11-15 registered before implementation after independent source audits. Backend and actual-capture owners assigned disjoint files in isolated world-palette-publication tree; no viewer/profiling/push. Source69085 remains immutable and unaffected.
+
+- 2026-11-15 Backend/capture bridge integrated including forward alpha/glow/impostor paths and manual Bump/LegacyGlow capture. Batch grows one borrowed record pointer; adoption pins real shared record, GPU commands retain native arena bytes. Static cohort/page/group families explicitly reject the attachment-only field. Correctness/lifetime and96paired complete-cost cases authored and independently source-reviewed, execution pending. No shader or flags changed; equal-byte distinct-identity tradeoff remains measured, not concealed.
+
+## PPD-244 — Pending-palette fixture creates a renderer behind its own queue gate
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Native-only new test, no upstream equivalent; actual ALMetalDevice command queue and Renderer::create initialization define the ordering contract. Source69085 does not contain this WIP fixture.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Create the probe renderer and builtin library before PaletteQueueGate; retain genuinely pending old/new native commands and the same lifetime/pixel assertions. Re-review before executing.
+- Verification: Independent root/peer source reviews confirm new almetal_attachment_palette_test.mm constructs probe after the same-device event-wait command. Renderer::create uses commitAndWait for fallback texture uploads; it cannot reach gate.release. No hang was executed.
+- Owner verification: pending
+- Push approval: not_granted
+
+The new lifetime fixture's CPU would wait for initialization uploads queued behind
+its own unsignalled GPU event. The gate is released only after create returns.
+This is a source-confirmed fixture deadlock, not a production viewer regression.
+ALMetalDevice::makeCommandBuffer uses one device command_queue; ordinary render
+submissions are nonwaiting, but Renderer::create has synchronous fallback uploads.
+
+### History
+
+- 2026-11-15 registered before repair/execution after root and independent peer identify the same ordering cycle in the frozen WIP test. No viewer, native test or affected build was run; source69085 remains unaffected.
+
+- 2026-11-15 Author moves probe renderer/library setup before queue gate; same pending old/new palette, CPU expiration, pixel and abandonment assertions retained. Independent focused peer passes exact attachment-test SHAff5d3fae5e820592a0fffbc139b1a70b8f6175a4103806a2e8b4f8c508da81cf. No affected hang/execution occurred; native validation pending.
+
+## PPD-245 — Extracted terrain guard changes the generic owner-line attribution
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Pre-extraction native capture.markIncomplete records pipeline.cpp owner lines; new actual-body include is a testing/diagnostic mechanism, not an upstream rendering change.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Capture the owner call-site line before the include and pass that numeric line into the identical failed-capture action. Add an actual-body attribution assertion; retain typed predicate/inl-file diagnostics.
+- Verification: Peer source review confirms __LINE__ inside the new .inl resolves to the included file, even though expanding its text reconstructs the old source bytes. Root already labels the predicate implementation filename, but generic owner line should still identify its pipeline entry boundary. No affected runtime/build/test yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+Moving a guard into an include preserves C++ control flow but changes preprocessor
+source coordinates. The generic first_incomplete_source_line previously identified
+the pipeline owner; source-only reconstruction is insufficient proof for this field.
+No geometry, terrain validation or GPU behavior is implicated.
+
+### History
+
+- 2026-11-15 peer identifies the __LINE__ attribution edge after the source extraction review. Root records it before changing line propagation. Source69085 is unaffected; no live capture was requested or run for this finding.
+
+- 2026-11-15 Root captures pipeline call-site line before the local include and uses it for markIncomplete. Actual-body fixture now records/asserts that owner coordinate; predicate formatter also names its implementation file. No rendering/control-flow change; execution pending.
+
+## PPD-246 — Attachment cost arms instantiate concurrent singleton font owners
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Existing llfontmetal_fixture.h NativeFont constructor requires gFontManagerp to be null and initializes the process-global font owner; this is a new cost fixture, not upstream viewer behavior.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Use one native fixture owner per configuration with honest per-arm producer refresh and separate renderer/FrameData accounting, or another source-proved nonnested owner design. Preserve rotating arms, producer sealing cost, equal-byte adverse cases and geometry-publication assertions.
+- Verification: New cost Arm contains unique_ptr<AttachmentPalettePublication>, and setup constructs both before either dies. AttachmentPalettePublication inherits MaterialGroupPublication/Publication/NativeFontUI/NativeFont. The second NativeFont constructor must fail REQUIRE_FALSE(gFontManagerp). No affected test/build was executed.
+- Owner verification: pending
+- Push approval: not_granted
+
+The benchmark's apparent independent per-arm state nests a process-singleton
+fixture that cannot be instantiated twice. Native buffers may share the physical
+Metal device, but that does not remove the font-manager ownership precondition.
+This is a source-confirmed benchmark construction error, not a viewer defect.
+
+### History
+
+- 2026-11-15 root source review identifies the two simultaneous fixture owners before execution. Register before repair; keep baseline/candidate producer and arena costs symmetric when restructuring the harness. No successful benchmark or runtime failure is claimed.
+
+- 2026-11-15 Cost fixture now uses one NativeFont host per configuration and separate per-arm FrameData/renderers. Both timed arms explicitly invalidate/reseal every producer record; stable bytes and churn packing scope remain symmetric. Equal-byte adverse cases, rotating arms, warm source-publication0 and producer-count checks preserved. Appendix SHA c473ec346c8fa6c477af7893327e80fabfd6020b141314860806f390e56b70a1 independently peer-reviewed; no cost execution yet.

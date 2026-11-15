@@ -35,6 +35,7 @@ struct ALMetalWorldViewInputs::Impl
     std::vector<ALMetalWorldVisibilityQuery> queries;
     std::shared_ptr<const void> resources;
     std::vector<std::vector<float>> poses;
+    std::vector<std::shared_ptr<const ALMetalAttachmentPaletteRecord>> palette_records;
     std::array<float, 4> coverage_fill{};
     std::uint64_t epoch = 0;
 };
@@ -200,8 +201,20 @@ try
 
     struct Pose { std::size_t slot, count; std::uint32_t joints; };
     std::unordered_map<const float*, Pose> snapshots;
+    std::set<const ALMetalAttachmentPaletteRecord*> palette_records;
     for (auto& batch : impl->batches)
     {
+        if (batch.skin_palette_record)
+        {
+            if (!batch.matchesSkinPaletteRecord())
+            {
+                fail(error, "Prepared world attachment record does not match its pose");
+                return {};
+            }
+            if (palette_records.insert(batch.skin_palette_record).second)
+                impl->palette_records.push_back(batch.skin_palette_record->shared_from_this());
+            continue;
+        }
         if (!batch.skin_palette)
         {
             if (batch.skin_palette_float_count || batch.skin_joint_count)
@@ -244,6 +257,11 @@ try
 catch (const std::bad_alloc&)
 {
     if (error) error->clear();
+    return {};
+}
+catch (const std::bad_weak_ptr&)
+{
+    fail(error, "Prepared world attachment record has no shared owner");
     return {};
 }
 
