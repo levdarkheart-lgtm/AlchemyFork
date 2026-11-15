@@ -196,7 +196,7 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                             {value.candidate_bytes+=capture.source_rows->candidates.size()*sizeof(ALMetalWorldSourceView::Candidate);
                              value.regional_bytes+=capture.source_rows->regions.size()*sizeof(ALMetalWorldSourceRegion);}
                             if(!capture.source_cohorts.empty())
-                            {CHECK(capture.source_references.empty());CHECK(!capture.source_rows||capture.source_rows->candidates.empty());}
+                            {CHECK(capture.source_references.empty());CHECK((!capture.source_rows||capture.source_rows->candidates.empty()));}
                             arm.queries.resize(2);
                             for(U32 query=0;query<2;++query)
                             {

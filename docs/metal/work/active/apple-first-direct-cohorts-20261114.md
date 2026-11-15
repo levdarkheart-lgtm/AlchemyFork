@@ -548,3 +548,10 @@ two-mode cost tags remain unchanged. Root next: commit this freeze, FF main,
 python3 /tmp/persistent_native_build_26.py; static native26, focused native
 correctness then fresh cost26. Source25 results remain prior-source evidence.
 Keep full architecture active/partial and all owner acceptance open. Next210.
+
+
+Required26 clean e7eba56957 doctor/configure pass; build fails58.746s solely
+at new cost CHECK logicalOR decomposition (PPD210). Strict26 passes3587files/
+905info/0blockers/errors. Root parenthesizes the one complete expression; no
+production source change. Required27 follows from the corrected pin, then
+static/native/cost gates. Prior failure retained; no source26 success claim.

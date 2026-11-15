@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-210 -->
+<!-- next-defect-id: PPD-211 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5115,3 +5115,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered during coordinated SourcePages integration review; no viewer execution or performance attribution.
 
 - 2026-11-15: Source26 authored repair stages cache list/accounting allocations before eviction and returns valid uncached FrameViews on optional cache insertion failure. One-shot CPU allocation seam and preservation fixture authored; no actual OOM execution claimed.
+
+
+## PPD-210 — New GPU cohort cost assertion fails Catch2 decomposition
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integration fixture
+- Discovered: 2026-11-15
+- Original reference: Catch2 logical-OR assertions require parentheses around the complete expression.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Required26 at e7eba56957 passes doctor/configure but build fails58.746s at the new cost include line199: CHECK(!capture.source_rows||capture.source_rows->candidates.empty()). Compiler diagnoses unsupported operator|| decomposition. Production SourcePages/commands compilation did not report errors in that attempt. Strict26 passes3587files/905info/0blockers/errors.
+- Next action: Parenthesize that complete fixture expression, rebuild from a fresh clean source pin and run native/cost gates.
+- Verification: Executed compile failure; no production renderer failure attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before the single assertion repair; preserve failed required26 receipt/log.
