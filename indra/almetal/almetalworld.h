@@ -1238,6 +1238,10 @@ struct ALMetalWorldGBufferScene
     // Separate, default-off ordered native command-bank experiment. Failed or
     // short runs use the ordinary native shader, not the scalar row pilot.
     bool source_command_banks = false;
+    // Experimental CPU rejection before ordinary bindings. Only privately
+    // qualified cohort bounds participate; raw/unknown inputs stay visible.
+    // This takes precedence over optional GPU visibility/source-row/bank work.
+    bool cpu_cohort_visibility = false;
     // Opt-in direct buffer bindings inside retained cohort command banks.
     // Requires source_command_banks; its existing row-bank mode stays separate.
     bool source_direct_command_banks = false;
@@ -2797,6 +2801,7 @@ public:
     ALMetalWorldSourceDrawStats worldSourceStats() const noexcept;
     ALMetalWorldSourceCommandDrawStats worldSourceCommandStats() const noexcept;
     ALMetalWorldCohortStats worldCohortStats() const noexcept;
+    ALMetalWorldCpuVisibilityStats worldCpuVisibilityStats() const noexcept;
     void clearWorldSourceCommands() noexcept;
     void failNextWorldSourceCommandPublicationForTesting() noexcept;
     void configureWorldResources(ALMetalWorldResourceLimits) noexcept;

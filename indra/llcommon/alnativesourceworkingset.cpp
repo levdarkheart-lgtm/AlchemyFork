@@ -41,6 +41,13 @@ struct ALNativeSourceWorkingSet::Impl
     std::uint64_t max_bytes;
     std::uint32_t max_age;
     std::uint64_t bytes = 0;
+    Stats statistics;
+
+    unsigned capacityMask(std::uint64_t additional) const noexcept
+    {
+        return (entries.size() >= max_entries ? 1u : 0u) |
+            (additional > max_bytes - std::min(bytes, max_bytes) ? 2u : 0u);
+    }
 
     void remove(Entries::iterator at) noexcept
     {
@@ -88,7 +95,14 @@ bool ALNativeSourceWorkingSet::retain(
     const std::shared_ptr<const void>& publication,
     std::span<const Resource> resources, std::uint32_t frame)
 {
-    if (!state || !serial || !publication) return false;
+    ++mImpl->statistics.retain_calls;
+    const auto result = [&](bool accepted)
+    {
+        if (accepted) ++mImpl->statistics.retain_successes;
+        else ++mImpl->statistics.retain_failures;
+        return accepted;
+    };
+    if (!state || !serial || !publication) return result(false);
     // The argument can alias State::publication(). Freeze its owner and keep
     // its resource span alive even when an eviction callback replaces State.
     const auto requested_publication = publication;
@@ -99,7 +113,7 @@ bool ALNativeSourceWorkingSet::retain(
         return state->revision() == revision && !state->dirty() &&
             sameOwner(requested, Weak(state->publication()));
     };
-    if (!current()) return false;
+    if (!current()) return result(false);
     const auto reject = [&]
     {
         if (current() && !mImpl->lookup.contains(state->identity())) state->evict();
@@ -121,72 +135,85 @@ bool ALNativeSourceWorkingSet::retain(
         const auto prior = mImpl->lookup.find(state->identity());
         if (prior != mImpl->lookup.end())
         {
-            if (serial < prior->second->serial) return false;
+            if (serial < prior->second->serial) return result(false);
             const bool same_publication = sameOwner(prior->second->publication, requested);
             if (serial == prior->second->serial)
-                return same_publication && touch(state->identity(), serial, frame);
+                return result(same_publication && touch(state->identity(), serial, frame));
             // A new serial qualifies a newly sealed payload, not a relabeling
             // of the current one. Invalid admission never withdraws it.
-            if (same_publication) return false;
+            if (same_publication) return result(false);
             mImpl->remove(prior->second);
             const auto status = resume();
-            if (status) return status > 0;
+            if (status) return result(status > 0);
         }
         // remove() may evict only a matching old payload. A replacement is
         // checked again before admitting it into the residency ledger.
         while (!mImpl->entries.empty() &&
                std::uint32_t(frame - mImpl->entries.front().frame) > mImpl->max_age)
         {
+            ++mImpl->statistics.age_evictions;
             mImpl->remove(mImpl->entries.begin());
             const auto status = resume();
-            if (status) return status > 0;
+            if (status) return result(status > 0);
         }
         Impl::Entry candidate{state, requested, serial, frame, {}};
         std::uint64_t source_bytes = 0;
         for (const auto& resource : resources)
         {
-            if (!resource.allocation) return reject();
+            if (!resource.allocation)
+            { ++mImpl->statistics.invalid_resources; return result(reject()); }
             const Weak weak(resource.allocation);
             const auto duplicate = std::find_if(candidate.resources.begin(), candidate.resources.end(),
                 [&](const auto& prior_resource) { return sameOwner(prior_resource.allocation, weak); });
             if (duplicate != candidate.resources.end())
             {
-                if (duplicate->bytes != resource.bytes) return reject();
+                if (duplicate->bytes != resource.bytes)
+                { ++mImpl->statistics.resource_size_conflicts; return result(reject()); }
                 continue;
             }
             if (resource.bytes > mImpl->max_bytes - source_bytes)
-                return reject();
+            {
+                ++mImpl->statistics.oversized_sources;
+                if (resource.bytes > mImpl->max_bytes) ++mImpl->statistics.oversized_resources;
+                return result(reject());
+            }
             const auto existing = mImpl->resources.find(weak);
             // Native wrapper allocations have immutable capacity. An
             // inconsistent estimate must not silently under-account residency.
             if (existing != mImpl->resources.end() && existing->second.bytes != resource.bytes)
-                return reject();
+            { ++mImpl->statistics.resource_size_conflicts; return result(reject()); }
             source_bytes += resource.bytes;
             candidate.resources.push_back({weak, resource.bytes});
         }
-        if (!mImpl->max_entries) return reject();
+        if (!mImpl->max_entries)
+        { ++mImpl->statistics.entry_disabled_rejections; return result(reject()); }
         auto additional = mImpl->additionalBytes(candidate.resources);
-        while (mImpl->entries.size() >= mImpl->max_entries ||
-               additional > mImpl->max_bytes - std::min(mImpl->bytes, mImpl->max_bytes))
+        while (const auto mask = mImpl->capacityMask(additional))
         {
+            ++mImpl->statistics.capacity_events[mask];
             // Preserve the current-frame working subset instead of making a
             // repeated overflow scan reconstruct every source on every view.
             if (mImpl->entries.empty() || mImpl->entries.front().frame == frame)
-                return reject();
+            {
+                ++mImpl->statistics.capacity_rejections[mask];
+                return result(reject());
+            }
+            ++mImpl->statistics.capacity_evictions;
             mImpl->remove(mImpl->entries.begin());
             const auto status = resume();
-            if (status) return status > 0;
-            if (source_bytes > mImpl->max_bytes) return reject();
+            if (status) return result(status > 0);
+            if (source_bytes > mImpl->max_bytes)
+            { ++mImpl->statistics.oversized_sources; return result(reject()); }
             additional = mImpl->additionalBytes(candidate.resources);
         }
         const auto status = resume();
-        if (status) return status > 0;
+        if (status) return result(status > 0);
         // Victim notifications may also have admitted shared allocations.
         // Validate their capacity before changing any reference accounting.
         for (const auto& resource : candidate.resources)
             if (const auto existing = mImpl->resources.find(resource.allocation);
                 existing != mImpl->resources.end() && existing->second.bytes != resource.bytes)
-                return reject();
+            { ++mImpl->statistics.resource_size_conflicts; return result(reject()); }
         for (const auto& resource : candidate.resources)
         {
             auto& accounting = mImpl->resources[resource.allocation];
@@ -198,12 +225,14 @@ bool ALNativeSourceWorkingSet::retain(
         if (!mImpl->lookup.emplace(state->identity(), at).second)
         {
             mImpl->remove(at);
-            return resume() > 0;
+            return result(resume() > 0);
         }
-        return true;
+        ++mImpl->statistics.new_retains;
+        return result(true);
     }
     catch (...)
     {
+        ++mImpl->statistics.retain_exceptions;
         clear();
         if (current() && !mImpl->lookup.contains(state->identity())) state->evict();
         throw;
@@ -212,13 +241,18 @@ bool ALNativeSourceWorkingSet::retain(
 
 bool ALNativeSourceWorkingSet::touch(Identity identity, Serial serial, std::uint32_t frame) noexcept
 {
+    ++mImpl->statistics.touch_calls;
     const auto found = mImpl->lookup.find(identity);
-    if (found == mImpl->lookup.end() || found->second->serial != serial) return false;
+    if (found == mImpl->lookup.end())
+    { ++mImpl->statistics.touch_missing_identity; return false; }
+    if (found->second->serial != serial)
+    { ++mImpl->statistics.touch_serial_mismatch; return false; }
     auto at = found->second;
     if (!sameOwner(at->publication, Weak(at->state->publication())))
-    { mImpl->remove(at); return false; }
+    { ++mImpl->statistics.touch_publication_mismatch; mImpl->remove(at); return false; }
     at->frame = frame;
     mImpl->entries.splice(mImpl->entries.end(), mImpl->entries, at);
+    ++mImpl->statistics.touch_hits;
     return true;
 }
 
@@ -234,7 +268,10 @@ void ALNativeSourceWorkingSet::trim(std::uint32_t frame) noexcept
 {
     while (!mImpl->entries.empty() &&
         std::uint32_t(frame - mImpl->entries.front().frame) > mImpl->max_age)
+    {
+        ++mImpl->statistics.age_evictions;
         mImpl->remove(mImpl->entries.begin());
+    }
 }
 
 void ALNativeSourceWorkingSet::clear() noexcept
@@ -254,8 +291,22 @@ void ALNativeSourceWorkingSet::setByteBudget(std::uint64_t bytes) noexcept
 {
     mImpl->max_bytes = bytes;
     while (mImpl->bytes > bytes && !mImpl->entries.empty())
+    {
+        ++mImpl->statistics.budget_shrink_evictions;
         mImpl->remove(mImpl->entries.begin());
+    }
 }
 
 std::size_t ALNativeSourceWorkingSet::entryCount() const noexcept { return mImpl->entries.size(); }
 std::uint64_t ALNativeSourceWorkingSet::estimatedRetainedBytes() const noexcept { return mImpl->bytes; }
+ALNativeSourceWorkingSet::Stats ALNativeSourceWorkingSet::stats() const noexcept
+{
+    auto result = mImpl->statistics;
+    result.max_entries = mImpl->max_entries;
+    result.max_bytes = mImpl->max_bytes;
+    result.max_age = mImpl->max_age;
+    result.entries = mImpl->entries.size();
+    result.estimated_bytes = mImpl->bytes;
+    result.unique_resources = mImpl->resources.size();
+    return result;
+}

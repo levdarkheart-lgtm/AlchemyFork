@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-274 -->
+<!-- next-defect-id: PPD-278 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6493,3 +6493,75 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before narrow corrections; preserve MRT/depth/query parity and numerical conservatism coverage.
+
+
+## PPD-274 — Native source cache telemetry cannot attribute capacity withdrawal
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / residency diagnostics author
+- Discovered: 2026-11-15
+- Original reference: Saved69085 NativeWorkingSet bytes reached3712MiB while entries stayed below8192; CPU layout entry limit is distinct. Existing aggregate census cannot separate byte/entry/age eviction and native touch misses.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), saved69085 frozen log and exact6af308d165 source policy.
+- Next action: Count existing native rejection/eviction and touch-miss branches and report configured limits. Preserve all policy, resource accounting and reentrant publication semantics.
+- Verification: Numeric-only35sample census confirms byte ceiling reached; individual miss causes remain unknown. No physical GPU-memory or FPS attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before diagnostics-only implementation; no cap increase or new dependency/resource walk.
+
+
+## PPD-275 — New cache-lifetime fixture asserts retirement before releasing frame upload owners
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Actual LLVB upload uses frame-fence retention independently of the source publication/native-only tuple. Existing ownership fixtures release frame fences at the reader-retirement boundary.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md); native-correctness-59-source-cache-lifetime.log.
+- Next action: Settle initialization and release real frame-fence ownership at the fixture retirement boundary, retain every source-reuse and native-resource lifetime assertion, then retest.
+- Verification: Source59 required/static/strict pass; new lifetime case2516/2520 assertions pass, four final resource-retirement checks fail, one per control. Same-frame reuse/build census matches all expected controls. Missing fixture frame-owner retirement is source-confirmed; production leak not established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 failure registered before narrow fixture repair. Preserve failed59receipt/log; no successful cache-lifetime claim yet. Source review also confirms LLVB destruction queues retired wrappers until the next ordinary flush; fixture now calls flushBuffers after native-reader reset, preserving collection policy.
+
+
+## PPD-276 — Warm cohorts never acquire newly requested bounds capability
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / published visibility author
+- Discovered: 2026-11-15
+- Original reference: current/currentMaterial and seal/sealMaterial accept an existing unbounded group before source capability promotion. Live enabling of GPU visibility already had this limitation; the CPU experiment exposes the same issue.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), bounded integration source review.
+- Next action: Stamp completed bounds-attempted capability during cold cohort publication, check it in warm lookup/seal when requested, and promote once. Unknown bounds must not cause repeated compilation.
+- Verification: Fresh-start enabled requests are wired correctly. Existing warm unbounded groups remain fail-visible indefinitely until unrelated mutation; no missing geometry or owner FPS attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before capability promotion repair; avoid qualified-count heuristics that would rebuild legitimate unknown rows forever.
+
+
+## PPD-277 — Pressure texture reductions bypass frame-wide native admission
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / frame admission author
+- Discovered: 2026-11-15
+- Original reference: updateImagesCreateTextures drains native reductions before fetched uploads; scaleDown calls willWrite then preserveMetalScaleDown allocates and commits copy/mipgen/resample without the upload path's budget receipt.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), actual LLViewerTextureList/LLImageGL call path.
+- Next action: Add explicitly typed bounded native texture-maintenance admission before mutation/allocation, retain credit to exact command completion and preserve pending queue work when denied. Maintain reduction progress under memory pressure and existing discard targets.
+- Verification: Existing queued pressure reductions are governed by owner time scan, but not shared native in-flight bytes/work credits. No measured club-FPS or crash attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before implementation; root owns integration and all execution. No viewer launch/profile or quality reduction authorized by this finding.

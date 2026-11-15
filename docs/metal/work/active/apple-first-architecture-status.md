@@ -1,6 +1,6 @@
 # Apple-first architecture implementation status
 
-Updated 2026-11-15. The original whole-engine goal is **active and incomplete**.
+Updated 2026-11-15 (active integration). The original whole-engine goal is **active and incomplete**.
 Detailed source and evidence remain in the [execution ledger](apple-first-direct-cohorts-20261114.md).
 
 Current built checkpoint: **ac2dfaeb6b / 26.4.0.69102**. Required doctor,
@@ -19,10 +19,10 @@ recording is not a controlled before/after result.
 
 | Boundary | Implemented and checked | Still required |
 |---|---|---|
-| Shared scene and resources | Producer generations, immutable material/resource tuples, dirty subscriptions, retained static groups, compact restoration and native leases. | Resolve observed cross-view cache churn from typed miss evidence; finish specialized sharing gaps while keeping per-view transforms/order/culling current. |
+| Shared scene and resources | Producer generations, immutable material/resource tuples, dirty subscriptions, retained static groups, compact restoration and native leases. | Same-frame reproduction distinguishes CPU metadata expiry from retained native resources; add exact capacity/miss reasons before choosing a remedy. Finish specialized sharing gaps while keeping per-view transforms/order/culling current. |
 | Animated data | Attachment identity shared through main/probe GBuffer and forward passes; pose ownership/parity/queued-reader lifetime checked. Equal-byte upload amplification removed. | Keep view-dependent system-body composition; qualify any additional animated visibility conservatively. Whole-engine benefit remains unproved. |
 | Useful CPU preparation | Owned immutable packets, bounded shared credits and joined shadow work. New producer-derived scalar recipes avoid repeated400B assembly/comparison and fixed flag lookup. | World-worker tickets remain disabled: fair owned-input comparisons still regress complete time. Continue useful producer work rather than enabling idle worker infrastructure. |
-| Visibility and native submission | Direct retained-group submission and scalar recipes work for small groups. Native bounds, GPU frustum and command-bank experiments are implemented. | GPU visibility/banks remain disabled after mixed/worse complete-path results. Existing CPU busy/credit signals do not establish whole-queue GPU headroom. A useful policy/path is still unproved. |
+| Visibility and native submission | Direct retained-group submission and scalar recipes work for small groups. Native bounds, GPU frustum and command-bank experiments are implemented. | Published CPU visibility is integrated for verification, default OFF: reject qualified static bounds before bindings, preserve queries and unknown draws. Native parity and complete cold/warm/churn costs pending. GPU visibility/banks remain disabled after mixed/worse results. |
 | Unified memory and admission | Decode/upload/frame admission, native COW generations, CPU reclaim and native-only command-completion leases. | Investigate cache-capacity/lifetime interactions with actual current-frame work; no blind cap increases. |
 | Terrain | Shared pass-common material/surface inputs, one native constant publication per view, prepared aliases and independent texture leases. Exact output/depth/query/lifetime checks pass. | Caller now selects sharing at>=16patches in allfourmain/probe paths; owner runtime confirmation and complete LL pool performance remain open. |
 | Probe lighting | Eligible unblurred light map and base lighting share one tile-memory pass; sky/HDR/shadow/reverse-Z/depth/older-library behavior checked. Empty local/projector owners avoid empty work. | Whole-engine evaluation. No cadence or face-multiplicity regression was found againstG1. |
@@ -65,6 +65,22 @@ recording is not a controlled before/after result.
 
 Probe cameras are applied after source lookup; reads do not signal producer
 changes, promotion preserves existing variants, and cube faces do not increment
-outer frame age. Cache withdrawal remains plausible but unproved for the saved
-profile. G1/source55 probe face schedules, hero rate selection and shadow calls
+outer frame age. Same-frame metadata withdrawal is reproduced in contained controls; its share of
+saved-profile rebuild cost remains unknown. The69085census reached the3712MiB
+native wrapper-byte ceiling and separate2048CPUlayout entry ceiling; native
+entries stayed below8192. These wrapper estimates are not physical allocation totals. G1/source55 probe face schedules, hero rate selection and shadow calls
 match; completion callbacks only retire credit/resources.
+
+
+Current integration: PPD271 CPU visibility six production files + two new
+native/actual-cost appendices are frozen and peer-reviewed, with default-OFF
+setting, producer bounds request and periodic counters wired by root. Verification
+pending; no activation or performance claim. PPD273 WIP fixture corrections included.
+
+Required59/5785fb5761 builds69107, static/strict pass. Cache lifetime2516/2520
+assertions pass, all same-frame reuse/build controls match; four final teardown
+checks fail before releasing actual upload frame owners (PPD275). Fixture now
+settles initialization/releases frame fences before asserting retirement; retest
+pending. Source58compilefailure is retained separately (PPD272), corrected59.
+PPD274 adds exact native capacity/age/touch branch census with policy unchanged.
+No viewer launch/login/profile or push. Existing staged69102 remains intact.

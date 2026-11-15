@@ -4372,3 +4372,7 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_scalar_recipe_cost_native.inl"
 
 #include "alpipeline_source_cache_lifetime_native.inl"
+
+#include "alpipeline_published_cpu_visibility_cost_native.inl"
+
+#include "alpipeline_group_bounds_promotion_native.inl"

@@ -292,6 +292,13 @@ TEST_CASE("A callback that already retained the exact native request is acknowle
     CHECK(incoming->publication().get() == reader.get());
     CHECK_FALSE(incoming->dirty());
     CHECK(cache.entryCount() == 1); CHECK(cache.estimatedRetainedBytes() == 200);
+    const auto census = cache.stats();
+    CHECK(census.retain_calls == 3); CHECK(census.retain_successes == 3);
+    CHECK(census.retain_failures == 0); CHECK(census.retain_exceptions == 0);
+    CHECK(census.new_retains == 2); // Nested insertion, outer acknowledgement.
+    CHECK(census.capacity_events[1] == 1); CHECK(census.capacity_rejections[1] == 0);
+    CHECK(census.capacity_evictions == 1); CHECK(census.age_evictions == 0);
+    CHECK(census.touch_calls == 1); CHECK(census.touch_hits == 1); // Outer resume().
     CHECK(cache.touch(incoming->identity(), 2, 2));
     REQUIRE(cache.erase(incoming->identity(), 2));
     CHECK(cache.entryCount() == 0); CHECK(cache.estimatedRetainedBytes() == 0);
@@ -327,4 +334,111 @@ TEST_CASE("Native source clear preserves a newer tuple admitted by an eviction o
     cache.clear();
     CHECK_FALSE(b->publication());
     CHECK(cache.entryCount() == 0); CHECK(cache.estimatedRetainedBytes() == 0);
+}
+
+TEST_CASE("Native source diagnostics distinguish entry byte and combined pressure without changing admission",
+          "[native-source-working-set][residency-diagnostics]")
+{
+    for (unsigned mask : {1u, 2u, 3u})
+    {
+        CAPTURE(mask);
+        const std::size_t entry_limit = mask & 1 ? 1 : 4;
+        const std::uint64_t byte_limit = mask & 2 ? 150 : 1024;
+        ALNativeSourceWorkingSet cache(entry_limit, byte_limit, 100);
+        auto a = std::make_shared<State>(), b = std::make_shared<State>();
+        auto ga = std::make_shared<int>(1), gb = std::make_shared<int>(2);
+        const std::array<ALNativeSourceWorkingSet::Resource, 1> ra{{{ga, 100}}}, rb{{{gb, 100}}};
+        auto reader_a = publish(a, ga), reader_b = publish(b, gb);
+        REQUIRE(cache.retain(a, 1, a->publication(), ra, 10));
+        CHECK_FALSE(cache.retain(b, 2, b->publication(), rb, 10));
+        CHECK(a->publication().get() == reader_a.get()); CHECK_FALSE(b->publication());
+        auto census = cache.stats();
+        CHECK(census.max_entries == entry_limit); CHECK(census.max_bytes == byte_limit); CHECK(census.max_age == 100);
+        CHECK(census.entries == 1); CHECK(census.unique_resources == 1); CHECK(census.estimated_bytes == 100);
+        CHECK(census.capacity_events[mask] == 1); CHECK(census.capacity_rejections[mask] == 1);
+        CHECK(census.capacity_evictions == 0);
+        reader_b = publish(b, gb);
+        REQUIRE(cache.retain(b, 3, b->publication(), rb, 11));
+        CHECK_FALSE(a->publication()); CHECK(b->publication().get() == reader_b.get());
+        REQUIRE(cache.retain(b, 3, b->publication(), rb, 11)); // Existing exact entry, not another insertion.
+        census = cache.stats();
+        CHECK(census.retain_calls == 4); CHECK(census.retain_successes == 3); CHECK(census.retain_failures == 1);
+        CHECK(census.retain_exceptions == 0); CHECK(census.new_retains == 2);
+        CHECK(census.capacity_events[mask] == 2); CHECK(census.capacity_rejections[mask] == 1);
+        for (unsigned other = 0; other < 4; ++other) if (other != mask)
+        { CHECK(census.capacity_events[other] == 0); CHECK(census.capacity_rejections[other] == 0); }
+        CHECK(census.capacity_evictions == 1); CHECK(census.age_evictions == 0); CHECK(census.budget_shrink_evictions == 0);
+        CHECK(census.touch_calls == 1); CHECK(census.touch_hits == 1);
+        CHECK(census.entries == 1); CHECK(census.unique_resources == 1); CHECK(census.estimated_bytes == 100);
+        CHECK(reader_a->geometry.get() == ga.get()); // The diagnostic does not withdraw actual readers.
+        cache.clear();
+        const auto cleared = cache.stats();
+        CHECK(cleared.entries == 0); CHECK(cleared.unique_resources == 0); CHECK(cleared.estimated_bytes == 0);
+        CHECK(cleared.retain_calls == census.retain_calls); CHECK(cleared.new_retains == census.new_retains);
+    }
+}
+
+TEST_CASE("Native source diagnostic oversize and resource conflicts preserve exact owners",
+          "[native-source-working-set][residency-diagnostics]")
+{
+    ALNativeSourceWorkingSet cache(4, 100, 2);
+    auto a = std::make_shared<State>(), b = std::make_shared<State>();
+    auto ga = std::make_shared<int>(1), gb = std::make_shared<int>(2);
+    const std::array<ALNativeSourceWorkingSet::Resource, 2> sum{{{ga, 60}, {gb, 60}}}, conflict{{{ga, 40}, {ga, 50}}};
+    const std::array<ALNativeSourceWorkingSet::Resource, 1> large{{{ga, 101}}}, empty{{{nullptr, 1}}}, valid{{{ga, 40}}}, wrong{{{ga, 50}}};
+    auto reader = publish(a, ga, gb);
+    CHECK_FALSE(cache.retain(a, 1, a->publication(), sum, 1));
+    CHECK_FALSE(a->publication()); CHECK(reader->image.get() == gb.get());
+    publish(a, ga); CHECK_FALSE(cache.retain(a, 2, a->publication(), large, 1));
+    publish(a, ga); CHECK_FALSE(cache.retain(a, 3, a->publication(), conflict, 1));
+    publish(a, ga); CHECK_FALSE(cache.retain(a, 4, a->publication(), empty, 1));
+    auto current = publish(a, ga); REQUIRE(cache.retain(a, 5, a->publication(), valid, 1));
+    publish(b, ga); CHECK_FALSE(cache.retain(b, 6, b->publication(), wrong, 1));
+    CHECK(a->publication().get() == current.get()); CHECK_FALSE(b->publication());
+    const auto census = cache.stats();
+    CHECK(census.retain_calls == 6); CHECK(census.retain_successes == 1); CHECK(census.retain_failures == 5);
+    CHECK(census.new_retains == 1); CHECK(census.oversized_sources == 2); CHECK(census.oversized_resources == 1);
+    CHECK(census.resource_size_conflicts == 2); CHECK(census.invalid_resources == 1);
+    CHECK((census.capacity_events == std::array<std::uint64_t, 4>{}));
+    CHECK(census.entries == 1); CHECK(census.estimated_bytes == 40); CHECK(census.unique_resources == 1);
+    ALNativeSourceWorkingSet disabled(0, 100, 2);
+    auto unpublished = publish(b, ga);
+    CHECK_FALSE(disabled.retain(b, 7, b->publication(), valid, 1));
+    CHECK_FALSE(b->publication()); CHECK(unpublished->geometry.get() == ga.get());
+    CHECK(disabled.stats().entry_disabled_rejections == 1);
+    CHECK((disabled.stats().capacity_events == std::array<std::uint64_t, 4>{}));
+}
+
+TEST_CASE("Native source diagnostics separate age shrink and touch mismatch events",
+          "[native-source-working-set][residency-diagnostics]")
+{
+    ALNativeSourceWorkingSet cache(4, 1024, 2);
+    auto a = std::make_shared<State>(), b = std::make_shared<State>();
+    auto ga = std::make_shared<int>(1), gb = std::make_shared<int>(2);
+    const std::array<ALNativeSourceWorkingSet::Resource, 1> ra{{{ga, 100}}}, rb{{{gb, 200}}};
+    auto reader_a = publish(a, ga), reader_b = publish(b, gb);
+    REQUIRE(cache.retain(a, 1, a->publication(), ra, 1));
+    REQUIRE(cache.retain(b, 2, b->publication(), rb, 4)); // retain's age loop removes a.
+    CHECK_FALSE(a->publication()); CHECK(cache.stats().age_evictions == 1);
+    CHECK_FALSE(cache.touch(0, 1, 4));
+    CHECK_FALSE(cache.touch(b->identity(), 1, 4));
+    auto replacement = publish(b, gb); // Same producer revision, new exact publication owner.
+    CHECK_FALSE(cache.touch(b->identity(), 2, 4));
+    CHECK(b->publication().get() == replacement.get()); CHECK_FALSE(b->dirty());
+    CHECK(cache.entryCount() == 0); CHECK(cache.estimatedRetainedBytes() == 0);
+    REQUIRE(cache.retain(b, 3, b->publication(), rb, 5));
+    REQUIRE(cache.touch(b->identity(), 3, 6));
+    cache.trim(8); REQUIRE(b->publication()); // Age exactly two remains admitted.
+    cache.trim(9); CHECK_FALSE(b->publication()); // trim's age loop removes b.
+    publish(a, ga); REQUIRE(cache.retain(a, 4, a->publication(), ra, 10));
+    cache.setByteBudget(50); CHECK_FALSE(a->publication());
+    const auto census = cache.stats();
+    CHECK(census.max_bytes == 50); CHECK(census.entries == 0); CHECK(census.unique_resources == 0);
+    CHECK(census.estimated_bytes == 0); CHECK(census.age_evictions == 2); CHECK(census.capacity_evictions == 0);
+    CHECK(census.budget_shrink_evictions == 1); CHECK(census.oversized_sources == 0);
+    CHECK(census.touch_calls == 4); CHECK(census.touch_hits == 1);
+    CHECK(census.touch_missing_identity == 1); CHECK(census.touch_serial_mismatch == 1); CHECK(census.touch_publication_mismatch == 1);
+    CHECK(census.retain_calls == 4); CHECK(census.retain_successes == 4); CHECK(census.new_retains == 4);
+    CHECK((census.capacity_events == std::array<std::uint64_t, 4>{}));
+    CHECK(reader_a->geometry.get() == ga.get()); CHECK(reader_b->geometry.get() == gb.get());
 }

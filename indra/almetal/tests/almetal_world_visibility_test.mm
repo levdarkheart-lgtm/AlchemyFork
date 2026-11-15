@@ -862,3 +862,5 @@ TEST_CASE("almetal: packed descriptor physical debt preserves pending and borrow
         {REQUIRE(arguments[index]->readCompletedArgumentForTesting(placements-1,result));CHECK(result.index_count==3);}
     }
 }
+
+#include "almetal_world_published_cpu_visibility_test.inl"

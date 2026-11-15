@@ -97,6 +97,12 @@ public:
     std::size_t scalarCommonMetadataBytes() const noexcept;
     const ALMetalWorldConservativeBounds& bounds(std::size_t) const noexcept;
     std::size_t qualifiedBoundsCount() const noexcept;
+    // Every source's optional bounds scan was attempted. Unknown/unqualified
+    // results still complete this capability; warm callers must not retry them.
+    bool hasBoundsPublication() const noexcept;
+    // Union of valid qualified rows, built once at immutable publication. An
+    // unqualified row never participates and must independently stay visible.
+    const ALMetalWorldConservativeBounds& qualifiedBoundsUnion() const noexcept;
     bool matchesOwners(const std::shared_ptr<const void>& cpu,
                        const std::shared_ptr<const void>& native) const noexcept;
     // Cold optional GPU certification only. The completed producer returns an

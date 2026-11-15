@@ -5,6 +5,7 @@
  */
 #include "almetalworldcohort.h"
 #include "almetalworldprepare.h"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -123,8 +124,9 @@ struct ALMetalWorldSourceCohort::Impl
     const void* native_pointer=nullptr;
     std::uint64_t region=0;
     std::uint32_t family=0;
-    bool family_initialized=false,double_sided=false,uniform_double_sided=true;
+    bool family_initialized=false,double_sided=false,uniform_double_sided=true,bounds_published=true;
     std::size_t qualified_bounds=0;
+    ALMetalWorldConservativeBounds qualified_union;
     ALMetalWorldSourceCohort::NativeTextureResolver resolve_texture=nullptr;
 };
 ALMetalWorldSourceCohort::ALMetalWorldSourceCohort(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
@@ -159,6 +161,9 @@ std::size_t ALMetalWorldSourceCohort::scalarCommonMetadataBytes() const noexcept
 const ALMetalWorldConservativeBounds& ALMetalWorldSourceCohort::bounds(std::size_t index) const noexcept
 {return mImpl->sources[index]->bounds();}
 std::size_t ALMetalWorldSourceCohort::qualifiedBoundsCount() const noexcept{return mImpl->qualified_bounds;}
+bool ALMetalWorldSourceCohort::hasBoundsPublication() const noexcept{return mImpl->bounds_published;}
+const ALMetalWorldConservativeBounds& ALMetalWorldSourceCohort::qualifiedBoundsUnion() const noexcept
+{return mImpl->qualified_union;}
 bool ALMetalWorldSourceCohort::matchesOwners(const std::shared_ptr<const void>& cpu,
                                            const std::shared_ptr<const void>& native) const noexcept
 {return exactOwner(mImpl->cpu,mImpl->cpu_pointer,cpu) && exactOwner(mImpl->native,mImpl->native_pointer,native);}
@@ -215,10 +220,20 @@ try
         impl->scalar_common_previous.push_back(!impl->sources.empty() &&
             sameScalarCommon(impl->sources.back()->source(),source->source()));
         impl->sources.push_back(source);
+        impl->bounds_published=impl->bounds_published && source->hasBoundsPublication();
         const auto& bounds=source->bounds();
         if(bounds.qualified && finite(bounds.minimum,4) && finite(bounds.maximum,4) &&
            bounds.minimum[0]<=bounds.maximum[0] && bounds.minimum[1]<=bounds.maximum[1] && bounds.minimum[2]<=bounds.maximum[2])
+        {
+            auto& combined=impl->qualified_union;
+            if(!impl->qualified_bounds)combined=bounds;
+            else for(unsigned axis=0;axis<3;++axis)
+            {
+                combined.minimum[axis]=std::min(combined.minimum[axis],bounds.minimum[axis]);
+                combined.maximum[axis]=std::max(combined.maximum[axis],bounds.maximum[axis]);
+            }
             ++impl->qualified_bounds;
+        }
     }
     // As with NativeScope/SourceReference, the completed producer is
     // responsible for the typed native union. A void owner cannot be

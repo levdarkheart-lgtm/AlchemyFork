@@ -5,6 +5,8 @@
 #include "almetalworldcohort.h"
 #import <Metal/Metal.h>
 #include <algorithm>
+#include <bit>
+#include <cfloat>
 #include <cmath>
 #include <cstring>
 #include <new>
@@ -12,6 +14,70 @@
 #include <map>
 #include <atomic>
 #include <cstddef>
+
+ALMetalWorldCpuVisibilityResult alMetalClassifyWorldBoundsCPU(
+    const ALMetalWorldConservativeBounds& bounds,const float* matrix) noexcept
+{
+    using Result=ALMetalWorldCpuVisibilityResult;
+    // Bit tests survive the renderer's fast-math finite assumptions. Reject
+    // subnormal inputs too: GPU input flushing could otherwise be amplified
+    // by a large finite matrix coefficient before the dot-product error bound.
+    const auto ordinary=[](float value) noexcept
+    {
+        const auto bits=std::bit_cast<std::uint32_t>(value)&0x7fffffffu;
+        return bits<0x7f800000u && (bits==0 || bits>=0x00800000u);
+    };
+    if(!bounds.qualified || !matrix)return Result::unknown;
+    for(unsigned i=0;i<16;++i)if(!ordinary(matrix[i]))return Result::unknown;
+    for(unsigned axis=0;axis<4;++axis)
+        if(!ordinary(bounds.minimum[axis]) || !ordinary(bounds.maximum[axis]) ||
+           bounds.minimum[axis]>bounds.maximum[axis])return Result::unknown;
+
+    // Four float products/additions (including different contraction orders),
+    // native clip-Z conversion and flush-to-zero of intermediate products are
+    // enclosed generously. Classification uses double only to evaluate the
+    // interval; the error magnitude describes the actual FLOAT vertex math.
+    constexpr double float_error=64.0*0x1p-24;
+    constexpr double flush_error=16.0*FLT_MIN;
+    unsigned common_outside=0x3fu;
+    bool wholly_inside=true;
+    for(unsigned corner=0;corner<8;++corner)
+    {
+        const double point[4]={
+            (corner&1)?bounds.maximum[0]:bounds.minimum[0],
+            (corner&2)?bounds.maximum[1]:bounds.minimum[1],
+            (corner&4)?bounds.maximum[2]:bounds.minimum[2],1.0};
+        double clip[4]{},error[4]{};
+        for(unsigned component=0;component<4;++component)
+        {
+            double magnitude=0;
+            for(unsigned axis=0;axis<4;++axis)
+            {
+                const double term=static_cast<double>(matrix[axis*4+component])*point[axis];
+                clip[component]+=term;magnitude+=std::abs(term);
+            }
+            // No claim about float-overflow intermediates or catastrophic
+            // cancellation. These cases retain their required native draws.
+            error[component]=float_error*magnitude+flush_error;
+            if(magnitude>static_cast<double>(FLT_MAX)/8.0 ||
+               error[component]>std::max(1.0,std::abs(clip[component]))/4096.0)
+                return Result::unknown;
+        }
+        if(clip[3]<=error[3])return Result::unknown; // Eye crossing/uncertain W.
+        unsigned outside=0;
+        for(unsigned axis=0;axis<3;++axis)
+        {
+            const double uncertainty=error[axis]+error[3];
+            const double lower=clip[axis]+clip[3],upper=clip[3]-clip[axis];
+            if(lower < -uncertainty)outside|=1u<<(axis*2);
+            if(upper < -uncertainty)outside|=2u<<(axis*2);
+            wholly_inside=wholly_inside && lower>uncertainty && upper>uncertainty;
+        }
+        common_outside&=outside;
+    }
+    if(common_outside)return Result::outside;
+    return wholly_inside?Result::inside:Result::partial;
+}
 
 namespace
 {

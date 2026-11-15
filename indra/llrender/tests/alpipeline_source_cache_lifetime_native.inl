@@ -210,7 +210,14 @@ TEST_CASE("Actual same-frame main and probe source factories distinguish entry o
         for (U32 row = 0; row < sources; ++row)
         { CHECK_FALSE(geometry[row].expired()); CHECK_FALSE(numeric[row].expired()); }
         CHECK_FALSE(diffuse.expired());
+        // Real initialization uploads have independent frame-fence owners.
+        // Settle/release them before asserting native-only-reader retirement.
+        REQUIRE(f.device->waitUntilIdle(&f.error));
+        gGL.frameFences().release();
         native_readers = {};
+        // LLVB destruction queues wrappers for the next ordinary flush;
+        // completed fences alone do not invoke that owner-side collector.
+        LLVertexBuffer::flushBuffers();
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
         const auto resources_retired = [&]
         {

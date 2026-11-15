@@ -2434,6 +2434,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     ALMetalWorldSourceDrawStats source_draw_stats;
     ALMetalWorldSourceCommandDrawStats source_command_stats;
     ALMetalWorldCohortStats cohort_stats;
+    ALMetalWorldCpuVisibilityStats cpu_visibility_stats;
     ALMetalWorldResourceLimits world_resource_limits;
     std::shared_ptr<ALMetalWorldResources> world_resources;
     std::unique_ptr<ALMetalSamplerState> world_resource_sampler;
@@ -3146,6 +3147,7 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.source_draw_stats = mImpl->source_draw_stats;
     next.source_command_stats = mImpl->source_command_stats;
     next.cohort_stats = mImpl->cohort_stats;
+    next.cpu_visibility_stats = mImpl->cpu_visibility_stats;
     next.shadow_coalesced_draws = mImpl->shadow_coalesced_draws;
     next.shadow_covered_input_draws = mImpl->shadow_covered_input_draws;
     next.shadow_covered_coalesced_draws = mImpl->shadow_covered_coalesced_draws;
@@ -3333,6 +3335,8 @@ ALMetalWorldSourceCommandDrawStats ALMetalWorldGBufferRenderer::worldSourceComma
 }
 ALMetalWorldCohortStats ALMetalWorldGBufferRenderer::worldCohortStats() const noexcept
 { return mImpl ? mImpl->cohort_stats : ALMetalWorldCohortStats{}; }
+ALMetalWorldCpuVisibilityStats ALMetalWorldGBufferRenderer::worldCpuVisibilityStats() const noexcept
+{ return mImpl ? mImpl->cpu_visibility_stats : ALMetalWorldCpuVisibilityStats{}; }
 void ALMetalWorldGBufferRenderer::clearWorldSourceCommands() noexcept
 { if (mImpl && mImpl->source_commands) mImpl->source_commands->clear(); }
 void ALMetalWorldGBufferRenderer::failNextWorldSourceCommandPublicationForTesting() noexcept
@@ -10469,7 +10473,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         return nullptr;
     }
     std::shared_ptr<ALMetalWorldVisibilityArguments> shared_visibility_arguments;
-    if (scene.native_visibility && scene.native_visibility->size() == draw_count && draw_count)
+    if (!scene.cpu_cohort_visibility && scene.native_visibility && scene.native_visibility->size() == draw_count && draw_count)
     {
         std::string optional_error;
         shared_visibility_arguments = ALMetalWorldVisibility::encode(*command, *scene.native_visibility, &optional_error,mImpl->frame_data.get());
@@ -10522,7 +10526,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     std::shared_ptr<const ALMetalWorldSourceFrameView> source_frame;
     std::uint64_t source_bound_draws = 0;
     std::vector<std::uint32_t> source_request_for_draw;
-    if (scene.source_rows && !scene.source_rows->candidates.empty())
+    if (!scene.cpu_cohort_visibility && scene.source_rows && !scene.source_rows->candidates.empty())
     {
         auto& stats = mImpl->source_draw_stats;
         const auto& metadata = *scene.source_rows;
@@ -10604,7 +10608,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     std::vector<SourceBankRun> source_banks;
     std::size_t source_bank_cursor=0;
     ALMetalWorldSourceCommandDrawStats source_bank_stats;
-    if (scene.source_command_banks && scene.source_rows)
+    if (!scene.cpu_cohort_visibility && scene.source_command_banks && scene.source_rows)
     {
         source_bank_stats.requested_draws = scene.source_rows->candidates.size();
         const auto fallback = [&](ALMetalWorldSourceCommandFailure reason, std::size_t count)
@@ -10692,7 +10696,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     std::vector<CohortBankRange> cohort_bank_ranges;
     std::size_t cohort_bank_cursor=0;
     bool cohort_bank_prefix_emitted=false;
-    if (scene.source_command_banks && scene.cohort_count)
+    if (!scene.cpu_cohort_visibility && scene.source_command_banks && scene.cohort_count)
     {
         const auto fallback=[&](ALMetalWorldSourceCommandFailure reason,std::size_t count)
         {
@@ -10989,6 +10993,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     const ALMetalWorldSourceCohortView* scalar_common_cohort=nullptr;
     std::size_t scalar_common_row=0;
     std::uint64_t scalar_common_builds=0,scalar_recipe_reads=0,scalar_common_reuses=0;
+    ALMetalWorldCpuVisibilityStats cpu_visibility_stats;
+    const ALMetalWorldSourceCohortView* cpu_visibility_cohort=nullptr;
+    auto cpu_coarse=ALMetalWorldCpuVisibilityResult::unknown;
     ALMetalWorldDrawCursor draw_cursor(scene);
     std::size_t terrain_factor_index=0;
     std::shared_ptr<const void> previous_terrain_texture_owner;
@@ -11002,6 +11009,63 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             break;
         }
         const auto* current_cohort=draw_cursor.cohort();
+        if(scene.cpu_cohort_visibility)
+        {
+            using Result=ALMetalWorldCpuVisibilityResult;
+            if(!current_cohort)
+            {
+                ++cpu_visibility_stats.visible_draws;
+                ++cpu_visibility_stats.raw_visible_draws;
+            }
+            else
+            {
+                const auto& cohort=*current_cohort->cohort;
+                if(cpu_visibility_cohort!=current_cohort)
+                {
+                    cpu_visibility_cohort=current_cohort;
+                    ++cpu_visibility_stats.groups;
+                    // Shape/adopt has proved the exact current owner pair and
+                    // immutable group matrices. No discovery/native work here.
+                    ++cpu_visibility_stats.coarse_tests;
+                    cpu_coarse=alMetalClassifyWorldBoundsCPU(cohort.qualifiedBoundsUnion(),
+                        current_cohort->view.modelview_projection);
+                    switch(cpu_coarse)
+                    {
+                    case Result::inside: ++cpu_visibility_stats.coarse_inside;break;
+                    case Result::outside: ++cpu_visibility_stats.coarse_outside;break;
+                    case Result::partial: ++cpu_visibility_stats.coarse_partial;break;
+                    case Result::unknown: ++cpu_visibility_stats.coarse_unknown;break;
+                    }
+                }
+                const bool all_qualified=cohort.qualifiedBoundsCount()==cohort.size();
+                auto result=cpu_coarse;
+                if(result!=Result::unknown && (!all_qualified || result==Result::partial))
+                {
+                    ++cpu_visibility_stats.fine_tests;
+                    result=alMetalClassifyWorldBoundsCPU(cohort.bounds(index-current_cohort->logical_begin),
+                        current_cohort->view.modelview_projection);
+                }
+                if(result==Result::outside)
+                {
+                    auto end=index+1;
+                    if(cpu_coarse==Result::outside && all_qualified)
+                    {
+                        end=current_cohort->logical_begin+cohort.size();
+                        if(visibility_index<scene.visibility_query_count)
+                            end=std::min(end,scene.visibility_queries[visibility_index].batch_offset);
+                    }
+                    // Every original query offset must still execute, even in
+                    // an entirely rejected group. The query above precedes
+                    // this skip, and the next offset bounds the skipped run.
+                    const auto count=end-index;
+                    cpu_visibility_stats.culled_draws+=count;
+                    scalar_common_cohort=nullptr;
+                    draw_cursor.advance(count-1);index+=count-1;continue;
+                }
+                ++cpu_visibility_stats.visible_draws;
+                if(result==Result::unknown)++cpu_visibility_stats.unknown_draws;
+            }
+        }
         if(prepared || !current_cohort)scalar_common_cohort=nullptr;
         while (cohort_bank_cursor<cohort_bank_ranges.size() && cohort_bank_ranges[cohort_bank_cursor].logical_end<=index)
             ++cohort_bank_cursor;
@@ -11668,6 +11732,22 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     mImpl->cohort_stats.scalar_common_builds+=scalar_common_builds;
     mImpl->cohort_stats.scalar_recipe_reads+=scalar_recipe_reads;
     mImpl->cohort_stats.scalar_common_reuses+=scalar_common_reuses;
+    if(scene.cpu_cohort_visibility)
+    {
+        auto& total=mImpl->cpu_visibility_stats;
+        ++total.views;
+        total.groups+=cpu_visibility_stats.groups;
+        total.coarse_tests+=cpu_visibility_stats.coarse_tests;
+        total.coarse_inside+=cpu_visibility_stats.coarse_inside;
+        total.coarse_outside+=cpu_visibility_stats.coarse_outside;
+        total.coarse_partial+=cpu_visibility_stats.coarse_partial;
+        total.coarse_unknown+=cpu_visibility_stats.coarse_unknown;
+        total.fine_tests+=cpu_visibility_stats.fine_tests;
+        total.visible_draws+=cpu_visibility_stats.visible_draws;
+        total.culled_draws+=cpu_visibility_stats.culled_draws;
+        total.unknown_draws+=cpu_visibility_stats.unknown_draws;
+        total.raw_visible_draws+=cpu_visibility_stats.raw_visible_draws;
+    }
     mImpl->constant_stats.bindings += constant_stats.bindings;
     mImpl->constant_stats.reused_bindings += constant_stats.reused_bindings;
     mImpl->constant_stats.material_source_draws += constant_stats.material_source_draws;

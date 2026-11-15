@@ -3101,6 +3101,16 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             {
                 if (!value) return;
                 static LLCachedControl<bool> preparation_requested(gSavedSettings, "RenderMetalWorldPreparation", false);
+                static LLCachedControl<bool> cpu_visibility_requested(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
+                const auto cpu_visibility=value->renderer ? value->renderer->worldCpuVisibilityStats() : ALMetalWorldCpuVisibilityStats{};
+                LL_INFOS("MetalScene") << "Native published CPU visibility: view=" << view
+                    << ", requested=" << cpu_visibility_requested()
+                    << ", accepted_views/groups=" << cpu_visibility.views << '/' << cpu_visibility.groups
+                    << ", coarse(inside/outside/partial/unknown)=" << cpu_visibility.coarse_inside << '/' << cpu_visibility.coarse_outside
+                    << '/' << cpu_visibility.coarse_partial << '/' << cpu_visibility.coarse_unknown
+                    << ", fine_tests=" << cpu_visibility.fine_tests
+                    << ", visible/culled/unknown/raw_draws=" << cpu_visibility.visible_draws << '/' << cpu_visibility.culled_draws
+                    << '/' << cpu_visibility.unknown_draws << '/' << cpu_visibility.raw_visible_draws << LL_ENDL;
                 const auto cohorts = value->renderer ? value->renderer->worldCohortStats() : ALMetalWorldCohortStats{};
                 LL_INFOS("MetalScene") << "Native shared scene publication: view=" << view
                     << ", world_source_hit/build=" << value->scene_source_hits << '/' << value->scene_source_builds
@@ -3320,8 +3330,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << '/' << failed[5] << '/' << failed[6] << '/' << failed[7] << '/' << failed[8] << '/' << failed[9] << '/' << failed[10]
                 << ", typed/aggregate_failures=" << typed_failures << '/' << groups.failures
                 << ", invalid_preconditions=" << groups.invalid_preconditions
-                << ", current_miss(invalid/unpublished/region/flavor/native_touch/cpu_touch)="
-                << missed[0] << '/' << missed[1] << '/' << missed[2] << '/' << missed[3] << '/' << missed[4] << '/' << missed[5]
+                << ", current_miss(invalid/unpublished/region/flavor/native_touch/cpu_touch/bounds_capability)="
+                << missed[0] << '/' << missed[1] << '/' << missed[2] << '/' << missed[3] << '/' << missed[4] << '/' << missed[5] << '/' << missed[6]
                 << LL_ENDL;
             LL_INFOS("MetalScene") << "Native group unsupported occurrences: null/model/uv/avatar/skin/empty/simple_pbr/simple_legacy="
                 << unsupported_causes[0] << '/' << unsupported_causes[1] << '/' << unsupported_causes[2] << '/' << unsupported_causes[3]
@@ -3347,6 +3357,20 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             }
             const auto publication = LLImageGL::metalPublicationStats();
             const auto uploads = LLVertexBuffer::metalUploadStats();
+            const auto source_cache=sNativeSceneSources.stats();
+            LL_INFOS("MetalScene") << "Native source residency reasons: limits(entries/bytes/age)="
+                << source_cache.max_entries << '/' << source_cache.max_bytes << '/' << source_cache.max_age
+                << ", retained(entries/unique_resources/estimated_bytes)=" << source_cache.entries << '/' << source_cache.unique_resources << '/' << source_cache.estimated_bytes
+                << ", retain(calls/success/false/exception/new)=" << source_cache.retain_calls << '/' << source_cache.retain_successes
+                << '/' << source_cache.retain_failures << '/' << source_cache.retain_exceptions << '/' << source_cache.new_retains
+                << ", pressure_events(entry/byte/both)=" << source_cache.capacity_events[1] << '/' << source_cache.capacity_events[2] << '/' << source_cache.capacity_events[3]
+                << ", pressure_rejections(entry/byte/both)=" << source_cache.capacity_rejections[1] << '/' << source_cache.capacity_rejections[2] << '/' << source_cache.capacity_rejections[3]
+                << ", evictions(age/capacity/budget_shrink)=" << source_cache.age_evictions << '/' << source_cache.capacity_evictions << '/' << source_cache.budget_shrink_evictions
+                << ", oversized(source/resource)/invalid/conflict/disabled=" << source_cache.oversized_sources << '/' << source_cache.oversized_resources
+                << '/' << source_cache.invalid_resources << '/' << source_cache.resource_size_conflicts << '/' << source_cache.entry_disabled_rejections
+                << ", touch(calls/hit/missing/serial/publication)=" << source_cache.touch_calls << '/' << source_cache.touch_hits
+                << '/' << source_cache.touch_missing_identity << '/' << source_cache.touch_serial_mismatch << '/' << source_cache.touch_publication_mismatch
+                << ", wrapper_estimates_not_physical_allocations=1" << LL_ENDL;
             LL_INFOS("MetalMemory")
                 << "Native generation publication census: source_cache_entries=" << sNativeSceneSources.entryCount()
                 << ", source_cache_estimated_bytes=" << sNativeSceneSources.estimatedRetainedBytes()
@@ -16467,6 +16491,10 @@ void LLPipeline::endMetalWorldGBufferCapture()
     // excluded. Profile bakes did not stamp and retain their prior toggle.
     scene.join_adjacent_static_draws =
         !(impostor_bake && !capture.impostor_profile) && join_static_draws();
+    static LLCachedControl<bool> cpu_cohort_visibility(
+        gSavedSettings, "RenderMetalCpuCohortVisibility", false);
+    scene.cpu_cohort_visibility = cpu_cohort_visibility() && !impostor_bake &&
+        !scene.wireframe && !scene.join_adjacent_static_draws;
     if (scene.wireframe)
     {
         constexpr F32 gray = 0.5f;
@@ -16581,7 +16609,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     const bool qualified_visibility_work=!capture.world_visibility_members.empty() ||
         std::any_of(capture.source_cohorts.begin(),capture.source_cohorts.end(),
             [](const auto& group){return group.cohort->qualifiedBoundsCount()!=0;});
-    if (native_visibility() && !capture.visibility_metadata_failed && qualified_visibility_work && !scene.join_adjacent_static_draws)
+    if (!scene.cpu_cohort_visibility && native_visibility() && !capture.visibility_metadata_failed && qualified_visibility_work && !scene.join_adjacent_static_draws)
     {
         if (sNativeSceneVisibilityDevice != capture.device || !sNativeSceneVisibility)
         {
@@ -21542,6 +21570,9 @@ bool nativeMaterialGroupFlavor(U32 type, ALScenePublicationNative::WorldFlavor& 
     // direct-probe consumers. Rigged (+1), blended, glow and special passes
     // retain their original maps and capture paths.
     flavor = {};
+    static LLCachedControl<bool> gpu_bounds(gSavedSettings, "RenderMetalNativeVisibility", false);
+    static LLCachedControl<bool> cpu_bounds(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
+    flavor.cohort_bounds = gpu_bounds() || cpu_bounds();
     flavor.native_materials = true;
     for (const auto& pass : LLDrawPoolMaterials::DEFERRED_PASSES)
     {
@@ -21591,6 +21622,8 @@ void LLPipeline::postSort(LLCamera &camera)
 
     static LLCachedControl<bool> native_group_sources(gSavedSettings, "RenderMetalGroupSources", false);
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
+    static LLCachedControl<bool> cpu_cohort_visibility(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
+    const bool cohort_bounds = native_visibility() || cpu_cohort_visibility();
     static LLCachedControl<bool> depth_prepass(gSavedSettings, "RenderDepthPrePass", false);
     const bool native_group_view = native_group_sources() &&
         !depth_prepass() &&
@@ -21639,7 +21672,7 @@ void LLPipeline::postSort(LLCamera &camera)
                 if (const auto* model = nativeSimpleGroupModel(*group))
                 {
                     const auto region = group->getSpatialPartition()->mRegionp->nativeModelSnapshot();
-                    auto packet = ALSceneGroupPublicationNative::current(group->mMetalGroupPublication, region, sNativeSceneSources, gFrameCount);
+                    auto packet = ALSceneGroupPublicationNative::current(group->mMetalGroupPublication, region, sNativeSceneSources, gFrameCount, cohort_bounds);
                     if (packet && packet->cohort && packet->cohort->family() == 0 && packet->cohort->size() == src_vec.size() &&
                         packet->cohort->regionIdentity() == region.identity && packet->cohort->matchesOwners(packet, packet->native_tuple) &&
                         packet->cohort->size() <= std::numeric_limits<U32>::max() &&
@@ -21965,7 +21998,7 @@ void LLPipeline::postSort(LLCamera &camera)
             {
                 if(!state->dirty() && !pending_group_ranges.contains(group))return; // Already admitted warm above.
                 auto warm=type==LLRenderPass::PASS_SIMPLE
-                    ? ALSceneGroupPublicationNative::current(state,region,sNativeSceneSources,gFrameCount)
+                    ? ALSceneGroupPublicationNative::current(state,region,sNativeSceneSources,gFrameCount,cohort_bounds)
                     : ALSceneGroupPublicationNative::currentMaterial(state,region,flavor,sNativeSceneSources,gFrameCount);
                 if(warm && warm->cohort && warm->cohort->size()==sources.size() &&
                    warm->cohort->family()==static_cast<U32>(flavor.family) && warm->cohort->regionIdentity()==region.identity &&
@@ -21987,7 +22020,7 @@ void LLPipeline::postSort(LLCamera &camera)
                 {
                     ALScenePublicationNative::WorldFlavor flavor;
                     if(sources.empty() || !hasRenderType(type) || !nativeMaterialGroupFlavor(type,flavor))continue;
-                    flavor.cohort_bounds = native_visibility();
+                    flavor.cohort_bounds = cohort_bounds;
                     auto& owner=group->mMetalMaterialCohorts[type];
                     if(!owner.state)owner.state=std::make_shared<ALNativePublication::State>();
                     consider(type,sources,owner.state,owner.compilation,flavor);
@@ -22009,7 +22042,7 @@ void LLPipeline::postSort(LLCamera &camera)
                 // Reentrant publication may have made an already collected
                 // owner warm. It needs no second compilation credit.
                 auto warm=candidate.type==LLRenderPass::PASS_SIMPLE
-                    ? ALSceneGroupPublicationNative::current(candidate.publisher,region,sNativeSceneSources,gFrameCount)
+                    ? ALSceneGroupPublicationNative::current(candidate.publisher,region,sNativeSceneSources,gFrameCount,cohort_bounds)
                     : ALSceneGroupPublicationNative::currentMaterial(candidate.publisher,region,candidate.flavor,sNativeSceneSources,gFrameCount);
                 if(warm && warm->cohort && warm->cohort->size()==sources->second.size() &&
                    warm->cohort->family()==static_cast<U32>(candidate.flavor.family) && warm->cohort->regionIdentity()==region.identity &&
@@ -22020,7 +22053,7 @@ void LLPipeline::postSort(LLCamera &camera)
                 {
                     if(candidate.type==LLRenderPass::PASS_SIMPLE)
                         return ALSceneGroupPublicationNative::seal(candidate.publisher,group->mMetalGroupDependencies,
-                            group->mMetalGroupLayout,*model,region,sources->second,sNativeSceneSources,sNativeSceneSerial,gFrameCount,native_visibility());
+                            group->mMetalGroupLayout,*model,region,sources->second,sNativeSceneSources,sNativeSceneSerial,gFrameCount,cohort_bounds);
                     auto& owner=group->mMetalMaterialCohorts[candidate.type];
                     return ALSceneGroupPublicationNative::sealMaterial(candidate.publisher,owner.dependencies,owner.layout,
                         *model,region,sources->second,candidate.flavor,sNativeSceneSources,sNativeSceneSerial,gFrameCount);

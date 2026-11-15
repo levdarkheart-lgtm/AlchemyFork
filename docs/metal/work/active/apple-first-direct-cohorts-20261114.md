@@ -1937,3 +1937,28 @@ NativeWSentriesmax2904below8192. CPUlayouts2048all35samples, rows3155–3171
 below8192, estimatedbytes29.63–29.76MBbelow32MiB;110evictions,0rejections.
 WrapperestimatesarenotphysicalGPUallocations. Whichmissesfollowbytevsagevs
 producerchanges remainsunknown; addbranchreasoncensus beforeanycapdecision.
+
+
+Required59/5785fb5761 doctor/configure/build0(build32.956s),69107 static/strictPASS.
+New[source-cache-lifetime]2516/2520assertions pass; all4same-frame build/hit
+controls match; final4retirementchecks fail before releasing uploadframeowners.
+PPD275registered before adding waitUntilIdle+frameFences.release at final
+fixture-reader boundary. No productionlifetime orcachepolicychange.
+PPD271frozen8fileintegration sourcepeerPASS; rootdefaultOFFsetting/producercapability/
+scene/logwiring nowintegrated. Native+costvalidation next, GPUvisibility/banks
+remainOFF. PPD273pre-execution fixturecorrections retained. PPD274nativecache
+branchcensus activeindependent llcommon author, no caps/accounting policy change.
+
+
+PPD271/276source complete and integrated after independent peers: conservative
+publishedCPUfrustumconsumer +all-attemptedcoldcapability, main/probe requested
+settings andwarmmissingcapability upgrade; failvisible/queries/nativelease safety
+retained. Newsource/costappendices+actualpromotioncase integrated, no executionyet.
+PPD274diagnostics3files integrated withpeerPASS; exactnativecapacity/age/touch
+reasoncensus nowlogged, policy andlimits unchanged. Retaincounts areinvocations,
+pressuremasks areloop-event counts, not unique producers; resourceoversize subset.
+PPD275fixture nowalso invokes ordinaryLLVBflush after readerreset tocollect
+completed retiredwrappers; no productioncollectorchange. Next60required/native
+andCPUvisibility completecost, no repeatunrelated11costswithoutnewconcern.
+PPD277pressuretexturemaintenance missingadmission registered; independentauthor
+active, no production277integrationyet. Originalgoal remainsactive andincomplete.

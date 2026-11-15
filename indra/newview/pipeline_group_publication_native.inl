@@ -121,7 +121,7 @@ enum class FailureStage : U8
 enum class CurrentMiss : U8
 {
     invalid_input, no_publication, region_identity, material_flavor,
-    native_touch, cpu_touch, count
+    native_touch, cpu_touch, bounds_capability, count
 };
 enum Unsupported : U32
 {
@@ -370,7 +370,8 @@ inline bool cpuOnlySimple(const ALMetalWorldSimpleBatch& batch) noexcept
 
 inline std::shared_ptr<const Payload> current(
     const std::shared_ptr<ALNativePublication::State>& state,
-    const ALNativeRegionModel::Snapshot& region, ALNativeSourceWorkingSet& working_set, U32 frame)
+    const ALNativeRegionModel::Snapshot& region, ALNativeSourceWorkingSet& working_set, U32 frame,
+    bool request_bounds=false)
 {
     if (!state || !region) { recordMiss(CurrentMiss::invalid_input);return {}; }
     if (auto value = state->publication())
@@ -380,6 +381,8 @@ inline std::shared_ptr<const Payload> current(
         // invalidate these immutable geometry/source-generation proofs.
         if (group->region_identity != region.identity)
         { recordMiss(CurrentMiss::region_identity);state->invalidate(); }
+        else if (request_bounds && (!group->cohort || !group->cohort->hasBoundsPublication()))
+        { recordMiss(CurrentMiss::bounds_capability);return {}; }
         else if (!working_set.touch(state->identity(), group->serial, frame))
         { recordMiss(CurrentMiss::native_touch);state->evict(); }
         else if (!cpu_layouts.touch(state->identity(), group->serial, frame))
@@ -401,7 +404,7 @@ try
 {
     if (!state || !region || std::memcmp(region.model.data(), model.getF32ptr(), sizeof(region.model)))
     { ++statistics.invalid_preconditions;return {}; }
-    if (auto group = current(state, region, working_set, frame))
+    if (auto group = current(state, region, working_set, frame, request_bounds))
     {
         ++statistics.hits;
         return group;
@@ -557,7 +560,8 @@ try
             { recordFailure(FailureStage::typed_native_proof);return {}; }
     }
     value->cohort = ALMetalWorldSourceCohort::seal(proofs, value, value->native_tuple, region.identity,nullptr,&resolveCohortTexture);
-    if (!value->cohort) { recordFailure(FailureStage::cohort_certificate);return {}; }
+    if (!value->cohort || (request_bounds && !value->cohort->hasBoundsPublication()))
+    { recordFailure(FailureStage::cohort_certificate);return {}; }
     // No valid-looking prefix may replace the group's complete publication.
     if (!state->publish(revision, value))
     {
@@ -650,6 +654,8 @@ inline std::shared_ptr<const Payload> currentMaterial(
         { recordMiss(CurrentMiss::region_identity);state->invalidate(); }
         else if (value->material_flavor != materialFlavorKey(flavor))
         { recordMiss(CurrentMiss::material_flavor);state->invalidate(); }
+        else if (flavor.cohort_bounds && (!value->cohort || !value->cohort->hasBoundsPublication()))
+        { recordMiss(CurrentMiss::bounds_capability);return {}; }
         else if (!working_set.touch(state->identity(), value->serial, frame))
         { recordMiss(CurrentMiss::native_touch);state->evict(); }
         else if (!cpu_layouts.touch(state->identity(), value->serial, frame))
@@ -890,7 +896,8 @@ try
             { recordFailure(FailureStage::typed_native_proof);return {}; }
     }
     value->cohort = ALMetalWorldSourceCohort::seal(cohort_sources, value, value->native_tuple, region.identity,nullptr,&resolveCohortTexture);
-    if (!value->cohort) { recordFailure(FailureStage::cohort_certificate);return {}; }
+    if (!value->cohort || (flavor.cohort_bounds && !value->cohort->hasBoundsPublication()))
+    { recordFailure(FailureStage::cohort_certificate);return {}; }
     if (!state->publish(revision, value)) { recordFailure(FailureStage::state_publish);return {}; }
     const auto still_current = [&] { return state->revision() == revision && !state->dirty() && state->publication().get() == value.get(); };
     const auto drop_candidate = [&]
