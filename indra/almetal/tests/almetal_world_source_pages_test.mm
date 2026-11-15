@@ -777,3 +777,131 @@ TEST_CASE("almetal: abandoned arena commands release pages for reuse while stale
         CHECK(f.read(*reference.target)==pixels);
     }
 }
+
+TEST_CASE("almetal: co-resident cohort rows retain independent memberships through denial rewrite and retirement",
+          "[almetal][world-source-pages][world-cohort]")
+{
+    @autoreleasepool
+    {
+        CohortPageFixture f;ALMetalWorldSourcePageLimits limits;limits.maximum_rows=2;auto pages=f.pages(limits);
+        const auto sealOne=[&](std::size_t first)
+        {
+            auto certificate=ALMetalWorldSourceCohort::seal(std::span(f.descriptions->keys).subspan(first,1),
+                f.descriptions,f.resources,7,&f.error,&CohortPageFixture::resolve);REQUIRE(certificate);return certificate;
+        };
+        auto first=f.cohortView();first.cohort=sealOne(0);auto second=f.cohortView();second.cohort=sealOne(1);
+        auto command_a=f.device->makeCommandBuffer("Independent source row A",&f.error);REQUIRE(command_a);
+        auto a=pages->freezeCohortForCommand(*command_a,first,f.globals,&f.error);REQUIRE(a);
+        const auto membership_a=a->commandMembership();auto command_b=f.device->makeCommandBuffer("Co-resident source row B",&f.error);REQUIRE(command_b);
+        auto b=pages->freezeCohortForCommand(*command_b,second,f.globals,&f.error);REQUIRE(b);
+        CHECK(a->rowId(0)!=b->rowId(0));REQUIRE(a->rowId(0)/128==b->rowId(0)/128);
+        CHECK(pages->stats().cached_cohorts==2); // A's row/table did not change.
+        auto reference_a=f.encode(*a,f.descriptions->sources[0],std::move(command_a));REQUIRE(reference_a.command->commitAndWait(&f.error));
+        auto reference_b=f.encode(*b,f.descriptions->sources[1],std::move(command_b));REQUIRE(reference_b.command->commitAndWait(&f.error));
+        const auto expected_a=f.read(*reference_a.target),expected_b=f.read(*reference_b.target);
+        id<MTLSharedEvent> gate=[(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];REQUIRE(gate);
+        struct OpenGate {id<MTLSharedEvent> gate;~OpenGate(){gate.signaledValue=1;}} open{gate};
+        auto blocker=f.device->makeCommandBuffer("Hold both old co-resident rows",&f.error);REQUIRE(blocker);
+        [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];REQUIRE(blocker->commit(&f.error));
+        auto pending_a=f.encode(*a,f.descriptions->sources[0]);auto pending_b=f.encode(*b,f.descriptions->sources[1]);
+        REQUIRE(pending_a.command->commit(&f.error));REQUIRE(pending_b.command->commit(&f.error));
+        auto changed_cpu=std::make_shared<PageCohortCpu>();changed_cpu->sources.push_back(f.descriptions->sources[1]);
+        changed_cpu->sources[0].materialSlots()[0].env_intensity=.85f;
+        REQUIRE(ALMetalWorldMaterialSource::publish(*f.device,changed_cpu->sources[0],f.cache,&f.error));
+        auto changed_native=std::make_shared<Resources>(*f.resources);
+        const auto& material=*changed_cpu->sources[0].native_material_source;
+        for(const auto& buffer:{material.materialLease(),material.pbrLease(false),material.pbrLease(true)})
+            if(buffer)changed_native->buffers.push_back(buffer);
+        changed_cpu->keys.push_back({{2,1,2},&changed_cpu->sources[0]});
+        auto changed_certificate=ALMetalWorldSourceCohort::seal(changed_cpu->keys,changed_cpu,changed_native,7,&f.error,&CohortPageFixture::resolve);
+        REQUIRE(changed_certificate);auto changed=second;changed.cohort=changed_certificate;changed.cpu_owner=changed_cpu;changed.native_owner=changed_native;
+        unsigned denied_calls=0;pages->setPublicationAdmission([&](const auto&)->std::shared_ptr<const void>{++denied_calls;return {};});
+        auto denied=f.device->makeCommandBuffer("Denied dirty B preserves A",&f.error);REQUIRE(denied);
+        const auto before=pages->stats();CHECK_FALSE(pages->freezeCohortForCommand(*denied,changed,f.globals,&f.error));REQUIRE(denied_calls==1);
+        auto warm_command=f.device->makeCommandBuffer("A remains warm during B denial",&f.error);REQUIRE(warm_command);
+        auto warm=pages->freezeCohortForCommand(*warm_command,first,f.globals,&f.error);REQUIRE(warm);
+        CHECK(warm->commandMembership()==membership_a);CHECK(denied_calls==1);CHECK(pages->stats().row_publications==before.row_publications);
+        pages->setPublicationAdmission({});pages->invalidate(2,2);CHECK(pages->stats().cached_cohorts==1);
+        auto replacement_command=f.device->makeCommandBuffer("Rewrite only B at same allocation generation",&f.error);REQUIRE(replacement_command);
+        auto replacement=pages->freezeCohortForCommand(*replacement_command,changed,f.globals,&f.error);REQUIRE(replacement);
+        CHECK(replacement->rowId(0)==b->rowId(0));CHECK(replacement->allocationGeneration(0)==b->allocationGeneration(0));
+        CHECK(pages->stats().cached_cohorts==2);CHECK(pages->stats().copied_page_bytes>before.copied_page_bytes);
+        auto current_command=f.device->makeCommandBuffer("A selects current copied page",&f.error);REQUIRE(current_command);
+        auto current_a=pages->freezeCohortForCommand(*current_command,first,f.globals,&f.error);REQUIRE(current_a);
+        CHECK(current_a->commandMembership()==membership_a);
+        auto current_pixels=f.encode(*current_a,f.descriptions->sources[0],std::move(current_command));REQUIRE(current_pixels.command->commit(&f.error));
+        auto changed_pixels=f.encode(*replacement,changed_cpu->sources[0],std::move(replacement_command));REQUIRE(changed_pixels.command->commit(&f.error));
+        gate.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));
+        CHECK(f.read(*pending_a.target)==expected_a);CHECK(f.read(*pending_b.target)==expected_b);
+        CHECK(f.read(*current_pixels.target)==expected_a);CHECK_FALSE(f.read(*changed_pixels.target)==expected_b);
+        pages->withdraw(2);CHECK(pages->stats().cached_cohorts==1);
+        auto restore_command=f.device->makeCommandBuffer("Cache-only B withdrawal preserves A",&f.error);REQUIRE(restore_command);
+        auto restored=pages->freezeCohortForCommand(*restore_command,changed,f.globals,&f.error);REQUIRE(restored);
+        auto next_a=f.device->makeCommandBuffer("Unchanged A after B cache restore",&f.error);REQUIRE(next_a);
+        auto still_a=pages->freezeCohortForCommand(*next_a,first,f.globals,&f.error);REQUIRE(still_a);
+        CHECK(still_a->commandMembership()==membership_a);CHECK(pages->stats().cached_cohorts==2);
+        // Clearing/destroying entries must unlink their reverse nodes while
+        // actual views independently keep old native pages/tables usable.
+        pages->clear();CHECK(pages->stats().cached_cohorts==0);pages->withdraw(2);
+        auto rebuild=f.device->makeCommandBuffer("Reuse row heads after clear",&f.error);REQUIRE(rebuild);
+        auto rebuilt=pages->freezeCohortForCommand(*rebuild,first,f.globals,&f.error);REQUIRE(rebuilt);
+        CHECK(rebuilt->commandMembership()!=membership_a);pages.reset();
+        auto after_destroy=f.encode(*rebuilt,f.descriptions->sources[0],std::move(rebuild));REQUIRE(after_destroy.command->commitAndWait(&f.error));
+        CHECK(f.read(*after_destroy.target)==expected_a);
+    }
+}
+
+TEST_CASE("almetal: bounded many small Legacy and PBR cohorts converge without sibling table invalidation",
+          "[almetal][world-source-pages][world-cohort][world-source-admission]")
+{
+    @autoreleasepool
+    {
+        CohortPageFixture f;auto pbr=f.batch(2);REQUIRE(ALMetalWorldMaterialSource::publish(*f.device,pbr,f.cache,&f.error));
+        for(const auto& buffer:{pbr.native_material_source->pbrLease(false),pbr.native_material_source->pbrLease(true)})
+            if(buffer)f.resources->buffers.push_back(buffer);
+        std::vector<std::shared_ptr<PageCohortCpu>> cpu;
+        std::vector<ALMetalWorldSourceCohortView> groups;
+        for(unsigned group=0;group<64;++group)
+        {
+            auto backing=std::make_shared<PageCohortCpu>();backing->sources.reserve(2);backing->keys.reserve(2);
+            const auto family=group%2?2u:1u;
+            for(unsigned row=0;row<2;++row)backing->sources.push_back(family==1?f.descriptions->sources[0]:pbr);
+            for(unsigned row=0;row<2;++row)backing->keys.push_back({{100+group*2+row,family,1},&backing->sources[row]});
+            auto certificate=ALMetalWorldSourceCohort::seal(backing->keys,backing,f.resources,7,&f.error,&CohortPageFixture::resolve);
+            REQUIRE(certificate);auto selected=f.cohortView();selected.cohort=certificate;selected.cpu_owner=backing;
+            cpu.push_back(std::move(backing));groups.push_back(std::move(selected));
+        }
+        ALMetalWorldSourcePageLimits limits;limits.maximum_rows=128;auto pages=f.pages(limits);
+        ALNativeFrameBudget budget;pages->setPublicationAdmission([&](const auto& work)->std::shared_ptr<const void>
+        {return budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,work.chargedBytes(),budget.snapshot().frame).credit;});
+        std::vector<std::shared_ptr<const ALMetalWorldSourceCommandMembership>> stable(64);
+        for(unsigned frame=1;frame<=10;++frame)
+        {
+            ALNativeFrameBudget::FrameInputs input;input.frame=frame;budget.beginFrame(input);
+            const auto before=pages->stats();std::vector<std::shared_ptr<const ALMetalWorldSourceFrameView>> views;
+            for(unsigned group=0;group<64;++group)
+            {
+                auto command=f.device->makeCommandBuffer("Progressive independent small cohort publication",&f.error);REQUIRE(command);
+                auto view=pages->freezeCohortForCommand(*command,groups[group],f.globals,&f.error);
+                if(frame>=8)REQUIRE(view);
+                if(view)
+                {
+                    if(stable[group])CHECK(view->commandMembership()==stable[group]);
+                    else stable[group]=view->commandMembership();
+                    views.push_back(std::move(view));
+                }
+            }
+            if(frame>=8)
+            {
+                CHECK(pages->stats().cohort_hits-before.cohort_hits==64);CHECK(pages->stats().cohort_builds==before.cohort_builds);
+                CHECK(pages->stats().admission_requests==before.admission_requests);CHECK(pages->stats().admission_denials==before.admission_denials);
+                CHECK(pages->stats().row_publications==before.row_publications);CHECK(pages->stats().cached_cohorts==64);
+                CHECK(pages->stats().cached_cohort_rows==128);CHECK(pages->stats().cached_cohort_metadata_bytes<=limits.maximum_cached_cohort_metadata_bytes);
+                CHECK(pages->stats().rows==128);
+            }
+            CHECK(budget.snapshot().scene_publications_in_flight==0);CHECK(budget.snapshot().scene_bytes_in_flight==0);
+        }
+        pages->clear();CHECK(pages->stats().cached_cohorts==0);CHECK(pages->stats().cached_cohort_rows==0);
+        CHECK(pages->stats().cached_cohort_metadata_bytes==0);
+    }
+}

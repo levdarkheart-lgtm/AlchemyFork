@@ -744,3 +744,50 @@ command selection remain partial. The original goal remains ACTIVE. Next work
 is PPD217 useful retained working-set selection, followed by the remaining
 original architecture boundaries and owner runtime assessment; no launch,
 login, live profiling or push is authorized by this handoff.
+
+
+## PPD217 mechanism narrowed before repair
+
+Independent command/page/root reviews of source31 identify page-wide freshness,
+not bank capacity, as the64group rebuild loop. Every source allocation or write
+invalidates all cached cohorts on its128row page. Cache pruning releases native
+tables and membership; weak row table proofs then expire, and bank pruning sees
+expired membership. All473pagefailures in that measured case are admission
+denials; cached/live banks stay8–40 and capacity failures are zero. The1044
+fallback draws split946source_setup/98bank_admission. PPD218 registers the
+precise invalidation defect before implementation. Next repair is row-selective
+bounded cache dependencies with unchanged physical COW/readers and warm O(1)
+qualification; no larger cache or small-group exclusion. Owner preview69065
+is frozen and will not be overwritten. Prior turn classified progress: new
+cost evidence, local commits and separately verified owner artifact delivered.
+
+
+Independent next-boundary implementation is assigned in a separate worktree:
+`/private/tmp/alchemy-apple-first-retained-cohort-visibility`, branch
+`codex/apple-first-retained-cohort-visibility`, base8159abf7c6. Architecture agent
+exclusively owns optional producer-sealed bounds, retained visibility inputs,
+existing compute/renderer integration and focused source fixtures there; root
+owns docs/CMake/build/test integration. No pages/command-cache changes there.
+The vertical slice must avoid warm per-source visibility capture expansion,
+preserve fail-visible cold/unknown behavior, exact regional/query ordering and
+native completion lifetime. Defaults remain off. It advances retained visibility,
+but cannot eliminate same-frame CPU bindings using the current20B indirect
+arguments; that larger conditional-command boundary remains explicitly open.
+No source integration or build is claimed yet. Source32 first covers only
+PPD218 precise freshness and its strict64group warm regression gate.
+
+
+PPD218 source32 freeze: fixed rows hold only intrusive head pointers. Each
+stable cache entry owns an exact-call-count watcher array and one validity bit;
+changed(slot) invalidates/prunes only dependent entries before native writes.
+All node allocations precede eviction, and exact node bytes count against the
+existing8MiB cache metadata cap. Clear/destruction/cache rollback unlink while
+Row storage remains live; no CPU source graph or actual GPU reader is cached.
+Warm views retain their existing immutable membership/tables and acquire current
+physical page/bank reader leases. Old commands retain old pages independently.
+Two added native cases cover unrelated-row denial/rewrite, pending old/current
+pixels, withdraw/clear/destruction, and64mixed cohorts converging under the
+unchanged16ticket shared budget. Root adds measured-only64group no-rebuild/
+no-denial/full-bank acceptance to the existing many-small gate;256cases retain
+real pressure. Root and independent source/lifetime review find no blocker.
+No native execution claimed at freeze; required32 and native/cost gates follow.

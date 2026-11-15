@@ -302,8 +302,20 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                 CHECK(budget.scene_publications_in_flight==0);CHECK(budget.scene_bytes_in_flight==0);
                 if(mode!=2){CHECK(value.requested==0);CHECK(value.bound==0);CHECK(value.executions==0);}
                 if(mode==0){CHECK(value.captured_groups==0);CHECK(value.raw_draws==U64(visible_draws)*views);}
-                // Deliberately no all-warm, all-bank, or zero-denial assertion:
-                // this distribution can exceed the unchanged cache caps.
+                // PPD218: all64groups fit the unchanged native caches. After
+                // the declared warmups, unrelated row publications must not
+                // keep invalidating their exact table/membership proofs.
+                if(mode==2&&group_count==64&&!loading&&!warmup)
+                {
+                    CHECK(value.requested==U64(visible_draws)*views);
+                    CHECK(value.bound==value.requested);CHECK(value.fallback==0);
+                    CHECK(value.hits==U64(group_count)*views);CHECK(value.builds==0);CHECK(value.evictions==0);
+                    CHECK(value.page_hits==U64(group_count)*views);CHECK(value.page_builds==0);CHECK(value.page_failures==0);
+                    CHECK(cache.admission_denials==before_cache.admission_denials);
+                    CHECK(pages.admission_denials==before_pages.admission_denials);
+                }
+                // The256group distribution can exceed the unchanged caps;
+                // retain every actual rebuild, denial and direct fallback.
                 if(!loading&&!warmup)measured[mode][frame-loading_frames-warmup_frames]=value;
                 if(compare_pixels)for(U32 view=0;view<views;++view)pixels[mode][view]=f.read(*targets[view]);
                 std::cout<<"NATIVE_MANY_COHORT_RAW groups="<<group_count<<" visible_groups="<<visible_groups<<" sources_per_group="<<sources_per_group

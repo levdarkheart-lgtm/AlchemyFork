@@ -59,12 +59,29 @@ struct Signature
     std::array<std::uint32_t,24> values{};
     bool operator==(const Signature&)const=default;
 };
+struct CohortValidity {bool valid=true;};
+// Intrusive reverse dependencies belong only to stable CPU cache entries.
+// Rows and actual FrameViews own no watcher allocations or producer graph.
+struct CohortRowWatch
+{
+    CohortRowWatch* next=nullptr;
+    CohortRowWatch* previous=nullptr;
+    CohortRowWatch** head=nullptr;
+    CohortValidity* entry=nullptr;
+    ~CohortRowWatch()
+    {
+        if(!head)return;
+        if(previous)previous->next=next;else *head=next;
+        if(next)next->previous=previous;
+    }
+};
 struct Row
 {
     Key key;
     std::uint64_t revision=0,minimum_revision=0,last_use=0;
     std::uint32_t generation=0;
     bool allocated=false,valid=false;
+    CohortRowWatch* watchers=nullptr;
     Signature signature;
     std::list<std::uint32_t>::iterator lru;
     std::weak_ptr<const ALMetalWorldMaterialSource> material;
@@ -185,7 +202,7 @@ namespace
 // source wrapper, C++ generation lease or actual page reader alive.
 struct CohortBinding
 {
-    struct PageProof {std::uint32_t page;std::uint64_t content;};
+    struct PageProof {std::uint32_t page;};
     struct Asset {void* allocation;std::uint64_t bytes;};
     std::shared_ptr<const ALMetalWorldSourceCommandMembership> membership;
     std::vector<PageProof> pages;
@@ -364,14 +381,19 @@ struct ALMetalWorldSourcePages::Impl
     std::array<std::shared_ptr<Page>,alMetalWorldSourceMaximumRows/alMetalWorldSourceRowsPerPage> pages;
     std::shared_ptr<Bank> bank;
     std::shared_ptr<Buffer> cohort_mapping;
-    std::array<std::uint64_t,alMetalWorldSourceMaximumRows/alMetalWorldSourceRowsPerPage> page_content{};
     struct CohortEntry
     {
         std::weak_ptr<const ALMetalWorldSourceCohort> cohort;
         std::weak_ptr<const void> native;
         const void* native_pointer=nullptr;
         std::shared_ptr<const CohortBinding> binding;
+        CohortValidity validity;
+        // Exactly one node per numeric call, bounded by cached_cohort_rows.
+        // Array destruction unlinks before validity/binding are destroyed.
+        std::unique_ptr<CohortRowWatch[]> watches;
     };
+    // Declared after fixed rows: node destructors always see live Row heads,
+    // including ordinary Impl destruction and failed staging/clear paths.
     std::list<CohortEntry> cohorts;
     std::size_t cohort_rows=0,cohort_metadata=0;
     struct AssetRef {std::uint64_t bytes;std::size_t references=0;bool staged=false;};
@@ -383,14 +405,14 @@ struct ALMetalWorldSourcePages::Impl
     std::shared_ptr<ALMetalWorldSourcePages::PublicationAdmission> admission;
     std::uint64_t epoch=0;
 
-    void changed(std::size_t page)noexcept
-    {if(page_content[page]!=std::numeric_limits<std::uint64_t>::max())++page_content[page];}
-    bool current(const CohortBinding& binding)const noexcept
+    void changed(std::size_t slot)noexcept
     {
-        for(const auto& proof:binding.pages)
-            if(proof.content==std::numeric_limits<std::uint64_t>::max()||proof.content!=page_content[proof.page]||!pages[proof.page])return false;
-        return true;
+        // First mark without erasing: one entry can have multiple nodes on
+        // this row. Pruning then unlinks whole entries before native rewrite.
+        for(auto* watch=rows[slot].watchers;watch;watch=watch->next)watch->entry->valid=false;
+        pruneCohorts();
     }
+    bool current(const CohortEntry& entry)const noexcept{return entry.validity.valid;}
     std::uint64_t eraseCohort(std::list<CohortEntry>::iterator entry)noexcept
     {
         std::uint64_t released=0;
@@ -411,7 +433,7 @@ struct ALMetalWorldSourcePages::Impl
     void pruneCohorts()noexcept
     {
         for(auto it=cohorts.begin();it!=cohorts.end();)
-            if(it->cohort.expired()||it->native.expired()||!current(*it->binding)){auto old=it++;eraseCohort(old);}else ++it;
+            if(it->cohort.expired()||it->native.expired()||!current(*it)){auto old=it++;eraseCohort(old);}else ++it;
     }
     bool proveDevice(const ALMetalBuffer& buffer,std::string* error)
     {
@@ -586,10 +608,10 @@ try
         if(entry->cohort.lock()!=selected.cohort || entry->cohort.owner_before(selected.cohort)||selected.cohort.owner_before(entry->cohort) ||
            entry->native_pointer!=selected.native_owner.get() ||
            entry->native.owner_before(selected.native_owner)||selected.native_owner.owner_before(entry->native))continue;
-        // Page-content proofs include invalidation and same-slot rewrites.
-        // The exact context owns both the rows and immutable native tables;
-        // a global per-freeze epoch would incorrectly reject every warm view.
-        if(!state.current(*entry->binding))continue;
+        // Only writes to a member row invalidate this private cache entry.
+        // Co-resident row writes may COW its physical page; acquire CURRENT
+        // pages/bank below, whose copied member rows retain these exact tables.
+        if(!state.current(*entry))continue;
         auto view=std::make_unique<ALMetalWorldSourceFrameView::Impl>();view->context=state.context;
         view->cohort=entry->binding;view->cohort_native_owner=selected.native_owner;view->mapping=entry->binding->mapping;
         if(!view->publishView(&command,frame_data,std::span(&region,1),globals,error))
@@ -680,7 +702,7 @@ try
     binding->pages.reserve(view.pages.size());
     for(std::size_t page=0;page<state.pages.size();++page)
         if(std::any_of(view.pages.begin(),view.pages.end(),[&](const auto& reader){return reader->page==state.pages[page];}))
-            binding->pages.push_back({static_cast<std::uint32_t>(page),state.page_content[page]});
+            binding->pages.push_back({static_cast<std::uint32_t>(page)});
     std::unordered_set<void*> numeric;
     for(const auto& buffer:view.buffers)if(numeric.insert(buffer->nativeHandle()).second)binding->numeric.push_back(buffer->nativeHandle());
     // Native argument tables retain texture views independently of the C++
@@ -699,6 +721,7 @@ try
         binding->membership->mImpl->calls.capacity()*sizeof(ALMetalWorldSourceIndexedCall)+binding->membership->mImpl->runs.capacity()*sizeof(ALMetalWorldSourceCommandRun)+
         binding->pages.capacity()*sizeof(CohortBinding::PageProof)+(binding->geometry.capacity()+binding->numeric.capacity())*sizeof(void*)+
         binding->tables.capacity()*sizeof(binding->tables[0])+sizeof(Impl::CohortEntry)+2*sizeof(void*)+
+        binding->membership->calls().size()*sizeof(CohortRowWatch)+
         binding->assets.capacity()*sizeof(CohortBinding::Asset)+binding->assets.size()*(sizeof(void*)+sizeof(Impl::AssetRef)+2*sizeof(void*));
     // Actual command views retain only the completed native tuple and native
     // metadata. Private CPU certificates/prototypes can die after encode.
@@ -730,8 +753,10 @@ try
             // Complete every fallible cache-node/accounting allocation before
             // evicting anything. Optional cache OOM preserves this valid view
             // and all older usable warm entries (PPD209).
+            staged.push_back({selected.cohort,selected.native_owner,selected.native_owner.get(),binding,{}, {}});
+            staged.back().watches=std::make_unique<CohortRowWatch[]>(binding->membership->calls().size());
+            // A partially staged array remains unregistered on failure.
             if(state.force_cache_failure){state.force_cache_failure=false;throw std::bad_alloc();}
-            staged.push_back({selected.cohort,selected.native_owner,selected.native_owner.get(),binding});
             state.cohort_assets.reserve(state.cohort_assets.size()+binding->assets.size());
             for(const auto& asset:binding->assets)
             {
@@ -759,6 +784,14 @@ try
             auto& ref=state.cohort_assets.find(asset.allocation)->second;
             if(!ref.references++)state.cohort_asset_bytes+=ref.bytes;
             ref.staged=false;
+        }
+        auto& incoming=staged.back();const auto calls=binding->membership->calls();
+        for(std::size_t index=0;index<calls.size();++index)
+        {
+            auto& head=state.rows[calls[index].row_id].watchers;auto& watch=incoming.watches[index];
+            watch.head=&head;watch.entry=&incoming.validity;watch.next=head;
+            if(head)head->previous=&watch;
+            head=&watch;
         }
         state.cohorts.splice(state.cohorts.end(),staged);
         state.cohort_rows+=requests.size();state.cohort_metadata+=binding->metadata;
@@ -971,7 +1004,7 @@ try
             {std::erase(identity->second,planned.slot);if(identity->second.empty())state.identities.erase(identity);}
             if(auto source=row.resources.lock())state.context->resources->releaseSourceCache(source);
         }
-        state.changed(planned.slot/alMetalWorldSourceRowsPerPage);
+        state.changed(planned.slot);
         row.key={planned.request.key.identity,planned.request.key.flavor};row.generation=planned.generation;
         row.valid=false;row.allocated=true;row.revision=row.minimum_revision=0;row.material.reset();row.resources.reset();row.table.reset();
         state.identities[row.key.identity].push_back(planned.slot);state.lookup.emplace(row.key,planned.slot);
@@ -985,7 +1018,7 @@ try
         planned.signature.handles[planned.input.pbr?11:10]=prepared_tables[planned.table]->argumentLease()->nativeHandle();
         if(!planned.hit)
         {
-            row.valid=false;state.changed(planned.slot/alMetalWorldSourceRowsPerPage);
+            row.valid=false;state.changed(planned.slot);
             if(!state.preparePage(planned.slot/alMetalWorldSourceRowsPerPage,error)){++state.statistics.failures;return {};}
             auto& page=state.pages[planned.slot/alMetalWorldSourceRowsPerPage];const auto& signature=planned.signature;
             [state.context->row_encoder setArgumentBuffer:(__bridge id<MTLBuffer>)page->buffer->value->nativeHandle()
@@ -1055,7 +1088,7 @@ void ALMetalWorldSourcePages::invalidate(std::uint64_t identity,std::uint64_t mi
     const auto found=mImpl->identities.find(identity);if(found==mImpl->identities.end())return;
     for(auto slot:found->second)
     {
-        auto& row=mImpl->rows[slot];row.valid=false;mImpl->changed(slot/alMetalWorldSourceRowsPerPage);
+        auto& row=mImpl->rows[slot];row.valid=false;mImpl->changed(slot);
         if(auto source=row.resources.lock())mImpl->context->resources->releaseSourceCache(source);
         row.material.reset();row.resources.reset();row.table.reset();
         const auto next=minimum_revision?minimum_revision:(row.revision==std::numeric_limits<std::uint64_t>::max()?row.revision:row.revision+1);
@@ -1069,7 +1102,7 @@ void ALMetalWorldSourcePages::withdraw(std::uint64_t identity)noexcept
     const auto found=mImpl->identities.find(identity);if(found==mImpl->identities.end())return;
     for(auto slot:found->second)
     {
-        auto& row=mImpl->rows[slot];row.valid=false;mImpl->changed(slot/alMetalWorldSourceRowsPerPage);
+        auto& row=mImpl->rows[slot];row.valid=false;mImpl->changed(slot);
         if(auto source=row.resources.lock())mImpl->context->resources->releaseSourceCache(source);
         row.material.reset();row.resources.reset();row.table.reset();
     }
@@ -1079,7 +1112,6 @@ void ALMetalWorldSourcePages::clear()noexcept
 {
     ++mImpl->epoch;
     mImpl->cohorts.clear();mImpl->cohort_rows=mImpl->cohort_metadata=0;mImpl->cohort_assets.clear();mImpl->cohort_asset_bytes=0;
-    for(std::size_t page=0;page<mImpl->page_content.size();++page)mImpl->changed(page);
     mImpl->lookup.clear();mImpl->identities.clear();mImpl->free.clear();
     for(std::size_t slot=mImpl->rows.size();slot>0;--slot)
     {auto& row=mImpl->rows[slot-1];row.valid=false;row.allocated=false;row.revision=0;row.minimum_revision=0;

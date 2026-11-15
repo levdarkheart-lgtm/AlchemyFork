@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-218 -->
+<!-- next-defect-id: PPD-219 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5285,3 +5285,23 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Registered after first passing many-small cost31 run and before a cache/admission repair. Raw loading/warmup/measured samples and the unchanged cache limits are retained.
+
+
+## PPD-218 — Page-wide freshness invalidates unrelated retained cohorts
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native source-page cohort freshness
+- Discovered: 2026-11-15
+- Original reference: Immutable publication must invalidate dependencies that actually changed. Current physical page copy-on-write must still preserve every submitted reader and exact source revision/allocation generation.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). SourcePages::changed(page) advances page_content on every row allocation/write; current(CohortBinding) compares whole-page stamps. In64groups/2sources,128rows share one page: publishing one unrelated row invalidates all other bindings on that page. pruneCohorts drops their native table/membership owners, which can make existing row.table weak proofs expire and cause further row writes; SourceCommands then removes expired memberships. Measured source31 cache uses only8–40banks (limit64), zero capacity failures;473pagefailures are admission denials. Actual fallback1044draws comprises946source_setup and98bank_admission. The repeating page-wide invalidation loop is source-confirmed, distinct from a claim that cache capacity is exhausted or that it is the sole cost cause.
+- Next action: Replace whole-page cohort freshness with precise bounded row-dependency invalidation, retaining constant-time warm qualification, native-only idle ownership and exact per-command page/bank reader leases. Register dependencies before cache commit, handle allocation rollback, invalidate before own-row mutation, and unregister on cache eviction. Add unrelated-row growth/update, own-row rewrite/reuse, pending-reader and fault/rollback coverage; rerun complete costs.
+- Verification: Source and counter-confirmed mechanism; repair not yet authored or executed. No viewer performance or owner closure claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before row-selective repair. Three independent source/counter reviews agree caps are not binding in the64group case; source31 evidence and owner preview remain untouched.
+
+- 2026-11-15: PPD218 source freeze replaces page stamps with exact row reverse dependencies owned by stable cache entries. Node arrays are staged before fallible cache insertion/asset accounting and charged in existing metadata cap; warm qualification is constant time. Two focused native cases and stricter64group measured cost assertions authored. Root/independent lifetime reviews pass; required32/native/cost execution pending.
