@@ -1909,3 +1909,17 @@ indra/llrender/tests/alpipeline_source_cache_lifetime_native.inl in
 base71341f9fab). Rootowns existingCPP/EOF/register/build andintegration. Sameouterframe
 main/probe/probe, sufficientvsboundedcache, native-onlyvsCPUreader controls; no policy
 change orruntimecausalclaim authorized. No rootGPU/buildjobsrunning at handoff.
+
+
+Cache-lifetime reproduction integrated fromfrozen8a7893626b82 afterroot+opaque
+sourcepeerPASS. Newactual[source-cache-lifetime], onecasefourcontrols:WS8/WS2×
+CPUmetadataretained/native-only,6distinctLegacyproducers3sameouterframeviews.
+Grossallnativebytes<64MiB isolatesentryoverflow; variant/promotion/VB-write
+controls separatereasons. No productionpolicy/cap change orruntimecause claim.
+Next58required/scopedexecution; hold69102immutable.
+
+PPD271registered beforeexperimental publishedCPUfrustumconsumer implementation.
+Opaque exclusiveworld/cohort/visibility .h/.mm/.cpp; architecture onlyNEWnative
+andactualcostappendices, rootpipeline/settings/EOF/docs/build. Source-qualified
+bounds only, conservativeunknown/rounding failvisible, queryoffsetbeforeCPUskip,
+no GPUbankbypass. DefaultOFFuntilcompletecosts, capsunchanged. Next272.

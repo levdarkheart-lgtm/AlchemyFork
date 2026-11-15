@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-271 -->
+<!-- next-defect-id: PPD-272 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6440,3 +6440,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 partial intermediate commit retained before correction. Root fixes all four actual call sites, uses fail-fast execution, and records56 as superseded rather than a completed selection candidate.
 
 - 2026-11-15 observed verification: Allfouractualpool call sites now use selectedpointer atsourceac2dfaeb6b/69102. Required57doctor/configure/build/static/strict andactual44/2/native5157/6 pass. Intermediate56successfulbuild remains unused-helper-only/superseded. Owner verification pending; no push approval.
+
+
+## PPD-271 — GPU visibility retains CPU binding/submission for culled source rows
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / published-bound visibility author
+- Discovered: 2026-11-15
+- Original reference: The existing native GPU culler writes zero indexed arguments, while the owner still visits and binds each draw. The original CPU spatial-group culler remains intact; finer source bounds are already producer-published experimentally.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Implement an experimental conservative CPU cohort/source frustum consumer over immutable qualified bounds, before native binding/submission. Preserve logical query offsets, unknown visibility and exact generations; gate complete cold/warm/churn costs before activation.
+- Verification: Existing visibility cost frontier explicitly reports gpu_culling_eliminates_cpu_bindings=0. Native argument submission retains per-source CPU work even for zero index_count. This explains a limitation of that mechanism, not a measured cause of source69085 FPS or a rendering correctness defect.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before the alternative native CPU visibility implementation. No shader change, geometry reduction, cap increase or default activation is authorized by source inspection alone. CPU/GPU numerical disagreement must fail visible.
