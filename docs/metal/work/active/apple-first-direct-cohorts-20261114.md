@@ -701,3 +701,46 @@ DepthPrePass off. The optional GPU-bank experiment additionally enables banks;
 its raw fallback can also activate the older per-source row path, so it must not
 be described as exclusively the fast retained-cohort path. Prior regressions
 remain relevant to candidate selection, and acceptance is still partial.
+
+
+## Source31 executed and separate owner preview prepared
+
+Source `14837e631a8e96492bb3037de24dd1c1a8030ac5`, version
+`26.4.0.69065`: doctor/configure/build exit0 (29.063s build), static native
+bundle checks pass all346ARM64 images, signatures/source/features/imports.
+Strict source scans3587files with905informational rows,0blockers and0errors.
+Source31 changes no production rendering code relative to passing source30;
+its existing broad/native evidence remains explicitly source30.
+
+`actual-many-cohort-costs-31.json` passes1871896assertions/1case in9.106s,
+24summary rows and2016raw samples. All pixel/depth/query parity checks pass.
+The8 scenarios mix64/256Legacy/PBR groups,2/4sources/group and1/3views;
+progressive first-publication loading,64warmups and12measured frames remain
+visible. This is not asset download simulation or a viewer FPS measurement.
+
+Direct cohorts improve measured CPU21.8–76.0% and completion/query settlement
+3.4–67.0% versus ordinary submission in all8scenarios. GPU time ranges−3.0 to
++2.4%. GPU-bank mode is not robust: settlement loses28.3–148.9% versus direct
+cohorts in all8scenarios, with GPU time26.6–104.6%higher. Repeated cache work
+and fallback are observed even after warmups; PPD217 records this next concrete
+implementation boundary. Prior direct cold/churn losses remain relevant.
+
+A separate owner preview is staged under the private evidence directory at
+`owner-preview-69065/Alchemy Metal Alpha G2G5.app`. Receipt
+`owner-preview-69065.json` proves8272matching bundle entries, repeated ARM64
+and strict signature checks, exact source and no viewer launch. Source and
+owner-passed apps are untouched. Included `Launch Architecture Preview.command`
+is owner-operated and syntax-checked only: it enables retained direct groups,
+forces NativeVisibility/DepthPrePass and the other optional experiments off,
+and keeps command banks off. This makes the chosen experimental path concrete
+without claiming an accepted default. Opening the app alone uses shipped off
+defaults plus any runtime overrides. Runtime activation is not agent-observed.
+
+This preview is meaningful for an intermediate whole-viewer assessment of the
+active foundations and direct retained consumption. It is not the full original
+architecture or proof of FPS improvement. Native visibility before per-source
+CPU discovery, animated membership, complete pass dependencies and robust GPU
+command selection remain partial. The original goal remains ACTIVE. Next work
+is PPD217 useful retained working-set selection, followed by the remaining
+original architecture boundaries and owner runtime assessment; no launch,
+login, live profiling or push is authorized by this handoff.

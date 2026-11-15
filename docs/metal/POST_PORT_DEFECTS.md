@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-217 -->
+<!-- next-defect-id: PPD-218 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5256,7 +5256,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Original reference: Complete cost coverage must include the actual pending-range map and full cold-candidate storage used by postSort, especially for many small groups.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Peer review of new, unbuilt alpipeline_many_cohort_cost_native.inl identifies vector<Pending{Group*,raw_begin}> and vector<Pending*> where production uses unordered_map<Group*,vector<PendingGroupRange{type,raw_begin,count}>> and full ColdCohort records with shared publisher, admission pointer and flavor. Omitted per-group allocations/control copies materially narrow the intended loading-cost boundary. No executed benchmark result exists for this fixture.
 - Next action: Mirror the production containers inside the existing timed region before including/building the new fixture; retain arm isolation, warm-up/loading observations and query/parity checks.
-- Verification: Source-confirmed fixture fidelity gap registered before repair, no performance claim.
+- Verification: Corrected source31 builds and hidden many-small gate passes1871896assertions/1case. Loading/warmup/measured costs are retained; no viewer FPS claim.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5265,3 +5265,23 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered from bounded peer review while source30 broader checks run.
 
 - 2026-11-15: Author freezes corrected timed pending map, per-group vectors, full candidate records/control copies, repeated warm checks and expected-span allocation (new fixture SHA256 f3e9655c896565dfaa53db70d58a00a73ee83bac33b345c5c00de5c437276ba4). Root comparison with postSort confirms repaired boundary. Hidden fixture is included for test-only source31; execution pending.
+
+
+- 2026-11-15: Read-only peer review passes corrected SHA. Required31 doctor/configure/build and static69065/strict pass; new native gate completes9.106s,24summary rows/2016raw samples, with all query/pixel/depth checks passing. PPD217 retains the newly exposed GPU cost regression.
+
+## PPD-217 — Many-small retained GPU workload repeatedly rebuilds banks and falls back
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native cohort command admission/cache selection
+- Discovered: 2026-11-15
+- Original reference: Bounded native metadata must retain a useful working set and preserve ordinary direct rendering when GPU command preparation costs more than it saves. Original ordered group/query boundaries remain required.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source14837e631a/69065 new many-small gate passes1871896assertions/1case, but GPU mode loses completion/query settlement in all8 measured scenarios versus direct cohorts (+28.3 to148.9%) and increases GPU time26.6–104.6%. Actual bank draw fraction spans24.7–100%; requested draws, denials, evictions, builds and raw fallback are retained. At64groups/2sources/1view, measured12frames request1536draws, execute492throughbanks, fallback1044, build165banks and evict177. These demonstrate repeated work despite64warmupframes; cache/admission/fallback costs are observed, not proved the sole cause. No viewer FPS regression is inferred.
+- Next action: Select a bounded useful retained working set and avoid repeatedly rebuilding uncached small cohorts; preserve direct cohorts, ordered query boundaries, denial progress and exact completion lifetimes. Rerun the same complete cold/warm/churn and many-small costs before any bank activation. Do not raise cache limits blindly.
+- Verification: Executed contained cost regression with passing pixel/depth/query parity; owner runtime acceptance pending. Command banks remain off in the owner preview launcher.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered after first passing many-small cost31 run and before a cache/admission repair. Raw loading/warmup/measured samples and the unchanged cache limits are retained.
