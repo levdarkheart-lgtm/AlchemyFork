@@ -4772,6 +4772,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered after real bank-path correctness/cost proof. No indirect-bank performance/default acceptance.
 
 
+- 2026-11-15: Begin source26 retained GPU cohort publication/command-bank repair attempt. It removes per-view N-reference/request/key preparation at the actual SourcePages/renderer boundary rather than merely reusing a scratch vector. Prior cost15 losses remain authoritative until complete cold/warm/churn costs pass; no activation or speedup claimed.
+
 ## PPD-192 — Cohort owner-rejection fixture aliases the producer's first member
 
 - Status: investigating
@@ -4993,6 +4995,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered before accepting or integrating the experimental layout; source-derived size prediction is now independently compiled, while rendered-path evidence remains pending.
 
 
+- 2026-11-15: Native24 material storage2513/6 passes at104981, confirms1688-byte batches and snapshot/copy/alias semantics. Complete25 cost comparison against23 retains small raw-path tradeoffs and large ordinary changes up to+0.139ms; separate runs do not isolate layout causes. Default layout acceptance remains open, no FPS gain inferred.
+
 ## PPD-204 — Large shadow preparation bypasses shared preparation admission
 
 - Status: investigating
@@ -5010,6 +5014,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Registered from original-goal audit; disabled or rejected world submission experiments do not waive this existing shadow path.
 
+
+- 2026-11-15: Native24 shadow98414/14 passes, including two new shared preparation-budget cases. Busy/pressure behavior follows existing budget policy; credits retire on serial denial/join/failure. Source25 production and native binary unchanged, owner scene acceptance remains pending.
 
 ## PPD-205 — Optional CPU slot freezing rejects a valid reader-pinned transient source
 
@@ -5029,6 +5035,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered before repair. PPD-195 promotion freshness guards and PPD-200 plain-source transient history remain separate and must be preserved.
 
 
+- 2026-11-15: Actual25 producer11788/53 passes including all authored transient/freshness scenarios after fixture observation counts corrected as PPD206. No physical OOM execution or owner verification claimed.
+
 ## PPD-206 — New forward/glow fixtures assume dependency observation is bypassed
 
 - Status: investigating
@@ -5045,3 +5053,5 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Registered before correcting the fixture; retain native-correctness-24-actual-publish.log and its failed counts. Native material2513/6, shared shadow98414/14 and earlier cohort/renderer/bank/policy gates passed separately.
+
+- 2026-11-15: Fixture-only7b49 rebuild25/static69058 and actual11788/53 pass. Both tests now count the established single dependency observation, retaining all ownership/fallback/cutoff/freshness assertions. Failed24 evidence preserved; automated checks do not close owner register.

@@ -412,3 +412,83 @@ profile, push or owner acceptance. Reject the proposed tiny command-bank scratch
 cleanup as a priority: source review identifies two allocation calls on hits,
 but evidence does not show they explain the large CPU/GPU bank regressions.
 Keep attention on complete usable production paths rather than nominal API use.
+
+
+## Passing source25 gate and next GPU cohort boundary
+
+Clean7b49e2ea9a3fe7097aad331681dfb06de5ac5792 required25 build29.420s;
+static69058 passes. Fixture-only changes leave almetal_tests hash identical
+to24; its material/shadow/cohort/renderer/resource/row evidence is retained as
+24, not falsely rerun. Actual producer11788/53 and budget333/19 pass at25.
+Combined25 passes88/88CTest entries165.144s,10specialization processes,
+3archive policy processes and the private decoder corpus. No viewer executed.
+Complete material/plain cost25 gates now follow; keep PPD194/203 acceptance open.
+
+Next original G4 implementation is a retained GPU cohort publication, not the
+rejected per-source facade or a scratch-allocation microchange. SourceCommands
+alone cannot remove SourcePages per-view N-input capture/validation. Source26
+therefore changes the actual boundary: once-per-generation GPU row/table/index
+membership publication from an exact completed cohort, fresh bounded native-only
+FrameViews with one region/global update, and cached native ICB execution split
+at existing query/raster/cull runs. No per-view reference/request/key expansion.
+Per-page content stamps and exact table/context proofs must detect in-place row
+changes; allocation generation alone is insufficient. Idle caches must not hold
+CPU source graphs, C++ generation pins or real reader tokens. Actual commands
+retain native-only views/banks through completion. Default direct paths stay
+unchanged; no gain or full-architecture completion claim precedes cost evidence.
+
+Exclusive source26 ownership in the isolated cohort tree (main7b49 frozen):
+residency owns SourcePages/cohort helpers+fixtures and minimal immutable native
+membership interface; opaque owns SourceCommands+fixtures, prepareCohortForCommand
+and executeRange; architecture owns pipeline integration, world.cpp renderer
+loops only and actual-owner/renderer fixtures. Material serializers/world.h are
+frozen. Agents coordinate exact helper APIs before dependent edits. Root owns
+docs/CMake/integration/all executions. No builds/tests/viewer/profile/push by
+agents. PPD183/191 prior regressions are retained; this is their genuinely new
+measured-boundary repair attempt, not evidence of a speedup.
+
+
+## Complete source25 cost outcome
+
+Material cost25 passes94720assertions/48pairs, plain47360/24pairs; source
+7b49, no viewer. All setup/sample rows retained, including the synthetic idle
+frame budget and complete CPU preparation/capture/adopt/encode/reclaim/settle
+boundary. There are0denials/duplicates in these one-group idle cost cases;
+admission-denial behavior is correctness-tested separately, not inferred as a
+performance result. Warm material wins14/16 and plain7/8; cold wins3/16 and2/8;
+churn wins2/16 and2/8. Keep all small cases and GPU variability.
+
+At512rows, Legacy1view warm0.7739→0.3221ms (−58.4%),3views2.4553→0.9966
+(−59.4%); PBR1view0.7283→0.2818 (−61.3%),3views2.3694→0.8570 (−63.8%).
+Plain1view0.6660→0.2160 (−67.6%),3views1.9511→0.6272 (−67.9%). But1view
+cold adds24.4–41.1% and1view churn11.5–29.5%. Multi-view churn is28.9–38.5%
+lower. These are contained native preparation costs, not whole-frame FPS.
+
+Separate before23/after25 ordinary-path medians do not isolate layout causes:
+large Legacy cold−4.1%/+3.7%(1/3views),PBR+3.5%/+1.3%,plain−0.8%/+0.3%.
+Largest absolute ordinary512 increase is Legacy3view cold+0.139ms; large PBR
+ordinary churn is+4.5–5.8%, warm−0.3/+5.9%. Small-case percentages reach84%
+from tiny absolute durations; preserve raw samples and PPD203 tradeoff rather
+than treating smaller sizeof as acceptance. Native suite verifies sizeof1688
+and copy/alias semantics. GPU paired medians range−7.1/+10.2%material and
+−8.8/+7.0%plain despite unchanged ordinary shaders; no GPU equivalence claim.
+
+Receipts: actual-direct-{cohort,simple-cohort}-costs-25.json, their summaries,
+and each -versus-...-23 comparison in the private evidence root. GroupSources
+remainsOFF; rows/banksOFF after earlier losses. Source26 retains CPU cohorts and
+adds a genuine optional native GPU publication boundary, with producer-provided
+cold typed texture resolution from exact NativeTuple allocations. No alias of
+NativeTuple's own controlblock may fabricate a typed allocation. Commands retain
+no CPU source/LL graphs. Owner full-viewer acceptance remains pending.
+
+
+Next exact execution after source26 freeze: inspect all helper/renderer diffs,
+verify minimal shared API agreement and native-only lifetime guards, commit
+coherent source locally, FF main experiment and run a fresh required26 (clone
+/tmp/persistent_native_build_25.py with receipt26). Run SourcePages/cohort/bank/
+renderer/actual-owner native gates with validation; new hidden
+[.native-gpu-cohort-cost] compares ordinary/direct/GPU3arms at actual cold/warm/
+churn boundaries, including denials and no false GPU-hit labels. No source26
+implementation is built/tested yet. All root source25 build/check/cost handles
+are terminal. Agents continue source26 in their exclusive files; root owns
+docs and next integration. Mandatory nextPPD207.
