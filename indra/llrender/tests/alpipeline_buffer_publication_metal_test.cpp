@@ -1979,7 +1979,8 @@ TEST_CASE("Actual authored forward readers survive cache withdrawal without a CP
                   CHECK(std::static_pointer_cast<const Payload>(info.state->publication())->serial==reader->serial+100);
                   CHECK(info.state->revision()==revision);}
         }
-        CHECK(info.dependency_walks==walks);CHECK(resource_source_publications==resources);CHECK(cohort_source_publications==records);
+        // world() observes dependencies once before checking its cache.
+        CHECK(info.dependency_walks==walks+1);CHECK(resource_source_publications==resources);CHECK(cohort_source_publications==records);
         CHECK(reader->producer_revision==revision);REQUIRE(reader->native_tuple);
         CHECK(reader->native_tuple->resources.size()==reader->resources.size());
         for(const auto& resource:reader->native_tuple->resources)CHECK(resource.allocation);
@@ -2021,7 +2022,8 @@ TEST_CASE("Actual post-water PBR glow seals a distinct coverage flavor before pe
     const auto walks=info.dependency_walks;capture.clearDraws();
     pipeline.captureMetalWorldPostWaterPBRGlowBatch(info,false);
     REQUIRE(capture.complete);REQUIRE(capture.batches.size()==1);
-    CHECK_FALSE(capture.batches[0].pre_water_particle);CHECK(info.dependency_walks==walks);
+    // Warm world() still performs its single owner dependency observation.
+    CHECK_FALSE(capture.batches[0].pre_water_particle);CHECK(info.dependency_walks==walks+1);
     CHECK(std::as_const(capture.batches[0]).pbrSlots().data()==sealed);
     // Ordinary masked glow retains its actual authored cutoff. A malformed
     // source cannot leave the temporary semantic mode set on the capture.

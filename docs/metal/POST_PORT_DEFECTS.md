@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-206 -->
+<!-- next-defect-id: PPD-207 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5027,3 +5027,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Registered before repair. PPD-195 promotion freshness guards and PPD-200 plain-source transient history remain separate and must be preserved.
+
+
+## PPD-206 — New forward/glow fixtures assume dependency observation is bypassed
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex actual native source fixture
+- Discovered: 2026-11-15
+- Original reference: ALScenePublicationNative::world always invokes observeMetalSourceDependencies before selecting a cached source. Direct ordinary forward requests retain that established observation boundary.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Required24/static69057 pass at10498116fc. Actual source suite passes51/53cases,11773/11788assertions. All15 failures are new dependency_walks==walks expectations:14 PPD205 scenarios plus one repeated post-water glow call. Each actual call observes once (3 versus2 or6 versus5), as the source explicitly requires. The new fallback identity/revision/publication and glow output checks pass.
+- Next action: Correct only the two new fixture expectations to count one established dependency observation per world request; retain all source identity, ownership, cutoff and failure assertions. Rebuild/retest without changing production observation semantics.
+- Verification: Executed assertion failure with source-confirmed fixture mismatch; production performance is not inferred from a stub invocation counter.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before correcting the fixture; retain native-correctness-24-actual-publish.log and its failed counts. Native material2513/6, shared shadow98414/14 and earlier cohort/renderer/bank/policy gates passed separately.

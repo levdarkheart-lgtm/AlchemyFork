@@ -391,3 +391,24 @@ fixture covers Legacy/PBR normal and thrown-allocation transient fallback,
 producer revision changes, newer same-revision publications and replaced weak
 reader identity. These tests are authored, not executed. Integrate this coherent
 freeze and run required24 next; no source changes are authorized during build.
+
+
+## Required24 pass and fixture-only retest
+
+Integrated10498116fce3f25f14ddae97b5d3baff7b55585f required24 doctor/
+configure/build exit0; build165.029s. Static69057 passes346ARM64/signatures/
+source/imports/retained features/defaults. Strict24 scans3587files,905info,
+0blockers/errors. Native material2513/6, shadow98414/14, cohort1763/7, renderer
+764/1+old286/1, banks1942/5+old84/1, budget333/19, admission311/4, library331/3
++old82/1 and region64/5 pass with native validation. Actual producer passes
+51/53cases,11773/11788assertions. PPD206 records all15 failures: the new
+forward/glow tests expect zero observer calls although world() unconditionally
+observes once before its cache lookup. Rendering/fallback/cutoff/freshness
+assertions pass. Correct only those two expectations, then required25 and
+actual-owner retest; do not change production observation behavior.
+
+Full original architecture remains active and partial; no viewer launch, live
+profile, push or owner acceptance. Reject the proposed tiny command-bank scratch
+cleanup as a priority: source review identifies two allocation calls on hits,
+but evidence does not show they explain the large CPU/GPU bank regressions.
+Keep attention on complete usable production paths rather than nominal API use.
