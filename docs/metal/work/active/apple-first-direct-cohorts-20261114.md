@@ -1668,3 +1668,9 @@ causes. Newactual/source-miss and nativeearly-page alias/no-op/pass-fusion fixtu
 are unexecuted. PPD249pool-scope,252idlebarrier,253combinedfixture-names corrected
 before execution, retainedinregister. Next254. Rootnext freezes47, requiredbuild,
 allrelevantnative checks andcompletecosts. Fullarchitecture/ownerFPSacceptance open.
+
+
+Required47 dfcfb911b0 doctor/configure0, build1 in60.165s(PPD254newoldlibrary
+fixture unique_ptr lvalue vs shared const API). No native47/cost execution. Root
+uses explicitsharedconst ownership, no production/fallback changes, next48build.
+All47failedreceipt evidence retained; next255.

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-254 -->
+<!-- next-defect-id: PPD-255 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6082,3 +6082,21 @@ last active page after content interning; retain the exact matched page.
 ### History
 
 - 2026-11-15 registered before the narrow combined-fixture correction. Production pass logic and staged69085/69089 are not implicated.
+
+
+## PPD-254 — Old-library probe fixture passes unique ownership to a shared API
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: ALMetalShaderLibrary::loadFile returns unique_ptr; renderer factory takes shared_ptr<const ALMetalShaderLibrary>. Existing explicit-library callers transfer shared ownership.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Bind the newly loaded old library to an explicit shared const owner before renderer creation; rebuild without changing any rendering or fallback condition.
+- Verification: Required47 atdfcfb911b0 doctor/configure pass; build exits1 after60.165s. New probe appendix217 passes an lvalue unique_ptr to the shared-library overload, so no matching create overload. No47native/cost execution occurred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 compile failure retained in frozen-source-build-47 receipt/log. Registered before the ownership-type repair. Shader compilation and earlier compilation tasks are not whole-build success; source69085/69089 staged/evidence remain intact.

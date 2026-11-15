@@ -211,7 +211,7 @@ TEST_CASE("almetal: old explicit world library retains separate probe lighting",
     {
         ProbeLightingFixture p;auto& f=p.f;const std::filesystem::path path(filename);
         REQUIRE(path.is_absolute());REQUIRE(std::filesystem::is_regular_file(path));
-        auto old=ALMetalShaderLibrary::loadFile(*f.device,path.string(),&f.error);REQUIRE(old);
+        std::shared_ptr<const ALMetalShaderLibrary> old=ALMetalShaderLibrary::loadFile(*f.device,path.string(),&f.error);REQUIRE(old);
         REQUIRE_FALSE(old->hasFunction("almetal_world_probe_tile_light_map_fragment"));
         REQUIRE_FALSE(old->hasFunction("almetal_world_probe_tile_base_light_fragment"));
         auto previous=ALMetalWorldGBufferRenderer::create(*f.device,1,old,&f.error);INFO(f.error);REQUIRE(previous);
