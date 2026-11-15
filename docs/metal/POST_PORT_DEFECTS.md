@@ -5799,6 +5799,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15 integrated69122 profile evidence: Exactbeb6837b71 quiet301.061s/club300.725s runs now expose publication failure stages. Club native_retain group-failure delta4003, other recorded stages0. This is optional retained-path failure/cost evidence, not ERROR/FATAL or dropped-draw proof. Both scenes churn the byte-capped native cache; no policy repair performed. [Report](research/integrated-build-69122-quiet-club-20261115.md).
 
+- 2026-11-15 Architecture Session source follow-up: Ready source lookups already use touch; byte-denied publication later expires and creates a new payload/serial. No safe producer-revision-only rejection memo identified. PPD295 targets temporary weak-resource staging allocation before admission, with caps/policy unchanged; this does not claim to solve total cache churn.
+
 ## PPD-241 — Trial shadow capture failures lack a source-level attribution
 
 - Status: investigating
@@ -5822,6 +5824,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-15 integrated69122 profile evidence: Main/probe detached_eligible/calls/completed and compact dispatch/serial counters remain0 in both actual69122 trace windows; cumulative maximum family inputs666/1158, below8192 threshold. Main failed_views4→4 and probe0→0. No new shadow failure is observed, but useful parallel-render preparation has not been demonstrated in these real SL workloads. Preserve prior small-family cost losses rather than lowering thresholds blindly. [Report](research/integrated-build-69122-quiet-club-20261115.md).
+
+- 2026-11-15 zero-job source audit confirms production8192-per-family threshold, distinct from backend256; actual666/1158 maxima explain zero eligibility rather than shared-budget denial. World workers are separatelyOFF and excludecohort/animated inputs. Both detached mechanisms were unexercised; no broken callsite proved. Investigate bounded within-view small-family coalescing with complete copy/job/join costs, retaining old small-family losses.
 
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
@@ -6530,6 +6534,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-15 integrated69122 profile evidence: Numeric runtime counters now attribute quiet/club retain byte-cap rejection deltas2559646/4331675 and capacity eviction deltas1090835/1535092 inside sampled actualtrace intervals, cap3892314112bytes. Working-set retain is visible in CPU samples(3.452s/4.900s inclusive). Diagnostics work; total frame-time causality and policy quality remain unproved. Counts are occurrences and ledger estimates, not unique objects or physical allocations. No cap increase or fix. [Report](research/integrated-build-69122-quiet-club-20261115.md).
+
+- 2026-11-15 Runtime-backed follow-up keeps numeric3,892,314,112B ledger cap and all ownership contracts unchanged. PPD295 is a separate bookkeeping candidate to avoid heap scratch growth before denial; no cache-policy or physical memory repair is established. Native retain inclusive3.452/4.900CPU-s does not support a dominant-frame attribution.
 
 ## PPD-275 — New cache-lifetime fixture asserts retirement before releasing frame upload owners
 

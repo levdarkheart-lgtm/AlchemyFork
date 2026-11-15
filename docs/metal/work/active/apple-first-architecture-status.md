@@ -1,6 +1,6 @@
 # Apple-first architecture implementation status
 
-Updated 2026-11-15. The original whole-engine architecture remains **partial**.
+Updated2026-11-15. The original whole-engine architecture is **active with runtime-backed follow-up work; acceptance remains partial**.
 The owner has now supplied quiet-house and teleport/club runtime samples; see
 [the two-scene analysis](../../research/integrated-build-69122-quiet-club-20261115.md).
 Detached render-preparation counters stayed0 in both, so useful parallel-render
@@ -85,3 +85,16 @@ recorders/offline analyses exit0, owner closed viewer. No ERROR/FATAL rows,
 No source/app/settings change or push. Testing Integrated Build is handing the
 report to Architecture Session for implementation decisions. Different scenes,
 aggregate means and no old-build paired run do not prove an FPS gain or release.
+
+## Active follow-up after69122 runtime evidence
+
+The house/club recordings expose native-cache turnover240/274 and no exercised
+contribution from the two detached renderer preparation mechanisms241. The old
+blocked-runtime handoff above is historical; the analysis arrived as78edcee323.
+PPD295 now investigates bounded local resource staging before native byte
+admission. Caps, source generations, required readers and completion retirement
+remain unchanged; this does not repair the whole cache policy or prove FPS gain.
+Independent G3 source work examines coalescing already-owned small family inputs
+within a view, preserving order and bounding all copy/job/join costs. No blind
+threshold reduction or forced worker activation. Tested69122 stays immutable;
+no further launch/login/profile/push authorized by the testing handoff.
