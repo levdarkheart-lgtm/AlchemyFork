@@ -6,6 +6,7 @@
 #include "almetal_world_prepare_fixture.h"
 #include "../almetalworldcohort.h"
 #include "../almetalworldmaterialdata.h"
+#include "../almetalworldsourcecommands.h"
 #include <cstdlib>
 #include <filesystem>
 
@@ -68,6 +69,27 @@ struct DirectCohortFixture : Fixture
         std::memcpy(source.rigged_normal_matrix,group.view.rigged_normal_matrix,48);
         return source;
     }
+    ALMetalWorldSourceCohortView additionalGroup(unsigned family,std::size_t logical,std::size_t base,unsigned identity_base)
+    {
+        auto owner=std::make_shared<DirectCohortCpu>();owner->rows.reserve(2);owner->keys.reserve(2);
+        ALMetalWorldMaterialDataCache cache(*device);
+        for(unsigned row=0;row<2;++row)
+        {
+            auto source=batch(family);source.texture_matrix[12]=row*.125f;
+            if(family)
+            {
+                REQUIRE(ALMetalWorldMaterialSource::publish(*device,source,cache,&error));
+                REQUIRE(ALMetalWorldResourceSource::publish(*device,source,resources->textures,&error));
+                for(const auto& uniform:{source.native_material_source->materialLease(),source.native_material_source->pbrLease(false),source.native_material_source->pbrLease(true)})
+                    if(uniform)resources->buffers.push_back(uniform);
+            }
+            owner->rows.push_back(std::move(source));
+        }
+        for(unsigned row=0;row<2;++row)owner->keys.push_back({{identity_base+row,family,1},&owner->rows[row]});
+        auto view=group;view.logical_begin=logical;view.base_before=base;view.cpu_owner=owner;
+        view.cohort=ALMetalWorldSourceCohort::seal(owner->keys,owner,resources,9,&error);INFO(error);REQUIRE(view.cohort);
+        return view;
+    }
     std::vector<ALMetalWorldVisibilityQuery> queries()
     {
         std::vector<ALMetalWorldVisibilityQuery> values(6);
@@ -80,7 +102,7 @@ struct DirectCohortFixture : Fixture
         return values;
     }
     struct Output{Pixels pixels;std::vector<std::uint64_t> queries;bool operator==(const Output&)const=default;};
-    Output render(bool cohort,unsigned format)
+    Output render(bool cohort,unsigned format,bool gpu_banks=false)
     {
         auto raw=baseRows();auto q=queries();auto s=scene();
         if(!cohort){raw.insert(raw.begin()+1,flattened(0));raw.insert(raw.begin()+2,flattened(1));}
@@ -90,9 +112,9 @@ struct DirectCohortFixture : Fixture
         if(cohort)
         {
             s.cohorts=&group;s.cohort_count=1;
-            s.material_argument_buffers=true;s.source_command_banks=true;
-            // An empty optional source-row view must not turn cohort rows into
-            // GPU requests, key arrays or CPU-source completion retainers.
+            s.material_argument_buffers=true;s.source_command_banks=gpu_banks;
+            // Cohort banks use their certificate directly. Optional metadata
+            // contains no expanded per-source requests or draw indices.
             s.source_rows=std::make_shared<ALMetalWorldSourceView>();
         }
         std::shared_ptr<ALMetalVisibilityResultBatch> results;
@@ -138,6 +160,129 @@ TEST_CASE("almetal: direct cohorts keep accepted accounting and ordinary terrain
     }
 }
 
+TEST_CASE("almetal: retained cohorts execute ordered native bank ranges without reference expansion",
+          "[almetal][world-cohort-renderer][world-cohort-banks]")
+{
+    @autoreleasepool
+    {
+        for(unsigned family:{1u,2u})
+        {
+            CAPTURE(family);DirectCohortFixture f(family);
+            for(unsigned format=0;format<8;++format)
+            {
+                CAPTURE(format);const auto expected=f.render(false,format);
+                const auto before=f.renderer->worldSourceCommandStats();
+                const auto cohorts=f.renderer->worldCohortStats();
+                CHECK(f.render(true,format,true)==expected);
+                const auto after=f.renderer->worldSourceCommandStats();
+                CHECK(after.requested_draws-before.requested_draws==2);
+                CHECK(after.bank_draws-before.bank_draws==2);
+                CHECK(after.fallback_draws==before.fallback_draws);
+                // The interior logical query splits the same native bank into
+                // single-command ranges; PBR also changes its cull policy.
+                CHECK(after.execute_calls-before.execute_calls==2);
+                CHECK(f.renderer->worldCohortStats().draws-cohorts.draws==2);
+                const auto warm=after.cache;
+                CHECK(f.render(true,format,true)==expected);
+                const auto reused=f.renderer->worldSourceCommandStats().cache;
+                CHECK(reused.builds==warm.builds);CHECK(reused.hits==warm.hits+1);
+                f.renderer->clearWorldSourceCommands();
+                f.renderer->failNextWorldSourceCommandPublicationForTesting();
+                const auto fallback=f.renderer->worldSourceCommandStats();
+                CHECK(f.render(true,format,true)==expected);
+                const auto declined=f.renderer->worldSourceCommandStats();
+                CHECK(declined.bank_draws==fallback.bank_draws);
+                CHECK(declined.fallback_draws-fallback.fallback_draws==2);
+            }
+        }
+    }
+}
+
+TEST_CASE("almetal: a cohort range failure after emission invalidates the command transaction",
+          "[almetal][world-cohort-renderer][world-cohort-banks]")
+{
+    @autoreleasepool
+    {
+        DirectCohortFixture f(2);const auto expected=f.render(true,0,true);
+        auto commands=f.data->worldSourceCommands(&f.error);INFO(f.error);REQUIRE(commands);
+        const auto make_scene=[&](const auto& raw,const auto& queries)
+        {
+            auto s=f.scene();s.normal_hdr=false;s.batches=raw.data();s.batch_count=raw.size();s.source_owner=f.resources;
+            s.cohorts=&f.group;s.cohort_count=1;s.source_command_banks=true;
+            s.visibility_queries=queries.data();s.visibility_query_count=queries.size();return s;
+        };
+        auto raw=f.baseRows();auto queries=f.queries();const auto s=make_scene(raw,queries);
+        const auto before=f.renderer->worldSourceCommandStats();
+        commands->failExecutionAfterForTesting(1);
+        REQUIRE(f.renderer->beginCommandBatch("Fail second retained cohort range",&f.error));
+        CHECK_FALSE(f.renderer->render(s,&f.error));
+        CHECK(f.error=="Metal cohort command range failed after emission");
+        CHECK_FALSE(f.renderer->commitCommandBatch(&f.error));
+        // Rejected renders publish no accepted counters, and the injected
+        // failure is consumed; a following complete render is still usable.
+        CHECK(f.renderer->worldSourceCommandStats().bank_draws==before.bank_draws);
+        CHECK(f.render(true,0,true)==expected);
+        commands->failExecutionAfterForTesting(0);
+        const auto fallback=f.renderer->worldSourceCommandStats();
+        CHECK(f.render(true,0,true)==expected);
+        CHECK(f.renderer->worldSourceCommandStats().bank_draws==fallback.bank_draws);
+        CHECK(f.renderer->worldSourceCommandStats().fallback_draws-fallback.fallback_draws==2);
+    }
+}
+
+TEST_CASE("almetal: native cohort banks preserve mixed simple material PBR raw and reference order",
+          "[almetal][world-cohort-renderer][world-cohort-banks]")
+{
+    @autoreleasepool
+    {
+        DirectCohortFixture f(1);
+        auto legacy=f.group;legacy.logical_begin=3;legacy.base_before=1;
+        std::array<ALMetalWorldSourceCohortView,3> groups{
+            f.additionalGroup(0,0,0,21),legacy,f.additionalGroup(2,6,2,11)};
+        std::array<ALMetalWorldSimpleBatch,2> raw{f.batch(0),f.batch(0)};
+        auto referenced=f.batch(0);ALMetalWorldSourceReference reference;reference.source=&referenced;
+        identity(reference.view.modelview_projection);identity(reference.view.modelview);
+        reference.view.modelview_projection[12]=.2f;
+        for(unsigned axis=0;axis<3;++axis)reference.view.normal_matrix[axis][axis]=reference.view.rigged_normal_matrix[axis][axis]=1.f;
+        const std::array<ALMetalWorldDrawIndex,3> order{0,alMetalWorldDrawReferenceBit,1};
+        auto grouped=f.scene();grouped.batches=raw.data();grouped.batch_count=raw.size();
+        grouped.references=&reference;grouped.reference_count=1;grouped.draw_order=order.data();grouped.draw_order_count=order.size();
+        grouped.cohorts=groups.data();grouped.cohort_count=groups.size();grouped.source_owner=f.resources;
+        std::vector<ALMetalWorldSimpleBatch> flat;flat.reserve(9);
+        for(std::size_t row=0;row<grouped.drawCount();++row)
+        {
+            const auto draw=grouped.draw(row);auto value=draw.source();
+            std::memcpy(value.modelview_projection,draw.modelviewProjection(),64);std::memcpy(value.modelview,draw.modelview(),64);
+            std::memcpy(value.normal_matrix,draw.normalMatrix(),48);std::memcpy(value.rigged_normal_matrix,draw.riggedNormalMatrix(),48);
+            std::memcpy(value.texture_matrix,draw.textureMatrix(),64);flat.push_back(std::move(value));
+        }
+        std::vector<ALMetalWorldVisibilityQuery> queries(10);
+        for(unsigned row=0;row<queries.size();++row)
+        {auto& q=queries[row];identity(q.modelview_projection);q.center[2]=.6f;q.half_extent[0]=q.half_extent[1]=q.half_extent[2]=.1f;
+         q.batch_offset=row;q.fan=7;q.count_samples=1;}
+        grouped.visibility_queries=queries.data();grouped.visibility_query_count=queries.size();
+        for(unsigned format:{0u,3u,6u})
+        {
+            CAPTURE(format);grouped.hdr=format&1;grouped.normal_hdr=format&2;grouped.reverse_z=format&4;
+            std::array<DirectCohortFixture::Output,2> outputs;
+            const auto before=f.renderer->worldSourceCommandStats();
+            for(unsigned mode=0;mode<2;++mode)
+            {
+                auto scene=grouped;scene.source_command_banks=mode;
+                if(!mode){scene.batches=flat.data();scene.batch_count=flat.size();scene.references=nullptr;scene.reference_count=0;
+                    scene.draw_order=nullptr;scene.draw_order_count=0;scene.cohorts=nullptr;scene.cohort_count=0;}
+                std::shared_ptr<ALMetalVisibilityResultBatch> result;
+                auto target=f.renderer->render(scene,&f.error,&result);INFO(f.error);REQUIRE(target);REQUIRE(result);
+                outputs[mode].pixels=f.read(*target);outputs[mode].queries.resize(queries.size());
+                for(unsigned row=0;row<queries.size();++row)REQUIRE(result->wait(row,outputs[mode].queries[row],&f.error));
+            }
+            CHECK(outputs[0]==outputs[1]);const auto after=f.renderer->worldSourceCommandStats();
+            CHECK(after.requested_draws-before.requested_draws==6);CHECK(after.bank_draws-before.bank_draws==4);
+            CHECK(after.fallback_draws-before.fallback_draws==2);CHECK(after.execute_calls-before.execute_calls==4);
+        }
+    }
+}
+
 TEST_CASE("almetal: direct cohorts use the unchanged older ordinary shader library",
           "[almetal][world-cohort-renderer][.world-cohort-renderer-previous-shader]")
 {
@@ -155,6 +300,12 @@ TEST_CASE("almetal: direct cohorts use the unchanged older ordinary shader libra
                 const auto expected=f.render(false,format);const auto before=f.renderer->worldCohortStats();
                 CHECK(f.render(true,format)==expected);
                 CHECK(f.renderer->worldCohortStats().draws-before.draws==2);
+                // Missing optional source-row entry points retain the whole
+                // direct cohort before any bank range is emitted.
+                const auto banks=f.renderer->worldSourceCommandStats();
+                CHECK(f.render(true,format,true)==expected);
+                CHECK(f.renderer->worldSourceCommandStats().bank_draws==banks.bank_draws);
+                CHECK(f.renderer->worldSourceCommandStats().fallback_draws-banks.fallback_draws==2);
             }
         }
     }

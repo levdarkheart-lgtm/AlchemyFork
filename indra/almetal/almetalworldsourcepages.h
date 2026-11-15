@@ -9,6 +9,7 @@
 #include <functional>
 
 struct ALMetalWorldSimpleBatch;
+struct ALMetalWorldSourceCohortView;
 
 inline constexpr std::size_t alMetalWorldSourceMaximumRows = 4096;
 inline constexpr std::size_t alMetalWorldSourceRowsPerPage = 128;
@@ -30,6 +31,37 @@ static_assert(sizeof(ALMetalWorldSourceGlobals) == 32);
 struct ALMetalWorldSourceKey
 {
     std::uint64_t identity = 0, flavor = 0, revision = 0;
+};
+
+struct ALMetalWorldSourceIndexedCall
+{
+    ALMetalWorldSourceKey key;
+    void* native_indices=nullptr;
+    std::size_t index_offset=0;
+    std::uint32_t index_count=0;
+    ALMetalIndexType index_type=ALMetalIndexType::uint16;
+    std::uint32_t row_id=0,row_generation=0;
+};
+struct ALMetalWorldSourceCommandRun
+{
+    std::size_t first=0,count=0;
+    bool double_sided=false;
+};
+
+// Issued only by successful native publication. Immutable numeric metadata,
+// never a CPU cohort, C++ source generation or actual reader-token owner.
+class ALMetalWorldSourceCommandMembership final
+{
+public:
+    ~ALMetalWorldSourceCommandMembership();
+    std::span<const ALMetalWorldSourceIndexedCall> calls() const noexcept;
+    std::span<const ALMetalWorldSourceCommandRun> runs() const noexcept;
+    void* nativeDevice() const noexcept;
+private:
+    struct Impl;
+    explicit ALMetalWorldSourceCommandMembership(std::unique_ptr<Impl>);
+    std::unique_ptr<Impl> mImpl;
+    friend class ALMetalWorldSourcePages;
 };
 
 // Supplied by the completed native producer. owner is a native-only aggregate
@@ -55,6 +87,10 @@ struct ALMetalWorldSourcePageLimits
 {
     std::size_t maximum_rows = alMetalWorldSourceMaximumRows;
     std::uint64_t maximum_metadata_bytes = 32ULL * 1024 * 1024;
+    std::size_t maximum_cached_cohorts=128,maximum_cached_cohort_rows=8192;
+    std::size_t maximum_cached_cohort_metadata_bytes=8*1024*1024;
+    // Zero resolves to the existing hardware-derived source-working-set cap.
+    std::uint64_t maximum_cached_cohort_native_asset_bytes=0;
 };
 struct ALMetalWorldSourcePageStats
 {
@@ -67,6 +103,11 @@ struct ALMetalWorldSourcePageStats
     // reuses a live weak native object's immutable device, without querying it.
     std::uint64_t device_checks=0,device_proof_hits=0,device_rejections=0;
     std::size_t device_proof_entries=0;
+    std::uint64_t cohort_requests=0,cohort_hits=0,cohort_builds=0,cohort_failures=0;
+    std::size_t cached_cohorts=0,cached_cohort_rows=0,cached_cohort_metadata_bytes=0;
+    // Gross unique root texture allocations held by this idle cache; overlaps
+    // other active owners and must not be added to a physical memory total.
+    std::uint64_t cached_cohort_native_asset_bytes=0,cached_cohort_native_asset_limit=0;
 };
 
 // Logical encoder ranges and exact CPU copy/zero operations are separate
@@ -88,6 +129,7 @@ public:
     std::size_t size() const noexcept;
     std::uint32_t rowId(std::size_t request_index) const noexcept;
     std::uint32_t allocationGeneration(std::size_t request_index) const noexcept;
+    std::shared_ptr<const ALMetalWorldSourceCommandMembership> commandMembership() const noexcept;
     // Includes the exact index generation whose native device freeze proved.
     bool matchesSourceCommand(std::size_t request_index,const ALMetalWorldSourceKey&,
                               const ALMetalBuffer& indices) const noexcept;
@@ -127,6 +169,9 @@ public:
         ALMetalCommandBuffer&, std::span<const ALMetalWorldSourceRequest>,
         std::span<const ALMetalWorldSourceRegion>, const ALMetalWorldSourceGlobals&,
         std::string* error=nullptr);
+    std::shared_ptr<const ALMetalWorldSourceFrameView> freezeCohortForCommand(
+        ALMetalCommandBuffer&,const ALMetalWorldSourceCohortView&,
+        const ALMetalWorldSourceGlobals&,std::string* error=nullptr);
     // Product owner injection only; generic/native fixtures default to no
     // policy. Dirty standalone freeze refuses an active policy (no command
     // can own its credit); fully reused standalone views remain legal.
@@ -137,13 +182,17 @@ public:
     // Cache-only loss changes availability, not the authoritative revision.
     void withdraw(std::uint64_t producer_identity) noexcept;
     void clear() noexcept;
+    // Existing frame owner calls this even while the optional GPU path is off.
+    void trimUnusedCohorts() noexcept;
     ALMetalWorldSourcePageStats stats() const noexcept;
     void failNextPublicationForTesting() noexcept;
+    void failNextCohortCacheInsertionForTesting() noexcept;
 private:
     std::shared_ptr<const ALMetalWorldSourceFrameView> freezeInternal(
         ALMetalCommandBuffer*, std::span<const ALMetalWorldSourceRequest>,
         std::span<const ALMetalWorldSourceRegion>, const ALMetalWorldSourceGlobals&,
-        std::string*);
+        std::string*, std::span<const std::shared_ptr<const ALMetalWorldResourceSource>> overrides={},
+        bool certified_cohort=false);
     struct Impl;
     explicit ALMetalWorldSourcePages(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> mImpl;

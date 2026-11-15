@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-207 -->
+<!-- next-defect-id: PPD-210 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5055,3 +5055,63 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered before correcting the fixture; retain native-correctness-24-actual-publish.log and its failed counts. Native material2513/6, shared shadow98414/14 and earlier cohort/renderer/bank/policy gates passed separately.
 
 - 2026-11-15: Fixture-only7b49 rebuild25/static69058 and actual11788/53 pass. Both tests now count the established single dependency observation, retaining all ownership/fallback/cutoff/freshness assertions. Failed24 evidence preserved; automated checks do not close owner register.
+
+
+## PPD-207 — Denied command-bank publication evicts usable warm banks
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native command publication
+- Discovered: 2026-11-15
+- Original reference: A warm immutable bank needs no new publication credit; denial of unrelated optional cold work must preserve usable cached generations.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). SourceCommands prepareForCommand and new source26 prepareCohortForCommand evict cache entries for bank/index capacity before invoking publication admission. With maximum_cached_banks=1, cached A and a new B whose admission is denied, B first removes A, then returns no bank. A subsequently cannot use its former warm hit under the same denial. No executed viewer incident or performance attribution is claimed.
+- Next action: Make admission failure preserve cached warm banks, covering both bank-count and index-capacity eviction boundaries; add a focused native A/B-denial/A-hit regression. Keep all byte/live-bank bounds and completion credit semantics.
+- Verification: Source-confirmed counterexample registered before repair; new native fixture not yet executed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered during source26 integration review. The existing generic path shares this ordering; cohort-per-group use makes preservation of warm cache particularly relevant.
+
+
+- 2026-11-15: Source26 authored repair stages native bank/cache/index registry and one completion-owner retention before no-throw cache commit. Both APIs include A/Bdeny/A-hit and index-capacity fixtures; root bounded source review passes, native execution pending.
+
+## PPD-208 — Idle GPU cohort tables retain uncharged native texture generations
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex retained GPU cohort resource publication
+- Discovered: 2026-11-15
+- Original reference: Optional native caches require explicit bounded lifetime/accounting and must preserve existing usable publications on unrelated failed work.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source26 CohortBinding owns strong native ResourceTables, whose native texture arrays retain MTLTexture generations. Cache native/cohort identities are weak, but without later cohort freeze an expired binding can persist after CPU generations disappear. Current metadata bounds count containers, not retained asset bytes. No executed memory leak or COW incident is claimed.
+- Next action: Bound retained native asset footprint, prune expired cohort caches at the existing frame-owner boundary even when the experimental flag is off, report the separate retained footprint, and test expiry/flag-off maintenance/pending-command protection.
+- Verification: Source-confirmed integration issue, registered before repair. Source26 is unbuilt.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered during coordinated SourcePages integration review; no viewer execution or performance attribution.
+
+
+- 2026-11-15: Source26 authored repair counts unique native root texture allocations, derives cap from existing GPU working-set advice, reports it separately and prunes at ordinary FrameData.beginFrame. Pending FrameViews remain native readers; native fixtures authored, execution pending.
+
+## PPD-209 — GPU cohort cache evicts warm entries before allocating its new list node
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex retained GPU cohort resource publication
+- Discovered: 2026-11-15
+- Original reference: Optional native caches require explicit bounded lifetime/accounting and must preserve existing usable publications on unrelated failed work.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source26 cold freeze evicts LRU cohort bindings, then calls cohorts.push_back, which may allocate and fail. The outer bad_alloc handler then returns failure after discarding usable warm bindings. No executed allocation failure is claimed.
+- Next action: Stage the fallible list node before eviction, then commit via no-throw splice; preserve a usable uncached native FrameView if optional cache insertion fails, and retain bounded cache accounting.
+- Verification: Source-confirmed integration issue, registered before repair. Source26 is unbuilt.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered during coordinated SourcePages integration review; no viewer execution or performance attribution.
+
+- 2026-11-15: Source26 authored repair stages cache list/accounting allocations before eviction and returns valid uncached FrameViews on optional cache insertion failure. One-shot CPU allocation seam and preservation fixture authored; no actual OOM execution claimed.

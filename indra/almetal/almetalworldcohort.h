@@ -52,18 +52,20 @@ private:
 class ALMetalWorldSourceCohort final
 {
 public:
+    using NativeTextureResolver=std::shared_ptr<const ALMetalTexture> (*)(
+        const std::shared_ptr<const void>&,const ALMetalTexture*) noexcept;
     static std::shared_ptr<const ALMetalWorldSourceCohort> seal(
         std::span<const ALMetalWorldKeyedSource>,
         std::shared_ptr<const void> cpu_backing,
         std::shared_ptr<const void> native_tuple,
-        std::uint64_t region_identity,std::string* error=nullptr);
+        std::uint64_t region_identity,std::string* error=nullptr,NativeTextureResolver=nullptr);
     // Completed producer generations are already immutable/validated. A
     // partially dirty group copies only these shared record references.
     static std::shared_ptr<const ALMetalWorldSourceCohort> seal(
         std::span<const std::shared_ptr<const ALMetalWorldCohortSource>>,
         std::shared_ptr<const void> cpu_backing,
         std::shared_ptr<const void> native_tuple,
-        std::uint64_t region_identity,std::string* error=nullptr);
+        std::uint64_t region_identity,std::string* error=nullptr,NativeTextureResolver=nullptr);
     ~ALMetalWorldSourceCohort();
     std::size_t size() const noexcept;
     std::uint32_t family() const noexcept; // 0: SIMPLE, 1: Legacy, 2: PBR.
@@ -78,6 +80,10 @@ public:
     const ALMetalWorldSourceKey& key(std::size_t) const noexcept;
     bool matchesOwners(const std::shared_ptr<const void>& cpu,
                        const std::shared_ptr<const void>& native) const noexcept;
+    // Cold optional GPU certification only. The completed producer returns an
+    // alias of the original typed allocation, never of the tuple control block.
+    std::shared_ptr<const ALMetalTexture> resolveNativeTexture(
+        const std::shared_ptr<const void>& native,const ALMetalTexture*) const noexcept;
     static bool validView(const ALMetalWorldViewMatrices&) noexcept;
 private:
     struct Impl;

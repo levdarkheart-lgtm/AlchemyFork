@@ -492,3 +492,59 @@ churn boundaries, including denials and no false GPU-hit labels. No source26
 implementation is built/tested yet. All root source25 build/check/cost handles
 are terminal. Agents continue source26 in their exclusive files; root owns
 docs and next integration. Mandatory nextPPD207.
+
+
+## Source26 in-progress integration review
+
+Previous goal turn made verified progress: required25/static69058, all native
+and broader gates plus complete72costs. Main HEAD137c0bec64 is docs-only beyond
+built7b49. Source26 remains unbuilt in the isolated cohort tree. No root
+build/test/cost process is running; three exclusive source agents are active.
+
+Shared header contract now includes freezeCohortForCommand, private immutable
+numeric CommandMembership (ordered calls and cull runs), prepareCohortForCommand
+and executeRange. Cold typed texture resolution comes only from the exact
+NativeTuple resource controlblocks, with raw pointer/extent checks. The
+completed cohort stores only a cold resolver function pointer and weak native
+owner identity; no direct-default per-row resolver work. Actual implementation
+file is almetalworldcohort.mm, not .cpp. Root prepared required26/broad26 and
+/tmp/run_gpu_cohort_costs.py wrappers, none executed.
+
+PPD207 source review registers pre-admission eviction of usable command banks.
+Opaque owns staged publication repair and A/B-deny/A-hit fixtures for both old
+and cohort APIs, then NEW alpipeline_gpu_cohort_cost_native.inl at the existing
+actual fixture's EOF. Architecture retains the existing .cpp include plus
+renderer/actual correctness; it prequalifies whole cohorts and aborts after a
+later ICB range failure rather than replaying emitted draws. A default-unused
+one-shot native execution seam supports deterministic coverage. Residency owns
+SourcePages/cohort helpers and native-only page/table content proof. No new
+shader algorithm, renderer backend or app-default activation. Next defect208.
+
+
+## Coherent source26 freeze
+
+All three exclusive owners froze their code; root bounded source reviews and
+git diff --check pass. Source26 remains unbuilt/unexecuted. Added cohort-native
+GPU row/table membership, weak exact ownership/page-content proofs, cached
+indexed banks with query/cull range execution, and actual renderer/producer
+integration. SIMPLE and unsupported cases retain ordinary direct Metal.
+No app defaults activated and no new shader algorithm or backend introduced.
+
+PPD207 stages command-bank publication before cache mutation; PPD208 bounds
+unique retained root MTLTexture allocation footprint by hardware advice and
+prunes expired bindings at FrameData.beginFrame even with the GPU flagOFF;
+PPD209 stages cache allocation before eviction. New deterministic native cases
+cover query/pixel/depth/order, reentrancy/admission/failure, pending completion/
+CPU graph retirement, in-place row changes, cache pressure and failure.
+Foreign-device execution remains unavailable on the default-device-only fixture;
+exact native device guards are retained. No executed OOM claim.
+
+New actual cost hidden tag[.native-gpu-cohort-cost] uses independent ordinary/
+direct/GPU arms, numeric material caches, FrameData/renderers and shared actual
+CPU/GPU budget policy, complete cold/warm/churn count1/4/16/512 and1/3views.
+Count1/failure/denial fallbacks and acceptedGPU counters remain explicit.
+CPU descriptions and native leases retire inside measured boundaries. Existing
+two-mode cost tags remain unchanged. Root next: commit this freeze, FF main,
+python3 /tmp/persistent_native_build_26.py; static native26, focused native
+correctness then fresh cost26. Source25 results remain prior-source evidence.
+Keep full architecture active/partial and all owner acceptance open. Next210.

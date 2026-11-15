@@ -95,6 +95,7 @@ struct ALMetalWorldSourceCohort::Impl
     std::uint64_t region=0;
     std::uint32_t family=0;
     bool family_initialized=false,double_sided=false,uniform_double_sided=true;
+    ALMetalWorldSourceCohort::NativeTextureResolver resolve_texture=nullptr;
 };
 ALMetalWorldSourceCohort::ALMetalWorldSourceCohort(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldSourceCohort::~ALMetalWorldSourceCohort()=default;
@@ -121,6 +122,14 @@ const ALMetalWorldSourceKey& ALMetalWorldSourceCohort::key(std::size_t index) co
 bool ALMetalWorldSourceCohort::matchesOwners(const std::shared_ptr<const void>& cpu,
                                            const std::shared_ptr<const void>& native) const noexcept
 {return exactOwner(mImpl->cpu,mImpl->cpu_pointer,cpu) && exactOwner(mImpl->native,mImpl->native_pointer,native);}
+std::shared_ptr<const ALMetalTexture> ALMetalWorldSourceCohort::resolveNativeTexture(
+    const std::shared_ptr<const void>& native,const ALMetalTexture* texture) const noexcept
+{
+    if(!texture || !mImpl->resolve_texture || !exactOwner(mImpl->native,mImpl->native_pointer,native))return {};
+    auto lease=mImpl->resolve_texture(native,texture);
+    if(!lease || lease.get()!=texture || (!lease.owner_before(native) && !native.owner_before(lease)))return {};
+    return lease;
+}
 bool ALMetalWorldSourceCohort::validView(const ALMetalWorldViewMatrices& view) noexcept
 {
     // The texture matrix belongs to each sealed source, not the shared view.
@@ -129,7 +138,7 @@ bool ALMetalWorldSourceCohort::validView(const ALMetalWorldViewMatrices& view) n
 }
 std::shared_ptr<const ALMetalWorldSourceCohort> ALMetalWorldSourceCohort::seal(
     std::span<const ALMetalWorldKeyedSource> sources,std::shared_ptr<const void> cpu,
-    std::shared_ptr<const void> native,std::uint64_t region,std::string* error)
+    std::shared_ptr<const void> native,std::uint64_t region,std::string* error,NativeTextureResolver resolver)
 try
 {
     if(sources.empty() || !cpu || !native || !region)
@@ -140,13 +149,13 @@ try
         auto source=ALMetalWorldCohortSource::seal(keyed,error);if(!source)return {};
         records.push_back(std::move(source));
     }
-    return seal(records,std::move(cpu),std::move(native),region,error);
+    return seal(records,std::move(cpu),std::move(native),region,error,resolver);
 }
 catch(const std::bad_alloc&){if(error)error->clear();return {};}
 
 std::shared_ptr<const ALMetalWorldSourceCohort> ALMetalWorldSourceCohort::seal(
     std::span<const std::shared_ptr<const ALMetalWorldCohortSource>> sources,std::shared_ptr<const void> cpu,
-    std::shared_ptr<const void> native,std::uint64_t region,std::string* error)
+    std::shared_ptr<const void> native,std::uint64_t region,std::string* error,NativeTextureResolver resolver)
 try
 {
     const auto reject=[&](const char* message)->std::shared_ptr<const ALMetalWorldSourceCohort>
@@ -169,7 +178,7 @@ try
     // introspected to establish its contents. The actual group producer
     // verifies that union before issuing this immutable certificate.
     impl->cpu=cpu;impl->native=native;
-    impl->cpu_pointer=cpu.get();impl->native_pointer=native.get();impl->region=region;
+    impl->cpu_pointer=cpu.get();impl->native_pointer=native.get();impl->region=region;impl->resolve_texture=resolver;
     return std::shared_ptr<const ALMetalWorldSourceCohort>(new ALMetalWorldSourceCohort(std::move(impl)));
 }
 catch(const std::bad_alloc&){if(error)error->clear();return {};}

@@ -3133,6 +3133,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << stats.pages.copied_page_bytes << '/' << stats.pages.copied_bank_bytes << '/' << stats.pages.view_bytes
                     << ", publication_admission_requests/denials=" << stats.pages.admission_requests << '/' << stats.pages.admission_denials
                     << ", admitted_charged_logical_work_bytes=" << stats.pages.admitted_bytes
+                    << ", cohort_cache_requests/hits/builds/failures=" << stats.pages.cohort_requests << '/' << stats.pages.cohort_hits
+                    << '/' << stats.pages.cohort_builds << '/' << stats.pages.cohort_failures
+                    << ", cached_cohorts/rows/metadata_bytes=" << stats.pages.cached_cohorts << '/' << stats.pages.cached_cohort_rows
+                    << '/' << stats.pages.cached_cohort_metadata_bytes
+                    << ", cached_cohort_native_asset_bytes/cap=" << stats.pages.cached_cohort_native_asset_bytes
+                    << '/' << stats.pages.cached_cohort_native_asset_limit
                     << ", live_metadata_bytes=" << stats.pages.live_metadata_bytes << LL_ENDL;
                 const auto banks=renderer->worldSourceCommandStats();
                 LL_INFOS("MetalScene") << "Native source command banks: view=" << owner

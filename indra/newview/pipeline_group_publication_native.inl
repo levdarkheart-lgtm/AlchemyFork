@@ -14,6 +14,19 @@
 #include "../almetal/almetalworldcohort.h"
 namespace ALSceneGroupPublicationNative
 {
+// Cold optional GPU publication resolves only exact typed roles from the
+// already completed native union. The alias owns the original allocation's
+// control block, never the tuple or a CPU producer graph.
+inline std::shared_ptr<const ALMetalTexture> resolveCohortTexture(
+    const std::shared_ptr<const void>& native_owner,const ALMetalTexture* texture) noexcept
+{
+    if (!native_owner || !texture) return {};
+    const auto tuple=std::static_pointer_cast<const ALScenePublicationNative::NativeTuple>(native_owner);
+    for (const auto& resource:tuple->resources)
+        if (resource.allocation.get()==texture && resource.bytes==ALScenePublicationNative::textureBytes(*texture))
+            return std::shared_ptr<const ALMetalTexture>(resource.allocation,texture);
+    return {};
+}
 struct WeakResource
 {
     std::weak_ptr<const void> allocation;
@@ -491,7 +504,7 @@ try
                 native.at(batch.diffuse_textures[slot]) != ALScenePublicationNative::textureBytes(*batch.diffuse_textures[slot]))
             { ++statistics.failures;return {}; }
     }
-    value->cohort = ALMetalWorldSourceCohort::seal(proofs, value, value->native_tuple, region.identity);
+    value->cohort = ALMetalWorldSourceCohort::seal(proofs, value, value->native_tuple, region.identity,nullptr,&resolveCohortTexture);
     if (!value->cohort) { ++statistics.failures;return {}; }
     // No valid-looking prefix may replace the group's complete publication.
     if (!state->publish(revision, value))
@@ -798,7 +811,7 @@ try
             if (!texture || !contains(texture, ALScenePublicationNative::textureBytes(*texture)))
             { ++statistics.failures;return {}; }
     }
-    value->cohort = ALMetalWorldSourceCohort::seal(cohort_sources, value, value->native_tuple, region.identity);
+    value->cohort = ALMetalWorldSourceCohort::seal(cohort_sources, value, value->native_tuple, region.identity,nullptr,&resolveCohortTexture);
     if (!value->cohort) { ++statistics.failures;return {}; }
     if (!state->publish(revision, value)) { ++statistics.failures;return {}; }
     const auto still_current = [&] { return state->revision() == revision && !state->dirty() && state->publication().get() == value.get(); };

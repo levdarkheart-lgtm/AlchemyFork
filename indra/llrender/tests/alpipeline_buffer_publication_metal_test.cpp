@@ -1521,6 +1521,11 @@ TEST_CASE("Actual scalar and indexed material cohorts preserve every legacy fami
         auto flat_target=renderer->render(f.scene(*flat.mMetalWorldSimpleCapture),&f.error);INFO(f.error);REQUIRE(flat_target);
         auto group_target=renderer->render(f.scene(*grouped.mMetalWorldSimpleCapture),&f.error);INFO(f.error);REQUIRE(group_target);
         CHECK(f.read(*flat_target)==f.read(*group_target));
+        const auto reads=f.reads();const auto banks=renderer->worldSourceCommandStats();
+        auto gpu_scene=f.scene(*grouped.mMetalWorldSimpleCapture);gpu_scene.source_command_banks=true;
+        auto gpu_target=renderer->render(gpu_scene,&f.error);INFO(f.error);REQUIRE(gpu_target);
+        CHECK(f.read(*flat_target)==f.read(*gpu_target));CHECK(f.reads()==reads);
+        CHECK(renderer->worldSourceCommandStats().bank_draws-banks.bank_draws==2);
     }
 }
 
@@ -1552,15 +1557,21 @@ TEST_CASE("Actual material cull ranges preserve raw group raw logical order and 
             query.half_extent[0]=query.half_extent[1]=query.half_extent[2]=.08f;query.batch_offset=index;query.fan=7;query.count_samples=1;
         }
         auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
-        std::array<GroupPublication::Image,2> images;std::array<std::array<std::uint64_t,5>,2> counts{};
-        for(U32 mode=0;mode<2;++mode)
+        std::array<GroupPublication::Image,3> images;std::array<std::array<std::uint64_t,5>,3> counts{};
+        const auto reads=f.reads();
+        for(U32 mode=0;mode<3;++mode)
         {
             auto scene=f.scene(mode?capture:*flat.mMetalWorldSimpleCapture);scene.source_rows.reset();
+            scene.source_command_banks=mode==2;
             scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
+            const auto banks=renderer->worldSourceCommandStats();
             std::shared_ptr<ALMetalVisibilityResultBatch> result;auto target=renderer->render(scene,&f.error,&result);INFO(f.error);REQUIRE(target);REQUIRE(result);
             for(U32 query=0;query<queries.size();++query)REQUIRE(result->wait(query,counts[mode][query],&f.error));images[mode]=f.read(*target);
+            if(mode==2){CHECK(renderer->worldSourceCommandStats().bank_draws-banks.bank_draws==2);
+                CHECK(renderer->worldSourceCommandStats().execute_calls-banks.execute_calls==2);}
         }
-        CHECK(images[0]==images[1]);CHECK(counts[0]==counts[1]);
+        CHECK(images[0]==images[1]);CHECK(images[0]==images[2]);
+        CHECK(counts[0]==counts[1]);CHECK(counts[0]==counts[2]);CHECK(f.reads()==reads);
     }
 }
 
@@ -1616,16 +1627,18 @@ TEST_CASE("Actual material cohort admission rejects mutable scope and keeps whol
     CHECK_FALSE(f.group_dependencies);CHECK_FALSE(f.group_layout);
 }
 
-TEST_CASE("Actual direct material cohort native resources outlive CPU descriptors and preserve an encoded old generation",
+TEST_CASE("Actual retained cohort native resources outlive CPU descriptors and preserve an encoded old generation",
           "[almetal][pipeline-buffer-publication][native-material-group][native-tuple]")
 {
-    for(U32 family:{0u,1u,2u})
+    for(U32 family:{0u,1u,2u})for(bool gpu:{false,true})
     {
-        CAPTURE(family);MaterialGroupPublication f(family);auto& info=f.materialDraw(true);auto buffer=info.mVertexBuffer;
+        CAPTURE(family,gpu);MaterialGroupPublication f(family);auto& info=f.materialDraw(true);auto buffer=info.mVertexBuffer;
+        const U32 count=gpu&&family?2:1;if(count==2)f.materialDraw();
         auto packet=f.sealMaterial();REQUIRE(packet);std::weak_ptr<const NativeGroup> weak_group=packet;
+        std::weak_ptr<const ALMetalWorldSourceCohort> weak_cohort=packet->cohort;
         std::weak_ptr<const Inputs::ALScenePublicationNative::Payload> weak_source=std::static_pointer_cast<const Inputs::ALScenePublicationNative::Payload>(info.state->publication());
         std::weak_ptr<ALNativePublication::State> weak_state=info.state;
-        Inputs::LLCullResult cull;REQUIRE((family?cull.pushNativeMaterialRange(f.type,packet,1,f.region.snapshot()):cull.pushNativeSimpleRange(packet,1,f.region.snapshot())));
+        Inputs::LLCullResult cull;REQUIRE((family?cull.pushNativeMaterialRange(f.type,packet,count,f.region.snapshot()):cull.pushNativeSimpleRange(packet,count,f.region.snapshot())));
         Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture,true,false);
         {CullScope scope(cull);f.capture(pipeline);}REQUIRE(capture.complete);
         REQUIRE(capture.source_cohorts.size()==1);
@@ -1635,18 +1648,21 @@ TEST_CASE("Actual direct material cohort native resources outlive CPU descriptor
         const auto expected_image=f.read(*expected_target);
         const auto cohort_before=renderer->worldCohortStats();
         const auto resources_before=renderer->worldResourceStats();
+        const auto banks_before=renderer->worldSourceCommandStats();
         REQUIRE(renderer->beginCommandBatch("Material cohort old native generation",&f.error));
-        auto scene=f.scene(capture);scene.material_argument_buffers=true;
+        auto scene=f.scene(capture);scene.material_argument_buffers=true;scene.source_command_banks=gpu;
         auto target=renderer->render(scene,&f.error);INFO(f.error);REQUIRE(target);
-        // PPD-193: this mechanism uses ordinary shaders, not argument tables.
-        CHECK(renderer->worldCohortStats().draws==cohort_before.draws+1);
+        CHECK(renderer->worldCohortStats().draws==cohort_before.draws+count);
+        CHECK(renderer->worldSourceCommandStats().bank_draws-banks_before.bank_draws==(gpu&&family?count:0));
+        // Cohort GPU tables have their own cache; this does not enter the
+        // legacy per-draw argument-table path or retain its CPU sources.
         CHECK(renderer->worldResourceStats().bound_draws==resources_before.bound_draws);
         auto completion=renderer->commandBatchCompletion();REQUIRE(completion);CHECK_FALSE(completion->isComplete());
         scene={};cull.clear();packet.reset();capture.clearDraws();capture.world_resources=std::make_shared<Inputs::WorldResources>();
         f.group->invalidate();f.group_layout.reset();f.group_dependencies.reset();
         for(const auto& source:f.infos)source->state->invalidate();
         Inputs::sNativeSceneSources.clear();f.infos.clear();
-        CHECK(weak_group.expired());CHECK(weak_source.expired());CHECK(weak_state.expired());
+        CHECK(weak_group.expired());CHECK(weak_cohort.expired());CHECK(weak_source.expired());CHECK(weak_state.expired());
         gGL.frameFences().release();const auto before=LLVertexBuffer::metalUploadStats();
         const std::array<LLColor4U,3> blue{LLColor4U(0,0,255,255),LLColor4U(0,0,255,255),LLColor4U(0,0,255,255)};
         buffer->setColorData(blue.data());buffer->unmapBuffer();
@@ -3757,3 +3773,4 @@ TEST_CASE("Actual plain SIMPLE cohorts include publication same-view replacement
 {actualDirectCohortCosts({0});}
 
 #include "alpipeline_compile_cost_attribution_native.inl"
+#include "alpipeline_gpu_cohort_cost_native.inl"

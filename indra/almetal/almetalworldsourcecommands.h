@@ -68,10 +68,25 @@ public:
         std::shared_ptr<const ALMetalWorldSourceFrameView>,
         std::span<const ALMetalWorldSourceCommandDraw>,std::string* error=nullptr,
         ALMetalWorldSourceCommandFailure* failure=nullptr);
+    // Uses private immutable ordered cohort membership issued by SourcePages.
+    // Warm lookup compares exact membership identity, not N reconstructed
+    // draw/key values. The idle cache keeps only a weak membership identity;
+    // this actual command retains the Bank and current native-only FrameView.
+    std::shared_ptr<const Batch> prepareCohortForCommand(ALMetalCommandBuffer&,
+        std::shared_ptr<const ALMetalWorldSourceFrameView>,std::string* error=nullptr,
+        ALMetalWorldSourceCommandFailure* failure=nullptr);
     bool execute(ALMetalRenderEncoder&,ALMetalCommandBuffer&,const Batch&,std::string* error=nullptr);
+    // Execute an ordered nonempty subset of the same immutable Bank. Callers
+    // split at original query/raster boundaries and restore inherited state;
+    // range selection neither republishes the Bank nor retains CPU packets.
+    bool executeRange(ALMetalRenderEncoder&,ALMetalCommandBuffer&,const Batch&,
+        std::size_t first,std::size_t count,std::string* error=nullptr);
     void clear() noexcept;
     ALMetalWorldSourceCommandStats stats() const noexcept;
     void failNextPublicationForTesting() noexcept;
+    // One-shot CPU-owner fault seam; disabled unless explicitly armed. Fail
+    // before emitting the range after this many successful range submissions.
+    void failExecutionAfterForTesting(std::size_t successful_ranges) noexcept;
 private:
     struct Impl;
     explicit ALMetalWorldSourceCommands(std::unique_ptr<Impl>);
