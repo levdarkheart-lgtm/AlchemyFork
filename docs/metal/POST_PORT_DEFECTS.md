@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-295 -->
+<!-- next-defect-id: PPD-296 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6992,3 +6992,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered observed warning state with unproved cause before any corrective implementation. Owner closed viewer after both recordings. Original cleanup behavior is preserved; no fix or closure claimed.
+
+
+## PPD-295 — Native residency admission allocates rejection scratch for every candidate
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Architecture Session / native admission implementation
+- Discovered: 2026-11-15
+- Original reference: This native cache has no upstream API equivalent. Original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 llspatialpartition.h drawmap_elem_t/draw_map_t retain LLDrawInfo and native-independent geometry ownership. Preserve draw order, producer revisions, required readers and actual completion lifetime; cache withdrawal is not a producer mutation.
+- Evidence: [Integrated69122 report](research/integrated-build-69122-quiet-club-20261115.md), alnativesourceworkingset.cpp retain candidate.resources construction before capacity rejection, PPD240/274 runtime counters.
+- Next action: Measure allocation-free bounded local resource staging against the exact current retain implementation; integrate only if admission/rejection/eviction/reentrancy/size validation remain equivalent and contained CPU/allocation costs support it. Keep all caps and admission policy unchanged.
+- Verification: Every new source currently grows a heap vector of weak resource identities before byte admission, including2.56M/4.33M observed byte-rejection occurrences. Those counts do not establish total allocations or causal viewer FPS cost. Ready source lookups already use touch, so serial-only negative caching would not address the observed new-payload churn. Producer revision alone cannot safely key denial across resource-variant changes or recovered capacity. No repair/result yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered source-confirmed transient allocation opportunity before implementation. Current-view/queued/GPU readers, typed native identities, resource-size conflict checks, current-frame subset, reentrant callbacks and all numeric caps remain mandatory. An inline staging implementation must spill for arbitrary larger unions and preserve existing retained-entry storage/lifetime. No cap raise, negative-cache policy or quality change.
+
+- 2026-11-15 initial documentation harness rejected the new record until the next-ID marker advancedPPD295→296; corrected metadata before implementation. A first metadata replacement assertion used an incomplete marker format and stopped before writing. No renderer/test execution failure.

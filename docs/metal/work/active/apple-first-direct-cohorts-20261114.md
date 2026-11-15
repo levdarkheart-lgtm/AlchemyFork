@@ -2532,3 +2532,27 @@ advancednext295 andreran beforehandoff. Owner explicitlyrequestedanalysis
 message toArchitecture Session; finishlocalreport/docscommit, sendexactanalysis
 andpaths tothatnamedthread, thenleaveimplementation withArchitecture Session.
 No furthercapture, relaunch, sourcefix orpush authorizedbythis testhandoff.
+
+
+## Runtime evidence resumed architecture work — PPD295
+
+Owner-authorized Testing Integrated Build completed both69122 captures and sent
+78edcee323 report/state/register handoff. Runtime evidence now exists; original
+goal active again, acceptance remains partial. Cache turnover240/274 is real;
+commonretain has heap resource-vector staging before every byte denial. Ready
+lookups alreadytouch; producer-only negative caching and cap increases are not
+justified. First bounded repair295 will stage small resource sets locally and
+materialize the unchanged retained vector only after admission, with arbitrary
+union spill, exact callbacks/accounting and independent actual readers. Benchmark
+the actual common sources against pinned old source and retain adverse cases.
+This targets an observed hot ownership boundary, not proven whole-frame dominance.
+
+Independent zero-job source audit confirms bothloggedpaths: productionshadow
+8192-per-family threshold dominates backend256; observed666main/1158probe never
+qualify. World workers deliberatelyOFF and additionallyexcludecohorts. No broken
+callsite is demonstrated, but useful detached rendering remains unproved for
+actualsmall SL workloads. Do not lower thresholds blindly. Full G3 and whole-
+engine performance acceptance remain open; this cache repair does not close them.
+No new launch/login/profile/push; original69122 app is immutable. Root owns
+shared integration/docs/builds; independent native common code may be authored
+in its own worktree with exclusive files and tested before integration.
