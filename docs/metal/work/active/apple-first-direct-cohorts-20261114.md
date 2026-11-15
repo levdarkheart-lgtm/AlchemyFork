@@ -1149,3 +1149,68 @@ credit retirement clears in-flight debt but never refunds current-frame quota.
 39changes only fixture/docs, so production source38 remains the cost pin.
 Required39/fullnative and broader combined functional gates follow; no default
 activation, replacement of owner preview, viewer/profile/push or goal closure.
+
+PPD233 records an unbuilt direct-bank authoring error: scene guard inserted in
+factory instead of renderInternal. Move guard before freeze;39product unaffected.
+
+PPD234 registers the direct-bank WIP resource-policy mismatch before repair:
+new gross geometry/numeric/table/texture retention must not silently inherit the
+64MiB ICB/index ceiling. Preserve that cap, bound/report additional native assets
+under existing hardware working-set policy, with pending debt/pruning explicit.
+
+
+## Source39 verified checkpoint; direct-bound experiment ownership
+
+Exact1630611063,26.4.0.69080: required39 doctor/configure/build0(29.260s),
+corrected additive verifier38 staticPASS346ARM64/signatures/source/imports/
+features/defaults; strict3587files/905informational/0blockers/0errorsPASS.
+Source39 differs from38 only docs and232fixture setup. Byte-identical
+almetal_tests and production-source diff prove reuse of14successful38native
+scopes; seven39processes re-execute actual-owner14537/59 and all previously
+unexecuted tails (GPUrows6538/3, compact1990/8, resources12379/7,
+oldresources4721/1, oldrows283/1, noLayout13/1), allPASS with API/GPU validation.
+This covers21scopes; it is not a claim that all21were rerun in39.
+
+Broader combined-correctness39 completes with exit0:88/88selectedCTest groups
+(145.044s),10additional exact native specializations and3non-skipped archive
+policy processes pass (14processes total). Private decoder corpus was not
+rerun because decoder/tool code is unchanged. Source38fourcost evidence remains
+explicitly labeled38, with production-source identity recorded; no new FPS or
+owner acceptance follows these contained gates. Failed static38 and actual38
+fixture receipts/logs remain preserved under231/232. No live root job remains.
+
+The next PPD217 implementation is isolated in
+/private/tmp/alchemy-apple-first-direct-bound-cohort-banks,
+branchcodex/apple-first-direct-bound-cohort-banks, base1630611063. Retain old
+row/certificate/publication and current-bank control to isolate the hypothesis.
+Direct binding mode is opt-in scene.source_direct_command_banks; root adds
+nonpersistent/default0 RenderMetalSourceDirectCommandBanks, gated by bank mode,
+in common main/probe capture. Owner69065 app/launcher is unchanged.
+
+Exclusive paths: residency owns SourcePages/Commands headers/implementations
+and their existing native tests; architecture owns world.h/.cpp/builtin shader
+(three-file source freeze authored, unbuilt); opaque owns existing cohort
+renderer/actual-owner/GPU+many cost fixtures. Root owns pipeline.cpp/settings,
+CMake/docs/all integration/execution. No concurrent writes across these sets.
+Native binding ABI agreed: geometryVS0/1/2/3/8/9/10,region176VS4,globals32VS5,
+coldUV/policy96VS6,selectedPBRnumericVS11 andFS0,resourceTableFS1. New shaders
+retain arithmetic/varyings and reuse existing fragment functions. Old libraries
+missing optional VS fail direct before freeze. PBR numeric ABI must match both
+stages. SourceRows diagnostic shaders remain unchanged.
+
+Fixed native view slots are leased per command/chunk/snapshot; idle bank storage
+is not a reader. Warm hits key exact immutable membership/slot/region offsets/
+normalHDR and do not encodeNcommands or copyN400Bconstants. Slot exhaustion
+falls direct without waits. Existing calls/banks/metadata bounds remain;233guard
+placement repair is authored. PPD234 repair keeps64MiB ICB/index scope intact
+and bounds extra deduplicated gross native binding assets by the exact existing
+SourcePages hardware asset policy, not a duplicate formula or raised cap.
+Native-only closure, pending/abandoned/borrowed slot lifetime, denial and idle
+trim even while flagsOFF must be proved before performance acceptance.
+
+Next: finish/freeze backend and4arm native/actual-cost fixtures, root review,
+append direct slot/bank debt census, integrate source40, required build/static/
+strict/native and new ordinary/direct/old-bank/new-bank cost gates. All new
+experiment execution is pending. Original full route (GPU work before repeated
+CPU discovery, animated conservative bounds, broader detached/pass/memory work)
+and owner whole-engine performance remain partial/ACTIVE; no goal shrink.

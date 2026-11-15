@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-233 -->
+<!-- next-defect-id: PPD-235 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5524,6 +5524,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Root integrates capture policy, ordered renderer and actual mixed raw/cohort CPU/GPU-denial fixture for source38. Existing explicit SourceRows/nonGroupSources semantics retained; native execution pending.
 
+- 2026-11-15: Source39 actual-owner14537/59 passes the complete mixed raw/cohort CPU/GPU-denial fixture after232setup correction, retaining no scalarSourceRows/resource-descriptor expansion and exact output/query checks. Source38 renderer5046/8 and full accepted-bank cost checks also pass; owner runtime pending.
+
 ## PPD-229 — Retained frustum visibility remains a net cost in cheap draw workloads
 
 - Status: investigating
@@ -5606,3 +5608,45 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered before fixture-only correction. Production budget limits and renderer code remain unchanged; next233.
 
 - 2026-11-15: Explicit limit1/acquire/release fixture repair independently reviewed against budget retirement and per-frame checks; all original assertions retained. Required39/complete actual-owner retest pending.
+
+
+- 2026-11-15: Explicit quota exhaustion correction1630611063 passes source39 actual-owner14537/59 with all original denial assertions retained. Native tail and broader88CTest+10specialization+3archive processes also pass; failed38history retained. No production budget change.
+
+## PPD-233 — New direct-bank scene guard is authored in the renderer factory
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex direct-bound bank renderer integration
+- Discovered: 2026-11-15
+- Original reference: Scene validation belongs in renderInternal, where the scene exists; renderer construction is independent of per-view settings.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). During first unbuilt WIP in isolated direct-bound-cohort-banks tree, generic patch context places source_direct_command_banks validation in create() near world.cpp:3548. That function has no scene parameter. No build, native test or owner incident is attributed; source39 product is unaffected.
+- Next action: Move only the scene guard to the exact renderInternal validation boundary before feature freeze/build. Keep factory behavior unchanged and preserve old bank control semantics.
+- Verification: Author source review before compilation; correction and executed gates pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Source author reports before moving the guard; root assigns233. Next234.
+
+
+- 2026-11-15: Source author moved guard to exact renderInternal boundary in frozen world.cpp; no feature build/native execution yet. Source39 remains unaffected.
+
+## PPD-234 — Direct-bank WIP applies the index/ICB ceiling to all retained scene assets
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex direct-bound command resource admission
+- Discovered: 2026-11-15
+- Original reference: Native command allocation/index retention and gross existing scene-asset retention are distinct scopes. SourcePages already resolves its asset ceiling from the device recommended working set; shared assets are not new ICB allocations.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Unbuilt direct-bank WIP sourcecommands.mm:124–145 adds binding_bytes (including geometry/numeric/tables/root textures) to the existing64MiB ICB-plus-index admission sum. A legal material/resource set can exceed this before any large ICB allocation, so the new experiment can reject useful banks due to an unrelated inherited ceiling. No runtime rejection or source39 regression is attributed.
+- Next action: Preserve existing64MiB command/index bound. Account and bound the additional deduplicated gross binding-asset retention separately using the existing hardware-derived SourcePages working-set policy, including pending generations and idle pruning. Report both scopes/caps and test actual denial/recovery; do not increase existing command/index limits or count overlapping gross retention as new physical allocation.
+- Verification: Root source/policy review during first unbuilt implementation; correction and executed tests pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before correcting WIP admission scope. Source39 and original bank mode remain unchanged; next235.
+
+- 2026-11-15: Backend author separates extra binding-asset retention from unchanged64MiB ICB/index scope, reusing exact resolved SourcePages asset limit via FrameView; pending/idle scope and independent eviction predicates authored. Native separation/denial/retirement tests pending; no raised existing cap or duplicate policy.
