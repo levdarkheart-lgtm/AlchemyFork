@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-294 -->
+<!-- next-defect-id: PPD-295 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -280,6 +280,9 @@ as a Metal-introduced regression or a cause of PPD-002.
   Owner explicitly approves committing/pushing restored4/6 decoder scope;
   then explicitly includes named shadow-occlusion/projector repairs and tests.
   No eight-worker gain is claimed; active source returns to4/6.
+
+
+- 2026-11-15 integrated69122 profile evidence: Owner-authorized busy-club teleport trace300.725s records one Texture WARNING: OpenHTJ2K SOT marker expected but3FEE found. Asset bytes/cause and retry/fallback outcome unproved; no codec source change, decoder regression or new renderer error inferred. See [two-scene report](research/integrated-build-69122-quiet-club-20261115.md); raw asset identifiers remain private. Existing accepted experiment/history retained.
 
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 
@@ -5793,6 +5796,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15 69085 interior measured census endpoints add861unattributed group factory failures, alongside630unsupported returns; counters are not CPU times. New11stage/6miss/unsupported-mask and exact configured cap census integrated with existing fault injections; no cap/policy change. Probe source-build imbalance remains unattributed, not a camera invalidation proof.
 
+
+- 2026-11-15 integrated69122 profile evidence: Exactbeb6837b71 quiet301.061s/club300.725s runs now expose publication failure stages. Club native_retain group-failure delta4003, other recorded stages0. This is optional retained-path failure/cost evidence, not ERROR/FATAL or dropped-draw proof. Both scenes churn the byte-capped native cache; no policy repair performed. [Report](research/integrated-build-69122-quiet-club-20261115.md).
+
 ## PPD-241 — Trial shadow capture failures lack a source-level attribution
 
 - Status: investigating
@@ -5813,6 +5819,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15 exacttrial/current audit: failed_views samples !spot_shadow_capture_complete at captureMetalShadowScene scope exit before final reconciliation/encoding/commit. Possible admission/source/palette/matrix/logical/pool-hook exits are not distinguished.7main/1probe therefore means CPU capture incompleteness, not GPU errors; final transaction failures are outside this counter. Detached threshold8192 was not reached. Add first-reason buckets before clearing; preserve first failure and count later reconciliation separately. No threshold change or attribution to125/240.
 
 - 2026-11-15 69085 initial log reports4main/0probe CPU failed views; measured profile still needs typed attribution. Root adds first CPU stage/pass/map/line buckets and separate end-incomplete total, preserving first failure before later phases/clearing. Independent source peer review passes; begin failures before capture-active remain outside this counter as before. No native GPU failure attribution or threshold change.
+
+
+- 2026-11-15 integrated69122 profile evidence: Main/probe detached_eligible/calls/completed and compact dispatch/serial counters remain0 in both actual69122 trace windows; cumulative maximum family inputs666/1158, below8192 threshold. Main failed_views4→4 and probe0→0. No new shadow failure is observed, but useful parallel-render preparation has not been demonstrated in these real SL workloads. Preserve prior small-family cost losses rather than lowering thresholds blindly. [Report](research/integrated-build-69122-quiet-club-20261115.md).
 
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
@@ -6519,6 +6528,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.
 
+
+- 2026-11-15 integrated69122 profile evidence: Numeric runtime counters now attribute quiet/club retain byte-cap rejection deltas2559646/4331675 and capacity eviction deltas1090835/1535092 inside sampled actualtrace intervals, cap3892314112bytes. Working-set retain is visible in CPU samples(3.452s/4.900s inclusive). Diagnostics work; total frame-time causality and policy quality remain unproved. Counts are occurrences and ledger estimates, not unique objects or physical allocations. No cap increase or fix. [Report](research/integrated-build-69122-quiet-club-20261115.md).
+
 ## PPD-275 — New cache-lifetime fixture asserts retirement before releasing frame upload owners
 
 - Status: ready_for_owner
@@ -6962,3 +6974,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 missing working-set evidence registered before validation-only logging/coverage additions. Keep the first67 timing attempt and all prior receipts; do not add runtime policy or increase caps for this harness gap.
 
 - 2026-11-15 observed verification: Source68/83c8b70ad7 required/static/strict and new native five-case suite3604/5 passes; tiny metadata/asset/ICB caps, required raw fallback control and actual pending byte/credit retirement all execute positively. Actual48-condition cost87446/1 and parser48pairs/1680raw rows passes. At64sources warm: page metadata256.3KiB; gross binding801.9KiB(one view)/930.4KiB(three); ICB64/192KiB; index12KiB. These scopes overlap and are not total physical RAM. All explicit cap assertions pass; actual physical process-memory behavior/owner acceptance remains pending.
+
+
+## PPD-294 — Teleport cleanup logs remaining old-region map objects
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex Testing Integrated Build / Architecture Session handoff
+- Discovered: 2026-11-15
+- Original reference: Original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 and candidatebeb6837b71 have byte-identical LLViewerObjectList::clearAllMapObjectsInRegion bodies. After logging the remaining-object count, the function calls markDead on each region object.
+- Evidence: [Integrated69122 two-scene report](research/integrated-build-69122-quiet-club-20261115.md); private busy log-review.json and source-warning-review.json.
+- Next action: Retain as an observed cleanup anomaly; if investigating retention, trace actual object and native-generation retirement after cleanup. Do not infer a leak, new Metal regression or bypass cleanup from warning counts alone. No further live capture authorized by this handoff.
+- Verification: Owner teleport completed in the300.725s club trace. Two WARNING rows report1045 and1529 remaining objects. Counts are not proven unique or additive; the log does not establish permanent retention. No ERROR/FATAL rows or viewer crash during the two recorded windows. No code change or repair attempted.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered observed warning state with unproved cause before any corrective implementation. Owner closed viewer after both recordings. Original cleanup behavior is preserved; no fix or closure claimed.

@@ -1,7 +1,11 @@
 # Apple-first architecture implementation status
 
-Updated 2026-11-15. The original whole-engine goal is **blocked on owner runtime
-acceptance** after three consecutive dependency audits. The named Goals1–5 mechanisms are implemented and integrated; a
+Updated 2026-11-15. The original whole-engine architecture remains **partial**.
+The owner has now supplied quiet-house and teleport/club runtime samples; see
+[the two-scene analysis](../../research/integrated-build-69122-quiet-club-20261115.md).
+Detached render-preparation counters stayed0 in both, so useful parallel-render
+benefit is unproved despite implemented callsites. Cache turnover also needs
+Architecture Session follow-through. Earlier blocked status below is historical. The named Goals1–5 mechanisms are implemented and integrated; a
 bounded [source audit](../../research/apple-first-engineering-delivery-20261115.md)
 found no additional required implementation callsite. This does not establish
 a whole-viewer performance gain or complete the product release gates.
@@ -74,3 +78,10 @@ implementation/staging work was identified. Completion is unproved; the full
 objective is retained. Next action is owner combined-viewer feedback or
 subsequent explicit runtime authorization under the existing goal restriction.
 Do not rerun passing checks or invent additional phases to fill this dependency.
+
+Latest owner-authorized samples:301.061s quiet and300.725s teleport/club, both
+recorders/offline analyses exit0, owner closed viewer. No ERROR/FATAL rows,
+24/129WARNING inactual windows; PPD294 cleanup observation nowregistered.
+No source/app/settings change or push. Testing Integrated Build is handing the
+report to Architecture Session for implementation decisions. Different scenes,
+aggregate means and no old-build paired run do not prove an FPS gain or release.

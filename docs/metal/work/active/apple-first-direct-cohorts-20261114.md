@@ -2493,3 +2493,42 @@ launcher remain ready, all prior apps/source/evidence preserved. PPD287 remains
 investigating for original acceptance; no defect closed and no runtime action.
 Artifacts: evaluation-preflight-69122.json and
 post-delivery-dependency-audit-02.json/-03.json under the existing ignored E2root.
+
+
+### Testing Integrated Build: owner-authorized quiet and club captures
+
+Owner ran exact69122/PID66666 then explicitly requested5minprofiling+logwatch.
+Owner next requestedsecondrecordingBEFORETP; actual21:40:21.405tracebegan before
+21:40:42TPrequest/44arrival/47finished. Owner confirmedviewerclosed afterboth.
+Quiet301.061391s andclub300.725394s GamePerformanceOverview, both recorder and
+TOC/CPU/GPUexport/parser chains terminal0. Sessions75274/20449 recordingdone;
+quiet88453/busy89574 offlineanalysisdone. No live job remains. Initial150.24s
+CPU-only attempt was deliberately terminated(code1), retainedsuperseded and
+excluded. Quietofflinechain finished21:39:56.913 beforebusyrecordcommand21:40:19,
+so noanalysisoverlap. Quiet339DWARFwarnings, busy0; aggregate-onlyframeschemas.
+Postcapturedoctor95656/verify_app91558 exit0;346ARM64slices,0invalid. No build
+needed forunchangedcapturedsource; no app/settings/source modification orpush.
+
+[Whole-engine report](../../research/integrated-build-69122-quiet-club-20261115.md)
+andprivate artifacts retain exactcommands/exits/source/binary/log/export hashes.
+Last60Overviewcadence12.44/19.50FPS andmeaninterval73.28/51.31ms aredifferent
+workloads,notbeforeafter architectureacceptance. Quietprobes27.078CPU-s/31.7%
+main; clubmain239.714CPU-s withshadows/geometry/lighting. Detachedeligible/calls/
+completed andcompactdispatch/serial0 inboth main/probecensus throughout both
+windows; familymaxima666/1158 below8192. Thus no usefulparallelrender benefit
+isdemonstrated inactualSLscene, despite implementedcallsites. Do not lower
+thresholds blindly or forcecost-regressingoptionalGPU paths.
+
+Nativeworking-setcap3,892,314,112bytes causes2,559,646/4,331,675sampled byte
+rejections and1,090,835/1,535,092capacityevictions inquiet/club. Retain visible
+CPU3.452/4.900s inclusive, notdominantframecauseproved. Clubloadingbacklog and
+peakfootprint31,805MiB requirecontext; no leakproof. Actualwindowlogs24/129
+WARNING,0ERROR/FATAL; OpenHTcodestreamwarning1, oldregioncleanup2. PPD005/240/
+241/274 histories updated;newPPD294 recordsunknowncleanupcause withoriginal
+bodyidentical/markDeadbehavior, no correctivechange/closure.
+
+Documentationharnessinitiallyfailed because new294record lackednextIDadvance;
+advancednext295 andreran beforehandoff. Owner explicitlyrequestedanalysis
+message toArchitecture Session; finishlocalreport/docscommit, sendexactanalysis
+andpaths tothatnamedthread, thenleaveimplementation withArchitecture Session.
+No furthercapture, relaunch, sourcefix orpush authorizedbythis testhandoff.
